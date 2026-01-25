@@ -1,7 +1,7 @@
 # asm485
 Intel 8085 Assembler with expressions, directives, and preprocessor macros.
 
-This is an assembler for Intel 8080 and 8085 processors. It is based on a fork of[**asm85** by Tom Nisbet](https://github.com/eriktier/asm85).
+This is an assembler for Intel 8080 and 8085 processors. It is based on a fork of [**asm85** by Tom Nisbet](https://github.com/eriktier/asm85).
 
 It produces an Intel Hex format object file as output.  A separate list file is also created that contains all of the assembled data and opcodes as well as a symbol table.  One or more binary image files can also be created.
 

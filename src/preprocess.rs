@@ -1,4 +1,4 @@
-// Preprocessor for DEFINE/IFDEF/IFNDEF/ELSE/ELSEIF/ENDIF/INCLUDE directives (optional '#').
+// Preprocessor for #DEFINE/#IFDEF/#IFNDEF/#ELSE/#ELSEIF/#ENDIF/#INCLUDE directives.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -43,7 +43,6 @@ struct CondFrame {
     active: bool,
     any_true: bool,
     in_else: bool,
-    asm_if_depth: i32,
 }
 
 #[derive(Debug, Default)]
@@ -56,10 +55,6 @@ impl ConditionalState {
         self.stack.clear();
     }
 
-    fn in_preproc(&self) -> bool {
-        !self.stack.is_empty()
-    }
-
     fn is_active(&self) -> bool {
         self.stack.iter().all(|frame| frame.active)
     }
@@ -70,7 +65,6 @@ impl ConditionalState {
             any_true: cond,
             active: parent_active && cond,
             in_else: false,
-            asm_if_depth: 0,
         };
         self.stack.push(frame);
     }
@@ -80,9 +74,6 @@ impl ConditionalState {
             return Err(PreprocessError::new(
                 "ELSE found without matching IFDEF/IFNDEF",
             ));
-        }
-        if self.stack.last().unwrap().asm_if_depth > 0 {
-            return Ok(());
         }
         let parent_active = self
             .stack
@@ -115,34 +106,8 @@ impl ConditionalState {
                 "ENDIF found without matching IFDEF/IFNDEF",
             ));
         }
-        if self.stack.last().unwrap().asm_if_depth > 0 {
-            return Ok(());
-        }
         self.stack.pop();
         Ok(())
-    }
-
-    fn track_asm_conditional(&mut self, token: &str) -> bool {
-        if self.stack.is_empty() {
-            return false;
-        }
-        let frame = self.stack.last_mut().unwrap();
-        match token {
-            "IF" => {
-                frame.asm_if_depth += 1;
-                true
-            }
-            "ENDIF" => {
-                if frame.asm_if_depth > 0 {
-                    frame.asm_if_depth -= 1;
-                    true
-                } else {
-                    false
-                }
-            }
-            "ELSE" | "ELSEIF" => frame.asm_if_depth > 0,
-            _ => false,
-        }
     }
 }
 
@@ -485,7 +450,6 @@ impl Preprocessor {
             return Ok(());
         }
 
-        let in_preproc = self.cond_state.in_preproc();
         let is_hash_directive = trimmed.starts_with('#');
 
         let mut pos = 0usize;
@@ -503,27 +467,14 @@ impl Preprocessor {
         let token = to_upper(&trimmed[start..pos]);
         let rest = trim(&trimmed[pos..]);
 
-        let asm_conditional_line = if in_preproc {
-            self.cond_state.track_asm_conditional(&token)
-        } else {
-            false
-        };
-
         let is_else_directive = token == "ELSE" || token == "ELSEIF" || token == "ENDIF";
-        let allow_else_directive = is_hash_directive || in_preproc;
-        if token == "DEFINE"
-            || token == "IFDEF"
-            || token == "IFNDEF"
-            || (is_else_directive && allow_else_directive)
-            || token == "INCLUDE"
+        if is_hash_directive
+            && (token == "DEFINE"
+                || token == "IFDEF"
+                || token == "IFNDEF"
+                || token == "INCLUDE"
+                || is_else_directive)
         {
-            if asm_conditional_line && token != "IFDEF" && token != "IFNDEF" {
-                if self.is_active() {
-                    let expanded = expander.expand_line(line, 0);
-                    self.lines.extend(expanded);
-                }
-                return Ok(());
-            }
             return self.handle_directive(&token, &rest, base_dir);
         }
 

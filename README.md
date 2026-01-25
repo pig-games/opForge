@@ -5,7 +5,7 @@ This is an assembler for Intel 8080 and 8085 processors. It is based on a fork o
 
 It produces an Intel Hex format object file as output.  A separate list file is also created that contains all of the assembled data and opcodes as well as a symbol table.  One or more binary image files can also be created.
 
-Important features of this assembler include expression evaluation for constants and string initialization for data. It supports assembler directives ORG, EQU, DB, DW, DS, END, and CPU, plus preprocessor directives DEFINE, IFDEF, IFNDEF, ELSE, ELSEIF, ENDIF, and INCLUDE. Preprocessor directives accept an optional leading `#` (for example, `#DEFINE` or `DEFINE`).
+Important features of this assembler include expression evaluation for constants and string initialization for data. It supports assembler directives ORG, EQU, DB, DW, DS, END, and CPU, plus preprocessor directives #DEFINE, #IFDEF, #IFNDEF, #ELSE, #ELSEIF, #ENDIF, and #INCLUDE. Preprocessor directives require a leading `#`; assembler conditionals use `IF/ELSE/ELSEIF/ENDIF` without `#`.
 
 This is a two-pass assembler.  The first pass creates the symbol table and the second produces the output files.
 

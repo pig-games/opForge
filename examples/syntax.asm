@@ -339,7 +339,6 @@ LABEL1:         ori 30h                 ; label and code included
           ENDIF                         ; end level 2
                 mvi a,66h               ; included in level 1 match
                 mvi b,77h
-
         ELSE                            ; level 1 - skip
                 mvi a,66h
                 mvi b,77h

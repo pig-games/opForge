@@ -2,6 +2,7 @@
 pub mod assembler;
 pub mod imagestore;
 pub mod instructions;
+mod macro_processor;
 pub mod parser;
 pub mod parser_reporter;
 pub mod preprocess;

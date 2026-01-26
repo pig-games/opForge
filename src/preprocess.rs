@@ -419,6 +419,7 @@ pub struct Preprocessor {
     macros: HashMap<String, MacroDef>,
     cond_state: ConditionalState,
     lines: Vec<String>,
+    in_asm_macro: bool,
 }
 
 impl Preprocessor {
@@ -438,6 +439,7 @@ impl Preprocessor {
     pub fn process_file(&mut self, path: &str) -> Result<(), PreprocessError> {
         self.lines.clear();
         self.cond_state.clear();
+        self.in_asm_macro = false;
         self.process_file_internal(path)
     }
 
@@ -494,6 +496,14 @@ impl Preprocessor {
     ) -> Result<(), PreprocessError> {
         let (code, _comment) = split_comment(line);
         let trimmed = ltrim(&code);
+        let asm_macro_directive = parse_asm_macro_directive(&trimmed);
+        let mut next_in_asm_macro = self.in_asm_macro;
+        if let Some(AsmMacroDirective::Start) = asm_macro_directive {
+            next_in_asm_macro = true;
+        }
+        if let Some(AsmMacroDirective::End) = asm_macro_directive {
+            next_in_asm_macro = false;
+        }
         let expander = MacroExpander::new(&self.macros);
         if trimmed.is_empty() {
             if self.is_active() {
@@ -529,16 +539,15 @@ impl Preprocessor {
         let column = leading.saturating_add(start).saturating_add(1);
 
         let is_else_directive = token == "ELSE" || token == "ELSEIF" || token == "ENDIF";
-        if is_hash_directive {
-            let err = PreprocessError::new("Preprocessor directives must use '.'");
-            return Err(err.with_context(line_num, Some(column), line, Some(file_path)));
-        }
-
         let is_pp_directive = token == "DEFINE"
             || token == "IFDEF"
             || token == "IFNDEF"
             || token == "INCLUDE"
             || is_else_directive;
+        if is_hash_directive && is_pp_directive {
+            let err = PreprocessError::new("Preprocessor directives must use '.'");
+            return Err(err.with_context(line_num, Some(column), line, Some(file_path)));
+        }
         if is_dot_directive && is_pp_directive {
             if is_else_directive && self.cond_state.is_empty() {
                 // Pass through .else/.elseif/.endif for assembler conditionals.
@@ -549,11 +558,21 @@ impl Preprocessor {
             }
         }
 
+        if self.in_asm_macro || asm_macro_directive.is_some() {
+            if self.is_active() {
+                self.lines.push(line.to_string());
+            }
+            self.in_asm_macro = next_in_asm_macro;
+            return Ok(());
+        }
+
         if !self.is_active() {
+            self.in_asm_macro = next_in_asm_macro;
             return Ok(());
         }
         let expanded = expander.expand_line(line, 0);
         self.lines.extend(expanded);
+        self.in_asm_macro = next_in_asm_macro;
         Ok(())
     }
 
@@ -811,6 +830,87 @@ fn is_ident_start(c: u8) -> bool {
 
 fn is_ident_char(c: u8) -> bool {
     (c as char).is_ascii_alphanumeric() || c == b'_' || c == b'.' || c == b'$'
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AsmMacroDirective {
+    Start,
+    End,
+}
+
+fn parse_asm_macro_directive(trimmed: &str) -> Option<AsmMacroDirective> {
+    let mut cursor = PreprocessCursor::new(trimmed);
+    cursor.skip_ws();
+    cursor.peek()?;
+    match cursor.peek() {
+        Some(b'.') => {
+            cursor.next();
+        }
+        Some(ch) if is_ident_start(ch) => {
+            cursor.take_ident()?;
+            if cursor.peek() == Some(b':') {
+                cursor.next();
+            }
+            cursor.skip_ws();
+            if cursor.peek() == Some(b'.') {
+                cursor.next();
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    }
+
+    cursor.skip_ws();
+    let directive = cursor.take_ident()?.to_ascii_uppercase();
+    match directive.as_str() {
+        "MACRO" => Some(AsmMacroDirective::Start),
+        "ENDMACRO" | "ENDM" => Some(AsmMacroDirective::End),
+        _ => None,
+    }
+}
+
+struct PreprocessCursor<'a> {
+    bytes: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> PreprocessCursor<'a> {
+    fn new(input: &'a str) -> Self {
+        Self {
+            bytes: input.as_bytes(),
+            pos: 0,
+        }
+    }
+
+    fn skip_ws(&mut self) {
+        while self.peek().is_some_and(|c| c.is_ascii_whitespace()) {
+            self.pos = self.pos.saturating_add(1);
+        }
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.pos).copied()
+    }
+
+    fn next(&mut self) -> Option<u8> {
+        let c = self.peek()?;
+        self.pos = self.pos.saturating_add(1);
+        Some(c)
+    }
+
+    fn take_ident(&mut self) -> Option<String> {
+        let start = self.pos;
+        let first = self.peek()?;
+        if !is_ident_start(first) {
+            return None;
+        }
+        self.pos = self.pos.saturating_add(1);
+        while self.peek().is_some_and(is_ident_char) {
+            self.pos = self.pos.saturating_add(1);
+        }
+        Some(String::from_utf8_lossy(&self.bytes[start..self.pos]).to_string())
+    }
 }
 
 fn dirname(path: &str) -> String {

@@ -10,6 +10,7 @@ use clap::{ArgAction, Parser};
 use crate::imagestore::ImageStore;
 use crate::instructions::table::INSTRUCTION_TABLE;
 use crate::instructions::ArgType;
+use crate::macro_processor::MacroProcessor;
 use crate::parser::{AssignOp, BinaryOp, Expr, Label, LineAst, ParseError, UnaryOp};
 use crate::parser as asm_parser;
 use crate::parser_reporter::{format_parse_error, format_parse_error_listing};
@@ -338,10 +339,25 @@ fn run_one(
         return Err(AsmRunError::new(err_msg, diagnostics, source_lines));
     }
     let src_lines: Vec<String> = pp.lines().to_vec();
+    let mut mp = MacroProcessor::new();
+    let expanded_lines = match mp.expand(&src_lines) {
+        Ok(lines) => lines,
+        Err(err) => {
+            let err_msg = AsmError::new(AsmErrorKind::Preprocess, err.message(), None);
+            let mut diagnostics = Vec::new();
+            if let Some(line) = err.line() {
+                diagnostics.push(
+                    Diagnostic::new(line, Severity::Error, err_msg.clone())
+                        .with_column(err.column()),
+                );
+            }
+            return Err(AsmRunError::new(err_msg, diagnostics, src_lines.clone()));
+        }
+    };
 
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
-    let pass1 = assembler.pass1(&src_lines);
+    let pass1 = assembler.pass1(&expanded_lines);
     if pass1.errors > 0 {
         return Err(AsmRunError::new(
             AsmError::new(
@@ -350,7 +366,7 @@ fn run_one(
                 None,
             ),
             assembler.take_diagnostics(),
-            src_lines.clone(),
+            expanded_lines.clone(),
         ));
     }
 
@@ -370,16 +386,16 @@ fn run_one(
         return Err(AsmRunError::new(
             AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
             assembler.take_diagnostics(),
-            src_lines.clone(),
+            expanded_lines.clone(),
         ));
     }
-    let pass2 = match assembler.pass2(&src_lines, &mut listing) {
+    let pass2 = match assembler.pass2(&expanded_lines, &mut listing) {
         Ok(counts) => counts,
         Err(err) => {
             return Err(AsmRunError::new(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
                 assembler.take_diagnostics(),
-                src_lines.clone(),
+                expanded_lines.clone(),
             ))
         }
     };
@@ -387,7 +403,7 @@ fn run_one(
         return Err(AsmRunError::new(
             AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
             assembler.take_diagnostics(),
-            src_lines.clone(),
+            expanded_lines.clone(),
         ));
     }
 
@@ -396,14 +412,14 @@ fn run_one(
             AsmRunError::new(
                 AsmError::new(AsmErrorKind::Io, "Error opening file for write", Some(hex_path)),
                 assembler.take_diagnostics(),
-                src_lines.clone(),
+                expanded_lines.clone(),
             )
         })?;
         if let Err(err) = assembler.image().write_hex_file(&mut hex_file, go_addr) {
             return Err(AsmRunError::new(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
                 assembler.take_diagnostics(),
-                src_lines.clone(),
+                expanded_lines.clone(),
             ));
         }
     }
@@ -426,7 +442,7 @@ fn run_one(
                         Some(&bin_name),
                     ),
                     assembler.take_diagnostics(),
-                    src_lines.clone(),
+                    expanded_lines.clone(),
                 ))
             }
         };
@@ -438,14 +454,14 @@ fn run_one(
             return Err(AsmRunError::new(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
                 assembler.take_diagnostics(),
-                src_lines.clone(),
+                expanded_lines.clone(),
             ));
         }
     }
 
     Ok(AsmRunReport::new(
         assembler.take_diagnostics(),
-        src_lines,
+        expanded_lines,
     ))
 }
 
@@ -2682,7 +2698,7 @@ mod tests {
     use super::{
         input_base_from_path, parse_bin_output_arg, parse_bin_range_str, resolve_bin_path,
         resolve_output_path, AsmError, AsmErrorKind, AsmLine, Assembler, BinRange, Cli, Diagnostic,
-        LineStatus, ListingWriter, Severity,
+        LineStatus, ListingWriter, MacroProcessor, Severity,
     };
     use crate::preprocess::Preprocessor;
     use clap::Parser;
@@ -2720,17 +2736,21 @@ mod tests {
         pp.process_file(&asm_name)
             .map_err(|err| format!("Preprocess failed: {}", err.message()))?;
         let src_lines: Vec<String> = pp.lines().to_vec();
+        let mut mp = MacroProcessor::new();
+        let expanded_lines = mp
+            .expand(&src_lines)
+            .map_err(|err| format!("Macro expand failed: {}", err.message()))?;
 
         let mut assembler = Assembler::new();
         assembler.clear_diagnostics();
-        let _ = assembler.pass1(&src_lines);
+        let _ = assembler.pass1(&expanded_lines);
 
         let mut listing = ListingWriter::new(&mut list_file, false);
         listing
             .header()
             .map_err(|err| format!("Write listing header: {err}"))?;
         let pass2 = assembler
-            .pass2(&src_lines, &mut listing)
+            .pass2(&expanded_lines, &mut listing)
             .map_err(|err| format!("Pass2 failed: {err}"))?;
         listing
             .footer(&pass2, assembler.symbols(), assembler.image().num_entries())

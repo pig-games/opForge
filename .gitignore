@@ -24,9 +24,6 @@
 !examples/reference/*.lst
 !examples/reference/*.hex
 
-# Docs (generated)
-/docs/
-
 # macOS filesystem noise
 .DS_Store
 .AppleDouble

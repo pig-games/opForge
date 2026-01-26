@@ -32,9 +32,9 @@
 MFORTH_MAJOR    EQU    1
 MFORTH_MINOR    EQU    1
 ;MFORTH_CHANGE  .EQU    Supplied on the TASM command line.
-#IFNDEF MFORTH_CHANGE
-#DEFINE MFORTH_CHANGE 0
-#ENDIF
+.IFNDEF MFORTH_CHANGE
+.DEFINE MFORTH_CHANGE 0
+.ENDIF
 
 
 
@@ -222,22 +222,22 @@ STACKGUARD EQU    076H        ; The guard value used to see if a Task
 ; ======================================================================
 
 NFASZ EQU    1           ; Size of the Name Field.
-#DEFINE     INXNFATOLFA(r) INX r
+.DEFINE     INXNFATOLFA(r) INX r
 
 LFASZ EQU    2           ; Size of the Link Field.
 
-#IFNDEF PROFILER
+.IFNDEF PROFILER
 NFATOCFASZ EQU    NFASZ+LFASZ
-#DEFINE     INXNFATOCFA(r) INX r\ INX r\ INX r
-#ELSE
+.DEFINE     INXNFATOCFA(r) INX r\ INX r\ INX r
+.ELSE
 NFATOPECSZ EQU    NFASZ+LFASZ
 PECSZ EQU    2           ; Size of the Profiler Execution Count.
 NFATOCFASZ EQU    NFASZ+LFASZ+PECSZ
-#DEFINE     INXNFATOCFA(r) INX r\ INX r\ INX r\ INX r\ INX r
-#ENDIF
+.DEFINE     INXNFATOCFA(r) INX r\ INX r\ INX r\ INX r\ INX r
+.ENDIF
 
 CFASZ EQU    3           ; Size of the Code Field.
-#DEFINE     INXCFATOPFA(r) INX r\ INX r\ INX r
+.DEFINE     INXCFATOPFA(r) INX r\ INX r\ INX r
 
 
 
@@ -279,9 +279,9 @@ MAXSOES EQU    8           ; Max. number of word lists in the search order.
 
 OPON        EQU    ALTBGN +  0
 
-        IF (OPONLEN  GT  16)
+        .if (OPONLEN > 16)
 ; ECHO "\t*** ERROR: OPON is too large; Global Variables expect OPONLEN<=16 ***\n"
-        ENDIF
+        .endif
 
 HOLDH EQU    ALTBGN + 16
 HOLDD EQU    ALTBGN + 18
@@ -337,15 +337,15 @@ NUMUSERVARS EQU    4           ; Total number of user variables.
 ; ----------------------------------------------------------------------
 ; Save and restore DE (corrupts HL).
 
-#DEFINE     SAVEDE      XCHG\ SHLD SAVED
-#DEFINE     RESTOREDE   LHLD SAVED\ XCHG
+.DEFINE     SAVEDE      XCHG\ SHLD SAVED
+.DEFINE     RESTOREDE   LHLD SAVED\ XCHG
 
 
 ; ----------------------------------------------------------------------
 ; Save and restore BC (corrupts HL).
 
-#DEFINE     SAVEBC      MOV H,B\ MOV L,C\ SHLD SAVEB
-#DEFINE     RESTOREBC   LHLD SAVEB\ MOV B,H\ MOV C,L
+.DEFINE     SAVEBC      MOV H,B\ MOV L,C\ SHLD SAVEB
+.DEFINE     RESTOREBC   LHLD SAVEB\ MOV B,H\ MOV C,L
 
 
 
@@ -532,9 +532,9 @@ STDON:
             OUT     0E8H        ; ..and then actually modify the port.
 STDONRET:   RET                 ; Now in Main ROM; return to $26C8.
 
-        IF (STDONRET  NE  008EH)
+        .if (STDONRET != 008EH)
 ; ECHO "\t*** ERROR: STDON is not ORGed properly; RET statement not at $008E ***\n"
-        ENDIF
+        .endif
 
 
 ; ----------------------------------------------------------------------
@@ -777,60 +777,60 @@ _init1:     LDAX    D           ; Load value from [DE]
 ; ======================================================================
 
 ; Kernel routines and macros.
-#INCLUDE "kernel.asm"
+.INCLUDE "kernel.asm"
 
 ; ANS word sets.
 LINK_CORE       EQU    NFATOCFASZ
-#INCLUDE "answords/core.asm"
+.INCLUDE "answords/core.asm"
 
 LINK_COREEXT    EQU    LAST_CORE
-#INCLUDE "answords/core-ext.asm"
+.INCLUDE "answords/core-ext.asm"
 
 LINK_DOUBLE     EQU    LAST_COREEXT
-#INCLUDE "answords/double.asm"
+.INCLUDE "answords/double.asm"
 
 LINK_FACILITY   EQU    LAST_DOUBLE
-#INCLUDE "answords/facility.asm"
+.INCLUDE "answords/facility.asm"
 
 LINK_FACILITYEXT EQU   LAST_FACILITY
-#INCLUDE "answords/facility-ext.asm"
+.INCLUDE "answords/facility-ext.asm"
 
 LINK_FILE       EQU    LAST_FACILITYEXT
-#INCLUDE "answords/file.asm"
+.INCLUDE "answords/file.asm"
 
 LINK_SEARCH     EQU    LAST_FILE
-#INCLUDE "answords/search.asm"
+.INCLUDE "answords/search.asm"
 
 LINK_SEARCHEXT  EQU    LAST_SEARCH
-#INCLUDE "answords/search-ext.asm"
+.INCLUDE "answords/search-ext.asm"
 
 LINK_STRING     EQU    LAST_SEARCHEXT
-#INCLUDE "answords/string.asm"
+.INCLUDE "answords/string.asm"
 
 LINK_TOOLS      EQU    LAST_STRING
-#INCLUDE "answords/tools.asm"
+.INCLUDE "answords/tools.asm"
 
 LINK_TOOLSEXT   EQU    LAST_TOOLS
-#INCLUDE "answords/tools-ext.asm"
+.INCLUDE "answords/tools-ext.asm"
 
 ; MFORTH word sets.
 LINK_BREG       EQU    LAST_TOOLSEXT
-#INCLUDE "mforthwords/breg.asm"
+.INCLUDE "mforthwords/breg.asm"
 
 LINK_MFORTH     EQU    LAST_BREG
-#INCLUDE "mforthwords/mforth.asm"
+.INCLUDE "mforthwords/mforth.asm"
 
 LINK_TASK       EQU    LAST_MFORTH
-#INCLUDE "mforthwords/task.asm"
+.INCLUDE "mforthwords/task.asm"
 
-#IFNDEF PROFILER
+.IFNDEF PROFILER
 _latestFORTH    EQU    LAST_TASK
-#ELSE
+.ELSE
 LINK_PROFILER   EQU    LAST_TASK
-#INCLUDE "mforthwords/profiler.asm"
+.INCLUDE "mforthwords/profiler.asm"
 
 _latestFORTH    EQU    LAST_PROFILER
-#ENDIF
+.ENDIF
 
 
 
@@ -840,7 +840,7 @@ _latestFORTH    EQU    LAST_PROFILER
 
 ; ASSEMBLER Word List
 LINK_ASSEMBLER  EQU    NFATOCFASZ
-#INCLUDE "mforthwords/assembler.asm"
+.INCLUDE "mforthwords/assembler.asm"
 
 _latestASSEMBLER EQU   LAST_ASSEMBLER
 
@@ -869,14 +869,14 @@ _latestASSEMBLER EQU   LAST_ASSEMBLER
 ; Perfect Hash of ROM Dictionary
 ; ======================================================================
 
-#IFNDEF PHASH
+.IFNDEF PHASH
 ; Temporarily store _latestFORTH at 07FFE for use by phashgen.exe.
             ORG    07FFEH
             DW   _latestFORTH-NFATOCFASZ
-#ELSE
+.ELSE
 ; phash.asm already generated.
-#INCLUDE "phash.asm"
-#ENDIF
+.INCLUDE "phash.asm"
+.ENDIF
 
 
 

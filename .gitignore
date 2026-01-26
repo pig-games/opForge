@@ -19,6 +19,11 @@
 *.hex
 *.bin
 
+# Keep reference outputs checked in
+!examples/reference/
+!examples/reference/*.lst
+!examples/reference/*.hex
+
 # Docs (generated)
 /docs/
 

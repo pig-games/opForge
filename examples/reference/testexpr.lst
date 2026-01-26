@@ -1,0 +1,22 @@
+asm485 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+0000    21 08 00                    1          LXI  H, TAB2-1
+0003    00                          2          nop	
+0004    C3 07 00                    3          JMP  EXEC
+----                                4  
+0007    00                          5  EXEC:   nop
+0008    C9                          6  CHKIO:  ret
+----                                7  
+0009    61 62 63 64                 8  TAB2:   db      'abcd'
+----                                9  
+
+Lines: 9  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+EXEC            : 0007 (7)
+CHKIO           : 0008 (8)
+TAB2            : 0009 (9)
+
+Total memory is 13 bytes

@@ -20,11 +20,10 @@ LABEL2:
         POP     PSW             ; or the label can be before the code
 NOSPACE:push    D               ; a space is not required after a label
 VeryVeryVeryLongLabel:
-    db  "Labels can be up to 32 characters and must start with an alpha."
+    db  "Labels can be up to 32 characters && must start with an alpha."
 
-; Names of alphabetic expression operations are reserved words in asm85 and cannot
-; be used as labels or names.  This is compatible with Intel85 as well.
-; Reserved words are: HIGH, LOW, MOD, SHL, SHR, EQ, NE, LE, LT, GE, GT, NOT, AND, OR, XOR.
+; Expression operators are symbolic, so names like HIGH, LOW, AND, or OR can be
+; used as labels if desired.
 
 ; The EQU directive is used to define a constant value.  It does not emit
 ; any code.  The name label for an EQU does not need the trailing but it
@@ -122,110 +121,38 @@ t:      dw      1024 * 3
         mvi     c, 'A' | 020H
         mvi     c, 'a' & 11011111b
 
-; Operators and precedence
+; Operators and precedence (highest to lowest):
+;   unary: + - ~ ! < >
+;   power: **
+;   * / %
+;   + -
+;   shifts: << >>
+;   comparisons: == != <> < <= > >= (also =)
+;   bitwise: & ^ |
+;   logical: && ^^ ||
+;   ternary: ?:
 PREC:
-        dw      (8+7)           ; Parenthesis hve highest precedence
-        dw      -1              ; bitwise NOT, unary plus and minus
-        db      HIGH 512        ; byte isolation: HIGH, LOW
-        dw      100 / 10 MOD 4  ; multiply, divide, SHL, SHR, MOD - left to right
-        dw      2 + 8 - 1       ; add, subtract, unary plus, minus - left to right
-        dw      2 LE 3          ; relational: EQ, NE, GT, GE, LT, LE =
-        dw      23H & 0FH       ; bitwise AND (extension to Intel Assembler)
-        dw      23H | 0FH ^0FFH ; bitwise OR and XOR (extension to Intel Assembler)
-        dw      NOT 0           ; logicat NOT
-        dw      1 AND 0         ; logical AND
-        dw      1 XOR 0         ; logical OR and XOR
+        dw      (8+7)           ; Parenthesis have highest precedence
+        dw      -1              ; unary plus/minus
+        db      >512            ; high byte
+        db      <512            ; low byte
+        dw      2 ** 3          ; power
+        dw      100 / 10 % 4    ; multiply/divide/mod
+        dw      2 + 8 - 1       ; add/subtract
+        dw      2 <= 3          ; comparisons
+        dw      23H & 0FH       ; bitwise AND
+        dw      23H | 0FH ^ 0FFH; bitwise OR/XOR
+        dw      !0              ; logical NOT
+        dw      1 && 0          ; logical AND
+        dw      1 ^^ 0          ; logical XOR
+        dw      1 ? 2 : 3       ; ternary
 
-; The precedence rules above have a few differences from those listed in the Intel
-; Assembler manual.
-; Intel85 has unary - at the same level as addition and subtraction, but asm85
-; evaluates the unary before most other operations.  The asm85 produces the more
-; intuitive result.
-; In the expression below, asm85 shifts the all-ones -1 to the right.  Intel85
-; would shift 1 to the right, producing zero, and then negate that.
-        dw      -1 SHR 3        ; asm85 evaluates -1 first and then shifts it
-        dw      (-1) SHR 3      ; same as above
-        dw      -(1 SHR 3)      ; Intel would shift 1 first then negate the result
-
-; Intel85 places the logical NOT operator at a lower precedence than C++. The
-; asm85 code follows the Intel result, so this may not be what C++ programmers
-; are expecting.
-        dw      NOT 3 EQ 2      ; Intel and asm85 use the obvious 3 not equal 2
-        dw      NOT (3 EQ 2)    ; same as above
-        dw      (NOT 3) EQ 2    ; C++ version !3 == 2 would do the NOT first
-
-; Additions to Intel85 expressions in asm85
-; There are several new operators in asm85 to support additional operations or to
-; give compatibility with other observed .asm files
-EXPR01: db      3 << 4, 128 >> 1 ; C++ style alias are provided for SHL and SHR
-        db      99 % 8          ; C++ style alias is provided for MOD
-        db      1 && 0          ; C++ style alias is provided for logical AND
-        db      1 || 0          ; C++ style alias is provided for logical OR
-        dw      EXPR01 = 0ffffH ; the = alias is provided for the EQ test
-        dw      ~02211H         ; the ~ (tilde) performs bitwise NOT
-        dw      't' & 5fH       ; the & (ampersand) performs bitwise AND
-        dw      'T' | 20H       ; the | (vertical bar) performs bitwise OR
-        dw      3377H ^ 1111H   ; the ^ (carat) performs bitwise XOR
-
-; Logical operators
-; The behavior of the logical (NOT, AND, OR, and XOR) operators, as defined in
-; the Intel85 manual, is very different from C++.  The operations only evaluate
-; the least significant bit of the operand(s).  The manual section describing
-; IF/ELSE/ENDIF states that a logical FALSE evaluates to 0000H and a TRUE
-; is 0FFFFH.
-; Note that this is very different from C++, where any non-zero value is TRUE.
-; In C++ !4 is FALSE (0), but here it would be TRUE (FFFF) because 4 has a zero LSB.
-; The conditional operators only test the LSB as well. 
-        db      NOT 0           ; TRUE
-        db      NOT 1           ; FALSE
-        db      NOT 0111B       ; FALSE, because LSB is 1
-        db      NOT 0110B       ; TRUE, because LSB is 0
-        db      0 AND 0         ; FALSE
-        db      1 AND 1         ; TRUE
-        db      1 AND 0         ; FALSE
-        db      0 AND 1         ; FALSE
-        db      2 AND 3         ; FALSE, both LSBs not 0
-        db      7 AND 3         ; TRUE, both LSBs are 1
-        db      0 OR 0          ; FALSE
-        db      1 OR 1          ; TRUE
-        db      1 OR 0          ; TRUE
-        db      0 OR 1          ; TRUE
-        db      2 OR 4          ; FALSE, both LSBs are 0
-        db      7 OR 3          ; TRUE, both LSBs are 1
-        db      0 XOR 0         ; FALSE, LSBs equal
-        db      1 XOR 1         ; FALSE, LSBs equal
-        db      1 XOR 0         ; TRUE, LSBs not equal
-        db      0 XOR 1         ; TRUE, LSBs not equal
-        db      2 XOR 3         ; TRUE, LSBs not equal
-        db      7 XOR 3         ; FALSE, LSBs equal
-        db      not not 0       ; FALSE (0)
-        db      not not 1       ; TRUE (FFFF)
-
-; Precedence of logical and relational operators
-; From highest to lowest: EQ, NOT, AND, OR/XOR
-; These are intuitive
-        db      NOT 5 EQ 7      ; EQ then NOT
-        db      NOT (5 EQ 7)    ; same as above
-        db      5 EQ 7 OR 1 EQ 1     ; EQ then OR
-        db      (5 EQ 7) OR (1 EQ 1) ; same as above
-; But this is not intuitive
-        db      NOT 1 OR 1      ; NOT then OR
-        db      (NOT 1) OR 1    ; same as above
-        db      NOT (1 OR 1)    ; force the OR before the NOT
-; The left and right sides of the following are eqivalent, so all of these evaluate
-; to TRUE
-        db      (2 eq 3 or not 2 eq 3)   EQ  ((2 eq 3) or (not (2 eq 3)))
-        db      (2 eq 3 and not 2 eq 3)  EQ  ((2 eq 3) and (not (2 eq 3)))
-        db      (2 eq 3 xor not 2 eq 3)  EQ  ((2 eq 3) xor (not (2 eq 3)))
-        db      (not 2 eq 3 or not 2 eq 3)   EQ  (not (2 eq 3) or (not (2 eq 3)))
-        db      (not 2 eq 3 and not 2 eq 3)  EQ  (not (2 eq 3) and (not (2 eq 3)))
-        db      (not 2 eq 3 xor not 2 eq 3)  EQ  (not (2 eq 3) xor (not (2 eq 3)))
-        db      (not not 2 eq 3 or not 2 eq 3)   EQ  ((not (not (2 eq 3))) or (not (2 eq 3)))
-        db      (not not 2 eq 3 and not 2 eq 3)  EQ  ((not (not (2 eq 3))) and (not (2 eq 3)))
-        db      (not not 2 eq 3 xor not 2 eq 3)  EQ  ((not (not (2 eq 3))) xor (not (2 eq 3)))
-        db      (not (not 2 eq 3 or not 2 eq 3))   EQ  (not ((not (2 eq 3)) or (not (2 eq 3))))
-        db      (not (not 2 eq 3 and not 2 eq 3))  EQ  (not ((not (2 eq 3)) and (not (2 eq 3))))
-        db      (not (not 2 eq 3 xor not 2 eq 3))  EQ  (not ((not (2 eq 3)) xor (not (2 eq 3))))
+; Logical operators treat any non-zero value as TRUE and return 1 (true) or 0 (false).
+        db      !0              ; TRUE
+        db      !1              ; FALSE
+        db      2 && 3          ; TRUE
+        db      0 || 4          ; TRUE
+        db      2 ^^ 3          ; FALSE
 
 ; Address
 ; The $ symbol is used in an expression to represent the current address.
@@ -265,101 +192,98 @@ TRUE        EQU 0ffffh
 NO          EQU 0
 FALSE       EQU 0
 
-; simple IF/ELSE conditional
-        IF TRUE                         ; match - all code in this block is included
+; simple .if/.else conditional
+        .if TRUE                        ; match - all code in this block is included
                 org 4000h               ; all labels, directives, and code included
 EX1AVAR         equ 1234h
 EX1ADATA:       dw  EX1AVAR
 EX1A:           mov a,b
 
-        ELSE                            ; skip - no code in this block is included
+        .else                           ; skip - no code in this block is included
                 org 8000h               ; all labels, directives, and code skipped
 EX1BVAR         equ 5678h
 EX1BDATA:       dw  EX1VAR
 EX1B:           mov a,c
-        ENDIF                           ; END conditional block
+        .endif                          ; END conditional block
 
 
-; If/ELSEIF/ELSE
+; .if/.elseif/.else
                 org 1000h
-        IF YES EQ NO                    ; skip FALSE
+        .if YES == NO                   ; skip FALSE
                 mov a,b
-        ELSEIF NOT TRUE                 ; skip FALSE
+        .elseif !TRUE                   ; skip FALSE
                 mov a,c
-        ELSEIF NOT FALSE                ; match TRUE
+        .elseif !FALSE                  ; match TRUE
                 mov a,d
-        ELSEIF TRUE                     ; skip - already matched a previous block
+        .elseif TRUE                    ; skip - already matched a previous block
                 mov a,e
-        ELSE                            ; skip - already matched a previous block
+        .else                           ; skip - already matched a previous block
                 mov a,h
-        ENDIF
+        .endif
 
 
 ; TRUE/FALSE values in conditionals
-; As explained in the logical operators section, the assembler only looks at
-; the least significant bit (LSB) of the value.  This effectively means that
-; zero and all even numbers are FALSE while all odd numbers are TRUE.
-        IF 4                            ; FALSE - 4 (0100B) has zero LSB
+; Any non-zero value is TRUE, zero is FALSE.
+        .if 0                           ; FALSE
                 adi 11h
-        ELSEIF 4+2                      ; FALSE - 6 (0110B) has zero LSB
+        .elseif 4                       ; TRUE
                 adi 22h
-        ELSEIF 4+1                      ; TRUE  - 5 (0101B) has one LSB
+        .elseif 4-4                     ; skipped (previous branch matched)
                 adi 33h
-        ENDIF
+        .endif
 
 
 ; nested conditionals
                 org 0f000h
-        IF FALSE                        ; level 1 - skip
-          IF 0 NE 1                     ; level 2 - skip
+        .if FALSE                       ; level 1 - skip
+          .if 0 != 1                    ; level 2 - skip
 LABEL1:         ori 03h                 ; label and code skipped
                 jmp 45
-          ELSEIF FALSE                  ; level 2 - skip
+          .elseif FALSE                 ; level 2 - skip
 LABEL1:         ori 30h                 ; label and code included
                 jmp 67
-          ELSE                          ; level 2 - skip
+          .else                         ; level 2 - skip
                 jmp 12
-          ENDIF                         ; end level 2
+          .endif                        ; end level 2
 
-        ELSEIF YES                      ; level 1 - match
+        .elseif YES                     ; level 1 - match
                 jmp 5555
-          IF NOT FALSE                  ; level 2 - match
+          .if !FALSE                    ; level 2 - match
                 jmp 6666
-            IF 0                        ; level 3 - skip
+            .if 0                       ; level 3 - skip
                 jmp 2222
-            ELSE                        ; level 3 match
+            .else                       ; level 3 match
                 mov c,a
                 jmp 3333
-            ENDIF                       ; end level 3
+            .endif                      ; end level 3
                 mvi a,11h               ; included in level 2 match
                 mvi b,22h               ; included in level 2 match
 
-          ELSE                          ; level 2 - skip
+          .else                         ; level 2 - skip
                 jmp 4444
-          ENDIF                         ; end level 2
+          .endif                        ; end level 2
                 mvi a,66h               ; included in level 1 match
                 mvi b,77h
-        ELSE                            ; level 1 - skip
+        .else                           ; level 1 - skip
                 mvi a,66h
                 mvi b,77h
-                jmp 12                  ; skipped from level 1 ELSE
-        ENDIF                           ; end level 1
+                jmp 12                  ; skipped from level 1 .else
+        .endif                          ; end level 1
 
 
 ; Labels and conditionals
-; Any of the conditional directives (IF/ELSEIF/ELSE/ENDIF) can have a label.
+; Any of the conditional directives (.if/.elseif/.else/.endif) can have a label.
 ; This label will be included in the symbol table as long as the directive is
 ; processed.  It does not matter if the directive evaluates to TRUE.
 ; A label will not be included in the symbol table if the directive is nested
-; within another IF block that is false because the nested directive is not
+; within another .if block that is false because the nested directive is not
 ; evaluated in that case.
-IFLAB:  IF TRUE                         ; label included
+IFLAB:  .if TRUE                        ; label included
                 jmp 6666
-ELSELAB:ELSE                            ; label included
+ELSELAB:.else                           ; label included
                 mov c,a
 NOLAB1:         jmp 3333                ; labels ignored because they are nested in
-NOLAB2:   IF YES                        ; the ELSE above that did not match
+NOLAB2:   .if YES                       ; the .else above that did not match
 NOLAB3:         jmp 1111
-NOLAB4:   ENDIF
-ENDLAB: ENDIF                           ; label included
-
+NOLAB4:   .endif
+ENDLAB: .endif                          ; label included

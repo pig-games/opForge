@@ -127,7 +127,7 @@ _swlLATEST: DB 0EDH                ; Get the latest word in wid
             POP     H           ; Pop the string pointer
             SHLD    HOLDH       ; ..and cache the value.
 _swlAGAIN:
-#IFDEF PHASH
+.IFDEF PHASH
             MOV     A,D         ; See if we are still in RAM (the
             ANI     80H         ; ..high bit of the addr is not zero) -- or
             ORA     B           ; ..we are not in the FORTH word list -- and
@@ -159,7 +159,7 @@ _swlPHASH1: ANI     PHASHMASK   ; ..and mask off the high bits of H1.
             MOV     A,D         ; Move D to A,
             ORA     E           ; ..then OR A and E to see if the cell is zero;
             JZ      _swlPHASH   ; ..try to phash again if so.
-#ENDIF
+.ENDIF
 _swlAGAIN1: LDAX    D           ; Get the name length into A.
             ANI     01111111b   ; Strip the immediate bit.
             LXI     H,HOLDD     ; Point HL at the string length,
@@ -203,13 +203,13 @@ _swlNEXTWORD:INXNFATOLFA(D)     ; Move to the word's LFA,
             DB 0EDH                ; ..get the LFA in HL,
             XCHG                ; ..put the LFA into DE,
             LHLD    HOLDH       ; ..and restore HL.
-#IFDEF PHASH
+.IFDEF PHASH
             MOV     A,D         ; The phash routine ignores the LFA, so
             ANI     80H         ; ..see if we are in RAM -- or
             ORA     B           ; ..we are not in the FORTH word list -- and
             JNZ     _swlNEXTWORD1;..keep traversing the linked list if so;
             JMP     _swlPHASH   ; ..continue the phash process otherwise.
-#ENDIF
+.ENDIF
 _swlNEXTWORD1:MOV   A,D         ; Keep searching for a match
             ORA     E           ; ..if the LFA
             JNZ     _swlAGAIN   ; ..is not zero.
@@ -219,7 +219,7 @@ _swlDONE:   RESTOREDE
             RESTOREBC
             NEXT
 
-#IFDEF PHASH
+.IFDEF PHASH
 ; Entry: HL=c-addr A=u (all registers are used)
 ; Exit : HL=hash values (H1 in H, H2 in L)
 _phash:     PUSH    B           ; Save BC
@@ -256,7 +256,7 @@ _phashDONE: POP     H           ; Pop the hash values into HL.
             POP     D           ; Restore DE
             POP     B           ; ..and BC.
             RET                 ; We're done.
-#ENDIF
+.ENDIF
 
 
 ; ----------------------------------------------------------------------

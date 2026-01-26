@@ -1,4 +1,4 @@
-// Preprocessor for #DEFINE/#IFDEF/#IFNDEF/#ELSE/#ELSEIF/#ENDIF/#INCLUDE directives.
+// Preprocessor for .DEFINE/.IFDEF/.IFNDEF/.ELSE/.ELSEIF/.ENDIF/.INCLUDE directives.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -93,6 +93,10 @@ struct ConditionalState {
 impl ConditionalState {
     fn clear(&mut self) {
         self.stack.clear();
+    }
+
+    fn is_empty(&self) -> bool {
+        self.stack.is_empty()
     }
 
     fn is_active(&self) -> bool {
@@ -499,11 +503,18 @@ impl Preprocessor {
         }
 
         let is_hash_directive = trimmed.starts_with('#');
+        let is_dot_directive = trimmed.starts_with('.');
         let leading = code.len().saturating_sub(trimmed.len());
 
         let mut pos = 0usize;
         let bytes = trimmed.as_bytes();
         if bytes.first() == Some(&b'#') {
+            pos = 1;
+            while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
+                pos += 1;
+            }
+        }
+        if bytes.first() == Some(&b'.') {
             pos = 1;
             while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
                 pos += 1;
@@ -518,16 +529,24 @@ impl Preprocessor {
         let column = leading.saturating_add(start).saturating_add(1);
 
         let is_else_directive = token == "ELSE" || token == "ELSEIF" || token == "ENDIF";
-        if is_hash_directive
-            && (token == "DEFINE"
-                || token == "IFDEF"
-                || token == "IFNDEF"
-                || token == "INCLUDE"
-                || is_else_directive)
-        {
-            return self
-                .handle_directive(&token, &rest, base_dir)
-                .map_err(|err| err.with_context(line_num, Some(column), line, Some(file_path)));
+        if is_hash_directive {
+            let err = PreprocessError::new("Preprocessor directives must use '.'");
+            return Err(err.with_context(line_num, Some(column), line, Some(file_path)));
+        }
+
+        let is_pp_directive = token == "DEFINE"
+            || token == "IFDEF"
+            || token == "IFNDEF"
+            || token == "INCLUDE"
+            || is_else_directive;
+        if is_dot_directive && is_pp_directive {
+            if is_else_directive && self.cond_state.is_empty() {
+                // Pass through .else/.elseif/.endif for assembler conditionals.
+            } else {
+                return self
+                    .handle_directive(&token, &rest, base_dir)
+                    .map_err(|err| err.with_context(line_num, Some(column), line, Some(file_path)));
+            }
         }
 
         if !self.is_active() {
@@ -838,7 +857,7 @@ mod tests {
     fn ifdef_selects_true_branch() {
         let path = temp_file(
             "test.asm",
-            "#DEFINE FOO 1\n#IFDEF FOO\nVAL EQU 1\n#ELSE\nVAL EQU 2\n#ENDIF\n",
+            ".DEFINE FOO 1\n.IFDEF FOO\nVAL EQU 1\n.ELSE\nVAL EQU 2\n.ENDIF\n",
         );
         let mut pp = Preprocessor::new();
         assert!(pp.process_file(path.to_str().unwrap()).is_ok());
@@ -851,7 +870,7 @@ mod tests {
     fn function_macro_expands() {
         let path = temp_file(
             "macro.asm",
-            "#DEFINE ADD(a,b) a + b\nDB ADD(1,2)\n",
+            ".DEFINE ADD(a,b) a + b\nDB ADD(1,2)\n",
         );
         let mut pp = Preprocessor::new();
         assert!(pp.process_file(path.to_str().unwrap()).is_ok());
@@ -873,25 +892,35 @@ mod tests {
 
     #[test]
     fn reports_missing_define_name() {
-        let path = temp_file("bad_define.asm", "#DEFINE\n");
+        let path = temp_file("bad_define.asm", ".DEFINE\n");
         let mut pp = Preprocessor::new();
         let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
         assert_eq!(err.message(), "DEFINE missing name");
     }
 
     #[test]
-    fn reports_else_without_ifdef() {
-        let path = temp_file("bad_else.asm", "#ELSE\n");
+    fn passes_through_else_when_no_preproc_block() {
+        let path = temp_file("else_pass.asm", ".ELSE\n");
         let mut pp = Preprocessor::new();
-        let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
-        assert_eq!(err.message(), "ELSE found without matching IFDEF/IFNDEF");
+        assert!(pp.process_file(path.to_str().unwrap()).is_ok());
+        let lines = pp.lines();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].trim(), ".ELSE");
     }
 
     #[test]
     fn reports_missing_include_path() {
-        let path = temp_file("bad_include.asm", "#INCLUDE\n");
+        let path = temp_file("bad_include.asm", ".INCLUDE\n");
         let mut pp = Preprocessor::new();
         let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
         assert_eq!(err.message(), "INCLUDE missing file");
+    }
+
+    #[test]
+    fn rejects_hash_directives() {
+        let path = temp_file("hash_define.asm", "#DEFINE FOO 1\n");
+        let mut pp = Preprocessor::new();
+        let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
+        assert_eq!(err.message(), "Preprocessor directives must use '.'");
     }
 }

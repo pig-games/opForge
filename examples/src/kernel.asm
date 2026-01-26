@@ -44,7 +44,7 @@
 ;           STAX    B           ;[1. 7]
 ;           DCX     B           ;[1. 5]
 ;                               ;[6.34]
-#DEFINE     RSPUSH(hi,lo) MOV A,hi\ STAX B\ DCX B\ MOV A,lo\ STAX B\ DCX B
+.DEFINE     RSPUSH(hi,lo) MOV A,hi\ STAX B\ DCX B\ MOV A,lo\ STAX B\ DCX B
 
 ;RSPOP:     INX     B           ;[1. 5]
 ;           LDAX    B           ;[1. 7]
@@ -53,7 +53,7 @@
 ;           LDAX    B           ;[1. 7]
 ;           MOV     E,A         ;[1. 5]
 ;                               ;[6.34]
-#DEFINE     RSPOP(hi,lo) INX B\ LDAX B\ MOV lo,A\ INX B\ LDAX B\ MOV hi,A
+.DEFINE     RSPOP(hi,lo) INX B\ LDAX B\ MOV lo,A\ INX B\ LDAX B\ MOV hi,A
 
 ;RSFETCH:   INX     B           ;[1. 5]
 ;           LDAX    B           ;[1. 7]
@@ -64,7 +64,7 @@
 ;           DCX     B           ;[1. 5]
 ;           DCX     B           ;[1. 5]
 ;                               ;[8.44]
-#DEFINE     RSFETCH(hi,lo) RSPOP(hi,lo)\ DCX B\ DCX B
+.DEFINE     RSFETCH(hi,lo) RSPOP(hi,lo)\ DCX B\ DCX B
 
 ;RSPICK2:   INX     B           ;[1. 5]
 ;           INX     B           ;[1. 5]
@@ -83,7 +83,7 @@
 ;           DCX     B           ;[1. 5]
 ;           DCX     B           ;[1. 5]
 ;                               ;[8.44]
-#DEFINE     RSPICK2(hi,lo) INX B\ INX B\ INX B\ INX B\ RSPOP(hi,lo)\ DCX B\ DCX B\ DCX B\ DCX B\ DCX B\ DCX B
+.DEFINE     RSPICK2(hi,lo) INX B\ INX B\ INX B\ INX B\ RSPOP(hi,lo)\ DCX B\ DCX B\ DCX B\ DCX B\ DCX B\ DCX B
 
 
 ; ----------------------------------------------------------------------
@@ -92,14 +92,14 @@
 ; DE is the Instruction Pointer and an undocumented 8085 opcode is used
 ; to transfer the location pointed to by DE into HL, the Word pointer.
 
-#IFNDEF PROFILER
+.IFNDEF PROFILER
 ;NEXT:      LHLX                ;[1.10] (IP) -> W
 ;           INX     D           ;[1. 5] IP+1 -> IP
 ;           INX     D           ;[1. 5] IP+1 -> IP
 ;           PCHL                ;[1. 5] JMP W
 ;                               ;[4.25]
-#DEFINE     NEXT    DB 0EDH\ INX D\ INX D\ PCHL
-#ELSE
+.DEFINE     NEXT    DB 0EDH\ INX D\ INX D\ PCHL
+.ELSE
 PROFILENEXT:LHLD    PROFILING   ; Don't increment the Execution Count
             MOV     A,L         ; ..if the profiling
             ORA     H           ; ..flag
@@ -115,8 +115,8 @@ _profnext1: DB 0EDH                ; (IP) -> W
             INX     D           ; IP+1 -> IP
             INX     D           ; IP+1 -> IP
             PCHL                ; JMP W
-#DEFINE     NEXT    JMP PROFILENEXT
-#ENDIF
+.DEFINE     NEXT    JMP PROFILENEXT
+.ENDIF
 
 
 ; ----------------------------------------------------------------------
@@ -187,10 +187,10 @@ DOUSER:     INXCFATOPFA(H)      ; Skip over the CFA so that HL points to PFA.
 ; Notice that the name is in reverse order and that the last character is
 ; specified as a separate byte.
 
-#IFNDEF PROFILER
-#DEFINE     LINKTO(prev,isimm,len,lastchar,revchars) DB 10000000b|lastchar,revchars\ DB (isimm << 7)|len\ DW prev-NFATOCFASZ
-#DEFINE     LINKTO0(prev,isimm,len,lastchar) DB 10000000b|lastchar\ DB (isimm << 7)|len\ DW prev-NFATOCFASZ
-#ELSE
-#DEFINE     LINKTO(prev,isimm,len,lastchar,revchars) DB 10000000b|lastchar,revchars\ DB (isimm << 7)|len\ DW prev-NFATOCFASZ\ DW 0
-#DEFINE     LINKTO0(prev,isimm,len,lastchar) DB 10000000b|lastchar\ DB (isimm << 7)|len\ DW prev-NFATOCFASZ\ DW 0
-#ENDIF
+.IFNDEF PROFILER
+.DEFINE     LINKTO(prev,isimm,len,lastchar,revchars) DB 10000000b|lastchar,revchars\ DB (isimm << 7)|len\ DW prev-NFATOCFASZ
+.DEFINE     LINKTO0(prev,isimm,len,lastchar) DB 10000000b|lastchar\ DB (isimm << 7)|len\ DW prev-NFATOCFASZ
+.ELSE
+.DEFINE     LINKTO(prev,isimm,len,lastchar,revchars) DB 10000000b|lastchar,revchars\ DB (isimm << 7)|len\ DW prev-NFATOCFASZ\ DW 0
+.DEFINE     LINKTO0(prev,isimm,len,lastchar) DB 10000000b|lastchar\ DB (isimm << 7)|len\ DW prev-NFATOCFASZ\ DW 0
+.ENDIF

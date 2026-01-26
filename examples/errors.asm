@@ -92,25 +92,25 @@ FALSE       EQU 0
 
                 org 5000h
 ; ERR - missing IF
-        ELSEIF YES                      ; ERR - missing IF
-        ELSE                            ; ERR - missing IF
-        ENDIF                           ; ERR - missing IF
+        .elseif YES                     ; ERR - missing IF
+        .else                           ; ERR - missing IF
+        .endif                          ; ERR - missing IF
 
 
 ; ERR - multiple ELSE
-        IF FALSE                        ; OK
-        ELSE                            ; OK
-        ELSE                            ; ERR - multiple ELSE
-        ENDIF
+        .if FALSE                       ; OK
+        .else                           ; OK
+        .else                           ; ERR - multiple ELSE
+        .endif
 
 
 ; ERR - ELSEIF follows ELSE
-        IF FALSE                        ; OK
-        ELSE                            ; OK
-        ELSEIF TRUE                     ; ERR - ELSEIF follows ELSE
-        ENDIF
+        .if FALSE                       ; OK
+        .else                           ; OK
+        .elseif TRUE                    ; ERR - ELSEIF follows ELSE
+        .endif
        
 
 ; ERR - missing ENDIF
-        IF FALSE OR 3+1 EQ 4            ; OK
+        .if FALSE || 3+1 == 4           ; OK
                 lxi h,0beefh

@@ -52,14 +52,14 @@ ENDCODE:    JMP     ENTER
 
             LINKTO(ENDCODE,0,4,'T',"XEN")
 asmNEXT:    JMP     ENTER
-#IFNDEF PROFILER
+.IFNDEF PROFILER
             DW   asmLHLX
             DW   asmOpD,asmINX
             DW   asmOpD,asmINX
             DW   asmPCHL
-#ELSE
+.ELSE
             DW   LIT,PROFILENEXT,asmJMP
-#ENDIF
+.ENDIF
             DW   EXIT
 
 
@@ -171,7 +171,7 @@ asmWHILE:   JMP     ENTER
 ; Operands
 ;
 
-#DEFINE     ASM_OP(value) LXI H,value\ PUSH H\ NEXT
+.DEFINE     ASM_OP(value) LXI H,value\ PUSH H\ NEXT
 
             LINKTO0(asmWHILE,0,1,'A')
 asmOpA:     ASM_OP(7)
@@ -208,7 +208,7 @@ asmOpSP:    ASM_OP(6)
 ; Zero-operand instructions
 ;
 
-#DEFINE     ASM_ZERO_OP(opcode) JMP ENTER\ DW LIT,opcode,CCOMMA,EXIT
+.DEFINE     ASM_ZERO_OP(opcode) JMP ENTER\ DW LIT,opcode,CCOMMA,EXIT
 
             LINKTO(asmOpSP,0,4,'R',"HSA")
 asmASHR:    ASM_ZERO_OP(10H)
@@ -287,7 +287,7 @@ asmXTHL:    ASM_ZERO_OP(0E3H)
 ; Register instructions
 ;
 
-#DEFINE     ASM_REG_OP(opcode) JMP ENTER\ DW LIT,opcode,PLUS,CCOMMA,EXIT
+.DEFINE     ASM_REG_OP(opcode) JMP ENTER\ DW LIT,opcode,PLUS,CCOMMA,EXIT
 
             LINKTO(asmXTHL,0,3,'C',"DA")
 asmADC:     ASM_REG_OP(88H)
@@ -326,7 +326,7 @@ asmXRA:     ASM_REG_OP(0A8H)
 ; Register pair instructions
 ;
 
-#DEFINE     ASM_REGPAIR_OP(opcode) JMP ENTER\ DW EIGHTSTAR,LIT,opcode,PLUS,CCOMMA,EXIT
+.DEFINE     ASM_REGPAIR_OP(opcode) JMP ENTER\ DW EIGHTSTAR,LIT,opcode,PLUS,CCOMMA,EXIT
 
             LINKTO(asmXRA,0,3,'D',"AD")
 asmDAD:     ASM_REGPAIR_OP(09H)
@@ -354,7 +354,7 @@ asmSTAX:    ASM_REGPAIR_OP(02H)
 ; Byte operand instructions
 ;
 
-#DEFINE     ASM_BYTE_OP(opcode) JMP ENTER\ DW LIT,opcode,CCOMMA,CCOMMA,EXIT
+.DEFINE     ASM_BYTE_OP(opcode) JMP ENTER\ DW LIT,opcode,CCOMMA,CCOMMA,EXIT
 
             LINKTO(asmSTAX,0,3,'I',"CA")
 asmACI:     ASM_BYTE_OP(0CEH)
@@ -395,7 +395,7 @@ asmXRI:     ASM_BYTE_OP(0EEH)
 ; Word operand instructions
 ;
 
-#DEFINE     ASM_WORD_OP(opcode) JMP ENTER\ DW LIT,opcode,CCOMMA,COMMA,EXIT
+.DEFINE     ASM_WORD_OP(opcode) JMP ENTER\ DW LIT,opcode,CCOMMA,COMMA,EXIT
 
             LINKTO(asmXRI,0,4,'L',"LAC")
 asmCALL:    ASM_WORD_OP(0CDH)

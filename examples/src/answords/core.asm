@@ -1214,9 +1214,9 @@ _create3:   DW   BQUES,zbranch,_create4,ONEMINUS,BFETCH,OVER,CSTORE
             DW       BPLUS,branch,_create3
 _create4:   DW   DUP,CFETCH,LIT,128,OR,SWAP,CSTORE
             DW   LATEST,FETCH,COMMA
-#IFDEF PROFILER
+.IFDEF PROFILER
             DW   ZERO,COMMA
-#ENDIF
+.ENDIF
             DW   HERE,LIT,NFATOCFASZ,MINUS,LATEST,STORE
             DW       LIT,195,CCOMMA,LIT,DOCREATE,COMMA
             DW   EXIT

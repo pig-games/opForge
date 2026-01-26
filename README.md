@@ -5,7 +5,9 @@ This is an assembler for Intel 8080 and 8085 processors. It is based on a fork o
 
 It produces optional Intel Hex, listing, and binary image outputs, selected by command-line arguments.
 
-Important features of this assembler include expression evaluation for constants and string initialization for data. It supports assembler directives ORG, EQU, DB, DW, DS, END, and CPU, plus preprocessor directives #DEFINE, #IFDEF, #IFNDEF, #ELSE, #ELSEIF, #ENDIF, and #INCLUDE. Preprocessor directives require a leading `#`; assembler conditionals use `IF/ELSE/ELSEIF/ENDIF` without `#`.
+Important features of this assembler include expression evaluation for constants and string initialization for data. It supports assembler directives ORG, EQU, DB, DW, DS, END, and CPU, plus preprocessor directives .DEFINE, .IFDEF, .IFNDEF, .ELSE, .ELSEIF, .ENDIF, and .INCLUDE. Assembler conditionals use `.if/.elseif/.else/.endif` (expression-based). Preprocessor directives also use a leading `.`; `#` is rejected.
+
+Expression syntax follows a 64tass-style operator set: `+ - * / % ** << >> == != <> < <= > >= & ^ | && ^^ || ! ~` plus unary `<`/`>` for low/high byte and ternary `?:`. Non-zero values are TRUE; logical operators return `1` or `0`.
 
 This is a two-pass assembler.  The first pass creates the symbol table and the second produces the output files.
 
@@ -33,6 +35,10 @@ Run the full test suite:
 Rebuild reference outputs (updates examples/reference/*.lst and *.hex):
 
     make reference
+
+The reference set includes additional examples to exercise the newer syntax
+(dot-prefixed conditionals, preprocessor directives, and 64tass-style
+expressions).
 
 ## Usage
 Syntax is:

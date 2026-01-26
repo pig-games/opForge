@@ -10,9 +10,13 @@ use clap::{ArgAction, Parser};
 use crate::imagestore::ImageStore;
 use crate::instructions::table::INSTRUCTION_TABLE;
 use crate::instructions::ArgType;
+use crate::parser::{BinaryOp, Expr, LabelKind, LineAst, ParseError, UnaryOp};
+use crate::parser as asm_parser;
+use crate::parser_reporter::{format_parse_error, format_parse_error_listing};
 use crate::preprocess::Preprocessor;
-use crate::scanner::{Scanner, TokenType, TokenValue};
+use crate::token_value::TokenValue;
 use crate::symbol_table::{SymbolTable, NO_ENTRY};
+use crate::tokenizer::{ConditionalKind, Span};
 
 const VERSION: &str = "1.0";
 const LONG_ABOUT: &str = "Intel 8085 Assembler with expressions, directives and basic macro support.
@@ -617,8 +621,8 @@ enum AsmErrorKind {
     Expression,
     Instruction,
     Io,
+    Parser,
     Preprocess,
-    Scanner,
     Symbol,
 }
 
@@ -668,6 +672,7 @@ pub struct Diagnostic {
     error: AsmError,
     file: Option<String>,
     source: Option<String>,
+    parser_error: Option<ParseError>,
 }
 
 impl Diagnostic {
@@ -679,6 +684,7 @@ impl Diagnostic {
             error,
             file: None,
             source: None,
+            parser_error: None,
         }
     }
 
@@ -697,6 +703,11 @@ impl Diagnostic {
         self
     }
 
+    fn with_parser_error(mut self, parser_error: Option<ParseError>) -> Self {
+        self.parser_error = parser_error;
+        self
+    }
+
     pub fn format(&self) -> String {
         let sev = match self.severity {
             Severity::Warning => "WARNING",
@@ -706,6 +717,9 @@ impl Diagnostic {
     }
 
     pub fn format_with_context(&self, lines: Option<&[String]>, use_color: bool) -> String {
+        if let Some(parser_error) = &self.parser_error {
+            return format_parse_error(parser_error, self.file.as_deref(), lines, use_color);
+        }
         let sev = match self.severity {
             Severity::Warning => "WARNING",
             Severity::Error => "ERROR",
@@ -843,7 +857,8 @@ impl Assembler {
                 if let Some(err) = asm_line.error() {
                     diagnostics.push(
                         Diagnostic::new(line_num, Severity::Error, err.clone())
-                            .with_column(asm_line.error_column()),
+                            .with_column(asm_line.error_column())
+                            .with_parser_error(asm_line.parser_error()),
                     );
                 }
                 counts.errors += 1;
@@ -860,7 +875,7 @@ impl Assembler {
         if !asm_line.cond_is_empty() {
             let err = AsmError::new(
                 AsmErrorKind::Conditional,
-                "Found IF without ENDIF in pass 1",
+                "Found .if without .endif in pass 1",
                 None,
             );
             diagnostics.push(Diagnostic::new(line_num, Severity::Warning, err));
@@ -910,7 +925,8 @@ impl Assembler {
                     if let Some(err) = asm_line.error() {
                         diagnostics.push(
                             Diagnostic::new(line_num, Severity::Error, err.clone())
-                                .with_column(asm_line.error_column()),
+                                .with_column(asm_line.error_column())
+                                .with_parser_error(asm_line.parser_error()),
                         );
                         listing.write_diagnostic(
                             "ERROR",
@@ -918,6 +934,7 @@ impl Assembler {
                             line_num,
                             asm_line.error_column(),
                             lines,
+                            asm_line.parser_error_ref(),
                         )?;
                     }
                     counts.errors += 1;
@@ -926,7 +943,8 @@ impl Assembler {
                     if let Some(err) = asm_line.error() {
                         diagnostics.push(
                             Diagnostic::new(line_num, Severity::Warning, err.clone())
-                                .with_column(asm_line.error_column()),
+                                .with_column(asm_line.error_column())
+                                .with_parser_error(asm_line.parser_error()),
                         );
                         listing.write_diagnostic(
                             "WARNING",
@@ -934,6 +952,7 @@ impl Assembler {
                             line_num,
                             asm_line.error_column(),
                             lines,
+                            asm_line.parser_error_ref(),
                         )?;
                     }
                     counts.warnings += 1;
@@ -950,9 +969,9 @@ impl Assembler {
         }
 
         if !asm_line.cond_is_empty() {
-            let err = AsmError::new(AsmErrorKind::Conditional, "Found IF without ENDIF", None);
+            let err = AsmError::new(AsmErrorKind::Conditional, "Found .if without .endif", None);
             diagnostics.push(Diagnostic::new(line_num, Severity::Error, err.clone()));
-            listing.write_diagnostic("ERROR", err.message(), line_num, None, lines)?;
+            listing.write_diagnostic("ERROR", err.message(), line_num, None, lines, None)?;
             asm_line.clear_conditionals();
             counts.errors += 1;
         }
@@ -1023,7 +1042,16 @@ impl<W: Write> ListingWriter<W> {
         line_num: u32,
         column: Option<usize>,
         source_lines: &[String],
+        parser_error: Option<&ParseError>,
     ) -> std::io::Result<()> {
+        if let Some(parser_error) = parser_error {
+            let formatted = format_parse_error_listing(parser_error, Some(source_lines), true);
+            for line in formatted.lines() {
+                writeln!(self.out, "{line}")?;
+            }
+            return Ok(());
+        }
+
         let context = build_context_lines(line_num, column, Some(source_lines), None, true);
         for line in context {
             writeln!(self.out, "{line}")?;
@@ -1128,10 +1156,10 @@ enum LineStatus {
     DirDs = 2,
     NothingDone = 3,
     Skip = 4,
-    BadStatuses = 5,
-    Warning = 6,
-    Error = 7,
-    Pass1Error = 8,
+    #[allow(dead_code)]
+    Warning = 5,
+    Error = 6,
+    Pass1Error = 7,
 }
 
 #[derive(Debug, Clone)]
@@ -1202,14 +1230,21 @@ struct AsmLine<'a> {
     cond_stack: ConditionalStack,
     last_error: Option<AsmError>,
     last_error_column: Option<usize>,
+    last_parser_error: Option<ParseError>,
+    line_end_span: Option<Span>,
+    line_end_token: Option<String>,
     bytes: Vec<u8>,
     start_addr: u16,
     aux_value: u16,
-    scanner: Scanner,
     pass: u8,
     label_kind: i32,
     label: Option<String>,
     mnemonic: Option<String>,
+}
+
+struct AstEvalError {
+    error: AsmError,
+    span: Span,
 }
 
 impl<'a> AsmLine<'a> {
@@ -1219,10 +1254,12 @@ impl<'a> AsmLine<'a> {
             cond_stack: ConditionalStack::new(),
             last_error: None,
             last_error_column: None,
+            last_parser_error: None,
+            line_end_span: None,
+            line_end_token: None,
             bytes: Vec::with_capacity(256),
             start_addr: 0,
             aux_value: 0,
-            scanner: Scanner::new(),
             pass: 1,
             label_kind: TokenValue::None as i32,
             label: None,
@@ -1236,6 +1273,24 @@ impl<'a> AsmLine<'a> {
 
     fn error_column(&self) -> Option<usize> {
         self.last_error_column
+    }
+
+    fn parser_error(&self) -> Option<ParseError> {
+        self.last_parser_error.clone()
+    }
+
+    fn parser_error_ref(&self) -> Option<&ParseError> {
+        self.last_parser_error.as_ref()
+    }
+
+    fn missing_expr_info(&self) -> (Span, Option<String>) {
+        let span = self.line_end_span.unwrap_or(Span {
+            line: 0,
+            col_start: 1,
+            col_end: 1,
+        });
+        let token = self.line_end_token.clone();
+        (span, token)
     }
 
     #[cfg(test)]
@@ -1284,19 +1339,18 @@ impl<'a> AsmLine<'a> {
         &*self.symbols
     }
 
-    fn is_bad_status(status: LineStatus) -> bool {
-        status > LineStatus::BadStatuses
-    }
-
     fn process(
         &mut self,
         line: &str,
-        _line_num: u32,
+        line_num: u32,
         addr: u16,
         pass: u8,
     ) -> LineStatus {
         self.last_error = None;
         self.last_error_column = None;
+        self.last_parser_error = None;
+        self.line_end_span = None;
+        self.line_end_token = None;
         self.start_addr = addr;
         self.pass = pass;
         self.bytes.clear();
@@ -1306,232 +1360,244 @@ impl<'a> AsmLine<'a> {
         self.mnemonic = None;
         self.label_kind = TokenValue::None as i32;
 
-        let mut t = self.scanner.init(line);
-        if t == TokenType::Label {
-            self.label = Some(self.scanner.get_string().to_string());
-            self.label_kind = self.scanner.get_value();
-            t = self.scanner.next_token();
-        }
-        if t == TokenType::Identifier {
-            self.mnemonic = Some(self.scanner.get_string().to_string());
-            self.scanner.next_token();
-        } else if t == TokenType::Error {
-            let msg = self.scanner.get_error_msg().to_string();
-            return self.failure(LineStatus::Error, AsmErrorKind::Scanner, &msg, None);
-        }
-
-        let mut status = self.process_conditional();
-        if status == LineStatus::Skip {
-            return LineStatus::NothingDone;
-        }
-        let stop_after_label = status == LineStatus::Ok;
-
-        if let Some(label) = self.label.clone() {
-            if self.label_kind == TokenValue::Label as i32 {
-                let res = if self.pass == 1 {
-                    self.symbols.add(&label, self.start_addr as u32, false)
-                } else {
-                    self.symbols.update(&label, self.start_addr as u32)
-                };
-                if res == crate::symbol_table::SymbolTableResult::Duplicate {
-                    return self.failure_at(
-                        LineStatus::Error,
-                        AsmErrorKind::Symbol,
-                        "Symbol defined more than once",
-                        Some(&label),
-                        Some(1),
-                    );
+        match asm_parser::Parser::from_line(line, line_num) {
+            Ok(mut parser) => {
+                self.line_end_span = Some(parser.end_span());
+                self.line_end_token = parser.end_token_text().map(|s| s.to_string());
+                match parser.parse_line() {
+                    Ok(ast) => self.process_ast(ast),
+                    Err(err) => {
+                        self.last_error =
+                            Some(AsmError::new(AsmErrorKind::Parser, &err.message, None));
+                        self.last_error_column = Some(err.span.col_start);
+                        self.last_parser_error = Some(err);
+                        LineStatus::Error
+                    }
                 }
             }
-        }
-
-        if stop_after_label {
-            return if self.scanner.is_end() {
-                LineStatus::Ok
-            } else {
-                let token = self.scanner.get_string().to_string();
-                self.failure(
-                    LineStatus::Error,
-                    AsmErrorKind::Assembler,
-                    "Expecting end of line, found",
-                    Some(&token),
-                )
-            };
-        }
-
-        if self.mnemonic.is_some() {
-            status = self.process_directive();
-        }
-
-        if status == LineStatus::NothingDone {
-            if self.label_kind == TokenValue::Name as i32 {
-                let label = self.label.clone().unwrap_or_default();
-                return self.failure_at(
-                    LineStatus::Error,
-                    AsmErrorKind::Assembler,
-                    "Expecting label, comment, or space n column 1, found",
-                    Some(&label),
-                    Some(1),
-                );
-            }
-            if self.mnemonic.is_some() {
-                status = self.process_instruction();
+            Err(err) => {
+                self.last_error = Some(AsmError::new(AsmErrorKind::Parser, &err.message, None));
+                self.last_error_column = Some(err.span.col_start);
+                self.last_parser_error = Some(err);
+                LineStatus::Error
             }
         }
+    }
 
-        if Self::is_bad_status(status) || self.scanner.is_end() {
-            status
-        } else {
-            let token = self.scanner.get_string().to_string();
-            self.failure(
-                LineStatus::Error,
-                AsmErrorKind::Assembler,
-                "Expecting end of line, found",
-                Some(&token),
-            )
+    fn process_ast(&mut self, ast: LineAst) -> LineStatus {
+        match ast {
+            LineAst::Empty => LineStatus::NothingDone,
+            LineAst::Conditional { kind, expr, span } => {
+                self.process_conditional_ast(kind, expr.as_ref(), span)
+            }
+            LineAst::Statement {
+                label,
+                mnemonic,
+                operands,
+            } => {
+                if self.cond_stack.skipping() {
+                    return LineStatus::Skip;
+                }
+                self.label = label.as_ref().map(|l| l.name.clone());
+                self.label_kind = match label.as_ref().map(|l| l.kind) {
+                    Some(LabelKind::Label) => TokenValue::Label as i32,
+                    Some(LabelKind::Name) => TokenValue::Name as i32,
+                    None => TokenValue::None as i32,
+                };
+                self.mnemonic = mnemonic.clone();
+
+                if let Some(label) = &label {
+                    if label.kind == LabelKind::Label {
+                        let res = if self.pass == 1 {
+                            self.symbols.add(&label.name, self.start_addr as u32, false)
+                        } else {
+                            self.symbols.update(&label.name, self.start_addr as u32)
+                        };
+                        if res == crate::symbol_table::SymbolTableResult::Duplicate {
+                            return self.failure_at_span(
+                                LineStatus::Error,
+                                AsmErrorKind::Symbol,
+                                "Symbol defined more than once",
+                                Some(&label.name),
+                                label.span,
+                            );
+                        }
+                    }
+                }
+
+                let mnemonic = match mnemonic {
+                    Some(m) => m,
+                    None => {
+                        if self.label_kind == TokenValue::Name as i32 {
+                            let name = self.label.clone().unwrap_or_default();
+                            return self.failure_at(
+                                LineStatus::Error,
+                                AsmErrorKind::Assembler,
+                                "Expecting label, comment, or space n column 1, found",
+                                Some(&name),
+                                Some(1),
+                            );
+                        }
+                        return LineStatus::NothingDone;
+                    }
+                };
+
+                let mut status = self.process_directive_ast(&mnemonic, &operands);
+                if status == LineStatus::NothingDone {
+                    if self.label_kind == TokenValue::Name as i32 {
+                        let name = self.label.clone().unwrap_or_default();
+                        return self.failure_at(
+                            LineStatus::Error,
+                            AsmErrorKind::Assembler,
+                            "Expecting label, comment, or space n column 1, found",
+                            Some(&name),
+                            Some(1),
+                        );
+                    }
+                    status = self.process_instruction_ast(&mnemonic, &operands);
+                }
+                status
+            }
         }
     }
 
-    fn failure(
+    fn process_conditional_ast(
         &mut self,
-        status: LineStatus,
-        kind: AsmErrorKind,
-        msg: &str,
-        param: Option<&str>,
+        kind: ConditionalKind,
+        expr: Option<&Expr>,
+        span: Span,
     ) -> LineStatus {
-        let column = self.scanner.token_start().saturating_add(1);
-        self.failure_at(status, kind, msg, param, Some(column))
-    }
-
-    fn failure_at(
-        &mut self,
-        status: LineStatus,
-        kind: AsmErrorKind,
-        msg: &str,
-        param: Option<&str>,
-        column: Option<usize>,
-    ) -> LineStatus {
-        self.last_error = Some(AsmError::new(kind, msg, param));
-        self.last_error_column = column;
-        status
-    }
-
-    fn evaluate_expression(&mut self) -> Result<u32, AsmError> {
-        let mut eval =
-            ExprEvaluator::new(&mut self.scanner, &*self.symbols, self.pass, self.start_addr);
-        eval.eval_expression()
-    }
-
-    fn process_conditional(&mut self) -> LineStatus {
-        if self.mnemonic.is_some() {
-            return LineStatus::NothingDone;
-        }
         let skipping = self.cond_stack.skipping();
 
-        if self.scanner.get_type() == TokenType::Conditional && self.mnemonic.is_none() {
-            let sub_type = self.scanner.get_value();
-            self.scanner.next();
-            match sub_type {
-                t if t == TokenValue::If as i32 => {
-                    let val = self.evaluate_expression().unwrap_or(0);
-                    if skipping {
-                        if let Some(ctx) = self.cond_stack.last_mut() {
-                            ctx.skip_level = ctx.skip_level.saturating_add(1);
-                        }
-                        return LineStatus::Skip;
+        match kind {
+            ConditionalKind::If => {
+                let val = expr
+                    .and_then(|expr| self.eval_expr_ast(expr).ok())
+                    .unwrap_or(0);
+                if skipping {
+                    if let Some(ctx) = self.cond_stack.last_mut() {
+                        ctx.skip_level = ctx.skip_level.saturating_add(1);
                     }
-                    let prev = self.cond_stack.last();
-                    let mut ctx = ConditionalContext::new(prev);
-                    if (val & 1) != 0 {
-                        ctx.matched = true;
-                    } else {
-                        ctx.skipping = true;
-                    }
-                    self.cond_stack.push(ctx);
+                    return LineStatus::Skip;
                 }
-                t if t == TokenValue::Else as i32 || t == TokenValue::ElseIf as i32 => {
-                    if self.cond_stack.is_empty() {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Conditional,
-                            "ELSE or ELSEIF found without matching IF",
-                            None,
-                        );
-                    }
-                    let skip_level = self
-                        .cond_stack
-                        .last()
-                        .map(|ctx| ctx.skip_level)
-                        .unwrap_or(0);
-                    if skip_level > 0 {
-                        self.scanner.skip_to_end();
-                        return LineStatus::Skip;
-                    }
-                    let val = if sub_type == TokenValue::Else as i32 {
-                        1
-                    } else {
-                        self.evaluate_expression().unwrap_or(0) & 1
-                    };
-                    let ctx = self.cond_stack.last_mut().unwrap();
-                    if ctx.sub_type == TokenValue::Else as i32 {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Conditional,
-                            "ELSE or ELSEIF cannot follow ELSE",
-                            None,
-                        );
-                    }
-                    if !ctx.skipping {
-                        ctx.skipping = true;
-                        ctx.sub_type = sub_type;
-                    } else if !ctx.matched && val != 0 {
-                        ctx.matched = true;
-                        ctx.skipping = false;
-                        ctx.sub_type = sub_type;
-                    }
+                let prev = self.cond_stack.last();
+                let mut ctx = ConditionalContext::new(prev);
+                if val != 0 {
+                    ctx.matched = true;
+                } else {
+                    ctx.skipping = true;
                 }
-                t if t == TokenValue::EndIf as i32 => {
-                    if self.cond_stack.is_empty() {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Conditional,
-                            "ENDIF found without matching IF",
-                            None,
-                        );
-                    }
-                    let ctx = self.cond_stack.last_mut().unwrap();
-                    if ctx.skip_level > 0 {
-                        ctx.skip_level -= 1;
-                        return LineStatus::Skip;
-                    }
-                    self.cond_stack.pop();
-                }
-                _ => {}
+                self.cond_stack.push(ctx);
             }
-            return LineStatus::Ok;
+            ConditionalKind::Else | ConditionalKind::ElseIf => {
+                if self.cond_stack.is_empty() {
+                    let err_span = if kind == ConditionalKind::ElseIf {
+                        expr.map(expr_span).unwrap_or(span)
+                    } else {
+                        self.line_end_span.unwrap_or(span)
+                    };
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Conditional,
+                        ".else or .elseif found without matching .if",
+                        None,
+                        err_span,
+                    );
+                }
+                let skip_level = self
+                    .cond_stack
+                    .last()
+                    .map(|ctx| ctx.skip_level)
+                    .unwrap_or(0);
+                if skip_level > 0 {
+                    return LineStatus::Skip;
+                }
+                let val = if kind == ConditionalKind::Else {
+                    1
+                } else {
+                    expr.and_then(|expr| self.eval_expr_ast(expr).ok())
+                        .unwrap_or(0)
+                };
+                let ctx = self.cond_stack.last_mut().unwrap();
+                if ctx.sub_type == TokenValue::Else as i32 {
+                    let err_span = if kind == ConditionalKind::ElseIf {
+                        expr.map(expr_span).unwrap_or(span)
+                    } else {
+                        self.line_end_span.unwrap_or(span)
+                    };
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Conditional,
+                        ".else or .elseif cannot follow .else",
+                        None,
+                        err_span,
+                    );
+                }
+                let sub_type = if kind == ConditionalKind::Else {
+                    TokenValue::Else as i32
+                } else {
+                    TokenValue::ElseIf as i32
+                };
+                if !ctx.skipping {
+                    ctx.skipping = true;
+                    ctx.sub_type = sub_type;
+                } else if !ctx.matched && val != 0 {
+                    ctx.matched = true;
+                    ctx.skipping = false;
+                    ctx.sub_type = sub_type;
+                }
+            }
+            ConditionalKind::EndIf => {
+                if self.cond_stack.is_empty() {
+                    let err_span = self.line_end_span.unwrap_or(span);
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Conditional,
+                        ".endif found without matching .if",
+                        None,
+                        err_span,
+                    );
+                }
+                let ctx = self.cond_stack.last_mut().unwrap();
+                if ctx.skip_level > 0 {
+                    ctx.skip_level = ctx.skip_level.saturating_sub(1);
+                    return LineStatus::Skip;
+                }
+                self.cond_stack.pop();
+                if self.cond_stack.skipping() {
+                    return LineStatus::Skip;
+                }
+            }
         }
 
-        if skipping {
-            self.scanner.skip_to_end();
-            return LineStatus::Skip;
-        }
-
-        LineStatus::NothingDone
+        LineStatus::Ok
     }
 
-    fn process_directive(&mut self) -> LineStatus {
-        let mnemonic = match self.mnemonic.clone() {
-            Some(m) => m,
-            None => return LineStatus::NothingDone,
-        };
+    fn process_directive_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
         let upper = mnemonic.to_ascii_uppercase();
-
         match upper.as_str() {
             "ORG" => {
-                let val = match self.evaluate_expression() {
+                let expr = match operands.first() {
+                    Some(expr) => expr,
+                    None => {
+                        return self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Directive,
+                            "Missing expression for ORG",
+                            None,
+                        )
+                    }
+                };
+                let val = match self.eval_expr_ast(expr) {
                     Ok(value) => value,
                     Err(err) => {
-                        return self.failure(LineStatus::Error, err.kind(), err.message(), None)
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            err.error.kind(),
+                            err.error.message(),
+                            None,
+                            err.span,
+                        )
                     }
                 };
                 self.start_addr = val as u16;
@@ -1557,11 +1623,28 @@ impl<'a> AsmLine<'a> {
                         Some(1),
                     );
                 }
+                let expr = match operands.first() {
+                    Some(expr) => expr,
+                    None => {
+                        return self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Directive,
+                            "Missing expression for EQU/SET",
+                            None,
+                        )
+                    }
+                };
                 let is_rw = upper == "SET";
-                let val = match self.evaluate_expression() {
+                let val = match self.eval_expr_ast(expr) {
                     Ok(value) => value,
                     Err(err) => {
-                        return self.failure(LineStatus::Error, err.kind(), err.message(), None)
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            err.error.kind(),
+                            err.error.message(),
+                            None,
+                            err.span,
+                        )
                     }
                 };
                 let label = self.label.clone().unwrap_or_default();
@@ -1590,13 +1673,30 @@ impl<'a> AsmLine<'a> {
                 self.aux_value = val as u16;
                 LineStatus::DirEqu
             }
-            "DB" => self.store_arg_list(1),
-            "DW" => self.store_arg_list(2),
+            "DB" => self.store_arg_list_ast(operands, 1),
+            "DW" => self.store_arg_list_ast(operands, 2),
             "DS" => {
-                let val = match self.evaluate_expression() {
+                let expr = match operands.first() {
+                    Some(expr) => expr,
+                    None => {
+                        return self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Directive,
+                            "Missing expression for DS",
+                            None,
+                        )
+                    }
+                };
+                let val = match self.eval_expr_ast(expr) {
                     Ok(value) => value,
                     Err(err) => {
-                        return self.failure(LineStatus::Error, err.kind(), err.message(), None)
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            err.error.kind(),
+                            err.error.message(),
+                            None,
+                            err.span,
+                        )
                     }
                 };
                 self.aux_value = val as u16;
@@ -1604,7 +1704,22 @@ impl<'a> AsmLine<'a> {
             }
             "END" => LineStatus::Ok,
             "CPU" => {
-                let cpu = self.scanner.get_string().to_string();
+                let expr = match operands.first() {
+                    Some(expr) => expr,
+                    None => {
+                        return self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Directive,
+                            "Unsupported CPU type, must be 8085 or 8080",
+                            None,
+                        )
+                    }
+                };
+                let cpu = match expr {
+                    Expr::Number(text, _) => text.clone(),
+                    Expr::Identifier(name, _) => name.clone(),
+                    _ => String::new(),
+                };
                 if cpu != "8085" && cpu != "8080" {
                     return self.failure(
                         LineStatus::Error,
@@ -1613,108 +1728,180 @@ impl<'a> AsmLine<'a> {
                         Some(&cpu),
                     );
                 }
-                self.scanner.skip_to_end();
                 LineStatus::Ok
             }
             _ => LineStatus::NothingDone,
         }
     }
 
-    fn process_instruction(&mut self) -> LineStatus {
-        let mnemonic = match self.mnemonic.clone() {
-            Some(m) => m,
-            None => return LineStatus::NothingDone,
-        };
+    fn process_instruction_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
         let upper = mnemonic.to_ascii_uppercase();
 
         if upper == "RST" {
-            let arg = self.scanner.get_string().to_string();
-            if self.scanner.get_type() != TokenType::Constant
-                || arg.len() != 1
-                || !matches!(arg.as_bytes()[0], b'0'..=b'7')
+            let arg = match operands.first() {
+                Some(expr) => expr,
+                None => {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        "RST instruction argument must be 0-7",
+                        None,
+                    )
+                }
+            };
+            let arg_text = expr_text(arg).unwrap_or_default();
+            let is_number = matches!(arg, Expr::Number(_, _));
+            if let Expr::Binary { op, left, span, .. } = arg {
+                if let Expr::Number(text, _) = &**left {
+                    if text.len() == 1 && matches!(text.as_bytes().first(), Some(b'0'..=b'7')) {
+                        let val = text.as_bytes()[0] - b'0';
+                        self.bytes.push(0xc7 | (val << 3));
+                        let op_text = binary_op_text(*op);
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            "Found extra arguments after RST instruction",
+                            Some(op_text),
+                            *span,
+                        );
+                    }
+                }
+            }
+            if !is_number
+                || arg_text.len() != 1
+                || !matches!(arg_text.as_bytes().first(), Some(b'0'..=b'7'))
             {
-                return self.failure(
+                return self.failure_at_span(
                     LineStatus::Error,
                     AsmErrorKind::Instruction,
                     "RST instruction argument must be 0-7",
-                    Some(&arg),
+                    Some(&arg_text),
+                    expr_span(arg),
                 );
             }
-            let val = arg.as_bytes()[0] - b'0';
+            let val = arg_text.as_bytes()[0] - b'0';
             self.bytes.push(0xc7 | (val << 3));
-            if self.scanner.next_token() != TokenType::Eof {
-                let token = self.scanner.get_string().to_string();
-                return self.failure(
+            if operands.len() > 1 {
+                let extra = operands.get(1).unwrap();
+                let span = expr_span(extra);
+                let extra_text = expr_text(extra).unwrap_or_default();
+                return self.failure_at_span(
                     LineStatus::Error,
                     AsmErrorKind::Instruction,
                     "Found extra arguments after RST instruction",
-                    Some(&token),
+                    Some(&extra_text),
+                    span,
                 );
             }
             return LineStatus::Ok;
         }
 
-        let mut num_regs = 0;
-        let mut reg1 = String::new();
-        let mut reg2 = String::new();
-
-        if self.scanner.get_type() == TokenType::Register {
-            reg1 = self.scanner.get_string().to_string();
-            num_regs += 1;
-            if self.scanner.peek_char() == b',' {
-                self.scanner.next();
-                self.scanner.next();
-                if self.scanner.get_type() == TokenType::Register {
-                    reg2 = self.scanner.get_string().to_string();
-                    num_regs += 1;
-                }
+        let mut regs = Vec::new();
+        let mut reg_spans = Vec::new();
+        for expr in operands.iter().take(2) {
+            if let Expr::Register(name, span) = expr {
+                regs.push(name.clone());
+                reg_spans.push(*span);
+            } else {
+                break;
             }
         }
+        let num_regs = regs.len();
 
         let mut mnemonic_found = false;
         for inst in INSTRUCTION_TABLE {
-            let cmp = cmp_ignore_ascii_case(inst.mnemonic, &mnemonic);
+            let cmp = cmp_ignore_ascii_case(inst.mnemonic, mnemonic);
             if cmp == std::cmp::Ordering::Equal {
                 mnemonic_found = true;
-                if inst.num_regs as i32 == num_regs - 1 && inst.arg_type != ArgType::None {
-                    self.scanner.change_register_to_id();
-                    num_regs -= 1;
-                } else if inst.num_regs as i32 != num_regs {
-                    return self.failure(
+                let mut effective_num_regs = num_regs as i32;
+                let mut expr_index = num_regs;
+                if inst.arg_type != ArgType::None && inst.num_regs as i32 == num_regs as i32 - 1 {
+                    effective_num_regs -= 1;
+                    expr_index = effective_num_regs as usize;
+                } else if inst.num_regs as i32 != num_regs as i32 {
+                    let span = operands
+                        .get(num_regs)
+                        .map(expr_span)
+                        .or_else(|| reg_spans.last().copied())
+                        .unwrap_or(Span {
+                            line: 0,
+                            col_start: 1,
+                            col_end: 1,
+                        });
+                    return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Instruction,
                         "Wrong number of register arguments for instruction",
-                        Some(&mnemonic),
+                        Some(mnemonic),
+                        span,
                     );
                 }
-                if inst.num_regs >= 1 && !inst.reg1.eq_ignore_ascii_case(&reg1) {
+
+                let mut effective_regs = regs.clone();
+                effective_regs.truncate(effective_num_regs.max(0) as usize);
+
+                if inst.num_regs >= 1
+                    && effective_regs
+                        .first()
+                        .map(|r| !inst.reg1.eq_ignore_ascii_case(r))
+                        .unwrap_or(true)
+                {
                     continue;
                 }
-                if inst.num_regs == 2 && !inst.reg2.eq_ignore_ascii_case(&reg2) {
+                if inst.num_regs == 2
+                    && effective_regs
+                        .get(1)
+                        .map(|r| !inst.reg2.eq_ignore_ascii_case(r))
+                        .unwrap_or(true)
+                {
                     continue;
                 }
+
                 self.bytes.push(inst.opcode);
                 if inst.arg_type != ArgType::None {
-                    let val = match self.evaluate_expression() {
+                    let expr = match operands.get(expr_index) {
+                        Some(expr) => expr,
+                        None => {
+                            let (span, token) = self.missing_expr_info();
+                            return self.failure_at_span(
+                                LineStatus::Error,
+                                AsmErrorKind::Expression,
+                                "Expected label or numeric constant, found",
+                                token.as_deref(),
+                                span,
+                            );
+                        }
+                    };
+                    let val = match self.eval_expr_ast(expr) {
                         Ok(value) => value,
                         Err(err) => {
-                            return self.failure(LineStatus::Error, err.kind(), err.message(), None)
+                            return self.failure_at_span(
+                                LineStatus::Error,
+                                err.error.kind(),
+                                err.error.message(),
+                                None,
+                                err.span,
+                            )
                         }
                     };
                     self.bytes.push((val & 0xff) as u8);
                     if inst.arg_type == ArgType::Word {
                         self.bytes.push((val >> 8) as u8);
                     }
-                } else if self.scanner.get_type() == TokenType::Register {
-                    self.scanner.next();
                 }
-                if self.scanner.get_type() != TokenType::Eof {
-                    let token = self.scanner.get_string().to_string();
-                    return self.failure(
+
+                let expected = effective_num_regs as usize
+                    + if inst.arg_type == ArgType::None { 0 } else { 1 };
+                if operands.len() > expected {
+                    let extra = operands.get(expected).unwrap();
+                    let span = expr_span(extra);
+                    let extra_text = expr_text(extra).unwrap_or_default();
+                    return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Instruction,
                         "Additional arguments after instruction",
-                        Some(&token),
+                        Some(&extra_text),
+                        span,
                     );
                 }
                 return LineStatus::Ok;
@@ -1728,7 +1915,7 @@ impl<'a> AsmLine<'a> {
                 LineStatus::Error,
                 AsmErrorKind::Instruction,
                 "Wrong arguments for instruction",
-                Some(&mnemonic),
+                Some(mnemonic),
             );
         }
 
@@ -1736,309 +1923,358 @@ impl<'a> AsmLine<'a> {
             LineStatus::Error,
             AsmErrorKind::Instruction,
             "No instruction with this name",
-            Some(&mnemonic),
+            Some(mnemonic),
         )
     }
 
-    fn store_arg_list(&mut self, size: usize) -> LineStatus {
-        let mut more = true;
-        while more {
-            if self.scanner.get_type() == TokenType::String && self.scanner.token().len > 1 {
-                let token = self.scanner.token();
-                let buf = &token.bytes;
-                let len = token.len;
-                self.bytes.extend_from_slice(&buf[..len]);
-                self.scanner.next();
-            } else {
-                let val = match self.evaluate_expression() {
-                    Ok(value) => value,
-                    Err(err) => return self.failure(LineStatus::Error, err.kind(), err.message(), None),
-                };
-                if size == 1 {
-                    self.bytes.push((val & 0xff) as u8);
-                } else {
-                    self.bytes.push((val & 0xff) as u8);
-                    self.bytes.push((val >> 8) as u8);
-                }
-            }
-            more = self.scanner.get_type() == TokenType::Comma;
-            self.scanner.next();
-        }
-
-        if self.scanner.get_type() != TokenType::Eof {
-            let token = self.scanner.get_string().to_string();
+    fn store_arg_list_ast(&mut self, operands: &[Expr], size: usize) -> LineStatus {
+        if operands.is_empty() {
             return self.failure(
-                LineStatus::Warning,
+                LineStatus::Error,
                 AsmErrorKind::Directive,
-                "Found additional characters after expression list",
-                Some(&token),
+                "Missing expression in data list",
+                None,
             );
         }
+
+        for expr in operands {
+            if let Expr::String(bytes, span) = expr {
+                if bytes.len() > 1 {
+                    self.bytes.extend_from_slice(bytes);
+                    continue;
+                }
+                if bytes.is_empty() {
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Empty string not allowed in expression list",
+                        None,
+                        *span,
+                    );
+                }
+            }
+            let val = match self.eval_expr_ast(expr) {
+                Ok(value) => value,
+                Err(err) => {
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        err.error.kind(),
+                        err.error.message(),
+                        None,
+                        err.span,
+                    )
+                }
+            };
+            if size == 1 {
+                self.bytes.push((val & 0xff) as u8);
+            } else {
+                self.bytes.push((val & 0xff) as u8);
+                self.bytes.push((val >> 8) as u8);
+            }
+        }
+
         LineStatus::Ok
     }
+
+    fn eval_expr_ast(&self, expr: &Expr) -> Result<u32, AstEvalError> {
+        match expr {
+            Expr::Error(message, span) => Err(AstEvalError {
+                error: AsmError::new(AsmErrorKind::Expression, message, None),
+                span: *span,
+            }),
+            Expr::Number(text, span) => parse_number_text(text, *span),
+            Expr::Identifier(name, span) | Expr::Register(name, span) => {
+                let val = self.symbols.lookup(name);
+                if val == NO_ENTRY {
+                    if self.pass > 1 {
+                        return Err(AstEvalError {
+                            error: AsmError::new(AsmErrorKind::Expression, "Label not found", Some(name)),
+                            span: *span,
+                        });
+                    }
+                    return Ok(0);
+                }
+                Ok(val)
+            }
+            Expr::Dollar(_span) => Ok(self.start_addr as u32),
+            Expr::String(bytes, span) => {
+                if bytes.len() == 1 {
+                    Ok(bytes[0] as u32)
+                } else if bytes.len() == 2 {
+                    Ok(((bytes[0] as u32) << 8) | (bytes[1] as u32))
+                } else {
+                    Err(AstEvalError {
+                        error: AsmError::new(
+                            AsmErrorKind::Expression,
+                            "Multi-character string not allowed in expression.",
+                            None,
+                        ),
+                        span: *span,
+                    })
+                }
+            }
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                let cond_val = self.eval_expr_ast(cond)?;
+                let then_val = self.eval_expr_ast(then_expr)?;
+                let else_val = self.eval_expr_ast(else_expr)?;
+                if cond_val != 0 {
+                    Ok(then_val)
+                } else {
+                    Ok(else_val)
+                }
+            }
+            Expr::Unary { op, expr, span: _ } => {
+                let inner = self.eval_expr_ast(expr)?;
+                let val = match op {
+                    UnaryOp::Plus => inner,
+                    UnaryOp::Minus => 0u32.wrapping_sub(inner),
+                    UnaryOp::BitNot => !inner,
+                    UnaryOp::LogicNot => {
+                        if inner != 0 { 0 } else { 1 }
+                    }
+                    UnaryOp::High => (inner >> 8) & 0xff,
+                    UnaryOp::Low => inner & 0xff,
+                };
+                Ok(val)
+            }
+            Expr::Binary {
+                op,
+                left,
+                right,
+                span,
+            } => {
+                let left_val = self.eval_expr_ast(left)?;
+                let right_val = self.eval_expr_ast(right)?;
+                let val = match op {
+                    BinaryOp::Multiply => left_val.wrapping_mul(right_val),
+                    BinaryOp::Divide => {
+                        if right_val == 0 {
+                            let span = self.line_end_span.unwrap_or(*span);
+                            return Err(AstEvalError {
+                                error: AsmError::new(AsmErrorKind::Expression, "Divide by zero", None),
+                                span,
+                            });
+                        }
+                        left_val / right_val
+                    }
+                    BinaryOp::Mod => {
+                        if right_val == 0 {
+                            let span = self.line_end_span.unwrap_or(*span);
+                            return Err(AstEvalError {
+                                error: AsmError::new(AsmErrorKind::Expression, "Divide by zero", None),
+                                span,
+                            });
+                        }
+                        left_val % right_val
+                    }
+                    BinaryOp::Power => left_val.wrapping_pow(right_val as u32),
+                    BinaryOp::Shl => {
+                        let shift = (right_val & 0x1f) as u32;
+                        left_val.wrapping_shl(shift)
+                    }
+                    BinaryOp::Shr => {
+                        let shift = (right_val & 0x1f) as u32;
+                        left_val >> shift
+                    }
+                    BinaryOp::Add => left_val.wrapping_add(right_val),
+                    BinaryOp::Subtract => left_val.wrapping_sub(right_val),
+                    BinaryOp::Eq
+                    | BinaryOp::Ne
+                    | BinaryOp::Ge
+                    | BinaryOp::Gt
+                    | BinaryOp::Le
+                    | BinaryOp::Lt => {
+                        let result = match op {
+                            BinaryOp::Eq => left_val == right_val,
+                            BinaryOp::Ne => left_val != right_val,
+                            BinaryOp::Ge => left_val >= right_val,
+                            BinaryOp::Gt => left_val > right_val,
+                            BinaryOp::Le => left_val <= right_val,
+                            BinaryOp::Lt => left_val < right_val,
+                            _ => false,
+                        };
+                        if result { 1 } else { 0 }
+                    }
+                    BinaryOp::BitAnd => left_val & right_val,
+                    BinaryOp::BitOr => left_val | right_val,
+                    BinaryOp::BitXor => left_val ^ right_val,
+                    BinaryOp::LogicAnd => {
+                        if left_val != 0 && right_val != 0 { 1 } else { 0 }
+                    }
+                    BinaryOp::LogicOr => {
+                        if left_val != 0 || right_val != 0 { 1 } else { 0 }
+                    }
+                    BinaryOp::LogicXor => {
+                        let left_true = left_val != 0;
+                        let right_true = right_val != 0;
+                        if left_true ^ right_true { 1 } else { 0 }
+                    }
+                };
+                Ok(val)
+            }
+        }
+    }
+
+    fn failure_at_span(
+        &mut self,
+        status: LineStatus,
+        kind: AsmErrorKind,
+        msg: &str,
+        param: Option<&str>,
+        span: Span,
+    ) -> LineStatus {
+        self.failure_at(status, kind, msg, param, Some(span.col_start))
+    }
+
+    fn failure(
+        &mut self,
+        status: LineStatus,
+        kind: AsmErrorKind,
+        msg: &str,
+        param: Option<&str>,
+    ) -> LineStatus {
+        let column = self.line_end_span.map(|span| span.col_start);
+        self.failure_at(status, kind, msg, param, column)
+    }
+
+    fn failure_at(
+        &mut self,
+        status: LineStatus,
+        kind: AsmErrorKind,
+        msg: &str,
+        param: Option<&str>,
+        column: Option<usize>,
+    ) -> LineStatus {
+        self.last_error = Some(AsmError::new(kind, msg, param));
+        self.last_error_column = column;
+        status
+    }
+
 }
 
 fn cmp_ignore_ascii_case(a: &str, b: &str) -> std::cmp::Ordering {
     a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase())
 }
 
+fn expr_span(expr: &Expr) -> Span {
+    match expr {
+        Expr::Number(_, span)
+        | Expr::Identifier(_, span)
+        | Expr::Register(_, span)
+        | Expr::Dollar(span)
+        | Expr::String(_, span)
+        | Expr::Error(_, span) => *span,
+        Expr::Unary { span, .. } | Expr::Binary { span, .. } | Expr::Ternary { span, .. } => *span,
+    }
+}
+
+fn expr_text(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Number(text, _) => Some(text.clone()),
+        Expr::Identifier(name, _) | Expr::Register(name, _) => Some(name.clone()),
+        Expr::Dollar(_) => Some("$".to_string()),
+        Expr::String(_, _) => Some("<string>".to_string()),
+        Expr::Error(_, _) => None,
+        Expr::Unary { .. } | Expr::Binary { .. } | Expr::Ternary { .. } => None,
+    }
+}
+
+fn binary_op_text(op: BinaryOp) -> &'static str {
+    match op {
+        BinaryOp::Add => "+",
+        BinaryOp::Subtract => "-",
+        BinaryOp::Multiply => "*",
+        BinaryOp::Power => "**",
+        BinaryOp::Divide => "/",
+        BinaryOp::Mod => "%",
+        BinaryOp::Shl => "<<",
+        BinaryOp::Shr => ">>",
+        BinaryOp::Eq => "==",
+        BinaryOp::Ne => "!=",
+        BinaryOp::Ge => ">=",
+        BinaryOp::Gt => ">",
+        BinaryOp::Le => "<=",
+        BinaryOp::Lt => "<",
+        BinaryOp::BitAnd => "&",
+        BinaryOp::BitOr => "|",
+        BinaryOp::BitXor => "^",
+        BinaryOp::LogicAnd => "&&",
+        BinaryOp::LogicOr => "||",
+        BinaryOp::LogicXor => "^^",
+    }
+}
+
+fn parse_number_text(text: &str, span: Span) -> Result<u32, AstEvalError> {
+    let upper = text.to_ascii_uppercase();
+    let cleaned = upper.replace('_', "");
+    let (digits, base) = if let Some(rest) = cleaned.strip_prefix('$') {
+        (rest.to_string(), 16)
+    } else if let Some(rest) = cleaned.strip_prefix('%') {
+        (rest.to_string(), 2)
+    } else {
+        match cleaned.chars().last() {
+            Some('H') => (cleaned[..cleaned.len().saturating_sub(1)].to_string(), 16),
+            Some('B') => (cleaned[..cleaned.len().saturating_sub(1)].to_string(), 2),
+            Some('O') | Some('Q') => (cleaned[..cleaned.len().saturating_sub(1)].to_string(), 8),
+            Some('D') => (cleaned[..cleaned.len().saturating_sub(1)].to_string(), 10),
+            _ => (cleaned, 10),
+        }
+    };
+
+    if digits.is_empty() {
+        return Err(AstEvalError {
+            error: AsmError::new(
+                AsmErrorKind::Expression,
+                "Illegal character in constant",
+                Some(text),
+            ),
+            span,
+        });
+    }
+
+    let valid = match base {
+        2 => digits.chars().all(|c| c == '0' || c == '1'),
+        8 => digits.chars().all(|c| matches!(c, '0'..='7')),
+        10 => digits.chars().all(|c| c.is_ascii_digit()),
+        16 => digits.chars().all(|c| c.is_ascii_hexdigit()),
+        _ => false,
+    };
+
+    if !valid {
+        let msg = match base {
+            10 => "Illegal character in decimal constant",
+            2 => "Illegal character in binary constant",
+            8 => "Illegal character in octal constant",
+            16 => "Illegal character in hex constant",
+            _ => "Illegal character in constant",
+        };
+        return Err(AstEvalError {
+            error: AsmError::new(AsmErrorKind::Expression, msg, Some(text)),
+            span,
+        });
+    }
+
+    let value = u32::from_str_radix(&digits, base).map_err(|_| AstEvalError {
+        error: AsmError::new(
+            AsmErrorKind::Expression,
+            "Illegal character in constant",
+            Some(text),
+        ),
+        span,
+    })?;
+
+    Ok(value)
+}
+
 fn format_error(msg: &str, param: Option<&str>) -> String {
     match param {
         Some(p) => format!("{msg}: {p}"),
         None => msg.to_string(),
-    }
-}
-
-struct ExprEvaluator<'a> {
-    scanner: &'a mut Scanner,
-    symbols: &'a SymbolTable,
-    pass: u8,
-    start_addr: u16,
-}
-
-impl<'a> ExprEvaluator<'a> {
-    fn new(scanner: &'a mut Scanner, symbols: &'a SymbolTable, pass: u8, start_addr: u16) -> Self {
-        Self {
-            scanner,
-            symbols,
-            pass,
-            start_addr,
-        }
-    }
-
-    fn eval_expression(&mut self) -> Result<u32, AsmError> {
-        self.eval_logical_or()
-    }
-
-    fn eval_atom(&mut self) -> Result<u32, AsmError> {
-        let t = self.scanner.get_type();
-        let mut val: u32;
-
-        match t {
-            TokenType::Error => {
-                let msg = self.scanner.get_error_msg().to_string();
-                return Err(AsmError {
-                    kind: AsmErrorKind::Expression,
-                    message: msg,
-                });
-            }
-            TokenType::OpenParen => {
-                self.scanner.next();
-                val = self.eval_expression()?;
-                if self.scanner.get_type() != TokenType::CloseParen {
-                    let token = self.scanner.get_string().to_string();
-                    return self.failure("Expecting close parenthesis, found", Some(&token));
-                }
-            }
-            TokenType::Dollar => {
-                val = self.start_addr as u32;
-            }
-            TokenType::Constant => {
-                val = self.scanner.get_value() as u32;
-            }
-            TokenType::SumOper => {
-                let op = self.scanner.get_value();
-                match op {
-                    x if x == TokenValue::Minus as i32 => {
-                        self.scanner.next();
-                        let inner = self.eval_atom()?;
-                        return Ok(0u32.wrapping_sub(inner));
-                    }
-                    x if x == TokenValue::Plus as i32 => {
-                        self.scanner.next();
-                        return self.eval_atom();
-                    }
-                    _ => {
-                        let token = self.scanner.get_string().to_string();
-                        return self.failure("Expecting + or -, found", Some(&token));
-                    }
-                }
-            }
-            TokenType::BitNotOper => {
-                self.scanner.next();
-                let inner = self.eval_atom()?;
-                return Ok(!inner);
-            }
-            TokenType::IsolateOper => {
-                let op = self.scanner.get_value();
-                self.scanner.next();
-                let inner = self.eval_atom()?;
-                if op == TokenValue::High as i32 {
-                    return Ok((inner >> 8) & 0xff);
-                }
-                return Ok(inner & 0xff);
-            }
-            TokenType::LogicNotOper => {
-                self.scanner.next();
-                val = self.eval_relationals()?;
-                return Ok(if (val & 0x01) != 0 { 0 } else { 0xffff });
-            }
-            TokenType::String => {
-                let token = self.scanner.token();
-                let len = token.len;
-                let buf = &token.bytes;
-                if len == 1 {
-                    val = buf[0] as u32;
-                } else if len == 2 {
-                    val = ((buf[0] as u32) << 8) | (buf[1] as u32);
-                } else {
-                    return self.failure("Multi-character string not allowed in expression.", None);
-                }
-            }
-            TokenType::Identifier | TokenType::Register => {
-                let name = self.scanner.get_string().to_string();
-                val = self.symbols.lookup(&name);
-                if val == NO_ENTRY {
-                    if self.pass > 1 {
-                        return self.failure("Label not found", Some(&name));
-                    }
-                    val = 0;
-                }
-            }
-            TokenType::LogicAndOper
-            | TokenType::LogicOrOper
-            | TokenType::BitAndOper
-            | TokenType::BitOrOper
-            | TokenType::FactorOper
-            | TokenType::Conditional => {
-                let name = self.scanner.get_string().to_string();
-                let first = name.as_bytes().first().copied().unwrap_or(b'\0');
-                if first.is_ascii_alphabetic() {
-                    val = self.symbols.lookup(&name);
-                    if val == NO_ENTRY {
-                        if self.pass > 1 {
-                            return self.failure("Label not found", Some(&name));
-                        }
-                        val = 0;
-                    }
-                } else {
-                    let token = self.scanner.get_string().to_string();
-                    return self.failure("Expected label or numeric constant, found", Some(&token));
-                }
-            }
-            _ => {
-                let token = self.scanner.get_string().to_string();
-                return self.failure("Expected label or numeric constant, found", Some(&token));
-            }
-        }
-
-        self.scanner.next();
-        Ok(val)
-    }
-
-    fn eval_factors(&mut self) -> Result<u32, AsmError> {
-        let mut num1 = self.eval_atom()?;
-        while self.scanner.get_type() == TokenType::FactorOper {
-            let op = self.scanner.get_value();
-            self.scanner.next();
-            num1 &= 0xffff;
-            let num2 = self.eval_atom()? & 0xffff;
-            match op {
-                v if v == TokenValue::Multiply as i32 => num1 = num1.wrapping_mul(num2),
-                v if v == TokenValue::Divide as i32 => {
-                    if num2 == 0 {
-                        return self.failure("Divide by zero", None);
-                    }
-                    num1 /= num2;
-                }
-                v if v == TokenValue::Mod as i32 => num1 %= num2,
-                v if v == TokenValue::Shl as i32 => num1 = num1.wrapping_shl(num2),
-                v if v == TokenValue::Shr as i32 => num1 >>= num2,
-                _ => {}
-            }
-        }
-        Ok(num1)
-    }
-
-    fn eval_sums(&mut self) -> Result<u32, AsmError> {
-        let mut num1 = self.eval_factors()?;
-        while self.scanner.get_type() == TokenType::SumOper {
-            let op = self.scanner.get_value();
-            self.scanner.next();
-            let num2 = self.eval_factors()?;
-            if op == TokenValue::Minus as i32 {
-                num1 = num1.wrapping_sub(num2);
-            } else {
-                num1 = num1.wrapping_add(num2);
-            }
-        }
-        Ok(num1)
-    }
-
-    fn eval_relationals(&mut self) -> Result<u32, AsmError> {
-        let mut result = false;
-        let mut num1 = self.eval_sums()?;
-        if self.scanner.get_type() != TokenType::RelateOper {
-            return Ok(num1);
-        }
-        let op = self.scanner.get_value();
-        self.scanner.next();
-        num1 &= 0xffff;
-        let num2 = self.eval_sums()? & 0xffff;
-        match op {
-            v if v == TokenValue::Eq as i32 => result = num1 == num2,
-            v if v == TokenValue::Ge as i32 => result = num1 >= num2,
-            v if v == TokenValue::Gt as i32 => result = num1 > num2,
-            v if v == TokenValue::Le as i32 => result = num1 <= num2,
-            v if v == TokenValue::Lt as i32 => result = num1 < num2,
-            v if v == TokenValue::Ne as i32 => result = num1 != num2,
-            _ => {}
-        }
-        if result { Ok(0xffff) } else { Ok(0) }
-    }
-
-    fn eval_bitwise_and(&mut self) -> Result<u32, AsmError> {
-        let mut num1 = self.eval_relationals()?;
-        while self.scanner.get_type() == TokenType::BitAndOper {
-            self.scanner.next();
-            let num2 = self.eval_relationals()?;
-            num1 &= num2;
-        }
-        Ok(num1)
-    }
-
-    fn eval_bitwise_or(&mut self) -> Result<u32, AsmError> {
-        let mut num1 = self.eval_bitwise_and()?;
-        while self.scanner.get_type() == TokenType::BitOrOper {
-            let op = self.scanner.get_value();
-            self.scanner.next();
-            let num2 = self.eval_bitwise_and()?;
-            if op == TokenValue::Or as i32 {
-                num1 |= num2;
-            } else {
-                num1 ^= num2;
-            }
-        }
-        Ok(num1)
-    }
-
-    fn eval_logical_and(&mut self) -> Result<u32, AsmError> {
-        let mut num1 = self.eval_bitwise_or()?;
-        while self.scanner.get_type() == TokenType::LogicAndOper {
-            self.scanner.next();
-            let num2 = self.eval_bitwise_or()?;
-            num1 = if (num1 & num2 & 0x01) != 0 { 0xffff } else { 0 };
-        }
-        Ok(num1)
-    }
-
-    fn eval_logical_or(&mut self) -> Result<u32, AsmError> {
-        let mut num1 = self.eval_logical_and()?;
-        while self.scanner.get_type() == TokenType::LogicOrOper {
-            let op = self.scanner.get_value();
-            self.scanner.next();
-            let num2 = self.eval_logical_and()?;
-            if op == TokenValue::Or as i32 {
-                num1 = if ((num1 | num2) & 0x01) != 0 { 0xffff } else { 0 };
-            } else {
-                num1 = if ((num1 ^ num2) & 0x01) != 0 { 0xffff } else { 0 };
-            }
-        }
-        Ok(num1)
-    }
-
-    fn failure(&mut self, msg: &str, param: Option<&str>) -> Result<u32, AsmError> {
-        Err(AsmError::new(AsmErrorKind::Expression, msg, param))
     }
 }
 
@@ -2109,41 +2345,29 @@ mod tests {
         Ok(())
     }
 
-    fn diff_text(expected: &str, actual: &str) -> String {
-        let expected_lines: Vec<&str> = expected.lines().collect();
-        let actual_lines: Vec<&str> = actual.lines().collect();
-        let min_len = expected_lines.len().min(actual_lines.len());
-
-        let mut first_diff = 0usize;
-        while first_diff < min_len && expected_lines[first_diff] == actual_lines[first_diff] {
-            first_diff += 1;
-        }
-
-        if first_diff == min_len && expected_lines.len() == actual_lines.len() {
-            return String::new();
-        }
-
-        let context = 3usize;
-        let start = first_diff.saturating_sub(context);
-        let end = (first_diff + context + 1).min(expected_lines.len().max(actual_lines.len()));
-
+    fn diff_text(expected: &str, actual: &str, max_lines: usize) -> String {
+        let expected_lines: Vec<&str> = expected.split('\n').collect();
+        let actual_lines: Vec<&str> = actual.split('\n').collect();
+        let max = expected_lines.len().max(actual_lines.len());
         let mut out = String::new();
-        out.push_str(&format!("First difference at line {}\n", first_diff + 1));
-        for idx in start..end {
-            if let Some(line) = expected_lines.get(idx) {
-                out.push_str(&format!("-{:5} {}\n", idx + 1, line));
-            }
-            if let Some(line) = actual_lines.get(idx) {
-                out.push_str(&format!("+{:5} {}\n", idx + 1, line));
+        let mut shown = 0usize;
+
+        for idx in 0..max {
+            let exp = expected_lines.get(idx).copied().unwrap_or("");
+            let act = actual_lines.get(idx).copied().unwrap_or("");
+            if exp != act {
+                shown += 1;
+                out.push_str(&format!("{:>5} | -{}\n", idx + 1, exp));
+                out.push_str(&format!("{:>5} | +{}\n", idx + 1, act));
+                if shown >= max_lines {
+                    out.push_str("...\n");
+                    break;
+                }
             }
         }
 
-        if expected_lines.len() != actual_lines.len() {
-            out.push_str(&format!(
-                "Line count differs: expected {}, got {}\n",
-                expected_lines.len(),
-                actual_lines.len()
-            ));
+        if shown == 0 {
+            out.push_str("(no differences)\n");
         }
 
         out
@@ -2285,37 +2509,34 @@ mod tests {
             assemble_example(&asm_path, &out_dir)
                 .unwrap_or_else(|err| panic!("Failed to assemble {base}: {err}"));
 
-            let out_lst = fs::read(out_dir.join(format!("{base}.lst")))
-                .unwrap_or_else(|err| panic!("Missing output listing for {base}: {err}"));
-            let out_lst_text = String::from_utf8_lossy(&out_lst);
-            let ref_lst_path = reference_dir.join(format!("{base}.lst"));
-            if update_reference {
-                fs::write(&ref_lst_path, &out_lst).unwrap_or_else(|err| {
-                    panic!("Failed to write reference listing {}: {err}", ref_lst_path.display())
-                });
-            } else {
-                let ref_lst = fs::read(&ref_lst_path).unwrap_or_else(|err| {
-                    panic!("Missing reference listing {}: {err}", ref_lst_path.display())
-                });
-                let ref_lst_text = String::from_utf8_lossy(&ref_lst);
-                if out_lst_text != ref_lst_text {
-                    let diff = diff_text(&ref_lst_text, &out_lst_text);
-                    panic!("Listing mismatch for {base}\n{diff}");
-                }
-            }
-
             let out_hex = fs::read(out_dir.join(format!("{base}.hex")))
                 .unwrap_or_else(|err| panic!("Missing output hex for {base}: {err}"));
+            let out_lst = fs::read(out_dir.join(format!("{base}.lst")))
+                .unwrap_or_else(|err| panic!("Missing output list for {base}: {err}"));
             let ref_hex_path = reference_dir.join(format!("{base}.hex"));
+            let ref_lst_path = reference_dir.join(format!("{base}.lst"));
             if update_reference {
                 fs::write(&ref_hex_path, &out_hex).unwrap_or_else(|err| {
                     panic!("Failed to write reference hex {}: {err}", ref_hex_path.display())
+                });
+                fs::write(&ref_lst_path, &out_lst).unwrap_or_else(|err| {
+                    panic!("Failed to write reference list {}: {err}", ref_lst_path.display())
                 });
             } else {
                 let ref_hex = fs::read(&ref_hex_path).unwrap_or_else(|err| {
                     panic!("Missing reference hex {}: {err}", ref_hex_path.display())
                 });
                 assert_eq!(out_hex, ref_hex, "Hex mismatch for {base}");
+
+                let ref_lst = fs::read(&ref_lst_path).unwrap_or_else(|err| {
+                    panic!("Missing reference list {}: {err}", ref_lst_path.display())
+                });
+                let out_lst_text = String::from_utf8_lossy(&out_lst);
+                let ref_lst_text = String::from_utf8_lossy(&ref_lst);
+                if out_lst_text != ref_lst_text {
+                    let diff = diff_text(&ref_lst_text, &out_lst_text, 20);
+                    panic!("List mismatch for {base}\n{diff}");
+                }
             }
         }
     }
@@ -2379,13 +2600,13 @@ mod tests {
     fn conditionals_do_not_skip_mnemonic_lines() {
         let mut symbols = SymbolTable::new();
         let mut asm = AsmLine::new(&mut symbols);
-        let status = process_line(&mut asm, "    IF 0", 0, 2);
+        let status = process_line(&mut asm, "    .if 0", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert!(asm.cond_skipping());
 
         let status = process_line(&mut asm, "    DB 5", 0, 2);
-        assert_eq!(status, LineStatus::Ok);
-        assert_eq!(asm.bytes(), &[5]);
+        assert_eq!(status, LineStatus::Skip);
+        assert!(asm.bytes().is_empty());
     }
 
     #[test]
@@ -2409,58 +2630,277 @@ mod tests {
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[9, 0]);
 
-        let status = process_line(&mut asm, "    DW 1 SHL 4", 0, 2);
+        let status = process_line(&mut asm, "    DW 1 << 4", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x10, 0x00]);
 
         let status = process_line(&mut asm, "    DW 1 | 2", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[3, 0]);
+
+        let status = process_line(&mut asm, "    DW 2 ** 3", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[8, 0]);
+
+        let status = process_line(&mut asm, "    DW 0 ? 1 : 2", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[2, 0]);
     }
 
     #[test]
-    fn logical_ops_use_lsb_only() {
+    fn logical_ops_use_truthiness() {
         let mut symbols = SymbolTable::new();
         let mut asm = AsmLine::new(&mut symbols);
-        let status = process_line(&mut asm, "    DW 2 AND 4", 0, 2);
+        let status = process_line(&mut asm, "    DW 2 && 4", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[0x01, 0x00]);
+
+        let status = process_line(&mut asm, "    DW 0 && 4", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x00, 0x00]);
 
-        let status = process_line(&mut asm, "    DW 7 AND 3", 0, 2);
+        let status = process_line(&mut asm, "    DW 0 || 3", 0, 2);
         assert_eq!(status, LineStatus::Ok);
-        assert_eq!(asm.bytes(), &[0xff, 0xff]);
+        assert_eq!(asm.bytes(), &[0x01, 0x00]);
 
-        let status = process_line(&mut asm, "    DW NOT 0", 0, 2);
+        let status = process_line(&mut asm, "    DW 2 ^^ 3", 0, 2);
         assert_eq!(status, LineStatus::Ok);
-        assert_eq!(asm.bytes(), &[0xff, 0xff]);
+        assert_eq!(asm.bytes(), &[0x00, 0x00]);
+
+        let status = process_line(&mut asm, "    DW 0 ^^ 3", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[0x01, 0x00]);
+
+        let status = process_line(&mut asm, "    DW !0", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[0x01, 0x00]);
+    }
+
+    #[test]
+    fn expression_literals_and_prefixes() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(
+            &mut asm,
+            "    DW $1f, %1010, 1_0_0_0, 17o, 17q",
+            0,
+            2,
+        );
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(
+            asm.bytes(),
+            &[0x1f, 0x00, 0x0a, 0x00, 0xe8, 0x03, 0x0f, 0x00, 0x0f, 0x00]
+        );
+    }
+
+    #[test]
+    fn expression_comparisons_and_logicals() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(
+            &mut asm,
+            "    DB 3==3, 3!=4, 3<>4, 3<=3, 2<3, 3>=2, 3>2, 4=4",
+            0,
+            2,
+        );
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[1, 1, 1, 1, 1, 1, 1, 1]);
+
+        let status = process_line(
+            &mut asm,
+            "    DB 2&&3, 0||5, 2^^3, !0, !1",
+            0,
+            2,
+        );
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[1, 1, 0, 1, 0]);
+    }
+
+    #[test]
+    fn expression_bitwise_ops() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(
+            &mut asm,
+            "    DB 0f0h & 00fh, 0f0h | 00fh, 0f0h ^ 00fh",
+            0,
+            2,
+        );
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[0x00, 0xff, 0xff]);
+    }
+
+    #[test]
+    fn expression_power_and_ternary_precedence() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(&mut asm, "    DW 2 ** 3 ** 2", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[0x00, 0x02]);
+
+        let status = process_line(&mut asm, "    DB 0 || 1 ? 2 : 3", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[2]);
+    }
+
+    #[test]
+    fn expression_ternary_associativity() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(&mut asm, "    DB 0 ? 1 : 0 ? 2 : 3", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[3]);
+
+        let status = process_line(&mut asm, "    DB 0 ? 1 : 0 || 1", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[1]);
+    }
+
+    #[test]
+    fn expression_shift_precedence() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(&mut asm, "    DW 1 + 2 << 3", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[24, 0]);
+
+        let status = process_line(&mut asm, "    DW 1 << 2 + 1", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[8, 0]);
+    }
+
+    #[test]
+    fn expression_high_low_with_groups() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(&mut asm, "    DB >($1234+1), <($1234+1)", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[0x12, 0x35]);
+    }
+
+    #[test]
+    fn expression_not_equal_aliases() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(&mut asm, "    DB 3 <> 4, 3 != 4", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[1, 1]);
+    }
+
+    #[test]
+    fn expression_nested_ternary_with_parens() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(&mut asm, "    DB 1 ? (0 ? 2 : 3) : 4", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[3]);
+
+        let status = process_line(&mut asm, "    DB 0 ? 1 : (0 ? 2 : 5)", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[5]);
+    }
+
+    #[test]
+    fn expression_underscores_in_hex_suffix() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(&mut asm, "    DW 1_2_3_4h, 0_f_f_fh", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[0x34, 0x12, 0xff, 0x0f]);
     }
 
     #[test]
     fn conditional_nesting_state_changes() {
         let mut symbols = SymbolTable::new();
         let mut asm = AsmLine::new(&mut symbols);
-        let status = process_line(&mut asm, "    IF 0", 0, 2);
+        let status = process_line(&mut asm, "    .if 0", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert!(asm.cond_skipping());
 
-        let status = process_line(&mut asm, "    ELSE", 0, 2);
+        let status = process_line(&mut asm, "    .else", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert!(!asm.cond_skipping());
 
-        let status = process_line(&mut asm, "    ENDIF", 0, 2);
+        let status = process_line(&mut asm, "    .endif", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert!(asm.cond_is_empty());
+    }
+
+    #[test]
+    fn conditionals_skip_unmatched_blocks() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+
+        let status = process_line(&mut asm, "    .if 1", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert!(!asm.cond_skipping());
+
+        let status = process_line(&mut asm, "    DB 1", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.bytes(), &[1]);
+
+        let status = process_line(&mut asm, "    .else", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert!(asm.cond_skipping());
+
+        let status = process_line(&mut asm, "    DB 2", 0, 2);
+        assert_eq!(status, LineStatus::Skip);
+        assert!(asm.bytes().is_empty());
+
+        let status = process_line(&mut asm, "    .endif", 0, 2);
+        assert_eq!(status, LineStatus::Ok);
+        assert!(asm.cond_is_empty());
+    }
+
+    #[test]
+    fn conditionals_only_emit_true_branch_bytes() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let mut addr: u16 = 0;
+        let mut out = Vec::new();
+
+        let lines = [
+            "    .if 1",
+            "    DB 1",
+            "    .else",
+            "    DB 2",
+            "    .endif",
+            "    .if 0",
+            "    DB 3",
+            "    .else",
+            "    DB 4",
+            "    .endif",
+        ];
+
+        for line in lines {
+            let status = asm.process(line, 1, addr, 2);
+            match status {
+                LineStatus::Ok => {
+                    out.extend_from_slice(asm.bytes());
+                    addr = addr.wrapping_add(asm.num_bytes() as u16);
+                }
+                LineStatus::DirDs => {
+                    addr = addr.wrapping_add(asm.aux_value());
+                }
+                LineStatus::DirEqu => {
+                    addr = asm.start_addr();
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(out, vec![1, 4]);
     }
 
     #[test]
     fn expression_high_low_and_unary() {
         let mut symbols = SymbolTable::new();
         let mut asm = AsmLine::new(&mut symbols);
-        let status = process_line(&mut asm, "    DW HIGH 1234H", 0, 2);
+        let status = process_line(&mut asm, "    DW > 1234H", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x12, 0x00]);
 
-        let status = process_line(&mut asm, "    DW LOW 1234H", 0, 2);
+        let status = process_line(&mut asm, "    DW < 1234H", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x34, 0x00]);
 
@@ -2482,10 +2922,10 @@ mod tests {
     fn conditional_errors_for_mismatched_blocks() {
         let mut symbols = SymbolTable::new();
         let mut asm = AsmLine::new(&mut symbols);
-        let status = process_line(&mut asm, "    ELSE", 0, 2);
+        let status = process_line(&mut asm, "    .else", 0, 2);
         assert_eq!(status, LineStatus::Error);
 
-        let status = process_line(&mut asm, "    ENDIF", 0, 2);
+        let status = process_line(&mut asm, "    .endif", 0, 2);
         assert_eq!(status, LineStatus::Error);
     }
 
@@ -2499,12 +2939,12 @@ mod tests {
     }
 
     #[test]
-    fn error_kind_for_scanner_failure() {
+    fn error_kind_for_parser_failure() {
         let mut symbols = SymbolTable::new();
         let mut asm = AsmLine::new(&mut symbols);
         let status = process_line(&mut asm, "123", 0, 1);
         assert_eq!(status, LineStatus::Error);
-        assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Scanner);
+        assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Parser);
     }
 
     #[test]

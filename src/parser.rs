@@ -1,0 +1,807 @@
+// Parser for tokenized assembly source.
+
+use crate::tokenizer::{
+    ConditionalKind, OperatorKind, Span, Token, TokenKind, TokenizeError, Tokenizer,
+};
+
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub message: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum LineAst {
+    Empty,
+    Conditional {
+        kind: ConditionalKind,
+        expr: Option<Expr>,
+        span: Span,
+    },
+    Statement {
+        label: Option<Label>,
+        mnemonic: Option<String>,
+        operands: Vec<Expr>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct Label {
+    pub name: String,
+    pub kind: LabelKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LabelKind {
+    Label,
+    Name,
+}
+
+#[derive(Debug, Clone)]
+pub enum Expr {
+    Number(String, Span),
+    Identifier(String, Span),
+    Register(String, Span),
+    Dollar(Span),
+    String(Vec<u8>, Span),
+    Error(String, Span),
+    Ternary {
+        cond: Box<Expr>,
+        then_expr: Box<Expr>,
+        else_expr: Box<Expr>,
+        span: Span,
+    },
+    Unary {
+        op: UnaryOp,
+        expr: Box<Expr>,
+        span: Span,
+    },
+    Binary {
+        op: BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Plus,
+    Minus,
+    BitNot,
+    LogicNot,
+    High,
+    Low,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOp {
+    Multiply,
+    Divide,
+    Mod,
+    Power,
+    Shl,
+    Shr,
+    Add,
+    Subtract,
+    Eq,
+    Ne,
+    Ge,
+    Gt,
+    Le,
+    Lt,
+    BitAnd,
+    BitOr,
+    BitXor,
+    LogicAnd,
+    LogicOr,
+    LogicXor,
+}
+
+pub struct Parser {
+    tokens: Vec<Token>,
+    index: usize,
+    end_span: Span,
+    end_token_text: Option<String>,
+}
+
+impl Parser {
+    pub fn from_line(line: &str, line_num: u32) -> Result<Self, ParseError> {
+        if let Some(first) = line.as_bytes().first().copied() {
+            if !first.is_ascii_whitespace()
+                && first != b';'
+                && first != b'.'
+                && !is_ident_start(first)
+            {
+                return Err(ParseError {
+                    message: format!(
+                        "Illegal character in column 1.  Must be label, name, comment, or space. Found: {}",
+                        line
+                    ),
+                    span: Span {
+                        line: line_num,
+                        col_start: 1,
+                        col_end: 1,
+                    },
+                });
+            }
+        }
+        let mut tokenizer = Tokenizer::new(line, line_num);
+        let mut tokens = Vec::new();
+        let mut end_token_text = None;
+        let end_span = loop {
+            let token = tokenizer.next_token().map_err(map_tokenize_error)?;
+            if matches!(token.kind, TokenKind::End) {
+                let idx = token.span.col_start.saturating_sub(1);
+                if idx < line.len() && line.as_bytes().get(idx) == Some(&b';') {
+                    end_token_text = Some(";".to_string());
+                }
+                break token.span;
+            }
+            tokens.push(token);
+        };
+        Ok(Self {
+            tokens,
+            index: 0,
+            end_span,
+            end_token_text,
+        })
+    }
+
+    pub fn end_span(&self) -> Span {
+        self.end_span
+    }
+
+    pub fn end_token_text(&self) -> Option<&str> {
+        self.end_token_text.as_deref()
+    }
+
+    pub fn parse_line(&mut self) -> Result<LineAst, ParseError> {
+        if self.tokens.is_empty() {
+            return Ok(LineAst::Empty);
+        }
+
+        let mut label = None;
+        let mut idx = 0usize;
+        if let Some(first) = self.tokens.first() {
+            let label_name = match &first.kind {
+                TokenKind::Identifier(name) => Some(name.clone()),
+                TokenKind::Register(name) => Some(name.clone()),
+                _ => None,
+            };
+            if let Some(name) = label_name {
+                if first.span.col_start == 1 {
+                    if let Some(colon) = self.tokens.get(1) {
+                        if matches!(colon.kind, TokenKind::Colon)
+                            && colon.span.col_start == first.span.col_end
+                        {
+                            label = Some(Label {
+                                name,
+                                kind: LabelKind::Label,
+                                span: first.span,
+                            });
+                            idx = 2;
+                        } else if colon.span.col_start > first.span.col_end {
+                            label = Some(Label {
+                                name,
+                                kind: LabelKind::Name,
+                                span: first.span,
+                            });
+                            idx = 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.index = idx;
+        if self.index >= self.tokens.len() {
+            return Ok(LineAst::Statement {
+                label,
+                mnemonic: None,
+                operands: Vec::new(),
+            });
+        }
+
+        if self.consume_kind(TokenKind::Dot) {
+            let (name, span) = match self.next() {
+                Some(Token {
+                    kind: TokenKind::Identifier(name),
+                    span,
+                }) => (name, span),
+                Some(Token {
+                    kind: TokenKind::Register(name),
+                    span,
+                }) => (name, span),
+                Some(token) => {
+                    return Err(ParseError {
+                        message: "Expected conditional after '.'".to_string(),
+                        span: token.span,
+                    })
+                }
+                None => {
+                    return Err(ParseError {
+                        message: "Expected conditional after '.'".to_string(),
+                        span: self.end_span,
+                    })
+                }
+            };
+            let upper = name.to_ascii_uppercase();
+            let (kind, needs_expr) = match upper.as_str() {
+                "IF" => (ConditionalKind::If, true),
+                "ELSEIF" => (ConditionalKind::ElseIf, true),
+                "ELSE" => (ConditionalKind::Else, false),
+                "ENDIF" => (ConditionalKind::EndIf, false),
+                _ => {
+                    return Err(ParseError {
+                        message: format!("Unknown conditional: .{name}"),
+                        span,
+                    })
+                }
+            };
+            let expr = if needs_expr {
+                match self.parse_expr() {
+                    Ok(expr) => Some(expr),
+                    Err(err) => Some(Expr::Error(err.message, err.span)),
+                }
+            } else {
+                None
+            };
+            if self.index < self.tokens.len() {
+                return Err(ParseError {
+                    message: "Unexpected tokens after conditional".to_string(),
+                    span: self.tokens[self.index].span,
+                });
+            }
+            return Ok(LineAst::Conditional { kind, expr, span });
+        }
+
+        let mnemonic = match self.next() {
+            Some(Token {
+                kind: TokenKind::Identifier(name),
+                ..
+            }) => Some(name),
+            Some(token) => {
+                if let Some(label) = &label {
+                    if label.kind == LabelKind::Name {
+                        return Ok(LineAst::Statement {
+                            label: Some(label.clone()),
+                            mnemonic: None,
+                            operands: Vec::new(),
+                        });
+                    }
+                }
+                return Err(ParseError {
+                    message: "Expected mnemonic identifier".to_string(),
+                    span: token.span,
+                });
+            }
+            None => None,
+        };
+
+        let mut operands = Vec::new();
+        if self.index < self.tokens.len() {
+            match self.parse_expr() {
+                Ok(expr) => operands.push(expr),
+                Err(err) => {
+                    operands.push(Expr::Error(err.message, err.span));
+                    return Ok(LineAst::Statement {
+                        label,
+                        mnemonic,
+                        operands,
+                    });
+                }
+            }
+            while self.consume_comma() {
+                match self.parse_expr() {
+                    Ok(expr) => operands.push(expr),
+                    Err(err) => {
+                        operands.push(Expr::Error(err.message, err.span));
+                        return Ok(LineAst::Statement {
+                            label,
+                            mnemonic,
+                            operands,
+                        });
+                    }
+                }
+            }
+        }
+
+        if self.index < self.tokens.len() {
+            return Err(ParseError {
+                message: "Unexpected trailing tokens".to_string(),
+                span: self.tokens[self.index].span,
+            });
+        }
+
+        Ok(LineAst::Statement {
+            label,
+            mnemonic,
+            operands,
+        })
+    }
+
+    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+        if self.match_operator(OperatorKind::Lt) {
+            let span = self.prev_span();
+            let expr = self.parse_expr()?;
+            return Ok(Expr::Unary {
+                op: UnaryOp::Low,
+                expr: Box::new(expr),
+                span,
+            });
+        }
+        if self.match_operator(OperatorKind::Gt) {
+            let span = self.prev_span();
+            let expr = self.parse_expr()?;
+            return Ok(Expr::Unary {
+                op: UnaryOp::High,
+                expr: Box::new(expr),
+                span,
+            });
+        }
+
+        self.parse_ternary()
+    }
+
+    fn parse_ternary(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_logical_or()?;
+        if let Some(token) = self.peek() {
+            if token.kind == TokenKind::Question {
+                let span = token.span;
+                self.index += 1;
+                let then_expr = self.parse_expr()?;
+                if !self.consume_kind(TokenKind::Colon) {
+                    return Err(ParseError {
+                        message: "Missing ':' in conditional expression".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                let else_expr = self.parse_expr()?;
+                node = Expr::Ternary {
+                    cond: Box::new(node),
+                    then_expr: Box::new(then_expr),
+                    else_expr: Box::new(else_expr),
+                    span,
+                };
+            }
+        }
+        Ok(node)
+    }
+
+    fn parse_logical_or(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_logical_and()?;
+        loop {
+            let op = if self.match_operator(OperatorKind::LogicOr) {
+                Some(BinaryOp::LogicOr)
+            } else if self.match_operator(OperatorKind::LogicXor) {
+                Some(BinaryOp::LogicXor)
+            } else {
+                None
+            };
+            if let Some(op) = op {
+                let op_span = self.prev_span();
+                let right = self.parse_logical_and()?;
+                node = Expr::Binary {
+                    op,
+                    left: Box::new(node),
+                    right: Box::new(right),
+                    span: op_span,
+                };
+            } else {
+                break;
+            }
+        }
+        Ok(node)
+    }
+
+    fn parse_logical_and(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_bit_or()?;
+        while self.match_operator(OperatorKind::LogicAnd) {
+            let op_span = self.prev_span();
+            let right = self.parse_bit_or()?;
+            node = Expr::Binary {
+                op: BinaryOp::LogicAnd,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_bit_or(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_bit_xor()?;
+        while self.match_operator(OperatorKind::BitOr) {
+            let op_span = self.prev_span();
+            let right = self.parse_bit_xor()?;
+            node = Expr::Binary {
+                op: BinaryOp::BitOr,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_bit_xor(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_bit_and()?;
+        while self.match_operator(OperatorKind::BitXor) {
+            let op_span = self.prev_span();
+            let right = self.parse_bit_and()?;
+            node = Expr::Binary {
+                op: BinaryOp::BitXor,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_bit_and(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_compare()?;
+        while self.match_operator(OperatorKind::BitAnd) {
+            let op_span = self.prev_span();
+            let right = self.parse_compare()?;
+            node = Expr::Binary {
+                op: BinaryOp::BitAnd,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_compare(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_shift()?;
+        loop {
+            let op = if self.match_operator(OperatorKind::Eq) {
+                Some(BinaryOp::Eq)
+            } else if self.match_operator(OperatorKind::Ne) {
+                Some(BinaryOp::Ne)
+            } else if self.match_operator(OperatorKind::Ge) {
+                Some(BinaryOp::Ge)
+            } else if self.match_operator(OperatorKind::Gt) {
+                Some(BinaryOp::Gt)
+            } else if self.match_operator(OperatorKind::Le) {
+                Some(BinaryOp::Le)
+            } else if self.match_operator(OperatorKind::Lt) {
+                Some(BinaryOp::Lt)
+            } else {
+                None
+            };
+            if let Some(op) = op {
+                let op_span = self.prev_span();
+                let right = self.parse_shift()?;
+                node = Expr::Binary {
+                    op,
+                    left: Box::new(node),
+                    right: Box::new(right),
+                    span: op_span,
+                };
+            } else {
+                break;
+            }
+        }
+        Ok(node)
+    }
+
+    fn parse_shift(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_sum()?;
+        loop {
+            let op = if self.match_operator(OperatorKind::Shl) {
+                Some(BinaryOp::Shl)
+            } else if self.match_operator(OperatorKind::Shr) {
+                Some(BinaryOp::Shr)
+            } else {
+                None
+            };
+            if let Some(op) = op {
+                let op_span = self.prev_span();
+                let right = self.parse_sum()?;
+                node = Expr::Binary {
+                    op,
+                    left: Box::new(node),
+                    right: Box::new(right),
+                    span: op_span,
+                };
+            } else {
+                break;
+            }
+        }
+        Ok(node)
+    }
+
+    fn parse_sum(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_term()?;
+        loop {
+            let op = if self.match_operator(OperatorKind::Plus) {
+                Some(BinaryOp::Add)
+            } else if self.match_operator(OperatorKind::Minus) {
+                Some(BinaryOp::Subtract)
+            } else {
+                None
+            };
+            if let Some(op) = op {
+                let op_span = self.prev_span();
+                let right = self.parse_term()?;
+                node = Expr::Binary {
+                    op,
+                    left: Box::new(node),
+                    right: Box::new(right),
+                    span: op_span,
+                };
+            } else {
+                break;
+            }
+        }
+        Ok(node)
+    }
+
+    fn parse_term(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_power()?;
+        loop {
+            let op = if self.match_operator(OperatorKind::Multiply) {
+                Some(BinaryOp::Multiply)
+            } else if self.match_operator(OperatorKind::Divide) {
+                Some(BinaryOp::Divide)
+            } else if self.match_operator(OperatorKind::Mod) {
+                Some(BinaryOp::Mod)
+            } else {
+                None
+            };
+            if let Some(op) = op {
+                let op_span = self.prev_span();
+                let right = self.parse_power()?;
+                node = Expr::Binary {
+                    op,
+                    left: Box::new(node),
+                    right: Box::new(right),
+                    span: op_span,
+                };
+            } else {
+                break;
+            }
+        }
+        Ok(node)
+    }
+
+    fn parse_power(&mut self) -> Result<Expr, ParseError> {
+        let node = self.parse_unary()?;
+        if self.match_operator(OperatorKind::Power) {
+            let op_span = self.prev_span();
+            let right = self.parse_power()?;
+            return Ok(Expr::Binary {
+                op: BinaryOp::Power,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            });
+        }
+        Ok(node)
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        if self.match_operator(OperatorKind::Plus) {
+            let span = self.prev_span();
+            let expr = self.parse_unary()?;
+            return Ok(Expr::Unary {
+                op: UnaryOp::Plus,
+                expr: Box::new(expr),
+                span,
+            });
+        }
+        if self.match_operator(OperatorKind::Minus) {
+            let span = self.prev_span();
+            let expr = self.parse_unary()?;
+            return Ok(Expr::Unary {
+                op: UnaryOp::Minus,
+                expr: Box::new(expr),
+                span,
+            });
+        }
+        if self.match_operator(OperatorKind::BitNot) {
+            let span = self.prev_span();
+            let expr = self.parse_unary()?;
+            return Ok(Expr::Unary {
+                op: UnaryOp::BitNot,
+                expr: Box::new(expr),
+                span,
+            });
+        }
+        if self.match_operator(OperatorKind::LogicNot) {
+            let span = self.prev_span();
+            let expr = self.parse_unary()?;
+            return Ok(Expr::Unary {
+                op: UnaryOp::LogicNot,
+                expr: Box::new(expr),
+                span,
+            });
+        }
+
+        self.parse_primary()
+    }
+
+    fn parse_primary(&mut self) -> Result<Expr, ParseError> {
+        match self.next() {
+            Some(Token {
+                kind: TokenKind::Number(num),
+                span,
+            }) => Ok(Expr::Number(num.text, span)),
+            Some(Token {
+                kind: TokenKind::Identifier(name),
+                span,
+            }) => Ok(Expr::Identifier(name, span)),
+            Some(Token {
+                kind: TokenKind::Register(name),
+                span,
+            }) => Ok(Expr::Register(name, span)),
+            Some(Token {
+                kind: TokenKind::Dollar,
+                span,
+            }) => Ok(Expr::Dollar(span)),
+            Some(Token {
+                kind: TokenKind::String(lit),
+                span,
+            }) => Ok(Expr::String(lit.bytes, span)),
+            Some(Token {
+                kind: TokenKind::OpenParen,
+                ..
+            }) => {
+                let expr = self.parse_expr()?;
+                if !self.consume_kind(TokenKind::CloseParen) {
+                    return Err(ParseError {
+                        message: "Missing ')'".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                Ok(expr)
+            }
+            Some(token) => Err(ParseError {
+                message: "Unexpected token in expression".to_string(),
+                span: token.span,
+            }),
+            None => Err(ParseError {
+                message: match self.end_token_text.as_deref() {
+                    Some(token) => format!("Expected label or numeric constant, found: {token}"),
+                    None => "Unexpected end of expression".to_string(),
+                },
+                span: self.end_span,
+            }),
+        }
+    }
+
+    fn consume_comma(&mut self) -> bool {
+        self.consume_kind(TokenKind::Comma)
+    }
+
+    fn consume_kind(&mut self, kind: TokenKind) -> bool {
+        if let Some(token) = self.peek() {
+            if token.kind == kind {
+                self.index += 1;
+                return true;
+            }
+        }
+        false
+    }
+
+    fn match_operator(&mut self, op: OperatorKind) -> bool {
+        if let Some(token) = self.peek() {
+            if token.kind == TokenKind::Operator(op) {
+                self.index += 1;
+                return true;
+            }
+        }
+        false
+    }
+
+    fn next(&mut self) -> Option<Token> {
+        if self.index >= self.tokens.len() {
+            None
+        } else {
+            let token = self.tokens[self.index].clone();
+            self.index += 1;
+            Some(token)
+        }
+    }
+
+    fn peek(&self) -> Option<&Token> {
+        self.tokens.get(self.index)
+    }
+
+    fn prev_span(&self) -> Span {
+        if self.index == 0 {
+            Span {
+                line: 0,
+                col_start: 0,
+                col_end: 0,
+            }
+        } else {
+            self.tokens[self.index - 1].span
+        }
+    }
+
+    fn current_span(&self) -> Span {
+        self.tokens
+            .get(self.index)
+            .map(|t| t.span)
+            .unwrap_or(self.end_span)
+    }
+}
+
+fn map_tokenize_error(err: TokenizeError) -> ParseError {
+    ParseError {
+        message: err.message,
+        span: err.span,
+    }
+}
+
+fn is_ident_start(c: u8) -> bool {
+    (c as char).is_ascii_alphabetic() || c == b'_'
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ConditionalKind, LabelKind, LineAst, Parser};
+
+    #[test]
+    fn parses_label_and_mnemonic() {
+        let mut parser = Parser::from_line("LABEL: MOV A,B", 1).unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::Statement { label, mnemonic, operands } => {
+                let label = label.expect("label");
+                assert_eq!(label.kind, LabelKind::Label);
+                assert_eq!(label.name, "LABEL");
+                assert_eq!(mnemonic.as_deref(), Some("MOV"));
+                assert_eq!(operands.len(), 2);
+            }
+            _ => panic!("Expected statement"),
+        }
+    }
+
+    #[test]
+    fn parses_name_label_for_equ() {
+        let mut parser = Parser::from_line("NAME EQU 3", 1).unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::Statement { label, mnemonic, operands } => {
+                let label = label.expect("label");
+                assert_eq!(label.kind, LabelKind::Name);
+                assert_eq!(label.name, "NAME");
+                assert_eq!(mnemonic.as_deref(), Some("EQU"));
+                assert_eq!(operands.len(), 1);
+            }
+            _ => panic!("Expected statement"),
+        }
+    }
+
+    #[test]
+    fn parses_conditionals() {
+        let mut parser = Parser::from_line(".if 1", 1).unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::Conditional { kind, expr, .. } => {
+                assert_eq!(kind, ConditionalKind::If);
+                assert!(expr.is_some());
+            }
+            _ => panic!("Expected conditional"),
+        }
+    }
+
+    #[test]
+    fn parses_operand_list() {
+        let mut parser = Parser::from_line("    DB 1, 2, 3", 1).unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::Statement { operands, .. } => {
+                assert_eq!(operands.len(), 3);
+            }
+            _ => panic!("Expected statement"),
+        }
+    }
+}

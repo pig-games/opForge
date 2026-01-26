@@ -1,0 +1,51 @@
+asm485 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Test program for 8085 SBC.  Blinks an LED on SOD forever.
+----                                2  ; Note the first jump that seems to do nothing.  This is for the power-on jump.
+----                                3  ; The ROM is normally at 8000 and the RAM at 0000.  At reset, the ROM maps to
+----                                4  ; both 0000 and 8000.  This condition persists until the A15 line goes high.
+----                                5  ; The first instruction is located at 8000, but the PC will actually be 0000
+----                                6  ; when it executes.  The jump to 8003 will cause the power-on flip flop to
+----                                7  ; clear and the normal addressing scheme will be activated.  At this point,
+----                                8  ; the RAM and ROM use their normal addressing.
+----                                9  
+----    EQU 8000                   10  	ORG 8000h
+----                               11  	
+8000    C3 03 80                   12  	JMP START	; Jump to ROM
+----                               13  
+8003    3E C0                      14  START:  MVI A, 0C0h	; LED on
+8005    30                         15          SIM
+----                               16  
+8006    3E FF                      17          MVI A, 0FFh	; Delay
+8008    47                         18          MOV B, A
+8009    3D                         19  D1PT1:  DCR A
+800A    05                         20  D1PT2:  DCR B
+800B    C2 0A 80                   21          JNZ D1PT2
+800E    FE 00                      22          CPI 00h
+8010    C2 09 80                   23          JNZ D1PT1
+----                               24  
+8013    3E 40                      25          MVI A, 40h	; LED off
+8015    30                         26          SIM
+----                               27  
+8016    3E FF                      28          MVI A, 0FFh	; Delay
+8018    47                         29          MOV B, A
+8019    3D                         30  D2PT1:  DCR A
+801A    05                         31  D2PT2:  DCR B
+801B    C2 1A 80                   32          JNZ D2PT2
+801E    FE 00                      33          CPI 00h
+8020    C2 19 80                   34          JNZ D2PT1
+----                               35  
+8023    C3 03 80                   36          JMP START	; Loop forever
+
+Lines: 36  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+START           : 8003 (32771)
+D1PT1           : 8009 (32777)
+D1PT2           : 800a (32778)
+D2PT1           : 8019 (32793)
+D2PT2           : 801a (32794)
+
+Total memory is 38 bytes

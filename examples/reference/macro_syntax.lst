@@ -9,29 +9,31 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                6  
 ----                                7  
 ----                                8  
-----                                9          .block
-2000    3A 12 00                   10          lda $12
-2003    32 34 00                   11          sta $34
-----                               12          .endblock
-----                               13          .block
-2006    01 02                      14          .byte 1, 2
-----                               15          .endblock
-----                               16          .block
-2008    03                         17          .byte 1+2
-2009    03 00                      18          .word 1+2
-----                               19          .endblock
-----                               20  
-----                               21  foo .block
-----    EQU 0009                   22  local   .const 9
-----                               23  .endblock
-200B    09 00                      24          .word foo.local
-----                               25          .end
+----                                9  
+----                               10          .block
+2000    3A 12 00                   11          lda $12
+2003    32 34 00                   12          sta $34
+----                               13          .endblock
+----                               14          .block
+2006    01 02                      15          .byte 1, 2
+----                               16          .endblock
+----                               17          .block
+2008    03                         18          .byte 1+2
+2009    03 00                      19          .word 1+2
+----                               20          .endblock
+200B    07                         21          .byte 7
+----                               22  
+----                               23  foo .block
+----    EQU 0009                   24  local   .const 9
+----                               25  .endblock
+200C    09 00                      26          .word foo.local
+----                               27          .end
 
-Lines: 25  Errors: 0  Warnings: 0
+Lines: 27  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-foo             : 200b (8203)
+foo             : 200c (8204)
 foo.local       : 0009 (9)
 
-Total memory is 13 bytes
+Total memory is 14 bytes

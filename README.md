@@ -10,7 +10,7 @@ Important features of this assembler include expression evaluation for constants
 Expression syntax follows a 64tass-style operator set: `+ - * / % ** << >> == != <> < <= > >= & ^ | && ^^ || ! ~` plus unary `<`/`>` for low/high byte and ternary `?:`. Non-zero values are TRUE; logical operators return `1` or `0`.
 Scopes are introduced with `.block`/`.endblock`. A label before `.block` names the scope, and scoped symbols can be referenced with `scope.symbol`. Unqualified symbols resolve from the innermost scope out to global.
 
-Macros are defined with `name .macro [params]` and closed with `.endmacro` (or `.endm`). Invoke macros with `#name` or `.name`. Parameter references use `\\1`..`\\9`, named params via `\\name` (or `\\{name}`), full list via `\\@`, and text refs via `@1`..`@9`.
+Macros are defined with `name .macro [params]` and closed with `.endmacro` (or `.endm`). Invoke macros with `#name` or `.name`. Parameter references use `\\1`..`\\9`, named params via `\\name` (or `\\{name}`), full list via `\\@`, and text refs via `@1`..`@9`. `.segment`/`.endsegment` defines a macro that expands inline without an implicit `.block`/`.endblock`.
 
 This is a two-pass assembler.  The first pass creates the symbol table and the second produces the output files.
 

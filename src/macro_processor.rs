@@ -91,6 +91,7 @@ struct MacroParam {
 struct MacroDef {
     params: Vec<MacroParam>,
     body: Vec<String>,
+    wrap_scope: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +101,12 @@ struct MacroInvocation {
     args: Vec<String>,
     full_list: String,
     indent: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacroKind {
+    Macro,
+    Segment,
 }
 
 #[derive(Debug, Clone)]
@@ -136,13 +143,13 @@ impl MacroProcessor {
         }
 
         let mut out = Vec::new();
-        let mut current: Option<(String, MacroDef)> = None;
+        let mut current: Option<(String, MacroDef, MacroKind)> = None;
 
         for (idx, line) in lines.iter().enumerate() {
             let line_num = idx as u32 + 1;
             let (code, _) = split_comment(line);
 
-            if let Some((name, params)) = parse_macro_def_line(&code) {
+            if let Some((name, params, kind)) = parse_macro_def_line(&code) {
                 if current.is_some() {
                     return Err(MacroError::new(
                         "Nested .macro definitions are not supported",
@@ -165,23 +172,39 @@ impl MacroProcessor {
                     ));
                 }
                 let param_defs = parse_macro_params(&params, line_num)?;
-                current = Some((name, MacroDef { params: param_defs, body: Vec::new() }));
+                let wrap_scope = kind == MacroKind::Macro;
+                current = Some((
+                    name,
+                    MacroDef {
+                        params: param_defs,
+                        body: Vec::new(),
+                        wrap_scope,
+                    },
+                    kind,
+                ));
                 continue;
             }
 
-            if is_endmacro_line(&code) {
-                let Some((name, def)) = current.take() else {
-                    return Err(MacroError::new(
-                        ".endmacro found without matching .macro",
-                        Some(line_num),
-                        Some(1),
-                    ));
+            if let Some(kind) = parse_macro_end_line(&code) {
+                let Some((name, def, active_kind)) = current.take() else {
+                    let message = match kind {
+                        MacroKind::Macro => ".endmacro found without matching .macro",
+                        MacroKind::Segment => ".endsegment found without matching .segment",
+                    };
+                    return Err(MacroError::new(message, Some(line_num), Some(1)));
                 };
+                if kind != active_kind {
+                    let message = match kind {
+                        MacroKind::Macro => "Expected .endsegment for .segment",
+                        MacroKind::Segment => "Expected .endmacro for .macro",
+                    };
+                    return Err(MacroError::new(message, Some(line_num), Some(1)));
+                }
                 self.macros.insert(to_upper(&name), def);
                 continue;
             }
 
-            if let Some((name, def)) = current.as_mut() {
+            if let Some((name, def, _kind)) = current.as_mut() {
                 let _ = name;
                 def.body.push(line.clone());
                 continue;
@@ -197,11 +220,26 @@ impl MacroProcessor {
                     })?;
                 let args = build_macro_args(&def, &inv);
                 let mut expanded = Vec::new();
-                expanded.push(format_macro_block_start(&inv));
+                if def.wrap_scope {
+                    expanded.push(format_macro_block_start(&inv));
+                }
                 for body_line in &def.body {
                     expanded.push(substitute_line(body_line, &args));
                 }
-                expanded.push(format!("{}{}", inv.indent, ".endblock"));
+                if def.wrap_scope {
+                    expanded.push(format!("{}{}", inv.indent, ".endblock"));
+                } else if let Some(label) = &inv.label {
+                    if let Some(first) = expanded.first_mut() {
+                        let trimmed = first.trim_start();
+                        if trimmed.is_empty() {
+                            *first = label.clone();
+                        } else {
+                            *first = format!("{label} {trimmed}");
+                        }
+                    } else {
+                        expanded.push(label.clone());
+                    }
+                }
                 let nested = self.expand_lines(&expanded, depth + 1)?;
                 out.extend(nested);
                 continue;
@@ -210,19 +248,19 @@ impl MacroProcessor {
             out.push(line.clone());
         }
 
-        if current.is_some() {
-            return Err(MacroError::new(
-                "Missing .endmacro for macro definition",
-                None,
-                None,
-            ));
+        if let Some((_name, _def, kind)) = current {
+            let message = match kind {
+                MacroKind::Macro => "Missing .endmacro for macro definition",
+                MacroKind::Segment => "Missing .endsegment for segment definition",
+            };
+            return Err(MacroError::new(message, None, None));
         }
 
         Ok(out)
     }
 }
 
-fn parse_macro_def_line(code: &str) -> Option<(String, String)> {
+fn parse_macro_def_line(code: &str) -> Option<(String, String, MacroKind)> {
     let (label, idx, _) = parse_label(code);
     let mut cursor = Cursor::with_pos(code, idx);
     cursor.skip_ws();
@@ -232,19 +270,21 @@ fn parse_macro_def_line(code: &str) -> Option<(String, String)> {
     cursor.next();
     cursor.skip_ws();
     let directive = cursor.take_ident()?.to_ascii_uppercase();
-    if directive != "MACRO" {
-        return None;
-    }
+    let kind = match directive.as_str() {
+        "MACRO" => MacroKind::Macro,
+        "SEGMENT" => MacroKind::Segment,
+        _ => return None,
+    };
     let params = code[cursor.pos..].trim().to_string();
-    Some((label.unwrap_or_default(), params))
+    Some((label.unwrap_or_default(), params, kind))
 }
 
-fn is_endmacro_line(code: &str) -> bool {
+fn parse_macro_end_line(code: &str) -> Option<MacroKind> {
     let (_, idx, _) = parse_label(code);
     let mut cursor = Cursor::with_pos(code, idx);
     cursor.skip_ws();
     if cursor.peek() != Some(b'.') {
-        return false;
+        return None;
     }
     cursor.next();
     cursor.skip_ws();
@@ -252,7 +292,11 @@ fn is_endmacro_line(code: &str) -> bool {
         .take_ident()
         .unwrap_or_default()
         .to_ascii_uppercase();
-    directive == "ENDMACRO" || directive == "ENDM"
+    match directive.as_str() {
+        "ENDMACRO" | "ENDM" => Some(MacroKind::Macro),
+        "ENDSEGMENT" | "ENDS" => Some(MacroKind::Segment),
+        _ => None,
+    }
 }
 
 fn parse_macro_invocation(code: &str, macros: &HashMap<String, MacroDef>) -> Option<MacroInvocation> {
@@ -630,5 +674,20 @@ mod tests {
         let out = mp.expand(&lines).expect("expand");
         assert!(out.contains(&"    .byte 1+2".to_string()));
         assert!(out.contains(&"    .word 1+2".to_string()));
+    }
+
+    #[test]
+    fn expands_segment_without_scope_block() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            "INLINE .segment val".to_string(),
+            "    .byte \\val".to_string(),
+            ".endsegment".to_string(),
+            "    .INLINE 7".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 7".to_string()));
+        assert!(!out.iter().any(|line| line.trim() == ".block"));
+        assert!(!out.iter().any(|line| line.trim() == ".endblock"));
     }
 }

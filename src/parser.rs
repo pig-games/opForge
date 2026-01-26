@@ -34,14 +34,7 @@ pub enum LineAst {
 #[derive(Debug, Clone)]
 pub struct Label {
     pub name: String,
-    pub kind: LabelKind,
     pub span: Span,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LabelKind {
-    Label,
-    Name,
 }
 
 #[derive(Debug, Clone)]
@@ -148,7 +141,7 @@ impl Parser {
             {
                 return Err(ParseError {
                     message: format!(
-                        "Illegal character in column 1. Must be label, name, '.', '*', comment, or space. Found: {}",
+                        "Illegal character in column 1. Must be symbol, '.', '*', comment, or space. Found: {}",
                         line
                     ),
                     span: Span {
@@ -209,19 +202,24 @@ impl Parser {
                             && colon.span.col_start == first.span.col_end
                         {
                             label = Some(Label {
-                                name,
-                                kind: LabelKind::Label,
+                                name: name.clone(),
                                 span: first.span,
                             });
                             idx = 2;
-                        } else if colon.span.col_start > first.span.col_end {
+                        }
+                        if label.is_none() {
                             label = Some(Label {
                                 name,
-                                kind: LabelKind::Name,
                                 span: first.span,
                             });
                             idx = 1;
                         }
+                    } else {
+                        label = Some(Label {
+                            name,
+                            span: first.span,
+                        });
+                        idx = 1;
                     }
                 }
             }
@@ -381,15 +379,6 @@ impl Parser {
                 ..
             }) => Some(name),
             Some(token) => {
-                if let Some(label) = &label {
-                    if label.kind == LabelKind::Name {
-                        return Ok(LineAst::Statement {
-                            label: Some(label.clone()),
-                            mnemonic: None,
-                            operands: Vec::new(),
-                        });
-                    }
-                }
                 return Err(ParseError {
                     message: "Expected mnemonic identifier".to_string(),
                     span: token.span,
@@ -928,7 +917,7 @@ fn is_ident_start(c: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{AssignOp, ConditionalKind, LabelKind, LineAst, Parser};
+    use super::{AssignOp, ConditionalKind, LineAst, Parser};
 
     #[test]
     fn parses_label_and_mnemonic() {
@@ -937,7 +926,6 @@ mod tests {
         match line {
             LineAst::Statement { label, mnemonic, operands } => {
                 let label = label.expect("label");
-                assert_eq!(label.kind, LabelKind::Label);
                 assert_eq!(label.name, "LABEL");
                 assert_eq!(mnemonic.as_deref(), Some("MOV"));
                 assert_eq!(operands.len(), 2);
@@ -947,13 +935,27 @@ mod tests {
     }
 
     #[test]
-    fn parses_name_label_for_const() {
+    fn parses_label_without_colon() {
+        let mut parser = Parser::from_line("LABEL MOV A,B", 1).unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::Statement { label, mnemonic, operands } => {
+                let label = label.expect("label");
+                assert_eq!(label.name, "LABEL");
+                assert_eq!(mnemonic.as_deref(), Some("MOV"));
+                assert_eq!(operands.len(), 2);
+            }
+            _ => panic!("Expected statement"),
+        }
+    }
+
+    #[test]
+    fn parses_label_for_const() {
         let mut parser = Parser::from_line("NAME .const 3", 1).unwrap();
         let line = parser.parse_line().unwrap();
         match line {
             LineAst::Statement { label, mnemonic, operands } => {
                 let label = label.expect("label");
-                assert_eq!(label.kind, LabelKind::Name);
                 assert_eq!(label.name, "NAME");
                 assert_eq!(mnemonic.as_deref(), Some(".const"));
                 assert_eq!(operands.len(), 1);
@@ -968,7 +970,6 @@ mod tests {
         let line = parser.parse_line().unwrap();
         match line {
             LineAst::Assignment { label, op, .. } => {
-                assert_eq!(label.kind, LabelKind::Name);
                 assert_eq!(label.name, "WIDTH");
                 assert_eq!(op, AssignOp::Const);
             }
@@ -982,7 +983,6 @@ mod tests {
         let line = parser.parse_line().unwrap();
         match line {
             LineAst::Assignment { label, op, .. } => {
-                assert_eq!(label.kind, LabelKind::Name);
                 assert_eq!(label.name, "var2");
                 assert_eq!(op, AssignOp::Var);
             }

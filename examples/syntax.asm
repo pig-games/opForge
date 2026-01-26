@@ -14,9 +14,9 @@
 ; Column one must contain whitespace or a label or a comment start.
 ; Labels can be up to 32 characters and must start with an alpha.  
 ; Numbers and the underscore character are permitted in a label.
-; Labels end with a colon character.
+; Labels can end with a colon, but the colon is optional.
 LABEL1: .byte      123             ; labels can be on the same line as code
-LABEL2:
+LABEL2
         POP     PSW             ; or the label can be before the code
 NOSPACE:push    D               ; a space is not required after a label
 VeryVeryVeryLongLabel:
@@ -26,8 +26,8 @@ VeryVeryVeryLongLabel:
 ; used as labels if desired.
 
 ; The .const directive is used to define a constant value.  It does not emit
-; any code.  The name label for a .const does not need the trailing but it
-; does need to be followed by whitespace.
+; any code.  The label colon is optional for .const, and the label must be
+; followed by whitespace.
 RAMST   .const     00000h          
 ROMST   .const     0c000h         
 

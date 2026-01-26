@@ -39,21 +39,21 @@ ERROR: Unterminated string: "where is the .end  ; ERR: unterminated string
 ERROR: Label not found: beh
 ----                               21  
 ----                               22  ; column zero
-----                               23  LABEL1:                 ; label can start in column 0
-0004    4F                         24  LABEL2: MOV   C,A       ; label with instruction also OK
-----    EQU 0007                   25  NAME1   .const   7         ; name can start in column zero
-----                               26  123                     ; ERR: not name or label
-   26 | [31m1[0m23                     ; ERR: not name or label
-ERROR: Illegal character in column 1. Must be label, name, '.', '*', comment, or space. Found: 123                     ; ERR: not name or label
-----                               27  "abc"                   ; ERR: not name or label
-   27 | [31m"[0mabc"                   ; ERR: not name or label
-ERROR: Illegal character in column 1. Must be label, name, '.', '*', comment, or space. Found: "abc"                   ; ERR: not name or label
-----                               28  +                       ; ERR: not name or label
-   28 | [31m+[0m                       ; ERR: not name or label
-ERROR: Illegal character in column 1. Must be label, name, '.', '*', comment, or space. Found: +                       ; ERR: not name or label
+----                               23  LABEL1:                 ; symbol can start in column 0
+0004    4F                         24  LABEL2: MOV   C,A       ; symbol with instruction also OK
+----    EQU 0007                   25  NAME1   .const   7         ; symbol can start in column zero
+----                               26  123                     ; ERR: not symbol
+   26 | [31m1[0m23                     ; ERR: not symbol
+ERROR: Illegal character in column 1. Must be symbol, '.', '*', comment, or space. Found: 123                     ; ERR: not symbol
+----                               27  "abc"                   ; ERR: not symbol
+   27 | [31m"[0mabc"                   ; ERR: not symbol
+ERROR: Illegal character in column 1. Must be symbol, '.', '*', comment, or space. Found: "abc"                   ; ERR: not symbol
+----                               28  +                       ; ERR: not symbol
+   28 | [31m+[0m                       ; ERR: not symbol
+ERROR: Illegal character in column 1. Must be symbol, '.', '*', comment, or space. Found: +                       ; ERR: not symbol
 ----                               29  mov h,l                 ; ERR: instruction can't start in column zero
-   29 | [31mm[0mov h,l                 ; ERR: instruction can't start in column zero
-ERROR: Expecting label, comment, or space n column 1, found: mov
+   29 | mov [31mh[0m,l                 ; ERR: instruction can't start in column zero
+ERROR: Expected mnemonic identifier
 ----                               30  
 ----                               31  ; extra information on line and extra/incorrect arguments
 ----                               32          nop     SP      ; ERR: extra register argument
@@ -121,84 +121,80 @@ ERROR: Divide by zero
 0019    09                         62  var3:   .byte      255 + 10; *ERR: 8 bit constant overflow
 ----                               63  
 ----                               64  
-----                               65  ; name/label mismatch
-001A    07 00                      66  nam1    .word  7           ; ERR: .word uses label, not name
-001C    +000A                      67  nam2    .ds  10          ; ERR: .ds uses label, not name
-----                               68  nam3    jmp 0           ; ERR: instruction uses label, not name
-   68 | [31mn[0mam3    jmp 0           ; ERR: instruction uses label, not name
-ERROR: Expecting label, comment, or space n column 1, found: nam3
-----                               69  lab1:   .const 6           ; ERR: .const uses name, not label
-   69 | [31ml[0mab1:   .const 6           ; ERR: .const uses name, not label
-ERROR: .const/.var/.set name should not end in ':'
-----                               70  lab2:   .var 8           ; ERR: .var uses name, not label
-   70 | [31ml[0mab2:   .var 8           ; ERR: .var uses name, not label
-ERROR: .const/.var/.set name should not end in ':'
-----                               71  
-----                               72  ; redeine symbols and labels
-----    EQU 0001                   73  equ1    .const 1           ; OK
-----                               74  equ1    .const 2           ; ERR: redefined symbol with .const
-   74 | [31me[0mqu1    .const 2           ; ERR: redefined symbol with .const
+----                               65  ; assignment errors
+----                               66  undef   += 1             ; ERR: symbol has not been defined
+   66 | [31mu[0mndef   += 1             ; ERR: symbol has not been defined
+ERROR: symbol has not been defined: undef
+----    EQU 0001                   67  const1  = 1              ; OK
+----                               68  const1  += 1             ; ERR: symbol is read-only
+   68 | [31mc[0monst1  += 1             ; ERR: symbol is read-only
+ERROR: symbol is read-only: const1
+----                               69  
+----                               70  ; redefine symbols
+----    EQU 0001                   71  equ1    .const 1           ; OK
+----                               72  equ1    .const 2           ; ERR: redefined symbol with .const
+   72 | [31me[0mqu1    .const 2           ; ERR: redefined symbol with .const
 ERROR: symbol has already been defined: equ1
-----    EQU 0001                   75  set1    .var 1           ; OK
-----    EQU 0002                   76  set1    .var 2           ; OK, can redefine .var
-----    EQU 0003                   77  set1    .const 3           ; should be an error to mix set and equ
-----    EQU 0004                   78  set1    .var 4           ; OK, can redefine .var
-----    EQU 0002                   79  equ2    .const 2           ; OK
-----                               80  equ2    .var 3           ; ERR: cannot redefine .const
-   80 | [31me[0mqu2    .var 3           ; ERR: cannot redefine .const
+----    EQU 0001                   73  set1    .var 1           ; OK
+----    EQU 0002                   74  set1    .var 2           ; OK, can redefine .var
+----    EQU 0003                   75  set1    .const 3           ; should be an error to mix set and equ
+----    EQU 0004                   76  set1    .var 4           ; OK, can redefine .var
+----    EQU 0002                   77  equ2    .const 2           ; OK
+----                               78  equ2    .var 3           ; ERR: cannot redefine .const
+   78 | [31me[0mqu2    .var 3           ; ERR: cannot redefine .const
 ERROR: symbol has already been defined: equ2
-----                               81  
-0026    C3 00 00                   82  lab3:   jmp 0           ; OK
-----                               83  lab3:   jmp 1           ; ERR: label redefined
-   83 | [31ml[0mab3:   jmp 1           ; ERR: label redefined
+----                               79  
+001A    C3 00 00                   80  lab3:   jmp 0           ; OK
+----                               81  lab3:   jmp 1           ; ERR: label redefined
+   81 | [31ml[0mab3:   jmp 1           ; ERR: label redefined
 ERROR: Symbol defined more than once: lab3
-0029    C3 02 00                   84  lab4:   jmp 2           ; OK
-----                               85  
-----                               86  
-----                               87  ; Conditional directives
-----    EQU 0001                   88  YES         .const 1
-----    EQU FFFF                   89  TRUE        .const 0ffffh
-----    EQU 0000                   90  NO          .const 0
-----    EQU 0000                   91  FALSE       .const 0
-----                               92  
-----    EQU 5000                   93                  .org 5000h
-----                               94  ; ERR - missing IF
-----                               95          .elseif YES                     ; ERR - missing IF
-   95 |         .elseif [31mY[0mES                     ; ERR - missing IF
+001D    C3 02 00                   82  lab4:   jmp 2           ; OK
+----                               83  
+----                               84  
+----                               85  ; Conditional directives
+----    EQU 0001                   86  YES         .const 1
+----    EQU FFFF                   87  TRUE        .const 0ffffh
+----    EQU 0000                   88  NO          .const 0
+----    EQU 0000                   89  FALSE       .const 0
+----                               90  
+----    EQU 5000                   91                  .org 5000h
+----                               92  ; ERR - missing IF
+----                               93          .elseif YES                     ; ERR - missing IF
+   93 |         .elseif [31mY[0mES                     ; ERR - missing IF
 ERROR: .else or .elseif found without matching .if
-----                               96          .else                           ; ERR - missing IF
-   96 |         .else                           [31m;[0m ERR - missing IF
+----                               94          .else                           ; ERR - missing IF
+   94 |         .else                           [31m;[0m ERR - missing IF
 ERROR: .else or .elseif found without matching .if
-----                               97          .endif                          ; ERR - missing IF
-   97 |         .endif                          [31m;[0m ERR - missing IF
+----                               95          .endif                          ; ERR - missing IF
+   95 |         .endif                          [31m;[0m ERR - missing IF
 ERROR: .endif found without matching .if
-----                               98  
-----                               99  
-----                              100  ; ERR - multiple ELSE
-----                              101          .if FALSE                       ; OK
-----                              102          .else                           ; OK
-----                              103          .else                           ; ERR - multiple ELSE
-  103 |         .else                           [31m;[0m ERR - multiple ELSE
+----                               96  
+----                               97  
+----                               98  ; ERR - multiple ELSE
+----                               99          .if FALSE                       ; OK
+----                              100          .else                           ; OK
+----                              101          .else                           ; ERR - multiple ELSE
+  101 |         .else                           [31m;[0m ERR - multiple ELSE
 ERROR: .else or .elseif cannot follow .else
-----                              104          .endif
-----                              105  
-----                              106  
-----                              107  ; ERR - ELSEIF follows ELSE
-----                              108          .if FALSE                       ; OK
-----                              109          .else                           ; OK
-----                              110          .elseif TRUE                    ; ERR - ELSEIF follows ELSE
-  110 |         .elseif [31mT[0mRUE                    ; ERR - ELSEIF follows ELSE
+----                              102          .endif
+----                              103  
+----                              104  
+----                              105  ; ERR - ELSEIF follows ELSE
+----                              106          .if FALSE                       ; OK
+----                              107          .else                           ; OK
+----                              108          .elseif TRUE                    ; ERR - ELSEIF follows ELSE
+  108 |         .elseif [31mT[0mRUE                    ; ERR - ELSEIF follows ELSE
 ERROR: .else or .elseif cannot follow .else
-----                              111          .endif
-----                              112         
-----                              113  
-----                              114  ; ERR - missing ENDIF
-----                              115          .if FALSE || 3+1 == 4           ; OK
-5000    21 EF BE                  116                  lxi h,0beefh
-  117 | <source unavailable>
+----                              109          .endif
+----                              110         
+----                              111  
+----                              112  ; ERR - missing ENDIF
+----                              113          .if FALSE || 3+1 == 4           ; OK
+5000    21 EF BE                  114                  lxi h,0beefh
+  115 | <source unavailable>
 ERROR: Found .if without .endif
 
-Lines: 116  Errors: 40  Warnings: 0
+Lines: 114  Errors: 39  Warnings: 0
 
 SYMBOL TABLE
 
@@ -216,16 +212,15 @@ NAME1           : 0007 (7)
 RNUM            : 0001 (1)
 var2            : 0017 (23)
 var3            : 0019 (25)
-lab1            : 0026 (38)
-lab2            : 0026 (38)
+const1          : 0001 (1)
 equ1            : 0001 (1)
 set1            : 0004 (4)
 equ2            : 0002 (2)
-lab3            : 0026 (38)
-lab4            : 0029 (41)
+lab3            : 001a (26)
+lab4            : 001d (29)
 YES             : 0001 (1)
 TRUE            : ffff (65535)
 NO              : 0000 (0)
 FALSE           : 0000 (0)
 
-Total memory is 37 bytes
+Total memory is 35 bytes

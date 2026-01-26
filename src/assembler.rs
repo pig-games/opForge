@@ -10,7 +10,7 @@ use clap::{ArgAction, Parser};
 use crate::imagestore::ImageStore;
 use crate::instructions::table::INSTRUCTION_TABLE;
 use crate::instructions::ArgType;
-use crate::parser::{AssignOp, BinaryOp, Expr, Label, LabelKind, LineAst, ParseError, UnaryOp};
+use crate::parser::{AssignOp, BinaryOp, Expr, Label, LineAst, ParseError, UnaryOp};
 use crate::parser as asm_parser;
 use crate::parser_reporter::{format_parse_error, format_parse_error_listing};
 use crate::preprocess::Preprocessor;
@@ -1237,7 +1237,6 @@ struct AsmLine<'a> {
     start_addr: u16,
     aux_value: u16,
     pass: u8,
-    label_kind: i32,
     label: Option<String>,
     mnemonic: Option<String>,
 }
@@ -1261,7 +1260,6 @@ impl<'a> AsmLine<'a> {
             start_addr: 0,
             aux_value: 0,
             pass: 1,
-            label_kind: TokenValue::None as i32,
             label: None,
             mnemonic: None,
         }
@@ -1358,7 +1356,6 @@ impl<'a> AsmLine<'a> {
 
         self.label = None;
         self.mnemonic = None;
-        self.label_kind = TokenValue::None as i32;
 
         match asm_parser::Parser::from_line(line, line_num) {
             Ok(mut parser) => {
@@ -1405,15 +1402,33 @@ impl<'a> AsmLine<'a> {
                     return LineStatus::Skip;
                 }
                 self.label = label.as_ref().map(|l| l.name.clone());
-                self.label_kind = match label.as_ref().map(|l| l.kind) {
-                    Some(LabelKind::Label) => TokenValue::Label as i32,
-                    Some(LabelKind::Name) => TokenValue::Name as i32,
-                    None => TokenValue::None as i32,
-                };
                 self.mnemonic = mnemonic.clone();
 
+                let mnemonic = match mnemonic {
+                    Some(m) => m,
+                    None => {
+                        if let Some(label) = &label {
+                            let res = if self.pass == 1 {
+                                self.symbols.add(&label.name, self.start_addr as u32, false)
+                            } else {
+                                self.symbols.update(&label.name, self.start_addr as u32)
+                            };
+                            if res == crate::symbol_table::SymbolTableResult::Duplicate {
+                                return self.failure_at_span(
+                                    LineStatus::Error,
+                                    AsmErrorKind::Symbol,
+                                    "Symbol defined more than once",
+                                    Some(&label.name),
+                                    label.span,
+                                );
+                            }
+                        }
+                        return LineStatus::NothingDone;
+                    }
+                };
+
                 if let Some(label) = &label {
-                    if label.kind == LabelKind::Label {
+                    if !is_symbol_assignment_directive(&mnemonic) {
                         let res = if self.pass == 1 {
                             self.symbols.add(&label.name, self.start_addr as u32, false)
                         } else {
@@ -1431,35 +1446,8 @@ impl<'a> AsmLine<'a> {
                     }
                 }
 
-                let mnemonic = match mnemonic {
-                    Some(m) => m,
-                    None => {
-                        if self.label_kind == TokenValue::Name as i32 {
-                            let name = self.label.clone().unwrap_or_default();
-                            return self.failure_at(
-                                LineStatus::Error,
-                                AsmErrorKind::Assembler,
-                                "Expecting label, comment, or space n column 1, found",
-                                Some(&name),
-                                Some(1),
-                            );
-                        }
-                        return LineStatus::NothingDone;
-                    }
-                };
-
                 let mut status = self.process_directive_ast(&mnemonic, &operands);
                 if status == LineStatus::NothingDone {
-                    if self.label_kind == TokenValue::Name as i32 {
-                        let name = self.label.clone().unwrap_or_default();
-                        return self.failure_at(
-                            LineStatus::Error,
-                            AsmErrorKind::Assembler,
-                            "Expecting label, comment, or space n column 1, found",
-                            Some(&name),
-                            Some(1),
-                        );
-                    }
                     status = self.process_instruction_ast(&mnemonic, &operands);
                 }
                 status
@@ -1620,16 +1608,7 @@ impl<'a> AsmLine<'a> {
                     return self.failure_at(
                         LineStatus::Error,
                         AsmErrorKind::Directive,
-                        "Must specify name before .const/.var/.set",
-                        None,
-                        Some(1),
-                    );
-                }
-                if self.label_kind != TokenValue::Name as i32 {
-                    return self.failure_at(
-                        LineStatus::Error,
-                        AsmErrorKind::Directive,
-                        ".const/.var/.set name should not end in ':'",
+                        "Must specify symbol before .const/.var/.set",
                         None,
                         Some(1),
                     );
@@ -1753,20 +1732,6 @@ impl<'a> AsmLine<'a> {
         span: Span,
     ) -> LineStatus {
         self.label = Some(label.name.clone());
-        self.label_kind = match label.kind {
-            LabelKind::Label => TokenValue::Label as i32,
-            LabelKind::Name => TokenValue::Name as i32,
-        };
-
-        if label.kind != LabelKind::Name {
-            return self.failure_at(
-                LineStatus::Error,
-                AsmErrorKind::Directive,
-                "Assignment name should not end in ':'",
-                None,
-                Some(1),
-            );
-        }
 
         match op {
             AssignOp::Const | AssignOp::Var | AssignOp::VarIfUndef => {
@@ -2357,6 +2322,13 @@ fn cmp_ignore_ascii_case(a: &str, b: &str) -> std::cmp::Ordering {
     a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase())
 }
 
+fn is_symbol_assignment_directive(mnemonic: &str) -> bool {
+    matches!(
+        mnemonic.to_ascii_uppercase().as_str(),
+        ".CONST" | ".VAR" | ".SET"
+    )
+}
+
 fn concat_values(left: u32, right: u32) -> u32 {
     let width = if right == 0 {
         1
@@ -2887,6 +2859,15 @@ mod tests {
     }
 
     #[test]
+    fn label_without_colon_defines_symbol() {
+        let mut symbols = SymbolTable::new();
+        let mut asm = AsmLine::new(&mut symbols);
+        let status = process_line(&mut asm, "LABEL NOP", 0x1000, 1);
+        assert_eq!(status, LineStatus::Ok);
+        assert_eq!(asm.symbols().lookup("LABEL"), 0x1000);
+    }
+
+    #[test]
     fn set_without_dot_is_not_directive() {
         let mut symbols = SymbolTable::new();
         let mut asm = AsmLine::new(&mut symbols);
@@ -3250,7 +3231,7 @@ mod tests {
     fn column_one_errors_for_identifier() {
         let mut symbols = SymbolTable::new();
         let mut asm = AsmLine::new(&mut symbols);
-        let status = process_line(&mut asm, "mov a,b", 0, 2);
+        let status = process_line(&mut asm, "1mov a,b", 0, 2);
         assert_eq!(status, LineStatus::Error);
         assert!(asm.error_message().contains("column 1"));
     }

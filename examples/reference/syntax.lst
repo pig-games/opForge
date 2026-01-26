@@ -17,9 +17,9 @@ ADDR    BYTES                    LINE  SOURCE
 ----                               14  ; Column one must contain whitespace or a label or a comment start.
 ----                               15  ; Labels can be up to 32 characters and must start with an alpha.  
 ----                               16  ; Numbers and the underscore character are permitted in a label.
-----                               17  ; Labels end with a colon character.
+----                               17  ; Labels can end with a colon, but the colon is optional.
 2000    7B                         18  LABEL1: .byte      123             ; labels can be on the same line as code
-----                               19  LABEL2:
+----                               19  LABEL2
 2001    F1                         20          POP     PSW             ; or the label can be before the code
 2002    D5                         21  NOSPACE:push    D               ; a space is not required after a label
 ----                               22  VeryVeryVeryLongLabel:
@@ -29,8 +29,8 @@ ADDR    BYTES                    LINE  SOURCE
 ----                               26  ; used as labels if desired.
 ----                               27  
 ----                               28  ; The .const directive is used to define a constant value.  It does not emit
-----                               29  ; any code.  The name label for a .const does not need the trailing but it
-----                               30  ; does need to be followed by whitespace.
+----                               29  ; any code.  The label colon is optional for .const, and the label must be
+----                               30  ; followed by whitespace.
 ----    EQU 0000                   31  RAMST   .const     00000h          
 ----    EQU C000                   32  ROMST   .const     0c000h         
 ----                               33  

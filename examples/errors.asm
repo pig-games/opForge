@@ -20,12 +20,12 @@ bad:    .byte  "where is the .end  ; ERR: unterminated string
 special: .byte  "\t\n\r",bah,beh, bad  ; ERR: undefined symbol
 
 ; column zero
-LABEL1:                 ; label can start in column 0
-LABEL2: MOV   C,A       ; label with instruction also OK
-NAME1   .const   7         ; name can start in column zero
-123                     ; ERR: not name or label
-"abc"                   ; ERR: not name or label
-+                       ; ERR: not name or label
+LABEL1:                 ; symbol can start in column 0
+LABEL2: MOV   C,A       ; symbol with instruction also OK
+NAME1   .const   7         ; symbol can start in column zero
+123                     ; ERR: not symbol
+"abc"                   ; ERR: not symbol
++                       ; ERR: not symbol
 mov h,l                 ; ERR: instruction can't start in column zero
 
 ; extra information on line and extra/incorrect arguments
@@ -62,14 +62,12 @@ var2:   .word      255 + 10; OK as a 16 bit value
 var3:   .byte      255 + 10; *ERR: 8 bit constant overflow
 
 
-; name/label mismatch
-nam1    .word  7           ; ERR: .word uses label, not name
-nam2    .ds  10          ; ERR: .ds uses label, not name
-nam3    jmp 0           ; ERR: instruction uses label, not name
-lab1:   .const 6           ; ERR: .const uses name, not label
-lab2:   .var 8           ; ERR: .var uses name, not label
+; assignment errors
+undef   += 1             ; ERR: symbol has not been defined
+const1  = 1              ; OK
+const1  += 1             ; ERR: symbol is read-only
 
-; redeine symbols and labels
+; redefine symbols
 equ1    .const 1           ; OK
 equ1    .const 2           ; ERR: redefined symbol with .const
 set1    .var 1           ; OK

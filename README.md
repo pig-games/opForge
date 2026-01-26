@@ -2,7 +2,7 @@
 Intel 8085 Assembler with expressions, directives, and preprocessor macros.
 
 This is an assembler for Intel 8080 and 8085 processors. It was originally based on a fork of [**asm85** by Tom Nisbet](https://github.com/eriktier/asm85).
-It is now more inspired by 64tass in terms of features and notational style.
+It is now more inspired by [64tass](https://tass64.sourceforge.net) in terms of features and notational style.
 It produces optional Intel Hex, listing, and binary image outputs, selected by command-line arguments.
 
 For all documentation on features and syntax read: [asm485 Reference Manual](docs/asm485-reference-manual.md).

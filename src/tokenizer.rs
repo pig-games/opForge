@@ -111,63 +111,59 @@ impl<'a> Tokenizer<'a> {
         self.skip_white();
         let start = self.cursor;
         let c = self.current_byte();
-        if c == 0 {
-            return Ok(Token {
-                kind: TokenKind::End,
-                span: Span::new(self.line_num, start, start),
-            });
-        }
-        if c == b';' {
-            self.cursor = self.input.len();
-            return Ok(Token {
-                kind: TokenKind::End,
-                span: Span::new(self.line_num, start, start),
-            });
-        }
-
-        if is_ident_start(c) {
-            return self.scan_identifier();
-        }
-        if is_digit(c) {
-            return self.scan_number();
-        }
-        if c == b'"' || c == b'\'' {
-            return self.scan_string();
-        }
-        if c == b'.' {
-            self.cursor = self.cursor.saturating_add(1);
-            return Ok(Token {
-                kind: TokenKind::Dot,
-                span: Span::new(self.line_num, start, self.cursor),
-            });
-        }
-        if c == b'?' {
-            self.cursor = self.cursor.saturating_add(1);
-            return Ok(Token {
-                kind: TokenKind::Question,
-                span: Span::new(self.line_num, start, self.cursor),
-            });
-        }
-        if c == b'$' {
-            if is_hex_digit(self.peek_raw_byte(1)) || self.peek_raw_byte(1) == b'_' {
-                return self.scan_prefixed_number(16);
+        match c {
+            0 => {
+                return Ok(Token {
+                    kind: TokenKind::End,
+                    span: Span::new(self.line_num, start, start),
+                });
             }
-            self.cursor = self.cursor.saturating_add(1);
-            return Ok(Token {
-                kind: TokenKind::Dollar,
-                span: Span::new(self.line_num, start, self.cursor),
-            });
-        }
-        if c == b'%' {
-            let next = self.peek_raw_byte(1);
-            if is_bin_digit(next) && self.is_prefix_context(start) {
-                return self.scan_prefixed_number(2);
+            b';' => {
+                self.cursor = self.input.len();
+                return Ok(Token {
+                    kind: TokenKind::End,
+                    span: Span::new(self.line_num, start, start),
+                });
             }
-            self.cursor = self.cursor.saturating_add(1);
-            return Ok(Token {
-                kind: TokenKind::Operator(OperatorKind::Mod),
-                span: Span::new(self.line_num, start, self.cursor),
-            });
+            _ if is_ident_start(c) => return self.scan_identifier(),
+            _ if is_digit(c) => return self.scan_number(),
+            b'"' | b'\'' => return self.scan_string(),
+            b'.' => {
+                self.cursor = self.cursor.saturating_add(1);
+                return Ok(Token {
+                    kind: TokenKind::Dot,
+                    span: Span::new(self.line_num, start, self.cursor),
+                });
+            }
+            b'?' => {
+                self.cursor = self.cursor.saturating_add(1);
+                return Ok(Token {
+                    kind: TokenKind::Question,
+                    span: Span::new(self.line_num, start, self.cursor),
+                });
+            }
+            b'$' => {
+                if is_hex_digit(self.peek_raw_byte(1)) || self.peek_raw_byte(1) == b'_' {
+                    return self.scan_prefixed_number(16);
+                }
+                self.cursor = self.cursor.saturating_add(1);
+                return Ok(Token {
+                    kind: TokenKind::Dollar,
+                    span: Span::new(self.line_num, start, self.cursor),
+                });
+            }
+            b'%' => {
+                let next = self.peek_raw_byte(1);
+                if is_bin_digit(next) && self.is_prefix_context(start) {
+                    return self.scan_prefixed_number(2);
+                }
+                self.cursor = self.cursor.saturating_add(1);
+                return Ok(Token {
+                    kind: TokenKind::Operator(OperatorKind::Mod),
+                    span: Span::new(self.line_num, start, self.cursor),
+                });
+            }
+            _ => {}
         }
 
         self.cursor = self.cursor.saturating_add(1);
@@ -226,31 +222,32 @@ impl<'a> Tokenizer<'a> {
                     TokenKind::Operator(OperatorKind::BitXor)
                 }
             }
-            b'<' => {
-                if self.peek_raw_byte(0) == b'<' {
+            b'<' => match self.peek_raw_byte(0) {
+                b'<' => {
                     self.cursor = self.cursor.saturating_add(1);
                     TokenKind::Operator(OperatorKind::Shl)
-                } else if self.peek_raw_byte(0) == b'=' {
+                }
+                b'=' => {
                     self.cursor = self.cursor.saturating_add(1);
                     TokenKind::Operator(OperatorKind::Le)
-                } else if self.peek_raw_byte(0) == b'>' {
+                }
+                b'>' => {
                     self.cursor = self.cursor.saturating_add(1);
                     TokenKind::Operator(OperatorKind::Ne)
-                } else {
-                    TokenKind::Operator(OperatorKind::Lt)
                 }
-            }
-            b'>' => {
-                if self.peek_raw_byte(0) == b'>' {
+                _ => TokenKind::Operator(OperatorKind::Lt),
+            },
+            b'>' => match self.peek_raw_byte(0) {
+                b'>' => {
                     self.cursor = self.cursor.saturating_add(1);
                     TokenKind::Operator(OperatorKind::Shr)
-                } else if self.peek_raw_byte(0) == b'=' {
+                }
+                b'=' => {
                     self.cursor = self.cursor.saturating_add(1);
                     TokenKind::Operator(OperatorKind::Ge)
-                } else {
-                    TokenKind::Operator(OperatorKind::Gt)
                 }
-            }
+                _ => TokenKind::Operator(OperatorKind::Gt),
+            },
             _ => {
                 return Err(TokenizeError {
                     message: "Illegal character".to_string(),

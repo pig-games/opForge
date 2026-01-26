@@ -541,23 +541,28 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
-        if self.match_operator(OperatorKind::Lt) {
-            let span = self.prev_span();
-            let expr = self.parse_expr()?;
-            return Ok(Expr::Unary {
-                op: UnaryOp::Low,
-                expr: Box::new(expr),
-                span,
-            });
-        }
-        if self.match_operator(OperatorKind::Gt) {
-            let span = self.prev_span();
-            let expr = self.parse_expr()?;
-            return Ok(Expr::Unary {
-                op: UnaryOp::High,
-                expr: Box::new(expr),
-                span,
-            });
+        match self.peek_operator_kind() {
+            Some(OperatorKind::Lt) => {
+                self.index += 1;
+                let span = self.prev_span();
+                let expr = self.parse_expr()?;
+                return Ok(Expr::Unary {
+                    op: UnaryOp::Low,
+                    expr: Box::new(expr),
+                    span,
+                });
+            }
+            Some(OperatorKind::Gt) => {
+                self.index += 1;
+                let span = self.prev_span();
+                let expr = self.parse_expr()?;
+                return Ok(Expr::Unary {
+                    op: UnaryOp::High,
+                    expr: Box::new(expr),
+                    span,
+                });
+            }
+            _ => {}
         }
 
         self.parse_ternary()
@@ -591,25 +596,20 @@ impl Parser {
     fn parse_logical_or(&mut self) -> Result<Expr, ParseError> {
         let mut node = self.parse_logical_and()?;
         loop {
-            let op = if self.match_operator(OperatorKind::LogicOr) {
-                Some(BinaryOp::LogicOr)
-            } else if self.match_operator(OperatorKind::LogicXor) {
-                Some(BinaryOp::LogicXor)
-            } else {
-                None
+            let op = match self.peek_operator_kind() {
+                Some(OperatorKind::LogicOr) => BinaryOp::LogicOr,
+                Some(OperatorKind::LogicXor) => BinaryOp::LogicXor,
+                _ => break,
             };
-            if let Some(op) = op {
-                let op_span = self.prev_span();
-                let right = self.parse_logical_and()?;
-                node = Expr::Binary {
-                    op,
-                    left: Box::new(node),
-                    right: Box::new(right),
-                    span: op_span,
-                };
-            } else {
-                break;
-            }
+            self.index += 1;
+            let op_span = self.prev_span();
+            let right = self.parse_logical_and()?;
+            node = Expr::Binary {
+                op,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
         }
         Ok(node)
     }
@@ -677,33 +677,24 @@ impl Parser {
     fn parse_compare(&mut self) -> Result<Expr, ParseError> {
         let mut node = self.parse_shift()?;
         loop {
-            let op = if self.match_operator(OperatorKind::Eq) {
-                Some(BinaryOp::Eq)
-            } else if self.match_operator(OperatorKind::Ne) {
-                Some(BinaryOp::Ne)
-            } else if self.match_operator(OperatorKind::Ge) {
-                Some(BinaryOp::Ge)
-            } else if self.match_operator(OperatorKind::Gt) {
-                Some(BinaryOp::Gt)
-            } else if self.match_operator(OperatorKind::Le) {
-                Some(BinaryOp::Le)
-            } else if self.match_operator(OperatorKind::Lt) {
-                Some(BinaryOp::Lt)
-            } else {
-                None
+            let op = match self.peek_operator_kind() {
+                Some(OperatorKind::Eq) => BinaryOp::Eq,
+                Some(OperatorKind::Ne) => BinaryOp::Ne,
+                Some(OperatorKind::Ge) => BinaryOp::Ge,
+                Some(OperatorKind::Gt) => BinaryOp::Gt,
+                Some(OperatorKind::Le) => BinaryOp::Le,
+                Some(OperatorKind::Lt) => BinaryOp::Lt,
+                _ => break,
             };
-            if let Some(op) = op {
-                let op_span = self.prev_span();
-                let right = self.parse_shift()?;
-                node = Expr::Binary {
-                    op,
-                    left: Box::new(node),
-                    right: Box::new(right),
-                    span: op_span,
-                };
-            } else {
-                break;
-            }
+            self.index += 1;
+            let op_span = self.prev_span();
+            let right = self.parse_shift()?;
+            node = Expr::Binary {
+                op,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
         }
         Ok(node)
     }
@@ -711,25 +702,20 @@ impl Parser {
     fn parse_shift(&mut self) -> Result<Expr, ParseError> {
         let mut node = self.parse_sum()?;
         loop {
-            let op = if self.match_operator(OperatorKind::Shl) {
-                Some(BinaryOp::Shl)
-            } else if self.match_operator(OperatorKind::Shr) {
-                Some(BinaryOp::Shr)
-            } else {
-                None
+            let op = match self.peek_operator_kind() {
+                Some(OperatorKind::Shl) => BinaryOp::Shl,
+                Some(OperatorKind::Shr) => BinaryOp::Shr,
+                _ => break,
             };
-            if let Some(op) = op {
-                let op_span = self.prev_span();
-                let right = self.parse_sum()?;
-                node = Expr::Binary {
-                    op,
-                    left: Box::new(node),
-                    right: Box::new(right),
-                    span: op_span,
-                };
-            } else {
-                break;
-            }
+            self.index += 1;
+            let op_span = self.prev_span();
+            let right = self.parse_sum()?;
+            node = Expr::Binary {
+                op,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
         }
         Ok(node)
     }
@@ -737,25 +723,20 @@ impl Parser {
     fn parse_sum(&mut self) -> Result<Expr, ParseError> {
         let mut node = self.parse_term()?;
         loop {
-            let op = if self.match_operator(OperatorKind::Plus) {
-                Some(BinaryOp::Add)
-            } else if self.match_operator(OperatorKind::Minus) {
-                Some(BinaryOp::Subtract)
-            } else {
-                None
+            let op = match self.peek_operator_kind() {
+                Some(OperatorKind::Plus) => BinaryOp::Add,
+                Some(OperatorKind::Minus) => BinaryOp::Subtract,
+                _ => break,
             };
-            if let Some(op) = op {
-                let op_span = self.prev_span();
-                let right = self.parse_term()?;
-                node = Expr::Binary {
-                    op,
-                    left: Box::new(node),
-                    right: Box::new(right),
-                    span: op_span,
-                };
-            } else {
-                break;
-            }
+            self.index += 1;
+            let op_span = self.prev_span();
+            let right = self.parse_term()?;
+            node = Expr::Binary {
+                op,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
         }
         Ok(node)
     }
@@ -763,27 +744,21 @@ impl Parser {
     fn parse_term(&mut self) -> Result<Expr, ParseError> {
         let mut node = self.parse_power()?;
         loop {
-            let op = if self.match_operator(OperatorKind::Multiply) {
-                Some(BinaryOp::Multiply)
-            } else if self.match_operator(OperatorKind::Divide) {
-                Some(BinaryOp::Divide)
-            } else if self.match_operator(OperatorKind::Mod) {
-                Some(BinaryOp::Mod)
-            } else {
-                None
+            let op = match self.peek_operator_kind() {
+                Some(OperatorKind::Multiply) => BinaryOp::Multiply,
+                Some(OperatorKind::Divide) => BinaryOp::Divide,
+                Some(OperatorKind::Mod) => BinaryOp::Mod,
+                _ => break,
             };
-            if let Some(op) = op {
-                let op_span = self.prev_span();
-                let right = self.parse_power()?;
-                node = Expr::Binary {
-                    op,
-                    left: Box::new(node),
-                    right: Box::new(right),
-                    span: op_span,
-                };
-            } else {
-                break;
-            }
+            self.index += 1;
+            let op_span = self.prev_span();
+            let right = self.parse_power()?;
+            node = Expr::Binary {
+                op,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
         }
         Ok(node)
     }
@@ -804,38 +779,18 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
-        if self.match_operator(OperatorKind::Plus) {
+        if let Some(op) = match self.peek_operator_kind() {
+            Some(OperatorKind::Plus) => Some(UnaryOp::Plus),
+            Some(OperatorKind::Minus) => Some(UnaryOp::Minus),
+            Some(OperatorKind::BitNot) => Some(UnaryOp::BitNot),
+            Some(OperatorKind::LogicNot) => Some(UnaryOp::LogicNot),
+            _ => None,
+        } {
+            self.index += 1;
             let span = self.prev_span();
             let expr = self.parse_unary()?;
             return Ok(Expr::Unary {
-                op: UnaryOp::Plus,
-                expr: Box::new(expr),
-                span,
-            });
-        }
-        if self.match_operator(OperatorKind::Minus) {
-            let span = self.prev_span();
-            let expr = self.parse_unary()?;
-            return Ok(Expr::Unary {
-                op: UnaryOp::Minus,
-                expr: Box::new(expr),
-                span,
-            });
-        }
-        if self.match_operator(OperatorKind::BitNot) {
-            let span = self.prev_span();
-            let expr = self.parse_unary()?;
-            return Ok(Expr::Unary {
-                op: UnaryOp::BitNot,
-                expr: Box::new(expr),
-                span,
-            });
-        }
-        if self.match_operator(OperatorKind::LogicNot) {
-            let span = self.prev_span();
-            let expr = self.parse_unary()?;
-            return Ok(Expr::Unary {
-                op: UnaryOp::LogicNot,
+                op,
                 expr: Box::new(expr),
                 span,
             });
@@ -915,6 +870,15 @@ impl Parser {
             }
         }
         false
+    }
+
+    fn peek_operator_kind(&self) -> Option<OperatorKind> {
+        if let Some(token) = self.peek() {
+            if let TokenKind::Operator(op) = token.kind {
+                return Some(op);
+            }
+        }
+        None
     }
 
     fn next(&mut self) -> Option<Token> {

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Erik van der Tier
+
 // Preprocessor for .IFDEF/.IFNDEF/.ELSE/.ELSEIF/.ENDIF/.INCLUDE directives.
 
 use std::collections::HashMap;

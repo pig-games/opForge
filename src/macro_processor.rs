@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Erik van der Tier
+
 // Assembler macro processor implementing 64tass-style .macro/.endmacro expansion.
 
 use std::collections::HashMap;

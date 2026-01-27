@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Erik van der Tier
+
 // Library entry exposing assembler modules.
 pub mod assembler;
 pub mod imagestore;

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Erik van der Tier
+
 // Image store with hex/bin output helpers.
 
 use std::io::{self, Write};

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Erik van der Tier
+
 // Tokenizer for assembly source with spans.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

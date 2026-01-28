@@ -22,6 +22,13 @@ The assembler is organized into layers with hierarchical parsing and encoding:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
+│                 Module Registry / DI                        │
+│  Registers CPU families + CPU variants                      │
+│  Binds dialect + family + cpu into a pipeline               │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
 │                    Syntax Dialect (optional)                │
 │  Maps dialect-specific mnemonics to instruction encoding    │
 │  Transparent for families with uniform syntax (e.g., 6502)  │
@@ -76,6 +83,16 @@ The generic parser handles all **CPU-independent** parsing:
 - **Comments**: Line and block comments
 
 For **instructions**, the generic parser extracts the mnemonic and raw operand tokens, but does *not* interpret addressing mode syntax (that's family-specific).
+
+### Module Registry / Dependency Injection
+
+The assembler owns a **registry** that wires the family and CPU modules into a standardized pipeline:
+
+- **Family module**: declares the base instruction set, operand parsing, and addressing modes.
+- **CPU module**: declares extensions (or none), and validates CPU-specific constraints.
+- **Dialect module** (optional): remaps mnemonics and operand ordering to the family canonical form.
+
+The registry is responsible for selecting the right modules based on the configured target CPU, then binding them together for the assembly run.
 
 ### Family Handler
 
@@ -272,6 +289,46 @@ Each CPU type maps to exactly one family. The assembler selects the appropriate 
 - Instruction encoding for CPU-specific mnemonics
 - Query methods for supported modes and mnemonics
 
+### Module Interfaces (Standardized)
+
+The DI model standardizes a minimal, full-surface interface so all families and CPUs are registered uniformly.
+
+```rust
+/// Registers a family in the assembler registry.
+pub trait FamilyModule {
+       fn family_id(&self) -> CpuFamily;
+       fn canonical_dialect(&self) -> &'static str;
+       fn dialects(&self) -> &'static [Box<dyn DialectModule>];
+       fn base_instruction_set(&self) -> &'static InstructionTable;
+       fn parser(&self) -> Box<dyn FamilyParser>;
+       fn encoder(&self) -> Box<dyn FamilyEncoder>;
+}
+
+/// Registers a concrete CPU in the assembler registry.
+pub trait CpuModule {
+       fn cpu_id(&self) -> CpuType;
+       fn family_id(&self) -> CpuFamily;
+       fn extension_instruction_set(&self) -> &'static InstructionTable;
+       fn validator(&self) -> Box<dyn CpuValidator>;
+       fn operand_resolver(&self) -> Box<dyn CpuOperandResolver>;
+}
+
+/// Optional dialect mapping for a family.
+pub trait DialectModule {
+       fn dialect_id(&self) -> &'static str;
+       fn family_id(&self) -> CpuFamily;
+       fn map_mnemonic(&self, mnemonic: &str, operands: &[Token]) -> DialectResult;
+}
+```
+
+Notes:
+
+- **Base instruction set** lives in the family module.
+- **Extension instruction set** lives in the CPU module; it may be empty.
+- **Dialect** is owned by a family and never crosses family boundaries.
+
+These interfaces enforce a consistent registration pattern and make it explicit which layer owns each piece of behavior.
+
 ### Operand Representation
 
 Two levels of operand types support the hierarchical model:
@@ -373,6 +430,16 @@ A **Syntax Dialect** is a mnemonic mapping layer that sits between the generic p
 **Transparent Dialect** (default): Mnemonics pass through unchanged. Used when all family members share the same mnemonic set (e.g., MOS 6502 family).
 
 **Mapping Dialect**: Transforms mnemonics and potentially operand structure before encoding. Used when a CPU uses different assembly syntax for the same opcodes.
+
+### Dialects and Dependency Injection
+
+Dialect modules are registered alongside the family. The registry selects a dialect based on:
+
+- Explicit command-line selection (if provided), or
+- The CPU default dialect defined in its module, or
+- The family canonical dialect.
+
+This ensures dialect selection is explicit and consistent, while still allowing CPUs to share the same family and base instruction set.
 
 ### Intel 8080 Family Dialects
 

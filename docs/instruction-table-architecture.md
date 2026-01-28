@@ -1,6 +1,6 @@
 # Instruction Table Architecture
 
-This document describes the unified instruction table architecture for the Intel 8080 family CPUs.
+This document describes the unified instruction table architecture used across CPU families, including the Intel 8080 family. It supports family base tables, CPU extension tables, and optional dialect mapping.
 
 ## Implementation Status
 
@@ -18,13 +18,13 @@ The following components have been created:
 
 ## Problem Statement
 
-Previously there were two separate, full instruction tables:
+Previously there were separate, full instruction tables per CPU or dialect. For example:
 1. `I8085_INSTRUCTION_TABLE` - Intel 8080/8085 mnemonics (MOV, MVI, JMP, etc.)
 2. `Z80_INSTRUCTION_TABLE` - Zilog Z80 mnemonics (LD, JP, JR, etc.)
 
 Those legacy tables have been removed in favor of a canonical family table plus CPU extensions.
 
-## Proposed Architecture
+## Architecture
 
 ### Three-Layer Design
 
@@ -32,16 +32,14 @@ Those legacy tables have been removed in favor of a canonical family table plus 
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Dialect Layer                               │
 │  Maps dialect mnemonic → canonical mnemonic + operand transform │
-│  Intel8080Dialect: identity mapping                              │
-│  ZilogDialect: LD → MOV/MVI/LXI, JP → JMP, etc.                 │
-│  (Generic naming: "from" → "canonical")                         │
+│  Family-owned; optional, may be identity                         │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Family Base Table                             │
-│  Canonical encoding using Intel 8080 mnemonics                   │
+│  Canonical encoding using family mnemonics                        │
 │  (mnemonic, reg1, reg2) → (opcode, prefix, arg_type)            │
-│  ~240 entries for base 8080 instruction set                      │
+│  Example: ~240 entries for base 8080 instruction set              │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -184,13 +182,45 @@ pub static Z80_EXTENSION_TABLE: &[InstructionEntry] = &[
 ```rust
 fn resolve_instruction(
     cpu: CpuType,
-        SyntaxDialect::Zilog => map_dialect_to_canonical(mnemonic, operands)?,
-    };
-    
-    // 3. Look up in family base table
-    FAMILY_INSTRUCTION_TABLE.lookup(canonical_mnemonic, transformed_operands)
-        .map(|entry| encode(entry, transformed_operands))
+    dialect: &dyn DialectModule,
+    mnemonic: &str,
+    operands: &[Token],
+) -> Result<Vec<u8>, AsmError> {
+    // 1. Apply dialect mapping
+    let mapped = dialect.map_mnemonic(mnemonic, operands)?;
+
+    // 2. Look up in family base table
+    if let Some(entry) = FAMILY_INSTRUCTION_TABLE.lookup(mapped.mnemonic, mapped.operands) {
+        return encode(entry, mapped.operands);
+    }
+
+    // 3. Fall through to CPU extension table
+    CPU_EXTENSION_TABLES[cpu]
+        .lookup(mapped.mnemonic, mapped.operands)
+        .map(|entry| encode(entry, mapped.operands))
+        .ok_or(AsmError::UnknownInstruction)
 }
+```
+
+## Family/CPU Module Contract
+
+The instruction tables are provided through standardized registration interfaces.
+
+```rust
+pub trait FamilyModule {
+    fn family_id(&self) -> CpuFamily;
+    fn base_instruction_set(&self) -> &'static InstructionTable;
+    fn dialects(&self) -> &'static [Box<dyn DialectModule>];
+}
+
+pub trait CpuModule {
+    fn cpu_id(&self) -> CpuType;
+    fn family_id(&self) -> CpuFamily;
+    fn extension_instruction_set(&self) -> &'static InstructionTable;
+}
+```
+
+The assembler builds a lookup pipeline using the family base table and the CPU extension table. Dialect mapping (if any) is applied before table lookup.
 ```
 
 ## Benefits

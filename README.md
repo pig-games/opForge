@@ -1,7 +1,7 @@
 # asm485
 Intel 8085 Assembler with expressions, directives, and preprocessor macros.
 
-This is an assembler for 8080 Family processors (currently 8080, 8085 and z80) and MOS 6502 Family
+This is an multi-target assembler for 8080 Family processors (currently 8080, 8085 and z80) and MOS 6502 Family
 (currently 6502 and 65c02) processors.
 It was originally based on a fork of [**asm85** by Tom Nisbet](https://github.com/eriktier/asm85).
 It is now more inspired by [64tass](https://tass64.sourceforge.net) in terms of features and notational style.

@@ -18,8 +18,7 @@ use super::{FamilyOperand, Intel8080FamilyHandler, Operand};
 pub const DIALECT_INTEL8080: &str = "intel8080";
 pub const DIALECT_ZILOG: &str = "zilog";
 pub const FAMILY_ID: CpuFamily = CpuFamily::new("intel8080");
-pub const FAMILY_CPU_NAME: &str = "8080";
-pub const FAMILY_CPU_ID: CpuType = crate::i8085::module::CPU_ID;
+const FAMILY_CPU_NAME: &str = "8080";
 
 pub struct Intel8080FamilyModule;
 
@@ -29,7 +28,7 @@ impl FamilyModule for Intel8080FamilyModule {
     }
 
     fn family_cpu_id(&self) -> Option<CpuType> {
-        Some(FAMILY_CPU_ID)
+        Some(crate::i8085::module::CPU_ID)
     }
 
     fn family_cpu_name(&self) -> Option<&'static str> {

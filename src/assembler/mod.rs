@@ -52,7 +52,9 @@ use cli::{
 pub use cli::VERSION;
 pub use crate::core::assembler::error::{AsmRunError as RunError, AsmRunReport as RunReport};
 
-const DEFAULT_CPU: CpuType = crate::i8085::module::CPU_ID;
+fn default_cpu() -> CpuType {
+    crate::i8085::module::CPU_ID
+}
 
 /// Run the assembler with command-line arguments.
 pub fn run() -> Result<Vec<AsmRunReport>, AsmRunError> {
@@ -279,7 +281,7 @@ impl Assembler {
             symbols: SymbolTable::new(),
             image: ImageStore::new(65536),
             diagnostics: Vec::new(),
-            cpu: DEFAULT_CPU,
+            cpu: default_cpu(),
             registry,
         }
     }
@@ -467,7 +469,7 @@ struct AsmLine<'a> {
 impl<'a> AsmLine<'a> {
     #[cfg(test)]
     fn new(symbols: &'a mut SymbolTable, registry: &'a ModuleRegistry) -> Self {
-        Self::with_cpu(symbols, DEFAULT_CPU, registry)
+        Self::with_cpu(symbols, default_cpu(), registry)
     }
 
     fn with_cpu(symbols: &'a mut SymbolTable, cpu: CpuType, registry: &'a ModuleRegistry) -> Self {
@@ -2208,9 +2210,9 @@ mod tests {
     use crate::core::registry::ModuleRegistry;
     use crate::families::intel8080::module::Intel8080FamilyModule;
     use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
-    use crate::i8085::module::{CPU_ID as I8085_CPU_ID, I8085CpuModule};
+    use crate::i8085::module::{CPU_ID as i8085_cpu_id, I8085CpuModule};
     use crate::m65c02::module::M65C02CpuModule;
-    use crate::z80::module::{CPU_ID as Z80_CPU_ID, Z80CpuModule};
+    use crate::z80::module::{CPU_ID as z80_cpu_id, Z80CpuModule};
     use crate::core::macro_processor::MacroProcessor;
     use crate::core::preprocess::Preprocessor;
     use crate::core::symbol_table::SymbolTable;
@@ -2409,24 +2411,24 @@ mod tests {
 
     #[test]
     fn zilog_dialect_encodes_like_intel() {
-        let intel = assemble_bytes(I8085_CPU_ID, "    MVI A,55h");
-        let zilog = assemble_bytes(Z80_CPU_ID, "    LD A,55h");
+        let intel = assemble_bytes(i8085_cpu_id, "    MVI A,55h");
+        let zilog = assemble_bytes(z80_cpu_id, "    LD A,55h");
         assert_eq!(intel, zilog);
 
-        let intel = assemble_bytes(I8085_CPU_ID, "    MOV A,B");
-        let zilog = assemble_bytes(Z80_CPU_ID, "    LD A,B");
+        let intel = assemble_bytes(i8085_cpu_id, "    MOV A,B");
+        let zilog = assemble_bytes(z80_cpu_id, "    LD A,B");
         assert_eq!(intel, zilog);
 
-        let intel = assemble_bytes(I8085_CPU_ID, "    JMP 1000h");
-        let zilog = assemble_bytes(Z80_CPU_ID, "    JP 1000h");
+        let intel = assemble_bytes(i8085_cpu_id, "    JMP 1000h");
+        let zilog = assemble_bytes(z80_cpu_id, "    JP 1000h");
         assert_eq!(intel, zilog);
 
-        let intel = assemble_bytes(I8085_CPU_ID, "    JZ 1000h");
-        let zilog = assemble_bytes(Z80_CPU_ID, "    JP Z,1000h");
+        let intel = assemble_bytes(i8085_cpu_id, "    JZ 1000h");
+        let zilog = assemble_bytes(z80_cpu_id, "    JP Z,1000h");
         assert_eq!(intel, zilog);
 
-        let intel = assemble_bytes(I8085_CPU_ID, "    ADI 10h");
-        let zilog = assemble_bytes(Z80_CPU_ID, "    ADD A,10h");
+        let intel = assemble_bytes(i8085_cpu_id, "    ADI 10h");
+        let zilog = assemble_bytes(z80_cpu_id, "    ADD A,10h");
         assert_eq!(intel, zilog);
     }
 

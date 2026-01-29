@@ -15,8 +15,7 @@ use super::I8085CpuHandler;
 
 pub struct I8085CpuModule;
 
-pub const CPU_ID: CpuType = CpuType::new("i8085");
-pub const CPU_NAME: &str = "8085";
+pub const CPU_ID: CpuType = CpuType::new("8085");
 
 impl CpuModule for I8085CpuModule {
     fn cpu_id(&self) -> CpuType {
@@ -28,7 +27,7 @@ impl CpuModule for I8085CpuModule {
     }
 
     fn cpu_name(&self) -> &'static str {
-        CPU_NAME
+        CPU_ID.as_str()
     }
 
     fn default_dialect(&self) -> &'static str {

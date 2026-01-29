@@ -22,7 +22,7 @@ The assembler is organized into layers with hierarchical parsing and encoding:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                 Module Registry / DI                        │
+│                 Module Registry                             │
 │  Registers CPU families + CPU variants                      │
 │  Binds dialect + family + cpu into a pipeline               │
 └─────────────────────────────────────────────────────────────┘
@@ -84,7 +84,7 @@ The generic parser handles all **CPU-independent** parsing:
 
 For **instructions**, the generic parser extracts the mnemonic and raw operand tokens, but does *not* interpret addressing mode syntax (that's family-specific).
 
-### Module Registry / Dependency Injection
+### Module Registry
 
 The assembler owns a **registry** that wires the family and CPU modules into a standardized pipeline:
 
@@ -289,9 +289,50 @@ Each CPU type maps to exactly one family. The assembler selects the appropriate 
 - Instruction encoding for CPU-specific mnemonics
 - Query methods for supported modes and mnemonics
 
+## Instruction Resolution Architecture
+
+Instruction resolution is standardized across all families using a three-layer pipeline:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Dialect Layer                               │
+│  Maps dialect mnemonic → canonical mnemonic + operand transform │
+│  Family-owned; optional, may be identity                         │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    Family Base Resolver                          │
+│  Canonical encoding using family mnemonics                        │
+│  (mnemonic, operands) → bytes or error                           │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                  CPU Extension Resolver                          │
+│  CPU-only mnemonics and encodings                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Resolution Pipeline
+
+1. Apply dialect mapping (if any) to normalize mnemonics and operands.
+2. Resolve via the family base resolver.
+3. If not found, resolve via the CPU extension resolver.
+
+### Standardized Ownership
+
+- **Family module** owns the base instruction logic and canonical mnemonic set.
+- **CPU module** owns extension logic for CPU-specific instructions and encodings.
+- **Dialect module** (optional) owns mnemonic remapping for dialects.
+
+This structure keeps shared opcodes defined once while allowing CPU-specific growth and dialect flexibility. The concrete table format is an internal implementation detail of each family or CPU module.
+
+### Future Exploration
+
+Later we may explore a **generic instruction table format** if multiple families converge on similar table semantics. That would be an internal optimization and would not change the public resolver interfaces.
+
 ### Module Interfaces (Standardized)
 
-The DI model standardizes a minimal, full-surface interface so all families and CPUs are registered uniformly.
+The registry model standardizes a minimal, full-surface interface so all families and CPUs are registered uniformly.
 
 ```rust
 /// Registers a family in the assembler registry.
@@ -299,18 +340,17 @@ pub trait FamilyModule {
        fn family_id(&self) -> CpuFamily;
        fn canonical_dialect(&self) -> &'static str;
        fn dialects(&self) -> &'static [Box<dyn DialectModule>];
-       fn base_instruction_set(&self) -> &'static InstructionTable;
        fn parser(&self) -> Box<dyn FamilyParser>;
-       fn encoder(&self) -> Box<dyn FamilyEncoder>;
+       fn resolver(&self) -> Box<dyn FamilyInstructionResolver>;
 }
 
 /// Registers a concrete CPU in the assembler registry.
 pub trait CpuModule {
        fn cpu_id(&self) -> CpuType;
        fn family_id(&self) -> CpuFamily;
-       fn extension_instruction_set(&self) -> &'static InstructionTable;
        fn validator(&self) -> Box<dyn CpuValidator>;
        fn operand_resolver(&self) -> Box<dyn CpuOperandResolver>;
+       fn instruction_resolver(&self) -> Box<dyn CpuInstructionResolver>;
 }
 
 /// Optional dialect mapping for a family.
@@ -319,15 +359,24 @@ pub trait DialectModule {
        fn family_id(&self) -> CpuFamily;
        fn map_mnemonic(&self, mnemonic: &str, operands: &[Token]) -> DialectResult;
 }
+
+/// Instruction resolution interface hides table formats.
+pub trait FamilyInstructionResolver {
+       fn resolve(&self, mnemonic: &str, operands: &[FamilyOperand]) -> ResolveResult;
+}
+
+pub trait CpuInstructionResolver {
+       fn resolve(&self, mnemonic: &str, operands: &[Operand]) -> ResolveResult;
+}
 ```
 
 Notes:
 
-- **Base instruction set** lives in the family module.
-- **Extension instruction set** lives in the CPU module; it may be empty.
+- **Base instruction set** lives in the family module, but is not exposed directly.
+- **Extension instruction set** lives in the CPU module, but is not exposed directly.
 - **Dialect** is owned by a family and never crosses family boundaries.
 
-These interfaces enforce a consistent registration pattern and make it explicit which layer owns each piece of behavior.
+These interfaces enforce a consistent registration pattern and make it explicit which layer owns each piece of behavior while hiding the concrete instruction table format.
 
 ### Operand Representation
 
@@ -431,7 +480,7 @@ A **Syntax Dialect** is a mnemonic mapping layer that sits between the generic p
 
 **Mapping Dialect**: Transforms mnemonics and potentially operand structure before encoding. Used when a CPU uses different assembly syntax for the same opcodes.
 
-### Dialects and Dependency Injection
+### Dialects and Module Registry
 
 Dialect modules are registered alongside the family. The registry selects a dialect based on:
 

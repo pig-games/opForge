@@ -12,6 +12,7 @@
 pub mod dialect;
 pub mod extensions;
 pub mod handler;
+pub mod registry;
 
 pub use dialect::{is_z80_only_mnemonic, map_register};
 pub use extensions::{lookup_extension, Z80_EXTENSION_TABLE};

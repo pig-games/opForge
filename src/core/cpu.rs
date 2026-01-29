@@ -20,7 +20,7 @@ use crate::core::tokenizer::Span;
 ///
 /// Both dialects produce identical machine code for shared instructions,
 /// but the assembly source syntax is different.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SyntaxDialect {
     /// Intel 8080/8085 mnemonics: MOV, MVI, LDA, STA, JMP, JZ, ADI, etc.
     Intel8080,
@@ -52,7 +52,7 @@ impl SyntaxDialect {
 /// CPUs within the same family share certain characteristics like instruction
 /// formats, register models, or special instructions that can be handled
 /// generically by the assembler.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CpuFamily {
     /// Intel 8080 family: 8080, 8085, Z80, Z180, etc.
     /// Shares RST 0-7 instructions, similar register model (A, B, C, D, E, H, L).
@@ -91,7 +91,7 @@ impl CpuFamily {
 }
 
 /// Supported CPU types.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum CpuType {
     /// Intel 8085 (default)
     #[default]

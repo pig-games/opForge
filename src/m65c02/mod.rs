@@ -31,5 +31,6 @@
 
 mod handler;
 pub mod instructions;
+pub mod registry;
 
 pub use handler::M65C02CpuHandler;

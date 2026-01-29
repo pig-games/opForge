@@ -29,6 +29,7 @@
 pub mod dialect;
 pub mod extensions;
 pub mod handler;
+pub mod registry;
 mod operand;
 pub mod table;
 

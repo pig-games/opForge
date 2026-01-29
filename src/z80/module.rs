@@ -16,7 +16,7 @@ use super::Z80CpuHandler;
 pub struct Z80CpuModule;
 
 pub const CPU_ID: CpuType = CpuType::new("z80");
-pub const CPU_NAMES: &[&str] = &["z80", "zilog"];
+pub const CPU_NAME: &str = "z80";
 
 impl CpuModule for Z80CpuModule {
     fn cpu_id(&self) -> CpuType {
@@ -27,8 +27,8 @@ impl CpuModule for Z80CpuModule {
         INTEL8080_FAMILY_ID
     }
 
-    fn cpu_names(&self) -> &'static [&'static str] {
-        CPU_NAMES
+    fn cpu_name(&self) -> &'static str {
+        CPU_NAME
     }
 
     fn default_dialect(&self) -> &'static str {

@@ -2205,7 +2205,6 @@ mod tests {
     use super::{
         AsmErrorKind, AsmLine, Assembler, LineStatus, ListingWriter,
     };
-    use crate::core::cpu::CpuType;
     use crate::core::registry::ModuleRegistry;
     use crate::families::intel8080::module::Intel8080FamilyModule;
     use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
@@ -2247,7 +2246,7 @@ mod tests {
         asm.process(line, 1, addr, pass)
     }
 
-    fn assemble_bytes(cpu: CpuType, line: &str) -> Vec<u8> {
+    fn assemble_bytes(cpu: crate::core::cpu::CpuType, line: &str) -> Vec<u8> {
         let mut symbols = SymbolTable::new();
         let registry = default_registry();
         let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);

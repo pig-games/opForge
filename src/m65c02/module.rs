@@ -16,7 +16,7 @@ use super::M65C02CpuHandler;
 pub struct M65C02CpuModule;
 
 pub const CPU_ID: CpuType = CpuType::new("m65c02");
-pub const CPU_NAMES: &[&str] = &["65c02", "m65c02", "w65c02", "wdc65c02"];
+pub const CPU_NAME: &str = "65c02";
 
 impl CpuModule for M65C02CpuModule {
     fn cpu_id(&self) -> CpuType {
@@ -27,8 +27,8 @@ impl CpuModule for M65C02CpuModule {
         MOS6502_FAMILY_ID
     }
 
-    fn cpu_names(&self) -> &'static [&'static str] {
-        CPU_NAMES
+    fn cpu_name(&self) -> &'static str {
+        CPU_NAME
     }
 
     fn default_dialect(&self) -> &'static str {

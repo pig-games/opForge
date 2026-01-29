@@ -98,6 +98,15 @@ pub trait CpuValidator: Send + Sync {
 
 pub trait FamilyModule: Send + Sync {
     fn family_id(&self) -> CpuFamily;
+    fn family_cpu_id(&self) -> Option<CpuType> {
+        None
+    }
+    fn family_cpu_name(&self) -> Option<&'static str> {
+        None
+    }
+    fn cpu_names(&self, registry: &ModuleRegistry) -> Vec<String> {
+        registry.family_cpu_names(self.family_id())
+    }
     fn canonical_dialect(&self) -> &'static str;
     fn dialects(&self) -> Vec<Box<dyn DialectModule>>;
     fn handler(&self) -> Box<dyn FamilyHandlerDyn>;
@@ -106,13 +115,7 @@ pub trait FamilyModule: Send + Sync {
 pub trait CpuModule: Send + Sync {
     fn cpu_id(&self) -> CpuType;
     fn family_id(&self) -> CpuFamily;
-    fn cpu_names(&self) -> &'static [&'static str];
-    fn cpu_display_name(&self) -> &'static str {
-        self.cpu_names()
-            .first()
-            .copied()
-            .unwrap_or_else(|| self.cpu_id().as_str())
-    }
+    fn cpu_name(&self) -> &'static str;
     fn default_dialect(&self) -> &'static str;
     fn handler(&self) -> Box<dyn CpuHandlerDyn>;
     fn validator(&self) -> Option<Box<dyn CpuValidator>> {
@@ -163,15 +166,19 @@ impl ModuleRegistry {
             let key = (family_id, normalize_dialect(dialect.dialect_id()));
             self.dialects.insert(key, dialect);
         }
+        if let (Some(cpu_id), Some(cpu_name)) =
+            (module.family_cpu_id(), module.family_cpu_name())
+        {
+            self.cpu_names
+                .insert(normalize_cpu_name(cpu_name), cpu_id);
+        }
         self.families.insert(family_id, module);
     }
 
     pub fn register_cpu(&mut self, module: Box<dyn CpuModule>) {
         let cpu_id = module.cpu_id();
-        for name in module.cpu_names() {
-            self.cpu_names
-                .insert(normalize_cpu_name(name), cpu_id);
-        }
+        self.cpu_names
+            .insert(normalize_cpu_name(module.cpu_name()), cpu_id);
         self.cpus.insert(cpu_id, module);
     }
 
@@ -182,7 +189,30 @@ impl ModuleRegistry {
     }
 
     pub fn cpu_display_name(&self, cpu: CpuType) -> Option<&'static str> {
-        self.cpus.get(&cpu).map(|module| module.cpu_display_name())
+        self.cpus.get(&cpu).map(|module| module.cpu_name())
+    }
+
+    pub fn family_cpu_names(&self, family: CpuFamily) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .cpus
+            .values()
+            .filter(|module| module.family_id() == family)
+            .map(|module| module.cpu_name().to_string())
+            .collect();
+
+        if let Some(module) = self.families.get(&family) {
+            if let Some(cpu_name) = module.family_cpu_name() {
+                names.push(cpu_name.to_string());
+            }
+        }
+
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    pub fn cpu_names_for_family(&self, family: CpuFamily) -> Vec<String> {
+        self.family_cpu_names(family)
     }
 
     pub fn cpu_name_list(&self) -> Vec<String> {

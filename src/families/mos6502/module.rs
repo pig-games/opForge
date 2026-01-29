@@ -18,13 +18,22 @@ use super::{FamilyOperand, M6502CpuHandler, MOS6502FamilyHandler, Operand};
 pub const DIALECT_TRANSPARENT: &str = "transparent";
 pub const FAMILY_ID: CpuFamily = CpuFamily::new("mos6502");
 pub const CPU_ID: CpuType = CpuType::new("m6502");
-pub const CPU_NAMES: &[&str] = &["6502", "m6502", "mos6502"];
+pub const CPU_NAME: &str = "m6502";
+pub const FAMILY_CPU_NAME: &str = "6502";
 
 pub struct MOS6502FamilyModule;
 
 impl FamilyModule for MOS6502FamilyModule {
     fn family_id(&self) -> CpuFamily {
         FAMILY_ID
+    }
+
+    fn family_cpu_id(&self) -> Option<CpuType> {
+        Some(CPU_ID)
+    }
+
+    fn family_cpu_name(&self) -> Option<&'static str> {
+        Some(FAMILY_CPU_NAME)
     }
 
     fn canonical_dialect(&self) -> &'static str {
@@ -77,8 +86,8 @@ impl CpuModule for M6502CpuModule {
         FAMILY_ID
     }
 
-    fn cpu_names(&self) -> &'static [&'static str] {
-        CPU_NAMES
+    fn cpu_name(&self) -> &'static str {
+        CPU_NAME
     }
 
     fn default_dialect(&self) -> &'static str {

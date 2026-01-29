@@ -5,7 +5,7 @@
 
 use std::any::Any;
 
-use crate::core::cpu::CpuFamily;
+use crate::core::cpu::{CpuFamily, CpuType};
 use crate::core::family::{AssemblerContext, EncodeResult, FamilyHandler, FamilyParseError};
 use crate::core::parser::Expr;
 use crate::core::registry::{
@@ -18,12 +18,22 @@ use super::{FamilyOperand, Intel8080FamilyHandler, Operand};
 pub const DIALECT_INTEL8080: &str = "intel8080";
 pub const DIALECT_ZILOG: &str = "zilog";
 pub const FAMILY_ID: CpuFamily = CpuFamily::new("intel8080");
+pub const FAMILY_CPU_NAME: &str = "8080";
+pub const FAMILY_CPU_ID: CpuType = crate::i8085::module::CPU_ID;
 
 pub struct Intel8080FamilyModule;
 
 impl FamilyModule for Intel8080FamilyModule {
     fn family_id(&self) -> CpuFamily {
         FAMILY_ID
+    }
+
+    fn family_cpu_id(&self) -> Option<CpuType> {
+        Some(FAMILY_CPU_ID)
+    }
+
+    fn family_cpu_name(&self) -> Option<&'static str> {
+        Some(FAMILY_CPU_NAME)
     }
 
     fn canonical_dialect(&self) -> &'static str {

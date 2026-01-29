@@ -56,29 +56,29 @@ Define these in a new registry module (e.g., [src/core/registry.rs](src/core/reg
 
 ## Implementation Plan
 ### Phase 1: Add Registry Core
-- [ ] Create [src/core/registry.rs](src/core/registry.rs) with:
+- [x] Create [src/core/registry.rs](src/core/registry.rs) with:
   - Trait definitions and `ModuleRegistry` implementation.
   - `ResolvedPipeline` struct containing `family_handler`, `cpu_handler`, and `dialect_module`.
-- [ ] Re-export registry types from [src/core/mod.rs](src/core/mod.rs).
+- [x] Re-export registry types from [src/core/mod.rs](src/core/mod.rs).
 
 ### Phase 2: Register Existing Families
-- [ ] Add Intel 8080 family module:
+- [x] Add Intel 8080 family module:
   - New file (e.g., [src/families/intel8080/registry.rs](src/families/intel8080/registry.rs)).
   - Wrap existing `Intel8080FamilyHandler` as a `FamilyModule`.
   - Create dialect modules:
     - `Intel8080Dialect` (identity mapping).
     - `ZilogDialect` (wraps `map_zilog_to_canonical` from [src/families/intel8080/dialect.rs](src/families/intel8080/dialect.rs)).
-- [ ] Add MOS 6502 family module:
+- [x] Add MOS 6502 family module:
   - New file (e.g., [src/families/mos6502/registry.rs](src/families/mos6502/registry.rs)).
   - Provide a transparent dialect module.
 
 ### Phase 3: Register Existing CPUs
-- [ ] Add CPU modules:
+- [x] Add CPU modules:
   - 8085 in [src/i8085/registry.rs](src/i8085/registry.rs).
   - Z80 in [src/z80/registry.rs](src/z80/registry.rs).
   - 6502 in [src/families/mos6502/registry.rs](src/families/mos6502/registry.rs) or a new [src/m6502/registry.rs](src/m6502/registry.rs).
   - 65C02 in [src/m65c02/registry.rs](src/m65c02/registry.rs).
-- [ ] Each CPU module should return its existing handler type and default dialect string.
+- [x] Each CPU module should return its existing handler type and default dialect string.
 
 ### Phase 4: Integrate Registry into Assembler
 - [ ] Add a registry instance to `Assembler` and initialize it in `Assembler::new`.

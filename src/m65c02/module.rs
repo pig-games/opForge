@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-//! 65C02 CPU registry module.
+//! 65C02 CPU module.
 
 use crate::core::cpu::{CpuFamily, CpuType};
 use crate::core::family::AssemblerContext;
-use crate::core::registry::{CpuHandlerDyn, CpuModule, OperandSet, FamilyOperandSet};
-use crate::families::mos6502::registry::DIALECT_TRANSPARENT;
-use crate::families::mos6502::registry::{MOS6502FamilyOperands, MOS6502Operands};
+use crate::core::registry::{CpuHandlerDyn, CpuModule, FamilyOperandSet, OperandSet};
+use crate::families::mos6502::module::DIALECT_TRANSPARENT;
+use crate::families::mos6502::module::{MOS6502FamilyOperands, MOS6502Operands};
 
 use super::M65C02CpuHandler;
 
@@ -67,9 +67,18 @@ impl CpuHandlerDyn for M65C02CpuHandler {
     ) -> crate::core::family::EncodeResult<Vec<u8>> {
         let mos_operands = match operands.as_any().downcast_ref::<MOS6502Operands>() {
             Some(ops) => ops,
-            None => return crate::core::family::EncodeResult::error("expected MOS 6502 operands"),
+            None => {
+                return crate::core::family::EncodeResult::error(
+                    "expected MOS 6502 operands",
+                )
+            }
         };
-        <Self as crate::core::family::CpuHandler>::encode_instruction(self, mnemonic, &mos_operands.0, ctx)
+        <Self as crate::core::family::CpuHandler>::encode_instruction(
+            self,
+            mnemonic,
+            &mos_operands.0,
+            ctx,
+        )
     }
 
     fn supports_mnemonic(&self, mnemonic: &str) -> bool {

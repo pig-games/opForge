@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-//! MOS 6502 family registry module.
+//! MOS 6502 family module.
 
 use std::any::Any;
 
@@ -13,8 +13,7 @@ use crate::core::registry::{
     OperandSet,
 };
 
-use super::{M6502CpuHandler, MOS6502FamilyHandler, Operand};
-use super::{FamilyOperand};
+use super::{FamilyOperand, M6502CpuHandler, MOS6502FamilyHandler, Operand};
 
 pub const DIALECT_TRANSPARENT: &str = "transparent";
 
@@ -184,7 +183,12 @@ impl CpuHandlerDyn for M6502CpuHandler {
             Some(ops) => ops,
             None => return EncodeResult::error("expected MOS 6502 operands"),
         };
-        <Self as crate::core::family::CpuHandler>::encode_instruction(self, mnemonic, &mos_operands.0, ctx)
+        <Self as crate::core::family::CpuHandler>::encode_instruction(
+            self,
+            mnemonic,
+            &mos_operands.0,
+            ctx,
+        )
     }
 
     fn supports_mnemonic(&self, mnemonic: &str) -> bool {

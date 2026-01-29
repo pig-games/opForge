@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-//! Intel 8080 family registry module.
+//! Intel 8080 family module.
 
 use std::any::Any;
 
@@ -154,4 +154,3 @@ impl FamilyHandlerDyn for Intel8080FamilyHandler {
         <Self as FamilyHandler>::is_condition(self, name)
     }
 }
-

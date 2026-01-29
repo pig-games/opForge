@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-//! 8085 CPU registry module.
+//! 8085 CPU module.
 
 use crate::core::cpu::{CpuFamily, CpuType};
 use crate::core::family::AssemblerContext;
-use crate::core::registry::{CpuHandlerDyn, CpuModule, OperandSet, FamilyOperandSet};
-use crate::families::intel8080::registry::DIALECT_INTEL8080;
-use crate::families::intel8080::registry::{Intel8080FamilyOperands, Intel8080Operands};
+use crate::core::registry::{CpuHandlerDyn, CpuModule, FamilyOperandSet, OperandSet};
+use crate::families::intel8080::module::DIALECT_INTEL8080;
+use crate::families::intel8080::module::{Intel8080FamilyOperands, Intel8080Operands};
 
 use super::I8085CpuHandler;
 
@@ -67,9 +67,18 @@ impl CpuHandlerDyn for I8085CpuHandler {
     ) -> crate::core::family::EncodeResult<Vec<u8>> {
         let intel_operands = match operands.as_any().downcast_ref::<Intel8080Operands>() {
             Some(ops) => ops,
-            None => return crate::core::family::EncodeResult::error("expected Intel 8080 operands"),
+            None => {
+                return crate::core::family::EncodeResult::error(
+                    "expected Intel 8080 operands",
+                )
+            }
         };
-        <Self as crate::core::family::CpuHandler>::encode_instruction(self, mnemonic, &intel_operands.0, ctx)
+        <Self as crate::core::family::CpuHandler>::encode_instruction(
+            self,
+            mnemonic,
+            &intel_operands.0,
+            ctx,
+        )
     }
 
     fn supports_mnemonic(&self, mnemonic: &str) -> bool {

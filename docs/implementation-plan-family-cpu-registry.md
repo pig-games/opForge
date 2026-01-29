@@ -86,7 +86,8 @@ Define these in a new registry module (e.g., [src/core/registry.rs](src/core/reg
   - Fetch `ResolvedPipeline` based on `self.cpu` and optional dialect override.
   - Family parse → dialect mapping → CPU resolve → family encode → CPU encode.
 - [ ] Replace `CpuType::is_register_fn()` usage in parsing with the family handler’s `is_register()` (or a registry-provided register checker).
-- [ ] Remove `process_instruction_intel8080` and `process_instruction_6502` once the generic pipeline covers both paths.
+- [x] Replace `CpuType::is_register_fn()` usage in parsing with the family handler’s `is_register()` (or a registry-provided register checker).
+- [x] Remove `process_instruction_intel8080` and `process_instruction_6502` once the generic pipeline covers both paths.
 
 ### Phase 5: Dialect Selection Rules
 - [ ] Implement `dialect_override` in CLI/assembler config (optional; default to CPU module’s dialect).

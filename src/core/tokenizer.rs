@@ -7,13 +7,22 @@
 //! function passed to [`Tokenizer::with_register_checker`].
 
 use crate::core::text_utils::{is_ident_char, is_ident_start, is_space};
+use std::sync::Arc;
 
 /// Function type for checking if an identifier is a register name.
-pub type RegisterChecker = fn(&str) -> bool;
+pub type RegisterChecker = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
 /// Default register checker that treats no identifiers as registers.
 pub fn no_registers(_ident: &str) -> bool {
     false
+}
+
+pub fn register_checker_none() -> RegisterChecker {
+    register_checker_from_fn(no_registers)
+}
+
+pub fn register_checker_from_fn(func: fn(&str) -> bool) -> RegisterChecker {
+    Arc::new(func)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -124,7 +133,7 @@ impl<'a> Tokenizer<'a> {
     /// Create a new tokenizer with no register detection.
     #[must_use]
     pub fn new(line: &'a str, line_num: u32) -> Self {
-        Self::with_register_checker(line, line_num, no_registers)
+        Self::with_register_checker(line, line_num, register_checker_none())
     }
 
     /// Create a new tokenizer with a custom register checker.
@@ -518,7 +527,11 @@ mod tests {
 
     #[test]
     fn tokenizes_identifier_and_register() {
-        let mut tok = Tokenizer::with_register_checker("MOV A,B", 1, test_registers);
+        let mut tok = Tokenizer::with_register_checker(
+            "MOV A,B",
+            1,
+            super::register_checker_from_fn(test_registers),
+        );
         assert!(matches!(tok.next_token().unwrap().kind, TokenKind::Identifier(_)));
         assert!(matches!(tok.next_token().unwrap().kind, TokenKind::Register(_)));
         assert!(matches!(tok.next_token().unwrap().kind, TokenKind::Comma));

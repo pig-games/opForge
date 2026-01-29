@@ -22,7 +22,8 @@ use crate::core::parser::{AssignOp, Expr, Label, LineAst, ParseError};
 use crate::core::parser as asm_parser;
 use crate::core::preprocess::Preprocessor;
 use crate::core::symbol_table::SymbolTable;
-use crate::core::tokenizer::{ConditionalKind, Span};
+use crate::core::tokenizer::{ConditionalKind, Span, register_checker_none};
+use std::sync::Arc;
 use crate::core::token_value::TokenValue;
 use crate::core::assembler::conditional::{ConditionalBlockKind, ConditionalContext, ConditionalStack};
 use crate::core::assembler::error::{
@@ -618,8 +619,16 @@ impl<'a> AsmLine<'a> {
         self.label = None;
         self.mnemonic = None;
 
-        // Get register checker from CPU type
-        let is_register_fn = self.cpu.is_register_fn();
+        // Get register checker from the family handler
+        let is_register_fn = match self.registry.resolve_pipeline(self.cpu, None) {
+            Ok(pipeline) => {
+                let family = pipeline.family;
+                Arc::new(move |ident: &str| {
+                    family.is_register(ident) || family.is_condition(ident)
+                })
+            }
+            Err(_) => register_checker_none(),
+        };
 
         match asm_parser::Parser::from_line_with_registers(line, line_num, is_register_fn) {
             Ok(mut parser) => {

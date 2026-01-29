@@ -81,8 +81,8 @@ Define these in a new registry module (e.g., [src/core/registry.rs](src/core/reg
 - [x] Each CPU module should return its existing handler type and default dialect string.
 
 ### Phase 4: Integrate Registry into Assembler
-- [ ] Add a registry instance to `Assembler` and initialize it in `Assembler::new`.
-- [ ] Replace the hard-coded branching in `process_instruction_ast` with a registry-driven flow:
+- [x] Add a registry instance to `Assembler` and initialize it in `Assembler::new`.
+- [x] Replace the hard-coded branching in `process_instruction_ast` with a registry-driven flow:
   - Fetch `ResolvedPipeline` based on `self.cpu` and optional dialect override.
   - Family parse → dialect mapping → CPU resolve → family encode → CPU encode.
 - [ ] Replace `CpuType::is_register_fn()` usage in parsing with the family handler’s `is_register()` (or a registry-provided register checker).

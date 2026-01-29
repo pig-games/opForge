@@ -35,6 +35,7 @@
 mod cpu_handler;
 mod handler;
 mod operand;
+pub mod module;
 mod table;
 
 pub use cpu_handler::M6502CpuHandler;

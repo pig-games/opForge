@@ -10,6 +10,7 @@
 
 pub mod extensions;
 pub mod handler;
+pub mod module;
 
 pub use extensions::{lookup_extension, I8085_EXTENSION_TABLE};
 pub use handler::I8085CpuHandler;

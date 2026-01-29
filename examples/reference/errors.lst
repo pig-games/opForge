@@ -53,7 +53,7 @@ ERROR: Illegal character in column 1. Must be symbol, '.', '*', comment, or spac
 ERROR: Illegal character in column 1. Must be symbol, '.', '*', comment, or space. Found: +                       ; ERR: not symbol
 ----                               29  mov h,l                 ; ERR: instruction can't start in column zero
    29 | mov h,l                 [31m;[0m ERR: instruction can't start in column zero
-ERROR: No instruction with this name: h
+ERROR: Unexpected token in expression
 ----                               30  
 ----                               31  ; extra information on line and extra/incorrect arguments
 ----                               32          nop     SP      ; ERR: extra register argument
@@ -70,10 +70,10 @@ ERROR: Additional arguments after instruction: str
 ERROR: Additional arguments after instruction: 12XX
 ----                               36          MOV     A       ; ERR: missing second register
    36 |         MOV     A       [31m;[0m ERR: missing second register
-ERROR: Wrong arguments for instruction: MOV
+ERROR: No instruction found for MOV
 ----                               37          MOV     A,4     ; ERR: missing second register
    37 |         MOV     A,4     [31m;[0m ERR: missing second register
-ERROR: Wrong arguments for instruction: MOV
+ERROR: No instruction found for MOV
 0007    06                         38          MVI     B,A     ; ERR: second arg should be expression
    38 |         MVI     B,[31mA[0m     ; ERR: second arg should be expression
 ERROR: expected 8-bit immediate, got register A

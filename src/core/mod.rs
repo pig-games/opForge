@@ -28,6 +28,7 @@ pub mod operand;
 pub mod parser;
 pub mod parser_reporter;
 pub mod preprocess;
+pub mod registry;
 pub mod report;
 pub mod symbol_table;
 pub mod text_utils;

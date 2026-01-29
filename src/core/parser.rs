@@ -144,7 +144,11 @@ pub struct Parser {
 
 impl Parser {
     pub fn from_line(line: &str, line_num: u32) -> Result<Self, ParseError> {
-        Self::from_line_with_registers(line, line_num, crate::core::tokenizer::no_registers)
+        Self::from_line_with_registers(
+            line,
+            line_num,
+            crate::core::tokenizer::register_checker_none(),
+        )
     }
 
     pub fn from_line_with_registers(
@@ -1138,9 +1142,15 @@ mod tests {
     fn parses_z80_add_with_byte() {
         use super::Expr;
         use crate::z80::is_register as is_register_z80;
+        use crate::core::tokenizer::register_checker_from_fn;
         
         // Note: mnemonic not at column 1 (spaces at start) to avoid being parsed as label
-        let mut parser = Parser::from_line_with_registers("        add a, 5", 1, is_register_z80).unwrap();
+        let mut parser = Parser::from_line_with_registers(
+            "        add a, 5",
+            1,
+            register_checker_from_fn(is_register_z80),
+        )
+        .unwrap();
         let line = parser.parse_line().unwrap();
         match line {
             LineAst::Statement { mnemonic, operands, .. } => {
@@ -1158,8 +1168,14 @@ mod tests {
     fn parses_z80_condition_codes() {
         use super::Expr;
         use crate::z80::is_register as is_register_z80;
+        use crate::core::tokenizer::register_checker_from_fn;
         
-        let mut parser = Parser::from_line_with_registers("        jp nz, 1000h", 1, is_register_z80).unwrap();
+        let mut parser = Parser::from_line_with_registers(
+            "        jp nz, 1000h",
+            1,
+            register_checker_from_fn(is_register_z80),
+        )
+        .unwrap();
         let line = parser.parse_line().unwrap();
         match line {
             LineAst::Statement { mnemonic, operands, .. } => {
@@ -1177,8 +1193,14 @@ mod tests {
     #[test]
     fn parses_z80_memory_operand() {
         use crate::z80::is_register as is_register_z80;
+        use crate::core::tokenizer::register_checker_from_fn;
         
-        let mut parser = Parser::from_line_with_registers("        ld (hl), a", 1, is_register_z80).unwrap();
+        let mut parser = Parser::from_line_with_registers(
+            "        ld (hl), a",
+            1,
+            register_checker_from_fn(is_register_z80),
+        )
+        .unwrap();
         let line = parser.parse_line().unwrap();
         match line {
             LineAst::Statement { mnemonic, operands, .. } => {

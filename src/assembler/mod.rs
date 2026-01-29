@@ -14,14 +14,16 @@ use std::io::{self, Write};
 use clap::Parser;
 
 use crate::core::cpu::CpuType;
-use crate::core::family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler};
+use crate::core::family::{AssemblerContext, EncodeResult};
+use crate::core::registry::{ModuleRegistry, RegistryError};
 use crate::core::imagestore::ImageStore;
 use crate::core::macro_processor::MacroProcessor;
 use crate::core::parser::{AssignOp, Expr, Label, LineAst, ParseError};
 use crate::core::parser as asm_parser;
 use crate::core::preprocess::Preprocessor;
 use crate::core::symbol_table::SymbolTable;
-use crate::core::tokenizer::{ConditionalKind, Span};
+use crate::core::tokenizer::{ConditionalKind, Span, register_checker_none};
+use std::sync::Arc;
 use crate::core::token_value::TokenValue;
 use crate::core::assembler::conditional::{ConditionalBlockKind, ConditionalContext, ConditionalStack};
 use crate::core::assembler::error::{
@@ -34,13 +36,13 @@ use crate::core::assembler::expression::{
 use crate::core::assembler::listing::{ListingLine, ListingWriter};
 use crate::core::assembler::scope::ScopeStack;
 
-use crate::families::intel8080::{
-    ArgType, FamilyOperand, InstructionEntry, Intel8080FamilyHandler, Prefix,
-    FAMILY_INSTRUCTION_TABLE, map_zilog_to_canonical,
-};
-use crate::families::intel8080::table::has_mnemonic as intel_has_mnemonic;
-use crate::i8085::I8085CpuHandler;
-use crate::z80::Z80CpuHandler;
+use crate::families::intel8080::module::Intel8080FamilyModule;
+use crate::families::intel8080::table::{ArgType, InstructionEntry, Prefix, FAMILY_INSTRUCTION_TABLE};
+use crate::families::intel8080::FamilyOperand;
+use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
+use crate::i8085::module::I8085CpuModule;
+use crate::m65c02::module::M65C02CpuModule;
+use crate::z80::module::Z80CpuModule;
 
 use cli::{
     input_base_from_path, resolve_bin_path, resolve_output_path, validate_cli, BinOutputSpec, Cli,
@@ -49,6 +51,10 @@ use cli::{
 // Re-export public types
 pub use cli::VERSION;
 pub use crate::core::assembler::error::{AsmRunError as RunError, AsmRunReport as RunReport};
+
+fn default_cpu() -> CpuType {
+    crate::i8085::module::CPU_ID
+}
 
 /// Run the assembler with command-line arguments.
 pub fn run() -> Result<Vec<AsmRunReport>, AsmRunError> {
@@ -164,7 +170,10 @@ fn run_one(
         Box::new(io::sink())
     };
     let mut listing = ListingWriter::new(&mut *list_output, cli.debug_conditionals);
-    let cpu_name = assembler.cpu().name();
+    let cpu_name = assembler
+        .registry
+        .cpu_display_name(assembler.cpu())
+        .unwrap_or_else(|| assembler.cpu().as_str());
     let header_title = format!("asm485 {cpu_name} Assembler v{VERSION}");
     if let Err(err) = listing.header(&header_title) {
         return Err(AsmRunError::new(
@@ -255,15 +264,25 @@ struct Assembler {
     image: ImageStore,
     diagnostics: Vec<Diagnostic>,
     cpu: CpuType,
+    registry: ModuleRegistry,
 }
 
 impl Assembler {
     fn new() -> Self {
+        let mut registry = ModuleRegistry::new();
+        registry.register_family(Box::new(Intel8080FamilyModule));
+        registry.register_family(Box::new(MOS6502FamilyModule));
+        registry.register_cpu(Box::new(I8085CpuModule));
+        registry.register_cpu(Box::new(Z80CpuModule));
+        registry.register_cpu(Box::new(M6502CpuModule));
+        registry.register_cpu(Box::new(M65C02CpuModule));
+
         Self {
             symbols: SymbolTable::new(),
             image: ImageStore::new(65536),
             diagnostics: Vec::new(),
-            cpu: CpuType::default(),
+            cpu: default_cpu(),
+            registry,
         }
     }
 
@@ -288,7 +307,7 @@ impl Assembler {
     }
 
     fn pass1(&mut self, lines: &[String]) -> PassCounts {
-        let mut asm_line = AsmLine::with_cpu(&mut self.symbols, self.cpu);
+        let mut asm_line = AsmLine::with_cpu(&mut self.symbols, self.cpu, &self.registry);
         asm_line.clear_conditionals();
         asm_line.clear_scopes();
         let mut addr: u16 = 0;
@@ -337,7 +356,7 @@ impl Assembler {
         lines: &[String],
         listing: &mut ListingWriter<W>,
     ) -> std::io::Result<PassCounts> {
-        let mut asm_line = AsmLine::with_cpu(&mut self.symbols, self.cpu);
+        let mut asm_line = AsmLine::with_cpu(&mut self.symbols, self.cpu, &self.registry);
         asm_line.clear_conditionals();
         asm_line.clear_scopes();
         self.image = ImageStore::new(65536);
@@ -430,6 +449,7 @@ impl Assembler {
 /// Per-line assembler state.
 struct AsmLine<'a> {
     symbols: &'a mut SymbolTable,
+    registry: &'a ModuleRegistry,
     cond_stack: ConditionalStack,
     scope_stack: ScopeStack,
     last_error: Option<AsmError>,
@@ -448,13 +468,14 @@ struct AsmLine<'a> {
 
 impl<'a> AsmLine<'a> {
     #[cfg(test)]
-    fn new(symbols: &'a mut SymbolTable) -> Self {
-        Self::with_cpu(symbols, CpuType::default())
+    fn new(symbols: &'a mut SymbolTable, registry: &'a ModuleRegistry) -> Self {
+        Self::with_cpu(symbols, default_cpu(), registry)
     }
 
-    fn with_cpu(symbols: &'a mut SymbolTable, cpu: CpuType) -> Self {
+    fn with_cpu(symbols: &'a mut SymbolTable, cpu: CpuType, registry: &'a ModuleRegistry) -> Self {
         Self {
             symbols,
+            registry,
             cond_stack: ConditionalStack::new(),
             scope_stack: ScopeStack::new(),
             last_error: None,
@@ -605,8 +626,16 @@ impl<'a> AsmLine<'a> {
         self.label = None;
         self.mnemonic = None;
 
-        // Get register checker from CPU type
-        let is_register_fn = self.cpu.is_register_fn();
+        // Get register checker from the family handler
+        let is_register_fn = match self.registry.resolve_pipeline(self.cpu, None) {
+            Ok(pipeline) => {
+                let family = pipeline.family;
+                Arc::new(move |ident: &str| {
+                    family.is_register(ident) || family.is_condition(ident)
+                })
+            }
+            Err(_) => register_checker_none(),
+        };
 
         match asm_parser::Parser::from_line_with_registers(line, line_num, is_register_fn) {
             Ok(mut parser) => {
@@ -1250,25 +1279,40 @@ impl<'a> AsmLine<'a> {
                     Some(Expr::Number(name, _)) => name.clone(), // For bare "8085" without quotes
                     Some(Expr::String(bytes, _)) => String::from_utf8_lossy(bytes).to_string(),
                     _ => {
+                        let known = self.registry.cpu_name_list();
+                        let hint = known.join(", ");
+                        let message = if hint.is_empty() {
+                            ".cpu requires a CPU type".to_string()
+                        } else {
+                            format!(".cpu requires a CPU type: {hint}")
+                        };
                         return self.failure(
                             LineStatus::Error,
                             AsmErrorKind::Directive,
-                            ".cpu requires CPU type: 8085, z80, 6502",
+                            &message,
                             None,
                         )
                     }
                 };
-                match CpuType::parse(&cpu_name) {
+                match self.registry.resolve_cpu_name(&cpu_name) {
                     Some(cpu) => {
                         self.cpu = cpu;
                         LineStatus::Ok
                     }
-                    None => self.failure(
-                        LineStatus::Error,
-                        AsmErrorKind::Directive,
-                        "Unknown CPU type. Use: 8085, z80, 6502",
-                        Some(&cpu_name),
-                    ),
+                    None => {
+                        let known = self.registry.cpu_name_list();
+                        let message = if known.is_empty() {
+                            "Unknown CPU type.".to_string()
+                        } else {
+                            format!("Unknown CPU type. Use: {}", known.join(", "))
+                        };
+                        self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Directive,
+                            &message,
+                            Some(&cpu_name),
+                        )
+                    }
                 }
             }
             "BYTE" => self.store_arg_list_ast(operands, 1),
@@ -1435,118 +1479,91 @@ impl<'a> AsmLine<'a> {
     fn process_instruction_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
         let upper = mnemonic.to_ascii_uppercase();
 
+        let pipeline = match self.registry.resolve_pipeline(self.cpu, None) {
+            Ok(pipeline) => pipeline,
+            Err(err) => {
+                return self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    &registry_error_message(err),
+                    None,
+                )
+            }
+        };
+
         // Family-level shared instructions
-        if self.cpu.family().has_rst() && upper == "RST" {
+        if pipeline.family.supports_rst() && upper == "RST" {
             return self.process_rst(operands);
         }
 
-        match self.cpu {
-            CpuType::I8085 | CpuType::Z80 => self.process_instruction_intel8080(mnemonic, operands),
-            CpuType::M6502 | CpuType::M65C02 => self.process_instruction_6502(mnemonic, &upper, operands),
-        }
-    }
-
-    /// Process 6502/65C02 instruction using the family handler pipeline.
-    fn process_instruction_6502(
-        &mut self,
-        mnemonic: &str,
-        _upper: &str,
-        operands: &[Expr],
-    ) -> LineStatus {
-        use crate::families::mos6502::{M6502CpuHandler, MOS6502FamilyHandler};
-        use crate::m65c02::M65C02CpuHandler;
-
-        // Step 1: Parse operands at the family level
-        let family_handler = MOS6502FamilyHandler::new();
-        let family_operands = match family_handler.parse_operands(mnemonic, operands) {
+        let family_operands = match pipeline.family.parse_operands(mnemonic, operands) {
             Ok(ops) => ops,
-            Err(e) => {
+            Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
                     AsmErrorKind::Instruction,
-                    &e.message,
+                    &err.message,
                     None,
-                    e.span,
-                );
+                    err.span,
+                )
             }
         };
 
-        // Step 2: Resolve operands at the CPU level (evaluates expressions, disambiguates modes)
-        let resolved_operands = match self.cpu {
-            CpuType::M6502 => {
-                let cpu_handler = M6502CpuHandler::new();
-                match cpu_handler.resolve_operands(mnemonic, &family_operands, self) {
-                    Ok(ops) => ops,
-                    Err(e) => {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &e,
-                            None,
-                        );
-                    }
-                }
-            }
-            CpuType::M65C02 => {
-                let cpu_handler = M65C02CpuHandler::new();
-                match cpu_handler.resolve_operands(mnemonic, &family_operands, self) {
-                    Ok(ops) => ops,
-                    Err(e) => {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &e,
-                            None,
-                        );
-                    }
-                }
-            }
-            _ => unreachable!(),
-        };
+        let (mapped_mnemonic, mapped_operands) = pipeline
+            .dialect
+            .map_mnemonic(mnemonic, family_operands.as_ref())
+            .unwrap_or_else(|| (mnemonic.to_string(), family_operands.clone()));
 
-        // Step 3: Try to encode at the family level first
-        match family_handler.encode_instruction(mnemonic, &resolved_operands, self) {
-            EncodeResult::Ok(bytes) => {
-                self.bytes.extend_from_slice(&bytes);
-                return LineStatus::Ok;
-            }
-            EncodeResult::Error(msg, span_opt) => {
-                return if let Some(span) = span_opt {
-                    self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        &msg,
-                        None,
-                        span,
-                    )
-                } else {
-                    self.failure(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        &msg,
-                        None,
-                    )
-                };
-            }
-            EncodeResult::NotFound => {
-                // Fall through to CPU-specific encoding
+        if let Some(intel_operands) = mapped_operands
+            .as_ref()
+            .as_any()
+            .downcast_ref::<crate::families::intel8080::module::Intel8080FamilyOperands>()
+        {
+            if let Some(status) = self.try_encode_intel8080_family_instruction(
+                &mapped_mnemonic,
+                mnemonic,
+                &intel_operands.0,
+            ) {
+                return status;
             }
         }
 
-        // Step 4: Try CPU-specific encoding
-        let encode_result = match self.cpu {
-            CpuType::M6502 => {
-                let cpu_handler = M6502CpuHandler::new();
-                cpu_handler.encode_instruction(mnemonic, &resolved_operands, self)
+        let resolved_operands = match pipeline.cpu.resolve_operands(
+            mnemonic,
+            mapped_operands.as_ref(),
+            self,
+        ) {
+            Ok(ops) => ops,
+            Err(err) => {
+                return self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    &err,
+                    None,
+                )
             }
-            CpuType::M65C02 => {
-                let cpu_handler = M65C02CpuHandler::new();
-                cpu_handler.encode_instruction(mnemonic, &resolved_operands, self)
-            }
-            _ => unreachable!(),
         };
 
-        match encode_result {
+        if let Some(validator) = pipeline.validator.as_ref() {
+            if let Err(err) = validator.validate_instruction(
+                &mapped_mnemonic,
+                resolved_operands.as_ref(),
+                self,
+            ) {
+                return self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    &err,
+                    None,
+                );
+            }
+        }
+
+        match pipeline.family.encode_instruction(
+            &mapped_mnemonic,
+            resolved_operands.as_ref(),
+            self,
+        ) {
             EncodeResult::Ok(bytes) => {
                 self.bytes.extend_from_slice(&bytes);
                 LineStatus::Ok
@@ -1569,188 +1586,43 @@ impl<'a> AsmLine<'a> {
                     )
                 }
             }
-            EncodeResult::NotFound => {
-                self.failure(
+            EncodeResult::NotFound => match pipeline.cpu.encode_instruction(
+                &mapped_mnemonic,
+                resolved_operands.as_ref(),
+                self,
+            ) {
+                EncodeResult::Ok(bytes) => {
+                    self.bytes.extend_from_slice(&bytes);
+                    LineStatus::Ok
+                }
+                EncodeResult::Error(msg, span_opt) => {
+                    if let Some(span) = span_opt {
+                        self.failure_at_span(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            &msg,
+                            None,
+                            span,
+                        )
+                    } else {
+                        self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            &msg,
+                            None,
+                        )
+                    }
+                }
+                EncodeResult::NotFound => self.failure(
                     LineStatus::Error,
                     AsmErrorKind::Instruction,
-                    &format!("No 6502 instruction found for {} with mode {:?}", 
-                            mnemonic.to_ascii_uppercase(),
-                            if resolved_operands.is_empty() { 
-                                "Implied".to_string() 
-                            } else { 
-                                format!("{:?}", resolved_operands[0].mode()) 
-                            }),
+                    &format!(
+                        "No instruction found for {}",
+                        mnemonic.to_ascii_uppercase()
+                    ),
                     None,
-                )
-            }
-        }
-    }
-
-    /// Process Intel 8080 family instruction (8085 or Z80).
-    ///
-    /// This function uses the family handler for parsing and then routes
-    /// to the CPU handler for resolution/encoding.
-    fn process_instruction_intel8080(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
-        let family_handler = Intel8080FamilyHandler;
-        match self.cpu {
-            CpuType::I8085 => {
-                let cpu_handler = I8085CpuHandler::new();
-                let has_family = intel_has_mnemonic(mnemonic);
-                let has_cpu = cpu_handler.supports_mnemonic(mnemonic);
-
-                if !has_family && !has_cpu {
-                    return self.failure(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        "No instruction with this name",
-                        Some(mnemonic),
-                    );
-                }
-
-                let family_operands = match family_handler.parse_operands(mnemonic, operands) {
-                    Ok(ops) => ops,
-                    Err(err) => {
-                        return self.failure_at_span(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &err.message,
-                            None,
-                            err.span,
-                        );
-                    }
-                };
-
-                if has_family {
-                    return self.encode_intel8080_family_instruction(
-                        mnemonic,
-                        mnemonic,
-                        &family_operands,
-                    );
-                }
-
-                let resolved = match cpu_handler.resolve_operands(mnemonic, &family_operands, self) {
-                    Ok(ops) => ops,
-                    Err(err) => {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &err,
-                            None,
-                        );
-                    }
-                };
-
-                match cpu_handler.encode_instruction(mnemonic, &resolved, self) {
-                    EncodeResult::Ok(bytes) => {
-                        self.bytes.extend_from_slice(&bytes);
-                        LineStatus::Ok
-                    }
-                    EncodeResult::Error(msg, span_opt) => {
-                        if let Some(span) = span_opt {
-                            self.failure_at_span(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                &msg,
-                                None,
-                                span,
-                            )
-                        } else {
-                            self.failure(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                &msg,
-                                None,
-                            )
-                        }
-                    }
-                    EncodeResult::NotFound => self.failure(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        "No instruction with this name",
-                        Some(mnemonic),
-                    ),
-                }
-            }
-            CpuType::Z80 => {
-                let cpu_handler = Z80CpuHandler::new();
-                let family_operands = match family_handler.parse_operands(mnemonic, operands) {
-                    Ok(ops) => ops,
-                    Err(err) => {
-                        return self.failure_at_span(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &err.message,
-                            None,
-                            err.span,
-                        );
-                    }
-                };
-                if let Some((canonical_mnemonic, canonical_operands)) =
-                    map_zilog_to_canonical(mnemonic, &family_operands)
-                {
-                    if let Some(status) = self.try_encode_intel8080_family_instruction(
-                        &canonical_mnemonic,
-                        mnemonic,
-                        &canonical_operands,
-                    ) {
-                        return status;
-                    }
-                }
-
-                if intel_has_mnemonic(mnemonic) && !mnemonic.eq_ignore_ascii_case("JP") {
-                    if let Some(status) = self.try_encode_intel8080_family_instruction(
-                        mnemonic,
-                        mnemonic,
-                        &family_operands,
-                    ) {
-                        return status;
-                    }
-                }
-
-                let resolved = match cpu_handler.resolve_operands(mnemonic, &family_operands, self) {
-                    Ok(ops) => ops,
-                    Err(err) => {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &err,
-                            None,
-                        );
-                    }
-                };
-
-                match cpu_handler.encode_instruction(mnemonic, &resolved, self) {
-                    EncodeResult::Ok(bytes) => {
-                        self.bytes.extend_from_slice(&bytes);
-                        LineStatus::Ok
-                    }
-                    EncodeResult::Error(msg, span_opt) => {
-                        if let Some(span) = span_opt {
-                            self.failure_at_span(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                &msg,
-                                None,
-                                span,
-                            )
-                        } else {
-                            self.failure(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                &msg,
-                                None,
-                            )
-                        }
-                    }
-                    EncodeResult::NotFound => self.failure(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        "No Z80 instruction found for mnemonic",
-                        Some(mnemonic),
-                    ),
-                }
-            }
-            _ => unreachable!("Unexpected CPU type for Intel8080 family"),
+                ),
+            },
         }
     }
 
@@ -1924,8 +1796,7 @@ impl<'a> AsmLine<'a> {
         display_mnemonic: &str,
         operands: &[FamilyOperand],
     ) -> Option<LineStatus> {
-        self
-            .find_intel8080_family_entry(canonical_mnemonic, operands)?;
+        self.find_intel8080_family_entry(canonical_mnemonic, operands)?;
 
         Some(self.encode_intel8080_family_instruction(
             canonical_mnemonic,
@@ -2305,6 +2176,18 @@ impl<'a> AssemblerContext for AsmLine<'a> {
     }
 }
 
+fn registry_error_message(err: RegistryError) -> String {
+    match err {
+        RegistryError::MissingFamily(family) => {
+            format!("Missing family module for {family:?}")
+        }
+        RegistryError::MissingCpu(cpu) => format!("Missing CPU module for {cpu:?}"),
+        RegistryError::MissingDialect { family, dialect } => {
+            format!("Missing dialect '{dialect}' for {family:?}")
+        }
+    }
+}
+
 fn is_symbol_assignment_directive(mnemonic: &str) -> bool {
     matches!(
         mnemonic.to_ascii_uppercase().as_str(),
@@ -2324,7 +2207,12 @@ mod tests {
     use super::{
         AsmErrorKind, AsmLine, Assembler, LineStatus, ListingWriter,
     };
-    use crate::core::cpu::CpuType;
+    use crate::core::registry::ModuleRegistry;
+    use crate::families::intel8080::module::Intel8080FamilyModule;
+    use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
+    use crate::i8085::module::{CPU_ID as i8085_cpu_id, I8085CpuModule};
+    use crate::m65c02::module::M65C02CpuModule;
+    use crate::z80::module::{CPU_ID as z80_cpu_id, Z80CpuModule};
     use crate::core::macro_processor::MacroProcessor;
     use crate::core::preprocess::Preprocessor;
     use crate::core::symbol_table::SymbolTable;
@@ -2332,6 +2220,24 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn default_registry() -> ModuleRegistry {
+        let mut registry = ModuleRegistry::new();
+        registry.register_family(Box::new(Intel8080FamilyModule));
+        registry.register_family(Box::new(MOS6502FamilyModule));
+        registry.register_cpu(Box::new(I8085CpuModule));
+        registry.register_cpu(Box::new(Z80CpuModule));
+        registry.register_cpu(Box::new(M6502CpuModule));
+        registry.register_cpu(Box::new(M65C02CpuModule));
+        registry
+    }
+
+    fn make_asm_line<'a>(
+        symbols: &'a mut SymbolTable,
+        registry: &'a ModuleRegistry,
+    ) -> AsmLine<'a> {
+        AsmLine::new(symbols, registry)
+    }
 
     fn process_line(
         asm: &mut AsmLine<'_>,
@@ -2342,9 +2248,10 @@ mod tests {
         asm.process(line, 1, addr, pass)
     }
 
-    fn assemble_bytes(cpu: CpuType, line: &str) -> Vec<u8> {
+    fn assemble_bytes(cpu: crate::core::cpu::CpuType, line: &str) -> Vec<u8> {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::with_cpu(&mut symbols, cpu);
+        let registry = default_registry();
+        let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);
         asm.clear_conditionals();
         asm.clear_scopes();
         let status = asm.process(line, 1, 0, 2);
@@ -2504,31 +2411,32 @@ mod tests {
 
     #[test]
     fn zilog_dialect_encodes_like_intel() {
-        let intel = assemble_bytes(CpuType::I8085, "    MVI A,55h");
-        let zilog = assemble_bytes(CpuType::Z80, "    LD A,55h");
+        let intel = assemble_bytes(i8085_cpu_id, "    MVI A,55h");
+        let zilog = assemble_bytes(z80_cpu_id, "    LD A,55h");
         assert_eq!(intel, zilog);
 
-        let intel = assemble_bytes(CpuType::I8085, "    MOV A,B");
-        let zilog = assemble_bytes(CpuType::Z80, "    LD A,B");
+        let intel = assemble_bytes(i8085_cpu_id, "    MOV A,B");
+        let zilog = assemble_bytes(z80_cpu_id, "    LD A,B");
         assert_eq!(intel, zilog);
 
-        let intel = assemble_bytes(CpuType::I8085, "    JMP 1000h");
-        let zilog = assemble_bytes(CpuType::Z80, "    JP 1000h");
+        let intel = assemble_bytes(i8085_cpu_id, "    JMP 1000h");
+        let zilog = assemble_bytes(z80_cpu_id, "    JP 1000h");
         assert_eq!(intel, zilog);
 
-        let intel = assemble_bytes(CpuType::I8085, "    JZ 1000h");
-        let zilog = assemble_bytes(CpuType::Z80, "    JP Z,1000h");
+        let intel = assemble_bytes(i8085_cpu_id, "    JZ 1000h");
+        let zilog = assemble_bytes(z80_cpu_id, "    JP Z,1000h");
         assert_eq!(intel, zilog);
 
-        let intel = assemble_bytes(CpuType::I8085, "    ADI 10h");
-        let zilog = assemble_bytes(CpuType::Z80, "    ADD A,10h");
+        let intel = assemble_bytes(i8085_cpu_id, "    ADI 10h");
+        let zilog = assemble_bytes(z80_cpu_id, "    ADD A,10h");
         assert_eq!(intel, zilog);
     }
 
     #[test]
     fn org_sets_address() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .org 1000h", 0, 1);
         assert_eq!(status, LineStatus::DirEqu);
         assert_eq!(asm.start_addr(), 0x1000);
@@ -2542,7 +2450,8 @@ mod tests {
     #[test]
     fn ds_reserves_space_and_defines_label() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "BUFFER: .ds 4", 0x0200, 1);
         assert_eq!(status, LineStatus::DirDs);
         assert_eq!(asm.aux_value(), 4);
@@ -2552,7 +2461,8 @@ mod tests {
     #[test]
     fn db_and_dw_emit_bytes() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .byte 1, 2, 3", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[1, 2, 3]);
@@ -2565,7 +2475,8 @@ mod tests {
     #[test]
     fn equ_defines_symbol_for_pass2() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "VAL .const 3", 0, 1);
         assert_eq!(status, LineStatus::DirEqu);
         assert_eq!(asm.symbols().lookup("VAL"), Some(3));
@@ -2578,7 +2489,8 @@ mod tests {
     #[test]
     fn scoped_symbols_resolve_in_current_scope() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "SCOPE .block", 0, 1);
         assert_eq!(status, LineStatus::Ok);
         let status = process_line(&mut asm, "VAL .const 3", 0, 1);
@@ -2595,7 +2507,8 @@ mod tests {
     #[test]
     fn qualified_symbol_resolves_outside_scope() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "SCOPE .block", 0, 1);
         assert_eq!(status, LineStatus::Ok);
         let status = process_line(&mut asm, "VAL .const 7", 0, 1);
@@ -2611,7 +2524,8 @@ mod tests {
     #[test]
     fn scoped_symbol_shadowing_prefers_inner_scope() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "VAL .const 1", 0, 1);
         assert_eq!(status, LineStatus::DirEqu);
         let status = process_line(&mut asm, "SCOPE .block", 0, 1);
@@ -2631,7 +2545,8 @@ mod tests {
     #[test]
     fn nested_scopes_are_addressable_by_qualified_name() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "OUTER .block", 0, 1);
         assert_eq!(status, LineStatus::Ok);
         let status = process_line(&mut asm, "INNER .block", 0, 1);
@@ -2650,7 +2565,8 @@ mod tests {
     #[test]
     fn var_allows_redefinition_and_set_alias() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "VAL .var 1", 0, 1);
         assert_eq!(status, LineStatus::DirEqu);
         assert_eq!(asm.symbols().lookup("VAL"), Some(1));
@@ -2667,7 +2583,8 @@ mod tests {
     #[test]
     fn assignment_ops_update_symbols() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
 
         let status = process_line(&mut asm, "WIDTH = 40", 0, 1);
         assert_eq!(status, LineStatus::DirEqu);
@@ -2723,7 +2640,8 @@ mod tests {
     #[test]
     fn label_without_colon_defines_symbol() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "LABEL NOP", 0x1000, 1);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.symbols().lookup("LABEL"), Some(0x1000));
@@ -2732,7 +2650,8 @@ mod tests {
     #[test]
     fn set_without_dot_is_not_directive() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    SET 1", 0, 1);
         assert_eq!(status, LineStatus::Error);
         assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Instruction);
@@ -2741,7 +2660,8 @@ mod tests {
     #[test]
     fn undotted_directives_are_not_recognized() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    ORG 1000h", 0, 1);
         assert_eq!(status, LineStatus::Error);
         assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Instruction);
@@ -2750,7 +2670,8 @@ mod tests {
     #[test]
     fn instruction_encoding_mvi() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    MVI A, 12h", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x3e, 0x12]);
@@ -2759,7 +2680,8 @@ mod tests {
     #[test]
     fn conditionals_do_not_skip_mnemonic_lines() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .if 0", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert!(asm.cond_skipping());
@@ -2772,7 +2694,8 @@ mod tests {
     #[test]
     fn undefined_label_in_pass2_errors() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word MISSING", 0, 2);
         assert_eq!(status, LineStatus::Error);
         assert_eq!(asm.symbols().lookup("MISSING"), None);
@@ -2781,7 +2704,8 @@ mod tests {
     #[test]
     fn expression_precedence_and_ops() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word 1+2*3", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[7, 0]);
@@ -2810,7 +2734,8 @@ mod tests {
     #[test]
     fn logical_ops_use_truthiness() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word 2 && 4", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x01, 0x00]);
@@ -2839,7 +2764,8 @@ mod tests {
     #[test]
     fn expression_literals_and_prefixes() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(
             &mut asm,
             "    .word $1f, %1010, 1_0_0_0, 17o, 17q",
@@ -2856,7 +2782,8 @@ mod tests {
     #[test]
     fn expression_comparisons_and_logicals() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(
             &mut asm,
             "    .byte 3==3, 3!=4, 3<>4, 3<=3, 2<3, 3>=2, 3>2, 4=4",
@@ -2879,7 +2806,8 @@ mod tests {
     #[test]
     fn expression_bitwise_ops() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(
             &mut asm,
             "    .byte 0f0h & 00fh, 0f0h | 00fh, 0f0h ^ 00fh",
@@ -2893,7 +2821,8 @@ mod tests {
     #[test]
     fn expression_power_and_ternary_precedence() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word 2 ** 3 ** 2", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x00, 0x02]);
@@ -2906,7 +2835,8 @@ mod tests {
     #[test]
     fn expression_ternary_associativity() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .byte 0 ? 1 : 0 ? 2 : 3", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[3]);
@@ -2919,7 +2849,8 @@ mod tests {
     #[test]
     fn expression_shift_precedence() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word 1 + 2 << 3", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[24, 0]);
@@ -2932,7 +2863,8 @@ mod tests {
     #[test]
     fn expression_high_low_with_groups() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .byte >($1234+1), <($1234+1)", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x12, 0x35]);
@@ -2941,7 +2873,8 @@ mod tests {
     #[test]
     fn expression_not_equal_aliases() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .byte 3 <> 4, 3 != 4", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[1, 1]);
@@ -2950,7 +2883,8 @@ mod tests {
     #[test]
     fn expression_nested_ternary_with_parens() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .byte 1 ? (0 ? 2 : 3) : 4", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[3]);
@@ -2963,7 +2897,8 @@ mod tests {
     #[test]
     fn expression_underscores_in_hex_suffix() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word 1_2_3_4h, 0_f_f_fh", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x34, 0x12, 0xff, 0x0f]);
@@ -2972,7 +2907,8 @@ mod tests {
     #[test]
     fn conditional_nesting_state_changes() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .if 0", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert!(asm.cond_skipping());
@@ -2989,7 +2925,8 @@ mod tests {
     #[test]
     fn conditionals_skip_unmatched_blocks() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
 
         let status = process_line(&mut asm, "    .if 1", 0, 2);
         assert_eq!(status, LineStatus::Ok);
@@ -3015,7 +2952,8 @@ mod tests {
     #[test]
     fn conditionals_only_emit_true_branch_bytes() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let mut addr: u16 = 0;
         let mut out = Vec::new();
 
@@ -3055,7 +2993,8 @@ mod tests {
     #[test]
     fn switch_only_emits_matching_case() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let mut addr: u16 = 0;
         let mut out = Vec::new();
 
@@ -3093,7 +3032,8 @@ mod tests {
     #[test]
     fn expression_high_low_and_unary() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word > 1234H", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x12, 0x00]);
@@ -3110,7 +3050,8 @@ mod tests {
     #[test]
     fn expression_current_address_dollar() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word $ + 1", 0x1000, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[0x01, 0x10]);
@@ -3119,7 +3060,8 @@ mod tests {
     #[test]
     fn conditional_errors_for_mismatched_blocks() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .else", 0, 2);
         assert_eq!(status, LineStatus::Error);
 
@@ -3130,7 +3072,8 @@ mod tests {
     #[test]
     fn column_one_errors_for_identifier() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "1mov a,b", 0, 2);
         assert_eq!(status, LineStatus::Error);
         assert!(asm.error_message().contains("column 1"));
@@ -3139,7 +3082,8 @@ mod tests {
     #[test]
     fn error_kind_for_parser_failure() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "123", 0, 1);
         assert_eq!(status, LineStatus::Error);
         assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Parser);
@@ -3148,7 +3092,8 @@ mod tests {
     #[test]
     fn error_kind_for_directive_failure() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .const 5", 0, 1);
         assert_eq!(status, LineStatus::Error);
         assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Directive);
@@ -3157,7 +3102,8 @@ mod tests {
     #[test]
     fn error_kind_for_instruction_failure() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    RST A", 0, 2);
         assert_eq!(status, LineStatus::Error);
         assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Instruction);
@@ -3166,7 +3112,8 @@ mod tests {
     #[test]
     fn error_kind_for_expression_failure() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "    .word 1/0", 0, 2);
         assert_eq!(status, LineStatus::Error);
         assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Expression);
@@ -3175,7 +3122,8 @@ mod tests {
     #[test]
     fn error_kind_for_symbol_failure() {
         let mut symbols = SymbolTable::new();
-        let mut asm = AsmLine::new(&mut symbols);
+        let registry = default_registry();
+        let mut asm = make_asm_line(&mut symbols, &registry);
         let status = process_line(&mut asm, "LABEL: NOP", 0, 1);
         assert_eq!(status, LineStatus::Ok);
 

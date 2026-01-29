@@ -174,7 +174,7 @@ fn run_one(
         .registry
         .cpu_display_name(assembler.cpu())
         .unwrap_or_else(|| assembler.cpu().as_str());
-    let header_title = format!("asm485 {cpu_name} Assembler v{VERSION}");
+    let header_title = format!("opForge {cpu_name} Assembler v{VERSION}");
     if let Err(err) = listing.header(&header_title) {
         return Err(AsmRunError::new(
             AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
@@ -2289,7 +2289,7 @@ mod tests {
 
         let mut listing = ListingWriter::new(&mut list_file, false);
         listing
-            .header("asm485 8085 Assembler v1.0")
+            .header("opForge 8085 Assembler v1.0")
             .map_err(|err| format!("Write listing header: {err}"))?;
         let pass2 = assembler
             .pass2(&expanded_lines, &mut listing)
@@ -2339,7 +2339,7 @@ mod tests {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let examples_dir = repo_root.join("examples");
         let reference_dir = examples_dir.join("reference");
-        let update_reference = std::env::var("ASM485_UPDATE_REFERENCE").is_ok();
+        let update_reference = std::env::var("opForge_UPDATE_REFERENCE").is_ok();
 
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)

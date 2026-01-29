@@ -7,11 +7,10 @@ It was originally based on a fork of [**asm85** by Tom Nisbet](https://github.co
 It is now more inspired by [64tass](https://tass64.sourceforge.net) in terms of features and notational style.
 It produces optional Intel Hex, listing, and binary image outputs, selected by command-line arguments.
 
-For all documentation on features and syntax read: [asm485 Reference Manual](docs/asm485-reference-manual.md).
+For all documentation on features and syntax read: [opForge Reference Manual](docs/opForge-reference-manual.md).
 
 For detailed information about the multi-cpu architecture of the assembler read:
 - [Multi Cpu Architecture](docs/multi-cpu-architecture.md).
-- [Instruction Table Architecture](docs/instruction-table-architecture.md).
 
 
 Build:
@@ -46,7 +45,7 @@ expressions).
 ## Usage
 Syntax is:
 
-    asm485 [ARGUMENTS]
+    opForge [ARGUMENTS]
 
 Arguments:
 
@@ -85,21 +84,21 @@ If `test.asm` is specified as the input with `-i` and `-l`/`-x` are used without
 When multiple inputs are provided, `-o` must be a directory and explicit output filenames are not allowed; each input uses its own base name under the output directory.
 
 ### Examples
-    asm485 -l -x -i test02.asm
+    opForge -l -x -i test02.asm
 creates test02.lst and test02.hex.
 
-    asm485 -l -x -b 7eff:7fff -b f000:ffff -i prog.asm
+    opForge -l -x -b 7eff:7fff -b f000:ffff -i prog.asm
 creates:
 * The assembler listing in prog.lst
 * The hex records in prog.hex
 * A 512 byte binary image file prog-7eff.bin
 * A 4096 byte binary image file prog-f000.bin
 
-    asm485 -o build/out -l -x -i prog.asm
+    opForge -o build/out -l -x -i prog.asm
 creates:
 * The assembler listing in build/out.lst
 * The hex records in build/out.hex
 
-    asm485 -b out.bin:8000:8fff -i prog.asm
+    opForge -b out.bin:8000:8fff -i prog.asm
 creates:
 * A 4096 byte binary image file out.bin

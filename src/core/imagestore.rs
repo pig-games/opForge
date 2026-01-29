@@ -29,7 +29,7 @@ impl ImageStore {
             .unwrap_or_default()
             .as_nanos();
         let pid = std::process::id();
-        path.push(format!("asm485-image-{pid}-{nanos}.bin"));
+        path.push(format!("opForge-image-{pid}-{nanos}.bin"));
         let file = OpenOptions::new()
             .create(true)
             .write(true)

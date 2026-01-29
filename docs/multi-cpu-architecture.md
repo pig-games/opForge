@@ -1,6 +1,6 @@
-# asm485 Multi-CPU Architecture
+# opForge Multi-CPU Architecture
 
-This document describes the modular architecture that allows asm485 to support multiple CPU targets (8085, Z80, 6502, 65C02, and potentially 68000, etc.) through a common framework.
+This document describes the modular architecture that allows opForge to support multiple CPU targets (8085, Z80, 6502, 65C02, and potentially 68000, etc.) through a common framework.
 
 ## Overview
 

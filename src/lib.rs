@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-//! asm485 - Multi-CPU Assembler Library (8085/Z80/6502)
+//! opForge - Multi-CPU Assembler Library (8085/Z80/6502)
 //!
 //! This library is organized into:
 //! - [`core`] - CPU-agnostic assembler infrastructure (reusable)

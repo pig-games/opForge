@@ -22,7 +22,7 @@ With multiple inputs, -o must be a directory and explicit output filenames are n
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "asm485",
+    name = "opForge",
     version = VERSION,
     about = "Intel 8085 Assembler with expressions, directives and basic macro support",
     long_about = LONG_ABOUT
@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn cli_parses_outputs_and_inputs() {
         let cli = Cli::parse_from([
-            "asm485",
+            "opForge",
             "-i",
             "prog.asm",
             "-l",
@@ -518,14 +518,14 @@ mod tests {
 
     #[test]
     fn cli_defaults_pp_macro_depth() {
-        let cli = Cli::parse_from(["asm485", "-i", "prog.asm", "-l"]);
+        let cli = Cli::parse_from(["opForge", "-i", "prog.asm", "-l"]);
         assert_eq!(cli.pp_macro_depth, 64);
     }
 
     #[test]
     fn validate_cli_rejects_zero_pp_macro_depth() {
         let cli = Cli::parse_from([
-            "asm485",
+            "opForge",
             "-i",
             "prog.asm",
             "-l",

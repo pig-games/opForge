@@ -1,12 +1,12 @@
-# asm485 Reference Manual
+# opForge Reference Manual
 
-This document describes the asm485 assembler language, directives, and tooling.
+This document describes the opForge assembler language, directives, and tooling.
 It follows a chapter layout similar to 64tass. Sections marked **Planned** describe 
 features that are not implemented yet.
 
 ## 1. Introduction
 
-asm485 is a two-pass assembler for Intel 8080/8085 code. It supports:
+opForge is a two-pass assembler for Intel 8080/8085 code. It supports:
 - Dot-prefixed directives and conditionals.
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
 - Preprocessor directives for includes and conditional compilation.
@@ -258,7 +258,7 @@ Planned (not implemented yet): repeat/loop-style directives.
 Syntax:
 
 ```
-asm485 [OPTIONS]
+opForge [OPTIONS]
 ```
 
 Inputs:
@@ -288,7 +288,7 @@ output may use ANSI colors to highlight the offending region.
 
 ## 9. Credits
 
-asm485 is derived from the asm85 assembler by Tom Nisbet and has been extended
+opForge is derived from the asm85 assembler by Tom Nisbet and has been extended
 with new expression syntax, directives, and tooling.
 
 ## 10. Default translation

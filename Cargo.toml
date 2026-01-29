@@ -1,10 +1,10 @@
 [package]
-name = "asm485"
+name = "opforge"
 version = "1.0.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 authors = ["Erik van der Tier"]
-repository = "https://github.com/pig-games/asm485"
+repository = "https://github.com/pig-games/opForge"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

@@ -1,5 +1,5 @@
-# asm485
-Intel 8085 Assembler with expressions, directives, and preprocessor macros.
+# opForge
+Multi-target Assembler with expressions, directives, and preprocessor macros.
 
 This is an multi-target assembler for 8080 Family processors (currently 8080, 8085 and z80) and MOS 6502 Family
 (currently 6502 and 65c02) processors.

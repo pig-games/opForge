@@ -157,9 +157,9 @@ Phase 1 focuses on **macro syntax updates**, **adding `.segment`**, and **`.stat
 - [x] Enforce “no nested `.macro`/`.segment`” in [src/core/parser.rs](src/core/parser.rs).
 
 ### Stage 2 — `.statement` signature parsing
-- [ ] Define `StatementSignature` atoms (literal/capture/boundary span) in [src/core/parser.rs](src/core/parser.rs).
-- [ ] Parse `.statement` headers and body in [src/core/parser.rs](src/core/parser.rs).
-- [ ] Represent boundary spans `[{ ... }]` in [src/core/parser.rs](src/core/parser.rs).
+- [x] Define `StatementSignature` atoms (literal/capture/boundary span) in [src/core/parser.rs](src/core/parser.rs).
+- [x] Parse `.statement` headers and body in [src/core/parser.rs](src/core/parser.rs).
+- [x] Represent boundary spans `[{ ... }]` in [src/core/parser.rs](src/core/parser.rs).
 
 ### Stage 3 — Signature matching + precedence
 - [ ] Implement signature matching and precedence rules in [src/core/parser.rs](src/core/parser.rs).

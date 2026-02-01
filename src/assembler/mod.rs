@@ -461,6 +461,7 @@ struct AsmLine<'a> {
     label: Option<String>,
     mnemonic: Option<String>,
     cpu: CpuType,
+    statement_depth: usize,
 }
 
 impl<'a> AsmLine<'a> {
@@ -487,6 +488,7 @@ impl<'a> AsmLine<'a> {
             label: None,
             mnemonic: None,
             cpu,
+            statement_depth: 0,
         }
     }
 
@@ -659,10 +661,47 @@ impl<'a> AsmLine<'a> {
     }
 
     fn process_ast(&mut self, ast: LineAst) -> LineStatus {
+        if self.statement_depth > 0 {
+            return match ast {
+                LineAst::StatementEnd { .. } => {
+                    self.statement_depth = self.statement_depth.saturating_sub(1);
+                    LineStatus::Skip
+                }
+                LineAst::StatementDef { span, .. } => {
+                    self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Parser,
+                        "Nested .statement definitions are not supported",
+                        None,
+                        span,
+                    )
+                }
+                _ => LineStatus::Skip,
+            };
+        }
         match ast {
             LineAst::Empty => LineStatus::NothingDone,
             LineAst::Conditional { kind, exprs, span } => {
                 self.process_conditional_ast(kind, &exprs, span)
+            }
+            LineAst::StatementDef { .. } => {
+                if self.cond_stack.skipping() {
+                    return LineStatus::Skip;
+                }
+                self.statement_depth = self.statement_depth.saturating_add(1);
+                LineStatus::Skip
+            }
+            LineAst::StatementEnd { span } => {
+                if self.cond_stack.skipping() {
+                    return LineStatus::Skip;
+                }
+                self.failure_at_span(
+                    LineStatus::Error,
+                    AsmErrorKind::Parser,
+                    "Found .endstatement without matching .statement",
+                    None,
+                    span,
+                )
             }
             LineAst::Assignment { label, op, expr, span } => {
                 if self.cond_stack.skipping() {
@@ -2173,6 +2212,25 @@ mod tests {
         let pass1 = assembler.pass1(&expanded_lines);
         assert_eq!(pass1.errors, 0);
         assert_eq!(assembler.symbols().lookup("VAL"), Some(3));
+    }
+
+    #[test]
+    fn statement_definitions_skip_body_lines() {
+        let lines = vec![
+            ".statement foo byte a".to_string(),
+            "BADTOKEN".to_string(),
+            ".endstatement".to_string(),
+            ".byte 1".to_string(),
+        ];
+        let mut assembler = Assembler::new();
+        assembler.clear_diagnostics();
+        let pass1 = assembler.pass1(&lines);
+        assert_eq!(pass1.errors, 0);
+
+        let mut output = Vec::new();
+        let mut listing = ListingWriter::new(&mut output, false);
+        let pass2 = assembler.pass2(&lines, &mut listing).expect("pass2");
+        assert_eq!(pass2.errors, 0);
     }
 
     #[test]

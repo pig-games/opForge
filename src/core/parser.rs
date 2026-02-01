@@ -22,6 +22,14 @@ pub enum LineAst {
         exprs: Vec<Expr>,
         span: Span,
     },
+    StatementDef {
+        keyword: String,
+        signature: StatementSignature,
+        span: Span,
+    },
+    StatementEnd {
+        span: Span,
+    },
     Assignment {
         label: Label,
         op: AssignOp,
@@ -72,6 +80,25 @@ pub enum Expr {
         op: BinaryOp,
         left: Box<Expr>,
         right: Box<Expr>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct StatementSignature {
+    pub atoms: Vec<SignatureAtom>,
+}
+
+#[derive(Debug, Clone)]
+pub enum SignatureAtom {
+    Literal(Vec<u8>, Span),
+    Capture {
+        type_name: String,
+        name: String,
+        span: Span,
+    },
+    Boundary {
+        atoms: Vec<SignatureAtom>,
         span: Span,
     },
 }
@@ -334,6 +361,56 @@ impl Parser {
                 }
             };
             let upper = name.to_ascii_uppercase();
+            if upper.as_str() == "STATEMENT" {
+                let start_span = span;
+                let keyword = match self.next() {
+                    Some(Token {
+                        kind: TokenKind::Identifier(name),
+                        ..
+                    }) => name,
+                    Some(Token {
+                        kind: TokenKind::Register(name),
+                        ..
+                    }) => name,
+                    Some(token) => {
+                        return Err(ParseError {
+                            message: "Expected statement keyword".to_string(),
+                            span: token.span,
+                        });
+                    }
+                    None => {
+                        return Err(ParseError {
+                            message: "Expected statement keyword".to_string(),
+                            span: self.end_span,
+                        });
+                    }
+                };
+                let signature = self.parse_statement_signature(false)?;
+                let end_span = if self.index == 0 {
+                    self.end_span
+                } else {
+                    self.prev_span()
+                };
+                let span = Span {
+                    line: start_span.line,
+                    col_start: start_span.col_start,
+                    col_end: end_span.col_end,
+                };
+                return Ok(LineAst::StatementDef {
+                    keyword,
+                    signature,
+                    span,
+                });
+            }
+            if upper.as_str() == "ENDSTATEMENT" {
+                if self.index < self.tokens.len() {
+                    return Err(ParseError {
+                        message: "Unexpected tokens after .endstatement".to_string(),
+                        span: self.tokens[self.index].span,
+                    });
+                }
+                return Ok(LineAst::StatementEnd { span });
+            }
             if matches!(
                 upper.as_str(),
                 "MACRO" | "SEGMENT" | "ENDMACRO" | "ENDSEGMENT" | "ENDM" | "ENDS"
@@ -576,6 +653,102 @@ impl Parser {
             }
             _ => None,
         }
+    }
+
+    fn parse_statement_signature(&mut self, in_boundary: bool) -> Result<StatementSignature, ParseError> {
+        let mut atoms = Vec::new();
+        let mut closed = !in_boundary;
+        while self.index < self.tokens.len() {
+            if in_boundary
+                && self.peek_kind(TokenKind::CloseBrace)
+                && self.peek_kind_next(TokenKind::CloseBracket)
+            {
+                self.index += 2;
+                closed = true;
+                break;
+            }
+
+            if self.peek_kind(TokenKind::OpenBracket)
+                && self.peek_kind_next(TokenKind::OpenBrace)
+            {
+                let open_span = self.tokens[self.index].span;
+                self.index += 2;
+                let inner = self.parse_statement_signature(true)?;
+                let close_span = self.prev_span();
+                let span = Span {
+                    line: open_span.line,
+                    col_start: open_span.col_start,
+                    col_end: close_span.col_end,
+                };
+                atoms.push(SignatureAtom::Boundary {
+                    atoms: inner.atoms,
+                    span,
+                });
+                continue;
+            }
+
+            let token = self.next().ok_or(ParseError {
+                message: "Unexpected end of statement signature".to_string(),
+                span: self.end_span,
+            })?;
+            match token.kind {
+                TokenKind::String(lit) => {
+                    atoms.push(SignatureAtom::Literal(lit.bytes, token.span));
+                }
+                TokenKind::Dot => {
+                    atoms.push(SignatureAtom::Literal(vec![b'.'], token.span));
+                }
+                TokenKind::Comma => {
+                    atoms.push(SignatureAtom::Literal(vec![b','], token.span));
+                }
+                TokenKind::Identifier(type_name) | TokenKind::Register(type_name) => {
+                    let next = self.next().ok_or(ParseError {
+                        message: "Expected capture name after type".to_string(),
+                        span: self.end_span,
+                    })?;
+                    let name = match next.kind {
+                        TokenKind::Identifier(name) | TokenKind::Register(name) => name,
+                        _ => {
+                            return Err(ParseError {
+                                message: "Expected capture name after type".to_string(),
+                                span: next.span,
+                            });
+                        }
+                    };
+                    let span = Span {
+                        line: token.span.line,
+                        col_start: token.span.col_start,
+                        col_end: next.span.col_end,
+                    };
+                    atoms.push(SignatureAtom::Capture {
+                        type_name,
+                        name,
+                        span,
+                    });
+                }
+                _ => {
+                    return Err(ParseError {
+                        message: "Unexpected token in statement signature".to_string(),
+                        span: token.span,
+                    });
+                }
+            }
+        }
+        if !closed {
+            return Err(ParseError {
+                message: "Unterminated boundary span".to_string(),
+                span: self.end_span,
+            });
+        }
+        Ok(StatementSignature { atoms })
+    }
+
+    fn peek_kind(&self, kind: TokenKind) -> bool {
+        matches!(self.peek(), Some(Token { kind: k, .. }) if *k == kind)
+    }
+
+    fn peek_kind_next(&self, kind: TokenKind) -> bool {
+        matches!(self.tokens.get(self.index + 1), Some(Token { kind: k, .. }) if *k == kind)
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
@@ -1006,7 +1179,7 @@ fn map_tokenize_error(err: TokenizeError) -> ParseError {
 
 #[cfg(test)]
 mod tests {
-    use super::{AssignOp, ConditionalKind, LineAst, Parser};
+    use super::{AssignOp, ConditionalKind, LineAst, Parser, SignatureAtom};
 
     #[test]
     fn parses_label_and_mnemonic() {
@@ -1164,6 +1337,56 @@ mod tests {
                 assert_eq!(mnemonic.as_deref(), Some(".segment"));
             }
             _ => panic!("Expected statement"),
+        }
+    }
+
+    #[test]
+    fn parses_statement_definition_with_signature() {
+        let mut parser = Parser::from_line(
+            ".statement move.[{char size}] reg dst, reg src",
+            1,
+        )
+        .unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::StatementDef { keyword, signature, .. } => {
+                assert_eq!(keyword, "move.");
+                assert_eq!(signature.atoms.len(), 4);
+                assert!(matches!(signature.atoms[0], SignatureAtom::Boundary { .. }));
+                assert!(matches!(signature.atoms[1], SignatureAtom::Capture { .. }));
+                assert!(matches!(signature.atoms[2], SignatureAtom::Literal(_, _)));
+            }
+            _ => panic!("Expected statement definition"),
+        }
+    }
+
+    #[test]
+    fn parses_statement_boundary_span() {
+        let mut parser = Parser::from_line(
+            ".statement sta \"[\" byte a \",\"[{char reg}]",
+            1,
+        )
+        .unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::StatementDef { signature, .. } => {
+                assert_eq!(signature.atoms.len(), 4);
+                assert!(matches!(signature.atoms[0], SignatureAtom::Literal(_, _)));
+                assert!(matches!(signature.atoms[1], SignatureAtom::Capture { .. }));
+                assert!(matches!(signature.atoms[2], SignatureAtom::Literal(_, _)));
+                assert!(matches!(signature.atoms[3], SignatureAtom::Boundary { .. }));
+            }
+            _ => panic!("Expected statement definition"),
+        }
+    }
+
+    #[test]
+    fn parses_endstatement_line() {
+        let mut parser = Parser::from_line(".endstatement", 1).unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::StatementEnd { .. } => {}
+            _ => panic!("Expected statement end"),
         }
     }
 

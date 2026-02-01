@@ -16,7 +16,7 @@ The assembler is organized into layers with hierarchical parsing and encoding:
 ┌─────────────────────────────────────────────────────────────┐
 │                    Generic Parser                           │
 │  Handles: labels, directives, macros, scopes, expressions   │
-│  Extracts: mnemonic + raw operand tokens for instructions   │
+│  Extracts: mnemonic + operand expressions for instructions  │
 │  Does NOT interpret addressing mode syntax                  │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -25,12 +25,14 @@ The assembler is organized into layers with hierarchical parsing and encoding:
 │                 Module Registry                             │
 │  Registers CPU families + CPU variants                      │
 │  Binds dialect + family + cpu into a pipeline               │
+│  Provides optional CPU validator                            │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Syntax Dialect (optional)                │
-│  Maps dialect-specific mnemonics to instruction encoding    │
+│  Maps dialect-specific mnemonics to canonical forms         │
+│  Can rewrite family-level operands                          │
 │  Transparent for families with uniform syntax (e.g., 6502)  │
 │  Active for families with mnemonic variants (e.g., Z80)     │
 └─────────────────────────────────────────────────────────────┘
@@ -40,6 +42,7 @@ The assembler is organized into layers with hierarchical parsing and encoding:
 │                    CPU Family Layer                         │
 │  - Parses operands into family addressing modes             │
 │  - Uses generic expression parser for operand values        │
+│  - Optional pre-encoding using family operands              │
 │  - Encodes instructions common to all family members        │
 │  - Falls through to CPU-specific for extensions             │
 └─────────────────────────────────────────────────────────────┘
@@ -82,15 +85,16 @@ The generic parser handles all **CPU-independent** parsing:
 - **Expressions**: Arithmetic, symbols, operators (shared infrastructure)
 - **Comments**: Line and block comments
 
-For **instructions**, the generic parser extracts the mnemonic and raw operand tokens, but does *not* interpret addressing mode syntax (that's family-specific).
+For **instructions**, the generic parser extracts the mnemonic and operand expressions (`Expr`), but does *not* interpret addressing mode syntax (that's family-specific).
 
 ### Module Registry
 
 The assembler owns a **registry** that wires the family and CPU modules into a standardized pipeline:
 
-- **Family module**: declares the base instruction set, operand parsing, and addressing modes.
-- **CPU module**: declares extensions (or none), and validates CPU-specific constraints.
-- **Dialect module** (optional): remaps mnemonics and operand ordering to the family canonical form.
+- **Family module**: declares the family handler, canonical dialect, and available dialects.
+- **CPU module**: declares the CPU handler, default dialect, and optional CPU validator.
+- **Dialect module** (optional): remaps mnemonics and may transform family-level operands.
+- **Family CPU alias** (optional): a family can register a canonical CPU name that resolves to a default CPU ID (e.g., "8080" → 8085).
 
 The registry is responsible for selecting the right modules based on the configured target CPU, then binding them together for the assembly run.
 
@@ -99,6 +103,7 @@ The registry is responsible for selecting the right modules based on the configu
 The family handler interprets **operand syntax** for its CPU family:
 - Recognizes addressing mode patterns (`#expr`, `(expr,X)`, etc.)
 - **Uses the generic expression parser** to evaluate operand values
+- Optionally pre-encodes using family operands (short-circuit for some cases)
 - Encodes instructions from the family's common instruction set
 - Falls through to the CPU handler for unrecognized mnemonics
 
@@ -109,16 +114,24 @@ The CPU handler adds **CPU-specific extensions**:
 - Encodes CPU-specific instructions not in the family set
 - Validates that addressing modes are supported by the target CPU
 
+### CPU Validator (Optional)
+
+Some CPUs provide a validator that runs **after operand resolution** and **before final encoding**. This is used for CPU-level semantic constraints that aren’t captured by parsing or encoding alone.
+
 ## Hierarchical Processing
 
 The key architectural principle is **hierarchical processing** at both the operand parsing and instruction encoding levels.
 
 ### Processing Pipeline
 
-1. **Generic Parser** handles labels, directives, macros, scopes; extracts mnemonic + operand tokens for instructions
-2. **Family Handler** parses operand tokens into addressing modes (using generic expression parsing), attempts instruction encoding
-3. **CPU Handler** resolves ambiguous operands, encodes CPU-specific instructions
-4. **Error** is reported if neither layer recognizes the operand or instruction
+1. **Generic Parser** handles labels, directives, macros, scopes; extracts mnemonic + operand expressions (`Expr`) for instructions
+2. **Family Handler** parses expressions into family operands (using generic expression parsing)
+3. **Dialect** maps mnemonic and (optionally) rewrites family operands
+4. **Family Handler (optional)** attempts pre-encoding from family operands
+5. **CPU Handler** resolves family operands to CPU-specific operands
+6. **CPU Validator** (optional) enforces CPU-level constraints
+7. **Family Handler** encodes common instructions with resolved operands
+8. **CPU Handler** encodes CPU-specific instructions if family encoding returns `NotFound`
 
 ### Shared Generic Services
 
@@ -213,8 +226,8 @@ Source: "LDA ($20)"
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Generic Parser                                                  │
-│ → mnemonic = "LDA", operand_tokens = [LPAREN, $20, RPAREN]      │
-│ → Does NOT interpret the operand — just tokenizes               │
+│ → mnemonic = "LDA", operand_exprs = [( $20 )]                   │
+│ → Does NOT interpret addressing modes — just parses expressions │
 └─────────────────────────────────────────────────────────────────┘
        │
        ▼
@@ -247,7 +260,7 @@ Source: "BRA LOOP"
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Generic Parser                                                  │
-│ → mnemonic = "BRA", operand_tokens = [IDENT(LOOP)]              │
+│ → mnemonic = "BRA", operand_exprs = [LOOP]                      │
 └─────────────────────────────────────────────────────────────────┘
        │
        ▼
@@ -278,8 +291,11 @@ Each CPU type maps to exactly one family. The assembler selects the appropriate 
 
 ### Handler Traits
 
+The core traits live in [src/core/family.rs](src/core/family.rs) and are type-erased in the registry via `FamilyHandlerDyn`/`CpuHandlerDyn` in [src/core/registry.rs](src/core/registry.rs).
+
 **FamilyHandler** provides:
 - Operand parsing for family-common syntax patterns
+- Optional pre-encoding using family operands
 - Instruction encoding for family-common mnemonics
 - Register and condition code recognition
 
@@ -287,36 +303,48 @@ Each CPU type maps to exactly one family. The assembler selects the appropriate 
 - Reference to its parent family handler
 - Resolution of ambiguous operands to CPU-specific forms
 - Instruction encoding for CPU-specific mnemonics
-- Query methods for supported modes and mnemonics
+- Query methods for supported mnemonics
 
 ## Instruction Resolution Architecture
 
-Instruction resolution is standardized across all families using a three-layer pipeline:
+Instruction resolution is standardized across all families using a multi-stage pipeline:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Dialect Layer                               │
 │  Maps dialect mnemonic → canonical mnemonic + operand transform │
-│  Family-owned; optional, may be identity                         │
+│  Operates on family operands                                     │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Family Base Resolver                          │
-│  Canonical encoding using family mnemonics                        │
-│  (mnemonic, operands) → bytes or error                           │
+│            Family Pre-Encode (optional)                          │
+│  (canonical mnemonic, family operands) → bytes or NotFound       │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                  CPU Extension Resolver                          │
+│           CPU Operand Resolution + Validation                    │
+│  family operands → CPU operands (+ optional validator)           │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│        Family Base Encoder (resolved operands)                   │
+│  (canonical mnemonic, CPU operands) → bytes or NotFound          │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                  CPU Extension Encoder                           │
 │  CPU-only mnemonics and encodings                                │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Resolution Pipeline
 
-1. Apply dialect mapping (if any) to normalize mnemonics and operands.
-2. Resolve via the family base resolver.
-3. If not found, resolve via the CPU extension resolver.
+1. Parse operands into family operands.
+2. Apply dialect mapping (if any) to normalize mnemonics and operands.
+3. Attempt family pre-encoding using family operands.
+4. Resolve to CPU operands, then apply optional CPU validation.
+5. Resolve via the family base encoder with CPU operands.
+6. If not found, resolve via the CPU extension encoder.
 
 ### Standardized Ownership
 
@@ -338,35 +366,32 @@ The registry model standardizes a minimal, full-surface interface so all familie
 /// Registers a family in the assembler registry.
 pub trait FamilyModule {
        fn family_id(&self) -> CpuFamily;
+       fn family_cpu_id(&self) -> Option<CpuType> { None }
+       fn family_cpu_name(&self) -> Option<&'static str> { None }
        fn canonical_dialect(&self) -> &'static str;
-       fn dialects(&self) -> &'static [Box<dyn DialectModule>];
-       fn parser(&self) -> Box<dyn FamilyParser>;
-       fn resolver(&self) -> Box<dyn FamilyInstructionResolver>;
+       fn dialects(&self) -> Vec<Box<dyn DialectModule>>;
+       fn handler(&self) -> Box<dyn FamilyHandlerDyn>;
 }
 
 /// Registers a concrete CPU in the assembler registry.
 pub trait CpuModule {
        fn cpu_id(&self) -> CpuType;
        fn family_id(&self) -> CpuFamily;
-       fn validator(&self) -> Box<dyn CpuValidator>;
-       fn operand_resolver(&self) -> Box<dyn CpuOperandResolver>;
-       fn instruction_resolver(&self) -> Box<dyn CpuInstructionResolver>;
+       fn cpu_name(&self) -> &'static str;
+       fn default_dialect(&self) -> &'static str;
+       fn handler(&self) -> Box<dyn CpuHandlerDyn>;
+       fn validator(&self) -> Option<Box<dyn CpuValidator>> { None }
 }
 
 /// Optional dialect mapping for a family.
 pub trait DialectModule {
        fn dialect_id(&self) -> &'static str;
        fn family_id(&self) -> CpuFamily;
-       fn map_mnemonic(&self, mnemonic: &str, operands: &[Token]) -> DialectResult;
-}
-
-/// Instruction resolution interface hides table formats.
-pub trait FamilyInstructionResolver {
-       fn resolve(&self, mnemonic: &str, operands: &[FamilyOperand]) -> ResolveResult;
-}
-
-pub trait CpuInstructionResolver {
-       fn resolve(&self, mnemonic: &str, operands: &[Operand]) -> ResolveResult;
+       fn map_mnemonic(
+           &self,
+           mnemonic: &str,
+           operands: &dyn FamilyOperandSet,
+       ) -> Option<(String, Box<dyn FamilyOperandSet>)>;
 }
 ```
 
@@ -391,6 +416,10 @@ Two levels of operand types support the hierarchical model:
 - Represents CPU-specific operands with resolved semantics
 - Contains evaluated values ready for encoding
 - Includes CPU-specific variants (e.g., `IndirectZeroPage` for 65C02, `Indexed` for Z80)
+
+Because the registry is type-erased, operands move through the pipeline as:
+- `FamilyOperandSet`: boxed, cloneable container of family operands
+- `OperandSet`: boxed, cloneable container of resolved CPU operands
 
 ### Addressing Modes
 
@@ -450,19 +479,25 @@ This is different from the 6502/65C02 relationship, where both use identical mne
 
 ### Architectural Solution
 
-A **Syntax Dialect** is a mnemonic mapping layer that sits between the generic parser and instruction encoding:
+A **Syntax Dialect** is a mnemonic mapping layer that sits between family operand parsing and instruction encoding:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Generic Parser                           │
-│  → Extracts mnemonic + operand tokens                       │
+│  → Extracts mnemonic + operand expressions                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Family Handler                           │
+│  → Parses family operands                                   │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Syntax Dialect                           │
 │  → Maps dialect mnemonics to canonical forms                │
-│  → Normalizes operand order if needed                       │
+│  → May rewrite family operands                              │
 │  → Passes through mnemonics not in dialect mapping          │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -484,7 +519,7 @@ A **Syntax Dialect** is a mnemonic mapping layer that sits between the generic p
 
 Dialect modules are registered alongside the family. The registry selects a dialect based on:
 
-- Explicit command-line selection (if provided), or
+- An explicit override passed to the registry (not currently exposed in the CLI), or
 - The CPU default dialect defined in its module, or
 - The family canonical dialect.
 
@@ -513,7 +548,13 @@ Source: "LD A,B" (Z80 dialect)
        ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ Generic Parser                                                  │
-│ → mnemonic = "LD", operands = [A, B]                            │
+│ → mnemonic = "LD", operand_exprs = [A, B]                       │
+└─────────────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Intel8080 Family Handler                                        │
+│ → Parses family operands (registers A, B)                       │
 └─────────────────────────────────────────────────────────────────┘
        │
        ▼
@@ -575,15 +616,14 @@ This works because:
 
 The assembler determines the active dialect from the target CPU:
 
-| CpuType | Dialect | Instruction Table |
+| CpuType/Name | Dialect | Instruction Table |
 |---------|---------|-------------------|
-| I8080 | Intel8080Dialect | Family table |
-| I8085 | Intel8080Dialect | Family table + 8085 extensions |
+| 8085 (and 8080 alias) | Intel8080Dialect | Family table + 8085 extensions |
 | Z80 | Z80Dialect | Family table + Z80 extensions |
 | M6502 | Transparent | Family table |
 | M65C02 | Transparent | Family table + extensions |
 
-The `.cpu` directive in source selects both the CPU type and its associated dialect.
+The active CPU selects its associated default dialect unless an override is supplied.
 
 ## Module Structure
 
@@ -591,17 +631,17 @@ The `.cpu` directive in source selects both the CPU type and its associated dial
 src/
 ├── core/
 │   ├── parser.rs        # Generic parser
-│   ├── operand.rs       # Operand types
+│   ├── family.rs        # FamilyHandler/CpuHandler traits + context
+│   ├── registry.rs      # Module registry + type-erased handlers
 │   ├── cpu.rs           # CpuType, CpuFamily
-│   └── traits.rs        # FamilyHandler, CpuHandler traits
+│   └── assembler/       # Passes, listing, conditionals, diagnostics
 │
 ├── families/
-│   ├── intel8080/       # 8080/8085 common parsing and encoding
-│   └── mos6502/         # 6502 common parsing and encoding
+│   ├── intel8080/       # 8080/8085 common parsing + encoding + dialects
+│   └── mos6502/         # 6502 common parsing + encoding
 │
 ├── i8085/               # 8085-specific extensions (RIM, SIM)
-├── z80/                 # Z80 extensions and dialect mapping
-├── m6502/               # Base 6502 (no extensions)
+├── z80/                 # Z80 extensions + dialect mapping
 ├── m65c02/              # 65C02 extensions
 │
 └── assembler/           # Main orchestration
@@ -611,7 +651,7 @@ src/
 
 ### Why Unified Handler Traits?
 
-Each handler trait combines parsing and encoding rather than separating them into `FamilyParser`/`FamilyEncoder`. This keeps related functionality together — the same handler that understands how to parse `($20)` also knows how to encode instructions that use that mode.
+Each handler trait combines parsing and encoding rather than separating them into distinct parser/encoder traits. This keeps related functionality together — the same handler that understands how to parse `($20)` also knows how to encode instructions that use that mode.
 
 ### Why FamilyOperand Intermediate Type?
 
@@ -637,32 +677,3 @@ This means:
 - Common instructions are encoded by the family (shared code)
 - Extended instructions fall through to the CPU (extension code)
 - No need for explicit "is this a CPU-specific instruction?" checks
-
-## Migration Path
-
-To migrate from the current implementation to hierarchical parsing and encoding:
-
-1. Create FamilyOperand type and FamilyHandler trait ✓
-2. Implement MOS6502FamilyHandler with operand parsing and base instruction encoding ✓
-3. Create CpuHandler trait; implement for M6502 and M65C02 ✓
-4. Implement M65C02CpuHandler with extended instruction encoding ✓
-5. Update assembler to use new pipeline for MOS6502 family ✓
-6. Implement Intel8080FamilyHandler for 8080/8085 dialect ✓
-7. Implement I8085CpuHandler for RIM/SIM extensions ✓
-8. Implement Z80CpuHandler with Z80 extensions ✓
-9. Wire Intel8080 family handlers into assembler ✓
-10. Remove legacy CPU-specific processing code ✓
-
-### Current Status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| MOS6502FamilyHandler | ✅ Complete | Wired into assembler |
-| M6502CpuHandler | ✅ Complete | Wired into assembler |
-| M65C02CpuHandler | ✅ Complete | Wired into assembler |
-| Intel8080FamilyHandler | ✅ Complete | Intel dialect table |
-| I8085CpuHandler | ✅ Complete | RIM/SIM support |
-| Z80CpuHandler | ✅ Complete | Zilog dialect table |
-| Intel8080 assembler wiring | ✅ Complete | Uses dialect mapping + family table + extensions |
-
-The Intel 8080 family handlers are wired into the assembler. Legacy `process_instruction_8085()` and `process_instruction_z80()` paths have been removed in favor of a unified `process_instruction_intel8080()` flow that uses dialect mapping, family encoding, and CPU extensions.

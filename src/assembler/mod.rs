@@ -951,7 +951,7 @@ impl<'a> AsmLine<'a> {
                     return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Conditional,
-                        ".case found without matching .switch",
+                        ".case found without matching .match",
                         None,
                         expr_err_span,
                     );
@@ -962,7 +962,7 @@ impl<'a> AsmLine<'a> {
                         return self.failure_at_span(
                             LineStatus::Error,
                             AsmErrorKind::Conditional,
-                            ".case found without matching .switch",
+                            ".case found without matching .match",
                             None,
                             expr_err_span,
                         );
@@ -979,7 +979,7 @@ impl<'a> AsmLine<'a> {
                                 return self.failure_at_span(
                                     LineStatus::Error,
                                     AsmErrorKind::Conditional,
-                                    ".case found without matching .switch",
+                                    ".case found without matching .match",
                                     None,
                                     expr_err_span,
                                 );
@@ -991,7 +991,7 @@ impl<'a> AsmLine<'a> {
                         return self.failure_at_span(
                             LineStatus::Error,
                             AsmErrorKind::Conditional,
-                            ".case found without matching .switch",
+                            ".case found without matching .match",
                             None,
                             expr_err_span,
                         );
@@ -1001,7 +1001,7 @@ impl<'a> AsmLine<'a> {
                     return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Conditional,
-                        ".case found without matching .switch",
+                        ".case found without matching .match",
                         None,
                         expr_err_span,
                     );
@@ -1053,7 +1053,7 @@ impl<'a> AsmLine<'a> {
                     return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Conditional,
-                        ".default found without matching .switch",
+                        ".default found without matching .match",
                         None,
                         end_span,
                     );
@@ -1064,7 +1064,7 @@ impl<'a> AsmLine<'a> {
                         return self.failure_at_span(
                             LineStatus::Error,
                             AsmErrorKind::Conditional,
-                            ".default found without matching .switch",
+                            ".default found without matching .match",
                             None,
                             end_span,
                         );
@@ -1078,7 +1078,7 @@ impl<'a> AsmLine<'a> {
                     return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Conditional,
-                        ".default found without matching .switch",
+                        ".default found without matching .match",
                         None,
                         end_span,
                     );
@@ -1138,7 +1138,7 @@ impl<'a> AsmLine<'a> {
                     return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Conditional,
-                        ".endswitch found without matching .switch",
+                        ".endmatch found without matching .match",
                         None,
                         err_span,
                     );
@@ -1153,7 +1153,7 @@ impl<'a> AsmLine<'a> {
                     return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Conditional,
-                        ".endswitch found without matching .switch",
+                        ".endmatch found without matching .match",
                         None,
                         err_span,
                     );
@@ -2736,7 +2736,7 @@ mod tests {
     }
 
     #[test]
-    fn switch_only_emits_matching_case() {
+    fn match_only_emits_matching_case() {
         let mut symbols = SymbolTable::new();
         let registry = default_registry();
         let mut asm = make_asm_line(&mut symbols, &registry);
@@ -2744,14 +2744,14 @@ mod tests {
         let mut out = Vec::new();
 
         let lines = [
-            "    .switch 2",
+            "    .match 2",
             "    .case 1",
             "    .byte 1",
             "    .case 2, 3",
             "    .byte 2",
             "    .default",
             "    .byte 9",
-            "    .endswitch",
+            "    .endmatch",
         ];
 
         for line in lines {

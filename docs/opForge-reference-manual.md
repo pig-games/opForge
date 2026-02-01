@@ -138,20 +138,20 @@ Compound assignment operators:
 .endif
 ```
 
-Switch form:
+Match form:
 
 ```
-.switch expr
+.match expr
 .case expr[, expr...]
     ; body
 .case expr
     ; body
 .default
     ; body
-.endswitch
+.endmatch
 ```
 
-The switch expression is evaluated once; the first matching `.case` wins, and
+The match expression is evaluated once; the first matching `.case` wins, and
 `.default` is used if no case matches.
 
 ### 4.6 Scopes
@@ -359,7 +359,7 @@ Instruction mnemonics are selected by `.cpu`:
 .block  .endblock
 .macro  .endmacro  .segment  .endsegment
 .if  .elseif  .else  .endif
-.switch  .case  .default  .endswitch
+.match  .case  .default  .endmatch
 .ifdef  .ifndef  .include
 ```
 

@@ -120,10 +120,10 @@ Phase 1 focuses on **macro syntax updates**, **adding `.segment`**, and **`.stat
 ## Phase 1 Implementation Checklist (Draft)
 
 ### Parser & Tokenizer
-- [ ] Extend tokenization for quoted literal tokens in signatures if needed.
-- [ ] Add `.segment` directive parsing.
-- [ ] Add `.statement` definition parsing and signature AST.
-- [ ] Allow macro and segment definition/call alternate syntax forms.
+- [x] Extend tokenization for quoted literal tokens in signatures if needed.
+- [x] Add `.segment` directive parsing.
+- [x] Add `.statement` definition parsing and signature AST.
+- [x] Allow macro and segment definition/call alternate syntax forms.
 
 ### Macro Processor
 - [x] Normalize macro definition forms to a single internal representation.
@@ -131,17 +131,17 @@ Phase 1 focuses on **macro syntax updates**, **adding `.segment`**, and **`.stat
 - [x] Ensure `.segment` participates in the same expansion pipeline as `.macro`.
 
 ### AST / Core Structures
-- [ ] Add `StatementSignature` node with atoms (literal/capture/boundary span).
-- [ ] Add built-in capture type handling + ADT variant capture when `.type` is available.
-- [ ] Add `Segment` scope node, consistent with `.macro` visibility rules.
+- [x] Add `StatementSignature` node with atoms (literal/capture/boundary span).
+- [x] Add built-in capture type handling + ADT variant capture when `.type` is available.
+- [x] Add `Segment` scope node, consistent with `.macro` visibility rules.
 
 ### Matching & Validation
-- [ ] Implement signature matching engine with precedence rules.
-- [ ] Bind typed captures into `.statement` body scope.
-- [ ] Add diagnostics for ambiguous or invalid signatures.
+- [x] Implement signature matching engine with precedence rules.
+- [x] Bind typed captures into `.statement` body scope.
+- [x] Add diagnostics for ambiguous or invalid signatures.
 
 ### Documentation
-- [ ] Update core spec + patterned signature doc with final decisions.
+- [x] Update core spec + patterned signature doc with final decisions.
 - [x] Add syntax examples for `.segment` and macro surface forms.
 
 ---
@@ -175,12 +175,12 @@ Phase 1 focuses on **macro syntax updates**, **adding `.segment`**, and **`.stat
 - [x] Add type-checking for captured values in [src/core/expr.rs](src/core/expr.rs).
 
 ### Stage 5 — Documentation updates
-- [ ] Apply decisions to [docs/NextSteps/core/opforge_core_spec_v0_3b.md](docs/NextSteps/core/opforge_core_spec_v0_3b.md).
-- [ ] Apply decisions to [docs/NextSteps/core/opforge_patterned_statement_signatures_v0_2b.md](docs/NextSteps/core/opforge_patterned_statement_signatures_v0_2b.md).
-- [ ] Add syntax examples to [docs/NextSteps/core/opforge_patterned_statement_signatures_v0_2b.md](docs/NextSteps/core/opforge_patterned_statement_signatures_v0_2b.md).
+- [x] Apply decisions to [docs/NextSteps/core/opforge_core_spec_v0_3b.md](docs/NextSteps/core/opforge_core_spec_v0_3b.md).
+- [x] Apply decisions to [docs/NextSteps/core/opforge_patterned_statement_signatures_v0_2b.md](docs/NextSteps/core/opforge_patterned_statement_signatures_v0_2b.md).
+- [x] Add syntax examples to [docs/NextSteps/core/opforge_patterned_statement_signatures_v0_2b.md](docs/NextSteps/core/opforge_patterned_statement_signatures_v0_2b.md).
 
 ---
 
 ## Next Steps
 1) [x] Convert decisions into per-module tasks with file pointers and a staging order.
-2) [ ] Start with parser/macro syntax changes (lowest risk, fastest feedback).
+2) [x] Start with parser/macro syntax changes (lowest risk, fastest feedback).

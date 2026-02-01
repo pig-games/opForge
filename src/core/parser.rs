@@ -439,10 +439,10 @@ impl Parser {
                 "ELSEIF" => (ConditionalKind::ElseIf, true, false),
                 "ELSE" => (ConditionalKind::Else, false, false),
                 "ENDIF" => (ConditionalKind::EndIf, false, false),
-                "SWITCH" => (ConditionalKind::Switch, true, false),
+                "MATCH" => (ConditionalKind::Switch, true, false),
                 "CASE" => (ConditionalKind::Case, true, true),
                 "DEFAULT" => (ConditionalKind::Default, false, false),
-                "ENDSWITCH" => (ConditionalKind::EndSwitch, false, false),
+                "ENDMATCH" => (ConditionalKind::EndSwitch, false, false),
                 _ => {
                     let mut operands = Vec::new();
                     if self.index < self.tokens.len() {

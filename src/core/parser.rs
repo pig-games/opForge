@@ -679,6 +679,14 @@ impl Parser {
                 break;
             }
 
+            if in_boundary && self.peek_kind(TokenKind::CloseBrace) {
+                let token = self.next().expect("token");
+                return Err(ParseError {
+                    message: "Missing closing }]".to_string(),
+                    span: token.span,
+                });
+            }
+
             if self.peek_kind(TokenKind::OpenBracket)
                 && self.peek_kind_next(TokenKind::OpenBrace)
             {
@@ -747,7 +755,7 @@ impl Parser {
         }
         if !closed {
             return Err(ParseError {
-                message: "Unterminated boundary span".to_string(),
+                message: "Missing closing }]".to_string(),
                 span: self.end_span,
             });
         }
@@ -1377,7 +1385,7 @@ pub fn match_statement_signature(
 pub fn select_statement_signature(
     signatures: &[StatementSignature],
     tokens: &[Token],
-) -> Result<Option<usize>, String> {
+) -> Result<Option<usize>, ParseError> {
     let mut best_idx = None;
     let mut best_score = SignatureScore {
         literal_atoms: 0,
@@ -1400,7 +1408,18 @@ pub fn select_statement_signature(
     }
 
     if tied {
-        return Err("Ambiguous statement signature".to_string());
+        let span = tokens
+            .first()
+            .map(|t| t.span)
+            .unwrap_or(Span {
+                line: 0,
+                col_start: 0,
+                col_end: 0,
+            });
+        return Err(ParseError {
+            message: "Ambiguous statement signature".to_string(),
+            span,
+        });
     }
     Ok(best_idx)
 }
@@ -1689,6 +1708,45 @@ mod tests {
             .expect("select")
             .expect("match");
         assert_eq!(idx, 0);
+    }
+
+    #[test]
+    fn statement_signature_selection_reports_ambiguity() {
+        let mut parser1 = Parser::from_line(
+            ".statement foo byte a",
+            1,
+        )
+        .unwrap();
+        let sig1 = match parser1.parse_line().unwrap() {
+            LineAst::StatementDef { signature, .. } => signature,
+            _ => panic!("Expected statement definition"),
+        };
+
+        let mut parser2 = Parser::from_line(
+            ".statement foo word b",
+            1,
+        )
+        .unwrap();
+        let sig2 = match parser2.parse_line().unwrap() {
+            LineAst::StatementDef { signature, .. } => signature,
+            _ => panic!("Expected statement definition"),
+        };
+
+        let mut tokenizer = Tokenizer::new("10", 1);
+        let mut tokens = Vec::new();
+        loop {
+            let token = tokenizer.next_token().unwrap();
+            if matches!(token.kind, crate::core::tokenizer::TokenKind::End) {
+                break;
+            }
+            tokens.push(token);
+        }
+
+        let err = select_statement_signature(&[sig1, sig2], &tokens)
+            .expect_err("expected ambiguity error");
+        assert_eq!(err.message, "Ambiguous statement signature");
+        assert_eq!(err.span.line, 1);
+        assert_eq!(err.span.col_start, 1);
     }
 
     #[test]

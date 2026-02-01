@@ -114,7 +114,7 @@ mod tests {
                 // Should have NZ as register and 1000h as number
                 assert_eq!(operands.len(), 2);
                 assert!(
-                    matches!(&operands[0], Expr::Register(name, _) if name.to_ascii_uppercase() == "NZ"),
+                    matches!(&operands[0], Expr::Register(name, _) if name.eq_ignore_ascii_case("NZ")),
                     "Expected NZ register, got {:?}",
                     operands[0]
                 );

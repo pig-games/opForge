@@ -426,77 +426,76 @@ fn expand_statement_invocation(
         return Ok(None);
     }
 
-    let Some((label, mnemonic_text, mnemonic_end, mnemonic_col_start)) =
+    let Some((label, mnemonic_text, mnemonic_end, _mnemonic_col_start)) =
         scan_statement_invocation(code)
     else {
         return Ok(None);
     };
 
     let mnemonic_upper = mnemonic_text.to_ascii_uppercase();
-    let mut matches = Vec::new();
 
+    let mut best_match: Option<(&String, &Vec<StatementDef>)> = None;
     for (keyword_upper, defs) in &processor.statements {
         if !mnemonic_upper.starts_with(keyword_upper) {
             continue;
         }
-
-        let remainder = &mnemonic_text[keyword_upper.len()..];
-        let tail = code.get(mnemonic_end..).unwrap_or("");
-        let match_text = format!("{}{}", remainder, tail);
-
-        let match_tokens = tokenize_line(&match_text, line_num)?;
-        let signatures: Vec<StatementSignature> =
-            defs.iter().map(|def| def.signature.clone()).collect();
-        let (selection, tokens_for_match) =
-            match select_statement_signature(&signatures, &match_tokens).map_err(|err| {
-                MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
-            })? {
-                Some(idx) => (Some(idx), match_tokens),
-                None => {
-                    let split_tokens = split_single_letter_digit_tokens(&match_tokens);
-                    let selection = select_statement_signature(&signatures, &split_tokens)
-                        .map_err(|err| {
-                            MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
-                        })?;
-                    (selection, split_tokens)
+        match best_match {
+            None => best_match = Some((keyword_upper, defs)),
+            Some((best_keyword, _)) => {
+                if keyword_upper.len() > best_keyword.len() {
+                    best_match = Some((keyword_upper, defs));
                 }
-            };
-
-        let Some(idx) = selection else {
-            continue;
-        };
-
-        let signature = &defs[idx].signature;
-        let statement_match =
-            match_statement_signature(signature, &tokens_for_match).ok_or_else(|| {
-                MacroError::new("Statement signature match failed", Some(line_num), Some(1))
-            })?;
-
-        let args = build_statement_args(&statement_match);
-        let mut expanded = Vec::new();
-        for line in &defs[idx].body {
-            expanded.push(substitute_line(line, &args));
+            }
         }
-
-        if let Some(label) = &label {
-            attach_label_to_expansion(label, &mut expanded);
-        }
-        matches.push(expanded);
     }
 
-    match matches.len() {
-        0 => Ok(None),
-        1 => {
-            let expanded = matches.into_iter().next().unwrap();
-            let nested = processor.expand_lines(&expanded, depth + 1)?;
-            Ok(Some(nested))
+    let Some((keyword_upper, defs)) = best_match else {
+        return Ok(None);
+    };
+
+    let remainder = &mnemonic_text[keyword_upper.len()..];
+    let tail = code.get(mnemonic_end..).unwrap_or("");
+    let match_text = format!("{}{}", remainder, tail);
+
+    let match_tokens = tokenize_line(&match_text, line_num)?;
+    let signatures: Vec<StatementSignature> =
+        defs.iter().map(|def| def.signature.clone()).collect();
+    let (selection, tokens_for_match) = match select_statement_signature(&signatures, &match_tokens)
+        .map_err(|err| MacroError::new(err.message, Some(line_num), Some(err.span.col_start)))?
+    {
+        Some(idx) => (Some(idx), match_tokens),
+        None => {
+            let split_tokens = split_single_letter_digit_tokens(&match_tokens);
+            let selection =
+                select_statement_signature(&signatures, &split_tokens).map_err(|err| {
+                    MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
+                })?;
+            (selection, split_tokens)
         }
-        _ => Err(MacroError::new(
-            "Ambiguous statement signature",
-            Some(line_num),
-            Some(mnemonic_col_start),
-        )),
+    };
+
+    let Some(idx) = selection else {
+        return Ok(None);
+    };
+
+    let signature = &defs[idx].signature;
+    let statement_match =
+        match_statement_signature(signature, &tokens_for_match).ok_or_else(|| {
+            MacroError::new("Statement signature match failed", Some(line_num), Some(1))
+        })?;
+
+    let args = build_statement_args(&statement_match);
+    let mut expanded = Vec::new();
+    for line in &defs[idx].body {
+        expanded.push(substitute_line(line, &args));
     }
+
+    if let Some(label) = &label {
+        attach_label_to_expansion(label, &mut expanded);
+    }
+
+    let nested = processor.expand_lines(&expanded, depth + 1)?;
+    Ok(Some(nested))
 }
 
 fn tokenize_line(line: &str, line_num: u32) -> Result<Vec<Token>, MacroError> {
@@ -1302,5 +1301,22 @@ mod tests {
         ];
         let out = mp.expand(&lines).expect("expand");
         assert!(!out.iter().any(|line| line.contains("NOOP")));
+    }
+
+    #[test]
+    fn statement_longest_keyword_wins() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            ".statement MOVE byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            ".statement MOVE.B byte:val".to_string(),
+            "    .byte .val + 1".to_string(),
+            ".endstatement".to_string(),
+            "    MOVE.B 3".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 3 + 1".to_string()));
+        assert!(!out.contains(&"    .byte 3".to_string()));
     }
 }

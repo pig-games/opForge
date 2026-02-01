@@ -3,7 +3,10 @@
 
 //! Intel 8080 family handler implementation.
 
-use crate::core::family::{AssemblerContext, EncodeResult, FamilyHandler, FamilyParseError};
+use crate::core::assembler::expression::{binary_op_text, expr_text};
+use crate::core::family::{
+    AssemblerContext, EncodeResult, FamilyEncodeResult, FamilyHandler, FamilyParseError,
+};
 use crate::core::parser::{BinaryOp, Expr};
 
 use super::operand::{expr_span, FamilyOperand, Operand};
@@ -25,7 +28,13 @@ impl FamilyHandler for Intel8080FamilyHandler {
     ) -> Result<Vec<Self::FamilyOperand>, FamilyParseError> {
         let mut result = Vec::new();
 
+        let upper = _mnemonic.to_ascii_uppercase();
+
         for expr in exprs {
+            if upper == "RST" {
+                result.push(FamilyOperand::RstVector(expr.clone()));
+                continue;
+            }
             match expr {
                 // Register reference
                 Expr::Identifier(name, span) if is_register(name) => {
@@ -245,12 +254,358 @@ impl FamilyHandler for Intel8080FamilyHandler {
         EncodeResult::Ok(bytes)
     }
 
+    fn encode_family_operands(
+        &self,
+        canonical_mnemonic: &str,
+        display_mnemonic: &str,
+        operands: &[Self::FamilyOperand],
+        ctx: &dyn AssemblerContext,
+    ) -> FamilyEncodeResult<Vec<u8>> {
+        encode_intel8080_family_operands(canonical_mnemonic, display_mnemonic, operands, ctx)
+    }
+
     fn is_register(&self, name: &str) -> bool {
         is_register(name)
     }
 
     fn is_condition(&self, name: &str) -> bool {
         is_condition(name)
+    }
+}
+
+fn encode_intel8080_family_operands(
+    canonical_mnemonic: &str,
+    display_mnemonic: &str,
+    operands: &[FamilyOperand],
+    ctx: &dyn AssemblerContext,
+) -> FamilyEncodeResult<Vec<u8>> {
+    let upper = canonical_mnemonic.to_ascii_uppercase();
+
+    if upper == "RST" {
+        return encode_rst(operands);
+    }
+
+    let entry = match find_intel8080_family_entry(&upper, operands) {
+        Some(entry) => entry,
+        None => return FamilyEncodeResult::NotFound,
+    };
+
+    let mut bytes = Vec::new();
+    emit_intel8080_prefix(&mut bytes, entry.prefix);
+    bytes.push(entry.opcode);
+
+    match entry.arg_type {
+        ArgType::None => {
+            let expected_regs = entry.num_regs as usize;
+            if operands.len() < expected_regs {
+                return FamilyEncodeResult::error(
+                    Vec::new(),
+                    "Wrong arguments for instruction",
+                    None,
+                    Some(display_mnemonic.to_string()),
+                );
+            }
+
+            if operands.len() > expected_regs {
+                if expected_regs == 0 {
+                    if let Some(extra) = operands.first() {
+                        if family_operand_is_register_like(extra) {
+                            return FamilyEncodeResult::error(
+                                Vec::new(),
+                                "Wrong arguments for instruction",
+                                None,
+                                Some(display_mnemonic.to_string()),
+                            );
+                        }
+
+                        let param = family_operand_text(extra);
+                        return FamilyEncodeResult::error(
+                            bytes,
+                            "Additional arguments after instruction",
+                            Some(extra.span()),
+                            param,
+                        );
+                    }
+                }
+
+                return FamilyEncodeResult::error(
+                    Vec::new(),
+                    "Wrong arguments for instruction",
+                    None,
+                    Some(display_mnemonic.to_string()),
+                );
+            }
+
+            FamilyEncodeResult::Ok(bytes)
+        }
+        ArgType::Byte | ArgType::Word => {
+            let imm_index = entry.num_regs as usize;
+            let expected_count = imm_index + 1;
+            let expected_bits = if entry.arg_type == ArgType::Word { 16 } else { 8 };
+
+            let imm_operand = match operands.get(imm_index) {
+                Some(op) => op,
+                None => {
+                    return FamilyEncodeResult::error(
+                        bytes,
+                        "missing immediate operand",
+                        None,
+                        None,
+                    );
+                }
+            };
+
+            if let Some(kind) = family_operand_kind(imm_operand) {
+                return FamilyEncodeResult::error(
+                    bytes,
+                    format!("expected {expected_bits}-bit immediate, got {kind}"),
+                    Some(imm_operand.span()),
+                    None,
+                );
+            }
+
+            let expr = match family_operand_expr_for_immediate(imm_operand) {
+                Some(expr) => expr,
+                None => {
+                    return FamilyEncodeResult::error(
+                        Vec::new(),
+                        "Wrong arguments for instruction",
+                        None,
+                        Some(display_mnemonic.to_string()),
+                    );
+                }
+            };
+
+            let value = match ctx.eval_expr(&expr) {
+                Ok(value) => value,
+                Err(msg) => {
+                    return FamilyEncodeResult::error(
+                        bytes,
+                        msg,
+                        Some(expr_span(&expr)),
+                        None,
+                    );
+                }
+            };
+
+            match entry.arg_type {
+                ArgType::Byte => bytes.push(value as u8),
+                ArgType::Word => {
+                    bytes.push(value as u8);
+                    bytes.push((value >> 8) as u8);
+                }
+                _ => {}
+            }
+
+            if operands.len() > expected_count {
+                let extra = &operands[expected_count];
+                let param = family_operand_text(extra);
+                return FamilyEncodeResult::error(
+                    bytes,
+                    "Additional arguments after instruction",
+                    Some(extra.span()),
+                    param,
+                );
+            }
+
+            FamilyEncodeResult::Ok(bytes)
+        }
+        ArgType::Relative | ArgType::Im => FamilyEncodeResult::error(
+            Vec::new(),
+            "Wrong arguments for instruction",
+            None,
+            Some(display_mnemonic.to_string()),
+        ),
+    }
+}
+
+fn encode_rst(operands: &[FamilyOperand]) -> FamilyEncodeResult<Vec<u8>> {
+    let arg = match operands.first() {
+        Some(expr) => expr,
+        None => {
+            return FamilyEncodeResult::error(
+                Vec::new(),
+                "RST instruction argument must be 0-7",
+                None,
+                None,
+            )
+        }
+    };
+
+    let expr = match arg {
+        FamilyOperand::RstVector(expr) | FamilyOperand::Immediate(expr) => expr,
+        _ => {
+            let arg_text = family_operand_text(arg).unwrap_or_default();
+            return FamilyEncodeResult::error(
+                Vec::new(),
+                "RST instruction argument must be 0-7",
+                Some(arg.span()),
+                Some(arg_text),
+            );
+        }
+    };
+
+    let arg_text = expr_text(expr).unwrap_or_default();
+    let is_number = matches!(expr, Expr::Number(_, _));
+
+    if let Expr::Binary { op, left, span, .. } = expr {
+        if let Expr::Number(text, _) = &**left {
+            if text.len() == 1 && matches!(text.as_bytes().first(), Some(b'0'..=b'7')) {
+                let val = text.as_bytes()[0] - b'0';
+                let bytes = vec![0xc7 | (val << 3)];
+                let op_text = binary_op_text(*op);
+                return FamilyEncodeResult::error(
+                    bytes,
+                    "Found extra arguments after RST instruction",
+                    Some(*span),
+                    Some(op_text.to_string()),
+                );
+            }
+        }
+    }
+
+    if !is_number
+        || arg_text.len() != 1
+        || !matches!(arg_text.as_bytes().first(), Some(b'0'..=b'7'))
+    {
+        return FamilyEncodeResult::error(
+            Vec::new(),
+            "RST instruction argument must be 0-7",
+            Some(expr_span(expr)),
+            Some(arg_text),
+        );
+    }
+
+    let val = arg_text.as_bytes()[0] - b'0';
+    let bytes = vec![0xc7 | (val << 3)];
+
+    if operands.len() > 1 {
+        let extra = operands.get(1).unwrap();
+        let extra_text = family_operand_text(extra).unwrap_or_default();
+        return FamilyEncodeResult::error(
+            bytes,
+            "Found extra arguments after RST instruction",
+            Some(extra.span()),
+            Some(extra_text),
+        );
+    }
+
+    FamilyEncodeResult::Ok(bytes)
+}
+
+fn find_intel8080_family_entry(
+    mnemonic: &str,
+    operands: &[FamilyOperand],
+) -> Option<&'static super::table::InstructionEntry> {
+    let upper = mnemonic.to_ascii_uppercase();
+    for entry in super::table::FAMILY_INSTRUCTION_TABLE {
+        if !entry.mnemonic.eq_ignore_ascii_case(&upper) {
+            continue;
+        }
+
+        match entry.num_regs {
+            0 => return Some(entry),
+            1 => {
+                let reg1 = operands.first().and_then(family_operand_register);
+                if let Some(reg) = reg1 {
+                    if entry.reg1.eq_ignore_ascii_case(reg) {
+                        return Some(entry);
+                    }
+                }
+            }
+            2 => {
+                let reg1 = operands.first().and_then(family_operand_register);
+                let reg2 = operands.get(1).and_then(family_operand_register);
+                if let (Some(reg1), Some(reg2)) = (reg1, reg2) {
+                    if entry.reg1.eq_ignore_ascii_case(reg1)
+                        && entry.reg2.eq_ignore_ascii_case(reg2)
+                    {
+                        return Some(entry);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn emit_intel8080_prefix(bytes: &mut Vec<u8>, prefix: super::table::Prefix) {
+    match prefix {
+        super::table::Prefix::None => {}
+        super::table::Prefix::Cb => bytes.push(0xCB),
+        super::table::Prefix::Dd => bytes.push(0xDD),
+        super::table::Prefix::Ed => bytes.push(0xED),
+        super::table::Prefix::Fd => bytes.push(0xFD),
+        super::table::Prefix::DdCb => {
+            bytes.push(0xDD);
+            bytes.push(0xCB);
+        }
+        super::table::Prefix::FdCb => {
+            bytes.push(0xFD);
+            bytes.push(0xCB);
+        }
+    }
+}
+
+fn family_operand_register(operand: &FamilyOperand) -> Option<&str> {
+    match operand {
+        FamilyOperand::Register(name, _) => Some(name.as_str()),
+        _ => None,
+    }
+}
+
+fn family_operand_is_register_like(operand: &FamilyOperand) -> bool {
+    matches!(
+        operand,
+        FamilyOperand::Register(_, _)
+            | FamilyOperand::Condition(_, _)
+            | FamilyOperand::Indirect(_, _)
+            | FamilyOperand::Indexed { .. }
+    )
+}
+
+fn family_operand_text(operand: &FamilyOperand) -> Option<String> {
+    match operand {
+        FamilyOperand::Register(name, _) | FamilyOperand::Condition(name, _) => {
+            Some(name.clone())
+        }
+        FamilyOperand::Indirect(name, _) => Some(format!("({})", name)),
+        FamilyOperand::Immediate(expr)
+        | FamilyOperand::RstVector(expr)
+        | FamilyOperand::InterruptMode(expr)
+        | FamilyOperand::BitNumber(expr)
+        | FamilyOperand::Port(expr) => expr_text(expr),
+        FamilyOperand::Indexed { base, offset, .. } => {
+            expr_text(offset).map(|off| format!("({}+{off})", base))
+        }
+    }
+}
+
+fn family_operand_expr_for_immediate(operand: &FamilyOperand) -> Option<Expr> {
+    match operand {
+        FamilyOperand::Immediate(expr)
+        | FamilyOperand::RstVector(expr)
+        | FamilyOperand::InterruptMode(expr)
+        | FamilyOperand::BitNumber(expr)
+        | FamilyOperand::Port(expr) => Some(expr.clone()),
+        FamilyOperand::Register(name, span)
+        | FamilyOperand::Condition(name, span)
+        | FamilyOperand::Indirect(name, span) => {
+            Some(Expr::Identifier(name.clone(), *span))
+        }
+        FamilyOperand::Indexed { .. } => None,
+    }
+}
+
+fn family_operand_kind(operand: &FamilyOperand) -> Option<String> {
+    match operand {
+        FamilyOperand::Register(name, _) => Some(format!("register {name}")),
+        FamilyOperand::Condition(name, _) => Some(format!("condition {name}")),
+        FamilyOperand::Indirect(name, _) => Some(format!("indirect ({name})")),
+        FamilyOperand::Indexed { base, .. } => Some(format!("indexed ({base})")),
+        _ => None,
     }
 }
 

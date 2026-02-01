@@ -12,7 +12,7 @@ use std::any::Any;
 use std::collections::HashMap;
 
 use crate::core::cpu::{CpuFamily, CpuType};
-use crate::core::family::{AssemblerContext, EncodeResult, FamilyParseError};
+use crate::core::family::{AssemblerContext, EncodeResult, FamilyEncodeResult, FamilyParseError};
 use crate::core::parser::Expr;
 
 pub trait FamilyOperandSet: Send + Sync {
@@ -44,6 +44,16 @@ pub trait FamilyHandlerDyn: Send + Sync {
         mnemonic: &str,
         exprs: &[Expr],
     ) -> Result<Box<dyn FamilyOperandSet>, FamilyParseError>;
+    fn encode_family_operands(
+        &self,
+        canonical_mnemonic: &str,
+        display_mnemonic: &str,
+        operands: &dyn FamilyOperandSet,
+        ctx: &dyn AssemblerContext,
+    ) -> FamilyEncodeResult<Vec<u8>> {
+        let _ = (canonical_mnemonic, display_mnemonic, operands, ctx);
+        FamilyEncodeResult::NotFound
+    }
     fn encode_instruction(
         &self,
         mnemonic: &str,

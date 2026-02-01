@@ -24,11 +24,11 @@ INLINE .segment val
         .byte \val
 .endsegment
 
-        #COPY $12, $34
+        .COPY $12, $34
         .PAIR 1
         .TEXT 1+2
         .INLINE 7
 
-foo     #LOCAL
+foo     .LOCAL
         .word foo.local
         .end

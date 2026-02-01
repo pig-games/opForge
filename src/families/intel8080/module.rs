@@ -6,7 +6,9 @@
 use std::any::Any;
 
 use crate::core::cpu::{CpuFamily, CpuType};
-use crate::core::family::{AssemblerContext, EncodeResult, FamilyHandler, FamilyParseError};
+use crate::core::family::{
+    AssemblerContext, EncodeResult, FamilyEncodeResult, FamilyHandler, FamilyParseError,
+};
 use crate::core::parser::Expr;
 use crate::core::registry::{
     DialectModule, FamilyHandlerDyn, FamilyModule, FamilyOperandSet, OperandSet,
@@ -154,6 +156,33 @@ impl FamilyHandlerDyn for Intel8080FamilyHandler {
             None => return EncodeResult::error("expected Intel 8080 operands"),
         };
         <Self as FamilyHandler>::encode_instruction(self, mnemonic, &intel_operands.0, ctx)
+    }
+
+    fn encode_family_operands(
+        &self,
+        canonical_mnemonic: &str,
+        display_mnemonic: &str,
+        operands: &dyn FamilyOperandSet,
+        ctx: &dyn AssemblerContext,
+    ) -> FamilyEncodeResult<Vec<u8>> {
+        let intel_operands = match operands.as_any().downcast_ref::<Intel8080FamilyOperands>() {
+            Some(ops) => ops,
+            None => {
+                return FamilyEncodeResult::error(
+                    Vec::new(),
+                    "expected Intel 8080 family operands",
+                    None,
+                    None,
+                )
+            }
+        };
+        <Self as FamilyHandler>::encode_family_operands(
+            self,
+            canonical_mnemonic,
+            display_mnemonic,
+            &intel_operands.0,
+            ctx,
+        )
     }
 
     fn is_register(&self, name: &str) -> bool {

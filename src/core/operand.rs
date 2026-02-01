@@ -43,49 +43,6 @@ pub enum Operand {
     /// Used for `JMP $1234`, `LD A, (1234h)`, etc.
     Absolute(Expr),
 
-    /// Bit number for bit manipulation instructions (0-7).
-    BitNumber(Expr),
-
-    /// Interrupt mode for Z80 IM instruction (0, 1, 2).
-    InterruptMode(Expr),
-
-    /// RST vector number (0-7 for 8085/Z80).
-    RstVector(Expr),
-
-    /// Port number for I/O instructions.
-    Port(Expr),
-
-    // -- 6502-specific --
-    /// Zero page address (6502): single byte address in page 0.
-    #[allow(dead_code)]
-    ZeroPage(Expr),
-
-    /// Indexed indirect (6502): ($20,X)
-    IndexedIndirectX(Expr),
-
-    /// Indirect indexed (6502): ($20),Y
-    IndirectIndexedY(Expr),
-
-    /// Address-based indirect (6502): ($1234) or ($nn)
-    /// Unlike Indirect which stores a register name, this stores an address expression.
-    IndirectAddress(Expr),
-
-    // -- 68000-specific (for future use) --
-    /// Address register indirect with displacement: d(An)
-    #[allow(dead_code)]
-    AddressDisplacement {
-        reg: String,
-        displacement: Expr,
-        span: Span,
-    },
-
-    /// Pre-decrement: -(An)
-    #[allow(dead_code)]
-    PreDecrement(String, Span),
-
-    /// Post-increment: (An)+
-    #[allow(dead_code)]
-    PostIncrement(String, Span),
 }
 
 impl Operand {
@@ -98,17 +55,6 @@ impl Operand {
             Operand::Condition(_, span) => *span,
             Operand::Immediate(expr) => expr_span(expr),
             Operand::Absolute(expr) => expr_span(expr),
-            Operand::BitNumber(expr) => expr_span(expr),
-            Operand::InterruptMode(expr) => expr_span(expr),
-            Operand::RstVector(expr) => expr_span(expr),
-            Operand::Port(expr) => expr_span(expr),
-            Operand::ZeroPage(expr) => expr_span(expr),
-            Operand::IndexedIndirectX(expr) => expr_span(expr),
-            Operand::IndirectIndexedY(expr) => expr_span(expr),
-            Operand::IndirectAddress(expr) => expr_span(expr),
-            Operand::AddressDisplacement { span, .. } => *span,
-            Operand::PreDecrement(_, span) => *span,
-            Operand::PostIncrement(_, span) => *span,
         }
     }
 

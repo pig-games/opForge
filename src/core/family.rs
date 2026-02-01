@@ -60,6 +60,49 @@ impl<T> EncodeResult<T> {
     }
 }
 
+/// Result of family-level encoding before CPU operand resolution.
+///
+/// This allows family handlers to emit bytes even when reporting an error,
+/// preserving legacy behavior for partial encodes.
+#[derive(Debug, Clone)]
+pub enum FamilyEncodeResult<T> {
+    /// Successfully encoded
+    Ok(T),
+    /// Instruction not handled at the family pre-encode layer
+    NotFound,
+    /// Encoding failed with an error, optionally with partial bytes.
+    Error {
+        bytes: T,
+        message: String,
+        span: Option<Span>,
+        param: Option<String>,
+    },
+}
+
+impl<T> FamilyEncodeResult<T> {
+    pub fn ok(bytes: T) -> Self {
+        FamilyEncodeResult::Ok(bytes)
+    }
+
+    pub fn not_found() -> Self {
+        FamilyEncodeResult::NotFound
+    }
+
+    pub fn error(
+        bytes: T,
+        message: impl Into<String>,
+        span: Option<Span>,
+        param: Option<String>,
+    ) -> Self {
+        FamilyEncodeResult::Error {
+            bytes,
+            message: message.into(),
+            span,
+            param,
+        }
+    }
+}
+
 /// Context provided to handlers for expression evaluation and symbol lookup.
 ///
 /// Family and CPU handlers need access to generic assembler services like
@@ -129,6 +172,19 @@ pub trait FamilyHandler: Send + Sync {
         operands: &[Self::Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>>;
+
+    /// Optional family-level encoding using family operands before CPU resolution.
+    ///
+    /// The default implementation returns `NotFound`.
+    fn encode_family_operands(
+        &self,
+        _canonical_mnemonic: &str,
+        _display_mnemonic: &str,
+        _operands: &[Self::FamilyOperand],
+        _ctx: &dyn AssemblerContext,
+    ) -> FamilyEncodeResult<Vec<u8>> {
+        FamilyEncodeResult::NotFound
+    }
 
     /// Check if an identifier is a register for this family.
     fn is_register(&self, name: &str) -> bool;

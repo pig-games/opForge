@@ -52,8 +52,8 @@ ERROR: Illegal character in column 1. Must be symbol, '.', '*', comment, or spac
    28 | [31m+[0m                       ; ERR: not symbol
 ERROR: Illegal character in column 1. Must be symbol, '.', '*', comment, or space. Found: +                       ; ERR: not symbol
 ----                               29  mov h,l                 ; ERR: instruction can't start in column zero
-   29 | mov h,l                 [31m;[0m ERR: instruction can't start in column zero
-ERROR: Unexpected token in expression
+   29 | mov [31mh[0m,l                 ; ERR: instruction can't start in column zero
+ERROR: Expected mnemonic identifier
 ----                               30  
 ----                               31  ; extra information on line and extra/incorrect arguments
 ----                               32          nop     SP      ; ERR: extra register argument
@@ -209,7 +209,6 @@ special         : 0000 (0)
 LABEL1          : 0004 (4)
 LABEL2          : 0004 (4)
 NAME1           : 0007 (7)
-mov             : 0005 (5)
 RNUM            : 0001 (1)
 var2            : 0017 (23)
 var3            : 0019 (25)

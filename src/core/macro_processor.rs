@@ -319,7 +319,7 @@ fn parse_macro_invocation(code: &str, macros: &HashMap<String, MacroDef>) -> Opt
     cursor.skip_ws();
     cursor.peek()?;
     match cursor.peek() {
-        Some(b'#') | Some(b'.') => {
+        Some(b'.') => {
             cursor.next();
         }
         _ => return None,
@@ -330,8 +330,6 @@ fn parse_macro_invocation(code: &str, macros: &HashMap<String, MacroDef>) -> Opt
     let name = cursor.take_ident()?;
     if !macros.contains_key(&to_upper(&name)) {
         // If macro doesn't exist, return None to let the line pass through.
-        // This allows 6502 immediate syntax like `lda #VALUE` to work
-        // when VALUE is not a macro name.
         return None;
     }
 
@@ -621,7 +619,7 @@ mod tests {
             "    lda \\src".to_string(),
             "    sta \\dst".to_string(),
             ".endmacro".to_string(),
-            "    #COPY $12, $34".to_string(),
+            "    .COPY $12, $34".to_string(),
         ];
         let out = mp.expand(&lines).expect("expand");
         assert!(out.iter().any(|line| line.trim() == ".block"));
@@ -637,7 +635,7 @@ mod tests {
             "M .macro first, second=2".to_string(),
             "    .byte \\first, \\second".to_string(),
             ".endmacro".to_string(),
-            "    #M 1".to_string(),
+            "    .M 1".to_string(),
         ];
         let out = mp.expand(&lines).expect("expand");
         assert!(out.contains(&"    .byte 1, 2".to_string()));

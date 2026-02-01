@@ -30,15 +30,12 @@ use crate::core::assembler::error::{
     AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic, LineStatus, PassCounts, Severity,
 };
 use crate::core::assembler::expression::{
-    apply_assignment_op, binary_op_text, eval_binary_op, eval_unary_op, expr_span, expr_text,
-    parse_number_text, AstEvalError,
+    apply_assignment_op, eval_binary_op, eval_unary_op, expr_span, parse_number_text, AstEvalError,
 };
 use crate::core::assembler::listing::{ListingLine, ListingWriter};
 use crate::core::assembler::scope::ScopeStack;
 
 use crate::families::intel8080::module::Intel8080FamilyModule;
-use crate::families::intel8080::table::{ArgType, InstructionEntry, Prefix, FAMILY_INSTRUCTION_TABLE};
-use crate::families::intel8080::FamilyOperand;
 use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
 use crate::i8085::module::I8085CpuModule;
 use crate::m65c02::module::M65C02CpuModule;
@@ -1315,8 +1312,8 @@ impl<'a> AsmLine<'a> {
                     }
                 }
             }
-            "BYTE" => self.store_arg_list_ast(operands, 1),
-            "WORD" => self.store_arg_list_ast(operands, 2),
+            "BYTE" | "DB" => self.store_arg_list_ast(operands, 1),
+            "WORD" | "DW" => self.store_arg_list_ast(operands, 2),
             "DS" => {
                 let expr = match operands.first() {
                     Some(expr) => expr,
@@ -1477,8 +1474,6 @@ impl<'a> AsmLine<'a> {
     }
 
     fn process_instruction_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
-        let upper = mnemonic.to_ascii_uppercase();
-
         let pipeline = match self.registry.resolve_pipeline(self.cpu, None) {
             Ok(pipeline) => pipeline,
             Err(err) => {
@@ -1490,11 +1485,6 @@ impl<'a> AsmLine<'a> {
                 )
             }
         };
-
-        // Family-level shared instructions
-        if pipeline.family.supports_rst() && upper == "RST" {
-            return self.process_rst(operands);
-        }
 
         let family_operands = match pipeline.family.parse_operands(mnemonic, operands) {
             Ok(ops) => ops,
@@ -1514,18 +1504,40 @@ impl<'a> AsmLine<'a> {
             .map_mnemonic(mnemonic, family_operands.as_ref())
             .unwrap_or_else(|| (mnemonic.to_string(), family_operands.clone()));
 
-        if let Some(intel_operands) = mapped_operands
-            .as_ref()
-            .as_any()
-            .downcast_ref::<crate::families::intel8080::module::Intel8080FamilyOperands>()
-        {
-            if let Some(status) = self.try_encode_intel8080_family_instruction(
-                &mapped_mnemonic,
-                mnemonic,
-                &intel_operands.0,
-            ) {
-                return status;
+        match pipeline.family.encode_family_operands(
+            &mapped_mnemonic,
+            mnemonic,
+            mapped_operands.as_ref(),
+            self,
+        ) {
+            crate::core::family::FamilyEncodeResult::Ok(bytes) => {
+                self.bytes.extend_from_slice(&bytes);
+                return LineStatus::Ok;
             }
+            crate::core::family::FamilyEncodeResult::Error {
+                bytes,
+                message,
+                span,
+                param,
+            } => {
+                self.bytes.extend_from_slice(&bytes);
+                if let Some(span) = span {
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        &message,
+                        param.as_deref(),
+                        span,
+                    );
+                }
+                return self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    &message,
+                    param.as_deref(),
+                );
+            }
+            crate::core::family::FamilyEncodeResult::NotFound => {}
         }
 
         let resolved_operands = match pipeline.cpu.resolve_operands(
@@ -1624,366 +1636,6 @@ impl<'a> AsmLine<'a> {
                 ),
             },
         }
-    }
-
-    fn encode_intel8080_family_instruction(
-        &mut self,
-        canonical_mnemonic: &str,
-        display_mnemonic: &str,
-        operands: &[FamilyOperand],
-    ) -> LineStatus {
-        let entry = match self.find_intel8080_family_entry(canonical_mnemonic, operands) {
-            Some(entry) => entry,
-            None => {
-                return self.failure(
-                    LineStatus::Error,
-                    AsmErrorKind::Instruction,
-                    "Wrong arguments for instruction",
-                    Some(display_mnemonic),
-                );
-            }
-        };
-
-        let mut bytes = Vec::new();
-        self.emit_intel8080_prefix(&mut bytes, entry.prefix);
-        bytes.push(entry.opcode);
-
-        match entry.arg_type {
-            ArgType::None => {
-                let expected_regs = entry.num_regs as usize;
-                if operands.len() < expected_regs {
-                    return self.failure(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        "Wrong arguments for instruction",
-                        Some(display_mnemonic),
-                    );
-                }
-
-                if operands.len() > expected_regs {
-                    if expected_regs == 0 {
-                        if let Some(extra) = operands.first() {
-                            if Self::family_operand_is_register_like(extra) {
-                                return self.failure(
-                                    LineStatus::Error,
-                                    AsmErrorKind::Instruction,
-                                    "Wrong arguments for instruction",
-                                    Some(display_mnemonic),
-                                );
-                            }
-
-                            let param = Self::family_operand_text(extra);
-                            self.bytes.extend_from_slice(&bytes);
-                            return self.failure_at_span(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                "Additional arguments after instruction",
-                                param.as_deref(),
-                                extra.span(),
-                            );
-                        }
-                    }
-
-                    return self.failure(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        "Wrong arguments for instruction",
-                        Some(display_mnemonic),
-                    );
-                }
-
-                self.bytes.extend_from_slice(&bytes);
-                LineStatus::Ok
-            }
-            ArgType::Byte | ArgType::Word => {
-                let imm_index = entry.num_regs as usize;
-                let expected_count = imm_index + 1;
-                let expected_bits = if entry.arg_type == ArgType::Word { 16 } else { 8 };
-
-                let imm_operand = match operands.get(imm_index) {
-                    Some(op) => op,
-                    None => {
-                        let msg = "missing immediate operand".to_string();
-                        self.bytes.extend_from_slice(&bytes);
-                        return if let Some(span) = self.line_end_span {
-                            self.failure_at_span(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                &msg,
-                                None,
-                                span,
-                            )
-                        } else {
-                            self.failure(LineStatus::Error, AsmErrorKind::Instruction, &msg, None)
-                        };
-                    }
-                };
-
-                if let Some(kind) = Self::family_operand_kind(imm_operand) {
-                    self.bytes.extend_from_slice(&bytes);
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        &format!("expected {expected_bits}-bit immediate, got {kind}"),
-                        None,
-                        imm_operand.span(),
-                    );
-                }
-
-                let expr = match Self::family_operand_expr_for_immediate(imm_operand) {
-                    Some(expr) => expr,
-                    None => {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            "Wrong arguments for instruction",
-                            Some(display_mnemonic),
-                        );
-                    }
-                };
-
-                let value = match self.eval_expr(&expr) {
-                    Ok(value) => value,
-                    Err(msg) => {
-                        self.bytes.extend_from_slice(&bytes);
-                        return self.failure_at_span(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &msg,
-                            None,
-                            expr_span(&expr),
-                        );
-                    }
-                };
-
-                match entry.arg_type {
-                    ArgType::Byte => bytes.push(value as u8),
-                    ArgType::Word => {
-                        bytes.push(value as u8);
-                        bytes.push((value >> 8) as u8);
-                    }
-                    _ => {}
-                }
-
-                if operands.len() > expected_count {
-                    let extra = &operands[expected_count];
-                    let param = Self::family_operand_text(extra);
-                    self.bytes.extend_from_slice(&bytes);
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        "Additional arguments after instruction",
-                        param.as_deref(),
-                        extra.span(),
-                    );
-                }
-
-                self.bytes.extend_from_slice(&bytes);
-                LineStatus::Ok
-            }
-            ArgType::Relative | ArgType::Im => self.failure(
-                LineStatus::Error,
-                AsmErrorKind::Instruction,
-                "Wrong arguments for instruction",
-                Some(display_mnemonic),
-            ),
-        }
-    }
-
-    fn try_encode_intel8080_family_instruction(
-        &mut self,
-        canonical_mnemonic: &str,
-        display_mnemonic: &str,
-        operands: &[FamilyOperand],
-    ) -> Option<LineStatus> {
-        self.find_intel8080_family_entry(canonical_mnemonic, operands)?;
-
-        Some(self.encode_intel8080_family_instruction(
-            canonical_mnemonic,
-            display_mnemonic,
-            operands,
-        ))
-    }
-
-    fn find_intel8080_family_entry(
-        &self,
-        mnemonic: &str,
-        operands: &[FamilyOperand],
-    ) -> Option<&'static InstructionEntry> {
-        let upper = mnemonic.to_ascii_uppercase();
-        for entry in FAMILY_INSTRUCTION_TABLE {
-            if !entry.mnemonic.eq_ignore_ascii_case(&upper) {
-                continue;
-            }
-
-            match entry.num_regs {
-                0 => return Some(entry),
-                1 => {
-                    let reg1 = operands.first().and_then(Self::family_operand_register);
-                    if let Some(reg) = reg1 {
-                        if entry.reg1.eq_ignore_ascii_case(reg) {
-                            return Some(entry);
-                        }
-                    }
-                }
-                2 => {
-                    let reg1 = operands.first().and_then(Self::family_operand_register);
-                    let reg2 = operands.get(1).and_then(Self::family_operand_register);
-                    if let (Some(reg1), Some(reg2)) = (reg1, reg2) {
-                        if entry.reg1.eq_ignore_ascii_case(reg1)
-                            && entry.reg2.eq_ignore_ascii_case(reg2)
-                        {
-                            return Some(entry);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        None
-    }
-
-    fn emit_intel8080_prefix(&self, bytes: &mut Vec<u8>, prefix: Prefix) {
-        match prefix {
-            Prefix::None => {}
-            Prefix::Cb => bytes.push(0xCB),
-            Prefix::Dd => bytes.push(0xDD),
-            Prefix::Ed => bytes.push(0xED),
-            Prefix::Fd => bytes.push(0xFD),
-            Prefix::DdCb => {
-                bytes.push(0xDD);
-                bytes.push(0xCB);
-            }
-            Prefix::FdCb => {
-                bytes.push(0xFD);
-                bytes.push(0xCB);
-            }
-        }
-    }
-
-    fn family_operand_register(operand: &FamilyOperand) -> Option<&str> {
-        match operand {
-            FamilyOperand::Register(name, _) => Some(name.as_str()),
-            _ => None,
-        }
-    }
-
-    fn family_operand_is_register_like(operand: &FamilyOperand) -> bool {
-        matches!(
-            operand,
-            FamilyOperand::Register(_, _)
-                | FamilyOperand::Condition(_, _)
-                | FamilyOperand::Indirect(_, _)
-                | FamilyOperand::Indexed { .. }
-        )
-    }
-
-    fn family_operand_text(operand: &FamilyOperand) -> Option<String> {
-        match operand {
-            FamilyOperand::Register(name, _) | FamilyOperand::Condition(name, _) => {
-                Some(name.clone())
-            }
-            FamilyOperand::Indirect(name, _) => Some(format!("({})", name)),
-            FamilyOperand::Immediate(expr)
-            | FamilyOperand::RstVector(expr)
-            | FamilyOperand::InterruptMode(expr)
-            | FamilyOperand::BitNumber(expr)
-            | FamilyOperand::Port(expr) => expr_text(expr),
-            FamilyOperand::Indexed { base, offset, .. } => {
-                expr_text(offset).map(|off| format!("({}+{off})", base))
-            }
-        }
-    }
-
-    fn family_operand_expr_for_immediate(operand: &FamilyOperand) -> Option<Expr> {
-        match operand {
-            FamilyOperand::Immediate(expr)
-            | FamilyOperand::RstVector(expr)
-            | FamilyOperand::InterruptMode(expr)
-            | FamilyOperand::BitNumber(expr)
-            | FamilyOperand::Port(expr) => Some(expr.clone()),
-            FamilyOperand::Register(name, span)
-            | FamilyOperand::Condition(name, span)
-            | FamilyOperand::Indirect(name, span) => {
-                Some(Expr::Identifier(name.clone(), *span))
-            }
-            FamilyOperand::Indexed { .. } => None,
-        }
-    }
-
-    fn family_operand_kind(operand: &FamilyOperand) -> Option<String> {
-        match operand {
-            FamilyOperand::Register(name, _) => Some(format!("register {name}")),
-            FamilyOperand::Condition(name, _) => Some(format!("condition {name}")),
-            FamilyOperand::Indirect(name, _) => Some(format!("indirect ({name})")),
-            FamilyOperand::Indexed { base, .. } => Some(format!("indexed ({base})")),
-            _ => None,
-        }
-    }
-
-    /// Process RST instruction (common for Intel 8080 family: 8085, Z80)
-    fn process_rst(&mut self, operands: &[Expr]) -> LineStatus {
-        let arg = match operands.first() {
-            Some(expr) => expr,
-            None => {
-                return self.failure(
-                    LineStatus::Error,
-                    AsmErrorKind::Instruction,
-                    "RST instruction argument must be 0-7",
-                    None,
-                )
-            }
-        };
-        let arg_text = expr_text(arg).unwrap_or_default();
-        let is_number = matches!(arg, Expr::Number(_, _));
-
-        // Check for binary expressions like RST 0+1 (error: extra arguments)
-        if let Expr::Binary { op, left, span, .. } = arg {
-            if let Expr::Number(text, _) = &**left {
-                if text.len() == 1 && matches!(text.as_bytes().first(), Some(b'0'..=b'7')) {
-                    let val = text.as_bytes()[0] - b'0';
-                    self.bytes.push(0xc7 | (val << 3));
-                    let op_text = binary_op_text(*op);
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        "Found extra arguments after RST instruction",
-                        Some(op_text),
-                        *span,
-                    );
-                }
-            }
-        }
-
-        if !is_number
-            || arg_text.len() != 1
-            || !matches!(arg_text.as_bytes().first(), Some(b'0'..=b'7'))
-        {
-            return self.failure_at_span(
-                LineStatus::Error,
-                AsmErrorKind::Instruction,
-                "RST instruction argument must be 0-7",
-                Some(&arg_text),
-                expr_span(arg),
-            );
-        }
-        let val = arg_text.as_bytes()[0] - b'0';
-        self.bytes.push(0xc7 | (val << 3));
-
-        if operands.len() > 1 {
-            let extra = operands.get(1).unwrap();
-            let span = expr_span(extra);
-            let extra_text = expr_text(extra).unwrap_or_default();
-            return self.failure_at_span(
-                LineStatus::Error,
-                AsmErrorKind::Instruction,
-                "Found extra arguments after RST instruction",
-                Some(&extra_text),
-                span,
-            );
-        }
-        LineStatus::Ok
     }
 
     fn store_arg_list_ast(&mut self, operands: &[Expr], size: usize) -> LineStatus {

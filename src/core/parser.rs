@@ -416,12 +416,6 @@ impl Parser {
                 kind: TokenKind::Identifier(name),
                 ..
             }) => Some(name),
-            // Also accept register tokens as mnemonics since some CPUs have mnemonics
-            // that look like register names (e.g., "IN", "JP" on Z80 where "P" is a flag)
-            Some(Token {
-                kind: TokenKind::Register(name),
-                ..
-            }) => Some(name),
             Some(token) => {
                 return Err(ParseError {
                     message: "Expected mnemonic identifier".to_string(),
@@ -1138,78 +1132,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parses_z80_add_with_byte() {
-        use super::Expr;
-        use crate::z80::is_register as is_register_z80;
-        use crate::core::tokenizer::register_checker_from_fn;
-        
-        // Note: mnemonic not at column 1 (spaces at start) to avoid being parsed as label
-        let mut parser = Parser::from_line_with_registers(
-            "        add a, 5",
-            1,
-            register_checker_from_fn(is_register_z80),
-        )
-        .unwrap();
-        let line = parser.parse_line().unwrap();
-        match line {
-            LineAst::Statement { mnemonic, operands, .. } => {
-                assert_eq!(mnemonic.as_deref(), Some("add"));
-                println!("Operands: {:?}", operands);
-                assert_eq!(operands.len(), 2);
-                assert!(matches!(&operands[0], Expr::Register(name, _) if name == "a"));
-                assert!(matches!(&operands[1], Expr::Number(_, _)));
-            }
-            _ => panic!("Expected statement"),
-        }
-    }
-
-    #[test]
-    fn parses_z80_condition_codes() {
-        use super::Expr;
-        use crate::z80::is_register as is_register_z80;
-        use crate::core::tokenizer::register_checker_from_fn;
-        
-        let mut parser = Parser::from_line_with_registers(
-            "        jp nz, 1000h",
-            1,
-            register_checker_from_fn(is_register_z80),
-        )
-        .unwrap();
-        let line = parser.parse_line().unwrap();
-        match line {
-            LineAst::Statement { mnemonic, operands, .. } => {
-                assert_eq!(mnemonic.as_deref(), Some("jp"));
-                println!("Operands: {:?}", operands);
-                // Should have NZ as register and 1000h as number
-                assert_eq!(operands.len(), 2);
-                assert!(matches!(&operands[0], Expr::Register(name, _) if name.to_ascii_uppercase() == "NZ"), "Expected NZ register, got {:?}", operands[0]);
-                assert!(matches!(&operands[1], Expr::Number(_, _)));
-            }
-            _ => panic!("Expected statement"),
-        }
-    }
-
-    #[test]
-    fn parses_z80_memory_operand() {
-        use crate::z80::is_register as is_register_z80;
-        use crate::core::tokenizer::register_checker_from_fn;
-        
-        let mut parser = Parser::from_line_with_registers(
-            "        ld (hl), a",
-            1,
-            register_checker_from_fn(is_register_z80),
-        )
-        .unwrap();
-        let line = parser.parse_line().unwrap();
-        match line {
-            LineAst::Statement { mnemonic, operands, .. } => {
-                assert_eq!(mnemonic.as_deref(), Some("ld"));
-                // Note: (HL) syntax currently parses as HL (parentheses are stripped)
-                // This is a limitation - proper Z80 (HL) syntax support would need parser changes
-                assert_eq!(operands.len(), 2);
-            }
-            _ => panic!("Expected statement"),
-        }
-    }
 }

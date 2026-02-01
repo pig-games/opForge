@@ -12,7 +12,8 @@ use crate::core::assembler::error::{AsmError, AsmErrorKind, AsmRunError};
 
 pub const VERSION: &str = "1.0";
 
-const LONG_ABOUT: &str = "Intel 8085 Assembler with expressions, directives and basic macro support.
+const LONG_ABOUT: &str =
+    "Intel 8085 Assembler with expressions, directives and basic macro support.
 
 Outputs are opt-in: specify at least one of -l/--list, -x/--hex, or -b/--bin.
 Use -o/--outfile to set the output base name when filenames are omitted.
@@ -231,7 +232,12 @@ pub fn resolve_output_path(base: &str, name: Option<String>, extension: &str) ->
     Some(path.to_string_lossy().to_string())
 }
 
-pub fn resolve_bin_path(base: &str, name: Option<&str>, range: &BinRange, bin_count: usize) -> String {
+pub fn resolve_bin_path(
+    base: &str,
+    name: Option<&str>,
+    range: &BinRange,
+    bin_count: usize,
+) -> String {
     let name = match name {
         Some(name) if !name.is_empty() => name.to_string(),
         _ => {
@@ -363,7 +369,11 @@ pub fn validate_cli(cli: &Cli) -> Result<CliConfig, AsmRunError> {
     let mut bin_specs = Vec::new();
     for arg in &cli.bin_outputs {
         let spec = parse_bin_output_arg(arg).map_err(|msg| {
-            AsmRunError::new(AsmError::new(AsmErrorKind::Cli, msg, None), Vec::new(), Vec::new())
+            AsmRunError::new(
+                AsmError::new(AsmErrorKind::Cli, msg, None),
+                Vec::new(),
+                Vec::new(),
+            )
         })?;
         bin_specs.push(spec);
     }
@@ -524,14 +534,7 @@ mod tests {
 
     #[test]
     fn validate_cli_rejects_zero_pp_macro_depth() {
-        let cli = Cli::parse_from([
-            "opForge",
-            "-i",
-            "prog.asm",
-            "-l",
-            "--pp-macro-depth",
-            "0",
-        ]);
+        let cli = Cli::parse_from(["opForge", "-i", "prog.asm", "-l", "--pp-macro-depth", "0"]);
         let err = validate_cli(&cli).unwrap_err();
         assert_eq!(err.to_string(), "--pp-macro-depth must be at least 1");
     }
@@ -590,10 +593,7 @@ mod tests {
     #[test]
     fn resolve_bin_path_multiple_ranges_adds_suffix() {
         let range = range_0000_ffff();
-        assert_eq!(
-            resolve_bin_path("forth", None, &range, 2),
-            "forth-0000.bin"
-        );
+        assert_eq!(resolve_bin_path("forth", None, &range, 2), "forth-0000.bin");
     }
 
     #[test]

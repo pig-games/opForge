@@ -88,12 +88,8 @@ impl CpuHandler for Z80CpuHandler {
                 FamilyOperand::Immediate(expr) => {
                     let value = ctx.eval_expr(expr)?;
                     let span = operand.span();
-                    let needs_word = Self::needs_16bit_immediate(
-                        mnemonic,
-                        index,
-                        family_operands,
-                        expr,
-                    );
+                    let needs_word =
+                        Self::needs_16bit_immediate(mnemonic, index, family_operands, expr);
 
                     if needs_word {
                         Operand::Immediate16(value as u16, span)
@@ -271,7 +267,10 @@ impl Z80CpuHandler {
             FamilyOperand::Indexed { base, offset, span } => {
                 let offset_value = ctx.eval_expr(offset)?;
                 if !(-128..=127).contains(&offset_value) {
-                    return Err(format!("Index offset {} out of range (-128..127)", offset_value));
+                    return Err(format!(
+                        "Index offset {} out of range (-128..127)",
+                        offset_value
+                    ));
                 }
                 Ok(Operand::Indexed {
                     base: base.clone(),

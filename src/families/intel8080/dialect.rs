@@ -7,8 +7,8 @@
 //! The family base instruction table uses Intel 8080 mnemonics as the canonical form.
 //! Other dialects (e.g., Zilog Z80) are mapped to these canonical mnemonics.
 
-use crate::core::parser::Expr;
 use super::operand::FamilyOperand;
+use crate::core::parser::Expr;
 
 /// Result of dialect mapping.
 #[derive(Debug, Clone)]
@@ -31,10 +31,10 @@ pub fn map_condition(zilog_cond: &str) -> Option<&'static str> {
         "NZ" => Some("NZ"),
         "C" => Some("C"),
         "NC" => Some("NC"),
-        "P" => Some("P"),      // Positive (sign flag clear)
-        "M" => Some("M"),      // Minus (sign flag set)
-        "PE" => Some("PE"),    // Parity even
-        "PO" => Some("PO"),    // Parity odd
+        "P" => Some("P"),   // Positive (sign flag clear)
+        "M" => Some("M"),   // Minus (sign flag set)
+        "PE" => Some("PE"), // Parity even
+        "PO" => Some("PO"), // Parity odd
         _ => None,
     }
 }
@@ -68,24 +68,24 @@ pub fn classify_operand(operand: &str) -> OperandClass {
     match upper.as_str() {
         // 8-bit registers
         "A" | "B" | "C" | "D" | "E" | "H" | "L" => OperandClass::Reg8,
-        
+
         // Memory via HL (M is HL indirect, also used as "minus" condition in context)
         "M" | "(HL)" => OperandClass::MemHL,
-        
+
         // 16-bit register pairs
         "BC" | "DE" | "HL" | "SP" | "AF" | "PSW" => OperandClass::Reg16,
-        
+
         // Condition codes (when used as operands)
         // Note: "M" (minus) is handled above as MemHL - context determines meaning
         // Note: "C" is ambiguous - could be register or condition
         "Z" | "NZ" | "NC" | "P" | "PE" | "PO" => OperandClass::Condition,
-        
+
         // Indirect via register pair
         "(BC)" | "(DE)" => OperandClass::IndirectRP,
-        
+
         // Z80-only
         "IX" | "IY" | "IXH" | "IXL" | "IYH" | "IYL" | "I" | "R" => OperandClass::Z80Only,
-        
+
         _ => {
             // Check for indirect address: (nnnn)
             if upper.starts_with('(') && upper.ends_with(')') {
@@ -155,7 +155,10 @@ pub fn map_zilog_to_canonical(
         return None;
     }
 
-    if operands.iter().any(|op| matches!(op, FamilyOperand::Indexed { .. })) {
+    if operands
+        .iter()
+        .any(|op| matches!(op, FamilyOperand::Indexed { .. }))
+    {
         return None;
     }
 
@@ -187,8 +190,7 @@ pub fn map_zilog_to_canonical(
 
     let (num_regs, has_imm) = count_regs_and_immediate(operands)?;
     let entry = find_mapping(&upper, num_regs, has_imm)?;
-    let (mut canonical_mnemonic, mut canonical_operands) =
-        apply_entry_mapping(entry, operands)?;
+    let (mut canonical_mnemonic, mut canonical_operands) = apply_entry_mapping(entry, operands)?;
 
     if entry.canonical_has_imm {
         if let Some(imm) = operands.iter().find_map(immediate_expr) {
@@ -319,9 +321,10 @@ fn map_jp_operands(operands: &[FamilyOperand]) -> Option<(String, Vec<FamilyOper
         [FamilyOperand::Indirect(name, _)] if name.eq_ignore_ascii_case("HL") => {
             Some(("PCHL".to_string(), Vec::new()))
         }
-        [FamilyOperand::Immediate(expr)] => {
-            Some(("JMP".to_string(), vec![FamilyOperand::Immediate(expr.clone())]))
-        }
+        [FamilyOperand::Immediate(expr)] => Some((
+            "JMP".to_string(),
+            vec![FamilyOperand::Immediate(expr.clone())],
+        )),
         [first, FamilyOperand::Immediate(expr)] => {
             let suffix = match first {
                 FamilyOperand::Condition(cond, _) => map_condition(cond),
@@ -436,14 +439,14 @@ fn map_operand_register(operand: &FamilyOperand) -> Option<FamilyOperand> {
                 map_condition(name)
                     .map(|mapped| FamilyOperand::Condition(mapped.to_string(), *span))
             }),
-        FamilyOperand::Condition(name, span) => map_condition(name)
-            .map(|mapped| FamilyOperand::Condition(mapped.to_string(), *span)),
+        FamilyOperand::Condition(name, span) => {
+            map_condition(name).map(|mapped| FamilyOperand::Condition(mapped.to_string(), *span))
+        }
         FamilyOperand::Indirect(name, span) => {
             if name.eq_ignore_ascii_case("HL") {
                 Some(FamilyOperand::Register("M".to_string(), *span))
             } else {
-                map_register(name)
-                    .map(|mapped| FamilyOperand::Register(mapped.to_string(), *span))
+                map_register(name).map(|mapped| FamilyOperand::Register(mapped.to_string(), *span))
             }
         }
         _ => None,
@@ -452,8 +455,9 @@ fn map_operand_register(operand: &FamilyOperand) -> Option<FamilyOperand> {
 
 fn map_reg8_or_mem(operand: &FamilyOperand) -> Option<FamilyOperand> {
     match operand {
-        FamilyOperand::Register(name, span) => map_register(name)
-            .map(|mapped| FamilyOperand::Register(mapped.to_string(), *span)),
+        FamilyOperand::Register(name, span) => {
+            map_register(name).map(|mapped| FamilyOperand::Register(mapped.to_string(), *span))
+        }
         FamilyOperand::Indirect(name, span) => {
             if name.eq_ignore_ascii_case("HL") {
                 Some(FamilyOperand::Register("M".to_string(), *span))
@@ -467,16 +471,18 @@ fn map_reg8_or_mem(operand: &FamilyOperand) -> Option<FamilyOperand> {
 
 fn map_reg16(operand: &FamilyOperand) -> Option<FamilyOperand> {
     match operand {
-        FamilyOperand::Register(name, span) => map_register(name)
-            .map(|mapped| FamilyOperand::Register(mapped.to_string(), *span)),
+        FamilyOperand::Register(name, span) => {
+            map_register(name).map(|mapped| FamilyOperand::Register(mapped.to_string(), *span))
+        }
         _ => None,
     }
 }
 
 fn map_indirect_regpair(operand: &FamilyOperand) -> Option<FamilyOperand> {
     match operand {
-        FamilyOperand::Indirect(name, span) => map_register(name)
-            .map(|mapped| FamilyOperand::Register(mapped.to_string(), *span)),
+        FamilyOperand::Indirect(name, span) => {
+            map_register(name).map(|mapped| FamilyOperand::Register(mapped.to_string(), *span))
+        }
         _ => None,
     }
 }
@@ -491,7 +497,9 @@ fn immediate_expr(operand: &FamilyOperand) -> Option<Expr> {
 fn is_register_like(operand: &FamilyOperand) -> bool {
     matches!(
         operand,
-        FamilyOperand::Register(_, _) | FamilyOperand::Indirect(_, _) | FamilyOperand::Condition(_, _)
+        FamilyOperand::Register(_, _)
+            | FamilyOperand::Indirect(_, _)
+            | FamilyOperand::Condition(_, _)
     )
 }
 
@@ -509,7 +517,7 @@ fn is_sp_hl_pair(op1: &FamilyOperand, op2: &FamilyOperand) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_register_mapping() {
         assert_eq!(map_register("A"), Some("A"));
@@ -522,34 +530,34 @@ mod tests {
         assert_eq!(map_register("IX"), None);
         assert_eq!(map_register("IY"), None);
     }
-    
+
     #[test]
     fn test_find_mapping_ld() {
         // LD r,r' → MOV
         let entry = find_mapping("LD", 2, false);
         assert!(entry.is_some());
         assert_eq!(entry.unwrap().canonical, "MOV");
-        
+
         // LD r,n → MVI
         let entry = find_mapping("LD", 1, true);
         assert!(entry.is_some());
         assert_eq!(entry.unwrap().canonical, "MVI");
     }
-    
+
     #[test]
     fn test_find_mapping_jp() {
         // JP nn → JMP
         let entry = find_mapping("JP", 0, true);
         assert!(entry.is_some());
         assert_eq!(entry.unwrap().canonical, "JMP");
-        
+
         // JP cc,nn → Jcc
         let entry = find_mapping("JP", 1, true);
         assert!(entry.is_some());
         assert_eq!(entry.unwrap().canonical, "J");
         assert_eq!(entry.unwrap().transform, OperandTransform::ConditionSuffix);
     }
-    
+
     #[test]
     fn test_find_mapping_arithmetic() {
         // ADD A,r → ADD (drop first)
@@ -557,13 +565,13 @@ mod tests {
         assert!(entry.is_some());
         assert_eq!(entry.unwrap().canonical, "ADD");
         assert_eq!(entry.unwrap().transform, OperandTransform::DropFirst);
-        
+
         // ADD A,n → ADI
         let entry = find_mapping("ADD", 1, true);
         assert!(entry.is_some());
         assert_eq!(entry.unwrap().canonical, "ADI");
     }
-    
+
     #[test]
     fn test_z80_only_mnemonics() {
         assert!(is_z80_only_mnemonic("JR"));

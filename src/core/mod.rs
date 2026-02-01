@@ -37,7 +37,9 @@ pub mod tokenizer;
 
 // Re-exports for convenience
 pub use cpu::{CpuType, EncodeError, OperandParseError};
-pub use expr::{eval_expr, parse_number, EvalContext, EvalError, SimpleEvalContext, SymbolTableContext};
+pub use expr::{
+    eval_expr, parse_number, EvalContext, EvalError, SimpleEvalContext, SymbolTableContext,
+};
 pub use family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler, FamilyParseError};
 pub use operand::{Operand, SizeSuffix};
 pub use parser::ParseError;

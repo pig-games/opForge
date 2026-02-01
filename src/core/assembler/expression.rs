@@ -139,10 +139,18 @@ pub fn apply_assignment_op(
         AssignOp::BitXor => left ^ right,
         AssignOp::BitAnd => left & right,
         AssignOp::LogicOr => {
-            if left != 0 || right != 0 { 1 } else { 0 }
+            if left != 0 || right != 0 {
+                1
+            } else {
+                0
+            }
         }
         AssignOp::LogicAnd => {
-            if left != 0 && right != 0 { 1 } else { 0 }
+            if left != 0 && right != 0 {
+                1
+            } else {
+                0
+            }
         }
         AssignOp::Shl => {
             let shift = right & 0x1f;
@@ -169,7 +177,11 @@ pub fn eval_unary_op(op: UnaryOp, inner: u32) -> u32 {
         UnaryOp::Minus => 0u32.wrapping_sub(inner),
         UnaryOp::BitNot => !inner,
         UnaryOp::LogicNot => {
-            if inner != 0 { 0 } else { 1 }
+            if inner != 0 {
+                0
+            } else {
+                1
+            }
         }
         UnaryOp::High => (inner >> 8) & 0xff,
         UnaryOp::Low => inner & 0xff,
@@ -217,12 +229,7 @@ pub fn eval_binary_op(
         }
         BinaryOp::Add => left_val.wrapping_add(right_val),
         BinaryOp::Subtract => left_val.wrapping_sub(right_val),
-        BinaryOp::Eq
-        | BinaryOp::Ne
-        | BinaryOp::Ge
-        | BinaryOp::Gt
-        | BinaryOp::Le
-        | BinaryOp::Lt => {
+        BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Ge | BinaryOp::Gt | BinaryOp::Le | BinaryOp::Lt => {
             let result = match op {
                 BinaryOp::Eq => left_val == right_val,
                 BinaryOp::Ne => left_val != right_val,
@@ -232,21 +239,37 @@ pub fn eval_binary_op(
                 BinaryOp::Lt => left_val < right_val,
                 _ => false,
             };
-            if result { 1 } else { 0 }
+            if result {
+                1
+            } else {
+                0
+            }
         }
         BinaryOp::BitAnd => left_val & right_val,
         BinaryOp::BitOr => left_val | right_val,
         BinaryOp::BitXor => left_val ^ right_val,
         BinaryOp::LogicAnd => {
-            if left_val != 0 && right_val != 0 { 1 } else { 0 }
+            if left_val != 0 && right_val != 0 {
+                1
+            } else {
+                0
+            }
         }
         BinaryOp::LogicOr => {
-            if left_val != 0 || right_val != 0 { 1 } else { 0 }
+            if left_val != 0 || right_val != 0 {
+                1
+            } else {
+                0
+            }
         }
         BinaryOp::LogicXor => {
             let left_true = left_val != 0;
             let right_true = right_val != 0;
-            if left_true ^ right_true { 1 } else { 0 }
+            if left_true ^ right_true {
+                1
+            } else {
+                0
+            }
         }
     };
     Ok(val)

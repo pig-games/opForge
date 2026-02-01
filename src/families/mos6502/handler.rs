@@ -3,13 +3,13 @@
 
 //! MOS 6502 family handler implementation.
 
-use crate::core::family::{AssemblerContext, EncodeResult, FamilyHandler, FamilyParseError};
 use crate::core::assembler::expression::expr_span;
+use crate::core::family::{AssemblerContext, EncodeResult, FamilyHandler, FamilyParseError};
 use crate::core::parser::Expr;
 use crate::core::tokenizer::Span;
+use crate::families::mos6502::is_register;
 use crate::families::mos6502::operand::{AddressMode, FamilyOperand, Operand};
 use crate::families::mos6502::table::{has_mnemonic, lookup_instruction};
-use crate::families::mos6502::is_register;
 
 /// Family handler for MOS 6502 family.
 #[derive(Debug, Default)]
@@ -175,7 +175,7 @@ impl FamilyHandler for MOS6502FamilyHandler {
         // Look up instruction with mode promotion
         // If ZeroPage mode fails, try Absolute (same for ZeroPageX -> AbsoluteX, etc.)
         let modes_to_try = get_modes_to_try(mode, operands);
-        
+
         for (try_mode, promoted_operand) in modes_to_try {
             if let Some(entry) = lookup_instruction(mnemonic, try_mode) {
                 let mut bytes = vec![entry.opcode];
@@ -187,7 +187,7 @@ impl FamilyHandler for MOS6502FamilyHandler {
                 return EncodeResult::Ok(bytes);
             }
         }
-        
+
         // Not in family table - let CPU handler try
         EncodeResult::NotFound
     }
@@ -200,14 +200,20 @@ impl FamilyHandler for MOS6502FamilyHandler {
 /// Get addressing modes to try in order of preference.
 /// Returns pairs of (mode to try, optional promoted operand).
 /// This implements mode promotion: ZeroPage -> Absolute, ZeroPageX -> AbsoluteX, etc.
-fn get_modes_to_try(mode: AddressMode, operands: &[Operand]) -> Vec<(AddressMode, Option<Operand>)> {
+fn get_modes_to_try(
+    mode: AddressMode,
+    operands: &[Operand],
+) -> Vec<(AddressMode, Option<Operand>)> {
     match mode {
         AddressMode::ZeroPage => {
             // Try ZeroPage first, then promote to Absolute if needed
             if let Some(Operand::ZeroPage(val, span)) = operands.first() {
                 vec![
                     (AddressMode::ZeroPage, None),
-                    (AddressMode::Absolute, Some(Operand::Absolute(*val as u16, *span))),
+                    (
+                        AddressMode::Absolute,
+                        Some(Operand::Absolute(*val as u16, *span)),
+                    ),
                 ]
             } else {
                 vec![(AddressMode::ZeroPage, None)]
@@ -218,7 +224,10 @@ fn get_modes_to_try(mode: AddressMode, operands: &[Operand]) -> Vec<(AddressMode
             if let Some(Operand::ZeroPageX(val, span)) = operands.first() {
                 vec![
                     (AddressMode::ZeroPageX, None),
-                    (AddressMode::AbsoluteX, Some(Operand::AbsoluteX(*val as u16, *span))),
+                    (
+                        AddressMode::AbsoluteX,
+                        Some(Operand::AbsoluteX(*val as u16, *span)),
+                    ),
                 ]
             } else {
                 vec![(AddressMode::ZeroPageX, None)]
@@ -229,7 +238,10 @@ fn get_modes_to_try(mode: AddressMode, operands: &[Operand]) -> Vec<(AddressMode
             if let Some(Operand::ZeroPageY(val, span)) = operands.first() {
                 vec![
                     (AddressMode::ZeroPageY, None),
-                    (AddressMode::AbsoluteY, Some(Operand::AbsoluteY(*val as u16, *span))),
+                    (
+                        AddressMode::AbsoluteY,
+                        Some(Operand::AbsoluteY(*val as u16, *span)),
+                    ),
                 ]
             } else {
                 vec![(AddressMode::ZeroPageY, None)]

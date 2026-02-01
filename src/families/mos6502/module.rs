@@ -114,9 +114,7 @@ impl DialectModule for TransparentDialect {
         mnemonic: &str,
         operands: &dyn FamilyOperandSet,
     ) -> Option<(String, Box<dyn FamilyOperandSet>)> {
-        let mos_operands = operands
-            .as_any()
-            .downcast_ref::<MOS6502FamilyOperands>()?;
+        let mos_operands = operands.as_any().downcast_ref::<MOS6502FamilyOperands>()?;
         Some((
             mnemonic.to_string(),
             Box::new(MOS6502FamilyOperands(mos_operands.0.clone())),

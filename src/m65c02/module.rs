@@ -7,8 +7,7 @@ use crate::core::cpu::{CpuFamily, CpuType};
 use crate::core::family::AssemblerContext;
 use crate::core::registry::{CpuHandlerDyn, CpuModule, FamilyOperandSet, OperandSet};
 use crate::families::mos6502::module::{
-    DIALECT_TRANSPARENT, FAMILY_ID as MOS6502_FAMILY_ID, MOS6502FamilyOperands,
-    MOS6502Operands,
+    MOS6502FamilyOperands, MOS6502Operands, DIALECT_TRANSPARENT, FAMILY_ID as MOS6502_FAMILY_ID,
 };
 
 use super::M65C02CpuHandler;
@@ -75,11 +74,7 @@ impl CpuHandlerDyn for M65C02CpuHandler {
     ) -> crate::core::family::EncodeResult<Vec<u8>> {
         let mos_operands = match operands.as_any().downcast_ref::<MOS6502Operands>() {
             Some(ops) => ops,
-            None => {
-                return crate::core::family::EncodeResult::error(
-                    "expected MOS 6502 operands",
-                )
-            }
+            None => return crate::core::family::EncodeResult::error("expected MOS 6502 operands"),
         };
         <Self as crate::core::family::CpuHandler>::encode_instruction(
             self,

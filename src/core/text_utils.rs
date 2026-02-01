@@ -149,8 +149,14 @@ mod tests {
     fn test_split_comment() {
         assert_eq!(split_comment("code ; comment"), ("code ", "; comment"));
         assert_eq!(split_comment("no comment"), ("no comment", ""));
-        assert_eq!(split_comment("\"str;ing\" ; comment"), ("\"str;ing\" ", "; comment"));
-        assert_eq!(split_comment("'c;har' ; comment"), ("'c;har' ", "; comment"));
+        assert_eq!(
+            split_comment("\"str;ing\" ; comment"),
+            ("\"str;ing\" ", "; comment")
+        );
+        assert_eq!(
+            split_comment("'c;har' ; comment"),
+            ("'c;har' ", "; comment")
+        );
     }
 
     #[test]

@@ -146,7 +146,13 @@ impl Diagnostic {
         out.push_str(&header);
         out.push('\n');
 
-        let context = build_context_lines(self.line, self.column, lines, self.source.as_deref(), use_color);
+        let context = build_context_lines(
+            self.line,
+            self.column,
+            lines,
+            self.source.as_deref(),
+            use_color,
+        );
         for line in context {
             out.push_str(&line);
             out.push('\n');

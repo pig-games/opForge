@@ -4,14 +4,10 @@
 // Assembler macro processor implementing 64tass-style .macro/.endmacro expansion.
 
 use crate::core::parser::{
-    match_statement_signature,
-    select_statement_signature,
-    LineAst,
-    Parser,
-    StatementSignature,
+    match_statement_signature, select_statement_signature, LineAst, Parser, StatementSignature,
 };
-use crate::core::tokenizer::{Span, Token, TokenKind, Tokenizer};
 use crate::core::text_utils::{is_ident_char, is_ident_start, is_space, to_upper};
+use crate::core::tokenizer::{Span, Token, TokenKind, Tokenizer};
 use std::collections::HashMap;
 
 struct Cursor<'a> {
@@ -76,7 +72,7 @@ pub struct MacroError {
 }
 
 impl MacroError {
-    fn new(message: impl Into<String>, line: Option<u32>, column: Option<usize>) -> Self {
+    pub fn new(message: impl Into<String>, line: Option<u32>, column: Option<usize>) -> Self {
         Self {
             message: message.into(),
             line,
@@ -169,7 +165,7 @@ impl MacroProcessor {
     fn expand_lines(&mut self, lines: &[String], depth: usize) -> Result<Vec<String>, MacroError> {
         if depth > self.max_depth {
             return Err(MacroError::new(
-                "Macro expansion exceeded maximum depth",
+                "Expansion exceeded maximum depth (macro or statement)",
                 None,
                 None,
             ));
@@ -279,10 +275,8 @@ impl MacroProcessor {
                                 });
                                 continue;
                             }
-                            Err(_) => {
-                                out.push(line.clone());
-                                skip_statement_body = true;
-                                continue;
+                            Err(err) => {
+                                return Err(err);
                             }
                         }
                     }
@@ -314,9 +308,7 @@ impl MacroProcessor {
                     .macros
                     .get(&to_upper(&inv.name))
                     .cloned()
-                    .ok_or_else(|| {
-                        MacroError::new("Unknown macro", Some(line_num), Some(1))
-                    })?;
+                    .ok_or_else(|| MacroError::new("Unknown macro", Some(line_num), Some(1)))?;
                 let args = build_macro_args(&def, &inv);
                 let mut expanded = Vec::new();
                 if def.wrap_scope {
@@ -387,10 +379,7 @@ fn parse_statement_directive(code: &str) -> Option<StatementDirective> {
     }
     cursor.next();
     cursor.skip_ws();
-    let directive = cursor
-        .take_ident()
-        .unwrap_or_default()
-        .to_ascii_uppercase();
+    let directive = cursor.take_ident().unwrap_or_default().to_ascii_uppercase();
     match directive.as_str() {
         "STATEMENT" => Some(StatementDirective::Def),
         "ENDSTATEMENT" => Some(StatementDirective::End),
@@ -398,18 +387,26 @@ fn parse_statement_directive(code: &str) -> Option<StatementDirective> {
     }
 }
 
-fn parse_statement_def_line(code: &str, line_num: u32) -> Result<(String, StatementSignature), MacroError> {
-    let mut parser = Parser::from_line(code, line_num).map_err(|err| {
-        MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
-    })?;
+fn parse_statement_def_line(
+    code: &str,
+    line_num: u32,
+) -> Result<(String, StatementSignature), MacroError> {
+    let mut parser = Parser::from_line(code, line_num)
+        .map_err(|err| MacroError::new(err.message, Some(line_num), Some(err.span.col_start)))?;
     match parser.parse_line() {
-        Ok(LineAst::StatementDef { keyword, signature, .. }) => Ok((keyword, signature)),
+        Ok(LineAst::StatementDef {
+            keyword, signature, ..
+        }) => Ok((keyword, signature)),
         Ok(_) => Err(MacroError::new(
             "Expected .statement definition",
             Some(line_num),
             Some(1),
         )),
-        Err(err) => Err(MacroError::new(err.message, Some(line_num), Some(err.span.col_start))),
+        Err(err) => Err(MacroError::new(
+            err.message,
+            Some(line_num),
+            Some(err.span.col_start),
+        )),
     }
 }
 
@@ -436,11 +433,9 @@ fn expand_statement_invocation(
     };
 
     let mnemonic_upper = mnemonic_text.to_ascii_uppercase();
-    let mut expanded_match: Option<Vec<String>> = None;
-    let mut matched = false;
+    let mut matches = Vec::new();
 
-    let statements = processor.statements.clone();
-    for (keyword_upper, defs) in &statements {
+    for (keyword_upper, defs) in &processor.statements {
         if !mnemonic_upper.starts_with(keyword_upper) {
             continue;
         }
@@ -450,27 +445,32 @@ fn expand_statement_invocation(
         let match_text = format!("{}{}", remainder, tail);
 
         let match_tokens = tokenize_line(&match_text, line_num)?;
-        let signatures: Vec<StatementSignature> = defs.iter().map(|def| def.signature.clone()).collect();
-        let (selection, tokens_for_match) = match select_statement_signature(&signatures, &match_tokens)
-            .map_err(|err| MacroError::new(err.message, Some(line_num), Some(err.span.col_start)))? {
-            Some(idx) => (Some(idx), match_tokens),
-            None => {
-                let split_tokens = split_single_letter_digit_tokens(&match_tokens);
-                let selection = select_statement_signature(&signatures, &split_tokens)
-                    .map_err(|err| {
-                        MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
-                    })?;
-                (selection, split_tokens)
-            }
-        };
+        let signatures: Vec<StatementSignature> =
+            defs.iter().map(|def| def.signature.clone()).collect();
+        let (selection, tokens_for_match) =
+            match select_statement_signature(&signatures, &match_tokens).map_err(|err| {
+                MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
+            })? {
+                Some(idx) => (Some(idx), match_tokens),
+                None => {
+                    let split_tokens = split_single_letter_digit_tokens(&match_tokens);
+                    let selection = select_statement_signature(&signatures, &split_tokens)
+                        .map_err(|err| {
+                            MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
+                        })?;
+                    (selection, split_tokens)
+                }
+            };
 
         let Some(idx) = selection else {
             continue;
         };
 
         let signature = &defs[idx].signature;
-        let statement_match = match_statement_signature(signature, &tokens_for_match)
-            .ok_or_else(|| MacroError::new("Statement signature match failed", Some(line_num), Some(1)))?;
+        let statement_match =
+            match_statement_signature(signature, &tokens_for_match).ok_or_else(|| {
+                MacroError::new("Statement signature match failed", Some(line_num), Some(1))
+            })?;
 
         let args = build_statement_args(&statement_match);
         let mut expanded = Vec::new();
@@ -481,20 +481,22 @@ fn expand_statement_invocation(
         if let Some(label) = &label {
             attach_label_to_expansion(label, &mut expanded);
         }
-
-        let nested = processor.expand_lines(&expanded, depth + 1)?;
-        if matched {
-            return Err(MacroError::new(
-                "Ambiguous statement signature",
-                Some(line_num),
-                Some(mnemonic_col_start),
-            ));
-        }
-        expanded_match = Some(nested);
-        matched = true;
+        matches.push(expanded);
     }
 
-    Ok(expanded_match)
+    match matches.len() {
+        0 => Ok(None),
+        1 => {
+            let expanded = matches.into_iter().next().unwrap();
+            let nested = processor.expand_lines(&expanded, depth + 1)?;
+            Ok(Some(nested))
+        }
+        _ => Err(MacroError::new(
+            "Ambiguous statement signature",
+            Some(line_num),
+            Some(mnemonic_col_start),
+        )),
+    }
 }
 
 fn tokenize_line(line: &str, line_num: u32) -> Result<Vec<Token>, MacroError> {
@@ -567,9 +569,7 @@ fn split_single_letter_digit_tokens(tokens: &[Token]) -> Vec<Token> {
     out
 }
 
-fn scan_statement_invocation(
-    line: &str,
-) -> Option<(Option<String>, String, usize, usize)> {
+fn scan_statement_invocation(line: &str) -> Option<(Option<String>, String, usize, usize)> {
     let mut cursor = Cursor::new(line);
     cursor.skip_ws();
     let at_col1 = cursor.pos() == 0;
@@ -621,49 +621,7 @@ fn build_statement_args(statement_match: &crate::core::parser::StatementMatch) -
 }
 
 fn token_text_for_substitution(token: &Token) -> String {
-    match &token.kind {
-        TokenKind::Identifier(name) | TokenKind::Register(name) => name.clone(),
-        TokenKind::Number(num) => num.text.clone(),
-        TokenKind::String(lit) => lit.raw.clone(),
-        TokenKind::Comma => ",".to_string(),
-        TokenKind::Dot => ".".to_string(),
-        TokenKind::Dollar => "$".to_string(),
-        TokenKind::Hash => "#".to_string(),
-        TokenKind::Question => "?".to_string(),
-        TokenKind::Colon => ":".to_string(),
-        TokenKind::OpenParen => "(".to_string(),
-        TokenKind::CloseParen => ")".to_string(),
-        TokenKind::OpenBracket => "[".to_string(),
-        TokenKind::CloseBracket => "]".to_string(),
-        TokenKind::OpenBrace => "{".to_string(),
-        TokenKind::CloseBrace => "}".to_string(),
-        TokenKind::Operator(op) => match op {
-            crate::core::tokenizer::OperatorKind::Plus => "+",
-            crate::core::tokenizer::OperatorKind::Minus => "-",
-            crate::core::tokenizer::OperatorKind::Multiply => "*",
-            crate::core::tokenizer::OperatorKind::Power => "**",
-            crate::core::tokenizer::OperatorKind::Divide => "/",
-            crate::core::tokenizer::OperatorKind::Mod => "%",
-            crate::core::tokenizer::OperatorKind::Shl => "<<",
-            crate::core::tokenizer::OperatorKind::Shr => ">>",
-            crate::core::tokenizer::OperatorKind::BitNot => "~",
-            crate::core::tokenizer::OperatorKind::LogicNot => "!",
-            crate::core::tokenizer::OperatorKind::BitAnd => "&",
-            crate::core::tokenizer::OperatorKind::BitOr => "|",
-            crate::core::tokenizer::OperatorKind::BitXor => "^",
-            crate::core::tokenizer::OperatorKind::LogicAnd => "&&",
-            crate::core::tokenizer::OperatorKind::LogicOr => "||",
-            crate::core::tokenizer::OperatorKind::LogicXor => "^^",
-            crate::core::tokenizer::OperatorKind::Eq => "==",
-            crate::core::tokenizer::OperatorKind::Ne => "!=",
-            crate::core::tokenizer::OperatorKind::Ge => ">=",
-            crate::core::tokenizer::OperatorKind::Gt => ">",
-            crate::core::tokenizer::OperatorKind::Le => "<=",
-            crate::core::tokenizer::OperatorKind::Lt => "<",
-        }
-        .to_string(),
-        TokenKind::End => String::new(),
-    }
+    token.to_source_text()
 }
 
 fn attach_label_to_expansion(label: &str, expanded: &mut Vec<String>) {
@@ -679,7 +637,10 @@ fn attach_label_to_expansion(label: &str, expanded: &mut Vec<String>) {
     }
 }
 
-fn parse_macro_def_line(code: &str, line_num: u32) -> Result<Option<(String, String, MacroKind)>, MacroError> {
+fn parse_macro_def_line(
+    code: &str,
+    line_num: u32,
+) -> Result<Option<(String, String, MacroKind)>, MacroError> {
     let (label, idx, _) = parse_label(code);
     let mut cursor = Cursor::with_pos(code, idx);
     cursor.skip_ws();
@@ -740,10 +701,7 @@ fn parse_macro_end_line(code: &str) -> Option<MacroKind> {
     }
     cursor.next();
     cursor.skip_ws();
-    let directive = cursor
-        .take_ident()
-        .unwrap_or_default()
-        .to_ascii_uppercase();
+    let directive = cursor.take_ident().unwrap_or_default().to_ascii_uppercase();
     match directive.as_str() {
         "ENDMACRO" | "ENDM" => Some(MacroKind::Macro),
         "ENDSEGMENT" | "ENDS" => Some(MacroKind::Segment),
@@ -988,7 +946,12 @@ fn split_params(text: &str) -> Vec<String> {
             '}' if !in_single && !in_double => {
                 brace_depth = brace_depth.saturating_sub(1);
             }
-            ',' if !in_single && !in_double && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 => {
+            ',' if !in_single
+                && !in_double
+                && paren_depth == 0
+                && bracket_depth == 0
+                && brace_depth == 0 =>
+            {
                 out.push(current.clone());
                 current.clear();
                 i += 1;
@@ -1003,7 +966,11 @@ fn split_params(text: &str) -> Vec<String> {
     out
 }
 
-fn extract_paren_list(code: &str, start: usize, line_num: u32) -> Result<(String, usize), MacroError> {
+fn extract_paren_list(
+    code: &str,
+    start: usize,
+    line_num: u32,
+) -> Result<(String, usize), MacroError> {
     let bytes = code.as_bytes();
     if bytes.get(start) != Some(&b'(') {
         return Err(MacroError::new(
@@ -1291,7 +1258,9 @@ mod tests {
         ];
         let out = mp.expand(&lines).expect("expand");
         assert!(out.contains(&"    .byte 7".to_string()));
-        assert!(!out.iter().any(|line| line.trim_start().starts_with(".statement")));
+        assert!(!out
+            .iter()
+            .any(|line| line.trim_start().starts_with(".statement")));
     }
 
     #[test]
@@ -1305,5 +1274,33 @@ mod tests {
         ];
         let out = mp.expand(&lines).expect("expand");
         assert!(out.contains(&"    .byte 'b'".to_string()));
+    }
+
+    #[test]
+    fn statement_with_label_attaches_correctly() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            ".statement LOAD byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            "label: LOAD 7".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.iter().any(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with("label") && line.contains(".byte 7")
+        }));
+    }
+
+    #[test]
+    fn empty_statement_body_expands_to_nothing() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            ".statement NOOP".to_string(),
+            ".endstatement".to_string(),
+            "    NOOP".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(!out.iter().any(|line| line.contains("NOOP")));
     }
 }

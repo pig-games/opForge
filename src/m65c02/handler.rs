@@ -7,9 +7,11 @@
 //! MOS6502 family handler with 65C02-specific operand resolution and
 //! instruction encoding.
 
-use crate::core::family::{AssemblerContext, CpuHandler, EncodeResult};
 use crate::core::assembler::expression::expr_span;
-use crate::families::mos6502::{AddressMode, FamilyOperand, MOS6502FamilyHandler, Operand, has_mnemonic as has_family_mnemonic};
+use crate::core::family::{AssemblerContext, CpuHandler, EncodeResult};
+use crate::families::mos6502::{
+    has_mnemonic as has_family_mnemonic, AddressMode, FamilyOperand, MOS6502FamilyHandler, Operand,
+};
 use crate::m65c02::instructions::{has_mnemonic, lookup_instruction};
 
 /// CPU handler for WDC 65C02.
@@ -34,9 +36,7 @@ impl M65C02CpuHandler {
     /// Check if a mnemonic is a 65C02-only branch instruction.
     fn is_65c02_branch(mnemonic: &str) -> bool {
         let upper = mnemonic.to_ascii_uppercase();
-        upper == "BRA"
-            || upper.starts_with("BBR")
-            || upper.starts_with("BBS")
+        upper == "BRA" || upper.starts_with("BBR") || upper.starts_with("BBS")
     }
 }
 
@@ -59,7 +59,7 @@ impl CpuHandler for M65C02CpuHandler {
         }
 
         let mut result = Vec::with_capacity(family_operands.len());
-        
+
         for fop in family_operands {
             let operand = match fop {
                 FamilyOperand::Accumulator(span) => Operand::Accumulator(*span),
@@ -67,10 +67,7 @@ impl CpuHandler for M65C02CpuHandler {
                 FamilyOperand::Immediate(expr) => {
                     let val = ctx.eval_expr(expr)?;
                     if !(0..=255).contains(&val) {
-                        return Err(format!(
-                            "Immediate value {} out of range (0-255)",
-                            val
-                        ));
+                        return Err(format!("Immediate value {} out of range (0-255)", val));
                     }
                     Operand::Immediate(val as u8, expr_span(expr))
                 }
@@ -78,7 +75,7 @@ impl CpuHandler for M65C02CpuHandler {
                 FamilyOperand::Direct(expr) => {
                     let val = ctx.eval_expr(expr)?;
                     let span = expr_span(expr);
-                    
+
                     // Branch instructions use relative addressing
                     if Self::is_branch_mnemonic(mnemonic) {
                         let current = ctx.current_address() as i32 + 2;
@@ -140,10 +137,7 @@ impl CpuHandler for M65C02CpuHandler {
                         // This is only valid for JMP on 65C02
                         Operand::AbsoluteIndexedIndirect(val as u16, expr_span(expr))
                     } else {
-                        return Err(format!(
-                            "Indexed indirect address {} out of range",
-                            val
-                        ));
+                        return Err(format!("Indexed indirect address {} out of range", val));
                     }
                 }
 
@@ -163,7 +157,7 @@ impl CpuHandler for M65C02CpuHandler {
                     let val = ctx.eval_expr(expr)?;
                     let span = expr_span(expr);
                     let upper_mnemonic = mnemonic.to_ascii_uppercase();
-                    
+
                     if upper_mnemonic == "JMP" {
                         // JMP ($nnnn) - 16-bit indirect
                         if (0..=65535).contains(&val) {
@@ -254,7 +248,8 @@ impl M65C02CpuHandler {
         matches!(
             upper.as_str(),
             "BCC" | "BCS" | "BEQ" | "BNE" | "BMI" | "BPL" | "BVC" | "BVS" | "BRA"
-        ) || upper.starts_with("BBR") || upper.starts_with("BBS")
+        ) || upper.starts_with("BBR")
+            || upper.starts_with("BBS")
     }
 }
 

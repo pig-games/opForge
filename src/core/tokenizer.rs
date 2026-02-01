@@ -120,6 +120,67 @@ pub struct Token {
     pub span: Span,
 }
 
+impl Token {
+    fn render_with_string<F>(kind: &TokenKind, string_renderer: F) -> String
+    where
+        F: FnOnce(&StringLiteral) -> String,
+    {
+        match kind {
+            TokenKind::Identifier(name) | TokenKind::Register(name) => name.clone(),
+            TokenKind::Number(num) => num.text.clone(),
+            TokenKind::String(lit) => string_renderer(lit),
+            TokenKind::Comma => ",".to_string(),
+            TokenKind::Colon => ":".to_string(),
+            TokenKind::Dollar => "$".to_string(),
+            TokenKind::Dot => ".".to_string(),
+            TokenKind::Hash => "#".to_string(),
+            TokenKind::Question => "?".to_string(),
+            TokenKind::OpenBracket => "[".to_string(),
+            TokenKind::CloseBracket => "]".to_string(),
+            TokenKind::OpenBrace => "{".to_string(),
+            TokenKind::CloseBrace => "}".to_string(),
+            TokenKind::OpenParen => "(".to_string(),
+            TokenKind::CloseParen => ")".to_string(),
+            TokenKind::Operator(op) => match op {
+                OperatorKind::Plus => "+",
+                OperatorKind::Minus => "-",
+                OperatorKind::Multiply => "*",
+                OperatorKind::Power => "**",
+                OperatorKind::Divide => "/",
+                OperatorKind::Mod => "%",
+                OperatorKind::Shl => "<<",
+                OperatorKind::Shr => ">>",
+                OperatorKind::BitNot => "~",
+                OperatorKind::LogicNot => "!",
+                OperatorKind::BitAnd => "&",
+                OperatorKind::BitOr => "|",
+                OperatorKind::BitXor => "^",
+                OperatorKind::LogicAnd => "&&",
+                OperatorKind::LogicOr => "||",
+                OperatorKind::LogicXor => "^^",
+                OperatorKind::Eq => "==",
+                OperatorKind::Ne => "!=",
+                OperatorKind::Ge => ">=",
+                OperatorKind::Gt => ">",
+                OperatorKind::Le => "<=",
+                OperatorKind::Lt => "<",
+            }
+            .to_string(),
+            TokenKind::End => String::new(),
+        }
+    }
+
+    pub fn to_source_text(&self) -> String {
+        Self::render_with_string(&self.kind, |lit| lit.raw.clone())
+    }
+
+    pub fn to_literal_text(&self) -> String {
+        Self::render_with_string(&self.kind, |lit| {
+            String::from_utf8_lossy(&lit.bytes).to_string()
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TokenizeError {
     pub message: String,
@@ -142,7 +203,11 @@ impl<'a> Tokenizer<'a> {
 
     /// Create a new tokenizer with a custom register checker.
     #[must_use]
-    pub fn with_register_checker(line: &'a str, line_num: u32, is_register: RegisterChecker) -> Self {
+    pub fn with_register_checker(
+        line: &'a str,
+        line_num: u32,
+        is_register: RegisterChecker,
+    ) -> Self {
         Self {
             line_num,
             input: line.as_bytes(),
@@ -156,12 +221,10 @@ impl<'a> Tokenizer<'a> {
         let start = self.cursor;
         let c = self.current_byte();
         match c {
-            0 => {
-                Ok(Token {
-                    kind: TokenKind::End,
-                    span: Span::new(self.line_num, start, start),
-                })
-            }
+            0 => Ok(Token {
+                kind: TokenKind::End,
+                span: Span::new(self.line_num, start, start),
+            }),
             b';' => {
                 self.cursor = self.input.len();
                 Ok(Token {
@@ -441,7 +504,8 @@ impl<'a> Tokenizer<'a> {
                     b'x' => {
                         let hi = self.peek_raw_byte(1);
                         let lo = self.peek_raw_byte(2);
-                        if hi == 0 || lo == 0 || !hi.is_ascii_hexdigit() || !lo.is_ascii_hexdigit() {
+                        if hi == 0 || lo == 0 || !hi.is_ascii_hexdigit() || !lo.is_ascii_hexdigit()
+                        {
                             return Err(TokenizeError {
                                 message: format!(
                                     "Bad hex escape in string: {}",
@@ -501,12 +565,12 @@ impl<'a> Tokenizer<'a> {
     fn is_prefix_context(&self, start: usize) -> bool {
         // Check if there's whitespace immediately before this position
         let has_leading_space = start > 0 && is_space(self.input[start - 1]);
-        
+
         match self.prev_non_space(start) {
             None => true, // Start of line
             Some(
-                b'(' | b',' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^' | b'~'
-                    | b'!' | b'<' | b'>' | b'=' | b'?' | b':'
+                b'(' | b',' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^' | b'~' | b'!'
+                | b'<' | b'>' | b'=' | b'?' | b':',
             ) => true, // After operator
             Some(ch) if has_leading_space && is_ident_char(ch) => true, // After identifier + whitespace
             _ => false,
@@ -564,10 +628,19 @@ mod tests {
             1,
             super::register_checker_from_fn(test_registers),
         );
-        assert!(matches!(tok.next_token().unwrap().kind, TokenKind::Identifier(_)));
-        assert!(matches!(tok.next_token().unwrap().kind, TokenKind::Register(_)));
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::Identifier(_)
+        ));
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::Register(_)
+        ));
         assert!(matches!(tok.next_token().unwrap().kind, TokenKind::Comma));
-        assert!(matches!(tok.next_token().unwrap().kind, TokenKind::Register(_)));
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::Register(_)
+        ));
     }
 
     #[test]
@@ -632,9 +705,21 @@ mod tests {
     #[test]
     fn tokenizes_brackets_and_braces() {
         let mut tok = Tokenizer::new("[{ } ]", 1);
-        assert!(matches!(tok.next_token().unwrap().kind, TokenKind::OpenBracket));
-        assert!(matches!(tok.next_token().unwrap().kind, TokenKind::OpenBrace));
-        assert!(matches!(tok.next_token().unwrap().kind, TokenKind::CloseBrace));
-        assert!(matches!(tok.next_token().unwrap().kind, TokenKind::CloseBracket));
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::OpenBracket
+        ));
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::OpenBrace
+        ));
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::CloseBrace
+        ));
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::CloseBracket
+        ));
     }
 }

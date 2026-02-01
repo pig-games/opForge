@@ -54,7 +54,7 @@ mod tests {
         assert!(is_register("L"));
         assert!(is_register("I"));
         assert!(is_register("R"));
-        
+
         // 16-bit
         assert!(is_register("BC"));
         assert!(is_register("DE"));
@@ -63,7 +63,7 @@ mod tests {
         assert!(is_register("IX"));
         assert!(is_register("IY"));
         assert!(is_register("AF"));
-        
+
         // Not registers
         assert!(!is_register("LD"));
         assert!(!is_register("JP"));
@@ -83,7 +83,9 @@ mod tests {
         .unwrap();
         let line = parser.parse_line().unwrap();
         match line {
-            LineAst::Statement { mnemonic, operands, .. } => {
+            LineAst::Statement {
+                mnemonic, operands, ..
+            } => {
                 assert_eq!(mnemonic.as_deref(), Some("add"));
                 assert_eq!(operands.len(), 2);
                 assert!(matches!(&operands[0], Expr::Register(name, _) if name == "a"));
@@ -105,11 +107,17 @@ mod tests {
         .unwrap();
         let line = parser.parse_line().unwrap();
         match line {
-            LineAst::Statement { mnemonic, operands, .. } => {
+            LineAst::Statement {
+                mnemonic, operands, ..
+            } => {
                 assert_eq!(mnemonic.as_deref(), Some("jp"));
                 // Should have NZ as register and 1000h as number
                 assert_eq!(operands.len(), 2);
-                assert!(matches!(&operands[0], Expr::Register(name, _) if name.to_ascii_uppercase() == "NZ"), "Expected NZ register, got {:?}", operands[0]);
+                assert!(
+                    matches!(&operands[0], Expr::Register(name, _) if name.to_ascii_uppercase() == "NZ"),
+                    "Expected NZ register, got {:?}",
+                    operands[0]
+                );
                 assert!(matches!(&operands[1], Expr::Number(_, _)));
             }
             _ => panic!("Expected statement"),
@@ -126,7 +134,9 @@ mod tests {
         .unwrap();
         let line = parser.parse_line().unwrap();
         match line {
-            LineAst::Statement { mnemonic, operands, .. } => {
+            LineAst::Statement {
+                mnemonic, operands, ..
+            } => {
                 assert_eq!(mnemonic.as_deref(), Some("ld"));
                 // Note: (HL) syntax currently parses as HL (parentheses are stripped)
                 // This is a limitation - proper Z80 (HL) syntax support would need parser changes

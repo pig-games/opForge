@@ -68,230 +68,352 @@ pub static ZILOG_DIALECT_MAP: &[DialectEntry] = &[
     // LD instructions with various patterns
     // LD r,r' - register to register → MOV r,r'
     DialectEntry {
-        from: "LD", from_regs: 2, from_has_imm: false,
-        canonical: "MOV", canonical_regs: 2, canonical_has_imm: false,
+        from: "LD",
+        from_regs: 2,
+        from_has_imm: false,
+        canonical: "MOV",
+        canonical_regs: 2,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // LD r,n - load immediate byte → MVI r,n
     DialectEntry {
-        from: "LD", from_regs: 1, from_has_imm: true,
-        canonical: "MVI", canonical_regs: 1, canonical_has_imm: true,
+        from: "LD",
+        from_regs: 1,
+        from_has_imm: true,
+        canonical: "MVI",
+        canonical_regs: 1,
+        canonical_has_imm: true,
         transform: OperandTransform::Identity,
     },
     // Note: LD rp,nn and other complex LD forms need special handling
-    
+
     // JP instructions
     // JP nn → JMP nn
     DialectEntry {
-        from: "JP", from_regs: 0, from_has_imm: true,
-        canonical: "JMP", canonical_regs: 0, canonical_has_imm: true,
+        from: "JP",
+        from_regs: 0,
+        from_has_imm: true,
+        canonical: "JMP",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::Identity,
     },
     // JP cc,nn → Jcc nn (e.g., JP Z,nn → JZ nn)
     DialectEntry {
-        from: "JP", from_regs: 1, from_has_imm: true,
-        canonical: "J", canonical_regs: 0, canonical_has_imm: true,
+        from: "JP",
+        from_regs: 1,
+        from_has_imm: true,
+        canonical: "J",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::ConditionSuffix,
     },
     // JP (HL) → PCHL
     DialectEntry {
-        from: "JP", from_regs: 1, from_has_imm: false,
-        canonical: "PCHL", canonical_regs: 0, canonical_has_imm: false,
+        from: "JP",
+        from_regs: 1,
+        from_has_imm: false,
+        canonical: "PCHL",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
-    
     // CALL instructions
     // CALL nn → CALL nn (same)
     DialectEntry {
-        from: "CALL", from_regs: 0, from_has_imm: true,
-        canonical: "CALL", canonical_regs: 0, canonical_has_imm: true,
+        from: "CALL",
+        from_regs: 0,
+        from_has_imm: true,
+        canonical: "CALL",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::Identity,
     },
     // CALL cc,nn → Ccc nn (e.g., CALL Z,nn → CZ nn)
     DialectEntry {
-        from: "CALL", from_regs: 1, from_has_imm: true,
-        canonical: "C", canonical_regs: 0, canonical_has_imm: true,
+        from: "CALL",
+        from_regs: 1,
+        from_has_imm: true,
+        canonical: "C",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::ConditionSuffix,
     },
-    
     // RET instructions
     // RET → RET (same)
     DialectEntry {
-        from: "RET", from_regs: 0, from_has_imm: false,
-        canonical: "RET", canonical_regs: 0, canonical_has_imm: false,
+        from: "RET",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "RET",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // RET cc → Rcc (e.g., RET Z → RZ)
     DialectEntry {
-        from: "RET", from_regs: 1, from_has_imm: false,
-        canonical: "R", canonical_regs: 0, canonical_has_imm: false,
+        from: "RET",
+        from_regs: 1,
+        from_has_imm: false,
+        canonical: "R",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::ConditionSuffix,
     },
-    
     // Arithmetic with A - Z80 uses explicit destination
     // ADD A,r → ADD r
     DialectEntry {
-        from: "ADD", from_regs: 2, from_has_imm: false,
-        canonical: "ADD", canonical_regs: 1, canonical_has_imm: false,
+        from: "ADD",
+        from_regs: 2,
+        from_has_imm: false,
+        canonical: "ADD",
+        canonical_regs: 1,
+        canonical_has_imm: false,
         transform: OperandTransform::DropFirst,
     },
     // ADD A,n → ADI n
     DialectEntry {
-        from: "ADD", from_regs: 1, from_has_imm: true,
-        canonical: "ADI", canonical_regs: 0, canonical_has_imm: true,
+        from: "ADD",
+        from_regs: 1,
+        from_has_imm: true,
+        canonical: "ADI",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::DropFirst,
     },
-    
     // ADC A,r → ADC r
     DialectEntry {
-        from: "ADC", from_regs: 2, from_has_imm: false,
-        canonical: "ADC", canonical_regs: 1, canonical_has_imm: false,
+        from: "ADC",
+        from_regs: 2,
+        from_has_imm: false,
+        canonical: "ADC",
+        canonical_regs: 1,
+        canonical_has_imm: false,
         transform: OperandTransform::DropFirst,
     },
     // ADC A,n → ACI n
     DialectEntry {
-        from: "ADC", from_regs: 1, from_has_imm: true,
-        canonical: "ACI", canonical_regs: 0, canonical_has_imm: true,
+        from: "ADC",
+        from_regs: 1,
+        from_has_imm: true,
+        canonical: "ACI",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::DropFirst,
     },
-    
     // SUB r (same) - Z80 also accepts SUB A,r
     DialectEntry {
-        from: "SUB", from_regs: 2, from_has_imm: false,
-        canonical: "SUB", canonical_regs: 1, canonical_has_imm: false,
+        from: "SUB",
+        from_regs: 2,
+        from_has_imm: false,
+        canonical: "SUB",
+        canonical_regs: 1,
+        canonical_has_imm: false,
         transform: OperandTransform::DropFirst,
     },
     // SUB n → SUI n
     DialectEntry {
-        from: "SUB", from_regs: 0, from_has_imm: true,
-        canonical: "SUI", canonical_regs: 0, canonical_has_imm: true,
+        from: "SUB",
+        from_regs: 0,
+        from_has_imm: true,
+        canonical: "SUI",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::DropFirst,
     },
-    
     // SBC A,r → SBB r
     DialectEntry {
-        from: "SBC", from_regs: 2, from_has_imm: false,
-        canonical: "SBB", canonical_regs: 1, canonical_has_imm: false,
+        from: "SBC",
+        from_regs: 2,
+        from_has_imm: false,
+        canonical: "SBB",
+        canonical_regs: 1,
+        canonical_has_imm: false,
         transform: OperandTransform::DropFirst,
     },
     // SBC A,n → SBI n
     DialectEntry {
-        from: "SBC", from_regs: 1, from_has_imm: true,
-        canonical: "SBI", canonical_regs: 0, canonical_has_imm: true,
+        from: "SBC",
+        from_regs: 1,
+        from_has_imm: true,
+        canonical: "SBI",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::DropFirst,
     },
-    
     // Logical operations - Z80 uses AND/OR/XOR, Intel uses ANA/ORA/XRA
     // AND r → ANA r
     DialectEntry {
-        from: "AND", from_regs: 1, from_has_imm: false,
-        canonical: "ANA", canonical_regs: 1, canonical_has_imm: false,
+        from: "AND",
+        from_regs: 1,
+        from_has_imm: false,
+        canonical: "ANA",
+        canonical_regs: 1,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // AND n → ANI n
     DialectEntry {
-        from: "AND", from_regs: 0, from_has_imm: true,
-        canonical: "ANI", canonical_regs: 0, canonical_has_imm: true,
+        from: "AND",
+        from_regs: 0,
+        from_has_imm: true,
+        canonical: "ANI",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::Identity,
     },
-    
     // OR r → ORA r
     DialectEntry {
-        from: "OR", from_regs: 1, from_has_imm: false,
-        canonical: "ORA", canonical_regs: 1, canonical_has_imm: false,
+        from: "OR",
+        from_regs: 1,
+        from_has_imm: false,
+        canonical: "ORA",
+        canonical_regs: 1,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // OR n → ORI n
     DialectEntry {
-        from: "OR", from_regs: 0, from_has_imm: true,
-        canonical: "ORI", canonical_regs: 0, canonical_has_imm: true,
+        from: "OR",
+        from_regs: 0,
+        from_has_imm: true,
+        canonical: "ORI",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::Identity,
     },
-    
     // XOR r → XRA r
     DialectEntry {
-        from: "XOR", from_regs: 1, from_has_imm: false,
-        canonical: "XRA", canonical_regs: 1, canonical_has_imm: false,
+        from: "XOR",
+        from_regs: 1,
+        from_has_imm: false,
+        canonical: "XRA",
+        canonical_regs: 1,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // XOR n → XRI n
     DialectEntry {
-        from: "XOR", from_regs: 0, from_has_imm: true,
-        canonical: "XRI", canonical_regs: 0, canonical_has_imm: true,
+        from: "XOR",
+        from_regs: 0,
+        from_has_imm: true,
+        canonical: "XRI",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::Identity,
     },
-    
     // CP r → CMP r
     DialectEntry {
-        from: "CP", from_regs: 1, from_has_imm: false,
-        canonical: "CMP", canonical_regs: 1, canonical_has_imm: false,
+        from: "CP",
+        from_regs: 1,
+        from_has_imm: false,
+        canonical: "CMP",
+        canonical_regs: 1,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // CP n → CPI n
     DialectEntry {
-        from: "CP", from_regs: 0, from_has_imm: true,
-        canonical: "CPI", canonical_regs: 0, canonical_has_imm: true,
+        from: "CP",
+        from_regs: 0,
+        from_has_imm: true,
+        canonical: "CPI",
+        canonical_regs: 0,
+        canonical_has_imm: true,
         transform: OperandTransform::Identity,
     },
-    
     // Exchange
     // EX DE,HL → XCHG
     DialectEntry {
-        from: "EX", from_regs: 2, from_has_imm: false,
-        canonical: "XCHG", canonical_regs: 0, canonical_has_imm: false,
+        from: "EX",
+        from_regs: 2,
+        from_has_imm: false,
+        canonical: "XCHG",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
-    
     // Rotate accumulator
     // RLCA → RLC
     DialectEntry {
-        from: "RLCA", from_regs: 0, from_has_imm: false,
-        canonical: "RLC", canonical_regs: 0, canonical_has_imm: false,
+        from: "RLCA",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "RLC",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // RRCA → RRC
     DialectEntry {
-        from: "RRCA", from_regs: 0, from_has_imm: false,
-        canonical: "RRC", canonical_regs: 0, canonical_has_imm: false,
+        from: "RRCA",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "RRC",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // RLA → RAL
     DialectEntry {
-        from: "RLA", from_regs: 0, from_has_imm: false,
-        canonical: "RAL", canonical_regs: 0, canonical_has_imm: false,
+        from: "RLA",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "RAL",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // RRA → RAR
     DialectEntry {
-        from: "RRA", from_regs: 0, from_has_imm: false,
-        canonical: "RAR", canonical_regs: 0, canonical_has_imm: false,
+        from: "RRA",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "RAR",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
-    
     // Flags
     // CPL → CMA
     DialectEntry {
-        from: "CPL", from_regs: 0, from_has_imm: false,
-        canonical: "CMA", canonical_regs: 0, canonical_has_imm: false,
+        from: "CPL",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "CMA",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // SCF → STC
     DialectEntry {
-        from: "SCF", from_regs: 0, from_has_imm: false,
-        canonical: "STC", canonical_regs: 0, canonical_has_imm: false,
+        from: "SCF",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "STC",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
     // CCF → CMC
     DialectEntry {
-        from: "CCF", from_regs: 0, from_has_imm: false,
-        canonical: "CMC", canonical_regs: 0, canonical_has_imm: false,
+        from: "CCF",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "CMC",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
-    
     // HALT → HLT
     DialectEntry {
-        from: "HALT", from_regs: 0, from_has_imm: false,
-        canonical: "HLT", canonical_regs: 0, canonical_has_imm: false,
+        from: "HALT",
+        from_regs: 0,
+        from_has_imm: false,
+        canonical: "HLT",
+        canonical_regs: 0,
+        canonical_has_imm: false,
         transform: OperandTransform::Identity,
     },
 ];

@@ -13,19 +13,9 @@ use std::io::{self, Write};
 
 use clap::Parser;
 
-use crate::core::cpu::CpuType;
-use crate::core::family::{AssemblerContext, EncodeResult};
-use crate::core::registry::{ModuleRegistry, RegistryError};
-use crate::core::imagestore::ImageStore;
-use crate::core::macro_processor::MacroProcessor;
-use crate::core::parser::{AssignOp, Expr, Label, LineAst, ParseError};
-use crate::core::parser as asm_parser;
-use crate::core::preprocess::Preprocessor;
-use crate::core::symbol_table::SymbolTable;
-use crate::core::tokenizer::{ConditionalKind, Span, register_checker_none};
-use std::sync::Arc;
-use crate::core::token_value::TokenValue;
-use crate::core::assembler::conditional::{ConditionalBlockKind, ConditionalContext, ConditionalStack};
+use crate::core::assembler::conditional::{
+    ConditionalBlockKind, ConditionalContext, ConditionalStack,
+};
 use crate::core::assembler::error::{
     AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic, LineStatus, PassCounts, Severity,
 };
@@ -34,6 +24,18 @@ use crate::core::assembler::expression::{
 };
 use crate::core::assembler::listing::{ListingLine, ListingWriter};
 use crate::core::assembler::scope::ScopeStack;
+use crate::core::cpu::CpuType;
+use crate::core::family::{AssemblerContext, EncodeResult};
+use crate::core::imagestore::ImageStore;
+use crate::core::macro_processor::MacroProcessor;
+use crate::core::parser as asm_parser;
+use crate::core::parser::{AssignOp, Expr, Label, LineAst, ParseError};
+use crate::core::preprocess::Preprocessor;
+use crate::core::registry::{ModuleRegistry, RegistryError};
+use crate::core::symbol_table::SymbolTable;
+use crate::core::token_value::TokenValue;
+use crate::core::tokenizer::{register_checker_none, ConditionalKind, Span};
+use std::sync::Arc;
 
 use crate::families::intel8080::module::Intel8080FamilyModule;
 use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
@@ -46,8 +48,8 @@ use cli::{
 };
 
 // Re-export public types
-pub use cli::VERSION;
 pub use crate::core::assembler::error::{AsmRunError as RunError, AsmRunReport as RunReport};
+pub use cli::VERSION;
 
 fn default_cpu() -> CpuType {
     crate::i8085::module::CPU_ID
@@ -200,7 +202,11 @@ fn run_one(
     if let Some(hex_path) = &hex_path {
         let mut hex_file = File::create(hex_path).map_err(|_| {
             AsmRunError::new(
-                AsmError::new(AsmErrorKind::Io, "Error opening file for write", Some(hex_path)),
+                AsmError::new(
+                    AsmErrorKind::Io,
+                    "Error opening file for write",
+                    Some(hex_path),
+                ),
                 assembler.take_diagnostics(),
                 expanded_lines.clone(),
             )
@@ -568,10 +574,7 @@ impl<'a> AsmLine<'a> {
 
     fn resolve_scoped_name(&self, name: &str) -> Option<String> {
         if name.contains('.') {
-            return self
-                .symbols
-                .entry(name)
-                .map(|_| name.to_string());
+            return self.symbols.entry(name).map(|_| name.to_string());
         }
         let mut depth = self.scope_stack.depth();
         while depth > 0 {
@@ -605,13 +608,7 @@ impl<'a> AsmLine<'a> {
         self.symbols.entry(name).map(|entry| entry.val)
     }
 
-    fn process(
-        &mut self,
-        line: &str,
-        line_num: u32,
-        addr: u16,
-        pass: u8,
-    ) -> LineStatus {
+    fn process(&mut self, line: &str, line_num: u32, addr: u16, pass: u8) -> LineStatus {
         self.last_error = None;
         self.last_error_column = None;
         self.last_parser_error = None;
@@ -629,9 +626,7 @@ impl<'a> AsmLine<'a> {
         let is_register_fn = match self.registry.resolve_pipeline(self.cpu, None) {
             Ok(pipeline) => {
                 let family = pipeline.family;
-                Arc::new(move |ident: &str| {
-                    family.is_register(ident) || family.is_condition(ident)
-                })
+                Arc::new(move |ident: &str| family.is_register(ident) || family.is_condition(ident))
             }
             Err(_) => register_checker_none(),
         };
@@ -667,15 +662,13 @@ impl<'a> AsmLine<'a> {
                     self.statement_depth = self.statement_depth.saturating_sub(1);
                     LineStatus::Skip
                 }
-                LineAst::StatementDef { span, .. } => {
-                    self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Parser,
-                        "Nested .statement definitions are not supported",
-                        None,
-                        span,
-                    )
-                }
+                LineAst::StatementDef { span, .. } => self.failure_at_span(
+                    LineStatus::Error,
+                    AsmErrorKind::Parser,
+                    "Nested .statement definitions are not supported",
+                    None,
+                    span,
+                ),
                 _ => LineStatus::Skip,
             };
         }
@@ -703,7 +696,12 @@ impl<'a> AsmLine<'a> {
                     span,
                 )
             }
-            LineAst::Assignment { label, op, expr, span } => {
+            LineAst::Assignment {
+                label,
+                op,
+                expr,
+                span,
+            } => {
                 if self.cond_stack.skipping() {
                     return LineStatus::Skip;
                 }
@@ -1312,7 +1310,7 @@ impl<'a> AsmLine<'a> {
                 let cpu_name = match operands.first() {
                     Some(Expr::Identifier(name, _)) => name.clone(),
                     Some(Expr::Register(name, _)) => name.clone(), // In case Z80 is parsed as register
-                    Some(Expr::Number(name, _)) => name.clone(), // For bare "8085" without quotes
+                    Some(Expr::Number(name, _)) => name.clone(),   // For bare "8085" without quotes
                     Some(Expr::String(bytes, _)) => String::from_utf8_lossy(bytes).to_string(),
                     _ => {
                         let known = self.registry.cpu_name_list();
@@ -1327,7 +1325,7 @@ impl<'a> AsmLine<'a> {
                             AsmErrorKind::Directive,
                             &message,
                             None,
-                        )
+                        );
                     }
                 };
                 match self.registry.resolve_cpu_name(&cpu_name) {
@@ -1579,42 +1577,29 @@ impl<'a> AsmLine<'a> {
             crate::core::family::FamilyEncodeResult::NotFound => {}
         }
 
-        let resolved_operands = match pipeline.cpu.resolve_operands(
-            mnemonic,
-            mapped_operands.as_ref(),
-            self,
-        ) {
-            Ok(ops) => ops,
-            Err(err) => {
-                return self.failure(
-                    LineStatus::Error,
-                    AsmErrorKind::Instruction,
-                    &err,
-                    None,
-                )
-            }
-        };
+        let resolved_operands =
+            match pipeline
+                .cpu
+                .resolve_operands(mnemonic, mapped_operands.as_ref(), self)
+            {
+                Ok(ops) => ops,
+                Err(err) => {
+                    return self.failure(LineStatus::Error, AsmErrorKind::Instruction, &err, None)
+                }
+            };
 
         if let Some(validator) = pipeline.validator.as_ref() {
-            if let Err(err) = validator.validate_instruction(
-                &mapped_mnemonic,
-                resolved_operands.as_ref(),
-                self,
-            ) {
-                return self.failure(
-                    LineStatus::Error,
-                    AsmErrorKind::Instruction,
-                    &err,
-                    None,
-                );
+            if let Err(err) =
+                validator.validate_instruction(&mapped_mnemonic, resolved_operands.as_ref(), self)
+            {
+                return self.failure(LineStatus::Error, AsmErrorKind::Instruction, &err, None);
             }
         }
 
-        match pipeline.family.encode_instruction(
-            &mapped_mnemonic,
-            resolved_operands.as_ref(),
-            self,
-        ) {
+        match pipeline
+            .family
+            .encode_instruction(&mapped_mnemonic, resolved_operands.as_ref(), self)
+        {
             EncodeResult::Ok(bytes) => {
                 self.bytes.extend_from_slice(&bytes);
                 LineStatus::Ok
@@ -1629,12 +1614,7 @@ impl<'a> AsmLine<'a> {
                         span,
                     )
                 } else {
-                    self.failure(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        &msg,
-                        None,
-                    )
+                    self.failure(LineStatus::Error, AsmErrorKind::Instruction, &msg, None)
                 }
             }
             EncodeResult::NotFound => match pipeline.cpu.encode_instruction(
@@ -1656,21 +1636,13 @@ impl<'a> AsmLine<'a> {
                             span,
                         )
                     } else {
-                        self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &msg,
-                            None,
-                        )
+                        self.failure(LineStatus::Error, AsmErrorKind::Instruction, &msg, None)
                     }
                 }
                 EncodeResult::NotFound => self.failure(
                     LineStatus::Error,
                     AsmErrorKind::Instruction,
-                    &format!(
-                        "No instruction found for {}",
-                        mnemonic.to_ascii_uppercase()
-                    ),
+                    &format!("No instruction found for {}", mnemonic.to_ascii_uppercase()),
                     None,
                 ),
             },
@@ -1739,7 +1711,11 @@ impl<'a> AsmLine<'a> {
                     None => {
                         if self.pass > 1 {
                             Err(AstEvalError {
-                                error: AsmError::new(AsmErrorKind::Expression, "Label not found", Some(name)),
+                                error: AsmError::new(
+                                    AsmErrorKind::Expression,
+                                    "Label not found",
+                                    Some(name),
+                                ),
                                 span: *span,
                             })
                         } else {
@@ -1757,7 +1733,11 @@ impl<'a> AsmLine<'a> {
                 self.eval_expr_ast(inner)
             }
             Expr::Tuple(_, span) => Err(AstEvalError {
-                error: AsmError::new(AsmErrorKind::Expression, "Tuple cannot be evaluated as expression", None),
+                error: AsmError::new(
+                    AsmErrorKind::Expression,
+                    "Tuple cannot be evaluated as expression",
+                    None,
+                ),
                 span: *span,
             }),
             Expr::Dollar(_span) => Ok(self.start_addr as u32),
@@ -1895,18 +1875,16 @@ fn is_scope_directive(mnemonic: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        AsmErrorKind, AsmLine, Assembler, LineStatus, ListingWriter,
-    };
-    use crate::core::registry::ModuleRegistry;
-    use crate::families::intel8080::module::Intel8080FamilyModule;
-    use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
-    use crate::i8085::module::{CPU_ID as i8085_cpu_id, I8085CpuModule};
-    use crate::m65c02::module::M65C02CpuModule;
-    use crate::z80::module::{CPU_ID as z80_cpu_id, Z80CpuModule};
+    use super::{AsmErrorKind, AsmLine, Assembler, LineStatus, ListingWriter};
     use crate::core::macro_processor::MacroProcessor;
     use crate::core::preprocess::Preprocessor;
+    use crate::core::registry::ModuleRegistry;
     use crate::core::symbol_table::SymbolTable;
+    use crate::families::intel8080::module::Intel8080FamilyModule;
+    use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
+    use crate::i8085::module::{I8085CpuModule, CPU_ID as i8085_cpu_id};
+    use crate::m65c02::module::M65C02CpuModule;
+    use crate::z80::module::{Z80CpuModule, CPU_ID as z80_cpu_id};
     use std::fs::{self, File};
     use std::path::{Path, PathBuf};
     use std::process;
@@ -1930,12 +1908,7 @@ mod tests {
         AsmLine::new(symbols, registry)
     }
 
-    fn process_line(
-        asm: &mut AsmLine<'_>,
-        line: &str,
-        addr: u16,
-        pass: u8,
-    ) -> LineStatus {
+    fn process_line(asm: &mut AsmLine<'_>, line: &str, addr: u16, pass: u8) -> LineStatus {
         asm.process(line, 1, addr, pass)
     }
 
@@ -2025,6 +1998,16 @@ mod tests {
         out
     }
 
+    fn expected_example_error(base: &str) -> Option<&'static str> {
+        match base {
+            "statement_signature_error" => Some("Macro expand failed: Missing closing }]"),
+            "statement_unquoted_comma_error" => {
+                Some("Macro expand failed: Commas must be quoted in statement signatures")
+            }
+            _ => None,
+        }
+    }
+
     #[test]
     fn examples_match_reference_outputs() {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2036,11 +2019,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let out_dir = repo_root.join("target").join(format!(
-            "example-outputs-{}-{}",
-            process::id(),
-            nanos
-        ));
+        let out_dir =
+            repo_root
+                .join("target")
+                .join(format!("example-outputs-{}-{}", process::id(), nanos));
         fs::create_dir_all(&out_dir).expect("Create example output directory");
         if update_reference {
             fs::create_dir_all(&reference_dir).expect("Create reference directory");
@@ -2065,8 +2047,21 @@ mod tests {
                 .and_then(|s| s.to_str())
                 .unwrap_or("<unknown>");
 
-            assemble_example(&asm_path, &out_dir)
-                .unwrap_or_else(|err| panic!("Failed to assemble {base}: {err}"));
+            let expected_error = expected_example_error(base);
+            match assemble_example(&asm_path, &out_dir) {
+                Ok(()) => {
+                    if expected_error.is_some() {
+                        panic!("Expected {base} to fail but it succeeded");
+                    }
+                }
+                Err(err) => {
+                    if let Some(expected) = expected_error {
+                        assert_eq!(err, expected, "Unexpected error for {base}");
+                        continue;
+                    }
+                    panic!("Failed to assemble {base}: {err}");
+                }
+            }
 
             let out_hex = fs::read(out_dir.join(format!("{base}.hex")))
                 .unwrap_or_else(|err| panic!("Missing output hex for {base}: {err}"));
@@ -2076,10 +2071,16 @@ mod tests {
             let ref_lst_path = reference_dir.join(format!("{base}.lst"));
             if update_reference {
                 fs::write(&ref_hex_path, &out_hex).unwrap_or_else(|err| {
-                    panic!("Failed to write reference hex {}: {err}", ref_hex_path.display())
+                    panic!(
+                        "Failed to write reference hex {}: {err}",
+                        ref_hex_path.display()
+                    )
                 });
                 fs::write(&ref_lst_path, &out_lst).unwrap_or_else(|err| {
-                    panic!("Failed to write reference list {}: {err}", ref_lst_path.display())
+                    panic!(
+                        "Failed to write reference list {}: {err}",
+                        ref_lst_path.display()
+                    )
                 });
             } else {
                 let ref_hex = fs::read(&ref_hex_path).unwrap_or_else(|err| {
@@ -2511,12 +2512,7 @@ mod tests {
         let mut symbols = SymbolTable::new();
         let registry = default_registry();
         let mut asm = make_asm_line(&mut symbols, &registry);
-        let status = process_line(
-            &mut asm,
-            "    .word $1f, %1010, 1_0_0_0, 17o, 17q",
-            0,
-            2,
-        );
+        let status = process_line(&mut asm, "    .word $1f, %1010, 1_0_0_0, 17o, 17q", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(
             asm.bytes(),
@@ -2538,12 +2534,7 @@ mod tests {
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[1, 1, 1, 1, 1, 1, 1, 1]);
 
-        let status = process_line(
-            &mut asm,
-            "    .byte 2&&3, 0||5, 2^^3, !0, !1",
-            0,
-            2,
-        );
+        let status = process_line(&mut asm, "    .byte 2&&3, 0||5, 2^^3, !0, !1", 0, 2);
         assert_eq!(status, LineStatus::Ok);
         assert_eq!(asm.bytes(), &[1, 1, 0, 1, 0]);
     }

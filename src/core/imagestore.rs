@@ -268,7 +268,9 @@ mod tests {
         image.store(0x0010, 0xaa);
         image.store(0x0012, 0xbb);
         let mut out = Vec::new();
-        image.write_bin_file(&mut out, 0x000f, 0x0013, 0xff).unwrap();
+        image
+            .write_bin_file(&mut out, 0x000f, 0x0013, 0xff)
+            .unwrap();
         assert_eq!(out.len(), 5);
         assert_eq!(out, vec![0xff, 0xaa, 0xff, 0xbb, 0xff]);
     }

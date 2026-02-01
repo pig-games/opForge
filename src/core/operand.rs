@@ -42,7 +42,6 @@ pub enum Operand {
     /// Absolute/direct address (expression that evaluates to an address).
     /// Used for `JMP $1234`, `LD A, (1234h)`, etc.
     Absolute(Expr),
-
 }
 
 impl Operand {
@@ -130,7 +129,11 @@ mod tests {
     use super::*;
 
     fn dummy_span() -> Span {
-        Span { line: 1, col_start: 1, col_end: 1 }
+        Span {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        }
     }
 
     #[test]

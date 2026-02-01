@@ -7,8 +7,7 @@ use crate::core::cpu::{CpuFamily, CpuType};
 use crate::core::family::AssemblerContext;
 use crate::core::registry::{CpuHandlerDyn, CpuModule, FamilyOperandSet, OperandSet};
 use crate::families::intel8080::module::{
-    DIALECT_INTEL8080, FAMILY_ID as INTEL8080_FAMILY_ID, Intel8080FamilyOperands,
-    Intel8080Operands,
+    Intel8080FamilyOperands, Intel8080Operands, DIALECT_INTEL8080, FAMILY_ID as INTEL8080_FAMILY_ID,
 };
 
 use super::I8085CpuHandler;
@@ -76,9 +75,7 @@ impl CpuHandlerDyn for I8085CpuHandler {
         let intel_operands = match operands.as_any().downcast_ref::<Intel8080Operands>() {
             Some(ops) => ops,
             None => {
-                return crate::core::family::EncodeResult::error(
-                    "expected Intel 8080 operands",
-                )
+                return crate::core::family::EncodeResult::error("expected Intel 8080 operands")
             }
         };
         <Self as crate::core::family::CpuHandler>::encode_instruction(

@@ -7,8 +7,8 @@
 //! other CPU families. There is no shared `AddressMode` enum that mixes
 //! 6502 modes with 8080 modes.
 
-use crate::core::parser::Expr;
 use crate::core::assembler::expression::expr_span;
+use crate::core::parser::Expr;
 use crate::core::tokenizer::Span;
 
 /// Addressing modes for the MOS 6502 family.

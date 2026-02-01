@@ -7,10 +7,10 @@
 //! MOS6502 family handler. Unlike the 65C02, the base 6502 does not support
 //! extended addressing modes like zero page indirect or 65C02-only instructions.
 
-use crate::core::family::{AssemblerContext, CpuHandler, EncodeResult};
 use crate::core::assembler::expression::expr_span;
-use crate::families::mos6502::{FamilyOperand, MOS6502FamilyHandler, Operand};
+use crate::core::family::{AssemblerContext, CpuHandler, EncodeResult};
 use crate::families::mos6502::table::has_mnemonic;
+use crate::families::mos6502::{FamilyOperand, MOS6502FamilyHandler, Operand};
 
 /// CPU handler for base MOS 6502.
 #[derive(Debug)]
@@ -60,7 +60,7 @@ impl CpuHandler for M6502CpuHandler {
         }
 
         let mut result = Vec::with_capacity(family_operands.len());
-        
+
         for fop in family_operands {
             let operand = match fop {
                 FamilyOperand::Accumulator(span) => Operand::Accumulator(*span),
@@ -68,10 +68,7 @@ impl CpuHandler for M6502CpuHandler {
                 FamilyOperand::Immediate(expr) => {
                     let val = ctx.eval_expr(expr)?;
                     if !(0..=255).contains(&val) {
-                        return Err(format!(
-                            "Immediate value {} out of range (0-255)",
-                            val
-                        ));
+                        return Err(format!("Immediate value {} out of range (0-255)", val));
                     }
                     Operand::Immediate(val as u8, expr_span(expr))
                 }
@@ -79,7 +76,7 @@ impl CpuHandler for M6502CpuHandler {
                 FamilyOperand::Direct(expr) => {
                     let val = ctx.eval_expr(expr)?;
                     let span = expr_span(expr);
-                    
+
                     // Branch instructions use relative addressing
                     if Self::is_branch_mnemonic(mnemonic) {
                         let current = ctx.current_address() as i32 + 2;
@@ -158,7 +155,7 @@ impl CpuHandler for M6502CpuHandler {
                     let val = ctx.eval_expr(expr)?;
                     let span = expr_span(expr);
                     let upper_mnemonic = mnemonic.to_ascii_uppercase();
-                    
+
                     if upper_mnemonic == "JMP" {
                         // JMP ($nnnn) - 16-bit indirect
                         if (0..=65535).contains(&val) {
@@ -169,7 +166,8 @@ impl CpuHandler for M6502CpuHandler {
                     } else {
                         // Base 6502 does NOT support ($nn) zero page indirect
                         return Err(
-                            "Indirect addressing ($nn) not supported on base 6502 (use 65C02)".to_string()
+                            "Indirect addressing ($nn) not supported on base 6502 (use 65C02)"
+                                .to_string(),
                         );
                     }
                 }

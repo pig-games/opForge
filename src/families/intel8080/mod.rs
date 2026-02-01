@@ -107,7 +107,7 @@ mod tests {
         assert!(is_register("H"));
         assert!(is_register("L"));
         assert!(is_register("M")); // Memory via (HL)
-        
+
         // Case insensitive
         assert!(is_register("a"));
         assert!(is_register("b"));
@@ -133,7 +133,7 @@ mod tests {
         assert!(is_register("SP"));
         assert!(is_register("AF"));
         assert!(is_register("PSW"));
-        
+
         // Z80-only index registers
         assert!(is_register("IX"));
         assert!(is_register("IY"));
@@ -160,7 +160,7 @@ mod tests {
         assert!(is_condition("PE"));
         assert!(is_condition("P"));
         assert!(is_condition("M"));
-        
+
         // Case insensitive
         assert!(is_condition("nz"));
         assert!(is_condition("Nz"));
@@ -180,7 +180,7 @@ mod tests {
         // Z80 index registers
         assert!(is_index_register("IX"));
         assert!(is_index_register("IY"));
-        
+
         // Case insensitive
         assert!(is_index_register("ix"));
         assert!(is_index_register("Ix"));

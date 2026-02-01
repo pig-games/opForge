@@ -10,7 +10,7 @@ use crate::core::family::{
 use crate::core::parser::{BinaryOp, Expr};
 
 use super::operand::{expr_span, FamilyOperand, Operand};
-use super::table::{lookup_instruction, has_mnemonic, ArgType};
+use super::table::{has_mnemonic, lookup_instruction, ArgType};
 use super::{is_condition, is_index_register, is_register};
 
 /// Family handler for Intel 8080 family (8080, 8085, Z80).
@@ -96,7 +96,12 @@ impl FamilyHandler for Intel8080FamilyHandler {
                         }
 
                         // Indexed addressing: (IX+d) or (IY+d) or (IX-d) or (IY-d)
-                        Expr::Binary { op, left, right, span: inner_span } => {
+                        Expr::Binary {
+                            op,
+                            left,
+                            right,
+                            span: inner_span,
+                        } => {
                             if let Expr::Identifier(name, _) = left.as_ref() {
                                 let upper = name.to_uppercase();
                                 if is_index_register(&upper)
@@ -341,7 +346,11 @@ fn encode_intel8080_family_operands(
         ArgType::Byte | ArgType::Word => {
             let imm_index = entry.num_regs as usize;
             let expected_count = imm_index + 1;
-            let expected_bits = if entry.arg_type == ArgType::Word { 16 } else { 8 };
+            let expected_bits = if entry.arg_type == ArgType::Word {
+                16
+            } else {
+                8
+            };
 
             let imm_operand = match operands.get(imm_index) {
                 Some(op) => op,
@@ -379,12 +388,7 @@ fn encode_intel8080_family_operands(
             let value = match ctx.eval_expr(&expr) {
                 Ok(value) => value,
                 Err(msg) => {
-                    return FamilyEncodeResult::error(
-                        bytes,
-                        msg,
-                        Some(expr_span(&expr)),
-                        None,
-                    );
+                    return FamilyEncodeResult::error(bytes, msg, Some(expr_span(&expr)), None);
                 }
             };
 
@@ -568,9 +572,7 @@ fn family_operand_is_register_like(operand: &FamilyOperand) -> bool {
 
 fn family_operand_text(operand: &FamilyOperand) -> Option<String> {
     match operand {
-        FamilyOperand::Register(name, _) | FamilyOperand::Condition(name, _) => {
-            Some(name.clone())
-        }
+        FamilyOperand::Register(name, _) | FamilyOperand::Condition(name, _) => Some(name.clone()),
         FamilyOperand::Indirect(name, _) => Some(format!("({})", name)),
         FamilyOperand::Immediate(expr)
         | FamilyOperand::RstVector(expr)
@@ -592,9 +594,7 @@ fn family_operand_expr_for_immediate(operand: &FamilyOperand) -> Option<Expr> {
         | FamilyOperand::Port(expr) => Some(expr.clone()),
         FamilyOperand::Register(name, span)
         | FamilyOperand::Condition(name, span)
-        | FamilyOperand::Indirect(name, span) => {
-            Some(Expr::Identifier(name.clone(), *span))
-        }
+        | FamilyOperand::Indirect(name, span) => Some(Expr::Identifier(name.clone(), *span)),
         FamilyOperand::Indexed { .. } => None,
     }
 }

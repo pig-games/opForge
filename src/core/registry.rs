@@ -176,11 +176,8 @@ impl ModuleRegistry {
             let key = (family_id, normalize_dialect(dialect.dialect_id()));
             self.dialects.insert(key, dialect);
         }
-        if let (Some(cpu_id), Some(cpu_name)) =
-            (module.family_cpu_id(), module.family_cpu_name())
-        {
-            self.cpu_names
-                .insert(normalize_cpu_name(cpu_name), cpu_id);
+        if let (Some(cpu_id), Some(cpu_name)) = (module.family_cpu_id(), module.family_cpu_name()) {
+            self.cpu_names.insert(normalize_cpu_name(cpu_name), cpu_id);
         }
         self.families.insert(family_id, module);
     }
@@ -193,9 +190,7 @@ impl ModuleRegistry {
     }
 
     pub fn resolve_cpu_name(&self, name: &str) -> Option<CpuType> {
-        self.cpu_names
-            .get(&normalize_cpu_name(name))
-            .copied()
+        self.cpu_names.get(&normalize_cpu_name(name)).copied()
     }
 
     pub fn cpu_display_name(&self, cpu: CpuType) -> Option<&'static str> {
@@ -236,10 +231,7 @@ impl ModuleRegistry {
         cpu: CpuType,
         dialect_override: Option<&str>,
     ) -> Result<ResolvedPipeline<'_>, RegistryError> {
-        let cpu_module = self
-            .cpus
-            .get(&cpu)
-            .ok_or(RegistryError::MissingCpu(cpu))?;
+        let cpu_module = self.cpus.get(&cpu).ok_or(RegistryError::MissingCpu(cpu))?;
         let family_id = cpu_module.family_id();
         let family_module = self
             .families
@@ -247,14 +239,13 @@ impl ModuleRegistry {
             .ok_or(RegistryError::MissingFamily(family_id))?;
 
         let selected = if let Some(override_id) = dialect_override {
-            self.lookup_dialect(family_id, override_id)
-                .ok_or_else(|| RegistryError::MissingDialect {
+            self.lookup_dialect(family_id, override_id).ok_or_else(|| {
+                RegistryError::MissingDialect {
                     family: family_id,
                     dialect: override_id.to_string(),
-                })?
-        } else if let Some(dialect) =
-            self.lookup_dialect(family_id, cpu_module.default_dialect())
-        {
+                }
+            })?
+        } else if let Some(dialect) = self.lookup_dialect(family_id, cpu_module.default_dialect()) {
             dialect
         } else {
             self.lookup_dialect(family_id, family_module.canonical_dialect())
@@ -272,11 +263,7 @@ impl ModuleRegistry {
         })
     }
 
-    fn lookup_dialect(
-        &self,
-        family: CpuFamily,
-        dialect: &str,
-    ) -> Option<&dyn DialectModule> {
+    fn lookup_dialect(&self, family: CpuFamily, dialect: &str) -> Option<&dyn DialectModule> {
         let key = (family, normalize_dialect(dialect));
         self.dialects.get(&key).map(|dialect| dialect.as_ref())
     }

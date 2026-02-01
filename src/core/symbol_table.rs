@@ -93,11 +93,7 @@ impl SymbolTable {
 
     pub fn dump<W: Write>(&self, mut out: W) -> io::Result<()> {
         for entry in &self.entries {
-            writeln!(
-                out,
-                "{:<16}: {:04x} ({})",
-                entry.name, entry.val, entry.val
-            )?;
+            writeln!(out, "{:<16}: {:04x} ({})", entry.name, entry.val, entry.val)?;
         }
         Ok(())
     }

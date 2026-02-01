@@ -348,10 +348,7 @@ impl<'a> MacroExpander<'a> {
                                 expanded_parts.extend(rec);
                             }
                             if !expanded_parts.is_empty() {
-                                out_lines
-                                    .last_mut()
-                                    .unwrap()
-                                    .push_str(&expanded_parts[0]);
+                                out_lines.last_mut().unwrap().push_str(&expanded_parts[0]);
                                 for part in expanded_parts.iter().skip(1) {
                                     out_lines.push(part.clone());
                                 }
@@ -464,11 +461,7 @@ impl Preprocessor {
     fn process_file_internal(&mut self, path: &str) -> Result<(), PreprocessError> {
         let file = match File::open(path) {
             Ok(f) => f,
-            Err(_) => {
-                return Err(PreprocessError::new(format!(
-                    "Error opening file: {path}"
-                )))
-            }
+            Err(_) => return Err(PreprocessError::new(format!("Error opening file: {path}"))),
         };
         let base_dir = dirname(path);
         let mut reader = io::BufReader::new(file);
@@ -478,11 +471,7 @@ impl Preprocessor {
             line.clear();
             let read = match reader.read_line(&mut line) {
                 Ok(n) => n,
-                Err(_) => {
-                    return Err(PreprocessError::new(format!(
-                        "Error opening file: {path}"
-                    )))
-                }
+                Err(_) => return Err(PreprocessError::new(format!("Error opening file: {path}"))),
             };
             if read == 0 {
                 break;
@@ -552,10 +541,8 @@ impl Preprocessor {
         let column = leading.saturating_add(start).saturating_add(1);
 
         let is_else_directive = token == "ELSE" || token == "ELSEIF" || token == "ENDIF";
-        let is_pp_directive = token == "IFDEF"
-            || token == "IFNDEF"
-            || token == "INCLUDE"
-            || is_else_directive;
+        let is_pp_directive =
+            token == "IFDEF" || token == "IFNDEF" || token == "INCLUDE" || is_else_directive;
         if is_hash_directive && is_pp_directive {
             let err = PreprocessError::new("Preprocessor directives must use '.'");
             return Err(err.with_context(line_num, Some(column), line, Some(file_path)));
@@ -566,7 +553,9 @@ impl Preprocessor {
             } else {
                 return self
                     .handle_directive(&token, rest, base_dir)
-                    .map_err(|err| err.with_context(line_num, Some(column), line, Some(file_path)));
+                    .map_err(|err| {
+                        err.with_context(line_num, Some(column), line, Some(file_path))
+                    });
             }
         }
 
@@ -666,7 +655,6 @@ impl Preprocessor {
     fn is_defined(&self, name: &str) -> bool {
         self.macros.contains_key(&to_upper(name))
     }
-
 }
 
 impl Default for Preprocessor {
@@ -818,10 +806,7 @@ mod tests {
 
     #[test]
     fn object_macro_expands() {
-        let path = temp_file(
-            "macro.asm",
-            ".byte ADD\n",
-        );
+        let path = temp_file("macro.asm", ".byte ADD\n");
         let mut pp = Preprocessor::new();
         pp.define("ADD", "1 + 2");
         assert!(pp.process_file(path.to_str().unwrap()).is_ok());

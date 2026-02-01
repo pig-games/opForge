@@ -3,9 +3,9 @@
 
 //! Operand types for the Intel 8080 family.
 
+pub use crate::core::assembler::expression::expr_span;
 use crate::core::parser::Expr;
 use crate::core::tokenizer::Span;
-pub use crate::core::assembler::expression::expr_span;
 
 /// Intermediate operand representation from family-level parsing.
 ///
@@ -141,4 +141,3 @@ impl Operand {
         }
     }
 }
-

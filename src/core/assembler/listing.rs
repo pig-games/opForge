@@ -54,7 +54,11 @@ impl<W: Write> ListingWriter<W> {
             }
         };
 
-        let loc = if loc.is_empty() { "----".to_string() } else { loc };
+        let loc = if loc.is_empty() {
+            "----".to_string()
+        } else {
+            loc
+        };
         let cond_str = if self.show_cond {
             line.cond.map(format_cond).unwrap_or_default()
         } else {
@@ -123,5 +127,8 @@ pub fn format_bytes(bytes: &[u8]) -> String {
 fn format_cond(ctx: &ConditionalContext) -> String {
     let matched = if ctx.matched { '+' } else { ' ' };
     let skipping = if ctx.skipping { '-' } else { ' ' };
-    format!("  [{}{}{}{}]", matched, ctx.nest_level, ctx.skip_level, skipping)
+    format!(
+        "  [{}{}{}{}]",
+        matched, ctx.nest_level, ctx.skip_level, skipping
+    )
 }

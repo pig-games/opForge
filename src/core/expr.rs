@@ -66,7 +66,10 @@ pub fn eval_expr(expr: &Expr, ctx: &dyn EvalContext) -> Result<i64, EvalError> {
         Expr::Register(name, span) => {
             // Try to look up as a symbol first (some assemblers allow register names as symbols)
             ctx.lookup_symbol(name).ok_or_else(|| {
-                EvalError::with_span(format!("Register {} cannot be used as a value", name), *span)
+                EvalError::with_span(
+                    format!("Register {} cannot be used as a value", name),
+                    *span,
+                )
             })
         }
 
@@ -414,9 +417,18 @@ mod tests {
         assert_eq!(apply_binary(BinaryOp::Divide, 10, 5, span).unwrap(), 2);
         assert_eq!(apply_binary(BinaryOp::Mod, 10, 3, span).unwrap(), 1);
         assert_eq!(apply_binary(BinaryOp::Power, 2, 8, span).unwrap(), 256);
-        assert_eq!(apply_binary(BinaryOp::BitAnd, 0xFF, 0x0F, span).unwrap(), 0x0F);
-        assert_eq!(apply_binary(BinaryOp::BitOr, 0xF0, 0x0F, span).unwrap(), 0xFF);
-        assert_eq!(apply_binary(BinaryOp::BitXor, 0xFF, 0x0F, span).unwrap(), 0xF0);
+        assert_eq!(
+            apply_binary(BinaryOp::BitAnd, 0xFF, 0x0F, span).unwrap(),
+            0x0F
+        );
+        assert_eq!(
+            apply_binary(BinaryOp::BitOr, 0xF0, 0x0F, span).unwrap(),
+            0xFF
+        );
+        assert_eq!(
+            apply_binary(BinaryOp::BitXor, 0xFF, 0x0F, span).unwrap(),
+            0xF0
+        );
         assert_eq!(apply_binary(BinaryOp::Shl, 1, 4, span).unwrap(), 16);
         assert_eq!(apply_binary(BinaryOp::Shr, 16, 4, span).unwrap(), 1);
     }

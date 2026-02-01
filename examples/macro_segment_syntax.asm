@@ -6,16 +6,16 @@
         .org $2000
 
 COPY .macro src, dst
-        .byte \src, \dst
+        .byte .src, .dst
 .endmacro
 
 .macro FILL(value)
-        .byte \value
+        .byte .value
 .endmacro
 
 .segment INLINE(v)
-VAL     .const \v
-        .byte \v
+VAL     .const .v
+        .byte .v
 .endsegment
 
         .COPY 1, 2

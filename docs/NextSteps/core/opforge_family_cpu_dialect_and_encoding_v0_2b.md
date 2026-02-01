@@ -8,7 +8,7 @@
 - **Sections & relocation** (layout/link story): [opforge_sections_and_relocation_v0_2a.md](opforge_sections_and_relocation_v0_2a.md)
 
 ---
-*\10.2b*
+*v0.2b*
 
 This document specifies how **processor families, CPUs, and dialects**
 are defined, registered, and activated in opForge, and how **instruction
@@ -158,9 +158,9 @@ Encoding is expressed by lowering CPU-defined tokens to bytes (and relocations) 
 ### Encoder statements
 
 ``` asm
-.statement encode TOK_STA_ZP_PTR32(zp)
+.statement encode TOK_STA_ZP_PTR32(byte:zp)
   .byte 0xAB
-  .byte zp
+  .byte .zp
 .endstatement
 ```
 
@@ -168,7 +168,7 @@ Encoding is expressed by lowering CPU-defined tokens to bytes (and relocations) 
 
 ``` asm
 .statement sta "[" byte:zp "]"
-  emit TOK_STA_ZP_PTR32(zp)
+  emit TOK_STA_ZP_PTR32(.zp)
 .endstatement
 ```
 
@@ -185,16 +185,16 @@ Encoders may use: - expressions - `.match` over ADTs or values -
 computed opcodes
 
 ``` asm
-.statement encode MOVE size dst src
-  .match size
+.statement encode MOVE Size:size char:dst char:src
+  .match .size
     b => { opcode = 0x10 }
     w => { opcode = 0x11 }
     l => { opcode = 0x12 }
   .endmatch
 
   .byte opcode
-  .byte dst
-  .byte src
+  .byte .dst
+  .byte .src
 .endstatement
 ```
 

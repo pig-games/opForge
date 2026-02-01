@@ -128,7 +128,7 @@ Inside `[{ ... }]`, whitespace is literal.
 
 ``` asm
 .statement sta "[" byte:a "]"
-  encode STA_PTR32 a
+  encode STA_PTR32 .a
 .endstatement
 ```
 
@@ -142,9 +142,9 @@ Matches:
 
 ``` asm
 .statement sta "[" byte:a ","[{char:reg}]
-  .match reg
-    'x' => { encode STA_PTR32_X a }
-    'y' => { encode STA_PTR32_Y a }
+  .match .reg
+    'x' => { encode STA_PTR32_X .a }
+    'y' => { encode STA_PTR32_Y .a }
     _   => { .error "invalid register" }
   .endmatch
 .endstatement

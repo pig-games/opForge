@@ -10,7 +10,7 @@
 ---
 ## How the Parser Walks a Line and Matches Statement Signatures
 
-*\10.2b*
+*v0.2b*
 
 This document explains **how opForge parses a single line**, step by
 step, and how it matches that line against `.statement` definitions with
@@ -166,9 +166,9 @@ The statement body executes:
 Example body:
 
 ``` asm
-.match reg
-  'x' => { encode STA_PTR32_X a }
-  'y' => { encode STA_PTR32_Y a }
+.match .reg
+  'x' => { encode STA_PTR32_X .a }
+  'y' => { encode STA_PTR32_Y .a }
   _   => { .error "invalid register" }
 .endmatch
 ```

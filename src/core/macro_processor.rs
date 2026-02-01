@@ -1057,7 +1057,7 @@ fn substitute_line(line: &str, args: &MacroArgs) -> String {
     while i < bytes.len() {
         let c = bytes[i] as char;
         match c {
-            '\\' => {
+            '.' => {
                 if i + 1 >= bytes.len() {
                     out.push(c);
                     i += 1;
@@ -1065,11 +1065,6 @@ fn substitute_line(line: &str, args: &MacroArgs) -> String {
                 }
                 let next = bytes[i + 1] as char;
                 match next {
-                    '\\' => {
-                        out.push('\\');
-                        i += 2;
-                        continue;
-                    }
                     '@' => {
                         out.push_str(&args.full_list);
                         i += 2;
@@ -1088,9 +1083,11 @@ fn substitute_line(line: &str, args: &MacroArgs) -> String {
                         }
                         if j < bytes.len() {
                             let name = &line[i + 2..j];
-                            out.push_str(lookup_named(args, name));
-                            i = j + 1;
-                            continue;
+                            if has_named(args, name) {
+                                out.push_str(lookup_named(args, name));
+                                i = j + 1;
+                                continue;
+                            }
                         }
                     }
                     _ => {
@@ -1100,9 +1097,11 @@ fn substitute_line(line: &str, args: &MacroArgs) -> String {
                                 j += 1;
                             }
                             let name = &line[i + 1..j];
-                            out.push_str(lookup_named(args, name));
-                            i = j;
-                            continue;
+                            if has_named(args, name) {
+                                out.push_str(lookup_named(args, name));
+                                i = j;
+                                continue;
+                            }
                         }
                     }
                 }
@@ -1127,6 +1126,11 @@ fn substitute_line(line: &str, args: &MacroArgs) -> String {
 fn lookup_named<'a>(args: &'a MacroArgs, name: &str) -> &'a str {
     let key = to_upper(name);
     args.named.get(&key).map(String::as_str).unwrap_or("")
+}
+
+fn has_named(args: &MacroArgs, name: &str) -> bool {
+    let key = to_upper(name);
+    args.named.contains_key(&key)
 }
 
 fn split_comment(line: &str) -> (String, String) {
@@ -1189,8 +1193,8 @@ mod tests {
         let mut mp = MacroProcessor::new();
         let lines = vec![
             "COPY .macro src, dst".to_string(),
-            "    lda \\src".to_string(),
-            "    sta \\dst".to_string(),
+            "    lda .src".to_string(),
+            "    sta .dst".to_string(),
             ".endmacro".to_string(),
             "    .COPY $12, $34".to_string(),
         ];
@@ -1206,7 +1210,7 @@ mod tests {
         let mut mp = MacroProcessor::new();
         let lines = vec![
             "M .macro first, second=2".to_string(),
-            "    .byte \\first, \\second".to_string(),
+            "    .byte .first, .second".to_string(),
             ".endmacro".to_string(),
             "    .M 1".to_string(),
         ];
@@ -1220,7 +1224,7 @@ mod tests {
         let lines = vec![
             "MSG .macro text".to_string(),
             "    .byte @1".to_string(),
-            "    .word \\@".to_string(),
+            "    .word .@".to_string(),
             ".endmacro".to_string(),
             "    .MSG 1+2".to_string(),
         ];
@@ -1234,7 +1238,7 @@ mod tests {
         let mut mp = MacroProcessor::new();
         let lines = vec![
             "INLINE .segment val".to_string(),
-            "    .byte \\val".to_string(),
+            "    .byte .val".to_string(),
             ".endsegment".to_string(),
             "    .INLINE 7".to_string(),
         ];
@@ -1249,8 +1253,8 @@ mod tests {
         let mut mp = MacroProcessor::new();
         let lines = vec![
             ".macro COPY(src, dst)".to_string(),
-            "    lda \\src".to_string(),
-            "    sta \\dst".to_string(),
+            "    lda .src".to_string(),
+            "    sta .dst".to_string(),
             ".endmacro".to_string(),
             "    .COPY($12, $34)".to_string(),
         ];
@@ -1281,7 +1285,7 @@ mod tests {
         let mut mp = MacroProcessor::new();
         let lines = vec![
             ".statement LOAD byte:val".to_string(),
-            "    .byte \\val".to_string(),
+            "    .byte .val".to_string(),
             ".endstatement".to_string(),
             "    LOAD 7".to_string(),
         ];

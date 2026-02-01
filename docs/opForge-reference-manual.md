@@ -212,7 +212,7 @@ Notes:
 
 ```
 NAME .macro a, b=2
-    .byte \a, \b
+    .byte .a, .b
 .endmacro
 ```
 
@@ -220,7 +220,7 @@ Alternate directive-first form:
 
 ```
 .macro NAME(a, b=2)
-    .byte \a, \b
+    .byte .a, .b
 .endmacro
 ```
 
@@ -234,9 +234,9 @@ Parenthesized call form:
 
 ### 5.2 Macro parameters
 
-- Positional: `\1` .. `\9`
-- Named: `\name` or `\{name}`
-- Full argument list: `\@`
+- Positional: `.1` .. `.9`
+- Named: `.name` or `.{name}`
+- Full argument list: `.@`
 - Text form: `@1` .. `@9`
 
 ### 5.3 Segment macros
@@ -246,7 +246,7 @@ Parenthesized call form:
 
 ```
 INLINE .segment v
-    .byte \v
+    .byte .v
 .endsegment
 
 .INLINE 7
@@ -256,7 +256,7 @@ Alternate directive-first form:
 
 ```
 .segment INLINE(v)
-    .byte \v
+    .byte .v
 .endsegment
 ```
 
@@ -272,8 +272,8 @@ statement label appears without a leading dot:
 ```
 .statement move.b char:dst "," char:src
     .byte 'b'
-    .byte '\dst', 0
-    .byte '\src', 0
+    .byte '.dst', 0
+    .byte '.src', 0
 .endstatement
 
 move.b d0, d2

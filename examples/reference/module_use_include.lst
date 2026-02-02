@@ -1,0 +1,28 @@
+opForge 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Module import across files
+----                                2  
+----                                3  ; Module library for include example
+----                                4  
+----                                5  .module lib.math
+----                                6      .pub
+----    EQU 0005                    7  VALUE   .const 5
+----                                8  .endmodule
+----                                9  
+----                               10  .module app.main
+----                               11      .use lib.math as M
+----                               12      .use lib.math (VALUE as V)
+0000    05                         13      .byte V
+0001    05                         14      .byte M.VALUE
+----                               15  .endmodule
+----                               16  
+----                               17  .end
+
+Lines: 17  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+lib.math.VALUE  : 0005 (5)
+
+Total memory is 2 bytes

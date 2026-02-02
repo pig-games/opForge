@@ -29,6 +29,13 @@ This enables:
 
 without introducing a separate grammar language.
 
+**Implementation status (2026-02-02)**
+
+- `.statement` is implemented in the macro processor as **pre-parse text expansion**.
+- Statement definitions are **global** (not module-scoped).
+- Built-in capture types: `byte`, `word`, `char`, `str` only.
+- User-defined capture types and ADT-backed captures are **not implemented**.
+
 ------------------------------------------------------------------------
 
 ## Core Concept
@@ -175,7 +182,7 @@ The captured parameters are available inside the body.
 
 ## ADT-Based Typed Captures
 
-ADT variants automatically act as capture types (later phase).
+ADT variants automatically act as capture types (planned).
 
 ``` asm
 .type Size = | b | w | l
@@ -186,17 +193,26 @@ ADT variants automatically act as capture types (later phase).
 Semantics: - only `b`, `w`, or `l` will match - invalid sizes fail
 signature matching - no runtime validation required
 
+**Implementation status (2026-02-02)**
+
+- `.type` and ADT-backed capture types are **not implemented yet**.
+
 ------------------------------------------------------------------------
 
 ## Capture Type Extensibility
 
-Capture types are pluggable.
+Capture types are pluggable (planned).
 
 Built-in capture types (Phase 1): - `byte` --- 8-bit value (may be derived from an expression at call site) - `word` --- 16-bit value (may be derived from an expression at call site) - `char` --- single character token or literal - `str` --- string literal
 
 Dialect- or user-defined capture types may be added later (e.g. `reg`, `addr`, `type_name`).
 
 This allows dialects to define their own operand grammars.
+
+**Implementation status (2026-02-02)**
+
+- Built-in capture types are limited to `byte`, `word`, `char`, `str`.
+- User-defined capture types are **not supported yet**.
 
 ------------------------------------------------------------------------
 

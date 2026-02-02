@@ -15,6 +15,8 @@ opForge is a two-pass, multi-CPU assembler for Intel 8080/8085, Z80, MOS 6502, a
 
 The `.cpu` directive currently accepts `8080` (alias), `8085`, `z80`, `6502`, and `65c02`.
 
+There is no `.dialect` directive; dialect selection follows the CPU default.
+
 ## 2. Usage tips
 
 - Directives, preprocessor directives, and conditionals are dot-prefixed
@@ -22,7 +24,8 @@ The `.cpu` directive currently accepts `8080` (alias), `8085`, `z80`, `6502`, an
 - `#` is reserved for macro invocation.
 - Labels may end with `:` or omit it.
 - The program counter can be set with `* = expr` or `.org expr`.
-- At least one output option (`-l`, `-x`, `-b`) is required on the command line.
+- If no outputs are specified for a single input, the assembler defaults to
+    list+hex when a root-module output name (or `-o`) is available.
 
 ## 3. Expressions and data types
 
@@ -97,6 +100,9 @@ tuples, code blocks, and type values.
 .include "file"
 ```
 
+Notes:
+- `.include` is literal text inclusion only; it does not participate in module loading.
+
 ### 4.2 Controlling the program counter
 
 ```
@@ -137,6 +143,103 @@ Compound assignment operators:
 .else
 .endif
 ```
+
+### 4.10 Modules and metadata
+
+Modules define semantic scopes and imports; `.use` loads dependencies by module-id:
+
+```
+.module app.main
+    .use util.math
+    .pub
+sum .const 0
+.endmodule
+```
+
+Root-module metadata controls output naming:
+
+```
+.module main
+    .meta
+        .name "Demo Project"
+        .version "1.0.0"
+        .output
+            .name "demo"
+            .list
+            .hex "demo-hex"
+            .bin "0000:ffff"
+            .fill "ff"
+            .z80
+                .name "demo-z80"
+                .bin "0000:7fff"
+                .fill "00"
+            .endz80
+        .endoutput
+    .endmeta
+    .meta.output.name "demo"
+    .meta.output.z80.name "demo-z80"
+.endmodule
+```
+
+Inside a `.meta` block, `.name` sets the metadata name. Inside an `.output`
+block (or `.meta.output.*` inline), `.name` sets the output base name.
+`.list`/`.hex`/`.bin`/`.fill` are valid only inside `.output` blocks or via
+`.meta.output.*` inline directives.
+
+`.use` forms (module scope only):
+
+```
+.use util.math
+.use util.math as M
+.use util.math (add16, sub16 as sub)
+.use util.math with (FEATURE=1, MODE="fast")
+```
+
+Notes:
+- `.use` must appear **inside a module** and **at module scope**.
+- `.use` affects **runtime symbol resolution only**.
+- `.pub/.priv` visibility is enforced for runtime symbols (labels/constants/vars) only; macro/segment exports are not filtered by `.use`.
+
+#### 4.10.1 Root input
+
+- `-i` accepts a **file** or **folder**.
+- Folder input must contain exactly one `main.*` file (case-insensitive, `.asm` or `.inc`).
+- The folder name becomes the **input base** (used for default output names).
+
+#### 4.10.2 Module identity
+
+- If a file has no explicit `.module`, it defines an **implicit module** whose id is the file basename.
+- If explicit modules exist, all top-level content must be inside `.module` blocks.
+- The **root module** is:
+    - the module matching the entry filename (case-insensitive), or
+    - the first explicit module if no match exists.
+
+#### 4.10.3 Module resolution
+
+- Search root: **entry file directory** only.
+- Extensions: fixed to `.asm` and `.inc`.
+- Module id matching is **case-insensitive**.
+- If a file defines multiple modules, only the requested module is extracted.
+- Missing or ambiguous module ids are **errors**; errors include an import stack.
+
+#### 4.10.4 Visibility rules
+
+- `.pub`/`.priv` control **runtime symbol** visibility (labels/constants/vars).
+- Macro/segment exports are **not** filtered by `.use`.
+
+#### 4.10.5 Root metadata output rules
+
+Output base precedence:
+
+1. `-o/--outfile`
+2. `.meta.output.<target>.name`
+3. `.meta.output.name`
+4. input base (file basename or folder name)
+
+Examples in the repo:
+- [examples/module_use_autoload.asm](examples/module_use_autoload.asm)
+- [examples/module_metadata_output.asm](examples/module_metadata_output.asm)
+- [examples/project_root/main.asm](examples/project_root/main.asm)
 
 Match form:
 
@@ -285,6 +388,37 @@ Rules:
 - Statement labels may include dots (e.g. `move.b`, `move.l`).
 - Boundary spans `[{ ... }]` enforce adjacency rules within the span.
 
+Capture types (built-in):
+- `byte`, `word`, `char`, `str`
+- `byte`/`word` enforce numeric literal range checks.
+- Identifiers/registers also match capture types (resolved later by expression handling).
+
+Expansion model:
+- `.statement` definitions are expanded by the macro processor **before parsing**.
+- Statement definitions are **global** (not module-scoped).
+
+### 5.6 Assembler pipeline (CPU family/dialect)
+
+#### Registry
+
+- Families and CPUs are registered in Rust at startup.
+- CPU names are case-insensitive and resolved via the registry.
+
+#### Selection
+
+- `.cpu <name>` selects the active CPU.
+- There is **no `.dialect` directive**.
+- Dialect mapping (when present) is selected by CPU default or family canonical dialect.
+
+#### Encoding pipeline
+
+1. Parse operands with the **family handler**.
+2. Apply **dialect mapping** (mnemonic + operand rewrite).
+3. Attempt **family pre-encode** (optional).
+4. Resolve operands with the **CPU handler**.
+5. Run **CPU validator** (trait exists, currently unused by CPUs).
+6. Encode with **family handler**; fall back to **CPU handler** for extensions.
+
 ## 6. Compatibility
 
 - Dot-prefixed directives are required (for `.org`, `.set`, `.if`, etc.).
@@ -299,17 +433,17 @@ opForge [OPTIONS]
 ```
 
 Inputs (required):
-- `-i, --infile <FILE>`: input `.asm` file (repeatable).
+- `-i, --infile <FILE|FOLDER>`: input `.asm` file or folder (repeatable). Folder inputs must contain exactly one `main.*` root module.
 
-Outputs (at least one required):
+Outputs:
 - `-l, --list [FILE]`: listing output (optional filename).
 - `-x, --hex [FILE]`: Intel HEX output (optional filename).
 - `-b, --bin [FILE:ssss:eeee|ssss:eeee]`: binary image with range(s).
 
 Other options:
 - `-o, --outfile <BASE>`: output base name if output filename omitted.
-- `-f, --fill <hh>`: fill byte for binary output (hex). Requires `-b`.
-- `-g, --go <aaaa>`: execution start address in HEX output. Requires `-x`.
+- `-f, --fill <hh>`: fill byte for binary output (hex). Requires binary output.
+- `-g, --go <aaaa>`: execution start address in HEX output. Requires HEX output.
 - `-D, --define <NAME[=VAL]>`: predefine macro (repeatable).
 - `-c, --cond-debug`: include conditional state in listing.
 - `--pp-macro-depth <N>`: maximum preprocessor macro expansion depth (default 64).
@@ -318,6 +452,8 @@ Notes:
 - If multiple inputs are provided, `-o` must be a directory and explicit output
   filenames are not allowed; each input uses its own base name under the output
   directory.
+- If no outputs are specified for a single input, opForge defaults to list+hex
+    when `.meta.output.name` (or `-o`) is available.
 
 ## 8. Messages
 
@@ -359,6 +495,248 @@ Instruction mnemonics are selected by `.cpu`:
 .block  .endblock
 .macro  .endmacro  .segment  .endsegment
 .if  .elseif  .else  .endif
+.module  .endmodule  .use  .pub  .priv
+.match  .case  .default  .endmatch
+.name  .meta.name  .meta.version  .output  .endoutput  .list  .hex  .bin  .fill
+.meta.output.name  .meta.output.<target>.name  .meta.output.list  .meta.output.hex  .meta.output.bin  .meta.output.fill
+
+## 14. Appendix: multi-CPU architecture
+
+This appendix describes the modular architecture that allows opForge to support
+multiple CPU targets (8085, Z80, 6502, 65C02) through a common framework.
+
+### Overview
+
+The assembler is organized into layers with hierarchical parsing and encoding:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Assembler Core                           │
+│  (preprocessing, macro expansion, symbol table, output)     │
+└─────────────────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Generic Parser                           │
+│  Handles: labels, directives, macros, scopes, expressions   │
+│  Extracts: mnemonic + operand expressions for instructions  │
+│  Does NOT interpret addressing mode syntax                  │
+└─────────────────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 Module Registry                             │
+│  Registers CPU families + CPU variants                      │
+│  Binds dialect + family + cpu into a pipeline               │
+└─────────────────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Syntax Dialect (optional)                │
+│  Maps dialect-specific mnemonics to canonical forms         │
+│  Can rewrite family-level operands                          │
+└─────────────────────────────────────────────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    CPU Family Layer                         │
+│  - Parses operands into family addressing modes             │
+│  - Encodes instructions common to all family members        │
+│  - Falls through to CPU-specific for extensions             │
+└─────────────────────────────────────────────────────────────┘
+       │                               │
+       ▼                               ▼
+┌───────────────────┐           ┌───────────────────┐
+│   Intel8080       │           │    MOS6502        │
+│   Family          │           │    Family         │
+│                   │           │                   │
+│ Dialects:         │           │ Dialect:          │
+│  • Intel (8085)   │           │  • Transparent    │
+│  • Zilog (Z80)    │           │                   │
+└───────────────────┘           └───────────────────┘
+       │                               │
+    ┌─────┴─────┐                   ┌─────┴─────┐
+    ▼           ▼                   ▼           ▼
+┌───────┐  ┌───────┐           ┌───────┐  ┌───────┐
+│ 8085  │  │  Z80  │           │ 6502  │  │ 65C02 │
+│ CPU   │  │ CPU   │           │ CPU   │  │ CPU   │
+└───────┘  └───────┘           └───────┘  └───────┘
+```
+
+### Layer responsibilities
+
+**Assembler Core**
+- File inclusion and preprocessing
+- Output generation (listing files, hex files)
+- Error collection and reporting
+- Two-pass assembly coordination
+
+**Generic Parser**
+- Labels, directives, macros, scopes, expressions, comments
+- Extracts instruction mnemonic + operand expressions
+- Does **not** interpret addressing mode syntax
+
+**Module Registry**
+- Registers family and CPU handlers
+- Resolves pipeline (family + CPU + dialect mapping)
+
+**Family Handler**
+- Parses family-common operand syntax
+- Encodes family-common instructions
+- Falls through to CPU handler for extensions
+
+**CPU Handler**
+- Resolves ambiguous operands
+- Encodes CPU-specific instructions
+- Validates CPU-specific constraints
+
+### Hierarchical processing
+
+1. Generic parser extracts mnemonic + operand expressions.
+2. Family handler parses expressions into family operands.
+3. Dialect mapping rewrites mnemonic/operands (if needed).
+4. Family pre-encode (optional) attempts encoding from family operands.
+5. CPU handler resolves ambiguous operands to CPU-specific operands.
+6. Family encoder encodes base instructions.
+7. CPU encoder encodes extensions when family returns `NotFound`.
+
+### Family extensions
+
+**MOS 6502 Family**
+
+Operand syntax extensions:
+
+| Syntax | 6502 (Base) | 65C02 (Extended) |
+|--------|-------------|------------------|
+| `#$20` | Immediate ✓ | Immediate ✓ |
+| `$20` | Zero Page ✓ | Zero Page ✓ |
+| `($20,X)` | Indexed Indirect ✓ | Indexed Indirect ✓ |
+| `($20),Y` | Indirect Indexed ✓ | Indirect Indexed ✓ |
+| `($20)` | ✗ Invalid | Zero Page Indirect ✓ |
+| `($1234,X)` | ✗ Invalid | Absolute Indexed Indirect ✓ |
+
+Instruction extensions:
+
+| Instruction | 6502 (Base) | 65C02 (Extended) |
+|-------------|-------------|------------------|
+| `LDA` | ✓ All modes | ✓ All modes + ($zp) |
+| `BRA` | ✗ | ✓ Branch Always |
+| `PHX`, `PLX` | ✗ | ✓ Push/Pull X |
+| `PHY`, `PLY` | ✗ | ✓ Push/Pull Y |
+| `STZ` | ✗ | ✓ Store Zero |
+| `TRB`, `TSB` | ✗ | ✓ Test and Reset/Set Bits |
+| `BBSn`, `BBRn` | ✗ | ✓ Branch on Bit Set/Reset |
+| `RMBn`, `SMBn` | ✗ | ✓ Reset/Set Memory Bit |
+
+**Intel 8080 Family**
+
+Operand syntax extensions:
+
+| Syntax | 8080/8085 (Base) | Z80 (Extended) |
+|--------|------------------|----------------|
+| `A`, `B`, `HL` | Register ✓ | Register ✓ |
+| `(HL)` | Indirect ✓ | Indirect ✓ |
+| `(IX+d)`, `(IY+d)` | ✗ | Indexed ✓ |
+
+Instruction extensions:
+
+The Z80 adds `DJNZ`, `JR` (with conditions), `EX`, `EXX`, block operations
+(`LDI`, `LDIR`, etc.), bit operations (`BIT`, `SET`, `RES`), and shifts/rotates.
+
+### Syntax dialects (8080 vs Z80)
+
+| Operation | 8080/8085 Dialect | Z80 Dialect | Opcode |
+|-----------|-------------------|-------------|--------|
+| Move register | `MOV A,B` | `LD A,B` | 78 |
+| Move immediate | `MVI A,55h` | `LD A,55h` | 3E 55 |
+| Load direct | `LDA 1234h` | `LD A,(1234h)` | 3A 34 12 |
+| Store direct | `STA 1234h` | `LD (1234h),A` | 32 34 12 |
+| Jump | `JMP 1000h` | `JP 1000h` | C3 00 10 |
+| Jump if zero | `JZ 1000h` | `JP Z,1000h` | CA 00 10 |
+| Call | `CALL 1000h` | `CALL 1000h` | CD 00 10 |
+| Return | `RET` | `RET` | C9 |
+| Add register | `ADD B` | `ADD A,B` | 80 |
+| Add immediate | `ADI 10h` | `ADD A,10h` | C6 10 |
+
+### Core abstractions
+
+- **CpuType**: concrete processor (I8085, Z80, M6502, M65C02)
+- **CpuFamily**: processor family (Intel8080, MOS6502)
+
+### Handler traits (summary)
+
+**FamilyHandler** provides:
+- Operand parsing for family-common syntax
+- Optional pre-encoding using family operands
+- Instruction encoding for family-common mnemonics
+- Register and condition code recognition
+
+**CpuHandler** provides:
+- Resolution of ambiguous operands to CPU-specific forms
+- Instruction encoding for CPU-specific mnemonics
+- Query methods for supported mnemonics
+
+### Instruction resolution architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Dialect Layer                               │
+│  Maps dialect mnemonic → canonical mnemonic + operand transform │
+│  Operates on family operands                                     │
+└─────────────────────────────────────────────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────────────────────────────┐
+│            Family Pre-Encode (optional)                          │
+│  (canonical mnemonic, family operands) → bytes or NotFound       │
+└─────────────────────────────────────────────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────────────────────────────┐
+│           CPU Operand Resolution + Validation                    │
+│  family operands → CPU operands (+ optional validator)           │
+└─────────────────────────────────────────────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────────────────────────────┐
+│        Family Base Encoder (resolved operands)                   │
+│  (canonical mnemonic, CPU operands) → bytes or NotFound          │
+└─────────────────────────────────────────────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                  CPU Extension Encoder                           │
+│  CPU-only mnemonics and encodings                                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Module interfaces (summary)
+
+```rust
+pub trait FamilyModule {
+    fn family_id(&self) -> CpuFamily;
+    fn family_cpu_id(&self) -> Option<CpuType> { None }
+    fn family_cpu_name(&self) -> Option<&'static str> { None }
+    fn canonical_dialect(&self) -> &'static str;
+    fn dialects(&self) -> Vec<Box<dyn DialectModule>>;
+    fn handler(&self) -> Box<dyn FamilyHandlerDyn>;
+}
+
+pub trait CpuModule {
+    fn cpu_id(&self) -> CpuType;
+    fn family_id(&self) -> CpuFamily;
+    fn cpu_name(&self) -> &'static str;
+    fn default_dialect(&self) -> &'static str;
+    fn handler(&self) -> Box<dyn CpuHandlerDyn>;
+    fn validator(&self) -> Option<Box<dyn CpuValidator>> { None }
+}
+
+pub trait DialectModule {
+    fn dialect_id(&self) -> &'static str;
+    fn family_id(&self) -> CpuFamily;
+    fn map_mnemonic(
+        &self,
+        mnemonic: &str,
+        operands: &dyn FamilyOperandSet,
+    ) -> Option<(String, Box<dyn FamilyOperandSet>)>;
+}
+```
 .match  .case  .default  .endmatch
 .ifdef  .ifndef  .include
 ```

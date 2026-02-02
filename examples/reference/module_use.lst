@@ -1,0 +1,30 @@
+opForge 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Module imports
+----                                2  
+----                                3  .module alpha
+----                                4      .pub
+----    EQU 0001                    5  VALUE   .const 1
+----    EQU 0002                    6  OTHER   .const 2
+0000    01                          7      .byte VALUE
+0001    02                          8      .byte OTHER
+----                                9  .endmodule
+----                               10  
+----                               11  .module beta
+----                               12      .use alpha as A
+----                               13      .use alpha (VALUE as V)
+0002    01                         14      .byte V
+0003    02                         15      .byte A.OTHER
+----                               16  .endmodule
+----                               17  
+----                               18  .end
+
+Lines: 18  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+alpha.VALUE     : 0001 (1)
+alpha.OTHER     : 0002 (2)
+
+Total memory is 4 bytes

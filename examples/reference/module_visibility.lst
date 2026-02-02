@@ -1,0 +1,31 @@
+opForge 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Module visibility
+----                                2  
+----                                3  .module alpha
+----                                4      .pub
+----    EQU 0001                    5  PUBLIC  .const 1
+----                                6      .priv
+----    EQU 0002                    7  PRIVATE .const 2
+0000    01                          8      .byte PUBLIC
+0001    02                          9      .byte PRIVATE
+----                               10  .endmodule
+----                               11  
+----                               12  .module beta
+----                               13      .pub
+----    EQU 0003                   14  VALUE   .const 3
+0002    03                         15      .byte VALUE
+----                               16  .endmodule
+----                               17  
+----                               18  .end
+
+Lines: 18  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+alpha.PUBLIC    : 0001 (1)
+alpha.PRIVATE   : 0002 (2)
+beta.VALUE      : 0003 (3)
+
+Total memory is 3 bytes

@@ -1,0 +1,25 @@
+opForge 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  .module util
+----                                2      .pub
+----    EQU 002A                    3  VALUE .const 42
+----                                4  .endmodule
+----                                5  ; Root-folder example with a single root module.
+----                                6  
+----                                7  .module main
+----                                8      .use util
+----    EQU 0000                    9      .org 0000h
+----                               10  START:
+0000    01 02                      11      .byte 01h, 02h
+0002    2A 00                      12      .word util.VALUE
+----                               13  .endmodule
+
+Lines: 13  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+util.VALUE      : 002a (42)
+main.START      : 0000 (0)
+
+Total memory is 4 bytes

@@ -23,6 +23,13 @@ pub enum LineAst {
         exprs: Vec<Expr>,
         span: Span,
     },
+    Use {
+        module_id: String,
+        alias: Option<String>,
+        items: Vec<UseItem>,
+        params: Vec<UseParam>,
+        span: Span,
+    },
     StatementDef {
         keyword: String,
         signature: StatementSignature,
@@ -83,6 +90,20 @@ pub enum Expr {
         right: Box<Expr>,
         span: Span,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct UseItem {
+    pub name: String,
+    pub alias: Option<String>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct UseParam {
+    pub name: String,
+    pub value: Expr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -422,6 +443,9 @@ impl Parser {
                     });
                 }
                 return Ok(LineAst::StatementEnd { span });
+            }
+            if upper.as_str() == "USE" {
+                return self.parse_use_directive(span);
             }
             if matches!(
                 upper.as_str(),
@@ -836,6 +860,147 @@ impl Parser {
 
     fn peek_kind_next(&self, kind: TokenKind) -> bool {
         matches!(self.tokens.get(self.index + 1), Some(Token { kind: k, .. }) if *k == kind)
+    }
+
+    fn match_keyword(&mut self, keyword: &str) -> bool {
+        match self.peek() {
+            Some(Token {
+                kind: TokenKind::Identifier(name),
+                ..
+            }) if name.eq_ignore_ascii_case(keyword) => {
+                self.index += 1;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn parse_ident_like(&mut self, message: &str) -> Result<(String, Span), ParseError> {
+        match self.next() {
+            Some(Token {
+                kind: TokenKind::Identifier(name),
+                span,
+            }) => Ok((name, span)),
+            Some(Token {
+                kind: TokenKind::Register(name),
+                span,
+            }) => Ok((name, span)),
+            Some(token) => Err(ParseError {
+                message: message.to_string(),
+                span: token.span,
+            }),
+            None => Err(ParseError {
+                message: message.to_string(),
+                span: self.end_span,
+            }),
+        }
+    }
+
+    fn parse_use_directive(&mut self, start_span: Span) -> Result<LineAst, ParseError> {
+        let (module_id, _module_span) = self.parse_ident_like("Expected module id after .use")?;
+        let mut alias = None;
+        let mut items = Vec::new();
+        let mut params = Vec::new();
+
+        if self.match_keyword("as") {
+            let (name, _span) = self.parse_ident_like("Expected alias identifier after 'as'")?;
+            alias = Some(name);
+        }
+
+        if self.consume_kind(TokenKind::OpenParen) {
+            if self.consume_kind(TokenKind::CloseParen) {
+                return Err(ParseError {
+                    message: "Selective import list cannot be empty".to_string(),
+                    span: self.prev_span(),
+                });
+            }
+            loop {
+                let (name, span) =
+                    self.parse_ident_like("Expected identifier in selective import list")?;
+                let mut item_alias = None;
+                if self.match_keyword("as") {
+                    let (alias_name, _alias_span) =
+                        self.parse_ident_like("Expected alias in selective import list")?;
+                    item_alias = Some(alias_name);
+                }
+                items.push(UseItem {
+                    name,
+                    alias: item_alias,
+                    span,
+                });
+                if self.consume_kind(TokenKind::CloseParen) {
+                    break;
+                }
+                if !self.consume_comma() {
+                    return Err(ParseError {
+                        message: "Expected ',' or ')' in selective import list".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+            }
+        }
+
+        if self.match_keyword("with") {
+            if !self.consume_kind(TokenKind::OpenParen) {
+                return Err(ParseError {
+                    message: "Expected '(' after 'with'".to_string(),
+                    span: self.current_span(),
+                });
+            }
+            if self.consume_kind(TokenKind::CloseParen) {
+                return Err(ParseError {
+                    message: "Parameter list cannot be empty".to_string(),
+                    span: self.prev_span(),
+                });
+            }
+            loop {
+                let (name, span) =
+                    self.parse_ident_like("Expected parameter name in 'with' list")?;
+                if !self.match_operator(OperatorKind::Eq) {
+                    return Err(ParseError {
+                        message: "Expected '=' in 'with' parameter".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                let value = self.parse_expr()?;
+                params.push(UseParam { name, value, span });
+                if self.consume_kind(TokenKind::CloseParen) {
+                    break;
+                }
+                if !self.consume_comma() {
+                    return Err(ParseError {
+                        message: "Expected ',' or ')' in 'with' parameter list".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+            }
+        }
+
+        if self.index < self.tokens.len() {
+            return Err(ParseError {
+                message: "Unexpected trailing tokens after .use".to_string(),
+                span: self.tokens[self.index].span,
+            });
+        }
+
+        let end_span = if self.index == 0 {
+            self.end_span
+        } else {
+            self.prev_span()
+        };
+        let span = Span {
+            line: start_span.line,
+            col_start: start_span.col_start,
+            col_end: end_span.col_end,
+        };
+
+        Ok(LineAst::Use {
+            module_id,
+            alias,
+            items,
+            params,
+            span,
+        })
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
@@ -1648,6 +1813,61 @@ mod tests {
             }
             _ => panic!("Expected statement"),
         }
+    }
+
+    #[test]
+    fn parses_use_basic() {
+        let mut parser = Parser::from_line(".use std.math", 1).unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::Use {
+                module_id,
+                alias,
+                items,
+                params,
+                ..
+            } => {
+                assert_eq!(module_id, "std.math");
+                assert!(alias.is_none());
+                assert!(items.is_empty());
+                assert!(params.is_empty());
+            }
+            _ => panic!("Expected use directive"),
+        }
+    }
+
+    #[test]
+    fn parses_use_with_alias_selective_params() {
+        let mut parser = Parser::from_line(
+            ".use std.math as M (add16, sub16 as sub) with (FEATURE=1)",
+            1,
+        )
+        .unwrap();
+        let line = parser.parse_line().unwrap();
+        match line {
+            LineAst::Use {
+                module_id,
+                alias,
+                items,
+                params,
+                ..
+            } => {
+                assert_eq!(module_id, "std.math");
+                assert_eq!(alias.as_deref(), Some("M"));
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].name, "add16");
+                assert_eq!(items[1].alias.as_deref(), Some("sub"));
+                assert_eq!(params.len(), 1);
+                assert_eq!(params[0].name, "FEATURE");
+            }
+            _ => panic!("Expected use directive"),
+        }
+    }
+
+    #[test]
+    fn rejects_empty_selective_list() {
+        let mut parser = Parser::from_line(".use std.math ()", 1).unwrap();
+        assert!(parser.parse_line().is_err());
     }
 
     #[test]

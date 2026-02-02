@@ -9,6 +9,10 @@
 ---
 *Draft v0.2*
 
+**Implementation status (2026-02-02)**
+
+- Sections and relocation are **not implemented** in the current assembler.
+
 This document sketches how **sections** provide grouping, positioning,
 relocation, and linking in opForge, inspired by 64tass semantics.
 

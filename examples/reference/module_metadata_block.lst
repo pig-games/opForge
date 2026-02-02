@@ -1,0 +1,29 @@
+opForge 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Demonstrates root-module metadata block directives.
+----                                2  
+----                                3  .module main
+----                                4      .meta
+----                                5          .name "Metadata Block Demo"
+----                                6          .version "2.0.0"
+----                                7          .output
+----                                8              .name "meta-block-demo"
+----                                9              .z80
+----                               10                  .name "meta-block-demo-z80"
+----                               11              .endz80
+----                               12          .endoutput
+----                               13      .endmeta
+----                               14  
+----    EQU 0000                   15      .org 0000h
+----                               16  START:
+0000    01 02 03 04                17      .byte 01h, 02h, 03h, 04h
+----                               18  .endmodule
+
+Lines: 18  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+main.START      : 0000 (0)
+
+Total memory is 4 bytes

@@ -12,9 +12,6 @@ It also supports patterned `.statement` definitions for custom statement syntax,
 
 For all documentation on features and syntax read: [opForge Reference Manual](docs/opForge-reference-manual.md).
 
-For detailed information about the multi-cpu architecture of the assembler read:
-- [Multi Cpu Architecture](docs/multi-cpu-architecture.md).
-
 
 Build:
 
@@ -52,7 +49,8 @@ Syntax is:
 
 Arguments:
 
-    -i, --infile <FILE>          Input assembly file (repeatable). Must end with .asm.
+    -i, --infile <FILE|FOLDER>   Input assembly file or folder (repeatable). Files must end with .asm.
+                                Folder inputs must contain exactly one main.* root module.
 
     -l, --list [FILE]            Emit a listing file. FILE is optional; when omitted, the
                                  output base is used and a .lst extension is added.
@@ -70,15 +68,18 @@ Arguments:
                                  If multiple -b ranges are provided without filenames, each file
                                  is named <base>-ssss.bin to avoid collisions.
     -g, --go <aaaa>              Set execution start address (4 hex digits). Adds a Start
-                                 Segment Address record to the hex output. Requires -x/--hex.
-    -f, --fill <hh>              Fill byte for -b output (2 hex digits). Defaults to FF.
+                                 Segment Address record to the hex output. Requires hex output.
+    -f, --fill <hh>              Fill byte for binary output (2 hex digits). Defaults to FF.
     -D, --define <NAME[=VAL]>    Predefine a macro (repeatable). If VAL is omitted, it
                                  defaults to 1.
     -c, --cond-debug             Append conditional state to listing lines.
     -h, --help                   Print help.
     -V, --version                Print version.
 
-At least one output option (`-l`, `-x`, or `-b`) is required.
+At least one output option (`-l`, `-x`, or `-b`) is required unless a single input provides
+a root-module output name (via `.meta.output.name`) or `-o` is specified. Output selection can
+also be provided by `.meta.output.list`, `.meta.output.hex`, and `.meta.output.bin` in the root module;
+`.meta.output.fill` sets the binary fill byte. CLI flags always take precedence when both are present.
 
 The `-g` option adds a Start Segment Address record to the output hex file. Some loaders may use this to start execution when the download is complete.
 

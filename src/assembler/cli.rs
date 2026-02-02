@@ -16,6 +16,8 @@ const LONG_ABOUT: &str =
     "Intel 8085 Assembler with expressions, directives and basic macro support.
 
 Outputs are opt-in: specify at least one of -l/--list, -x/--hex, or -b/--bin.
+If no outputs are specified for a single input, the assembler defaults to list+hex
+when a root-module output name (or -o) is available.
 Use -o/--outfile to set the output base name when filenames are omitted.
 For -b, ranges are required: ssss:eeee (4 hex digits each).
 With multiple -b ranges and no filenames, outputs are named <base>-ssss.bin.
@@ -68,14 +70,14 @@ pub struct Cli {
         short = 'f',
         long = "fill",
         value_name = "hh",
-        long_help = "Fill byte for -b output (2 hex digits). Defaults to FF."
+        long_help = "Fill byte for binary output (2 hex digits). Defaults to FF."
     )]
     pub fill_byte: Option<String>,
     #[arg(
         short = 'g',
         long = "go",
         value_name = "aaaa",
-        long_help = "Set execution start address (4 hex digits). Adds a Start Segment Address record to hex output. Requires -x/--hex."
+        long_help = "Set execution start address (4 hex digits). Adds a Start Segment Address record to hex output. Requires hex output."
     )]
     pub go_addr: Option<String>,
     #[arg(
@@ -96,9 +98,9 @@ pub struct Cli {
     #[arg(
         short = 'i',
         long = "infile",
-        value_name = "FILE",
+        value_name = "FILE|FOLDER",
         action = ArgAction::Append,
-        long_help = "Input assembly file (repeatable). Must end with .asm."
+        long_help = "Input assembly file or folder (repeatable). Files must end with .asm. Folder inputs must contain exactly one main.* root module."
     )]
     pub infiles: Vec<PathBuf>,
     #[arg(
@@ -256,6 +258,9 @@ pub fn resolve_bin_path(
 }
 
 pub fn input_base_from_path(path: &Path) -> Result<(String, String), AsmRunError> {
+    if path.is_dir() {
+        return resolve_root_module_from_dir(path);
+    }
     let asm_name = path.to_string_lossy().to_string();
     let file_name = match path.file_name().and_then(|s| s.to_str()) {
         Some(name) => name,
@@ -278,6 +283,77 @@ pub fn input_base_from_path(path: &Path) -> Result<(String, String), AsmRunError
     Ok((asm_name, base.to_string()))
 }
 
+fn resolve_root_module_from_dir(path: &Path) -> Result<(String, String), AsmRunError> {
+    let dir_name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| {
+            AsmRunError::new(
+                AsmError::new(AsmErrorKind::Cli, "Invalid input folder name", None),
+                Vec::new(),
+                Vec::new(),
+            )
+        })?
+        .to_string();
+
+    let mut matches = Vec::new();
+    let entries = fs::read_dir(path).map_err(|err| {
+        AsmRunError::new(
+            AsmError::new(AsmErrorKind::Io, "Error reading input folder", None),
+            vec![],
+            vec![err.to_string()],
+        )
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|err| {
+            AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "Error reading input folder", None),
+                vec![],
+                vec![err.to_string()],
+            )
+        })?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if !stem.eq_ignore_ascii_case("main") {
+            continue;
+        }
+        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+        if !matches!(ext.to_ascii_lowercase().as_str(), "asm" | "inc") {
+            continue;
+        }
+        matches.push(path);
+    }
+
+    if matches.is_empty() {
+        return Err(AsmRunError::new(
+            AsmError::new(
+                AsmErrorKind::Cli,
+                "Input folder must contain exactly one main.* root module",
+                None,
+            ),
+            Vec::new(),
+            Vec::new(),
+        ));
+    }
+    if matches.len() > 1 {
+        return Err(AsmRunError::new(
+            AsmError::new(
+                AsmErrorKind::Cli,
+                "Input folder contains multiple main.* root modules",
+                None,
+            ),
+            Vec::new(),
+            Vec::new(),
+        ));
+    }
+
+    let asm_name = matches[0].to_string_lossy().to_string();
+    Ok((asm_name, dir_name))
+}
+
 /// Validate CLI arguments and return parsed configuration.
 pub fn validate_cli(cli: &Cli) -> Result<CliConfig, AsmRunError> {
     if cli.infiles.is_empty() {
@@ -296,11 +372,12 @@ pub fn validate_cli(cli: &Cli) -> Result<CliConfig, AsmRunError> {
     let hex_requested = cli.hex_name.is_some();
     let bin_requested = !cli.bin_outputs.is_empty();
 
-    if !list_requested && !hex_requested && !bin_requested {
+    let default_outputs = !list_requested && !hex_requested && !bin_requested;
+    if default_outputs && cli.infiles.len() > 1 {
         return Err(AsmRunError::new(
             AsmError::new(
                 AsmErrorKind::Cli,
-                "No outputs selected. Specify at least one of -l/--list, -x/--hex, or -b/--bin",
+                "No outputs selected. Use -l/--list, -x/--hex, or -b/--bin with multiple inputs",
                 None,
             ),
             Vec::new(),
@@ -339,17 +416,6 @@ pub fn validate_cli(cli: &Cli) -> Result<CliConfig, AsmRunError> {
 
     let go_addr = match cli.go_addr.as_deref() {
         Some(go) => {
-            if !hex_requested {
-                return Err(AsmRunError::new(
-                    AsmError::new(
-                        AsmErrorKind::Cli,
-                        "-g/--go requires hex output (-x/--hex)",
-                        None,
-                    ),
-                    Vec::new(),
-                    Vec::new(),
-                ));
-            }
             if !is_valid_hex_4(go) {
                 return Err(AsmRunError::new(
                     AsmError::new(
@@ -389,19 +455,9 @@ pub fn validate_cli(cli: &Cli) -> Result<CliConfig, AsmRunError> {
         ));
     }
 
+    let fill_byte_set = cli.fill_byte.is_some();
     let fill_byte = match cli.fill_byte.as_deref() {
         Some(fill) => {
-            if !bin_requested {
-                return Err(AsmRunError::new(
-                    AsmError::new(
-                        AsmErrorKind::Cli,
-                        "-f/--fill requires binary output (-b/--bin)",
-                        None,
-                    ),
-                    Vec::new(),
-                    Vec::new(),
-                ));
-            }
             if !is_valid_hex_2(fill) {
                 return Err(AsmRunError::new(
                     AsmError::new(
@@ -476,8 +532,10 @@ pub fn validate_cli(cli: &Cli) -> Result<CliConfig, AsmRunError> {
         go_addr,
         bin_specs,
         fill_byte,
+        fill_byte_set,
         out_dir,
         pp_macro_depth: cli.pp_macro_depth,
+        default_outputs,
     })
 }
 
@@ -487,14 +545,19 @@ pub struct CliConfig {
     pub go_addr: Option<String>,
     pub bin_specs: Vec<BinOutputSpec>,
     pub fill_byte: u8,
+    pub fill_byte_set: bool,
     pub out_dir: Option<PathBuf>,
     pub pp_macro_depth: usize,
+    pub default_outputs: bool,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use clap::Parser;
+    use std::fs;
+    use std::process;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn range_0000_ffff() -> BinRange {
         parse_bin_range_str("0000:ffff").expect("valid range")
@@ -530,6 +593,13 @@ mod tests {
     fn cli_defaults_pp_macro_depth() {
         let cli = Cli::parse_from(["opForge", "-i", "prog.asm", "-l"]);
         assert_eq!(cli.pp_macro_depth, 64);
+    }
+
+    #[test]
+    fn validate_cli_allows_default_outputs_for_single_input() {
+        let cli = Cli::parse_from(["opForge", "-i", "prog.asm"]);
+        let config = validate_cli(&cli).expect("validate cli");
+        assert!(config.default_outputs);
     }
 
     #[test]
@@ -600,5 +670,50 @@ mod tests {
     fn input_base_from_path_requires_asm_extension() {
         let err = input_base_from_path(&PathBuf::from("prog.txt")).unwrap_err();
         assert_eq!(err.to_string(), "Input file must end with .asm");
+    }
+
+    #[test]
+    fn input_base_from_dir_requires_main_module() {
+        let dir = create_temp_dir("input-dir-missing");
+        fs::write(dir.join("util.asm"), "; util").expect("write file");
+        let err = input_base_from_path(&dir).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Input folder must contain exactly one main.* root module"
+        );
+    }
+
+    #[test]
+    fn input_base_from_dir_rejects_multiple_main_modules() {
+        let dir = create_temp_dir("input-dir-multiple");
+        fs::write(dir.join("main.asm"), "; main").expect("write file");
+        fs::write(dir.join("main.inc"), "; main inc").expect("write file");
+        let err = input_base_from_path(&dir).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Input folder contains multiple main.* root modules"
+        );
+    }
+
+    #[test]
+    fn input_base_from_dir_resolves_main_module() {
+        let dir = create_temp_dir("input-dir-ok");
+        let main_path = dir.join("main.asm");
+        fs::write(&main_path, "; main").expect("write file");
+        let (asm_name, base) = input_base_from_path(&dir).expect("resolve main");
+        assert_eq!(PathBuf::from(asm_name), main_path);
+        assert_eq!(base, dir.file_name().unwrap().to_string_lossy());
+    }
+
+    fn create_temp_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!("test-{label}-{}-{nanos}", process::id()));
+        fs::create_dir_all(&dir).expect("Create temp dir");
+        dir
     }
 }

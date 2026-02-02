@@ -45,6 +45,13 @@ context.
 
 `.use` only imports definitions; it never activates or emits content.
 
+**Implementation status (2026-02-02)**
+
+- `.deffamily`, `.defcpu`, `.defdialect`, and `.register` are **not implemented**.
+- Family/CPU/dialect definitions are registered in Rust modules at startup.
+- `.cpu` selects from the compiled registry; dialect selection follows the CPU default or family canonical mapping.
+- There is **no `.dialect` directive** in the current assembler.
+
 ------------------------------------------------------------------------
 
 ## Family Definition
@@ -92,7 +99,7 @@ register dialects - install instruction encoders and features
 
 ## Dialects as token mappers
 
-A **dialect** is specifically a mapping from *surface statements* to **CPU-defined tokens**.
+Planned model: a **dialect** maps surface statements to **CPU-defined tokens**.
 
 - The CPU (or family) defines a set of **tokens** (a structured, assembler-facing IR): e.g. `TOK_STA_ZP_PTR32_Y(zp)`.
 - The dialect defines `.statement` patterns that **emit tokens** instead of emitting bytes directly.
@@ -105,6 +112,11 @@ Roles:
 - **Sections**: placement + linking → final image
 
 `[{ ... }]` remains purely boundary/whitespace control and is unrelated to token emission.
+
+**Implementation status (2026-02-02)**
+
+- Dialect mapping exists only in Rust handlers (e.g. Intel/Zilog mapping).
+- `.statement`-based token emission and `emit TOK_*` are **not implemented**.
 
 A dialect defines the **surface language**.
 
@@ -147,13 +159,16 @@ definition
 -   `.dialect` selects the active grammar
 -   dialect defaults may be inferred from CPU
 
+**Implementation status (2026-02-02)**
+
+- `.cpu` is implemented.
+- `.dialect` is **not implemented**.
+
 ------------------------------------------------------------------------
 
 ## Token Lowering and Encoding via `.statement`
 
-There is no special encoder API.
-
-Encoding is expressed by lowering CPU-defined tokens to bytes (and relocations) using normal statements.
+Planned. The current assembler does **not** use `.statement` encoders for instruction encoding.
 
 ### Encoder statements
 
@@ -208,8 +223,8 @@ extend
 Rust-based implementations may still be used for: - performance -
 complex instruction selection - advanced relocation / optimization
 
-Resolution strategy: 1. Use Rust encoder if available 2. Otherwise fall
-back to opForge `.statement` encoders
+Resolution strategy (planned): 1. Use Rust encoder if available 2. Otherwise fall
+back to opForge `.statement` encoders.
 
 ------------------------------------------------------------------------
 
@@ -221,12 +236,20 @@ For convenience, `.cpu <id>` and `.dialect <id>` may auto-register the correspon
 
 If no in-scope definition exists and the id is not registered, activation fails with an error.
 
+**Implementation status (2026-02-02)**
+
+- Auto-registration via `.use`-scoped definitions is **not implemented**.
+
 ------------------------------------------------------------------------
 
 ## Modules, `.use`, and content injection
 
 `.use` imports target pack symbols (definitions and helper segments/macros). It never emits content.
 Any boilerplate or generated text is injected explicitly by invoking segments/macros, with `[{ ... }]` used only for boundary control.
+
+**Implementation status (2026-02-02)**
+
+- `.use` does **not** import registry definitions in the current assembler.
 
 For the consolidated grammar, visibility rules, and diagnostics for `.module`, `.use`, `.pub`, and `.priv`, see the **Module Identity, Imports, and Visibility** section in [docs/NextSteps/core/opforge_core_spec_v0_3b.md](docs/NextSteps/core/opforge_core_spec_v0_3b.md).
 

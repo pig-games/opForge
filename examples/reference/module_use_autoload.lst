@@ -1,0 +1,23 @@
+opForge 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  .module example.autoload.lib
+----                                2      .pub
+----    EQU 0007                    3  LIBVAL  .const 7
+----                                4  .endmodule
+----                                5  ; Module import without .include
+----                                6  
+----                                7  .module example.autoload.app
+----                                8      .use example.autoload.lib (LIBVAL)
+0000    07                          9      .byte LIBVAL
+----                               10  .endmodule
+----                               11  
+----                               12  .end
+
+Lines: 12  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+example.autoload.lib.LIBVAL: 0007 (7)
+
+Total memory is 1 bytes

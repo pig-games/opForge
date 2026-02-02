@@ -28,7 +28,7 @@ framework:
 > this framework.
 
 This direction explicitly separates: - **opForge layer** → language
-kernel, modules, macros, expressions, types, matching, scopes - **Target
+kernel, modules, macros, expressions, types (planned), matching (planned), scopes - **Target
 packs** → Family/CPU/Dialect registries and encoding logic - **Assembler
 products** → concrete assembler implementations using opForge + target
 packs - **Ecosystems (e.g. asm465)** → cross‑dev runtimes, platform
@@ -70,6 +70,7 @@ For some usecases it is still useful to support:
 - .include <file>; injects the text contents of the file
 - .binclude <file>; injects the binary contents of a file
 These should however not primarily be used to modularize a program, as .use is better solution for that.
+In the current assembler, `.include` and `.binclude` are **literal inclusion only**; they do **not** participate in module resolution.
 
 ------------------------------------------------------------------------
 
@@ -127,7 +128,7 @@ Modules are semantic units, not textual inclusion units.
 ### Scope Types
 
 -   `.module`
--   `.namespace`
+-   `.namespace` (planned; not implemented)
 -   `.block`
 -   `.macro`
 -   `.segment`
@@ -168,10 +169,28 @@ Notes:
 - The id is defined by `.module <module-id>` and must be unique in the compilation unit.
 - Nested modules are illegal.
 
+### Module Loading Semantics (Implementation)
+
+- `.use` triggers module loading by **module-id → file mapping**; `.include` is **not** required.
+- Module-id matching is **case-insensitive** and uses the canonicalized module-id for caching.
+- The resolver searches the **entry file directory** (root search path) using fixed extensions (`.asm`, `.inc`).
+- If a file defines **multiple modules**, only the requested module-id is extracted.
+- **Missing** module ids and **ambiguous** module ids are errors; diagnostics include an **import stack**.
+- Preprocessor and macro expansion are **per-module** (defines are shared via CLI, but macros and statements do not leak across modules).
+- Module loading is **eager**; dependency order is topological with dependencies before the root module.
+
+**Root module selection (entry file)**:
+- If no explicit `.module` appears, the root module is **implicit** and uses the file basename as its module-id.
+- If explicit modules are present, the root module is the module whose id matches the file basename (case-insensitive), otherwise the **first explicit module**.
+
+**Root folder input**:
+- Implemented: a folder input must contain exactly one `main.*` root module (case-insensitive, extension `.asm` or `.inc`).
+
 ### Scope Rules
 
 - `.module` establishes the **root lexical scope** for the module.
-- `.namespace` and `.block` are lexical scopes inside a module.
+- `.block` is the only implemented nested scope inside a module.
+- `.namespace` is planned but not implemented.
 - `.macro` and `.segment` introduce named symbols that live in the module namespace.
 
 ### Name Resolution Order
@@ -202,6 +221,11 @@ For a **qualified** reference `Mod.name` or `Alias.name`:
 - Types (`.type`).
 
 **Non‑exportable** (by default): anonymous/local labels and unnamed scopes.
+
+**Implementation status (2026-02-02)**
+
+- Visibility is enforced for **runtime symbols** (labels/constants/vars) only.
+- Macro/segment/type exports are **not module-scoped yet** and are not filtered by `.use`.
 
 ### Import Forms
 
@@ -298,6 +322,13 @@ Import forms: - qualified: `Mod.symbol` - alias: `.use std.math as M` -
 selective: `.use std.math (add16)` (tiny+) - parameters:
 `.use foo with (FEATURE=1)` (small+)
 
+**Implementation status (2026-02-02)**
+
+- `.use` is only valid **inside a module** and **at module scope**.
+- Selective import lists must be **non-empty**.
+- `with (...)` parameters are parsed and stored but **not consumed** yet.
+- Module resolution uses the **entry file directory** only; extensions are fixed (`.asm`, `.inc`).
+
 **Profile:** - nano: basic `.use` - tiny: alias - small: selective +
 params
 
@@ -313,6 +344,55 @@ Default: private.
 
 **Profile:** nano+
 
+**Implementation status (2026-02-02)**
+
+- Visibility is enforced for **runtime symbols** (labels/constants/vars) only.
+- Macro/segment/type exports are **not module-scoped yet** and are not filtered by `.use`.
+
+------------------------------------------------------------------------
+
+### `.meta.*` and `.name` (Root Module Metadata)
+
+Metadata directives allow the **root module** to define output naming and descriptive metadata:
+
+- `.meta.name "Project"`
+- `.meta.version "1.0.0"`
+- `.meta.output.name "base"`
+- `.meta.output.z80.name "base-z80"`
+- `.meta.output.list`
+- `.meta.output.hex "base-hex"`
+- `.meta.output.bin "0000:ffff"`
+- `.meta.output.fill "ff"`
+- `.name "Project"` (sets metadata name inside `.meta`; sets output name inside `.output`)
+
+Output grouping block form (inside `.meta`):
+
+```
+.output
+  .name "base"
+  .list
+  .z80
+    .name "base-z80"
+  .endz80
+.endoutput
+```
+
+Rules:
+- Valid **only inside a module** and **at module scope**.
+- Valid **only in the root module**; using them in non-root modules is an error.
+- Conditional blocks are respected; the **last active** directive wins.
+
+Output base precedence:
+1. `-o/--outfile`
+2. `.meta.output.<target>.name`
+3. `.meta.output.name`
+4. Root folder name (folder input, planned)
+5. Root filename base
+
+Output selection precedence:
+1. `-l/--list`, `-x/--hex`, `-b/--bin`
+2. `.meta.output.list`, `.meta.output.hex`, `.meta.output.bin`, `.meta.output.fill`
+
 ------------------------------------------------------------------------
 
 ### `.namespace <name>` / `.endnamespace`
@@ -320,6 +400,10 @@ Default: private.
 Lexical scoping and namespacing only.
 
 **Profile:** nano+
+
+**Implementation status (2026-02-02)**
+
+- `.namespace` is **not implemented** in the current assembler.
 
 ------------------------------------------------------------------------
 
@@ -345,6 +429,11 @@ module loading
 ### `.segment` / `.endsegment`
 
 Compile‑time token transformers, does not include an implicit .block scope.
+
+**Implementation status (2026-02-02)**
+
+- `.macro` and `.segment` are implemented (text expansion via the macro processor).
+- `.segment` expands **without** an implicit `.block` wrapper.
 
 Segments: - are module‑local unless exported - cannot perform
 module loading
@@ -385,13 +474,19 @@ behavior
 
 ## Compile‑Time Values
 
-Compile‑time value types: - integers (always, with `byte`/`word` typed capture support) - strings (tiny+
-optional) - tuples/records (small+) - ADTs (small+) - token/AST
-fragments (full+ optional future)
+Compile‑time value types (implemented):
+- integers (always, with `byte`/`word` typed capture support)
+- strings (as literals)
+
+Planned (not implemented): tuples/records, ADTs, token/AST fragments.
 
 ------------------------------------------------------------------------
 
 ## Algebraic Data Types (ADTs)
+
+**Implementation status (2026-02-02)**
+
+- `.type` and ADTs are **not implemented** in the current assembler.
 
 ### `.type`
 
@@ -417,8 +512,7 @@ Pattern matching over compile‑time values.
 Primary early use: - instruction encoding selection - operand
 classification - declarative backend logic
 
-Initial strategy: - builtin `Operand` ADT first - user‑defined `.type`
-later
+Initial strategy (planned): builtin `Operand` ADT first; user‑defined `.type` later.
 
 ------------------------------------------------------------------------
 

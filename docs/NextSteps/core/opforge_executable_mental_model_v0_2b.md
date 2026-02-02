@@ -27,23 +27,31 @@ mentally simulate the parser while reading code.
 - Content injection is explicit via segment/macro references (block injection) or `[{ ... }]` (inline boundary control).
 - `[{ ... }]` is purely positional/whitespace control.
 
+**Implementation status (2026-02-02)**
+
+- `.use` currently affects **runtime symbol resolution only**.
+- `.statement` definitions are collected by the macro processor and are **global** (not module-scoped).
+- `.statement` expansion happens **before parsing/encoding**; there is no token IR or `emit TOK_*` pipeline.
+
 ------------------------------------------------------------------------
 
 ## High-level phases
 
-For each source line, opForge proceeds in these phases:
+For each source line, opForge proceeds in these phases (current implementation):
 
-1.  **Lexical scan**
-2.  **Line classification**
-3.  **Statement dispatch**
-4.  **Signature matching**
-5.  **Parameter binding**
-6.  **Expansion / execution**
+1.  **Preprocess** (`.ifdef/.include`)
+2.  **Macro and `.statement` expansion** (text expansion)
+3.  **Lexical scan**
+4.  **Line classification**
+5.  **Instruction/directive handling** (family/CPU encoding for instructions)
 
 No backtracking parser, no global grammar --- just deterministic
 matching.
 
 ------------------------------------------------------------------------
+
+The steps below describe how the **macro processor** matches a statement candidate
+after macro expansion and before the main parser runs.
 
 ## 1. Lexical scan
 
@@ -90,9 +98,8 @@ Example:
 
 ## 3. Statement dispatch
 
-opForge gathers all `.statement` definitions with keyword `sta` that are
-visible in the current scope (module + imports).
-
+The macro processor gathers all `.statement` definitions with keyword `sta`
+from the expanded source and uses them to match statement candidates.
 These definitions form the **candidate signature set**.
 
 ------------------------------------------------------------------------
@@ -192,12 +199,11 @@ Everything is explicit, local, and composable.
 
 ## Token stream vs byte emission
 
-In the standard pipeline:
+In the current pipeline:
 
-- **Dialect statements** execute first and build a **token stream** via `emit TOK_...(...)`.
-- The active **CPU backend** lowers tokens to `.byte/.word/...` output and creates relocations as needed (section-driven).
-
-Dialects therefore map syntax to tokens; CPUs own encoding.
+- `.statement` expansion produces **plain source lines** before parsing.
+- Instructions are encoded directly by the active **family/CPU handlers** (Rust implementation).
+- There is **no token IR**, and there is **no dialect-level `emit TOK_*` layer** in the assembler today.
 
 ## Summary
 

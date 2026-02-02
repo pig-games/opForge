@@ -1,0 +1,26 @@
+opForge 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Demonstrates metadata output selection directives.
+----                                2  
+----                                3  .module main
+----                                4      .meta
+----                                5          .output
+----                                6              .list
+----                                7              .hex "meta-hex"
+----                                8              .bin "0000:0003"
+----                                9          .endoutput
+----                               10      .endmeta
+----                               11  
+----    EQU 0000                   12      .org 0000h
+----                               13  START:
+0000    01 02 03 04                14      .byte 01h, 02h, 03h, 04h
+----                               15  .endmodule
+
+Lines: 15  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+main.START      : 0000 (0)
+
+Total memory is 4 bytes

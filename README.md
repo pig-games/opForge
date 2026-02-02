@@ -1,10 +1,12 @@
 # opForge
-Multi-target Assembler with expressions, directives, and preprocessor macros.
+Multi-target Assembler with expressions, directives, and preprocessor macros. It also supports modules. Not 
+plain old #include (it has that also) but true modules, with visibility control. No ifdefs to prevent multiple
+includes needed :).
 
 This is an multi-target assembler for 8080 Family processors (currently 8080, 8085 and z80) and MOS 6502 Family
 (currently 6502 and 65c02) processors.
-It was originally based on a fork of [**asm85** by Tom Nisbet](https://github.com/eriktier/asm85).
-It is now more inspired by [64tass](https://tass64.sourceforge.net) in terms of features and notational style.
+
+It is partly inspired by [64tass](https://tass64.sourceforge.net) in terms of features and notational style.
 It produces optional Intel Hex, listing, and binary image outputs, selected by command-line arguments.
 
 It also supports patterned `.statement` definitions for custom statement syntax, with typed captures using

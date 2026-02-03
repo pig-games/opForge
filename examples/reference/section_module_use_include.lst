@@ -1,0 +1,33 @@
+opForge 8085 Assembler v1.0
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Section data across modules with include
+----                                2  
+----                                3  ; Section module library for include example
+----                                4  
+----                                5  .module example.section.include.lib
+----                                6      .pub
+----    EQU 0004                    7  LIBVAL  .const 4
+----                                8      .section data
+0000    02 03                       9      .byte 2, 3
+----                               10      .endsection
+----                               11  .endmodule
+----                               12  
+----                               13  .module example.section.app
+----                               14      .use example.section.include.lib (LIBVAL)
+----                               15      .section data
+0002    01 04                      16      .byte 1, LIBVAL
+----                               17      .endsection
+----    EQU 1000                   18      .org 1000h
+1000    02 03 01 04                19      .dsection data
+----                               20  .endmodule
+----                               21  
+----                               22  .end
+
+Lines: 22  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+example.section.include.lib.LIBVAL: 0004 (4)
+
+Total memory is 4 bytes

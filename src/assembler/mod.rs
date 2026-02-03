@@ -149,6 +149,13 @@ struct RootMetadata {
     output_by_target: HashMap<String, OutputConfig>,
 }
 
+#[derive(Debug, Default, Clone)]
+struct SectionState {
+    pc: u16,
+    bytes: Vec<u8>,
+    placed: bool,
+}
+
 impl RootMetadata {
     fn output_config_for_cpu(&self, cpu_name: &str) -> OutputConfig {
         let key = cpu_name.to_ascii_lowercase();
@@ -850,7 +857,8 @@ impl Assembler {
             asm_line.clear_scopes();
 
             for src in lines {
-                let status = asm_line.process(src, line_num, addr, 1);
+                let line_addr = asm_line.current_addr(addr);
+                let status = asm_line.process(src, line_num, line_addr, 1);
                 if status == LineStatus::Pass1Error {
                     if let Some(err) = asm_line.error() {
                         diagnostics.push(
@@ -860,12 +868,8 @@ impl Assembler {
                         );
                     }
                     counts.errors += 1;
-                } else if status == LineStatus::DirDs {
-                    addr = asm_line.start_addr().wrapping_add(asm_line.aux_value());
                 } else {
-                    addr = asm_line
-                        .start_addr()
-                        .wrapping_add(asm_line.num_bytes() as u16);
+                    asm_line.update_addresses(&mut addr, status);
                 }
                 line_num += 1;
             }
@@ -885,6 +889,16 @@ impl Assembler {
                 let err = AsmError::new(
                     AsmErrorKind::Directive,
                     "Found .module without .endmodule",
+                    None,
+                );
+                diagnostics.push(Diagnostic::new(line_num, Severity::Error, err));
+                counts.errors += 1;
+            }
+
+            if asm_line.in_section() {
+                let err = AsmError::new(
+                    AsmErrorKind::Directive,
+                    "Found .section without .endsection",
                     None,
                 );
                 diagnostics.push(Diagnostic::new(line_num, Severity::Error, err));
@@ -926,15 +940,16 @@ impl Assembler {
         let image = &mut self.image;
 
         for src in lines {
-            let status = asm_line.process(src, line_num, addr, 2);
-            addr = asm_line.start_addr();
+            let line_addr = asm_line.current_addr(addr);
+            let status = asm_line.process(src, line_num, line_addr, 2);
+            let line_addr = asm_line.start_addr();
             let bytes = asm_line.bytes();
-            if !bytes.is_empty() {
-                image.store_slice(addr, bytes);
+            if !bytes.is_empty() && !asm_line.in_section() {
+                image.store_slice(line_addr, bytes);
             }
 
             listing.write_line(ListingLine {
-                addr,
+                addr: line_addr,
                 bytes,
                 status,
                 aux: asm_line.aux_value(),
@@ -983,11 +998,7 @@ impl Assembler {
                 _ => {}
             }
 
-            if status == LineStatus::DirDs {
-                addr = addr.wrapping_add(asm_line.aux_value());
-            } else {
-                addr = addr.wrapping_add(asm_line.num_bytes() as u16);
-            }
+            asm_line.update_addresses(&mut addr, status);
             line_num += 1;
         }
 
@@ -1003,6 +1014,17 @@ impl Assembler {
             let err = AsmError::new(
                 AsmErrorKind::Directive,
                 "Found .module without .endmodule",
+                None,
+            );
+            diagnostics.push(Diagnostic::new(line_num, Severity::Error, err.clone()));
+            listing.write_diagnostic("ERROR", err.message(), line_num, None, lines, None)?;
+            counts.errors += 1;
+        }
+
+        if asm_line.in_section() {
+            let err = AsmError::new(
+                AsmErrorKind::Directive,
+                "Found .section without .endsection",
                 None,
             );
             diagnostics.push(Diagnostic::new(line_num, Severity::Error, err.clone()));
@@ -1028,6 +1050,9 @@ struct AsmLine<'a> {
     in_meta_block: bool,
     in_output_block: bool,
     output_cpu_block: Option<String>,
+    sections: HashMap<String, SectionState>,
+    section_stack: Vec<Option<String>>,
+    current_section: Option<String>,
     saw_explicit_module: bool,
     top_level_content_seen: bool,
     last_error: Option<AsmError>,
@@ -1073,6 +1098,9 @@ impl<'a> AsmLine<'a> {
             in_meta_block: false,
             in_output_block: false,
             output_cpu_block: None,
+            sections: HashMap::new(),
+            section_stack: Vec::new(),
+            current_section: None,
             saw_explicit_module: false,
             top_level_content_seen: false,
             last_error: None,
@@ -1148,6 +1176,9 @@ impl<'a> AsmLine<'a> {
         self.in_meta_block = false;
         self.in_output_block = false;
         self.output_cpu_block = None;
+        self.sections.clear();
+        self.section_stack.clear();
+        self.current_section = None;
         self.saw_explicit_module = false;
         self.top_level_content_seen = false;
     }
@@ -1167,6 +1198,54 @@ impl<'a> AsmLine<'a> {
 
     fn in_module(&self) -> bool {
         self.module_active.is_some()
+    }
+
+    fn in_section(&self) -> bool {
+        self.current_section.is_some()
+    }
+
+    fn current_addr(&self, main_addr: u16) -> u16 {
+        match self.current_section.as_deref() {
+            Some(name) => self
+                .sections
+                .get(name)
+                .map(|section| section.pc)
+                .unwrap_or(main_addr),
+            None => main_addr,
+        }
+    }
+
+    fn update_addresses(&mut self, main_addr: &mut u16, status: LineStatus) {
+        let num_bytes = self.num_bytes() as u16;
+        if let Some(section_name) = self.current_section.clone() {
+            if let Some(section) = self.sections.get_mut(&section_name) {
+                if self.pass == 2 {
+                    if status == LineStatus::DirDs && self.aux_value > 0 {
+                        section
+                            .bytes
+                            .extend(std::iter::repeat_n(0, self.aux_value as usize));
+                    } else if status == LineStatus::DirEqu && self.start_addr > section.pc {
+                        let pad = self.start_addr.wrapping_sub(section.pc) as usize;
+                        section.bytes.extend(std::iter::repeat_n(0, pad));
+                    } else if !self.bytes.is_empty() {
+                        section.bytes.extend_from_slice(&self.bytes);
+                    }
+                }
+                if status == LineStatus::DirDs {
+                    section.pc = section.pc.wrapping_add(self.aux_value);
+                } else if status == LineStatus::DirEqu {
+                    section.pc = self.start_addr;
+                } else {
+                    section.pc = section.pc.wrapping_add(num_bytes);
+                }
+            }
+        } else if status == LineStatus::DirDs {
+            *main_addr = main_addr.wrapping_add(self.aux_value);
+        } else if status == LineStatus::DirEqu {
+            *main_addr = self.start_addr;
+        } else {
+            *main_addr = main_addr.wrapping_add(num_bytes);
+        }
     }
 
     fn is_allowed_meta_directive(&self, mnemonic: &str) -> bool {
@@ -2189,6 +2268,101 @@ impl<'a> AsmLine<'a> {
                 self.in_output_block = false;
                 LineStatus::Ok
             }
+            "DSECTION" => {
+                if self.in_section() {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        ".dsection is not allowed inside a .section block",
+                        None,
+                    );
+                }
+                if operands.len() != 1 {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Missing section name for .dsection",
+                        None,
+                    );
+                }
+                let Some(name) = operands.first().and_then(expr_to_ident) else {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Invalid section name for .dsection",
+                        None,
+                    );
+                };
+                let section = self.sections.entry(name.clone()).or_default();
+                if section.placed {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Section already placed",
+                        Some(&name),
+                    );
+                }
+                section.placed = true;
+                if self.pass == 2 {
+                    self.bytes = section.bytes.clone();
+                } else {
+                    self.bytes = vec![0u8; section.pc as usize];
+                }
+                LineStatus::Ok
+            }
+            "SECTION" => {
+                if operands.len() != 1 {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Missing section name for .section",
+                        None,
+                    );
+                }
+                let Some(name) = operands.first().and_then(expr_to_ident) else {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Invalid section name for .section",
+                        None,
+                    );
+                };
+                if let Some(section) = self.sections.get(&name) {
+                    if section.placed {
+                        return self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Directive,
+                            "Section has already been placed",
+                            Some(&name),
+                        );
+                    }
+                } else {
+                    self.sections.insert(name.clone(), SectionState::default());
+                }
+                self.section_stack.push(self.current_section.take());
+                self.current_section = Some(name);
+                LineStatus::Ok
+            }
+            "ENDSECTION" => {
+                if !operands.is_empty() {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Unexpected operands for .endsection",
+                        None,
+                    );
+                }
+                if !self.in_section() {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        ".endsection found without matching .section",
+                        None,
+                    );
+                }
+                self.current_section = self.section_stack.pop().unwrap_or(None);
+                LineStatus::Ok
+            }
             "NAME" => {
                 if !self.in_meta_block {
                     return self.failure(
@@ -2348,6 +2522,14 @@ impl<'a> AsmLine<'a> {
                         None,
                     );
                 }
+                if self.in_section() {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Cannot close module with open .section block",
+                        None,
+                    );
+                }
                 if !self.in_module() {
                     return self.failure(
                         LineStatus::Error,
@@ -2469,9 +2651,59 @@ impl<'a> AsmLine<'a> {
                         )
                     }
                 };
+                if let Some(section_name) = self.current_section.as_deref() {
+                    if let Some(section) = self.sections.get(section_name) {
+                        if val < section.pc as u32 {
+                            return self.failure(
+                                LineStatus::Error,
+                                AsmErrorKind::Directive,
+                                ".org cannot move backwards inside a section",
+                                None,
+                            );
+                        }
+                    }
+                }
                 self.start_addr = val as u16;
                 self.aux_value = val as u16;
                 LineStatus::DirEqu
+            }
+            "ALIGN" => {
+                let expr = match operands.first() {
+                    Some(expr) => expr,
+                    None => {
+                        return self.failure(
+                            LineStatus::Error,
+                            AsmErrorKind::Directive,
+                            "Missing expression for .align",
+                            None,
+                        )
+                    }
+                };
+                let val = match self.eval_expr_ast(expr) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            err.error.kind(),
+                            err.error.message(),
+                            None,
+                            err.span,
+                        )
+                    }
+                };
+                let align = val as u16;
+                if align == 0 {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Alignment must be greater than zero",
+                        None,
+                    );
+                }
+                let addr = self.start_addr;
+                let pad = (align - (addr % align)) % align;
+                self.aux_value = pad;
+                LineStatus::DirDs
             }
             "CONST" | "VAR" | "SET" => {
                 if self.label.is_none() {
@@ -3531,7 +3763,14 @@ fn is_symbol_assignment_directive(mnemonic: &str) -> bool {
 fn is_scope_directive(mnemonic: &str) -> bool {
     matches!(
         mnemonic.to_ascii_uppercase().as_str(),
-        ".BLOCK" | ".ENDBLOCK" | ".MODULE" | ".ENDMODULE" | ".META" | ".ENDMETA"
+        ".BLOCK"
+            | ".ENDBLOCK"
+            | ".MODULE"
+            | ".ENDMODULE"
+            | ".META"
+            | ".ENDMETA"
+            | ".SECTION"
+            | ".ENDSECTION"
     )
 }
 
@@ -4243,6 +4482,54 @@ mod tests {
             .diagnostics
             .iter()
             .any(|diag| diag.error.message().contains(".endmodule")));
+    }
+
+    #[test]
+    fn section_injects_bytes_at_dsection() {
+        let lines = vec![
+            ".module main".to_string(),
+            ".section data".to_string(),
+            ".byte 1, 2".to_string(),
+            ".endsection".to_string(),
+            ".org 1000h".to_string(),
+            ".dsection data".to_string(),
+            ".endmodule".to_string(),
+        ];
+        let mut assembler = Assembler::new();
+        assembler.root_metadata.root_module_id = Some("main".to_string());
+        assembler.clear_diagnostics();
+        let pass1 = assembler.pass1(&lines);
+        assert_eq!(pass1.errors, 0);
+
+        let mut output = Vec::new();
+        let mut listing = ListingWriter::new(&mut output, false);
+        listing
+            .header("opForge 8085 Assembler v1.0")
+            .expect("listing header");
+        let pass2 = assembler.pass2(&lines, &mut listing).expect("pass2");
+        listing
+            .footer(&pass2, assembler.symbols(), assembler.image().num_entries())
+            .expect("listing footer");
+
+        let mut hex = Vec::new();
+        assembler
+            .image()
+            .write_hex_file(&mut hex, None)
+            .expect("hex output");
+        let hex_text = String::from_utf8_lossy(&hex);
+        assert!(
+            hex_text.contains(":021000000102EB"),
+            "unexpected hex output: {hex_text}"
+        );
+    }
+
+    #[test]
+    fn missing_endsection_emits_diagnostic() {
+        let assembler = run_pass1(&[".module alpha", ".section data", ".byte 1"]);
+        assert!(assembler
+            .diagnostics
+            .iter()
+            .any(|diag| diag.error.message().contains(".endsection")));
     }
 
     #[test]

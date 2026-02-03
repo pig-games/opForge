@@ -460,6 +460,10 @@ Notes:
 Diagnostics include a line/column and a highlighted span in listings. Terminal
 output may use ANSI colors to highlight the offending region.
 
+Listing addresses reflect the current emission context: inside a `.section` the
+address column shows the section-local program counter, while `.dsection` lines
+show absolute placement addresses.
+
 ## 9. Credits
 
 opForge is derived from the asm85 assembler by Tom Nisbet and has been extended

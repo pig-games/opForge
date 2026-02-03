@@ -955,6 +955,7 @@ impl Assembler {
                 aux: asm_line.aux_value(),
                 line_num,
                 source: src,
+                section: asm_line.current_section_name(),
                 cond: asm_line.cond_last(),
             })?;
 
@@ -1202,6 +1203,10 @@ impl<'a> AsmLine<'a> {
 
     fn in_section(&self) -> bool {
         self.current_section.is_some()
+    }
+
+    fn current_section_name(&self) -> Option<&str> {
+        self.current_section.as_deref()
     }
 
     fn current_addr(&self, main_addr: u16) -> u16 {

@@ -51,8 +51,8 @@ Date: 2026-02-03
   - If no `.org` has been set before an injected `.dsection`, emit a diagnostic (“section has no placement”).
 
 ## Phase 5 — Listing output
-- [ ] Update listing to show section context (optional): section name or start.
-- [ ] Ensure listing addresses reflect section-local PCs or absolute placement (document behavior).
+- [x] Update listing to show section context (optional): section name or start.
+- [x] Ensure listing addresses reflect section-local PCs or absolute placement (document behavior).
 
 ## Phase 6 — Tests & examples
 - [ ] Unit tests (in [src/assembler/mod.rs](src/assembler/mod.rs)):

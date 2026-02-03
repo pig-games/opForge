@@ -20,6 +20,7 @@ pub struct ListingLine<'a> {
     pub aux: u16,
     pub line_num: u32,
     pub source: &'a str,
+    pub section: Option<&'a str>,
     pub cond: Option<&'a ConditionalContext>,
 }
 
@@ -59,6 +60,10 @@ impl<W: Write> ListingWriter<W> {
         } else {
             loc
         };
+        let section_suffix = line
+            .section
+            .map(|name| format!("  ; [section {name}]"))
+            .unwrap_or_default();
         let cond_str = if self.show_cond {
             line.cond.map(format_cond).unwrap_or_default()
         } else {
@@ -68,7 +73,11 @@ impl<W: Write> ListingWriter<W> {
         writeln!(
             self.out,
             "{:<6}  {:<23}  {:>4}  {}{}",
-            loc, bytes_col, line.line_num, line.source, cond_str
+            loc,
+            bytes_col,
+            line.line_num,
+            line.source,
+            format!("{section_suffix}{cond_str}")
         )
     }
 

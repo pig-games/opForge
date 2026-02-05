@@ -63,10 +63,11 @@ Arguments:
     -o, --outfile <BASE>         Output filename base when -l/-x are used without a filename.
                                  Also used for -b outputs that omit a filename. Defaults to the
                                  input filename base.
-    -b, --bin [FILE:ssss:eeee|ssss:eeee]
-                                 Emit a binary image file (repeatable). A range is required.
-                                 Use ssss:eeee to use the output base, or FILE:ssss:eeee to
-                                 override the filename. If FILE has no extension, .bin is added.
+    -b, --bin [FILE:ssss:eeee|ssss:eeee|FILE]
+                                 Emit a binary image file (repeatable). A range is optional.
+                                 Use ssss:eeee to use the output base, FILE:ssss:eeee to
+                                 override the filename, or FILE to emit the full output range.
+                                 If FILE has no extension, .bin is added.
                                  If multiple -b ranges are provided without filenames, each file
                                  is named <base>-ssss.bin to avoid collisions.
     -g, --go <aaaa>              Set execution start address (4 hex digits). Adds a Start
@@ -108,3 +109,7 @@ creates:
     opForge -b out.bin:8000:8fff -i prog.asm
 creates:
 * A 4096 byte binary image file out.bin
+
+    opForge -b -i prog.asm
+creates:
+* A binary image file containing the emitted output range

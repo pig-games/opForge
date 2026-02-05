@@ -19,7 +19,8 @@ Outputs are opt-in: specify at least one of -l/--list, -x/--hex, or -b/--bin.
 If no outputs are specified for a single input, the assembler defaults to list+hex
 when a root-module output name (or -o) is available.
 Use -o/--outfile to set the output base name when filenames are omitted.
-For -b, ranges are required: ssss:eeee (4 hex digits each).
+For -b, ranges are optional: ssss:eeee (4 hex digits each).
+If a range is omitted, the binary spans the emitted output.
 With multiple -b ranges and no filenames, outputs are named <base>-ssss.bin.
 With multiple inputs, -o must be a directory and explicit output filenames are not allowed.";
 
@@ -59,11 +60,11 @@ pub struct Cli {
     #[arg(
         short = 'b',
         long = "bin",
-        value_name = "FILE:ssss:eeee|ssss:eeee",
+        value_name = "[FILE:]ssss:eeee|FILE",
         num_args = 0..=1,
         default_missing_value = "",
         action = ArgAction::Append,
-        long_help = "Emit a binary image file (repeatable). A range is required: ssss:eeee (4 hex digits each). Use ssss:eeee to use the output base, or FILE:ssss:eeee to override the filename. If FILE has no extension, .bin is added. If multiple -b ranges are provided without filenames, outputs are named <base>-ssss.bin."
+        long_help = "Emit a binary image file (repeatable). Ranges are optional: ssss:eeee (4 hex digits each). Use ssss:eeee to use the output base, or FILE:ssss:eeee to override the filename. If FILE has no extension, .bin is added. If no range is supplied, the binary spans the emitted output. If multiple -b ranges are provided without filenames, outputs are named <base>-ssss.bin."
     )]
     pub bin_outputs: Vec<String>,
     #[arg(
@@ -122,7 +123,7 @@ pub struct BinRange {
 #[derive(Debug, Clone)]
 pub struct BinOutputSpec {
     pub name: Option<String>,
-    pub range: BinRange,
+    pub range: Option<BinRange>,
 }
 
 pub fn is_valid_hex_4(s: &str) -> bool {
@@ -147,11 +148,17 @@ fn is_valid_bin_range(s: &str) -> bool {
 
 pub fn parse_bin_output_arg(arg: &str) -> Result<BinOutputSpec, &'static str> {
     if arg.is_empty() {
-        return Err("Missing -b/--bin argument; use ssss:eeee or name:ssss:eeee");
+        return Ok(BinOutputSpec {
+            name: None,
+            range: None,
+        });
     }
 
     if let Some(range) = parse_bin_range_str(arg) {
-        return Ok(BinOutputSpec { name: None, range });
+        return Ok(BinOutputSpec {
+            name: None,
+            range: Some(range),
+        });
     }
 
     if let Some((name_part, start, end)) = split_range_suffix(arg) {
@@ -162,10 +169,20 @@ pub fn parse_bin_output_arg(arg: &str) -> Result<BinOutputSpec, &'static str> {
         } else {
             Some(name_part.to_string())
         };
-        return Ok(BinOutputSpec { name, range });
+        return Ok(BinOutputSpec {
+            name,
+            range: Some(range),
+        });
     }
 
-    Err("Binary output requires a range; use ssss:eeee or name:ssss:eeee")
+    if !arg.contains(':') {
+        return Ok(BinOutputSpec {
+            name: Some(arg.to_string()),
+            range: None,
+        });
+    }
+
+    Err("Invalid -b/--bin argument; use ssss:eeee, name:ssss:eeee, or name only")
 }
 
 fn split_range_suffix(s: &str) -> Option<(&str, &str, &str)> {
@@ -237,16 +254,19 @@ pub fn resolve_output_path(base: &str, name: Option<String>, extension: &str) ->
 pub fn resolve_bin_path(
     base: &str,
     name: Option<&str>,
-    range: &BinRange,
+    range: Option<&BinRange>,
     bin_count: usize,
+    index: usize,
 ) -> String {
     let name = match name {
         Some(name) if !name.is_empty() => name.to_string(),
         _ => {
             if bin_count == 1 {
                 base.to_string()
-            } else {
+            } else if let Some(range) = range {
                 format!("{base}-{}", range.start_str)
+            } else {
+                format!("{base}-{}", index + 1)
             }
         }
     };
@@ -610,24 +630,35 @@ mod tests {
     }
 
     #[test]
-    fn parse_bin_requires_range() {
-        assert!(parse_bin_output_arg("out.bin").is_err());
+    fn parse_bin_allows_name_only() {
+        let spec = parse_bin_output_arg("out.bin").expect("name only");
+        assert_eq!(spec.name.as_deref(), Some("out.bin"));
+        assert!(spec.range.is_none());
+    }
+
+    #[test]
+    fn parse_bin_allows_empty() {
+        let spec = parse_bin_output_arg("").expect("empty");
+        assert!(spec.name.is_none());
+        assert!(spec.range.is_none());
     }
 
     #[test]
     fn parse_bin_range_only() {
         let spec = parse_bin_output_arg("0100:01ff").expect("range only");
         assert!(spec.name.is_none());
-        assert_eq!(spec.range.start, 0x0100);
-        assert_eq!(spec.range.end, 0x01ff);
+        let range = spec.range.expect("range");
+        assert_eq!(range.start, 0x0100);
+        assert_eq!(range.end, 0x01ff);
     }
 
     #[test]
     fn parse_bin_named_range() {
         let spec = parse_bin_output_arg("out.bin:1000:10ff").expect("name + range");
         assert_eq!(spec.name.as_deref(), Some("out.bin"));
-        assert_eq!(spec.range.start, 0x1000);
-        assert_eq!(spec.range.end, 0x10ff);
+        let range = spec.range.expect("range");
+        assert_eq!(range.start, 0x1000);
+        assert_eq!(range.end, 0x10ff);
     }
 
     #[test]
@@ -657,13 +688,25 @@ mod tests {
     #[test]
     fn resolve_bin_path_single_range_uses_base() {
         let range = range_0000_ffff();
-        assert_eq!(resolve_bin_path("forth", None, &range, 1), "forth.bin");
+        assert_eq!(
+            resolve_bin_path("forth", None, Some(&range), 1, 0),
+            "forth.bin"
+        );
     }
 
     #[test]
     fn resolve_bin_path_multiple_ranges_adds_suffix() {
         let range = range_0000_ffff();
-        assert_eq!(resolve_bin_path("forth", None, &range, 2), "forth-0000.bin");
+        assert_eq!(
+            resolve_bin_path("forth", None, Some(&range), 2, 0),
+            "forth-0000.bin"
+        );
+    }
+
+    #[test]
+    fn resolve_bin_path_multiple_no_ranges_adds_index() {
+        assert_eq!(resolve_bin_path("forth", None, None, 2, 0), "forth-1.bin");
+        assert_eq!(resolve_bin_path("forth", None, None, 2, 1), "forth-2.bin");
     }
 
     #[test]

@@ -452,7 +452,7 @@ Inputs (required):
 Outputs:
 - `-l, --list [FILE]`: listing output (optional filename).
 - `-x, --hex [FILE]`: Intel HEX output (optional filename).
-- `-b, --bin [FILE:ssss:eeee|ssss:eeee]`: binary image with range(s).
+- `-b, --bin [FILE:ssss:eeee|ssss:eeee|FILE]`: binary image with optional range(s).
 
 Other options:
 - `-o, --outfile <BASE>`: output base name if output filename omitted.
@@ -468,6 +468,7 @@ Notes:
   directory.
 - If no outputs are specified for a single input, opForge defaults to list+hex
     when `.meta.output.name` (or `-o`) is available.
+- `-b` without a range emits a binary that spans the emitted output.
 
 ## 8. Messages
 

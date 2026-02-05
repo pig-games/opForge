@@ -77,7 +77,7 @@ impl<W: Write> ListingWriter<W> {
             bytes_col,
             line.line_num,
             line.source,
-            format!("{section_suffix}{cond_str}")
+            format_args!("{section_suffix}{cond_str}")
         )
     }
 

@@ -6,7 +6,10 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, Read, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static IMAGE_STORE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy)]
 struct ImageStoreEntry {
@@ -29,7 +32,8 @@ impl ImageStore {
             .unwrap_or_default()
             .as_nanos();
         let pid = std::process::id();
-        path.push(format!("opForge-image-{pid}-{nanos}.bin"));
+        let counter = IMAGE_STORE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        path.push(format!("opForge-image-{pid}-{nanos}-{counter}.bin"));
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -182,6 +186,22 @@ impl ImageStore {
         let write_size = usize::min(size as usize, max_len);
         out.write_all(&mem[start..start + write_size])?;
         Ok(())
+    }
+
+    pub fn output_range(&self) -> io::Result<Option<(u16, u16)>> {
+        self.ensure_ready()?;
+        let entries = self.read_entries()?;
+        let mut iter = entries.iter();
+        let Some(first) = iter.next() else {
+            return Ok(None);
+        };
+        let mut min = first.addr;
+        let mut max = first.addr;
+        for entry in iter {
+            min = min.min(entry.addr);
+            max = max.max(entry.addr);
+        }
+        Ok(Some((min, max)))
     }
 }
 

@@ -46,7 +46,8 @@ use crate::m65c02::module::M65C02CpuModule;
 use crate::z80::module::Z80CpuModule;
 
 use cli::{
-    input_base_from_path, resolve_bin_path, resolve_output_path, validate_cli, BinOutputSpec, Cli,
+    input_base_from_path, resolve_bin_path, resolve_output_path, validate_cli, BinOutputSpec,
+    BinRange, Cli,
 };
 
 // Re-export public types
@@ -749,9 +750,38 @@ fn run_one(
     }
     let mut bin_outputs = Vec::new();
     let bin_count = effective_bin_specs.len();
-    for spec in &effective_bin_specs {
-        let bin_name = resolve_bin_path(&out_base, spec.name.as_deref(), &spec.range, bin_count);
-        bin_outputs.push((bin_name, spec.range.clone()));
+    let mut auto_range: Option<Option<(u16, u16)>> = None;
+    for (index, spec) in effective_bin_specs.iter().enumerate() {
+        let range = match &spec.range {
+            Some(range) => Some(range.clone()),
+            None => {
+                if auto_range.is_none() {
+                    auto_range = Some(assembler.image().output_range().map_err(|err| {
+                        AsmRunError::new(
+                            AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
+                            assembler.take_diagnostics(),
+                            expanded_lines.clone(),
+                        )
+                    })?);
+                }
+                auto_range
+                    .as_ref()
+                    .and_then(|value| value.as_ref().copied())
+                    .map(|(start, end)| BinRange {
+                        start_str: format!("{:04X}", start),
+                        start,
+                        end,
+                    })
+            }
+        };
+        let bin_name = resolve_bin_path(
+            &out_base,
+            spec.name.as_deref(),
+            range.as_ref(),
+            bin_count,
+            index,
+        );
+        bin_outputs.push((bin_name, range));
     }
 
     for (bin_name, range) in bin_outputs {
@@ -769,17 +799,19 @@ fn run_one(
                 ))
             }
         };
-        if let Err(err) = assembler.image().write_bin_file(
-            &mut bin_file,
-            range.start,
-            range.end,
-            effective_fill_byte,
-        ) {
-            return Err(AsmRunError::new(
-                AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                assembler.take_diagnostics(),
-                expanded_lines.clone(),
-            ));
+        if let Some(range) = range {
+            if let Err(err) = assembler.image().write_bin_file(
+                &mut bin_file,
+                range.start,
+                range.end,
+                effective_fill_byte,
+            ) {
+                return Err(AsmRunError::new(
+                    AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
+                    assembler.take_diagnostics(),
+                    expanded_lines.clone(),
+                ));
+            }
         }
     }
 
@@ -3071,7 +3103,7 @@ impl<'a> AsmLine<'a> {
     }
 
     fn metadata_bin_spec(&mut self, operands: &[Expr], directive: &str) -> Option<BinOutputSpec> {
-        let value = self.metadata_value(operands, directive)?;
+        let value = self.metadata_optional_value(operands, directive)?;
         match crate::assembler::cli::parse_bin_output_arg(&value) {
             Ok(spec) => Some(spec),
             Err(message) => {
@@ -4656,6 +4688,43 @@ mod tests {
     }
 
     #[test]
+    fn rts_encodes_in_6502_family() {
+        let lines = vec![
+            ".module main".to_string(),
+            ".cpu 6502".to_string(),
+            ".org 1000h".to_string(),
+            "    rts".to_string(),
+            ".endmodule".to_string(),
+        ];
+        let mut assembler = Assembler::new();
+        assembler.root_metadata.root_module_id = Some("main".to_string());
+        assembler.clear_diagnostics();
+        let pass1 = assembler.pass1(&lines);
+        assert_eq!(pass1.errors, 0);
+
+        let mut output = Vec::new();
+        let mut listing = ListingWriter::new(&mut output, false);
+        listing
+            .header("opForge 8085 Assembler v1.0")
+            .expect("listing header");
+        let pass2 = assembler.pass2(&lines, &mut listing).expect("pass2");
+        listing
+            .footer(&pass2, assembler.symbols(), assembler.image().num_entries())
+            .expect("listing footer");
+
+        let mut hex = Vec::new();
+        assembler
+            .image()
+            .write_hex_file(&mut hex, None)
+            .expect("hex output");
+        let hex_text = String::from_utf8_lossy(&hex);
+        assert!(
+            hex_text.contains(":01100000608F"),
+            "unexpected hex output: {hex_text}"
+        );
+    }
+
+    #[test]
     fn module_rejects_top_level_content_before_explicit_modules() {
         let mut symbols = SymbolTable::new();
         let registry = default_registry();
@@ -4913,9 +4982,27 @@ mod tests {
         assert_eq!(output.hex_name.as_deref(), Some("meta-hex"));
         assert_eq!(output.bin_specs.len(), 1);
         let spec = &output.bin_specs[0];
-        assert_eq!(spec.range.start, 0x0000);
-        assert_eq!(spec.range.end, 0x0003);
+        let range = spec.range.as_ref().expect("range");
+        assert_eq!(range.start, 0x0000);
+        assert_eq!(range.end, 0x0003);
         assert_eq!(output.fill_byte, Some(0xaa));
+    }
+
+    #[test]
+    fn root_metadata_bin_allows_empty_value() {
+        let lines = vec![
+            ".module main".to_string(),
+            ".meta.output.bin".to_string(),
+            ".endmodule".to_string(),
+        ];
+        let mut assembler = Assembler::new();
+        assembler.root_metadata.root_module_id = Some("main".to_string());
+        let _ = assembler.pass1(&lines);
+        let output = assembler.root_metadata.output_config_for_cpu("i8085");
+        assert_eq!(output.bin_specs.len(), 1);
+        let spec = &output.bin_specs[0];
+        assert!(spec.name.is_none());
+        assert!(spec.range.is_none());
     }
 
     #[test]

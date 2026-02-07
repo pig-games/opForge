@@ -271,6 +271,13 @@ impl CpuHandler for M65C02CpuHandler {
                         ));
                     }
                 }
+                FamilyOperand::IndirectLong(_)
+                | FamilyOperand::IndirectLongY(_)
+                | FamilyOperand::StackRelative(_)
+                | FamilyOperand::StackRelativeIndirectIndexedY(_)
+                | FamilyOperand::BlockMove { .. } => {
+                    return Err("65816-only addressing mode not supported on 65C02".to_string());
+                }
             };
             result.push(operand);
         }

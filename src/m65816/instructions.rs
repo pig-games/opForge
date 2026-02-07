@@ -2,9 +2,6 @@
 // Copyright (C) 2026 Erik van der Tier
 
 //! 65816-specific instruction table.
-//!
-//! The M1 skeleton intentionally keeps this table empty. M3 will populate the
-//! 65816-only instruction encodings.
 
 use crate::families::mos6502::AddressMode;
 
@@ -15,8 +12,144 @@ pub struct CpuInstructionEntry {
     pub opcode: u8,
 }
 
-/// Instruction table for 65816-only opcodes (filled in later milestones).
-pub static CPU_INSTRUCTION_TABLE: &[CpuInstructionEntry] = &[];
+/// Instruction table for prioritized 65816 MVP opcodes.
+pub static CPU_INSTRUCTION_TABLE: &[CpuInstructionEntry] = &[
+    CpuInstructionEntry {
+        mnemonic: "BRL",
+        mode: AddressMode::RelativeLong,
+        opcode: 0x82,
+    },
+    CpuInstructionEntry {
+        mnemonic: "JML",
+        mode: AddressMode::AbsoluteLong,
+        opcode: 0x5C,
+    },
+    CpuInstructionEntry {
+        mnemonic: "JML",
+        mode: AddressMode::IndirectLong,
+        opcode: 0xDC,
+    },
+    CpuInstructionEntry {
+        mnemonic: "JSL",
+        mode: AddressMode::AbsoluteLong,
+        opcode: 0x22,
+    },
+    CpuInstructionEntry {
+        mnemonic: "RTL",
+        mode: AddressMode::Implied,
+        opcode: 0x6B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "REP",
+        mode: AddressMode::Immediate,
+        opcode: 0xC2,
+    },
+    CpuInstructionEntry {
+        mnemonic: "SEP",
+        mode: AddressMode::Immediate,
+        opcode: 0xE2,
+    },
+    CpuInstructionEntry {
+        mnemonic: "XCE",
+        mode: AddressMode::Implied,
+        opcode: 0xFB,
+    },
+    CpuInstructionEntry {
+        mnemonic: "XBA",
+        mode: AddressMode::Implied,
+        opcode: 0xEB,
+    },
+    CpuInstructionEntry {
+        mnemonic: "PHB",
+        mode: AddressMode::Implied,
+        opcode: 0x8B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "PLB",
+        mode: AddressMode::Implied,
+        opcode: 0xAB,
+    },
+    CpuInstructionEntry {
+        mnemonic: "PHD",
+        mode: AddressMode::Implied,
+        opcode: 0x0B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "PLD",
+        mode: AddressMode::Implied,
+        opcode: 0x2B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "PHK",
+        mode: AddressMode::Implied,
+        opcode: 0x4B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "TCD",
+        mode: AddressMode::Implied,
+        opcode: 0x5B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "TDC",
+        mode: AddressMode::Implied,
+        opcode: 0x7B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "TCS",
+        mode: AddressMode::Implied,
+        opcode: 0x1B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "TSC",
+        mode: AddressMode::Implied,
+        opcode: 0x3B,
+    },
+    CpuInstructionEntry {
+        mnemonic: "PEA",
+        mode: AddressMode::Absolute,
+        opcode: 0xF4,
+    },
+    CpuInstructionEntry {
+        mnemonic: "PEI",
+        mode: AddressMode::ZeroPageIndirect,
+        opcode: 0xD4,
+    },
+    CpuInstructionEntry {
+        mnemonic: "PER",
+        mode: AddressMode::RelativeLong,
+        opcode: 0x62,
+    },
+    CpuInstructionEntry {
+        mnemonic: "COP",
+        mode: AddressMode::Immediate,
+        opcode: 0x02,
+    },
+    CpuInstructionEntry {
+        mnemonic: "WDM",
+        mode: AddressMode::Immediate,
+        opcode: 0x42,
+    },
+    CpuInstructionEntry {
+        mnemonic: "MVN",
+        mode: AddressMode::BlockMove,
+        opcode: 0x54,
+    },
+    CpuInstructionEntry {
+        mnemonic: "MVP",
+        mode: AddressMode::BlockMove,
+        opcode: 0x44,
+    },
+    CpuInstructionEntry {
+        mnemonic: "ORA",
+        mode: AddressMode::StackRelative,
+        opcode: 0x03,
+    },
+    CpuInstructionEntry {
+        mnemonic: "ORA",
+        mode: AddressMode::StackRelativeIndirectIndexedY,
+        opcode: 0x13,
+    },
+];
 
 /// Look up an instruction in the CPU extension table.
 pub fn lookup_instruction(
@@ -42,8 +175,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn table_starts_empty_for_m1() {
-        assert!(!has_mnemonic("BRL"));
-        assert!(lookup_instruction("BRL", AddressMode::Relative).is_none());
+    fn table_contains_prioritized_entries() {
+        assert!(has_mnemonic("BRL"));
+        assert!(lookup_instruction("BRL", AddressMode::RelativeLong).is_some());
+        assert!(lookup_instruction("JML", AddressMode::AbsoluteLong).is_some());
+        assert!(lookup_instruction("MVN", AddressMode::BlockMove).is_some());
     }
 }

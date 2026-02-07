@@ -2,10 +2,6 @@
 // Copyright (C) 2026 Erik van der Tier
 
 //! 65816 CPU handler implementation.
-//!
-//! The M1 skeleton delegates operand resolution and currently-supported
-//! extension encodings to the existing 65C02 handler to provide a safe baseline
-//! while the 65816-specific parser/encoding work lands in later milestones.
 
 use crate::core::family::{AssemblerContext, CpuHandler, EncodeResult};
 use crate::families::mos6502::{
@@ -31,6 +27,61 @@ impl M65816CpuHandler {
             baseline: crate::m65c02::M65C02CpuHandler::new(),
         }
     }
+
+    fn upper_mnemonic(mnemonic: &str) -> String {
+        mnemonic.to_ascii_uppercase()
+    }
+
+    fn resolve_direct(
+        &self,
+        mnemonic: &str,
+        expr: &crate::core::parser::Expr,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<Operand, String> {
+        let upper = Self::upper_mnemonic(mnemonic);
+        let val = ctx.eval_expr(expr)?;
+        let span = crate::core::assembler::expression::expr_span(expr);
+
+        if matches!(upper.as_str(), "BRL" | "PER") {
+            let current = ctx.current_address() as i32 + 3;
+            let offset = val as i32 - current;
+            if !(-32768..=32767).contains(&offset) {
+                if ctx.pass() > 1 {
+                    return Err(format!(
+                        "Long branch target out of range: offset {}",
+                        offset
+                    ));
+                }
+                return Ok(Operand::RelativeLong(0, span));
+            }
+            return Ok(Operand::RelativeLong(offset as i16, span));
+        }
+
+        if upper == "PEA" {
+            if (0..=65535).contains(&val) {
+                return Ok(Operand::Absolute(val as u16, span));
+            }
+            return Err(format!("PEA operand {} out of 16-bit range", val));
+        }
+
+        if matches!(upper.as_str(), "JSL" | "JML") {
+            if (0..=0xFF_FFFF).contains(&val) {
+                return Ok(Operand::AbsoluteLong(val as u32, span));
+            }
+            return Err(format!("Long address {} out of 24-bit range", val));
+        }
+
+        if (0..=255).contains(&val) {
+            return Ok(Operand::ZeroPage(val as u8, span));
+        }
+        if (0..=65535).contains(&val) {
+            return Ok(Operand::Absolute(val as u16, span));
+        }
+        if (0..=0xFF_FFFF).contains(&val) {
+            return Ok(Operand::AbsoluteLong(val as u32, span));
+        }
+        Err(format!("Address {} out of 24-bit range", val))
+    }
 }
 
 impl CpuHandler for M65816CpuHandler {
@@ -46,6 +97,106 @@ impl CpuHandler for M65816CpuHandler {
         family_operands: &[FamilyOperand],
         ctx: &dyn AssemblerContext,
     ) -> Result<Vec<Operand>, String> {
+        if family_operands.len() == 1 {
+            match &family_operands[0] {
+                FamilyOperand::Direct(expr) => {
+                    if matches!(
+                        Self::upper_mnemonic(mnemonic).as_str(),
+                        "BRL" | "PER" | "PEA" | "JSL" | "JML"
+                    ) {
+                        return Ok(vec![self.resolve_direct(mnemonic, expr, ctx)?]);
+                    }
+                }
+                FamilyOperand::DirectX(expr) => {
+                    let val = ctx.eval_expr(expr)?;
+                    if (0..=0xFF_FFFF).contains(&val) && val > 65535 {
+                        return Ok(vec![Operand::AbsoluteLongX(
+                            val as u32,
+                            crate::core::assembler::expression::expr_span(expr),
+                        )]);
+                    }
+                }
+                FamilyOperand::StackRelative(expr) => {
+                    let val = ctx.eval_expr(expr)?;
+                    if !(0..=255).contains(&val) {
+                        return Err(format!(
+                            "Stack-relative offset {} out of range (0-255)",
+                            val
+                        ));
+                    }
+                    return Ok(vec![Operand::StackRelative(
+                        val as u8,
+                        crate::core::assembler::expression::expr_span(expr),
+                    )]);
+                }
+                FamilyOperand::StackRelativeIndirectIndexedY(expr) => {
+                    let val = ctx.eval_expr(expr)?;
+                    if !(0..=255).contains(&val) {
+                        return Err(format!(
+                            "Stack-relative offset {} out of range (0-255)",
+                            val
+                        ));
+                    }
+                    return Ok(vec![Operand::StackRelativeIndirectIndexedY(
+                        val as u8,
+                        crate::core::assembler::expression::expr_span(expr),
+                    )]);
+                }
+                FamilyOperand::IndirectLong(expr) => {
+                    let val = ctx.eval_expr(expr)?;
+                    let span = crate::core::assembler::expression::expr_span(expr);
+                    if Self::upper_mnemonic(mnemonic) == "JML" {
+                        if (0..=65535).contains(&val) {
+                            return Ok(vec![Operand::IndirectLong(val as u16, span)]);
+                        }
+                        return Err(format!("JML indirect operand {} out of 16-bit range", val));
+                    }
+                    if (0..=255).contains(&val) {
+                        return Ok(vec![Operand::DirectPageIndirectLong(val as u8, span)]);
+                    }
+                    return Err(format!(
+                        "Bracketed direct-page indirect operand {} out of range (0-255)",
+                        val
+                    ));
+                }
+                FamilyOperand::IndirectLongY(expr) => {
+                    let val = ctx.eval_expr(expr)?;
+                    if !(0..=255).contains(&val) {
+                        return Err(format!(
+                            "Bracketed direct-page indirect indexed operand {} out of range (0-255)",
+                            val
+                        ));
+                    }
+                    return Ok(vec![Operand::DirectPageIndirectLongY(
+                        val as u8,
+                        crate::core::assembler::expression::expr_span(expr),
+                    )]);
+                }
+                FamilyOperand::BlockMove { src, dst, span } => {
+                    let src_val = ctx.eval_expr(src)?;
+                    let dst_val = ctx.eval_expr(dst)?;
+                    if !(0..=255).contains(&src_val) {
+                        return Err(format!(
+                            "Block-move source bank {} out of range (0-255)",
+                            src_val
+                        ));
+                    }
+                    if !(0..=255).contains(&dst_val) {
+                        return Err(format!(
+                            "Block-move destination bank {} out of range (0-255)",
+                            dst_val
+                        ));
+                    }
+                    return Ok(vec![Operand::BlockMove {
+                        src: src_val as u8,
+                        dst: dst_val as u8,
+                        span: *span,
+                    }]);
+                }
+                _ => {}
+            }
+        }
+
         <crate::m65c02::M65C02CpuHandler as CpuHandler>::resolve_operands(
             &self.baseline,
             mnemonic,
@@ -68,8 +219,8 @@ impl CpuHandler for M65816CpuHandler {
 
         if let Some(entry) = lookup_instruction(mnemonic, mode) {
             let mut bytes = vec![entry.opcode];
-            for operand in operands {
-                bytes.extend(operand.value_bytes());
+            if let Some(first) = operands.first() {
+                bytes.extend(first.value_bytes());
             }
             return EncodeResult::Ok(bytes);
         }

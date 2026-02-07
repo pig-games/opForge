@@ -8,7 +8,9 @@ use crate::core::macro_processor::MacroProcessor;
 use crate::core::registry::ModuleRegistry;
 use crate::core::symbol_table::SymbolTable;
 use crate::families::intel8080::module::Intel8080FamilyModule;
-use crate::families::mos6502::module::{M6502CpuModule, MOS6502FamilyModule};
+use crate::families::mos6502::module::{
+    M6502CpuModule, MOS6502FamilyModule, CPU_ID as m6502_cpu_id,
+};
 use crate::i8085::module::{I8085CpuModule, CPU_ID as i8085_cpu_id};
 use crate::m65816::module::M65816CpuModule;
 use crate::m65816::module::CPU_ID as m65816_cpu_id;
@@ -54,6 +56,20 @@ fn assemble_bytes(cpu: crate::core::cpu::CpuType, line: &str) -> Vec<u8> {
         asm.error().map(|err| err.to_string())
     );
     asm.bytes().to_vec()
+}
+
+fn assemble_line_status(
+    cpu: crate::core::cpu::CpuType,
+    line: &str,
+) -> (LineStatus, Option<String>) {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);
+    asm.clear_conditionals();
+    asm.clear_scopes();
+    let status = asm.process(line, 1, 0, 2);
+    let message = asm.error().map(|err| err.to_string());
+    (status, message)
 }
 
 fn assemble_example(asm_path: &Path, out_dir: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
@@ -1587,6 +1603,61 @@ fn unknown_cpu_diagnostic_lists_65816_and_aliases() {
     assert!(message.contains("65816"), "unexpected message: {message}");
     assert!(message.contains("65c816"), "unexpected message: {message}");
     assert!(message.contains("w65c816"), "unexpected message: {message}");
+}
+
+#[test]
+fn m65816_prioritized_instruction_encoding() {
+    assert_eq!(
+        assemble_bytes(m65816_cpu_id, "    BRL $0005"),
+        vec![0x82, 0x02, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m65816_cpu_id, "    JSL $123456"),
+        vec![0x22, 0x56, 0x34, 0x12]
+    );
+    assert_eq!(
+        assemble_bytes(m65816_cpu_id, "    JML [$1234]"),
+        vec![0xDC, 0x34, 0x12]
+    );
+    assert_eq!(
+        assemble_bytes(m65816_cpu_id, "    MVN $01,$02"),
+        vec![0x54, 0x01, 0x02]
+    );
+    assert_eq!(
+        assemble_bytes(m65816_cpu_id, "    PEA $1234"),
+        vec![0xF4, 0x34, 0x12]
+    );
+    assert_eq!(
+        assemble_bytes(m65816_cpu_id, "    REP #$30"),
+        vec![0xC2, 0x30]
+    );
+}
+
+#[test]
+fn m65816_stack_relative_forms_encode() {
+    assert_eq!(
+        assemble_bytes(m65816_cpu_id, "    ORA $10,S"),
+        vec![0x03, 0x10]
+    );
+    assert_eq!(
+        assemble_bytes(m65816_cpu_id, "    ORA ($20,S),Y"),
+        vec![0x13, 0x20]
+    );
+}
+
+#[test]
+fn legacy_cpus_reject_65816_mnemonics_and_modes() {
+    let (status, message) = assemble_line_status(m6502_cpu_id, "    BRL $0005");
+    assert_eq!(status, LineStatus::Error);
+    assert!(message
+        .unwrap_or_default()
+        .contains("No instruction found for BRL"));
+
+    let (status, message) = assemble_line_status(m65c02_cpu_id, "    ORA $10,S");
+    assert_eq!(status, LineStatus::Error);
+    assert!(message
+        .unwrap_or_default()
+        .contains("65816-only addressing mode not supported on 65C02"));
 }
 
 #[test]

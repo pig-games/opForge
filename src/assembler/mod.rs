@@ -2641,6 +2641,10 @@ impl<'a> AsmLine<'a> {
                 // For 6502-style indirect like ($20), evaluate the inner address expression
                 self.eval_expr_ast(inner)
             }
+            Expr::IndirectLong(inner, _span) => {
+                // For 65816-style bracketed indirect like [$20], evaluate inner expression.
+                self.eval_expr_ast(inner)
+            }
             Expr::Immediate(inner, _span) => {
                 // Immediate expressions like #$FF - evaluate the inner expression
                 self.eval_expr_ast(inner)

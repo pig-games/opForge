@@ -412,6 +412,10 @@ impl<'a> Tokenizer<'a> {
         while is_ident_char(self.current_byte()) {
             self.cursor += 1;
         }
+        // Allow a trailing prime marker for register names like AF'.
+        if self.current_byte() == b'\'' {
+            self.cursor += 1;
+        }
         let text = String::from_utf8_lossy(&self.input[start..self.cursor]).to_string();
         let upper = text.to_ascii_uppercase();
 
@@ -618,7 +622,7 @@ mod tests {
     use super::{OperatorKind, TokenKind, Tokenizer};
 
     fn test_registers(ident: &str) -> bool {
-        matches!(ident, "A" | "B")
+        matches!(ident, "A" | "B" | "AF" | "AF'")
     }
 
     #[test]
@@ -641,6 +645,28 @@ mod tests {
             tok.next_token().unwrap().kind,
             TokenKind::Register(_)
         ));
+    }
+
+    #[test]
+    fn tokenizes_register_with_prime_suffix() {
+        let mut tok = Tokenizer::with_register_checker(
+            "EX AF,AF'",
+            1,
+            super::register_checker_from_fn(test_registers),
+        );
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::Identifier(_)
+        ));
+        assert!(matches!(
+            tok.next_token().unwrap().kind,
+            TokenKind::Register(_)
+        ));
+        assert!(matches!(tok.next_token().unwrap().kind, TokenKind::Comma));
+        match tok.next_token().unwrap().kind {
+            TokenKind::Register(name) => assert_eq!(name, "AF'"),
+            other => panic!("Expected register token, got {:?}", other),
+        }
     }
 
     #[test]

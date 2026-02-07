@@ -333,17 +333,6 @@ pub static ZILOG_DIALECT_MAP: &[DialectEntry] = &[
         canonical_has_imm: true,
         transform: OperandTransform::Identity,
     },
-    // Exchange
-    // EX DE,HL → XCHG
-    DialectEntry {
-        from: "EX",
-        from_regs: 2,
-        from_has_imm: false,
-        canonical: "XCHG",
-        canonical_regs: 0,
-        canonical_has_imm: false,
-        transform: OperandTransform::Identity,
-    },
     // Rotate accumulator
     // RLCA → RLC
     DialectEntry {

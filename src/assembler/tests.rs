@@ -646,6 +646,171 @@ fn z80_cb_indexed_encode() {
 }
 
 #[test]
+fn z80_ld_absolute_indirect_forms_encode() {
+    let bytes = assemble_bytes(z80_cpu_id, "    LD A,(1234h)");
+    assert_eq!(bytes, vec![0x3A, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD (1234h),A");
+    assert_eq!(bytes, vec![0x32, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD BC,(1234h)");
+    assert_eq!(bytes, vec![0xED, 0x4B, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD (1234h),BC");
+    assert_eq!(bytes, vec![0xED, 0x43, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD HL,(1234h)");
+    assert_eq!(bytes, vec![0x2A, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD (1234h),HL");
+    assert_eq!(bytes, vec![0x22, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD IX,(1234h)");
+    assert_eq!(bytes, vec![0xDD, 0x2A, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD (1234h),IX");
+    assert_eq!(bytes, vec![0xDD, 0x22, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD IY,(1234h)");
+    assert_eq!(bytes, vec![0xFD, 0x2A, 0x34, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD (1234h),IY");
+    assert_eq!(bytes, vec![0xFD, 0x22, 0x34, 0x12]);
+}
+
+#[test]
+fn z80_ex_sp_hl_uses_xthl_opcode() {
+    let bytes = assemble_bytes(z80_cpu_id, "    EX DE,HL");
+    assert_eq!(bytes, vec![0xEB]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    EX (SP),HL");
+    assert_eq!(bytes, vec![0xE3]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    EX AF,AF'");
+    assert_eq!(bytes, vec![0x08]);
+}
+
+#[test]
+fn z80_io_forms_encode() {
+    let bytes = assemble_bytes(z80_cpu_id, "    IN A,(12h)");
+    assert_eq!(bytes, vec![0xDB, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    OUT (34h),A");
+    assert_eq!(bytes, vec![0xD3, 0x34]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    IN B,(C)");
+    assert_eq!(bytes, vec![0xED, 0x40]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    OUT (C),B");
+    assert_eq!(bytes, vec![0xED, 0x41]);
+}
+
+#[test]
+fn z80_jp_ix_iy_encode() {
+    let bytes = assemble_bytes(z80_cpu_id, "    JP IX");
+    assert_eq!(bytes, vec![0xDD, 0xE9]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    JP IY");
+    assert_eq!(bytes, vec![0xFD, 0xE9]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    JP (IX)");
+    assert_eq!(bytes, vec![0xDD, 0xE9]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    JP (IY)");
+    assert_eq!(bytes, vec![0xFD, 0xE9]);
+}
+
+#[test]
+fn z80_half_index_register_forms_encode() {
+    let bytes = assemble_bytes(z80_cpu_id, "    LD IXH,A");
+    assert_eq!(bytes, vec![0xDD, 0x67]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD A,IXL");
+    assert_eq!(bytes, vec![0xDD, 0x7D]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD IYH,12h");
+    assert_eq!(bytes, vec![0xFD, 0x26, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    INC IXH");
+    assert_eq!(bytes, vec![0xDD, 0x24]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    DEC IYL");
+    assert_eq!(bytes, vec![0xFD, 0x2D]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    ADD A,IXH");
+    assert_eq!(bytes, vec![0xDD, 0x84]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    ADC A,IYL");
+    assert_eq!(bytes, vec![0xFD, 0x8D]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    SUB IXL");
+    assert_eq!(bytes, vec![0xDD, 0x95]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    SBC A,IXH");
+    assert_eq!(bytes, vec![0xDD, 0x9C]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    AND IYL");
+    assert_eq!(bytes, vec![0xFD, 0xA5]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    XOR IXH");
+    assert_eq!(bytes, vec![0xDD, 0xAC]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    OR IXL");
+    assert_eq!(bytes, vec![0xDD, 0xB5]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    CP IYL");
+    assert_eq!(bytes, vec![0xFD, 0xBD]);
+}
+
+#[test]
+fn z80_indexed_non_cb_forms_encode() {
+    let bytes = assemble_bytes(z80_cpu_id, "    LD A,(IX+1)");
+    assert_eq!(bytes, vec![0xDD, 0x7E, 0x01]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD B,(IY+2)");
+    assert_eq!(bytes, vec![0xFD, 0x46, 0x02]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD (IX+1),A");
+    assert_eq!(bytes, vec![0xDD, 0x77, 0x01]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD (IY+2),B");
+    assert_eq!(bytes, vec![0xFD, 0x70, 0x02]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    LD (IX+1),12h");
+    assert_eq!(bytes, vec![0xDD, 0x36, 0x01, 0x12]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    INC (IX+1)");
+    assert_eq!(bytes, vec![0xDD, 0x34, 0x01]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    DEC (IY+2)");
+    assert_eq!(bytes, vec![0xFD, 0x35, 0x02]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    ADD A,(IX+1)");
+    assert_eq!(bytes, vec![0xDD, 0x86, 0x01]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    ADC A,(IY+2)");
+    assert_eq!(bytes, vec![0xFD, 0x8E, 0x02]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    SUB (IX+1)");
+    assert_eq!(bytes, vec![0xDD, 0x96, 0x01]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    SBC A,(IY+2)");
+    assert_eq!(bytes, vec![0xFD, 0x9E, 0x02]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    AND (IX+1)");
+    assert_eq!(bytes, vec![0xDD, 0xA6, 0x01]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    XOR (IY+2)");
+    assert_eq!(bytes, vec![0xFD, 0xAE, 0x02]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    OR (IX+1)");
+    assert_eq!(bytes, vec![0xDD, 0xB6, 0x01]);
+
+    let bytes = assemble_bytes(z80_cpu_id, "    CP (IY+2)");
+    assert_eq!(bytes, vec![0xFD, 0xBE, 0x02]);
+}
+
+#[test]
 fn m65c02_bbr_bbs_encode() {
     let bytes = assemble_bytes(m65c02_cpu_id, "    BBR0 $12,$0005");
     assert_eq!(bytes, vec![0x0F, 0x12, 0x02]);

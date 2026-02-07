@@ -32,7 +32,7 @@ pub fn is_register(ident: &str) -> bool {
         // Undocumented 8-bit index register halves
         "IXH" | "IXL" | "IYH" | "IYL" |
         // 16-bit register pairs
-        "AF" | "BC" | "DE" | "HL" | "SP" | "IX" | "IY" |
+        "AF" | "AF'" | "BC" | "DE" | "HL" | "SP" | "IX" | "IY" |
         // Memory operand (HL) and condition codes (used as pseudo-registers)
         // Note: M is used for both (HL) memory operand and "minus" condition
         "M" | "NZ" | "Z" | "NC" | "PO" | "PE" | "P"
@@ -63,6 +63,7 @@ mod tests {
         assert!(is_register("IX"));
         assert!(is_register("IY"));
         assert!(is_register("AF"));
+        assert!(is_register("AF'"));
 
         // Not registers
         assert!(!is_register("LD"));

@@ -192,6 +192,40 @@ impl FamilyHandler for Intel8080FamilyHandler {
         operands: &[Self::Operand],
         _ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
+        let upper = mnemonic.to_ascii_uppercase();
+
+        // Z80 undocumented half-index register forms are encoded by the Z80 CPU
+        // handler.
+        if operands.iter().any(operand_uses_half_index_register) {
+            return EncodeResult::NotFound;
+        }
+
+        // Z80 indexed memory forms `(IX+d)/(IY+d)` are encoded by the Z80 CPU handler.
+        if operands
+            .iter()
+            .any(|operand| matches!(operand, Operand::Indexed { .. }))
+        {
+            return EncodeResult::NotFound;
+        }
+
+        // Z80 two-operand I/O forms are encoded by the Z80 CPU handler.
+        if matches!(upper.as_str(), "IN" | "OUT") && operands.len() == 2 {
+            return EncodeResult::NotFound;
+        }
+
+        // Z80 jump-through-index forms are encoded by the Z80 CPU handler.
+        if upper == "JP" && operands.len() == 1 {
+            match &operands[0] {
+                Operand::Register(name, _) if is_index_register(name) => {
+                    return EncodeResult::NotFound;
+                }
+                Operand::Indexed { base, .. } if is_index_register(base) => {
+                    return EncodeResult::NotFound;
+                }
+                _ => {}
+            }
+        }
+
         // Check if mnemonic is in family table
         if !has_mnemonic(mnemonic) {
             return EncodeResult::NotFound;
@@ -291,8 +325,40 @@ fn encode_intel8080_family_operands(
 ) -> FamilyEncodeResult<Vec<u8>> {
     let upper = canonical_mnemonic.to_ascii_uppercase();
 
+    // Z80 undocumented half-index register forms are encoded by the Z80 CPU
+    // handler and should not be interpreted as 8080 family operands.
+    if operands_use_half_index_registers(operands) {
+        return FamilyEncodeResult::NotFound;
+    }
+
+    // Z80 indexed memory forms `(IX+d)/(IY+d)` are CPU-specific encodings.
+    if operands
+        .iter()
+        .any(|operand| matches!(operand, FamilyOperand::Indexed { .. }))
+    {
+        return FamilyEncodeResult::NotFound;
+    }
+
     if upper == "RST" {
         return encode_rst(operands);
+    }
+
+    // Z80 two-operand I/O forms (`IN r,(C)` / `OUT (C),r`) are CPU extensions.
+    if matches!(upper.as_str(), "IN" | "OUT") && operands.len() == 2 {
+        return FamilyEncodeResult::NotFound;
+    }
+
+    // Z80 `JP IX/IY` and `JP (IX)/(IY)` must be handled by the Z80 CPU layer.
+    if upper == "JP" && operands.len() == 1 {
+        match &operands[0] {
+            FamilyOperand::Register(name, _) if is_index_register(name) => {
+                return FamilyEncodeResult::NotFound;
+            }
+            FamilyOperand::Indexed { base, .. } if is_index_register(base) => {
+                return FamilyEncodeResult::NotFound;
+            }
+            _ => {}
+        }
     }
 
     // RLC/RRC overlap between 8080 single-byte accumulator forms and
@@ -432,6 +498,31 @@ fn encode_intel8080_family_operands(
             None,
             Some(display_mnemonic.to_string()),
         ),
+    }
+}
+
+fn operands_use_half_index_registers(operands: &[FamilyOperand]) -> bool {
+    operands.iter().any(|operand| match operand {
+        FamilyOperand::Register(name, _) | FamilyOperand::Indirect(name, _) => {
+            is_half_index_register(name)
+        }
+        FamilyOperand::Indexed { base, .. } => is_half_index_register(base),
+        _ => false,
+    })
+}
+
+fn is_half_index_register(name: &str) -> bool {
+    matches!(
+        name.to_ascii_uppercase().as_str(),
+        "IXH" | "IXL" | "IYH" | "IYL"
+    )
+}
+
+fn operand_uses_half_index_register(operand: &Operand) -> bool {
+    match operand {
+        Operand::Register(name, _) | Operand::Indirect(name, _) => is_half_index_register(name),
+        Operand::Indexed { base, .. } => is_half_index_register(base),
+        _ => false,
     }
 }
 

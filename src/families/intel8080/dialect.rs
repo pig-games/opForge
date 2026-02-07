@@ -165,7 +165,23 @@ pub fn map_zilog_to_canonical(
     let upper = mnemonic.to_ascii_uppercase();
 
     if upper == "LD" {
-        if let Some(mapped) = map_ld_operands(operands) {
+        return map_ld_operands(operands);
+    }
+
+    if upper == "EX" {
+        if let Some(mapped) = map_ex_operands(operands) {
+            return Some(mapped);
+        }
+    }
+
+    if upper == "IN" {
+        if let Some(mapped) = map_in_operands(operands) {
+            return Some(mapped);
+        }
+    }
+
+    if upper == "OUT" {
+        if let Some(mapped) = map_out_operands(operands) {
             return Some(mapped);
         }
     }
@@ -274,6 +290,29 @@ fn map_ld_operands(operands: &[FamilyOperand]) -> Option<(String, Vec<FamilyOper
     let class1 = operand_class(op1);
     let class2 = operand_class(op2);
 
+    // Z80 memory-indirect LD forms (`(nn)`) are distinct from immediate loads.
+    // Map forms with 8080 equivalents and leave remaining forms untouched so the
+    // Z80 CPU handler can encode them.
+    if let Some(addr) = immediate_indirect_expr(op2) {
+        if is_register_named(op1, "A") {
+            return Some(("LDA".to_string(), vec![FamilyOperand::Immediate(addr)]));
+        }
+        if is_register_named(op1, "HL") {
+            return Some(("LHLD".to_string(), vec![FamilyOperand::Immediate(addr)]));
+        }
+        return None;
+    }
+
+    if let Some(addr) = immediate_indirect_expr(op1) {
+        if is_register_named(op2, "A") {
+            return Some(("STA".to_string(), vec![FamilyOperand::Immediate(addr)]));
+        }
+        if is_register_named(op2, "HL") {
+            return Some(("SHLD".to_string(), vec![FamilyOperand::Immediate(addr)]));
+        }
+        return None;
+    }
+
     if class1 == OperandClass::Reg16 && class2 == OperandClass::Imm16 {
         let reg = map_reg16(op1)?;
         let imm = immediate_expr(op2)?;
@@ -314,6 +353,49 @@ fn map_ld_operands(operands: &[FamilyOperand]) -> Option<(String, Vec<FamilyOper
     }
 
     None
+}
+
+fn map_ex_operands(operands: &[FamilyOperand]) -> Option<(String, Vec<FamilyOperand>)> {
+    if operands.len() != 2 {
+        return None;
+    }
+
+    let left = &operands[0];
+    let right = &operands[1];
+
+    if (is_register_named(left, "DE") && is_register_named(right, "HL"))
+        || (is_register_named(left, "HL") && is_register_named(right, "DE"))
+    {
+        return Some(("XCHG".to_string(), Vec::new()));
+    }
+
+    if (is_indirect_named(left, "SP") && is_register_named(right, "HL"))
+        || (is_register_named(left, "HL") && is_indirect_named(right, "SP"))
+    {
+        return Some(("XTHL".to_string(), Vec::new()));
+    }
+
+    None
+}
+
+fn map_in_operands(operands: &[FamilyOperand]) -> Option<(String, Vec<FamilyOperand>)> {
+    match operands {
+        [FamilyOperand::Register(reg, _), port] if reg.eq_ignore_ascii_case("A") => {
+            let expr = immediate_indirect_expr(port)?;
+            Some(("IN".to_string(), vec![FamilyOperand::Port(expr)]))
+        }
+        _ => None,
+    }
+}
+
+fn map_out_operands(operands: &[FamilyOperand]) -> Option<(String, Vec<FamilyOperand>)> {
+    match operands {
+        [port, FamilyOperand::Register(reg, _)] if reg.eq_ignore_ascii_case("A") => {
+            let expr = immediate_indirect_expr(port)?;
+            Some(("OUT".to_string(), vec![FamilyOperand::Port(expr)]))
+        }
+        _ => None,
+    }
 }
 
 fn map_jp_operands(operands: &[FamilyOperand]) -> Option<(String, Vec<FamilyOperand>)> {
@@ -494,6 +576,13 @@ fn immediate_expr(operand: &FamilyOperand) -> Option<Expr> {
     }
 }
 
+fn immediate_indirect_expr(operand: &FamilyOperand) -> Option<Expr> {
+    match operand {
+        FamilyOperand::Immediate(Expr::Indirect(inner, _)) => Some((**inner).clone()),
+        _ => None,
+    }
+}
+
 fn is_register_like(operand: &FamilyOperand) -> bool {
     matches!(
         operand,
@@ -506,6 +595,13 @@ fn is_register_like(operand: &FamilyOperand) -> bool {
 fn is_register_named(operand: &FamilyOperand, name: &str) -> bool {
     match operand {
         FamilyOperand::Register(reg, _) => reg.eq_ignore_ascii_case(name),
+        _ => false,
+    }
+}
+
+fn is_indirect_named(operand: &FamilyOperand, name: &str) -> bool {
+    match operand {
+        FamilyOperand::Indirect(reg, _) => reg.eq_ignore_ascii_case(name),
         _ => false,
     }
 }

@@ -81,6 +81,12 @@ pub enum Operand {
     /// 16-bit immediate value or address
     Immediate16(u16, Span),
 
+    /// Indirect 16-bit address operand, e.g. `(nn)` in Z80 syntax.
+    ///
+    /// This is distinct from `Immediate16` so the CPU handler can distinguish
+    /// memory-indirect forms from plain immediates.
+    IndirectAddress16(u16, Span),
+
     /// Indexed addressing (Z80): (IX+d), (IY+d)
     Indexed {
         base: String,
@@ -110,6 +116,7 @@ impl Operand {
             Operand::Condition(_, span) => *span,
             Operand::Immediate8(_, span) => *span,
             Operand::Immediate16(_, span) => *span,
+            Operand::IndirectAddress16(_, span) => *span,
             Operand::Indexed { span, .. } => *span,
             Operand::RstVector(_, span) => *span,
             Operand::InterruptMode(_, span) => *span,

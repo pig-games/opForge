@@ -61,7 +61,7 @@ pub fn is_register(name: &str) -> bool {
         // 16-bit register pairs (all CPUs)
         "BC" | "DE" | "HL" | "SP" |
         // Accumulator + flags (Intel: PSW, Zilog: AF)
-        "AF" | "PSW" |
+        "AF" | "AF'" | "PSW" |
         // Index registers (Z80 only)
         "IX" | "IY" |
         // Memory operand via (HL)
@@ -132,6 +132,7 @@ mod tests {
         assert!(is_register("HL"));
         assert!(is_register("SP"));
         assert!(is_register("AF"));
+        assert!(is_register("AF'"));
         assert!(is_register("PSW"));
 
         // Z80-only index registers

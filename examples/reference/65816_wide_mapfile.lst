@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65816 wide mapfile coverage
@@ -24,8 +24,10 @@ Lines: 18  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-main.wide_const : 89abcdef (2309737967)
-main.entry      : ff0000 (16711680)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.entry       FF0000    prv  lbl 
+main.wide_const  89ABCDEF  prv  lbl 
 
 Total memory is 1 bytes
 

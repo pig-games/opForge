@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Module imports
@@ -24,8 +24,10 @@ Lines: 18  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-alpha.VALUE     : 0001 (1)
-alpha.OTHER     : 0002 (2)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+alpha.OTHER      0002      pub  lbl 
+alpha.VALUE      0001      pub  lbl 
 
 Total memory is 4 bytes
 

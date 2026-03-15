@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1          .cpu 8085
@@ -17,6 +17,7 @@ Lines: 5  Errors: 2  Warnings: 0
 
 SYMBOL TABLE
 
+(none)
 
 Total memory is 0 bytes
 

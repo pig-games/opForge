@@ -1,0 +1,15 @@
+[package]
+name = "cli-core"
+version = "0.9.5"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[features]
+default = []
+vm-runtime-only = []
+vm-runtime-opasm-unbundled = []
+vm-runtime-opasm-artifact = []
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+api = { package = "libopforge", path = "../opforge-lib" }

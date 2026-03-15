@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Demonstrate .statement expansion.
@@ -12,24 +12,31 @@ ADDR    BYTES                    LINE  SOURCE
 0001    FF                          9      .byte $ff
 0002    0A                         10      .byte %1010
 0003    FF                         11      .byte 0ffh
-0004    05                         12      .byte $05
-0005    62                         13      .byte 'b'
-0006    64 00                      14      .byte 'd', 0
-0008    64 02                      15      .byte 'd', 2
-000A    6C                         16      .byte 'l'
-000B    64 00                      17      .byte 'd', 0
-000D    64 02                      18      .byte 'd', 2
+----                               12      lda [$05],y
+   12 |     lda [$05],y
+        ^
+ERROR: unsupported operand: IndirectLong(Number("$05", Span { line: 12, col_start: 10, col_end: 13 }), Span { line: 12, col_start: 9, col_end: 14 })
+----                               13      move.b d0,d2
+   13 |     move.b d0,d2
+                ^
+ERROR: No instruction found for MOVE.B
+----                               14      move.l d0, d2
+   14 |     move.l d0, d2
+                 ^
+ERROR: No instruction found for MOVE.L
 
-Lines: 18  Errors: 0  Warnings: 0
+Lines: 14  Errors: 3  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 0000 (0)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            0000      prv  lbl 
 
-Total memory is 15 bytes
+Total memory is 4 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0000    07 FF 0A FF 05 62 64 00 64 02 6C 64 00 64 02
+0000    07 FF 0A FF

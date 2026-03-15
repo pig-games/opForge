@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; CLI JSON output fixture for labels/dependencies
@@ -12,9 +12,11 @@ Lines: 6  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-INIT_VALUE      : 002a (42)
-START           : 2000 (8192)
-VALUE           : 2001 (8193)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+INIT_VALUE       002A      prv  lbl 
+START            2000      prv  lbl 
+VALUE            2001      prv  lbl 
 
 Total memory is 2 bytes
 

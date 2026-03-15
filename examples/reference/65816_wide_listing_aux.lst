@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65816 wide listing auxiliary-value coverage
@@ -20,8 +20,10 @@ Lines: 14  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-main.wide_value : 123456 (1193046)
-main.buffer     : 0000 (0)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.buffer      0000      prv  lbl 
+main.wide_value  123456    prv  lbl 
 
 Total memory is 0 bytes
 

@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 relfar branch selection
@@ -25,9 +25,11 @@ Lines: 19  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 0800 (2048)
-short_target    : 0806 (2054)
-far_target      : 0905 (2309)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+far_target       0905      prv  lbl 
+short_target     0806      prv  lbl 
+start            0800      prv  lbl 
 
 Total memory is 8 bytes
 

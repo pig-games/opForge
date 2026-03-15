@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Hitachi HD6309 extension fixture
@@ -18,7 +18,9 @@ Lines: 12  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 1000 (4096)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
 
 Total memory is 12 bytes
 

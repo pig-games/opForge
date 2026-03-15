@@ -1,0 +1,22 @@
+[package]
+name = "libopforge"
+version = "0.9.5"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[features]
+default = []
+vm-runtime-only = ["asm/vm-runtime-only", "engine/vm-runtime-only"]
+vm-runtime-opasm-unbundled = ["asm/vm-runtime-opasm-unbundled"]
+vm-runtime-opasm-artifact = ["asm/vm-runtime-opasm-artifact", "engine/vm-runtime-opasm-artifact"]
+vm-parity = ["asm/vm-parity"]
+
+[dependencies]
+asm = { path = "../opforge-asm" }
+engine = { path = "../opforge-engine" }
+formatter = { path = "../opforge-formatter" }
+lsp = { path = "../opforge-lsp" }
+opcore = { path = "../opforge-core" }
+registry = { path = "../opforge-registry" }
+types = { path = "../opforge-types" }
+vm = { path = "../opforge-vm" }

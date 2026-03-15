@@ -29,15 +29,17 @@ Lines: 15  Errors: 2  Warnings: 0
 
 SYMBOL TABLE
 
-Point           : 0002 (2)
-Point.x         : 0000 (0)
-Point.y         : 0001 (1)
-__scope1.x      : 0000 (0)
-__scope1.y      : 0001 (1)
-__scope2.x      : 0002 (2)
-__scope2.y      : 0003 (3)
-__scope3.x      : 0004 (4)
-__scope3.y      : 0005 (5)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+Point            0002      prv  lbl 
+Point.x          0000      prv  lbl 
+Point.y          0001      prv  lbl 
+__scope1.x       0000      prv  lbl 
+__scope1.y       0001      prv  lbl 
+__scope2.x       0002      prv  lbl 
+__scope2.y       0003      prv  lbl 
+__scope3.x       0004      prv  lbl 
+__scope3.y       0005      prv  lbl 
 
 Total memory is 6 bytes
 

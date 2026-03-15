@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Section data across modules with include
@@ -28,7 +28,9 @@ Lines: 22  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-example.section.include.lib.LIBVAL: 0004 (4)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+example.section.include.lib.LIBVAL  0004      pub  lbl 
 
 Total memory is 4 bytes
 

@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Test program to bit-bang a single character out SOD as serial async data
@@ -48,13 +48,15 @@ Lines: 42  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-BITTIME         : 0113 (275)
-OUTBITS         : 000b (11)
-START           : 0000 (0)
-COUT            : 0002 (2)
-CO1             : 0006 (6)
-CO2             : 000e (14)
-CHILL           : 0022 (34)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+BITTIME          0113      prv  lbl 
+CHILL            0022      prv  lbl 
+CO1              0006      prv  lbl 
+CO2              000E      prv  lbl 
+COUT             0002      prv  lbl 
+OUTBITS          000B      prv  lbl 
+START            0000      prv  lbl 
 
 Total memory is 45 bytes
 

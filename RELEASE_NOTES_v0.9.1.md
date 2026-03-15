@@ -29,7 +29,7 @@ Delta summary: `119 files changed, 9559 insertions(+), 6431 deletions(-)`.
   - deterministic metadata canonicalization and stable snapshot coverage
   - host/runtime bridge API for active CPU selection + hierarchy-aware pipeline resolution
   - explicit family rollout modes: MOS6502-family is authoritative package-runtime; Intel8080-family remains staged verification (native default)
-  - optional feature-gated `.opcpu` artifact load/write path (`vm-runtime-opcpu-artifact`) using `target/vm/opforge-vm-runtime.opcpu`
+  - optional feature-gated `.opasm` artifact load/write path (`vm-runtime-opasm-artifact`) using `target/vm/opforge-vm-runtime.opasm`
   - artifact-mode MOS6502 runtime verification lane via `make test-vm-runtime-artifact`
   - explicit retention of Rust-table-driven package generation (`build_hierarchy_package_from_registry`) as the authoring path for new family/CPU onboarding
   - bounded deterministic dialect rewrite engine (VM rewrite layer)

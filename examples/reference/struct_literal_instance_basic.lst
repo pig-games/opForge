@@ -26,11 +26,13 @@ Lines: 20  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-Point           : 0002 (2)
-Point.x         : 0000 (0)
-Point.y         : 0001 (1)
-p0              : 0000 (0)
-p1              : 0000 (0)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+p0               0000      prv  lbl 
+p1               0000      prv  var 
+Point            0002      prv  lbl 
+Point.x          0000      prv  lbl 
+Point.y          0001      prv  lbl 
 
 Total memory is 6 bytes
 

@@ -36,8 +36,8 @@ jobs:
       - name: Test suite
         run: cargo test --locked
 
-  vm-opcpu-modes:
-    name: VM opcpu modes + build combos
+  vm-opasm-modes:
+    name: VM opasm modes + build combos
     runs-on: ubuntu-latest
 
     steps:
@@ -51,7 +51,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Validate vm package source modes
-        run: make test-vm-opcpu-modes
+        run: make test-vm-opasm-modes
 
       - name: Validate build-profile matrix
         run: make test-build-profile-matrix

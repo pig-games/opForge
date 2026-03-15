@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; The assembler runs two passes over the source file.  The first pass builds
@@ -295,49 +295,51 @@ Lines: 289  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-LABEL1          : 2000 (8192)
-LABEL2          : 2001 (8193)
-NOSPACE         : 2002 (8194)
-VeryVeryVeryLongLabel: 2003 (8195)
-RAMST           : 0000 (0)
-ROMST           : c000 (49152)
-num0            : 0037 (55)
-num1            : 0037 (55)
-num3            : 00a6 (166)
-num4            : 1ab4 (6836)
-num5            : 0065 (101)
-num6            : 02ef (751)
-num7            : 0209 (521)
-d1              : 2041 (8257)
-d2              : 2042 (8258)
-d3              : 2046 (8262)
-str1            : 2049 (8265)
-str2            : 204a (8266)
-str3            : 2051 (8273)
-str4            : 2059 (8281)
-CR              : 000d (13)
-LF              : 000a (10)
-words1          : 20d5 (8405)
-words2          : 20d7 (8407)
-words3          : 20d9 (8409)
-words4          : 20db (8411)
-words5          : 20df (8415)
-StrSize         : 0020 (32)
-buffer          : 20e9 (8425)
-t               : 2169 (8553)
-PREC            : 2179 (8569)
-hello           : 2198 (8600)
-strLen          : 000c (12)
-jump_tab        : 21a4 (8612)
-entries         : 0005 (5)
-SP              : 21b3 (8627)
-YES             : 0001 (1)
-TRUE            : ffff (65535)
-NO              : 0000 (0)
-FALSE           : 0000 (0)
-EX1AVAR         : 1234 (4660)
-EX1ADATA        : 4000 (16384)
-EX1A            : 4002 (16386)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+buffer           20E9      prv  lbl 
+CR               000D      prv  lbl 
+d1               2041      prv  lbl 
+d2               2042      prv  lbl 
+d3               2046      prv  lbl 
+entries          0005      prv  lbl 
+EX1A             4002      prv  lbl 
+EX1ADATA         4000      prv  lbl 
+EX1AVAR          1234      prv  lbl 
+FALSE            0000      prv  lbl 
+hello            2198      prv  lbl 
+jump_tab         21A4      prv  lbl 
+LABEL1           2000      prv  lbl 
+LABEL2           2001      prv  lbl 
+LF               000A      prv  lbl 
+NO               0000      prv  lbl 
+NOSPACE          2002      prv  lbl 
+num0             0037      prv  lbl 
+num1             0037      prv  lbl 
+num3             00A6      prv  lbl 
+num4             1AB4      prv  lbl 
+num5             0065      prv  lbl 
+num6             02EF      prv  lbl 
+num7             0209      prv  lbl 
+PREC             2179      prv  lbl 
+RAMST            0000      prv  lbl 
+ROMST            C000      prv  lbl 
+SP               21B3      prv  lbl 
+str1             2049      prv  lbl 
+str2             204A      prv  lbl 
+str3             2051      prv  lbl 
+str4             2059      prv  lbl 
+strLen           000C      prv  lbl 
+StrSize          0020      prv  lbl 
+t                2169      prv  lbl 
+TRUE             FFFF      prv  lbl 
+VeryVeryVeryLongLabel  2003      prv  lbl 
+words1           20D5      prv  lbl 
+words2           20D7      prv  lbl 
+words3           20D9      prv  lbl 
+words4           20DB      prv  lbl 
+words5           20DF      prv  lbl 
+YES              0001      prv  lbl 
 
 Total memory is 345 bytes
 

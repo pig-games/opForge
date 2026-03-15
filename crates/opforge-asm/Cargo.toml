@@ -1,0 +1,26 @@
+[package]
+name = "asm"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[features]
+default = []
+vm-parity = []
+vm-runtime-only = []
+vm-runtime-opasm-unbundled = []
+vm-runtime-opasm-artifact = []
+
+[dependencies]
+opcore = { path = "../opforge-core" }
+families = { path = "../opforge-families" }
+registry = { path = "../opforge-registry" }
+types = { path = "../opforge-types" }
+vm = { path = "../opforge-vm" }
+serde_json = "1"
+
+[dev-dependencies]
+clap = { version = "4", features = ["derive"] }
+cli-core = { path = "../opforge-cli-core" }
+engine = { path = "../opforge-engine" }
+package = { path = "../opforge-package" }

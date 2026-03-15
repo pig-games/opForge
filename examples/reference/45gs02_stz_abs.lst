@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 STZ absolute forms
@@ -17,7 +17,9 @@ Lines: 11  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 1200 (4608)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1200      prv  lbl 
 
 Total memory is 7 bytes
 

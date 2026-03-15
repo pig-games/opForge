@@ -1,1 +1,5 @@
-Preprocess failed: Commas must be quoted in statement signatures
+Assembly failed:
+3: ERROR [asm102]
+    3 | .statement move.b char:dst, char:src
+                          ^
+ERROR: Commas must be quoted in statement signatures

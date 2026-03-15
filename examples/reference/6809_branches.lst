@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Motorola 6809 branch fixture
@@ -20,10 +20,12 @@ Lines: 14  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 1000 (4096)
-near            : 1004 (4100)
-end             : 1009 (4105)
-far             : 100a (4106)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+end              1009      prv  lbl 
+far              100A      prv  lbl 
+near             1004      prv  lbl 
+start            1000      prv  lbl 
 
 Total memory is 11 bytes
 

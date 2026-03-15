@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; grouping.asm - Test generic grouping functionality
@@ -11,6 +11,7 @@ Lines: 5  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
+(none)
 
 Total memory is 4 bytes
 

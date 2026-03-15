@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Demonstrates .align
@@ -16,6 +16,7 @@ Lines: 10  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
+(none)
 
 Total memory is 2 bytes
 

@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 implied transfer/index opcode overrides
@@ -25,7 +25,9 @@ Lines: 19  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 2400 (9216)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            2400      prv  lbl 
 
 Total memory is 11 bytes
 

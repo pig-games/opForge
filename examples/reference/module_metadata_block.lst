@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Demonstrates root-module metadata block directives.
@@ -24,7 +24,9 @@ Lines: 18  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-main.START      : 0000 (0)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.START       0000      prv  lbl 
 
 Total memory is 4 bytes
 

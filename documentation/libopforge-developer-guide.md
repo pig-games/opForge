@@ -1,0 +1,386 @@
+# libopforge Developer Guide
+
+This guide is for developers who want to embed opForge as a library, build new tools on top of it, or integrate it into an existing build/editor/runtime environment.
+
+It is based on the code in this branch/worktree as of `v0.9.5`, not on an aspirational future API. Where the workspace is intentionally transitional, this guide calls that out directly.
+
+## 1. Start here
+
+If you are building:
+
+| Use case | Start with | Why |
+|---|---|---|
+| Rust CLI, build tool, GUI, server | `libopforge::asm` | This is the supported high-level embedding surface |
+| In-memory editor, browser-like host, tests | `libopforge::asm` + `libopforge::io` | Swap filesystem I/O for memory-backed providers/sinks |
+| Background validation or repeated builds | `AssemblerSession`, `AssemblerSession::prepare()`, `check()` | These separate ownership, preparation, and execution cleanly without narrowing the reusable config surface |
+| Syntax-aware editor features | `libopforge::opcore`, `libopforge::processing`, `libopforge::asm::opasm` | These expose tokenization, expression parsing, line routing, and statement processing |
+| CPU discovery or support UI | `libopforge::registry` | Introspect builtin CPUs/families/dialects without touching internals |
+| C or C++ host integration | `crates/opforge-ffi` | Thin ABI layer over the same library/session model |
+| New CPU/family/dialect implementations | direct workspace crates (`registry`, `families`, `vm`) | This is advanced extension work, not the normal stable embedding path |
+
+Recommendation: for external Rust consumers, depend on `libopforge` and stay inside its module tree unless you are intentionally extending opForge itself.
+
+## 2. Workspace map
+
+The workspace is deliberately layered.
+
+- `crates/opforge-lib` (package name `libopforge`) is the published facade crate. It defines the supported module layout and is the crate downstream Rust code should import.
+- the facade remains curated and host-facing. It defines the stable module groups, config types, session types, and high-level helpers directly from the crate-owned layout.
+- `crates/opforge-engine` owns orchestration: source loading, preprocessing, module graph expansion, registry bootstrap, output routing, runtime model loading, and lockstep coordination.
+- `crates/opforge-core` (`opcore`) owns non-assembler language semantics such as tokenization, expressions, module-item handling, macro processing, and scopes.
+- `crates/opforge-asm` owns assembler-specific behavior: statement parsing, evaluation, encoding, listings, output payloads, and assembler diagnostics/reporting.
+- `crates/opforge-vm` owns the shared VM/runtime/package machinery and the portable contracts used by VM-backed and normalized tooling paths.
+- `crates/opforge-registry` and `crates/opforge-families` own CPU/family/dialect registration plus builtin architecture behavior.
+- `crates/opforge-formatter`, `crates/opforge-lsp`, `crates/opforge-cli-core`, `crates/opforge-cli`, and `crates/opforge-ffi` are host/tool layers built on top of the split library.
+
+The practical mental model is:
+
+1. `opcore` decides whether a line is generic language structure or must be handed to another processor.
+2. `asm` handles assembler statements and output-oriented execution.
+3. `engine` ties source expansion, registry lookup, execution mode, and output sinks together.
+4. `libopforge` presents the supported host boundary over those pieces.
+
+## 3. Stable API boundary
+
+The root crate intentionally exposes a module-first API:
+
+- `libopforge::asm`
+- `libopforge::asm::opasm`
+- `libopforge::opcore`
+- `libopforge::diagnostics`
+- `libopforge::io`
+- `libopforge::processing`
+- `libopforge::registry`
+- `libopforge::lockstep`
+
+Treat `libopforge::unstable` as an escape hatch for advanced or transitional work, not as the default way to embed the library.
+
+Important boundary notes:
+
+- The normal supported Rust embedding path is `libopforge::asm::Assembler` or `libopforge::asm::AssemblerSession`.
+- The `libopforge` package in `crates/opforge-lib` is the public facade. External consumers should target that crate rather than the lower-level workspace crates directly.
+- The registry module in the stable facade is primarily for lookup and introspection. Full custom family/CPU registration is still an advanced lower-level workflow in the workspace crates.
+
+## 4. Assembly lifecycle
+
+All high-level assembly flows share the same stages:
+
+1. Choose a root source path and an `input_base`.
+2. Resolve source input through either the filesystem or a custom `SourceProvider`.
+3. Expand preprocessor directives, includes, and module graph dependencies.
+4. Resolve the target CPU through the builtin registry, optionally using `cpu_override`.
+5. Run the assembler in `Rust`, `Vm`, or `Lockstep` mode.
+6. Emit outputs through either the filesystem or a custom `OutputSink`.
+7. Consume `AsmRunReport` diagnostics and, when needed, prepared-session metadata such as `SourceMap` and dependency files.
+
+### 4.1 `input_base` matters
+
+`input_base` is not cosmetic. It drives output naming when you use default outputs such as listing and hex files.
+
+In the stable Rust API, when `input_base` is omitted, the public `assemble()` and `prepare()` paths derive it from `root_path` by removing the source extension. If your host wants artifact names that differ from that path-derived default, set `input_base` explicitly.
+
+### 4.2 Execution mode defaults
+
+The default execution mode in the stable config types is `ExecutionMode::Vm`.
+
+Use:
+
+- `ExecutionMode::Vm` for the normal current default path.
+- `ExecutionMode::Rust` when you want the native Rust continuation head.
+- `ExecutionMode::Lockstep { continuation_head: ... }` when validating Rust/VM parity and consuming a `LockstepReport`.
+
+### 4.3 `check()` versus `assemble()`
+
+Use `check()` when you want validation without output-side effects.
+
+In the stable API, `check()` explicitly normalizes the output configuration so it suppresses default outputs, labels, dependency output, binary specs, and output-file overrides before assembling. This makes it the right background-validation call for editor tooling and CI-style validation.
+
+### 4.4 `prepare()` versus one-shot execution
+
+Use a prepared flow when you need the boundary between expansion/preparation and final emission:
+
+- inspect `root_module_id()`
+- inspect `cpu_name()`
+- inspect `source_map()`
+- inspect `dependency_files()`
+- reuse the prepared state for later `assemble()` or `check()`
+
+This is especially useful in tools that want to present dependency/source-map metadata before deciding whether to emit artifacts.
+
+Contract split:
+
+- `Assembler::prepare()` and `AssemblerSession::prepare()` preserve the full grouped config needed for later prepared execution.
+- the free `prepare()` helper supports preparation inputs plus `input_base` and `execution_mode`; when omitted, `execution_mode` still defaults explicitly to `Vm`.
+- if you need a prepared flow with custom sinks, output overrides, or broader reusable output configuration, prefer `Assembler` or `AssemblerSession`.
+
+## 5. High-level Rust integration patterns
+
+### 5.1 Borrowed host integration
+
+Use `Assembler` with borrowed config when your host already owns its providers and sinks and can keep them alive for the duration of the call.
+
+```rust
+use libopforge::asm::{Assembler, AssemblerConfig, OutputFormat};
+
+let report = Assembler::with_config(
+    std::path::Path::new("src/main.asm"),
+    AssemblerConfig {
+        output: libopforge::asm::OutputOptions {
+            output_format: OutputFormat::Text,
+            ..Default::default()
+        },
+        ..Default::default()
+    },
+)
+.check()?;
+```
+
+This is a good fit for build tools, command wrappers, and short-lived requests.
+
+### 5.2 Owned or non-borrowing host integration
+
+Use `AssemblerSession` with `OwnedAssemblerConfig` when your host needs owned state, long-lived sessions, or FFI-friendly ergonomics.
+
+The workspace's public examples use this model because it maps cleanly onto in-memory and callback-oriented hosts.
+
+Reference examples:
+
+- `examples/libopforge_in_memory.rs`
+- `examples/libopforge_filesystem.rs`
+
+### 5.3 In-memory integration
+
+For editors, tests, and embedded hosts, use the concrete memory adapters re-exported from `libopforge::io`.
+
+```rust
+use libopforge::asm::{
+    AssemblerSession, DiagnosticsOptions, ExecutionMode, OwnedAssemblerConfig,
+    OwnedExecutionOptions, OwnedOutputOptions, OwnedSourceOptions,
+};
+use libopforge::io::{MemoryOutputSink, MemorySourceProvider};
+use std::sync::Arc;
+
+let source_provider = MemorySourceProvider::new().with_file(
+    "/virtual/main.asm",
+    ".module main\n    .byte $00\n.endmodule\n",
+);
+let output_sink = MemoryOutputSink::new();
+
+let report = AssemblerSession::with_config(
+    "/virtual/main.asm",
+    OwnedAssemblerConfig {
+        source: OwnedSourceOptions {
+            input_base: "/virtual/main".to_string(),
+            source_provider: Some(Arc::new(source_provider.clone())),
+            ..OwnedSourceOptions::default()
+        },
+        execution: OwnedExecutionOptions {
+            execution_mode: ExecutionMode::Vm,
+            ..OwnedExecutionOptions::default()
+        },
+        output: OwnedOutputOptions {
+            output_sink: Some(Arc::new(output_sink.clone())),
+            ..OwnedOutputOptions::default()
+        },
+        diagnostics: DiagnosticsOptions::default(),
+    },
+)
+.assemble()?;
+
+assert_eq!(report.error_count(), 0);
+```
+
+`SourceProvider` and `OutputSink` are `Send + Sync`, so it is straightforward to share them across worker threads if your host architecture requires it.
+
+### 5.4 Reusing prepared state
+
+If your tool needs stable metadata before deciding whether to emit outputs, use a prepared session:
+
+```rust
+let prepared = AssemblerSession::with_config(root_path, config).prepare()?;
+let root_module = prepared.root_module_id().to_string();
+let cpu = prepared.cpu_name().to_string();
+let dependencies = prepared.dependency_files().to_vec();
+let report = prepared.assemble()?;
+```
+
+This is a good fit for IDE build previews, incremental build orchestration, or any tool that wants to record dependency edges separately from the final artifact run.
+
+## 6. Tooling-oriented lower-level APIs
+
+Not every tool wants full assembly. The stable facade also exposes lower-level services for syntax-aware tooling.
+
+### 6.1 `libopforge::opcore`
+
+Use `opcore` when you need generic language services that are not tied to full assembly:
+
+- `tokenize_line`
+- `parse_expression`
+- `parse_expression_tokens`
+- `process_module_item`
+
+This is a good fit for:
+
+- syntax highlighting and token pipelines
+- expression-aware UIs
+- quick validation of `.use`, `.module`, and related module-item forms
+
+The `normalized` submodule exposes portable token and AST structures derived from the VM portable contract. Use this when your tool wants a serialization-friendly or FFI-friendly view rather than Rust-native parser types.
+
+### 6.2 `libopforge::processing`
+
+Use `processing` when you need editor-style routing that decides whether a line belongs to `opcore` or should fall through to assembler processing.
+
+Key entrypoints:
+
+- `editor_route_line`
+- `editor_route_line_with_model`
+- `editor_route_line_with_model_in_mode`
+- `process_opcore_expression_request`
+- `route_module_item_line`
+
+This layer returns `LineProcessingTrace`, which is useful when you want to understand which processor claimed a line or expression request.
+
+In `vm-runtime-only` builds, do not assume the CLI/runtime package fallback rules apply here. If your tool is calling the lower-level editor-routing helpers directly, pass a `HierarchyExecutionModel` through the `*_with_model` entrypoints or provide the default artifact file at `target/vm/opforge-vm-runtime.opasm` when `vm-runtime-opasm-artifact` is enabled.
+
+If neither an explicit model nor the default artifact is available, the default helpers, including `route_module_item_line`, return a runtime-model-unavailable error rather than regenerating or bundling one implicitly.
+
+### 6.3 `libopforge::asm::opasm`
+
+Use `asm::opasm` when you want CPU-aware statement parsing or processing without running a full assembly session.
+
+Typical uses:
+
+- statement-aware linting
+- per-line editor validation
+- instruction-shape inspection
+- parity or runtime-model experimentation
+
+`asm::opasm::ProcessorBuilder` is the main convenience entrypoint for CPU-aware processing. For `Vm` and `Lockstep` statement processing you must provide a `cpu_id`; the builder enforces that.
+
+The `normalized` submodule mirrors the pattern from `opcore`, exposing portable token and AST forms plus lockstep reporting.
+
+## 7. Diagnostics and metadata
+
+High-level assembly returns `AsmRunReport` on success and `AsmRunError` on failure.
+
+Useful report accessors:
+
+- `diagnostics()`
+- `error_count()`
+- `warning_count()`
+- `source_lines()`
+- `runtime_processing_traces()`
+- `lockstep_report()`
+
+The diagnostic model is richer than just line + message. A `Diagnostic` can carry:
+
+- severity
+- diagnostic code
+- file and source text
+- parser diagnostic attachment
+- related spans
+- notes
+- help entries
+- fixits
+
+That makes the stable report boundary suitable for IDEs, CI annotation, and automated fixit flows.
+
+Prepared sessions additionally expose:
+
+- `SourceMap`, which maps expanded lines back to original source origins
+- dependency file lists gathered during expansion/module loading
+
+If your tool needs to present diagnostics against preprocessed sources but navigate back to original files, `SourceMap` is the first place to look.
+
+## 8. Registry and capability introspection
+
+Use `libopforge::registry` when your tool needs to discover what the current build knows about CPUs or to validate user CPU selections before assembling.
+
+Useful entrypoints:
+
+- `default_asm_registry()`
+- `resolve_target_cpu(...)`
+- `AsmRegistry`
+- `CpuType`
+- `CpuFamily`
+
+This is appropriate for:
+
+- CPU pickers
+- project-configuration validation
+- diagnostics that want to report known CPU aliases/families
+- capability/help UIs
+
+Important limit: the stable facade exposes registry consumption and inspection well, but it is not yet the polished high-level extension API for registering brand new families from downstream code. For that work, go directly to the workspace registry/family crates and treat it as advanced platform development.
+
+## 9. FFI and non-Rust hosts
+
+`crates/opforge-ffi` mirrors the stable Rust API shape rather than inventing a separate orchestration model.
+
+The FFI surface is split into:
+
+- high-level `opforge_asm_*` entrypoints for assembly, session handles, prepared sessions, and reports
+- lower-level `opforge_opcore_*` entrypoints for generic language tooling
+- lower-level `opforge_opasm_*` entrypoints for statement tooling
+- `opforge_registry_*`, `opforge_processing_*`, and `opforge_lockstep_*` groups for introspection
+
+For non-Rust consumers, use the high-level `opforge_asm_*_with_request(...)` and session-oriented APIs built around `opforge_asm_request`.
+
+The FFI implementation is a useful reference even for Rust developers because it shows how to map the owned/session model into long-lived handles and callback-driven I/O without bypassing the stable library path.
+
+## 10. Existing tool integrations in this repo
+
+These are the best reference points when you want to see how the library is used in practice:
+
+- `examples/libopforge_in_memory.rs`: minimal in-memory embedding example using `AssemblerSession`, `MemorySourceProvider`, and `MemoryOutputSink`
+- `examples/libopforge_filesystem.rs`: minimal filesystem-backed example using the same owned/session surface
+- `crates/opforge-cli-core/src/run.rs`: maps CLI configuration onto the stable assembler config shape
+- `crates/opforge-ffi/src/lib.rs`: shows how the session/report model is exposed to C and C++
+- `crates/opforge-engine/src/processing.rs`: useful if you are implementing tooling near the editor-routing boundary
+
+One nuance worth calling out: some internal workspace crates still depend on the internal `api` crate or lower-level crates directly as part of the ongoing library-surface refinement work. For external consumers, the examples under `examples/` are the best model because they use the intended public facade.
+
+## 11. Guidance for new tools
+
+If you are starting a new integration today:
+
+- Prefer `libopforge` only. Add direct dependencies on `engine`, `asm`, `vm`, or `registry` only if you are intentionally participating in opForge internals.
+- Start with `AssemblerSession` unless you know borrowed lifetimes are the best fit. The owned/session shape is easier to adapt to services, worker pools, and FFI.
+- Use `check()` for background validation and save `assemble()` for artifact-producing actions.
+- Use `Assembler::prepare()` or `AssemblerSession::prepare()` when you need a reusable pre-expanded session boundary.
+- Use the free `prepare()` helper when you mainly want preparation metadata plus a reusable execution mode and do not need the broader prepared-output configuration surface.
+- Use memory-backed providers and sinks for tests, editor overlays, or non-filesystem hosts.
+- Use `opcore` and `processing` for language tooling instead of trying to reverse-engineer assembler execution paths.
+- Use `asm::opasm` for per-statement CPU-aware tooling instead of spinning up a full assembly pipeline.
+- Stay out of `unstable` unless you are prepared to track internal churn.
+
+## 12. Guidance for integrating into an existing tool
+
+If you already have a tool and want to add opForge support, the easiest mapping is usually:
+
+1. Map your source abstraction onto `SourceProvider`.
+2. Map your artifact/output abstraction onto `OutputSink`.
+3. Translate your config model into `OwnedAssemblerConfig`.
+4. Use `check()` for validation commands and `assemble()` for real builds.
+5. Surface `Diagnostic` data directly in your UI instead of flattening it early.
+6. If your tool already has a dependency graph, use a prepared session and `dependency_files()` to reconcile opForge's view with your own.
+7. If your tool exposes line-level editing features, add `opcore`/`processing` calls instead of reparsing everything as full builds.
+
+That approach lets opForge adapt to an existing host architecture without forcing the host to adopt filesystem-only assumptions.
+
+## 13. Recommended follow-up documentation
+
+This guide should be the entrypoint, but the repo would benefit from a small developer-doc set around it:
+
+- a focused "Embedding Cookbook" with short recipes for common host patterns
+- a "CPU/Family Extension Guide" for contributors working below the stable facade
+- a "Diagnostics and Fixits" guide for IDE and CI integrators
+- an "Execution Modes and Lockstep" guide for runtime/parity work
+
+For now, the most useful companion documents are:
+
+- `README.md`
+- `documentation/libopforge-specification.md`
+- `documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md`
+- `documentation/vm-boundary-protocol-v1.md`

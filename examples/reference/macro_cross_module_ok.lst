@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  .module macro.export.lib
@@ -37,7 +37,9 @@ Lines: 31  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-macro.export.lib.LIBVAL: 0042 (66)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+macro.export.lib.LIBVAL  0042      pub  lbl 
 
 Total memory is 7 bytes
 

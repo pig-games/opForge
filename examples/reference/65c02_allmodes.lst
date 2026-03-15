@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65C02 Additional Addressing Modes Test
@@ -95,9 +95,11 @@ Lines: 89  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-skip1           : 031e (798)
-bbr_target      : 0322 (802)
-bbs_target      : 0326 (806)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+bbr_target       0322      prv  lbl 
+bbs_target       0326      prv  lbl 
+skip1            031E      prv  lbl 
 
 Total memory is 84 bytes
 

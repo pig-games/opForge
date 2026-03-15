@@ -1,38 +1,24 @@
-[package]
-name = "opforge"
-version = "0.9.5"
-edition = "2021"
-license = "GPL-3.0-or-later"
-authors = ["Erik van der Tier"]
-repository = "https://github.com/pig-games/opForge"
-
-[[bin]]
-name = "opforge-lsp"
-path = "src/bin/opforge_lsp.rs"
-
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-serde_json = "1"
-
-[dev-dependencies]
-proptest = "1"
-
-[features]
-default = []
-# Build mode that avoids host-side family/CPU handler registration and
-# relies on VM runtime encoding paths.
-vm-runtime-only = []
-# Exclude bundled runtime package fallback; runtime package must come from
-# explicit CLI path or on-disk artifact lookup.
-vm-runtime-opcpu-unbundled = []
-# Enables loading/writing VM runtime package bytes as an on-disk artifact
-# (`target/vm/opforge-vm-runtime.opcpu`) with registry-build fallback.
-vm-runtime-opcpu-artifact = []
-# Enables additional parity-focused VM test lanes and checks.
-vm-parity = []
-
 [profile.release]
 lto = true
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
+
+[workspace]
+members = [
+	"crates/opforge-types",
+	"crates/opforge-vm",
+	"crates/opforge-package",
+	"crates/opforge-registry",
+	"crates/opforge-ffi",
+	"crates/opforge-core",
+	"crates/opforge-asm",
+	"crates/opforge-families",
+	"crates/opforge-engine",
+	"crates/opforge-formatter",
+	"crates/opforge-lsp",
+	"crates/opforge-lib",
+	"crates/opforge-cli",
+	"crates/opforge-cli-core",
+]
+resolver = "2"

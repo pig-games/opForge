@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 implied flag-control opcode overrides
@@ -22,7 +22,9 @@ Lines: 16  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 2500 (9472)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            2500      prv  lbl 
 
 Total memory is 8 bytes
 

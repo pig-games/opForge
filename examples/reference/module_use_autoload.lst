@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  .module example.autoload.lib
@@ -18,7 +18,9 @@ Lines: 12  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-example.autoload.lib.LIBVAL: 0007 (7)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+example.autoload.lib.LIBVAL  0007      pub  lbl 
 
 Total memory is 1 bytes
 

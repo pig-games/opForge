@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Preprocessor directive coverage (no .define).
@@ -16,7 +16,9 @@ Lines: 10  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-INCVAL          : 0005 (5)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+INCVAL           0005      prv  lbl 
 
 Total memory is 3 bytes
 

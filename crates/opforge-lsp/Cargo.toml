@@ -1,0 +1,12 @@
+[package]
+name = "lsp"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+serde_json = "1"
+opcore = { path = "../opforge-core" }
+engine = { path = "../opforge-engine" }
+families = { path = "../opforge-families" }
+registry = { path = "../opforge-registry" }

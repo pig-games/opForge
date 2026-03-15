@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1          .module demo
@@ -13,7 +13,9 @@ Lines: 3  Errors: 1  Warnings: 0
 
 SYMBOL TABLE
 
-demo.start      : 2000 (8192)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+demo.start       2000      prv  lbl 
 
 Total memory is 2 bytes
 

@@ -10,7 +10,7 @@ See also:
 
 ## 1. Scope
 
-This document defines the host/native ABI boundary for consuming VM hierarchy packages (`*.opcpu`) in Ultimate64-class constrained runtimes.
+This document defines the host/native ABI boundary for consuming VM hierarchy packages (`*.opasm`) in Ultimate64-class constrained runtimes.
 
 Forward note: a CPU/family-independent contract container (`*.opcore`) is planned. `.opcore` follows the same constrained-runtime ABI principles defined here (endianness/width rules, TOC traversal, ownership independence, deterministic error codes), with its own container magic/versioning as specified when introduced.
 
@@ -23,7 +23,7 @@ Goals:
 
 ### 2.1 Endianness and integer widths
 
-- All integer fields in `*.opcpu` are little-endian.
+- All integer fields in `*.opasm` are little-endian.
 - `u16` is used for container versioning and endian marker fields.
 - `u32` is used for counts, offsets, lengths, and bounded numeric runtime descriptors.
 
@@ -49,7 +49,7 @@ TOC payloads are emitted contiguously (next offset equals previous `offset + len
 
 ### 2.4 `.opcore` expression-contract payload expectations
 
-When loading `.opcore` for expression services, v1 integrations should expect owner-scoped chunk descriptors with the same precedence model already used by `.opcpu` (`dialect -> cpu -> family`):
+When loading `.opcore` for expression services, v1 integrations should expect owner-scoped chunk descriptors with the same precedence model already used by `.opasm` (`dialect -> cpu -> family`):
 
 - `EXPR`: expression evaluator contract (opcode version + budgets + diagnostic map).
 - `EXPRP`: expression-parser contract (opcode version + parser-diagnostic map).

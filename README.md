@@ -18,6 +18,7 @@ Recent directive/expression additions include range/list values, `.len(...)`, `.
 `.struct/.endstruct`, and typed struct literal instances (`Type { field: expr, ... }`).
 
 For full documentation on features and syntax, read the [opForge Reference Manual](documentation/opForge-reference-manual.md).
+For library architecture and embedding guidance, read the [libopforge Developer Guide](documentation/libopforge-developer-guide.md).
 For VM host/boundary semantics, see [VM Boundary & Protocol Specification (v1)](documentation/vm-boundary-protocol-v1.md).
 For latest release-scope implementation notes, see [RELEASE_NOTES_v0.9.5.md](RELEASE_NOTES_v0.9.5.md).
 
@@ -30,7 +31,7 @@ Prerequisites:
 Build and install locally:
 
     make build
-    cargo install --path .
+    cargo install --path crates/opforge-cli --bin opforge
 
 ## Getting started
 
@@ -84,10 +85,28 @@ Reference examples:
 
 ## Architecture overview
 
-- `src/core/`: CPU-agnostic tokenizer/parser/expressions/symbol table/diagnostics.
-- `src/assembler/`: orchestration, pass management, listing and output generation.
-- `src/families/` + CPU modules: family-shared operand handling and CPU-specific encoding.
-- `src/vm/`: VM/package/runtime components for deterministic tokenizer/parser/encode paths.
+- `libopforge`: top-level curated embedding facade and stable Rust entrypoint.
+- `opcore`: non-assembler language semantics (expressions, modules, macros, conditionals, scopes).
+- `asm`: assembler-specific parsing/evaluation/encoding/output flow.
+- `vm`: shared VM/runtime/package execution support.
+- `registry` + `families`: assembler registry layer plus builtin CPU/family implementations.
+- `engine`: session orchestration, source loading, output routing, and default runtime/bootstrap helpers.
+- `formatter`, `lsp`, `cli`, `cli-core`, `ffi`: host-facing tooling layers over the split library.
+
+Current public API note:
+- The implemented Rust embedding API is usable now and centered on `libopforge::asm::Assembler`.
+- The next API phase is the Rust-first libopforge API Aesthetics Improvement Plan, which further refines the public module layout while keeping the current execution architecture intact. See [libopforge API Aesthetics Improvement Plan](documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md).
+
+Stable public module map today:
+- `libopforge::asm`
+- `libopforge::asm::opasm`
+- `libopforge::opcore`
+- `libopforge::diagnostics`
+- `libopforge::io`
+- `libopforge::processing`
+- `libopforge::registry`
+- `libopforge::lockstep`
+- `libopforge::unstable` for advanced or transitional exports that are not part of the normal supported embedding path
 
 Build:
 
@@ -96,7 +115,7 @@ Build:
 
 Run:
 
-    cargo run -- <args>
+    cargo run -p cli --bin opforge -- <args>
 
 Release build:
 
@@ -158,23 +177,29 @@ VM rollout status (VM runtime is default):
 - Runtime rollout criteria coverage includes Motorola 6800-family assertions for both `m6809` and `hd6309` via `make test-vm-rollout-criteria`.
 
 Optional on-disk runtime package artifact mode:
-- Enable feature `vm-runtime-opcpu-artifact`.
-- Runtime then loads/writes `.opcpu` bytes at `target/vm/opforge-vm-runtime.opcpu` with registry-build fallback.
+- Enable feature `vm-runtime-opasm-artifact`.
+- Runtime then uses `.opasm` bytes at `target/vm/opforge-vm-runtime.opasm` as the default artifact path. Outside `vm-runtime-only`, that path can still be refreshed from the registry-built package; `vm-runtime-only` builds do not regenerate it implicitly.
 - Rust-table-driven package generation remains the supported authoring path for new families/CPUs (`build_hierarchy_package_from_registry`).
 
 Explicit runtime package selection:
-- Use `--opcpu-package <FILE>` (or `OPFORGE_OPCPU_PACKAGE`) to force a specific `.opcpu` package.
+- Use `--opasm-package <FILE>` (or `OPFORGE_OPASM_PACKAGE`) to force a specific `.opasm` package.
 - Explicit package selection takes precedence over artifact and bundled/runtime-generated package sources.
 
 VM-only package source modes:
-- Embedded/default mode: feature `vm-runtime-only` (bundled/runtime-generated fallback allowed).
-- Artifact mode: feature `vm-runtime-opcpu-artifact` adds default path `target/vm/opforge-vm-runtime.opcpu`.
-- Unbundled mode: feature `vm-runtime-opcpu-unbundled` disables bundled fallback.
-    - In vm-only unbundled mode, opForge requires either `--opcpu-package <FILE>` or the default artifact path (when artifact feature is enabled).
+- Embedded/default mode: feature `vm-runtime-only` for the CLI and high-level assembly/session path (bundled/runtime-generated fallback allowed there).
+- Artifact mode: feature `vm-runtime-opasm-artifact` adds default path `target/vm/opforge-vm-runtime.opasm`.
+- Unbundled mode: feature `vm-runtime-opasm-unbundled` disables bundled fallback.
+    - In vm-only unbundled mode, opForge requires either `--opasm-package <FILE>` or the default artifact path (when artifact feature is enabled).
+
+Lower-level engine/editor-helper APIs do not inherit the CLI package-source fallback rules. In `vm-runtime-only` mode, `libopforge::processing` and related editor helpers should either:
+- receive an explicit runtime model through the `*_with_model` entrypoints, or
+- run with `vm-runtime-opasm-artifact` enabled and the default artifact file present at `target/vm/opforge-vm-runtime.opasm`.
+
+If neither is available, those lower-level helpers report that the runtime model is unavailable instead of regenerating or bundling one implicitly.
 
 Cargo feature flags:
-- `vm-runtime-opcpu-artifact`: enables on-disk runtime package artifact mode (`target/vm/opforge-vm-runtime.opcpu`) with registry fallback.
-- `vm-runtime-opcpu-unbundled`: disables bundled/runtime-generated package fallback; runtime package must come from explicit path or artifact.
+- `vm-runtime-opasm-artifact`: enables on-disk runtime package artifact mode at `target/vm/opforge-vm-runtime.opasm`; non-`vm-runtime-only` paths may refresh it from the registry-built package, but `vm-runtime-only` paths require the artifact to exist already.
+- `vm-runtime-opasm-unbundled`: disables bundled/runtime-generated package fallback; runtime package must come from explicit path or artifact.
 - `vm-parity`: enables parity-focused VM test lanes and CI checks.
 
 VM-only build target variants:
@@ -184,7 +209,7 @@ VM-only build target variants:
 - `make vm-only-build-unbundled-artifact`
 
 VM package-source validation target:
-- `make test-vm-opcpu-modes`
+- `make test-vm-opasm-modes`
 
 Rebuild reference outputs (updates examples/reference/*.lst and *.hex):
 
@@ -193,6 +218,129 @@ Rebuild reference outputs (updates examples/reference/*.lst and *.hex):
 The reference set includes additional examples to exercise the newer syntax
 (dot-prefixed conditionals, preprocessor directives, and 64tass-style
 expressions).
+
+## Rust embedding and output contract
+
+The normal Rust embedding path goes through `libopforge::asm::Assembler`.
+At the root, `libopforge` exposes the stable module layout directly:
+- `libopforge::asm`
+- `libopforge::asm::opasm`
+- `libopforge::opcore`
+- `libopforge::diagnostics`
+- `libopforge::io`
+- `libopforge::processing`
+- `libopforge::registry`
+- `libopforge::lockstep`
+
+Advanced and transitional exports remain available under `libopforge::unstable`,
+but they are not part of the normal stable embedding path.
+
+Today, the stable Rust embedding surface includes:
+- `libopforge::asm::Assembler`
+- `libopforge::asm::AssemblerConfig`
+- `libopforge::asm::OwnedAssemblerConfig`
+- `libopforge::asm::AssemblerSessionBuilder`
+- `libopforge::asm::AssemblerSession`
+- `libopforge::asm::PreparedAssemblySession`
+- `libopforge::asm::prepare(...)`
+- `libopforge::asm::assemble(...)`
+- filesystem-backed defaults plus in-memory `SourceProvider` / `OutputSink`
+- explicit execution-mode selection (`Rust`, `Vm`, `Lockstep`)
+
+This surface is supported and exercised by tests and examples, but it is not
+yet the final polished module-partitioned API. The next phase is documented in
+[libopforge API Aesthetics Improvement Plan](documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md).
+
+Ownership choice now changes ergonomics rather than capability for normal
+supported assembler workflows:
+
+- borrowed Rust hosts can use `Assembler::with_config(...)` with
+  `libopforge::asm::AssemblerConfig`
+- non-borrowing hosts can use `AssemblerSession::with_config(...)` with
+  `libopforge::asm::OwnedAssemblerConfig`
+- both paths expose the same grouped source/execution/output/diagnostics
+  concerns and assemble through the same stable high-level API boundary
+
+The root facade is module-first on purpose:
+
+- prefer `libopforge::asm::Assembler` over `libopforge::Assembler`
+- prefer `libopforge::io::MemorySourceProvider` over flat root imports
+- prefer `libopforge::diagnostics::Diagnostic` over flat root imports
+
+`AssemblerConfig` currently accepts an `input_base` (the caller-chosen output
+base, usually the input file path stripped of its extension) together with an
+optional `out_dir`.
+
+Output-base selection follows this precedence (implemented in
+`resolve_output_base` in `crates/opforge-vm/src/output_model.rs`):
+
+| Condition | Selected base |
+|-----------|--------------|
+| `out_dir` is **not** set and `outfile_override` is provided | `outfile_override` |
+| `out_dir` is **not** set and `.meta.output.name` is present | metadata output name |
+| `out_dir` is **not** set, no override or metadata name | `input_base` |
+| `out_dir` is set (any of the above cases) | only the final file-name component of the selected base is kept; `out_dir` supplies the directory |
+
+When `out_dir` is present, the directory portion is always rewritten — even
+when `input_base` is an absolute path.  Only the final path component (the
+stem/filename) is preserved from the chosen base.
+
+Example: `input_base = "/src/prog"`, `out_dir = "/build"` → effective base
+`"/build/prog"`, regardless of the absolute source path.
+
+## FFI consumer contract
+
+For non-Rust hosts, the `ffi` crate now exposes stable C-facing groups over the
+same Rust API that tool authors use through `libopforge`.
+
+- Include `crates/opforge-ffi/opforge.h` for the consumer-facing contract.
+- `execution_mode` is a validated `uint32_t` scalar using the
+  `OPFORGE_EXECUTION_MODE_*` constants.
+- Use the `opforge_asm_request` surface with
+  `opforge_asm_*_with_request(...)` for high-level embedding work.
+- `root_path` is required; all non-null string inputs must be NUL-terminated
+  UTF-8.
+- Unknown scalar values or invalid strings return `OPFORGE_STATUS_INVALID_REQUEST`.
+- In-memory `opforge_asm_check_memory_with_request(...)` paths only require
+  callbacks when buffered outputs actually exist; enabling `emit_outputs`
+  alone does not make callback configuration a precondition for a no-output
+  `check`.
+- In-memory `opforge_asm_assemble_memory_with_request(...)` paths now fail with
+  `OPFORGE_STATUS_INVALID_REQUEST` if the assembly actually buffers outputs and
+  the caller did not provide callbacks to receive them, including directive-
+  driven or metadata-driven outputs. `suppress_outputs` remains the way to
+  prevent those buffered outputs when the host wants a diagnostics-only run.
+- `opforge_asm_report_message()` and the `opforge_diag_*_from_asm_report(...)`
+  string accessors return pointers borrowed from `opforge_asm_report`; they
+  remain valid until `opforge_asm_report_free()` and must not be freed by the
+  caller.
+
+Current stable FFI groups include:
+- `opforge_asm_*` for high-level assembler-oriented workflows
+- `opforge_opcore_*` for lower-level `opcore` services such as tokenization and expression parsing
+- `opforge_opasm_*` for lower-level assembler processor services
+- `opforge_diag_*` for diagnostics and result enumeration
+- `opforge_io_*` for in-memory and callback-based I/O
+- `opforge_processing_*` for processing traces
+- `opforge_lockstep_*` for lockstep reports
+- `opforge_registry_*` for read-only registry and capability queries
+
+The FFI remains intentionally thinner and more explicit than the primary Rust
+API.
+
+High-level `opforge_asm_*` reports now let C hosts enumerate not only primary
+severity/message/span data, but also diagnostic file paths, related spans,
+help text, and fix-it payloads through the `opforge_diag_*` accessors.
+
+The `opforge_asm_request` leaf-config model is the stable high-level FFI
+contract for assembler-oriented embedding.
+
+The header is manually maintained for now. Any ABI-affecting change must update
+both `crates/opforge-ffi/src/lib.rs` and `crates/opforge-ffi/opforge.h`, and
+the crate-level integration tests under `crates/opforge-ffi/tests/` are meant
+to stay green as the review backstop for that contract. The header ABI compile
+check requires a C compiler, so CI should keep `cc`, `clang`, or `gcc`
+available.
 
 ## Usage
 Syntax is:
@@ -263,14 +411,14 @@ Arguments:
                                  Select text diagnostics rendering style (default: rustc).
     --fixits-dry-run             Plan machine-applicable fixits without writing files.
     --apply-fixits               Apply machine-applicable fixits.
-    --fixits-output <FILE>       Write fixit planning/apply report JSON to FILE.
+    --fixits-output <FILE>       Write one invocation-level fixit planning/apply report JSON to FILE.
     --fmt                        Format input files in place (shorthand for --fmt-write). Folder inputs also format linked module files.
     --fmt-check                  Check formatting for input files without writing changes. Folder inputs include linked module files.
     --fmt-write                  Apply formatter changes in place for input files. Folder inputs include linked module files.
     --fmt-stdout                 Format exactly one input file and write result to stdout.
     --fmt-config <FILE>          Formatter config path (requires a formatter mode flag).
     --cpu <ID>                   Set initial CPU before parsing source directives.
-    --opcpu-package <FILE>       Load VM runtime package (.opcpu) from FILE and prefer it over bundled/artifact package sources.
+    --opasm-package <FILE>       Load VM runtime package (.opasm) from FILE and prefer it over bundled/artifact package sources.
     --print-capabilities         Print deterministic capability metadata and exit.
     --print-cpusupport           Print deterministic CPU support metadata and exit.
     --pp-macro-depth <N>         Maximum preprocessor macro expansion depth (default 64, minimum 1).

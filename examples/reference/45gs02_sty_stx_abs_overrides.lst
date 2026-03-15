@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 STY/STX absolute-family opcode overrides
@@ -19,7 +19,9 @@ Lines: 13  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 2300 (8960)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            2300      prv  lbl 
 
 Total memory is 13 bytes
 

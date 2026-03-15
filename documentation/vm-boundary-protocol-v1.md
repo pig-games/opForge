@@ -29,7 +29,7 @@ It specifies:
 
 ### 2.2 Out of scope
 - CLI UX details unrelated to host/VM boundary semantics.
-- Non-assembler tools that may consume VM packages (`*.opcpu`).
+- Non-assembler tools that may consume VM packages (`*.opasm`).
 - Future full VM replacement of preprocessor/macro engines.
 
 ## 3. Canonical Boundary Matrix

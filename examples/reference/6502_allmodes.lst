@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 6502 All Addressing Modes Test
@@ -218,8 +218,10 @@ Lines: 212  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-branch_test     : 0318 (792)
-forward         : 0328 (808)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+branch_test      0318      prv  lbl 
+forward          0328      prv  lbl 
 
 Total memory is 321 bytes
 

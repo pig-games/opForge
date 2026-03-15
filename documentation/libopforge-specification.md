@@ -1,1095 +1,1293 @@
-# libopforge Library Specification
+# libopforge Architecture Specification
 
-**Version:** 0.1-draft
-**Date:** March 3, 2026
-**Status:** Proposal
+**Version:** 0.2-draft  
+**Date:** March 9, 2026  
+**Status:** Supersedes the earlier v0.1 draft in this branch
+
+> **Draft interface notice:** This document defines the intended architecture and boundary contracts for the library split. Most workspace crate names have now converged on the short-name model, but semantic ownership is still partially transitional.
+
+> **Execution guidance:** The earlier handoff documents are historical records of completed slices. Current follow-on public API work is driven by `documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md`, together with `/Users/erik/Code/Retro/opForge/AGENTS.md`.
 
 ---
 
 ## 1. Executive Summary
 
-opForge is currently structured as a CLI-first assembler with library-like modules internally, but no formal public API boundary. This specification defines a clean, layered library (`libopforge`) with a stable Rust API surface, a C/C++ FFI binding layer, and explicit separation between: (1) opForge language-core semantics (modules, macros, segments, expressions, repetitions, conditionals), (2) assembler-specific orchestration (passes, CPU selection, listing/map/bin output), (3) CPU/family registry, (4) VM/runtime services, and (5) package loading for `.opcore` and `.opcpu` artifacts.
+The original libopforge draft assumed a mostly assembler-shaped architecture with a "core" layer below it. That is not the long-term target.
 
-The goal: any host (Rust crate, C/C++ application, WASM module, GUI IDE, language server) can embed opForge as a library and assemble source to binary without touching CLI code, filesystem assumptions, or global state.
+The intended end state is:
+
+- `opcore` is the non-assembler language engine.
+- `asm` is the assembler engine.
+- `opcore` and `asm` are siblings.
+- both consume shared VM services from a lower VM layer.
+- both preserve dual-headed execution: a native Rust head and a derived VM head.
+- package domains are separated into `.opcore` and `.opasm`.
+- the current CPU/family registry is treated as an assembler-specific registry, not as the final generic registry for the whole platform.
+
+This matters because opForge is not only moving toward a library split of the current assembler. It is also moving toward a broader processing platform where assembler is one processor among others. Future processors may include Markdown-like document processing and eventually C-oriented processing. The architecture must therefore avoid hard-coding assembler concepts into the generic library foundation.
+
+The practical consequence is that the library split must separate:
+
+1. shared neutral types and VM foundations,
+2. non-assembler language processing (`opcore`),
+3. assembler processing (`asm`),
+4. assembler-specific registration and family wiring,
+5. high-level orchestration and public embedding APIs.
 
 ---
 
-## 2. Design Principles
+## 2. Architectural Principles
 
-| Principle | Rationale |
+| Principle | Meaning |
 |---|---|
-| **No global mutable state** | Library must be safely embeddable in multi-threaded hosts |
-| **No direct I/O** | All file access goes through caller-provided trait objects; library never touches stdout/stderr/filesystem directly |
-| **Builder pattern for configuration** | Replaces CLI arg parsing; host constructs an `AssemblerConfig` |
-| **Opaque handles for FFI** | C callers get `OpForgeContext*`; all mutation goes through functions |
-| **Error-as-value** | No panics cross the API boundary; all errors are structured and recoverable |
-| **Feature-gated layers** | Core-language, assembler, VM/runtime, and FFI can be composed independently |
-| **Separate package domains** | `.opcore` (language/runtime core features) and `.opcpu` (CPU/ISA encoding features) are independently loadable |
+| `opcore` and `asm` are siblings | Neither is conceptually "under" the other; both sit over shared lower layers |
+| Keep assembler concepts out of generic layers | CPU, family, dialect, operand encoding, sections, listings, binaries must not leak into generic platform abstractions |
+| VM is shared infrastructure | VM bytecode/runtime/package plumbing sits below both `opcore` and `asm` |
+| Dual-headed execution is invariant | The refactor must preserve peer Rust and VM implementations for both `opcore` and `asm`; VM must not become a secondary compatibility path |
+| Engine coordinates, processors parse | `engine` owns dispatch contracts and shared context; `opcore`/`asm` own the actual tokenization/parsing/processing routines |
+| Package domains are explicit | `.opcore` and `.opasm` are separate domains with separate ownership and validation rules |
+| No direct host I/O in library orchestration | Source and output flow through host-provided traits |
+| Registry layering matters | The current registry is assembler-specific; a future generic processing registry will sit above processor-specific registries |
+| Transitional crates are allowed | During migration, crate names and adapters may temporarily lag behind final conceptual ownership |
 
 ---
 
-## 3. Crate Layout
+## 3. Target Layer Model
 
+### 3.1 Conceptual stack
+
+```text
+                host applications
+      (CLI, LSP, IDEs, GUI tools, FFI hosts, WASM)
+                          |
+                      libopforge
+                          |
+                       engine
+                    /              \
+                   opcore         asm
+                    \              /
+                     \            /
+                           vm
+                     /      |       \
+               types    package IO   shared syntax/value contracts
 ```
-opforge/
-├── Cargo.toml                    # workspace root
+
+### 3.2 Future expansion
+
+The longer-term platform may grow into:
+
+```text
+              generic processing registry
+             /            |             \
+      assembler registry  markdown ...   c/other
+             |
+        asm families/cpus/dialects
+```
+
+This future layer is not a first implementation milestone, but current design choices must not prevent it.
+
+---
+
+## 4. Crate Layout
+
+The crate names in the workspace now largely match the intended architecture:
+
+```text
+libopforge/
+├── Cargo.toml
 ├── crates/
-│   ├── opforge-core/             # Language-core semantics: modules/macros/segments/expressions/repetitions/conditionals + diagnostics
-│   │   └── Cargo.toml
-│   ├── opforge-asm/              # Assembler-oriented behavior: passes, directives, listing/map/bin policy
-│   │   └── Cargo.toml
-│   ├── opforge-registry/         # Assembler-specific family/CPU/dialect registry (no package loading)
-│   │   └── Cargo.toml
-│   ├── opforge-package/          # VM package loader/validator for `.opcore` and `.opcpu`
-│   │   └── Cargo.toml
-│   ├── opforge-families/         # Host-pipeline family modules (feature-gated)
-│   │   └── Cargo.toml
-│   ├── opforge-vm/               # VM runtime, token bridge, encoding bridge
-│   │   └── Cargo.toml
-│   ├── opforge-engine/           # Pipeline orchestration over core + asm + registry + package + VM
-│   │   └── Cargo.toml
-│   ├── opforge-lib/              # Public Rust API surface (re-exports + builder)
-│   │   └── Cargo.toml
-│   ├── opforge-ffi/              # C/C++ FFI binding layer (cdylib + staticlib)
-│   │   ├── Cargo.toml
-│   │   └── include/
-│   │       └── opforge.h         # Generated C header
-│   └── opforge-cli/              # CLI binary (thin wrapper over opforge-lib)
-│       └── Cargo.toml
-└── opforge-lsp/                  # Language server (consumes opforge-lib)
-    └── Cargo.toml
+│   ├── types/        (package name `types`, directory still `opforge-types/`)
+│   ├── vm/           (package name `vm`, directory still `opforge-vm/`)
+│   ├── opcore/       (package name `opcore`, directory still `opforge-core/`)
+│   ├── asm/          (package name `asm`, directory still `opforge-asm/`)
+│   ├── registry/     (package name `registry`, directory still `opforge-registry/`)
+│   ├── families/     (package name `families`, directory still `opforge-families/`)
+│   ├── engine/       (package name `engine`, directory still `opforge-engine/`)
+│   ├── api/          (transitional internal facade; the stable public contract is the `libopforge` module layout)
+│   ├── formatter/    (directory still `opforge-formatter/`)
+│   ├── lsp/          (directory still `opforge-lsp/`)
+│   ├── cli/          (directory still `opforge-cli/`)
+│   ├── cli-core/     (directory still `opforge-cli-core/`)
+│   └── ffi/          (directory still `opforge-ffi/`)
+└── libopforge/       (root facade package)
 ```
 
-### Dependency graph
+### Transitional note
 
-```
-opforge-cli ──► opforge-lib ──► opforge-engine ──► opforge-asm ──► opforge-registry
-                                    │                    │
-opforge-lsp ──► opforge-lib         ▼                    ▼
-                                opforge-core       opforge-families (feature-gated)
-                                    │
-opforge-ffi ──► opforge-lib         ▼
-                                opforge-package ──► opforge-vm
-```
+Directory names still carry the older `opforge-*` prefix in many cases. That is now mostly a filesystem/layout detail, not a statement about public crate naming.
+
+In particular:
+
+- current `opcore` is still a mixed language-plus-assembler front end in some areas,
+- current `vm` still contains assembler-facing concerns,
+- current `registry` should still be interpreted as the assembler registry layer,
+- current root crate is now the curated stable public facade, not the main implementation owner.
 
 ---
 
-## 4. Public Rust API (`opforge-lib`)
+## 5. Responsibilities by Layer
 
-### 4.1 Core Types
+### 5.1 `types`
 
-```rust
-/// Re-export everything a library consumer needs.
-pub use opforge_core::diagnostics::{Diagnostic, DiagnosticLevel, DiagnosticCode};
-pub use opforge_core::symbol::{SymbolTable, Symbol, SymbolKind};
-pub use opforge_core::image::{ImageStore, Segment};
-pub use opforge_package::{PackageManager, OpcorePackageSource, OpcpuPackageSource};
-pub use opforge_registry::{Registry, CpuId, FamilyId, DialectId};
-pub use opforge_engine::listing::ListingLine;
+Shared neutral types only:
 
-/// Assembled output from a successful assembly run.
-pub struct AssemblyResult {
-    /// Raw binary image, keyed by segment/region name.
-    pub images: ImageStore,
-    /// Symbol table after final pass.
-    pub symbols: SymbolTable,
-    /// Listing lines (if listing was requested).
-    pub listing: Option<Vec<ListingLine>>,
-    /// Hex output string (if hex was requested).
-    pub hex: Option<String>,
-    /// Map file content (if map was requested).
-    pub map: Option<String>,
-    /// Diagnostics (warnings that did not prevent assembly).
-    pub diagnostics: Vec<Diagnostic>,
-}
+- diagnostics
+- source locations and source maps
+- symbol/value models that are not assembler-specific
+- generic result/status payloads
+- package metadata structs that are not processor-specific
 
-/// All errors from a failed assembly run.
-pub struct AssemblyError {
-    /// Fatal and error-level diagnostics.
-    pub diagnostics: Vec<Diagnostic>,
-}
-```
+`types` must not own:
 
-### 4.2 Configuration Builder
+- CPU/family/dialect concepts
+- instruction encoding
+- binary/listing/map emission
+- assembler section/placement semantics
 
-```rust
-/// Output format selection.
-#[derive(Debug, Clone, Default)]
-pub struct OutputConfig {
-    pub emit_listing: bool,
-    pub emit_hex: bool,
-    pub emit_bin: bool,
-    pub emit_map: bool,
-    pub bin_range: Option<(u64, u64)>,
-}
+If a type needs CPU- or assembler-specific knowledge, it belongs elsewhere.
 
-/// Controls how the assembler resolves source and includes.
-pub trait SourceProvider: Send + Sync {
-    /// Read the contents of a source file by path.
-    /// The path is as written in `.include` directives or the root input.
-    fn read_source(&self, path: &str) -> Result<String, std::io::Error>;
+### 5.2 Shared syntax/value contracts
 
-    /// Resolve a relative include path against a parent file.
-    /// Returns the canonical path the library should use for deduplication.
-    fn resolve_include(&self, parent: &str, relative: &str) -> Result<String, std::io::Error>;
+Both `opcore` and VM code need a shared representation for things such as:
 
-    /// List files in a directory (for module discovery with `-i`).
-    fn list_directory(&self, path: &str) -> Result<Vec<String>, std::io::Error>;
-}
+- spans
+- tokens, where they are truly processor-neutral
+- expression AST or a portable expression contract
+- statement contract payloads, where they are not assembler-specific
 
-/// Controls where assembled output goes.
-pub trait OutputSink: Send + Sync {
-    /// Write binary output for a named segment/file.
-    fn write_binary(&self, name: &str, data: &[u8]) -> Result<(), std::io::Error>;
+This shared contract may live in:
 
-    /// Write text output (listing, hex, map).
-    fn write_text(&self, name: &str, content: &str) -> Result<(), std::io::Error>;
-}
+- a new `syntax` crate, or
+- carefully scoped modules inside `types`
 
-/// Main configuration for an assembly session.
-pub struct AssemblerConfig {
-    /// Root source file path (as understood by the SourceProvider).
-    pub root_source: String,
+but it must not force `vm -> opcore` as a permanent dependency edge.
 
-    /// CPU to target (e.g. "z80", "8085", "65c02", "45gs02").
-    /// If None, must be set via `.cpu` directive in source.
-    pub cpu: Option<String>,
+### 5.3 `vm`
 
-    /// Preprocessor defines (-D equivalent).
-    pub defines: Vec<(String, Option<String>)>,
+Shared VM infrastructure:
 
-    /// Additional include search directories (-i equivalent).
-    pub include_paths: Vec<String>,
+- bytecode/runtime execution
+- package container reading/writing
+- contract/version validation
+- shared VM diagnostics
+- host/runtime bridging helpers that are processor-neutral
 
-    /// Output configuration.
-    pub output: OutputConfig,
+`vm` may internally host distinct subdomains:
 
-    /// Explicit package configuration for language core and CPU extensions.
-    pub package_config: PackageConfig,
+- shared VM substrate
+- VM support used by `opcore` (`.opcore` VM)
+- VM support used by `asm` (`.opasm` VM)
 
-    /// Case-sensitive labels (default: true).
-    pub case_sensitive: bool,
+but those must remain clearly separated in ownership even if they initially live in one crate.
 
-    /// Maximum errors before aborting (0 = unlimited).
-    pub max_errors: usize,
-}
+`vm` must not become an assembler policy layer.
 
-/// Package source configuration for VM-backed features.
-#[derive(Debug, Clone, Default)]
-pub struct PackageConfig {
-    /// Optional explicit `.opcore` package source.
-    pub opcore_package: Option<OpcorePackageSource>,
-    /// Optional explicit `.opcpu` package source.
-    pub opcpu_package: Option<OpcpuPackageSource>,
-}
+### 5.3.1 Dual-headed processing rule
 
-/// Where to source the `.opcore` package.
-pub enum OpcorePackageSource {
-    /// Load from a file path.
-    File(String),
-    /// Load from raw bytes (e.g. embedded by host).
-    Bytes(Vec<u8>),
-    /// Use the bundled/default package (if available in this build).
-    Bundled,
-}
+For both processor domains, Rust and VM are peer implementations of the same processing model.
 
-/// Where to source the `.opcpu` package.
-pub enum OpcpuPackageSource {
-    /// Load from a file path.
-    File(String),
-    /// Load from raw bytes (e.g. embedded by host).
-    Bytes(Vec<u8>),
-    /// Use the bundled/default package (if available in this build).
-    Bundled,
-}
-```
+That means the correct long-term shape is:
 
-### 4.3 Assembler Entry Point
+- `opcore`
+  - Rust implementation
+  - `.opcore` VM implementation
+- `asm`
+  - Rust implementation
+  - `.opasm` VM implementation
+- `engine`
+  - coordinates one head or both heads
 
-```rust
-/// An opForge assembler session.
-///
-/// Holds registry, VM state, and configuration for one assembly run.
-/// Not reusable across runs; create a new instance per assembly.
-pub struct Assembler {
-    config: AssemblerConfig,
-    registry: Registry,
-    package_manager: PackageManager,
-    // ... internal state
-}
+The refactor must not collapse the architecture into:
 
-impl Assembler {
-    /// Create a new assembler with the given configuration.
-    pub fn new(config: AssemblerConfig) -> Result<Self, AssemblyError> {
-        // Initializes registry, initializes package manager,
-        // loads `.opcore` / `.opcpu` packages if specified,
-        // validates CPU selection.
-        todo!()
-    }
+- Rust as the only real implementation with VM as fallback, or
+- VM as an assembler-only special subsystem.
 
-    /// Run the full assembly pipeline.
-    ///
-    /// Source is read via `source`, output is written via `sink`.
-    /// Returns structured results on success, structured errors on failure.
-    pub fn assemble(
-        &mut self,
-        source: &dyn SourceProvider,
-        sink: &dyn OutputSink,
-    ) -> Result<AssemblyResult, AssemblyError> {
-        todo!()
-    }
+### 5.3.2 Lockstep parity mode
 
-    /// Run assembly but only return diagnostics (no output written).
-    /// Useful for IDE/LSP "check" mode.
-    pub fn check(
-        &mut self,
-        source: &dyn SourceProvider,
-    ) -> Vec<Diagnostic> {
-        todo!()
-    }
+After the basic refactor is complete, the architecture should support an optional lockstep mode where:
 
-    /// Query the registry for supported CPUs.
-    pub fn supported_cpus(&self) -> Vec<CpuInfo> {
-        todo!()
-    }
+1. Rust and VM implementations of a processing stage run in parallel,
+2. their normalized results are compared after each step,
+3. any divergence is logged with enough context to reproduce and diagnose it.
 
-    /// Query the registry for supported families.
-    pub fn supported_families(&self) -> Vec<FamilyInfo> {
-        todo!()
-    }
+To support that, processing stages must expose comparable checkpoints for:
 
-    /// Query build profile information.
-    pub fn build_profile(&self) -> BuildProfile {
-        todo!()
-    }
-}
+- request/span input
+- produced tokens
+- parsed AST or portable AST
+- diagnostics
+- emitted output contribution
+- important intermediate runtime decisions where needed
 
-/// Metadata about a supported CPU.
-#[derive(Debug, Clone)]
-pub struct CpuInfo {
-    pub id: String,
-    pub family: String,
-    pub aliases: Vec<String>,
-    pub dialects: Vec<String>,
-}
+Lockstep is a validation/debugging mode, not the default execution path.
 
-/// Metadata about a supported family.
-#[derive(Debug, Clone)]
-pub struct FamilyInfo {
-    pub id: String,
-    pub cpus: Vec<String>,
-    pub description: String,
-}
+### 5.3.3 Lockstep mechanism
 
-/// Build configuration metadata.
-#[derive(Debug, Clone)]
-pub struct BuildProfile {
-    pub version: String,
-    pub runtime_mode: String,   // "full-runtime" or "vm-only"
-    pub package_mode: String,   // "bundled", "unbundled", etc.
-}
-```
+The lockstep mechanism is defined in terms of execution modes, stage checkpoints,
+normalization rules, and divergence records.
 
-### 4.4 Convenience Implementations
+#### Execution modes
 
-```rust
-use std::path::PathBuf;
-use std::collections::HashMap;
+The engine-facing execution model must support three modes:
 
-/// Filesystem-backed source provider (default for CLI usage).
-pub struct FileSystemSource {
-    /// Base directory for relative path resolution.
-    pub base_dir: PathBuf,
-    /// Additional include search paths.
-    pub include_paths: Vec<PathBuf>,
-}
+- `RustOnly`
+- `VmOnly`
+- `Lockstep`
 
-impl SourceProvider for FileSystemSource {
-    fn read_source(&self, path: &str) -> Result<String, std::io::Error> { todo!() }
-    fn resolve_include(&self, parent: &str, relative: &str) -> Result<String, std::io::Error> { todo!() }
-    fn list_directory(&self, path: &str) -> Result<Vec<String>, std::io::Error> { todo!() }
-}
+`Lockstep` is validation-oriented. It runs both heads for the selected stage,
+compares normalized checkpoints, logs divergences, and then continues with a
+configured continuation head.
 
-/// In-memory source provider (useful for testing, IDE integration, WASM).
-pub struct InMemorySource {
-    pub files: HashMap<String, String>,
-}
+That continuation head is a runtime policy, not an architectural statement that
+one head is semantically authoritative.
 
-impl SourceProvider for InMemorySource {
-    fn read_source(&self, path: &str) -> Result<String, std::io::Error> { todo!() }
-    fn resolve_include(&self, parent: &str, relative: &str) -> Result<String, std::io::Error> { todo!() }
-    fn list_directory(&self, path: &str) -> Result<Vec<String>, std::io::Error> { todo!() }
-}
+#### Required runtime structures
 
-/// Filesystem-backed output sink (default for CLI usage).
-pub struct FileSystemSink {
-    pub output_dir: PathBuf,
-}
+Milestone J should implement runtime structures equivalent to:
 
-impl OutputSink for FileSystemSink {
-    fn write_binary(&self, name: &str, data: &[u8]) -> Result<(), std::io::Error> { todo!() }
-    fn write_text(&self, name: &str, content: &str) -> Result<(), std::io::Error> { todo!() }
-}
+- `ExecutionMode`
+- `ContinuationHead`
+- `LockstepStage`
+- `LockstepCheckpoint`
+- `LockstepDivergence`
+- `LockstepReport`
 
-/// In-memory output sink (captures output without filesystem).
-pub struct InMemorySink {
-    pub binaries: HashMap<String, Vec<u8>>,
-    pub texts: HashMap<String, String>,
-}
+Exact Rust type names may vary, but the roles must exist.
 
-impl OutputSink for InMemorySink {
-    fn write_binary(&self, name: &str, data: &[u8]) -> Result<(), std::io::Error> { todo!() }
-    fn write_text(&self, name: &str, content: &str) -> Result<(), std::io::Error> { todo!() }
-}
-```
+#### Checkpoint categories
 
-### 4.5 Diagnostic Model
+| Category | Produced by | Required fields | Normalization rule |
+|---|---|---|---|
+| Request | engine before stage dispatch | processor id, request kind, source id, line/span, active cpu/dialect, stage id | compare exact ids after normalizing case for processor/cpu ids |
+| Token stream | tokenization stages | token kind, normalized text/value, span | compare normalized portable-token view; ignore irrelevant host-only token metadata |
+| AST | parse stages | stage-specific AST payload | compare normalized stage AST, not raw parser internals |
+| Diagnostics | every stage | code/key, severity, primary span, stable parameters | compare normalized diagnostic record; rendered human message is secondary |
+| Emitted output | encoding/output stages | bytes and stable metadata | compare bytes exactly; compare listings/maps only after line/run normalization |
+| Runtime decision | selector/encoding stages where needed | selected mode/program/candidate ids, force state, budget profile | compare normalized decision record when the stage can diverge without changing bytes yet |
 
-```rust
-/// Severity level for a diagnostic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DiagnosticLevel {
-    Info,
-    Warning,
-    Error,
-    Fatal,
-}
+#### AST comparison policy
 
-/// Structured diagnostic code (matches existing asm### codes).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiagnosticCode(pub String);
+AST comparison is stage-specific:
 
-/// Source location for a diagnostic.
-#[derive(Debug, Clone)]
-pub struct SourceLocation {
-    pub file: String,
-    pub line: usize,
-    pub column: Option<usize>,
-}
+- `ModuleItem` and core-structural stages compare normalized core AST.
+- expression parsing compares normalized core expression AST.
+- assembler statement parsing compares normalized portable line AST first.
+- where a stage naturally yields both a portable AST and a core AST, Milestone J may compare both, but one primary comparison artifact must be chosen per stage.
 
-/// A single diagnostic message.
-#[derive(Debug, Clone)]
-pub struct Diagnostic {
-    pub level: DiagnosticLevel,
-    pub code: DiagnosticCode,
-    pub message: String,
-    pub location: Option<SourceLocation>,
-    /// The source line text (for display).
-    pub source_line: Option<String>,
-    /// Optional suggested fix or additional context.
-    pub notes: Vec<String>,
-}
-```
+Near-term primary AST choices are:
+
+- `Opcore(ModuleItem)` -> normalized core AST
+- `Opcore(Expr)` -> normalized core expression AST
+- `asm statement parse` -> normalized `PortableLineAst`
+
+#### Diagnostic comparison policy
+
+Lockstep diagnostics must compare:
+
+- stable diagnostic code/key
+- severity
+- primary span
+- stable parameter payload, if present
+
+Rendered human message text should not be the primary comparison artifact.
+It may be included in divergence logs for debugging.
+
+#### Emitted-output comparison policy
+
+Output comparison is split into incremental and end-of-stage classes:
+
+- incremental:
+  - emitted instruction/data bytes
+  - selector/encoding decisions
+  - per-line portable AST or parse result
+- end-of-stage:
+  - listing text
+  - map text
+  - linker/export-section payloads
+  - dependency/metadata files
+
+Incremental artifacts should be compared as early as possible.
+Human-oriented formatted outputs may be compared after stable normalization at
+the end of the relevant stage or run.
+
+#### Engine orchestration rule
+
+For a lockstep-enabled stage, `engine` must:
+
+1. create a single request context,
+2. dispatch it to the Rust head,
+3. dispatch the same logical request to the VM head,
+4. normalize both checkpoints,
+5. compare them,
+6. record either a match or a divergence,
+7. continue with the configured continuation head.
+
+The first implementation may continue with the Rust head by default, but that
+must remain a runtime policy choice, not a semantic design assumption.
+
+#### Divergence record
+
+A divergence record must minimally include:
+
+- stage id
+- processor domain (`opcore` / `asm`)
+- request kind
+- continuation head
+- source id and line/span
+- active cpu/dialect, if relevant
+- normalized left checkpoint
+- normalized right checkpoint
+- comparison category
+- stable mismatch reason/code
+
+Optional but recommended fields:
+
+- rendered human diagnostics
+- raw Rust payload excerpt
+- raw VM payload excerpt
+- package/runtime model identifier
+- request trace id
+
+#### First lockstep implementation target
+
+Milestone J should implement the first real lockstep stage on a narrow,
+already-runnable stage:
+
+- preferred first target: `Opcore(Expr)`
+- acceptable second target: `asm statement parse`
+
+Do not begin with formatted outputs or full assembly-run lockstep.
+
+### 5.4 `opcore`
+
+This is the non-assembler language engine.
+
+It owns language features such as:
+
+- expressions
+- modules and `.use`
+- conditionals
+- repetitions and collections
+- macro and segment expansion
+- statement-definition and statement-expansion features
+- scope rules that are part of the language rather than machine-code assembly
+
+It does not own:
+
+- CPU selection
+- operand parsing for instructions
+- instruction encoding
+- section placement for machine images
+- listing/hex/bin/map output
+- assembler-oriented directives like `.org`, `.byte`, `.word`, `.align` when used for machine-code emission
+
+`opcore` is backed by `.opcore` packages.
+
+### 5.5 `asm`
+
+This is the assembler engine.
+
+It owns:
+
+- assembler directives for data/layout/output
+- CPU/dialect selection
+- instruction parsing and encoding dispatch
+- assembler-specific tokenization/parsing overlays
+- sections, regions, placement, packing
+- binary image assembly
+- listing/map/hex/bin generation policy
+- output payload construction
+
+`asm` is backed by `.opasm` packages and assembler-family integration.
+
+### 5.6 `registry`
+
+Assembler-only registry layer:
+
+- families
+- CPUs
+- dialects
+- operand-set contracts
+- assembler runtime metadata/capabilities needed for instruction processing
+
+This is not the final generic platform registry.
+
+Any future generic registry must live above this layer and must not expose assembler-only concepts as its public vocabulary.
+
+### 5.7 `families`
+
+Concrete assembler family/CPU implementations:
+
+- intel8080, mos6502, m6800, etc.
+- CPU extensions and dialect modules
+- family registration helpers
+
+This layer is feature-gated.
+
+### 5.8 `engine`
+
+Top-level orchestrator for a single run.
+
+Responsibilities:
+
+- processor/session construction
+- package loading and VM wiring
+- coordinating `opcore` and `asm`
+- coordinating Rust-head vs VM-head execution selection
+- owning processor hand-off contracts and dispatch policy
+- host-facing source/output trait plumbing
+- structured result/error production
+- later owning optional Rust/VM lockstep comparison mode
+
+The engine is above the sibling processors. It is not itself the home of language or assembler semantics.
+
+The engine must not become a giant monolithic parser. Its role is to:
+
+- hold shared source/cursor/diagnostic context,
+- route explicit processor requests,
+- resolve fallback ownership when a processor yields "unknown",
+- return control to the requesting processor with the updated cursor/result.
+
+#### Output-base selection contract
+
+`engine` resolves the output base through `resolve_output_base`
+(`crates/opforge-vm/src/output_model.rs`).  The stabilized rules are:
+
+1. `input_base` is the caller-supplied output base (typically the input path
+   stripped of its extension).  It is always the starting point when no
+   higher-priority selector applies.
+2. Without `out_dir`, precedence is: `outfile_override` → `.meta.output.name`
+   (metadata output name) → `input_base`.
+3. With `out_dir`, the directory portion of the selected base is replaced by
+   `out_dir`.  Only the final file-name component (stem) is preserved — even
+   when `input_base` is an absolute path.
+
+This contract is verified by unit tests in `output_model.rs`.
+
+### 5.9 `libopforge`
+
+Public embedding API:
+
+- builders/configuration
+- source/output provider traits
+- convenience in-memory and filesystem adapters
+- structured assemble/check entry points
+- capability queries
+
+The first stable public API may still be assembler-centric, but it must not lock out future non-assembler processors.
+
+The stable public module map is:
+
+- `libopforge::asm`
+- `libopforge::asm::opasm`
+- `libopforge::opcore`
+- `libopforge::diagnostics`
+- `libopforge::io`
+- `libopforge::processing`
+- `libopforge::registry`
+- `libopforge::lockstep`
+- `libopforge::unstable`
 
 ---
 
-## 5. C/C++ FFI Layer (`opforge-ffi`)
+## 6. Package Domains
 
-### 5.1 Design
+Package ownership must be explicit.
 
-- Built as both `cdylib` (shared) and `staticlib` (static).
-- All public symbols prefixed with `opforge_`.
-- Opaque handle types (`OpForgeContext`, `OpForgeResult`).
-- Strings passed as `const char*` (UTF-8, null-terminated); returned strings are library-owned and freed via `opforge_string_free()`.
-- Errors communicated via return codes + `opforge_last_error()`.
-- Thread-safe: each `OpForgeContext` is independent.
+### 6.1 `.opcore`
 
-### 5.2 C Header
+Owned by `opcore`.
 
-```c
-#ifndef OPFORGE_H
-#define OPFORGE_H
+Expected scope:
 
-#include <stdint.h>
-#include <stddef.h>
+- expression/runtime helpers
+- statement-expansion semantics
+- module/import behavior support
+- language-level processing contracts
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+### 6.2 `.opasm`
 
-/* ── Opaque handles ─────────────────────────────────────── */
+Owned by `asm`.
 
-typedef struct OpForgeContext OpForgeContext;
-typedef struct OpForgeResult  OpForgeResult;
-typedef struct OpForgeDiagnosticIterator OpForgeDiagnosticIterator;
+Expected scope:
 
-/* ── Error codes ────────────────────────────────────────── */
+- instruction selector data
+- operand/encoding contracts
+- family/cpu/dialect metadata used for machine-code assembly
 
-typedef enum {
-    OPFORGE_OK              = 0,
-    OPFORGE_ERR_INVALID_ARG = 1,
-    OPFORGE_ERR_IO          = 2,
-    OPFORGE_ERR_ASSEMBLY    = 3,
-    OPFORGE_ERR_CONFIG      = 4,
-    OPFORGE_ERR_INTERNAL    = 99,
-} OpForgeStatus;
+### 6.3 Shared package plumbing
 
-typedef enum {
-    OPFORGE_DIAG_INFO    = 0,
-    OPFORGE_DIAG_WARNING = 1,
-    OPFORGE_DIAG_ERROR   = 2,
-    OPFORGE_DIAG_FATAL   = 3,
-} OpForgeDiagLevel;
+Container loading, byte encoding, schema versioning, and shared validation infrastructure may live in `vm`, but semantic ownership of package contents remains with the processor layer that consumes them.
 
-/* ── Source provider callback table ─────────────────────── */
+---
 
-typedef struct {
-    /// Read file contents. Caller provides buffer; callback fills it.
-    /// Returns 0 on success, non-zero on error.
-    /// If buf is NULL, set *len to required size and return 0.
-    int (*read_source)(
-        void* user_data,
-        const char* path,
-        char* buf,
-        size_t* len
-    );
+## 7. Registry Model
 
-    /// Resolve an include path relative to a parent.
-    /// Writes resolved path into out_path (max out_len bytes).
-    int (*resolve_include)(
-        void* user_data,
-        const char* parent_path,
-        const char* relative_path,
-        char* out_path,
-        size_t out_len
-    );
+### 7.1 Current reality
 
-    /// List files in a directory. Writes null-separated list into buf.
-    int (*list_directory)(
-        void* user_data,
-        const char* path,
-        char* buf,
-        size_t* len
-    );
+The current `ModuleRegistry` model is assembler-specific. It talks about:
 
-    /// Opaque pointer passed to all callbacks.
-    void* user_data;
-} OpForgeSourceProvider;
+- families
+- CPUs
+- dialects
+- operand sets
+- encode candidates
 
-/* ── Output sink callback table ─────────────────────────── */
+That is valid for assembler, but not for the future platform.
 
-typedef struct {
-    /// Write binary data for a named output.
-    int (*write_binary)(
-        void* user_data,
-        const char* name,
-        const uint8_t* data,
-        size_t len
-    );
+### 7.2 Required architecture rule
 
-    /// Write text data for a named output.
-    int (*write_text)(
-        void* user_data,
-        const char* name,
-        const char* content,
-        size_t len
-    );
+No new public architecture text should describe the current registry as a generic "processing registry".
 
-    void* user_data;
-} OpForgeOutputSink;
+Instead:
 
-/* ── Lifecycle ──────────────────────────────────────────── */
+- current registry work should be documented as `asm` registry work,
+- future processor-neutral registration should be treated as a later layer above processor-specific registries.
 
-/**
- * Create a new assembler context.
- * root_source: path to the main source file (as understood by provider).
- * Returns NULL on failure; call opforge_last_error() for details.
- */
-OpForgeContext* opforge_context_new(const char* root_source);
+### 7.3 Future generic processing registry
 
-/** Destroy an assembler context and free all resources. */
-void opforge_context_free(OpForgeContext* ctx);
+The future generic registry may expose concepts such as:
 
-/* ── Configuration ──────────────────────────────────────── */
+- processor id
+- accepted document/input kinds
+- package domains required
+- capabilities metadata
+- processor factory/session creation
 
-/** Set target CPU (e.g. "z80", "6502", "45gs02"). */
-OpForgeStatus opforge_set_cpu(OpForgeContext* ctx, const char* cpu);
+It should not expose:
 
-/** Add a preprocessor define. value may be NULL. */
-OpForgeStatus opforge_add_define(
-    OpForgeContext* ctx,
-    const char* name,
-    const char* value
-);
+- CPU family ids
+- dialect ids
+- instruction operand forms
 
-/** Add an include search path. */
-OpForgeStatus opforge_add_include_path(
-    OpForgeContext* ctx,
-    const char* path
-);
+---
 
-/** Enable/disable listing output. */
-OpForgeStatus opforge_set_emit_listing(OpForgeContext* ctx, int enable);
+## 8. Parsing and Front-End Boundaries
 
-/** Enable/disable hex output. */
-OpForgeStatus opforge_set_emit_hex(OpForgeContext* ctx, int enable);
+One of the main risks in the current branch is that the extracted parser still mixes language and assembler concerns.
 
-/** Enable/disable binary output. */
-OpForgeStatus opforge_set_emit_bin(OpForgeContext* ctx, int enable);
+### 8.1 Desired split
 
-/** Enable/disable map output. */
-OpForgeStatus opforge_set_emit_map(OpForgeContext* ctx, int enable);
+There should ultimately be three levels of front-end logic:
 
-/** Set binary output range (e.g. 0x0000, 0x7FFF). */
-OpForgeStatus opforge_set_bin_range(
-    OpForgeContext* ctx,
-    uint64_t start,
-    uint64_t end
-);
+1. shared lexical/expression contracts, where truly neutral,
+2. `opcore` statement parsing,
+3. `asm` statement parsing and assembler directive handling.
 
-/** Load an opcore package from file. */
-OpForgeStatus opforge_load_opcore_package_file(
-    OpForgeContext* ctx,
-    const char* path
-);
+This does **not** imply one permanent shared parser with processor-specific branches inside it.
 
-/** Load an opcore package from memory. */
-OpForgeStatus opforge_load_opcore_package_bytes(
-    OpForgeContext* ctx,
-    const uint8_t* data,
-    size_t len
-);
+The desired architecture is:
 
-/** Load an opcpu package from file. */
-OpForgeStatus opforge_load_opcpu_package_file(
-    OpForgeContext* ctx,
-    const char* path
-);
+- processor-owned subparsers,
+- engine-owned hand-off contracts,
+- shared lexical/cursor infrastructure only where genuinely neutral.
 
-/** Load an opcpu package from memory. */
-OpForgeStatus opforge_load_opcpu_package_bytes(
-    OpForgeContext* ctx,
-    const uint8_t* data,
-    size_t len
-);
+### 8.2 Processor request model
 
-/** Set maximum error count (0 = unlimited). */
-OpForgeStatus opforge_set_max_errors(OpForgeContext* ctx, size_t count);
+Processors must be able to make explicit processing requests to `engine`.
 
-/* ── Assembly ───────────────────────────────────────────── */
+Examples:
 
-/**
- * Run the full assembly pipeline.
- * Returns OPFORGE_OK on success, OPFORGE_ERR_ASSEMBLY on errors.
- * Diagnostics are available via opforge_diagnostic_*() functions.
- */
-OpForgeStatus opforge_assemble(
-    OpForgeContext* ctx,
-    const OpForgeSourceProvider* source,
-    const OpForgeOutputSink* sink
-);
+- `asm` encounters an instruction operand and explicitly requests `EXPR`
+- `opcore` encounters an embedded processor region and explicitly requests another processor capability
+- a future markdown or C processor may request `EXPR`, `MODULE_ITEM`, or other processor-defined subprocessing kinds
 
-/**
- * Check-only mode: parse and validate, no output.
- * Returns OPFORGE_OK; diagnostics available via opforge_diagnostic_*().
- */
-OpForgeStatus opforge_check(
-    OpForgeContext* ctx,
-    const OpForgeSourceProvider* source
-);
+The engine then:
 
-/* ── Results & Diagnostics ──────────────────────────────── */
+1. receives the request kind and current parse context,
+2. delegates according to current routing policy,
+3. receives either a completed result, a returned follow-up request, or an error,
+4. continues routing until the work is complete or fails.
 
-/** Get the number of diagnostics from the last run. */
-size_t opforge_diagnostic_count(const OpForgeContext* ctx);
+This allows fine-grained cooperation such as:
 
-/** Get diagnostic severity at index. */
-OpForgeDiagLevel opforge_diagnostic_level(
-    const OpForgeContext* ctx,
-    size_t index
-);
+- `asm` owning instruction and operand structure,
+- `opcore` owning expression parsing within those operands,
+- `engine` coordinating the transition without owning the parse semantics itself.
 
-/** Get diagnostic code string at index. Caller must NOT free. */
-const char* opforge_diagnostic_code(
-    const OpForgeContext* ctx,
-    size_t index
-);
+### 8.3 Return-and-resume model
 
-/** Get diagnostic message at index. Caller must NOT free. */
-const char* opforge_diagnostic_message(
-    const OpForgeContext* ctx,
-    size_t index
-);
+Some processor flows will not always know what they are looking at, or they may intentionally stop once they reach a subspan owned by another processor.
 
-/** Get diagnostic file path at index. May return NULL. */
-const char* opforge_diagnostic_file(
-    const OpForgeContext* ctx,
-    size_t index
-);
+In those cases a processor should be able to return control to `engine` together with the next request that must be handled.
 
-/** Get diagnostic line number at index. Returns 0 if unknown. */
-size_t opforge_diagnostic_line(
-    const OpForgeContext* ctx,
-    size_t index
-);
+The engine may then resume processing, for example by:
 
-/* ── Introspection ──────────────────────────────────────── */
+- first applying its default routing rule,
+- consulting the current processor/domain context,
+- trying processors in a prioritized order,
+- asking whether a processor can tokenize/parse the span under the current contract,
+- delegating to the first processor that claims the span.
 
-/**
- * Get symbol value by name after assembly.
- * Returns OPFORGE_OK and writes value if found.
- */
-OpForgeStatus opforge_symbol_value(
-    const OpForgeContext* ctx,
-    const char* name,
-    int64_t* out_value
-);
+For the near-term parser split, the default routing rule should be:
 
-/**
- * Get binary image for a named segment.
- * Sets *out_data and *out_len. Data is owned by ctx; do not free.
- */
-OpForgeStatus opforge_image_data(
-    const OpForgeContext* ctx,
-    const char* segment_name,
-    const uint8_t** out_data,
-    size_t* out_len
-);
+1. `engine` delegates to `opcore` first,
+2. if `opcore` returns `Unknown`, `engine` delegates to `asm`,
+3. later, `engine` may expand this into a broader prioritized processor search.
 
-/** Get number of supported CPUs. */
-size_t opforge_cpu_count(const OpForgeContext* ctx);
+This fallback search is likely not required for every first assembler milestone, but the architecture must reserve room for it because future multi-processor documents will need it.
 
-/** Get CPU name at index. Caller must NOT free. */
-const char* opforge_cpu_name(const OpForgeContext* ctx, size_t index);
+### 8.4 Practical routing levels
 
-/** Get CPU family at index. Caller must NOT free. */
-const char* opforge_cpu_family(const OpForgeContext* ctx, size_t index);
+Processor dispatch may happen at multiple granularities:
 
-/* ── Build info ─────────────────────────────────────────── */
+- whole file / package domain (`.opcore`, `.opasm`)
+- line / statement
+- operand / argument
+- expression
+- future embedded regions in mixed documents
 
-/** Get library version string. Caller must NOT free. */
-const char* opforge_version(void);
+The architecture should support all of these, even if implementation starts with only a subset.
 
-/** Get runtime mode ("full-runtime" or "vm-only"). */
-const char* opforge_runtime_mode(void);
+### 8.5 Source-level disambiguation note
 
-/** Get opcore package mode ("bundled", "unbundled", etc.). */
-const char* opforge_opcore_package_mode(void);
+Future source forms should be allowed to declare processor boundaries explicitly when ambiguity would otherwise exist.
 
-/** Get opcpu package mode ("bundled", "unbundled", etc.). */
-const char* opforge_opcpu_package_mode(void);
+Examples may eventually include:
 
-/* ── Utility ────────────────────────────────────────────── */
+- explicit processor-region markers,
+- processor-qualified directives,
+- processor-qualified embedded blocks.
 
-/** Get last error message (thread-local). Caller must NOT free. */
-const char* opforge_last_error(void);
+A strong candidate, building on the existing `[{ ... }]` boundary shape, is:
 
-/** Free a string returned by opforge (when documented as caller-owned). */
-void opforge_string_free(char* s);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* OPFORGE_H */
+```text
+[<processor id>{ ... }]
 ```
 
-### 5.3 C++ Wrapper (optional, header-only)
+Examples:
 
-```cpp
-#pragma once
-#include "opforge.h"
-#include <string>
-#include <vector>
-#include <stdexcept>
-#include <memory>
+```text
+[<opcore>{ value + 1 }]
+[<asm>{ lda value + 1 }]
+[<markdown>{ # title }]
+```
 
-namespace opforge {
+This shape is attractive because:
 
-struct Diagnostic {
-    OpForgeDiagLevel level;
-    std::string code;
-    std::string message;
-    std::string file;
-    size_t line;
+- it extends a boundary syntax the system already conceptually uses,
+- it makes the target processor explicit at the source level,
+- it works naturally for fine-grained embedded regions,
+- it is compatible with a future plugin model where `<processor id>` is not known to the engine at compile time.
+
+This is not required for the first implementation of the hand-off contract, but the architecture should reserve room for it so sources can opt out of heuristic routing where needed.
+
+### 8.6 Examples
+
+These belong to `opcore`:
+
+- module/import syntax
+- macro/segment definitions and expansion
+- repetition constructs
+- general expression forms
+- conditionals, where they are language constructs rather than output-layout directives
+
+These belong to `asm`:
+
+- `.org`
+- `.byte`, `.word`, `.text` when emitting machine data
+- `.align` for assembled layout
+- `.section`, `.place`, `.pack`
+- CPU-selection directives
+- instruction statements
+- assembler-specific register-aware tokenization overlays
+
+### 8.7 Processing flow examples (spec tests)
+
+The following examples are normative architecture scenarios for the current assembler feature set.
+
+They are called "spec tests" here because each one should eventually be backed by an automated test or traceable integration check.
+
+#### Flow A — Instruction operand expression
+
+Source:
+
+```asm
+    lda value + 1
+```
+
+Expected flow:
+
+1. `engine` delegates the line to `opcore` by default.
+2. `opcore` cannot classify `lda value + 1` as a core-owned statement and returns control to `engine` with a processor-scoped assembler request.
+3. `engine` delegates the same line/span to `asm`.
+4. `asm` recognizes `lda` and begins operand parsing.
+5. `asm` determines that the operand requires an `Expr` subrequest.
+6. `asm` returns control to `engine` with an `Expr` request and the current cursor/boundary.
+7. `engine` delegates that request to `opcore`.
+8. `opcore` tokenizes/parses `value + 1` until the operand boundary.
+9. `engine` returns the parsed expression to `asm`.
+10. `asm` resumes operand/instruction parsing and completes the line.
+
+Pass criteria:
+
+- default routing is `engine -> opcore` first,
+- `opcore` can explicitly return control with a follow-up request,
+- `asm` owns instruction shape and operand count rules.
+- `opcore` owns the expression AST and expression diagnostics.
+- `engine` owns only the request routing and context transfer.
+
+#### Flow B — Data directive with expression list
+
+Source:
+
+```asm
+    .byte base, base + 1, target - start
+```
+
+Expected flow:
+
+1. `engine` delegates the line to `opcore` by default.
+2. `opcore` returns control to `engine` with a processor-scoped assembler request for `.byte ...`.
+3. `engine` delegates the line to `asm`.
+4. `asm` recognizes `.byte` as an assembler emission directive.
+5. For each comma-separated argument, `asm` returns an `Expr` request through `engine`.
+6. `engine` delegates each expression request to `opcore`.
+7. `opcore` parses each expression up to the comma or end-of-line boundary.
+8. `asm` receives each parsed expression and builds the directive AST/payload.
+
+Pass criteria:
+
+- default routing falls through `opcore` before `asm`,
+- argument splitting belongs to `asm`,
+- expression parsing belongs to `opcore`,
+- repeated hand-off over a single line is supported.
+
+#### Flow C — Assembler directive with embedded expression option
+
+Source:
+
+```asm
+    .place code in ram, align = page_size * 2
+```
+
+Expected flow:
+
+1. `engine` delegates the line to `opcore` by default.
+2. `opcore` returns control to `engine` with a processor-scoped assembler request for `.place ...`.
+3. `engine` delegates the line to `asm`.
+4. `asm` recognizes `.place` and parses the assembler-owned directive structure (`section`, `in`, `region`, option keys).
+5. When `asm` reaches `align =`, it returns an `Expr` request.
+6. `engine` delegates that expression request to `opcore`.
+7. `opcore` parses `page_size * 2`.
+8. `engine` returns the expression result.
+9. `asm` completes `.place` parsing.
+
+Pass criteria:
+
+- default routing falls through `opcore` before `asm`,
+- `.place` ownership remains entirely in `asm`,
+- only the option value expression is delegated,
+- expression errors return through `engine` to the assembler directive context.
+
+#### Flow D — Core-owned statement in assembler-oriented source
+
+Source:
+
+```asm
+    .use math as m
+```
+
+Expected flow:
+
+1. `engine` receives the line in an assembler-hosted session.
+2. `engine` delegates to `opcore` first by default.
+3. `opcore` recognizes `.use` as core-owned and parses it directly.
+4. `engine` returns the parsed core-language result to the surrounding session.
+
+Pass criteria:
+
+- `.use` is not permanently implemented as an assembler semantic feature,
+- the hand-off supports core-language items appearing inside an assembler-oriented workflow.
+
+#### Flow E — Module declaration routing
+
+Source:
+
+```asm
+.module demo
+```
+
+Expected flow:
+
+1. `engine` delegates to `opcore` first by default.
+2. `opcore` recognizes `.module demo` as `ModuleItem` processing.
+3. `opcore` parses `.module demo`.
+4. `engine` resumes the surrounding orchestration with the returned module AST/result.
+
+Pass criteria:
+
+- `opcore` owns module syntax,
+- this works even when the overall assembly session later returns to assembler-owned lines.
+
+#### Flow F — Statement-definition / macro-style structural hand-off
+
+Source:
+
+```asm
+    .statement op byte:lhs "," [{ word:rhs }]
+```
+
+Expected flow:
+
+1. `engine` delegates to `opcore` first by default.
+2. If `opcore` owns statement-definition parsing, it parses the directive and returns the result directly.
+3. If `opcore` returns control with a follow-up request, `engine` delegates to `asm` or another configured processor.
+4. If `asm` becomes the wrapper owner, it must explicitly delegate any core-owned signature/body subprocessing request back through `engine`.
+5. The returned result is stored in the owning processor’s macro/statement system.
+
+Pass criteria:
+
+- statement-definition ownership is explicit,
+- signature parsing is not duplicated independently in multiple processors,
+- body ownership follows the chosen processor boundary consistently.
+
+#### Flow G — Unknown-span fallback search
+
+Source pattern:
+
+```text
+processor A encounters a span it cannot classify under the current contract
+```
+
+Expected flow:
+
+1. `engine` delegates to `opcore` first by default.
+2. `opcore` returns control to `engine` with a follow-up request or an unknown span.
+3. `engine` delegates to `asm` as the next configured processor.
+4. In later multi-processor configurations, `engine` may continue with a prioritized processor search.
+5. The first processor that claims the span receives the parse request.
+6. If no processor claims it, `engine` returns a stable diagnostic.
+
+Pass criteria:
+
+- fallback search is explicit and deterministic,
+- processor priority is configurable/documented,
+- `engine` does not silently absorb unknown syntax as its own semantics.
+
+### 8.8 Draft processor contracts
+
+The exact Rust API may change, but the architecture should move toward contracts in this shape:
+
+```rust
+pub enum OpcoreRequestKind {
+    Expr,
+    ModuleItem,
+    Statement,
+}
+
+pub enum ProcessingRequestKind {
+    Opcore(OpcoreRequestKind),
+    Processor {
+        processor: String,
+        kind: String,
+    },
+}
+
+pub struct ProcessingContext<'a> {
+    /* shared source/cursor/diagnostics/session state */
+}
+
+pub enum ProcessingReturn {
+    Request {
+        request: ProcessingRequestKind,
+        /* resume cursor / boundary / partial state */
+    },
+    Unknown,
+}
+
+pub enum ProcessingOutcome<T, E> {
+    Done(T),
+    Return(ProcessingReturn),
+    Error(E),
+}
+```
+
+This is intentionally not a closed enum over every future processor and request kind.
+
+The architecture should assume:
+
+- a stable set of built-in `opcore` request kinds is acceptable,
+- processor-specific request kinds should be carried as `(processor, kind)` identifiers,
+- future processors such as `asm`, markdown, C, or plugins must not require editing a closed global enum just to participate in hand-off.
+
+Current implementation note:
+
+- the live engine path currently uses `Opcore(Statement)`, `Opcore(Expr)`, and `Opcore(ModuleItem)`;
+- `.module` / `.use` scanning on the source-graph path now routes through the explicit `ModuleItem` request rather than relying only on direct parser-helper scans.
+- processors should be able to work until they cannot continue, then return the next request to `engine`,
+- `Unknown` is only one kind of return path; the more general case is resumable hand-off.
+
+The important design rule is semantic:
+
+- processors own the parsing/processing logic for their request kinds,
+- `engine` owns routing and fallback policy,
+- shared lexical infrastructure does not imply a single mixed parser owner.
+
+For a plugin-oriented future, the string identifiers may later be wrapped in stronger types or registries, but the contract should remain open-ended rather than exhaustively enumerated.
+
+### 8.9 Transitional allowance
+
+The parser may remain shared temporarily, but the spec target is semantic separation, not permanent cohabitation.
+
+---
+
+## 9. Public Rust API Direction
+
+The initial stable API can remain assembler-first, but it should be shaped so that a future generic processing API can sit beside or above it.
+
+### 9.1 Current stable Rust embedding boundary
+
+The current stable Rust embedding boundary is assembler-first and runs through
+the root `libopforge` facade and its stable module map.
+
+What is implemented today:
+
+- the normal embedding path is `libopforge::asm::Assembler` with `libopforge::asm::AssemblerConfig`,
+- free `prepare(...)` and `assemble(...)` helpers remain available,
+- filesystem-backed defaults and in-memory `SourceProvider` / `OutputSink`
+  adapters are both supported,
+- execution mode selection (`Rust`, `Vm`, `Lockstep`) is part of the public
+  host surface,
+- advanced host-facing and implementation-facing exports remain quarantined
+  under `libopforge::unstable`.
+
+This surface is functional and supported, but it is not yet the final polished
+module-partitioned API described in the current libopforge API Aesthetics
+Improvement Plan.
+
+### 9.2 Near-term API redesign direction
+
+The next public-API phase is Rust-first and aims to converge on a stable module
+layout where:
+
+- `libopforge::asm` is the high-level assembler-oriented API,
+- `libopforge::asm::opasm` is the lower-level assembler processor API,
+- `libopforge::opcore` is the sibling lower-level non-assembler processor API,
+- `Assembler` is implemented on top of `engine`, `opasm`, `opcore`, and shared
+  stable cross-cutting modules such as diagnostics, I/O, registry, processing,
+  and lockstep,
+- higher-level APIs dog-food lower-level stable APIs rather than bypassing them
+  with private parallel entrypoints.
+
+That redesign is captured in
+`documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md`.
+
+### 9.3 Implemented assembler-first API base shape
+
+The public Rust API is no longer only a sketch. The implemented base shape is:
+
+- `libopforge::asm::Assembler`
+- `libopforge::asm::AssemblerConfig`
+- `libopforge::asm::OwnedAssemblerConfig`
+- `libopforge::asm::AssemblerSessionBuilder`
+- `libopforge::asm::AssemblerSession`
+- `libopforge::asm::PreparedAssemblySession`
+- `libopforge::io::SourceProvider`
+- `libopforge::io::OutputSink`
+- filesystem-backed and in-memory I/O adapters
+- explicit execution-mode selection for Rust, VM, and lockstep runs
+- module-qualified imports at the root facade rather than a flat root export bag
+
+Representative usage shape:
+
+```rust
+use std::path::Path;
+
+use libopforge::asm::Assembler;
+
+let report = Assembler::builder(Path::new("examples/helloworld.asm"))
+    .execution_mode(libopforge::lockstep::ExecutionMode::Rust)
+    .assemble()?;
+```
+
+For non-borrowing hosts, the owned/session API now mirrors the same grouped
+configuration concerns through `OwnedAssemblerConfig`,
+`OwnedSourceOptions`, `OwnedExecutionOptions`, and `OwnedOutputOptions`.
+
+Representative owned-session usage shape:
+
+```rust
+use libopforge::asm::{
+    AssemblerSession, ExecutionMode, OwnedAssemblerConfig, OwnedExecutionOptions,
+    OwnedOutputOptions, OwnedSourceOptions,
 };
 
-class Context {
-    struct Deleter {
-        void operator()(OpForgeContext* p) const { opforge_context_free(p); }
-    };
-    std::unique_ptr<OpForgeContext, Deleter> ctx_;
-
-    void check(OpForgeStatus s) const {
-        if (s != OPFORGE_OK) {
-            const char* msg = opforge_last_error();
-            throw std::runtime_error(msg ? msg : "opforge error");
-        }
-    }
-
-public:
-    explicit Context(const std::string& root_source)
-        : ctx_(opforge_context_new(root_source.c_str()))
-    {
-        if (!ctx_) {
-            const char* msg = opforge_last_error();
-            throw std::runtime_error(msg ? msg : "failed to create context");
-        }
-    }
-
-    void set_cpu(const std::string& cpu) {
-        check(opforge_set_cpu(ctx_.get(), cpu.c_str()));
-    }
-
-    void add_define(const std::string& name, const std::string& value = "") {
-        check(opforge_add_define(
-            ctx_.get(), name.c_str(),
-            value.empty() ? nullptr : value.c_str()
-        ));
-    }
-
-    void add_include_path(const std::string& path) {
-        check(opforge_add_include_path(ctx_.get(), path.c_str()));
-    }
-
-    void set_emit_listing(bool enable) {
-        check(opforge_set_emit_listing(ctx_.get(), enable ? 1 : 0));
-    }
-
-    void set_emit_hex(bool enable) {
-        check(opforge_set_emit_hex(ctx_.get(), enable ? 1 : 0));
-    }
-
-    void load_opcpu_package(const std::string& path) {
-        check(opforge_load_opcpu_package_file(ctx_.get(), path.c_str()));
-    }
-
-    void load_opcore_package(const std::string& path) {
-        check(opforge_load_opcore_package_file(ctx_.get(), path.c_str()));
-    }
-
-    OpForgeStatus assemble(
-        const OpForgeSourceProvider& source,
-        const OpForgeOutputSink& sink
-    ) {
-        return opforge_assemble(ctx_.get(), &source, &sink);
-    }
-
-    std::vector<Diagnostic> diagnostics() const {
-        std::vector<Diagnostic> out;
-        size_t n = opforge_diagnostic_count(ctx_.get());
-        out.reserve(n);
-        for (size_t i = 0; i < n; ++i) {
-            Diagnostic d;
-            d.level   = opforge_diagnostic_level(ctx_.get(), i);
-            d.code    = opforge_diagnostic_code(ctx_.get(), i) ? opforge_diagnostic_code(ctx_.get(), i) : "";
-            d.message = opforge_diagnostic_message(ctx_.get(), i) ? opforge_diagnostic_message(ctx_.get(), i) : "";
-            d.file    = opforge_diagnostic_file(ctx_.get(), i) ? opforge_diagnostic_file(ctx_.get(), i) : "";
-            d.line    = opforge_diagnostic_line(ctx_.get(), i);
-            out.push_back(std::move(d));
-        }
-        return out;
-    }
-
-    static std::string version() {
-        return opforge_version();
-    }
-};
-
-} // namespace opforge
-```
-
----
-
-## 6. Feature Flags
-
-| Feature | Default | Effect |
-|---|---|---|
-| `core-language` | **yes** | Enables language-core semantics from `opforge-core` |
-| `asm-engine` | **yes** | Enables assembler orchestration from `opforge-asm` / `opforge-engine` |
-| `full-runtime` | **yes** | Includes host family/CPU pipeline modules |
-| `vm-runtime-only` | no | Excludes host family pipeline; VM-only encoding path |
-| `packages-opcore-bundled` | **yes** | Bundles default `.opcore` package |
-| `packages-opcore-unbundled` | no | No bundled `.opcore`; host must provide package |
-| `packages-opcpu-bundled` | **yes** | Bundles default `.opcpu` package |
-| `packages-opcpu-unbundled` | no | No bundled `.opcpu`; host must provide package |
-| `ffi` | no | Builds C/C++ FFI layer (`cdylib` + `staticlib`) |
-| `providers-fs` | **yes** | Includes `FileSystemSource` / `FileSystemSink` |
-| `providers-mem` | **yes** | Includes `InMemorySource` / `InMemorySink` |
-
----
-
-## 7. Cargo.toml Structure (opforge-lib)
-
-```toml
-[package]
-name = "opforge-lib"
-version = "0.10.0"
-edition = "2021"
-description = "opForge cross-CPU assembler library"
-license = "MIT OR Apache-2.0"
-
-[features]
-default = ["core-language", "asm-engine", "full-runtime", "providers-fs", "providers-mem"]
-core-language = ["opforge-core"]
-asm-engine = ["opforge-asm", "opforge-engine"]
-full-runtime = ["opforge-families"]
-vm-runtime-only = ["opforge-vm"]
-packages-opcore-bundled = ["opforge-package/opcore-bundled"]
-packages-opcore-unbundled = ["opforge-package/opcore-unbundled"]
-packages-opcpu-bundled = ["opforge-package/opcpu-bundled"]
-packages-opcpu-unbundled = ["opforge-package/opcpu-unbundled"]
-providers-fs = []
-providers-mem = []
-
-[dependencies]
-opforge-core = { path = "../opforge-core" }
-opforge-asm = { path = "../opforge-asm" }
-opforge-registry = { path = "../opforge-registry" }
-opforge-engine = { path = "../opforge-engine" }
-opforge-package = { path = "../opforge-package" }
-opforge-vm = { path = "../opforge-vm", optional = true }
-opforge-families = { path = "../opforge-families", optional = true }
-```
-
----
-
-## 8. Usage Examples
-
-### 8.1 Rust — Assemble from files
-
-```rust
-use opforge_lib::*;
-use opforge_lib::providers::{FileSystemSource, FileSystemSink};
-use std::path::PathBuf;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = AssemblerConfig {
-        root_source: "main.asm".into(),
-        cpu: Some("z80".into()),
-        defines: vec![("DEBUG".into(), Some("1".into()))],
-        include_paths: vec!["./include".into()],
-        output: OutputConfig {
-            emit_listing: true,
-            emit_hex: true,
-            emit_bin: true,
-            ..Default::default()
+let report = AssemblerSession::with_config(
+    "examples/helloworld.asm",
+    OwnedAssemblerConfig {
+        source: OwnedSourceOptions {
+            input_base: "examples/helloworld".to_string(),
+            ..OwnedSourceOptions::default()
         },
-        package_config: PackageConfig {
-            opcore_package: None,
-            opcpu_package: None,
+        execution: OwnedExecutionOptions {
+            execution_mode: ExecutionMode::Vm,
+            ..OwnedExecutionOptions::default()
         },
-        case_sensitive: true,
-        max_errors: 0,
-    };
-
-    let mut asm = Assembler::new(config)?;
-
-    let source = FileSystemSource {
-        base_dir: PathBuf::from("."),
-        include_paths: vec![PathBuf::from("./include")],
-    };
-
-    let sink = FileSystemSink {
-        output_dir: PathBuf::from("./build"),
-    };
-
-    let result = asm.assemble(&source, &sink)?;
-
-    println!("Assembly succeeded: {} symbols defined", result.symbols.len());
-    for diag in &result.diagnostics {
-        eprintln!("[{:?}] {}: {}", diag.level, diag.code.0, diag.message);
-    }
-
-    Ok(())
-}
+        output: OwnedOutputOptions::default(),
+        diagnostics: Default::default(),
+    },
+)
+.assemble()?;
 ```
 
-### 8.2 Rust — Assemble from memory (IDE/LSP)
+The current libopforge API Aesthetics Improvement Plan is therefore not about
+inventing the first public API. It is about refining the implemented base shape
+into a cleaner and more strongly partitioned stable surface.
 
-```rust
-use opforge_lib::*;
-use opforge_lib::providers::{InMemorySource, InMemorySink};
-use std::collections::HashMap;
+The supported root-facade import style is module-first:
 
-fn check_source(source_text: &str) -> Vec<Diagnostic> {
-    let config = AssemblerConfig {
-        root_source: "editor.asm".into(),
-        cpu: Some("6502".into()),
-        ..Default::default()
-    };
+- `libopforge::asm::Assembler`
+- `libopforge::asm::AssemblerConfig`
+- `libopforge::io::MemorySourceProvider`
+- `libopforge::diagnostics::Diagnostic`
 
-    let mut asm = Assembler::new(config).unwrap();
+The root crate should not be treated as a flat re-export bag for these items.
 
-    let mut files = HashMap::new();
-    files.insert("editor.asm".into(), source_text.into());
+### 9.4 API rule
 
-    let source = InMemorySource { files };
+These APIs must be implemented above the semantic split. They must not directly expose root-crate internals or assembler-only registry details as part of the stable boundary.
 
-    asm.check(&source)
-}
-```
+### 9.5 Current stable facade policy
 
-### 8.3 C — Assemble from files
+The current stable Rust embedding boundary is assembler-first and runs through
+the root `libopforge` crate and its stable module layout.
 
-```c
-#include "opforge.h"
-#include <stdio.h>
-#include <string.h>
+- `libopforge` is a curated facade, not an escape hatch for all workspace crates.
+- Types and functions exposed through `libopforge::asm`, `libopforge::opcore`, `libopforge::diagnostics`, `libopforge::io`, `libopforge::processing`, `libopforge::registry`, and `libopforge::lockstep` define the current stable Rust host surface.
+- Lower-level crates such as `asm`, `engine`, `vm`, `registry`, `families`, `formatter`, `lsp`, and `opcore` remain implementation crates or advanced dependencies, not part of the root facade contract.
+- Consumers that need those lower-level crates should depend on them explicitly and treat them as more transitional than the curated `libopforge` stable modules.
 
-/* Simple file-based source provider */
-static int read_file(void* ud, const char* path, char* buf, size_t* len) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return 1;
-    fseek(f, 0, SEEK_END);
-    size_t sz = (size_t)ftell(f);
-    if (!buf) { *len = sz; fclose(f); return 0; }
-    if (sz > *len) { fclose(f); return 1; }
-    fseek(f, 0, SEEK_SET);
-    *len = fread(buf, 1, sz, f);
-    fclose(f);
-    return 0;
-}
+This resolves the first public-boundary choice for the current slice: the root
+crate remains assembler-oriented today rather than introducing a generic
+processor-selection surface prematurely.
 
-static int write_bin(void* ud, const char* name,
-                     const uint8_t* data, size_t len) {
-    char path[256];
-    snprintf(path, sizeof(path), "build/%s", name);
-    FILE* f = fopen(path, "wb");
-    if (!f) return 1;
-    fwrite(data, 1, len, f);
-    fclose(f);
-    return 0;
-}
+### 9.6 Current C ABI slice and validation status
 
-int main(void) {
-    printf("opForge %s (%s, opcore=%s, opcpu=%s)\n",
-           opforge_version(),
-           opforge_runtime_mode(),
-           opforge_opcore_package_mode(),
-           opforge_opcpu_package_mode());
+The workspace also exposes a narrow C ABI through the optional `ffi` crate.
+That layer is intentionally thin over the same `libopforge` assembly path used
+by Rust hosts.
 
-    OpForgeContext* ctx = opforge_context_new("main.asm");
-    if (!ctx) {
-        fprintf(stderr, "Error: %s\n", opforge_last_error());
-        return 1;
-    }
+This is the current implemented FFI slice, not the final host-facing SDK shape.
+The intended sequence is:
 
-    opforge_set_cpu(ctx, "8085");
-    opforge_add_define(ctx, "MFORTH_CHANGE", "1201");
-    opforge_add_include_path(ctx, "./src");
-    opforge_set_emit_bin(ctx, 1);
-    opforge_set_emit_listing(ctx, 1);
-    opforge_set_emit_hex(ctx, 1);
+1. redesign and harden the Rust API,
+2. then widen the C ABI to mirror that Rust API cleanly,
+3. without creating a second independently-shaped orchestration layer.
 
-    OpForgeSourceProvider src = {
-        .read_source = read_file,
-        .resolve_include = NULL,  /* use default resolution */
-        .list_directory = NULL,
-        .user_data = NULL
-    };
+Current exported ABI groups:
 
-    OpForgeOutputSink sink = {
-        .write_binary = write_bin,
-        .write_text = NULL,  /* discard text output */
-        .user_data = NULL
-    };
+- `opforge_asm_*`
+- `opforge_opcore_*`
+- `opforge_opasm_*`
+- `opforge_diag_*`
+- `opforge_io_*`
+- `opforge_processing_*`
+- `opforge_lockstep_*`
+- `opforge_registry_*`
 
-    OpForgeStatus status = opforge_assemble(ctx, &src, &sink);
+High-level FFI note:
 
-    size_t n = opforge_diagnostic_count(ctx);
-    for (size_t i = 0; i < n; i++) {
-        const char* file = opforge_diagnostic_file(ctx, i);
-        printf("[%d] %s:%zu: %s: %s\n",
-               opforge_diagnostic_level(ctx, i),
-               file ? file : "<unknown>",
-               opforge_diagnostic_line(ctx, i),
-               opforge_diagnostic_code(ctx, i),
-               opforge_diagnostic_message(ctx, i));
-    }
+- the stable assembler-oriented FFI surface is `opforge_asm_request` plus the
+  `opforge_asm_*_with_request(...)` entrypoints.
 
-    if (status == OPFORGE_OK) {
-        const uint8_t* data;
-        size_t len;
-        if (opforge_image_data(ctx, "default", &data, &len) == OPFORGE_OK) {
-            printf("Image: %zu bytes\n", len);
-        }
-    }
+Current request/result contract:
 
-    opforge_context_free(ctx);
-    return status == OPFORGE_OK ? 0 : 1;
-}
-```
+- `root_path` is required and must be a valid NUL-terminated UTF-8 string.
+- `input_base` and `out_dir` are optional NUL-terminated UTF-8 strings; null or empty values fall back to library defaults.
+- `execution_mode` crosses the ABI as a validated `u32` scalar using the `OPFORGE_EXECUTION_MODE_*` constants declared in `crates/opforge-ffi/src/lib.rs` and mirrored in `crates/opforge-ffi/opforge.h`.
+- Unknown `execution_mode` values return `InvalidRequest` instead of being interpreted as Rust enums through the ABI.
+- `emit_outputs` is a `u8` flag inside `opforge_asm_output_options`.
+- in-memory high-level `check` entrypoints only require callbacks when
+  buffered outputs actually exist; setting `emit_outputs` does not by itself
+  make `write_file` a precondition for a no-output `check` path.
+- in-memory high-level `assemble` entrypoints fail with `InvalidRequest` when
+  the operation actually buffers outputs but the caller did not provide output
+  callbacks to receive them, including directive-driven or metadata-driven
+  outputs that arise even when `emit_outputs` is zero.
+- `suppress_outputs` is the explicit way to prevent those directive-driven or
+  metadata-driven buffered outputs for diagnostics-only in-memory runs.
+- `opforge_asm_report_message()` and the string-returning
+- `opforge_diag_*_from_asm_report(...)` accessors instead return pointers
+  borrowed from `opforge_asm_report`; they remain valid until
+  `opforge_asm_report_free()` and must not be freed by the caller.
+- `OpforgeStatus` remains a small result enum for Rust consumers and is mirrored in the manual C header as `opforge_status` / `OPFORGE_STATUS_*`.
+- high-level `opforge_asm_*` reports now support rich `opforge_diag_*`
+  enumeration for diagnostic code, file, related-span, help, and fix-it data
+  in addition to the primary severity/message/span fields.
+- the preferred grouped high-level FFI request mirrors the stable Rust config
+  families explicitly through `opforge_asm_source_options`,
+  `opforge_asm_execution_options`, `opforge_asm_output_options`,
+  `opforge_asm_diagnostics_options`, and the top-level
+  `opforge_asm_request`.
+- `opforge_asm_execution_options` includes the stable Rust request-scoped
+  execution override slice: `cpu_override`, `max_loop_iterations`, and
+  `opasm_package_path`.
+- `opforge_asm_output_options` includes the stable Rust output override slice:
+  `go_addr`, textual `bin_specs`, `fill_byte` with `fill_byte_set`, and
+  `suppress_outputs`, in addition to the existing default-output and metadata
+  path controls.
+- grouped FFI `label_output_format = OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT` now
+  means "use the stable Rust facade default" rather than the renderer's
+  separate `LabelOutputFormat::Default` variant; today that stable default is
+  VICE-style text labels.
+
+Header and review policy:
+
+- `crates/opforge-ffi/opforge.h` is manually maintained for this slice rather than generated.
+- Any ABI-affecting change must update both the Rust definitions in `crates/opforge-ffi/src/lib.rs` and the checked-in header in the same review.
+- `crates/opforge-ffi/tests/abi_contract.rs` exists to exercise the exported boundary and help catch drift between the Rust facade and consumer-facing expectations, including a C compile/static-assert check against `opforge.h` when a C compiler is available.
+- CI should keep a C compiler available so this header drift check remains enforced rather than degrading to a skip.
+
+Rust facade policy:
+
+- `libopforge` is the stable public Rust facade.
+- Advanced tool-facing exports that are not part of the stable host contract are quarantined under `libopforge::unstable` rather than being re-exported at the top level.
+
+Current validation strategy:
+
+- `crates/opforge-lib/src/lib.rs` carries focused in-memory facade tests for prepare/assemble/check plus Rust, VM, and lockstep execution paths.
+- `crates/opforge-ffi/src/lib.rs` carries crate-local smoke and negative-path tests for null pointers, UTF-8 validation, scalar execution-mode validation, and message ownership.
+- `crates/opforge-ffi/tests/abi_contract.rs` adds crate-level integration coverage over the exported FFI boundary.
+
+The current FFI boundary is therefore real but intentionally narrow:
+
+- it proves that the library can be consumed from C,
+- it is appropriate for smoke-path consumers today,
+- it is not yet the final ergonomic FFI surface for tool developers.
 
 ---
 
-## 9. Migration Plan
+## 10. Feature Model
 
-### Phase 1 — Extract `opforge-core` (v0.10.0)
-- Move language-core modules (modules, macros, segments, expressions, repetitions, conditionals, diagnostics) into `crates/opforge-core/`.
-- No public API changes; CLI binary re-exports from internal path.
-- All tests pass unchanged.
+The v0.1 feature section no longer matches the real target closely enough.
 
-### Phase 2 — Extract `opforge-asm` + `opforge-registry` + `opforge-engine` (v0.11.0)
-- Split assembler behavior, registry, and orchestration into separate crates.
-- Keep `opforge-registry` assembler-specific (family/CPU/dialect only).
-- Introduce `SourceProvider` / `OutputSink` traits internally.
-- CLI still owns I/O; engine uses traits.
+The architecture should instead distinguish:
 
-### Phase 3 — Introduce `opforge-package` + dual package loading (v0.12.0)
-- Add package loader/validator crate dedicated to `.opcore` and `.opcpu` artifacts.
-- Remove VM package loading responsibilities from `opforge-registry`.
-- Define package precedence rules (explicit path/bytes > bundled fallback).
+- always-on shared foundations
+  - types
+  - VM core
+  - package/container plumbing
+- optional assembler family/runtime bundle
+- optional package bundling per domain
+  - `.opcore`
+  - `.opasm`
+- optional FFI layer
+- optional host adapters
+  - filesystem providers
+  - memory providers
 
-### Phase 4 — Publish `opforge-lib` (v0.13.0)
-- Create `opforge-lib` re-export crate with builder API.
-- Refactor CLI to be a thin wrapper over `opforge-lib`.
-- Refactor LSP to consume `opforge-lib`.
-- All existing tests pass; add library-level integration tests.
+Suggested eventual feature names:
 
-### Phase 5 — FFI layer (v0.14.0)
-- Implement `opforge-ffi` crate.
-- Generate `opforge.h` (manually maintained or via `cbindgen`).
-- Add C integration tests.
-- Ship `libopforge.a` + `libopforge.so`/`.dylib`/`.dll` in release artifacts.
+| Feature | Effect |
+|---|---|
+| `asm-runtime` | Enables assembler processor and assembler-family wiring |
+| `asm-families` | Enables built-in CPU/family modules |
+| `packages-opcore-bundled` | Bundles default `.opcore` packages |
+| `packages-opasm-bundled` | Bundles default `.opasm` packages |
+| `ffi` | Builds C/C++ FFI layer |
+| `providers-fs` | Filesystem source/sink adapters |
+| `providers-mem` | In-memory source/sink adapters |
 
-### Phase 6 — Feature-gate families and package bundles (v0.15.0)
-- Move family modules behind `full-runtime` feature in `opforge-families`.
-- VM-only builds exclude `opforge-families` entirely.
-- Allow independent bundle/unbundle selection for `.opcore` and `.opcpu` defaults.
-- Measure and document binary size reduction.
+Exact names may change, but the semantic split should not.
 
 ---
 
-## 10. Testing Strategy
+## 11. Migration Phases
 
-| Layer | Test Type | Location |
+### Phase 1 — Neutral foundations
+
+- finish extracting neutral shared types,
+- define shared syntax/value contracts,
+- establish VM-core boundaries,
+- document current transitional crate roles.
+
+### Phase 2 — Separate semantic ownership
+
+- split current mixed `core` into non-assembler `opcore` and assembler-owned pieces,
+- move assembler-only concepts out of `core`,
+- treat current registry as assembler-specific.
+
+### Phase 3 — Split VM usage by package domain
+
+- make `.opcore` and `.opasm` ownership explicit,
+- isolate assembler-specific VM helpers from language-core VM helpers,
+- keep Rust and VM as peer heads while doing so.
+
+### Phase 4 — Add lockstep parity infrastructure
+
+- define the lockstep mechanism:
+  - execution modes
+  - stage checkpoints
+  - normalization rules
+  - divergence payload
+  - continuation policy
+- keep the mode optional and diagnosability-focused.
+
+### Phase 5 — Implement runnable lockstep parity
+
+- implement the runtime structures defined by the mechanism,
+- run at least one processor stage in actual Rust/VM lockstep,
+- record stage-by-stage parity coverage.
+
+### Phase 6 — Library orchestration
+
+- add source/output traits,
+- move session orchestration into `engine`,
+- expose public API through the stable `libopforge` module layout.
+
+### Phase 7 — Thin hosts
+
+- rewire CLI to `libopforge`,
+- rewire LSP to library-first paths,
+- add FFI on top of stable session boundaries.
+
+### Phase 8 — Future processing platform preparation
+
+- keep assembler registry separate,
+- introduce generic processing-registry abstractions only when multiple processors exist,
+- do not prematurely generalize assembler-specific contracts.
+
+---
+
+## 12. Done Criteria
+
+The library split is not complete merely because files moved into workspace crates.
+
+The architecture should be considered converged only when:
+
+- root crate no longer owns the effective assembly session/orchestration path,
+- `opcore` no longer owns assembler-specific directives or output semantics,
+- assembler-only registry contracts are outside the language-core layer,
+- VM-core does not depend on assembler policy concepts,
+- `.opcore` and `.opasm` ownership are explicit,
+- Rust and VM remain peer execution heads for both processor domains,
+- CLI and LSP use `libopforge`,
+- compatibility re-exports are reduced to a temporary, shrinking set.
+
+---
+
+## 13. Open Questions
+
+| # | Question | Status |
 |---|---|---|
-| `opforge-core` | Unit tests for language-core semantics (modules/macros/segments/expressions/repetitions/conditionals) | `crates/opforge-core/src/*/tests.rs` |
-| `opforge-asm` | Unit tests for assembler directives, pass behavior, listing/map policy | `crates/opforge-asm/src/*/tests.rs` |
-| `opforge-registry` | Unit tests for registration, lookup, alias resolution | `crates/opforge-registry/src/tests.rs` |
-| `opforge-package` | Unit tests for `.opcore` / `.opcpu` manifest loading and validation | `crates/opforge-package/src/tests.rs` |
-| `opforge-engine` | Integration tests using `InMemorySource`/`InMemorySink` | `crates/opforge-engine/tests/` |
-| `opforge-lib` | End-to-end library API tests | `crates/opforge-lib/tests/` |
-| `opforge-ffi` | C integration tests (compiled + run via `cargo test`) | `crates/opforge-ffi/tests/` |
-| `opforge-cli` | Existing example/reference comparison tests | `crates/opforge-cli/tests/` |
-| Cross-feature | Build-combo matrix (`make test-build-combo-smoke`) | CI workflow |
+| 1 | Should shared syntax/value contracts live in `types` or a dedicated `syntax` crate? | Open |
+| 2 | Should VM splitting happen as separate crates immediately, or as clear internal submodules first? | Open |
+| 3 | Which current directives belong semantically to `opcore` vs `asm` in edge cases such as `.segment`? | Open |
+| 4 | Which request kinds should be first-class built-ins versus processor-scoped string kinds in the initial engine contract? | Open |
+| 5 | How much unknown-span fallback search is needed in the first parser split, versus later multi-processor work? | Open |
+| 6 | Should the first stable `libopforge` API remain assembler-only, or expose a processor selection model from day one? | Resolved for the current slice: assembler-only via the curated `libopforge` facade |
+| 7 | When should a generic processing registry be introduced? | Deferred until at least one non-assembler processor exists |
+| 8 | What license should public library crates use? | Open |
+| 9 | Which checkpoints must be mandatory in Rust/VM lockstep comparison mode? | Specified in section 5.3.3; refine only if a concrete stage proves insufficient |
 
 ---
 
-## 11. Versioning & Compatibility
+## 14. Current Branch Interpretation
 
-- Library follows SemVer.
-- Rust API stability begins at `1.0.0` (after Phase 3 stabilizes).
-- C ABI stability: functions in `opforge.h` are stable once published; new functions are additive; removed functions go through a deprecation cycle.
-- `opforge.h` includes version macros:
+For this branch, the following interpretation should be used during implementation reviews:
 
-```c
-#define OPFORGE_VERSION_MAJOR 0
-#define OPFORGE_VERSION_MINOR 10
-#define OPFORGE_VERSION_PATCH 0
-```
-
----
-
-## 12. Open Questions
-
-| # | Question | Impact |
-|---|---|---|
-| 1 | Should `SourceProvider` be async-capable for WASM/IDE use? | Trait design |
-| 2 | Should the library expose incremental/partial assembly (e.g. single-file re-check)? | API surface |
-| 3 | Should package precedence be configurable per package domain (`.opcore`, `.opcpu`) or fixed globally? | Runtime/package behavior |
-| 4 | Should `opforge-ffi` use `cbindgen` for header generation or maintain `opforge.h` manually? | Build tooling |
-| 5 | Should diagnostic codes be numeric enums in C or remain string-based? | FFI ergonomics |
-| 6 | Should the library support streaming/callback-based listing output for large files? | Memory model |
-| 7 | What is the minimum supported Rust version (MSRV) for the library crates? | CI + consumer compatibility |
+- `crates/opforge-core` (package `opcore`) is a transitional extraction crate, not the final `opcore`.
+- `crates/opforge-vm` (package `vm`) is a transitional VM extraction crate, not yet the final explicit `.opcore` VM / `.opasm` VM split.
+- `crates/opforge-registry` (package `registry`) should be treated as the assembler registry layer even if the directory name still carries the older prefix.
+- progress should be measured by boundary convergence, not by crate count.

@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Z80 All Instruction Modes Test
@@ -326,7 +326,9 @@ Lines: 320  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-loop            : 017a (378)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+loop             017A      prv  lbl 
 
 Total memory is 472 bytes
 

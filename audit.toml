@@ -1,0 +1,6 @@
+[advisories]
+ignore = [
+    # False positive for the workspace-local path crate `registry`
+    # at crates/opforge-registry; this is not a third-party crates.io dependency.
+    "RUSTSEC-2025-0026",
+]

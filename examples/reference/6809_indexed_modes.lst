@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Motorola 6809 indexed-mode baseline fixture
@@ -28,7 +28,9 @@ Lines: 22  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 1000 (4096)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
 
 Total memory is 41 bytes
 

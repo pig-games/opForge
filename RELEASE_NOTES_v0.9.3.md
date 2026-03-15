@@ -16,7 +16,7 @@ VM-native reference coverage.
 - Deterministic package artifact workflow added:
   - new binary: `src/bin/build_vm_45gs02_package.rs`
   - new Make target: `build-vm-45gs02-package`
-  - artifact path contract: `target/vm/45gs02_hierarchy.opcpu`
+  - artifact path contract: `target/vm/45gs02_hierarchy.opasm`
 - VM coverage and parity expanded for 45GS02:
   - runtime encode coverage for plain, Q-prefix, flat-memory, and relfar behavior
   - VM-focused baseline reference added:

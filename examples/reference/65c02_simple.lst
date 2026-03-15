@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65C02 test program
@@ -59,9 +59,11 @@ Lines: 53  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 2000 (8192)
-skip            : 2009 (8201)
-nobranch        : 2023 (8227)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+nobranch         2023      prv  lbl 
+skip             2009      prv  lbl 
+start            2000      prv  lbl 
 
 Total memory is 56 bytes
 

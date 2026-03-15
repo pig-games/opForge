@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65816 MVP Addressing/Instruction Coverage
@@ -108,8 +108,10 @@ Lines: 102  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-long_target     : 0804 (2052)
-rel_target      : 0873 (2163)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+long_target      0804      prv  lbl 
+rel_target       0873      prv  lbl 
 
 Total memory is 116 bytes
 

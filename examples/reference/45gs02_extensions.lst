@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 extension mnemonics beyond MAP/EOM/NEG
@@ -34,7 +34,9 @@ Lines: 28  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 0a00 (2560)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            0A00      prv  lbl 
 
 Total memory is 26 bytes
 

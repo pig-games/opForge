@@ -63,7 +63,7 @@ PETSCII_F        .const $46
 ZP_INPUT_PTR_LO .const $fb
 ZP_INPUT_PTR_HI .const $fc
 
-OPCPU_HEADER_LEN      .const 8
+OPASM_HEADER_LEN      .const 8
 SAMPLE_PACKAGE_LEN    .const 8
 OTR_BAD_REQ_ERROR_LEN .const 11
 OPC_BAD_HEADER_LEN    .const 11
@@ -122,9 +122,9 @@ entry_init
 entry_load_package
     lda #ENTRY_ORD_LOAD_PACKAGE
     sta current_entry
-    lda #<sample_opcpu_header
+    lda #<sample_opasm_header
     sta control_block + CB_INPUT_PTR_LO
-    lda #>sample_opcpu_header
+    lda #>sample_opasm_header
     sta control_block + CB_INPUT_PTR_HI
     lda #SAMPLE_PACKAGE_LEN
     sta current_input_len
@@ -259,7 +259,7 @@ handle_load_package
     lda loaded_pkg_len_hi
     bne load_package_check_header
     lda loaded_pkg_len_lo
-    cmp #OPCPU_HEADER_LEN
+    cmp #OPASM_HEADER_LEN
     bcc load_package_bad_request
 
 load_package_check_header
@@ -528,7 +528,7 @@ loaded_pkg_len_hi
 set_pipeline_payload
     .byte $6d, $36, $35, $30, $32, $00
 
-sample_opcpu_header
+sample_opasm_header
     ; OPCP + version 0x0001 + endian marker 0x1234 (little-endian)
     .byte $4f, $50, $43, $50, $01, $00, $34, $12
 

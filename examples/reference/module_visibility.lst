@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Module visibility
@@ -24,9 +24,11 @@ Lines: 18  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-alpha.PUBLIC    : 0001 (1)
-alpha.PRIVATE   : 0002 (2)
-beta.VALUE      : 0003 (3)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+alpha.PRIVATE    0002      prv  lbl 
+alpha.PUBLIC     0001      pub  lbl 
+beta.VALUE       0003      pub  lbl 
 
 Total memory is 3 bytes
 

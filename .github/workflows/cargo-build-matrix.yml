@@ -32,4 +32,4 @@ jobs:
         run: cargo build --release --locked --features vm-runtime-only
 
       - name: Build vm-only unbundled
-        run: cargo build --release --locked --features vm-runtime-only,vm-runtime-opcpu-unbundled
+        run: cargo build --release --locked --features vm-runtime-only,vm-runtime-opasm-unbundled

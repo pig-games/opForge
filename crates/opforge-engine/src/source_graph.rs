@@ -9,7 +9,9 @@ use asm::preprocess::{AsmMacroExports, AsmMacroProcessor};
 use opcore::macro_processor::CompileTimeVisibility;
 use opcore::modules::{expr_to_ident, extract_module_block, UseDirectiveSpec};
 use opcore::parser::LineAst;
+use opcore::services::process_module_item as process_stable_module_item;
 use types::source_map::{SourceMap, SourceOrigin};
+use types::processing::ProcessingOutcome;
 use types::symbol::SymbolVisibility;
 
 use crate::{FsSourceProvider, SourceProvider};
@@ -88,8 +90,8 @@ fn is_wildcard_selective(items: &[String]) -> bool {
 pub(crate) fn scan_module_ids_from_processing(lines: &[String]) -> Vec<String> {
     let mut modules = Vec::new();
     for (idx, line) in lines.iter().enumerate() {
-        let Ok((Some(LineAst::Statement(statement)), _)) =
-            crate::processing::route_module_item_line(line, idx as u32 + 1)
+        let ProcessingOutcome::Done(LineAst::Statement(statement)) =
+            process_stable_module_item(line, idx as u32 + 1)
         else {
             continue;
         };
@@ -111,8 +113,8 @@ pub(crate) fn scan_module_ids_from_processing(lines: &[String]) -> Vec<String> {
 fn collect_use_directives_from_processing(lines: &[String]) -> Vec<String> {
     let mut uses = Vec::new();
     for (idx, line) in lines.iter().enumerate() {
-        let Ok((Some(LineAst::Use(use_ast)), _)) =
-            crate::processing::route_module_item_line(line, idx as u32 + 1)
+        let ProcessingOutcome::Done(LineAst::Use(use_ast)) =
+            process_stable_module_item(line, idx as u32 + 1)
         else {
             continue;
         };
@@ -124,8 +126,8 @@ fn collect_use_directives_from_processing(lines: &[String]) -> Vec<String> {
 fn collect_use_directives_with_items_from_processing(lines: &[String]) -> Vec<UseDirectiveSpec> {
     let mut uses = Vec::new();
     for (idx, line) in lines.iter().enumerate() {
-        let Ok((Some(LineAst::Use(use_ast)), _)) =
-            crate::processing::route_module_item_line(line, idx as u32 + 1)
+        let ProcessingOutcome::Done(LineAst::Use(use_ast)) =
+            process_stable_module_item(line, idx as u32 + 1)
         else {
             continue;
         };

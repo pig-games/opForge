@@ -1,8 +1,11 @@
 # libopforge API Aesthetics Improvement Plan
 
 **Version:** 0.1-draft  
-**Date:** March 14, 2026  
-**Status:** active; reviewed against latest branch state after issue 4/5/6 follow-on work
+**Date:** March 15, 2026  
+**Status:** active; refreshed against the squashed branch after the final review-fix round and legacy FFI compatibility removal
+
+Execution breakdown:
+- `documentation/libopforge-api-aesthetics-implementation-plan-v0_1.md`
 
 ## 1. Purpose
 
@@ -32,16 +35,24 @@ It aims to improve:
 It must do so **without** undoing the current architectural layering or
 reverting to a flatter, less explicit design.
 
+Working assumption for this revision:
+
+- compatibility of the current facade naming is **not** a binding constraint,
+  because the different public API surfaces are only consumed by opForge itself
+  at this stage
+
 ## 2. Current Aesthetic Assessment
 
 Overall score: **7/10**
 
 Latest-state review note:
 
-- the primary specification example now uses the live borrowed
+- README and the primary specification examples now use the live borrowed
   `Assembler::builder(&Path)` call shape
-- grouped high-level FFI parity is materially better than when this note was
-  first drafted, including request-scoped execution package selection
+- the public embedding examples and much of the developer guide still lead
+  with `OwnedAssemblerConfig` literals rather than builders
+- the legacy high-level FFI compatibility bridge has now been removed, so FFI
+  cleanup work is no longer distorting the API-aesthetics discussion
 
 Those changes improve coherence, but they do not materially change the core
 aesthetic diagnosis below.
@@ -54,6 +65,10 @@ aesthetic diagnosis below.
 - `io::{SourceProvider, OutputSink}` is simple and host-friendly.
 - `Assembler`, `AssemblerSession`, `PreparedAssembly`, and
   `PreparedAssemblySession` expose a sensible lifecycle.
+- `AssemblerSessionBuilder` already reads like a reasonably complete
+  downstream-facing builder.
+- README and specification snippets now present the stable facade more
+  intentionally than they did when this note was first drafted.
 - The stable surface reads like a library, not like leaked binary plumbing.
 
 ### What currently feels awkward
@@ -70,8 +85,9 @@ aesthetic diagnosis below.
 - `unstable` is too flat and reads like a second public API attic.
 - the `normalized` naming in `opcore` and `asm::opasm` does not clearly signal
   that it is the portable-contract view.
-- the public examples still rely on large config literals, which undermines the
-  stated builder-first ergonomic story.
+- the public embedding examples and large parts of the developer guide still
+  rely on large config literals, which undermines the stated builder-first
+  ergonomic story.
 
 ## 3. Design Principles
 
@@ -87,16 +103,18 @@ Normal imports should continue to read like:
 - `libopforge::io::MemorySourceProvider`
 - `libopforge::diagnostics::Diagnostic`
 
-### 3.2 Prefer additive polish over renaming churn
+### 3.2 Prefer final names over transitional aliases
 
-Where the current names are functional but inelegant, prefer:
+Where a public name is clearly worse than the intended long-term name, prefer:
 
-- aliases,
-- clearer builder methods,
-- better examples,
-- better grouping,
+- direct renames,
+- direct module moves,
+- removal of transitional spellings,
 
-before considering hard renames.
+instead of layering aliases or compatibility shims.
+
+Compatibility-preserving aliases should only be used if they materially reduce
+short-term implementation risk inside the workspace itself.
 
 ### 3.3 Improve the common path first
 
@@ -117,19 +135,22 @@ The goal is:
 
 ## 4. Concrete Aesthetic Problems
 
-### 4.1 The surface tells one ergonomic story and demonstrates another
+### 4.1 The public surface now demonstrates two different ergonomic stories
 
-The docs say the API is builder-oriented and grouped by concern, but the public
-embedding examples and developer guidance still mostly teach the API through
-large config literals.
+README and the specification now point developers toward the borrowed builder
+path, but the public embedding examples and developer guidance still mostly
+teach the library through large config literals.
 
-The primary specification snippet has improved, but the examples in:
+That split makes the project look more polished at the top level than it feels
+once a developer opens the examples they are most likely to copy.
+
+The examples in:
 
 - `examples/libopforge_in_memory.rs`
 - `examples/libopforge_filesystem.rs`
 - `documentation/libopforge-developer-guide.md`
 
-still teach the API through large `OwnedAssemblerConfig` literals.
+still teach the API primarily through large `OwnedAssemblerConfig` literals.
 
 That is a correctness-preserving style, but not an aesthetically persuasive one.
 
@@ -155,13 +176,17 @@ Examples:
 These names are not wrong. They just do not all read like names designed from
 the perspective of a tool author encountering the library fresh.
 
-### 4.4 `unstable` is too flat
+### 4.4 `unstable` now looks more like a draining area than a namespace to refine
 
-`unstable` currently aggregates engine-facing helpers, formatter exports, and
-LSP entrypoints in one broad namespace.
+`unstable` currently aggregates three different kinds of things:
 
-That is functionally acceptable, but aesthetically it weakens the message that
-the stable surface is curated.
+- functionality that already has a better stable home and is duplicated here,
+- tool-facing exports that may deserve first-class stable modules,
+- raw engine/request APIs that are useful internally but do not yet justify
+  facade-level exposure.
+
+That makes it feel less like an intentional advanced namespace and more like a
+holding zone whose contents should either graduate or leave.
 
 ### 4.5 The config family is honest but visually heavy
 
@@ -193,35 +218,85 @@ it rather than in front of it.
 
 ### 5.0 Latest-state status snapshot
 
-- Slice A is **partially complete**:
-  - the main specification example now uses the correct borrowed builder call
-    shape
+- Slice A is **not started**
+- Slice B is **partially complete**:
+  - README and the main specification example now use the correct borrowed
+    builder call shape
+  - crate-local tests already exercise both borrowed and owned builder flows
   - the public embedding examples and most developer-guide snippets still lead
-    with config literals rather than builders
-- Slice B is **not started**
-- Slice C is **not started in substance**:
-  - borrowed-builder parity improved slightly through `opasm_package_path`
-  - the broader parity gap remains
+    with owned config literals rather than builders
+- Slice C is **partially improved but still far from complete**:
+  - the borrowed builder now supports `input_base`, `source_provider`,
+    `execution_mode`, `opasm_package_path`, `out_dir`, `output_format`,
+    `label_output_format`, `header_title`, and `output_sink`
+  - the broader parity gap with `AssemblerSessionBuilder` remains
 - Slice D is **not started**
 - Slice E is **not started**
 - Slice F remains **deferred**, but its urgency has increased as the execution
   config family has grown again
+- legacy FFI compatibility removal is **complete** and is no longer a planning
+  constraint for aesthetic cleanup
+- stable-surface compatibility is **not** a planning constraint for naming work
+  on this branch
 
-### 5.1 Slice A: make the intended ergonomic path visible
+### 5.1 Slice A: adopt developer-facing names directly
 
-This is the highest-value, lowest-risk slice.
+Replace historically accurate but aesthetically awkward names with the intended
+long-term public names.
+
+Primary recommendation:
+
+- rename `input_base` to `output_base`
+
+Rationale:
+
+- the README already has to explain that `input_base` is really about output
+  naming behavior,
+- “output base” is the phrase most embedders will infer naturally from the
+  behavior,
+- there is no external compatibility obligation forcing the project to keep the
+  older term alive.
+
+Secondary recommendations:
+
+- rename `normalized` to `portable` in:
+  - `libopforge::opcore`
+  - `libopforge::asm::opasm`
+- update docs and examples to use the final names directly rather than teaching
+  both spellings
+- keep existing “normalized” language in the deeper lockstep/specification docs
+  where it describes comparison semantics rather than only the public module
+  name
+- describe this view as the “portable contract” view in public developer docs.
+
+Recommended success conditions:
+
+- common docs can avoid explaining `input_base` as a conceptual exception,
+- the portable/normalized distinction becomes visually obvious,
+- the stable API no longer carries history-driven vocabulary just to preserve
+  temporary spellings.
+
+### 5.2 Slice B: make the intended ergonomic path visible
+
+This becomes the highest-value follow-on slice once the public names are final.
 
 Work items:
 
 - Switch the primary public examples to builder-first forms where practical.
 - Keep one explicit config-literal example for advanced hosts, but do not make
   it the first thing developers see.
+- Update `examples/libopforge_in_memory.rs` and
+  `examples/libopforge_filesystem.rs` to use
+  `AssemblerSession::builder(...)` as the primary example shape.
 - Update the developer guide so its first in-memory and filesystem examples use
-  the builder-oriented path rather than full `OwnedAssemblerConfig` literals.
+  the builder-oriented owned/session path rather than full
+  `OwnedAssemblerConfig` literals.
 - Add a short ownership-choice table to the developer guide:
   - borrowed `Assembler`
   - owned `AssemblerSession`
   - when to prefer each
+- Keep one compact grouped-config example in the developer guide for hosts that
+  need to mirror an existing config model exactly.
 - Make the public docs show the common path in fewer moving parts.
 
 Recommended success condition:
@@ -233,7 +308,7 @@ Concrete target shape:
 
 ```rust
 let report = AssemblerSession::builder("/virtual/main.asm")
-    .input_base("/virtual/main")
+    .output_base("/virtual/main")
     .source_provider(source_provider)
     .output_sink(output_sink)
     .execution_mode(ExecutionMode::Vm)
@@ -241,39 +316,8 @@ let report = AssemblerSession::builder("/virtual/main.asm")
     .assemble()?;
 ```
 
-This slice changes no semantics and preserves the existing type model.
-
-### 5.2 Slice B: add semantic aliases for developer-facing intent
-
-Introduce additive names that better match downstream mental models.
-
-Primary recommendation:
-
-- add `output_base(...)` as a preferred alias for `input_base(...)`
-
-Rationale:
-
-- the README already has to explain that `input_base` is really about output
-  naming behavior,
-- “output base” is the phrase most embedders will infer naturally from the
-  behavior,
-- this can be introduced as an additive builder/config convenience without
-  breaking compatibility.
-
-Secondary recommendations:
-
-- consider an additive `portable` alias alongside `normalized` in:
-  - `libopforge::opcore`
-  - `libopforge::asm::opasm`
-- keep existing “normalized” language in the deeper lockstep/specification docs
-  where it describes comparison semantics rather than only the public module
-  name
-- prefer new docs to describe this view as the “portable contract” view.
-
-Recommended success conditions:
-
-- common docs can avoid explaining `input_base` as a conceptual exception,
-- the portable/normalized distinction becomes visually obvious.
+This slice should be executed after Slice A so the examples teach the final
+surface rather than transitional names.
 
 ### 5.3 Slice C: bring builder parity to the borrowed path
 
@@ -304,8 +348,31 @@ the owned/session builder already surfaces:
 - fill byte
 - labels/dependency output
 - output-name overrides
-- output selection and naming
+- default output policy
 - diagnostics toggles
+
+Concrete missing borrowed-builder controls today include:
+
+- `defines(...)`
+- `include_paths(...)`
+- `module_paths(...)`
+- `pp_macro_depth(...)`
+- `cpu_override(...)`
+- `max_loop_iterations(...)`
+- `go_addr(...)`
+- `bin_specs(...)`
+- `fill_byte(...)`
+- `labels_file(...)`
+- `dependency_output(...)`
+- `outfile_override(...)`
+- `list_name_override(...)`
+- `hex_name_override(...)`
+- `default_outputs(...)`
+- `debug_conditionals(...)`
+- `tab_size(...)`
+
+Both builders currently also lack a friendlier `suppress_outputs`-style
+convenience, but that belongs to Slice D more than Slice C.
 
 Recommended success conditions:
 
@@ -323,9 +390,11 @@ The current output control knobs are explicit but a little mechanical:
 
 Short-term recommendation:
 
-- add clearer builder-level convenience methods that express intent, such as:
-  - `no_outputs()`
-  - `default_outputs(bool)` remaining available for exact control
+- rename the builder-level output controls toward intent-expressive names
+- likely direction:
+  - `suppress_outputs` -> `no_outputs`
+  - reconsider whether `default_outputs` should remain a boolean or become a
+    more explicit output-emission control
 
 Medium-term recommendation:
 
@@ -348,28 +417,89 @@ Recommended success condition:
 
 - common code reads like intent instead of policy wiring.
 
-### 5.5 Slice E: restructure `unstable` into named shelves
+### 5.5 Slice E: drain `unstable` by promotion or removal
 
-Do not remove `unstable`.
-Do make it easier to visually parse.
+Do not spend design energy making `unstable` prettier if its long-term role is
+to disappear.
 
 Recommended direction:
 
-- `libopforge::unstable::engine`
-- `libopforge::unstable::formatter`
-- `libopforge::unstable::lsp`
+- promote the parts that have a credible stable story and a natural module home
+- remove facade re-exports that are duplicated by existing stable modules
+- remove raw engine/request exports from the facade when their main consumers
+  are internal workspace crates that can depend on lower-level crates directly
 
-Compatibility strategy:
+Initial classification from the current branch state:
 
-- keep existing flat re-exports temporarily if needed,
-- document the nested modules as the preferred unstable layout,
-- deprecate flat forms later only if worthwhile.
+Promote candidates:
+
+- formatter surface:
+  - `FormatterConfig`
+  - `FormatterEngine`
+  - `FormatMode`
+  - formatter report/output/diagnostic types
+- registry-facing report helpers if they are considered part of the supported
+  host story:
+  - `capabilities_report`
+  - `capabilities_report_json`
+  - `cpusupport_report`
+  - `cpusupport_report_json`
+
+Remove as redundant facade spillover:
+
+- `build_default_asm_registry`
+- `AsmRegistry`
+- `AsmRegistryContext`
+- `CapabilitySnapshot`
+- `CpuCapabilityView`
+- `CpuResolutionError`
+- `resolve_target_cpu`
+- `editor_route_line`
+- `editor_route_line_with_model`
+- `editor_route_line_with_model_in_mode`
+- `process_opcore_expression_request`
+- `process_opcore_expression_request_with_mode`
+- `LineProcessingTrace`
+- `OpcoreRequestKind`
+- `ProcessingOutcome`
+- `ProcessingRequestKind`
+- `ProcessingReturn`
+
+Remove from the facade unless a stronger public use case is documented:
+
+- `build_default_runtime_package_bytes`
+- `effective_include_paths_for_root`
+- `expand_source_file`
+- `expand_source_file_with_dependencies`
+- `expand_source_file_with_dependencies_with_provider`
+- `parse_cpu_directive_name`
+- `prepare_assembly_session`
+- `remap_diagnostics_with_source_map`
+- `resolve_cpu_for_line`
+- `resolve_formatter_module_paths`
+- `resolve_output_plan`
+- `root_module_id_from_lines`
+- `run_assembly`
+- `run_prepared_assembly`
+- `scan_cpu_transitions`
+- `warnings_as_errors`
+- `AssemblerSessionConfig`
+- `AssemblyExecutionRequest`
+- `AssemblyPreparationRequest`
+- `FormatterPathResolutionRequest`
+- `OutputPlanningRequest`
+- `PreparedAssemblyExecutionRequest`
+- `ResolvedOutputPlan`
+- `run_lsp_stdio`
+- `run_lsp_stdio_with_registry`
+- `run_lsp_stdio_default`
 
 Recommended success conditions:
 
-- `unstable` feels like a deliberately organized overflow zone,
-- advanced users can tell at a glance which family of unstable features they
-  are touching.
+- `libopforge` no longer presents `unstable` as a broad second facade
+- every remaining promoted item has a clear stable module home
+- internal tools that need raw engine plumbing depend on lower-level crates
+  rather than the facade attic
 
 ### 5.6 Slice F: reduce visual weight without erasing grouped config types
 
@@ -406,7 +536,7 @@ The following may be aesthetically tempting but are poor near-term trades:
 - removing `Owned*` types before the owned/session story is materially simpler,
 - replacing the grouped config model with a single giant ergonomic struct,
 - flattening advanced functionality into the root namespace,
-- large breaking renames in the stable surface just to remove historical terms.
+- broad rename churn without a clearly better destination name or module home.
 
 These would create more churn than polish at this stage.
 
@@ -414,17 +544,19 @@ These would create more churn than polish at this stage.
 
 Implement in this order:
 
-1. Slice A: docs/examples and ownership-choice presentation
-2. Slice B: additive semantic aliases (`output_base`, `portable`)
+1. Slice A: direct naming cleanup (`output_base`, `portable`)
+2. Slice B: docs/examples and ownership-choice presentation
 3. Slice C: borrowed-builder parity
-4. Slice E: `unstable` namespacing
+4. Slice E: promote-or-remove pass for `unstable`
 5. Slice D: output-policy convenience vocabulary
 6. Slice F only if the surface still feels too heavy after the earlier slices
 
 Why this order:
 
-- it delivers visible polish early,
-- it preserves compatibility,
+- it lands the final names before the public examples are rewritten around
+  them,
+- it still delivers visible polish early,
+- it avoids spending effort on transitional compatibility shims,
 - it tests whether the main aesthetic pain is teaching/ergonomics rather than
   deeper type architecture.
 
@@ -435,7 +567,8 @@ This plan succeeds if, after the early slices:
 - the first example a developer sees is builder-first and clearly intentional,
 - the borrowed and owned builders look like members of the same API family,
 - the most common naming friction (`input_base`) has a friendlier path,
-- `unstable` no longer reads like a second uncontrolled public API,
+- `unstable` is either gone or reduced to a very small residual set on a clear
+  path to disappearance,
 - the stable surface still looks architecturally explicit rather than magically
   flattened.
 
@@ -446,9 +579,9 @@ The API does **not** need a redesign-from-scratch.
 It needs:
 
 - better teaching of the intended path,
-- additive naming cleanup,
+- direct naming cleanup,
 - builder parity,
-- containment of the overflow surface.
+- promotion or removal of the overflow surface.
 
 The architecture is already the elegant part.
 The next step is making the ergonomics feel as intentional as the layering.

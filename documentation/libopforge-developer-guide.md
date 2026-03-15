@@ -137,8 +137,8 @@ The workspace's public examples use this model because it maps cleanly onto in-m
 
 Reference examples:
 
-- `examples/libopforge_in_memory.rs`
-- `examples/libopforge_filesystem.rs`
+- `documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs`
+- `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`
 
 ### 5.3 In-memory integration
 
@@ -307,13 +307,13 @@ The FFI implementation is a useful reference even for Rust developers because it
 
 These are the best reference points when you want to see how the library is used in practice:
 
-- `examples/libopforge_in_memory.rs`: minimal in-memory embedding example using `AssemblerSession`, `MemorySourceProvider`, and `MemoryOutputSink`
-- `examples/libopforge_filesystem.rs`: minimal filesystem-backed example using the same owned/session surface
-- `crates/opforge-cli-core/src/run.rs`: maps CLI configuration onto the stable assembler config shape
+- `documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs`: minimal in-memory embedding example using `AssemblerSession`, `MemorySourceProvider`, and `MemoryOutputSink`
+- `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`: minimal filesystem-backed example using the same owned/session surface
+- `crates/opforge-cli-core/src/run.rs`: useful for seeing how CLI options map onto the current assembler config model, even though it still goes through the internal `api` crate
 - `crates/opforge-ffi/src/lib.rs`: shows how the session/report model is exposed to C and C++
 - `crates/opforge-engine/src/processing.rs`: useful if you are implementing tooling near the editor-routing boundary
 
-One nuance worth calling out: some internal workspace crates still depend on the internal `api` crate or lower-level crates directly as part of the ongoing library-surface refinement work. For external consumers, the examples under `examples/` are the best model because they use the intended public facade.
+One nuance worth calling out: some internal workspace crates still depend on the internal `api` crate or lower-level crates directly. For external consumers, the guide examples under `documentation/libopforge-developer-guide-examples/` are the best model because they use the intended public `libopforge` facade directly.
 
 ## 11. Guidance for new tools
 
@@ -327,7 +327,7 @@ If you are starting a new integration today:
 - Use memory-backed providers and sinks for tests, editor overlays, or non-filesystem hosts.
 - Use `opcore` and `processing` for language tooling instead of trying to reverse-engineer assembler execution paths.
 - Use `asm::opasm` for per-statement CPU-aware tooling instead of spinning up a full assembly pipeline.
-- Stay out of `unstable` unless you are prepared to track internal churn.
+- If you need lower-level workspace crates, depend on them explicitly rather than expecting overflow exports from the facade.
 
 ## 12. Guidance for integrating into an existing tool
 

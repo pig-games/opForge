@@ -10,8 +10,8 @@ use opcore::macro_processor::CompileTimeVisibility;
 use opcore::modules::{expr_to_ident, extract_module_block, UseDirectiveSpec};
 use opcore::parser::LineAst;
 use opcore::services::process_module_item as process_stable_module_item;
-use types::source_map::{SourceMap, SourceOrigin};
 use types::processing::ProcessingOutcome;
+use types::source_map::{SourceMap, SourceOrigin};
 use types::symbol::SymbolVisibility;
 
 use crate::{FsSourceProvider, SourceProvider};

@@ -46,8 +46,7 @@ pub mod processing {
 
 pub mod registry {
     pub use ::engine::{
-        capabilities_report, capabilities_report_json, cpusupport_report,
-        cpusupport_report_json,
+        capabilities_report, capabilities_report_json, cpusupport_report, cpusupport_report_json,
         resolve_target_cpu, AsmRegistryContext, CapabilitySnapshot, CpuCapabilityView,
         CpuResolutionError,
     };
@@ -648,8 +647,11 @@ fn effective_prepare_config<'a>(
 fn prepare_public_assembly<'a>(
     request: PublicPrepareRequest<'a>,
 ) -> Result<(PreparedAssemblyCore, EffectivePrepareConfig<'a>), AsmRunError> {
-    let effective =
-        effective_prepare_config(request.root_path, request.output_base, request.include_paths);
+    let effective = effective_prepare_config(
+        request.root_path,
+        request.output_base,
+        request.include_paths,
+    );
     let prepared = engine::prepare_assembly_session(engine::AssemblyPreparationRequest {
         root_path: request.root_path,
         defines: request.defines,
@@ -1082,10 +1084,7 @@ impl<'a> AssemblerBuilder<'a> {
         self
     }
 
-    pub fn dependency_output(
-        mut self,
-        dependency_output: &'a DependencyOutputPolicy,
-    ) -> Self {
+    pub fn dependency_output(mut self, dependency_output: &'a DependencyOutputPolicy) -> Self {
         self.config.output.dependency_output = Some(dependency_output);
         self
     }

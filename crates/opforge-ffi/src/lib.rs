@@ -1002,9 +1002,7 @@ impl OpforgeOpcoreExprReport {
                 OpforgeExprNodeKind::Register,
                 Some(self.intern_text(name.clone())),
             ),
-            api::opcore::portable::PortableAstExpr::List(_, _) => {
-                (OpforgeExprNodeKind::List, None)
-            }
+            api::opcore::portable::PortableAstExpr::List(_, _) => (OpforgeExprNodeKind::List, None),
             api::opcore::portable::PortableAstExpr::Index { .. } => {
                 (OpforgeExprNodeKind::Index, None)
             }
@@ -1463,9 +1461,7 @@ fn map_line_kind(line_ast: &api::opcore::portable::PortableLineAst) -> OpforgeLi
         api::opcore::portable::PortableLineAst::StatementEnd { .. } => {
             OpforgeLineAstKind::StatementEnd
         }
-        api::opcore::portable::PortableLineAst::Assignment { .. } => {
-            OpforgeLineAstKind::Assignment
-        }
+        api::opcore::portable::PortableLineAst::Assignment { .. } => OpforgeLineAstKind::Assignment,
         api::opcore::portable::PortableLineAst::Statement { .. } => OpforgeLineAstKind::Statement,
     }
 }

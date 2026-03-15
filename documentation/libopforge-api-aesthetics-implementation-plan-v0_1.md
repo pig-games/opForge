@@ -116,9 +116,9 @@ There are no exceptions in this phase.
 ## Workstream A — Direct naming cleanup
 
 Progress checklist:
-- [ ] AEST-001 Rename `opcore::normalized` to `opcore::portable`
-- [ ] AEST-002 Rename `asm::opasm::normalized` to `asm::opasm::portable`
-- [ ] AEST-003 Rename stable public `input_base` to `output_base`
+- [x] AEST-001 Rename `opcore::normalized` to `opcore::portable`
+- [x] AEST-002 Rename `asm::opasm::normalized` to `asm::opasm::portable`
+- [x] AEST-003 Rename stable public `input_base` to `output_base`
 
 ### Ticket AEST-001: Rename `opcore::normalized` to `opcore::portable`
 Objective:
@@ -210,10 +210,10 @@ Commit size expectation:
 ## Workstream B — Example and doc ergonomics
 
 Progress checklist:
-- [ ] AEST-101 Convert in-memory example to builder-first final surface
-- [ ] AEST-102 Convert filesystem example to builder-first final surface
-- [ ] AEST-103 Rewrite developer guide high-level embedding path
-- [ ] AEST-104 Final public doc wording pass after naming rewrite
+- [x] AEST-101 Convert in-memory example to builder-first final surface
+- [x] AEST-102 Convert filesystem example to builder-first final surface
+- [x] AEST-103 Rewrite developer guide high-level embedding path
+- [x] AEST-104 Final public doc wording pass after naming rewrite
 
 ### Ticket AEST-101: Convert in-memory example to builder-first final surface
 Objective:
@@ -276,10 +276,10 @@ Acceptance:
 ## Workstream C — Borrowed-builder parity
 
 Progress checklist:
-- [ ] AEST-201 Add source-configuration parity to `AssemblerBuilder`
-- [ ] AEST-202 Add execution-configuration parity to `AssemblerBuilder`
-- [ ] AEST-203 Add output-routing parity to `AssemblerBuilder`
-- [ ] AEST-204 Add diagnostics and output-policy parity to `AssemblerBuilder`
+- [x] AEST-201 Add source-configuration parity to `AssemblerBuilder`
+- [x] AEST-202 Add execution-configuration parity to `AssemblerBuilder`
+- [x] AEST-203 Add output-routing parity to `AssemblerBuilder`
+- [x] AEST-204 Add diagnostics and output-policy parity to `AssemblerBuilder`
 
 ### Ticket AEST-201: Add source-configuration parity to `AssemblerBuilder`
 Objective:
@@ -353,8 +353,8 @@ Acceptance:
 ## Workstream D — Output-policy vocabulary cleanup
 
 Progress checklist:
-- [ ] AEST-301 Replace `suppress_outputs` with an intent-expressive name
-- [ ] AEST-302 Replace ambiguous `default_outputs` boolean if warranted
+- [x] AEST-301 Replace `suppress_outputs` with an intent-expressive name
+- [x] AEST-302 Replace ambiguous `default_outputs` boolean if warranted
 
 ### Ticket AEST-301: Replace `suppress_outputs` with an intent-expressive name
 Objective:
@@ -390,6 +390,9 @@ Decision rule:
 - if it becomes clear enough in context, record that decision and close the
   ticket with no rename
 
+Decision taken:
+- keep `default_outputs` as-is for this slice; after the `no_outputs` rename and builder-parity additions, the remaining boolean reads clearly enough in context and does not justify another API rename.
+
 Acceptance:
 - the final output-policy vocabulary reads like host intent rather than wiring
 
@@ -398,10 +401,10 @@ Acceptance:
 ## Workstream E — Drain `unstable`
 
 Progress checklist:
-- [ ] AEST-401 Decide stable home for formatter exports
-- [ ] AEST-402 Resolve registry-report helper fate
-- [ ] AEST-403 Remove redundant stable spillover from `unstable`
-- [ ] AEST-404 Remove raw engine/request spillover from the facade
+- [x] AEST-401 Decide stable home for formatter exports
+- [x] AEST-402 Resolve registry-report helper fate
+- [x] AEST-403 Remove redundant stable spillover from `unstable`
+- [x] AEST-404 Remove raw engine/request spillover from the facade
 
 ### Ticket AEST-401: Decide stable home for formatter exports
 Objective:
@@ -462,32 +465,32 @@ Acceptance:
 ## Milestones and exit gates
 
 ### Milestone 0: Naming complete
-- [ ] Milestone 0 reached
+- [x] Milestone 0 reached
 - `AEST-001` through `AEST-003` complete
 - exit gate:
   - final names are in code and public docs
   - no compatibility aliases were introduced
 
 ### Milestone 1: Public teaching surface complete
-- [ ] Milestone 1 reached
+- [x] Milestone 1 reached
 - `AEST-101` through `AEST-104` complete
 - exit gate:
   - examples and docs teach the final builder-first surface
 
 ### Milestone 2: Borrowed-builder parity complete
-- [ ] Milestone 2 reached
+- [x] Milestone 2 reached
 - `AEST-201` through `AEST-204` complete
 - exit gate:
   - borrowed and owned builders differ mainly by ownership
 
 ### Milestone 3: Output-policy vocabulary complete
-- [ ] Milestone 3 reached
+- [x] Milestone 3 reached
 - `AEST-301` and `AEST-302` complete
 - exit gate:
   - output controls read as host intent, not internal mechanics
 
 ### Milestone 4: `unstable` drained
-- [ ] Milestone 4 reached
+- [x] Milestone 4 reached
 - `AEST-401` through `AEST-404` complete
 - exit gate:
   - `libopforge::unstable` is removed, or left empty pending immediate removal

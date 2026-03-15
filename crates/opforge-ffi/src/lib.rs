@@ -10,7 +10,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 
-use api::{
+use ::api::{
     asm::{parse_bin_output_arg, LabelOutputFormat, OutputFormat},
     diagnostics::{Diagnostic, Severity},
     io::{MemoryOutputSink, MemorySourceProvider},
@@ -69,7 +69,7 @@ pub struct OpforgeAsmSourceOptions {
     /// Required source path. Must be a non-null NUL-terminated UTF-8 string.
     pub root_path: *const c_char,
     /// Optional output base. Null or empty falls back to `root_path` without its extension.
-    pub input_base: *const c_char,
+    pub output_base: *const c_char,
     /// Optional preprocessor defines.
     pub defines: OpforgeStringList,
     /// Optional include search roots.
@@ -129,7 +129,7 @@ pub struct OpforgeAsmOutputOptions {
     /// Optional listing header title.
     pub header_title: *const c_char,
     /// Non-zero to suppress all output emission even when output directives are present.
-    pub suppress_outputs: u8,
+    pub no_outputs: u8,
 }
 
 #[repr(C)]
@@ -320,7 +320,7 @@ pub struct OpforgePreparedAsmSession {
 
 pub struct OpforgeOpcoreTokenizeReport {
     status: OpforgeProcessorStatus,
-    tokens: Vec<api::opcore::normalized::PortableToken>,
+    tokens: Vec<api::opcore::portable::PortableToken>,
     token_texts: Vec<CString>,
     error_message: Option<CString>,
     error_line: u32,
@@ -431,7 +431,7 @@ pub struct OpforgeOpcoreModuleItemReport {
 }
 
 impl OpforgeOpasmProcessReport {
-    fn ok(result: api::asm::opasm::normalized::StatementProcessResult) -> Self {
+    fn ok(result: api::asm::opasm::portable::StatementProcessResult) -> Self {
         Self {
             parsed: OpforgeOpasmParseReport::ok(result.parsed.ast),
             processing_trace: OpforgeProcessingTrace::from_trace(&result.trace),
@@ -617,14 +617,20 @@ fn lockstep_category_text(category: api::lockstep::LockstepComparisonCategory) -
 
 fn lockstep_checkpoint_text(checkpoint: &api::lockstep::LockstepCheckpoint) -> String {
     match checkpoint {
-        api::lockstep::LockstepCheckpoint::CoreExprAst { normalized } => {
-            format!("core-expr-ast:{normalized}")
+        api::lockstep::LockstepCheckpoint::CoreExprAst {
+            normalized: checkpoint_text,
+        } => {
+            format!("core-expr-ast:{checkpoint_text}")
         }
-        api::lockstep::LockstepCheckpoint::PortableLineAst { normalized } => {
-            format!("portable-line-ast:{normalized}")
+        api::lockstep::LockstepCheckpoint::PortableLineAst {
+            normalized: checkpoint_text,
+        } => {
+            format!("portable-line-ast:{checkpoint_text}")
         }
-        api::lockstep::LockstepCheckpoint::Diagnostic { normalized } => {
-            format!("diagnostic:{normalized}")
+        api::lockstep::LockstepCheckpoint::Diagnostic {
+            normalized: checkpoint_text,
+        } => {
+            format!("diagnostic:{checkpoint_text}")
         }
     }
 }
@@ -823,7 +829,7 @@ impl OpforgeCachedDiagnostic {
 }
 
 impl OpforgeOpcoreTokenizeReport {
-    fn ok(tokenized: api::opcore::normalized::TokenizedLine) -> Self {
+    fn ok(tokenized: api::opcore::portable::TokenizedLine) -> Self {
         let token_texts = tokenized
             .tokens
             .iter()
@@ -876,7 +882,7 @@ impl OpforgeOpcoreTokenizeReport {
             .map_or(std::ptr::null(), |text| text.as_ptr())
     }
 
-    fn ok_opasm(tokenized: api::asm::opasm::normalized::TokenizedStatement) -> Self {
+    fn ok_opasm(tokenized: api::asm::opasm::portable::TokenizedStatement) -> Self {
         let token_texts = tokenized
             .tokens
             .iter()
@@ -898,7 +904,7 @@ impl OpforgeOpcoreTokenizeReport {
 }
 
 impl OpforgeOpcoreExprReport {
-    fn ok(expr: api::opcore::normalized::PortableAstExpr) -> Self {
+    fn ok(expr: api::opcore::portable::PortableAstExpr) -> Self {
         let mut report = Self {
             status: OpforgeProcessorStatus::Ok,
             nodes: Vec::new(),
@@ -955,103 +961,103 @@ impl OpforgeOpcoreExprReport {
         self.texts.len() - 1
     }
 
-    fn span_parts(expr: &api::opcore::normalized::PortableAstExpr) -> (u32, usize, usize) {
+    fn span_parts(expr: &api::opcore::portable::PortableAstExpr) -> (u32, usize, usize) {
         match expr {
-            api::opcore::normalized::PortableAstExpr::Number(_, span)
-            | api::opcore::normalized::PortableAstExpr::Identifier(_, span)
-            | api::opcore::normalized::PortableAstExpr::Register(_, span)
-            | api::opcore::normalized::PortableAstExpr::List(_, span)
-            | api::opcore::normalized::PortableAstExpr::Index { span, .. }
-            | api::opcore::normalized::PortableAstExpr::Member { span, .. }
-            | api::opcore::normalized::PortableAstExpr::StructLiteral { span, .. }
-            | api::opcore::normalized::PortableAstExpr::Call { span, .. }
-            | api::opcore::normalized::PortableAstExpr::Placeholder(span)
-            | api::opcore::normalized::PortableAstExpr::Indirect(_, span)
-            | api::opcore::normalized::PortableAstExpr::Dollar(span)
-            | api::opcore::normalized::PortableAstExpr::String(_, span)
-            | api::opcore::normalized::PortableAstExpr::Immediate(_, span)
-            | api::opcore::normalized::PortableAstExpr::IndirectLong(_, span)
-            | api::opcore::normalized::PortableAstExpr::Tuple(_, span)
-            | api::opcore::normalized::PortableAstExpr::Error(_, span)
-            | api::opcore::normalized::PortableAstExpr::Ternary { span, .. }
-            | api::opcore::normalized::PortableAstExpr::Unary { span, .. }
-            | api::opcore::normalized::PortableAstExpr::Binary { span, .. }
-            | api::opcore::normalized::PortableAstExpr::Range { span, .. } => {
+            api::opcore::portable::PortableAstExpr::Number(_, span)
+            | api::opcore::portable::PortableAstExpr::Identifier(_, span)
+            | api::opcore::portable::PortableAstExpr::Register(_, span)
+            | api::opcore::portable::PortableAstExpr::List(_, span)
+            | api::opcore::portable::PortableAstExpr::Index { span, .. }
+            | api::opcore::portable::PortableAstExpr::Member { span, .. }
+            | api::opcore::portable::PortableAstExpr::StructLiteral { span, .. }
+            | api::opcore::portable::PortableAstExpr::Call { span, .. }
+            | api::opcore::portable::PortableAstExpr::Placeholder(span)
+            | api::opcore::portable::PortableAstExpr::Indirect(_, span)
+            | api::opcore::portable::PortableAstExpr::Dollar(span)
+            | api::opcore::portable::PortableAstExpr::String(_, span)
+            | api::opcore::portable::PortableAstExpr::Immediate(_, span)
+            | api::opcore::portable::PortableAstExpr::IndirectLong(_, span)
+            | api::opcore::portable::PortableAstExpr::Tuple(_, span)
+            | api::opcore::portable::PortableAstExpr::Error(_, span)
+            | api::opcore::portable::PortableAstExpr::Ternary { span, .. }
+            | api::opcore::portable::PortableAstExpr::Unary { span, .. }
+            | api::opcore::portable::PortableAstExpr::Binary { span, .. }
+            | api::opcore::portable::PortableAstExpr::Range { span, .. } => {
                 (span.line, span.col_start, span.col_end)
             }
         }
     }
 
-    fn push_expr(&mut self, expr: &api::opcore::normalized::PortableAstExpr) -> usize {
+    fn push_expr(&mut self, expr: &api::opcore::portable::PortableAstExpr) -> usize {
         let (kind, text_index) = match expr {
-            api::opcore::normalized::PortableAstExpr::Number(text, _) => (
+            api::opcore::portable::PortableAstExpr::Number(text, _) => (
                 OpforgeExprNodeKind::Number,
                 Some(self.intern_text(text.clone())),
             ),
-            api::opcore::normalized::PortableAstExpr::Identifier(name, _) => (
+            api::opcore::portable::PortableAstExpr::Identifier(name, _) => (
                 OpforgeExprNodeKind::Identifier,
                 Some(self.intern_text(name.clone())),
             ),
-            api::opcore::normalized::PortableAstExpr::Register(name, _) => (
+            api::opcore::portable::PortableAstExpr::Register(name, _) => (
                 OpforgeExprNodeKind::Register,
                 Some(self.intern_text(name.clone())),
             ),
-            api::opcore::normalized::PortableAstExpr::List(_, _) => {
+            api::opcore::portable::PortableAstExpr::List(_, _) => {
                 (OpforgeExprNodeKind::List, None)
             }
-            api::opcore::normalized::PortableAstExpr::Index { .. } => {
+            api::opcore::portable::PortableAstExpr::Index { .. } => {
                 (OpforgeExprNodeKind::Index, None)
             }
-            api::opcore::normalized::PortableAstExpr::Member { field, .. } => (
+            api::opcore::portable::PortableAstExpr::Member { field, .. } => (
                 OpforgeExprNodeKind::Member,
                 Some(self.intern_text(field.clone())),
             ),
-            api::opcore::normalized::PortableAstExpr::StructLiteral { type_name, .. } => (
+            api::opcore::portable::PortableAstExpr::StructLiteral { type_name, .. } => (
                 OpforgeExprNodeKind::StructLiteral,
                 Some(self.intern_text(type_name.clone())),
             ),
-            api::opcore::normalized::PortableAstExpr::Call { name, .. } => (
+            api::opcore::portable::PortableAstExpr::Call { name, .. } => (
                 OpforgeExprNodeKind::Call,
                 Some(self.intern_text(name.clone())),
             ),
-            api::opcore::normalized::PortableAstExpr::Placeholder(_) => {
+            api::opcore::portable::PortableAstExpr::Placeholder(_) => {
                 (OpforgeExprNodeKind::Placeholder, None)
             }
-            api::opcore::normalized::PortableAstExpr::Indirect(_, _) => {
+            api::opcore::portable::PortableAstExpr::Indirect(_, _) => {
                 (OpforgeExprNodeKind::Indirect, None)
             }
-            api::opcore::normalized::PortableAstExpr::Dollar(_) => {
+            api::opcore::portable::PortableAstExpr::Dollar(_) => {
                 (OpforgeExprNodeKind::Dollar, None)
             }
-            api::opcore::normalized::PortableAstExpr::String(bytes, _) => (
+            api::opcore::portable::PortableAstExpr::String(bytes, _) => (
                 OpforgeExprNodeKind::String,
                 Some(self.intern_text(String::from_utf8_lossy(bytes).to_string())),
             ),
-            api::opcore::normalized::PortableAstExpr::Immediate(_, _) => {
+            api::opcore::portable::PortableAstExpr::Immediate(_, _) => {
                 (OpforgeExprNodeKind::Immediate, None)
             }
-            api::opcore::normalized::PortableAstExpr::IndirectLong(_, _) => {
+            api::opcore::portable::PortableAstExpr::IndirectLong(_, _) => {
                 (OpforgeExprNodeKind::IndirectLong, None)
             }
-            api::opcore::normalized::PortableAstExpr::Tuple(_, _) => {
+            api::opcore::portable::PortableAstExpr::Tuple(_, _) => {
                 (OpforgeExprNodeKind::Tuple, None)
             }
-            api::opcore::normalized::PortableAstExpr::Error(message, _) => (
+            api::opcore::portable::PortableAstExpr::Error(message, _) => (
                 OpforgeExprNodeKind::Error,
                 Some(self.intern_text(message.clone())),
             ),
-            api::opcore::normalized::PortableAstExpr::Ternary { .. } => {
+            api::opcore::portable::PortableAstExpr::Ternary { .. } => {
                 (OpforgeExprNodeKind::Ternary, None)
             }
-            api::opcore::normalized::PortableAstExpr::Unary { op, .. } => (
+            api::opcore::portable::PortableAstExpr::Unary { op, .. } => (
                 OpforgeExprNodeKind::Unary,
                 Some(self.intern_text(format!("{op:?}"))),
             ),
-            api::opcore::normalized::PortableAstExpr::Binary { op, .. } => (
+            api::opcore::portable::PortableAstExpr::Binary { op, .. } => (
                 OpforgeExprNodeKind::Binary,
                 Some(self.intern_text(format!("{op:?}"))),
             ),
-            api::opcore::normalized::PortableAstExpr::Range { inclusive, .. } => (
+            api::opcore::portable::PortableAstExpr::Range { inclusive, .. } => (
                 OpforgeExprNodeKind::Range,
                 Some(self.intern_text(if *inclusive { "..=" } else { ".." })),
             ),
@@ -1069,8 +1075,8 @@ impl OpforgeOpcoreExprReport {
         });
 
         match expr {
-            api::opcore::normalized::PortableAstExpr::List(items, _)
-            | api::opcore::normalized::PortableAstExpr::Tuple(items, _) => {
+            api::opcore::portable::PortableAstExpr::List(items, _)
+            | api::opcore::portable::PortableAstExpr::Tuple(items, _) => {
                 for item in items {
                     let child_index = self.push_expr(item);
                     self.child_edges.push(OpforgeExprChildEdge {
@@ -1079,7 +1085,7 @@ impl OpforgeOpcoreExprReport {
                     });
                 }
             }
-            api::opcore::normalized::PortableAstExpr::Index { base, index, .. } => {
+            api::opcore::portable::PortableAstExpr::Index { base, index, .. } => {
                 for child in [base.as_ref(), index.as_ref()] {
                     let child_index = self.push_expr(child);
                     self.child_edges.push(OpforgeExprChildEdge {
@@ -1088,18 +1094,18 @@ impl OpforgeOpcoreExprReport {
                     });
                 }
             }
-            api::opcore::normalized::PortableAstExpr::Member { base, .. }
-            | api::opcore::normalized::PortableAstExpr::Indirect(base, _)
-            | api::opcore::normalized::PortableAstExpr::Immediate(base, _)
-            | api::opcore::normalized::PortableAstExpr::IndirectLong(base, _)
-            | api::opcore::normalized::PortableAstExpr::Unary { expr: base, .. } => {
+            api::opcore::portable::PortableAstExpr::Member { base, .. }
+            | api::opcore::portable::PortableAstExpr::Indirect(base, _)
+            | api::opcore::portable::PortableAstExpr::Immediate(base, _)
+            | api::opcore::portable::PortableAstExpr::IndirectLong(base, _)
+            | api::opcore::portable::PortableAstExpr::Unary { expr: base, .. } => {
                 let child_index = self.push_expr(base);
                 self.child_edges.push(OpforgeExprChildEdge {
                     child_index,
                     label_text_index: None,
                 });
             }
-            api::opcore::normalized::PortableAstExpr::StructLiteral { fields, .. } => {
+            api::opcore::portable::PortableAstExpr::StructLiteral { fields, .. } => {
                 for (field_name, value) in fields {
                     let child_index = self.push_expr(value);
                     let label_text_index = Some(self.intern_text(field_name.clone()));
@@ -1109,7 +1115,7 @@ impl OpforgeOpcoreExprReport {
                     });
                 }
             }
-            api::opcore::normalized::PortableAstExpr::Call { args, .. } => {
+            api::opcore::portable::PortableAstExpr::Call { args, .. } => {
                 for arg in args {
                     let child_index = self.push_expr(arg);
                     self.child_edges.push(OpforgeExprChildEdge {
@@ -1118,7 +1124,7 @@ impl OpforgeOpcoreExprReport {
                     });
                 }
             }
-            api::opcore::normalized::PortableAstExpr::Ternary {
+            api::opcore::portable::PortableAstExpr::Ternary {
                 cond,
                 then_expr,
                 else_expr,
@@ -1132,7 +1138,7 @@ impl OpforgeOpcoreExprReport {
                     });
                 }
             }
-            api::opcore::normalized::PortableAstExpr::Binary { left, right, .. } => {
+            api::opcore::portable::PortableAstExpr::Binary { left, right, .. } => {
                 for child in [left.as_ref(), right.as_ref()] {
                     let child_index = self.push_expr(child);
                     self.child_edges.push(OpforgeExprChildEdge {
@@ -1141,7 +1147,7 @@ impl OpforgeOpcoreExprReport {
                     });
                 }
             }
-            api::opcore::normalized::PortableAstExpr::Range {
+            api::opcore::portable::PortableAstExpr::Range {
                 start, end, step, ..
             } => {
                 for child in [Some(start.as_ref()), Some(end.as_ref()), step.as_deref()]
@@ -1155,13 +1161,13 @@ impl OpforgeOpcoreExprReport {
                     });
                 }
             }
-            api::opcore::normalized::PortableAstExpr::Number(_, _)
-            | api::opcore::normalized::PortableAstExpr::Identifier(_, _)
-            | api::opcore::normalized::PortableAstExpr::Register(_, _)
-            | api::opcore::normalized::PortableAstExpr::Placeholder(_)
-            | api::opcore::normalized::PortableAstExpr::Dollar(_)
-            | api::opcore::normalized::PortableAstExpr::String(_, _)
-            | api::opcore::normalized::PortableAstExpr::Error(_, _) => {}
+            api::opcore::portable::PortableAstExpr::Number(_, _)
+            | api::opcore::portable::PortableAstExpr::Identifier(_, _)
+            | api::opcore::portable::PortableAstExpr::Register(_, _)
+            | api::opcore::portable::PortableAstExpr::Placeholder(_)
+            | api::opcore::portable::PortableAstExpr::Dollar(_)
+            | api::opcore::portable::PortableAstExpr::String(_, _)
+            | api::opcore::portable::PortableAstExpr::Error(_, _) => {}
         }
 
         self.nodes[node_index].child_len =
@@ -1171,7 +1177,7 @@ impl OpforgeOpcoreExprReport {
 }
 
 impl OpforgeOpcoreModuleItemReport {
-    fn ok(line_ast: api::opcore::normalized::PortableLineAst) -> Self {
+    fn ok(line_ast: api::opcore::portable::PortableLineAst) -> Self {
         let mut report = Self {
             status: OpforgeProcessorStatus::Ok,
             line_kind: map_line_kind(&line_ast),
@@ -1187,7 +1193,7 @@ impl OpforgeOpcoreModuleItemReport {
         };
 
         match line_ast {
-            api::opcore::normalized::PortableLineAst::Use {
+            api::opcore::portable::PortableLineAst::Use {
                 module_id,
                 alias,
                 items,
@@ -1200,7 +1206,7 @@ impl OpforgeOpcoreModuleItemReport {
                     .map(|item| report.intern_text(item.name))
                     .collect();
             }
-            api::opcore::normalized::PortableLineAst::Statement {
+            api::opcore::portable::PortableLineAst::Statement {
                 mnemonic, operands, ..
             } => {
                 report.statement_mnemonic = mnemonic.map(|mnemonic| report.intern_text(mnemonic));
@@ -1285,59 +1291,59 @@ impl OpforgeOpcoreModuleItemReport {
     }
 }
 
-fn portable_token_text(token: &api::opcore::normalized::PortableToken) -> String {
+fn portable_token_text(token: &api::opcore::portable::PortableToken) -> String {
     match &token.kind {
-        api::opcore::normalized::PortableTokenKind::Identifier(name)
-        | api::opcore::normalized::PortableTokenKind::Register(name) => name.clone(),
-        api::opcore::normalized::PortableTokenKind::Number { text, .. } => text.clone(),
-        api::opcore::normalized::PortableTokenKind::String { raw, .. } => raw.clone(),
-        api::opcore::normalized::PortableTokenKind::Comma => ",".to_string(),
-        api::opcore::normalized::PortableTokenKind::Colon => ":".to_string(),
-        api::opcore::normalized::PortableTokenKind::Dollar => "$".to_string(),
-        api::opcore::normalized::PortableTokenKind::Dot => ".".to_string(),
-        api::opcore::normalized::PortableTokenKind::Hash => "#".to_string(),
-        api::opcore::normalized::PortableTokenKind::Question => "?".to_string(),
-        api::opcore::normalized::PortableTokenKind::OpenBracket => "[".to_string(),
-        api::opcore::normalized::PortableTokenKind::CloseBracket => "]".to_string(),
-        api::opcore::normalized::PortableTokenKind::OpenBrace => "{".to_string(),
-        api::opcore::normalized::PortableTokenKind::CloseBrace => "}".to_string(),
-        api::opcore::normalized::PortableTokenKind::OpenParen => "(".to_string(),
-        api::opcore::normalized::PortableTokenKind::CloseParen => ")".to_string(),
-        api::opcore::normalized::PortableTokenKind::Operator(op) => match op {
-            api::opcore::normalized::PortableOperatorKind::Range => "..".to_string(),
-            api::opcore::normalized::PortableOperatorKind::RangeInclusive => "..=".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Plus => "+".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Minus => "-".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Multiply => "*".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Power => "^".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Divide => "/".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Mod => "%".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Shl => "<<".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Shr => ">>".to_string(),
-            api::opcore::normalized::PortableOperatorKind::BitNot => "~".to_string(),
-            api::opcore::normalized::PortableOperatorKind::LogicNot => "!".to_string(),
-            api::opcore::normalized::PortableOperatorKind::BitAnd => "&".to_string(),
-            api::opcore::normalized::PortableOperatorKind::BitOr => "|".to_string(),
-            api::opcore::normalized::PortableOperatorKind::BitXor => "^".to_string(),
-            api::opcore::normalized::PortableOperatorKind::LogicAnd => "&&".to_string(),
-            api::opcore::normalized::PortableOperatorKind::LogicOr => "||".to_string(),
-            api::opcore::normalized::PortableOperatorKind::LogicXor => "^^".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Eq => "==".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Ne => "!=".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Ge => ">=".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Gt => ">".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Le => "<=".to_string(),
-            api::opcore::normalized::PortableOperatorKind::Lt => "<".to_string(),
+        api::opcore::portable::PortableTokenKind::Identifier(name)
+        | api::opcore::portable::PortableTokenKind::Register(name) => name.clone(),
+        api::opcore::portable::PortableTokenKind::Number { text, .. } => text.clone(),
+        api::opcore::portable::PortableTokenKind::String { raw, .. } => raw.clone(),
+        api::opcore::portable::PortableTokenKind::Comma => ",".to_string(),
+        api::opcore::portable::PortableTokenKind::Colon => ":".to_string(),
+        api::opcore::portable::PortableTokenKind::Dollar => "$".to_string(),
+        api::opcore::portable::PortableTokenKind::Dot => ".".to_string(),
+        api::opcore::portable::PortableTokenKind::Hash => "#".to_string(),
+        api::opcore::portable::PortableTokenKind::Question => "?".to_string(),
+        api::opcore::portable::PortableTokenKind::OpenBracket => "[".to_string(),
+        api::opcore::portable::PortableTokenKind::CloseBracket => "]".to_string(),
+        api::opcore::portable::PortableTokenKind::OpenBrace => "{".to_string(),
+        api::opcore::portable::PortableTokenKind::CloseBrace => "}".to_string(),
+        api::opcore::portable::PortableTokenKind::OpenParen => "(".to_string(),
+        api::opcore::portable::PortableTokenKind::CloseParen => ")".to_string(),
+        api::opcore::portable::PortableTokenKind::Operator(op) => match op {
+            api::opcore::portable::PortableOperatorKind::Range => "..".to_string(),
+            api::opcore::portable::PortableOperatorKind::RangeInclusive => "..=".to_string(),
+            api::opcore::portable::PortableOperatorKind::Plus => "+".to_string(),
+            api::opcore::portable::PortableOperatorKind::Minus => "-".to_string(),
+            api::opcore::portable::PortableOperatorKind::Multiply => "*".to_string(),
+            api::opcore::portable::PortableOperatorKind::Power => "^".to_string(),
+            api::opcore::portable::PortableOperatorKind::Divide => "/".to_string(),
+            api::opcore::portable::PortableOperatorKind::Mod => "%".to_string(),
+            api::opcore::portable::PortableOperatorKind::Shl => "<<".to_string(),
+            api::opcore::portable::PortableOperatorKind::Shr => ">>".to_string(),
+            api::opcore::portable::PortableOperatorKind::BitNot => "~".to_string(),
+            api::opcore::portable::PortableOperatorKind::LogicNot => "!".to_string(),
+            api::opcore::portable::PortableOperatorKind::BitAnd => "&".to_string(),
+            api::opcore::portable::PortableOperatorKind::BitOr => "|".to_string(),
+            api::opcore::portable::PortableOperatorKind::BitXor => "^".to_string(),
+            api::opcore::portable::PortableOperatorKind::LogicAnd => "&&".to_string(),
+            api::opcore::portable::PortableOperatorKind::LogicOr => "||".to_string(),
+            api::opcore::portable::PortableOperatorKind::LogicXor => "^^".to_string(),
+            api::opcore::portable::PortableOperatorKind::Eq => "==".to_string(),
+            api::opcore::portable::PortableOperatorKind::Ne => "!=".to_string(),
+            api::opcore::portable::PortableOperatorKind::Ge => ">=".to_string(),
+            api::opcore::portable::PortableOperatorKind::Gt => ">".to_string(),
+            api::opcore::portable::PortableOperatorKind::Le => "<=".to_string(),
+            api::opcore::portable::PortableOperatorKind::Lt => "<".to_string(),
         },
     }
 }
 
-fn portable_expr_text(expr: &api::opcore::normalized::PortableAstExpr) -> String {
+fn portable_expr_text(expr: &api::opcore::portable::PortableAstExpr) -> String {
     match expr {
-        api::opcore::normalized::PortableAstExpr::Number(text, _) => text.clone(),
-        api::opcore::normalized::PortableAstExpr::Identifier(name, _) => name.clone(),
-        api::opcore::normalized::PortableAstExpr::Register(name, _) => name.clone(),
-        api::opcore::normalized::PortableAstExpr::List(items, _) => format!(
+        api::opcore::portable::PortableAstExpr::Number(text, _) => text.clone(),
+        api::opcore::portable::PortableAstExpr::Identifier(name, _) => name.clone(),
+        api::opcore::portable::PortableAstExpr::Register(name, _) => name.clone(),
+        api::opcore::portable::PortableAstExpr::List(items, _) => format!(
             "{{{}}}",
             items
                 .iter()
@@ -1345,17 +1351,17 @@ fn portable_expr_text(expr: &api::opcore::normalized::PortableAstExpr) -> String
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        api::opcore::normalized::PortableAstExpr::Index { base, index, .. } => {
+        api::opcore::portable::PortableAstExpr::Index { base, index, .. } => {
             format!(
                 "{}[{}]",
                 portable_expr_text(base),
                 portable_expr_text(index)
             )
         }
-        api::opcore::normalized::PortableAstExpr::Member { base, field, .. } => {
+        api::opcore::portable::PortableAstExpr::Member { base, field, .. } => {
             format!("{}.{}", portable_expr_text(base), field)
         }
-        api::opcore::normalized::PortableAstExpr::StructLiteral {
+        api::opcore::portable::PortableAstExpr::StructLiteral {
             type_name, fields, ..
         } => format!(
             "{}{{{}}}",
@@ -1366,7 +1372,7 @@ fn portable_expr_text(expr: &api::opcore::normalized::PortableAstExpr) -> String
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        api::opcore::normalized::PortableAstExpr::Call { name, args, .. } => format!(
+        api::opcore::portable::PortableAstExpr::Call { name, args, .. } => format!(
             "{}({})",
             name,
             args.iter()
@@ -1374,21 +1380,21 @@ fn portable_expr_text(expr: &api::opcore::normalized::PortableAstExpr) -> String
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        api::opcore::normalized::PortableAstExpr::Placeholder(_) => "?".to_string(),
-        api::opcore::normalized::PortableAstExpr::Indirect(inner, _) => {
+        api::opcore::portable::PortableAstExpr::Placeholder(_) => "?".to_string(),
+        api::opcore::portable::PortableAstExpr::Indirect(inner, _) => {
             format!("({})", portable_expr_text(inner))
         }
-        api::opcore::normalized::PortableAstExpr::Dollar(_) => "$".to_string(),
-        api::opcore::normalized::PortableAstExpr::String(bytes, _) => {
+        api::opcore::portable::PortableAstExpr::Dollar(_) => "$".to_string(),
+        api::opcore::portable::PortableAstExpr::String(bytes, _) => {
             String::from_utf8_lossy(bytes).to_string()
         }
-        api::opcore::normalized::PortableAstExpr::Immediate(inner, _) => {
+        api::opcore::portable::PortableAstExpr::Immediate(inner, _) => {
             format!("#{}", portable_expr_text(inner))
         }
-        api::opcore::normalized::PortableAstExpr::IndirectLong(inner, _) => {
+        api::opcore::portable::PortableAstExpr::IndirectLong(inner, _) => {
             format!("[{}]", portable_expr_text(inner))
         }
-        api::opcore::normalized::PortableAstExpr::Tuple(items, _) => format!(
+        api::opcore::portable::PortableAstExpr::Tuple(items, _) => format!(
             "({})",
             items
                 .iter()
@@ -1396,8 +1402,8 @@ fn portable_expr_text(expr: &api::opcore::normalized::PortableAstExpr) -> String
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        api::opcore::normalized::PortableAstExpr::Error(message, _) => message.clone(),
-        api::opcore::normalized::PortableAstExpr::Ternary {
+        api::opcore::portable::PortableAstExpr::Error(message, _) => message.clone(),
+        api::opcore::portable::PortableAstExpr::Ternary {
             cond,
             then_expr,
             else_expr,
@@ -1408,10 +1414,10 @@ fn portable_expr_text(expr: &api::opcore::normalized::PortableAstExpr) -> String
             portable_expr_text(then_expr),
             portable_expr_text(else_expr)
         ),
-        api::opcore::normalized::PortableAstExpr::Unary { op, expr, .. } => {
+        api::opcore::portable::PortableAstExpr::Unary { op, expr, .. } => {
             format!("{op:?} {}", portable_expr_text(expr))
         }
-        api::opcore::normalized::PortableAstExpr::Binary {
+        api::opcore::portable::PortableAstExpr::Binary {
             left, op, right, ..
         } => format!(
             "{} {:?} {}",
@@ -1419,7 +1425,7 @@ fn portable_expr_text(expr: &api::opcore::normalized::PortableAstExpr) -> String
             op,
             portable_expr_text(right)
         ),
-        api::opcore::normalized::PortableAstExpr::Range {
+        api::opcore::portable::PortableAstExpr::Range {
             start,
             end,
             step,
@@ -1442,25 +1448,25 @@ fn portable_expr_text(expr: &api::opcore::normalized::PortableAstExpr) -> String
     }
 }
 
-fn map_line_kind(line_ast: &api::opcore::normalized::PortableLineAst) -> OpforgeLineAstKind {
+fn map_line_kind(line_ast: &api::opcore::portable::PortableLineAst) -> OpforgeLineAstKind {
     match line_ast {
-        api::opcore::normalized::PortableLineAst::Empty => OpforgeLineAstKind::Empty,
-        api::opcore::normalized::PortableLineAst::Conditional { .. } => {
+        api::opcore::portable::PortableLineAst::Empty => OpforgeLineAstKind::Empty,
+        api::opcore::portable::PortableLineAst::Conditional { .. } => {
             OpforgeLineAstKind::Conditional
         }
-        api::opcore::normalized::PortableLineAst::Place { .. } => OpforgeLineAstKind::Place,
-        api::opcore::normalized::PortableLineAst::Pack { .. } => OpforgeLineAstKind::Pack,
-        api::opcore::normalized::PortableLineAst::Use { .. } => OpforgeLineAstKind::Use,
-        api::opcore::normalized::PortableLineAst::StatementDef { .. } => {
+        api::opcore::portable::PortableLineAst::Place { .. } => OpforgeLineAstKind::Place,
+        api::opcore::portable::PortableLineAst::Pack { .. } => OpforgeLineAstKind::Pack,
+        api::opcore::portable::PortableLineAst::Use { .. } => OpforgeLineAstKind::Use,
+        api::opcore::portable::PortableLineAst::StatementDef { .. } => {
             OpforgeLineAstKind::StatementDef
         }
-        api::opcore::normalized::PortableLineAst::StatementEnd { .. } => {
+        api::opcore::portable::PortableLineAst::StatementEnd { .. } => {
             OpforgeLineAstKind::StatementEnd
         }
-        api::opcore::normalized::PortableLineAst::Assignment { .. } => {
+        api::opcore::portable::PortableLineAst::Assignment { .. } => {
             OpforgeLineAstKind::Assignment
         }
-        api::opcore::normalized::PortableLineAst::Statement { .. } => OpforgeLineAstKind::Statement,
+        api::opcore::portable::PortableLineAst::Statement { .. } => OpforgeLineAstKind::Statement,
     }
 }
 
@@ -1545,7 +1551,7 @@ fn build_grouped_high_level_config(
         Ok(None) => return Err(invalid_request_report("source.root_path must not be null")),
         Err(err) => return Err(invalid_request_report(err)),
     };
-    let input_base_storage = match opt_c_str(request.source.input_base) {
+    let output_base_storage = match opt_c_str(request.source.output_base) {
         Ok(Some(text)) if !text.is_empty() => text.to_string(),
         Ok(_) => derive_input_base(&root_path),
         Err(err) => return Err(invalid_request_report(err)),
@@ -1651,7 +1657,7 @@ fn build_grouped_high_level_config(
         root_path,
         api::asm::OwnedAssemblerConfig {
             source: api::asm::OwnedSourceOptions {
-                input_base: input_base_storage,
+                output_base: output_base_storage,
                 defines,
                 include_paths,
                 module_paths,
@@ -1687,7 +1693,7 @@ fn build_grouped_high_level_config(
                 list_name_override,
                 hex_name_override,
                 header_title,
-                suppress_outputs: request.output.suppress_outputs != 0,
+                no_outputs: request.output.no_outputs != 0,
                 ..api::asm::OwnedOutputOptions::default()
             },
             diagnostics: api::asm::DiagnosticsOptions {
@@ -1706,10 +1712,10 @@ fn build_opasm_processor(
     execution_mode: u32,
     cpu_id: *const c_char,
     dialect_override: *const c_char,
-) -> Result<api::asm::opasm::normalized::Processor, String> {
+) -> Result<api::asm::opasm::portable::Processor, String> {
     let execution_mode = map_execution_mode(execution_mode)?;
     let mut builder =
-        api::asm::opasm::normalized::ProcessorBuilder::new().execution_mode(execution_mode);
+        api::asm::opasm::portable::ProcessorBuilder::new().execution_mode(execution_mode);
 
     if let Some(cpu_id) = opt_c_str(cpu_id)? {
         if !cpu_id.is_empty() {
@@ -1922,25 +1928,25 @@ fn map_diagnostic_severity(severity: Severity) -> OpforgeDiagnosticSeverity {
     }
 }
 
-fn map_portable_token_kind(kind: &api::opcore::normalized::PortableTokenKind) -> OpforgeTokenKind {
+fn map_portable_token_kind(kind: &api::opcore::portable::PortableTokenKind) -> OpforgeTokenKind {
     match kind {
-        api::opcore::normalized::PortableTokenKind::Identifier(_) => OpforgeTokenKind::Identifier,
-        api::opcore::normalized::PortableTokenKind::Register(_) => OpforgeTokenKind::Register,
-        api::opcore::normalized::PortableTokenKind::Number { .. } => OpforgeTokenKind::Number,
-        api::opcore::normalized::PortableTokenKind::String { .. } => OpforgeTokenKind::String,
-        api::opcore::normalized::PortableTokenKind::Comma => OpforgeTokenKind::Comma,
-        api::opcore::normalized::PortableTokenKind::Colon => OpforgeTokenKind::Colon,
-        api::opcore::normalized::PortableTokenKind::Dollar => OpforgeTokenKind::Dollar,
-        api::opcore::normalized::PortableTokenKind::Dot => OpforgeTokenKind::Dot,
-        api::opcore::normalized::PortableTokenKind::Hash => OpforgeTokenKind::Hash,
-        api::opcore::normalized::PortableTokenKind::Question => OpforgeTokenKind::Question,
-        api::opcore::normalized::PortableTokenKind::OpenBracket => OpforgeTokenKind::OpenBracket,
-        api::opcore::normalized::PortableTokenKind::CloseBracket => OpforgeTokenKind::CloseBracket,
-        api::opcore::normalized::PortableTokenKind::OpenBrace => OpforgeTokenKind::OpenBrace,
-        api::opcore::normalized::PortableTokenKind::CloseBrace => OpforgeTokenKind::CloseBrace,
-        api::opcore::normalized::PortableTokenKind::OpenParen => OpforgeTokenKind::OpenParen,
-        api::opcore::normalized::PortableTokenKind::CloseParen => OpforgeTokenKind::CloseParen,
-        api::opcore::normalized::PortableTokenKind::Operator(_) => OpforgeTokenKind::Operator,
+        api::opcore::portable::PortableTokenKind::Identifier(_) => OpforgeTokenKind::Identifier,
+        api::opcore::portable::PortableTokenKind::Register(_) => OpforgeTokenKind::Register,
+        api::opcore::portable::PortableTokenKind::Number { .. } => OpforgeTokenKind::Number,
+        api::opcore::portable::PortableTokenKind::String { .. } => OpforgeTokenKind::String,
+        api::opcore::portable::PortableTokenKind::Comma => OpforgeTokenKind::Comma,
+        api::opcore::portable::PortableTokenKind::Colon => OpforgeTokenKind::Colon,
+        api::opcore::portable::PortableTokenKind::Dollar => OpforgeTokenKind::Dollar,
+        api::opcore::portable::PortableTokenKind::Dot => OpforgeTokenKind::Dot,
+        api::opcore::portable::PortableTokenKind::Hash => OpforgeTokenKind::Hash,
+        api::opcore::portable::PortableTokenKind::Question => OpforgeTokenKind::Question,
+        api::opcore::portable::PortableTokenKind::OpenBracket => OpforgeTokenKind::OpenBracket,
+        api::opcore::portable::PortableTokenKind::CloseBracket => OpforgeTokenKind::CloseBracket,
+        api::opcore::portable::PortableTokenKind::OpenBrace => OpforgeTokenKind::OpenBrace,
+        api::opcore::portable::PortableTokenKind::CloseBrace => OpforgeTokenKind::CloseBrace,
+        api::opcore::portable::PortableTokenKind::OpenParen => OpforgeTokenKind::OpenParen,
+        api::opcore::portable::PortableTokenKind::CloseParen => OpforgeTokenKind::CloseParen,
+        api::opcore::portable::PortableTokenKind::Operator(_) => OpforgeTokenKind::Operator,
     }
 }
 
@@ -2111,7 +2117,7 @@ pub unsafe extern "C" fn opforge_asm_check_file_with_request(
 /// diagnostics and output naming. `callbacks` may be null unless the assembly
 /// actually buffers outputs that need to be delivered back to the host.
 /// Setting `request.output.emit_outputs` alone does not require callbacks if
-/// the run produces no buffered outputs, and `request.output.suppress_outputs`
+/// the run produces no buffered outputs, and `request.output.no_outputs`
 /// can prevent directive-driven or metadata-driven outputs from being buffered.
 ///
 /// # Safety
@@ -2758,7 +2764,7 @@ pub unsafe extern "C" fn opforge_opcore_tokenize_line(
         }
     };
 
-    let report = match api::opcore::normalized::tokenize_line(line, line_num) {
+    let report = match api::opcore::portable::tokenize_line(line, line_num) {
         Ok(tokenized) => OpforgeOpcoreTokenizeReport::ok(tokenized),
         Err(err) => OpforgeOpcoreTokenizeReport::error(
             OpforgeProcessorStatus::TokenizeError,
@@ -2981,7 +2987,7 @@ pub unsafe extern "C" fn opforge_opasm_tokenize_statement(
         }
     };
 
-    let report = match api::asm::opasm::normalized::tokenize_statement(
+    let report = match api::asm::opasm::portable::tokenize_statement(
         api::asm::opasm::StatementRequest::new(line, line_num),
     ) {
         Ok(tokenized) => OpforgeOpcoreTokenizeReport::ok_opasm(tokenized),
@@ -3200,7 +3206,7 @@ pub unsafe extern "C" fn opforge_opasm_parse_statement(
         }
     };
 
-    let report = match api::asm::opasm::normalized::parse_statement(
+    let report = match api::asm::opasm::portable::parse_statement(
         api::asm::opasm::StatementRequest::new(line, line_num),
     ) {
         Ok(parsed) => OpforgeOpasmParseReport::ok(parsed.ast),
@@ -3454,7 +3460,7 @@ pub unsafe extern "C" fn opforge_opasm_process_statement(
         Err(err) => return Box::into_raw(Box::new(OpforgeOpasmProcessReport::error(err, 0, 0, 0))),
     };
 
-    let report = match api::asm::opasm::normalized::process_statement_with_processor(
+    let report = match api::asm::opasm::portable::process_statement_with_processor(
         &processor,
         line,
         request.line_num,
@@ -4167,8 +4173,8 @@ pub unsafe extern "C" fn opforge_opcore_parse_expression(
         }
     };
 
-    let report = match api::opcore::normalized::tokenize_line(line, line_num) {
-        Ok(tokenized) => match api::opcore::normalized::parse_expression(tokenized) {
+    let report = match api::opcore::portable::tokenize_line(line, line_num) {
+        Ok(tokenized) => match api::opcore::portable::parse_expression(tokenized) {
             Ok(expr) => OpforgeOpcoreExprReport::ok(expr),
             Err(err) => OpforgeOpcoreExprReport::error(
                 OpforgeProcessorStatus::ParseError,
@@ -4461,7 +4467,7 @@ pub unsafe extern "C" fn opforge_opcore_process_module_item(
         }
     };
 
-    let report = match api::opcore::normalized::process_module_item(line, line_num) {
+    let report = match api::opcore::portable::process_module_item(line, line_num) {
         api::processing::ProcessingOutcome::Done(line_ast) => {
             OpforgeOpcoreModuleItemReport::ok(line_ast)
         }
@@ -4492,7 +4498,7 @@ pub unsafe extern "C" fn opforge_opcore_module_item_report_status(
 }
 
 #[no_mangle]
-/// Read the normalized line kind from an `opforge_opcore_*` module-item report.
+/// Read the portable line kind from an `opforge_opcore_*` module-item report.
 ///
 /// # Safety
 ///
@@ -5328,7 +5334,7 @@ mod tests {
 
     fn basic_request(
         root_path: *const c_char,
-        input_base: *const c_char,
+        output_base: *const c_char,
         out_dir: *const c_char,
         execution_mode: u32,
         emit_outputs: u8,
@@ -5336,7 +5342,7 @@ mod tests {
         OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path,
-                input_base,
+                output_base,
                 defines: empty_string_list(),
                 include_paths: empty_string_list(),
                 module_paths: empty_string_list(),
@@ -5365,7 +5371,7 @@ mod tests {
                 list_name_override: std::ptr::null(),
                 hex_name_override: std::ptr::null(),
                 header_title: std::ptr::null(),
-                suppress_outputs: 0,
+                no_outputs: 0,
             },
             diagnostics: OpforgeAsmDiagnosticsOptions {
                 debug_conditionals: 0,
@@ -5998,7 +6004,7 @@ mod tests {
         let request = OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path: root.as_ptr(),
-                input_base: std::ptr::null(),
+                output_base: std::ptr::null(),
                 defines: OpforgeStringList {
                     items: std::ptr::null(),
                     count: 0,
@@ -6039,7 +6045,7 @@ mod tests {
                 list_name_override: std::ptr::null(),
                 hex_name_override: std::ptr::null(),
                 header_title: std::ptr::null(),
-                suppress_outputs: 0,
+                no_outputs: 0,
             },
             diagnostics: OpforgeAsmDiagnosticsOptions {
                 debug_conditionals: 0,
@@ -6142,7 +6148,7 @@ mod tests {
         let request = OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path: root.as_ptr(),
-                input_base: std::ptr::null(),
+                output_base: std::ptr::null(),
                 defines: OpforgeStringList {
                     items: std::ptr::null(),
                     count: 0,
@@ -6183,7 +6189,7 @@ mod tests {
                 list_name_override: std::ptr::null(),
                 hex_name_override: std::ptr::null(),
                 header_title: std::ptr::null(),
-                suppress_outputs: 0,
+                no_outputs: 0,
             },
             diagnostics: OpforgeAsmDiagnosticsOptions {
                 debug_conditionals: 0,
@@ -6224,7 +6230,7 @@ mod tests {
         let request = OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path: root.as_ptr(),
-                input_base: input_base.as_ptr(),
+                output_base: input_base.as_ptr(),
                 defines: OpforgeStringList {
                     items: std::ptr::null(),
                     count: 0,
@@ -6265,7 +6271,7 @@ mod tests {
                 list_name_override: std::ptr::null(),
                 hex_name_override: std::ptr::null(),
                 header_title: std::ptr::null(),
-                suppress_outputs: 0,
+                no_outputs: 0,
             },
             diagnostics: OpforgeAsmDiagnosticsOptions {
                 debug_conditionals: 0,
@@ -6305,7 +6311,7 @@ mod tests {
         let request = OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path: root.as_ptr(),
-                input_base: std::ptr::null(),
+                output_base: std::ptr::null(),
                 defines: OpforgeStringList {
                     items: std::ptr::null(),
                     count: 0,
@@ -6346,7 +6352,7 @@ mod tests {
                 list_name_override: std::ptr::null(),
                 hex_name_override: std::ptr::null(),
                 header_title: std::ptr::null(),
-                suppress_outputs: 0,
+                no_outputs: 0,
             },
             diagnostics: OpforgeAsmDiagnosticsOptions {
                 debug_conditionals: 0,
@@ -6390,7 +6396,7 @@ mod tests {
         let request = OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path: root.as_ptr(),
-                input_base: std::ptr::null(),
+                output_base: std::ptr::null(),
                 defines: OpforgeStringList {
                     items: std::ptr::null(),
                     count: 0,
@@ -6431,7 +6437,7 @@ mod tests {
                 list_name_override: std::ptr::null(),
                 hex_name_override: std::ptr::null(),
                 header_title: std::ptr::null(),
-                suppress_outputs: 0,
+                no_outputs: 0,
             },
             diagnostics: OpforgeAsmDiagnosticsOptions {
                 debug_conditionals: 0,
@@ -6464,7 +6470,7 @@ mod tests {
         let request = OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path: root.as_ptr(),
-                input_base: std::ptr::null(),
+                output_base: std::ptr::null(),
                 defines: OpforgeStringList {
                     items: std::ptr::null(),
                     count: 0,
@@ -6505,7 +6511,7 @@ mod tests {
                 list_name_override: std::ptr::null(),
                 hex_name_override: std::ptr::null(),
                 header_title: std::ptr::null(),
-                suppress_outputs: 0,
+                no_outputs: 0,
             },
             diagnostics: OpforgeAsmDiagnosticsOptions {
                 debug_conditionals: 0,
@@ -6553,7 +6559,7 @@ mod tests {
         let request = OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path: root.as_ptr(),
-                input_base: std::ptr::null(),
+                output_base: std::ptr::null(),
                 defines: OpforgeStringList {
                     items: std::ptr::null(),
                     count: 0,
@@ -6594,7 +6600,7 @@ mod tests {
                 list_name_override: std::ptr::null(),
                 hex_name_override: std::ptr::null(),
                 header_title: std::ptr::null(),
-                suppress_outputs: 1,
+                no_outputs: 1,
             },
             diagnostics: OpforgeAsmDiagnosticsOptions {
                 debug_conditionals: 0,

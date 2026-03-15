@@ -827,21 +827,21 @@ fn run_formatter_mode(cli_config: &CliConfig) -> Result<i32, String> {
         return Ok(0);
     };
     let formatter_config = if let Some(path) = formatter.config_path.as_deref() {
-        api::unstable::FormatterConfig::load_from_path(path)
+        api::formatter::FormatterConfig::load_from_path(path)
             .map_err(|err| format!("formatter config load failed: {err}"))?
     } else {
-        api::unstable::FormatterConfig::default()
+        api::formatter::FormatterConfig::default()
     };
-    let engine = api::unstable::FormatterEngine::new(formatter_config);
+    let engine = api::formatter::FormatterEngine::new(formatter_config);
     let mode = match formatter.mode {
-        CliFormatterMode::Check => api::unstable::FormatMode::Check,
-        CliFormatterMode::Write => api::unstable::FormatMode::Write,
-        CliFormatterMode::Stdout => api::unstable::FormatMode::Stdout,
+        CliFormatterMode::Check => api::formatter::FormatMode::Check,
+        CliFormatterMode::Write => api::formatter::FormatMode::Write,
+        CliFormatterMode::Stdout => api::formatter::FormatMode::Stdout,
     };
     let formatter_paths = resolve_formatter_input_paths(cli_config)
         .map_err(|err| format!("formatter target resolution failed: {err}"))?;
 
-    if mode == api::unstable::FormatMode::Stdout {
+    if mode == api::formatter::FormatMode::Stdout {
         if formatter_paths.len() != 1 {
             return Err("--fmt-stdout requires exactly one resolved source file".to_string());
         }
@@ -913,7 +913,7 @@ fn run_formatter_mode(cli_config: &CliConfig) -> Result<i32, String> {
 pub fn run_main() {
     let cli = Cli::parse();
     let registry = if cli.print_cpusupport || cli.print_capabilities {
-        Some(api::unstable::build_default_asm_registry())
+        Some(api::registry::default_asm_registry())
     } else {
         None
     };
@@ -929,9 +929,9 @@ pub fn run_main() {
     if cli.print_cpusupport {
         let registry = registry.as_ref().expect("report registry");
         if cli.format == OutputFormat::Json {
-            println!("{}", api::unstable::cpusupport_report_json(registry));
+            println!("{}", api::registry::cpusupport_report_json(registry));
         } else {
-            println!("{}", api::unstable::cpusupport_report(registry));
+            println!("{}", api::registry::cpusupport_report(registry));
         }
         return;
     }
@@ -940,12 +940,12 @@ pub fn run_main() {
         if cli.format == OutputFormat::Json {
             println!(
                 "{}",
-                api::unstable::capabilities_report_json(registry, VERSION, BUILD_PROFILE_SUMMARY)
+                api::registry::capabilities_report_json(registry, VERSION, BUILD_PROFILE_SUMMARY)
             );
         } else {
             println!(
                 "{}",
-                api::unstable::capabilities_report(registry, VERSION, BUILD_PROFILE_SUMMARY)
+                api::registry::capabilities_report(registry, VERSION, BUILD_PROFILE_SUMMARY)
             );
         }
         return;

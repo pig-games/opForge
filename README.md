@@ -94,8 +94,8 @@ Reference examples:
 - `formatter`, `lsp`, `cli`, `cli-core`, `ffi`: host-facing tooling layers over the split library.
 
 Current public API note:
-- The implemented Rust embedding API is usable now and centered on `libopforge::asm::Assembler`.
-- The next API phase is the Rust-first libopforge API Aesthetics Improvement Plan, which further refines the public module layout while keeping the current execution architecture intact. See [libopforge API Aesthetics Improvement Plan](documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md).
+- The stable Rust embedding API is module-first and centered on `libopforge::asm`.
+- The primary ergonomic entry points are `Assembler::builder(...)` for borrowed hosts and `AssemblerSession::builder(...)` for owned or callback-driven hosts.
 
 Stable public module map today:
 - `libopforge::asm`
@@ -106,7 +106,7 @@ Stable public module map today:
 - `libopforge::processing`
 - `libopforge::registry`
 - `libopforge::lockstep`
-- `libopforge::unstable` for advanced or transitional exports that are not part of the normal supported embedding path
+- `libopforge::formatter`
 
 Build:
 
@@ -231,12 +231,11 @@ At the root, `libopforge` exposes the stable module layout directly:
 - `libopforge::processing`
 - `libopforge::registry`
 - `libopforge::lockstep`
-
-Advanced and transitional exports remain available under `libopforge::unstable`,
-but they are not part of the normal stable embedding path.
+- `libopforge::formatter`
 
 Today, the stable Rust embedding surface includes:
 - `libopforge::asm::Assembler`
+- `libopforge::asm::AssemblerBuilder`
 - `libopforge::asm::AssemblerConfig`
 - `libopforge::asm::OwnedAssemblerConfig`
 - `libopforge::asm::AssemblerSessionBuilder`
@@ -247,19 +246,19 @@ Today, the stable Rust embedding surface includes:
 - filesystem-backed defaults plus in-memory `SourceProvider` / `OutputSink`
 - explicit execution-mode selection (`Rust`, `Vm`, `Lockstep`)
 
-This surface is supported and exercised by tests and examples, but it is not
-yet the final polished module-partitioned API. The next phase is documented in
-[libopforge API Aesthetics Improvement Plan](documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md).
+This surface is supported and exercised by tests, examples, and the FFI layer.
+This branch intentionally lands the API-aesthetics rename set without
+compatibility aliases for the old public names.
 
 Ownership choice now changes ergonomics rather than capability for normal
 supported assembler workflows:
 
-- borrowed Rust hosts can use `Assembler::with_config(...)` with
-  `libopforge::asm::AssemblerConfig`
-- non-borrowing hosts can use `AssemblerSession::with_config(...)` with
-  `libopforge::asm::OwnedAssemblerConfig`
+- borrowed Rust hosts typically start with `Assembler::builder(...)`
+- non-borrowing hosts typically start with `AssemblerSession::builder(...)`
 - both paths expose the same grouped source/execution/output/diagnostics
   concerns and assemble through the same stable high-level API boundary
+- grouped `AssemblerConfig` and `OwnedAssemblerConfig` remain available when a
+    host is already mapping from an existing config model
 
 The root facade is module-first on purpose:
 
@@ -267,7 +266,7 @@ The root facade is module-first on purpose:
 - prefer `libopforge::io::MemorySourceProvider` over flat root imports
 - prefer `libopforge::diagnostics::Diagnostic` over flat root imports
 
-`AssemblerConfig` currently accepts an `input_base` (the caller-chosen output
+`AssemblerConfig` accepts an `output_base` (the caller-chosen output
 base, usually the input file path stripped of its extension) together with an
 optional `out_dir`.
 
@@ -278,14 +277,14 @@ Output-base selection follows this precedence (implemented in
 |-----------|--------------|
 | `out_dir` is **not** set and `outfile_override` is provided | `outfile_override` |
 | `out_dir` is **not** set and `.meta.output.name` is present | metadata output name |
-| `out_dir` is **not** set, no override or metadata name | `input_base` |
+| `out_dir` is **not** set, no override or metadata name | `output_base` |
 | `out_dir` is set (any of the above cases) | only the final file-name component of the selected base is kept; `out_dir` supplies the directory |
 
 When `out_dir` is present, the directory portion is always rewritten — even
-when `input_base` is an absolute path.  Only the final path component (the
+when `output_base` is an absolute path. Only the final path component (the
 stem/filename) is preserved from the chosen base.
 
-Example: `input_base = "/src/prog"`, `out_dir = "/build"` → effective base
+Example: `output_base = "/src/prog"`, `out_dir = "/build"` → effective base
 `"/build/prog"`, regardless of the absolute source path.
 
 ## FFI consumer contract
@@ -308,7 +307,7 @@ same Rust API that tool authors use through `libopforge`.
 - In-memory `opforge_asm_assemble_memory_with_request(...)` paths now fail with
   `OPFORGE_STATUS_INVALID_REQUEST` if the assembly actually buffers outputs and
   the caller did not provide callbacks to receive them, including directive-
-  driven or metadata-driven outputs. `suppress_outputs` remains the way to
+    driven or metadata-driven outputs. `no_outputs` remains the way to
   prevent those buffered outputs when the host wants a diagnostics-only run.
 - `opforge_asm_report_message()` and the `opforge_diag_*_from_asm_report(...)`
   string accessors return pointers borrowed from `opforge_asm_report`; they

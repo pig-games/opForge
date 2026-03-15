@@ -44,7 +44,7 @@ fn empty_string_list() -> OpforgeStringList {
 
 fn basic_request(
     root_path: *const c_char,
-    input_base: *const c_char,
+    output_base: *const c_char,
     out_dir: *const c_char,
     execution_mode: u32,
     emit_outputs: u8,
@@ -52,7 +52,7 @@ fn basic_request(
     OpforgeAsmRequest {
         source: OpforgeAsmSourceOptions {
             root_path,
-            input_base,
+            output_base,
             defines: empty_string_list(),
             include_paths: empty_string_list(),
             module_paths: empty_string_list(),
@@ -81,7 +81,7 @@ fn basic_request(
             list_name_override: std::ptr::null(),
             hex_name_override: std::ptr::null(),
             header_title: std::ptr::null(),
-            suppress_outputs: 0,
+            no_outputs: 0,
         },
         diagnostics: OpforgeAsmDiagnosticsOptions {
             debug_conditionals: 0,
@@ -137,6 +137,7 @@ fn exported_header_matches_rust_abi_contract() {
          _Static_assert(offsetof(opforge_asm_request, execution) == {asm_request_execution_offset}, \"asm request execution offset mismatch\");\n\
          _Static_assert(offsetof(opforge_asm_request, output) == {asm_request_output_offset}, \"asm request output offset mismatch\");\n\
          _Static_assert(offsetof(opforge_asm_request, diagnostics) == {asm_request_diagnostics_offset}, \"asm request diagnostics offset mismatch\");\n\
+         _Static_assert(offsetof(opforge_asm_source_options, output_base) == {asm_source_options_output_base_offset}, \"asm source options output_base offset mismatch\");\n\
          _Static_assert(sizeof(opforge_asm_execution_options) == {asm_execution_options_size}, \"asm execution options size mismatch\");\n\
          _Static_assert(_Alignof(opforge_asm_execution_options) == {asm_execution_options_align}, \"asm execution options align mismatch\");\n\
          _Static_assert(offsetof(opforge_asm_execution_options, execution_mode) == {asm_execution_options_execution_mode_offset}, \"asm execution options execution_mode offset mismatch\");\n\
@@ -152,7 +153,7 @@ fn exported_header_matches_rust_abi_contract() {
          _Static_assert(offsetof(opforge_asm_output_options, fill_byte) == {asm_output_options_fill_byte_offset}, \"asm output options fill_byte offset mismatch\");\n\
          _Static_assert(offsetof(opforge_asm_output_options, fill_byte_set) == {asm_output_options_fill_byte_set_offset}, \"asm output options fill_byte_set offset mismatch\");\n\
          _Static_assert(offsetof(opforge_asm_output_options, labels_file) == {asm_output_options_labels_file_offset}, \"asm output options labels_file offset mismatch\");\n\
-         _Static_assert(offsetof(opforge_asm_output_options, suppress_outputs) == {asm_output_options_suppress_outputs_offset}, \"asm output options suppress_outputs offset mismatch\");\n\
+         _Static_assert(offsetof(opforge_asm_output_options, no_outputs) == {asm_output_options_no_outputs_offset}, \"asm output options no_outputs offset mismatch\");\n\
          static opforge_asm_report *(*assemble_with_request_fn)(const opforge_asm_request *) = opforge_asm_assemble_file_with_request;\n\
          static opforge_asm_session *(*asm_session_create_with_request_fn)(const opforge_asm_request *) = opforge_asm_session_create_with_request;\n\
          static opforge_prepared_asm_session *(*asm_session_prepare_fn)(const opforge_asm_session *) = opforge_asm_session_prepare;\n\
@@ -243,6 +244,7 @@ fn exported_header_matches_rust_abi_contract() {
         asm_request_execution_offset = std::mem::offset_of!(OpforgeAsmRequest, execution),
         asm_request_output_offset = std::mem::offset_of!(OpforgeAsmRequest, output),
         asm_request_diagnostics_offset = std::mem::offset_of!(OpforgeAsmRequest, diagnostics),
+        asm_source_options_output_base_offset = std::mem::offset_of!(OpforgeAsmSourceOptions, output_base),
         asm_execution_options_size = std::mem::size_of::<OpforgeAsmExecutionOptions>(),
         asm_execution_options_align = std::mem::align_of::<OpforgeAsmExecutionOptions>(),
         asm_execution_options_execution_mode_offset = std::mem::offset_of!(OpforgeAsmExecutionOptions, execution_mode),
@@ -258,7 +260,7 @@ fn exported_header_matches_rust_abi_contract() {
         asm_output_options_fill_byte_offset = std::mem::offset_of!(OpforgeAsmOutputOptions, fill_byte),
         asm_output_options_fill_byte_set_offset = std::mem::offset_of!(OpforgeAsmOutputOptions, fill_byte_set),
         asm_output_options_labels_file_offset = std::mem::offset_of!(OpforgeAsmOutputOptions, labels_file),
-        asm_output_options_suppress_outputs_offset = std::mem::offset_of!(OpforgeAsmOutputOptions, suppress_outputs),
+        asm_output_options_no_outputs_offset = std::mem::offset_of!(OpforgeAsmOutputOptions, no_outputs),
     );
 
     fs::write(&source_path, c_source).expect("write header ABI source");
@@ -393,7 +395,7 @@ fn exported_grouped_request_session_path_supports_richer_config_surface() {
     let request = OpforgeAsmRequest {
         source: OpforgeAsmSourceOptions {
             root_path: root.as_ptr(),
-            input_base: input_base.as_ptr(),
+            output_base: input_base.as_ptr(),
             defines: OpforgeStringList {
                 items: define_ptrs.as_ptr(),
                 count: define_ptrs.len(),
@@ -434,7 +436,7 @@ fn exported_grouped_request_session_path_supports_richer_config_surface() {
             list_name_override: std::ptr::null(),
             hex_name_override: std::ptr::null(),
             header_title: header_title.as_ptr(),
-            suppress_outputs: 0,
+            no_outputs: 0,
         },
         diagnostics: OpforgeAsmDiagnosticsOptions {
             debug_conditionals: 1,
@@ -499,7 +501,7 @@ fn exported_grouped_request_path_exposes_rich_diagnostics() {
     let request = OpforgeAsmRequest {
         source: OpforgeAsmSourceOptions {
             root_path: root.as_ptr(),
-            input_base: input_base.as_ptr(),
+            output_base: input_base.as_ptr(),
             defines: OpforgeStringList {
                 items: std::ptr::null(),
                 count: 0,
@@ -540,7 +542,7 @@ fn exported_grouped_request_path_exposes_rich_diagnostics() {
             list_name_override: std::ptr::null(),
             hex_name_override: std::ptr::null(),
             header_title: std::ptr::null(),
-            suppress_outputs: 0,
+            no_outputs: 0,
         },
         diagnostics: OpforgeAsmDiagnosticsOptions {
             debug_conditionals: 1,

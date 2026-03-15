@@ -107,7 +107,7 @@ pub fn has_werror_violations(reports: &[CliRunReport]) -> bool {
 fn run_one(
     cli: &Cli,
     asm_name: &str,
-    input_base: &str,
+    output_base: &str,
     config: &CliConfig,
 ) -> Result<AsmRunReport, AsmRunError> {
     let root_path = Path::new(asm_name);
@@ -120,7 +120,7 @@ fn run_one(
         root_path,
         AssemblerConfig {
             source: SourceOptions {
-                input_base,
+                output_base,
                 defines: &config.defines,
                 include_paths: &config.include_paths,
                 module_paths: &config.module_paths,

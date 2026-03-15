@@ -1,6 +1,5 @@
 use libopforge::asm::{
-    AssemblerSession, DiagnosticsOptions, ExecutionMode, LabelOutputFormat, OutputFormat,
-    OwnedAssemblerConfig, OwnedExecutionOptions, OwnedOutputOptions, OwnedSourceOptions,
+    AssemblerSession, ExecutionMode, LabelOutputFormat, OutputFormat,
 };
 use std::error::Error;
 use std::fs;
@@ -19,33 +18,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = work_dir.join("out");
     fs::create_dir_all(&out_dir)?;
     fs::write(&source_path, ".module main\n    .byte $00\n.endmodule\n")?;
-    let input_base = source_path
+    let output_base = source_path
         .with_extension("")
         .to_string_lossy()
         .into_owned();
 
-    let report = AssemblerSession::with_config(
-        source_path.clone(),
-        OwnedAssemblerConfig {
-            source: OwnedSourceOptions {
-                input_base,
-                ..OwnedSourceOptions::default()
-            },
-            execution: OwnedExecutionOptions {
-                execution_mode: ExecutionMode::Vm,
-                ..OwnedExecutionOptions::default()
-            },
-            output: OwnedOutputOptions {
-                out_dir: Some(out_dir.clone()),
-                output_format: OutputFormat::Text,
-                label_output_format: LabelOutputFormat::Vice,
-                header_title: "libopforge filesystem example".to_string(),
-                ..OwnedOutputOptions::default()
-            },
-            diagnostics: DiagnosticsOptions::default(),
-        },
-    )
-    .assemble()?;
+    let report = AssemblerSession::builder(source_path.clone())
+        .output_base(output_base)
+        .execution_mode(ExecutionMode::Vm)
+        .out_dir(out_dir.clone())
+        .output_format(OutputFormat::Text)
+        .label_output_format(LabelOutputFormat::Vice)
+        .header_title("libopforge filesystem example")
+        .assemble()?;
 
     let listing_path = out_dir.join("main.lst");
     let hex_path = out_dir.join("main.hex");

@@ -17,3 +17,4 @@ clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 cli-core = { path = "../opforge-cli-core" }
 api = { package = "libopforge", path = "../opforge-lib" }
+engine = { path = "../opforge-engine" }

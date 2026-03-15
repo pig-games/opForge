@@ -1,11 +1,8 @@
 use libopforge::asm::{
-    AssemblerSession, ContinuationHead, DiagnosticsOptions, ExecutionMode, LabelOutputFormat,
-    OutputFormat, OwnedAssemblerConfig, OwnedExecutionOptions, OwnedOutputOptions,
-    OwnedSourceOptions,
+    AssemblerSession, ContinuationHead, ExecutionMode, LabelOutputFormat, OutputFormat,
 };
 use libopforge::io::{MemoryOutputSink, MemorySourceProvider};
 use std::error::Error;
-use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let source_provider = MemorySourceProvider::new().with_file(
@@ -14,31 +11,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     let output_sink = MemoryOutputSink::new();
 
-    let prepared = AssemblerSession::with_config(
-        "/virtual/main.asm",
-        OwnedAssemblerConfig {
-            source: OwnedSourceOptions {
-                input_base: "/virtual/main".to_string(),
-                source_provider: Some(Arc::new(source_provider.clone())),
-                ..OwnedSourceOptions::default()
-            },
-            execution: OwnedExecutionOptions {
-                execution_mode: ExecutionMode::Lockstep {
-                    continuation_head: ContinuationHead::Vm,
-                },
-                ..OwnedExecutionOptions::default()
-            },
-            output: OwnedOutputOptions {
-                output_format: OutputFormat::Text,
-                label_output_format: LabelOutputFormat::Vice,
-                header_title: "libopforge example".to_string(),
-                output_sink: Some(Arc::new(output_sink.clone())),
-                ..OwnedOutputOptions::default()
-            },
-            diagnostics: DiagnosticsOptions::default(),
-        },
-    )
-    .prepare()?;
+    let prepared = AssemblerSession::builder("/virtual/main.asm")
+        .output_base("/virtual/main")
+        .source_provider(source_provider.clone())
+        .output_sink(output_sink.clone())
+        .execution_mode(ExecutionMode::Lockstep {
+            continuation_head: ContinuationHead::Vm,
+        })
+        .output_format(OutputFormat::Text)
+        .label_output_format(LabelOutputFormat::Vice)
+        .header_title("libopforge example")
+        .prepare()?;
 
     let report = prepared.assemble()?;
 

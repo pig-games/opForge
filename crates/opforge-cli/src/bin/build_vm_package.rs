@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fs::create_dir_all(parent)?;
     }
 
-    let bytes = api::unstable::build_default_runtime_package_bytes()
+    let bytes = engine::build_default_runtime_package_bytes()
         .ok_or_else(|| "failed to build default runtime package".to_string())?;
     fs::write(&output_path, &bytes)?;
 

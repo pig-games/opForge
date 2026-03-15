@@ -115,7 +115,7 @@ typedef struct opforge_string_list {
 
 typedef struct opforge_asm_source_options {
     const char *root_path;
-    const char *input_base;
+    const char *output_base;
     opforge_string_list defines;
     opforge_string_list include_paths;
     opforge_string_list module_paths;
@@ -146,7 +146,7 @@ typedef struct opforge_asm_output_options {
     const char *list_name_override;
     const char *hex_name_override;
     const char *header_title;
-    uint8_t suppress_outputs;
+    uint8_t no_outputs;
 } opforge_asm_output_options;
 
 typedef struct opforge_asm_diagnostics_options {

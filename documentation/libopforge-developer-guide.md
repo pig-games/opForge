@@ -2,7 +2,7 @@
 
 This guide is for developers who want to embed opForge as a library, build new tools on top of it, or integrate it into an existing build/editor/runtime environment.
 
-It is based on the code in this branch/worktree as of `v0.9.5`, not on an aspirational future API. Where the workspace is intentionally transitional, this guide calls that out directly.
+It documents the stable libopforge host surface in this branch/worktree as of `v0.9.5`.
 
 ## 1. Start here
 
@@ -12,9 +12,10 @@ If you are building:
 |---|---|---|
 | Rust CLI, build tool, GUI, server | `libopforge::asm` | This is the supported high-level embedding surface |
 | In-memory editor, browser-like host, tests | `libopforge::asm` + `libopforge::io` | Swap filesystem I/O for memory-backed providers/sinks |
-| Background validation or repeated builds | `AssemblerSession`, `AssemblerSession::prepare()`, `check()` | These separate ownership, preparation, and execution cleanly without narrowing the reusable config surface |
+| Background validation or repeated builds | `AssemblerSession::builder(...)`, `prepare()`, `check()` | These separate ownership, preparation, and execution cleanly while keeping the host entry path builder-first |
 | Syntax-aware editor features | `libopforge::opcore`, `libopforge::processing`, `libopforge::asm::opasm` | These expose tokenization, expression parsing, line routing, and statement processing |
 | CPU discovery or support UI | `libopforge::registry` | Introspect builtin CPUs/families/dialects without touching internals |
+| Formatter hosts | `libopforge::formatter` | Access the stable formatter surface without depending on lower-level crates |
 | C or C++ host integration | `crates/opforge-ffi` | Thin ABI layer over the same library/session model |
 | New CPU/family/dialect implementations | direct workspace crates (`registry`, `families`, `vm`) | This is advanced extension work, not the normal stable embedding path |
 
@@ -29,7 +30,7 @@ The workspace is deliberately layered.
 - `crates/opforge-engine` owns orchestration: source loading, preprocessing, module graph expansion, registry bootstrap, output routing, runtime model loading, and lockstep coordination.
 - `crates/opforge-core` (`opcore`) owns non-assembler language semantics such as tokenization, expressions, module-item handling, macro processing, and scopes.
 - `crates/opforge-asm` owns assembler-specific behavior: statement parsing, evaluation, encoding, listings, output payloads, and assembler diagnostics/reporting.
-- `crates/opforge-vm` owns the shared VM/runtime/package machinery and the portable contracts used by VM-backed and normalized tooling paths.
+- `crates/opforge-vm` owns the shared VM/runtime/package machinery and the portable contracts used by VM-backed and portable tooling paths.
 - `crates/opforge-registry` and `crates/opforge-families` own CPU/family/dialect registration plus builtin architecture behavior.
 - `crates/opforge-formatter`, `crates/opforge-lsp`, `crates/opforge-cli-core`, `crates/opforge-cli`, and `crates/opforge-ffi` are host/tool layers built on top of the split library.
 
@@ -52,8 +53,7 @@ The root crate intentionally exposes a module-first API:
 - `libopforge::processing`
 - `libopforge::registry`
 - `libopforge::lockstep`
-
-Treat `libopforge::unstable` as an escape hatch for advanced or transitional work, not as the default way to embed the library.
+- `libopforge::formatter`
 
 Important boundary notes:
 
@@ -65,7 +65,7 @@ Important boundary notes:
 
 All high-level assembly flows share the same stages:
 
-1. Choose a root source path and an `input_base`.
+1. Choose a root source path and an `output_base`.
 2. Resolve source input through either the filesystem or a custom `SourceProvider`.
 3. Expand preprocessor directives, includes, and module graph dependencies.
 4. Resolve the target CPU through the builtin registry, optionally using `cpu_override`.
@@ -73,11 +73,11 @@ All high-level assembly flows share the same stages:
 6. Emit outputs through either the filesystem or a custom `OutputSink`.
 7. Consume `AsmRunReport` diagnostics and, when needed, prepared-session metadata such as `SourceMap` and dependency files.
 
-### 4.1 `input_base` matters
+### 4.1 `output_base` matters
 
-`input_base` is not cosmetic. It drives output naming when you use default outputs such as listing and hex files.
+`output_base` is not cosmetic. It drives output naming when you use default outputs such as listing and hex files.
 
-In the stable Rust API, when `input_base` is omitted, the public `assemble()` and `prepare()` paths derive it from `root_path` by removing the source extension. If your host wants artifact names that differ from that path-derived default, set `input_base` explicitly.
+In the stable Rust API, when `output_base` is omitted, the public `assemble()` and `prepare()` paths derive it from `root_path` by removing the source extension. If your host wants artifact names that differ from that path-derived default, set `output_base` explicitly.
 
 ### 4.2 Execution mode defaults
 
@@ -93,7 +93,7 @@ Use:
 
 Use `check()` when you want validation without output-side effects.
 
-In the stable API, `check()` explicitly normalizes the output configuration so it suppresses default outputs, labels, dependency output, binary specs, and output-file overrides before assembling. This makes it the right background-validation call for editor tooling and CI-style validation.
+In the stable API, `check()` explicitly normalizes the output configuration so it disables default outputs, labels, dependency output, binary specs, and output-file overrides before assembling. Internally that means forcing `no_outputs = true`, which makes `check()` the right background-validation call for editor tooling and CI-style validation.
 
 ### 4.4 `prepare()` versus one-shot execution
 
@@ -110,36 +110,28 @@ This is especially useful in tools that want to present dependency/source-map me
 Contract split:
 
 - `Assembler::prepare()` and `AssemblerSession::prepare()` preserve the full grouped config needed for later prepared execution.
-- the free `prepare()` helper supports preparation inputs plus `input_base` and `execution_mode`; when omitted, `execution_mode` still defaults explicitly to `Vm`.
+- the free `prepare()` helper supports preparation inputs plus `output_base` and `execution_mode`; when omitted, `execution_mode` still defaults explicitly to `Vm`.
 - if you need a prepared flow with custom sinks, output overrides, or broader reusable output configuration, prefer `Assembler` or `AssemblerSession`.
 
 ## 5. High-level Rust integration patterns
 
 ### 5.1 Borrowed host integration
 
-Use `Assembler` with borrowed config when your host already owns its providers and sinks and can keep them alive for the duration of the call.
+Use `Assembler::builder(...)` when your host already owns its providers and sinks and can keep them alive for the duration of the call.
 
 ```rust
-use libopforge::asm::{Assembler, AssemblerConfig, OutputFormat};
+use libopforge::asm::{Assembler, OutputFormat};
 
-let report = Assembler::with_config(
-    std::path::Path::new("src/main.asm"),
-    AssemblerConfig {
-        output: libopforge::asm::OutputOptions {
-            output_format: OutputFormat::Text,
-            ..Default::default()
-        },
-        ..Default::default()
-    },
-)
-.check()?;
+let report = Assembler::builder(std::path::Path::new("src/main.asm"))
+    .output_format(OutputFormat::Text)
+    .check()?;
 ```
 
 This is a good fit for build tools, command wrappers, and short-lived requests.
 
 ### 5.2 Owned or non-borrowing host integration
 
-Use `AssemblerSession` with `OwnedAssemblerConfig` when your host needs owned state, long-lived sessions, or FFI-friendly ergonomics.
+Use `AssemblerSession::builder(...)` when your host needs owned state, long-lived sessions, or FFI-friendly ergonomics.
 
 The workspace's public examples use this model because it maps cleanly onto in-memory and callback-oriented hosts.
 
@@ -153,12 +145,8 @@ Reference examples:
 For editors, tests, and embedded hosts, use the concrete memory adapters re-exported from `libopforge::io`.
 
 ```rust
-use libopforge::asm::{
-    AssemblerSession, DiagnosticsOptions, ExecutionMode, OwnedAssemblerConfig,
-    OwnedExecutionOptions, OwnedOutputOptions, OwnedSourceOptions,
-};
+use libopforge::asm::{AssemblerSession, ExecutionMode};
 use libopforge::io::{MemoryOutputSink, MemorySourceProvider};
-use std::sync::Arc;
 
 let source_provider = MemorySourceProvider::new().with_file(
     "/virtual/main.asm",
@@ -166,26 +154,12 @@ let source_provider = MemorySourceProvider::new().with_file(
 );
 let output_sink = MemoryOutputSink::new();
 
-let report = AssemblerSession::with_config(
-    "/virtual/main.asm",
-    OwnedAssemblerConfig {
-        source: OwnedSourceOptions {
-            input_base: "/virtual/main".to_string(),
-            source_provider: Some(Arc::new(source_provider.clone())),
-            ..OwnedSourceOptions::default()
-        },
-        execution: OwnedExecutionOptions {
-            execution_mode: ExecutionMode::Vm,
-            ..OwnedExecutionOptions::default()
-        },
-        output: OwnedOutputOptions {
-            output_sink: Some(Arc::new(output_sink.clone())),
-            ..OwnedOutputOptions::default()
-        },
-        diagnostics: DiagnosticsOptions::default(),
-    },
-)
-.assemble()?;
+let report = AssemblerSession::builder("/virtual/main.asm")
+    .output_base("/virtual/main")
+    .source_provider(source_provider.clone())
+    .output_sink(output_sink.clone())
+    .execution_mode(ExecutionMode::Vm)
+    .assemble()?;
 
 assert_eq!(report.error_count(), 0);
 ```
@@ -225,7 +199,7 @@ This is a good fit for:
 - expression-aware UIs
 - quick validation of `.use`, `.module`, and related module-item forms
 
-The `normalized` submodule exposes portable token and AST structures derived from the VM portable contract. Use this when your tool wants a serialization-friendly or FFI-friendly view rather than Rust-native parser types.
+The `portable` submodule exposes portable token and AST structures derived from the VM portable contract. Use this when your tool wants a serialization-friendly or FFI-friendly view rather than Rust-native parser types.
 
 ### 6.2 `libopforge::processing`
 
@@ -258,7 +232,7 @@ Typical uses:
 
 `asm::opasm::ProcessorBuilder` is the main convenience entrypoint for CPU-aware processing. For `Vm` and `Lockstep` statement processing you must provide a `cpu_id`; the builder enforces that.
 
-The `normalized` submodule mirrors the pattern from `opcore`, exposing portable token and AST forms plus lockstep reporting.
+The `portable` submodule mirrors the pattern from `opcore`, exposing portable token and AST forms plus lockstep reporting.
 
 ## 7. Diagnostics and metadata
 

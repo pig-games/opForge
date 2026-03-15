@@ -13,3 +13,4 @@ vm-runtime-opasm-artifact = []
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 api = { package = "libopforge", path = "../opforge-lib" }
+engine = { path = "../opforge-engine" }

@@ -658,7 +658,7 @@ fn resolve_formatter_module_paths(
 ) -> Result<Vec<PathBuf>, AsmRunError> {
     let (asm_name, _) = input_base_from_path(input_path, &config.input_extensions)?;
     let root_path = PathBuf::from(asm_name);
-    api::unstable::resolve_formatter_module_paths(api::unstable::FormatterPathResolutionRequest {
+    engine::resolve_formatter_module_paths(engine::FormatterPathResolutionRequest {
         root_path: &root_path,
         asm_exts: &config.input_extensions.asm_exts,
         inc_exts: &config.input_extensions.inc_exts,

@@ -4,8 +4,8 @@
 //!
 //! The normal Rust embedding path is [`Assembler`] with [`AssemblerConfig`].
 //! Lower-level free functions remain available where they are part of the
-//! assembler host boundary, but advanced tool and implementation-oriented
-//! exports are quarantined under [`unstable`].
+//! assembler host boundary, and host-facing tooling exports live under
+//! dedicated stable modules.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -46,6 +46,8 @@ pub mod processing {
 
 pub mod registry {
     pub use ::engine::{
+        capabilities_report, capabilities_report_json, cpusupport_report,
+        cpusupport_report_json,
         resolve_target_cpu, AsmRegistryContext, CapabilitySnapshot, CpuCapabilityView,
         CpuResolutionError,
     };
@@ -56,6 +58,13 @@ pub mod registry {
     }
 }
 
+pub mod formatter {
+    pub use ::formatter::{
+        FormatMode, FormatterConfig, FormatterDiagnostic, FormatterEngine, FormatterFileReport,
+        FormatterOutput, FormatterRunReport, FormatterRunSummary,
+    };
+}
+
 pub mod opcore {
     pub use ::opcore::parser::{Expr, LineAst, ParseError};
     pub use ::opcore::services::{
@@ -64,7 +73,7 @@ pub mod opcore {
     };
     pub use ::opcore::tokenizer::{Span, Token, TokenKind, TokenizeError, Tokenizer};
 
-    pub mod normalized {
+    pub mod portable {
         use ::types::processing::ProcessingOutcome;
 
         pub use ::vm::portable_contract::{
@@ -288,7 +297,7 @@ pub mod asm {
             }
         }
 
-        pub mod normalized {
+        pub mod portable {
             pub use ::vm::portable_contract::{
                 PortableLineAst, PortableOperatorKind, PortableSpan, PortableToken,
                 PortableTokenKind,
@@ -421,40 +430,9 @@ pub mod asm {
     };
 }
 
-pub mod unstable {
-    pub use engine::{
-        build_default_asm_registry, build_default_runtime_package_bytes, capabilities_report,
-        capabilities_report_json, cpusupport_report, cpusupport_report_json, default_cpu,
-        editor_route_line, editor_route_line_with_model, editor_route_line_with_model_in_mode,
-        effective_include_paths_for_root, expand_source_file, expand_source_file_with_dependencies,
-        expand_source_file_with_dependencies_with_provider, parse_cpu_directive_name,
-        prepare_assembly_session, process_opcore_expression_request,
-        process_opcore_expression_request_with_mode, remap_diagnostics_with_source_map,
-        resolve_cpu_for_line, resolve_formatter_module_paths, resolve_output_plan,
-        resolve_target_cpu, root_module_id_from_lines, run_assembly, run_prepared_assembly,
-        scan_cpu_transitions, warnings_as_errors, AsmRegistry, AsmRegistryContext,
-        AssemblerSessionConfig, AssemblyExecutionRequest, AssemblyPreparationRequest,
-        CapabilitySnapshot, CpuCapabilityView, CpuResolutionError, FormatterPathResolutionRequest,
-        LineProcessingTrace, OpcoreRequestKind, OutputPlanningRequest,
-        PreparedAssemblyExecutionRequest, ProcessingOutcome, ProcessingRequestKind,
-        ProcessingReturn, ResolvedOutputPlan,
-    };
-    pub use formatter::{
-        FormatMode, FormatterConfig, FormatterDiagnostic, FormatterEngine, FormatterFileReport,
-        FormatterOutput, FormatterRunReport, FormatterRunSummary,
-    };
-    pub use lsp::protocol::{
-        run_stdio as run_lsp_stdio, run_stdio_with_registry as run_lsp_stdio_with_registry,
-    };
-
-    pub fn run_lsp_stdio_default() -> Result<(), Box<dyn std::error::Error>> {
-        Ok(run_lsp_stdio_with_registry(build_default_asm_registry())?)
-    }
-}
-
 #[derive(Clone)]
 pub struct OwnedSourceOptions {
-    pub input_base: String,
+    pub output_base: String,
     pub defines: Vec<String>,
     pub include_paths: Vec<PathBuf>,
     pub module_paths: Vec<PathBuf>,
@@ -465,7 +443,7 @@ pub struct OwnedSourceOptions {
 impl Default for OwnedSourceOptions {
     fn default() -> Self {
         Self {
-            input_base: String::new(),
+            output_base: String::new(),
             defines: Vec::new(),
             include_paths: Vec::new(),
             module_paths: Vec::new(),
@@ -511,7 +489,7 @@ pub struct OwnedOutputOptions {
     pub hex_name_override: Option<String>,
     pub header_title: String,
     pub output_sink: Option<Arc<dyn OutputSink>>,
-    pub suppress_outputs: bool,
+    pub no_outputs: bool,
 }
 
 impl Default for OwnedOutputOptions {
@@ -532,7 +510,7 @@ impl Default for OwnedOutputOptions {
             hex_name_override: None,
             header_title: "libopforge".to_string(),
             output_sink: None,
-            suppress_outputs: false,
+            no_outputs: false,
         }
     }
 }
@@ -549,7 +527,7 @@ impl OwnedAssemblerConfig {
     fn as_borrowed(&self) -> AssembleOptions<'_> {
         AssembleOptions {
             execution_mode: self.execution.execution_mode,
-            input_base: self.source.input_base.as_str(),
+            output_base: self.source.output_base.as_str(),
             defines: &self.source.defines,
             include_paths: &self.source.include_paths,
             module_paths: &self.source.module_paths,
@@ -575,7 +553,7 @@ impl OwnedAssemblerConfig {
             header_title: self.output.header_title.as_str(),
             source_provider: self.source.source_provider.as_deref(),
             output_sink: self.output.output_sink.as_deref(),
-            suppress_outputs: self.output.suppress_outputs,
+            no_outputs: self.output.no_outputs,
         }
     }
 }
@@ -589,7 +567,7 @@ fn normalize_output_options_for_check(output: &mut OutputOptions<'_>) {
     output.list_name_override = None;
     output.hex_name_override = None;
     output.bin_specs = &[];
-    output.suppress_outputs = true;
+    output.no_outputs = true;
 }
 
 fn normalize_owned_config_for_check(config: &mut OwnedAssemblerConfig) {
@@ -601,29 +579,29 @@ fn normalize_owned_config_for_check(config: &mut OwnedAssemblerConfig) {
     config.output.list_name_override = None;
     config.output.hex_name_override = None;
     config.output.bin_specs.clear();
-    config.output.suppress_outputs = true;
+    config.output.no_outputs = true;
 }
 
-fn derive_input_base(root_path: &Path) -> String {
+fn derive_output_base(root_path: &Path) -> String {
     root_path.with_extension("").to_string_lossy().into_owned()
 }
 
-fn effective_input_base<'a>(root_path: &Path, input_base: &'a str) -> Cow<'a, str> {
-    if input_base.is_empty() {
-        Cow::Owned(derive_input_base(root_path))
+fn effective_output_base<'a>(root_path: &Path, output_base: &'a str) -> Cow<'a, str> {
+    if output_base.is_empty() {
+        Cow::Owned(derive_output_base(root_path))
     } else {
-        Cow::Borrowed(input_base)
+        Cow::Borrowed(output_base)
     }
 }
 
 struct EffectivePrepareConfig<'a> {
-    input_base: Cow<'a, str>,
+    output_base: Cow<'a, str>,
     include_roots: Vec<PathBuf>,
 }
 
 struct PublicPrepareRequest<'a> {
     root_path: &'a Path,
-    input_base: &'a str,
+    output_base: &'a str,
     defines: &'a [String],
     include_paths: &'a [PathBuf],
     module_paths: &'a [PathBuf],
@@ -645,7 +623,7 @@ struct PreparedAssemblyCore {
 }
 
 struct PreparedExecutionCoreRef<'a> {
-    input_base: &'a str,
+    output_base: &'a str,
     cpu: ::registry::CpuType,
     max_loop_iterations: u32,
     root_module_id: &'a str,
@@ -658,11 +636,11 @@ struct PreparedExecutionCoreRef<'a> {
 
 fn effective_prepare_config<'a>(
     root_path: &Path,
-    input_base: &'a str,
+    output_base: &'a str,
     include_paths: &[PathBuf],
 ) -> EffectivePrepareConfig<'a> {
     EffectivePrepareConfig {
-        input_base: effective_input_base(root_path, input_base),
+        output_base: effective_output_base(root_path, output_base),
         include_roots: engine::effective_include_paths_for_root(root_path, include_paths),
     }
 }
@@ -671,7 +649,7 @@ fn prepare_public_assembly<'a>(
     request: PublicPrepareRequest<'a>,
 ) -> Result<(PreparedAssemblyCore, EffectivePrepareConfig<'a>), AsmRunError> {
     let effective =
-        effective_prepare_config(request.root_path, request.input_base, request.include_paths);
+        effective_prepare_config(request.root_path, request.output_base, request.include_paths);
     let prepared = engine::prepare_assembly_session(engine::AssemblyPreparationRequest {
         root_path: request.root_path,
         defines: request.defines,
@@ -707,7 +685,7 @@ fn run_public_prepared_assembly(
     options: AssembleOptions<'_>,
 ) -> Result<AsmRunReport, AsmRunError> {
     engine::run_prepared_assembly(engine::PreparedAssemblyExecutionRequest {
-        input_base: prepared.input_base,
+        input_base: prepared.output_base,
         cpu: prepared.cpu,
         max_loop_iterations: prepared.max_loop_iterations,
         root_module_id: prepared.root_module_id.to_owned(),
@@ -734,14 +712,14 @@ fn run_public_prepared_assembly(
         output_sink: options.output_sink,
         execution_mode: options.execution_mode,
         opasm_package_path: options.opasm_package_path,
-        suppress_outputs: options.suppress_outputs,
+        suppress_outputs: options.no_outputs,
     })
 }
 
 #[derive(Clone)]
 pub struct PrepareOptions<'a> {
     pub execution_mode: ExecutionMode,
-    pub input_base: &'a str,
+    pub output_base: &'a str,
     pub defines: &'a [String],
     pub include_paths: &'a [PathBuf],
     pub module_paths: &'a [PathBuf],
@@ -756,7 +734,7 @@ impl<'a> Default for PrepareOptions<'a> {
     fn default() -> Self {
         Self {
             execution_mode: ExecutionMode::Vm,
-            input_base: "",
+            output_base: "",
             defines: &[],
             include_paths: &[],
             module_paths: &[],
@@ -772,7 +750,7 @@ impl<'a> Default for PrepareOptions<'a> {
 #[derive(Clone)]
 pub struct AssembleOptions<'a> {
     pub execution_mode: ExecutionMode,
-    pub input_base: &'a str,
+    pub output_base: &'a str,
     pub defines: &'a [String],
     pub include_paths: &'a [PathBuf],
     pub module_paths: &'a [PathBuf],
@@ -798,14 +776,14 @@ pub struct AssembleOptions<'a> {
     pub header_title: &'a str,
     pub source_provider: Option<&'a dyn SourceProvider>,
     pub output_sink: Option<&'a dyn OutputSink>,
-    pub suppress_outputs: bool,
+    pub no_outputs: bool,
 }
 
 impl<'a> Default for AssembleOptions<'a> {
     fn default() -> Self {
         Self {
             execution_mode: ExecutionMode::Vm,
-            input_base: "",
+            output_base: "",
             defines: &[],
             include_paths: &[],
             module_paths: &[],
@@ -831,14 +809,14 @@ impl<'a> Default for AssembleOptions<'a> {
             header_title: "libopforge",
             source_provider: None,
             output_sink: None,
-            suppress_outputs: false,
+            no_outputs: false,
         }
     }
 }
 
 #[derive(Clone)]
 pub struct SourceOptions<'a> {
-    pub input_base: &'a str,
+    pub output_base: &'a str,
     pub defines: &'a [String],
     pub include_paths: &'a [PathBuf],
     pub module_paths: &'a [PathBuf],
@@ -849,7 +827,7 @@ pub struct SourceOptions<'a> {
 impl<'a> Default for SourceOptions<'a> {
     fn default() -> Self {
         Self {
-            input_base: "",
+            output_base: "",
             defines: &[],
             include_paths: &[],
             module_paths: &[],
@@ -895,7 +873,7 @@ pub struct OutputOptions<'a> {
     pub hex_name_override: Option<&'a str>,
     pub header_title: &'a str,
     pub output_sink: Option<&'a dyn OutputSink>,
-    pub suppress_outputs: bool,
+    pub no_outputs: bool,
 }
 
 impl<'a> Default for OutputOptions<'a> {
@@ -916,7 +894,7 @@ impl<'a> Default for OutputOptions<'a> {
             hex_name_override: None,
             header_title: "libopforge",
             output_sink: None,
-            suppress_outputs: false,
+            no_outputs: false,
         }
     }
 }
@@ -939,7 +917,7 @@ impl<'a> From<AssembleOptions<'a>> for AssemblerConfig<'a> {
     fn from(options: AssembleOptions<'a>) -> Self {
         Self {
             source: SourceOptions {
-                input_base: options.input_base,
+                output_base: options.output_base,
                 defines: options.defines,
                 include_paths: options.include_paths,
                 module_paths: options.module_paths,
@@ -968,7 +946,7 @@ impl<'a> From<AssembleOptions<'a>> for AssemblerConfig<'a> {
                 hex_name_override: options.hex_name_override,
                 header_title: options.header_title,
                 output_sink: options.output_sink,
-                suppress_outputs: options.suppress_outputs,
+                no_outputs: options.no_outputs,
             },
             diagnostics: DiagnosticsOptions {
                 debug_conditionals: options.debug_conditionals,
@@ -982,7 +960,7 @@ impl<'a> From<AssemblerConfig<'a>> for AssembleOptions<'a> {
     fn from(config: AssemblerConfig<'a>) -> Self {
         Self {
             execution_mode: config.execution.execution_mode,
-            input_base: config.source.input_base,
+            output_base: config.source.output_base,
             defines: config.source.defines,
             include_paths: config.source.include_paths,
             module_paths: config.source.module_paths,
@@ -1008,7 +986,7 @@ impl<'a> From<AssemblerConfig<'a>> for AssembleOptions<'a> {
             header_title: config.output.header_title,
             source_provider: config.source.source_provider,
             output_sink: config.output.output_sink,
-            suppress_outputs: config.output.suppress_outputs,
+            no_outputs: config.output.no_outputs,
         }
     }
 }
@@ -1023,8 +1001,28 @@ impl<'a> AssemblerBuilder<'a> {
         Self { root_path, config }
     }
 
-    pub fn input_base(mut self, input_base: &'a str) -> Self {
-        self.config.source.input_base = input_base;
+    pub fn output_base(mut self, output_base: &'a str) -> Self {
+        self.config.source.output_base = output_base;
+        self
+    }
+
+    pub fn defines(mut self, defines: &'a [String]) -> Self {
+        self.config.source.defines = defines;
+        self
+    }
+
+    pub fn include_paths(mut self, include_paths: &'a [PathBuf]) -> Self {
+        self.config.source.include_paths = include_paths;
+        self
+    }
+
+    pub fn module_paths(mut self, module_paths: &'a [PathBuf]) -> Self {
+        self.config.source.module_paths = module_paths;
+        self
+    }
+
+    pub fn pp_macro_depth(mut self, pp_macro_depth: usize) -> Self {
+        self.config.source.pp_macro_depth = pp_macro_depth;
         self
     }
 
@@ -1035,6 +1033,16 @@ impl<'a> AssemblerBuilder<'a> {
 
     pub fn execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
         self.config.execution.execution_mode = execution_mode;
+        self
+    }
+
+    pub fn cpu_override(mut self, cpu_override: &'a str) -> Self {
+        self.config.execution.cpu_override = Some(cpu_override);
+        self
+    }
+
+    pub fn max_loop_iterations(mut self, max_loop_iterations: u32) -> Self {
+        self.config.execution.max_loop_iterations = max_loop_iterations;
         self
     }
 
@@ -1053,6 +1061,50 @@ impl<'a> AssemblerBuilder<'a> {
         self
     }
 
+    pub fn go_addr(mut self, go_addr: &'a str) -> Self {
+        self.config.output.go_addr = Some(go_addr);
+        self
+    }
+
+    pub fn bin_specs(mut self, bin_specs: &'a [BinOutputSpec]) -> Self {
+        self.config.output.bin_specs = bin_specs;
+        self
+    }
+
+    pub fn fill_byte(mut self, fill_byte: u8) -> Self {
+        self.config.output.fill_byte = fill_byte;
+        self.config.output.fill_byte_set = true;
+        self
+    }
+
+    pub fn labels_file(mut self, labels_file: &'a PathBuf) -> Self {
+        self.config.output.labels_file = Some(labels_file);
+        self
+    }
+
+    pub fn dependency_output(
+        mut self,
+        dependency_output: &'a DependencyOutputPolicy,
+    ) -> Self {
+        self.config.output.dependency_output = Some(dependency_output);
+        self
+    }
+
+    pub fn outfile_override(mut self, outfile_override: &'a str) -> Self {
+        self.config.output.outfile_override = Some(outfile_override);
+        self
+    }
+
+    pub fn list_name_override(mut self, list_name_override: &'a str) -> Self {
+        self.config.output.list_name_override = Some(list_name_override);
+        self
+    }
+
+    pub fn hex_name_override(mut self, hex_name_override: &'a str) -> Self {
+        self.config.output.hex_name_override = Some(hex_name_override);
+        self
+    }
+
     pub fn label_output_format(mut self, label_output_format: LabelOutputFormat) -> Self {
         self.config.output.label_output_format = label_output_format;
         self
@@ -1060,6 +1112,26 @@ impl<'a> AssemblerBuilder<'a> {
 
     pub fn header_title(mut self, header_title: &'a str) -> Self {
         self.config.output.header_title = header_title;
+        self
+    }
+
+    pub fn default_outputs(mut self, default_outputs: bool) -> Self {
+        self.config.output.default_outputs = default_outputs;
+        self
+    }
+
+    pub fn no_outputs(mut self, no_outputs: bool) -> Self {
+        self.config.output.no_outputs = no_outputs;
+        self
+    }
+
+    pub fn debug_conditionals(mut self, debug_conditionals: bool) -> Self {
+        self.config.diagnostics.debug_conditionals = debug_conditionals;
+        self
+    }
+
+    pub fn tab_size(mut self, tab_size: usize) -> Self {
+        self.config.diagnostics.tab_size = Some(tab_size);
         self
     }
 
@@ -1097,8 +1169,8 @@ impl AssemblerSessionBuilder {
         }
     }
 
-    pub fn input_base(mut self, input_base: impl Into<String>) -> Self {
-        self.config.source.input_base = input_base.into();
+    pub fn output_base(mut self, output_base: impl Into<String>) -> Self {
+        self.config.source.output_base = output_base.into();
         self
     }
 
@@ -1208,6 +1280,11 @@ impl AssemblerSessionBuilder {
         self
     }
 
+    pub fn no_outputs(mut self, no_outputs: bool) -> Self {
+        self.config.output.no_outputs = no_outputs;
+        self
+    }
+
     pub fn debug_conditionals(mut self, debug_conditionals: bool) -> Self {
         self.config.diagnostics.debug_conditionals = debug_conditionals;
         self
@@ -1298,7 +1375,7 @@ pub struct PreparedAssemblySession {
 pub struct PreparedAssembly<'a> {
     root_path: &'a Path,
     config: AssemblerConfig<'a>,
-    resolved_input_base: Option<String>,
+    resolved_output_base: Option<String>,
     cpu: ::registry::CpuType,
     max_loop_iterations: u32,
     root_module_id: String,
@@ -1350,7 +1427,7 @@ impl<'a> Assembler<'a> {
     pub fn prepare(&self) -> Result<PreparedAssembly<'a>, AsmRunError> {
         let (prepared, effective) = prepare_public_assembly(PublicPrepareRequest {
             root_path: self.root_path,
-            input_base: self.config.source.input_base,
+            output_base: self.config.source.output_base,
             defines: self.config.source.defines,
             include_paths: self.config.source.include_paths,
             module_paths: self.config.source.module_paths,
@@ -1362,7 +1439,7 @@ impl<'a> Assembler<'a> {
         Ok(PreparedAssembly {
             root_path: self.root_path,
             config: self.config.clone(),
-            resolved_input_base: Some(effective.input_base.into_owned()),
+            resolved_output_base: Some(effective.output_base.into_owned()),
             cpu: prepared.cpu,
             max_loop_iterations: prepared.max_loop_iterations,
             root_module_id: prepared.root_module_id,
@@ -1407,7 +1484,7 @@ impl AssemblerSession {
             let borrowed = config.as_borrowed();
             let (prepared, effective) = prepare_public_assembly(PublicPrepareRequest {
                 root_path: self.root_path.as_path(),
-                input_base: borrowed.input_base,
+                output_base: borrowed.output_base,
                 defines: borrowed.defines,
                 include_paths: borrowed.include_paths,
                 module_paths: borrowed.module_paths,
@@ -1416,10 +1493,10 @@ impl AssemblerSession {
                 max_loop_iterations: borrowed.max_loop_iterations,
                 source_provider: borrowed.source_provider,
             })?;
-            (prepared, effective.input_base.into_owned())
+            (prepared, effective.output_base.into_owned())
         };
-        if config.source.input_base.is_empty() {
-            config.source.input_base = resolved_input_base;
+        if config.source.output_base.is_empty() {
+            config.source.output_base = resolved_input_base;
         }
         Ok(PreparedAssemblySession {
             root_path: self.root_path.clone(),
@@ -1464,12 +1541,12 @@ impl<'a> PreparedAssembly<'a> {
 
     pub fn assemble(&self) -> Result<AsmRunReport, AsmRunError> {
         let input_base = self
-            .resolved_input_base
+            .resolved_output_base
             .as_deref()
-            .unwrap_or(self.config.source.input_base);
+            .unwrap_or(self.config.source.output_base);
         run_public_prepared_assembly(
             PreparedExecutionCoreRef {
-                input_base,
+                output_base: input_base,
                 cpu: self.cpu,
                 max_loop_iterations: self.max_loop_iterations,
                 root_module_id: self.root_module_id.as_str(),
@@ -1518,7 +1595,7 @@ impl PreparedAssemblySession {
         let borrowed = self.config.as_borrowed();
         run_public_prepared_assembly(
             PreparedExecutionCoreRef {
-                input_base: borrowed.input_base,
+                output_base: borrowed.output_base,
                 cpu: self.cpu,
                 max_loop_iterations: self.max_loop_iterations,
                 root_module_id: self.root_module_id.as_str(),
@@ -1550,7 +1627,7 @@ pub fn prepare<'a>(
         root_path,
         AssemblerConfig {
             source: SourceOptions {
-                input_base: options.input_base,
+                output_base: options.output_base,
                 defines: options.defines,
                 include_paths: options.include_paths,
                 module_paths: options.module_paths,
@@ -1573,11 +1650,11 @@ pub fn assemble(
     root_path: &Path,
     options: AssembleOptions<'_>,
 ) -> Result<AsmRunReport, AsmRunError> {
-    let input_base = effective_input_base(root_path, options.input_base);
+    let output_base = effective_output_base(root_path, options.output_base);
     engine::run_assembly(engine::AssemblyExecutionRequest {
         root_path,
         execution_mode: options.execution_mode,
-        input_base: input_base.as_ref(),
+        input_base: output_base.as_ref(),
         defines: options.defines,
         include_paths: options.include_paths,
         module_paths: options.module_paths,
@@ -1604,7 +1681,7 @@ pub fn assemble(
         header_title: options.header_title,
         output_sink: options.output_sink,
         source_provider: options.source_provider,
-        suppress_outputs: options.suppress_outputs,
+        suppress_outputs: options.no_outputs,
     })
 }
 
@@ -1659,7 +1736,7 @@ mod tests {
         let output_sink = io::MemoryOutputSink::new();
         let report = AssemblerSession::builder("/virtual/main.asm")
             .execution_mode(lockstep::ExecutionMode::Vm)
-            .input_base("/virtual/main")
+            .output_base("/virtual/main")
             .output_format(asm::OutputFormat::Text)
             .label_output_format(asm::LabelOutputFormat::Vice)
             .header_title("test")
@@ -1747,7 +1824,7 @@ mod tests {
         let prepared = prepare(
             source_path.as_path(),
             PrepareOptions {
-                input_base: custom_base.to_str().expect("custom base"),
+                output_base: custom_base.to_str().expect("custom base"),
                 ..PrepareOptions::default()
             },
         )
@@ -1825,7 +1902,7 @@ mod tests {
 
         let report = AssemblerSession::builder("/virtual/main.asm")
             .execution_mode(lockstep::ExecutionMode::Vm)
-            .input_base("/virtual/main")
+            .output_base("/virtual/main")
             .output_format(asm::OutputFormat::Text)
             .label_output_format(asm::LabelOutputFormat::Vice)
             .source_provider(source_provider.clone())
@@ -1863,7 +1940,7 @@ mod tests {
             "/virtual/main.asm",
             OwnedAssemblerConfig {
                 source: OwnedSourceOptions {
-                    input_base: "/virtual/main".to_string(),
+                    output_base: "/virtual/main".to_string(),
                     include_paths: vec![PathBuf::from("/virtual")],
                     module_paths: vec![PathBuf::from("/virtual/modules")],
                     source_provider: Some(Arc::new(source_provider.clone())),
@@ -1919,7 +1996,7 @@ mod tests {
 
         let report = AssemblerSession::builder("/virtual/main.asm")
             .execution_mode(lockstep::ExecutionMode::Vm)
-            .input_base("/virtual/main")
+            .output_base("/virtual/main")
             .out_dir(out_dir.clone())
             .output_format(asm::OutputFormat::Text)
             .label_output_format(asm::LabelOutputFormat::Vice)
@@ -1951,7 +2028,7 @@ mod tests {
             Path::new("/virtual/main.asm"),
             AssemblerConfig {
                 source: SourceOptions {
-                    input_base: "/virtual/main",
+                    output_base: "/virtual/main",
                     source_provider: Some(&source_provider),
                     ..SourceOptions::default()
                 },
@@ -1984,7 +2061,7 @@ mod tests {
             Path::new("/virtual/main.asm"),
             AssembleOptions {
                 execution_mode: lockstep::ExecutionMode::Rust,
-                input_base: "/virtual/main",
+                output_base: "/virtual/main",
                 output_format: asm::OutputFormat::Text,
                 label_output_format: asm::LabelOutputFormat::Vice,
                 header_title: "test",
@@ -2013,7 +2090,7 @@ mod tests {
                 execution_mode: lockstep::ExecutionMode::Lockstep {
                     continuation_head: lockstep::ContinuationHead::Vm,
                 },
-                input_base: "/virtual/main",
+                output_base: "/virtual/main",
                 output_format: asm::OutputFormat::Text,
                 label_output_format: asm::LabelOutputFormat::Vice,
                 header_title: "test",
@@ -2048,7 +2125,7 @@ mod tests {
             Path::new("/virtual/main.asm"),
             AssembleOptions {
                 execution_mode: lockstep::ExecutionMode::Vm,
-                input_base: "/virtual/main",
+                output_base: "/virtual/main",
                 out_dir: Some(&out_dir),
                 output_format: asm::OutputFormat::Text,
                 label_output_format: asm::LabelOutputFormat::Vice,
@@ -2086,7 +2163,7 @@ mod tests {
             Path::new("/virtual/main.asm"),
             AssembleOptions {
                 execution_mode: lockstep::ExecutionMode::Vm,
-                input_base: "/virtual/main",
+                output_base: "/virtual/main",
                 output_format: asm::OutputFormat::Text,
                 label_output_format: asm::LabelOutputFormat::Vice,
                 source_provider: Some(&source_provider),
@@ -2110,7 +2187,7 @@ mod tests {
 
         let report = Assembler::builder(Path::new("/virtual/main.asm"))
             .execution_mode(lockstep::ExecutionMode::Vm)
-            .input_base("/virtual/main")
+            .output_base("/virtual/main")
             .output_format(asm::OutputFormat::Text)
             .label_output_format(asm::LabelOutputFormat::Vice)
             .header_title("builder test")
@@ -2199,23 +2276,23 @@ mod tests {
     }
 
     #[test]
-    fn public_normalized_opcore_api_tokenizes_and_parses_expression() {
+    fn public_portable_opcore_api_tokenizes_and_parses_expression() {
         let tokenized =
-            opcore::normalized::tokenize_line("1 + 2", 1).expect("tokenization should succeed");
+            opcore::portable::tokenize_line("1 + 2", 1).expect("tokenization should succeed");
         assert_eq!(tokenized.tokens.len(), 3);
         let expr =
-            opcore::normalized::parse_expression(tokenized).expect("expression parse succeeds");
+            opcore::portable::parse_expression(tokenized).expect("expression parse succeeds");
         match expr {
-            opcore::normalized::PortableAstExpr::Binary { .. } => {}
-            other => panic!("expected normalized binary expression, got {other:?}"),
+            opcore::portable::PortableAstExpr::Binary { .. } => {}
+            other => panic!("expected portable binary expression, got {other:?}"),
         }
     }
 
     #[test]
-    fn public_normalized_opcore_api_processes_module_item() {
-        let outcome = opcore::normalized::process_module_item(".use math as m", 1);
+    fn public_portable_opcore_api_processes_module_item() {
+        let outcome = opcore::portable::process_module_item(".use math as m", 1);
         match outcome {
-            processing::ProcessingOutcome::Done(opcore::normalized::PortableLineAst::Use {
+            processing::ProcessingOutcome::Done(opcore::portable::PortableLineAst::Use {
                 module_id,
                 alias,
                 ..
@@ -2223,7 +2300,7 @@ mod tests {
                 assert_eq!(module_id, "math");
                 assert_eq!(alias.as_deref(), Some("m"));
             }
-            other => panic!("expected normalized use item, got {other:?}"),
+            other => panic!("expected portable use item, got {other:?}"),
         }
     }
 
@@ -2349,27 +2426,27 @@ mod tests {
     }
 
     #[test]
-    fn public_normalized_opasm_api_tokenizes_and_parses_statement() {
-        let tokenized = asm::opasm::normalized::tokenize_statement(
+    fn public_portable_opasm_api_tokenizes_and_parses_statement() {
+        let tokenized = asm::opasm::portable::tokenize_statement(
             asm::opasm::StatementRequest::new(".byte 1, 2", 1),
         )
-        .expect("normalized opasm tokenization");
+        .expect("portable opasm tokenization");
         assert!(!tokenized.tokens.is_empty(), "expected statement tokens");
 
-        let parsed = asm::opasm::normalized::parse_statement(asm::opasm::StatementRequest::new(
+        let parsed = asm::opasm::portable::parse_statement(asm::opasm::StatementRequest::new(
             ".byte 1, 2",
             1,
         ))
-        .expect("normalized opasm parse should succeed");
+        .expect("portable opasm parse should succeed");
 
         match parsed.ast {
-            opcore::normalized::PortableLineAst::Statement {
+            opcore::portable::PortableLineAst::Statement {
                 mnemonic, operands, ..
             } => {
                 assert_eq!(mnemonic.as_deref(), Some(".byte"));
                 assert_eq!(operands.len(), 2);
             }
-            other => panic!("expected normalized statement AST, got {other:?}"),
+            other => panic!("expected portable statement AST, got {other:?}"),
         }
     }
 
@@ -2386,8 +2463,8 @@ mod tests {
     }
 
     #[test]
-    fn public_normalized_opasm_processor_supports_lockstep_processing() {
-        let processor = asm::opasm::normalized::ProcessorBuilder::new()
+    fn public_portable_opasm_processor_supports_lockstep_processing() {
+        let processor = asm::opasm::portable::ProcessorBuilder::new()
             .execution_mode(asm::ExecutionMode::Lockstep {
                 continuation_head: asm::ContinuationHead::Rust,
             })
@@ -2395,12 +2472,12 @@ mod tests {
             .build()
             .expect("lockstep opasm processor");
         let result =
-            asm::opasm::normalized::process_statement_with_processor(&processor, "    lda #$42", 1)
-                .expect("normalized processor lockstep statement");
+            asm::opasm::portable::process_statement_with_processor(&processor, "    lda #$42", 1)
+                .expect("portable processor lockstep statement");
 
         assert!(matches!(
             result.parsed.ast,
-            opcore::normalized::PortableLineAst::Statement { .. }
+            opcore::portable::PortableLineAst::Statement { .. }
         ));
         assert!(!result.lockstep_report.matches().is_empty());
     }
@@ -2427,7 +2504,7 @@ mod tests {
             Path::new("/virtual/main.asm"),
             AssembleOptions {
                 execution_mode: lockstep::ExecutionMode::Vm,
-                input_base: "/virtual/main",
+                output_base: "/virtual/main",
                 output_format: asm::OutputFormat::Text,
                 go_addr: Some("0000"),
                 bin_specs: &bin_specs,
@@ -2472,7 +2549,7 @@ mod tests {
             Path::new("/virtual/main.asm"),
             AssembleOptions {
                 execution_mode: lockstep::ExecutionMode::Vm,
-                input_base: "/virtual/main",
+                output_base: "/virtual/main",
                 out_dir: Some(&out_dir),
                 output_format: asm::OutputFormat::Text,
                 labels_file: Some(&labels_path),

@@ -453,14 +453,14 @@ The engine must not become a giant monolithic parser. Its role is to:
 `engine` resolves the output base through `resolve_output_base`
 (`crates/opforge-vm/src/output_model.rs`).  The stabilized rules are:
 
-1. `input_base` is the caller-supplied output base (typically the input path
+1. `output_base` is the caller-supplied output base (typically the input path
    stripped of its extension).  It is always the starting point when no
    higher-priority selector applies.
 2. Without `out_dir`, precedence is: `outfile_override` → `.meta.output.name`
-   (metadata output name) → `input_base`.
+  (metadata output name) → `output_base`.
 3. With `out_dir`, the directory portion of the selected base is replaced by
    `out_dir`.  Only the final file-name component (stem) is preserved — even
-   when `input_base` is an absolute path.
+  when `output_base` is an absolute path.
 
 This contract is verified by unit tests in `output_model.rs`.
 
@@ -486,7 +486,7 @@ The stable public module map is:
 - `libopforge::processing`
 - `libopforge::registry`
 - `libopforge::lockstep`
-- `libopforge::unstable`
+- `libopforge::formatter`
 
 ---
 
@@ -949,29 +949,25 @@ What is implemented today:
   adapters are both supported,
 - execution mode selection (`Rust`, `Vm`, `Lockstep`) is part of the public
   host surface,
-- advanced host-facing and implementation-facing exports remain quarantined
-  under `libopforge::unstable`.
+- formatter access and capability reporting now live under stable facade
+  modules rather than a separate overflow namespace.
 
-This surface is functional and supported, but it is not yet the final polished
-module-partitioned API described in the current libopforge API Aesthetics
-Improvement Plan.
+This surface is functional, supported, and documented as the stable
+module-partitioned host API for the current branch.
 
 ### 9.2 Near-term API redesign direction
 
-The next public-API phase is Rust-first and aims to converge on a stable module
-layout where:
+The current stable Rust layout is:
 
 - `libopforge::asm` is the high-level assembler-oriented API,
 - `libopforge::asm::opasm` is the lower-level assembler processor API,
 - `libopforge::opcore` is the sibling lower-level non-assembler processor API,
+- `libopforge::formatter` is the stable formatter API,
 - `Assembler` is implemented on top of `engine`, `opasm`, `opcore`, and shared
   stable cross-cutting modules such as diagnostics, I/O, registry, processing,
   and lockstep,
 - higher-level APIs dog-food lower-level stable APIs rather than bypassing them
   with private parallel entrypoints.
-
-That redesign is captured in
-`documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md`.
 
 ### 9.3 Implemented assembler-first API base shape
 
@@ -1001,34 +997,20 @@ let report = Assembler::builder(Path::new("examples/helloworld.asm"))
     .assemble()?;
 ```
 
-For non-borrowing hosts, the owned/session API now mirrors the same grouped
-configuration concerns through `OwnedAssemblerConfig`,
-`OwnedSourceOptions`, `OwnedExecutionOptions`, and `OwnedOutputOptions`.
+For non-borrowing hosts, the owned/session API mirrors the same configuration
+concerns through `OwnedAssemblerConfig`, `OwnedSourceOptions`,
+`OwnedExecutionOptions`, and `OwnedOutputOptions`, but the preferred entry path
+is still builder-first.
 
 Representative owned-session usage shape:
 
 ```rust
-use libopforge::asm::{
-    AssemblerSession, ExecutionMode, OwnedAssemblerConfig, OwnedExecutionOptions,
-    OwnedOutputOptions, OwnedSourceOptions,
-};
+use libopforge::asm::{AssemblerSession, ExecutionMode};
 
-let report = AssemblerSession::with_config(
-    "examples/helloworld.asm",
-    OwnedAssemblerConfig {
-        source: OwnedSourceOptions {
-            input_base: "examples/helloworld".to_string(),
-            ..OwnedSourceOptions::default()
-        },
-        execution: OwnedExecutionOptions {
-            execution_mode: ExecutionMode::Vm,
-            ..OwnedExecutionOptions::default()
-        },
-        output: OwnedOutputOptions::default(),
-        diagnostics: Default::default(),
-    },
-)
-.assemble()?;
+let report = AssemblerSession::builder("examples/helloworld.asm")
+  .output_base("examples/helloworld")
+  .execution_mode(ExecutionMode::Vm)
+  .assemble()?;
 ```
 
 The current libopforge API Aesthetics Improvement Plan is therefore not about
@@ -1053,8 +1035,12 @@ These APIs must be implemented above the semantic split. They must not directly 
 The current stable Rust embedding boundary is assembler-first and runs through
 the root `libopforge` crate and its stable module layout.
 
+This branch intentionally applies the libopforge API-aesthetics rename set as a
+source-breaking cleanup. The old public names are not kept as compatibility
+aliases in the stable facade.
+
 - `libopforge` is a curated facade, not an escape hatch for all workspace crates.
-- Types and functions exposed through `libopforge::asm`, `libopforge::opcore`, `libopforge::diagnostics`, `libopforge::io`, `libopforge::processing`, `libopforge::registry`, and `libopforge::lockstep` define the current stable Rust host surface.
+- Types and functions exposed through `libopforge::asm`, `libopforge::opcore`, `libopforge::diagnostics`, `libopforge::io`, `libopforge::processing`, `libopforge::registry`, `libopforge::lockstep`, and `libopforge::formatter` define the current stable Rust host surface.
 - Lower-level crates such as `asm`, `engine`, `vm`, `registry`, `families`, `formatter`, `lsp`, and `opcore` remain implementation crates or advanced dependencies, not part of the root facade contract.
 - Consumers that need those lower-level crates should depend on them explicitly and treat them as more transitional than the curated `libopforge` stable modules.
 
@@ -1090,11 +1076,15 @@ High-level FFI note:
 
 - the stable assembler-oriented FFI surface is `opforge_asm_request` plus the
   `opforge_asm_*_with_request(...)` entrypoints.
+- this branch intentionally renames the grouped request fields to
+  `output_base` and `no_outputs`; the C ABI layout is preserved, but C/C++
+  consumers using designated initializers or direct field access must update to
+  the final names.
 
 Current request/result contract:
 
 - `root_path` is required and must be a valid NUL-terminated UTF-8 string.
-- `input_base` and `out_dir` are optional NUL-terminated UTF-8 strings; null or empty values fall back to library defaults.
+- `output_base` and `out_dir` are optional NUL-terminated UTF-8 strings; null or empty values fall back to library defaults.
 - `execution_mode` crosses the ABI as a validated `u32` scalar using the `OPFORGE_EXECUTION_MODE_*` constants declared in `crates/opforge-ffi/src/lib.rs` and mirrored in `crates/opforge-ffi/opforge.h`.
 - Unknown `execution_mode` values return `InvalidRequest` instead of being interpreted as Rust enums through the ABI.
 - `emit_outputs` is a `u8` flag inside `opforge_asm_output_options`.
@@ -1105,7 +1095,7 @@ Current request/result contract:
   the operation actually buffers outputs but the caller did not provide output
   callbacks to receive them, including directive-driven or metadata-driven
   outputs that arise even when `emit_outputs` is zero.
-- `suppress_outputs` is the explicit way to prevent those directive-driven or
+- `no_outputs` is the explicit way to prevent those directive-driven or
   metadata-driven buffered outputs for diagnostics-only in-memory runs.
 - `opforge_asm_report_message()` and the string-returning
 - `opforge_diag_*_from_asm_report(...)` accessors instead return pointers
@@ -1125,7 +1115,7 @@ Current request/result contract:
   `opasm_package_path`.
 - `opforge_asm_output_options` includes the stable Rust output override slice:
   `go_addr`, textual `bin_specs`, `fill_byte` with `fill_byte_set`, and
-  `suppress_outputs`, in addition to the existing default-output and metadata
+  `no_outputs`, in addition to the existing default-output and metadata
   path controls.
 - grouped FFI `label_output_format = OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT` now
   means "use the stable Rust facade default" rather than the renderer's
@@ -1142,7 +1132,7 @@ Header and review policy:
 Rust facade policy:
 
 - `libopforge` is the stable public Rust facade.
-- Advanced tool-facing exports that are not part of the stable host contract are quarantined under `libopforge::unstable` rather than being re-exported at the top level.
+- Advanced implementation crates remain explicit workspace dependencies rather than being re-exported through an overflow namespace in `libopforge`.
 
 Current validation strategy:
 

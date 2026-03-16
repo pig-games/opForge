@@ -68,7 +68,7 @@ jobs:
       - name: Run shipped release-ffi smoke test
         env:
           OPFORGE_RELEASE_FFI_SKIP_BUILD: "1"
-          OPFORGE_RELEASE_FFI_LIBRARY_PATH: target/release-ffi/${{ matrix.ffi_lib }}
+          OPFORGE_RELEASE_FFI_LIBRARY_PATH: ${{ github.workspace }}/target/release-ffi/${{ matrix.ffi_lib }}
         run: cargo test -p ffi release_profile_loads_and_assembles_smoke --locked
 
       - name: Package release artifacts

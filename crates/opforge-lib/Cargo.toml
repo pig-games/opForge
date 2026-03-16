@@ -14,8 +14,8 @@ vm-parity = ["asm/vm-parity"]
 [dependencies]
 asm = { path = "../opforge-asm" }
 engine = { path = "../opforge-engine" }
+families = { path = "../opforge-families" }
 formatter = { path = "../opforge-formatter" }
-lsp = { path = "../opforge-lsp" }
 opcore = { path = "../opforge-core" }
 registry = { path = "../opforge-registry" }
 types = { path = "../opforge-types" }

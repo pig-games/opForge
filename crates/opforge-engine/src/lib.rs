@@ -11,9 +11,10 @@ mod source_graph_tests;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Write;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use asm::engine::Assembler;
 use asm::error::{AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic, Severity};
@@ -76,6 +77,11 @@ pub const DEFAULT_CPU: CpuType = CpuType::new("8085");
 pub const DEFAULT_TOKENIZER_CPU_ID: &str = "m6502";
 #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
 const VM_RUNTIME_PACKAGE_ARTIFACT_RELATIVE_PATH: &str = "target/vm/opforge-vm-runtime.opasm";
+
+#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+fn default_runtime_artifact_path_for_dir(base_dir: &Path) -> PathBuf {
+    base_dir.join(VM_RUNTIME_PACKAGE_ARTIFACT_RELATIVE_PATH)
+}
 
 struct EngineRuntimeLineRouter {
     execution_mode: ExecutionMode,
@@ -279,16 +285,9 @@ fn build_default_runtime_model() -> Option<HierarchyExecutionModel> {
     {
         #[cfg(feature = "vm-runtime-opasm-artifact")]
         {
-            let path = std::env::current_dir()
-                .ok()
-                .map(|base| base.join(VM_RUNTIME_PACKAGE_ARTIFACT_RELATIVE_PATH));
-            if let Some(path) = path {
-                if let Ok(package_bytes) = std::fs::read(path) {
-                    if let Ok(model) =
-                        vm::vm_opasm::load_model_from_package_bytes(package_bytes.as_slice())
-                    {
-                        return Some(model);
-                    }
+            if let Ok(base_dir) = std::env::current_dir() {
+                if let Some(model) = build_default_runtime_model_for_dir(base_dir.as_path()) {
+                    return Some(model);
                 }
             }
         }
@@ -300,6 +299,13 @@ fn build_default_runtime_model() -> Option<HierarchyExecutionModel> {
         let package_bytes = build_default_runtime_package_bytes()?;
         vm::vm_opasm::load_model_from_package_bytes(package_bytes.as_slice()).ok()
     }
+}
+
+#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+fn build_default_runtime_model_for_dir(base_dir: &Path) -> Option<HierarchyExecutionModel> {
+    let path = default_runtime_artifact_path_for_dir(base_dir);
+    let package_bytes = std::fs::read(path).ok()?;
+    vm::vm_opasm::load_model_from_package_bytes(package_bytes.as_slice()).ok()
 }
 
 pub fn editor_default_runtime_model() -> Option<&'static HierarchyExecutionModel> {
@@ -384,7 +390,7 @@ pub fn editor_tokenize_line_with_model(
     )
 }
 
-fn resolve_artifact_output_path(path: &str, out_dir: Option<&PathBuf>) -> PathBuf {
+fn resolve_artifact_output_path(path: &str, out_dir: Option<&Path>) -> PathBuf {
     let raw_path = PathBuf::from(path);
     if raw_path.is_absolute() {
         raw_path
@@ -414,7 +420,7 @@ fn ensure_parent_dir(sink: &dyn OutputSink, path: &Path) -> Result<(), AsmError>
 pub fn emit_linker_outputs(
     outputs: &[asm::output::LinkerOutputDirective],
     sections: &HashMap<String, SectionState>,
-    out_dir: Option<&PathBuf>,
+    out_dir: Option<&Path>,
     output_sink: &dyn OutputSink,
 ) -> Result<(), AsmError> {
     for output in outputs {
@@ -448,7 +454,7 @@ pub fn emit_linker_outputs(
 pub fn emit_export_sections(
     directives: &[ExportSectionsDirective],
     sections: &HashMap<String, SectionState>,
-    out_dir: Option<&PathBuf>,
+    out_dir: Option<&Path>,
     output_sink: &dyn OutputSink,
 ) -> Result<(), AsmError> {
     for directive in directives {
@@ -492,7 +498,7 @@ pub fn emit_mapfiles(
     regions: &HashMap<String, RegionState>,
     sections: &HashMap<String, SectionState>,
     symbols: &SymbolTable,
-    out_dir: Option<&PathBuf>,
+    out_dir: Option<&Path>,
     output_sink: &dyn OutputSink,
 ) -> Result<(), AsmError> {
     for directive in directives {
@@ -520,6 +526,8 @@ pub fn emit_labels_file(
     output_sink: &dyn OutputSink,
 ) -> Result<(), AsmRunError> {
     let output = render_labels_with_vm(format, output_format, symbols);
+    ensure_parent_dir(output_sink, path)
+        .map_err(|err| AsmRunError::new(err, Vec::new(), source_lines.clone()))?;
     output_sink.write_text(path, &output).map_err(|err| {
         AsmRunError::new(
             AsmError::new(
@@ -546,6 +554,8 @@ pub fn emit_dependency_file(
     else {
         return Ok(());
     };
+    ensure_parent_dir(output_sink, &policy.path)
+        .map_err(|err| AsmRunError::new(err, Vec::new(), source_lines.clone()))?;
     output_sink.write_text(&policy.path, &body).map_err(|err| {
         AsmRunError::new(
             AsmError::new(
@@ -606,14 +616,15 @@ pub struct PreparedAssemblySession {
 pub struct PreparedAssemblyExecutionRequest<'a> {
     pub input_base: &'a str,
     pub cpu: CpuType,
+    pub registry: Arc<Mutex<AsmRegistry>>,
     pub max_loop_iterations: u32,
-    pub opasm_package_path: Option<&'a PathBuf>,
+    pub opasm_package_path: Option<&'a Path>,
     pub root_module_id: String,
     pub prepared_lines: Vec<String>,
     pub source_map: SourceMap,
     pub dependency_files: Vec<PathBuf>,
     pub module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
-    pub out_dir: Option<&'a PathBuf>,
+    pub out_dir: Option<&'a Path>,
     pub debug_conditionals: bool,
     pub tab_size: Option<usize>,
     pub output_format: OutputFormat,
@@ -622,7 +633,7 @@ pub struct PreparedAssemblyExecutionRequest<'a> {
     pub fill_byte: u8,
     pub fill_byte_set: bool,
     pub default_outputs: bool,
-    pub labels_file: Option<&'a PathBuf>,
+    pub labels_file: Option<&'a Path>,
     pub label_output_format: LabelOutputFormat,
     pub dependency_output: Option<&'a DependencyOutputPolicy>,
     pub outfile_override: Option<&'a str>,
@@ -646,6 +657,48 @@ struct PreparedAssemblyRuntime {
     module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
 }
 
+struct AssemblerExecutionGuard<'a> {
+    assembler: Option<Assembler>,
+    registry_slot: Option<&'a mut AsmRegistry>,
+}
+
+impl<'a> AssemblerExecutionGuard<'a> {
+    fn new(assembler: Assembler, registry_slot: Option<&'a mut AsmRegistry>) -> Self {
+        Self {
+            assembler: Some(assembler),
+            registry_slot,
+        }
+    }
+}
+
+impl Deref for AssemblerExecutionGuard<'_> {
+    type Target = Assembler;
+
+    fn deref(&self) -> &Self::Target {
+        self.assembler
+            .as_ref()
+            .expect("assembler guard should hold assembler")
+    }
+}
+
+impl DerefMut for AssemblerExecutionGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.assembler
+            .as_mut()
+            .expect("assembler guard should hold assembler")
+    }
+}
+
+impl Drop for AssemblerExecutionGuard<'_> {
+    fn drop(&mut self) {
+        if let (Some(registry_slot), Some(assembler)) =
+            (self.registry_slot.as_deref_mut(), self.assembler.take())
+        {
+            *registry_slot = assembler.registry;
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ResolvedBinOutput {
     pub path: String,
@@ -655,7 +708,7 @@ pub struct ResolvedBinOutput {
 pub struct OutputPlanningRequest<'a> {
     pub input_base: &'a str,
     pub source_lines: &'a [String],
-    pub out_dir: Option<&'a PathBuf>,
+    pub out_dir: Option<&'a Path>,
     pub metadata: &'a RootMetadata,
     pub cpu_name: &'a str,
     pub outfile_override: Option<&'a str>,
@@ -720,8 +773,8 @@ pub struct AssemblyExecutionRequest<'a> {
     pub cpu_override: Option<&'a str>,
     pub default_cpu: CpuType,
     pub max_loop_iterations: u32,
-    pub opasm_package_path: Option<&'a PathBuf>,
-    pub out_dir: Option<&'a PathBuf>,
+    pub opasm_package_path: Option<&'a Path>,
+    pub out_dir: Option<&'a Path>,
     pub debug_conditionals: bool,
     pub tab_size: Option<usize>,
     pub output_format: OutputFormat,
@@ -730,7 +783,7 @@ pub struct AssemblyExecutionRequest<'a> {
     pub fill_byte: u8,
     pub fill_byte_set: bool,
     pub default_outputs: bool,
-    pub labels_file: Option<&'a PathBuf>,
+    pub labels_file: Option<&'a Path>,
     pub label_output_format: LabelOutputFormat,
     pub dependency_output: Option<&'a DependencyOutputPolicy>,
     pub outfile_override: Option<&'a str>,
@@ -890,6 +943,46 @@ impl ResolvedOutputPlan {
             })
             .collect()
     }
+}
+
+fn linker_output_targets(
+    outputs: &[asm::output::LinkerOutputDirective],
+    out_dir: Option<&Path>,
+) -> Vec<String> {
+    outputs
+        .iter()
+        .map(|output| {
+            resolve_artifact_output_path(&output.path, out_dir)
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect()
+}
+
+fn export_sections_targets(
+    directives: &[ExportSectionsDirective],
+    sections: &HashMap<String, SectionState>,
+    out_dir: Option<&Path>,
+) -> Vec<String> {
+    let mut targets = Vec::new();
+    for directive in directives {
+        let target_dir = resolve_artifact_output_path(&directive.dir, out_dir);
+        for (filename, _) in build_export_sections_payloads_with_vm(directive, sections) {
+            targets.push(target_dir.join(filename).to_string_lossy().to_string());
+        }
+    }
+    targets
+}
+
+fn mapfile_targets(directives: &[MapFileDirective], out_dir: Option<&Path>) -> Vec<String> {
+    directives
+        .iter()
+        .map(|directive| {
+            resolve_artifact_output_path(&directive.path, out_dir)
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect()
 }
 
 pub fn prepare_assembly_session(
@@ -1134,7 +1227,7 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
             cpu,
             registry,
             max_loop_iterations,
-            opasm_package_path: request.opasm_package_path.cloned(),
+            opasm_package_path: request.opasm_package_path.map(Path::to_path_buf),
             root_module_id,
             expanded_lines,
             source_map,
@@ -1143,6 +1236,7 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
         },
         output_sink,
         request,
+        None,
     )
 }
 
@@ -1151,12 +1245,14 @@ pub fn run_prepared_assembly(
 ) -> Result<AsmRunReport, AsmRunError> {
     let fs_output_sink = FsOutputSink;
     let output_sink: &dyn OutputSink = request.output_sink.unwrap_or(&fs_output_sink);
+    let mut registry_guard = request.registry.lock().expect("prepared registry lock");
+    let prepared_registry = std::mem::replace(&mut *registry_guard, AsmRegistry::new());
     run_assembly_with_prepared(
         PreparedAssemblyRuntime {
             cpu: request.cpu,
-            registry: build_default_asm_registry(),
+            registry: prepared_registry,
             max_loop_iterations: request.max_loop_iterations,
-            opasm_package_path: request.opasm_package_path.cloned(),
+            opasm_package_path: request.opasm_package_path.map(Path::to_path_buf),
             root_module_id: request.root_module_id,
             expanded_lines: Arc::new(request.prepared_lines),
             source_map: request.source_map,
@@ -1196,6 +1292,7 @@ pub fn run_prepared_assembly(
             execution_mode: request.execution_mode,
             suppress_outputs: request.suppress_outputs,
         },
+        Some(&mut *registry_guard),
     )
 }
 
@@ -1203,6 +1300,7 @@ fn run_assembly_with_prepared(
     runtime: PreparedAssemblyRuntime,
     output_sink: &dyn OutputSink,
     request: AssemblyExecutionRequest<'_>,
+    registry_slot: Option<&mut AsmRegistry>,
 ) -> Result<AsmRunReport, AsmRunError> {
     let PreparedAssemblyRuntime {
         cpu,
@@ -1215,7 +1313,10 @@ fn run_assembly_with_prepared(
         dependency_files,
         module_macro_names,
     } = runtime;
-    let mut assembler = Assembler::with_cpu_and_registry(cpu, registry);
+    let mut assembler = AssemblerExecutionGuard::new(
+        Assembler::with_cpu_and_registry(cpu, registry),
+        registry_slot,
+    );
     assembler.set_runtime_line_router(Some(make_runtime_line_router(request.execution_mode)));
     assembler.max_loop_iterations = max_loop_iterations;
     assembler.opasm_package_path = opasm_package_path;
@@ -1311,6 +1412,16 @@ fn run_assembly_with_prepared(
     }
 
     let had_source_errors = pass1.errors > 0 || pass2.errors > 0;
+
+    if had_source_errors {
+        let traces = assembler.runtime_processing_traces().to_vec();
+        return Err(AsmRunError::new_with_traces(
+            AsmError::new(AsmErrorKind::Assembler, "Errors detected in source.", None),
+            remap_diags(assembler.take_diagnostics()),
+            expanded_lines.clone(),
+            traces,
+        ));
+    }
 
     if let Some(hex_path) = output_plan.hex_path() {
         ensure_parent_dir(output_sink, Path::new(hex_path)).map_err(|err| {
@@ -1420,6 +1531,23 @@ fn run_assembly_with_prepared(
         }
     }
 
+    if let Some(path) = request.labels_file {
+        dependency_targets.push(path.to_string_lossy().to_string());
+    }
+    dependency_targets.extend(linker_output_targets(
+        &assembler.root_metadata.linker_outputs,
+        request.out_dir,
+    ));
+    dependency_targets.extend(export_sections_targets(
+        &assembler.root_metadata.export_sections,
+        assembler.sections(),
+        request.out_dir,
+    ));
+    dependency_targets.extend(mapfile_targets(
+        &assembler.root_metadata.mapfiles,
+        request.out_dir,
+    ));
+
     if !request.suppress_outputs {
         if let Err(err) = emit_linker_outputs(
             &assembler.root_metadata.linker_outputs,
@@ -1487,16 +1615,6 @@ fn run_assembly_with_prepared(
                 output_sink,
             )?;
         }
-    }
-
-    if had_source_errors {
-        let traces = assembler.runtime_processing_traces().to_vec();
-        return Err(AsmRunError::new_with_traces(
-            AsmError::new(AsmErrorKind::Assembler, "Errors detected in source.", None),
-            remap_diags(assembler.take_diagnostics()),
-            expanded_lines.clone(),
-            traces,
-        ));
     }
 
     Ok(AsmRunReport::new(
@@ -1916,10 +2034,11 @@ mod tests {
         cpusupport_report, cpusupport_report_json, make_runtime_line_router,
         parse_cpu_directive_name, prepare_assembly_session, resolve_cpu_for_line,
         resolve_formatter_module_paths, resolve_output_plan, resolve_target_cpu,
-        root_module_id_from_lines, run_assembly, scan_cpu_transitions, AssemblerSessionConfig,
-        AssemblyExecutionRequest, AssemblyPreparationRequest, CapabilitySnapshot,
-        CpuResolutionError, ExecutionMode, FormatterPathResolutionRequest, MemoryOutputSink,
-        MemorySourceProvider, OutputPlanningRequest,
+        root_module_id_from_lines, run_assembly, run_prepared_assembly, scan_cpu_transitions,
+        AssemblerSessionConfig, AssemblyExecutionRequest, AssemblyPreparationRequest,
+        CapabilitySnapshot, CpuResolutionError, ExecutionMode, FormatterPathResolutionRequest,
+        MemoryOutputSink, MemorySourceProvider, OutputPlanningRequest,
+        PreparedAssemblyExecutionRequest,
     };
     use asm::engine::Assembler;
     use asm::output::{LabelOutputFormat, OutputFormat, RootMetadata};
@@ -1931,11 +2050,52 @@ mod tests {
         FamilyOperandSet, OperandSet,
     };
     use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
     use types::processing::{OpcoreRequestKind, ProcessingRequestKind};
     use types::symbol::SymbolTable;
 
     const TEST_FAMILY: CpuFamily = CpuFamily::new("test-family");
     const TEST_CPU: CpuType = CpuType::new("test-cpu");
+    static TEMP_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let seq = TEMP_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("{prefix}-{now}-{seq}"));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+    #[test]
+    fn default_runtime_model_for_dir_returns_none_without_artifact() {
+        let temp_dir = unique_temp_dir("engine-runtime-missing-artifact");
+        assert!(
+            super::build_default_runtime_model_for_dir(temp_dir.as_path()).is_none(),
+            "expected vm-runtime-only artifact lookup to fail without artifact bytes"
+        );
+    }
+
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+    #[test]
+    fn default_runtime_model_for_dir_loads_present_artifact() {
+        let temp_dir = unique_temp_dir("engine-runtime-present-artifact");
+        let artifact_path = super::default_runtime_artifact_path_for_dir(temp_dir.as_path());
+        let package_bytes = super::build_default_runtime_package_bytes()
+            .expect("build default runtime package bytes");
+        std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
+            .expect("create artifact parent");
+        std::fs::write(artifact_path, package_bytes).expect("write runtime artifact");
+
+        assert!(
+            super::build_default_runtime_model_for_dir(temp_dir.as_path()).is_some(),
+            "expected vm-runtime-only artifact lookup to load the default runtime model"
+        );
+    }
 
     #[test]
     fn resolve_output_plan_requires_a_resolved_base_for_default_outputs() {
@@ -2458,13 +2618,85 @@ mod tests {
             }));
         let listing = output_sink
             .text("/virtual/main.lst")
+            .expect("utf8 output")
             .expect("listing output should be captured");
         let hex = output_sink
             .text("/virtual/main.hex")
+            .expect("utf8 output")
             .expect("hex output should be captured");
         assert!(listing.contains("nop"));
         assert!(!hex.trim().is_empty(), "hex:\n{hex}");
         assert!(hex.contains(":00000001FF"), "hex:\n{hex}");
+    }
+
+    #[test]
+    fn run_prepared_assembly_preserves_prepare_time_registry() {
+        let source_provider = MemorySourceProvider::default().with_file(
+            "/virtual/main.asm",
+            ".module main\n.cpu \"stubalias\"\n.endmodule\n",
+        );
+        let include_roots = vec![PathBuf::from("/virtual")];
+        let mut registry = AsmRegistry::new();
+        registry.register_family(Box::new(StubFamilyModule));
+        registry.register_cpu(Box::new(StubCpuModule));
+
+        let prepared = prepare_assembly_session(AssemblyPreparationRequest {
+            root_path: Path::new("/virtual/main.asm"),
+            defines: &[],
+            include_roots: &include_roots,
+            module_paths: &[],
+            pp_macro_depth: 32,
+            registry,
+            cpu_override: None,
+            default_cpu: TEST_CPU,
+            max_loop_iterations: 1000,
+            source_provider: Some(&source_provider),
+        })
+        .expect("session should prepare with custom registry");
+
+        let (
+            session,
+            root_module_id,
+            prepared_lines,
+            source_map,
+            dependency_files,
+            module_macro_names,
+        ) = prepared.into_parts();
+        let (cpu, registry, max_loop_iterations) = session.into_parts();
+        let report = run_prepared_assembly(PreparedAssemblyExecutionRequest {
+            input_base: "/virtual/main",
+            cpu,
+            registry: std::sync::Arc::new(std::sync::Mutex::new(registry)),
+            max_loop_iterations,
+            opasm_package_path: None,
+            root_module_id,
+            prepared_lines,
+            source_map,
+            dependency_files,
+            module_macro_names,
+            out_dir: None,
+            debug_conditionals: false,
+            tab_size: None,
+            output_format: OutputFormat::Text,
+            go_addr: None,
+            bin_specs: &[],
+            fill_byte: 0,
+            fill_byte_set: false,
+            default_outputs: false,
+            labels_file: None,
+            label_output_format: LabelOutputFormat::Vice,
+            dependency_output: None,
+            outfile_override: None,
+            list_name_override: None,
+            hex_name_override: None,
+            header_title: "test",
+            output_sink: None,
+            execution_mode: ExecutionMode::Rust,
+            suppress_outputs: true,
+        })
+        .expect("prepared execution should preserve custom registry");
+
+        assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
     }
 
     #[test]

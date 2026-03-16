@@ -11,7 +11,7 @@ use crate::lsp::document_state::{
     SymbolVisibility, TypedSymbolDecl, UseImportDecl,
 };
 use crate::lsp::session::{path_to_file_uri, uri_to_path};
-use registry::registry::AsmRegistry;
+use libopforge::registry::AsmRegistry;
 
 #[derive(Debug, Clone)]
 pub struct IndexedSymbol {

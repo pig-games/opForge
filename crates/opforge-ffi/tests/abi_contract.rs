@@ -1,16 +1,19 @@
 use ffi::{
     opforge_asm_assemble_file_with_request, opforge_asm_report_error_count,
     opforge_asm_report_free, opforge_asm_report_status, opforge_asm_session_assemble,
-    opforge_asm_session_create_with_request, opforge_asm_session_free,
-    opforge_diag_code_from_asm_report, opforge_diag_fixit_applicability_from_asm_report,
-    opforge_diag_fixit_count_from_asm_report, opforge_diag_fixit_replacement_from_asm_report,
-    opforge_diag_help_count_from_asm_report, opforge_diag_help_from_asm_report,
-    OpforgeAsmDiagnosticsOptions, OpforgeAsmExecutionOptions, OpforgeAsmOutputOptions,
-    OpforgeAsmRequest, OpforgeAsmSourceOptions, OpforgeProcessorStatus, OpforgeStatus,
-    OpforgeStringList, OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST, OPFORGE_EXECUTION_MODE_LOCKSTEP_VM,
-    OPFORGE_EXECUTION_MODE_RUST, OPFORGE_EXECUTION_MODE_VM, OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT,
-    OPFORGE_LABEL_OUTPUT_FORMAT_VICE, OPFORGE_OUTPUT_FORMAT_TEXT,
+    opforge_asm_session_create_with_request, opforge_asm_session_create_with_request_report,
+    opforge_asm_session_free, opforge_diag_code_from_asm_report,
+    opforge_diag_fixit_applicability_from_asm_report, opforge_diag_fixit_count_from_asm_report,
+    opforge_diag_fixit_replacement_from_asm_report, opforge_diag_help_count_from_asm_report,
+    opforge_diag_help_from_asm_report, OpforgeAsmDiagnosticsOptions, OpforgeAsmExecutionOptions,
+    OpforgeAsmOutputOptions, OpforgeAsmRequest, OpforgeAsmSourceOptions, OpforgeProcessorStatus,
+    OpforgeStatus, OpforgeStringList, OPFORGE_DEFAULT_OUTPUTS_DISABLE,
+    OPFORGE_DEFAULT_OUTPUTS_ENABLE, OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST,
+    OPFORGE_EXECUTION_MODE_LOCKSTEP_VM, OPFORGE_EXECUTION_MODE_RUST, OPFORGE_EXECUTION_MODE_VM,
+    OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT, OPFORGE_LABEL_OUTPUT_FORMAT_VICE,
+    OPFORGE_OUTPUT_FORMAT_TEXT,
 };
+use opforge as ffi;
 use std::ffi::{CStr, CString};
 use std::fs;
 use std::os::raw::c_char;
@@ -49,6 +52,11 @@ fn basic_request(
     execution_mode: u32,
     emit_outputs: u8,
 ) -> OpforgeAsmRequest {
+    let emit_outputs = match emit_outputs {
+        0 => OPFORGE_DEFAULT_OUTPUTS_DISABLE,
+        1 => OPFORGE_DEFAULT_OUTPUTS_ENABLE,
+        value => value,
+    };
     OpforgeAsmRequest {
         source: OpforgeAsmSourceOptions {
             root_path,
@@ -90,22 +98,75 @@ fn basic_request(
     }
 }
 
-fn find_c_compiler() -> Option<&'static str> {
-    ["cc", "clang", "gcc"].into_iter().find(|candidate| {
-        Command::new(candidate)
-            .arg("--version")
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    })
+fn rustc_host_target() -> String {
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let output = Command::new(rustc)
+        .arg("-vV")
+        .output()
+        .expect("query rustc host target");
+    assert!(
+        output.status.success(),
+        "failed to query rustc host target\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix("host: "))
+        .map(str::to_string)
+        .expect("rustc -vV missing host triple")
+}
+
+fn resolve_c_compiler() -> cc::Tool {
+    let target = rustc_host_target();
+    cc::Build::new()
+        .cargo_metadata(false)
+        .opt_level(0)
+        .host(&target)
+        .target(&target)
+        .try_get_compiler()
+        .unwrap_or_else(|error| {
+            panic!("no supported C compiler available for ABI contract test: {error}")
+        })
+}
+
+fn compile_header_abi_check(
+    compiler: &cc::Tool,
+    source_path: &PathBuf,
+    object_path: &PathBuf,
+    header_dir: &PathBuf,
+) -> std::process::Output {
+    let mut command = Command::new(compiler.path());
+    command.args(compiler.args());
+
+    if compiler.is_like_msvc() {
+        command
+            .arg("/nologo")
+            .arg("/std:c11")
+            .arg(format!("/I{}", header_dir.display()))
+            .arg("/c")
+            .arg(source_path)
+            .arg(format!("/Fo{}", object_path.display()));
+    } else {
+        command
+            .arg("-std=c11")
+            .arg("-I")
+            .arg(header_dir)
+            .arg("-c")
+            .arg(source_path)
+            .arg("-o")
+            .arg(object_path);
+    }
+
+    command
+        .output()
+        .expect("run C compiler for header ABI check")
 }
 
 #[test]
 fn exported_header_matches_rust_abi_contract() {
-    let Some(compiler) = find_c_compiler() else {
-        eprintln!("skipping header ABI compile check because no C compiler is available");
-        return;
-    };
+    let compiler = resolve_c_compiler();
 
     let work_dir = make_temp_dir("header-abi");
     let source_path = work_dir.join("header_check.c");
@@ -154,8 +215,13 @@ fn exported_header_matches_rust_abi_contract() {
          _Static_assert(offsetof(opforge_asm_output_options, fill_byte_set) == {asm_output_options_fill_byte_set_offset}, \"asm output options fill_byte_set offset mismatch\");\n\
          _Static_assert(offsetof(opforge_asm_output_options, labels_file) == {asm_output_options_labels_file_offset}, \"asm output options labels_file offset mismatch\");\n\
          _Static_assert(offsetof(opforge_asm_output_options, no_outputs) == {asm_output_options_no_outputs_offset}, \"asm output options no_outputs offset mismatch\");\n\
+         /* Public high-level assembler entrypoints: keep this block aligned with opforge.h. */\n\
+         static void (*asm_request_init_fn)(opforge_asm_request *) = opforge_asm_request_init;\n\
          static opforge_asm_report *(*assemble_with_request_fn)(const opforge_asm_request *) = opforge_asm_assemble_file_with_request;\n\
+         static opforge_asm_report *(*assemble_memory_with_request_fn)(const opforge_asm_request *, const char *, const opforge_output_callbacks *) = opforge_asm_assemble_memory_with_request;\n\
+         static opforge_asm_report *(*check_memory_with_request_fn)(const opforge_asm_request *, const char *, const opforge_output_callbacks *) = opforge_asm_check_memory_with_request;\n\
          static opforge_asm_session *(*asm_session_create_with_request_fn)(const opforge_asm_request *) = opforge_asm_session_create_with_request;\n\
+         static opforge_asm_report *(*asm_session_create_with_request_report_fn)(const opforge_asm_request *, opforge_asm_session **) = opforge_asm_session_create_with_request_report;\n\
          static opforge_prepared_asm_session *(*asm_session_prepare_fn)(const opforge_asm_session *) = opforge_asm_session_prepare;\n\
          static opforge_asm_report *(*asm_session_assemble_fn)(const opforge_asm_session *) = opforge_asm_session_assemble;\n\
          static opforge_asm_report *(*asm_session_check_fn)(const opforge_asm_session *) = opforge_asm_session_check;\n\
@@ -221,7 +287,7 @@ fn exported_header_matches_rust_abi_contract() {
          static void (*opcore_expr_free_fn)(opforge_opcore_expr_report *) = opforge_opcore_expr_report_free;\n\
          static opforge_opcore_module_item_report *(*opcore_module_item_fn)(const char *, uint32_t) = opforge_opcore_process_module_item;\n\
          static void (*opcore_module_item_free_fn)(opforge_opcore_module_item_report *) = opforge_opcore_module_item_report_free;\n\
-         int main(void) {{ return assemble_with_request_fn != 0 && asm_session_create_with_request_fn != 0 && asm_session_prepare_fn != 0 && asm_session_assemble_fn != 0 && asm_session_check_fn != 0 && prepared_asm_session_assemble_fn != 0 && prepared_asm_session_check_fn != 0 && asm_session_free_fn != 0 && prepared_asm_session_free_fn != 0 && diag_count_fn != 0 && diag_severity_fn != 0 && diag_line_fn != 0 && diag_col_start_fn != 0 && diag_col_end_fn != 0 && diag_message_fn != 0 && diag_code_fn != 0 && diag_file_fn != 0 && diag_related_span_count_fn != 0 && diag_related_span_file_fn != 0 && diag_related_span_line_fn != 0 && diag_related_span_col_start_fn != 0 && diag_related_span_col_end_fn != 0 && diag_related_span_label_fn != 0 && diag_related_span_is_primary_fn != 0 && diag_note_count_fn != 0 && diag_note_fn != 0 && diag_help_count_fn != 0 && diag_help_fn != 0 && diag_fixit_count_fn != 0 && diag_fixit_file_fn != 0 && diag_fixit_line_fn != 0 && diag_fixit_col_start_fn != 0 && diag_fixit_col_end_fn != 0 && diag_fixit_replacement_fn != 0 && diag_fixit_applicability_fn != 0 && registry_default_fn != 0 && registry_cpu_count_fn != 0 && registry_cpu_id_fn != 0 && registry_cpu_view_fn != 0 && registry_cpu_view_family_fn != 0 && registry_cpu_view_mnemonic_count_fn != 0 && registry_cpu_view_mnemonic_fn != 0 && registry_free_fn != 0 && registry_cpu_view_free_fn != 0 && opcore_tokenize_fn != 0 && opcore_tokenize_free_fn != 0 && opasm_tokenize_fn != 0 && opasm_tokenize_free_fn != 0 && opasm_parse_fn != 0 && opasm_parse_free_fn != 0 && opasm_process_fn != 0 && opasm_process_trace_fn != 0 && processing_trace_count_fn != 0 && processing_trace_text_fn != 0 && processing_trace_free_fn != 0 && opasm_process_lockstep_fn != 0 && lockstep_match_count_fn != 0 && lockstep_divergence_count_fn != 0 && lockstep_match_stage_fn != 0 && lockstep_match_request_fn != 0 && lockstep_divergence_reason_fn != 0 && lockstep_report_free_fn != 0 && opasm_process_free_fn != 0 && opcore_expr_fn != 0 && opcore_expr_free_fn != 0 && opcore_module_item_fn != 0 && opcore_module_item_free_fn != 0 ? 0 : 1; }}\n",
+         int main(void) {{ return asm_request_init_fn != 0 && assemble_with_request_fn != 0 && assemble_memory_with_request_fn != 0 && check_memory_with_request_fn != 0 && asm_session_create_with_request_fn != 0 && asm_session_create_with_request_report_fn != 0 && asm_session_prepare_fn != 0 && asm_session_assemble_fn != 0 && asm_session_check_fn != 0 && prepared_asm_session_assemble_fn != 0 && prepared_asm_session_check_fn != 0 && asm_session_free_fn != 0 && prepared_asm_session_free_fn != 0 && diag_count_fn != 0 && diag_severity_fn != 0 && diag_line_fn != 0 && diag_col_start_fn != 0 && diag_col_end_fn != 0 && diag_message_fn != 0 && diag_code_fn != 0 && diag_file_fn != 0 && diag_related_span_count_fn != 0 && diag_related_span_file_fn != 0 && diag_related_span_line_fn != 0 && diag_related_span_col_start_fn != 0 && diag_related_span_col_end_fn != 0 && diag_related_span_label_fn != 0 && diag_related_span_is_primary_fn != 0 && diag_note_count_fn != 0 && diag_note_fn != 0 && diag_help_count_fn != 0 && diag_help_fn != 0 && diag_fixit_count_fn != 0 && diag_fixit_file_fn != 0 && diag_fixit_line_fn != 0 && diag_fixit_col_start_fn != 0 && diag_fixit_col_end_fn != 0 && diag_fixit_replacement_fn != 0 && diag_fixit_applicability_fn != 0 && registry_default_fn != 0 && registry_cpu_count_fn != 0 && registry_cpu_id_fn != 0 && registry_cpu_view_fn != 0 && registry_cpu_view_family_fn != 0 && registry_cpu_view_mnemonic_count_fn != 0 && registry_cpu_view_mnemonic_fn != 0 && registry_free_fn != 0 && registry_cpu_view_free_fn != 0 && opcore_tokenize_fn != 0 && opcore_tokenize_free_fn != 0 && opasm_tokenize_fn != 0 && opasm_tokenize_free_fn != 0 && opasm_parse_fn != 0 && opasm_parse_free_fn != 0 && opasm_process_fn != 0 && opasm_process_trace_fn != 0 && processing_trace_count_fn != 0 && processing_trace_text_fn != 0 && processing_trace_free_fn != 0 && opasm_process_lockstep_fn != 0 && lockstep_match_count_fn != 0 && lockstep_divergence_count_fn != 0 && lockstep_match_stage_fn != 0 && lockstep_match_request_fn != 0 && lockstep_divergence_reason_fn != 0 && lockstep_report_free_fn != 0 && opasm_process_free_fn != 0 && opcore_expr_fn != 0 && opcore_expr_free_fn != 0 && opcore_module_item_fn != 0 && opcore_module_item_free_fn != 0 ? 0 : 1; }}\n",
         mode_rust = OPFORGE_EXECUTION_MODE_RUST,
         mode_vm = OPFORGE_EXECUTION_MODE_VM,
         mode_lockstep_rust = OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST,
@@ -265,16 +331,7 @@ fn exported_header_matches_rust_abi_contract() {
 
     fs::write(&source_path, c_source).expect("write header ABI source");
 
-    let output = Command::new(compiler)
-        .arg("-std=c11")
-        .arg("-I")
-        .arg(&header_dir)
-        .arg("-c")
-        .arg(&source_path)
-        .arg("-o")
-        .arg(&object_path)
-        .output()
-        .expect("run C compiler for header ABI check");
+    let output = compile_header_abi_check(&compiler, &source_path, &object_path, &header_dir);
 
     assert!(
         output.status.success(),
@@ -418,7 +475,7 @@ fn exported_grouped_request_session_path_supports_richer_config_surface() {
         },
         output: OpforgeAsmOutputOptions {
             out_dir: out_dir_c.as_ptr(),
-            emit_outputs: 1,
+            emit_outputs: OPFORGE_DEFAULT_OUTPUTS_ENABLE,
             output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
             go_addr: std::ptr::null(),
             bin_specs: OpforgeStringList {
@@ -484,6 +541,54 @@ fn exported_grouped_request_session_create_returns_null_on_invalid_request() {
     );
     let session = unsafe { opforge_asm_session_create_with_request(&request) };
     assert!(session.is_null());
+}
+
+#[test]
+fn exported_grouped_request_session_create_report_exposes_failures_and_success() {
+    let mut session = std::ptr::null_mut();
+    let report =
+        unsafe { opforge_asm_session_create_with_request_report(std::ptr::null(), &mut session) };
+    assert!(!report.is_null());
+    assert!(session.is_null());
+    assert_eq!(
+        unsafe { opforge_asm_report_status(report) },
+        OpforgeStatus::InvalidRequest
+    );
+    unsafe { opforge_asm_report_free(report) };
+
+    let work_dir = make_temp_dir("grouped-request-session-report");
+    let source_path = work_dir.join("main.asm");
+    fs::write(&source_path, ".module main\nstart:\n    nop\n.endmodule\n").expect("write source");
+    let root = CString::new(source_path.to_string_lossy().as_bytes()).expect("root cstr");
+    let output_base_owned = source_path.with_extension("");
+    let output_base =
+        CString::new(output_base_owned.to_string_lossy().as_bytes()).expect("output base cstr");
+    let request = basic_request(
+        root.as_ptr(),
+        output_base.as_ptr(),
+        std::ptr::null(),
+        OPFORGE_EXECUTION_MODE_VM,
+        0,
+    );
+
+    let mut session = std::ptr::null_mut();
+    let report = unsafe { opforge_asm_session_create_with_request_report(&request, &mut session) };
+    assert!(!report.is_null());
+    assert!(!session.is_null());
+    assert_eq!(
+        unsafe { opforge_asm_report_status(report) },
+        OpforgeStatus::Ok
+    );
+    unsafe { opforge_asm_report_free(report) };
+
+    let assemble_report = unsafe { opforge_asm_session_assemble(session) };
+    assert!(!assemble_report.is_null());
+    assert_eq!(
+        unsafe { opforge_asm_report_status(assemble_report) },
+        OpforgeStatus::Ok
+    );
+    unsafe { opforge_asm_report_free(assemble_report) };
+    unsafe { opforge_asm_session_free(session) };
 }
 
 #[test]

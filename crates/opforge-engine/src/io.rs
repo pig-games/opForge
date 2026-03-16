@@ -82,7 +82,23 @@ fn normalize_path(path: &Path) -> PathBuf {
             Component::RootDir => normalized.push(Path::new("/")),
             Component::CurDir => {}
             Component::ParentDir => {
-                normalized.pop();
+                if path.is_absolute() {
+                    if matches!(
+                        normalized.components().next_back(),
+                        Some(Component::Normal(_))
+                    ) {
+                        normalized.pop();
+                    }
+                } else {
+                    match normalized.components().next_back() {
+                        Some(Component::Normal(_)) => {
+                            normalized.pop();
+                        }
+                        Some(Component::ParentDir) | None => normalized.push(".."),
+                        Some(Component::RootDir) | Some(Component::Prefix(_)) => {}
+                        Some(Component::CurDir) => {}
+                    }
+                }
             }
             Component::Normal(part) => normalized.push(part),
         }
@@ -99,6 +115,12 @@ pub struct MemorySourceProvider {
     files: HashMap<PathBuf, String>,
 }
 
+#[derive(Debug, Clone)]
+struct MemoryFsOverlaySourceProvider {
+    memory: MemorySourceProvider,
+    fallback: FsSourceProvider,
+}
+
 impl MemorySourceProvider {
     pub fn new() -> Self {
         Self::default()
@@ -110,7 +132,105 @@ impl MemorySourceProvider {
     }
 
     pub fn insert_file(&mut self, path: impl Into<PathBuf>, content: impl Into<String>) {
-        self.files.insert(path.into(), content.into());
+        let path = normalize_path(&path.into());
+        self.files.insert(path, content.into());
+    }
+
+    pub fn with_fs_fallback(self) -> Box<dyn SourceProvider> {
+        Box::new(MemoryFsOverlaySourceProvider {
+            memory: self,
+            fallback: FsSourceProvider,
+        })
+    }
+}
+
+impl MemoryFsOverlaySourceProvider {
+    fn merged_dir_entries(
+        &self,
+        path: &Path,
+        memory_entries: io::Result<Vec<PathBuf>>,
+        fallback_entries: io::Result<Vec<PathBuf>>,
+    ) -> io::Result<Vec<PathBuf>> {
+        match (memory_entries, fallback_entries) {
+            (Ok(mut memory_entries), Ok(fallback_entries)) => {
+                for entry in fallback_entries {
+                    if !memory_entries.contains(&entry) {
+                        memory_entries.push(entry);
+                    }
+                }
+                memory_entries.sort();
+                Ok(memory_entries)
+            }
+            (Ok(memory_entries), Err(err)) if err.kind() == io::ErrorKind::NotFound => {
+                Ok(memory_entries)
+            }
+            (Err(err), Ok(fallback_entries)) if err.kind() == io::ErrorKind::NotFound => {
+                Ok(fallback_entries)
+            }
+            (Err(memory_err), Err(fallback_err))
+                if memory_err.kind() == io::ErrorKind::NotFound
+                    && fallback_err.kind() == io::ErrorKind::NotFound =>
+            {
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("missing directory {}", path.display()),
+                ))
+            }
+            (Err(err), _) => Err(err),
+            (_, Err(err)) => Err(err),
+        }
+    }
+
+    fn memory_contains_path(&self, path: &Path) -> io::Result<bool> {
+        Ok(self.memory.is_file(path)? || self.memory.is_dir(path)?)
+    }
+}
+
+impl SourceProvider for MemoryFsOverlaySourceProvider {
+    fn read_string(&self, path: &Path) -> io::Result<String> {
+        match self.memory.read_string(path) {
+            Ok(contents) => Ok(contents),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => self.fallback.read_string(path),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
+        self.merged_dir_entries(
+            path,
+            self.memory.read_dir(path),
+            self.fallback.read_dir(path),
+        )
+    }
+
+    fn is_dir(&self, path: &Path) -> io::Result<bool> {
+        if self.memory.is_dir(path)? {
+            return Ok(true);
+        }
+        match self.fallback.is_dir(path) {
+            Ok(is_dir) => Ok(is_dir),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn is_file(&self, path: &Path) -> io::Result<bool> {
+        if self.memory.is_file(path)? {
+            return Ok(true);
+        }
+        match self.fallback.is_file(path) {
+            Ok(is_file) => Ok(is_file),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        if self.memory_contains_path(path)? {
+            self.memory.canonicalize(path)
+        } else {
+            self.fallback.canonicalize(path)
+        }
     }
 }
 
@@ -201,12 +321,16 @@ impl MemoryOutputSink {
         files
     }
 
-    pub fn text(&self, path: impl Into<PathBuf>) -> Option<String> {
+    pub fn text(
+        &self,
+        path: impl Into<PathBuf>,
+    ) -> Result<Option<String>, std::string::FromUtf8Error> {
         self.files
             .lock()
             .expect("files lock")
             .get(&path.into())
-            .map(|bytes| String::from_utf8(bytes.clone()).expect("utf8 output"))
+            .map(|bytes| String::from_utf8(bytes.clone()))
+            .transpose()
     }
 
     pub fn bytes(&self, path: impl Into<PathBuf>) -> Option<Vec<u8>> {
@@ -276,5 +400,114 @@ impl OutputSink for MemoryOutputSink {
             .expect("files lock")
             .insert(PathBuf::from(path), bytes.to_vec());
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        normalize_path, MemoryOutputSink, MemorySourceProvider, OutputSink, SourceProvider,
+    };
+    use std::fs;
+    use std::io::ErrorKind;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "libopforge-engine-io-{name}-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path).expect("create temp dir");
+        path
+    }
+
+    #[test]
+    fn normalize_path_preserves_leading_parent_segments_for_relative_paths() {
+        assert_eq!(
+            normalize_path(Path::new("../inc.asm")),
+            PathBuf::from("../inc.asm")
+        );
+        assert_eq!(
+            normalize_path(Path::new("a/../../inc.asm")),
+            PathBuf::from("../inc.asm")
+        );
+        assert_eq!(
+            normalize_path(Path::new("../../dir/./file.asm")),
+            PathBuf::from("../../dir/file.asm")
+        );
+    }
+
+    #[test]
+    fn memory_source_provider_normalizes_inserted_and_lookup_paths_consistently() {
+        let mut provider = MemorySourceProvider::new();
+        provider.insert_file("./virtual/../main.asm", ".module main\n.endmodule\n");
+
+        let content = provider
+            .read_string(Path::new("main.asm"))
+            .expect("normalized lookup should succeed");
+        assert!(content.contains(".module main"));
+        assert!(provider.is_file(Path::new("./main.asm")).expect("is_file"));
+        assert_eq!(
+            provider
+                .canonicalize(Path::new("./virtual/../main.asm"))
+                .expect("canonicalize"),
+            PathBuf::from("main.asm")
+        );
+    }
+
+    #[test]
+    fn memory_source_provider_does_not_alias_leading_parent_paths_to_local_files() {
+        let provider =
+            MemorySourceProvider::new().with_file("../inc.asm", "FROM_PARENT .const 1\n");
+
+        let err = provider
+            .read_string(Path::new("inc.asm"))
+            .expect_err("local file should not alias to parent path");
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+
+        let content = provider
+            .read_string(Path::new("../inc.asm"))
+            .expect("parent-relative path should still resolve");
+        assert!(content.contains("FROM_PARENT"));
+    }
+
+    #[test]
+    fn memory_source_provider_with_fs_fallback_reads_missing_files_from_filesystem() {
+        let temp_dir = make_temp_dir("fs-fallback");
+        let include_path = temp_dir.join("inc.asm");
+        fs::write(&include_path, "FROM_FS .const 1\n").expect("write include file");
+
+        let provider = MemorySourceProvider::new()
+            .with_file("/virtual/main.asm", ".module main\n.endmodule\n")
+            .with_fs_fallback();
+
+        let content = provider
+            .read_string(&include_path)
+            .expect("filesystem fallback should resolve missing file");
+        assert!(content.contains("FROM_FS"));
+    }
+
+    #[test]
+    fn memory_output_sink_text_returns_utf8_error_for_binary_artifacts() {
+        let sink = MemoryOutputSink::new();
+        sink.write_bytes(Path::new("/virtual/out.bin"), &[0xff, 0x00, 0x41])
+            .expect("write binary output");
+
+        let err = sink
+            .text("/virtual/out.bin")
+            .expect_err("binary output should not decode as utf8");
+        assert_eq!(err.utf8_error().valid_up_to(), 0);
+
+        let bytes = sink
+            .bytes("/virtual/out.bin")
+            .expect("raw bytes should remain available");
+        assert_eq!(bytes, vec![0xff, 0x00, 0x41]);
+
+        assert_eq!(sink.text("/virtual/missing.bin"), Ok(None));
     }
 }

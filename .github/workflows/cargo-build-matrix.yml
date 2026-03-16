@@ -26,7 +26,16 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build release
-        run: cargo build --release --locked
+        run: cargo build --workspace --exclude ffi --release --locked
+
+      - name: Build release-ffi library
+        run: cargo build -p ffi --profile release-ffi --locked --lib
+
+      - name: Run release-ffi panic boundary smoke test
+        run: cargo test -p ffi release_profile_catches_forced_ffi_panic --locked
+
+      - name: Run FFI ABI contract test
+        run: cargo test -p ffi exported_header_matches_rust_abi_contract --locked
 
       - name: Build vm-only embedded
         run: cargo build --release --locked --features vm-runtime-only

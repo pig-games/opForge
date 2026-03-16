@@ -119,6 +119,8 @@ Contract split:
 
 Use `Assembler::builder(...)` when your host already owns its providers and sinks and can keep them alive for the duration of the call.
 
+The borrowed config structs are non-exhaustive. Treat the builder as the supported construction path for new code, and prefer `&Path` for single borrowed path-valued setters such as `out_dir(...)`, `labels_file(...)`, and `opasm_package_path(...)`.
+
 ```rust
 use libopforge::asm::{Assembler, OutputFormat};
 
@@ -132,6 +134,8 @@ This is a good fit for build tools, command wrappers, and short-lived requests.
 ### 5.2 Owned or non-borrowing host integration
 
 Use `AssemblerSession::builder(...)` when your host needs owned state, long-lived sessions, or FFI-friendly ergonomics.
+
+The owned grouped config types are also non-exhaustive. They remain useful as long-lived host state, but the builder/session entrypoints are the stable ergonomic path the facade teaches first.
 
 The workspace's public examples use this model because it maps cleanly onto in-memory and callback-oriented hosts.
 
@@ -163,6 +167,8 @@ let report = AssemblerSession::builder("/virtual/main.asm")
 
 assert_eq!(report.error_count(), 0);
 ```
+
+Use `MemoryOutputSink::bytes()` for arbitrary captured artifacts. `MemoryOutputSink::text()` is for text outputs only and returns `Result<Option<String>, FromUtf8Error>` so binary artifacts do not panic the host.
 
 `SourceProvider` and `OutputSink` are `Send + Sync`, so it is straightforward to share them across worker threads if your host architecture requires it.
 
@@ -300,6 +306,13 @@ The FFI surface is split into:
 - `opforge_registry_*`, `opforge_processing_*`, and `opforge_lockstep_*` groups for introspection
 
 For non-Rust consumers, use the high-level `opforge_asm_*_with_request(...)` and session-oriented APIs built around `opforge_asm_request`.
+
+If you are shipping the shared library for a host integration, build it with the unwind-safe FFI profile:
+
+- `make build-ffi-release`, or
+- `cargo build -p ffi --profile release-ffi --locked --lib`
+
+Do not distribute the FFI library produced indirectly by a workspace-wide `cargo build --release`; the workspace release profile is `panic = "abort"`, while the public FFI contract is designed to return structured internal-error reports across panic boundaries.
 
 The FFI implementation is a useful reference even for Rust developers because it shows how to map the owned/session model into long-lived handles and callback-driven I/O without bypassing the stable library path.
 

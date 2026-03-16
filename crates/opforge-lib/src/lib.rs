@@ -9,7 +9,7 @@
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use types::source_map::SourceMap;
 use types::symbol::SymbolVisibility;
 
@@ -47,7 +47,8 @@ pub mod processing {
 pub mod registry {
     pub use ::engine::{
         capabilities_report, capabilities_report_json, cpusupport_report, cpusupport_report_json,
-        resolve_target_cpu, AsmRegistryContext, CapabilitySnapshot, CpuCapabilityView,
+        default_cpu, parse_cpu_directive_name, resolve_cpu_for_line, resolve_target_cpu,
+        scan_cpu_transitions, AsmRegistryContext, CapabilitySnapshot, CpuCapabilityView,
         CpuResolutionError,
     };
     pub use ::registry::{AsmRegistry, CpuFamily, CpuType};
@@ -65,7 +66,9 @@ pub mod formatter {
 }
 
 pub mod opcore {
-    pub use ::opcore::parser::{Expr, LineAst, ParseError};
+    pub use ::engine::editor_parse_line;
+    pub use ::opcore::expression::expr_text;
+    pub use ::opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError, UseItem};
     pub use ::opcore::services::{
         parse_expression, parse_expression_tokens, process_module_item, tokenize_line,
         TokenizedLine,
@@ -430,6 +433,7 @@ pub mod asm {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct OwnedSourceOptions {
     pub output_base: String,
     pub defines: Vec<String>,
@@ -453,6 +457,7 @@ impl Default for OwnedSourceOptions {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct OwnedExecutionOptions {
     pub execution_mode: ExecutionMode,
     pub cpu_override: Option<String>,
@@ -472,6 +477,7 @@ impl Default for OwnedExecutionOptions {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct OwnedOutputOptions {
     pub out_dir: Option<PathBuf>,
     pub output_format: OutputFormat,
@@ -515,6 +521,7 @@ impl Default for OwnedOutputOptions {
 }
 
 #[derive(Clone, Default)]
+#[non_exhaustive]
 pub struct OwnedAssemblerConfig {
     pub source: OwnedSourceOptions,
     pub execution: OwnedExecutionOptions,
@@ -533,8 +540,8 @@ impl OwnedAssemblerConfig {
             pp_macro_depth: self.source.pp_macro_depth,
             cpu_override: self.execution.cpu_override.as_deref(),
             max_loop_iterations: self.execution.max_loop_iterations,
-            opasm_package_path: self.execution.opasm_package_path.as_ref(),
-            out_dir: self.output.out_dir.as_ref(),
+            opasm_package_path: self.execution.opasm_package_path.as_deref(),
+            out_dir: self.output.out_dir.as_deref(),
             debug_conditionals: self.diagnostics.debug_conditionals,
             tab_size: self.diagnostics.tab_size,
             output_format: self.output.output_format,
@@ -543,7 +550,7 @@ impl OwnedAssemblerConfig {
             fill_byte: self.output.fill_byte,
             fill_byte_set: self.output.fill_byte_set,
             default_outputs: self.output.default_outputs,
-            labels_file: self.output.labels_file.as_ref(),
+            labels_file: self.output.labels_file.as_deref(),
             label_output_format: self.output.label_output_format,
             dependency_output: self.output.dependency_output.as_ref(),
             outfile_override: self.output.outfile_override.as_deref(),
@@ -611,6 +618,7 @@ struct PublicPrepareRequest<'a> {
 }
 
 struct PreparedAssemblyCore {
+    registry: Arc<Mutex<::registry::AsmRegistry>>,
     cpu: ::registry::CpuType,
     max_loop_iterations: u32,
     root_module_id: String,
@@ -623,6 +631,7 @@ struct PreparedAssemblyCore {
 
 struct PreparedExecutionCoreRef<'a> {
     output_base: &'a str,
+    registry: &'a Arc<Mutex<::registry::AsmRegistry>>,
     cpu: ::registry::CpuType,
     max_loop_iterations: u32,
     root_module_id: &'a str,
@@ -666,10 +675,11 @@ fn prepare_public_assembly<'a>(
     })?;
     let (session, root_module_id, expanded_lines, source_map, dependency_files, module_macro_names) =
         prepared.into_parts();
-    let (cpu, _registry, max_loop_iterations) = session.into_parts();
+    let (cpu, registry, max_loop_iterations) = session.into_parts();
 
     Ok((
         PreparedAssemblyCore {
+            registry: Arc::new(Mutex::new(registry)),
             cpu,
             max_loop_iterations,
             root_module_id,
@@ -689,6 +699,7 @@ fn run_public_prepared_assembly(
     engine::run_prepared_assembly(engine::PreparedAssemblyExecutionRequest {
         input_base: prepared.output_base,
         cpu: prepared.cpu,
+        registry: Arc::clone(prepared.registry),
         max_loop_iterations: prepared.max_loop_iterations,
         root_module_id: prepared.root_module_id.to_owned(),
         prepared_lines: prepared.prepared_lines.to_vec(),
@@ -719,6 +730,7 @@ fn run_public_prepared_assembly(
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct PrepareOptions<'a> {
     pub execution_mode: ExecutionMode,
     pub output_base: &'a str,
@@ -728,7 +740,7 @@ pub struct PrepareOptions<'a> {
     pub pp_macro_depth: usize,
     pub cpu_override: Option<&'a str>,
     pub max_loop_iterations: u32,
-    pub opasm_package_path: Option<&'a PathBuf>,
+    pub opasm_package_path: Option<&'a Path>,
     pub source_provider: Option<&'a dyn SourceProvider>,
 }
 
@@ -750,6 +762,7 @@ impl<'a> Default for PrepareOptions<'a> {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct AssembleOptions<'a> {
     pub execution_mode: ExecutionMode,
     pub output_base: &'a str,
@@ -759,8 +772,8 @@ pub struct AssembleOptions<'a> {
     pub pp_macro_depth: usize,
     pub cpu_override: Option<&'a str>,
     pub max_loop_iterations: u32,
-    pub opasm_package_path: Option<&'a PathBuf>,
-    pub out_dir: Option<&'a PathBuf>,
+    pub opasm_package_path: Option<&'a Path>,
+    pub out_dir: Option<&'a Path>,
     pub debug_conditionals: bool,
     pub tab_size: Option<usize>,
     pub output_format: OutputFormat,
@@ -769,7 +782,7 @@ pub struct AssembleOptions<'a> {
     pub fill_byte: u8,
     pub fill_byte_set: bool,
     pub default_outputs: bool,
-    pub labels_file: Option<&'a PathBuf>,
+    pub labels_file: Option<&'a Path>,
     pub label_output_format: LabelOutputFormat,
     pub dependency_output: Option<&'a DependencyOutputPolicy>,
     pub outfile_override: Option<&'a str>,
@@ -817,6 +830,7 @@ impl<'a> Default for AssembleOptions<'a> {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct SourceOptions<'a> {
     pub output_base: &'a str,
     pub defines: &'a [String],
@@ -840,11 +854,12 @@ impl<'a> Default for SourceOptions<'a> {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct ExecutionOptions<'a> {
     pub execution_mode: ExecutionMode,
     pub cpu_override: Option<&'a str>,
     pub max_loop_iterations: u32,
-    pub opasm_package_path: Option<&'a PathBuf>,
+    pub opasm_package_path: Option<&'a Path>,
 }
 
 impl<'a> Default for ExecutionOptions<'a> {
@@ -859,15 +874,16 @@ impl<'a> Default for ExecutionOptions<'a> {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct OutputOptions<'a> {
-    pub out_dir: Option<&'a PathBuf>,
+    pub out_dir: Option<&'a Path>,
     pub output_format: OutputFormat,
     pub go_addr: Option<&'a str>,
     pub bin_specs: &'a [BinOutputSpec],
     pub fill_byte: u8,
     pub fill_byte_set: bool,
     pub default_outputs: bool,
-    pub labels_file: Option<&'a PathBuf>,
+    pub labels_file: Option<&'a Path>,
     pub label_output_format: LabelOutputFormat,
     pub dependency_output: Option<&'a DependencyOutputPolicy>,
     pub outfile_override: Option<&'a str>,
@@ -902,12 +918,14 @@ impl<'a> Default for OutputOptions<'a> {
 }
 
 #[derive(Clone, Default)]
+#[non_exhaustive]
 pub struct DiagnosticsOptions {
     pub debug_conditionals: bool,
     pub tab_size: Option<usize>,
 }
 
 #[derive(Clone, Default)]
+#[non_exhaustive]
 pub struct AssemblerConfig<'a> {
     pub source: SourceOptions<'a>,
     pub execution: ExecutionOptions<'a>,
@@ -1048,12 +1066,12 @@ impl<'a> AssemblerBuilder<'a> {
         self
     }
 
-    pub fn opasm_package_path(mut self, opasm_package_path: &'a PathBuf) -> Self {
+    pub fn opasm_package_path(mut self, opasm_package_path: &'a Path) -> Self {
         self.config.execution.opasm_package_path = Some(opasm_package_path);
         self
     }
 
-    pub fn out_dir(mut self, out_dir: &'a PathBuf) -> Self {
+    pub fn out_dir(mut self, out_dir: &'a Path) -> Self {
         self.config.output.out_dir = Some(out_dir);
         self
     }
@@ -1079,7 +1097,7 @@ impl<'a> AssemblerBuilder<'a> {
         self
     }
 
-    pub fn labels_file(mut self, labels_file: &'a PathBuf) -> Self {
+    pub fn labels_file(mut self, labels_file: &'a Path) -> Self {
         self.config.output.labels_file = Some(labels_file);
         self
     }
@@ -1360,6 +1378,7 @@ pub struct AssemblerSession {
 pub struct PreparedAssemblySession {
     root_path: PathBuf,
     config: OwnedAssemblerConfig,
+    registry: Arc<Mutex<::registry::AsmRegistry>>,
     cpu: ::registry::CpuType,
     max_loop_iterations: u32,
     root_module_id: String,
@@ -1375,6 +1394,7 @@ pub struct PreparedAssembly<'a> {
     root_path: &'a Path,
     config: AssemblerConfig<'a>,
     resolved_output_base: Option<String>,
+    registry: Arc<Mutex<::registry::AsmRegistry>>,
     cpu: ::registry::CpuType,
     max_loop_iterations: u32,
     root_module_id: String,
@@ -1439,6 +1459,7 @@ impl<'a> Assembler<'a> {
             root_path: self.root_path,
             config: self.config.clone(),
             resolved_output_base: Some(effective.output_base.into_owned()),
+            registry: prepared.registry,
             cpu: prepared.cpu,
             max_loop_iterations: prepared.max_loop_iterations,
             root_module_id: prepared.root_module_id,
@@ -1500,6 +1521,7 @@ impl AssemblerSession {
         Ok(PreparedAssemblySession {
             root_path: self.root_path.clone(),
             config,
+            registry: prepared.registry,
             cpu: prepared.cpu,
             max_loop_iterations: prepared.max_loop_iterations,
             root_module_id: prepared.root_module_id,
@@ -1546,6 +1568,7 @@ impl<'a> PreparedAssembly<'a> {
         run_public_prepared_assembly(
             PreparedExecutionCoreRef {
                 output_base: input_base,
+                registry: &self.registry,
                 cpu: self.cpu,
                 max_loop_iterations: self.max_loop_iterations,
                 root_module_id: self.root_module_id.as_str(),
@@ -1595,6 +1618,7 @@ impl PreparedAssemblySession {
         run_public_prepared_assembly(
             PreparedExecutionCoreRef {
                 output_base: borrowed.output_base,
+                registry: &self.registry,
                 cpu: self.cpu,
                 max_loop_iterations: self.max_loop_iterations,
                 root_module_id: self.root_module_id.as_str(),
@@ -1711,6 +1735,48 @@ mod tests {
         dir
     }
 
+    fn expect_text(output_sink: &io::MemoryOutputSink, path: impl AsRef<Path>) -> String {
+        output_sink
+            .text(path.as_ref())
+            .expect("utf8 output")
+            .expect("text output")
+    }
+
+    fn has_text(output_sink: &io::MemoryOutputSink, path: impl AsRef<Path>) -> bool {
+        output_sink
+            .text(path.as_ref())
+            .expect("utf8 output")
+            .is_some()
+    }
+
+    fn missing_text(output_sink: &io::MemoryOutputSink, path: impl AsRef<Path>) -> bool {
+        output_sink
+            .text(path.as_ref())
+            .expect("utf8 output")
+            .is_none()
+    }
+
+    #[test]
+    fn public_memory_output_sink_text_reports_binary_utf8_error() {
+        let output_sink = io::MemoryOutputSink::new();
+
+        <io::MemoryOutputSink as io::OutputSink>::write_bytes(
+            &output_sink,
+            Path::new("/virtual/out.bin"),
+            &[0xff, 0x00, 0x41],
+        )
+        .expect("write binary output");
+
+        let err = output_sink
+            .text("/virtual/out.bin")
+            .expect_err("binary output should report invalid utf8");
+        assert_eq!(err.utf8_error().valid_up_to(), 0);
+        assert_eq!(
+            output_sink.bytes("/virtual/out.bin"),
+            Some(vec![0xff, 0x00, 0x41])
+        );
+    }
+
     #[test]
     fn public_api_prepares_and_runs_with_in_memory_io() {
         let source_provider = io::MemorySourceProvider::new()
@@ -1747,11 +1813,9 @@ mod tests {
             .expect("prepared assembly should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        let listing = output_sink
-            .text("/virtual/main.lst")
-            .expect("listing output");
+        let listing = expect_text(&output_sink, "/virtual/main.lst");
         assert!(listing.contains(".byte $00"), "listing:\n{listing}");
-        let hex = output_sink.text("/virtual/main.hex").expect("hex output");
+        let hex = expect_text(&output_sink, "/virtual/main.hex");
         assert!(hex.contains(":0100000000FF"));
     }
 
@@ -1787,8 +1851,30 @@ mod tests {
         .expect("prepared borrowed assembly should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/main.lst").is_some());
-        assert!(output_sink.text("/virtual/main.hex").is_some());
+        assert!(has_text(&output_sink, "/virtual/main.lst"));
+        assert!(has_text(&output_sink, "/virtual/main.hex"));
+    }
+
+    #[test]
+    fn public_borrowed_builder_path_setters_accept_path_refs() {
+        let assembler = Assembler::builder(Path::new("/virtual/main.asm"))
+            .opasm_package_path(Path::new("/virtual/runtime.opasm"))
+            .out_dir(Path::new("/virtual/out"))
+            .labels_file(Path::new("/virtual/symbols.lbl"))
+            .build();
+
+        assert_eq!(
+            assembler.config().execution.opasm_package_path,
+            Some(Path::new("/virtual/runtime.opasm"))
+        );
+        assert_eq!(
+            assembler.config().output.out_dir,
+            Some(Path::new("/virtual/out"))
+        );
+        assert_eq!(
+            assembler.config().output.labels_file,
+            Some(Path::new("/virtual/symbols.lbl"))
+        );
     }
 
     #[test]
@@ -1809,8 +1895,8 @@ mod tests {
             .expect("prepared owned assembly should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/main.lst").is_some());
-        assert!(output_sink.text("/virtual/main.hex").is_some());
+        assert!(has_text(&output_sink, "/virtual/main.lst"));
+        assert!(has_text(&output_sink, "/virtual/main.hex"));
     }
 
     #[test]
@@ -1910,8 +1996,8 @@ mod tests {
             .expect("owned session check should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/main.lst").is_none());
-        assert!(output_sink.text("/virtual/main.hex").is_none());
+        assert!(missing_text(&output_sink, "/virtual/main.lst"));
+        assert!(missing_text(&output_sink, "/virtual/main.hex"));
     }
 
     #[test]
@@ -1970,15 +2056,11 @@ mod tests {
         .expect("owned grouped config assembly should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        let listing = output_sink
-            .text("/virtual/out/main.lst")
-            .expect("listing output from owned config");
+        let listing = expect_text(&output_sink, "/virtual/out/main.lst");
         assert!(listing.contains("FROM_INC"), "listing:\n{listing}");
-        assert!(output_sink.text("/virtual/out/main.hex").is_some());
-        assert!(output_sink.text(labels_path).is_some());
-        let dependency_text = output_sink
-            .text(dependency_output.path)
-            .expect("dependency output from owned config");
+        assert!(has_text(&output_sink, "/virtual/out/main.hex"));
+        assert!(has_text(&output_sink, labels_path));
+        let dependency_text = expect_text(&output_sink, dependency_output.path);
         assert!(dependency_text.contains("/virtual/main.asm"));
         assert!(dependency_text.contains("/virtual/inc.asm"));
         assert!(dependency_text.contains("/virtual/modules/dep.asm"));
@@ -2005,12 +2087,12 @@ mod tests {
             .expect("owned session check should suppress directive-driven outputs");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/out/main.lst").is_none());
-        assert!(output_sink.text("/virtual/out/main.hex").is_none());
+        assert!(missing_text(&output_sink, "/virtual/out/main.lst"));
+        assert!(missing_text(&output_sink, "/virtual/out/main.hex"));
         assert!(output_sink
             .bytes("/virtual/out/build/minimal.bin")
             .is_none());
-        assert!(output_sink.text("/virtual/out/build/minimal.map").is_none());
+        assert!(missing_text(&output_sink, "/virtual/out/build/minimal.map"));
         assert!(!output_sink
             .directories()
             .iter()
@@ -2046,8 +2128,8 @@ mod tests {
         .expect("prepared check should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/main.lst").is_none());
-        assert!(output_sink.text("/virtual/main.hex").is_none());
+        assert!(missing_text(&output_sink, "/virtual/main.lst"));
+        assert!(missing_text(&output_sink, "/virtual/main.hex"));
     }
 
     #[test]
@@ -2138,17 +2220,13 @@ mod tests {
         .expect("assembly with out_dir should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/main.lst").is_none());
-        assert!(output_sink.text("/virtual/main.hex").is_none());
+        assert!(missing_text(&output_sink, "/virtual/main.lst"));
+        assert!(missing_text(&output_sink, "/virtual/main.hex"));
 
-        let listing = output_sink
-            .text("/virtual/out/main.lst")
-            .expect("listing output in out_dir");
+        let listing = expect_text(&output_sink, "/virtual/out/main.lst");
         assert!(listing.contains(".byte $00"), "listing:\n{listing}");
 
-        let hex = output_sink
-            .text("/virtual/out/main.hex")
-            .expect("hex output in out_dir");
+        let hex = expect_text(&output_sink, "/virtual/out/main.hex");
         assert!(hex.contains(":0100000000FF"), "hex:\n{hex}");
     }
 
@@ -2174,8 +2252,8 @@ mod tests {
         .expect("check should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/main.lst").is_none());
-        assert!(output_sink.text("/virtual/main.hex").is_none());
+        assert!(missing_text(&output_sink, "/virtual/main.lst"));
+        assert!(missing_text(&output_sink, "/virtual/main.hex"));
     }
 
     #[test]
@@ -2196,11 +2274,9 @@ mod tests {
             .expect("builder-based assembly should succeed");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        let listing = output_sink
-            .text("/virtual/main.lst")
-            .expect("listing output");
+        let listing = expect_text(&output_sink, "/virtual/main.lst");
         assert!(listing.contains(".byte $00"), "listing:\n{listing}");
-        let hex = output_sink.text("/virtual/main.hex").expect("hex output");
+        let hex = expect_text(&output_sink, "/virtual/main.hex");
         assert!(hex.contains(":0100000000FF"), "hex:\n{hex}");
     }
 
@@ -2521,12 +2597,12 @@ mod tests {
         .expect("check should ignore output-only configuration");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/main.lst").is_none());
-        assert!(output_sink.text("/virtual/main.hex").is_none());
-        assert!(output_sink.text("/virtual/meta-hex.hex").is_none());
+        assert!(missing_text(&output_sink, "/virtual/main.lst"));
+        assert!(missing_text(&output_sink, "/virtual/main.hex"));
+        assert!(missing_text(&output_sink, "/virtual/meta-hex.hex"));
         assert!(output_sink.bytes("/virtual/explicit.bin").is_none());
-        assert!(output_sink.text("/virtual/symbols.lbl").is_none());
-        assert!(output_sink.text("/virtual/main.d").is_none());
+        assert!(missing_text(&output_sink, "/virtual/symbols.lbl"));
+        assert!(missing_text(&output_sink, "/virtual/main.d"));
     }
 
     #[test]
@@ -2563,17 +2639,206 @@ mod tests {
         .expect("check should suppress every artifact class");
 
         assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
-        assert!(output_sink.text("/virtual/out/main.lst").is_none());
-        assert!(output_sink.text("/virtual/out/main.hex").is_none());
+        assert!(missing_text(&output_sink, "/virtual/out/main.lst"));
+        assert!(missing_text(&output_sink, "/virtual/out/main.hex"));
         assert!(output_sink
             .bytes("/virtual/out/build/minimal.bin")
             .is_none());
-        assert!(output_sink.text("/virtual/out/build/minimal.map").is_none());
-        assert!(output_sink.text("/virtual/out/symbols.lbl").is_none());
-        assert!(output_sink.text("/virtual/out/main.d").is_none());
+        assert!(missing_text(&output_sink, "/virtual/out/build/minimal.map"));
+        assert!(missing_text(&output_sink, "/virtual/out/symbols.lbl"));
+        assert!(missing_text(&output_sink, "/virtual/out/main.d"));
         assert!(!output_sink
             .directories()
             .iter()
             .any(|path| path == &PathBuf::from("/virtual/out/build/minimal_sections")));
+    }
+
+    #[test]
+    fn public_api_failed_assembly_suppresses_success_path_artifacts() {
+        let source_provider = io::MemorySourceProvider::new().with_file(
+            "/virtual/main.asm",
+            ".module main\n.region ram, $1000, $10ff\n.section code\n.pub\nstart\n    .byte MISSING_VALUE\n.priv\n.endsection\n.place code in ram\n.output \"build/minimal.bin\", format=bin, sections=code\n.mapfile \"build/minimal.map\", symbols=public\n.exportsections dir=\"build/minimal_sections\", format=bin\n.endmodule\n",
+        );
+        let output_sink = io::MemoryOutputSink::new();
+        let out_dir = PathBuf::from("/virtual/out");
+        let labels_path = PathBuf::from("/virtual/out/symbols.lbl");
+        let dependency_policy = asm::DependencyOutputPolicy {
+            path: PathBuf::from("/virtual/out/main.d"),
+            append: false,
+            make_phony: false,
+        };
+        let bin_specs = vec![asm::BinOutputSpec {
+            name: Some("explicit.bin".to_string()),
+            range: None,
+        }];
+
+        let err = match Assembler::with_config(
+            Path::new("/virtual/main.asm"),
+            AssembleOptions {
+                execution_mode: lockstep::ExecutionMode::Vm,
+                output_base: "/virtual/main",
+                out_dir: Some(&out_dir),
+                output_format: asm::OutputFormat::Text,
+                bin_specs: &bin_specs,
+                labels_file: Some(&labels_path),
+                dependency_output: Some(&dependency_policy),
+                label_output_format: asm::LabelOutputFormat::Vice,
+                source_provider: Some(&source_provider),
+                output_sink: Some(&output_sink),
+                ..AssembleOptions::default()
+            },
+        )
+        .assemble()
+        {
+            Ok(_) => panic!("assembly should fail"),
+            Err(err) => err,
+        };
+
+        assert!(
+            !err.diagnostics().is_empty(),
+            "expected source diagnostics: {:?}",
+            err.diagnostics()
+        );
+        assert!(missing_text(&output_sink, "/virtual/out/main.hex"));
+        assert!(output_sink.bytes("/virtual/out/explicit.bin").is_none());
+        assert!(output_sink
+            .bytes("/virtual/out/build/minimal.bin")
+            .is_none());
+        assert!(missing_text(&output_sink, "/virtual/out/build/minimal.map"));
+        assert!(missing_text(&output_sink, "/virtual/out/symbols.lbl"));
+        assert!(missing_text(&output_sink, "/virtual/out/main.d"));
+        assert!(!output_sink
+            .directories()
+            .iter()
+            .any(|path| path == &PathBuf::from("/virtual/out/build/minimal_sections")));
+    }
+
+    #[test]
+    fn public_api_creates_parent_directories_for_labels_and_dependency_outputs() {
+        let temp_dir = unique_temp_dir("libopforge-nested-output-paths");
+        let source_path = temp_dir.join("main.asm");
+        let output_base_owned = temp_dir.join("build/main");
+        let labels_path = temp_dir.join("artifacts/labels/symbols.lbl");
+        let dependency_path = temp_dir.join("artifacts/deps/main.d");
+        let dependency_policy = asm::DependencyOutputPolicy {
+            path: dependency_path.clone(),
+            append: false,
+            make_phony: false,
+        };
+
+        fs::write(&source_path, ".module main\nstart:\n    nop\n.endmodule\n")
+            .expect("write source");
+
+        let report = Assembler::with_config(
+            source_path.as_path(),
+            AssembleOptions {
+                execution_mode: lockstep::ExecutionMode::Vm,
+                output_base: output_base_owned.to_str().expect("output base utf8"),
+                output_format: asm::OutputFormat::Text,
+                labels_file: Some(&labels_path),
+                dependency_output: Some(&dependency_policy),
+                label_output_format: asm::LabelOutputFormat::Vice,
+                ..AssembleOptions::default()
+            },
+        )
+        .assemble()
+        .expect("assembly should succeed");
+
+        assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
+        let labels_text = fs::read_to_string(&labels_path).expect("read labels");
+        assert!(labels_text.contains("main.start"), "labels:\n{labels_text}");
+        let dependency_text = fs::read_to_string(&dependency_path).expect("read deps");
+        assert!(
+            dependency_text.contains(source_path.to_string_lossy().as_ref()),
+            "deps:\n{dependency_text}"
+        );
+    }
+
+    #[test]
+    fn public_api_dependency_output_includes_labels_target() {
+        let source_provider = io::MemorySourceProvider::new().with_file(
+            "/virtual/main.asm",
+            ".module main\nstart:\n    nop\n.endmodule\n",
+        );
+        let output_sink = io::MemoryOutputSink::new();
+        let labels_path = PathBuf::from("/virtual/out/symbols.lbl");
+        let dependency_policy = asm::DependencyOutputPolicy {
+            path: PathBuf::from("/virtual/out/main.d"),
+            append: false,
+            make_phony: false,
+        };
+
+        let report = Assembler::with_config(
+            Path::new("/virtual/main.asm"),
+            AssembleOptions {
+                execution_mode: lockstep::ExecutionMode::Vm,
+                output_base: "/virtual/out/main",
+                output_format: asm::OutputFormat::Text,
+                labels_file: Some(&labels_path),
+                dependency_output: Some(&dependency_policy),
+                label_output_format: asm::LabelOutputFormat::Vice,
+                source_provider: Some(&source_provider),
+                output_sink: Some(&output_sink),
+                ..AssembleOptions::default()
+            },
+        )
+        .assemble()
+        .expect("assembly should emit labels and dependency output");
+
+        assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
+        let dependency_text = expect_text(&output_sink, &dependency_policy.path);
+        assert!(
+            dependency_text.contains("/virtual/out/main.lst"),
+            "deps:\n{dependency_text}"
+        );
+        assert!(
+            dependency_text.contains("/virtual/out/main.hex"),
+            "deps:\n{dependency_text}"
+        );
+        assert!(
+            dependency_text.contains(labels_path.to_string_lossy().as_ref()),
+            "deps:\n{dependency_text}"
+        );
+    }
+
+    #[test]
+    fn public_api_dependency_output_includes_directive_driven_targets() {
+        let source_provider = io::MemorySourceProvider::new().with_file(
+            "/virtual/main.asm",
+            ".module main\n.region ram, $1000, $10ff\n.section code\n.pub\nstart\n    .byte $42, $43\n.priv\n.endsection\n.place code in ram\n.mapfile \"build/minimal.map\", symbols=public\n.exportsections dir=\"build/minimal_sections\", format=bin\n.endmodule\n",
+        );
+        let output_sink = io::MemoryOutputSink::new();
+        let dependency_policy = asm::DependencyOutputPolicy {
+            path: PathBuf::from("/virtual/out/main.d"),
+            append: false,
+            make_phony: false,
+        };
+
+        let report = Assembler::with_config(
+            Path::new("/virtual/main.asm"),
+            AssembleOptions {
+                execution_mode: lockstep::ExecutionMode::Vm,
+                output_base: "/virtual/out/main",
+                out_dir: Some(Path::new("/virtual/out")),
+                output_format: asm::OutputFormat::Text,
+                dependency_output: Some(&dependency_policy),
+                source_provider: Some(&source_provider),
+                output_sink: Some(&output_sink),
+                ..AssembleOptions::default()
+            },
+        )
+        .assemble()
+        .expect("assembly should emit directive-driven outputs and dependency output");
+
+        assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
+        let dependency_text = expect_text(&output_sink, &dependency_policy.path);
+        assert!(
+            dependency_text.contains("/virtual/out/build/minimal.map"),
+            "deps:\n{dependency_text}"
+        );
+        assert!(
+            dependency_text.contains("/virtual/out/build/minimal_sections/code.bin"),
+            "deps:\n{dependency_text}"
+        );
     }
 }

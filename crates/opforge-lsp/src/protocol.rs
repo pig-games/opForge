@@ -9,10 +9,10 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use crate::lsp::session::{LspSession, OutboundMessage};
-use registry::registry::AsmRegistry;
+use libopforge::registry::{default_asm_registry, AsmRegistry};
 
 pub fn run_stdio() -> io::Result<()> {
-    run_stdio_with_registry(engine::build_default_asm_registry())
+    run_stdio_with_registry(default_asm_registry())
 }
 
 pub fn run_stdio_with_registry(registry: AsmRegistry) -> io::Result<()> {

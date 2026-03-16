@@ -96,6 +96,8 @@ Reference examples:
 Current public API note:
 - The stable Rust embedding API is module-first and centered on `libopforge::asm`.
 - The primary ergonomic entry points are `Assembler::builder(...)` for borrowed hosts and `AssemblerSession::builder(...)` for owned or callback-driven hosts.
+- Public config structs are non-exhaustive; prefer the builder/session entry points for new host integrations.
+- Borrowed single-path configuration values use `&Path` rather than `&PathBuf` at the facade boundary.
 
 Stable public module map today:
 - `libopforge::asm`
@@ -120,6 +122,13 @@ Run:
 Release build:
 
     make release
+
+The supported shipping path for the shared library is the unwind-safe FFI profile:
+
+    make build-ffi-release
+    # or: cargo build -p ffi --profile release-ffi --locked --lib
+
+Do not ship the FFI library from `target/release` via a workspace-wide `cargo build --release`; that profile uses `panic = "abort"` and does not preserve the documented FFI panic-report contract.
 
 Compare Rust outputs with references:
 

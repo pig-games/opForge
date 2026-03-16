@@ -376,7 +376,7 @@ pub fn resolve_output_path(base: &str, name: Option<String>, extension: &str) ->
 #[must_use]
 pub fn resolve_output_base(
     input_base: &str,
-    out_dir: Option<&PathBuf>,
+    out_dir: Option<&Path>,
     metadata: &RootMetadata,
     cpu_name: &str,
     outfile_override: Option<&str>,

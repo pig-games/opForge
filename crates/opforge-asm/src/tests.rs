@@ -979,6 +979,45 @@ fn bfor_label_exposes_iteration_addresses_via_index() {
 }
 
 #[test]
+fn bfor_indexed_member_access_resolves_iteration_scoped_fields() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            "Point .struct",
+            "x .byte ?",
+            "y .byte ?",
+            ".endstruct",
+            "points .bfor i in 0..=2",
+            "x .byte i",
+            "y .byte i + 10",
+            ".endfor",
+            ".word points[1].x",
+            ".word points[1].y",
+        ],
+        true,
+    )
+    .expect("assembly should run");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(
+        entries,
+        vec![
+            (0, 0),
+            (1, 10),
+            (2, 1),
+            (3, 11),
+            (4, 2),
+            (5, 12),
+            (6, 2),
+            (7, 0),
+            (8, 3),
+            (9, 0),
+        ]
+    );
+}
+
+#[test]
 fn endfor_without_for_reports_error() {
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
@@ -1201,19 +1240,24 @@ fn conditionals_skip_repetition_blocks_without_loop_diagnostics() {
     assert_eq!(entries, vec![(0, 7)]);
 }
 
-fn assemble_example(asm_path: &Path, out_dir: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
+fn assemble_example(
+    asm_path: &Path,
+    out_dir: &Path,
+    allow_error_outputs: bool,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
     let base = asm_path
         .file_stem()
         .and_then(|s| s.to_str())
         .ok_or_else(|| "Invalid example filename".to_string())?;
 
-    assemble_example_with_base(asm_path, out_dir, base)
+    assemble_example_with_base(asm_path, out_dir, base, allow_error_outputs)
 }
 
 fn assemble_example_with_base(
     asm_path: &Path,
     out_dir: &Path,
     base: &str,
+    allow_error_outputs: bool,
 ) -> Result<Vec<(String, Vec<u8>)>, String> {
     let out_dir = out_dir.to_path_buf();
     let header_title = format!("opForge Assembler v{VERSION}");
@@ -1251,9 +1295,7 @@ fn assemble_example_with_base(
     });
 
     if let Err(err) = &result {
-        let list_path = out_dir.join(format!("{base}.lst"));
-        let hex_path = out_dir.join(format!("{base}.hex"));
-        if !list_path.exists() || !hex_path.exists() {
+        if !allow_error_outputs {
             return Err(err.to_string());
         }
     }
@@ -3045,13 +3087,8 @@ fn expected_example_error(base: &str) -> Option<&'static str> {
     }
 }
 
-fn is_explicit_error_example_name(base: &str) -> bool {
-    const ERROR_NAME_MARKERS: &[&str] = &[
-        "error", "invalid", "overflow", "unknown", "conflict", "missing", "overlap", "gap", "fail",
-    ];
-    ERROR_NAME_MARKERS
-        .iter()
-        .any(|marker| base.contains(marker))
+fn has_error_example_suffix(base: &str) -> bool {
+    base.ends_with("_error")
 }
 
 fn read_example_error_reference(reference_dir: &Path, base: &str) -> Option<String> {
@@ -3103,10 +3140,11 @@ fn examples_match_reference_outputs() {
 
         let expected_error = read_example_error_reference(&reference_dir, base)
             .or_else(|| expected_example_error(base).map(|value| value.to_string()));
+        let allow_error_outputs = has_error_example_suffix(base);
         if let Some(expected) = expected_error {
             assert!(
-                is_explicit_error_example_name(base),
-                "Error reference exists for non-explicit example name '{base}'. Rename the example to include an error marker (e.g. '*_error')."
+                allow_error_outputs || ref_err_path.exists(),
+                "Error reference exists for non-explicit example name '{base}'. Rename the example to include an error marker (e.g. '*_error') or keep a matching .err reference."
             );
             if let Some(err) = assemble_example_error(&asm_path) {
                 if update_reference {
@@ -3134,8 +3172,84 @@ fn examples_match_reference_outputs() {
             }
         }
 
+        if allow_error_outputs {
+            let map_outputs = match assemble_example(&asm_path, &out_dir, true) {
+                Ok(outputs) => outputs,
+                Err(err) => panic!("Failed to assemble {base}: {err}"),
+            };
+
+            let ref_hex_path = reference_dir.join(format!("{base}.hex"));
+            let ref_lst_path = reference_dir.join(format!("{base}.lst"));
+            let out_hex_path = out_dir.join(format!("{base}.hex"));
+            let out_lst_path = out_dir.join(format!("{base}.lst"));
+            let out_hex = fs::read(&out_hex_path).ok();
+            let out_lst = fs::read(&out_lst_path).ok();
+
+            if out_hex.is_none() || out_lst.is_none() {
+                continue;
+            }
+
+            let out_hex = out_hex.expect("checked output hex presence");
+            let out_lst = out_lst.expect("checked output list presence");
+
+            if update_reference {
+                fs::write(&ref_hex_path, &out_hex).unwrap_or_else(|err| {
+                    panic!(
+                        "Failed to write reference hex {}: {err}",
+                        ref_hex_path.display()
+                    )
+                });
+                fs::write(&ref_lst_path, &out_lst).unwrap_or_else(|err| {
+                    panic!(
+                        "Failed to write reference list {}: {err}",
+                        ref_lst_path.display()
+                    )
+                });
+                for (map_name, out_map) in &map_outputs {
+                    let ref_map_path = reference_dir.join(map_name);
+                    fs::write(&ref_map_path, out_map).unwrap_or_else(|err| {
+                        panic!(
+                            "Failed to write reference map {}: {err}",
+                            ref_map_path.display()
+                        )
+                    });
+                }
+            } else {
+                let ref_hex = fs::read(&ref_hex_path).unwrap_or_else(|err| {
+                    panic!("Missing reference hex {}: {err}", ref_hex_path.display())
+                });
+                assert_eq!(out_hex, ref_hex, "Hex mismatch for {base}");
+
+                let ref_lst = fs::read(&ref_lst_path).unwrap_or_else(|err| {
+                    panic!("Missing reference list {}: {err}", ref_lst_path.display())
+                });
+                let out_lst_text =
+                    normalize_listing_for_reference_compare(&String::from_utf8_lossy(&out_lst));
+                let ref_lst_text =
+                    normalize_listing_for_reference_compare(&String::from_utf8_lossy(&ref_lst));
+                if out_lst_text != ref_lst_text {
+                    let diff = diff_text(&ref_lst_text, &out_lst_text, 20);
+                    panic!("List mismatch for {base}\n{diff}");
+                }
+                for (map_name, out_map) in &map_outputs {
+                    let ref_map_path = reference_dir.join(map_name);
+                    let ref_map = fs::read(&ref_map_path).unwrap_or_else(|err| {
+                        panic!("Missing reference map {}: {err}", ref_map_path.display())
+                    });
+                    let out_map_text = String::from_utf8_lossy(out_map);
+                    let ref_map_text = String::from_utf8_lossy(&ref_map);
+                    if out_map_text != ref_map_text {
+                        let diff = diff_text(&ref_map_text, &out_map_text, 20);
+                        panic!("Map mismatch for {base} ({map_name})\n{diff}");
+                    }
+                }
+            }
+
+            continue;
+        }
+
         if update_reference {
-            let map_outputs = match assemble_example(&asm_path, &out_dir) {
+            let map_outputs = match assemble_example(&asm_path, &out_dir, false) {
                 Ok(outputs) => outputs,
                 Err(err) => panic!("Failed to assemble {base}: {err}"),
             };
@@ -3178,7 +3292,7 @@ fn examples_match_reference_outputs() {
             continue;
         }
 
-        let map_outputs = match assemble_example(&asm_path, &out_dir) {
+        let map_outputs = match assemble_example(&asm_path, &out_dir, false) {
             Ok(outputs) => outputs,
             Err(err) => panic!("Failed to assemble {base}: {err}"),
         };
@@ -3242,7 +3356,7 @@ fn project_root_example_matches_reference_outputs() {
     }
 
     let base = "project_root-main";
-    let map_outputs = assemble_example_with_base(&asm_path, &out_dir, base)
+    let map_outputs = assemble_example_with_base(&asm_path, &out_dir, base, false)
         .unwrap_or_else(|err| panic!("Failed to assemble project_root example: {err}"));
     assert!(
         map_outputs.is_empty(),

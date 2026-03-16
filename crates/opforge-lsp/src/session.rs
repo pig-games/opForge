@@ -23,9 +23,10 @@ use crate::lsp::hover::{hover_response, HoverRequestContext};
 use crate::lsp::member_context::{member_completion_context, member_lookup_context};
 use crate::lsp::validation_runner::{run_cli_validation, ValidationDiagnostic};
 use crate::lsp::workspace_index::{IndexedSymbol, WorkspaceIndex};
-use engine::{default_cpu, resolve_cpu_for_line, AsmRegistryContext};
-use registry::cpu::CpuType;
-use registry::registry::AsmRegistry;
+use libopforge::registry::{
+    default_asm_registry, default_cpu, resolve_cpu_for_line, AsmRegistry, AsmRegistryContext,
+    CpuType,
+};
 
 static OVERLAY_DIR_SEQUENCE: AtomicUsize = AtomicUsize::new(1);
 
@@ -70,7 +71,7 @@ impl Default for LspSession {
 
 impl LspSession {
     pub fn new() -> Self {
-        Self::with_registry(engine::build_default_asm_registry())
+        Self::with_registry(default_asm_registry())
     }
 
     pub fn with_registry(registry: AsmRegistry) -> Self {

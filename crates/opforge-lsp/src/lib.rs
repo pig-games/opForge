@@ -19,22 +19,8 @@ pub mod session;
 pub mod validation_runner;
 pub mod workspace_index;
 
-pub fn build_default_asm_registry() -> registry::registry::AsmRegistry {
-    engine::build_default_asm_registry()
-}
-
-pub mod families {
-    pub mod mos6502 {
-        pub mod module {
-            pub use families::families::mos6502::module::*;
-        }
-    }
-}
-
-pub mod z80 {
-    pub mod module {
-        pub use families::z80::module::*;
-    }
+pub fn build_default_asm_registry() -> libopforge::registry::AsmRegistry {
+    libopforge::registry::default_asm_registry()
 }
 
 pub mod lsp {

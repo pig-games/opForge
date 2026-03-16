@@ -117,6 +117,7 @@ pub struct AsmLine<'a> {
     pub layout: AsmLayoutState,
     struct_table: StructTable,
     value_symbols: HashMap<String, AsmValue>,
+    repeat_iteration_scopes: HashMap<String, Vec<String>>,
     active_struct: Option<ActiveStructDefinition>,
     diagnostics: AsmDiagnosticsState,
     current_line_num: u32,
@@ -189,6 +190,7 @@ impl<'a> AsmLine<'a> {
             layout: AsmLayoutState::new(),
             struct_table: StructTable::new(),
             value_symbols: HashMap::new(),
+            repeat_iteration_scopes: HashMap::new(),
             active_struct: None,
             diagnostics: AsmDiagnosticsState::new(),
             current_line_num: 1,
@@ -521,16 +523,38 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn set_value_symbol(&mut self, name: &str, value: AsmValue) {
+        self.clear_repeat_iteration_scopes(name);
         self.value_symbols
             .insert(Self::value_symbol_key(name), value);
     }
 
     fn clear_value_symbol(&mut self, name: &str) {
         self.value_symbols.remove(&Self::value_symbol_key(name));
+        self.clear_repeat_iteration_scopes(name);
     }
 
     fn lookup_value_symbol(&self, name: &str) -> Option<&AsmValue> {
         self.value_symbols.get(&Self::value_symbol_key(name))
+    }
+
+    pub fn set_repeat_iteration_scopes(&mut self, name: &str, scopes: Vec<String>) {
+        if scopes.is_empty() {
+            self.clear_repeat_iteration_scopes(name);
+            return;
+        }
+        self.repeat_iteration_scopes
+            .insert(Self::value_symbol_key(name), scopes);
+    }
+
+    fn clear_repeat_iteration_scopes(&mut self, name: &str) {
+        self.repeat_iteration_scopes
+            .remove(&Self::value_symbol_key(name));
+    }
+
+    fn lookup_repeat_iteration_scopes(&self, name: &str) -> Option<&[String]> {
+        self.repeat_iteration_scopes
+            .get(&Self::value_symbol_key(name))
+            .map(Vec::as_slice)
     }
 
     fn scalar_shadow_for_value_symbol(value: &AsmValue) -> u32 {

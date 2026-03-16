@@ -17,12 +17,16 @@ extern "C" {
  */
 
 enum {
-    OPFORGE_EXECUTION_MODE_RUST = 0,
-    OPFORGE_EXECUTION_MODE_VM = 1,
-    OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST = 2,
-    OPFORGE_EXECUTION_MODE_LOCKSTEP_VM = 3,
+    OPFORGE_EXECUTION_MODE_DEFAULT = 0,
+    OPFORGE_EXECUTION_MODE_RUST = 1,
+    OPFORGE_EXECUTION_MODE_VM = 2,
+    OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST = 3,
+    OPFORGE_EXECUTION_MODE_LOCKSTEP_VM = 4,
     OPFORGE_OUTPUT_FORMAT_TEXT = 0,
     OPFORGE_OUTPUT_FORMAT_JSON = 1,
+    OPFORGE_DEFAULT_OUTPUTS_DEFAULT = 0,
+    OPFORGE_DEFAULT_OUTPUTS_DISABLE = 1,
+    OPFORGE_DEFAULT_OUTPUTS_ENABLE = 2,
     /* Use the stable Rust facade default label rendering. */
     OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT = 0,
     OPFORGE_LABEL_OUTPUT_FORMAT_VICE = 1,
@@ -117,7 +121,9 @@ typedef struct opforge_asm_source_options {
     const char *root_path;
     const char *output_base;
     opforge_string_list defines;
+    /* For in-memory entry points, these remain filesystem-backed dependency roots. */
     opforge_string_list include_paths;
+    /* For in-memory entry points, these remain filesystem-backed dependency roots. */
     opforge_string_list module_paths;
     size_t pp_macro_depth;
 } opforge_asm_source_options;
@@ -131,6 +137,7 @@ typedef struct opforge_asm_execution_options {
 
 typedef struct opforge_asm_output_options {
     const char *out_dir;
+    /* One of OPFORGE_DEFAULT_OUTPUTS_*; zero keeps the stable Rust facade default. */
     uint8_t emit_outputs;
     uint32_t output_format;
     const char *go_addr;
@@ -160,6 +167,9 @@ typedef struct opforge_asm_request {
     opforge_asm_output_options output;
     opforge_asm_diagnostics_options diagnostics;
 } opforge_asm_request;
+
+/* Initialize a request with stable Rust facade defaults before overriding fields. */
+void opforge_asm_request_init(opforge_asm_request *request);
 
 typedef struct opforge_asm_report opforge_asm_report;
 typedef struct opforge_asm_session opforge_asm_session;
@@ -210,10 +220,24 @@ opforge_asm_report *opforge_asm_check_file_with_request(
 );
 /*
  * Returns NULL on invalid request or session-construction failure.
+ * Use opforge_asm_session_create_with_request_report when you need
+ * diagnosable validation errors.
  * Successful handles must be released with opforge_asm_session_free.
  */
 opforge_asm_session *opforge_asm_session_create_with_request(
     const opforge_asm_request *request
+);
+/*
+ * Creates a session and returns a report describing success or validation
+ * failure. `out_session` must be non-null. On success, the returned report has
+ * status OPFORGE_STATUS_OK and `*out_session` receives a valid session handle.
+ * On failure, `*out_session` is set to NULL and the returned report contains
+ * the error details. The returned report must be released with
+ * opforge_asm_report_free.
+ */
+opforge_asm_report *opforge_asm_session_create_with_request_report(
+    const opforge_asm_request *request,
+    opforge_asm_session **out_session
 );
 opforge_prepared_asm_session *opforge_asm_session_prepare(const opforge_asm_session *session);
 opforge_asm_report *opforge_asm_session_assemble(const opforge_asm_session *session);
@@ -231,6 +255,12 @@ opforge_asm_report *opforge_asm_assemble_memory_with_request(
     const char *source_text,
     const opforge_output_callbacks *callbacks
 );
+/*
+ * `source_text` supplies the synthetic root source. Any include/module search
+ * roots in `request->source` remain filesystem-backed dependency paths.
+ * Check-mode suppresses default and metadata-driven outputs, so callbacks are
+ * optional and are not used for successful check-only runs.
+ */
 opforge_asm_report *opforge_asm_check_memory_with_request(
     const opforge_asm_request *request,
     const char *source_text,

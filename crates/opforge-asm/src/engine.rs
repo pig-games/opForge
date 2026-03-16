@@ -730,6 +730,7 @@ impl Assembler {
                             u32::try_from(plan.values.len()).unwrap_or(u32::MAX),
                         ));
                         let mut iteration_bases = Vec::with_capacity(plan.values.len());
+                        let mut iteration_scopes = Vec::with_capacity(plan.values.len());
                         for value in &plan.values {
                             if scoped_repeat {
                                 asm_line
@@ -741,6 +742,12 @@ impl Assembler {
                             if scoped_repeat && label.is_some() {
                                 let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
                                 iteration_bases.push(i64::from(base_addr));
+                                iteration_scopes.push(
+                                    asm_line
+                                        .symbol_scope
+                                        .scope_stack
+                                        .prefix(asm_line.symbol_scope.scope_stack.depth()),
+                                );
                             }
                             if let Some(var_name) = plan.var_name.as_deref() {
                                 asm_line.push_loop_var(var_name, *value);
@@ -778,6 +785,7 @@ impl Assembler {
                                 let full_name = asm_line.scoped_define_name(&loop_label.name);
                                 asm_line
                                     .set_value_symbol(&full_name, AsmValue::List(iteration_bases));
+                                asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
                             }
                         }
 
@@ -808,6 +816,7 @@ impl Assembler {
                         let mut while_error: Option<AstEvalError> = None;
                         let mut pass1_count = 0u32;
                         let mut iteration_bases = Vec::new();
+                        let mut iteration_scopes = Vec::new();
 
                         loop {
                             let should_continue = match super::repetition::evaluate_while_condition(
@@ -849,6 +858,12 @@ impl Assembler {
                             if scoped_repeat && label.is_some() {
                                 let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
                                 iteration_bases.push(i64::from(base_addr));
+                                iteration_scopes.push(
+                                    asm_line
+                                        .symbol_scope
+                                        .scope_stack
+                                        .prefix(asm_line.symbol_scope.scope_stack.depth()),
+                                );
                             }
 
                             Self::execute_pass1_lines(
@@ -893,6 +908,7 @@ impl Assembler {
                                 let full_name = asm_line.scoped_define_name(&loop_label.name);
                                 asm_line
                                     .set_value_symbol(&full_name, AsmValue::List(iteration_bases));
+                                asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
                             }
                         }
 
@@ -1146,6 +1162,7 @@ impl Assembler {
                         }
 
                         let mut iteration_bases = Vec::with_capacity(plan.values.len());
+                        let mut iteration_scopes = Vec::with_capacity(plan.values.len());
                         for value in &plan.values {
                             if scoped_repeat {
                                 asm_line
@@ -1157,6 +1174,12 @@ impl Assembler {
                             if scoped_repeat && label.is_some() {
                                 let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
                                 iteration_bases.push(i64::from(base_addr));
+                                iteration_scopes.push(
+                                    asm_line
+                                        .symbol_scope
+                                        .scope_stack
+                                        .prefix(asm_line.symbol_scope.scope_stack.depth()),
+                                );
                             }
                             if let Some(var_name) = plan.var_name.as_deref() {
                                 asm_line.push_loop_var(var_name, *value);
@@ -1198,6 +1221,7 @@ impl Assembler {
                                 let full_name = asm_line.scoped_define_name(&loop_label.name);
                                 asm_line
                                     .set_value_symbol(&full_name, AsmValue::List(iteration_bases));
+                                asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
                             }
                         }
 
@@ -1230,6 +1254,7 @@ impl Assembler {
                         let mut while_error: Option<AstEvalError> = None;
                         let mut pass2_count = 0u32;
                         let mut iteration_bases = Vec::new();
+                        let mut iteration_scopes = Vec::new();
 
                         loop {
                             let should_continue = match super::repetition::evaluate_while_condition(
@@ -1271,6 +1296,12 @@ impl Assembler {
                             if scoped_repeat && label.is_some() {
                                 let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
                                 iteration_bases.push(i64::from(base_addr));
+                                iteration_scopes.push(
+                                    asm_line
+                                        .symbol_scope
+                                        .scope_stack
+                                        .prefix(asm_line.symbol_scope.scope_stack.depth()),
+                                );
                             }
 
                             let recur_result = Self::execute_pass2_lines(
@@ -1336,6 +1367,7 @@ impl Assembler {
                                 let full_name = asm_line.scoped_define_name(&loop_label.name);
                                 asm_line
                                     .set_value_symbol(&full_name, AsmValue::List(iteration_bases));
+                                asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
                             }
                         }
 

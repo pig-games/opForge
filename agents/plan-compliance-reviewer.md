@@ -54,7 +54,7 @@ The reviewer must determine whether:
 - the slice follows the generic execution rules from `AGENTS.md`,
 - the slice follows the current active plan,
 - the claimed progress matches the actual changes,
-- the required validations for that slice were run,
+- the full quality gates for that slice were run and passed,
 - temporary debt is explicitly recorded where required,
 - the slice is allowed to be committed,
 - the agent is allowed to proceed to the next plan work item.
@@ -69,8 +69,10 @@ The reviewer must:
    updated first,
 4. verify that the slice obeys the anti-drift and scope rules from `AGENTS.md`,
 5. verify that required validation evidence is present,
-6. verify that the plan/progress state was updated correctly,
-7. return a pass/fail decision with a short technical explanation.
+6. verify that the slice is ending in a new commit for the active work item or
+   phase,
+7. verify that the plan/progress state was updated correctly,
+8. return a pass/fail decision with a short technical explanation.
 
 ## Review output
 
@@ -81,8 +83,9 @@ The reviewer must return one of two outcomes:
 Only if:
 
 - the current slice genuinely advances the active work item,
-- required validation is sufficient and green,
+- full quality gates are green,
 - temporary debt is documented where needed,
+- the slice is ready to become the required commit for that work item or phase,
 - the plan state is updated correctly.
 
 ### FAIL
@@ -104,8 +107,11 @@ plan-driven implementation phase.
 Rules:
 
 - no commit is allowed until the reviewer returns `PASS`,
+- no commit is allowed until all quality gates pass,
 - if the reviewer returns `FAIL`, the agent must not continue to the next plan
   work item,
+- each work item or phase must produce a new commit before the next work item
+  begins,
 - a failed review is a blocker, not a suggestion.
 
 ## Scope limits

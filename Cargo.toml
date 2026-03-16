@@ -4,6 +4,10 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+[profile.release-ffi]
+inherits = "release"
+panic = "unwind"
+
 [workspace]
 members = [
 	"crates/opforge-types",

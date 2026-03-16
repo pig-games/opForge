@@ -3,9 +3,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use api::asm::{
-    Assembler, AssemblerConfig, DiagnosticsOptions, ExecutionOptions, OutputOptions, SourceOptions,
-};
+use api::asm::Assembler;
 use api::diagnostics::{AsmRunError, AsmRunReport, Severity};
 
 use crate::{
@@ -116,47 +114,55 @@ fn run_one(
         OutputFormat::Json => api::asm::OutputFormat::Json,
     };
     let header_title = format!("opForge Assembler v{VERSION} | {BUILD_PROFILE_SUMMARY}");
-    Assembler::with_config(
-        root_path,
-        AssemblerConfig {
-            source: SourceOptions {
-                output_base,
-                defines: &config.defines,
-                include_paths: &config.include_paths,
-                module_paths: &config.module_paths,
-                pp_macro_depth: config.pp_macro_depth,
-                ..SourceOptions::default()
-            },
-            execution: ExecutionOptions {
-                cpu_override: config.cpu_override.as_deref(),
-                max_loop_iterations: config.max_loop_iterations,
-                opasm_package_path: config.opasm_package.as_ref(),
-                ..ExecutionOptions::default()
-            },
-            output: OutputOptions {
-                out_dir: config.out_dir.as_ref(),
-                output_format,
-                go_addr: config.go_addr.as_deref(),
-                bin_specs: &config.bin_specs,
-                fill_byte: config.fill_byte,
-                fill_byte_set: config.fill_byte_set,
-                default_outputs: config.default_outputs,
-                labels_file: config.labels_file.as_ref(),
-                label_output_format: config.label_output_format,
-                dependency_output: config.dependency_output.as_ref(),
-                outfile_override: cli.outfile.as_deref(),
-                list_name_override: cli.list_name.as_deref(),
-                hex_name_override: cli.hex_name.as_deref(),
-                header_title: &header_title,
-                ..OutputOptions::default()
-            },
-            diagnostics: DiagnosticsOptions {
-                debug_conditionals: config.debug_conditionals,
-                tab_size: config.tab_size,
-            },
-        },
-    )
-    .assemble()
+    let mut builder = Assembler::builder(root_path)
+        .output_base(output_base)
+        .defines(&config.defines)
+        .include_paths(&config.include_paths)
+        .module_paths(&config.module_paths)
+        .pp_macro_depth(config.pp_macro_depth)
+        .max_loop_iterations(config.max_loop_iterations)
+        .output_format(output_format)
+        .bin_specs(&config.bin_specs)
+        .label_output_format(config.label_output_format)
+        .header_title(&header_title)
+        .default_outputs(config.default_outputs)
+        .debug_conditionals(config.debug_conditionals);
+
+    if let Some(cpu_override) = config.cpu_override.as_deref() {
+        builder = builder.cpu_override(cpu_override);
+    }
+    if let Some(opasm_package_path) = config.opasm_package.as_deref() {
+        builder = builder.opasm_package_path(opasm_package_path);
+    }
+    if let Some(out_dir) = config.out_dir.as_deref() {
+        builder = builder.out_dir(out_dir);
+    }
+    if let Some(go_addr) = config.go_addr.as_deref() {
+        builder = builder.go_addr(go_addr);
+    }
+    if config.fill_byte_set {
+        builder = builder.fill_byte(config.fill_byte);
+    }
+    if let Some(labels_file) = config.labels_file.as_deref() {
+        builder = builder.labels_file(labels_file);
+    }
+    if let Some(dependency_output) = config.dependency_output.as_ref() {
+        builder = builder.dependency_output(dependency_output);
+    }
+    if let Some(outfile_override) = cli.outfile.as_deref() {
+        builder = builder.outfile_override(outfile_override);
+    }
+    if let Some(list_name_override) = cli.list_name.as_deref() {
+        builder = builder.list_name_override(list_name_override);
+    }
+    if let Some(hex_name_override) = cli.hex_name.as_deref() {
+        builder = builder.hex_name_override(hex_name_override);
+    }
+    if let Some(tab_size) = config.tab_size {
+        builder = builder.tab_size(tab_size);
+    }
+
+    builder.assemble()
 }
 
 #[cfg(test)]

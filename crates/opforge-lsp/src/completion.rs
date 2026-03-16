@@ -6,8 +6,7 @@ use serde_json::{json, Value};
 use crate::lsp::document_state::DocumentState;
 use crate::lsp::member_context::MemberCompletionContext;
 use crate::lsp::workspace_index::WorkspaceIndex;
-use engine::CapabilitySnapshot;
-use registry::cpu::CpuType;
+use libopforge::registry::{CapabilitySnapshot, CpuType};
 
 pub struct CompletionRequestContext<'a> {
     pub current_uri: &'a str,

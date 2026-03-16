@@ -3,11 +3,10 @@
 
 use std::path::PathBuf;
 
-use engine::{editor_parse_line, scan_cpu_transitions};
-use opcore::expression::expr_text;
-use opcore::parser::{AssignOp, Expr, Label, LineAst, UseItem};
-use opcore::tokenizer::Span;
-use registry::registry::AsmRegistry;
+use libopforge::opcore::{
+    editor_parse_line, expr_text, AssignOp, Expr, Label, LineAst, Span, UseItem,
+};
+use libopforge::registry::{scan_cpu_transitions, AsmRegistry, CpuType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolKind {
@@ -135,7 +134,7 @@ pub struct DocumentState {
     pub version: i64,
     pub text: String,
     pub lines: Vec<String>,
-    pub cpu_transitions: Vec<(u32, registry::cpu::CpuType)>,
+    pub cpu_transitions: Vec<(u32, CpuType)>,
     pub symbols: Vec<SymbolDecl>,
     pub imports: Vec<UseImportDecl>,
     pub struct_types: Vec<StructTypeDecl>,

@@ -5,9 +5,11 @@
 //! This crate is intentionally thin: it maps a small C ABI onto the same
 //! `libopforge`/`api` boundary used by Rust hosts.
 
+use std::any::Any;
 use std::ffi::c_void;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 
 use ::api::{
@@ -17,18 +19,26 @@ use ::api::{
     lockstep::ExecutionMode,
 };
 
+/// Use the stable Rust facade default execution mode.
+pub const OPFORGE_EXECUTION_MODE_DEFAULT: u32 = 0;
 /// Assemble via the direct Rust continuation head.
-pub const OPFORGE_EXECUTION_MODE_RUST: u32 = 0;
+pub const OPFORGE_EXECUTION_MODE_RUST: u32 = 1;
 /// Assemble via the VM continuation head.
-pub const OPFORGE_EXECUTION_MODE_VM: u32 = 1;
+pub const OPFORGE_EXECUTION_MODE_VM: u32 = 2;
 /// Run lockstep assembly and report with the Rust continuation head leading.
-pub const OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST: u32 = 2;
+pub const OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST: u32 = 3;
 /// Run lockstep assembly and report with the VM continuation head leading.
-pub const OPFORGE_EXECUTION_MODE_LOCKSTEP_VM: u32 = 3;
+pub const OPFORGE_EXECUTION_MODE_LOCKSTEP_VM: u32 = 4;
 /// Render text outputs such as listings, labels, and dependency files in text mode.
 pub const OPFORGE_OUTPUT_FORMAT_TEXT: u32 = 0;
 /// Render supported outputs in JSON mode where available.
 pub const OPFORGE_OUTPUT_FORMAT_JSON: u32 = 1;
+/// Use the stable Rust facade default output-emission behavior.
+pub const OPFORGE_DEFAULT_OUTPUTS_DEFAULT: u8 = 0;
+/// Suppress default outputs such as listing and hex files.
+pub const OPFORGE_DEFAULT_OUTPUTS_DISABLE: u8 = 1;
+/// Force default outputs such as listing and hex files on.
+pub const OPFORGE_DEFAULT_OUTPUTS_ENABLE: u8 = 2;
 /// Use the stable Rust facade default label rendering.
 pub const OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT: u32 = 0;
 /// Emit VICE-compatible labels.
@@ -72,9 +82,11 @@ pub struct OpforgeAsmSourceOptions {
     pub output_base: *const c_char,
     /// Optional preprocessor defines.
     pub defines: OpforgeStringList,
-    /// Optional include search roots.
+    /// Optional include search roots. For the in-memory entry points, these are
+    /// filesystem-backed dependency roots consulted after the synthetic root source.
     pub include_paths: OpforgeStringList,
-    /// Optional module search roots.
+    /// Optional module search roots. For the in-memory entry points, these are
+    /// filesystem-backed dependency roots consulted after the synthetic root source.
     pub module_paths: OpforgeStringList,
     /// Optional preprocessor recursion limit. Zero keeps the library default.
     pub pp_macro_depth: usize,
@@ -83,7 +95,7 @@ pub struct OpforgeAsmSourceOptions {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct OpforgeAsmExecutionOptions {
-    /// One of the `OPFORGE_EXECUTION_MODE_*` constants.
+    /// One of the `OPFORGE_EXECUTION_MODE_*` constants. Zero keeps the stable Rust facade default.
     pub execution_mode: u32,
     /// Optional CPU override for the request.
     pub cpu_override: *const c_char,
@@ -98,7 +110,7 @@ pub struct OpforgeAsmExecutionOptions {
 pub struct OpforgeAsmOutputOptions {
     /// Optional output directory. Null or empty keeps the library default.
     pub out_dir: *const c_char,
-    /// Non-zero to emit default outputs such as listing/hex files.
+    /// One of the `OPFORGE_DEFAULT_OUTPUTS_*` constants. Zero keeps the stable Rust facade default.
     pub emit_outputs: u8,
     /// One of the `OPFORGE_OUTPUT_FORMAT_*` constants. Zero keeps the default.
     pub output_format: u32,
@@ -1508,6 +1520,9 @@ fn parse_path_list(list: OpforgeStringList, field_name: &str) -> Result<Vec<Path
 
 fn map_execution_mode(mode: u32) -> Result<ExecutionMode, String> {
     match mode {
+        OPFORGE_EXECUTION_MODE_DEFAULT => {
+            Ok(api::asm::OwnedExecutionOptions::default().execution_mode)
+        }
         OPFORGE_EXECUTION_MODE_RUST => Ok(ExecutionMode::Rust),
         OPFORGE_EXECUTION_MODE_VM => Ok(ExecutionMode::Vm),
         OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST => Ok(ExecutionMode::Lockstep {
@@ -1517,6 +1532,17 @@ fn map_execution_mode(mode: u32) -> Result<ExecutionMode, String> {
             continuation_head: api::lockstep::ContinuationHead::Vm,
         }),
         _ => Err(format!("execution_mode value {mode} is invalid")),
+    }
+}
+
+fn map_default_outputs(mode: u8) -> Result<bool, String> {
+    match mode {
+        OPFORGE_DEFAULT_OUTPUTS_DEFAULT => {
+            Ok(api::asm::OwnedOutputOptions::default().default_outputs)
+        }
+        OPFORGE_DEFAULT_OUTPUTS_DISABLE => Ok(false),
+        OPFORGE_DEFAULT_OUTPUTS_ENABLE => Ok(true),
+        _ => Err(format!("emit_outputs value {mode} is invalid")),
     }
 }
 
@@ -1598,6 +1624,10 @@ fn build_grouped_high_level_config(
         Ok(_) => None,
         Err(err) => return Err(invalid_request_report(err)),
     };
+    let default_outputs = match map_default_outputs(request.output.emit_outputs) {
+        Ok(default_outputs) => default_outputs,
+        Err(err) => return Err(invalid_request_report(err)),
+    };
     let output_format = match map_output_format(request.output.output_format) {
         Ok(format) => format,
         Err(err) => return Err(invalid_request_report(err)),
@@ -1649,59 +1679,50 @@ fn build_grouped_high_level_config(
         Err(err) => return Err(invalid_request_report(err)),
     };
 
-    Ok((
-        root_path,
-        api::asm::OwnedAssemblerConfig {
-            source: api::asm::OwnedSourceOptions {
-                output_base: output_base_storage,
-                defines,
-                include_paths,
-                module_paths,
-                pp_macro_depth: if request.source.pp_macro_depth == 0 {
-                    api::asm::OwnedSourceOptions::default().pp_macro_depth
-                } else {
-                    request.source.pp_macro_depth
-                },
-                ..api::asm::OwnedSourceOptions::default()
-            },
-            execution: api::asm::OwnedExecutionOptions {
-                execution_mode,
-                cpu_override,
-                max_loop_iterations: if request.execution.max_loop_iterations == 0 {
-                    api::asm::OwnedExecutionOptions::default().max_loop_iterations
-                } else {
-                    request.execution.max_loop_iterations
-                },
-                opasm_package_path,
-            },
-            output: api::asm::OwnedOutputOptions {
-                out_dir: out_dir_storage,
-                output_format,
-                go_addr,
-                bin_specs,
-                fill_byte: request.output.fill_byte,
-                fill_byte_set: request.output.fill_byte_set != 0,
-                default_outputs: request.output.emit_outputs != 0,
-                labels_file,
-                label_output_format,
-                dependency_output,
-                outfile_override,
-                list_name_override,
-                hex_name_override,
-                header_title,
-                no_outputs: request.output.no_outputs != 0,
-                ..api::asm::OwnedOutputOptions::default()
-            },
-            diagnostics: api::asm::DiagnosticsOptions {
-                debug_conditionals: request.diagnostics.debug_conditionals != 0,
-                tab_size: if request.diagnostics.tab_size == 0 {
-                    None
-                } else {
-                    Some(request.diagnostics.tab_size)
-                },
-            },
-        },
-    ))
+    let mut config = api::asm::OwnedAssemblerConfig::default();
+    config.source.output_base = output_base_storage;
+    config.source.defines = defines;
+    config.source.include_paths = include_paths;
+    config.source.module_paths = module_paths;
+    config.source.pp_macro_depth = if request.source.pp_macro_depth == 0 {
+        api::asm::OwnedSourceOptions::default().pp_macro_depth
+    } else {
+        request.source.pp_macro_depth
+    };
+
+    config.execution.execution_mode = execution_mode;
+    config.execution.cpu_override = cpu_override;
+    config.execution.max_loop_iterations = if request.execution.max_loop_iterations == 0 {
+        api::asm::OwnedExecutionOptions::default().max_loop_iterations
+    } else {
+        request.execution.max_loop_iterations
+    };
+    config.execution.opasm_package_path = opasm_package_path;
+
+    config.output.out_dir = out_dir_storage;
+    config.output.output_format = output_format;
+    config.output.go_addr = go_addr;
+    config.output.bin_specs = bin_specs;
+    config.output.fill_byte = request.output.fill_byte;
+    config.output.fill_byte_set = request.output.fill_byte_set != 0;
+    config.output.default_outputs = default_outputs;
+    config.output.labels_file = labels_file;
+    config.output.label_output_format = label_output_format;
+    config.output.dependency_output = dependency_output;
+    config.output.outfile_override = outfile_override;
+    config.output.list_name_override = list_name_override;
+    config.output.hex_name_override = hex_name_override;
+    config.output.header_title = header_title;
+    config.output.no_outputs = request.output.no_outputs != 0;
+
+    config.diagnostics.debug_conditionals = request.diagnostics.debug_conditionals != 0;
+    config.diagnostics.tab_size = if request.diagnostics.tab_size == 0 {
+        None
+    } else {
+        Some(request.diagnostics.tab_size)
+    };
+
+    Ok((root_path, config))
 }
 
 fn build_opasm_processor(
@@ -1802,9 +1823,11 @@ fn run_high_level_assembler_in_memory_with_request(
     };
     let callbacks = callbacks_ref(callbacks);
 
-    let source_provider = MemorySourceProvider::new().with_file(root_path.clone(), source_text);
+    let source_provider = MemorySourceProvider::new()
+        .with_file(root_path.clone(), source_text)
+        .with_fs_fallback();
     let output_sink = MemoryOutputSink::new();
-    config.source.source_provider = Some(std::sync::Arc::new(source_provider.clone()));
+    config.source.source_provider = Some(std::sync::Arc::from(source_provider));
     config.output.output_sink = Some(std::sync::Arc::new(output_sink.clone()));
 
     let session = api::asm::AssemblerSession::with_config(root_path, config);
@@ -1814,24 +1837,29 @@ fn run_high_level_assembler_in_memory_with_request(
         asm_report_from_run_result(session.assemble())
     };
 
-    if !check_only && callbacks.is_none() && memory_output_sink_has_outputs(&output_sink) {
+    if report.status == OpforgeStatus::Ok
+        && callbacks.is_none()
+        && memory_output_sink_has_outputs(&output_sink)
+    {
         return Err(invalid_request_from_report(
             &report,
-            "in-memory assembly produced outputs but no output callbacks were provided",
+            "in-memory run produced outputs but no output callbacks were provided",
         ));
     }
 
-    if let Some(callbacks) = callbacks {
-        if let Err(err) = emit_memory_outputs_to_callbacks(callbacks, &output_sink) {
-            return Err(boxed_asm_report(OpforgeAsmReport::error(
-                OpforgeStatus::AssembleError,
-                report.diagnostics.clone(),
-                report.error_count,
-                report.warning_count,
-                report.lockstep_match_count,
-                report.lockstep_divergence_count,
-                err,
-            )));
+    if report.status == OpforgeStatus::Ok {
+        if let Some(callbacks) = callbacks {
+            if let Err(err) = emit_memory_outputs_to_callbacks(callbacks, &output_sink) {
+                return Err(boxed_asm_report(OpforgeAsmReport::error(
+                    OpforgeStatus::AssembleError,
+                    report.diagnostics.clone(),
+                    report.error_count,
+                    report.warning_count,
+                    report.lockstep_match_count,
+                    report.lockstep_divergence_count,
+                    err,
+                )));
+            }
         }
     }
 
@@ -1853,6 +1881,121 @@ fn into_prepared_session_handle(
     prepared: OpforgePreparedAsmSession,
 ) -> *mut OpforgePreparedAsmSession {
     Box::into_raw(Box::new(prepared))
+}
+
+fn ffi_panic_payload_message(payload: Box<dyn Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "panic payload was not a string".to_string()
+    }
+}
+
+fn ffi_internal_error_report(function_name: &str, detail: impl Into<String>) -> OpforgeAsmReport {
+    OpforgeAsmReport::error(
+        OpforgeStatus::AssembleError,
+        Vec::new(),
+        1,
+        0,
+        0,
+        0,
+        format!(
+            "internal libopforge panic in {function_name}: {}",
+            detail.into()
+        ),
+    )
+}
+
+fn ffi_report_boundary(
+    function_name: &'static str,
+    body: impl FnOnce() -> *mut OpforgeAsmReport,
+) -> *mut OpforgeAsmReport {
+    match panic::catch_unwind(AssertUnwindSafe(body)) {
+        Ok(report) => report,
+        Err(payload) => into_report_handle(ffi_internal_error_report(
+            function_name,
+            ffi_panic_payload_message(payload),
+        )),
+    }
+}
+
+fn ffi_session_boundary(body: impl FnOnce() -> *mut OpforgeAsmSession) -> *mut OpforgeAsmSession {
+    match panic::catch_unwind(AssertUnwindSafe(body)) {
+        Ok(session) => session,
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+fn ffi_prepared_session_boundary(
+    function_name: &'static str,
+    body: impl FnOnce() -> *mut OpforgePreparedAsmSession,
+) -> *mut OpforgePreparedAsmSession {
+    match panic::catch_unwind(AssertUnwindSafe(body)) {
+        Ok(prepared) => prepared,
+        Err(payload) => into_prepared_session_handle(OpforgePreparedAsmSession {
+            prepared: None,
+            failure: Some(ffi_internal_error_report(
+                function_name,
+                ffi_panic_payload_message(payload),
+            )),
+        }),
+    }
+}
+
+#[cfg(any(test, feature = "panic-test-hooks"))]
+mod ffi_test_hooks {
+    use std::cell::Cell;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    thread_local! {
+        static PANIC_POINT: Cell<Option<&'static str>> = const { Cell::new(None) };
+    }
+
+    static PANIC_ASSEMBLE_FILE_WITH_REQUEST: AtomicBool = AtomicBool::new(false);
+
+    #[cfg_attr(feature = "panic-test-hooks", allow(dead_code))]
+    pub fn arm(point: &'static str) {
+        PANIC_POINT.with(|slot| slot.set(Some(point)));
+        if point == "opforge_asm_assemble_file_with_request" {
+            PANIC_ASSEMBLE_FILE_WITH_REQUEST.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[cfg(feature = "panic-test-hooks")]
+    pub fn arm_assemble_file_with_request() {
+        PANIC_ASSEMBLE_FILE_WITH_REQUEST.store(true, Ordering::SeqCst);
+    }
+
+    pub fn trigger(point: &'static str) {
+        if point == "opforge_asm_assemble_file_with_request"
+            && PANIC_ASSEMBLE_FILE_WITH_REQUEST.swap(false, Ordering::SeqCst)
+        {
+            panic!("forced ffi panic at {point}");
+        }
+
+        PANIC_POINT.with(|slot| {
+            if slot.get() == Some(point) {
+                slot.set(None);
+                panic!("forced ffi panic at {point}");
+            }
+        });
+    }
+}
+
+#[cfg(any(test, feature = "panic-test-hooks"))]
+fn ffi_test_maybe_panic(point: &'static str) {
+    ffi_test_hooks::trigger(point);
+}
+
+#[cfg(not(any(test, feature = "panic-test-hooks")))]
+fn ffi_test_maybe_panic(_point: &'static str) {}
+
+#[cfg(feature = "panic-test-hooks")]
+#[no_mangle]
+pub extern "C" fn opforge_test_force_next_assemble_file_with_request_panic() {
+    ffi_test_hooks::arm_assemble_file_with_request();
 }
 
 fn report_ref<'a>(report: *const OpforgeAsmReport) -> Option<&'a OpforgeAsmReport> {
@@ -2045,6 +2188,73 @@ fn invalid_request_from_report(
     ))
 }
 
+fn default_asm_request() -> OpforgeAsmRequest {
+    OpforgeAsmRequest {
+        source: OpforgeAsmSourceOptions {
+            root_path: std::ptr::null(),
+            output_base: std::ptr::null(),
+            defines: OpforgeStringList {
+                items: std::ptr::null(),
+                count: 0,
+            },
+            include_paths: OpforgeStringList {
+                items: std::ptr::null(),
+                count: 0,
+            },
+            module_paths: OpforgeStringList {
+                items: std::ptr::null(),
+                count: 0,
+            },
+            pp_macro_depth: 0,
+        },
+        execution: OpforgeAsmExecutionOptions {
+            execution_mode: OPFORGE_EXECUTION_MODE_DEFAULT,
+            cpu_override: std::ptr::null(),
+            max_loop_iterations: 0,
+            opasm_package_path: std::ptr::null(),
+        },
+        output: OpforgeAsmOutputOptions {
+            out_dir: std::ptr::null(),
+            emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DEFAULT,
+            output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
+            go_addr: std::ptr::null(),
+            bin_specs: OpforgeStringList {
+                items: std::ptr::null(),
+                count: 0,
+            },
+            fill_byte: 0,
+            fill_byte_set: 0,
+            labels_file: std::ptr::null(),
+            label_output_format: OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT,
+            dependency_output_path: std::ptr::null(),
+            dependency_append: 0,
+            dependency_make_phony: 0,
+            outfile_override: std::ptr::null(),
+            list_name_override: std::ptr::null(),
+            hex_name_override: std::ptr::null(),
+            header_title: std::ptr::null(),
+            no_outputs: 0,
+        },
+        diagnostics: OpforgeAsmDiagnosticsOptions {
+            debug_conditionals: 0,
+            tab_size: 0,
+        },
+    }
+}
+
+#[no_mangle]
+/// Initialize a grouped high-level assembler request with stable Rust facade defaults.
+///
+/// # Safety
+///
+/// `request` must be null or point to writable storage for one [`OpforgeAsmRequest`].
+pub unsafe extern "C" fn opforge_asm_request_init(request: *mut OpforgeAsmRequest) {
+    if request.is_null() {
+        return;
+    }
+    unsafe { *request = default_asm_request() };
+}
+
 #[no_mangle]
 /// Assemble a single source file through the high-level `opforge_asm_*`
 /// request surface.
@@ -2057,22 +2267,25 @@ fn invalid_request_from_report(
 pub unsafe extern "C" fn opforge_asm_assemble_file_with_request(
     request: *const OpforgeAsmRequest,
 ) -> *mut OpforgeAsmReport {
-    if request.is_null() {
-        return into_report_handle(OpforgeAsmReport::error(
-            OpforgeStatus::InvalidRequest,
-            Vec::new(),
-            0,
-            0,
-            0,
-            0,
-            "request pointer must not be null",
-        ));
-    }
-    let request = unsafe { &*request };
-    match run_high_level_assembler_with_request(request, false) {
-        Ok(report) => into_report_handle(report),
-        Err(report) => into_report_handle(*report),
-    }
+    ffi_report_boundary("opforge_asm_assemble_file_with_request", || {
+        ffi_test_maybe_panic("opforge_asm_assemble_file_with_request");
+        if request.is_null() {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "request pointer must not be null",
+            ));
+        }
+        let request = unsafe { &*request };
+        match run_high_level_assembler_with_request(request, false) {
+            Ok(report) => into_report_handle(report),
+            Err(report) => into_report_handle(*report),
+        }
+    })
 }
 
 #[no_mangle]
@@ -2087,22 +2300,24 @@ pub unsafe extern "C" fn opforge_asm_assemble_file_with_request(
 pub unsafe extern "C" fn opforge_asm_check_file_with_request(
     request: *const OpforgeAsmRequest,
 ) -> *mut OpforgeAsmReport {
-    if request.is_null() {
-        return into_report_handle(OpforgeAsmReport::error(
-            OpforgeStatus::InvalidRequest,
-            Vec::new(),
-            0,
-            0,
-            0,
-            0,
-            "request pointer must not be null",
-        ));
-    }
-    let request = unsafe { &*request };
-    match run_high_level_assembler_with_request(request, true) {
-        Ok(report) => into_report_handle(report),
-        Err(report) => into_report_handle(*report),
-    }
+    ffi_report_boundary("opforge_asm_check_file_with_request", || {
+        if request.is_null() {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "request pointer must not be null",
+            ));
+        }
+        let request = unsafe { &*request };
+        match run_high_level_assembler_with_request(request, true) {
+            Ok(report) => into_report_handle(report),
+            Err(report) => into_report_handle(*report),
+        }
+    })
 }
 
 #[no_mangle]
@@ -2110,8 +2325,10 @@ pub unsafe extern "C" fn opforge_asm_check_file_with_request(
 /// request surface.
 ///
 /// `request.source.root_path` acts as the virtual source path used for
-/// diagnostics and output naming. `callbacks` may be null unless the assembly
-/// actually buffers outputs that need to be delivered back to the host.
+/// diagnostics and output naming. `request.source.include_paths` and
+/// `request.source.module_paths` remain filesystem-backed dependency roots
+/// consulted after that synthetic root source. `callbacks` may be null unless
+/// the assembly actually buffers outputs that need to be delivered back to the host.
 /// Setting `request.output.emit_outputs` alone does not require callbacks if
 /// the run produces no buffered outputs, and `request.output.no_outputs`
 /// can prevent directive-driven or metadata-driven outputs from being buffered.
@@ -2126,30 +2343,40 @@ pub unsafe extern "C" fn opforge_asm_assemble_memory_with_request(
     source_text: *const c_char,
     callbacks: *const OpforgeOutputCallbacks,
 ) -> *mut OpforgeAsmReport {
-    if request.is_null() {
-        return into_report_handle(OpforgeAsmReport::error(
-            OpforgeStatus::InvalidRequest,
-            Vec::new(),
-            0,
-            0,
-            0,
-            0,
-            "request pointer must not be null",
-        ));
-    }
-    let request = unsafe { &*request };
-    match run_high_level_assembler_in_memory_with_request(request, source_text, callbacks, false) {
-        Ok(report) => into_report_handle(report),
-        Err(report) => into_report_handle(*report),
-    }
+    ffi_report_boundary("opforge_asm_assemble_memory_with_request", || {
+        if request.is_null() {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "request pointer must not be null",
+            ));
+        }
+        let request = unsafe { &*request };
+        match run_high_level_assembler_in_memory_with_request(
+            request,
+            source_text,
+            callbacks,
+            false,
+        ) {
+            Ok(report) => into_report_handle(report),
+            Err(report) => into_report_handle(*report),
+        }
+    })
 }
 
 #[no_mangle]
 /// Check an in-memory source file through the high-level `opforge_asm_*`
 /// request surface.
 ///
-/// `callbacks` may be null unless the check run actually buffers outputs that
-/// need to be delivered back to the host.
+/// `request.source.include_paths` and `request.source.module_paths` remain
+/// filesystem-backed dependency roots consulted after the synthetic root
+/// source supplied by `source_text`. Check-mode suppresses buffered outputs,
+/// including default and metadata-driven artifacts, so `callbacks` are optional
+/// and are not used for successful check-only runs.
 ///
 /// # Safety
 ///
@@ -2161,22 +2388,25 @@ pub unsafe extern "C" fn opforge_asm_check_memory_with_request(
     source_text: *const c_char,
     callbacks: *const OpforgeOutputCallbacks,
 ) -> *mut OpforgeAsmReport {
-    if request.is_null() {
-        return into_report_handle(OpforgeAsmReport::error(
-            OpforgeStatus::InvalidRequest,
-            Vec::new(),
-            0,
-            0,
-            0,
-            0,
-            "request pointer must not be null",
-        ));
-    }
-    let request = unsafe { &*request };
-    match run_high_level_assembler_in_memory_with_request(request, source_text, callbacks, true) {
-        Ok(report) => into_report_handle(report),
-        Err(report) => into_report_handle(*report),
-    }
+    ffi_report_boundary("opforge_asm_check_memory_with_request", || {
+        if request.is_null() {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "request pointer must not be null",
+            ));
+        }
+        let request = unsafe { &*request };
+        match run_high_level_assembler_in_memory_with_request(request, source_text, callbacks, true)
+        {
+            Ok(report) => into_report_handle(report),
+            Err(report) => into_report_handle(*report),
+        }
+    })
 }
 
 #[no_mangle]
@@ -2189,14 +2419,72 @@ pub unsafe extern "C" fn opforge_asm_check_memory_with_request(
 pub unsafe extern "C" fn opforge_asm_session_create_with_request(
     request: *const OpforgeAsmRequest,
 ) -> *mut OpforgeAsmSession {
-    if request.is_null() {
-        return std::ptr::null_mut();
-    }
-    let request = unsafe { &*request };
-    match build_high_level_assembler_session_with_request(request) {
-        Ok(session) => into_session_handle(OpforgeAsmSession { session }),
-        Err(_) => std::ptr::null_mut(),
-    }
+    ffi_session_boundary(|| {
+        ffi_test_maybe_panic("opforge_asm_session_create_with_request");
+        if request.is_null() {
+            return std::ptr::null_mut();
+        }
+        let request = unsafe { &*request };
+        match build_high_level_assembler_session_with_request(request) {
+            Ok(session) => into_session_handle(OpforgeAsmSession { session }),
+            Err(_) => std::ptr::null_mut(),
+        }
+    })
+}
+
+#[no_mangle]
+/// Create a reusable high-level assembler session and return a report handle
+/// describing success or request-validation failure.
+///
+/// On success, `*out_session` receives a new session handle and the returned
+/// report has status [`OpforgeStatus::Ok`]. On failure, `*out_session` is set
+/// to null and the returned report contains the failure details.
+///
+/// # Safety
+///
+/// `request` and `out_session` must be non-null. Any non-null string fields
+/// in `request` must point to valid NUL-terminated UTF-8 strings for the
+/// duration of the call.
+pub unsafe extern "C" fn opforge_asm_session_create_with_request_report(
+    request: *const OpforgeAsmRequest,
+    out_session: *mut *mut OpforgeAsmSession,
+) -> *mut OpforgeAsmReport {
+    ffi_report_boundary("opforge_asm_session_create_with_request_report", || {
+        if out_session.is_null() {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "out_session pointer must not be null",
+            ));
+        }
+
+        unsafe { *out_session = std::ptr::null_mut() };
+
+        if request.is_null() {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "request pointer must not be null",
+            ));
+        }
+
+        let request = unsafe { &*request };
+        match build_high_level_assembler_session_with_request(request) {
+            Ok(session) => {
+                unsafe { *out_session = into_session_handle(OpforgeAsmSession { session }) };
+                into_report_handle(OpforgeAsmReport::ok(Vec::new(), 0, 0, 0, 0))
+            }
+            Err(report) => into_report_handle(*report),
+        }
+    })
 }
 
 #[no_mangle]
@@ -2209,31 +2497,33 @@ pub unsafe extern "C" fn opforge_asm_session_create_with_request(
 pub unsafe extern "C" fn opforge_asm_session_prepare(
     session: *const OpforgeAsmSession,
 ) -> *mut OpforgePreparedAsmSession {
-    let Some(session) = asm_session_ref(session) else {
-        return into_prepared_session_handle(OpforgePreparedAsmSession {
-            prepared: None,
-            failure: Some(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "session pointer must not be null",
-            )),
-        });
-    };
-    let prepared = session.session.prepare();
-    match prepared {
-        Ok(prepared) => into_prepared_session_handle(OpforgePreparedAsmSession {
-            prepared: Some(prepared),
-            failure: None,
-        }),
-        Err(err) => into_prepared_session_handle(OpforgePreparedAsmSession {
-            prepared: None,
-            failure: Some(asm_report_from_run_result(Err(err))),
-        }),
-    }
+    ffi_prepared_session_boundary("opforge_asm_session_prepare", || {
+        let Some(session) = asm_session_ref(session) else {
+            return into_prepared_session_handle(OpforgePreparedAsmSession {
+                prepared: None,
+                failure: Some(OpforgeAsmReport::error(
+                    OpforgeStatus::InvalidRequest,
+                    Vec::new(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    "session pointer must not be null",
+                )),
+            });
+        };
+        let prepared = session.session.prepare();
+        match prepared {
+            Ok(prepared) => into_prepared_session_handle(OpforgePreparedAsmSession {
+                prepared: Some(prepared),
+                failure: None,
+            }),
+            Err(err) => into_prepared_session_handle(OpforgePreparedAsmSession {
+                prepared: None,
+                failure: Some(asm_report_from_run_result(Err(err))),
+            }),
+        }
+    })
 }
 
 #[no_mangle]
@@ -2246,19 +2536,21 @@ pub unsafe extern "C" fn opforge_asm_session_prepare(
 pub unsafe extern "C" fn opforge_asm_session_assemble(
     session: *const OpforgeAsmSession,
 ) -> *mut OpforgeAsmReport {
-    let Some(session) = asm_session_ref(session) else {
-        return into_report_handle(OpforgeAsmReport::error(
-            OpforgeStatus::InvalidRequest,
-            Vec::new(),
-            0,
-            0,
-            0,
-            0,
-            "session pointer must not be null",
-        ));
-    };
-    let report = asm_report_from_run_result(session.session.assemble());
-    into_report_handle(report)
+    ffi_report_boundary("opforge_asm_session_assemble", || {
+        let Some(session) = asm_session_ref(session) else {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "session pointer must not be null",
+            ));
+        };
+        let report = asm_report_from_run_result(session.session.assemble());
+        into_report_handle(report)
+    })
 }
 
 #[no_mangle]
@@ -2271,19 +2563,21 @@ pub unsafe extern "C" fn opforge_asm_session_assemble(
 pub unsafe extern "C" fn opforge_asm_session_check(
     session: *const OpforgeAsmSession,
 ) -> *mut OpforgeAsmReport {
-    let Some(session) = asm_session_ref(session) else {
-        return into_report_handle(OpforgeAsmReport::error(
-            OpforgeStatus::InvalidRequest,
-            Vec::new(),
-            0,
-            0,
-            0,
-            0,
-            "session pointer must not be null",
-        ));
-    };
-    let report = asm_report_from_run_result(session.session.check());
-    into_report_handle(report)
+    ffi_report_boundary("opforge_asm_session_check", || {
+        let Some(session) = asm_session_ref(session) else {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "session pointer must not be null",
+            ));
+        };
+        let report = asm_report_from_run_result(session.session.check());
+        into_report_handle(report)
+    })
 }
 
 #[no_mangle]
@@ -2296,28 +2590,30 @@ pub unsafe extern "C" fn opforge_asm_session_check(
 pub unsafe extern "C" fn opforge_prepared_asm_session_assemble(
     prepared: *const OpforgePreparedAsmSession,
 ) -> *mut OpforgeAsmReport {
-    let Some(prepared) = prepared_asm_session_ref(prepared) else {
-        return into_report_handle(OpforgeAsmReport::error(
-            OpforgeStatus::InvalidRequest,
-            Vec::new(),
-            0,
-            0,
-            0,
-            0,
-            "prepared session pointer must not be null",
-        ));
-    };
-    if let Some(report) = prepared.failure.as_ref() {
-        return into_report_handle(report.clone());
-    }
-    let report = asm_report_from_run_result(
-        prepared
-            .prepared
-            .as_ref()
-            .expect("valid prepared session handle")
-            .assemble(),
-    );
-    into_report_handle(report)
+    ffi_report_boundary("opforge_prepared_asm_session_assemble", || {
+        let Some(prepared) = prepared_asm_session_ref(prepared) else {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "prepared session pointer must not be null",
+            ));
+        };
+        if let Some(report) = prepared.failure.as_ref() {
+            return into_report_handle(report.clone());
+        }
+        let Some(prepared_session) = prepared.prepared.as_ref() else {
+            return into_report_handle(ffi_internal_error_report(
+                "opforge_prepared_asm_session_assemble",
+                "missing prepared session state",
+            ));
+        };
+        let report = asm_report_from_run_result(prepared_session.assemble());
+        into_report_handle(report)
+    })
 }
 
 #[no_mangle]
@@ -2330,28 +2626,30 @@ pub unsafe extern "C" fn opforge_prepared_asm_session_assemble(
 pub unsafe extern "C" fn opforge_prepared_asm_session_check(
     prepared: *const OpforgePreparedAsmSession,
 ) -> *mut OpforgeAsmReport {
-    let Some(prepared) = prepared_asm_session_ref(prepared) else {
-        return into_report_handle(OpforgeAsmReport::error(
-            OpforgeStatus::InvalidRequest,
-            Vec::new(),
-            0,
-            0,
-            0,
-            0,
-            "prepared session pointer must not be null",
-        ));
-    };
-    if let Some(report) = prepared.failure.as_ref() {
-        return into_report_handle(report.clone());
-    }
-    let report = asm_report_from_run_result(
-        prepared
-            .prepared
-            .as_ref()
-            .expect("valid prepared session handle")
-            .check(),
-    );
-    into_report_handle(report)
+    ffi_report_boundary("opforge_prepared_asm_session_check", || {
+        let Some(prepared) = prepared_asm_session_ref(prepared) else {
+            return into_report_handle(OpforgeAsmReport::error(
+                OpforgeStatus::InvalidRequest,
+                Vec::new(),
+                0,
+                0,
+                0,
+                0,
+                "prepared session pointer must not be null",
+            ));
+        };
+        if let Some(report) = prepared.failure.as_ref() {
+            return into_report_handle(report.clone());
+        }
+        let Some(prepared_session) = prepared.prepared.as_ref() else {
+            return into_report_handle(ffi_internal_error_report(
+                "opforge_prepared_asm_session_check",
+                "missing prepared session state",
+            ));
+        };
+        let report = asm_report_from_run_result(prepared_session.check());
+        into_report_handle(report)
+    })
 }
 
 #[no_mangle]
@@ -5209,11 +5507,12 @@ pub unsafe extern "C" fn opforge_asm_report_free(report: *mut OpforgeAsmReport) 
 #[cfg(test)]
 mod tests {
     use super::{
-        opforge_asm_assemble_file_with_request, opforge_asm_assemble_memory_with_request,
-        opforge_asm_check_file_with_request, opforge_asm_check_memory_with_request,
-        opforge_asm_report_error_count, opforge_asm_report_free,
-        opforge_asm_report_lockstep_match_count, opforge_asm_report_message,
-        opforge_asm_report_status, opforge_asm_report_warning_count, opforge_asm_session_assemble,
+        build_grouped_high_level_config, ffi_test_hooks, opforge_asm_assemble_file_with_request,
+        opforge_asm_assemble_memory_with_request, opforge_asm_check_file_with_request,
+        opforge_asm_check_memory_with_request, opforge_asm_report_error_count,
+        opforge_asm_report_free, opforge_asm_report_lockstep_match_count,
+        opforge_asm_report_message, opforge_asm_report_status, opforge_asm_report_warning_count,
+        opforge_asm_request_init, opforge_asm_session_assemble,
         opforge_asm_session_create_with_request, opforge_asm_session_free,
         opforge_asm_session_prepare, opforge_diag_code_from_asm_report,
         opforge_diag_col_end_from_asm_report, opforge_diag_column_from_asm_report,
@@ -5280,11 +5579,12 @@ mod tests {
         opforge_opcore_tokenize_report_status, opforge_opcore_tokenize_report_token_col_end,
         opforge_opcore_tokenize_report_token_col_start, opforge_opcore_tokenize_report_token_count,
         opforge_opcore_tokenize_report_token_kind, opforge_opcore_tokenize_report_token_line,
-        opforge_opcore_tokenize_report_token_text, opforge_prepared_asm_session_check,
-        opforge_prepared_asm_session_free, opforge_processing_trace_free,
-        opforge_processing_trace_request_count, opforge_processing_trace_request_text,
-        opforge_registry_alias, opforge_registry_alias_count, opforge_registry_cpu_count,
-        opforge_registry_cpu_id, opforge_registry_cpu_view, opforge_registry_cpu_view_dialect_id,
+        opforge_opcore_tokenize_report_token_text, opforge_prepared_asm_session_assemble,
+        opforge_prepared_asm_session_check, opforge_prepared_asm_session_free,
+        opforge_processing_trace_free, opforge_processing_trace_request_count,
+        opforge_processing_trace_request_text, opforge_registry_alias,
+        opforge_registry_alias_count, opforge_registry_cpu_count, opforge_registry_cpu_id,
+        opforge_registry_cpu_view, opforge_registry_cpu_view_dialect_id,
         opforge_registry_cpu_view_family_id, opforge_registry_cpu_view_free,
         opforge_registry_cpu_view_mnemonic, opforge_registry_cpu_view_mnemonic_count,
         opforge_registry_default, opforge_registry_dialect_count, opforge_registry_dialect_id,
@@ -5293,9 +5593,12 @@ mod tests {
         LabelOutputFormat, OpforgeAsmDiagnosticsOptions, OpforgeAsmExecutionOptions,
         OpforgeAsmOutputOptions, OpforgeAsmRequest, OpforgeAsmSourceOptions,
         OpforgeDiagnosticSeverity, OpforgeExprNodeKind, OpforgeLineAstKind,
-        OpforgeOpasmProcessConfig, OpforgeOutputCallbacks, OpforgeProcessorStatus, OpforgeStatus,
-        OpforgeStringList, OpforgeTokenKind, OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST,
-        OPFORGE_EXECUTION_MODE_LOCKSTEP_VM, OPFORGE_EXECUTION_MODE_RUST, OPFORGE_EXECUTION_MODE_VM,
+        OpforgeOpasmProcessConfig, OpforgeOutputCallbacks, OpforgePreparedAsmSession,
+        OpforgeProcessorStatus, OpforgeStatus, OpforgeStringList, OpforgeTokenKind,
+        OPFORGE_DEFAULT_OUTPUTS_DEFAULT, OPFORGE_DEFAULT_OUTPUTS_DISABLE,
+        OPFORGE_DEFAULT_OUTPUTS_ENABLE, OPFORGE_EXECUTION_MODE_DEFAULT,
+        OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST, OPFORGE_EXECUTION_MODE_LOCKSTEP_VM,
+        OPFORGE_EXECUTION_MODE_RUST, OPFORGE_EXECUTION_MODE_VM,
         OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT, OPFORGE_OUTPUT_FORMAT_TEXT,
     };
     use std::ffi::c_void;
@@ -5335,6 +5638,11 @@ mod tests {
         execution_mode: u32,
         emit_outputs: u8,
     ) -> OpforgeAsmRequest {
+        let emit_outputs = match emit_outputs {
+            0 => OPFORGE_DEFAULT_OUTPUTS_DISABLE,
+            1 => OPFORGE_DEFAULT_OUTPUTS_ENABLE,
+            value => value,
+        };
         OpforgeAsmRequest {
             source: OpforgeAsmSourceOptions {
                 root_path,
@@ -5936,6 +6244,85 @@ mod tests {
     }
 
     #[test]
+    fn ffi_report_returning_entry_point_contains_forced_panic() {
+        let work_dir = make_temp_dir("ffi-boundary-report-panic");
+        let source_path = work_dir.join("main.asm");
+        fs::write(&source_path, ".module main\n    nop\n.endmodule\n").expect("write source");
+        let root = CString::new(source_path.to_string_lossy().as_bytes()).expect("root cstr");
+        let request = basic_request(
+            root.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            OPFORGE_EXECUTION_MODE_VM,
+            0,
+        );
+
+        ffi_test_hooks::arm("opforge_asm_assemble_file_with_request");
+        let report = unsafe { opforge_asm_assemble_file_with_request(&request) };
+
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::AssembleError
+        );
+        let message = unsafe { CStr::from_ptr(opforge_asm_report_message(report)) }
+            .to_str()
+            .expect("ffi panic message utf8");
+        assert!(message.contains("internal libopforge panic"), "{message}");
+        assert!(
+            message.contains("opforge_asm_assemble_file_with_request"),
+            "{message}"
+        );
+
+        unsafe { opforge_asm_report_free(report) };
+    }
+
+    #[test]
+    fn ffi_nullable_handle_entry_point_contains_forced_panic() {
+        let work_dir = make_temp_dir("ffi-boundary-session-panic");
+        let source_path = work_dir.join("main.asm");
+        fs::write(&source_path, ".module main\n    nop\n.endmodule\n").expect("write source");
+        let root = CString::new(source_path.to_string_lossy().as_bytes()).expect("root cstr");
+        let request = basic_request(
+            root.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            OPFORGE_EXECUTION_MODE_VM,
+            0,
+        );
+
+        ffi_test_hooks::arm("opforge_asm_session_create_with_request");
+        let session = unsafe { opforge_asm_session_create_with_request(&request) };
+
+        assert!(session.is_null());
+    }
+
+    #[test]
+    fn ffi_prepared_session_assemble_handles_missing_prepared_state() {
+        let prepared = OpforgePreparedAsmSession {
+            prepared: None,
+            failure: None,
+        };
+
+        let report = unsafe { opforge_prepared_asm_session_assemble(&prepared) };
+
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::AssembleError
+        );
+        let message = unsafe { CStr::from_ptr(opforge_asm_report_message(report)) }
+            .to_str()
+            .expect("ffi prepared message utf8");
+        assert!(
+            message.contains("missing prepared session state"),
+            "{message}"
+        );
+
+        unsafe { opforge_asm_report_free(report) };
+    }
+
+    #[test]
     fn ffi_opforge_asm_memory_group_rejects_output_requests_without_callbacks() {
         let root = CString::new("/virtual/main.asm").expect("root cstr");
         let request = basic_request(
@@ -6023,7 +6410,7 @@ mod tests {
             },
             output: OpforgeAsmOutputOptions {
                 out_dir: std::ptr::null(),
-                emit_outputs: 1,
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_ENABLE,
                 output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
                 go_addr: std::ptr::null(),
                 bin_specs: OpforgeStringList {
@@ -6063,6 +6450,248 @@ mod tests {
             OpforgeStatus::Ok
         );
         assert_eq!(unsafe { opforge_asm_report_error_count(report) }, 0);
+        unsafe { opforge_asm_report_free(report) };
+    }
+
+    #[test]
+    fn ffi_opforge_asm_check_memory_with_request_ignores_metadata_outputs_without_callbacks() {
+        let root = CString::new("/virtual/main.asm").expect("root cstr");
+        let labels_path = CString::new("/virtual/out/symbols.lbl").expect("labels cstr");
+        let dependency_path = CString::new("/virtual/out/main.d").expect("dependency cstr");
+        let source_text =
+            CString::new(".module main\nstart:\n    nop\n.endmodule\n").expect("source text cstr");
+        let request = OpforgeAsmRequest {
+            source: OpforgeAsmSourceOptions {
+                root_path: root.as_ptr(),
+                output_base: std::ptr::null(),
+                defines: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                include_paths: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                module_paths: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                pp_macro_depth: 0,
+            },
+            execution: OpforgeAsmExecutionOptions {
+                execution_mode: OPFORGE_EXECUTION_MODE_VM,
+                cpu_override: std::ptr::null(),
+                max_loop_iterations: 0,
+                opasm_package_path: std::ptr::null(),
+            },
+            output: OpforgeAsmOutputOptions {
+                out_dir: std::ptr::null(),
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_ENABLE,
+                output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
+                go_addr: std::ptr::null(),
+                bin_specs: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                fill_byte: 0,
+                fill_byte_set: 0,
+                labels_file: labels_path.as_ptr(),
+                label_output_format: OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT,
+                dependency_output_path: dependency_path.as_ptr(),
+                dependency_append: 0,
+                dependency_make_phony: 0,
+                outfile_override: std::ptr::null(),
+                list_name_override: std::ptr::null(),
+                hex_name_override: std::ptr::null(),
+                header_title: std::ptr::null(),
+                no_outputs: 0,
+            },
+            diagnostics: OpforgeAsmDiagnosticsOptions {
+                debug_conditionals: 0,
+                tab_size: 0,
+            },
+        };
+
+        let report = unsafe {
+            opforge_asm_check_memory_with_request(&request, source_text.as_ptr(), std::ptr::null())
+        };
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::Ok
+        );
+        assert_eq!(unsafe { opforge_asm_report_error_count(report) }, 0);
+        unsafe { opforge_asm_report_free(report) };
+    }
+
+    #[test]
+    fn ffi_opforge_asm_check_memory_with_request_suppresses_metadata_outputs_even_with_callbacks() {
+        let mut capture = CallbackCapture::default();
+        let root = CString::new("/virtual/main.asm").expect("root cstr");
+        let labels_path = CString::new("/virtual/out/symbols.lbl").expect("labels cstr");
+        let dependency_path = CString::new("/virtual/out/main.d").expect("dependency cstr");
+        let source_text =
+            CString::new(".module main\nstart:\n    nop\n.endmodule\n").expect("source text cstr");
+        let request = OpforgeAsmRequest {
+            source: OpforgeAsmSourceOptions {
+                root_path: root.as_ptr(),
+                output_base: std::ptr::null(),
+                defines: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                include_paths: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                module_paths: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                pp_macro_depth: 0,
+            },
+            execution: OpforgeAsmExecutionOptions {
+                execution_mode: OPFORGE_EXECUTION_MODE_VM,
+                cpu_override: std::ptr::null(),
+                max_loop_iterations: 0,
+                opasm_package_path: std::ptr::null(),
+            },
+            output: OpforgeAsmOutputOptions {
+                out_dir: std::ptr::null(),
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_ENABLE,
+                output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
+                go_addr: std::ptr::null(),
+                bin_specs: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                fill_byte: 0,
+                fill_byte_set: 0,
+                labels_file: labels_path.as_ptr(),
+                label_output_format: OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT,
+                dependency_output_path: dependency_path.as_ptr(),
+                dependency_append: 0,
+                dependency_make_phony: 0,
+                outfile_override: std::ptr::null(),
+                list_name_override: std::ptr::null(),
+                hex_name_override: std::ptr::null(),
+                header_title: std::ptr::null(),
+                no_outputs: 0,
+            },
+            diagnostics: OpforgeAsmDiagnosticsOptions {
+                debug_conditionals: 0,
+                tab_size: 0,
+            },
+        };
+        let callbacks = OpforgeOutputCallbacks {
+            create_dir: Some(capture_create_dir),
+            write_file: Some(capture_write_file),
+            user_data: (&mut capture as *mut CallbackCapture).cast::<c_void>(),
+        };
+
+        let report = unsafe {
+            opforge_asm_check_memory_with_request(&request, source_text.as_ptr(), &callbacks)
+        };
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::Ok
+        );
+        assert_eq!(unsafe { opforge_asm_report_error_count(report) }, 0);
+        assert!(
+            capture.files.is_empty(),
+            "captured files: {:?}",
+            capture.files
+        );
+        unsafe { opforge_asm_report_free(report) };
+    }
+
+    #[test]
+    fn ffi_opforge_asm_assemble_memory_with_request_resolves_filesystem_dependencies() {
+        let temp_dir = make_temp_dir("asm-memory-fs-deps");
+        let include_dir = temp_dir.join("includes");
+        let module_dir = temp_dir.join("modules");
+        fs::create_dir_all(&include_dir).expect("create include dir");
+        fs::create_dir_all(&module_dir).expect("create module dir");
+        fs::write(include_dir.join("inc.asm"), "FROM_INC .const 2\n").expect("write include");
+        fs::write(
+            module_dir.join("dep.asm"),
+            ".module dep\n.pub\nVALUE .const 5\n.priv\n.endmodule\n",
+        )
+        .expect("write module");
+
+        let root = CString::new("/virtual/main.asm").expect("root cstr");
+        let include_dir_cstr =
+            CString::new(include_dir.to_string_lossy().as_bytes()).expect("include dir cstr");
+        let module_dir_cstr =
+            CString::new(module_dir.to_string_lossy().as_bytes()).expect("module dir cstr");
+        let include_items = [include_dir_cstr.as_ptr()];
+        let module_items = [module_dir_cstr.as_ptr()];
+        let request = OpforgeAsmRequest {
+            source: OpforgeAsmSourceOptions {
+                root_path: root.as_ptr(),
+                output_base: std::ptr::null(),
+                defines: empty_string_list(),
+                include_paths: OpforgeStringList {
+                    items: include_items.as_ptr(),
+                    count: include_items.len(),
+                },
+                module_paths: OpforgeStringList {
+                    items: module_items.as_ptr(),
+                    count: module_items.len(),
+                },
+                pp_macro_depth: 0,
+            },
+            execution: OpforgeAsmExecutionOptions {
+                execution_mode: OPFORGE_EXECUTION_MODE_VM,
+                cpu_override: std::ptr::null(),
+                max_loop_iterations: 0,
+                opasm_package_path: std::ptr::null(),
+            },
+            output: OpforgeAsmOutputOptions {
+                out_dir: std::ptr::null(),
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DISABLE,
+                output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
+                go_addr: std::ptr::null(),
+                bin_specs: empty_string_list(),
+                fill_byte: 0,
+                fill_byte_set: 0,
+                labels_file: std::ptr::null(),
+                label_output_format: OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT,
+                dependency_output_path: std::ptr::null(),
+                dependency_append: 0,
+                dependency_make_phony: 0,
+                outfile_override: std::ptr::null(),
+                list_name_override: std::ptr::null(),
+                hex_name_override: std::ptr::null(),
+                header_title: std::ptr::null(),
+                no_outputs: 0,
+            },
+            diagnostics: OpforgeAsmDiagnosticsOptions {
+                debug_conditionals: 0,
+                tab_size: 0,
+            },
+        };
+        let source_text = CString::new(
+            ".module main\n.include \"inc.asm\"\n.use dep (VALUE)\nstart:\n    .byte FROM_INC + VALUE\n.endmodule\n",
+        )
+        .expect("source text cstr");
+
+        let report = unsafe {
+            opforge_asm_assemble_memory_with_request(
+                &request,
+                source_text.as_ptr(),
+                std::ptr::null(),
+            )
+        };
+
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::Ok
+        );
+        assert_eq!(unsafe { opforge_asm_report_error_count(report) }, 0);
+
         unsafe { opforge_asm_report_free(report) };
     }
 
@@ -6167,7 +6796,7 @@ mod tests {
             },
             output: OpforgeAsmOutputOptions {
                 out_dir: std::ptr::null(),
-                emit_outputs: 1,
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_ENABLE,
                 output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
                 go_addr: std::ptr::null(),
                 bin_specs: OpforgeStringList {
@@ -6213,6 +6842,92 @@ mod tests {
     }
 
     #[test]
+    fn ffi_opforge_asm_failed_memory_run_does_not_emit_output_callbacks() {
+        let mut capture = CallbackCapture::default();
+        let root = CString::new("/virtual/main.asm").expect("root cstr");
+        let input_base = CString::new("/virtual/main").expect("input base cstr");
+        let labels_path = CString::new("/virtual/out/symbols.lbl").expect("labels cstr");
+        let dependency_path = CString::new("/virtual/out/main.d").expect("dependency cstr");
+        let source_text = CString::new(
+            ".module main\n.region ram, $1000, $10ff\n.section code\n.pub\nstart\n    .byte MISSING_VALUE\n.priv\n.endsection\n.place code in ram\n.output \"build/minimal.bin\", format=bin, sections=code\n.endmodule\n",
+        )
+        .expect("source text cstr");
+        let request = OpforgeAsmRequest {
+            source: OpforgeAsmSourceOptions {
+                root_path: root.as_ptr(),
+                output_base: input_base.as_ptr(),
+                defines: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                include_paths: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                module_paths: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                pp_macro_depth: 0,
+            },
+            execution: OpforgeAsmExecutionOptions {
+                execution_mode: OPFORGE_EXECUTION_MODE_VM,
+                cpu_override: std::ptr::null(),
+                max_loop_iterations: 0,
+                opasm_package_path: std::ptr::null(),
+            },
+            output: OpforgeAsmOutputOptions {
+                out_dir: std::ptr::null(),
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_ENABLE,
+                output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
+                go_addr: std::ptr::null(),
+                bin_specs: OpforgeStringList {
+                    items: std::ptr::null(),
+                    count: 0,
+                },
+                fill_byte: 0,
+                fill_byte_set: 0,
+                labels_file: labels_path.as_ptr(),
+                label_output_format: OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT,
+                dependency_output_path: dependency_path.as_ptr(),
+                dependency_append: 0,
+                dependency_make_phony: 0,
+                outfile_override: std::ptr::null(),
+                list_name_override: std::ptr::null(),
+                hex_name_override: std::ptr::null(),
+                header_title: std::ptr::null(),
+                no_outputs: 0,
+            },
+            diagnostics: OpforgeAsmDiagnosticsOptions {
+                debug_conditionals: 0,
+                tab_size: 0,
+            },
+        };
+        let callbacks = OpforgeOutputCallbacks {
+            create_dir: Some(capture_create_dir),
+            write_file: Some(capture_write_file),
+            user_data: (&mut capture as *mut CallbackCapture).cast::<c_void>(),
+        };
+
+        let report = unsafe {
+            opforge_asm_assemble_memory_with_request(&request, source_text.as_ptr(), &callbacks)
+        };
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::AssembleError
+        );
+        assert!(unsafe { opforge_asm_report_error_count(report) } > 0);
+        assert!(
+            capture.files.is_empty(),
+            "captured files: {:?}",
+            capture.files
+        );
+        assert!(capture.dirs.is_empty(), "captured dirs: {:?}", capture.dirs);
+        unsafe { opforge_asm_report_free(report) };
+    }
+
+    #[test]
     fn ffi_opforge_asm_assemble_memory_with_request_parses_bin_specs_and_fill_byte() {
         let mut capture = CallbackCapture::default();
         let root = CString::new("/virtual/main.asm").expect("root cstr");
@@ -6249,7 +6964,7 @@ mod tests {
             },
             output: OpforgeAsmOutputOptions {
                 out_dir: std::ptr::null(),
-                emit_outputs: 0,
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DISABLE,
                 output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
                 go_addr: std::ptr::null(),
                 bin_specs: OpforgeStringList {
@@ -6330,7 +7045,7 @@ mod tests {
             },
             output: OpforgeAsmOutputOptions {
                 out_dir: std::ptr::null(),
-                emit_outputs: 0,
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DISABLE,
                 output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
                 go_addr: std::ptr::null(),
                 bin_specs: OpforgeStringList {
@@ -6415,7 +7130,7 @@ mod tests {
             },
             output: OpforgeAsmOutputOptions {
                 out_dir: std::ptr::null(),
-                emit_outputs: 0,
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DISABLE,
                 output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
                 go_addr: std::ptr::null(),
                 bin_specs: OpforgeStringList {
@@ -6489,7 +7204,7 @@ mod tests {
             },
             output: OpforgeAsmOutputOptions {
                 out_dir: std::ptr::null(),
-                emit_outputs: 0,
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DISABLE,
                 output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
                 go_addr: std::ptr::null(),
                 bin_specs: OpforgeStringList {
@@ -6546,6 +7261,142 @@ mod tests {
     }
 
     #[test]
+    fn ffi_grouped_zero_initialized_fields_match_stable_rust_defaults() {
+        let root = CString::new("/virtual/main.asm").expect("root cstr");
+        let request = OpforgeAsmRequest {
+            source: OpforgeAsmSourceOptions {
+                root_path: root.as_ptr(),
+                output_base: std::ptr::null(),
+                defines: empty_string_list(),
+                include_paths: empty_string_list(),
+                module_paths: empty_string_list(),
+                pp_macro_depth: 0,
+            },
+            execution: OpforgeAsmExecutionOptions {
+                execution_mode: OPFORGE_EXECUTION_MODE_DEFAULT,
+                cpu_override: std::ptr::null(),
+                max_loop_iterations: 0,
+                opasm_package_path: std::ptr::null(),
+            },
+            output: OpforgeAsmOutputOptions {
+                out_dir: std::ptr::null(),
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DEFAULT,
+                output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
+                go_addr: std::ptr::null(),
+                bin_specs: empty_string_list(),
+                fill_byte: 0,
+                fill_byte_set: 0,
+                labels_file: std::ptr::null(),
+                label_output_format: OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT,
+                dependency_output_path: std::ptr::null(),
+                dependency_append: 0,
+                dependency_make_phony: 0,
+                outfile_override: std::ptr::null(),
+                list_name_override: std::ptr::null(),
+                hex_name_override: std::ptr::null(),
+                header_title: std::ptr::null(),
+                no_outputs: 0,
+            },
+            diagnostics: OpforgeAsmDiagnosticsOptions {
+                debug_conditionals: 0,
+                tab_size: 0,
+            },
+        };
+
+        let (_, config) = match build_grouped_high_level_config(&request) {
+            Ok(value) => value,
+            Err(_) => panic!("valid grouped config"),
+        };
+
+        assert_eq!(
+            config.execution.execution_mode,
+            api::asm::OwnedExecutionOptions::default().execution_mode
+        );
+        assert_eq!(
+            config.output.default_outputs,
+            api::asm::OwnedOutputOptions::default().default_outputs
+        );
+    }
+
+    #[test]
+    fn ffi_grouped_request_init_matches_stable_rust_defaults() {
+        let root = CString::new("/virtual/main.asm").expect("root cstr");
+        let mut request = unsafe { std::mem::zeroed::<OpforgeAsmRequest>() };
+
+        unsafe { opforge_asm_request_init(&mut request) };
+        request.source.root_path = root.as_ptr();
+
+        let (_, config) = match build_grouped_high_level_config(&request) {
+            Ok(value) => value,
+            Err(_) => panic!("valid grouped config"),
+        };
+
+        assert_eq!(
+            request.execution.execution_mode,
+            OPFORGE_EXECUTION_MODE_DEFAULT
+        );
+        assert_eq!(request.output.emit_outputs, OPFORGE_DEFAULT_OUTPUTS_DEFAULT);
+        assert_eq!(
+            config.execution.execution_mode,
+            api::asm::OwnedExecutionOptions::default().execution_mode
+        );
+        assert_eq!(
+            config.output.default_outputs,
+            api::asm::OwnedOutputOptions::default().default_outputs
+        );
+    }
+
+    #[test]
+    fn ffi_grouped_explicit_output_disable_overrides_default_outputs() {
+        let root = CString::new("/virtual/main.asm").expect("root cstr");
+        let request = OpforgeAsmRequest {
+            source: OpforgeAsmSourceOptions {
+                root_path: root.as_ptr(),
+                output_base: std::ptr::null(),
+                defines: empty_string_list(),
+                include_paths: empty_string_list(),
+                module_paths: empty_string_list(),
+                pp_macro_depth: 0,
+            },
+            execution: OpforgeAsmExecutionOptions {
+                execution_mode: OPFORGE_EXECUTION_MODE_DEFAULT,
+                cpu_override: std::ptr::null(),
+                max_loop_iterations: 0,
+                opasm_package_path: std::ptr::null(),
+            },
+            output: OpforgeAsmOutputOptions {
+                out_dir: std::ptr::null(),
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DISABLE,
+                output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
+                go_addr: std::ptr::null(),
+                bin_specs: empty_string_list(),
+                fill_byte: 0,
+                fill_byte_set: 0,
+                labels_file: std::ptr::null(),
+                label_output_format: OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT,
+                dependency_output_path: std::ptr::null(),
+                dependency_append: 0,
+                dependency_make_phony: 0,
+                outfile_override: std::ptr::null(),
+                list_name_override: std::ptr::null(),
+                hex_name_override: std::ptr::null(),
+                header_title: std::ptr::null(),
+                no_outputs: 0,
+            },
+            diagnostics: OpforgeAsmDiagnosticsOptions {
+                debug_conditionals: 0,
+                tab_size: 0,
+            },
+        };
+
+        let (_, config) = match build_grouped_high_level_config(&request) {
+            Ok(value) => value,
+            Err(_) => panic!("valid grouped config"),
+        };
+        assert!(!config.output.default_outputs);
+    }
+
+    #[test]
     fn ffi_opforge_asm_assemble_memory_with_request_suppress_outputs_skips_callback_requirement() {
         let root = CString::new("/virtual/main.asm").expect("root cstr");
         let labels_path = CString::new("/virtual/out/symbols.lbl").expect("labels cstr");
@@ -6578,7 +7429,7 @@ mod tests {
             },
             output: OpforgeAsmOutputOptions {
                 out_dir: std::ptr::null(),
-                emit_outputs: 0,
+                emit_outputs: OPFORGE_DEFAULT_OUTPUTS_DISABLE,
                 output_format: OPFORGE_OUTPUT_FORMAT_TEXT,
                 go_addr: std::ptr::null(),
                 bin_specs: OpforgeStringList {

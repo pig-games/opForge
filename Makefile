@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Erik van der Tier
 
-.PHONY: build release clean fmt clippy audit reference reference-test test test-core test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opasm-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf
+.PHONY: build release clean fmt clippy audit reference reference-test test test-core test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opasm-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-cli build-lsp build-ffi build-ffi-release test-ffi-packaging build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf
 
 MANUAL_MD := documentation/opForge-reference-manual.md
 MANUAL_PDF := documentation/opForge-reference-manual.pdf
@@ -11,9 +11,30 @@ build:
 	cargo clippy --workspace -- -D warnings
 	cargo build --workspace
 
+build-cli:
+	cargo build -p cli
+
+build-lsp:
+	cargo build -p lsp
+
+build-ffi:
+	cargo build -p ffi
+
+build-ffi-release:
+	cargo build -p ffi --profile release-ffi --locked --lib
+
+test-ffi-packaging: build-ffi-release
+	@if [ -f target/release-ffi/libopforge.dylib ] || [ -f target/release-ffi/libopforge.so ] || [ -f target/release-ffi/opforge.dll ]; then \
+		true; \
+	else \
+		echo "expected shared library basename libopforge in target/release-ffi"; \
+		exit 1; \
+	fi
+
 release:
 	cargo clippy --workspace -- -D warnings
-	cargo build --workspace --release
+	cargo build --workspace --release --exclude ffi
+	$(MAKE) build-ffi-release
 
 clean:
 	cargo clean

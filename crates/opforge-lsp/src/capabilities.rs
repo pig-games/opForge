@@ -3,7 +3,7 @@
 
 // Transitional re-exports while capability snapshot ownership lives in engine.
 
-pub use engine::{CapabilitySnapshot, CpuCapabilityView};
+pub use libopforge::registry::{CapabilitySnapshot, CpuCapabilityView};
 
 #[cfg(test)]
 mod tests {

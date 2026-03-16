@@ -4,6 +4,7 @@
 /target/
 target/
 /src/asm85
+__pycache__
 *.o
 *.obj
 *.a
@@ -40,14 +41,12 @@ Icon?
 /dev-docs/NextSteps/core/opforge_45gs02_statement_dialect_example_v0_2.md
 /dev-docs
 
-# Local AI agent guidance (environment-specific, keep unversioned)
-AGENTS.md
+# Local AI agent guidance
 /scripts/route_workflow.sh
 /.tmp_yaml/
 .vscode/settings.json
 
 # Local workspace-only content (temporary)
-/skills/
 /worktrees/
 
 # Generated PDF text extractions (local reference)

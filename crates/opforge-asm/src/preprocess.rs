@@ -183,7 +183,8 @@ fn asm_expand_statement_invocation(
     let mut best_keyword: Option<&str> = None;
     for def in &defs {
         let keyword = def.keyword();
-        if !mnemonic_upper.starts_with(keyword) {
+        let keyword_upper = keyword.to_ascii_uppercase();
+        if !mnemonic_upper.starts_with(&keyword_upper) {
             continue;
         }
         match best_keyword {
@@ -199,7 +200,7 @@ fn asm_expand_statement_invocation(
 
     let matching_defs: Vec<&NativeStatementExport> = defs
         .iter()
-        .filter(|def| def.keyword() == keyword_upper)
+        .filter(|def| def.keyword().eq_ignore_ascii_case(keyword_upper))
         .collect();
     let remainder = &mnemonic_text[keyword_upper.len()..];
     let tail = code.get(mnemonic_end..).unwrap_or("");
@@ -415,5 +416,37 @@ mod tests {
             exports.visibility_index().get("LOAD"),
             Some(&CompileTimeVisibility::Public)
         );
+    }
+
+    #[test]
+    fn asm_macro_processor_expands_statement_with_boundary_signature() {
+        let mut processor = AsmMacroProcessor::new(64);
+        let lines = vec![
+            ".statement lda \"[\"[{byte:val}]\"],y\"".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            "    lda [$05],y".to_string(),
+        ];
+
+        let out = processor.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte $05".to_string()));
+    }
+
+    #[test]
+    fn asm_macro_processor_expands_dotted_statement_with_split_register_digit_args() {
+        let mut processor = AsmMacroProcessor::new(64);
+        let lines = vec![
+            ".statement move.b char:dst[{byte:dstnum}] \",\" char:src[{byte:srcnum}]".to_string(),
+            "    .byte 'b'".to_string(),
+            "    .byte '.dst', .dstnum".to_string(),
+            "    .byte '.src', .srcnum".to_string(),
+            ".endstatement".to_string(),
+            "    move.b d0,d2".to_string(),
+        ];
+
+        let out = processor.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 'b'".to_string()));
+        assert!(out.contains(&"    .byte 'd', 0".to_string()));
+        assert!(out.contains(&"    .byte 'd', 2".to_string()));
     }
 }

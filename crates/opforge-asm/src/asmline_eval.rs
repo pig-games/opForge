@@ -11,6 +11,53 @@ use std::collections::HashMap;
 use types::asm_value::{AsmValue, AsmValueError, StructDef, StructInstance};
 
 impl<'a> AsmLine<'a> {
+    fn eval_repeat_member_index(
+        &self,
+        repeat_name: &str,
+        index: &Expr,
+        field: &str,
+        span: Span,
+    ) -> Result<Option<AsmValue>, AstEvalError> {
+        let Some(full_name) = self.resolve_scoped_value_name(repeat_name) else {
+            return Ok(None);
+        };
+        let Some(iteration_scopes) = self.lookup_repeat_iteration_scopes(&full_name) else {
+            return Ok(None);
+        };
+
+        let index_value = i64::from(self.eval_expr_ast(index)?);
+        if index_value < 0 {
+            return Err(AstEvalError {
+                error: AsmError::new(AsmErrorKind::Expression, "Index cannot be negative", None),
+                span,
+            });
+        }
+        let index_usize = usize::try_from(index_value).map_err(|_| AstEvalError {
+            error: AsmError::new(AsmErrorKind::Expression, "Index out of range", None),
+            span,
+        })?;
+        let Some(scope_name) = iteration_scopes.get(index_usize) else {
+            return Err(AstEvalError {
+                error: AsmError::new(AsmErrorKind::Expression, "Index out of bounds", None),
+                span,
+            });
+        };
+
+        let field_name = format!("{scope_name}.{field}");
+        let Some(entry) = self.symbols.entry(&field_name) else {
+            return Err(AstEvalError {
+                error: AsmError::new(
+                    AsmErrorKind::Expression,
+                    &format!("scoped repetition value has no field '{}'", field),
+                    None,
+                ),
+                span,
+            });
+        };
+
+        Ok(Some(AsmValue::Scalar(i64::from(entry.val))))
+    }
+
     pub fn eval_value_ast(&self, expr: &Expr) -> Result<AsmValue, AstEvalError> {
         match expr {
             Expr::Identifier(name, span) | Expr::Register(name, span) => {
@@ -236,6 +283,16 @@ impl<'a> AsmLine<'a> {
                         ),
                         span: *span,
                     });
+                }
+
+                if let Expr::Index { base, index, .. } = &**base {
+                    if let Expr::Identifier(name, _) | Expr::Register(name, _) = &**base {
+                        if let Some(value) =
+                            self.eval_repeat_member_index(name, index, field, *span)?
+                        {
+                            return Ok(value);
+                        }
+                    }
                 }
 
                 let base_value = self.eval_value_ast(base)?;

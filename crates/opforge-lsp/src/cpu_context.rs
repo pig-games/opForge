@@ -3,11 +3,14 @@
 
 // Transitional re-exports while LSP CPU context helpers live in engine.
 
-pub use engine::{parse_cpu_directive_name, resolve_cpu_for_line, scan_cpu_transitions};
+pub use libopforge::registry::{
+    parse_cpu_directive_name, resolve_cpu_for_line, scan_cpu_transitions,
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use families::{mos6502, z80};
 
     #[test]
     fn resolve_cpu_context_prefers_nearest_prior_directive() {
@@ -21,11 +24,11 @@ mod tests {
         let transitions = scan_cpu_transitions(&lines, &registry);
         assert_eq!(
             resolve_cpu_for_line(2, &transitions, None),
-            crate::families::mos6502::module::CPU_ID
+            mos6502::module::CPU_ID
         );
         assert_eq!(
             resolve_cpu_for_line(4, &transitions, None),
-            crate::z80::module::CPU_ID
+            z80::module::CPU_ID
         );
     }
 }

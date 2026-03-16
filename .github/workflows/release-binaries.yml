@@ -80,8 +80,9 @@ jobs:
           FFI_LIB: ${{ matrix.ffi_lib }}
         run: |
           set -euo pipefail
+          SAFE_TAG_NAME="${TAG_NAME//\//-}"
           mkdir -p dist
-          PKG_DIR="opforge-${TAG_NAME}-${ARTIFACT_ID}"
+          PKG_DIR="opforge-${SAFE_TAG_NAME}-${ARTIFACT_ID}"
           mkdir -p "dist/${PKG_DIR}"
 
           cp "target/release/opforge${BIN_EXT}" "dist/${PKG_DIR}/opforge${BIN_EXT}"
@@ -109,7 +110,8 @@ jobs:
           FFI_LIB: ${{ matrix.ffi_lib }}
         run: |
           set -euo pipefail
-          PKG_DIR="dist/opforge-${TAG_NAME}-${ARTIFACT_ID}"
+          SAFE_TAG_NAME="${TAG_NAME//\//-}"
+          PKG_DIR="dist/opforge-${SAFE_TAG_NAME}-${ARTIFACT_ID}"
 
           [[ -f "${PKG_DIR}/opforge${BIN_EXT}" ]]
           [[ -f "${PKG_DIR}/opforge-lsp${BIN_EXT}" ]]
@@ -130,7 +132,8 @@ jobs:
           ARTIFACT_ID: ${{ matrix.artifact_id }}
         run: |
           set -euo pipefail
-          PKG_DIR="opforge-${TAG_NAME}-${ARTIFACT_ID}"
+          SAFE_TAG_NAME="${TAG_NAME//\//-}"
+          PKG_DIR="opforge-${SAFE_TAG_NAME}-${ARTIFACT_ID}"
           tar -C dist -czf "dist/${PKG_DIR}.tar.gz" "${PKG_DIR}"
 
       - name: Generate checksums

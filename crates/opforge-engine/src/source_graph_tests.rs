@@ -142,4 +142,50 @@ mod tests {
             "expected mforth.wordsets module dependency in graph"
         );
     }
+
+    #[test]
+    fn load_module_graph_ignores_use_directives_in_inactive_conditionals() {
+        let project = temp_dir();
+        let src = project.join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        let root = src.join("main.asm");
+        fs::write(
+            &root,
+            ".module main\n.if 0\n.use missing.module\n.endif\nmain: nop\n.endmodule\n",
+        )
+        .unwrap();
+
+        let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
+        let graph = load_module_graph(&root, root_lines, &[], &[], &[], 64)
+            .expect("inactive conditional imports must not participate in bootstrap");
+
+        assert!(
+            graph.dependency_files.is_empty(),
+            "inactive conditional import should not add dependency files"
+        );
+    }
+
+    #[test]
+    fn load_module_graph_scans_root_uses_only_from_selected_root_module() {
+        let project = temp_dir();
+        let src = project.join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        let root = src.join("main.asm");
+        fs::write(
+            &root,
+            ".module helper\n.use missing.module\n.endmodule\n.module main\nmain: nop\n.endmodule\n",
+        )
+        .unwrap();
+
+        let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
+        let graph = load_module_graph(&root, root_lines, &[], &[], &[], 64)
+            .expect("non-root helper module imports must not participate in root bootstrap");
+
+        assert!(
+            graph.dependency_files.is_empty(),
+            "helper module import should not be treated as root dependency"
+        );
+    }
 }

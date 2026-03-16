@@ -57,6 +57,7 @@ pub struct LspSession {
     validation_rx: Receiver<ValidationTaskResult>,
     latest_validation_generation: HashMap<String, u64>,
     next_validation_generation: u64,
+    pending_validation_uris: HashSet<String>,
     published_diagnostics: HashMap<String, Vec<ValidationDiagnostic>>,
     published_uris_by_root: HashMap<String, HashSet<String>>,
     active_validations: Arc<AtomicUsize>,
@@ -86,6 +87,7 @@ impl LspSession {
             validation_rx,
             latest_validation_generation: HashMap::new(),
             next_validation_generation: 1,
+            pending_validation_uris: HashSet::new(),
             published_diagnostics: HashMap::new(),
             published_uris_by_root: HashMap::new(),
             active_validations: Arc::new(AtomicUsize::new(0)),
@@ -166,6 +168,7 @@ impl LspSession {
     fn handle_initialize(&mut self, params: &Value) -> Value {
         self.config
             .update_from_workspace_settings(params.get("initializationOptions"));
+        merge_initialize_roots(&mut self.config, params);
         self.rebuild_workspace_index();
 
         json!({
@@ -273,6 +276,7 @@ impl LspSession {
             return Vec::new();
         };
         self.invalidate_validation_generation(uri);
+        self.pending_validation_uris.remove(uri);
         self.documents.remove(uri);
         self.workspace_index.remove_document(uri);
         self.published_diagnostics.remove(uri);
@@ -890,26 +894,29 @@ impl LspSession {
         // Record the timestamp so subsequent non-forced events are debounced.
         self.last_validation_at
             .insert(uri.to_string(), Instant::now());
-        self.schedule_validation(uri);
+        if !self.schedule_validation(uri) {
+            self.pending_validation_uris.insert(uri.to_string());
+        }
         self.drain_validation_results()
     }
 
-    fn schedule_validation(&mut self, uri: &str) {
+    fn schedule_validation(&mut self, uri: &str) -> bool {
         /// Maximum number of concurrent validation threads.
         const MAX_CONCURRENT_VALIDATIONS: usize = 2;
 
         let Some(doc) = self.documents.get(uri).cloned() else {
-            return;
+            return false;
         };
         if doc.path.is_none() {
-            return;
+            return false;
         }
         // Skip spawning if we already have the maximum number of active
         // validation threads running.  The next change/save event will
         // re-schedule.
         if self.active_validations.load(Ordering::Relaxed) >= MAX_CONCURRENT_VALIDATIONS {
-            return;
+            return false;
         }
+        self.pending_validation_uris.remove(uri);
         let generation = self.issue_validation_generation(uri);
         let config = self.config.clone();
         let documents = self.documents.clone();
@@ -924,6 +931,7 @@ impl LspSession {
             }
             counter.fetch_sub(1, Ordering::Relaxed);
         });
+        true
     }
 
     fn drain_validation_results(&mut self) -> Vec<OutboundMessage> {
@@ -935,6 +943,7 @@ impl LspSession {
                 Err(TryRecvError::Disconnected) => break,
             }
         }
+        self.schedule_pending_validations();
         out
     }
 
@@ -1026,6 +1035,22 @@ impl LspSession {
         self.workspace_index
             .rebuild(self.context.registry(), &self.config, &self.documents);
     }
+
+    fn schedule_pending_validations(&mut self) {
+        if self.pending_validation_uris.is_empty() {
+            return;
+        }
+        let mut uris: Vec<String> = self.pending_validation_uris.iter().cloned().collect();
+        uris.sort();
+        for uri in uris {
+            if !self.pending_validation_uris.contains(&uri) {
+                continue;
+            }
+            if !self.schedule_validation(&uri) {
+                break;
+            }
+        }
+    }
 }
 
 fn workspace_symbol_kind_to_lsp(kind: &crate::lsp::document_state::SymbolKind) -> u32 {
@@ -1063,6 +1088,39 @@ fn group_diagnostics_by_uri(
     grouped
 }
 
+fn merge_initialize_roots(config: &mut LspConfig, params: &Value) {
+    let mut merged = config.roots.clone();
+    for root in initialize_roots_from_params(params) {
+        if !merged.iter().any(|existing| existing == &root) {
+            merged.push(root);
+        }
+    }
+    merged.sort();
+    merged.dedup();
+    config.roots = merged;
+}
+
+fn initialize_roots_from_params(params: &Value) -> Vec<String> {
+    let mut roots = Vec::new();
+    if let Some(uri) = params.get("rootUri").and_then(Value::as_str) {
+        if let Some(path) = uri_to_path(uri) {
+            roots.push(path.to_string_lossy().to_string());
+        }
+    }
+    if let Some(folders) = params.get("workspaceFolders").and_then(Value::as_array) {
+        for folder in folders {
+            if let Some(uri) = folder.get("uri").and_then(Value::as_str) {
+                if let Some(path) = uri_to_path(uri) {
+                    roots.push(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
 #[derive(Debug)]
 struct OverlayWorkspace {
     temp_root: PathBuf,
@@ -1086,8 +1144,13 @@ fn run_validation_task(
     generation: u64,
     root_uri: String,
 ) -> Option<ValidationTaskResult> {
-    let overlay = create_overlay_workspace(&doc, &open_docs)?;
-    let result = run_cli_validation(&config, &overlay.root_file, &overlay.working_dir);
+    let overlay = create_overlay_workspace(&config, &doc, &open_docs)?;
+    let result = run_cli_validation(
+        &config,
+        &overlay.root_file,
+        &overlay.working_dir,
+        &overlay.original_root,
+    );
 
     let diagnostics = remap_overlay_diagnostics(
         result.diagnostics,
@@ -1105,11 +1168,19 @@ fn run_validation_task(
 }
 
 fn create_overlay_workspace(
+    config: &LspConfig,
     active_doc: &DocumentState,
     open_docs: &HashMap<String, DocumentState>,
 ) -> Option<OverlayWorkspace> {
     let original_file = active_doc.path.as_ref()?;
-    let original_root = original_file.parent()?.to_path_buf();
+    let original_root = preferred_workspace_root_for_path(config, original_file)
+        .or_else(|| common_open_document_root(active_doc, open_docs))
+        .unwrap_or_else(|| {
+            original_file
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_path_buf()
+        });
     let time_part = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()?
@@ -1121,8 +1192,8 @@ fn create_overlay_workspace(
 
     copy_dir_recursive(&original_root, &working_dir)?;
 
-    let file_name = original_file.file_name()?.to_string_lossy().to_string();
-    let root_file = working_dir.join(file_name);
+    let relative_active = original_file.strip_prefix(&original_root).ok()?;
+    let root_file = working_dir.join(relative_active);
 
     for doc in open_docs.values() {
         let Some(path) = &doc.path else {
@@ -1188,12 +1259,85 @@ fn remap_overlay_diagnostics(
     diagnostics
 }
 
+fn common_open_document_root(
+    active_doc: &DocumentState,
+    open_docs: &HashMap<String, DocumentState>,
+) -> Option<PathBuf> {
+    let active_path = active_doc.path.as_ref()?;
+    let mut root = active_path.parent()?.to_path_buf();
+    for doc in open_docs.values() {
+        let Some(path) = &doc.path else {
+            continue;
+        };
+        let Some(parent) = path.parent() else {
+            continue;
+        };
+        root = common_path_prefix(&root, parent)?;
+    }
+    Some(root)
+}
+
+fn common_path_prefix(left: &Path, right: &Path) -> Option<PathBuf> {
+    let left_parts: Vec<_> = left.components().collect();
+    let right_parts: Vec<_> = right.components().collect();
+    let mut out = PathBuf::new();
+    for (l, r) in left_parts.iter().zip(right_parts.iter()) {
+        if l != r {
+            break;
+        }
+        out.push(l.as_os_str());
+    }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+pub(crate) fn configured_workspace_roots(config: &LspConfig) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for root in &config.roots {
+        let path = PathBuf::from(root);
+        let normalized = if path.is_file() {
+            path.parent().map(Path::to_path_buf).unwrap_or(path)
+        } else {
+            path
+        };
+        if !roots.iter().any(|existing| existing == &normalized) {
+            roots.push(normalized);
+        }
+    }
+    roots
+}
+
+pub(crate) fn preferred_workspace_root_for_path(
+    config: &LspConfig,
+    path: &Path,
+) -> Option<PathBuf> {
+    let mut matches: Vec<PathBuf> = configured_workspace_roots(config)
+        .into_iter()
+        .filter(|root| path.starts_with(root))
+        .collect();
+    matches.sort_by_key(|root| root.components().count());
+    matches.pop()
+}
+
 pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
     if !uri.starts_with("file://") {
         return None;
     }
     let raw = uri.trim_start_matches("file://");
-    let decoded = percent_decode(raw);
+    let path = if let Some(rest) = raw.strip_prefix("localhost/") {
+        format!("/{rest}")
+    } else if raw.starts_with('/') || looks_like_windows_drive(raw) {
+        raw.to_string()
+    } else {
+        format!("//{raw}")
+    };
+    let mut decoded = percent_decode(&path);
+    if decoded.starts_with('/') && looks_like_windows_drive(&decoded[1..]) {
+        decoded.remove(0);
+    }
     if decoded.is_empty() {
         None
     } else {
@@ -1202,8 +1346,23 @@ pub fn uri_to_path(uri: &str) -> Option<PathBuf> {
 }
 
 pub fn path_to_file_uri(path: &Path) -> String {
-    let raw = path.to_string_lossy();
-    format!("file://{}", percent_encode(raw.as_ref()))
+    let raw = path.to_string_lossy().replace('\\', "/");
+    let encoded = percent_encode(raw.as_ref());
+    if encoded.starts_with("//") {
+        format!("file:{encoded}")
+    } else if looks_like_windows_drive(encoded.as_str()) {
+        format!("file:///{encoded}")
+    } else {
+        format!("file://{encoded}")
+    }
+}
+
+fn looks_like_windows_drive(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\')
 }
 
 fn percent_decode(input: &str) -> String {
@@ -1343,6 +1502,28 @@ mod tests {
         let uri = path_to_file_uri(&path);
         let parsed = uri_to_path(&uri).expect("uri should parse");
         assert_eq!(parsed, path);
+    }
+
+    #[test]
+    fn windows_drive_file_uri_roundtrip_smoke() {
+        let uri = "file:///C:/Users/test/opforge.asm";
+        let parsed = uri_to_path(uri).expect("uri should parse");
+        assert_eq!(parsed, PathBuf::from("C:/Users/test/opforge.asm"));
+        assert_eq!(
+            path_to_file_uri(Path::new("C:/Users/test/opforge.asm")),
+            uri
+        );
+    }
+
+    #[test]
+    fn unc_file_uri_roundtrip_smoke() {
+        let uri = "file://server/share/opforge.asm";
+        let parsed = uri_to_path(uri).expect("uri should parse");
+        assert_eq!(parsed, PathBuf::from("//server/share/opforge.asm"));
+        assert_eq!(
+            path_to_file_uri(Path::new("//server/share/opforge.asm")),
+            uri
+        );
     }
 
     #[test]

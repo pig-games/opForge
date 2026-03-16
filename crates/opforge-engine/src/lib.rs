@@ -2347,6 +2347,19 @@ mod tests {
     }
 
     #[test]
+    fn root_module_id_ignores_inactive_conditional_modules() {
+        let lines = vec![
+            ".if 0".to_string(),
+            ".module dead".to_string(),
+            ".endif".to_string(),
+            ".module main".to_string(),
+        ];
+        let module_id = root_module_id_from_lines(Path::new("main.asm"), &lines)
+            .expect("root module id should resolve");
+        assert_eq!(module_id, "main");
+    }
+
+    #[test]
     fn resolve_target_cpu_uses_default_without_override() {
         let registry = AsmRegistry::new();
         let resolved = resolve_target_cpu(&registry, None, TEST_CPU).expect("default cpu");

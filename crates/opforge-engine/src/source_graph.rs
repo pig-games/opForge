@@ -6,10 +6,11 @@ use std::path::{Path, PathBuf};
 
 use asm::error::{AsmError, AsmErrorKind, AsmRunError, Diagnostic, Severity};
 use asm::preprocess::{AsmMacroExports, AsmMacroProcessor};
+use opcore::expr::{eval_expr as eval_core_expr, EvalContext};
 use opcore::macro_processor::CompileTimeVisibility;
 use opcore::modules::{expr_to_ident, extract_module_block, UseDirectiveSpec};
-use opcore::parser::LineAst;
-use opcore::services::process_module_item as process_stable_module_item;
+use opcore::parser::{Expr, LineAst, Parser};
+use opcore::tokenizer::ConditionalKind;
 use types::processing::ProcessingOutcome;
 use types::source_map::{SourceMap, SourceOrigin};
 use types::symbol::SymbolVisibility;
@@ -87,12 +88,184 @@ fn is_wildcard_selective(items: &[String]) -> bool {
     items.len() == 1 && items[0] == "*"
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActiveConditionalKind {
+    If,
+    Switch,
+}
+
+#[derive(Debug, Clone)]
+struct ActiveConditionalFrame {
+    kind: ActiveConditionalKind,
+    parent_active: bool,
+    branch_taken: bool,
+    current_active: bool,
+    switch_value: Option<i64>,
+}
+
+#[derive(Debug, Default)]
+struct StaticConditionalEvalContext;
+
+impl EvalContext for StaticConditionalEvalContext {
+    fn lookup_symbol(&self, _name: &str) -> Option<i64> {
+        None
+    }
+
+    fn current_address(&self) -> Option<i64> {
+        None
+    }
+}
+
+fn current_branch_is_active(stack: &[ActiveConditionalFrame]) -> bool {
+    stack
+        .last()
+        .map(|frame| frame.current_active)
+        .unwrap_or(true)
+}
+
+fn eval_static_condition(expr: &Expr) -> Option<bool> {
+    eval_core_expr(expr, &StaticConditionalEvalContext)
+        .ok()
+        .map(|value| value != 0)
+}
+
+fn apply_conditional_ast(
+    stack: &mut Vec<ActiveConditionalFrame>,
+    kind: ConditionalKind,
+    exprs: &[Expr],
+) {
+    let parent_active = current_branch_is_active(stack);
+    match kind {
+        ConditionalKind::If => {
+            let branch_active = parent_active
+                && exprs
+                    .first()
+                    .and_then(eval_static_condition)
+                    .unwrap_or(false);
+            stack.push(ActiveConditionalFrame {
+                kind: ActiveConditionalKind::If,
+                parent_active,
+                branch_taken: branch_active,
+                current_active: branch_active,
+                switch_value: None,
+            });
+        }
+        ConditionalKind::ElseIf => {
+            let Some(frame) = stack.last_mut() else {
+                return;
+            };
+            if frame.kind != ActiveConditionalKind::If {
+                return;
+            }
+            let branch_active = frame.parent_active
+                && !frame.branch_taken
+                && exprs
+                    .first()
+                    .and_then(eval_static_condition)
+                    .unwrap_or(false);
+            frame.current_active = branch_active;
+            frame.branch_taken |= branch_active;
+        }
+        ConditionalKind::Else => {
+            let Some(frame) = stack.last_mut() else {
+                return;
+            };
+            if frame.kind != ActiveConditionalKind::If {
+                return;
+            }
+            let branch_active = frame.parent_active && !frame.branch_taken;
+            frame.current_active = branch_active;
+            frame.branch_taken |= branch_active;
+        }
+        ConditionalKind::EndIf => {
+            if matches!(
+                stack.last().map(|frame| frame.kind),
+                Some(ActiveConditionalKind::If)
+            ) {
+                stack.pop();
+            }
+        }
+        ConditionalKind::Switch => {
+            let switch_value = if parent_active {
+                exprs
+                    .first()
+                    .and_then(|expr| eval_core_expr(expr, &StaticConditionalEvalContext).ok())
+            } else {
+                None
+            };
+            stack.push(ActiveConditionalFrame {
+                kind: ActiveConditionalKind::Switch,
+                parent_active,
+                branch_taken: false,
+                current_active: false,
+                switch_value,
+            });
+        }
+        ConditionalKind::Case => {
+            let Some(frame) = stack.last_mut() else {
+                return;
+            };
+            if frame.kind != ActiveConditionalKind::Switch {
+                return;
+            }
+            let branch_active = frame.parent_active
+                && !frame.branch_taken
+                && frame.switch_value.is_some()
+                && exprs.iter().any(|expr| {
+                    eval_core_expr(expr, &StaticConditionalEvalContext)
+                        .ok()
+                        .zip(frame.switch_value)
+                        .is_some_and(|(value, switch)| value == switch)
+                });
+            frame.current_active = branch_active;
+            frame.branch_taken |= branch_active;
+        }
+        ConditionalKind::Default => {
+            let Some(frame) = stack.last_mut() else {
+                return;
+            };
+            if frame.kind != ActiveConditionalKind::Switch {
+                return;
+            }
+            let branch_active = frame.parent_active && !frame.branch_taken;
+            frame.current_active = branch_active;
+            frame.branch_taken |= branch_active;
+        }
+        ConditionalKind::EndSwitch => {
+            if matches!(
+                stack.last().map(|frame| frame.kind),
+                Some(ActiveConditionalKind::Switch)
+            ) {
+                stack.pop();
+            }
+        }
+    }
+}
+
+fn scan_active_module_items(lines: &[String]) -> Vec<LineAst> {
+    let mut out = Vec::new();
+    let mut stack = Vec::new();
+    for (idx, line) in lines.iter().enumerate() {
+        let ProcessingOutcome::Done(ast) =
+            Parser::process_opcore_line_request(line, idx as u32 + 1)
+        else {
+            continue;
+        };
+        if let LineAst::Conditional(cond) = &ast {
+            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs);
+            continue;
+        }
+        if current_branch_is_active(&stack) {
+            out.push(ast);
+        }
+    }
+    out
+}
+
 pub(crate) fn scan_module_ids_from_processing(lines: &[String]) -> Vec<String> {
     let mut modules = Vec::new();
-    for (idx, line) in lines.iter().enumerate() {
-        let ProcessingOutcome::Done(LineAst::Statement(statement)) =
-            process_stable_module_item(line, idx as u32 + 1)
-        else {
+    for ast in scan_active_module_items(lines) {
+        let LineAst::Statement(statement) = ast else {
             continue;
         };
         let Some(mnemonic) = statement.mnemonic.as_deref() else {
@@ -112,10 +285,8 @@ pub(crate) fn scan_module_ids_from_processing(lines: &[String]) -> Vec<String> {
 
 fn collect_use_directives_from_processing(lines: &[String]) -> Vec<String> {
     let mut uses = Vec::new();
-    for (idx, line) in lines.iter().enumerate() {
-        let ProcessingOutcome::Done(LineAst::Use(use_ast)) =
-            process_stable_module_item(line, idx as u32 + 1)
-        else {
+    for ast in scan_active_module_items(lines) {
+        let LineAst::Use(use_ast) = ast else {
             continue;
         };
         uses.push(use_ast.module_id);
@@ -125,10 +296,8 @@ fn collect_use_directives_from_processing(lines: &[String]) -> Vec<String> {
 
 fn collect_use_directives_with_items_from_processing(lines: &[String]) -> Vec<UseDirectiveSpec> {
     let mut uses = Vec::new();
-    for (idx, line) in lines.iter().enumerate() {
-        let ProcessingOutcome::Done(LineAst::Use(use_ast)) =
-            process_stable_module_item(line, idx as u32 + 1)
-        else {
+    for ast in scan_active_module_items(lines) {
+        let LineAst::Use(use_ast) = ast else {
             continue;
         };
         uses.push(UseDirectiveSpec {
@@ -374,6 +543,13 @@ pub fn load_module_graph_with_provider(
         preloaded.insert(canonical_module_id(&module_id));
     }
 
+    let root_module_id = crate::root_module_id_from_lines(root_path, &root_lines)?;
+    let root_module_lines = if scan_module_ids_from_processing(&root_lines).is_empty() {
+        root_lines.clone()
+    } else {
+        extract_module_block(&root_lines, &root_module_id).unwrap_or_else(|| root_lines.clone())
+    };
+
     let mut loaded = HashSet::new();
     let mut order: Vec<(String, PathBuf, Vec<String>)> = Vec::new();
     let mut stack = Vec::new();
@@ -390,7 +566,7 @@ pub fn load_module_graph_with_provider(
         pp_macro_depth,
         source_provider,
     };
-    for dep in collect_use_directives_from_processing(&root_lines) {
+    for dep in collect_use_directives_from_processing(&root_module_lines) {
         load_module_recursive(&dep, &mut ctx)?;
     }
 
@@ -424,7 +600,7 @@ pub fn load_module_graph_with_provider(
         expanded_deps.push((module_path.clone(), expanded));
     }
 
-    let root_uses = collect_use_directives_with_items_from_processing(&root_lines);
+    let root_uses = collect_use_directives_with_items_from_processing(&root_module_lines);
     let mut mp = AsmMacroProcessor::new(pp_macro_depth);
     for import in &root_uses {
         let dep_canonical = canonical_module_id(&import.module_id);

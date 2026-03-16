@@ -10,7 +10,9 @@ use crate::lsp::document_state::{
     DocumentState, RepetitionStructDecl, StructFieldDecl, StructTypeDecl, SymbolDecl, SymbolKind,
     SymbolVisibility, TypedSymbolDecl, UseImportDecl,
 };
-use crate::lsp::session::{path_to_file_uri, uri_to_path};
+use crate::lsp::session::{
+    configured_workspace_roots, path_to_file_uri, preferred_workspace_root_for_path, uri_to_path,
+};
 use libopforge::registry::AsmRegistry;
 
 #[derive(Debug, Clone)]
@@ -743,13 +745,32 @@ fn definition_line_rank(def_line: u32, request_line: u32) -> (u8, u32) {
 
 pub fn resolve_module_target(word: &str, config: &LspConfig, current_uri: &str) -> Vec<PathBuf> {
     let mut results = Vec::new();
-    let mut candidates = Vec::new();
-    if let Some(path) = uri_to_path(current_uri) {
-        if let Some(parent) = path.parent() {
-            candidates.push(parent.to_path_buf());
+    let mut candidates: Vec<PathBuf> = configured_workspace_roots(config);
+    let current_path = uri_to_path(current_uri);
+    let workspace_root = current_path
+        .as_deref()
+        .and_then(|path| preferred_workspace_root_for_path(config, path));
+    if candidates.is_empty() {
+        if let Some(path) = current_path.as_deref() {
+            if let Some(parent) = path.parent() {
+                candidates.push(parent.to_path_buf());
+            }
         }
     }
-    candidates.extend(config.module_paths.iter().map(PathBuf::from));
+    for module_path in &config.module_paths {
+        let path = PathBuf::from(module_path);
+        if path.is_absolute() {
+            candidates.push(path);
+            continue;
+        }
+        if let Some(root) = workspace_root.as_ref() {
+            candidates.push(root.join(&path));
+        } else if let Some(current) = current_path.as_deref() {
+            if let Some(parent) = current.parent() {
+                candidates.push(parent.join(&path));
+            }
+        }
+    }
 
     for base in candidates {
         let asm = base.join(format!("{word}.asm"));

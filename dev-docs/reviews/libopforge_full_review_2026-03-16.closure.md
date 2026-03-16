@@ -1,62 +1,122 @@
-# Finding Closure Report
+# Closure Report
 
-## Finding
+## Scope
 
-- ID: `RVW-2026-03-16-004`
-- Original summary: Published macOS and Windows `release-ffi` artifacts were
-  built and packaged without any equivalent shared-library load-and-call smoke
-  test outside the Linux-only quality gate, so platform-specific loader or
-  exported-symbol regressions could ship while CI stayed green.
+Closure report for review findings `RVW-2026-03-16-001` through
+`RVW-2026-03-16-004` from
+`dev-docs/reviews/libopforge_full_review_2026-03-16.md` on branch
+`feature/libopforge-lib`.
 
-## Claimed Fix
+## Implementation Summary
 
-- Plan item: `Item 3` of `dev-docs/NextSteps/libopforge_full_review_remediation_plan_2026-03-16.md`, closing the implementation from `Item 1` and `Item 2`
-- Implementation slice or commit: `78cc090`, `46a23d3`, `006d944`, `a997a7c`,
-  `0c374d3`, `d9009b0`
-- Changed files:
-  - `.github/workflows/cargo-build-matrix.yml`
-  - `.github/workflows/release-binaries.yml`
-  - `crates/opforge-ffi/tests/release_panic_boundary.rs`
+- `RVW-2026-03-16-001` was addressed by replacing the fragile LSP file-URI
+  path conversions with platform-correct handling for Unix paths, Windows
+  drive-letter paths, and UNC paths, then adding round-trip coverage for the
+  affected helper surface.
+- `RVW-2026-03-16-002` was addressed by rooting validation overlays and module
+  lookup against configured or inferred workspace roots, rebasing relative
+  include and module paths before CLI validation, and extending integration
+  coverage for sibling-directory edits and workspace-rooted definition lookup.
+- `RVW-2026-03-16-003` was addressed by retaining pending validation requests
+  when the worker cap is saturated and replaying the newest pending URI after
+  worker completion instead of dropping the request permanently.
+- `RVW-2026-03-16-004` was addressed by making source-graph bootstrap scanning
+  conditional-aware and by limiting root `.use` discovery to the selected root
+  module block rather than the full expanded line list.
+
+## Finding Closure Map
+
+### RVW-2026-03-16-001
+
+- Status: fixed
+- Implementation slice: uncommitted working-tree remediation on `2026-03-16`
+- Files:
+  - `crates/opforge-lsp/src/session.rs`
   - `crates/opforge-lsp/tests/lsp_client_integration.rs`
+- Closure evidence: `uri_to_path()` and `path_to_file_uri()` now preserve
+  Windows drive-letter paths and UNC authorities, and focused tests
+  `windows_drive_file_uri_roundtrip_smoke` and `unc_file_uri_roundtrip_smoke`
+  prove the original failure mode no longer reproduces at the helper layer.
+
+### RVW-2026-03-16-002
+
+- Status: fixed
+- Implementation slice: uncommitted working-tree remediation on `2026-03-16`
+- Files:
+  - `crates/opforge-lsp/src/session.rs`
+  - `crates/opforge-lsp/src/validation_runner.rs`
+  - `crates/opforge-lsp/src/workspace_index.rs`
+  - `crates/opforge-lsp/tests/lsp_client_integration.rs`
+- Closure evidence: overlays now choose a workspace-scoped root, relative
+  `include_paths` and `module_paths` are rebased before validation, and the
+  integration tests
+  `overlay_uses_workspace_root_and_rebased_module_paths_for_sibling_files` and
+  `definition_resolves_module_target_via_workspace_rooted_relative_module_path`
+  prove sibling unsaved edits and relative module roots resolve through the
+  intended workspace scope.
+
+### RVW-2026-03-16-003
+
+- Status: fixed
+- Implementation slice: uncommitted working-tree remediation on `2026-03-16`
+- Files:
+  - `crates/opforge-lsp/src/session.rs`
+  - `crates/opforge-lsp/tests/lsp_client_integration.rs`
+- Closure evidence: pending validation URIs are now retained when
+  `MAX_CONCURRENT_VALIDATIONS` is hit and are automatically rescheduled after
+  worker completion, and the integration test
+  `validation_backpressure_replays_latest_request_after_capacity_returns`
+  proves the latest version is eventually validated instead of being dropped.
+
+### RVW-2026-03-16-004
+
+- Status: fixed
+- Implementation slice: uncommitted working-tree remediation on `2026-03-16`
+- Files:
+  - `crates/opforge-engine/src/source_graph.rs`
+  - `crates/opforge-engine/src/source_graph_tests.rs`
+  - `crates/opforge-engine/src/lib.rs`
+- Closure evidence: bootstrap scanning now tracks active conditional state and
+  scopes root-module dependency discovery to the selected root module, and the
+  focused tests
+  `root_module_id_ignores_inactive_conditional_modules`,
+  `load_module_graph_ignores_use_directives_in_inactive_conditionals`, and
+  `load_module_graph_scans_root_uses_only_from_selected_root_module` prove the
+  reviewed dead-branch and wrong-root failure modes no longer drive graph
+  loading.
 
 ## Validation Evidence
 
-- Command or check: `cargo fmt --all --check`
-- Result: PASS on commit `d9009b0`
-- Command or check: `cargo clippy --workspace -- -D warnings`
-- Result: PASS on commit `d9009b0`
-- Command or check: `cargo audit`
-- Result: PASS on commit `d9009b0` with the existing allowed `RUSTSEC-2025-0026` warning for `registry`
-- Command or check: `cargo test --workspace --locked`
-- Result: PASS on commit `d9009b0`
-- Command or check: `cargo test --locked -p ffi release_profile_catches_forced_ffi_panic`
-- Result: PASS on commit `d9009b0`
-- Command or check: `cargo test --locked -p ffi exported_header_matches_rust_abi_contract`
-- Result: PASS on commit `d9009b0`
-- Command or check: `cargo test --locked -p ffi`
-- Result: PASS on commit `d9009b0`
-- Command or check: `cargo test --locked -p lsp --test lsp_client_integration overlapping_validations_publish_only_newest_version_results`
-- Result: PASS on commit `d9009b0`
-- Command or check: GitHub Actions `Quality Gate` run `23165250323`
-- Result: PASS on commit `d9009b0`
-- Command or check: GitHub Actions `Cargo Build Matrix` run `23165250263`
-- Result: `Run release-ffi panic boundary smoke test` and `Run FFI ABI contract test` passed on Ubuntu, macOS, and Windows for commit `d9009b0`
-- Command or check: GitHub Actions `Release Binaries` verify-only run `23165258036`
-- Result: `Run shipped release-ffi smoke test`, `Package release artifacts`, `Verify release package layout`, and `Archive release artifacts` passed on Ubuntu, macOS, and Windows for commit `d9009b0`; `Upload assets to release` remained downstream and skipped after a later checksum failure
+- `cargo fmt --all --check` PASS
+- `cargo clippy -- -D warnings` PASS
+- `cargo audit` PASS with the existing allowed `RUSTSEC-2025-0026` warning for `registry`
+- `cargo test --locked -p lsp` PASS
+- `cargo test --locked -p engine` PASS
+- `cargo test --locked` PASS
+- `python3 scripts/workflow/check_plan_checkboxes.py dev-docs/NextSteps/libopforge_full_review_remediation_plan_2026-03-16.md` PASS
 
-## Closure Status
+## Closure Gates
 
-- Status: fixed
-- Residual risk: The verify-only release workflow still fails later at
-  `Generate checksums` on all three OS jobs in run `23165258036`. That is a
-  separate release-packaging defect, but it does not reopen
-  `RVW-2026-03-16-004` because the original missing same-OS shared-library
-  smoke coverage is now present and passing before artifact upload.
+- `Finding Closure Reviewer`: PASS
+- `Plan Compliance Reviewer`: PASS
+
+## Residual Risk
+
+- The targeted Windows and UNC regressions are now covered by focused URI and
+  integration tests, but this closure pass still did not run the LSP inside a
+  live Windows editor host.
+- The active plan's commit-per-item workflow has not yet been satisfied because
+  the remediation work is still uncommitted in the current worktree. That is a
+  workflow-compliance gap, not a reopened product-code defect in findings
+  `RVW-2026-03-16-001` through `RVW-2026-03-16-004`.
 
 ## Notes
 
-- Manual `finding-closure-reviewer` readback against `AGENTS.md`, the original
-  finding, this closure report, the implementation slice, and the validation
-  evidence: `PASS`. The finding ID matches exactly, the implementation touches
-  the relevant release-validation path, and the evidence now directly covers the
-  original failure mode on Ubuntu, macOS, and Windows.
+- `Finding Closure Reviewer` result: `PASS: The claimed fixes match the
+  working-tree code and tests and the listed quality gates completed
+  successfully, so the closure report accurately reflects the original
+  findings' resolution.`
+- `Plan Compliance Reviewer` result: `PASS: The current diff is scoped to
+  Items 1-4 plus the closure-report portion of Item 5, the closure report lists
+  the fixes and evidence per finding, and the validation suite plus
+  plan-checkbox check all passed, so the slice is ready for the Item 5 commit.`

@@ -53,9 +53,24 @@ fn write_executable_script(path: &PathBuf, script: &str) {
 }
 
 fn init_with_validator(client: &mut LspTestClient, script: &Path, debounce_ms: u64, on_save: bool) {
+    init_with_validator_config(client, script, debounce_ms, on_save, &[], &[], &[]);
+}
+
+fn init_with_validator_config(
+    client: &mut LspTestClient,
+    script: &Path,
+    debounce_ms: u64,
+    on_save: bool,
+    roots: &[String],
+    include_paths: &[String],
+    module_paths: &[String],
+) {
     let _ = client.initialize(json!({
         "opforgeLsp": {
             "opforgePath": script.to_string_lossy().to_string(),
+            "roots": roots,
+            "includePaths": include_paths,
+            "modulePaths": module_paths,
             "validation": {
                 "debounceMs": debounce_ms,
                 "onSave": on_save
@@ -439,6 +454,104 @@ printf '{"code":"EDEP","severity":"error","message":"dependency-diagnostic","fil
 }
 
 #[test]
+fn overlay_uses_workspace_root_and_rebased_module_paths_for_sibling_files() {
+    let temp_dir = unique_temp_dir();
+    let src_dir = temp_dir.join("src");
+    let shared_dir = temp_dir.join("shared");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&shared_dir).expect("create shared dir");
+
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+module_path=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --module-path)
+      module_path="$2"
+      shift 2
+      ;;
+    --infile)
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+helper="$module_path/helper.asm"
+if [ ! -f "$helper" ]; then
+  printf '{"code":"EMISS","severity":"error","message":"missing rebased helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$helper"
+  exit 0
+fi
+if grep -q "value = 2" "$helper"; then
+  printf '{"code":"EHELP","severity":"warning","message":"saw rebased helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$helper"
+fi
+"#,
+    );
+
+    let root_file = src_dir.join("root.asm");
+    let helper_file = shared_dir.join("helper.asm");
+    write_text(&root_file, ".use helper\n");
+    write_text(&helper_file, "value = 1\n");
+    let root_uri = path_to_file_uri(&root_file);
+    let helper_uri = path_to_file_uri(&helper_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator_config(
+        &mut client,
+        &script_path,
+        0,
+        true,
+        &[temp_dir.to_string_lossy().to_string()],
+        &[],
+        &["shared".to_string()],
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": helper_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "value = 2\n"
+            }
+        }),
+    );
+    let _ = client.wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(1));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+
+    let publish = client
+        .wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(3))
+        .expect("rebased helper diagnostics");
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(diagnostics.iter().any(|diag| {
+        diag.get("code")
+            .and_then(|value| value.as_str())
+            .is_some_and(|code| code == "EHELP")
+    }));
+
+    client.shutdown();
+}
+
+#[test]
 fn definition_resolves_local_symbol_declaration() {
     let temp_file = unique_temp_file("definition.asm");
     let uri = path_to_file_uri(&temp_file);
@@ -484,6 +597,60 @@ fn definition_resolves_local_symbol_declaration() {
             .unwrap_or(999),
         0
     );
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_resolves_module_target_via_workspace_rooted_relative_module_path() {
+    let temp_dir = unique_temp_dir();
+    let src_dir = temp_dir.join("src");
+    let shared_dir = temp_dir.join("shared");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&shared_dir).expect("create shared dir");
+
+    let main_file = src_dir.join("main.asm");
+    let helper_file = shared_dir.join("helper.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let helper_uri = path_to_file_uri(&helper_file);
+    write_text(&main_file, ".use helper\n");
+    write_text(&helper_file, ".module helper\nvalue = 1\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()],
+            "modulePaths": ["shared"]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 0, "character": 6}
+        }),
+    );
+    let entries = defs.as_array().expect("definition array");
+    assert!(entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == helper_uri)
+    }));
 
     client.shutdown();
 }
@@ -1255,6 +1422,105 @@ printf '{{"code":"ENEW","severity":"warning","message":"fresh","file":"%s","line
             .is_none(),
         "stale slow validation result should be suppressed"
     );
+
+    client.shutdown();
+}
+
+#[test]
+fn validation_backpressure_replays_latest_request_after_capacity_returns() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    let first_started = temp_dir.join("first.started");
+    let second_started = temp_dir.join("second.started");
+    write_executable_script(
+        &script_path,
+        &format!(
+            r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+base="$(basename "$infile")"
+if grep -q "slow-version" "$infile"; then
+  if [ "$base" = "first.asm" ]; then
+    : > "{first_started}"
+  else
+    : > "{second_started}"
+  fi
+  sleep 1
+  printf '{{"code":"ESLOW","severity":"warning","message":"slow","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+  exit 0
+fi
+printf '{{"code":"EFAST","severity":"warning","message":"fast","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+"#,
+            first_started = first_started.display(),
+            second_started = second_started.display()
+        ),
+    );
+
+    let first_file = temp_dir.join("first.asm");
+    let second_file = temp_dir.join("second.asm");
+    write_text(&first_file, "slow-version\n");
+    write_text(&second_file, "slow-version\n");
+    let first_uri = path_to_file_uri(&first_file);
+    let second_uri = path_to_file_uri(&second_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": first_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "slow-version\n"
+            }
+        }),
+    );
+    wait_for_path(&first_started, Duration::from_secs(2));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": second_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "slow-version\n"
+            }
+        }),
+    );
+    wait_for_path(&second_started, Duration::from_secs(2));
+    thread::sleep(Duration::from_millis(100));
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {"uri": first_uri, "version": 2},
+            "contentChanges": [{"text": "fast-version\n"}]
+        }),
+    );
+
+    let publish = client
+        .wait_for_publish_diagnostics(&first_uri, Duration::from_secs(5))
+        .expect("replayed latest diagnostics publish");
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(diagnostics.iter().any(|diag| {
+        diag.get("code")
+            .and_then(|value| value.as_str())
+            .is_some_and(|code| code == "EFAST")
+    }));
 
     client.shutdown();
 }

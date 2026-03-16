@@ -39,6 +39,7 @@ pub fn run_cli_validation(
     config: &LspConfig,
     root_file: &Path,
     working_dir: &Path,
+    source_root: &Path,
 ) -> ValidationRunResult {
     let mut cmd = Command::new(resolve_opforge_path(config));
     cmd.arg("--format")
@@ -51,10 +52,12 @@ pub fn run_cli_validation(
         cmd.arg("--cpu").arg(cpu);
     }
     for include in &config.include_paths {
-        cmd.arg("--include-path").arg(include);
+        cmd.arg("--include-path")
+            .arg(rebase_config_path(include, source_root, working_dir));
     }
     for module in &config.module_paths {
-        cmd.arg("--module-path").arg(module);
+        cmd.arg("--module-path")
+            .arg(rebase_config_path(module, source_root, working_dir));
     }
     for define in &config.defines {
         cmd.arg("--define").arg(define);
@@ -74,6 +77,14 @@ pub fn run_cli_validation(
         &output.stderr,
     )));
     ValidationRunResult { diagnostics }
+}
+
+fn rebase_config_path(path: &str, _source_root: &Path, overlay_root: &Path) -> String {
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        return candidate.to_string_lossy().to_string();
+    }
+    overlay_root.join(candidate).to_string_lossy().to_string()
 }
 
 fn resolve_opforge_path(config: &LspConfig) -> String {

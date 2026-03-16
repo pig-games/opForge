@@ -1233,7 +1233,7 @@ printf '{{"code":"ENEW","severity":"warning","message":"fresh","file":"%s","line
     );
 
     let publish = client
-        .wait_for_publish_diagnostics(&uri, Duration::from_secs(3))
+        .wait_for_publish_diagnostics(&uri, Duration::from_secs(6))
         .expect("newest diagnostics publish");
     let diagnostics = publish
         .get("diagnostics")

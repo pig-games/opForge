@@ -65,6 +65,17 @@ fn init_with_validator(client: &mut LspTestClient, script: &Path, debounce_ms: u
     client.notify("initialized", json!({}));
 }
 
+fn wait_for_path(path: &Path, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if path.exists() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("timed out waiting for {}", path.display());
+}
+
 #[test]
 fn initialize_reports_core_capabilities() {
     let mut client = LspTestClient::spawn().expect("spawn lsp");
@@ -1166,9 +1177,11 @@ fn workspace_symbol_matches_substring_queries() {
 fn overlapping_validations_publish_only_newest_version_results() {
     let temp_dir = unique_temp_dir();
     let script_path = temp_dir.join("validator.sh");
+    let slow_started_path = temp_dir.join("slow.started");
     write_executable_script(
         &script_path,
-        r#"#!/bin/sh
+        &format!(
+            r#"#!/bin/sh
 set -eu
 infile=""
 while [ "$#" -gt 0 ]; do
@@ -1180,12 +1193,15 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 if grep -q "slow-version" "$infile"; then
+  : > "{slow_started_path}"
   sleep 1
-  printf '{"code":"EOLD","severity":"warning","message":"stale","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+  printf '{{"code":"EOLD","severity":"warning","message":"stale","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
   exit 0
 fi
-printf '{"code":"ENEW","severity":"warning","message":"fresh","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+printf '{{"code":"ENEW","severity":"warning","message":"fresh","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
 "#,
+            slow_started_path = slow_started_path.display()
+        ),
     );
 
     let file = temp_dir.join("cancel.asm");
@@ -1206,7 +1222,7 @@ printf '{"code":"ENEW","severity":"warning","message":"fresh","file":"%s","line"
             }
         }),
     );
-    thread::sleep(Duration::from_millis(80));
+    wait_for_path(&slow_started_path, Duration::from_secs(2));
 
     client.notify(
         "textDocument/didChange",

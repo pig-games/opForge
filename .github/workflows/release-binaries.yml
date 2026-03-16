@@ -5,9 +5,14 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: Existing release tag to upload assets to (e.g. v0.9.4)
+      verify_only:
+        description: Run the workflow without uploading assets to a GitHub release
         required: true
+        default: true
+        type: boolean
+      tag_name:
+        description: Release tag to package for when uploads are enabled (e.g. v0.9.4)
+        required: false
         type: string
 
 permissions:
@@ -43,6 +48,16 @@ jobs:
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+
+      - name: Validate workflow inputs
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event.inputs.verify_only }}" != "true" && -z "${{ github.event.inputs.tag_name }}" ]]; then
+            echo "error: tag_name is required when verify_only is false" >&2
+            exit 1
+          fi
 
       - name: Build binaries
         run: cargo build --release --locked --bins
@@ -132,6 +147,7 @@ jobs:
           fi
 
       - name: Upload assets to release
+        if: github.event_name == 'release' || github.event.inputs.verify_only != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name || github.event.inputs.tag_name || github.ref_name }}

@@ -1223,6 +1223,7 @@ printf '{{"code":"ENEW","severity":"warning","message":"fresh","file":"%s","line
         }),
     );
     wait_for_path(&slow_started_path, Duration::from_secs(2));
+    thread::sleep(Duration::from_millis(100));
 
     client.notify(
         "textDocument/didChange",

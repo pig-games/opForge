@@ -30,7 +30,7 @@ cross-platform FFI release-validation gap from the latest full review.
 
 ## Work Items
 
-- [ ] Item 1: Make the release-ffi smoke test portable across release platforms.
+- [x] Item 1: Make the release-ffi smoke test portable across release platforms.
   - Source requirement or finding IDs: `RVW-2026-03-16-004` (expected partial closure).
   - Expected files: `crates/opforge-ffi/tests/release_panic_boundary.rs` and `crates/opforge-ffi/Cargo.toml` only if the existing smoke test needs narrowly scoped support changes for macOS or Windows loading.
   - Validation: local pre-commit validation with `cargo test --locked -p ffi release_profile_catches_forced_ffi_panic` and `cargo test --locked -p ffi`; post-push CI evidence from the updated GitHub Actions job definition or run logs showing the smoke test is configured to execute on Ubuntu, macOS, and Windows runners
@@ -39,7 +39,7 @@ cross-platform FFI release-validation gap from the latest full review.
   - Commit outcome: the existing release-profile dynamic-load and panic-boundary smoke test can run unchanged on Linux, macOS, and Windows release runners, with any platform-specific library naming or child-process assumptions handled inside the current focused test path.
   - Definition of done: the FFI smoke test no longer depends on Linux-only assumptions, local focused validation is green, and CI configuration or run evidence shows the same focused test path is ready to execute on Ubuntu, macOS, and Windows without adding a second parallel test path.
 
-- [ ] Item 2: Gate every release OS on the release-ffi load-and-call smoke test.
+- [x] Item 2: Gate every release OS on the release-ffi load-and-call smoke test.
   - Source requirement or finding IDs: `RVW-2026-03-16-004` (expected full closure).
   - Expected files: `.github/workflows/cargo-build-matrix.yml`, `.github/workflows/release-binaries.yml`, and `crates/opforge-ffi/tests/release_panic_boundary.rs` only if the workflow promotion needs a narrow invocation rename or filter update; `crates/opforge-lsp/tests/lsp_client_integration.rs` only if a narrowly scoped existing CI flake must be stabilized so the required Item 2 quality-gate and cross-platform evidence can be collected without reopening unrelated product scope.
   - Validation: local pre-commit validation with `cargo test --locked -p ffi release_profile_catches_forced_ffi_panic`, `cargo test --locked -p ffi exported_header_matches_rust_abi_contract`, `cargo test --locked -p ffi`, and `cargo test --locked -p lsp --test lsp_client_integration overlapping_validations_publish_only_newest_version_results`; required post-push CI evidence from GitHub Actions showing the release-ffi dynamic-load smoke test passed on Ubuntu, macOS, and Windows and that the release-packaging workflow is blocked on those per-platform results before artifact upload
@@ -48,7 +48,7 @@ cross-platform FFI release-validation gap from the latest full review.
   - Commit outcome: the OS build matrix runs the `release-ffi` dynamic-load smoke test on Ubuntu, macOS, and Windows, and the release-packaging workflow depends on those per-platform smoke results before uploading artifacts.
   - Definition of done: local focused validation is green, GitHub Actions evidence shows the built shared library was loaded and exercised successfully on Ubuntu, macOS, and Windows, and no release artifact can be packaged or published unless those same-OS smoke-test jobs pass first.
 
-- [ ] Item 3: Capture closure evidence and finish remediation bookkeeping.
+- [x] Item 3: Capture closure evidence and finish remediation bookkeeping.
   - Source requirement or finding IDs: `RVW-2026-03-16-004` (expected closure confirmation only).
   - Expected files: this plan for checkbox updates and a finding-closure report artifact for `RVW-2026-03-16-004` required by the active workflow.
   - Validation: `cargo fmt --all --check`; `cargo clippy --workspace -- -D warnings`; `cargo audit`; `cargo test --workspace --locked`; `python3 scripts/workflow/check_plan_checkboxes.py dev-docs/NextSteps/libopforge_full_review_remediation_plan_2026-03-16.md`; `finding-closure-reviewer` `PASS` for the `RVW-2026-03-16-004` closure artifact
@@ -59,9 +59,9 @@ cross-platform FFI release-validation gap from the latest full review.
 
 ## Milestones
 
-- [ ] Milestone 1: Portable release-ffi smoke coverage is ready for cross-platform CI promotion (`Item 1` complete and committed).
-- [ ] Milestone 2: Every release OS is gated on load-and-call smoke coverage before packaging (`Item 2` complete and committed).
-- [ ] Milestone 3: Closure evidence and remediation bookkeeping are complete (`Item 3` complete and committed).
+- [x] Milestone 1: Portable release-ffi smoke coverage is ready for cross-platform CI promotion (`Item 1` complete and committed).
+- [x] Milestone 2: Every release OS is gated on load-and-call smoke coverage before packaging (`Item 2` complete and committed).
+- [x] Milestone 3: Closure evidence and remediation bookkeeping are complete (`Item 3` complete and committed).
 
 ## Blocking Rules
 

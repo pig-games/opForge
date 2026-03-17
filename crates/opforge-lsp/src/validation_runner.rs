@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use serde_json::Value;
@@ -112,12 +112,33 @@ fn validation_exit_message(code: Option<i32>) -> String {
     }
 }
 
-fn rebase_config_path(path: &str, _source_root: &Path, overlay_root: &Path) -> String {
+fn rebase_config_path(path: &str, source_root: &Path, overlay_root: &Path) -> String {
     let candidate = Path::new(path);
     if candidate.is_absolute() {
         return candidate.to_string_lossy().to_string();
     }
-    overlay_root.join(candidate).to_string_lossy().to_string()
+
+    let normalized_source_root = normalize_path(source_root);
+    let resolved_source_path = normalize_path(&normalized_source_root.join(candidate));
+    if let Ok(relative) = resolved_source_path.strip_prefix(&normalized_source_root) {
+        return overlay_root.join(relative).to_string_lossy().to_string();
+    }
+
+    resolved_source_path.to_string_lossy().to_string()
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let _ = normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
 }
 
 fn resolve_opforge_path(config: &LspConfig) -> String {
@@ -317,5 +338,25 @@ mod tests {
 
         let _ = std::fs::remove_file(workspace_opforge);
         let _ = std::fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn rebase_config_path_keeps_workspace_relative_targets_in_overlay() {
+        let source_root = Path::new("/workspace/project");
+        let overlay_root = Path::new("/tmp/lsp-overlay/workspace");
+
+        let rebased = rebase_config_path("shared/modules", source_root, overlay_root);
+
+        assert_eq!(rebased, "/tmp/lsp-overlay/workspace/shared/modules");
+    }
+
+    #[test]
+    fn rebase_config_path_resolves_external_relative_targets_from_workspace_root() {
+        let source_root = Path::new("/workspace/project");
+        let overlay_root = Path::new("/tmp/lsp-overlay/workspace");
+
+        let rebased = rebase_config_path("../external/modules", source_root, overlay_root);
+
+        assert_eq!(rebased, "/workspace/external/modules");
     }
 }

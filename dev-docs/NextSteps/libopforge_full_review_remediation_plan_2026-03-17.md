@@ -55,7 +55,7 @@ validation sees the same source set as normal assembly.
   - Commit outcome: release package naming and uploaded release assets are derived from the checked-out tag identity, so verify-only runs and upload runs cannot diverge on the source or published tag.
   - Definition of done: the reviewed release-integrity defect is closed because the workflow’s build source, package names, and uploaded tag all come from the same resolved tag ref.
 
-- [ ] Item 3: Rebase validator config paths from the original workspace root.
+- [x] Item 3: Rebase validator config paths from the original workspace root.
   - Source requirement or finding IDs: `RVW-2026-03-17-005` (expected partial closure).
   - Expected files: `crates/opforge-lsp/src/validation_runner.rs`, `crates/opforge-lsp/src/session.rs`, and focused LSP integration tests only if needed for relative-root coverage.
   - Validation: add a focused regression test proving relative `includePaths` and `modulePaths` continue to resolve when validation runs from the temporary overlay, then run `cargo test --locked -p lsp`.
@@ -86,7 +86,7 @@ validation sees the same source set as normal assembly.
 
 - [x] Milestone 1: Manual release uploads are pinned to a resolved tag checkout (`Item 1` complete and committed).
 - [x] Milestone 2: Release packaging and upload tag selection derive from the resolved checkout (`Item 2` complete and committed).
-- [ ] Milestone 3: Validator config roots remain workspace-correct inside the overlay (`Item 3` complete and committed).
+- [x] Milestone 3: Validator config roots remain workspace-correct inside the overlay (`Item 3` complete and committed).
 - [ ] Milestone 4: Validation overlays stage ordinary include and module dependencies (`Item 4` complete and committed).
 - [ ] Milestone 5: Closure evidence and bookkeeping are complete (`Item 5` complete and committed).
 

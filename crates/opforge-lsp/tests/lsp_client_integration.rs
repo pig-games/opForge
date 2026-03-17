@@ -870,6 +870,108 @@ fi
 }
 
 #[test]
+fn overlay_rebases_relative_validator_paths_from_workspace_root() {
+    let temp_dir = unique_temp_dir();
+    let workspace_dir = temp_dir.join("workspace");
+    let src_dir = workspace_dir.join("src");
+    let include_dir = temp_dir.join("external-includes");
+    let shared_dir = temp_dir.join("external-shared");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&include_dir).expect("create include dir");
+    fs::create_dir_all(&shared_dir).expect("create shared dir");
+
+    let expected_include = include_dir.to_string_lossy().replace('\\', "/");
+    let expected_module = shared_dir.to_string_lossy().replace('\\', "/");
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        &format!(
+            r#"#!/bin/sh
+set -eu
+infile=""
+include_path=""
+module_path=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --infile)
+            infile="$2"
+            shift 2
+            ;;
+        --include-path)
+            include_path="$2"
+            shift 2
+            ;;
+        --module-path)
+            module_path="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+normalize() {{
+    printf '%s' "$1" | tr '\\' '/'
+}}
+
+if [ "$(normalize "$include_path")" != "{expected_include}" ]; then
+    printf '{{"code":"EBADINC","severity":"error","message":"include path was not rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+    exit 0
+fi
+
+if [ "$(normalize "$module_path")" != "{expected_module}" ]; then
+    printf '{{"code":"EBADMOD","severity":"error","message":"module path was not rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+    exit 0
+fi
+
+printf '{{"code":"EOK","severity":"warning","message":"validator paths were rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+"#
+        ),
+    );
+
+    let root_file = src_dir.join("root.asm");
+    write_text(&root_file, "nop\n");
+    let root_uri = path_to_file_uri(&root_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator_config(
+        &mut client,
+        &script_path,
+        0,
+        true,
+        &[workspace_dir.to_string_lossy().to_string()],
+        &["../external-includes".to_string()],
+        &["../external-shared".to_string()],
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(&mut client, &root_uri, &["EOK"], Duration::from_secs(3));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "expected one validator-path diagnostic"
+    );
+
+    client.shutdown();
+}
+
+#[test]
 fn overlay_stages_only_active_and_dependency_files() {
     let temp_dir = unique_temp_dir();
     let workspace_dir = temp_dir.join("workspace");

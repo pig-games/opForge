@@ -1953,6 +1953,88 @@ fn workspace_symbol_matches_substring_queries() {
 }
 
 #[test]
+fn did_close_rehydrates_rooted_symbols_from_disk() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+
+    write_text(
+        &main_file,
+        ".module app\n.use math as M\n    lda M.value\n.endmodule\n",
+    );
+    write_text(&math_file, ".module math\n.pub\nvalue = 42\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math as M\n    lda M.value\n.endmodule\n"
+            }
+        }),
+    );
+
+    client.notify(
+        "textDocument/didClose",
+        json!({
+            "textDocument": {
+                "uri": math_uri
+            }
+        }),
+    );
+
+    let symbols = client.request("workspace/symbol", json!({ "query": "value" }));
+    let symbol_entries = symbols.as_array().expect("workspace symbol array");
+    assert!(symbol_entries.iter().any(|entry| {
+        entry
+            .get("location")
+            .and_then(|value| value.get("uri"))
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    let def_entries = defs.as_array().expect("definition array");
+    assert!(def_entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    client.shutdown();
+}
+
+#[test]
 fn overlapping_validations_publish_only_newest_version_results() {
     let temp_dir = unique_temp_dir();
     let script_path = temp_dir.join("validator.sh");

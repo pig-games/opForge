@@ -280,7 +280,7 @@ impl LspSession {
         self.invalidate_validation_generation(uri);
         self.pending_validation_uris.remove(uri);
         self.documents.remove(uri);
-        self.workspace_index.remove_document(uri);
+        self.rebuild_workspace_index();
         let mut targets: HashSet<String> = self
             .diagnostic_contributions_by_root
             .remove(uri)

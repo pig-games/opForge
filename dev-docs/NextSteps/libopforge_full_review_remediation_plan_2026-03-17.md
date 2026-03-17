@@ -73,7 +73,7 @@ validation sees the same source set as normal assembly.
   - Commit outcome: overlay construction follows the same reachable dependency set as real assembly for both `.use` imports and ordinary include files required by the active validation target.
   - Definition of done: editor validation sees the same dependency files as disk assembly even when include dependencies are closed in the editor and live outside the temporary overlay root.
 
-- [ ] Item 5: Capture closure evidence and finish remediation bookkeeping.
+- [x] Item 5: Capture closure evidence and finish remediation bookkeeping.
   - Source requirement or finding IDs: `RVW-2026-03-17-004` (expected full closure confirmation after Items 1-2) and `RVW-2026-03-17-005` (expected full closure confirmation after Items 3-4).
   - Expected files: this plan for checkbox updates and one finding-closure artifact for `dev-docs/reviews/libopforge_full_review_2026-03-17.md`.
   - Validation: run `python3 scripts/workflow/check_plan_checkboxes.py dev-docs/NextSteps/libopforge_full_review_remediation_plan_2026-03-17.md`, the full workspace quality gates, and the `Finding Closure Reviewer` plus final `plan-compliance-reviewer` gates.
@@ -88,7 +88,7 @@ validation sees the same source set as normal assembly.
 - [x] Milestone 2: Release packaging and upload tag selection derive from the resolved checkout (`Item 2` complete and committed).
 - [x] Milestone 3: Validator config roots remain workspace-correct inside the overlay (`Item 3` complete and committed).
 - [x] Milestone 4: Validation overlays stage ordinary include and module dependencies (`Item 4` complete and committed).
-- [ ] Milestone 5: Closure evidence and bookkeeping are complete (`Item 5` complete and committed).
+- [x] Milestone 5: Closure evidence and bookkeeping are complete (`Item 5` complete and committed).
 
 ## Blocking Rules
 

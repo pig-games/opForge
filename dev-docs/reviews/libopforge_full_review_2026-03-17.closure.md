@@ -3,48 +3,53 @@
 ## Source Review
 
 - Review: `dev-docs/reviews/libopforge_full_review_2026-03-17.md`
-- Remediation plan: `dev-docs/NextSteps/lsp/libopforge_lsp_review_remediation_plan_2026-03-17.md`
+- Findings in scope: `RVW-2026-03-17-004`, `RVW-2026-03-17-005`
+- Closure date: `2026-03-17`
 
-## Closure Summary
+## Finding Status
 
-### RVW-2026-03-17-001
+### RVW-2026-03-17-004
 
-- Status: closed
-- Implementation summary: overlay validation no longer falls back to the common parent of unrelated open documents, chooses only a configured workspace root or the active file's parent directory, stages a targeted file set rooted to that boundary, and refuses symlinked path components while building the overlay.
-- Evidence: `overlay_root_does_not_widen_to_unrelated_open_documents`, `overlay_stages_only_active_and_dependency_files`, `overlay_refuses_symlinked_dependency_directories`, and `overlay_uses_workspace_root_and_rebased_module_paths_for_sibling_files` in `crates/opforge-lsp/tests/lsp_client_integration.rs`.
+- Status: Closed
+- Implemented by:
+  - `06171f0` Pin manual release uploads to requested tags.
+  - `4a4025f` Derive release packaging tags from the checkout.
+- Closure rationale: upload-mode `workflow_dispatch` runs now resolve and check out `refs/tags/<tag>` before any build step, and the workflow reuses the resolved checkout-derived tag for package naming, archive naming, layout verification, and `softprops/action-gh-release`. The build source, packaged artifact names, and uploaded release tag are now derived from the same resolved tag identity.
+- Validation evidence:
+  - Workflow-semantic inspection via `rg -n "resolve_checkout_ref|resolve_release_tag|steps\.resolve_checkout_ref\.outputs\.checkout_ref|steps\.resolve_release_tag\.outputs\.tag_name|refs/tags/" .github/workflows/release-binaries.yml` confirmed:
+    - upload-mode manual runs set `checkout_ref="refs/tags/${INPUT_TAG_NAME}"`
+    - checkout uses `${{ steps.resolve_checkout_ref.outputs.checkout_ref }}`
+    - release tag resolution derives `tag_name` from `CHECKOUT_REF#refs/tags/`
+    - packaging, archive naming, and `action-gh-release` all consume `${{ steps.resolve_release_tag.outputs.tag_name }}`
+  - `cargo test --locked -p ffi release_profile_loads_and_assembles_smoke`
+  - `cargo fmt --all --check`
+  - `cargo clippy --workspace -- -D warnings`
+  - `cargo audit`
+  - `cargo test --workspace --locked`
 
-### RVW-2026-03-17-002
+### RVW-2026-03-17-005
 
-- Status: closed
-- Implementation summary: `workspace/didChangeConfiguration` now compares the previous and new LSP configuration, invalidates open-document validation generations, clears debounce state for those documents, and schedules fresh validation runs immediately.
-- Evidence: `config_change_revalidates_open_documents_without_followup_edit` in `crates/opforge-lsp/tests/lsp_client_integration.rs`.
+- Status: Closed
+- Implemented by:
+  - `4a5618c` Rebase validator roots from the source workspace.
+  - `6a768f0` Stage validation overlay include dependencies.
+- Closure rationale: validator config roots are now interpreted from the original workspace root, while in-workspace targets continue to map back into the overlay and external relative roots stay rooted on disk. Overlay construction now stages the active file, reachable `.use` module files, and recursively discovered ordinary include files without widening to unrelated workspace files, so validation sees the same dependency set as normal assembly.
+- Validation evidence:
+  - `cargo test --locked -p lsp`
+  - `cargo fmt --all --check`
+  - `cargo clippy --workspace -- -D warnings`
+  - `cargo audit`
+  - `cargo test --workspace --locked`
 
-### RVW-2026-03-17-003
+## Final Validation
 
-- Status: closed
-- Implementation summary: `didClose` now rebuilds the workspace index after removing the in-memory document so rooted on-disk files are rehydrated immediately and remain available to workspace navigation.
-- Evidence: `did_close_rehydrates_rooted_symbols_from_disk` in `crates/opforge-lsp/tests/lsp_client_integration.rs`.
-
-## Validation Evidence
-
-- `cargo test --locked -p lsp`
+- `python3 scripts/workflow/check_plan_checkboxes.py dev-docs/NextSteps/libopforge_full_review_remediation_plan_2026-03-17.md`
 - `cargo fmt --all --check`
 - `cargo clippy --workspace -- -D warnings`
 - `cargo audit`
 - `cargo test --workspace --locked`
-- `python3 scripts/workflow/check_plan_checkboxes.py dev-docs/NextSteps/lsp/libopforge_lsp_review_remediation_plan_2026-03-17.md`
-- `Finding Closure Reviewer`: PASS
 
-## Implementation Trace
+## Residual Notes
 
-- `84ff226` Constrain LSP overlay root selection
-- `69a6a60` Stage LSP validation overlays minimally
-- `4cd030d` Refresh LSP validation after config changes
-- `36cc652` Rehydrate rooted LSP symbols on close
-
-## Notes
-
-- The focused crate is declared as package `lsp` in `crates/opforge-lsp/Cargo.toml`, so the executed focused test command used `-p lsp` even though the remediation plan text names the crate by directory.
-- `cargo audit` completed with one allowed warning for `registry` (`RUSTSEC-2025-0026`, unmaintained), which remains outside the scope of this LSP remediation.
-- The split-commit tip needed a formatter-only adjustment in `crates/opforge-lsp/src/session.rs` so the required `cargo fmt --all --check` gate would pass for the Item 5 closure slice.
-- This closure artifact reflects the split implementation commits and the rerun validation evidence on their combined tip. Final Item 5 commit readiness remains gated only by the current `Plan Compliance Reviewer` result for this bookkeeping slice.
+- No additional findings were reopened while executing this remediation plan.
+- The release workflow and LSP overlay fixes were landed as four slice-scoped commits to preserve traceability from finding to implementation.

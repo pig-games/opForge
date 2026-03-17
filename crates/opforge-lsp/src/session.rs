@@ -1196,7 +1196,8 @@ fn create_overlay_workspace(
     fs::create_dir_all(&working_dir)
         .map_err(|err| format!("create overlay workspace {}: {err}", working_dir.display()))?;
 
-    for source_path in collect_overlay_source_files(config, active_doc, open_docs, &original_root)? {
+    for source_path in collect_overlay_source_files(config, active_doc, open_docs, &original_root)?
+    {
         stage_overlay_file(&original_root, &working_dir, &source_path, open_docs)?;
     }
 

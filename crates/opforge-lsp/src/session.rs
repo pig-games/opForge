@@ -909,9 +909,7 @@ impl LspSession {
         counter.fetch_add(1, Ordering::Relaxed);
         thread::spawn(move || {
             let result = run_validation_task(config, doc, documents, generation, root_uri);
-            if let Some(task_result) = result {
-                let _ = tx.send(task_result);
-            }
+            let _ = tx.send(result);
             counter.fetch_sub(1, Ordering::Relaxed);
         });
         true
@@ -1130,8 +1128,18 @@ fn run_validation_task(
     open_docs: HashMap<String, DocumentState>,
     generation: u64,
     root_uri: String,
-) -> Option<ValidationTaskResult> {
-    let overlay = create_overlay_workspace(&config, &doc, &open_docs)?;
+) -> ValidationTaskResult {
+    let overlay = match create_overlay_workspace(&config, &doc, &open_docs) {
+        Ok(overlay) => overlay,
+        Err(message) => {
+            return ValidationTaskResult {
+                root_uri,
+                version: doc.version,
+                generation,
+                diagnostics: vec![overlay_failure_diagnostic(&doc, message)],
+            };
+        }
+    };
     let result = run_cli_validation(
         &config,
         &overlay.root_file,
@@ -1146,50 +1154,40 @@ fn run_validation_task(
     );
     let _ = fs::remove_dir_all(&overlay.temp_root);
 
-    Some(ValidationTaskResult {
+    ValidationTaskResult {
         root_uri,
         version: doc.version,
         generation,
         diagnostics,
-    })
+    }
 }
 
 fn create_overlay_workspace(
     config: &LspConfig,
     active_doc: &DocumentState,
     open_docs: &HashMap<String, DocumentState>,
-) -> Option<OverlayWorkspace> {
-    let original_file = active_doc.path.as_ref()?;
+) -> Result<OverlayWorkspace, String> {
+    let Some(original_file) = active_doc.path.as_ref() else {
+        return Err("active document has no filesystem path".to_string());
+    };
     let original_root = overlay_root_for_active_file(config, original_file);
     let time_part = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .ok()?
+        .map_err(|err| format!("system clock error: {err}"))?
         .as_nanos();
     let seq_part = OVERLAY_DIR_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let temp_root = std::env::temp_dir().join(format!("lsp-overlay-{time_part}-{seq_part}"));
     let working_dir = temp_root.join("workspace");
-    fs::create_dir_all(&working_dir).ok()?;
+    fs::create_dir_all(&working_dir)
+        .map_err(|err| format!("create overlay workspace {}: {err}", working_dir.display()))?;
 
-    copy_dir_recursive(&original_root, &working_dir)?;
-
-    let relative_active = original_file.strip_prefix(&original_root).ok()?;
-    let root_file = working_dir.join(relative_active);
-
-    for doc in open_docs.values() {
-        let Some(path) = &doc.path else {
-            continue;
-        };
-        let Ok(relative) = path.strip_prefix(&original_root) else {
-            continue;
-        };
-        let target = working_dir.join(relative);
-        if let Some(parent) = target.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        let _ = fs::write(target, doc.text.as_bytes());
+    for source_path in collect_overlay_source_files(config, active_doc, open_docs, &original_root)? {
+        stage_overlay_file(&original_root, &working_dir, &source_path, open_docs)?;
     }
 
-    Some(OverlayWorkspace {
+    let root_file = overlay_target_path(&working_dir, &original_root, original_file)?;
+
+    Ok(OverlayWorkspace {
         temp_root,
         working_dir,
         root_file,
@@ -1197,29 +1195,20 @@ fn create_overlay_workspace(
     })
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Option<()> {
-    fs::create_dir_all(dst).ok()?;
-    for entry in fs::read_dir(src).ok()? {
-        let entry = entry.ok()?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            // Skip directories that are unlikely to contain assembly sources
-            // and may be very large.
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if matches!(
-                name_str.as_ref(),
-                ".git" | "target" | "build" | "node_modules" | ".hg" | ".svn"
-            ) {
-                continue;
-            }
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else if src_path.is_file() {
-            fs::copy(&src_path, &dst_path).ok()?;
-        }
+fn overlay_failure_diagnostic(doc: &DocumentState, message: String) -> ValidationDiagnostic {
+    ValidationDiagnostic {
+        code: "LSPVALIDATOR".to_string(),
+        severity: "error".to_string(),
+        message: format!("Validation did not complete: {message}"),
+        file: doc
+            .path
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string()),
+        line: 1,
+        col_start: Some(1),
+        col_end: Some(1),
+        fixits: Vec::new(),
     }
-    Some(())
 }
 
 fn remap_overlay_diagnostics(
@@ -1246,6 +1235,170 @@ fn overlay_root_for_active_file(config: &LspConfig, original_file: &Path) -> Pat
             .unwrap_or(Path::new("."))
             .to_path_buf()
     })
+}
+
+fn collect_overlay_source_files(
+    config: &LspConfig,
+    active_doc: &DocumentState,
+    open_docs: &HashMap<String, DocumentState>,
+    original_root: &Path,
+) -> Result<Vec<PathBuf>, String> {
+    let mut staged = HashSet::new();
+    let mut queued = Vec::new();
+
+    let Some(active_path) = active_doc.path.as_ref() else {
+        return Err("active document has no filesystem path".to_string());
+    };
+    enqueue_overlay_path(active_path, original_root, &mut staged, &mut queued);
+    for doc in open_docs.values() {
+        let Some(path) = doc.path.as_ref() else {
+            continue;
+        };
+        enqueue_overlay_path(path, original_root, &mut staged, &mut queued);
+    }
+
+    let registry = default_asm_registry();
+    let mut cursor = 0usize;
+    while cursor < queued.len() {
+        let current_path = queued[cursor].clone();
+        cursor += 1;
+        let imports = overlay_imports_for_path(&registry, &current_path, open_docs)?;
+        let current_uri = path_to_file_uri(&current_path);
+        for import in imports {
+            for candidate in crate::lsp::workspace_index::resolve_module_target(
+                &import.module_id,
+                config,
+                &current_uri,
+            ) {
+                enqueue_overlay_path(&candidate, original_root, &mut staged, &mut queued);
+            }
+        }
+    }
+
+    let mut files: Vec<PathBuf> = staged.into_iter().collect();
+    files.sort();
+    Ok(files)
+}
+
+fn enqueue_overlay_path(
+    path: &Path,
+    original_root: &Path,
+    staged: &mut HashSet<PathBuf>,
+    queued: &mut Vec<PathBuf>,
+) {
+    if !path.starts_with(original_root) {
+        return;
+    }
+    let candidate = path.to_path_buf();
+    if staged.insert(candidate.clone()) {
+        queued.push(candidate);
+    }
+}
+
+fn overlay_imports_for_path(
+    registry: &AsmRegistry,
+    path: &Path,
+    open_docs: &HashMap<String, DocumentState>,
+) -> Result<Vec<UseImportDecl>, String> {
+    if let Some(doc) = open_docs
+        .values()
+        .find(|doc| doc.path.as_ref().is_some_and(|doc_path| doc_path == path))
+    {
+        return Ok(doc.imports.clone());
+    }
+    let text = fs::read_to_string(path)
+        .map_err(|err| format!("read dependency {}: {err}", path.display()))?;
+    let mut doc = DocumentState::new(path_to_file_uri(path), Some(path.to_path_buf()), 0, text);
+    doc.refresh_derived_state(registry);
+    Ok(doc.imports)
+}
+
+fn stage_overlay_file(
+    original_root: &Path,
+    working_dir: &Path,
+    source_path: &Path,
+    open_docs: &HashMap<String, DocumentState>,
+) -> Result<(), String> {
+    ensure_overlay_path_is_not_symlinked(original_root, source_path)?;
+    let target = overlay_target_path(working_dir, original_root, source_path)?;
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("create overlay parent {}: {err}", parent.display()))?;
+    }
+    if let Some(doc) = open_docs.values().find(|doc| {
+        doc.path
+            .as_ref()
+            .is_some_and(|doc_path| doc_path == source_path)
+    }) {
+        fs::write(&target, doc.text.as_bytes())
+            .map_err(|err| format!("write overlay file {}: {err}", target.display()))?;
+        return Ok(());
+    }
+    let bytes = fs::read(source_path)
+        .map_err(|err| format!("read overlay source {}: {err}", source_path.display()))?;
+    fs::write(&target, bytes)
+        .map_err(|err| format!("write overlay file {}: {err}", target.display()))?;
+    Ok(())
+}
+
+fn overlay_target_path(
+    working_dir: &Path,
+    original_root: &Path,
+    source_path: &Path,
+) -> Result<PathBuf, String> {
+    let relative = source_path.strip_prefix(original_root).map_err(|_| {
+        format!(
+            "path {} escapes overlay root {}",
+            source_path.display(),
+            original_root.display()
+        )
+    })?;
+    Ok(working_dir.join(relative))
+}
+
+fn ensure_overlay_path_is_not_symlinked(
+    original_root: &Path,
+    source_path: &Path,
+) -> Result<(), String> {
+    let mut current = original_root.to_path_buf();
+    let root_meta = fs::symlink_metadata(&current)
+        .map_err(|err| format!("inspect overlay root {}: {err}", current.display()))?;
+    if root_meta.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to stage symlinked overlay root {}",
+            current.display()
+        ));
+    }
+
+    let relative = source_path.strip_prefix(original_root).map_err(|_| {
+        format!(
+            "path {} escapes overlay root {}",
+            source_path.display(),
+            original_root.display()
+        )
+    })?;
+
+    for component in relative.components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!(
+                    "refusing to stage symlinked path component {}",
+                    current.display()
+                ));
+            }
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => {
+                return Err(format!(
+                    "inspect overlay source component {}: {err}",
+                    current.display()
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) fn configured_workspace_roots(config: &LspConfig) -> Vec<PathBuf> {

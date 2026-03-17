@@ -3,6 +3,8 @@ mod common;
 use std::fs;
 use std::io::ErrorKind;
 #[cfg(unix)]
+use std::os::unix::fs::symlink;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -862,6 +864,170 @@ fi
         diag.get("code")
             .and_then(|value| value.as_str())
             .is_some_and(|code| code == "EHELP")
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn overlay_stages_only_active_and_dependency_files() {
+    let temp_dir = unique_temp_dir();
+    let workspace_dir = temp_dir.join("workspace");
+    let src_dir = workspace_dir.join("src");
+    let deps_dir = workspace_dir.join("deps");
+    let noise_dir = workspace_dir.join("noise");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&deps_dir).expect("create deps dir");
+    fs::create_dir_all(&noise_dir).expect("create noise dir");
+
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+module_path=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --infile)
+      infile="$2"
+      shift 2
+      ;;
+    --module-path)
+      module_path="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+helper="$module_path/helper.asm"
+overlay_root="$(dirname "$module_path")"
+if [ ! -f "$helper" ]; then
+  printf '{"code":"EMISS","severity":"error","message":"missing staged helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+  exit 0
+fi
+if [ -f "$overlay_root/noise/unrelated.asm" ]; then
+  printf '{"code":"EWIDE","severity":"error","message":"overlay copied unrelated workspace file","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+fi
+"#,
+    );
+
+    let root_file = src_dir.join("root.asm");
+    let helper_file = deps_dir.join("helper.asm");
+    let unrelated_file = noise_dir.join("unrelated.asm");
+    write_text(&root_file, ".use helper\n");
+    write_text(
+        &helper_file,
+        ".module helper\n.pub\nvalue = 1\n.endmodule\n",
+    );
+    write_text(&unrelated_file, "noise = 1\n");
+    let root_uri = path_to_file_uri(&root_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator_config(
+        &mut client,
+        &script_path,
+        0,
+        true,
+        &[workspace_dir.to_string_lossy().to_string()],
+        &[],
+        &["deps".to_string()],
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(&mut client, &root_uri, &[], Duration::from_secs(3));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(
+        diagnostics.is_empty(),
+        "overlay should stage helper but not unrelated files"
+    );
+
+    client.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn overlay_refuses_symlinked_dependency_directories() {
+    let temp_dir = unique_temp_dir();
+    let workspace_dir = temp_dir.join("workspace");
+    let src_dir = workspace_dir.join("src");
+    let real_deps_dir = temp_dir.join("real_deps");
+    fs::create_dir_all(&workspace_dir).expect("create workspace dir");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&real_deps_dir).expect("create real deps dir");
+    symlink(&real_deps_dir, workspace_dir.join("deps")).expect("create deps symlink");
+
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+exit 0
+"#,
+    );
+
+    let root_file = src_dir.join("root.asm");
+    let helper_file = real_deps_dir.join("helper.asm");
+    write_text(&root_file, ".use helper\n");
+    write_text(
+        &helper_file,
+        ".module helper\n.pub\nvalue = 1\n.endmodule\n",
+    );
+    let root_uri = path_to_file_uri(&root_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator_config(
+        &mut client,
+        &script_path,
+        0,
+        true,
+        &[workspace_dir.to_string_lossy().to_string()],
+        &[],
+        &["deps".to_string()],
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(
+        &mut client,
+        &root_uri,
+        &["LSPVALIDATOR"],
+        Duration::from_secs(3),
+    );
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(diagnostics.iter().any(|diag| {
+        diag.get("message")
+            .and_then(|value| value.as_str())
+            .is_some_and(|message| message.contains("symlink"))
     }));
 
     client.shutdown();

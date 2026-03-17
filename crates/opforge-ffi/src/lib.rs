@@ -2412,6 +2412,11 @@ pub unsafe extern "C" fn opforge_asm_check_memory_with_request(
 #[no_mangle]
 /// Create a reusable high-level assembler session through the request surface.
 ///
+/// This convenience constructor returns null on invalid request data,
+/// session-construction failure, or an internal panic while building the
+/// session. Use `opforge_asm_session_create_with_request_report` when you need
+/// diagnosable validation failures or structured internal-error reports.
+///
 /// # Safety
 ///
 /// `request` must be non-null and any non-null string fields must point to
@@ -2438,7 +2443,8 @@ pub unsafe extern "C" fn opforge_asm_session_create_with_request(
 ///
 /// On success, `*out_session` receives a new session handle and the returned
 /// report has status [`OpforgeStatus::Ok`]. On failure, `*out_session` is set
-/// to null and the returned report contains the failure details.
+/// to null and the returned report contains the failure details, including
+/// structured internal-error reports for panic boundaries.
 ///
 /// # Safety
 ///

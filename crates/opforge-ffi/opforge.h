@@ -219,9 +219,10 @@ opforge_asm_report *opforge_asm_check_file_with_request(
     const opforge_asm_request *request
 );
 /*
- * Returns NULL on invalid request or session-construction failure.
+ * Returns NULL on invalid request, session-construction failure, or an
+ * internal panic while constructing the session.
  * Use opforge_asm_session_create_with_request_report when you need
- * diagnosable validation errors.
+ * diagnosable validation errors or structured internal-error reports.
  * Successful handles must be released with opforge_asm_session_free.
  */
 opforge_asm_session *opforge_asm_session_create_with_request(
@@ -232,8 +233,8 @@ opforge_asm_session *opforge_asm_session_create_with_request(
  * failure. `out_session` must be non-null. On success, the returned report has
  * status OPFORGE_STATUS_OK and `*out_session` receives a valid session handle.
  * On failure, `*out_session` is set to NULL and the returned report contains
- * the error details. The returned report must be released with
- * opforge_asm_report_free.
+ * the error details, including structured internal-error reports for panic
+ * boundaries. The returned report must be released with opforge_asm_report_free.
  */
 opforge_asm_report *opforge_asm_session_create_with_request_report(
     const opforge_asm_request *request,

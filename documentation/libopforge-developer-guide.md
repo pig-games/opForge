@@ -312,7 +312,7 @@ If you are shipping the shared library for a host integration, build it with the
 - `make build-ffi-release`, or
 - `cargo build -p ffi --profile release-ffi --locked --lib`
 
-Do not distribute the FFI library produced indirectly by a workspace-wide `cargo build --release`; the workspace release profile is `panic = "abort"`, while the public FFI contract is designed to return structured internal-error reports across panic boundaries.
+Do not distribute the FFI library produced indirectly by a workspace-wide `cargo build --release`; the workspace release profile is `panic = "abort"`, while the report-returning FFI entrypoints are designed to return structured internal-error reports across panic boundaries. The plain convenience constructor `opforge_asm_session_create_with_request(...)` is intentionally a nullable-handle path and collapses internal panics to `NULL`.
 
 The FFI implementation is a useful reference even for Rust developers because it shows how to map the owned/session model into long-lived handles and callback-driven I/O without bypassing the stable library path.
 

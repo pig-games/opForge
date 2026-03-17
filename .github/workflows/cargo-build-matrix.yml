@@ -13,7 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            ffi_lib: libopforge.so
+          - os: macos-latest
+            ffi_lib: libopforge.dylib
+          - os: windows-latest
+            ffi_lib: opforge.dll
 
     steps:
       - name: Checkout
@@ -30,6 +36,12 @@ jobs:
 
       - name: Build release-ffi library
         run: cargo build -p ffi --profile release-ffi --locked --lib
+
+      - name: Run release-ffi export coverage test
+        env:
+          OPFORGE_RELEASE_FFI_SKIP_BUILD: "1"
+          OPFORGE_RELEASE_FFI_LIBRARY_PATH: ${{ github.workspace }}/target/release-ffi/${{ matrix.ffi_lib }}
+        run: cargo test -p ffi exported_release_ffi_library_exposes_full_header_symbol_surface --locked
 
       - name: Run release-ffi panic boundary smoke test
         run: cargo test -p ffi release_profile_catches_forced_ffi_panic --locked

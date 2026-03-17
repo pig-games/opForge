@@ -1,3 +1,6 @@
+#[path = "common/release_ffi_support.rs"]
+mod release_ffi_support;
+
 use libloading::Library;
 use opforge::{
     OpforgeAsmDiagnosticsOptions, OpforgeAsmExecutionOptions, OpforgeAsmOutputOptions,
@@ -9,15 +12,14 @@ use std::env;
 use std::ffi::{CStr, CString};
 use std::fs;
 use std::os::raw::c_char;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use release_ffi_support::{build_release_ffi_cdylib, release_ffi_library_path};
+
 const CHILD_ENV: &str = "OPFORGE_RELEASE_PANIC_BOUNDARY_CHILD";
 const CHILD_MODE_ENV: &str = "OPFORGE_RELEASE_PANIC_BOUNDARY_MODE";
-const LIBRARY_PATH_ENV: &str = "OPFORGE_RELEASE_FFI_LIBRARY_PATH";
-const SKIP_BUILD_ENV: &str = "OPFORGE_RELEASE_FFI_SKIP_BUILD";
-
 const MODE_PANIC: &str = "panic";
 const MODE_SMOKE: &str = "smoke";
 
@@ -88,65 +90,6 @@ fn basic_request(root_path: *const c_char) -> OpforgeAsmRequest {
             tab_size: 0,
         },
     }
-}
-
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("ffi crate parent")
-        .parent()
-        .expect("workspace root")
-        .to_path_buf()
-}
-
-fn release_ffi_library_path() -> PathBuf {
-    if let Some(path) = env::var_os(LIBRARY_PATH_ENV) {
-        return PathBuf::from(path);
-    }
-
-    let filename = if cfg!(target_os = "macos") {
-        "libopforge.dylib"
-    } else if cfg!(target_os = "windows") {
-        "opforge.dll"
-    } else {
-        "libopforge.so"
-    };
-
-    workspace_root()
-        .join("target")
-        .join("release-ffi")
-        .join(filename)
-}
-
-fn build_release_ffi_cdylib() {
-    if env::var_os(SKIP_BUILD_ENV).is_some() {
-        assert!(
-            release_ffi_library_path().is_file(),
-            "missing prebuilt cdylib artifact"
-        );
-        return;
-    }
-
-    let status = Command::new("cargo")
-        .current_dir(workspace_root())
-        .args([
-            "build",
-            "-p",
-            "ffi",
-            "--profile",
-            "release-ffi",
-            "--features",
-            "panic-test-hooks",
-            "--locked",
-            "--lib",
-        ])
-        .status()
-        .expect("build release-ffi cdylib");
-    assert!(status.success(), "release-ffi build failed");
-    assert!(
-        release_ffi_library_path().is_file(),
-        "missing cdylib artifact"
-    );
 }
 
 fn assemble_ok_main() {
@@ -269,7 +212,7 @@ fn release_profile_catches_forced_ffi_panic() {
         return;
     }
 
-    build_release_ffi_cdylib();
+    build_release_ffi_cdylib(true);
 
     let status = run_child(MODE_PANIC);
 
@@ -286,7 +229,7 @@ fn release_profile_loads_and_assembles_smoke() {
         return;
     }
 
-    build_release_ffi_cdylib();
+    build_release_ffi_cdylib(true);
 
     let status = run_child(MODE_SMOKE);
 

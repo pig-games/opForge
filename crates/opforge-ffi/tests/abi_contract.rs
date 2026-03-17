@@ -1,3 +1,6 @@
+#[path = "common/release_ffi_support.rs"]
+mod release_ffi_support;
+
 use ffi::{
     opforge_asm_assemble_file_with_request, opforge_asm_report_error_count,
     opforge_asm_report_free, opforge_asm_report_status, opforge_asm_session_assemble,
@@ -13,7 +16,11 @@ use ffi::{
     OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT, OPFORGE_LABEL_OUTPUT_FORMAT_VICE,
     OPFORGE_OUTPUT_FORMAT_TEXT,
 };
+use libloading::Library;
 use opforge as ffi;
+use release_ffi_support::{
+    build_release_ffi_cdylib, header_function_names_from_shipped_header, release_ffi_library_path,
+};
 use std::ffi::{CStr, CString};
 use std::fs;
 use std::os::raw::c_char;
@@ -338,6 +345,31 @@ fn exported_header_matches_rust_abi_contract() {
         "header ABI compile check failed\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn exported_release_ffi_library_exposes_full_header_symbol_surface() {
+    build_release_ffi_cdylib(false);
+
+    let library_path = release_ffi_library_path();
+    let symbol_names = header_function_names_from_shipped_header();
+    let mut missing = Vec::new();
+
+    unsafe {
+        let library = Library::new(&library_path).expect("load release-ffi cdylib");
+        for symbol_name in &symbol_names {
+            let mut symbol = symbol_name.as_bytes().to_vec();
+            symbol.push(0);
+            if library.get::<*const ()>(&symbol).is_err() {
+                missing.push(symbol_name.clone());
+            }
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "release-ffi cdylib is missing exported C symbols declared in opforge.h: {missing:?}"
     );
 }
 

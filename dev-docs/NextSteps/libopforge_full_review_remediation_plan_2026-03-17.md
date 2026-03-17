@@ -46,7 +46,7 @@ validation sees the same source set as normal assembly.
   - Commit outcome: manual upload runs derive a concrete tag ref, check out that tag before building, and stop immediately if the requested tag cannot be resolved.
   - Definition of done: no manual upload path can build the branch tip while publishing artifacts under a different free-form tag name.
 
-- [ ] Item 2: Derive packaged and uploaded release tags from the resolved checkout.
+- [x] Item 2: Derive packaged and uploaded release tags from the resolved checkout.
   - Source requirement or finding IDs: `RVW-2026-03-17-004` (expected full closure, completing Item 1).
   - Expected files: `.github/workflows/release-binaries.yml` and release-workflow documentation only if a narrow operator note is required by the changed workflow contract.
   - Validation: run `cargo test --locked -p ffi release_profile_loads_and_assembles_smoke`, then verify the workflow diff shows packaging and `softprops/action-gh-release` consuming the resolved checked-out tag rather than the raw dispatch input.
@@ -85,7 +85,7 @@ validation sees the same source set as normal assembly.
 ## Milestones
 
 - [x] Milestone 1: Manual release uploads are pinned to a resolved tag checkout (`Item 1` complete and committed).
-- [ ] Milestone 2: Release packaging and upload tag selection derive from the resolved checkout (`Item 2` complete and committed).
+- [x] Milestone 2: Release packaging and upload tag selection derive from the resolved checkout (`Item 2` complete and committed).
 - [ ] Milestone 3: Validator config roots remain workspace-correct inside the overlay (`Item 3` complete and committed).
 - [ ] Milestone 4: Validation overlays stage ordinary include and module dependencies (`Item 4` complete and committed).
 - [ ] Milestone 5: Closure evidence and bookkeeping are complete (`Item 5` complete and committed).

@@ -1,0 +1,1 @@
+PASS: Plan Compliance Reviewer approved Item 1 for commit on 2026-03-17. The staged slice is limited to the release workflow checkout-integrity fix plus required plan bookkeeping, the release-ffi smoke test passed, the full quality gates passed, and no Item 2 tag-plumbing behavior was implemented early.

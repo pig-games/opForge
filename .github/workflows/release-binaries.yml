@@ -40,15 +40,6 @@ jobs:
             ffi_lib: opforge.dll
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-
       - name: Validate workflow inputs
         if: github.event_name == 'workflow_dispatch'
         shell: bash
@@ -58,6 +49,39 @@ jobs:
             echo "error: tag_name is required when verify_only is false" >&2
             exit 1
           fi
+
+      - name: Resolve checkout ref
+        id: resolve_checkout_ref
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFY_ONLY: ${{ github.event.inputs.verify_only }}
+          INPUT_TAG_NAME: ${{ github.event.inputs.tag_name }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          GITHUB_REF_VALUE: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+
+          checkout_ref="${GITHUB_REF_VALUE}"
+
+          if [[ "${EVENT_NAME}" == "release" ]]; then
+            checkout_ref="refs/tags/${RELEASE_TAG_NAME}"
+          elif [[ "${VERIFY_ONLY}" != "true" ]]; then
+            checkout_ref="refs/tags/${INPUT_TAG_NAME}"
+          fi
+
+          echo "checkout_ref=${checkout_ref}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve_checkout_ref.outputs.checkout_ref }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
 
       - name: Build binaries
         run: cargo build --release --locked --bins

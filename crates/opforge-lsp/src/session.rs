@@ -23,6 +23,7 @@ use crate::lsp::hover::{hover_response, HoverRequestContext};
 use crate::lsp::member_context::{member_completion_context, member_lookup_context};
 use crate::lsp::validation_runner::{run_cli_validation, ValidationDiagnostic};
 use crate::lsp::workspace_index::{IndexedSymbol, WorkspaceIndex};
+use libopforge::io::{MemorySourceProvider, SourceProvider};
 use libopforge::registry::{
     default_asm_registry, default_cpu, resolve_cpu_for_line, AsmRegistry, AsmRegistryContext,
     CpuType,
@@ -1278,6 +1279,8 @@ fn collect_overlay_source_files(
     }
 
     let registry = default_asm_registry();
+    let source_provider = overlay_source_provider(active_doc, open_docs);
+    let include_paths = resolved_overlay_search_paths(&config.include_paths, original_root);
     let mut cursor = 0usize;
     while cursor < queued.len() {
         let current_path = queued[cursor].clone();
@@ -1293,6 +1296,13 @@ fn collect_overlay_source_files(
                 enqueue_overlay_path(&candidate, original_root, &mut staged, &mut queued);
             }
         }
+        for candidate in overlay_dependency_files_for_path(
+            &current_path,
+            &include_paths,
+            Arc::clone(&source_provider),
+        ) {
+            enqueue_overlay_path(&candidate, original_root, &mut staged, &mut queued);
+        }
     }
 
     let mut files: Vec<PathBuf> = staged.into_iter().collect();
@@ -1306,13 +1316,143 @@ fn enqueue_overlay_path(
     staged: &mut HashSet<PathBuf>,
     queued: &mut Vec<PathBuf>,
 ) {
-    if !path.starts_with(original_root) {
+    let Ok(relative) = overlay_relative_path(original_root, path) else {
         return;
-    }
-    let candidate = path.to_path_buf();
+    };
+    let candidate = original_root.join(relative);
     if staged.insert(candidate.clone()) {
         queued.push(candidate);
     }
+}
+
+fn overlay_source_provider(
+    active_doc: &DocumentState,
+    open_docs: &HashMap<String, DocumentState>,
+) -> Arc<dyn SourceProvider> {
+    let mut source_provider = MemorySourceProvider::new();
+    if let Some(path) = active_doc.path.as_ref() {
+        source_provider.insert_file(path.clone(), active_doc.text.clone());
+    }
+    for doc in open_docs.values() {
+        let Some(path) = doc.path.as_ref() else {
+            continue;
+        };
+        source_provider.insert_file(path.clone(), doc.text.clone());
+    }
+    Arc::from(source_provider.with_fs_fallback())
+}
+
+fn resolved_overlay_search_paths(paths: &[String], original_root: &Path) -> Vec<PathBuf> {
+    paths
+        .iter()
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                original_root.join(path)
+            }
+        })
+        .collect()
+}
+
+fn overlay_dependency_files_for_path(
+    path: &Path,
+    include_paths: &[PathBuf],
+    source_provider: Arc<dyn SourceProvider>,
+) -> Vec<PathBuf> {
+    let mut dependencies = HashSet::new();
+    collect_overlay_include_dependencies(
+        path,
+        include_paths,
+        source_provider.as_ref(),
+        &mut dependencies,
+    );
+    let mut dependency_files: Vec<PathBuf> = dependencies.into_iter().collect();
+    dependency_files.sort();
+    dependency_files
+}
+
+fn collect_overlay_include_dependencies(
+    path: &Path,
+    include_paths: &[PathBuf],
+    source_provider: &dyn SourceProvider,
+    dependencies: &mut HashSet<PathBuf>,
+) {
+    let Ok(text) = source_provider.read_string(path) else {
+        return;
+    };
+
+    for include_target in include_targets_from_text(&text) {
+        let Some(resolved) =
+            resolve_overlay_include_target(path, &include_target, include_paths, source_provider)
+        else {
+            continue;
+        };
+        if dependencies.insert(resolved.clone()) {
+            collect_overlay_include_dependencies(
+                &resolved,
+                include_paths,
+                source_provider,
+                dependencies,
+            );
+        }
+    }
+}
+
+fn include_targets_from_text(text: &str) -> Vec<String> {
+    text.lines().filter_map(include_target_from_line).collect()
+}
+
+fn include_target_from_line(line: &str) -> Option<String> {
+    let code = line.split(';').next()?.trim_start();
+    let rest = if code.len() >= 8 && code[..8].eq_ignore_ascii_case(".include") {
+        &code[8..]
+    } else if code.len() >= 7 && code[..7].eq_ignore_ascii_case("include") {
+        &code[7..]
+    } else {
+        return None;
+    };
+
+    let rest = rest.trim_start();
+    let remainder = rest.strip_prefix('"')?;
+    let end = remainder.find('"')?;
+    Some(remainder[..end].to_string())
+}
+
+fn resolve_overlay_include_target(
+    base_path: &Path,
+    include_target: &str,
+    include_paths: &[PathBuf],
+    source_provider: &dyn SourceProvider,
+) -> Option<PathBuf> {
+    let include_path = PathBuf::from(include_target);
+    if include_path.is_absolute() {
+        return source_provider
+            .is_file(&include_path)
+            .ok()
+            .filter(|is_file| *is_file)
+            .map(|_| include_path);
+    }
+
+    let mut candidates = Vec::new();
+    if let Some(parent) = base_path.parent() {
+        candidates.push(parent.join(&include_path));
+    }
+    for include_root in include_paths {
+        candidates.push(include_root.join(&include_path));
+    }
+
+    for candidate in candidates {
+        if source_provider.is_file(&candidate).ok().unwrap_or(false) {
+            return source_provider
+                .canonicalize(&candidate)
+                .ok()
+                .or(Some(candidate));
+        }
+    }
+
+    None
 }
 
 fn overlay_imports_for_path(
@@ -1366,14 +1506,37 @@ fn overlay_target_path(
     original_root: &Path,
     source_path: &Path,
 ) -> Result<PathBuf, String> {
-    let relative = source_path.strip_prefix(original_root).map_err(|_| {
+    let relative = overlay_relative_path(original_root, source_path)?;
+    Ok(working_dir.join(relative))
+}
+
+fn overlay_relative_path(original_root: &Path, source_path: &Path) -> Result<PathBuf, String> {
+    if let Ok(relative) = source_path.strip_prefix(original_root) {
+        return Ok(relative.to_path_buf());
+    }
+
+    let canonical_root = fs::canonicalize(original_root).map_err(|err| {
         format!(
-            "path {} escapes overlay root {}",
-            source_path.display(),
+            "canonicalize overlay root {}: {err}",
             original_root.display()
         )
     })?;
-    Ok(working_dir.join(relative))
+    let canonical_source = fs::canonicalize(source_path).map_err(|err| {
+        format!(
+            "canonicalize overlay source {}: {err}",
+            source_path.display()
+        )
+    })?;
+    canonical_source
+        .strip_prefix(&canonical_root)
+        .map(Path::to_path_buf)
+        .map_err(|_| {
+            format!(
+                "path {} escapes overlay root {}",
+                source_path.display(),
+                original_root.display()
+            )
+        })
 }
 
 fn ensure_overlay_path_is_not_symlinked(
@@ -1390,13 +1553,7 @@ fn ensure_overlay_path_is_not_symlinked(
         ));
     }
 
-    let relative = source_path.strip_prefix(original_root).map_err(|_| {
-        format!(
-            "path {} escapes overlay root {}",
-            source_path.display(),
-            original_root.display()
-        )
-    })?;
+    let relative = overlay_relative_path(original_root, source_path)?;
 
     for component in relative.components() {
         current.push(component.as_os_str());

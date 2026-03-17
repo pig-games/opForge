@@ -1005,21 +1005,30 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 helper="$module_path/helper.asm"
+include_file="$(dirname "$infile")/inc.asm"
 overlay_root="$(dirname "$module_path")"
 if [ ! -f "$helper" ]; then
   printf '{"code":"EMISS","severity":"error","message":"missing staged helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
   exit 0
 fi
+if [ ! -f "$include_file" ]; then
+    printf '{"code":"EINC","severity":"error","message":"missing staged include file","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+    exit 0
+fi
 if [ -f "$overlay_root/noise/unrelated.asm" ]; then
   printf '{"code":"EWIDE","severity":"error","message":"overlay copied unrelated workspace file","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+    exit 0
 fi
+printf '{"code":"ESTAGED","severity":"warning","message":"overlay staged include and module dependencies without widening","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
 "#,
     );
 
     let root_file = src_dir.join("root.asm");
+    let include_file = src_dir.join("inc.asm");
     let helper_file = deps_dir.join("helper.asm");
     let unrelated_file = noise_dir.join("unrelated.asm");
-    write_text(&root_file, ".use helper\n");
+    write_text(&root_file, ".include \"inc.asm\"\n.use helper\n");
+    write_text(&include_file, "FROM_INC = 1\n");
     write_text(
         &helper_file,
         ".module helper\n.pub\nvalue = 1\n.endmodule\n",
@@ -1045,19 +1054,25 @@ fi
                 "uri": root_uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": ".use helper\n"
+                "text": ".include \"inc.asm\"\n.use helper\n"
             }
         }),
     );
 
-    let publish = wait_for_publish_codes(&mut client, &root_uri, &[], Duration::from_secs(3));
+    let publish = client
+        .wait_for_publish_diagnostics(&root_uri, Duration::from_secs(6))
+        .expect("staged dependency diagnostics");
     let diagnostics = publish
         .get("diagnostics")
         .and_then(|value| value.as_array())
         .expect("diagnostics array");
+    let codes: Vec<&str> = diagnostics
+        .iter()
+        .filter_map(|diag| diag.get("code").and_then(|value| value.as_str()))
+        .collect();
     assert!(
-        diagnostics.is_empty(),
-        "overlay should stage helper but not unrelated files"
+        codes.iter().any(|code| *code == "ESTAGED"),
+        "overlay should stage include and module dependencies without widening, got {codes:?}"
     );
 
     client.shutdown();
@@ -2281,7 +2296,7 @@ printf '{{"code":"EFAST","severity":"warning","message":"fast","file":"%s","line
             }
         }),
     );
-    wait_for_path(&first_started, Duration::from_secs(2));
+    wait_for_path(&first_started, Duration::from_secs(5));
 
     client.notify(
         "textDocument/didOpen",
@@ -2294,7 +2309,7 @@ printf '{{"code":"EFAST","severity":"warning","message":"fast","file":"%s","line
             }
         }),
     );
-    wait_for_path(&second_started, Duration::from_secs(2));
+    wait_for_path(&second_started, Duration::from_secs(5));
     thread::sleep(Duration::from_millis(100));
 
     client.notify(

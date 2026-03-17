@@ -64,7 +64,7 @@ validation sees the same source set as normal assembly.
   - Commit outcome: validator configuration passed to the CLI resolves relative include and module roots from the real workspace root instead of the temporary overlay root.
   - Definition of done: projects that assemble correctly from disk do not start failing editor validation solely because relative validator roots are rewritten into the overlay directory.
 
-- [ ] Item 4: Stage ordinary include dependencies into the validation overlay.
+- [x] Item 4: Stage ordinary include dependencies into the validation overlay.
   - Source requirement or finding IDs: `RVW-2026-03-17-005` (expected full closure, completing Item 3).
   - Expected files: `crates/opforge-lsp/src/session.rs`, `crates/opforge-lsp/src/workspace_index.rs`, `crates/opforge-lsp/src/validation_runner.rs` only if narrowly required for staging metadata flow, and `crates/opforge-lsp/tests/lsp_client_integration.rs`.
   - Validation: add focused regression coverage proving unopened files reached through ordinary `INCLUDE` directives and `.use` imports are staged into the overlay and validated successfully, then run `cargo test --locked -p lsp`.
@@ -87,7 +87,7 @@ validation sees the same source set as normal assembly.
 - [x] Milestone 1: Manual release uploads are pinned to a resolved tag checkout (`Item 1` complete and committed).
 - [x] Milestone 2: Release packaging and upload tag selection derive from the resolved checkout (`Item 2` complete and committed).
 - [x] Milestone 3: Validator config roots remain workspace-correct inside the overlay (`Item 3` complete and committed).
-- [ ] Milestone 4: Validation overlays stage ordinary include and module dependencies (`Item 4` complete and committed).
+- [x] Milestone 4: Validation overlays stage ordinary include and module dependencies (`Item 4` complete and committed).
 - [ ] Milestone 5: Closure evidence and bookkeeping are complete (`Item 5` complete and committed).
 
 ## Blocking Rules

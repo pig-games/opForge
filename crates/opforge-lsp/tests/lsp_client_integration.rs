@@ -2152,6 +2152,172 @@ fn did_close_rehydrates_rooted_symbols_from_disk() {
 }
 
 #[test]
+fn routine_document_events_keep_rooted_index_incremental() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+
+    let main_text = ".module app\n.use math as M\n    lda M.value\n.endmodule\n";
+    let math_text = ".module math\n.pub\nvalue = 42\n.endmodule\n";
+    let saved_math_text = ".module math\n.pub\nvalue = 43\n.endmodule\n";
+    write_text(&main_file, main_text);
+    write_text(&math_file, math_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    let initial_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        initial_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "initialize should perform exactly one rooted rebuild"
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": math_text
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": main_text
+            }
+        }),
+    );
+
+    let open_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        open_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "didOpen should not force a rooted rebuild"
+    );
+
+    let defs_while_open = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    let defs_while_open_entries = defs_while_open.as_array().expect("definition array");
+    assert!(defs_while_open_entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 2
+            },
+            "contentChanges": [
+                {"text": saved_math_text}
+            ]
+        }),
+    );
+
+    let change_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        change_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "didChange should not force a rooted rebuild"
+    );
+
+    let changed_symbols = client.request("workspace/symbol", json!({ "query": "value" }));
+    let changed_symbol_entries = changed_symbols.as_array().expect("workspace symbol array");
+    assert!(changed_symbol_entries.iter().any(|entry| {
+        entry
+            .get("location")
+            .and_then(|value| value.get("uri"))
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    write_text(&math_file, saved_math_text);
+    client.notify(
+        "textDocument/didSave",
+        json!({
+            "textDocument": {
+                "uri": math_uri
+            },
+            "text": saved_math_text
+        }),
+    );
+
+    let save_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        save_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "didSave should not force a rooted rebuild"
+    );
+
+    client.notify(
+        "textDocument/didClose",
+        json!({
+            "textDocument": {
+                "uri": math_uri
+            }
+        }),
+    );
+
+    let close_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        close_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "didClose should rehydrate the rooted file without a full rebuild"
+    );
+
+    let defs_after_close = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    let defs_after_close_entries = defs_after_close.as_array().expect("definition array");
+    assert!(defs_after_close_entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    client.shutdown();
+}
+
+#[test]
 fn overlapping_validations_publish_only_newest_version_results() {
     let temp_dir = unique_temp_dir();
     let script_path = temp_dir.join("validator.sh");

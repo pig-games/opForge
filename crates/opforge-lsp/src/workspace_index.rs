@@ -58,18 +58,52 @@ impl WorkspaceIndex {
         self.module_to_uris.clear();
 
         for doc in documents.values() {
-            self.index_document(doc);
+            self.store_document(doc);
         }
 
         let root_docs = load_documents_from_roots(registry, config);
         for doc in root_docs {
             if !documents.contains_key(&doc.uri) {
-                self.index_document(&doc);
+                self.store_document(&doc);
             }
         }
+
+        self.rebuild_module_index();
+        self.rebuild_name_index();
     }
 
     pub fn index_document(&mut self, doc: &DocumentState) {
+        self.store_document(doc);
+        self.rebuild_module_index();
+        self.rebuild_name_index();
+    }
+
+    pub fn refresh_rooted_document(
+        &mut self,
+        registry: &AsmRegistry,
+        config: &LspConfig,
+        uri: &str,
+    ) -> bool {
+        let Some(path) = uri_to_path(uri) else {
+            self.remove_document(uri);
+            return false;
+        };
+        if !path.is_file()
+            || !is_source_file(&path)
+            || preferred_workspace_root_for_path(config, &path).is_none()
+        {
+            self.remove_document(uri);
+            return false;
+        }
+        let Some(doc) = build_document_state_from_file(registry, &path) else {
+            self.remove_document(uri);
+            return false;
+        };
+        self.index_document(&doc);
+        true
+    }
+
+    fn store_document(&mut self, doc: &DocumentState) {
         let mut entries = Vec::new();
         for symbol in &doc.symbols {
             entries.push(IndexedSymbol {
@@ -96,8 +130,6 @@ impl WorkspaceIndex {
             .insert(doc.uri.clone(), doc.typed_symbols.clone());
         self.repetition_structs_by_uri
             .insert(doc.uri.clone(), doc.repetition_structs.clone());
-        self.index_module_candidates(doc);
-        self.rebuild_name_index();
     }
 
     pub fn remove_document(&mut self, uri: &str) {
@@ -643,31 +675,6 @@ impl WorkspaceIndex {
             .get(current_uri)
             .map(Vec::as_slice)
             .unwrap_or(&[])
-    }
-
-    fn index_module_candidates(&mut self, doc: &DocumentState) {
-        let mut module_ids: Vec<String> = doc
-            .symbols
-            .iter()
-            .filter(|symbol| matches!(symbol.kind, SymbolKind::Module))
-            .map(|symbol| symbol.name.clone())
-            .collect();
-        if let Some(path) = &doc.path {
-            if let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) {
-                module_ids.push(stem.to_string());
-            }
-        }
-        for module_id in module_ids {
-            let key = canonical_module_id(&module_id);
-            self.module_to_uris
-                .entry(key)
-                .or_default()
-                .push(doc.uri.clone());
-        }
-        for uris in self.module_to_uris.values_mut() {
-            uris.sort();
-            uris.dedup();
-        }
     }
 
     fn rebuild_module_index(&mut self) {

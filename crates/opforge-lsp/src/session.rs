@@ -61,6 +61,7 @@ pub struct LspSession {
     pending_validation_uris: HashSet<String>,
     diagnostic_contributions_by_root: HashMap<String, HashMap<String, Vec<ValidationDiagnostic>>>,
     active_validations: Arc<AtomicUsize>,
+    workspace_index_rebuilds: u64,
     shutdown_requested: bool,
 }
 
@@ -90,6 +91,7 @@ impl LspSession {
             pending_validation_uris: HashSet::new(),
             diagnostic_contributions_by_root: HashMap::new(),
             active_validations: Arc::new(AtomicUsize::new(0)),
+            workspace_index_rebuilds: 0,
             shutdown_requested: false,
         }
     }
@@ -144,6 +146,9 @@ impl LspSession {
             "textDocument/documentSymbol" => Ok(self.handle_document_symbol(params)),
             "textDocument/codeAction" => Ok(Value::Array(quick_fix_actions(params))),
             "workspace/symbol" => Ok(self.handle_workspace_symbol(params)),
+            "opforge/internalWorkspaceIndexStats" => {
+                Ok(self.handle_internal_workspace_index_stats())
+            }
             _ => Err((-32601, format!("method not found: {method}"))),
         }
     }
@@ -221,7 +226,7 @@ impl LspSession {
         let mut state = DocumentState::new(uri.to_string(), path, version, text);
         state.refresh_derived_state(self.context.registry());
         self.documents.insert(uri.to_string(), state);
-        self.rebuild_workspace_index();
+        self.refresh_workspace_index_for_document(uri);
         self.maybe_validate_and_publish(uri, true)
     }
 
@@ -248,7 +253,7 @@ impl LspSession {
         let mut state = DocumentState::new(uri.to_string(), path, version, text);
         state.refresh_derived_state(self.context.registry());
         self.documents.insert(uri.to_string(), state);
-        self.rebuild_workspace_index();
+        self.refresh_workspace_index_for_document(uri);
         self.maybe_validate_and_publish(uri, false)
     }
 
@@ -266,7 +271,11 @@ impl LspSession {
                 state.refresh_derived_state(self.context.registry());
             }
         }
-        self.rebuild_workspace_index();
+        if self.documents.contains_key(uri) {
+            self.refresh_workspace_index_for_document(uri);
+        } else {
+            self.refresh_rooted_workspace_document(uri);
+        }
         self.maybe_validate_and_publish(uri, true)
     }
 
@@ -281,7 +290,7 @@ impl LspSession {
         self.invalidate_validation_generation(uri);
         self.pending_validation_uris.remove(uri);
         self.documents.remove(uri);
-        self.rebuild_workspace_index();
+        self.refresh_rooted_workspace_document(uri);
         let mut targets: HashSet<String> = self
             .diagnostic_contributions_by_root
             .remove(uri)
@@ -421,6 +430,13 @@ impl LspSession {
             return Value::Array(Vec::new());
         };
         Value::Array(document_symbols(doc))
+    }
+
+    fn handle_internal_workspace_index_stats(&self) -> Value {
+        json!({
+            "rootedRebuilds": self.workspace_index_rebuilds,
+            "indexedUris": self.workspace_index.document_uris(),
+        })
     }
 
     fn handle_references(&self, params: &Value) -> Value {
@@ -1004,6 +1020,22 @@ impl LspSession {
         self.context.rebuild_snapshot();
         self.workspace_index
             .rebuild(self.context.registry(), &self.config, &self.documents);
+        self.workspace_index_rebuilds = self.workspace_index_rebuilds.saturating_add(1);
+    }
+
+    fn refresh_workspace_index_for_document(&mut self, uri: &str) {
+        let Some(doc) = self.documents.get(uri) else {
+            return;
+        };
+        self.workspace_index.index_document(doc);
+    }
+
+    fn refresh_rooted_workspace_document(&mut self, uri: &str) {
+        let _ = self.workspace_index.refresh_rooted_document(
+            self.context.registry(),
+            &self.config,
+            uri,
+        );
     }
 
     fn schedule_pending_validations(&mut self) {

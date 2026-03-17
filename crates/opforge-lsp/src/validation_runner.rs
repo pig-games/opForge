@@ -66,7 +66,14 @@ pub fn run_cli_validation(
 
     let output = match cmd.output() {
         Ok(out) => out,
-        Err(_) => return ValidationRunResult::default(),
+        Err(err) => {
+            return ValidationRunResult {
+                diagnostics: vec![validation_failure_diagnostic(
+                    root_file,
+                    format!("could not start validator: {err}"),
+                )],
+            }
+        }
     };
 
     let mut diagnostics = Vec::new();
@@ -76,7 +83,33 @@ pub fn run_cli_validation(
     diagnostics.extend(parse_json_diag_lines(&String::from_utf8_lossy(
         &output.stderr,
     )));
+    if !output.status.success() && diagnostics.is_empty() {
+        diagnostics.push(validation_failure_diagnostic(
+            root_file,
+            validation_exit_message(output.status.code()),
+        ));
+    }
     ValidationRunResult { diagnostics }
+}
+
+fn validation_failure_diagnostic(root_file: &Path, detail: String) -> ValidationDiagnostic {
+    ValidationDiagnostic {
+        code: "LSPVALIDATOR".to_string(),
+        severity: "error".to_string(),
+        message: format!("Validation did not complete: {detail}"),
+        file: Some(root_file.to_string_lossy().to_string()),
+        line: 1,
+        col_start: Some(1),
+        col_end: Some(1),
+        fixits: Vec::new(),
+    }
+}
+
+fn validation_exit_message(code: Option<i32>) -> String {
+    match code {
+        Some(code) => format!("validator exited with status {code}"),
+        None => "validator terminated by signal".to_string(),
+    }
 }
 
 fn rebase_config_path(path: &str, _source_root: &Path, overlay_root: &Path) -> String {

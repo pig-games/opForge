@@ -571,6 +571,9 @@ fn collect_documents_from_dir(registry: &AsmRegistry, dir: &Path, out: &mut Vec<
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
+            if should_skip_workspace_dir(entry.file_name().to_string_lossy().as_ref()) {
+                continue;
+            }
             collect_documents_from_dir(registry, &path, out);
             continue;
         }
@@ -590,6 +593,13 @@ fn is_source_file(path: &Path) -> bool {
         .unwrap_or_default()
         .to_ascii_lowercase();
     matches!(ext.as_str(), "asm" | "inc")
+}
+
+fn should_skip_workspace_dir(name: &str) -> bool {
+    matches!(
+        name,
+        ".git" | "target" | "build" | "node_modules" | ".hg" | ".svn" | "worktrees"
+    )
 }
 
 fn build_document_state_from_file(registry: &AsmRegistry, path: &Path) -> Option<DocumentState> {

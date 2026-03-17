@@ -58,8 +58,7 @@ pub struct LspSession {
     latest_validation_generation: HashMap<String, u64>,
     next_validation_generation: u64,
     pending_validation_uris: HashSet<String>,
-    published_diagnostics: HashMap<String, Vec<ValidationDiagnostic>>,
-    published_uris_by_root: HashMap<String, HashSet<String>>,
+    diagnostic_contributions_by_root: HashMap<String, HashMap<String, Vec<ValidationDiagnostic>>>,
     active_validations: Arc<AtomicUsize>,
     shutdown_requested: bool,
 }
@@ -88,8 +87,7 @@ impl LspSession {
             latest_validation_generation: HashMap::new(),
             next_validation_generation: 1,
             pending_validation_uris: HashSet::new(),
-            published_diagnostics: HashMap::new(),
-            published_uris_by_root: HashMap::new(),
+            diagnostic_contributions_by_root: HashMap::new(),
             active_validations: Arc::new(AtomicUsize::new(0)),
             shutdown_requested: false,
         }
@@ -279,29 +277,14 @@ impl LspSession {
         self.pending_validation_uris.remove(uri);
         self.documents.remove(uri);
         self.workspace_index.remove_document(uri);
-        self.published_diagnostics.remove(uri);
         let mut targets: HashSet<String> = self
-            .published_uris_by_root
+            .diagnostic_contributions_by_root
             .remove(uri)
             .unwrap_or_default()
-            .into_iter()
+            .into_keys()
             .collect();
         targets.insert(uri.to_string());
-        let mut sorted_targets: Vec<String> = targets.into_iter().collect();
-        sorted_targets.sort();
-        sorted_targets
-            .into_iter()
-            .map(|target_uri| {
-                self.published_diagnostics.remove(&target_uri);
-                OutboundMessage::Notification {
-                    method: "textDocument/publishDiagnostics".to_string(),
-                    params: json!({
-                        "uri": target_uri,
-                        "diagnostics": [],
-                    }),
-                }
-            })
-            .collect()
+        self.publish_merged_diagnostics_for_targets(targets)
     }
 
     fn handle_completion(&self, params: &Value) -> Value {
@@ -976,43 +959,16 @@ impl LspSession {
         let diagnostics = dedup_diagnostics(diagnostics);
 
         let grouped = group_diagnostics_by_uri(root_uri, &diagnostics);
-        let new_uris: HashSet<String> = grouped.keys().cloned().collect();
         let previous_uris = self
-            .published_uris_by_root
+            .diagnostic_contributions_by_root
             .get(root_uri)
-            .cloned()
+            .map(|contributions| contributions.keys().cloned().collect::<HashSet<_>>())
             .unwrap_or_default();
-
-        let mut notifications = Vec::new();
-        for stale_uri in previous_uris.difference(&new_uris) {
-            self.published_diagnostics.remove(stale_uri);
-            notifications.push(OutboundMessage::Notification {
-                method: "textDocument/publishDiagnostics".to_string(),
-                params: json!({
-                    "uri": stale_uri,
-                    "diagnostics": [],
-                }),
-            });
-        }
-
-        let mut sorted_uris: Vec<String> = grouped.keys().cloned().collect();
-        sorted_uris.sort();
-        for target_uri in sorted_uris {
-            let target_diags = grouped.get(&target_uri).cloned().unwrap_or_default();
-            self.published_diagnostics
-                .insert(target_uri.clone(), target_diags.clone());
-            notifications.push(OutboundMessage::Notification {
-                method: "textDocument/publishDiagnostics".to_string(),
-                params: json!({
-                    "uri": target_uri,
-                    "diagnostics": diagnostics_for_uri(&target_uri, &target_diags),
-                }),
-            });
-        }
-        self.published_uris_by_root
-            .insert(root_uri.to_string(), new_uris);
-
-        notifications
+        let new_uris: HashSet<String> = grouped.keys().cloned().collect();
+        let affected_targets: HashSet<String> = previous_uris.union(&new_uris).cloned().collect();
+        self.diagnostic_contributions_by_root
+            .insert(root_uri.to_string(), grouped);
+        self.publish_merged_diagnostics_for_targets(affected_targets)
     }
 
     fn issue_validation_generation(&mut self, uri: &str) -> u64 {
@@ -1050,6 +1006,37 @@ impl LspSession {
                 break;
             }
         }
+    }
+
+    fn publish_merged_diagnostics_for_targets(
+        &self,
+        targets: HashSet<String>,
+    ) -> Vec<OutboundMessage> {
+        let mut sorted_targets: Vec<String> = targets.into_iter().collect();
+        sorted_targets.sort();
+        sorted_targets
+            .into_iter()
+            .map(|target_uri| {
+                let diagnostics = self.merged_diagnostics_for_target(&target_uri);
+                OutboundMessage::Notification {
+                    method: "textDocument/publishDiagnostics".to_string(),
+                    params: json!({
+                        "uri": target_uri,
+                        "diagnostics": diagnostics_for_uri(&target_uri, &diagnostics),
+                    }),
+                }
+            })
+            .collect()
+    }
+
+    fn merged_diagnostics_for_target(&self, target_uri: &str) -> Vec<ValidationDiagnostic> {
+        let mut merged = Vec::new();
+        for contributions in self.diagnostic_contributions_by_root.values() {
+            if let Some(diagnostics) = contributions.get(target_uri) {
+                merged.extend(diagnostics.iter().cloned());
+            }
+        }
+        dedup_diagnostics(merged)
     }
 }
 

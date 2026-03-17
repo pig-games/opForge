@@ -41,7 +41,7 @@ impl SourceProvider for FsSourceProvider {
     }
 
     fn is_dir(&self, path: &Path) -> io::Result<bool> {
-        Ok(fs::metadata(path)?.is_dir())
+        Ok(fs::symlink_metadata(path)?.file_type().is_dir())
     }
 
     fn is_file(&self, path: &Path) -> io::Result<bool> {
@@ -410,6 +410,8 @@ mod tests {
     };
     use std::fs;
     use std::io::ErrorKind;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -490,6 +492,23 @@ mod tests {
             .read_string(&include_path)
             .expect("filesystem fallback should resolve missing file");
         assert!(content.contains("FROM_FS"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fs_source_provider_does_not_treat_directory_symlink_as_dir() {
+        let temp_dir = make_temp_dir("dir-symlink");
+        let real_dir = temp_dir.join("real");
+        let link_dir = temp_dir.join("linked");
+        fs::create_dir_all(&real_dir).expect("create real dir");
+        symlink(&real_dir, &link_dir).expect("create dir symlink");
+
+        let provider = super::FsSourceProvider;
+        assert!(provider.is_dir(&real_dir).expect("real dir check"));
+        assert!(
+            !provider.is_dir(&link_dir).expect("symlink dir check"),
+            "directory symlinks must not be treated as traversable directories"
+        );
     }
 
     #[test]

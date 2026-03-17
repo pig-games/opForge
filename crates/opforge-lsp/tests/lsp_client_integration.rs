@@ -1330,6 +1330,49 @@ fn workspace_symbols_ignore_excluded_shadow_directories() {
     client.shutdown();
 }
 
+#[cfg(unix)]
+#[test]
+fn workspace_symbols_ignore_symlinked_directories_under_root() {
+    let temp_dir = unique_temp_dir();
+    let external_root = unique_temp_dir();
+    let live_dir = temp_dir.join("src");
+    let external_dir = external_root.join("external");
+    let symlinked_dir = live_dir.join("linked");
+    fs::create_dir_all(&live_dir).expect("create live dir");
+    fs::create_dir_all(&external_dir).expect("create external dir");
+    symlink(&external_dir, &symlinked_dir).expect("create symlinked dir");
+
+    write_text(&live_dir.join("live.asm"), "live_label: nop\n");
+    write_text(&external_dir.join("linked.asm"), "linked_label: nop\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    let symbols = client.request(
+        "workspace/symbol",
+        json!({
+            "query": "label"
+        }),
+    );
+    let entries = symbols.as_array().expect("workspace symbol array");
+    let names: Vec<&str> = entries
+        .iter()
+        .filter_map(|entry| entry.get("name").and_then(|value| value.as_str()))
+        .collect();
+    assert!(names.contains(&"live_label"));
+    assert!(
+        !names.contains(&"linked_label"),
+        "directory symlinks under a configured root must not be traversed"
+    );
+
+    client.shutdown();
+}
+
 #[test]
 fn definition_resolves_module_target_via_workspace_rooted_relative_module_path() {
     let temp_dir = unique_temp_dir();

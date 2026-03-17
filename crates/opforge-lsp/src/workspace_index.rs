@@ -601,12 +601,18 @@ fn collect_documents_from_dir(registry: &AsmRegistry, dir: &Path, out: &mut Vec<
         return;
     };
     for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         let path = entry.path();
-        if path.is_dir() {
+        if file_type.is_dir() {
             if should_skip_workspace_dir(entry.file_name().to_string_lossy().as_ref()) {
                 continue;
             }
             collect_documents_from_dir(registry, &path, out);
+            continue;
+        }
+        if !file_type.is_file() {
             continue;
         }
         if !is_source_file(&path) {

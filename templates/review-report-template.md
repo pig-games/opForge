@@ -8,6 +8,7 @@
 
 - Severity:
 - File:
+- Issue:
 - Why it matters:
 - Fix direction (one direction only; resolve competing options before finalizing):
 

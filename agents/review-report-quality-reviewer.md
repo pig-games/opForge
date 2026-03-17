@@ -24,6 +24,7 @@ The reviewer must verify that the review report:
 - uses stable finding IDs
 - assigns reasonable severity
 - includes file references
+- states the actual issue separately from the impact
 - explains impact rather than only preference
 - gives one decisive fix direction per finding
 - does not leave multiple competing fix options unresolved

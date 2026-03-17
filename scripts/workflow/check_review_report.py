@@ -21,6 +21,7 @@ FINDING_HEADER_RE = re.compile(r"^###\s+(RVW-\d{4}-\d{2}-\d{2}-\d{3,})\s*$", re.
 FIELD_PATTERNS = {
     "Severity": re.compile(r"^- Severity:\s*(.+?)\s*$", re.MULTILINE),
     "File": re.compile(r"^- File:\s*(.+?)\s*$", re.MULTILINE),
+    "Issue": re.compile(r"^- Issue:\s*(.+?)\s*$", re.MULTILINE),
     "Why it matters": re.compile(r"^- Why it matters:\s*(.+?)\s*$", re.MULTILINE),
     "Fix direction": re.compile(r"^- Fix direction(?:\s*\([^)]*\))?:\s*(.+?)\s*$", re.MULTILINE),
 }

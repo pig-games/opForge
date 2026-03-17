@@ -193,9 +193,13 @@ impl LspSession {
     }
 
     fn handle_config_change(&mut self, params: &Value) -> Vec<OutboundMessage> {
+        let previous = self.config.clone();
         self.config
             .update_from_workspace_settings(params.get("settings"));
         self.rebuild_workspace_index();
+        if validation_refresh_required(&previous, &self.config) {
+            return self.refresh_validation_for_open_documents();
+        }
         Vec::new()
     }
 
@@ -984,6 +988,17 @@ impl LspSession {
             .insert(uri.to_string(), generation);
     }
 
+    fn refresh_validation_for_open_documents(&mut self) -> Vec<OutboundMessage> {
+        let mut uris: Vec<String> = self.documents.keys().cloned().collect();
+        uris.sort();
+        for uri in uris {
+            self.last_validation_at.remove(&uri);
+            self.invalidate_validation_generation(&uri);
+            self.pending_validation_uris.insert(uri);
+        }
+        self.drain_validation_results()
+    }
+
     fn rebuild_workspace_index(&mut self) {
         self.context.rebuild_snapshot();
         self.workspace_index
@@ -1209,6 +1224,10 @@ fn overlay_failure_diagnostic(doc: &DocumentState, message: String) -> Validatio
         col_end: Some(1),
         fixits: Vec::new(),
     }
+}
+
+fn validation_refresh_required(previous: &LspConfig, current: &LspConfig) -> bool {
+    previous != current
 }
 
 fn remap_overlay_diagnostics(

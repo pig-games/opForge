@@ -1034,6 +1034,81 @@ exit 0
 }
 
 #[test]
+fn config_change_revalidates_open_documents_without_followup_edit() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+printf '{"code":"EREFRESH","severity":"warning","message":"config refresh","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+"#,
+    );
+
+    let file = temp_dir.join("refresh.asm");
+    write_text(&file, "nop\n");
+    let uri = path_to_file_uri(&file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, false);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+    assert!(
+        client
+            .wait_for_publish_diagnostics(&uri, Duration::from_millis(250))
+            .is_none(),
+        "didOpen should not validate while onSave=false"
+    );
+
+    client.notify(
+        "workspace/didChangeConfiguration",
+        json!({
+            "settings": {
+                "opforgeLsp": {
+                    "opforgePath": script_path.to_string_lossy().to_string(),
+                    "validation": {
+                        "debounceMs": 0,
+                        "onSave": true
+                    }
+                }
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(&mut client, &uri, &["EREFRESH"], Duration::from_secs(3));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "config refresh should trigger one rerun"
+    );
+
+    client.shutdown();
+}
+
+#[test]
 fn definition_resolves_local_symbol_declaration() {
     let temp_file = unique_temp_file("definition.asm");
     let uri = path_to_file_uri(&temp_file);

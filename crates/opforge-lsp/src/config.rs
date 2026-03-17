@@ -3,7 +3,7 @@
 
 use serde_json::Value;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationConfig {
     pub debounce_ms: u64,
     pub on_save: bool,
@@ -18,7 +18,7 @@ impl Default for ValidationConfig {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LspConfig {
     pub roots: Vec<String>,
     pub include_paths: Vec<String>,

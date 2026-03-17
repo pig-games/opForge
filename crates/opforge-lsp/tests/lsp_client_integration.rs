@@ -582,6 +582,83 @@ printf '{"code":"EDEP","severity":"error","message":"dependency-diagnostic","fil
 }
 
 #[test]
+fn overlay_root_does_not_widen_to_unrelated_open_documents() {
+    let temp_dir = unique_temp_dir();
+    let project_a = temp_dir.join("project_a");
+    let project_b = temp_dir.join("project_b");
+    fs::create_dir_all(&project_a).expect("create project a");
+    fs::create_dir_all(&project_b).expect("create project b");
+
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+widened="$(dirname "$infile")/../project_b/unrelated.asm"
+if [ -f "$widened" ]; then
+  printf '{"code":"EWIDE","severity":"error","message":"overlay widened to unrelated project","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+fi
+"#,
+    );
+
+    let root_file = project_a.join("root.asm");
+    let unrelated_file = project_b.join("unrelated.asm");
+    write_text(&root_file, "nop\n");
+    write_text(&unrelated_file, "foreign = 1\n");
+    let root_uri = path_to_file_uri(&root_file);
+    let unrelated_uri = path_to_file_uri(&unrelated_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": unrelated_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "foreign = 2\n"
+            }
+        }),
+    );
+    let _ = client.wait_for_publish_diagnostics(&unrelated_uri, Duration::from_secs(2));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(&mut client, &root_uri, &[], Duration::from_secs(3));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(
+        diagnostics.is_empty(),
+        "overlay should stay inside project_a"
+    );
+
+    client.shutdown();
+}
+
+#[test]
 fn shared_dependency_diagnostics_merge_across_roots_and_survive_unrelated_close() {
     let temp_dir = unique_temp_dir();
     let script_path = temp_dir.join("validator.sh");

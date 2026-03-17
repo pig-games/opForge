@@ -1160,14 +1160,7 @@ fn create_overlay_workspace(
     open_docs: &HashMap<String, DocumentState>,
 ) -> Option<OverlayWorkspace> {
     let original_file = active_doc.path.as_ref()?;
-    let original_root = preferred_workspace_root_for_path(config, original_file)
-        .or_else(|| common_open_document_root(active_doc, open_docs))
-        .unwrap_or_else(|| {
-            original_file
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_path_buf()
-        });
+    let original_root = overlay_root_for_active_file(config, original_file);
     let time_part = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()?
@@ -1246,39 +1239,13 @@ fn remap_overlay_diagnostics(
     diagnostics
 }
 
-fn common_open_document_root(
-    active_doc: &DocumentState,
-    open_docs: &HashMap<String, DocumentState>,
-) -> Option<PathBuf> {
-    let active_path = active_doc.path.as_ref()?;
-    let mut root = active_path.parent()?.to_path_buf();
-    for doc in open_docs.values() {
-        let Some(path) = &doc.path else {
-            continue;
-        };
-        let Some(parent) = path.parent() else {
-            continue;
-        };
-        root = common_path_prefix(&root, parent)?;
-    }
-    Some(root)
-}
-
-fn common_path_prefix(left: &Path, right: &Path) -> Option<PathBuf> {
-    let left_parts: Vec<_> = left.components().collect();
-    let right_parts: Vec<_> = right.components().collect();
-    let mut out = PathBuf::new();
-    for (l, r) in left_parts.iter().zip(right_parts.iter()) {
-        if l != r {
-            break;
-        }
-        out.push(l.as_os_str());
-    }
-    if out.as_os_str().is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+fn overlay_root_for_active_file(config: &LspConfig, original_file: &Path) -> PathBuf {
+    preferred_workspace_root_for_path(config, original_file).unwrap_or_else(|| {
+        original_file
+            .parent()
+            .unwrap_or(Path::new("."))
+            .to_path_buf()
+    })
 }
 
 pub(crate) fn configured_workspace_roots(config: &LspConfig) -> Vec<PathBuf> {

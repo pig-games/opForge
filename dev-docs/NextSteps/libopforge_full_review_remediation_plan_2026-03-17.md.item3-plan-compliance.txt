@@ -1,1 +1,0 @@
-PASS: Plan Compliance Reviewer approved Item 3 for commit on 2026-03-17. Relative validator include and module roots are now resolved from the original workspace root, in-workspace targets stay overlay-backed, external relative roots stay rooted on disk, the focused LSP tests passed, and the full quality gates passed.

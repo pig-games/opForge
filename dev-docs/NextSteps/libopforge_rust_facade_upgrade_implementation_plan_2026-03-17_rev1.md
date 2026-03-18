@@ -55,10 +55,10 @@ This plan is complete when all of the following are true:
 - [x] `LFR-008` Complete workflow mappings and facade-local stability regressions
 - [x] `LFR-009` Add canon/compat export audit enforcement
 - [x] `LFR-010` Publish concern inventories in the facade surface and guide
-- [ ] `LFR-011` Add guide and rustdoc example coverage for the stabilized entry paths
+- [x] `LFR-011` Add guide and rustdoc example coverage for the stabilized entry paths
 - [ ] Milestone A exit gate: named core domain is established and truthful
 - [x] Milestone B exit gate: neutral orchestration and workflow packaging are established
-- [ ] Milestone C exit gate: public-shape policy and documentation are explicit
+- [x] Milestone C exit gate: public-shape policy and documentation are explicit
 
 Tracking note:
 - Mark a package checkbox when its commit lands.
@@ -523,9 +523,9 @@ Exit gate:
 ### Milestone C: Public-shape policy and documentation established
 
 Includes:
-- [ ] `LFR-009`
-- [ ] `LFR-010`
-- [ ] `LFR-011`
+- [x] `LFR-009`
+- [x] `LFR-010`
+- [x] `LFR-011`
 
 Exit gate:
 - the facade’s export policy, concern inventories, and examples all match the intended stable surface

@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use api::asm::Assembler;
-use api::diagnostics::{AsmRunError, AsmRunReport, Severity};
+use api::diagnostics::{AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Severity};
 
 use crate::{
     input_base_from_path, validate_cli, Cli, CliConfig, OutputFormat, BUILD_PROFILE_SUMMARY,
@@ -102,6 +102,32 @@ pub fn has_werror_violations(reports: &[CliRunReport]) -> bool {
     })
 }
 
+fn workflow_error_to_asm_run_error(error: api::asm::AssemblerWorkflowError) -> AsmRunError {
+    match error {
+        api::asm::AssemblerWorkflowError::Assemble(error) => error,
+        api::asm::AssemblerWorkflowError::InvalidArgument(error) => AsmRunError::new(
+            AsmError::new(AsmErrorKind::Cli, error.summary(), None),
+            Vec::new(),
+            Vec::new(),
+        ),
+        api::asm::AssemblerWorkflowError::InvalidRequest(error) => AsmRunError::new(
+            AsmError::new(AsmErrorKind::Cli, error.summary(), None),
+            Vec::new(),
+            Vec::new(),
+        ),
+        api::asm::AssemblerWorkflowError::Io(error) => AsmRunError::new(
+            AsmError::new(AsmErrorKind::Io, error.summary(), None),
+            Vec::new(),
+            Vec::new(),
+        ),
+        api::asm::AssemblerWorkflowError::Internal(error) => AsmRunError::new(
+            AsmError::new(AsmErrorKind::Assembler, error.summary(), None),
+            Vec::new(),
+            Vec::new(),
+        ),
+    }
+}
+
 fn run_one(
     cli: &Cli,
     asm_name: &str,
@@ -162,7 +188,7 @@ fn run_one(
         builder = builder.tab_size(tab_size);
     }
 
-    builder.assemble()
+    builder.assemble().map_err(workflow_error_to_asm_run_error)
 }
 
 #[cfg(test)]

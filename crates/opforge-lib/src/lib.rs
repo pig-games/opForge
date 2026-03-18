@@ -564,6 +564,239 @@ pub mod asm {
     };
     pub use ::engine::{ContinuationHead, ExecutionMode};
 
+    fn workflow_code(kind: AssemblerWorkflowErrorKind) -> &'static str {
+        match kind {
+            AssemblerWorkflowErrorKind::InvalidArgument => "asm.workflow.invalid_argument",
+            AssemblerWorkflowErrorKind::InvalidRequest => "asm.workflow.invalid_request",
+            AssemblerWorkflowErrorKind::Assemble => "asm.workflow.assemble",
+            AssemblerWorkflowErrorKind::Io => "asm.workflow.io",
+            AssemblerWorkflowErrorKind::Internal => "asm.workflow.internal",
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum AssemblerWorkflowErrorKind {
+        InvalidArgument,
+        InvalidRequest,
+        Assemble,
+        Io,
+        Internal,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct InvalidArgumentError {
+        code: String,
+        summary: String,
+    }
+
+    impl InvalidArgumentError {
+        pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
+            Self {
+                code: code.into(),
+                summary: summary.into(),
+            }
+        }
+
+        pub fn code(&self) -> &str {
+            &self.code
+        }
+
+        pub fn summary(&self) -> &str {
+            &self.summary
+        }
+    }
+
+    impl std::fmt::Display for InvalidArgumentError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for InvalidArgumentError {}
+
+    #[derive(Debug, Clone)]
+    pub struct InvalidRequestError {
+        code: String,
+        summary: String,
+    }
+
+    impl InvalidRequestError {
+        pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
+            Self {
+                code: code.into(),
+                summary: summary.into(),
+            }
+        }
+
+        pub fn code(&self) -> &str {
+            &self.code
+        }
+
+        pub fn summary(&self) -> &str {
+            &self.summary
+        }
+    }
+
+    impl std::fmt::Display for InvalidRequestError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for InvalidRequestError {}
+
+    #[derive(Debug, Clone)]
+    pub struct HostIoError {
+        code: String,
+        summary: String,
+    }
+
+    impl HostIoError {
+        pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
+            Self {
+                code: code.into(),
+                summary: summary.into(),
+            }
+        }
+
+        pub fn code(&self) -> &str {
+            &self.code
+        }
+
+        pub fn summary(&self) -> &str {
+            &self.summary
+        }
+    }
+
+    impl std::fmt::Display for HostIoError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for HostIoError {}
+
+    #[derive(Debug, Clone)]
+    pub struct InternalErrorReport {
+        code: String,
+        summary: String,
+    }
+
+    impl InternalErrorReport {
+        pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
+            Self {
+                code: code.into(),
+                summary: summary.into(),
+            }
+        }
+
+        pub fn code(&self) -> &str {
+            &self.code
+        }
+
+        pub fn summary(&self) -> &str {
+            &self.summary
+        }
+    }
+
+    impl std::fmt::Display for InternalErrorReport {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for InternalErrorReport {}
+
+    #[derive(Debug)]
+    pub enum AssemblerWorkflowError {
+        InvalidArgument(InvalidArgumentError),
+        InvalidRequest(InvalidRequestError),
+        Assemble(super::diagnostics::AsmRunError),
+        Io(HostIoError),
+        Internal(InternalErrorReport),
+    }
+
+    impl AssemblerWorkflowError {
+        pub fn kind(&self) -> AssemblerWorkflowErrorKind {
+            match self {
+                Self::InvalidArgument(_) => AssemblerWorkflowErrorKind::InvalidArgument,
+                Self::InvalidRequest(_) => AssemblerWorkflowErrorKind::InvalidRequest,
+                Self::Assemble(_) => AssemblerWorkflowErrorKind::Assemble,
+                Self::Io(_) => AssemblerWorkflowErrorKind::Io,
+                Self::Internal(_) => AssemblerWorkflowErrorKind::Internal,
+            }
+        }
+
+        pub fn code(&self) -> &str {
+            match self {
+                Self::InvalidArgument(err) => err.code(),
+                Self::InvalidRequest(err) => err.code(),
+                Self::Assemble(_) => workflow_code(self.kind()),
+                Self::Io(err) => err.code(),
+                Self::Internal(err) => err.code(),
+            }
+        }
+
+        pub fn summary(&self) -> &str {
+            match self {
+                Self::InvalidArgument(err) => err.summary(),
+                Self::InvalidRequest(err) => err.summary(),
+                Self::Assemble(err) => err.summary(),
+                Self::Io(err) => err.summary(),
+                Self::Internal(err) => err.summary(),
+            }
+        }
+
+        pub fn as_assemble(&self) -> Option<&super::diagnostics::AsmRunError> {
+            match self {
+                Self::Assemble(err) => Some(err),
+                _ => None,
+            }
+        }
+
+        pub fn as_invalid_argument(&self) -> Option<&InvalidArgumentError> {
+            match self {
+                Self::InvalidArgument(err) => Some(err),
+                _ => None,
+            }
+        }
+
+        pub fn as_invalid_request(&self) -> Option<&InvalidRequestError> {
+            match self {
+                Self::InvalidRequest(err) => Some(err),
+                _ => None,
+            }
+        }
+
+        pub fn as_io(&self) -> Option<&HostIoError> {
+            match self {
+                Self::Io(err) => Some(err),
+                _ => None,
+            }
+        }
+
+        pub fn as_internal(&self) -> Option<&InternalErrorReport> {
+            match self {
+                Self::Internal(err) => Some(err),
+                _ => None,
+            }
+        }
+    }
+
+    impl std::fmt::Display for AssemblerWorkflowError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for AssemblerWorkflowError {}
+
+    impl From<super::diagnostics::AsmRunError> for AssemblerWorkflowError {
+        fn from(err: super::diagnostics::AsmRunError) -> Self {
+            Self::Assemble(err)
+        }
+    }
+
     pub mod opasm {
         pub use ::asm::opasm::{
             default_register_checker, parse_statement, process_statement, tokenize_statement,
@@ -1146,6 +1379,76 @@ fn run_public_prepared_assembly(
     })
 }
 
+#[cfg(test)]
+fn map_core_error_to_asm_kind(kind: opcore::CoreErrorKind) -> diagnostics::AsmErrorKind {
+    match kind {
+        opcore::CoreErrorKind::Tokenize
+        | opcore::CoreErrorKind::Parse
+        | opcore::CoreErrorKind::Statement
+        | opcore::CoreErrorKind::Module
+        | opcore::CoreErrorKind::Use
+        | opcore::CoreErrorKind::Import => diagnostics::AsmErrorKind::Parser,
+        opcore::CoreErrorKind::Expr | opcore::CoreErrorKind::Struct => {
+            diagnostics::AsmErrorKind::Expression
+        }
+        opcore::CoreErrorKind::Conditional => diagnostics::AsmErrorKind::Conditional,
+        opcore::CoreErrorKind::Preprocess => diagnostics::AsmErrorKind::Preprocess,
+        opcore::CoreErrorKind::Macro
+        | opcore::CoreErrorKind::Repetition
+        | opcore::CoreErrorKind::Namespace
+        | opcore::CoreErrorKind::Scope
+        | opcore::CoreErrorKind::Segment => diagnostics::AsmErrorKind::Directive,
+    }
+}
+
+#[cfg(test)]
+fn map_core_error_to_workflow(err: opcore::CoreError) -> asm::AssemblerWorkflowError {
+    let asm_error =
+        diagnostics::AsmError::new(map_core_error_to_asm_kind(err.kind()), err.summary(), None);
+    asm::AssemblerWorkflowError::Assemble(diagnostics::AsmRunError::new(
+        asm_error,
+        Vec::new(),
+        Vec::new(),
+    ))
+}
+
+#[cfg(test)]
+fn map_processor_error_to_workflow(err: processing::ProcessorError) -> asm::AssemblerWorkflowError {
+    match err.kind() {
+        processing::ProcessorErrorKind::InvalidRequest => {
+            asm::AssemblerWorkflowError::InvalidRequest(asm::InvalidRequestError::new(
+                err.code(),
+                err.summary(),
+            ))
+        }
+        processing::ProcessorErrorKind::Io => {
+            asm::AssemblerWorkflowError::Io(asm::HostIoError::new(err.code(), err.summary()))
+        }
+        processing::ProcessorErrorKind::Internal => asm::AssemblerWorkflowError::Internal(
+            asm::InternalErrorReport::new(err.code(), err.summary()),
+        ),
+        processing::ProcessorErrorKind::ProcessorDiagnostic => {
+            asm::AssemblerWorkflowError::Assemble(diagnostics::AsmRunError::new(
+                diagnostics::AsmError::new(
+                    diagnostics::AsmErrorKind::Assembler,
+                    err.summary(),
+                    None,
+                ),
+                Vec::new(),
+                Vec::new(),
+            ))
+        }
+    }
+}
+
+fn map_asm_run_error_to_workflow(err: AsmRunError) -> asm::AssemblerWorkflowError {
+    if err.kind() == diagnostics::AsmErrorKind::Io {
+        asm::AssemblerWorkflowError::Io(asm::HostIoError::new("asm.workflow.io", err.summary()))
+    } else {
+        err.into()
+    }
+}
+
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct PrepareOptions<'a> {
@@ -1578,15 +1881,15 @@ impl<'a> AssemblerBuilder<'a> {
         Assembler::with_config(self.root_path, self.config)
     }
 
-    pub fn prepare(self) -> Result<PreparedAssembly<'a>, AsmRunError> {
+    pub fn prepare(self) -> Result<PreparedAssembly<'a>, asm::AssemblerWorkflowError> {
         self.build().prepare()
     }
 
-    pub fn assemble(self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn assemble(self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         self.build().assemble()
     }
 
-    pub fn check(self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn check(self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         self.build().check()
     }
 }
@@ -1856,11 +2159,11 @@ impl<'a> Assembler<'a> {
         &mut self.config
     }
 
-    pub fn assemble(&self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         assemble(self.root_path, self.config.clone().into())
     }
 
-    pub fn prepare(&self) -> Result<PreparedAssembly<'a>, AsmRunError> {
+    pub fn prepare(&self) -> Result<PreparedAssembly<'a>, asm::AssemblerWorkflowError> {
         let (prepared, effective) = prepare_public_assembly(PublicPrepareRequest {
             root_path: self.root_path,
             output_base: self.config.source.output_base,
@@ -1871,7 +2174,8 @@ impl<'a> Assembler<'a> {
             cpu_override: self.config.execution.cpu_override,
             max_loop_iterations: self.config.execution.max_loop_iterations,
             source_provider: self.config.source.source_provider,
-        })?;
+        })
+        .map_err(map_asm_run_error_to_workflow)?;
         Ok(PreparedAssembly {
             root_path: self.root_path,
             config: self.config.clone(),
@@ -1887,7 +2191,7 @@ impl<'a> Assembler<'a> {
         })
     }
 
-    pub fn check(&self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_output_options_for_check(&mut config.output);
         assemble(self.root_path, config.into())
@@ -1912,7 +2216,7 @@ impl AssemblerSession {
     }
 
     pub fn assemble(&self) -> Result<AsmRunReport, AsmRunError> {
-        assemble(self.root_path.as_path(), self.config.as_borrowed())
+        assemble_raw(self.root_path.as_path(), self.config.as_borrowed())
     }
 
     pub fn prepare(&self) -> Result<PreparedAssemblySession, AsmRunError> {
@@ -1952,7 +2256,7 @@ impl AssemblerSession {
     pub fn check(&self) -> Result<AsmRunReport, AsmRunError> {
         let mut config = self.config.clone();
         normalize_owned_config_for_check(&mut config);
-        assemble(self.root_path.as_path(), config.as_borrowed())
+        assemble_raw(self.root_path.as_path(), config.as_borrowed())
     }
 }
 
@@ -1977,7 +2281,7 @@ impl<'a> PreparedAssembly<'a> {
         &self.dependency_files
     }
 
-    pub fn assemble(&self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let input_base = self
             .resolved_output_base
             .as_deref()
@@ -1996,9 +2300,10 @@ impl<'a> PreparedAssembly<'a> {
             },
             self.config.clone().into(),
         )
+        .map_err(map_asm_run_error_to_workflow)
     }
 
-    pub fn check(&self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_output_options_for_check(&mut config.output);
         PreparedAssembly {
@@ -2062,7 +2367,7 @@ impl PreparedAssemblySession {
 pub fn prepare<'a>(
     root_path: &'a Path,
     options: PrepareOptions<'a>,
-) -> Result<PreparedAssembly<'a>, AsmRunError> {
+) -> Result<PreparedAssembly<'a>, asm::AssemblerWorkflowError> {
     Assembler::with_config(
         root_path,
         AssemblerConfig {
@@ -2086,7 +2391,7 @@ pub fn prepare<'a>(
     .prepare()
 }
 
-pub fn assemble(
+fn assemble_raw(
     root_path: &Path,
     options: AssembleOptions<'_>,
 ) -> Result<AsmRunReport, AsmRunError> {
@@ -2123,6 +2428,13 @@ pub fn assemble(
         source_provider: options.source_provider,
         suppress_outputs: options.no_outputs,
     })
+}
+
+pub fn assemble(
+    root_path: &Path,
+    options: AssembleOptions<'_>,
+) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
+    assemble_raw(root_path, options).map_err(map_asm_run_error_to_workflow)
 }
 
 #[cfg(test)]
@@ -2942,6 +3254,12 @@ mod tests {
         let _diagnostic_type: Option<diagnostics::Diagnostic> = None;
         let _report_type: Option<diagnostics::AsmRunReport> = None;
         let _severity_type: Option<diagnostics::Severity> = None;
+        let _workflow_error_type: Option<asm::AssemblerWorkflowError> = None;
+        let _workflow_error_kind = asm::AssemblerWorkflowErrorKind::Assemble;
+        let _invalid_argument_type: Option<asm::InvalidArgumentError> = None;
+        let _invalid_request_type: Option<asm::InvalidRequestError> = None;
+        let _host_io_error_type: Option<asm::HostIoError> = None;
+        let _internal_error_type: Option<asm::InternalErrorReport> = None;
         let _output_format = asm::OutputFormat::Text;
         let _label_output_format = asm::LabelOutputFormat::Vice;
         let _dependency_output: Option<asm::DependencyOutputPolicy> = None;
@@ -2961,6 +3279,107 @@ mod tests {
         let _processor_error_type: Option<processing::ProcessorError> = None;
         let _processor_error_kind = processing::ProcessorErrorKind::InvalidRequest;
         let _processor_detail_type: Option<processing::ProcessorFailureDetail> = None;
+    }
+
+    #[test]
+    fn public_asm_run_error_exposes_stable_inspection_and_workflow_conversion() {
+        let run_error = diagnostics::AsmRunError::new(
+            diagnostics::AsmError::new(diagnostics::AsmErrorKind::Directive, "bad directive", None),
+            Vec::new(),
+            Vec::new(),
+        );
+
+        assert_eq!(run_error.kind(), diagnostics::AsmErrorKind::Directive);
+        assert_eq!(run_error.summary(), "bad directive");
+        assert_eq!(
+            run_error.error().kind(),
+            diagnostics::AsmErrorKind::Directive
+        );
+
+        let workflow_error = asm::AssemblerWorkflowError::from(run_error);
+        assert_eq!(
+            workflow_error.kind(),
+            asm::AssemblerWorkflowErrorKind::Assemble
+        );
+        assert_eq!(workflow_error.code(), "asm.workflow.assemble");
+        assert_eq!(workflow_error.summary(), "bad directive");
+        assert_eq!(
+            workflow_error.as_assemble().expect("assemble error").kind(),
+            diagnostics::AsmErrorKind::Directive
+        );
+    }
+
+    #[test]
+    fn public_borrowed_asm_workflow_wraps_failed_assembly_path() {
+        let source_provider = io::MemorySourceProvider::new().with_file(
+            "/virtual/main.asm",
+            ".module main\n.this_is_not_a_real_directive\n.endmodule\n",
+        );
+        let output_sink = io::MemoryOutputSink::new();
+
+        let err = match Assembler::builder(Path::new("/virtual/main.asm"))
+            .output_base("/virtual/main")
+            .output_format(asm::OutputFormat::Text)
+            .label_output_format(asm::LabelOutputFormat::Vice)
+            .source_provider(&source_provider)
+            .output_sink(&output_sink)
+            .assemble()
+        {
+            Ok(_) => panic!("invalid borrowed assembly should fail"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), asm::AssemblerWorkflowErrorKind::Assemble);
+        assert_eq!(err.code(), "asm.workflow.assemble");
+        assert_eq!(
+            err.as_assemble().expect("assemble payload").kind(),
+            diagnostics::AsmErrorKind::Assembler
+        );
+    }
+
+    #[test]
+    fn public_asm_workflow_minimal_core_and_processor_mappings_are_stable() {
+        let core_error = opcore::CoreError::from(
+            opcore::tokenize_line(".if \"unterminated", 1)
+                .expect_err("tokenize failure should produce a core error"),
+        );
+        let core_workflow = super::map_core_error_to_workflow(core_error);
+        assert_eq!(
+            core_workflow.kind(),
+            asm::AssemblerWorkflowErrorKind::Assemble
+        );
+        assert_eq!(
+            core_workflow
+                .as_assemble()
+                .expect("assemble payload")
+                .kind(),
+            diagnostics::AsmErrorKind::Parser
+        );
+
+        let processor_error = processing::ProcessorError::new(
+            "asm",
+            processing::ProcessorErrorKind::InvalidRequest,
+            "processing.runtime_model.unavailable",
+            "VM tokenizer runtime model is unavailable",
+            vec![processing::ProcessorFailureDetail::new(
+                "processing.runtime_model.unavailable",
+                "VM tokenizer runtime model is unavailable",
+                Some("execution_mode"),
+            )],
+        );
+        let processor_workflow = super::map_processor_error_to_workflow(processor_error);
+        assert_eq!(
+            processor_workflow.kind(),
+            asm::AssemblerWorkflowErrorKind::InvalidRequest
+        );
+        assert_eq!(
+            processor_workflow.code(),
+            "processing.runtime_model.unavailable"
+        );
+        assert_eq!(
+            processor_workflow.summary(),
+            "VM tokenizer runtime model is unavailable"
+        );
     }
 
     #[test]
@@ -3323,10 +3742,11 @@ mod tests {
             Err(err) => err,
         };
 
+        let assemble_err = err.as_assemble().expect("assemble failure payload");
         assert!(
-            !err.diagnostics().is_empty(),
+            !assemble_err.diagnostics().is_empty(),
             "expected source diagnostics: {:?}",
-            err.diagnostics()
+            assemble_err.diagnostics()
         );
         assert!(missing_text(&output_sink, "/virtual/out/main.hex"));
         assert!(output_sink.bytes("/virtual/out/explicit.bin").is_none());

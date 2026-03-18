@@ -126,6 +126,18 @@ impl AsmRunError {
         &self.diagnostics
     }
 
+    pub fn error(&self) -> &AsmError {
+        &self.error
+    }
+
+    pub fn kind(&self) -> AsmErrorKind {
+        self.error.kind()
+    }
+
+    pub fn summary(&self) -> &str {
+        self.error.message()
+    }
+
     pub fn source_lines(&self) -> &[String] {
         &self.source_lines
     }

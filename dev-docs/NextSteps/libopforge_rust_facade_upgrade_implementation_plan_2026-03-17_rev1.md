@@ -51,7 +51,7 @@ This plan is complete when all of the following are true:
 - [x] `LFR-004` Classify namespace, scope, and preprocess failures under `CoreError`
 - [x] `LFR-005` Classify struct and segment failures under `CoreError` and remove pure-`opcore` assembler-error coupling
 - [x] `LFR-006` Add neutral `ProcessorError` surface in `libopforge::processing`
-- [ ] `LFR-007` Add `AssemblerWorkflowError` at the high-level asm boundary
+- [x] `LFR-007` Add `AssemblerWorkflowError` at the high-level asm boundary
 - [ ] `LFR-008` Complete workflow mappings and facade-local stability regressions
 - [ ] `LFR-009` Add canon/compat export audit enforcement
 - [ ] `LFR-010` Publish concern inventories in the facade surface and guide
@@ -333,19 +333,19 @@ Primary files:
 - `crates/opforge-asm/src/error.rs`
 
 Implementation tasks:
-- [ ] introduce `AssemblerWorkflowError` and its classifier at the high-level assembler packaging boundary
-- [ ] wire the minimal borrowed assembly path through the new workflow surface
-- [ ] preserve `AsmRunError`, `AsmRunReport`, `Diagnostic`, and `AsmError` as domain-local diagnostics/reporting types rather than flattening them into one crate-global umbrella
-- [ ] keep `check()`, `prepare()`, and `assemble()` naming and lifecycle unchanged
+- [x] introduce `AssemblerWorkflowError` and its classifier at the high-level assembler packaging boundary
+- [x] wire the minimal borrowed assembly path through the new workflow surface
+- [x] preserve `AsmRunError`, `AsmRunReport`, `Diagnostic`, and `AsmError` as domain-local diagnostics/reporting types rather than flattening them into one crate-global umbrella
+- [x] keep `check()`, `prepare()`, and `assemble()` naming and lifecycle unchanged
 
 Focused validation:
-- [ ] tests for the new workflow error type on the borrowed high-level path
-- [ ] tests for the minimal mapping path from `CoreError` and `ProcessorError` into `AssemblerWorkflowError`
+- [x] tests for the new workflow error type on the borrowed high-level path
+- [x] tests for the minimal mapping path from `CoreError` and `ProcessorError` into `AssemblerWorkflowError`
 
 Commit exit gate:
-- [ ] `cargo test --locked -p opforge-engine`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p opforge-engine`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - the high-level assembler boundary owns a new workflow wrapper type and at least one real top-level path now returns it

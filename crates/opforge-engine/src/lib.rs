@@ -58,7 +58,7 @@ pub use io::{
 pub use processing::{
     editor_route_line, editor_route_line_with_model, editor_route_line_with_model_in_mode,
     process_opcore_expression_request, process_opcore_expression_request_with_mode,
-    route_module_item_line, EngineError,
+    route_module_item_line, route_module_item_line_with_model, EngineError,
 };
 pub use source_graph::{
     load_module_graph, load_module_graph_with_provider, module_search_root_for_path,

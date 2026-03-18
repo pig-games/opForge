@@ -106,7 +106,6 @@ pub mod io {
 pub mod processing {
     pub use ::engine::{
         process_opcore_expression_request, process_opcore_expression_request_with_mode,
-        route_module_item_line,
     };
     pub use ::registry::syntax::{
         register_checker_from_fn, register_checker_none, RegisterChecker,
@@ -188,6 +187,32 @@ pub mod processing {
         line_num: u32,
     ) -> Result<(super::opcore::LineAst, LineProcessingTrace), EngineError> {
         ::engine::editor_route_line(line, line_num).map_err(map_engine_error)
+    }
+
+    pub fn route_module_item_line(
+        line: &str,
+        line_num: u32,
+    ) -> Result<(Option<super::opcore::LineAst>, LineProcessingTrace), EngineError> {
+        ::engine::route_module_item_line(line, line_num).map_err(map_engine_error)
+    }
+
+    pub fn route_module_item_line_with_model(
+        model: &::vm::vm_opasm::HierarchyExecutionModel,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        line: &str,
+        line_num: u32,
+        register_checker: &::registry::syntax::RegisterChecker,
+    ) -> Result<(Option<super::opcore::LineAst>, LineProcessingTrace), EngineError> {
+        ::engine::route_module_item_line_with_model(
+            model,
+            cpu_id,
+            dialect_override,
+            line,
+            line_num,
+            register_checker,
+        )
+        .map_err(map_engine_error)
     }
 
     pub fn editor_route_line_with_model(
@@ -4163,10 +4188,15 @@ mod tests {
                     )]
                 );
             }
-            Err(err) => {
-                assert_eq!(err.message, "VM tokenizer runtime model is unavailable");
-                assert_eq!(err.span.line, 1);
-            }
+            Err(err) => match err {
+                processing::EngineError::Processor(err) => {
+                    assert_eq!(err.processor_id(), "asm");
+                    assert_eq!(err.kind(), processing::ProcessorErrorKind::InvalidRequest);
+                    assert_eq!(err.code(), "processing.runtime_model.unavailable");
+                    assert_eq!(err.summary(), "VM tokenizer runtime model is unavailable");
+                }
+                other => panic!("expected processor error, got {other:?}"),
+            },
         }
     }
 
@@ -4187,10 +4217,16 @@ mod tests {
                 );
             }
             (Err(route_err), Err(editor_err)) => {
-                assert_eq!(
-                    route_err.message,
-                    "VM tokenizer runtime model is unavailable"
-                );
+                match route_err {
+                    processing::EngineError::Processor(err) => {
+                        assert_eq!(err.processor_id(), "asm");
+                        assert_eq!(err.kind(), processing::ProcessorErrorKind::InvalidRequest);
+                        assert_eq!(err.code(), "processing.runtime_model.unavailable");
+                        assert_eq!(err.summary(), "VM tokenizer runtime model is unavailable");
+                        assert_eq!(err.details().len(), 1);
+                    }
+                    other => panic!("expected route processor error, got {other:?}"),
+                }
                 match editor_err {
                     processing::EngineError::Processor(err) => {
                         assert_eq!(err.processor_id(), "asm");
@@ -4206,6 +4242,32 @@ mod tests {
                 panic!("default processing helpers diverged: route={route:?}, editor={editor:?}")
             }
         }
+    }
+
+    #[test]
+    fn public_processing_api_exports_module_item_with_model_inputs_through_facade() {
+        let asm_registry = registry::default_asm_registry();
+        let model = processing::HierarchyExecutionModel::from_registry(&asm_registry)
+            .expect("runtime model should build");
+        let register_checker = processing::register_checker_none();
+
+        let (ast, trace) = processing::route_module_item_line_with_model(
+            &model,
+            "8085",
+            None,
+            ".module demo",
+            1,
+            &register_checker,
+        )
+        .expect("facade-only module-item with-model path should be usable");
+
+        assert!(matches!(ast, Some(opcore::LineAst::Statement(..))));
+        assert_eq!(
+            trace.requests(),
+            &[processing::ProcessingRequestKind::Opcore(
+                processing::OpcoreRequestKind::ModuleItem
+            )]
+        );
     }
 
     #[test]

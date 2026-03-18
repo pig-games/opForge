@@ -125,7 +125,7 @@ fn process_opcore_expression_request_vm(
 pub fn route_module_item_line(
     line: &str,
     line_num: u32,
-) -> Result<(Option<LineAst>, LineProcessingTrace), ParseError> {
+) -> Result<(Option<LineAst>, LineProcessingTrace), EngineError> {
     route_module_item_line_with_default_model(crate::editor_default_runtime_model(), line, line_num)
 }
 
@@ -133,15 +133,8 @@ fn route_module_item_line_with_default_model(
     model: Option<&HierarchyExecutionModel>,
     line: &str,
     line_num: u32,
-) -> Result<(Option<LineAst>, LineProcessingTrace), ParseError> {
-    let model = model.ok_or_else(|| ParseError {
-        message: "VM tokenizer runtime model is unavailable".to_string(),
-        span: Span {
-            line: line_num,
-            col_start: 1,
-            col_end: 1,
-        },
-    })?;
+) -> Result<(Option<LineAst>, LineProcessingTrace), EngineError> {
+    let model = default_runtime_model_or_err(model, line_num)?;
     let register_checker = register_checker_none();
     route_module_item_line_with_model(
         model,
@@ -160,32 +153,42 @@ pub fn route_module_item_line_with_model(
     line: &str,
     line_num: u32,
     register_checker: &RegisterChecker,
-) -> Result<(Option<LineAst>, LineProcessingTrace), ParseError> {
+) -> Result<(Option<LineAst>, LineProcessingTrace), EngineError> {
     let mut trace = LineProcessingTrace::default();
     let request = ProcessingRequestKind::Opcore(OpcoreRequestKind::ModuleItem);
     trace.push(request);
-    match process_module_item_request_vm(
-        model,
-        cpu_id,
-        dialect_override,
-        line,
+    finish_module_item_route(
+        process_module_item_request_vm(
+            model,
+            cpu_id,
+            dialect_override,
+            line,
+            line_num,
+            register_checker,
+        ),
+        trace,
         line_num,
-        register_checker,
-    ) {
+    )
+}
+
+fn finish_module_item_route(
+    outcome: ProcessingOutcome<LineAst, ParseError>,
+    mut trace: LineProcessingTrace,
+    line_num: u32,
+) -> Result<(Option<LineAst>, LineProcessingTrace), EngineError> {
+    match outcome {
         ProcessingOutcome::Done(ast) => Ok((Some(ast), trace)),
         ProcessingOutcome::Return(ProcessingReturn::Unknown) => Ok((None, trace)),
         ProcessingOutcome::Return(ProcessingReturn::Request { request }) => {
             trace.push(request);
-            Err(ParseError {
-                message: "Unsupported processor return for module-item routing".to_string(),
-                span: Span {
-                    line: line_num,
-                    col_start: 1,
-                    col_end: 1,
-                },
-            })
+            Err(EngineError::invalid_request(
+                "engine",
+                "processing.request.unsupported",
+                "Unsupported processor return for module-item routing",
+                Some(format!("line:{line_num}")),
+            ))
         }
-        ProcessingOutcome::Error(err) => Err(err),
+        ProcessingOutcome::Error(err) => Err(EngineError::Core(err)),
     }
 }
 
@@ -657,10 +660,11 @@ fn normalize_binary_op(op: BinaryOp) -> &'static str {
 mod tests {
     use super::{
         editor_route_line_with_model, editor_route_line_with_model_in_mode,
-        process_opcore_expression_request, process_opcore_expression_request_with_mode,
-        record_expr_lockstep_result, route_module_item_line, route_module_item_line_with_model,
-        ContinuationHead, ExecutionMode, LockstepStage, OpcoreRequestKind, ProcessingOutcome,
-        ProcessingRequestKind,
+        finish_module_item_route, process_opcore_expression_request,
+        process_opcore_expression_request_with_mode, record_expr_lockstep_result,
+        route_module_item_line, route_module_item_line_with_model, ContinuationHead, EngineError,
+        ExecutionMode, LineProcessingTrace, LockstepStage, OpcoreRequestKind, ProcessingOutcome,
+        ProcessingRequestKind, ProcessingReturn, ProcessorErrorKind,
     };
     use opcore::parser::{Expr, LineAst};
     use opcore::tokenizer::{Span, Token, TokenKind, Tokenizer};
@@ -850,10 +854,16 @@ mod tests {
         let err = super::route_module_item_line_with_default_model(None, ".module demo", 7)
             .expect_err("missing runtime model should error");
 
-        assert_eq!(err.message, "VM tokenizer runtime model is unavailable");
-        assert_eq!(err.span.line, 7);
-        assert_eq!(err.span.col_start, 1);
-        assert_eq!(err.span.col_end, 1);
+        match err {
+            super::EngineError::Processor(err) => {
+                assert_eq!(err.processor_id(), "asm");
+                assert_eq!(err.kind(), super::ProcessorErrorKind::InvalidRequest);
+                assert_eq!(err.code(), "processing.runtime_model.unavailable");
+                assert_eq!(err.summary(), "VM tokenizer runtime model is unavailable");
+                assert_eq!(err.details().len(), 1);
+            }
+            other => panic!("expected processor error, got {other:?}"),
+        }
     }
 
     #[test]
@@ -863,10 +873,15 @@ mod tests {
         let editor_err = super::editor_route_line_with_default_model(None, ".module demo", 9)
             .expect_err("editor routing should require a runtime model");
 
-        assert_eq!(
-            route_err.message,
-            "VM tokenizer runtime model is unavailable"
-        );
+        match route_err {
+            super::EngineError::Processor(err) => {
+                assert_eq!(err.processor_id(), "asm");
+                assert_eq!(err.kind(), super::ProcessorErrorKind::InvalidRequest);
+                assert_eq!(err.code(), "processing.runtime_model.unavailable");
+                assert_eq!(err.summary(), "VM tokenizer runtime model is unavailable");
+            }
+            other => panic!("expected module-item processor error, got {other:?}"),
+        }
         match editor_err {
             super::EngineError::Processor(err) => {
                 assert_eq!(err.processor_id(), "asm");
@@ -916,5 +931,34 @@ mod tests {
             trace.requests(),
             &[ProcessingRequestKind::Opcore(OpcoreRequestKind::ModuleItem)]
         );
+    }
+
+    #[test]
+    fn finish_module_item_route_maps_unsupported_returns_to_invalid_request() {
+        let err = finish_module_item_route(
+            ProcessingOutcome::Return(ProcessingReturn::Request {
+                request: ProcessingRequestKind::Processor {
+                    processor: "asm".to_string(),
+                    kind: "statement".to_string(),
+                },
+            }),
+            LineProcessingTrace::default(),
+            1,
+        )
+        .expect_err("unsupported module-item return should surface invalid request");
+
+        match err {
+            EngineError::Processor(err) => {
+                assert_eq!(err.processor_id(), "engine");
+                assert_eq!(err.kind(), ProcessorErrorKind::InvalidRequest);
+                assert_eq!(err.code(), "processing.request.unsupported");
+                assert_eq!(
+                    err.summary(),
+                    "Unsupported processor return for module-item routing"
+                );
+                assert_eq!(err.details().len(), 1);
+            }
+            other => panic!("expected processor error, got {other:?}"),
+        }
     }
 }

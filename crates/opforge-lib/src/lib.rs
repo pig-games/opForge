@@ -1441,11 +1441,33 @@ fn map_processor_error_to_workflow(err: processing::ProcessorError) -> asm::Asse
     }
 }
 
-fn map_asm_run_error_to_workflow(err: AsmRunError) -> asm::AssemblerWorkflowError {
-    if err.kind() == diagnostics::AsmErrorKind::Io {
-        asm::AssemblerWorkflowError::Io(asm::HostIoError::new("asm.workflow.io", err.summary()))
+fn map_cli_asm_run_error_to_workflow(err: AsmRunError) -> asm::AssemblerWorkflowError {
+    let summary = err.summary().to_string();
+    let normalized = summary.to_ascii_lowercase();
+    if normalized.contains("unsupported")
+        || normalized.contains("unavailable")
+        || normalized.contains("conflict")
+        || normalized.contains("already")
+    {
+        asm::AssemblerWorkflowError::InvalidRequest(asm::InvalidRequestError::new(
+            "asm.workflow.invalid_request",
+            summary,
+        ))
     } else {
-        err.into()
+        asm::AssemblerWorkflowError::InvalidArgument(asm::InvalidArgumentError::new(
+            "asm.workflow.invalid_argument",
+            summary,
+        ))
+    }
+}
+
+fn map_asm_run_error_to_workflow(err: AsmRunError) -> asm::AssemblerWorkflowError {
+    match err.kind() {
+        diagnostics::AsmErrorKind::Io => {
+            asm::AssemblerWorkflowError::Io(asm::HostIoError::new("asm.workflow.io", err.summary()))
+        }
+        diagnostics::AsmErrorKind::Cli => map_cli_asm_run_error_to_workflow(err),
+        _ => err.into(),
     }
 }
 
@@ -2065,15 +2087,15 @@ impl AssemblerSessionBuilder {
         }
     }
 
-    pub fn prepare(self) -> Result<PreparedAssemblySession, AsmRunError> {
+    pub fn prepare(self) -> Result<PreparedAssemblySession, asm::AssemblerWorkflowError> {
         self.build().prepare()
     }
 
-    pub fn assemble(self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn assemble(self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         self.build().assemble()
     }
 
-    pub fn check(self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn check(self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         self.build().check()
     }
 }
@@ -2215,11 +2237,12 @@ impl AssemblerSession {
         &self.config
     }
 
-    pub fn assemble(&self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         assemble_raw(self.root_path.as_path(), self.config.as_borrowed())
+            .map_err(map_asm_run_error_to_workflow)
     }
 
-    pub fn prepare(&self) -> Result<PreparedAssemblySession, AsmRunError> {
+    pub fn prepare(&self) -> Result<PreparedAssemblySession, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         let (prepared, resolved_input_base) = {
             let borrowed = config.as_borrowed();
@@ -2233,7 +2256,8 @@ impl AssemblerSession {
                 cpu_override: borrowed.cpu_override,
                 max_loop_iterations: borrowed.max_loop_iterations,
                 source_provider: borrowed.source_provider,
-            })?;
+            })
+            .map_err(map_asm_run_error_to_workflow)?;
             (prepared, effective.output_base.into_owned())
         };
         if config.source.output_base.is_empty() {
@@ -2253,10 +2277,11 @@ impl AssemblerSession {
         })
     }
 
-    pub fn check(&self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_owned_config_for_check(&mut config);
         assemble_raw(self.root_path.as_path(), config.as_borrowed())
+            .map_err(map_asm_run_error_to_workflow)
     }
 }
 
@@ -2335,7 +2360,7 @@ impl PreparedAssemblySession {
         &self.dependency_files
     }
 
-    pub fn assemble(&self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let borrowed = self.config.as_borrowed();
         run_public_prepared_assembly(
             PreparedExecutionCoreRef {
@@ -2351,9 +2376,10 @@ impl PreparedAssemblySession {
             },
             borrowed,
         )
+        .map_err(map_asm_run_error_to_workflow)
     }
 
-    pub fn check(&self) -> Result<AsmRunReport, AsmRunError> {
+    pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_owned_config_for_check(&mut config);
         PreparedAssemblySession {
@@ -2446,6 +2472,7 @@ mod tests {
         PrepareOptions, SourceOptions,
     };
     use std::fs;
+    use std::io::{self as stdio, Write};
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
@@ -2483,6 +2510,27 @@ mod tests {
             .text(path.as_ref())
             .expect("utf8 output")
             .is_none()
+    }
+
+    #[derive(Clone, Copy, Default)]
+    struct FailingOutputSink;
+
+    impl io::OutputSink for FailingOutputSink {
+        fn create_dir_all(&self, _path: &Path) -> stdio::Result<()> {
+            Err(stdio::Error::other("forced output failure"))
+        }
+
+        fn create_file(&self, _path: &Path) -> stdio::Result<Box<dyn Write>> {
+            Err(stdio::Error::other("forced output failure"))
+        }
+
+        fn write_text(&self, _path: &Path, _content: &str) -> stdio::Result<()> {
+            Err(stdio::Error::other("forced output failure"))
+        }
+
+        fn write_bytes(&self, _path: &Path, _bytes: &[u8]) -> stdio::Result<()> {
+            Err(stdio::Error::other("forced output failure"))
+        }
     }
 
     #[test]
@@ -3338,6 +3386,123 @@ mod tests {
     }
 
     #[test]
+    fn public_owned_asm_workflow_wraps_failed_assembly_path() {
+        let source_provider = io::MemorySourceProvider::new().with_file(
+            "/virtual/main.asm",
+            ".module main\n.this_is_not_a_real_directive\n.endmodule\n",
+        );
+        let output_sink = io::MemoryOutputSink::new();
+
+        let err = match AssemblerSession::builder("/virtual/main.asm")
+            .output_base("/virtual/main")
+            .output_format(asm::OutputFormat::Text)
+            .label_output_format(asm::LabelOutputFormat::Vice)
+            .source_provider(source_provider.clone())
+            .output_sink(output_sink.clone())
+            .assemble()
+        {
+            Ok(_) => panic!("invalid owned assembly should fail"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.kind(), asm::AssemblerWorkflowErrorKind::Assemble);
+        assert_eq!(err.code(), "asm.workflow.assemble");
+        assert_eq!(
+            err.as_assemble().expect("assemble payload").kind(),
+            diagnostics::AsmErrorKind::Assembler
+        );
+    }
+
+    #[test]
+    fn public_asm_workflow_invalid_argument_category_survives_borrowed_and_owned_paths() {
+        let source_provider = io::MemorySourceProvider::new()
+            .with_file("/virtual/main.asm", ".module main\nnop\n.endmodule\n");
+        let borrowed_output_sink = io::MemoryOutputSink::new();
+        let owned_output_sink = io::MemoryOutputSink::new();
+
+        let borrowed_err = match Assembler::with_config(
+            Path::new("/virtual/main.asm"),
+            AssembleOptions {
+                execution_mode: lockstep::ExecutionMode::Vm,
+                output_base: "/virtual/main",
+                output_format: asm::OutputFormat::Text,
+                cpu_override: Some("definitely-not-a-real-cpu"),
+                label_output_format: asm::LabelOutputFormat::Vice,
+                source_provider: Some(&source_provider),
+                output_sink: Some(&borrowed_output_sink),
+                ..AssembleOptions::default()
+            },
+        )
+        .assemble()
+        {
+            Ok(_) => panic!("borrowed invalid-argument assembly should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(
+            borrowed_err.kind(),
+            asm::AssemblerWorkflowErrorKind::InvalidArgument
+        );
+
+        let owned_err = match AssemblerSession::builder("/virtual/main.asm")
+            .output_base("/virtual/main")
+            .output_format(asm::OutputFormat::Text)
+            .label_output_format(asm::LabelOutputFormat::Vice)
+            .cpu_override("definitely-not-a-real-cpu")
+            .source_provider(source_provider)
+            .output_sink(owned_output_sink)
+            .assemble()
+        {
+            Ok(_) => panic!("owned invalid-argument assembly should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(
+            owned_err.kind(),
+            asm::AssemblerWorkflowErrorKind::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn public_asm_workflow_io_category_survives_borrowed_and_owned_paths() {
+        let source_provider = io::MemorySourceProvider::new()
+            .with_file("/virtual/main.asm", ".module main\nnop\n.endmodule\n");
+        let failing_output = FailingOutputSink;
+
+        let borrowed_err = match Assembler::with_config(
+            Path::new("/virtual/main.asm"),
+            AssembleOptions {
+                execution_mode: lockstep::ExecutionMode::Vm,
+                output_base: "/virtual/main",
+                output_format: asm::OutputFormat::Text,
+                label_output_format: asm::LabelOutputFormat::Vice,
+                source_provider: Some(&source_provider),
+                output_sink: Some(&failing_output),
+                ..AssembleOptions::default()
+            },
+        )
+        .assemble()
+        {
+            Ok(_) => panic!("borrowed failing output should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(borrowed_err.kind(), asm::AssemblerWorkflowErrorKind::Io);
+        assert_eq!(borrowed_err.code(), "asm.workflow.io");
+
+        let owned_err = match AssemblerSession::builder("/virtual/main.asm")
+            .output_base("/virtual/main")
+            .output_format(asm::OutputFormat::Text)
+            .label_output_format(asm::LabelOutputFormat::Vice)
+            .source_provider(source_provider)
+            .output_sink(failing_output)
+            .assemble()
+        {
+            Ok(_) => panic!("owned failing output should fail"),
+            Err(err) => err,
+        };
+        assert_eq!(owned_err.kind(), asm::AssemblerWorkflowErrorKind::Io);
+        assert_eq!(owned_err.code(), "asm.workflow.io");
+    }
+
+    #[test]
     fn public_asm_workflow_minimal_core_and_processor_mappings_are_stable() {
         let core_error = opcore::CoreError::from(
             opcore::tokenize_line(".if \"unterminated", 1)
@@ -3380,6 +3545,76 @@ mod tests {
             processor_workflow.summary(),
             "VM tokenizer runtime model is unavailable"
         );
+
+        let internal_error = processing::ProcessorError::new(
+            "asm",
+            processing::ProcessorErrorKind::Internal,
+            "processing.internal",
+            "processor contract failed",
+            Vec::new(),
+        );
+        let internal_workflow = super::map_processor_error_to_workflow(internal_error);
+        assert_eq!(
+            internal_workflow.kind(),
+            asm::AssemblerWorkflowErrorKind::Internal
+        );
+        assert_eq!(internal_workflow.code(), "processing.internal");
+
+        let diagnostic_error = processing::ProcessorError::new(
+            "asm",
+            processing::ProcessorErrorKind::ProcessorDiagnostic,
+            "processing.processor_diagnostic",
+            "processor parse failed",
+            Vec::new(),
+        );
+        let diagnostic_workflow = super::map_processor_error_to_workflow(diagnostic_error);
+        assert_eq!(
+            diagnostic_workflow.kind(),
+            asm::AssemblerWorkflowErrorKind::Assemble
+        );
+        assert_eq!(
+            diagnostic_workflow
+                .as_assemble()
+                .expect("assemble payload")
+                .kind(),
+            diagnostics::AsmErrorKind::Assembler
+        );
+    }
+
+    #[test]
+    fn public_asm_workflow_preserves_diagnostic_error_payload_structure() {
+        let source_provider = io::MemorySourceProvider::new().with_file(
+            "/virtual/main.asm",
+            ".module main\nstart:\n    .byte MISSING_VALUE\n.endmodule\n",
+        );
+        let output_sink = io::MemoryOutputSink::new();
+
+        let err = match Assembler::with_config(
+            Path::new("/virtual/main.asm"),
+            AssembleOptions {
+                execution_mode: lockstep::ExecutionMode::Vm,
+                output_base: "/virtual/main",
+                output_format: asm::OutputFormat::Text,
+                label_output_format: asm::LabelOutputFormat::Vice,
+                source_provider: Some(&source_provider),
+                output_sink: Some(&output_sink),
+                ..AssembleOptions::default()
+            },
+        )
+        .assemble()
+        {
+            Ok(_) => panic!("assembly should fail"),
+            Err(err) => err,
+        };
+
+        let assemble_err = err.as_assemble().expect("assemble payload");
+        let diagnostic = &assemble_err.diagnostics()[0];
+        assert_eq!(diagnostic.severity, diagnostics::Severity::Error);
+        assert_eq!(
+            diagnostic.error.kind(),
+            diagnostics::AsmErrorKind::Expression
+        );
+        assert!(diagnostic.error.message().contains("MISSING_VALUE"));
     }
 
     #[test]

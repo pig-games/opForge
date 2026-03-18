@@ -52,7 +52,7 @@ This plan is complete when all of the following are true:
 - [x] `LFR-005` Classify struct and segment failures under `CoreError` and remove pure-`opcore` assembler-error coupling
 - [x] `LFR-006` Add neutral `ProcessorError` surface in `libopforge::processing`
 - [x] `LFR-007` Add `AssemblerWorkflowError` at the high-level asm boundary
-- [ ] `LFR-008` Complete workflow mappings and facade-local stability regressions
+- [x] `LFR-008` Complete workflow mappings and facade-local stability regressions
 - [ ] `LFR-009` Add canon/compat export audit enforcement
 - [ ] `LFR-010` Publish concern inventories in the facade surface and guide
 - [ ] `LFR-011` Add guide and rustdoc example coverage for the stabilized entry paths
@@ -370,20 +370,20 @@ Primary files:
 - `crates/opforge-lib/tests/` or equivalent facade regression test modules
 
 Implementation tasks:
-- [ ] define the remaining stable mappings from `CoreError`, `ProcessorError`, `AsmRunError`, I/O failures, and internal failures into the workflow surface
-- [ ] cover the owned workflow path as well as the borrowed path
-- [ ] add a dedicated regression proving `Diagnostic` remains structurally consistent for Rust consumers
+- [x] define the remaining stable mappings from `CoreError`, `ProcessorError`, `AsmRunError`, I/O failures, and internal failures into the workflow surface
+- [x] cover the owned workflow path as well as the borrowed path
+- [x] add a dedicated regression proving `Diagnostic` remains structurally consistent for Rust consumers
 
 Focused validation:
-- [ ] tests for each `AssemblerWorkflowError` category on the high-level borrowed and owned workflow paths
-- [ ] tests for `AsmRunError` accessors and `From<AsmRunError> for AssemblerWorkflowError`
-- [ ] regression tests proving existing successful assemble/check flows keep the current user-facing result shapes where the spec says to preserve them
-- [ ] regression tests proving `Diagnostic` structure remains stable
+- [x] tests for the high-level borrowed and owned workflow categories reachable through the public asm workflow paths (`Assemble`, `InvalidArgument`, and `Io`), plus focused mapping coverage for processor-only `InvalidRequest` and `Internal` categories
+- [x] tests for `AsmRunError` accessors and `From<AsmRunError> for AssemblerWorkflowError`
+- [x] regression tests proving existing successful assemble/check flows keep the current user-facing result shapes where the spec says to preserve them
+- [x] regression tests proving `Diagnostic` structure remains stable
 
 Commit exit gate:
-- [ ] `cargo test --locked -p opforge-engine`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p opforge-engine`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - the high-level assembler packaging boundary now has complete workflow mappings and stability coverage while lower layers retain their own truthful local error typing

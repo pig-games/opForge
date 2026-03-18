@@ -1760,8 +1760,8 @@ fn diagnostic_counts(diagnostics: &[Diagnostic]) -> (usize, usize) {
     (error_count, warning_count)
 }
 
-fn asm_report_from_run_result(
-    result: Result<api::diagnostics::AsmRunReport, api::diagnostics::AsmRunError>,
+fn asm_report_from_workflow_result(
+    result: Result<api::diagnostics::AsmRunReport, api::asm::AssemblerWorkflowError>,
 ) -> OpforgeAsmReport {
     match result {
         Ok(report) => OpforgeAsmReport::ok(
@@ -1771,7 +1771,7 @@ fn asm_report_from_run_result(
             report.lockstep_report().matches().len(),
             report.lockstep_report().divergences().len(),
         ),
-        Err(err) => {
+        Err(api::asm::AssemblerWorkflowError::Assemble(err)) => {
             let (error_count, warning_count) = diagnostic_counts(err.diagnostics());
             OpforgeAsmReport::error(
                 OpforgeStatus::AssembleError,
@@ -1783,6 +1783,42 @@ fn asm_report_from_run_result(
                 err.to_string(),
             )
         }
+        Err(api::asm::AssemblerWorkflowError::InvalidArgument(err)) => OpforgeAsmReport::error(
+            OpforgeStatus::InvalidRequest,
+            Vec::new(),
+            0,
+            0,
+            0,
+            0,
+            err.to_string(),
+        ),
+        Err(api::asm::AssemblerWorkflowError::InvalidRequest(err)) => OpforgeAsmReport::error(
+            OpforgeStatus::InvalidRequest,
+            Vec::new(),
+            0,
+            0,
+            0,
+            0,
+            err.to_string(),
+        ),
+        Err(api::asm::AssemblerWorkflowError::Io(err)) => OpforgeAsmReport::error(
+            OpforgeStatus::AssembleError,
+            Vec::new(),
+            0,
+            0,
+            0,
+            0,
+            err.to_string(),
+        ),
+        Err(api::asm::AssemblerWorkflowError::Internal(err)) => OpforgeAsmReport::error(
+            OpforgeStatus::AssembleError,
+            Vec::new(),
+            0,
+            0,
+            0,
+            0,
+            err.to_string(),
+        ),
     }
 }
 
@@ -1799,9 +1835,9 @@ fn run_high_level_assembler_with_request(
 ) -> Result<OpforgeAsmReport, FfiAsmReportError> {
     let session = build_high_level_assembler_session_with_request(request)?;
     let report = if check_only {
-        asm_report_from_run_result(session.check())
+        asm_report_from_workflow_result(session.check())
     } else {
-        asm_report_from_run_result(session.assemble())
+        asm_report_from_workflow_result(session.assemble())
     };
     match report.status {
         OpforgeStatus::Ok => Ok(report),
@@ -1832,9 +1868,9 @@ fn run_high_level_assembler_in_memory_with_request(
 
     let session = api::asm::AssemblerSession::with_config(root_path, config);
     let report = if check_only {
-        asm_report_from_run_result(session.check())
+        asm_report_from_workflow_result(session.check())
     } else {
-        asm_report_from_run_result(session.assemble())
+        asm_report_from_workflow_result(session.assemble())
     };
 
     if report.status == OpforgeStatus::Ok
@@ -2526,7 +2562,7 @@ pub unsafe extern "C" fn opforge_asm_session_prepare(
             }),
             Err(err) => into_prepared_session_handle(OpforgePreparedAsmSession {
                 prepared: None,
-                failure: Some(asm_report_from_run_result(Err(err))),
+                failure: Some(asm_report_from_workflow_result(Err(err))),
             }),
         }
     })
@@ -2554,7 +2590,7 @@ pub unsafe extern "C" fn opforge_asm_session_assemble(
                 "session pointer must not be null",
             ));
         };
-        let report = asm_report_from_run_result(session.session.assemble());
+        let report = asm_report_from_workflow_result(session.session.assemble());
         into_report_handle(report)
     })
 }
@@ -2581,7 +2617,7 @@ pub unsafe extern "C" fn opforge_asm_session_check(
                 "session pointer must not be null",
             ));
         };
-        let report = asm_report_from_run_result(session.session.check());
+        let report = asm_report_from_workflow_result(session.session.check());
         into_report_handle(report)
     })
 }
@@ -2617,7 +2653,7 @@ pub unsafe extern "C" fn opforge_prepared_asm_session_assemble(
                 "missing prepared session state",
             ));
         };
-        let report = asm_report_from_run_result(prepared_session.assemble());
+        let report = asm_report_from_workflow_result(prepared_session.assemble());
         into_report_handle(report)
     })
 }
@@ -2653,7 +2689,7 @@ pub unsafe extern "C" fn opforge_prepared_asm_session_check(
                 "missing prepared session state",
             ));
         };
-        let report = asm_report_from_run_result(prepared_session.check());
+        let report = asm_report_from_workflow_result(prepared_session.check());
         into_report_handle(report)
     })
 }

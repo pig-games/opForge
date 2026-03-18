@@ -250,7 +250,7 @@ Key entrypoints:
 
 This layer returns `LineProcessingTrace`, which is useful when you want to understand which processor claimed a line or expression request.
 
-In `vm-runtime-only` builds, do not assume the CLI/runtime package fallback rules apply here. If your tool is calling the lower-level editor-routing helpers directly, pass a `HierarchyExecutionModel` through the `*_with_model` entrypoints or provide the default artifact file at `target/vm/opforge-vm-runtime.opasm` when `vm-runtime-opasm-artifact` is enabled.
+In `vm-runtime-only` builds, do not assume the CLI/runtime package fallback rules apply here. If your tool is calling the lower-level editor-routing helpers directly, build a facade-visible runtime model with `processing::HierarchyExecutionModel::from_registry(&registry::default_asm_registry())`, use `processing::register_checker_none()` or `processing::register_checker_from_fn(...)` for the tokenizer policy, and pass those values through the `*_with_model` entrypoints. Otherwise provide the default artifact file at `target/vm/opforge-vm-runtime.opasm` when `vm-runtime-opasm-artifact` is enabled.
 
 If neither an explicit model nor the default artifact is available, the default helpers, including `route_module_item_line`, return a runtime-model-unavailable error rather than regenerating or bundling one implicitly.
 

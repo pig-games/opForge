@@ -108,10 +108,14 @@ pub mod processing {
         process_opcore_expression_request, process_opcore_expression_request_with_mode,
         route_module_item_line,
     };
+    pub use ::registry::syntax::{
+        register_checker_from_fn, register_checker_none, RegisterChecker,
+    };
     pub use ::types::processing::{
         LineProcessingTrace, OpcoreRequestKind, ProcessingOutcome, ProcessingRequestKind,
         ProcessingReturn, ProcessorError, ProcessorErrorKind, ProcessorFailureDetail,
     };
+    pub use ::vm::vm_opasm::HierarchyExecutionModel;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum EngineErrorKind {
@@ -4225,6 +4229,32 @@ mod tests {
             }
             other => panic!("expected core error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn public_processing_api_exports_with_model_inputs_through_facade() {
+        let asm_registry = registry::default_asm_registry();
+        let model = processing::HierarchyExecutionModel::from_registry(&asm_registry)
+            .expect("runtime model should build");
+        let register_checker = processing::register_checker_none();
+
+        let (ast, trace) = processing::editor_route_line_with_model(
+            &model,
+            "8085",
+            None,
+            ".module demo",
+            1,
+            &register_checker,
+        )
+        .expect("facade-only with-model path should be usable");
+
+        assert!(matches!(ast, opcore::LineAst::Statement(..)));
+        assert_eq!(
+            trace.requests(),
+            &[processing::ProcessingRequestKind::Opcore(
+                processing::OpcoreRequestKind::Statement
+            )]
+        );
     }
 
     #[test]

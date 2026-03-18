@@ -67,6 +67,7 @@ pub mod formatter {
 
 pub mod opcore {
     pub use ::engine::editor_parse_line;
+    pub use ::opcore::expr::EvalError;
     pub use ::opcore::expression::expr_text;
     pub use ::opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError, UseItem};
     pub use ::opcore::services::{
@@ -74,6 +75,97 @@ pub mod opcore {
         TokenizedLine,
     };
     pub use ::opcore::tokenizer::{Span, Token, TokenKind, TokenizeError, Tokenizer};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum CoreErrorKind {
+        Tokenize,
+        Parse,
+        Expr,
+        Statement,
+        Module,
+        Use,
+        Import,
+        Macro,
+        Conditional,
+        Repetition,
+        Namespace,
+        Scope,
+        Preprocess,
+        Struct,
+        Segment,
+    }
+
+    #[derive(Debug, Clone)]
+    #[non_exhaustive]
+    pub enum CoreError {
+        Tokenize(TokenizeError),
+        Parse(ParseError),
+        Expr(EvalError),
+    }
+
+    impl CoreError {
+        pub fn kind(&self) -> CoreErrorKind {
+            match self {
+                Self::Tokenize(_) => CoreErrorKind::Tokenize,
+                Self::Parse(_) => CoreErrorKind::Parse,
+                Self::Expr(_) => CoreErrorKind::Expr,
+            }
+        }
+
+        pub fn summary(&self) -> &str {
+            match self {
+                Self::Tokenize(err) => &err.message,
+                Self::Parse(err) => &err.message,
+                Self::Expr(err) => &err.message,
+            }
+        }
+
+        pub fn code(&self) -> &str {
+            match self.kind() {
+                CoreErrorKind::Tokenize => "opcore.tokenize",
+                CoreErrorKind::Parse => "opcore.parse",
+                CoreErrorKind::Expr => "opcore.expr",
+                CoreErrorKind::Statement => "opcore.statement",
+                CoreErrorKind::Module => "opcore.module",
+                CoreErrorKind::Use => "opcore.use",
+                CoreErrorKind::Import => "opcore.import",
+                CoreErrorKind::Macro => "opcore.macro",
+                CoreErrorKind::Conditional => "opcore.conditional",
+                CoreErrorKind::Repetition => "opcore.repetition",
+                CoreErrorKind::Namespace => "opcore.namespace",
+                CoreErrorKind::Scope => "opcore.scope",
+                CoreErrorKind::Preprocess => "opcore.preprocess",
+                CoreErrorKind::Struct => "opcore.struct",
+                CoreErrorKind::Segment => "opcore.segment",
+            }
+        }
+    }
+
+    impl std::fmt::Display for CoreError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for CoreError {}
+
+    impl From<TokenizeError> for CoreError {
+        fn from(err: TokenizeError) -> Self {
+            Self::Tokenize(err)
+        }
+    }
+
+    impl From<ParseError> for CoreError {
+        fn from(err: ParseError) -> Self {
+            Self::Parse(err)
+        }
+    }
+
+    impl From<EvalError> for CoreError {
+        fn from(err: EvalError) -> Self {
+            Self::Expr(err)
+        }
+    }
 
     pub mod portable {
         use ::types::processing::ProcessingOutcome;
@@ -2351,6 +2443,36 @@ mod tests {
     }
 
     #[test]
+    fn public_opcore_core_error_classifies_leaf_failures() {
+        let span = opcore::Span {
+            line: 7,
+            col_start: 2,
+            col_end: 4,
+        };
+
+        let tokenize = opcore::CoreError::from(opcore::TokenizeError {
+            message: "bad token".to_string(),
+            span,
+        });
+        assert_eq!(tokenize.kind(), opcore::CoreErrorKind::Tokenize);
+        assert_eq!(tokenize.summary(), "bad token");
+        assert_eq!(tokenize.code(), "opcore.tokenize");
+
+        let parse = opcore::CoreError::from(opcore::ParseError {
+            message: "bad parse".to_string(),
+            span,
+        });
+        assert_eq!(parse.kind(), opcore::CoreErrorKind::Parse);
+        assert_eq!(parse.summary(), "bad parse");
+        assert_eq!(parse.code(), "opcore.parse");
+
+        let expr = opcore::CoreError::from(opcore::EvalError::with_span("bad expr", span));
+        assert_eq!(expr.kind(), opcore::CoreErrorKind::Expr);
+        assert_eq!(expr.summary(), "bad expr");
+        assert_eq!(expr.code(), "opcore.expr");
+    }
+
+    #[test]
     fn public_portable_opcore_api_tokenizes_and_parses_expression() {
         let tokenized =
             opcore::portable::tokenize_line("1 + 2", 1).expect("tokenization should succeed");
@@ -2389,6 +2511,9 @@ mod tests {
         let _dependency_output: Option<asm::DependencyOutputPolicy> = None;
         let _bin_spec: Option<asm::BinOutputSpec> = None;
         let _bin_range: Option<asm::BinRange> = None;
+        let _core_error_type: Option<opcore::CoreError> = None;
+        let _core_error_kind = opcore::CoreErrorKind::Tokenize;
+        let _eval_error_type: Option<opcore::EvalError> = None;
     }
 
     #[test]

@@ -3,6 +3,7 @@
 use opcore::parser::{BinaryOp, Expr, LineAst, ParseError, Parser, UnaryOp};
 use opcore::services::parse_expression_tokens as parse_stable_opcore_expression_tokens;
 use opcore::tokenizer::{Span, Token};
+use opcore::CoreError;
 use registry::syntax::{register_checker_none, RegisterChecker};
 use types::lockstep::{
     ContinuationHead, ExecutionMode, LockstepCheckpoint, LockstepComparisonCategory,
@@ -16,106 +17,10 @@ use vm::vm_opasm::HierarchyExecutionModel;
 use vm::vm_opcore::parse_expression_tokens as parse_vm_expression_tokens;
 use vm::vm_opcore::process_module_item_request_with_model as process_module_item_request_vm;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EngineCoreErrorKind {
-    Parse,
-    Statement,
-    Module,
-    Use,
-    Import,
-    Macro,
-    Conditional,
-    Repetition,
-    Namespace,
-    Scope,
-    Struct,
-    Segment,
-}
-
-#[derive(Debug, Clone)]
-pub struct EngineCoreError {
-    kind: EngineCoreErrorKind,
-    parse_error: ParseError,
-}
-
-impl EngineCoreError {
-    fn line_parse(line: &str, parse_error: ParseError) -> Self {
-        Self {
-            kind: classify_line_parse_error_kind(line, &parse_error.message),
-            parse_error,
-        }
-    }
-
-    fn module_item(line: &str, parse_error: ParseError) -> Self {
-        Self {
-            kind: classify_module_item_error_kind(line, &parse_error.message),
-            parse_error,
-        }
-    }
-
-    pub fn kind(&self) -> EngineCoreErrorKind {
-        self.kind
-    }
-
-    pub fn parse_error(&self) -> &ParseError {
-        &self.parse_error
-    }
-
-    pub fn into_parse_error(self) -> ParseError {
-        self.parse_error
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum EngineError {
-    Core(EngineCoreError),
+    Core(CoreError),
     Processor(ProcessorError),
-}
-
-fn classify_module_item_error_kind(line: &str, message: &str) -> EngineCoreErrorKind {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with(".use") {
-        if message.contains("import list")
-            || message.contains("Wildcard import")
-            || message.contains("parameter")
-            || message.contains("Expected '(' after 'with'")
-        {
-            EngineCoreErrorKind::Import
-        } else {
-            EngineCoreErrorKind::Use
-        }
-    } else {
-        EngineCoreErrorKind::Module
-    }
-}
-
-fn classify_line_parse_error_kind(line: &str, message: &str) -> EngineCoreErrorKind {
-    let trimmed = line.trim_start();
-    let lower = trimmed.to_ascii_lowercase();
-    let message_lower = message.to_ascii_lowercase();
-    if lower.starts_with(".if") || lower.starts_with(".endif") {
-        EngineCoreErrorKind::Conditional
-    } else if lower.starts_with(".for")
-        || lower.starts_with(".bfor")
-        || lower.starts_with(".endfor")
-        || lower.starts_with(".while")
-        || lower.starts_with(".bwhile")
-        || lower.starts_with(".endwhile")
-    {
-        EngineCoreErrorKind::Repetition
-    } else if lower.starts_with(".endsegment") || lower.starts_with(".segment") {
-        EngineCoreErrorKind::Segment
-    } else if lower.starts_with(".endn") || lower.starts_with(".namespace") {
-        EngineCoreErrorKind::Namespace
-    } else if lower.starts_with(".endblock") || lower.starts_with(".endmodule") {
-        EngineCoreErrorKind::Scope
-    } else if lower.starts_with(".endmacro") || lower.starts_with(".macro") {
-        EngineCoreErrorKind::Macro
-    } else if message_lower.contains("struct literal") {
-        EngineCoreErrorKind::Struct
-    } else {
-        EngineCoreErrorKind::Statement
-    }
 }
 
 impl EngineError {
@@ -286,9 +191,9 @@ fn finish_module_item_route(
                 Some(format!("line:{line_num}")),
             ))
         }
-        ProcessingOutcome::Error(err) => {
-            Err(EngineError::Core(EngineCoreError::module_item(line, err)))
-        }
+        ProcessingOutcome::Error(err) => Err(EngineError::Core(CoreError::from_module_item_parse(
+            line, err,
+        ))),
     }
 }
 
@@ -368,9 +273,9 @@ pub fn editor_route_line_with_model_in_mode(
 
     match process_opcore_statement_request(line, line_num) {
         ProcessingOutcome::Done(ast) => Ok((ast, trace, lockstep_report)),
-        ProcessingOutcome::Error(err) => {
-            Err(EngineError::Core(EngineCoreError::line_parse(line, err)))
-        }
+        ProcessingOutcome::Error(err) => Err(EngineError::Core(CoreError::from_statement_parse(
+            line, err,
+        ))),
         ProcessingOutcome::Return(ProcessingReturn::Request { request }) => {
             let ctx = ProcessorLineRequestContext {
                 model,
@@ -764,13 +669,13 @@ mod tests {
         editor_route_line_with_model, editor_route_line_with_model_in_mode,
         finish_module_item_route, process_opcore_expression_request,
         process_opcore_expression_request_with_mode, record_expr_lockstep_result,
-        route_module_item_line, route_module_item_line_with_model, ContinuationHead,
-        EngineCoreErrorKind, EngineError, ExecutionMode, LineProcessingTrace, LockstepStage,
-        OpcoreRequestKind, ProcessingOutcome, ProcessingRequestKind, ProcessingReturn,
-        ProcessorErrorKind,
+        route_module_item_line, route_module_item_line_with_model, ContinuationHead, EngineError,
+        ExecutionMode, LineProcessingTrace, LockstepStage, OpcoreRequestKind, ProcessingOutcome,
+        ProcessingRequestKind, ProcessingReturn, ProcessorErrorKind,
     };
     use opcore::parser::{Expr, LineAst};
     use opcore::tokenizer::{Span, Token, TokenKind, Tokenizer};
+    use opcore::{CoreError, CoreErrorKind};
     use registry::syntax::register_checker_none;
 
     fn collect_tokens(line: &str) -> (Vec<Token>, Span) {
@@ -1082,8 +987,8 @@ mod tests {
 
         match err {
             EngineError::Core(err) => {
-                assert_eq!(err.kind(), EngineCoreErrorKind::Use);
-                assert!(!err.parse_error().message.is_empty());
+                assert_eq!(err.kind(), CoreErrorKind::Use);
+                assert!(!err.summary().is_empty());
             }
             other => panic!("expected core error, got {other:?}"),
         }
@@ -1105,8 +1010,11 @@ mod tests {
 
         match err {
             EngineError::Core(err) => {
-                assert_eq!(err.kind(), EngineCoreErrorKind::Conditional);
-                assert_eq!(err.parse_error().span.line, 1);
+                assert_eq!(err.kind(), CoreErrorKind::Conditional);
+                match err {
+                    CoreError::LineParse(err) => assert_eq!(err.span.line, 1),
+                    other => panic!("expected line-parse core error, got {other:?}"),
+                }
             }
             other => panic!("expected core error, got {other:?}"),
         }

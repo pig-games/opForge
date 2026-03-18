@@ -58,8 +58,7 @@ pub use io::{
 pub use processing::{
     editor_route_line, editor_route_line_with_model, editor_route_line_with_model_in_mode,
     process_opcore_expression_request, process_opcore_expression_request_with_mode,
-    route_module_item_line, route_module_item_line_with_model, EngineCoreError,
-    EngineCoreErrorKind, EngineError,
+    route_module_item_line, route_module_item_line_with_model, EngineError,
 };
 pub use source_graph::{
     load_module_graph, load_module_graph_with_provider, module_search_root_for_path,
@@ -86,6 +85,56 @@ fn default_runtime_artifact_path_for_dir(base_dir: &Path) -> PathBuf {
 
 struct EngineRuntimeLineRouter {
     execution_mode: ExecutionMode,
+}
+
+fn core_error_into_parse_error(err: opcore::CoreError, fallback_line: u32) -> ParseError {
+    match err {
+        opcore::CoreError::Parse(err) => err,
+        opcore::CoreError::ModuleItem(err) => ParseError {
+            message: err.message,
+            span: err.span,
+        },
+        opcore::CoreError::LineParse(err) => ParseError {
+            message: err.message,
+            span: err.span,
+        },
+        opcore::CoreError::Tokenize(err) => ParseError {
+            message: err.message,
+            span: err.span,
+        },
+        opcore::CoreError::Expr(err) => ParseError {
+            message: err.message,
+            span: err.span.unwrap_or(Span {
+                line: fallback_line,
+                col_start: 1,
+                col_end: 1,
+            }),
+        },
+        opcore::CoreError::Macro(err) => ParseError {
+            message: err.message().to_string(),
+            span: Span {
+                line: err.line().unwrap_or(fallback_line),
+                col_start: err.column().unwrap_or(1),
+                col_end: err.column().unwrap_or(1),
+            },
+        },
+        opcore::CoreError::Preprocess(err) => ParseError {
+            message: err.message().to_string(),
+            span: Span {
+                line: err.line().unwrap_or(fallback_line),
+                col_start: err.column().unwrap_or(1),
+                col_end: err.column().unwrap_or(1),
+            },
+        },
+        other => ParseError {
+            message: other.summary().to_string(),
+            span: Span {
+                line: fallback_line,
+                col_start: 1,
+                col_end: 1,
+            },
+        },
+    }
 }
 
 impl RuntimeLineRouter for EngineRuntimeLineRouter {
@@ -118,7 +167,7 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
             self.execution_mode,
         )
         .map_err(|err| match err {
-            EngineError::Core(err) => err.into_parse_error(),
+            EngineError::Core(err) => core_error_into_parse_error(err, line_num),
             EngineError::Processor(err) => ParseError {
                 message: err.summary().to_string(),
                 span: Span {

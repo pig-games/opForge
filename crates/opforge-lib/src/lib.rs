@@ -18,6 +18,11 @@ use crate::diagnostics::{AsmRunError, AsmRunReport};
 use crate::io::{OutputSink, SourceProvider};
 use crate::lockstep::ExecutionMode;
 
+/// Concern inventory: stable assembler diagnostics and run-report payloads.
+///
+/// Owns host-facing access to `Diagnostic`, `AsmRunReport`, `AsmRunError`, and
+/// the assembler diagnostic taxonomy used by high-level assembly results.
+/// It does not own source loading, CPU discovery, or orchestration policy.
 pub mod diagnostics {
     pub use ::asm::error::{
         build_context_lines, AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic,
@@ -25,6 +30,11 @@ pub mod diagnostics {
     };
 }
 
+/// Concern inventory: host I/O adapters and abstraction traits.
+///
+/// Owns stable filesystem and memory-backed `SourceProvider` and `OutputSink`
+/// adapters for embedding hosts. It does not own diagnostics, CPU selection,
+/// or assembly execution semantics.
 pub mod io {
     pub use ::engine::{
         FsOutputSink, FsSourceProvider, MemoryOutputSink, MemorySourceProvider, OutputSink,
@@ -32,6 +42,12 @@ pub mod io {
     };
 }
 
+/// Concern inventory: processor-neutral routing and failure contracts.
+///
+/// Owns line-routing helpers, processing traces, and the stable neutral
+/// `ProcessorError` surface used when processor-local failures cross the engine
+/// boundary. It does not own assembler workflow packaging or generic language
+/// parsing APIs.
 pub mod processing {
     pub use ::engine::{
         process_opcore_expression_request, process_opcore_expression_request_with_mode,
@@ -163,6 +179,11 @@ pub mod processing {
     }
 }
 
+/// Concern inventory: CPU, family, and capability discovery.
+///
+/// Owns stable registry lookup, builtin capability snapshots, and CPU
+/// resolution helpers for hosts that need discovery or validation. It does not
+/// own full custom extension authoring workflows beyond that discovery surface.
 pub mod registry {
     pub use ::engine::{
         capabilities_report, capabilities_report_json, cpusupport_report, cpusupport_report_json,
@@ -177,6 +198,10 @@ pub mod registry {
     }
 }
 
+/// Concern inventory: stable formatter entrypoints and reports.
+///
+/// Owns formatter configuration, run reports, and file-level formatting output.
+/// It does not redefine assembler or language-core diagnostics taxonomies.
 pub mod formatter {
     pub use ::formatter::{
         FormatMode, FormatterConfig, FormatterDiagnostic, FormatterEngine, FormatterFileReport,
@@ -184,6 +209,11 @@ pub mod formatter {
     };
 }
 
+/// Concern inventory: generic non-assembler language services.
+///
+/// Owns tokenization, expression parsing, module-item handling, macro and
+/// preprocess concerns, and the stable `CoreError` domain for generic language
+/// failures. It does not own assembler statement encoding or artifact output.
 pub mod opcore {
     pub use ::opcore::expr::EvalError;
     pub use ::opcore::expression::expr_text;
@@ -550,6 +580,11 @@ pub mod opcore {
     }
 }
 
+/// Concern inventory: execution-head coordination and parity reporting.
+///
+/// Owns `ExecutionMode`, continuation-head selection, lockstep checkpoints,
+/// and lockstep divergence or match reporting. It does not own statement
+/// processing or registry discovery.
 pub mod lockstep {
     pub use ::engine::{
         ContinuationHead, ExecutionMode, LockstepCheckpoint, LockstepComparisonCategory,
@@ -557,6 +592,12 @@ pub mod lockstep {
     };
 }
 
+/// Concern inventory: high-level assembler workflow and assembler-specific APIs.
+///
+/// Owns the supported assembly embedding path, assembler workflow errors,
+/// grouped config/session lifecycle types, and output-oriented assembly helpers.
+/// Root-level assembler re-exports remain compatibility-oriented; canonical
+/// host imports for this domain live under `libopforge::asm`.
 pub mod asm {
     pub use ::asm::output::{
         parse_bin_output_arg, parse_bin_range_str, resolve_bin_path, resolve_output_path,
@@ -797,6 +838,11 @@ pub mod asm {
         }
     }
 
+    /// Concern inventory: lower-level assembler statement processing.
+    ///
+    /// Owns CPU-aware statement tokenization, parsing, and processing without a
+    /// full assembly session, including portable statement forms. It does not
+    /// own high-level assembly orchestration or artifact emission.
     pub mod opasm {
         pub use ::asm::opasm::{
             default_register_checker, parse_statement, process_statement, tokenize_statement,
@@ -2482,6 +2528,9 @@ mod tests {
 
     static TEMP_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
 
+    const CONCERN_INVENTORY_GUIDE_PATH: &str =
+        include_str!("../../../documentation/libopforge-developer-guide.md");
+
     const ASM_ROOT_COMPAT_EXPORT_AUDIT: &[&str] = &[
         "AssembleOptions",
         "Assembler",
@@ -3352,6 +3401,32 @@ mod tests {
         let _processor_error_type: Option<processing::ProcessorError> = None;
         let _processor_error_kind_type: Option<processing::ProcessorErrorKind> = None;
         let _processor_failure_detail_type: Option<processing::ProcessorFailureDetail> = None;
+    }
+
+    #[test]
+    fn facade_concern_inventory_docs_publish_all_stable_modules() {
+        let guide = CONCERN_INVENTORY_GUIDE_PATH;
+
+        for module in [
+            "`libopforge::asm`",
+            "`libopforge::asm::opasm`",
+            "`libopforge::formatter`",
+            "`libopforge::processing`",
+            "`libopforge::registry`",
+            "`libopforge::lockstep`",
+            "`libopforge::io`",
+            "`libopforge::diagnostics`",
+            "`libopforge::opcore`",
+        ] {
+            assert!(
+                guide.contains(module),
+                "developer guide should include concern inventory for {module}"
+            );
+        }
+
+        assert!(guide.contains("Concern inventories"));
+        assert!(guide.contains("CLI or host presentation may specialize wording"));
+        assert!(guide.contains("module-first API"));
     }
 
     #[test]

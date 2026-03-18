@@ -54,7 +54,7 @@ This plan is complete when all of the following are true:
 - [x] `LFR-007` Add `AssemblerWorkflowError` at the high-level asm boundary
 - [x] `LFR-008` Complete workflow mappings and facade-local stability regressions
 - [x] `LFR-009` Add canon/compat export audit enforcement
-- [ ] `LFR-010` Publish concern inventories in the facade surface and guide
+- [x] `LFR-010` Publish concern inventories in the facade surface and guide
 - [ ] `LFR-011` Add guide and rustdoc example coverage for the stabilized entry paths
 - [ ] Milestone A exit gate: named core domain is established and truthful
 - [x] Milestone B exit gate: neutral orchestration and workflow packaging are established
@@ -441,18 +441,18 @@ Primary files:
 - `documentation/libopforge-developer-guide.md`
 
 Implementation tasks:
-- [ ] document the concern inventory for `asm`, `asm::opasm`, `formatter`, `processing`, `registry`, `lockstep`, `io`, `diagnostics`, and `opcore`
-- [ ] add the explicit note that CLI or host presentation may specialize wording more than lower API layers do
-- [ ] keep this slice limited to ownership and concern-inventory publication, not example expansion
+- [x] document the concern inventory for `asm`, `asm::opasm`, `formatter`, `processing`, `registry`, `lockstep`, `io`, `diagnostics`, and `opcore`
+- [x] add the explicit note that CLI or host presentation may specialize wording more than lower API layers do
+- [x] keep this slice limited to ownership and concern-inventory publication, not example expansion
 
 Focused validation:
-- [ ] guide review against the new concern inventories and public-shape policy
-- [ ] a targeted doc-surface regression such as `cargo test --locked -p libopforge facade_concern_inventory_docs`
+- [x] guide review against the new concern inventories and public-shape policy
+- [x] a targeted doc-surface regression such as `cargo test --locked -p libopforge facade_concern_inventory_docs`
 
 Commit exit gate:
-- [ ] `cargo test --locked -p libopforge facade_concern_inventory_docs`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p libopforge facade_concern_inventory_docs`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - the facade and guide explicitly teach which stable module owns which concern boundary

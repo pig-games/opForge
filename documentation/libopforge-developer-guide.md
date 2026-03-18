@@ -61,6 +61,24 @@ Important boundary notes:
 - The `libopforge` package in `crates/opforge-lib` is the public facade. External consumers should target that crate rather than the lower-level workspace crates directly.
 - The registry module in the stable facade is primarily for lookup and introspection. Full custom family/CPU registration is still an advanced lower-level workflow in the workspace crates.
 
+### 3.1 Concern inventories
+
+The stable facade is organized by concern ownership. Use the module-first API and treat each module below as the canonical home for that concern boundary.
+
+| Module | Owns | Does not own |
+|---|---|---|
+| `libopforge::asm` | High-level assembly embedding, grouped config and session lifecycle, assembler workflow errors, and output-oriented assembly helpers | Generic language parsing, processor-neutral routing, or CPU discovery as primary concerns |
+| `libopforge::asm::opasm` | CPU-aware statement tokenization, parsing, processing, and portable statement forms without full assembly | Full assembly orchestration, artifact emission, or registry discovery |
+| `libopforge::opcore` | Generic non-assembler language services: tokenization, expressions, module items, macros, preprocess, and `CoreError` | Assembler statement encoding, listings, or artifact output |
+| `libopforge::processing` | Processor-neutral routing, processing traces, neutral processor failures, and editor-style line dispatch | High-level assembler workflow packaging or generic language ownership |
+| `libopforge::diagnostics` | Stable assembler diagnostics, run reports, and assembler diagnostic taxonomy | Source loading, registry discovery, or execution-mode policy |
+| `libopforge::io` | Stable filesystem and memory-backed source and output adapters | Diagnostics taxonomy, CPU selection, or assembly semantics |
+| `libopforge::registry` | CPU, family, and capability lookup plus builtin registry introspection | Full custom extension authoring as a stable facade concern |
+| `libopforge::lockstep` | Execution-head selection, lockstep checkpoints, and parity reporting | Statement parsing, assembly workflow, or registry discovery |
+| `libopforge::formatter` | Stable formatter configuration, formatter runs, and formatter reports | Reclassifying assembler or opcore diagnostics |
+
+CLI or host presentation may specialize wording more than lower API layers do. The stable library boundary preserves structured categories, codes, and ownership boundaries even when higher-level tools choose different user-facing phrasing.
+
 ## 4. Assembly lifecycle
 
 All high-level assembly flows share the same stages:

@@ -132,7 +132,9 @@ pub mod opcore {
 
     fn classify_macro_error_kind(message: &str) -> CoreErrorKind {
         let lower = message.to_ascii_lowercase();
-        if lower.contains("namespace") || lower.contains(".endn") {
+        if lower.contains("segment") || lower.contains(".endsegment") {
+            CoreErrorKind::Segment
+        } else if lower.contains("namespace") || lower.contains(".endn") {
             CoreErrorKind::Namespace
         } else if lower.contains("scope")
             || lower.contains(".endblock")
@@ -141,6 +143,24 @@ pub mod opcore {
             CoreErrorKind::Scope
         } else {
             CoreErrorKind::Macro
+        }
+    }
+
+    fn classify_parse_error_kind(message: &str) -> CoreErrorKind {
+        let lower = message.to_ascii_lowercase();
+        if lower.contains("struct literal") {
+            CoreErrorKind::Struct
+        } else {
+            CoreErrorKind::Parse
+        }
+    }
+
+    fn classify_eval_error_kind(message: &str) -> CoreErrorKind {
+        let lower = message.to_ascii_lowercase();
+        if lower.contains("struct") {
+            CoreErrorKind::Struct
+        } else {
+            CoreErrorKind::Expr
         }
     }
 
@@ -253,8 +273,8 @@ pub mod opcore {
         pub fn kind(&self) -> CoreErrorKind {
             match self {
                 Self::Tokenize(_) => CoreErrorKind::Tokenize,
-                Self::Parse(_) => CoreErrorKind::Parse,
-                Self::Expr(_) => CoreErrorKind::Expr,
+                Self::Parse(err) => classify_parse_error_kind(&err.message),
+                Self::Expr(err) => classify_eval_error_kind(&err.message),
                 Self::Macro(err) => classify_macro_error_kind(err.message()),
                 Self::Preprocess(_) => CoreErrorKind::Preprocess,
                 Self::ModuleItem(err) => err.kind(),
@@ -2740,6 +2760,33 @@ mod tests {
         assert_eq!(preprocess_core.code(), "opcore.preprocess");
 
         fs::remove_dir_all(&temp_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn public_opcore_core_error_classifies_struct_and_segment_failures() {
+        let tokenized =
+            opcore::tokenize_line("Point{field}", 41).expect("struct literal tokens should parse");
+        let struct_err =
+            opcore::parse_expression(tokenized).expect_err("invalid struct literal should fail");
+        let struct_core = opcore::CoreError::from(struct_err);
+        assert_eq!(struct_core.kind(), opcore::CoreErrorKind::Struct);
+        assert_eq!(struct_core.code(), "opcore.struct");
+
+        let segment_err = opcore::MacroProcessor::new()
+            .expand(&[".endsegment".to_string()])
+            .expect_err("segment close should fail");
+        let segment_core = opcore::CoreError::from(segment_err);
+        assert_eq!(segment_core.kind(), opcore::CoreErrorKind::Segment);
+        assert_eq!(segment_core.code(), "opcore.segment");
+    }
+
+    #[test]
+    fn public_opcore_surface_does_not_require_assembler_workflow_errors() {
+        let _expr_text_fn: fn(&opcore::Expr) -> Option<String> = opcore::expr_text;
+        let _core_error_type: Option<opcore::CoreError> = None;
+        let _tokenize_error_type: Option<opcore::TokenizeError> = None;
+        let _parse_error_type: Option<opcore::ParseError> = None;
+        let _eval_error_type: Option<opcore::EvalError> = None;
     }
 
     #[test]

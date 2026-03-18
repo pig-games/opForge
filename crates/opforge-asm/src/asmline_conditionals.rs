@@ -22,7 +22,7 @@ impl<'a> AsmLine<'a> {
                         Err(err) => {
                             return self.failure_at_span(
                                 LineStatus::Error,
-                                err.error.kind(),
+                                ast_eval_error_kind_to_asm(err.error.kind()),
                                 err.error.message(),
                                 None,
                                 err.span,
@@ -53,7 +53,7 @@ impl<'a> AsmLine<'a> {
                         Err(err) => {
                             return self.failure_at_span(
                                 LineStatus::Error,
-                                err.error.kind(),
+                                ast_eval_error_kind_to_asm(err.error.kind()),
                                 err.error.message(),
                                 None,
                                 err.span,
@@ -132,7 +132,7 @@ impl<'a> AsmLine<'a> {
                             Err(err) => {
                                 return self.failure_at_span(
                                     LineStatus::Error,
-                                    err.error.kind(),
+                                    ast_eval_error_kind_to_asm(err.error.kind()),
                                     err.error.message(),
                                     None,
                                     err.span,
@@ -265,7 +265,7 @@ impl<'a> AsmLine<'a> {
                         Err(err) => {
                             return self.failure_at_span(
                                 LineStatus::Error,
-                                err.error.kind(),
+                                ast_eval_error_kind_to_asm(err.error.kind()),
                                 err.error.message(),
                                 None,
                                 err.span,

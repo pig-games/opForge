@@ -160,14 +160,10 @@ pub fn evaluate_for_plan(
     max_loop_iterations: u32,
 ) -> Result<ForPlan, AstEvalError> {
     if operands.is_empty() {
-        return Err(AstEvalError {
-            error: AsmError::new(
-                AsmErrorKind::Directive,
-                "Missing loop expression for .for",
-                None,
-            ),
-            span: Span::default(),
-        });
+        return Err(AstEvalError::directive(
+            "Missing loop expression for .for",
+            Span::default(),
+        ));
     }
 
     let (var_name, values) = if operands.len() == 1 {
@@ -178,14 +174,10 @@ pub fn evaluate_for_plan(
         let var_name = match &operands[0] {
             Expr::Identifier(name, _) | Expr::Register(name, _) => name.clone(),
             _ => {
-                return Err(AstEvalError {
-                    error: AsmError::new(
-                        AsmErrorKind::Directive,
-                        "Expected loop variable name before 'in'",
-                        None,
-                    ),
-                    span: expr_span(&operands[0]),
-                });
+                return Err(AstEvalError::directive(
+                    "Expected loop variable name before 'in'",
+                    expr_span(&operands[0]),
+                ));
             }
         };
         let iterable = asm_line.eval_value_ast(&operands[1])?;
@@ -193,13 +185,11 @@ pub fn evaluate_for_plan(
         match iterable {
             AsmValue::List(items) => {
                 for value in items {
-                    let converted = u32::try_from(value).map_err(|_| AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
+                    let converted = u32::try_from(value).map_err(|_| {
+                        AstEvalError::expression(
                             "loop iterator value out of supported range",
-                            None,
-                        ),
-                        span: expr_span(&operands[1]),
+                            expr_span(&operands[1]),
+                        )
                     })?;
                     values.push(converted);
                 }
@@ -208,51 +198,37 @@ pub fn evaluate_for_plan(
                 let iterable = AsmValue::Range { start, end, step };
                 if let Some(iter) = iterable.iter() {
                     for value in iter {
-                        let converted = u32::try_from(value).map_err(|_| AstEvalError {
-                            error: AsmError::new(
-                                AsmErrorKind::Expression,
+                        let converted = u32::try_from(value).map_err(|_| {
+                            AstEvalError::expression(
                                 "loop iterator value out of supported range",
-                                None,
-                            ),
-                            span: expr_span(&operands[1]),
+                                expr_span(&operands[1]),
+                            )
                         })?;
                         values.push(converted);
                     }
                 }
             }
             AsmValue::Scalar(_) | AsmValue::Struct(_) | AsmValue::StructInstance(_) => {
-                return Err(AstEvalError {
-                    error: AsmError::new(
-                        AsmErrorKind::Directive,
-                        "expected range or list after 'in', found scalar",
-                        None,
-                    ),
-                    span: expr_span(&operands[1]),
-                });
+                return Err(AstEvalError::directive(
+                    "expected range or list after 'in', found scalar",
+                    expr_span(&operands[1]),
+                ));
             }
         }
         (Some(var_name), values)
     } else {
-        return Err(AstEvalError {
-            error: AsmError::new(
-                AsmErrorKind::Directive,
-                "Expected '.for <count>' or '.for <var> in <iterable>'",
-                None,
-            ),
-            span: expr_span(&operands[0]),
-        });
+        return Err(AstEvalError::directive(
+            "Expected '.for <count>' or '.for <var> in <iterable>'",
+            expr_span(&operands[0]),
+        ));
     };
 
     let iter_count = u32::try_from(values.len()).unwrap_or(u32::MAX);
     if iter_count > max_loop_iterations {
-        return Err(AstEvalError {
-            error: AsmError::new(
-                AsmErrorKind::Directive,
-                &format!("loop exceeded maximum iteration limit ({max_loop_iterations})"),
-                None,
-            ),
-            span: expr_span(&operands[0]),
-        });
+        return Err(AstEvalError::directive(
+            format!("loop exceeded maximum iteration limit ({max_loop_iterations})"),
+            expr_span(&operands[0]),
+        ));
     }
 
     Ok(ForPlan { var_name, values })
@@ -264,14 +240,10 @@ pub fn evaluate_while_condition(
 ) -> Result<bool, AstEvalError> {
     let [condition] = operands else {
         let span = operands.first().map(expr_span).unwrap_or_default();
-        return Err(AstEvalError {
-            error: AsmError::new(
-                AsmErrorKind::Directive,
-                "Expected '.while <condition>'",
-                None,
-            ),
+        return Err(AstEvalError::directive(
+            "Expected '.while <condition>'",
             span,
-        });
+        ));
     };
 
     let condition = asm_line.eval_expr_ast(condition)?;

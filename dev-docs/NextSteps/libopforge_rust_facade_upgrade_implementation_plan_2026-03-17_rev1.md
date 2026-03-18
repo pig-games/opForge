@@ -49,7 +49,7 @@ This plan is complete when all of the following are true:
 - [x] `LFR-002` Classify module, `.use`, and import failures under `CoreError`
 - [x] `LFR-003` Classify macro, conditional, and repetition failures under `CoreError`
 - [x] `LFR-004` Classify namespace, scope, and preprocess failures under `CoreError`
-- [ ] `LFR-005` Classify struct and segment failures under `CoreError` and remove pure-`opcore` assembler-error coupling
+- [x] `LFR-005` Classify struct and segment failures under `CoreError` and remove pure-`opcore` assembler-error coupling
 - [ ] `LFR-006` Add neutral `ProcessorError` surface in `libopforge::processing`
 - [ ] `LFR-007` Add `AssemblerWorkflowError` at the high-level asm boundary
 - [ ] `LFR-008` Complete workflow mappings and facade-local stability regressions
@@ -258,19 +258,19 @@ Primary files:
 - `crates/opforge-lib/src/lib.rs` if the public re-exports need adjustment
 
 Implementation tasks:
-- [ ] classify struct and segment failures under `CoreErrorKind`
-- [ ] remove any remaining pure-`opcore` dependency on `AsmError` or `AsmErrorKind` as the source error domain
-- [ ] add audit or compile checks proving public `opcore` helpers do not require assembler-facing workflow error types
+- [x] classify struct and segment failures under `CoreErrorKind`
+- [x] remove any remaining pure-`opcore` dependency on `AsmError` or `AsmErrorKind` as the source error domain
+- [x] add audit or compile checks proving public `opcore` helpers do not require assembler-facing workflow error types
 
 Focused validation:
-- [ ] tests for struct and segment failure classification
-- [ ] audit-style checks proving pure expression helpers do not depend on `AsmError` or `AsmErrorKind`
-- [ ] audit-style checks proving public `opcore` APIs do not require assembler workflow errors
+- [x] tests for struct and segment failure classification
+- [x] audit-style checks proving pure expression helpers do not depend on `AsmError` or `AsmErrorKind`
+- [x] audit-style checks proving public `opcore` APIs do not require assembler workflow errors
 
 Commit exit gate:
-- [ ] `cargo test --locked -p opforge-core`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p opforge-core`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - all spec-listed public `opcore` concern families now classify under `CoreError`, and pure core expression services no longer source their failures from assembler-owned types

@@ -27,32 +27,20 @@ impl<'a> AsmLine<'a> {
 
         let index_value = i64::from(self.eval_expr_ast(index)?);
         if index_value < 0 {
-            return Err(AstEvalError {
-                error: AsmError::new(AsmErrorKind::Expression, "Index cannot be negative", None),
-                span,
-            });
+            return Err(AstEvalError::expression("Index cannot be negative", span));
         }
-        let index_usize = usize::try_from(index_value).map_err(|_| AstEvalError {
-            error: AsmError::new(AsmErrorKind::Expression, "Index out of range", None),
-            span,
-        })?;
+        let index_usize = usize::try_from(index_value)
+            .map_err(|_| AstEvalError::expression("Index out of range", span))?;
         let Some(scope_name) = iteration_scopes.get(index_usize) else {
-            return Err(AstEvalError {
-                error: AsmError::new(AsmErrorKind::Expression, "Index out of bounds", None),
-                span,
-            });
+            return Err(AstEvalError::expression("Index out of bounds", span));
         };
 
         let field_name = format!("{scope_name}.{field}");
         let Some(entry) = self.symbols.entry(&field_name) else {
-            return Err(AstEvalError {
-                error: AsmError::new(
-                    AsmErrorKind::Expression,
-                    &format!("scoped repetition value has no field '{}'", field),
-                    None,
-                ),
+            return Err(AstEvalError::expression(
+                format!("scoped repetition value has no field '{}'", field),
                 span,
-            });
+            ));
         };
 
         Ok(Some(AsmValue::Scalar(i64::from(entry.val))))
@@ -73,12 +61,7 @@ impl<'a> AsmLine<'a> {
                         }
                     }
                     Ok(None) => {}
-                    Err(err) => {
-                        return Err(AstEvalError {
-                            error: err,
-                            span: *span,
-                        });
-                    }
+                    Err(err) => return Err(ast_eval_from_asm_error(err, *span)),
                 }
                 self.eval_expr_ast(expr)
                     .map(|value| AsmValue::Scalar(i64::from(value)))
@@ -114,35 +97,20 @@ impl<'a> AsmLine<'a> {
                             "range end overflows supported integer range".to_string()
                         }
                     };
-                    AstEvalError {
-                        error: AsmError::new(AsmErrorKind::Expression, &message, None),
-                        span: *span,
-                    }
+                    AstEvalError::expression(message, *span)
                 })
             }
             Expr::Index { base, index, span } => {
                 let value = self.eval_value_ast(base)?;
                 let index_value = i64::from(self.eval_expr_ast(index)?);
                 if index_value < 0 {
-                    return Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            "Index cannot be negative",
-                            None,
-                        ),
-                        span: *span,
-                    });
+                    return Err(AstEvalError::expression("Index cannot be negative", *span));
                 }
-                let index_usize = usize::try_from(index_value).map_err(|_| AstEvalError {
-                    error: AsmError::new(AsmErrorKind::Expression, "Index out of range", None),
-                    span: *span,
-                })?;
+                let index_usize = usize::try_from(index_value)
+                    .map_err(|_| AstEvalError::expression("Index out of range", *span))?;
                 match value.get(index_usize) {
                     Some(element) => Ok(AsmValue::Scalar(element)),
-                    None => Err(AstEvalError {
-                        error: AsmError::new(AsmErrorKind::Expression, "Index out of bounds", None),
-                        span: *span,
-                    }),
+                    None => Err(AstEvalError::expression("Index out of bounds", *span)),
                 }
             }
             Expr::StructLiteral {
@@ -161,32 +129,24 @@ impl<'a> AsmLine<'a> {
                     {
                         Some(field) => field.name.clone(),
                         None => {
-                            return Err(AstEvalError {
-                                error: AsmError::new(
-                                    AsmErrorKind::Expression,
-                                    &format!(
-                                        "unknown field '{}' in struct literal for '{}'",
-                                        field_name, def.name
-                                    ),
-                                    None,
+                            return Err(AstEvalError::expression(
+                                format!(
+                                    "unknown field '{}' in struct literal for '{}'",
+                                    field_name, def.name
                                 ),
-                                span: *span,
-                            })
+                                *span,
+                            ))
                         }
                     };
                     let field_key = resolved_field.to_ascii_uppercase();
                     if values.contains_key(&field_key) {
-                        return Err(AstEvalError {
-                            error: AsmError::new(
-                                AsmErrorKind::Expression,
-                                &format!(
-                                    "duplicate field '{}' in struct literal for '{}'",
-                                    resolved_field, def.name
-                                ),
-                                None,
+                        return Err(AstEvalError::expression(
+                            format!(
+                                "duplicate field '{}' in struct literal for '{}'",
+                                resolved_field, def.name
                             ),
-                            span: *span,
-                        });
+                            *span,
+                        ));
                     }
                     let field_value = i64::from(self.eval_expr_ast(field_expr)?);
                     values.insert(field_key, field_value);
@@ -195,17 +155,13 @@ impl<'a> AsmLine<'a> {
                 for required in &def.fields {
                     let required_key = required.name.to_ascii_uppercase();
                     if !values.contains_key(&required_key) {
-                        return Err(AstEvalError {
-                            error: AsmError::new(
-                                AsmErrorKind::Expression,
-                                &format!(
-                                    "missing required field '{}' in struct literal for '{}'",
-                                    required.name, def.name
-                                ),
-                                None,
+                        return Err(AstEvalError::expression(
+                            format!(
+                                "missing required field '{}' in struct literal for '{}'",
+                                required.name, def.name
                             ),
-                            span: *span,
-                        });
+                            *span,
+                        ));
                     }
                 }
 
@@ -223,17 +179,13 @@ impl<'a> AsmLine<'a> {
                                 return Ok(AsmValue::Scalar(field_value));
                             }
                             if let AsmValue::StructInstance(instance) = value {
-                                return Err(AstEvalError {
-                                    error: AsmError::new(
-                                        AsmErrorKind::Expression,
-                                        &format!(
-                                            "struct '{}' has no field '{}'",
-                                            instance.type_name, field
-                                        ),
-                                        None,
+                                return Err(AstEvalError::expression(
+                                    format!(
+                                        "struct '{}' has no field '{}'",
+                                        instance.type_name, field
                                     ),
-                                    span: *span,
-                                });
+                                    *span,
+                                ));
                             }
                         }
                     }
@@ -241,12 +193,7 @@ impl<'a> AsmLine<'a> {
                     let scoped_name = match self.resolve_scoped_name(name) {
                         Ok(Some(full)) => full,
                         Ok(None) => name.clone(),
-                        Err(err) => {
-                            return Err(AstEvalError {
-                                error: err,
-                                span: *name_span,
-                            });
-                        }
+                        Err(err) => return Err(ast_eval_from_asm_error(err, *name_span)),
                     };
                     let struct_def = if let Some(def) = self.struct_table.get(&scoped_name) {
                         Some(def.clone())
@@ -266,23 +213,15 @@ impl<'a> AsmLine<'a> {
                         {
                             return Ok(AsmValue::Scalar(i64::from(offset)));
                         }
-                        return Err(AstEvalError {
-                            error: AsmError::new(
-                                AsmErrorKind::Expression,
-                                &format!("struct '{}' has no field '{}'", def.name, field),
-                                None,
-                            ),
-                            span: *span,
-                        });
+                        return Err(AstEvalError::expression(
+                            format!("struct '{}' has no field '{}'", def.name, field),
+                            *span,
+                        ));
                     }
-                    return Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            &format!("no struct type associated with '{name}' for field access"),
-                            None,
-                        ),
-                        span: *span,
-                    });
+                    return Err(AstEvalError::expression(
+                        format!("no struct type associated with '{name}' for field access"),
+                        *span,
+                    ));
                 }
 
                 if let Expr::Index { base, index, .. } = &**base {
@@ -306,100 +245,62 @@ impl<'a> AsmLine<'a> {
                         {
                             Ok(AsmValue::Scalar(i64::from(offset)))
                         } else {
-                            Err(AstEvalError {
-                                error: AsmError::new(
-                                    AsmErrorKind::Expression,
-                                    &format!("struct '{}' has no field '{}'", def.name, field),
-                                    None,
-                                ),
-                                span: *span,
-                            })
+                            Err(AstEvalError::expression(
+                                format!("struct '{}' has no field '{}'", def.name, field),
+                                *span,
+                            ))
                         }
                     }
                     AsmValue::StructInstance(instance) => {
                         if let Some(value) = instance.fields.get(&field.to_ascii_uppercase()) {
                             Ok(AsmValue::Scalar(*value))
                         } else {
-                            Err(AstEvalError {
-                                error: AsmError::new(
-                                    AsmErrorKind::Expression,
-                                    &format!(
-                                        "struct '{}' has no field '{}'",
-                                        instance.type_name, field
-                                    ),
-                                    None,
-                                ),
-                                span: *span,
-                            })
+                            Err(AstEvalError::expression(
+                                format!("struct '{}' has no field '{}'", instance.type_name, field),
+                                *span,
+                            ))
                         }
                     }
-                    _ => Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            "Member expression requires struct base value",
-                            None,
-                        ),
-                        span: *span,
-                    }),
+                    _ => Err(AstEvalError::expression(
+                        "Member expression requires struct base value",
+                        *span,
+                    )),
                 }
             }
             Expr::Call { name, args, span } => {
                 if !name.eq_ignore_ascii_case(".len") {
-                    return Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            "Unknown compile-time function call",
-                            Some(name),
-                        ),
-                        span: *span,
-                    });
+                    return Err(AstEvalError::expression(
+                        "Unknown compile-time function call",
+                        *span,
+                    ));
                 }
                 if args.len() != 1 {
-                    return Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            ".len() expects exactly one argument",
-                            None,
-                        ),
-                        span: *span,
-                    });
+                    return Err(AstEvalError::expression(
+                        ".len() expects exactly one argument",
+                        *span,
+                    ));
                 }
                 let value = self.eval_value_ast(&args[0])?;
                 match value.len() {
                     Some(length) => Ok(AsmValue::Scalar(i64::try_from(length).unwrap_or(i64::MAX))),
-                    None => Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            ".len() expects a range or list argument",
-                            None,
-                        ),
-                        span: *span,
-                    }),
+                    None => Err(AstEvalError::expression(
+                        ".len() expects a range or list argument",
+                        *span,
+                    )),
                 }
             }
-            Expr::Error(message, span) => Err(AstEvalError {
-                error: AsmError::new(AsmErrorKind::Expression, message, None),
-                span: *span,
-            }),
-            Expr::Placeholder(span) => Err(AstEvalError {
-                error: AsmError::new(
-                    AsmErrorKind::Expression,
-                    "Placeholder cannot be evaluated as scalar expression",
-                    None,
-                ),
-                span: *span,
-            }),
+            Expr::Error(message, span) => Err(AstEvalError::expression(message, *span)),
+            Expr::Placeholder(span) => Err(AstEvalError::expression(
+                "Placeholder cannot be evaluated as scalar expression",
+                *span,
+            )),
             Expr::Indirect(inner, _) | Expr::IndirectLong(inner, _) | Expr::Immediate(inner, _) => {
                 self.eval_value_ast(inner)
             }
-            Expr::Tuple(_, span) => Err(AstEvalError {
-                error: AsmError::new(
-                    AsmErrorKind::Expression,
-                    "Tuple cannot be evaluated as expression",
-                    None,
-                ),
-                span: *span,
-            }),
+            Expr::Tuple(_, span) => Err(AstEvalError::expression(
+                "Tuple cannot be evaluated as expression",
+                *span,
+            )),
             Expr::Ternary {
                 cond,
                 then_expr,
@@ -437,7 +338,7 @@ impl<'a> AsmLine<'a> {
         let scoped_name = match self.resolve_scoped_name(type_name) {
             Ok(Some(full)) => full,
             Ok(None) => type_name.to_string(),
-            Err(err) => return Err(AstEvalError { error: err, span }),
+            Err(err) => return Err(ast_eval_from_asm_error(err, span)),
         };
         if let Some(def) = self.struct_table.get(&scoped_name) {
             return Ok(def.clone());
@@ -445,14 +346,10 @@ impl<'a> AsmLine<'a> {
         if let Some(AsmValue::Struct(def)) = self.lookup_value_symbol(&scoped_name) {
             return Ok(def.clone());
         }
-        Err(AstEvalError {
-            error: AsmError::new(
-                AsmErrorKind::Expression,
-                &format!("unknown struct type '{type_name}' for struct literal"),
-                None,
-            ),
+        Err(AstEvalError::expression(
+            format!("unknown struct type '{type_name}' for struct literal"),
             span,
-        })
+        ))
     }
 
     fn resolve_member_base_value(
@@ -469,7 +366,7 @@ impl<'a> AsmLine<'a> {
         let scoped_name = match self.resolve_scoped_name(name) {
             Ok(Some(full)) => full,
             Ok(None) => return Ok(None),
-            Err(err) => return Err(AstEvalError { error: err, span }),
+            Err(err) => return Err(ast_eval_from_asm_error(err, span)),
         };
         if let Some(def) = self.struct_table.get(&scoped_name) {
             return Ok(Some(AsmValue::Struct(def.clone())));
@@ -511,56 +408,37 @@ impl<'a> AsmLine<'a> {
                         {
                             AsmValue::Scalar(i64::from(offset))
                         } else {
-                            return Some(Err(AstEvalError {
-                                error: AsmError::new(
-                                    AsmErrorKind::Expression,
-                                    &format!("struct '{}' has no field '{}'", def.name, field),
-                                    None,
-                                ),
+                            return Some(Err(AstEvalError::expression(
+                                format!("struct '{}' has no field '{}'", def.name, field),
                                 span,
-                            }));
+                            )));
                         }
                     }
                     AsmValue::StructInstance(instance) => {
                         if let Some(value) = instance.fields.get(&field.to_ascii_uppercase()) {
                             AsmValue::Scalar(*value)
                         } else {
-                            return Some(Err(AstEvalError {
-                                error: AsmError::new(
-                                    AsmErrorKind::Expression,
-                                    &format!(
-                                        "struct '{}' has no field '{}'",
-                                        instance.type_name, field
-                                    ),
-                                    None,
-                                ),
+                            return Some(Err(AstEvalError::expression(
+                                format!("struct '{}' has no field '{}'", instance.type_name, field),
                                 span,
-                            }));
+                            )));
                         }
                     }
                     _ => {
-                        return Some(Err(AstEvalError {
-                            error: AsmError::new(
-                                AsmErrorKind::Expression,
-                                "Member expression requires struct base value",
-                                None,
-                            ),
+                        return Some(Err(AstEvalError::expression(
+                            "Member expression requires struct base value",
                             span,
-                        }))
+                        )))
                     }
                 };
             }
 
             return match current {
                 AsmValue::Scalar(value) => Some(Ok(value as u32)),
-                _ => Some(Err(AstEvalError {
-                    error: AsmError::new(
-                        AsmErrorKind::Expression,
-                        "Member expression requires struct base value",
-                        None,
-                    ),
+                _ => Some(Err(AstEvalError::expression(
+                    "Member expression requires struct base value",
                     span,
-                })),
+                ))),
             };
         }
 
@@ -569,21 +447,14 @@ impl<'a> AsmLine<'a> {
 
     pub fn eval_expr_ast(&self, expr: &Expr) -> Result<u32, AstEvalError> {
         if HOST_EXPR_EVAL_FAILPOINT.with(|flag| flag.get()) {
-            return Err(AstEvalError {
-                error: AsmError::new(
-                    AsmErrorKind::Expression,
-                    "host expression evaluator failpoint",
-                    None,
-                ),
-                span: expr_span(expr),
-            });
+            return Err(AstEvalError::expression(
+                "host expression evaluator failpoint",
+                expr_span(expr),
+            ));
         }
 
         match expr {
-            Expr::Error(message, span) => Err(AstEvalError {
-                error: AsmError::new(AsmErrorKind::Expression, message, None),
-                span: *span,
-            }),
+            Expr::Error(message, span) => Err(AstEvalError::expression(message, *span)),
             Expr::Number(text, span) => parse_number_text(text, *span),
             Expr::Identifier(name, span) | Expr::Register(name, span) => {
                 if let Some(value) = self.lookup_loop_var(name) {
@@ -603,18 +474,15 @@ impl<'a> AsmLine<'a> {
                         }
                         _ => "List cannot be evaluated as scalar expression",
                     };
-                    return Err(AstEvalError {
-                        error: AsmError::new(AsmErrorKind::Expression, message, None),
-                        span: *span,
-                    });
+                    return Err(AstEvalError::expression(message, *span));
                 }
                 match self.lookup_scoped_entry(name) {
                     Some(entry) => {
                         if !self.entry_is_visible(entry) {
-                            return Err(AstEvalError {
-                                error: self.visibility_error(name),
-                                span: *span,
-                            });
+                            return Err(ast_eval_from_asm_error(
+                                self.visibility_error(name),
+                                *span,
+                            ));
                         }
                         Ok(entry.val)
                     }
@@ -623,28 +491,20 @@ impl<'a> AsmLine<'a> {
                             return result;
                         }
                         if self.pass > 1 {
-                            Err(AstEvalError {
-                                error: AsmError::new(
-                                    AsmErrorKind::Expression,
-                                    "Label not found",
-                                    Some(name),
-                                ),
-                                span: *span,
-                            })
+                            Err(AstEvalError::expression(
+                                format!("Label not found: {name}"),
+                                *span,
+                            ))
                         } else {
                             Ok(0)
                         }
                     }
                 }
             }
-            Expr::List(_, span) => Err(AstEvalError {
-                error: AsmError::new(
-                    AsmErrorKind::Expression,
-                    "List cannot be evaluated as scalar expression",
-                    None,
-                ),
-                span: *span,
-            }),
+            Expr::List(_, span) => Err(AstEvalError::expression(
+                "List cannot be evaluated as scalar expression",
+                *span,
+            )),
             Expr::Index { .. }
             | Expr::Member { .. }
             | Expr::StructLiteral { .. }
@@ -652,48 +512,28 @@ impl<'a> AsmLine<'a> {
                 let value = self.eval_value_ast(expr)?;
                 match value {
                     AsmValue::Scalar(value) => Ok(value as u32),
-                    AsmValue::List(_) => Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            "List cannot be evaluated as scalar expression",
-                            None,
-                        ),
-                        span: expr_span(expr),
-                    }),
-                    AsmValue::Range { .. } => Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            "Range cannot be evaluated as scalar expression",
-                            None,
-                        ),
-                        span: expr_span(expr),
-                    }),
-                    AsmValue::Struct(_) => Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            "Struct cannot be evaluated as scalar expression",
-                            None,
-                        ),
-                        span: expr_span(expr),
-                    }),
-                    AsmValue::StructInstance(_) => Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            "Struct instance cannot be evaluated as scalar expression",
-                            None,
-                        ),
-                        span: expr_span(expr),
-                    }),
+                    AsmValue::List(_) => Err(AstEvalError::expression(
+                        "List cannot be evaluated as scalar expression",
+                        expr_span(expr),
+                    )),
+                    AsmValue::Range { .. } => Err(AstEvalError::expression(
+                        "Range cannot be evaluated as scalar expression",
+                        expr_span(expr),
+                    )),
+                    AsmValue::Struct(_) => Err(AstEvalError::expression(
+                        "Struct cannot be evaluated as scalar expression",
+                        expr_span(expr),
+                    )),
+                    AsmValue::StructInstance(_) => Err(AstEvalError::expression(
+                        "Struct instance cannot be evaluated as scalar expression",
+                        expr_span(expr),
+                    )),
                 }
             }
-            Expr::Placeholder(span) => Err(AstEvalError {
-                error: AsmError::new(
-                    AsmErrorKind::Expression,
-                    "Placeholder cannot be evaluated as scalar expression",
-                    None,
-                ),
-                span: *span,
-            }),
+            Expr::Placeholder(span) => Err(AstEvalError::expression(
+                "Placeholder cannot be evaluated as scalar expression",
+                *span,
+            )),
             Expr::Indirect(inner, _span) => {
                 // For 6502-style indirect like ($20), evaluate the inner address expression
                 self.eval_expr_ast(inner)
@@ -706,22 +546,14 @@ impl<'a> AsmLine<'a> {
                 // Immediate expressions like #$FF - evaluate the inner expression
                 self.eval_expr_ast(inner)
             }
-            Expr::Tuple(_, span) => Err(AstEvalError {
-                error: AsmError::new(
-                    AsmErrorKind::Expression,
-                    "Tuple cannot be evaluated as expression",
-                    None,
-                ),
-                span: *span,
-            }),
-            Expr::Range { span, .. } => Err(AstEvalError {
-                error: AsmError::new(
-                    AsmErrorKind::Expression,
-                    "Range cannot be evaluated as scalar expression",
-                    None,
-                ),
-                span: *span,
-            }),
+            Expr::Tuple(_, span) => Err(AstEvalError::expression(
+                "Tuple cannot be evaluated as expression",
+                *span,
+            )),
+            Expr::Range { span, .. } => Err(AstEvalError::expression(
+                "Range cannot be evaluated as scalar expression",
+                *span,
+            )),
             Expr::Dollar(_span) => Ok(self.start_addr),
             Expr::String(bytes, span) => {
                 let encoded_bytes = self.encode_text_bytes(
@@ -735,14 +567,10 @@ impl<'a> AsmLine<'a> {
                 } else if encoded_bytes.len() == 2 {
                     Ok(((encoded_bytes[0] as u32) << 8) | (encoded_bytes[1] as u32))
                 } else {
-                    Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            "Multi-character string not allowed in expression.",
-                            None,
-                        ),
-                        span: *span,
-                    })
+                    Err(AstEvalError::expression(
+                        "Multi-character string not allowed in expression.",
+                        *span,
+                    ))
                 }
             }
             Expr::Ternary {

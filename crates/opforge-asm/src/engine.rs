@@ -10,7 +10,7 @@ use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola6800_family_stack,
 };
-use opcore::expression::{expr_span, AstEvalError};
+use opcore::expression::{expr_span, AstEvalError, AstEvalErrorKind};
 use opcore::scope::ScopeKind;
 use registry::cpu::CpuType;
 use registry::registry::ModuleRegistry;
@@ -27,6 +27,15 @@ use types::symbol::{SymbolTable, SymbolVisibility};
 enum UnscopedRepeatKind {
     For,
     While,
+}
+
+fn ast_eval_error_kind_to_asm(kind: AstEvalErrorKind) -> AsmErrorKind {
+    match kind {
+        AstEvalErrorKind::Expression => AsmErrorKind::Expression,
+        AstEvalErrorKind::Directive => AsmErrorKind::Directive,
+        AstEvalErrorKind::Symbol => AsmErrorKind::Symbol,
+        AstEvalErrorKind::Instruction => AsmErrorKind::Instruction,
+    }
 }
 
 fn build_default_registry_for_tests() -> ModuleRegistry {
@@ -716,8 +725,16 @@ impl Assembler {
                             Ok(plan) => plan,
                             Err(err) => {
                                 diagnostics.push(
-                                    Diagnostic::new(line_num, Severity::Error, err.error)
-                                        .with_column(Some(err.span.col_start)),
+                                    Diagnostic::new(
+                                        line_num,
+                                        Severity::Error,
+                                        AsmError::new(
+                                            ast_eval_error_kind_to_asm(err.error.kind()),
+                                            err.error.message(),
+                                            None,
+                                        ),
+                                    )
+                                    .with_column(Some(err.span.col_start)),
                                 );
                                 counts.errors += 1;
                                 idx = end_idx.saturating_add(1);
@@ -834,16 +851,12 @@ impl Assembler {
 
                             let next_count = pass1_count.saturating_add(1);
                             if next_count > max_loop_iterations {
-                                while_error = Some(AstEvalError {
-                                    error: AsmError::new(
-                                        AsmErrorKind::Directive,
-                                        &format!(
-                                            "loop exceeded maximum iteration limit ({max_loop_iterations})"
-                                        ),
-                                        None,
+                                while_error = Some(AstEvalError::directive(
+                                    format!(
+                                        "loop exceeded maximum iteration limit ({max_loop_iterations})"
                                     ),
-                                    span: operands.first().map(expr_span).unwrap_or_default(),
-                                });
+                                    operands.first().map(expr_span).unwrap_or_default(),
+                                ));
                                 break;
                             }
                             pass1_count = next_count;
@@ -894,8 +907,16 @@ impl Assembler {
 
                         if let Some(err) = while_error {
                             diagnostics.push(
-                                Diagnostic::new(line_num, Severity::Error, err.error)
-                                    .with_column(Some(err.span.col_start)),
+                                Diagnostic::new(
+                                    line_num,
+                                    Severity::Error,
+                                    AsmError::new(
+                                        ast_eval_error_kind_to_asm(err.error.kind()),
+                                        err.error.message(),
+                                        None,
+                                    ),
+                                )
+                                .with_column(Some(err.span.col_start)),
                             );
                             counts.errors += 1;
                             idx = end_idx.saturating_add(1);
@@ -1130,9 +1151,16 @@ impl Assembler {
                         ) {
                             Ok(plan) => plan,
                             Err(err) => {
-                                let diagnostic =
-                                    Diagnostic::new(line_num, Severity::Error, err.error)
-                                        .with_column(Some(err.span.col_start));
+                                let diagnostic = Diagnostic::new(
+                                    line_num,
+                                    Severity::Error,
+                                    AsmError::new(
+                                        ast_eval_error_kind_to_asm(err.error.kind()),
+                                        err.error.message(),
+                                        None,
+                                    ),
+                                )
+                                .with_column(Some(err.span.col_start));
                                 diagnostics.push(diagnostic.clone());
                                 listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
                                 counts.errors += 1;
@@ -1272,16 +1300,12 @@ impl Assembler {
 
                             let next_count = pass2_count.saturating_add(1);
                             if next_count > max_loop_iterations {
-                                while_error = Some(AstEvalError {
-                                    error: AsmError::new(
-                                        AsmErrorKind::Directive,
-                                        &format!(
-                                            "loop exceeded maximum iteration limit ({max_loop_iterations})"
-                                        ),
-                                        None,
+                                while_error = Some(AstEvalError::directive(
+                                    format!(
+                                        "loop exceeded maximum iteration limit ({max_loop_iterations})"
                                     ),
-                                    span: operands.first().map(expr_span).unwrap_or_default(),
-                                });
+                                    operands.first().map(expr_span).unwrap_or_default(),
+                                ));
                                 break;
                             }
                             pass2_count = next_count;
@@ -1334,8 +1358,16 @@ impl Assembler {
                         }
 
                         if let Some(err) = while_error {
-                            let diagnostic = Diagnostic::new(line_num, Severity::Error, err.error)
-                                .with_column(Some(err.span.col_start));
+                            let diagnostic = Diagnostic::new(
+                                line_num,
+                                Severity::Error,
+                                AsmError::new(
+                                    ast_eval_error_kind_to_asm(err.error.kind()),
+                                    err.error.message(),
+                                    None,
+                                ),
+                            )
+                            .with_column(Some(err.span.col_start));
                             diagnostics.push(diagnostic.clone());
                             listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
                             counts.errors += 1;

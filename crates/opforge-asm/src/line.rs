@@ -34,6 +34,7 @@ use opcore::conditional::{ConditionalBlockKind, ConditionalSubType};
 use opcore::conditional::{ConditionalContext, ConditionalStack};
 use opcore::expression::{
     apply_assignment_op, eval_binary_op, eval_unary_op, expr_span, parse_number_text, AstEvalError,
+    AstEvalErrorKind,
 };
 use opcore::imports::module_import_from_parser;
 use opcore::parser as asm_parser;
@@ -61,6 +62,36 @@ use vm::vm_opasm::HierarchyExecutionModel;
 
 thread_local! {
     static HOST_EXPR_EVAL_FAILPOINT: Cell<bool> = const { Cell::new(false) };
+}
+
+fn ast_eval_error_kind_to_asm(kind: AstEvalErrorKind) -> AsmErrorKind {
+    match kind {
+        AstEvalErrorKind::Expression => AsmErrorKind::Expression,
+        AstEvalErrorKind::Directive => AsmErrorKind::Directive,
+        AstEvalErrorKind::Symbol => AsmErrorKind::Symbol,
+        AstEvalErrorKind::Instruction => AsmErrorKind::Instruction,
+    }
+}
+
+fn asm_error_kind_to_ast_eval(kind: AsmErrorKind) -> AstEvalErrorKind {
+    match kind {
+        AsmErrorKind::Directive => AstEvalErrorKind::Directive,
+        AsmErrorKind::Symbol => AstEvalErrorKind::Symbol,
+        AsmErrorKind::Instruction => AstEvalErrorKind::Instruction,
+        _ => AstEvalErrorKind::Expression,
+    }
+}
+
+fn ast_eval_from_asm_error(error: AsmError, span: Span) -> AstEvalError {
+    AstEvalError::new(
+        asm_error_kind_to_ast_eval(error.kind()),
+        error.message(),
+        span,
+    )
+}
+
+fn ast_eval_error(kind: AsmErrorKind, message: &str, span: Span) -> AstEvalError {
+    AstEvalError::new(asm_error_kind_to_ast_eval(kind), message, span)
 }
 
 pub trait RuntimeLineRouter {
@@ -1474,7 +1505,7 @@ impl<'a> AsmLine<'a> {
                         Err(_) => {
                             return self.failure_at_span(
                                 LineStatus::Error,
-                                scalar_err.error.kind(),
+                                ast_eval_error_kind_to_asm(scalar_err.error.kind()),
                                 scalar_err.error.message(),
                                 None,
                                 scalar_err.span,
@@ -1601,7 +1632,7 @@ impl<'a> AsmLine<'a> {
             Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -1613,7 +1644,7 @@ impl<'a> AsmLine<'a> {
             Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -1657,10 +1688,7 @@ impl<'a> AsmLine<'a> {
             format_addr(max),
             self.cpu.as_str()
         );
-        Err(AstEvalError {
-            error: AsmError::new(AsmErrorKind::Directive, &message, None),
-            span,
-        })
+        Err(ast_eval_error(AsmErrorKind::Directive, &message, span))
     }
 
     fn validate_program_span(
@@ -1681,10 +1709,7 @@ impl<'a> AsmLine<'a> {
                     "{directive_name} size overflows address arithmetic for CPU {}",
                     self.cpu.as_str()
                 );
-                return Err(AstEvalError {
-                    error: AsmError::new(AsmErrorKind::Directive, &message, None),
-                    span,
-                });
+                return Err(AstEvalError::directive(message, span));
             }
         };
         if end <= max {
@@ -1697,10 +1722,7 @@ impl<'a> AsmLine<'a> {
             format_addr(max),
             self.cpu.as_str()
         );
-        Err(AstEvalError {
-            error: AsmError::new(AsmErrorKind::Directive, &message, None),
-            span,
-        })
+        Err(AstEvalError::directive(message, span))
     }
 
     fn validate_instruction_emit_span(
@@ -1712,14 +1734,11 @@ impl<'a> AsmLine<'a> {
         let size_bytes = match u32::try_from(byte_count) {
             Ok(size_bytes) => size_bytes,
             Err(_) => {
-                return Err(AstEvalError {
-                    error: AsmError::new(
-                        AsmErrorKind::Instruction,
-                        "instruction size overflow exceeds supported range",
-                        None,
-                    ),
-                    span: operands.first().map(expr_span).unwrap_or_default(),
-                });
+                return Err(ast_eval_error(
+                    AsmErrorKind::Instruction,
+                    "instruction size overflow exceeds supported range",
+                    operands.first().map(expr_span).unwrap_or_default(),
+                ));
             }
         };
         let span = operands.first().map(expr_span).unwrap_or_default();
@@ -1772,58 +1791,38 @@ impl<'a> AsmLine<'a> {
         directive_name: &str,
     ) -> Result<u32, AstEvalError> {
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
-            return Err(AstEvalError {
-                error: self.visibility_error(&name),
-                span,
-            });
+            return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
         }
 
         match AssemblerContext::eval_expr(self, expr) {
             Ok(value) => {
                 if value < 0 {
-                    return Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            &format!("Expected non-negative value for {directive_name}"),
-                            None,
-                        ),
-                        span: expr_span(expr),
-                    });
+                    return Err(AstEvalError::expression(
+                        format!("Expected non-negative value for {directive_name}"),
+                        expr_span(expr),
+                    ));
                 }
 
                 match u32::try_from(value) {
                     Ok(value) => Ok(value),
-                    Err(_) => Err(AstEvalError {
-                        error: AsmError::new(
-                            AsmErrorKind::Expression,
-                            &format!("Value out of supported range for {directive_name}"),
-                            None,
-                        ),
-                        span: expr_span(expr),
-                    }),
+                    Err(_) => Err(AstEvalError::expression(
+                        format!("Value out of supported range for {directive_name}"),
+                        expr_span(expr),
+                    )),
                 }
             }
-            Err(message) => Err(AstEvalError {
-                error: AsmError::new(AsmErrorKind::Expression, &message, None),
-                span: expr_span(expr),
-            }),
+            Err(message) => Err(AstEvalError::expression(message, expr_span(expr))),
         }
     }
 
     fn eval_expr_for_data_directive(&self, expr: &Expr) -> Result<u32, AstEvalError> {
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
-            return Err(AstEvalError {
-                error: self.visibility_error(&name),
-                span,
-            });
+            return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
         }
 
         match AssemblerContext::eval_expr(self, expr) {
             Ok(value) => Ok(value as u32),
-            Err(message) => Err(AstEvalError {
-                error: AsmError::new(AsmErrorKind::Expression, &message, None),
-                span: expr_span(expr),
-            }),
+            Err(message) => Err(AstEvalError::expression(message, expr_span(expr))),
         }
     }
 
@@ -1901,10 +1900,7 @@ impl<'a> AsmLine<'a> {
                 let msg = format!(
                     "Value ${value:0hex_width$X} ({value}) does not fit in {unit_bytes}-byte unit (max ${max_u32:0hex_width$X})"
                 );
-                return Err(AstEvalError {
-                    error: AsmError::new(AsmErrorKind::Directive, &msg, None),
-                    span,
-                });
+                return Err(AstEvalError::directive(msg, span));
             }
         }
 
@@ -1953,7 +1949,7 @@ impl<'a> AsmLine<'a> {
             Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -1993,7 +1989,7 @@ impl<'a> AsmLine<'a> {
         if let Err(err) = self.validate_program_span(total, ".emit", expr_span(&operands[0])) {
             return self.failure_at_span(
                 LineStatus::Error,
-                err.error.kind(),
+                ast_eval_error_kind_to_asm(err.error.kind()),
                 err.error.message(),
                 None,
                 err.span,
@@ -2006,7 +2002,7 @@ impl<'a> AsmLine<'a> {
                 Err(err) => {
                     return self.failure_at_span(
                         LineStatus::Error,
-                        err.error.kind(),
+                        ast_eval_error_kind_to_asm(err.error.kind()),
                         err.error.message(),
                         None,
                         err.span,
@@ -2016,7 +2012,7 @@ impl<'a> AsmLine<'a> {
             if let Err(err) = self.write_unit_value(unit_bytes as usize, value, expr_span(expr)) {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -2049,7 +2045,7 @@ impl<'a> AsmLine<'a> {
             Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -2069,7 +2065,7 @@ impl<'a> AsmLine<'a> {
             Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -2088,7 +2084,7 @@ impl<'a> AsmLine<'a> {
         if let Err(err) = self.validate_program_span(total, ".res", expr_span(&operands[1])) {
             return self.failure_at_span(
                 LineStatus::Error,
-                err.error.kind(),
+                ast_eval_error_kind_to_asm(err.error.kind()),
                 err.error.message(),
                 None,
                 err.span,
@@ -2120,7 +2116,7 @@ impl<'a> AsmLine<'a> {
             Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -2140,7 +2136,7 @@ impl<'a> AsmLine<'a> {
             Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -2152,7 +2148,7 @@ impl<'a> AsmLine<'a> {
             Err(err) => {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -2171,7 +2167,7 @@ impl<'a> AsmLine<'a> {
         if let Err(err) = self.validate_program_span(total, ".fill", expr_span(&operands[1])) {
             return self.failure_at_span(
                 LineStatus::Error,
-                err.error.kind(),
+                ast_eval_error_kind_to_asm(err.error.kind()),
                 err.error.message(),
                 None,
                 err.span,
@@ -2184,7 +2180,7 @@ impl<'a> AsmLine<'a> {
             {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -2230,7 +2226,7 @@ impl<'a> AsmLine<'a> {
                     Err(err) => {
                         return self.failure_at_span(
                             LineStatus::Error,
-                            err.error.kind(),
+                            ast_eval_error_kind_to_asm(err.error.kind()),
                             err.error.message(),
                             None,
                             err.span,
@@ -2270,7 +2266,7 @@ impl<'a> AsmLine<'a> {
                     {
                         return self.failure_at_span(
                             LineStatus::Error,
-                            err.error.kind(),
+                            ast_eval_error_kind_to_asm(err.error.kind()),
                             err.error.message(),
                             None,
                             err.span,
@@ -2308,7 +2304,7 @@ impl<'a> AsmLine<'a> {
             {
                 return self.failure_at_span(
                     LineStatus::Error,
-                    err.error.kind(),
+                    ast_eval_error_kind_to_asm(err.error.kind()),
                     err.error.message(),
                     None,
                     err.span,
@@ -2319,7 +2315,7 @@ impl<'a> AsmLine<'a> {
                 Err(err) => {
                     return self.failure_at_span(
                         LineStatus::Error,
-                        err.error.kind(),
+                        ast_eval_error_kind_to_asm(err.error.kind()),
                         err.error.message(),
                         None,
                         err.span,

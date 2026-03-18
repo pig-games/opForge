@@ -5,12 +5,64 @@
 
 use crate::parser::{AssignOp, BinaryOp, Expr, UnaryOp};
 use crate::tokenizer::Span;
-use types::diagnostics::{AsmError, AsmErrorKind};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AstEvalErrorKind {
+    Expression,
+    Directive,
+    Symbol,
+    Instruction,
+}
+
+#[derive(Debug, Clone)]
+pub struct AstEvalErrorDetail {
+    kind: AstEvalErrorKind,
+    message: String,
+}
+
+impl AstEvalErrorDetail {
+    pub fn new(kind: AstEvalErrorKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+        }
+    }
+
+    pub fn kind(&self) -> AstEvalErrorKind {
+        self.kind
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
 
 /// Error from expression evaluation with source span.
+#[derive(Debug, Clone)]
 pub struct AstEvalError {
-    pub error: AsmError,
+    pub error: AstEvalErrorDetail,
     pub span: Span,
+}
+
+impl AstEvalError {
+    pub fn new(kind: AstEvalErrorKind, message: impl Into<String>, span: Span) -> Self {
+        Self {
+            error: AstEvalErrorDetail::new(kind, message),
+            span,
+        }
+    }
+
+    pub fn expression(message: impl Into<String>, span: Span) -> Self {
+        Self::new(AstEvalErrorKind::Expression, message, span)
+    }
+
+    pub fn directive(message: impl Into<String>, span: Span) -> Self {
+        Self::new(AstEvalErrorKind::Directive, message, span)
+    }
+
+    pub fn symbol(message: impl Into<String>, span: Span) -> Self {
+        Self::new(AstEvalErrorKind::Symbol, message, span)
+    }
 }
 
 /// Get the span of an expression.
@@ -171,14 +223,10 @@ pub fn parse_number_text(text: &str, span: Span) -> Result<u32, AstEvalError> {
     };
 
     if digits.is_empty() {
-        return Err(AstEvalError {
-            error: AsmError::new(
-                AsmErrorKind::Expression,
-                "Illegal character in constant",
-                Some(text),
-            ),
+        return Err(AstEvalError::expression(
+            "Illegal character in constant",
             span,
-        });
+        ));
     }
 
     let valid = match base {
@@ -197,20 +245,11 @@ pub fn parse_number_text(text: &str, span: Span) -> Result<u32, AstEvalError> {
             16 => "Illegal character in hex constant",
             _ => "Illegal character in constant",
         };
-        return Err(AstEvalError {
-            error: AsmError::new(AsmErrorKind::Expression, msg, Some(text)),
-            span,
-        });
+        return Err(AstEvalError::expression(msg, span));
     }
 
-    let value = u32::from_str_radix(&digits, base).map_err(|_| AstEvalError {
-        error: AsmError::new(
-            AsmErrorKind::Expression,
-            "Illegal character in constant",
-            Some(text),
-        ),
-        span,
-    })?;
+    let value = u32::from_str_radix(&digits, base)
+        .map_err(|_| AstEvalError::expression("Illegal character in constant", span))?;
 
     Ok(value)
 }
@@ -256,32 +295,22 @@ pub fn apply_assignment_op(
         AssignOp::Mul => left.wrapping_mul(right),
         AssignOp::Div => {
             if right == 0 {
-                return Err(AstEvalError {
-                    error: AsmError::new(AsmErrorKind::Expression, "Divide by zero", None),
-                    span,
-                });
+                return Err(AstEvalError::expression("Divide by zero", span));
             }
             left / right
         }
         AssignOp::Mod => {
             if right == 0 {
-                return Err(AstEvalError {
-                    error: AsmError::new(AsmErrorKind::Expression, "Divide by zero", None),
-                    span,
-                });
+                return Err(AstEvalError::expression("Divide by zero", span));
             }
             left % right
         }
         AssignOp::Pow => {
             if right > 63 {
-                return Err(AstEvalError {
-                    error: AsmError::new(
-                        AsmErrorKind::Expression,
-                        "Exponent out of range for integer power",
-                        None,
-                    ),
+                return Err(AstEvalError::expression(
+                    "Exponent out of range for integer power",
                     span,
-                });
+                ));
             }
             left.wrapping_pow(right)
         }
@@ -327,34 +356,24 @@ pub fn eval_binary_op(
         BinaryOp::Divide => {
             if right_val == 0 {
                 let span = line_end_span.unwrap_or(span);
-                return Err(AstEvalError {
-                    error: AsmError::new(AsmErrorKind::Expression, "Divide by zero", None),
-                    span,
-                });
+                return Err(AstEvalError::expression("Divide by zero", span));
             }
             left_val / right_val
         }
         BinaryOp::Mod => {
             if right_val == 0 {
                 let span = line_end_span.unwrap_or(span);
-                return Err(AstEvalError {
-                    error: AsmError::new(AsmErrorKind::Expression, "Divide by zero", None),
-                    span,
-                });
+                return Err(AstEvalError::expression("Divide by zero", span));
             }
             left_val % right_val
         }
         BinaryOp::Power => {
             if right_val > 63 {
                 let span = line_end_span.unwrap_or(span);
-                return Err(AstEvalError {
-                    error: AsmError::new(
-                        AsmErrorKind::Expression,
-                        "Exponent out of range for integer power",
-                        None,
-                    ),
+                return Err(AstEvalError::expression(
+                    "Exponent out of range for integer power",
                     span,
-                });
+                ));
             }
             left_val.wrapping_pow(right_val)
         }

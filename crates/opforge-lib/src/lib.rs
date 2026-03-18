@@ -4056,6 +4056,75 @@ mod tests {
     }
 
     #[test]
+    fn public_asm_workflow_lockstep_failed_assembly_preserves_assemble_category() {
+        for continuation_head in [
+            lockstep::ContinuationHead::Rust,
+            lockstep::ContinuationHead::Vm,
+        ] {
+            let source_provider = io::MemorySourceProvider::new().with_file(
+                "/virtual/main.asm",
+                ".module main\n.this_is_not_a_real_directive\n.endmodule\n",
+            );
+            let borrowed_output_sink = io::MemoryOutputSink::new();
+            let owned_output_sink = io::MemoryOutputSink::new();
+
+            let borrowed_err = match Assembler::with_config(
+                Path::new("/virtual/main.asm"),
+                AssembleOptions {
+                    execution_mode: lockstep::ExecutionMode::Lockstep { continuation_head },
+                    output_base: "/virtual/main",
+                    output_format: asm::OutputFormat::Text,
+                    label_output_format: asm::LabelOutputFormat::Vice,
+                    source_provider: Some(&source_provider),
+                    output_sink: Some(&borrowed_output_sink),
+                    ..AssembleOptions::default()
+                },
+            )
+            .assemble()
+            {
+                Ok(_) => panic!("lockstep borrowed assembly should fail"),
+                Err(err) => err,
+            };
+
+            assert_eq!(
+                borrowed_err.kind(),
+                asm::AssemblerWorkflowErrorKind::Assemble
+            );
+            assert_eq!(borrowed_err.code(), "asm.workflow.assemble");
+            assert_eq!(
+                borrowed_err
+                    .as_assemble()
+                    .expect("borrowed assemble payload")
+                    .kind(),
+                diagnostics::AsmErrorKind::Assembler
+            );
+
+            let owned_err = match AssemblerSession::builder("/virtual/main.asm")
+                .execution_mode(lockstep::ExecutionMode::Lockstep { continuation_head })
+                .output_base("/virtual/main")
+                .output_format(asm::OutputFormat::Text)
+                .label_output_format(asm::LabelOutputFormat::Vice)
+                .source_provider(source_provider.clone())
+                .output_sink(owned_output_sink)
+                .assemble()
+            {
+                Ok(_) => panic!("lockstep owned assembly should fail"),
+                Err(err) => err,
+            };
+
+            assert_eq!(owned_err.kind(), asm::AssemblerWorkflowErrorKind::Assemble);
+            assert_eq!(owned_err.code(), "asm.workflow.assemble");
+            assert_eq!(
+                owned_err
+                    .as_assemble()
+                    .expect("owned assemble payload")
+                    .kind(),
+                diagnostics::AsmErrorKind::Assembler
+            );
+        }
+    }
+
+    #[test]
     fn public_asm_workflow_invalid_argument_category_survives_borrowed_and_owned_paths() {
         let source_provider = io::MemorySourceProvider::new()
             .with_file("/virtual/main.asm", ".module main\nnop\n.endmodule\n");

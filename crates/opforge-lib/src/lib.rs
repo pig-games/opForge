@@ -70,6 +70,7 @@ pub mod opcore {
     pub use ::opcore::expression::expr_text;
     pub use ::opcore::macro_processor::{MacroError, MacroProcessor};
     pub use ::opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError, UseItem};
+    pub use ::opcore::preprocess::{PreprocessError, Preprocessor};
     pub use ::opcore::services::{
         parse_expression, parse_expression_tokens, tokenize_line, TokenizedLine,
     };
@@ -126,6 +127,20 @@ pub mod opcore {
             CoreErrorKind::Repetition
         } else {
             CoreErrorKind::Statement
+        }
+    }
+
+    fn classify_macro_error_kind(message: &str) -> CoreErrorKind {
+        let lower = message.to_ascii_lowercase();
+        if lower.contains("namespace") || lower.contains(".endn") {
+            CoreErrorKind::Namespace
+        } else if lower.contains("scope")
+            || lower.contains(".endblock")
+            || lower.contains(".endmodule")
+        {
+            CoreErrorKind::Scope
+        } else {
+            CoreErrorKind::Macro
         }
     }
 
@@ -229,6 +244,7 @@ pub mod opcore {
         Parse(ParseError),
         Expr(EvalError),
         Macro(MacroError),
+        Preprocess(PreprocessError),
         ModuleItem(ModuleItemError),
         LineParse(LineParseError),
     }
@@ -239,7 +255,8 @@ pub mod opcore {
                 Self::Tokenize(_) => CoreErrorKind::Tokenize,
                 Self::Parse(_) => CoreErrorKind::Parse,
                 Self::Expr(_) => CoreErrorKind::Expr,
-                Self::Macro(_) => CoreErrorKind::Macro,
+                Self::Macro(err) => classify_macro_error_kind(err.message()),
+                Self::Preprocess(_) => CoreErrorKind::Preprocess,
                 Self::ModuleItem(err) => err.kind(),
                 Self::LineParse(err) => err.kind(),
             }
@@ -251,6 +268,7 @@ pub mod opcore {
                 Self::Parse(err) => &err.message,
                 Self::Expr(err) => &err.message,
                 Self::Macro(err) => err.message(),
+                Self::Preprocess(err) => err.message(),
                 Self::ModuleItem(err) => err.summary(),
                 Self::LineParse(err) => err.summary(),
             }
@@ -290,6 +308,12 @@ pub mod opcore {
     impl From<MacroError> for CoreError {
         fn from(err: MacroError) -> Self {
             Self::Macro(err)
+        }
+    }
+
+    impl From<PreprocessError> for CoreError {
+        fn from(err: PreprocessError) -> Self {
+            Self::Preprocess(err)
         }
     }
 
@@ -2689,6 +2713,36 @@ mod tests {
     }
 
     #[test]
+    fn public_opcore_core_error_classifies_namespace_scope_and_preprocess_failures() {
+        let namespace_err = opcore::MacroProcessor::new()
+            .expand(&[".endn".to_string()])
+            .expect_err("namespace close should fail");
+        let namespace_core = opcore::CoreError::from(namespace_err);
+        assert_eq!(namespace_core.kind(), opcore::CoreErrorKind::Namespace);
+        assert_eq!(namespace_core.code(), "opcore.namespace");
+
+        let scope_err = opcore::MacroProcessor::new()
+            .expand(&[".endblock".to_string()])
+            .expect_err("scope close should fail");
+        let scope_core = opcore::CoreError::from(scope_err);
+        assert_eq!(scope_core.kind(), opcore::CoreErrorKind::Scope);
+        assert_eq!(scope_core.code(), "opcore.scope");
+
+        let temp_dir = unique_temp_dir("libopforge-preprocess");
+        let source_path = temp_dir.join("bad.asm");
+        fs::write(&source_path, "#include \"inc.asm\"\n").expect("write preprocess source");
+
+        let preprocess_err = opcore::Preprocessor::new()
+            .process_file(source_path.to_str().expect("source path utf8"))
+            .expect_err("preprocess should fail");
+        let preprocess_core = opcore::CoreError::from(preprocess_err);
+        assert_eq!(preprocess_core.kind(), opcore::CoreErrorKind::Preprocess);
+        assert_eq!(preprocess_core.code(), "opcore.preprocess");
+
+        fs::remove_dir_all(&temp_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
     fn public_portable_opcore_api_tokenizes_and_parses_expression() {
         let tokenized =
             opcore::portable::tokenize_line("1 + 2", 1).expect("tokenization should succeed");
@@ -2732,6 +2786,8 @@ mod tests {
         let _eval_error_type: Option<opcore::EvalError> = None;
         let _macro_error_type: Option<opcore::MacroError> = None;
         let _macro_processor_type: Option<opcore::MacroProcessor> = None;
+        let _preprocess_error_type: Option<opcore::PreprocessError> = None;
+        let _preprocessor_type: Option<opcore::Preprocessor> = None;
         let _module_item_error_type: Option<opcore::ModuleItemError> = None;
         let _line_parse_error_type: Option<opcore::LineParseError> = None;
     }

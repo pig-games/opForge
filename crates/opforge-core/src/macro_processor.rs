@@ -24,7 +24,8 @@ use macro_processor_definitions::{
 #[cfg(test)]
 use macro_processor_directives::parse_statement_directive;
 use macro_processor_directives::{
-    parse_namespace_directive, parse_visibility_directive, NamespaceDirective, VisibilityDirective,
+    parse_namespace_directive, parse_scope_directive, parse_visibility_directive,
+    NamespaceDirective, ScopeDirective, VisibilityDirective,
 };
 #[cfg(test)]
 use macro_processor_statements::{expand_statement_invocation, parse_statement_def_line};
@@ -101,6 +102,12 @@ struct MacroInvocation {
 enum MacroKind {
     Macro,
     Segment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StructuralScopeKind {
+    Scope,
+    Namespace,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -233,6 +240,7 @@ pub struct MacroProcessor {
     injected_names: HashSet<String>,
     visibility_stack: Vec<CompileTimeVisibility>,
     namespace_stack: Vec<Option<String>>,
+    structure_stack: Vec<StructuralScopeKind>,
     max_depth: usize,
 }
 
@@ -250,6 +258,7 @@ impl MacroProcessor {
             injected_names: HashSet::new(),
             visibility_stack: vec![CompileTimeVisibility::Private],
             namespace_stack: Vec::new(),
+            structure_stack: Vec::new(),
             max_depth: 64,
         }
     }
@@ -527,8 +536,48 @@ impl MacroProcessor {
         match directive {
             VisibilityDirective::SetPublic => self.set_visibility(CompileTimeVisibility::Public),
             VisibilityDirective::SetPrivate => self.set_visibility(CompileTimeVisibility::Private),
-            VisibilityDirective::PushScope => self.push_visibility(),
-            VisibilityDirective::PopScope => self.pop_visibility(),
+        }
+    }
+
+    fn push_scope(&mut self) {
+        self.push_visibility();
+        self.structure_stack.push(StructuralScopeKind::Scope);
+    }
+
+    fn pop_scope(&mut self, line_num: u32) -> Result<(), MacroError> {
+        match self.structure_stack.last().copied() {
+            Some(StructuralScopeKind::Scope) => {
+                self.structure_stack.pop();
+                self.pop_visibility();
+                Ok(())
+            }
+            Some(StructuralScopeKind::Namespace) | None => Err(MacroError::new(
+                ".endblock/.endmodule found without matching .block/.module",
+                Some(line_num),
+                Some(1),
+            )),
+        }
+    }
+
+    fn push_namespace(&mut self, name: Option<String>) {
+        self.push_visibility();
+        self.push_namespace_scope(name);
+        self.structure_stack.push(StructuralScopeKind::Namespace);
+    }
+
+    fn pop_namespace(&mut self, line_num: u32) -> Result<(), MacroError> {
+        match self.structure_stack.last().copied() {
+            Some(StructuralScopeKind::Namespace) => {
+                self.structure_stack.pop();
+                self.pop_namespace_scope();
+                self.pop_visibility();
+                Ok(())
+            }
+            Some(StructuralScopeKind::Scope) | None => Err(MacroError::new(
+                ".endn/.endnamespace found without matching .namespace",
+                Some(line_num),
+                Some(1),
+            )),
         }
     }
 
@@ -558,10 +607,16 @@ impl MacroProcessor {
                 if let Some(directive) = parse_visibility_directive(code) {
                     self.apply_visibility_directive(directive);
                 }
+                if let Some(scope_directive) = parse_scope_directive(code) {
+                    match scope_directive {
+                        ScopeDirective::Push => self.push_scope(),
+                        ScopeDirective::Pop => self.pop_scope(line_num)?,
+                    }
+                }
                 if let Some(namespace_directive) = parse_namespace_directive(code) {
                     match namespace_directive {
-                        NamespaceDirective::Push(name) => self.push_namespace_scope(name),
-                        NamespaceDirective::Pop => self.pop_namespace_scope(),
+                        NamespaceDirective::Push(name) => self.push_namespace(name),
+                        NamespaceDirective::Pop => self.pop_namespace(line_num)?,
                     }
                 }
             }
@@ -1138,5 +1193,33 @@ mod tests {
         ];
         let out = mp.expand(&lines).expect("expand");
         assert!(out.iter().any(|line| line.trim() == ".byte 3"));
+    }
+
+    #[test]
+    fn reports_unmatched_namespace_close() {
+        let mut mp = MacroProcessor::new();
+
+        let err = mp
+            .expand(&[".endn".to_string()])
+            .expect_err("namespace close should fail");
+
+        assert_eq!(
+            err.message(),
+            ".endn/.endnamespace found without matching .namespace"
+        );
+    }
+
+    #[test]
+    fn reports_unmatched_scope_close() {
+        let mut mp = MacroProcessor::new();
+
+        let err = mp
+            .expand(&[".endblock".to_string()])
+            .expect_err("scope close should fail");
+
+        assert_eq!(
+            err.message(),
+            ".endblock/.endmodule found without matching .block/.module"
+        );
     }
 }

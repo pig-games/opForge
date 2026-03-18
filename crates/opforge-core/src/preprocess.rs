@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use crate::text_utils::{is_ident_char, is_ident_start, split_comment, to_upper, Cursor};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PreprocessError {
     message: String,
     line: Option<u32>,

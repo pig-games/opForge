@@ -48,7 +48,7 @@ This plan is complete when all of the following are true:
 - [x] `LFR-001` Add `CoreError` and `CoreErrorKind` with leaf conversions
 - [x] `LFR-002` Classify module, `.use`, and import failures under `CoreError`
 - [x] `LFR-003` Classify macro, conditional, and repetition failures under `CoreError`
-- [ ] `LFR-004` Classify namespace, scope, and preprocess failures under `CoreError`
+- [x] `LFR-004` Classify namespace, scope, and preprocess failures under `CoreError`
 - [ ] `LFR-005` Classify struct and segment failures under `CoreError` and remove pure-`opcore` assembler-error coupling
 - [ ] `LFR-006` Add neutral `ProcessorError` surface in `libopforge::processing`
 - [ ] `LFR-007` Add `AssemblerWorkflowError` at the high-level asm boundary
@@ -222,19 +222,19 @@ Primary files:
 - `crates/opforge-vm/src/vm_opcore.rs` if the VM path mirrors these concern classifications
 
 Implementation tasks:
-- [ ] classify namespace, scope, and preprocess failures under `CoreErrorKind`
-- [ ] keep leaf wrappers core-owned where dedicated wrappers are needed
-- [ ] avoid widening this slice into struct, segment, or dependency-cleanup work
+- [x] classify namespace, scope, and preprocess failures under `CoreErrorKind`
+- [x] keep leaf wrappers core-owned where dedicated wrappers are needed
+- [x] avoid widening this slice into struct, segment, or dependency-cleanup work
 
 Focused validation:
-- [ ] focused tests for namespace, scope, and preprocess failure classification
-- [ ] audit-style checks proving these public failure paths classify under `CoreError` rather than assembler-owned umbrellas
+- [x] focused tests for namespace, scope, and preprocess failure classification
+- [x] audit-style checks proving these public failure paths classify under `CoreError` rather than assembler-owned umbrellas
 
 Commit exit gate:
-- [ ] `cargo test --locked -p opforge-core`
-- [ ] `cargo test --locked -p opforge-vm`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p opforge-core`
+- [x] `cargo test --locked -p opforge-vm`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - the generic namespace/scope/preprocess concern family is truthfully owned by `CoreError`

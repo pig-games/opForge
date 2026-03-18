@@ -16,8 +16,12 @@ pub(super) enum StatementDirective {
 pub(super) enum VisibilityDirective {
     SetPublic,
     SetPrivate,
-    PushScope,
-    PopScope,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ScopeDirective {
+    Push,
+    Pop,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,10 +43,23 @@ pub(super) fn parse_visibility_directive(code: &str) -> Option<VisibilityDirecti
     match directive.as_str() {
         "PUB" => Some(VisibilityDirective::SetPublic),
         "PRIV" => Some(VisibilityDirective::SetPrivate),
-        "BLOCK" | "MODULE" | "NAMESPACE" => Some(VisibilityDirective::PushScope),
-        "ENDBLOCK" | "BEND" | "ENDMODULE" | "ENDN" | "ENDNAMESPACE" => {
-            Some(VisibilityDirective::PopScope)
-        }
+        _ => None,
+    }
+}
+
+pub(super) fn parse_scope_directive(code: &str) -> Option<ScopeDirective> {
+    let (_, idx, _) = parse_label(code);
+    let mut cursor = Cursor::with_pos(code, idx);
+    cursor.skip_ws();
+    if cursor.peek() != Some(b'.') {
+        return None;
+    }
+    cursor.next();
+    cursor.skip_ws();
+    let directive = cursor.take_ident()?.to_ascii_uppercase();
+    match directive.as_str() {
+        "BLOCK" | "MODULE" => Some(ScopeDirective::Push),
+        "ENDBLOCK" | "BEND" | "ENDMODULE" => Some(ScopeDirective::Pop),
         _ => None,
     }
 }

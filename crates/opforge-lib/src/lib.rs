@@ -66,9 +66,9 @@ pub mod formatter {
 }
 
 pub mod opcore {
-    pub use ::engine::editor_parse_line;
     pub use ::opcore::expr::EvalError;
     pub use ::opcore::expression::expr_text;
+    pub use ::opcore::macro_processor::{MacroError, MacroProcessor};
     pub use ::opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError, UseItem};
     pub use ::opcore::services::{
         parse_expression, parse_expression_tokens, tokenize_line, TokenizedLine,
@@ -109,6 +109,23 @@ pub mod opcore {
             }
         } else {
             CoreErrorKind::Module
+        }
+    }
+
+    fn classify_line_parse_kind(line: &str) -> CoreErrorKind {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(".if") || trimmed.starts_with(".endif") {
+            CoreErrorKind::Conditional
+        } else if trimmed.starts_with(".for")
+            || trimmed.starts_with(".bfor")
+            || trimmed.starts_with(".endfor")
+            || trimmed.starts_with(".while")
+            || trimmed.starts_with(".bwhile")
+            || trimmed.starts_with(".endwhile")
+        {
+            CoreErrorKind::Repetition
+        } else {
+            CoreErrorKind::Statement
         }
     }
 
@@ -169,12 +186,51 @@ pub mod opcore {
     impl std::error::Error for ModuleItemError {}
 
     #[derive(Debug, Clone)]
+    pub struct LineParseError {
+        kind: CoreErrorKind,
+        pub message: String,
+        pub span: Span,
+    }
+
+    impl LineParseError {
+        fn from_parse_error(line: &str, err: ParseError) -> Self {
+            Self {
+                kind: classify_line_parse_kind(line),
+                message: err.message,
+                span: err.span,
+            }
+        }
+
+        pub fn kind(&self) -> CoreErrorKind {
+            self.kind
+        }
+
+        pub fn summary(&self) -> &str {
+            &self.message
+        }
+
+        pub fn code(&self) -> &str {
+            code_for_kind(self.kind)
+        }
+    }
+
+    impl std::fmt::Display for LineParseError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for LineParseError {}
+
+    #[derive(Debug, Clone)]
     #[non_exhaustive]
     pub enum CoreError {
         Tokenize(TokenizeError),
         Parse(ParseError),
         Expr(EvalError),
+        Macro(MacroError),
         ModuleItem(ModuleItemError),
+        LineParse(LineParseError),
     }
 
     impl CoreError {
@@ -183,7 +239,9 @@ pub mod opcore {
                 Self::Tokenize(_) => CoreErrorKind::Tokenize,
                 Self::Parse(_) => CoreErrorKind::Parse,
                 Self::Expr(_) => CoreErrorKind::Expr,
+                Self::Macro(_) => CoreErrorKind::Macro,
                 Self::ModuleItem(err) => err.kind(),
+                Self::LineParse(err) => err.kind(),
             }
         }
 
@@ -192,7 +250,9 @@ pub mod opcore {
                 Self::Tokenize(err) => &err.message,
                 Self::Parse(err) => &err.message,
                 Self::Expr(err) => &err.message,
+                Self::Macro(err) => err.message(),
                 Self::ModuleItem(err) => err.summary(),
+                Self::LineParse(err) => err.summary(),
             }
         }
 
@@ -227,10 +287,27 @@ pub mod opcore {
         }
     }
 
+    impl From<MacroError> for CoreError {
+        fn from(err: MacroError) -> Self {
+            Self::Macro(err)
+        }
+    }
+
     impl From<ModuleItemError> for CoreError {
         fn from(err: ModuleItemError) -> Self {
             Self::ModuleItem(err)
         }
+    }
+
+    impl From<LineParseError> for CoreError {
+        fn from(err: LineParseError) -> Self {
+            Self::LineParse(err)
+        }
+    }
+
+    pub fn editor_parse_line(line: &str, line_num: u32) -> Result<LineAst, LineParseError> {
+        ::engine::editor_parse_line(line, line_num)
+            .map_err(|err| LineParseError::from_parse_error(line, err))
     }
 
     pub fn process_module_item(
@@ -2587,6 +2664,31 @@ mod tests {
     }
 
     #[test]
+    fn public_opcore_core_error_classifies_macro_conditional_and_repetition_failures() {
+        let mut macro_processor = opcore::MacroProcessor::new();
+        let macro_err = macro_processor
+            .expand(&[".endmacro".to_string()])
+            .expect_err("macro expansion should fail");
+        let macro_core = opcore::CoreError::from(macro_err);
+        assert_eq!(macro_core.kind(), opcore::CoreErrorKind::Macro);
+        assert_eq!(macro_core.code(), "opcore.macro");
+
+        let conditional_err = opcore::editor_parse_line(".if \"unterminated", 31)
+            .expect_err("conditional parse should fail");
+        assert_eq!(conditional_err.kind(), opcore::CoreErrorKind::Conditional);
+        assert_eq!(conditional_err.code(), "opcore.conditional");
+
+        let repetition_err = opcore::editor_parse_line(".for \"unterminated", 32)
+            .expect_err("repetition parse should fail");
+        assert_eq!(repetition_err.kind(), opcore::CoreErrorKind::Repetition);
+        assert_eq!(repetition_err.code(), "opcore.repetition");
+
+        let wrapped = opcore::CoreError::from(repetition_err);
+        assert_eq!(wrapped.kind(), opcore::CoreErrorKind::Repetition);
+        assert_eq!(wrapped.code(), "opcore.repetition");
+    }
+
+    #[test]
     fn public_portable_opcore_api_tokenizes_and_parses_expression() {
         let tokenized =
             opcore::portable::tokenize_line("1 + 2", 1).expect("tokenization should succeed");
@@ -2628,7 +2730,10 @@ mod tests {
         let _core_error_type: Option<opcore::CoreError> = None;
         let _core_error_kind = opcore::CoreErrorKind::Tokenize;
         let _eval_error_type: Option<opcore::EvalError> = None;
+        let _macro_error_type: Option<opcore::MacroError> = None;
+        let _macro_processor_type: Option<opcore::MacroProcessor> = None;
         let _module_item_error_type: Option<opcore::ModuleItemError> = None;
+        let _line_parse_error_type: Option<opcore::LineParseError> = None;
     }
 
     #[test]

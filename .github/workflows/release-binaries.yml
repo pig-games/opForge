@@ -117,6 +117,13 @@ jobs:
           OPFORGE_RELEASE_FFI_LIBRARY_PATH: ${{ github.workspace }}/target/release-ffi/${{ matrix.ffi_lib }}
         run: cargo test -p ffi exported_release_ffi_library_exposes_full_header_symbol_surface --locked
 
+      - name: Configure MSVC developer environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Run FFI ABI contract test
+        run: cargo test -p ffi exported_header_matches_rust_abi_contract --locked
+
       - name: Package release artifacts
         shell: bash
         env:

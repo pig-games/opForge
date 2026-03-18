@@ -56,7 +56,7 @@ This plan is complete when all of the following are true:
 - [x] `LFR-009` Add canon/compat export audit enforcement
 - [x] `LFR-010` Publish concern inventories in the facade surface and guide
 - [x] `LFR-011` Add guide and rustdoc example coverage for the stabilized entry paths
-- [ ] Milestone A exit gate: named core domain is established and truthful
+- [x] Milestone A exit gate: named core domain is established and truthful
 - [x] Milestone B exit gate: neutral orchestration and workflow packaging are established
 - [x] Milestone C exit gate: public-shape policy and documentation are explicit
 
@@ -501,11 +501,11 @@ Recommended commit outcome:
 ### Milestone A: Named core domain established
 
 Includes:
-- [ ] `LFR-001`
-- [ ] `LFR-002`
-- [ ] `LFR-003`
-- [ ] `LFR-004`
-- [ ] `LFR-005`
+- [x] `LFR-001`
+- [x] `LFR-002`
+- [x] `LFR-003`
+- [x] `LFR-004`
+- [x] `LFR-005`
 
 Exit gate:
 - every spec-listed public `opcore` concern family now has truthful core-domain ownership

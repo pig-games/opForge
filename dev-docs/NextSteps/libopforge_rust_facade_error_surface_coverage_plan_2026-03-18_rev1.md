@@ -67,12 +67,13 @@ The touched public error surfaces for this narrower follow-up remain:
   - Commit outcome: the narrowed follow-up starts with one concrete parity regression on the shipped public path rather than an audit-only artifact, and the exact live-path gap it closes is recorded for the remaining audit work.
   - Definition of done: the repository contains one concrete regression covering a real touched-surface parity gap on the live public path, and the remaining audit work is narrowed to what that regression does not cover.
 
-- [ ] Item 2: Audit the remaining Rust/VM parity surface and lockstep test adequacy for the touched public error contracts.
+- [x] Item 2: Audit the remaining Rust/VM parity surface and lockstep test adequacy for the touched public error contracts.
   - Source requirement or finding IDs: `FUP-VM-003`; rev7 `Validation Expectations` bullets covering stable inspection of `CoreError` and `CoreErrorKind`, stable inspection and kind mapping of `ProcessorError`, `ProcessorErrorKind`, and `ProcessorFailureDetail`, stable `AsmRunError` accessors and `AssemblerWorkflowError` category behavior, and proof that genuinely core-local failures may cross the engine boundary as `CoreError` while processor-originated failures map through the expected assembler workflow variants.
   - Expected files: one analysis artifact under `dev-docs/NextSteps/` or `dev-docs/reviews/`, and only the smallest supporting regression adjustments still required after Item 1 if the audit finds another non-deferred blind spot.
   - Validation: inspect the current Rust and VM code paths for the touched facade error surfaces, inventory the current tests/examples/checks that cover them, record whether the existing lockstep mode and parity-oriented tests exercise those paths adequately, and identify any remaining regression additions required after Item 1; run the relevant currently existing targeted parity or lockstep tests plus `cargo test --locked -p libopforge`, and `cargo test --locked -p opforge-engine` if engine-local parity coverage is added.
+  - Completed slice: `dev-docs/reviews/libopforge_error_surface_remaining_parity_audit_2026-03-18.md` records the remaining touched paths after Item 1, confirms that no further narrow regression is justified in this slice, and defers the remaining gaps to broader VM parity follow-up.
   - Full quality gates: `cargo fmt --all`; `cargo clippy --workspace -- -D warnings`; `cargo audit`; `cargo test --locked --workspace`.
-  - Plan-compliance review evidence: `PASS` from `plan-compliance-reviewer` against `AGENTS.md`, this plan, the active checkbox, changed files, and the executed validation results for the parity-audit slice.
+  - Plan-compliance review evidence: commit gate requires `PASS` from `plan-compliance-reviewer` against `AGENTS.md`, this plan, the active checkbox, changed files, and the executed validation results for the parity-audit slice.
   - Commit outcome: maintainers have a checked-in audit of the remaining touched Rust/VM paths, the current lockstep-test adequacy for those paths, the blind spots that still affect this narrowed follow-up work, and any broader parity debt that must be deferred to a separate dedicated VM parity plan.
   - Definition of done: the repository contains a concrete analysis of the remaining touched Rust/VM paths and current coverage after Item 1, including an explicit statement on whether the lockstep option is being used well enough for those surfaces and a precise list of any further regression additions still required.
 
@@ -88,7 +89,7 @@ The touched public error surfaces for this narrower follow-up remain:
 ## Milestones
 
 - [x] Milestone 1: One concrete live-path parity regression for the touched public error surfaces is landed (`Item 1` complete).
-- [ ] Milestone 2: The current touched Rust/VM paths and current lockstep-test adequacy are documented in a checked-in audit (`Item 2` complete and committed).
+- [x] Milestone 2: The current touched Rust/VM paths and current lockstep-test adequacy are documented in a checked-in audit (`Item 2` complete).
 - [ ] Milestone 3: Follow-up traceability evidence is complete and the broader VM parity follow-up decision is recorded (`Item 3` complete and committed).
 
 ## Blocking Rules

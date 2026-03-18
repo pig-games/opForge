@@ -2,6 +2,7 @@
 
 ## Metadata
 
+- Source: `dev-docs/NextSteps/libopforge_rust_facade_upgrade_spec_2026-03-17_rev7.md`, `dev-docs/reviews/libopforge_full_review_closure_2026-03-18.md`, and the scoped user instruction for this follow-up
 - Mode: `remediation`
 - Owner: Codex
 
@@ -58,6 +59,7 @@ The touched public error surfaces for this narrower follow-up remain:
 ## Work Items
 
 - [x] Item 1: Land the smallest live-path parity regression needed to make the narrowed audit concrete.
+  - Definition of done: one concrete touched-surface parity regression is landed on the live public path and the remaining audit scope is narrowed accordingly.
   - Source requirement or finding IDs: `FUP-VM-001`, `FUP-VM-002`, `FUP-VM-003`; rev7 `Validation Expectations` bullets covering `CoreError` and `CoreErrorKind`, `ProcessorError`, `ProcessorErrorKind`, and `ProcessorFailureDetail`, `AssemblerWorkflowError`, `AsmRunError`, and the required engine-to-assembler mapping behavior; March 18 closure findings `RVW-2026-03-18-001` through `RVW-2026-03-18-003` as established shipped baseline rather than reopened work.
   - Expected files: the narrowest regression location on the live path, expected to be `crates/opforge-lib/src/lib.rs` unless the audit proves a smaller existing parity test location is better, plus only the smallest supporting audit note if needed to explain the exact blind spot the regression closes.
   - Validation: inspect the current Rust and VM code paths for the touched facade error surfaces just enough to choose one real blind spot on the live path, implement the minimum regression that closes it, and run the relevant targeted parity or lockstep tests plus `cargo test --locked -p libopforge` to prove the slice.
@@ -65,9 +67,10 @@ The touched public error surfaces for this narrower follow-up remain:
   - Full quality gates: `cargo fmt --all`; `cargo clippy --workspace -- -D warnings`; `cargo audit`; `cargo test --locked --workspace`.
   - Plan-compliance review evidence: commit gate requires `PASS` from `plan-compliance-reviewer` against `AGENTS.md`, this plan, the active checkbox, changed files, and the executed validation results for the first parity-regression slice.
   - Commit outcome: the narrowed follow-up starts with one concrete parity regression on the shipped public path rather than an audit-only artifact, and the exact live-path gap it closes is recorded for the remaining audit work.
-  - Definition of done: the repository contains one concrete regression covering a real touched-surface parity gap on the live public path, and the remaining audit work is narrowed to what that regression does not cover.
+  - Detailed definition of done: the repository contains one concrete regression covering a real touched-surface parity gap on the live public path, and the remaining audit work is narrowed to what that regression does not cover.
 
 - [x] Item 2: Audit the remaining Rust/VM parity surface and lockstep test adequacy for the touched public error contracts.
+  - Definition of done: the remaining touched Rust/VM paths and current coverage are documented clearly enough to justify either more narrow regression work or explicit deferral.
   - Source requirement or finding IDs: `FUP-VM-003`; rev7 `Validation Expectations` bullets covering stable inspection of `CoreError` and `CoreErrorKind`, stable inspection and kind mapping of `ProcessorError`, `ProcessorErrorKind`, and `ProcessorFailureDetail`, stable `AsmRunError` accessors and `AssemblerWorkflowError` category behavior, and proof that genuinely core-local failures may cross the engine boundary as `CoreError` while processor-originated failures map through the expected assembler workflow variants.
   - Expected files: one analysis artifact under `dev-docs/NextSteps/` or `dev-docs/reviews/`, and only the smallest supporting regression adjustments still required after Item 1 if the audit finds another non-deferred blind spot.
   - Validation: inspect the current Rust and VM code paths for the touched facade error surfaces, inventory the current tests/examples/checks that cover them, record whether the existing lockstep mode and parity-oriented tests exercise those paths adequately, and identify any remaining regression additions required after Item 1; run the relevant currently existing targeted parity or lockstep tests plus `cargo test --locked -p libopforge`, and `cargo test --locked -p opforge-engine` if engine-local parity coverage is added.
@@ -75,22 +78,24 @@ The touched public error surfaces for this narrower follow-up remain:
   - Full quality gates: `cargo fmt --all`; `cargo clippy --workspace -- -D warnings`; `cargo audit`; `cargo test --locked --workspace`.
   - Plan-compliance review evidence: commit gate requires `PASS` from `plan-compliance-reviewer` against `AGENTS.md`, this plan, the active checkbox, changed files, and the executed validation results for the parity-audit slice.
   - Commit outcome: maintainers have a checked-in audit of the remaining touched Rust/VM paths, the current lockstep-test adequacy for those paths, the blind spots that still affect this narrowed follow-up work, and any broader parity debt that must be deferred to a separate dedicated VM parity plan.
-  - Definition of done: the repository contains a concrete analysis of the remaining touched Rust/VM paths and current coverage after Item 1, including an explicit statement on whether the lockstep option is being used well enough for those surfaces and a precise list of any further regression additions still required.
+  - Detailed definition of done: the repository contains a concrete analysis of the remaining touched Rust/VM paths and current coverage after Item 1, including an explicit statement on whether the lockstep option is being used well enough for those surfaces and a precise list of any further regression additions still required.
 
-- [ ] Item 3: Publish traceability evidence and record whether broader VM parity work needs a separate plan.
+- [x] Item 3: Publish traceability evidence and record whether broader VM parity work needs a separate plan.
+  - Definition of done: the narrowed follow-up is traceable end to end and the broader VM parity follow-up decision is explicitly recorded.
   - Source requirement or finding IDs: `FUP-VM-004`, `FUP-VM-005`; rev7 `Validation Expectations` for the touched public error surfaces and engine-to-assembler mapping behavior; March 18 closure findings `RVW-2026-03-18-001` through `RVW-2026-03-18-003` as the already-landed remediation baseline that this narrower parity follow-up audits rather than reimplements.
   - Expected files: this plan for checkbox updates and one follow-up traceability or closure artifact under `dev-docs/NextSteps/` or `dev-docs/reviews/` that links the audit and landed regression additions back to the cited spec and plan obligations, including the final recommendation on broader VM parity work.
   - Validation: run `python3 /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/scripts/workflow/check_plan_checkboxes.py /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/dev-docs/NextSteps/libopforge_rust_facade_error_surface_coverage_plan_2026-03-18_rev1.md`, the full workspace quality gates, `plan-compliance-reviewer`, and `artifact-traceability-reviewer` for the final closure state; include explicit traceability for the audit findings, the resulting regression additions, and the final decision on whether a separate dedicated VM parity plan is needed.
+  - Completed slice: `dev-docs/reviews/libopforge_error_surface_coverage_closure_2026-03-18.md` links the Item 1 and Item 2 commits back to the plan and rev7 obligations and records that broader VM parity work must proceed as a separate dedicated plan.
   - Full quality gates: `cargo fmt --all`; `cargo clippy --workspace -- -D warnings`; `cargo audit`; `cargo test --locked --workspace`.
-  - Plan-compliance review evidence: final `PASS` from `plan-compliance-reviewer` confirming the last active checkbox, changed files, validation evidence, and bookkeeping are consistent with the completed narrowed remediation state.
+  - Plan-compliance review evidence: final commit gate requires `PASS` from `plan-compliance-reviewer` confirming the last active checkbox, changed files, validation evidence, and bookkeeping are consistent with the completed narrowed remediation state.
   - Commit outcome: future readers can see exactly which parity questions were audited for the touched public error surfaces, which regression checks were added, and whether any broader VM parity debt was intentionally deferred into a separate dedicated plan.
-  - Definition of done: the narrowed follow-up work is traceable, the required workflow gates have passed, the final plan state matches the implemented audit and regression hardening, and the repository contains a clear decision on any broader VM parity follow-up.
+  - Detailed definition of done: the narrowed follow-up work is traceable, the required workflow gates have passed, the final plan state matches the implemented audit and regression hardening, and the repository contains a clear decision on any broader VM parity follow-up.
 
 ## Milestones
 
 - [x] Milestone 1: One concrete live-path parity regression for the touched public error surfaces is landed (`Item 1` complete).
 - [x] Milestone 2: The current touched Rust/VM paths and current lockstep-test adequacy are documented in a checked-in audit (`Item 2` complete).
-- [ ] Milestone 3: Follow-up traceability evidence is complete and the broader VM parity follow-up decision is recorded (`Item 3` complete and committed).
+- [x] Milestone 3: Follow-up traceability evidence is complete and the broader VM parity follow-up decision is recorded (`Item 3` complete).
 
 ## Blocking Rules
 

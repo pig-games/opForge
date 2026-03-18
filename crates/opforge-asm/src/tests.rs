@@ -142,7 +142,18 @@ impl crate::line::RuntimeLineRouter for TestRuntimeLineRouter {
             line_num,
             register_checker,
             self.execution_mode,
-        )?;
+        )
+        .map_err(|err| match err {
+            engine::EngineError::Core(err) => err,
+            engine::EngineError::Processor(err) => opcore::parser::ParseError {
+                message: err.summary().to_string(),
+                span: opcore::tokenizer::Span {
+                    line: line_num,
+                    col_start: 1,
+                    col_end: 1,
+                },
+            },
+        })?;
         Ok((ast, end_span, end_token_text, Some(trace), Some(report)))
     }
 }

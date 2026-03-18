@@ -34,14 +34,133 @@ pub mod io {
 
 pub mod processing {
     pub use ::engine::{
-        editor_route_line, editor_route_line_with_model, editor_route_line_with_model_in_mode,
         process_opcore_expression_request, process_opcore_expression_request_with_mode,
         route_module_item_line,
     };
     pub use ::types::processing::{
         LineProcessingTrace, OpcoreRequestKind, ProcessingOutcome, ProcessingRequestKind,
-        ProcessingReturn,
+        ProcessingReturn, ProcessorError, ProcessorErrorKind, ProcessorFailureDetail,
     };
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum EngineErrorKind {
+        Core,
+        Processor,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum EngineError {
+        Core(super::opcore::CoreError),
+        Processor(ProcessorError),
+    }
+
+    impl EngineError {
+        pub fn kind(&self) -> EngineErrorKind {
+            match self {
+                Self::Core(_) => EngineErrorKind::Core,
+                Self::Processor(_) => EngineErrorKind::Processor,
+            }
+        }
+
+        pub fn code(&self) -> &str {
+            match self {
+                Self::Core(err) => err.code(),
+                Self::Processor(err) => err.code(),
+            }
+        }
+
+        pub fn summary(&self) -> &str {
+            match self {
+                Self::Core(err) => err.summary(),
+                Self::Processor(err) => err.summary(),
+            }
+        }
+
+        pub fn as_core(&self) -> Option<&super::opcore::CoreError> {
+            match self {
+                Self::Core(err) => Some(err),
+                Self::Processor(_) => None,
+            }
+        }
+
+        pub fn as_processor(&self) -> Option<&ProcessorError> {
+            match self {
+                Self::Core(_) => None,
+                Self::Processor(err) => Some(err),
+            }
+        }
+    }
+
+    impl std::fmt::Display for EngineError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for EngineError {}
+
+    fn map_engine_error(err: ::engine::EngineError) -> EngineError {
+        match err {
+            ::engine::EngineError::Core(err) => {
+                EngineError::Core(super::opcore::CoreError::from(err))
+            }
+            ::engine::EngineError::Processor(err) => EngineError::Processor(err),
+        }
+    }
+
+    pub fn editor_route_line(
+        line: &str,
+        line_num: u32,
+    ) -> Result<(super::opcore::LineAst, LineProcessingTrace), EngineError> {
+        ::engine::editor_route_line(line, line_num).map_err(map_engine_error)
+    }
+
+    pub fn editor_route_line_with_model(
+        model: &::vm::vm_opasm::HierarchyExecutionModel,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        line: &str,
+        line_num: u32,
+        register_checker: &::registry::syntax::RegisterChecker,
+    ) -> Result<(super::opcore::LineAst, LineProcessingTrace), EngineError> {
+        ::engine::editor_route_line_with_model(
+            model,
+            cpu_id,
+            dialect_override,
+            line,
+            line_num,
+            register_checker,
+        )
+        .map_err(map_engine_error)
+    }
+
+    pub fn editor_route_line_with_model_in_mode(
+        model: &::vm::vm_opasm::HierarchyExecutionModel,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        line: &str,
+        line_num: u32,
+        register_checker: &::registry::syntax::RegisterChecker,
+        execution_mode: super::lockstep::ExecutionMode,
+    ) -> Result<
+        (
+            super::opcore::LineAst,
+            LineProcessingTrace,
+            super::lockstep::LockstepReport,
+        ),
+        EngineError,
+    > {
+        ::engine::editor_route_line_with_model_in_mode(
+            model,
+            cpu_id,
+            dialect_override,
+            line,
+            line_num,
+            register_checker,
+            execution_mode,
+        )
+        .map_err(map_engine_error)
+    }
 }
 
 pub mod registry {
@@ -2837,6 +2956,11 @@ mod tests {
         let _preprocessor_type: Option<opcore::Preprocessor> = None;
         let _module_item_error_type: Option<opcore::ModuleItemError> = None;
         let _line_parse_error_type: Option<opcore::LineParseError> = None;
+        let _engine_error_type: Option<processing::EngineError> = None;
+        let _engine_error_kind = processing::EngineErrorKind::Core;
+        let _processor_error_type: Option<processing::ProcessorError> = None;
+        let _processor_error_kind = processing::ProcessorErrorKind::InvalidRequest;
+        let _processor_detail_type: Option<processing::ProcessorFailureDetail> = None;
     }
 
     #[test]
@@ -2859,7 +2983,7 @@ mod tests {
     }
 
     #[test]
-    fn public_processing_api_default_helpers_share_runtime_model_contract() {
+    fn public_processing_api_default_helpers_split_core_and_processor_runtime_model_contracts() {
         let route_result = processing::route_module_item_line(".module demo", 1);
         let editor_result = processing::editor_route_line(".module demo", 1);
 
@@ -2879,15 +3003,72 @@ mod tests {
                     route_err.message,
                     "VM tokenizer runtime model is unavailable"
                 );
-                assert_eq!(route_err.message, editor_err.message);
-                assert_eq!(route_err.span.line, editor_err.span.line);
-                assert_eq!(route_err.span.col_start, editor_err.span.col_start);
-                assert_eq!(route_err.span.col_end, editor_err.span.col_end);
+                match editor_err {
+                    processing::EngineError::Processor(err) => {
+                        assert_eq!(err.processor_id(), "asm");
+                        assert_eq!(err.kind(), processing::ProcessorErrorKind::InvalidRequest);
+                        assert_eq!(err.code(), "processing.runtime_model.unavailable");
+                        assert_eq!(err.summary(), "VM tokenizer runtime model is unavailable");
+                        assert_eq!(err.details().len(), 1);
+                    }
+                    other => panic!("expected processor error, got {other:?}"),
+                }
             }
             (route, editor) => {
                 panic!("default processing helpers diverged: route={route:?}, editor={editor:?}")
             }
         }
+    }
+
+    #[test]
+    fn public_processing_api_routes_core_failures_through_core_error() {
+        let model = ::engine::editor_default_runtime_model().expect("default runtime model");
+        let register_checker = ::registry::syntax::register_checker_none();
+        let err = processing::editor_route_line_with_model(
+            model,
+            "m6502",
+            None,
+            ".if \"unterminated",
+            1,
+            &register_checker,
+        )
+        .expect_err("invalid opcore conditional should fail");
+
+        match err {
+            processing::EngineError::Core(err) => {
+                assert_eq!(err.kind(), opcore::CoreErrorKind::Parse);
+                assert_eq!(err.code(), "opcore.parse");
+            }
+            other => panic!("expected core error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn public_processing_processor_error_surface_exposes_stable_inspection() {
+        let detail = processing::ProcessorFailureDetail::new(
+            "processing.processor_diagnostic",
+            "processor parse failed",
+            Some("operand"),
+        );
+        let err = processing::ProcessorError::new(
+            "asm",
+            processing::ProcessorErrorKind::ProcessorDiagnostic,
+            "processing.processor_diagnostic",
+            "processor parse failed",
+            vec![detail],
+        );
+
+        assert_eq!(err.processor_id(), "asm");
+        assert_eq!(
+            err.kind(),
+            processing::ProcessorErrorKind::ProcessorDiagnostic
+        );
+        assert_eq!(err.code(), "processing.processor_diagnostic");
+        assert_eq!(err.summary(), "processor parse failed");
+        assert_eq!(err.details().len(), 1);
+        assert_eq!(err.details()[0].code(), "processing.processor_diagnostic");
+        assert_eq!(err.details()[0].summary(), "processor parse failed");
+        assert_eq!(err.details()[0].field(), Some("operand"));
     }
 
     #[test]

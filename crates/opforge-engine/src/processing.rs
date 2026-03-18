@@ -10,11 +10,53 @@ use types::lockstep::{
 };
 use types::processing::{
     LineProcessingTrace, OpcoreRequestKind, ProcessingOutcome, ProcessingRequestKind,
-    ProcessingReturn,
+    ProcessingReturn, ProcessorError, ProcessorErrorKind, ProcessorFailureDetail,
 };
 use vm::vm_opasm::HierarchyExecutionModel;
 use vm::vm_opcore::parse_expression_tokens as parse_vm_expression_tokens;
 use vm::vm_opcore::process_module_item_request_with_model as process_module_item_request_vm;
+
+#[derive(Debug, Clone)]
+pub enum EngineError {
+    Core(ParseError),
+    Processor(ProcessorError),
+}
+
+impl EngineError {
+    fn invalid_request(
+        processor_id: impl Into<String>,
+        code: impl Into<String>,
+        summary: impl Into<String>,
+        field: Option<impl Into<String>>,
+    ) -> Self {
+        let summary = summary.into();
+        let detail = ProcessorFailureDetail::new(code.into(), summary.clone(), field);
+        Self::Processor(ProcessorError::new(
+            processor_id,
+            ProcessorErrorKind::InvalidRequest,
+            detail.code().to_string(),
+            summary,
+            vec![detail],
+        ))
+    }
+
+    fn processor_diagnostic(
+        processor_id: impl Into<String>,
+        code: impl Into<String>,
+        summary: impl Into<String>,
+        field: Option<impl Into<String>>,
+    ) -> Self {
+        let summary = summary.into();
+        let detail = ProcessorFailureDetail::new(code.into(), summary.clone(), field);
+        Self::Processor(ProcessorError::new(
+            processor_id,
+            ProcessorErrorKind::ProcessorDiagnostic,
+            detail.code().to_string(),
+            summary,
+            vec![detail],
+        ))
+    }
+}
 
 pub fn process_opcore_expression_request(
     tokens: Vec<Token>,
@@ -92,7 +134,14 @@ fn route_module_item_line_with_default_model(
     line: &str,
     line_num: u32,
 ) -> Result<(Option<LineAst>, LineProcessingTrace), ParseError> {
-    let model = default_runtime_model_or_err(model, line_num)?;
+    let model = model.ok_or_else(|| ParseError {
+        message: "VM tokenizer runtime model is unavailable".to_string(),
+        span: Span {
+            line: line_num,
+            col_start: 1,
+            col_end: 1,
+        },
+    })?;
     let register_checker = register_checker_none();
     route_module_item_line_with_model(
         model,
@@ -143,7 +192,7 @@ pub fn route_module_item_line_with_model(
 pub fn editor_route_line(
     line: &str,
     line_num: u32,
-) -> Result<(LineAst, LineProcessingTrace), ParseError> {
+) -> Result<(LineAst, LineProcessingTrace), EngineError> {
     editor_route_line_with_default_model(crate::editor_default_runtime_model(), line, line_num)
 }
 
@@ -151,7 +200,7 @@ fn editor_route_line_with_default_model(
     model: Option<&HierarchyExecutionModel>,
     line: &str,
     line_num: u32,
-) -> Result<(LineAst, LineProcessingTrace), ParseError> {
+) -> Result<(LineAst, LineProcessingTrace), EngineError> {
     let model = default_runtime_model_or_err(model, line_num)?;
     let register_checker = register_checker_none();
     editor_route_line_with_model(
@@ -167,19 +216,17 @@ fn editor_route_line_with_default_model(
 fn default_runtime_model_or_err(
     model: Option<&HierarchyExecutionModel>,
     line_num: u32,
-) -> Result<&HierarchyExecutionModel, ParseError> {
+) -> Result<&HierarchyExecutionModel, EngineError> {
     model.ok_or_else(|| runtime_model_unavailable_error(line_num))
 }
 
-fn runtime_model_unavailable_error(line_num: u32) -> ParseError {
-    ParseError {
-        message: "VM tokenizer runtime model is unavailable".to_string(),
-        span: Span {
-            line: line_num,
-            col_start: 1,
-            col_end: 1,
-        },
-    }
+fn runtime_model_unavailable_error(line_num: u32) -> EngineError {
+    EngineError::invalid_request(
+        "asm",
+        "processing.runtime_model.unavailable",
+        "VM tokenizer runtime model is unavailable",
+        Some(format!("line:{line_num}")),
+    )
 }
 
 pub fn editor_route_line_with_model(
@@ -189,7 +236,7 @@ pub fn editor_route_line_with_model(
     line: &str,
     line_num: u32,
     register_checker: &RegisterChecker,
-) -> Result<(LineAst, LineProcessingTrace), ParseError> {
+) -> Result<(LineAst, LineProcessingTrace), EngineError> {
     let (ast, trace, _) = editor_route_line_with_model_in_mode(
         model,
         cpu_id,
@@ -210,7 +257,7 @@ pub fn editor_route_line_with_model_in_mode(
     line_num: u32,
     register_checker: &RegisterChecker,
     execution_mode: ExecutionMode,
-) -> Result<(LineAst, LineProcessingTrace, LockstepReport), ParseError> {
+) -> Result<(LineAst, LineProcessingTrace, LockstepReport), EngineError> {
     let mut trace = LineProcessingTrace::default();
     let mut lockstep_report = LockstepReport::default();
     let request = ProcessingRequestKind::Opcore(OpcoreRequestKind::Statement);
@@ -218,7 +265,7 @@ pub fn editor_route_line_with_model_in_mode(
 
     match process_opcore_statement_request(line, line_num) {
         ProcessingOutcome::Done(ast) => Ok((ast, trace, lockstep_report)),
-        ProcessingOutcome::Error(err) => Err(err),
+        ProcessingOutcome::Error(err) => Err(EngineError::Core(err)),
         ProcessingOutcome::Return(ProcessingReturn::Request { request }) => {
             let ctx = ProcessorLineRequestContext {
                 model,
@@ -233,14 +280,12 @@ pub fn editor_route_line_with_model_in_mode(
             };
             route_processor_line_request(ctx, request).map(|ast| (ast, trace, lockstep_report))
         }
-        ProcessingOutcome::Return(ProcessingReturn::Unknown) => Err(ParseError {
-            message: "No processor claimed the line".to_string(),
-            span: Span {
-                line: line_num,
-                col_start: 1,
-                col_end: 1,
-            },
-        }),
+        ProcessingOutcome::Return(ProcessingReturn::Unknown) => Err(EngineError::invalid_request(
+            "engine",
+            "processing.request.unclaimed",
+            "No processor claimed the line",
+            Some(format!("line:{line_num}")),
+        )),
     }
 }
 
@@ -270,20 +315,18 @@ struct ProcessorLineRequestContext<'a> {
 fn route_processor_line_request(
     ctx: ProcessorLineRequestContext<'_>,
     request: ProcessingRequestKind,
-) -> Result<LineAst, ParseError> {
+) -> Result<LineAst, EngineError> {
     match request {
         ProcessingRequestKind::Processor {
             ref processor,
             ref kind,
         } if processor == "asm" && kind == "statement" => route_opasm_statement_request(ctx),
-        other => Err(ParseError {
-            message: format!("Unsupported processor request: {other:?}"),
-            span: Span {
-                line: ctx.line_num,
-                col_start: 1,
-                col_end: 1,
-            },
-        }),
+        other => Err(EngineError::invalid_request(
+            "engine",
+            "processing.request.unsupported",
+            format!("Unsupported processor request: {other:?}"),
+            Some(format!("line:{}", ctx.line_num)),
+        )),
     }
 }
 
@@ -318,7 +361,7 @@ impl asm::opasm::StatementExprProcessor for EngineExprProcessingHandler {
 
 fn route_opasm_statement_request(
     ctx: ProcessorLineRequestContext<'_>,
-) -> Result<LineAst, ParseError> {
+) -> Result<LineAst, EngineError> {
     let mut expr_handler = EngineExprProcessingHandler {
         execution_mode: ctx.execution_mode,
     };
@@ -328,7 +371,15 @@ fn route_opasm_statement_request(
             .with_model(ctx.model, ctx.cpu_id, ctx.dialect_override)
             .with_register_checker(ctx.register_checker),
         Some(&mut expr_handler),
-    )?;
+    )
+    .map_err(|err| {
+        EngineError::processor_diagnostic(
+            "asm",
+            "processing.processor_diagnostic",
+            err.message,
+            None::<String>,
+        )
+    })?;
     for request in result.trace.requests() {
         ctx.trace.push(request.clone());
     }
@@ -806,16 +857,25 @@ mod tests {
     }
 
     #[test]
-    fn default_processing_helpers_share_no_runtime_model_contract() {
+    fn default_processing_helpers_split_core_and_processor_runtime_model_contracts() {
         let route_err = super::route_module_item_line_with_default_model(None, ".module demo", 9)
             .expect_err("module-item routing should require a runtime model");
         let editor_err = super::editor_route_line_with_default_model(None, ".module demo", 9)
             .expect_err("editor routing should require a runtime model");
 
-        assert_eq!(route_err.message, editor_err.message);
-        assert_eq!(route_err.span.line, editor_err.span.line);
-        assert_eq!(route_err.span.col_start, editor_err.span.col_start);
-        assert_eq!(route_err.span.col_end, editor_err.span.col_end);
+        assert_eq!(
+            route_err.message,
+            "VM tokenizer runtime model is unavailable"
+        );
+        match editor_err {
+            super::EngineError::Processor(err) => {
+                assert_eq!(err.processor_id(), "asm");
+                assert_eq!(err.kind(), super::ProcessorErrorKind::InvalidRequest);
+                assert_eq!(err.code(), "processing.runtime_model.unavailable");
+                assert_eq!(err.summary(), "VM tokenizer runtime model is unavailable");
+            }
+            other => panic!("expected processor error, got {other:?}"),
+        }
     }
 
     #[test]

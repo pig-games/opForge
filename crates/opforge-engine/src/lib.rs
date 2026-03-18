@@ -58,7 +58,7 @@ pub use io::{
 pub use processing::{
     editor_route_line, editor_route_line_with_model, editor_route_line_with_model_in_mode,
     process_opcore_expression_request, process_opcore_expression_request_with_mode,
-    route_module_item_line,
+    route_module_item_line, EngineError,
 };
 pub use source_graph::{
     load_module_graph, load_module_graph_with_provider, module_search_root_for_path,
@@ -115,7 +115,18 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
             line_num,
             register_checker,
             self.execution_mode,
-        )?;
+        )
+        .map_err(|err| match err {
+            EngineError::Core(err) => err,
+            EngineError::Processor(err) => ParseError {
+                message: err.summary().to_string(),
+                span: Span {
+                    line: line_num,
+                    col_start: 1,
+                    col_end: 1,
+                },
+            },
+        })?;
         Ok((
             ast,
             end_span,

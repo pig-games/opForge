@@ -50,7 +50,7 @@ This plan is complete when all of the following are true:
 - [x] `LFR-003` Classify macro, conditional, and repetition failures under `CoreError`
 - [x] `LFR-004` Classify namespace, scope, and preprocess failures under `CoreError`
 - [x] `LFR-005` Classify struct and segment failures under `CoreError` and remove pure-`opcore` assembler-error coupling
-- [ ] `LFR-006` Add neutral `ProcessorError` surface in `libopforge::processing`
+- [x] `LFR-006` Add neutral `ProcessorError` surface in `libopforge::processing`
 - [ ] `LFR-007` Add `AssemblerWorkflowError` at the high-level asm boundary
 - [ ] `LFR-008` Complete workflow mappings and facade-local stability regressions
 - [ ] `LFR-009` Add canon/compat export audit enforcement
@@ -294,22 +294,22 @@ Primary files:
 - `crates/opforge-lib/src/lib.rs`
 
 Implementation tasks:
-- [ ] introduce `ProcessorError`, `ProcessorErrorKind`, and `ProcessorFailureDetail`
-- [ ] keep `CoreError` pass-through available for genuinely generic-core failures
-- [ ] type-erase processor-specific failures into the neutral representation when they cross the engine boundary
-- [ ] ensure the stable public contract is exported from `libopforge::processing`, not from a new top-level `engine` module
-- [ ] if this slice retains or introduces an engine-internal umbrella error type, enforce the local `EngineError` and `EngineErrorKind` naming rule here; otherwise record that no such public-facing engine umbrella exists
+- [x] introduce `ProcessorError`, `ProcessorErrorKind`, and `ProcessorFailureDetail`
+- [x] keep `CoreError` pass-through available for genuinely generic-core failures
+- [x] type-erase processor-specific failures into the neutral representation when they cross the engine boundary
+- [x] ensure the stable public contract is exported from `libopforge::processing`, not from a new top-level `engine` module
+- [x] if this slice retains or introduces an engine-internal umbrella error type, enforce the local `EngineError` and `EngineErrorKind` naming rule here; otherwise record that no such public-facing engine umbrella exists
 
 Focused validation:
-- [ ] tests proving core-local parse/tokenize/eval and other generic `opcore` failures can still cross as `CoreError`
-- [ ] tests proving processor-local failures cross as `ProcessorError` rather than concrete processor enums
-- [ ] tests proving the neutral surface exposes stable category, code, summary, and structured-detail inspection
-- [ ] audit-style checks proving the public neutral boundary does not require concrete processor-specific enums
+- [x] tests proving core-local parse/tokenize/eval and other generic `opcore` failures can still cross as `CoreError`
+- [x] tests proving processor-local failures cross as `ProcessorError` rather than concrete processor enums
+- [x] tests proving the neutral surface exposes stable category, code, summary, and structured-detail inspection
+- [x] audit-style checks proving the public neutral boundary does not require concrete processor-specific enums
 
 Commit exit gate:
-- [ ] `cargo test --locked -p opforge-engine`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p opforge-engine`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - the processor-neutral orchestration surface no longer requires concrete `opasm` or future processor-specific enums in its public contract

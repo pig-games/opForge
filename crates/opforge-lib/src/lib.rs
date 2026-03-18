@@ -1073,6 +1073,8 @@ pub mod asm {
         }
     }
 
+    // Compatibility re-exports for the assembler-oriented root facade.
+    // Canonical host imports for these symbols live under `libopforge::asm`.
     pub use crate::{
         assemble, prepare, AssembleOptions, Assembler, AssemblerBuilder, AssemblerConfig,
         AssemblerSession, AssemblerSessionBuilder, DiagnosticsOptions, ExecutionOptions,
@@ -2480,6 +2482,28 @@ mod tests {
 
     static TEMP_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
 
+    const ASM_ROOT_COMPAT_EXPORT_AUDIT: &[&str] = &[
+        "AssembleOptions",
+        "Assembler",
+        "AssemblerBuilder",
+        "AssemblerConfig",
+        "AssemblerSession",
+        "AssemblerSessionBuilder",
+        "DiagnosticsOptions",
+        "ExecutionOptions",
+        "OutputOptions",
+        "OwnedAssemblerConfig",
+        "OwnedExecutionOptions",
+        "OwnedOutputOptions",
+        "OwnedSourceOptions",
+        "PrepareOptions",
+        "PreparedAssembly",
+        "PreparedAssemblySession",
+        "SourceOptions",
+        "assemble",
+        "prepare",
+    ];
+
     fn unique_temp_dir(prefix: &str) -> PathBuf {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2510,6 +2534,32 @@ mod tests {
             .text(path.as_ref())
             .expect("utf8 output")
             .is_none()
+    }
+
+    fn compatibility_reexports_for_module(module_name: &str) -> Vec<String> {
+        let source = include_str!("lib.rs");
+        let module_marker = format!("pub mod {module_name} {{");
+        let module_start = source
+            .find(&module_marker)
+            .expect("module should exist in facade source");
+        let module_source = &source[module_start..];
+        let reexport_start = module_source
+            .find("pub use crate::{")
+            .expect("module should contain crate re-export block");
+        let reexport_source = &module_source[reexport_start + "pub use crate::{".len()..];
+        let reexport_end = reexport_source
+            .find("};")
+            .expect("crate re-export block should terminate");
+        let symbols = &reexport_source[..reexport_end];
+
+        let mut entries: Vec<String> = symbols
+            .split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
+        entries.sort();
+        entries
     }
 
     #[derive(Clone, Copy, Default)]
@@ -3266,6 +3316,42 @@ mod tests {
         let _tokenize_error_type: Option<opcore::TokenizeError> = None;
         let _parse_error_type: Option<opcore::ParseError> = None;
         let _eval_error_type: Option<opcore::EvalError> = None;
+    }
+
+    #[test]
+    fn facade_export_audit_lists_only_approved_root_asm_compatibility_exports() {
+        let mut expected: Vec<String> = ASM_ROOT_COMPAT_EXPORT_AUDIT
+            .iter()
+            .map(|symbol| (*symbol).to_string())
+            .collect();
+        expected.sort();
+
+        assert_eq!(compatibility_reexports_for_module("asm"), expected);
+    }
+
+    #[test]
+    fn facade_export_audit_keeps_new_core_and_processing_errors_in_canonical_modules() {
+        let compat_exports = compatibility_reexports_for_module("asm");
+
+        assert!(!compat_exports.iter().any(|symbol| symbol == "CoreError"));
+        assert!(!compat_exports
+            .iter()
+            .any(|symbol| symbol == "CoreErrorKind"));
+        assert!(!compat_exports
+            .iter()
+            .any(|symbol| symbol == "ProcessorError"));
+        assert!(!compat_exports
+            .iter()
+            .any(|symbol| symbol == "ProcessorErrorKind"));
+        assert!(!compat_exports
+            .iter()
+            .any(|symbol| symbol == "ProcessorFailureDetail"));
+
+        let _core_error_type: Option<opcore::CoreError> = None;
+        let _core_error_kind_type: Option<opcore::CoreErrorKind> = None;
+        let _processor_error_type: Option<processing::ProcessorError> = None;
+        let _processor_error_kind_type: Option<processing::ProcessorErrorKind> = None;
+        let _processor_failure_detail_type: Option<processing::ProcessorFailureDetail> = None;
     }
 
     #[test]

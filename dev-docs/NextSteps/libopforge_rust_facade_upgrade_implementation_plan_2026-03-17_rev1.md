@@ -53,7 +53,7 @@ This plan is complete when all of the following are true:
 - [x] `LFR-006` Add neutral `ProcessorError` surface in `libopforge::processing`
 - [x] `LFR-007` Add `AssemblerWorkflowError` at the high-level asm boundary
 - [x] `LFR-008` Complete workflow mappings and facade-local stability regressions
-- [ ] `LFR-009` Add canon/compat export audit enforcement
+- [x] `LFR-009` Add canon/compat export audit enforcement
 - [ ] `LFR-010` Publish concern inventories in the facade surface and guide
 - [ ] `LFR-011` Add guide and rustdoc example coverage for the stabilized entry paths
 - [ ] Milestone A exit gate: named core domain is established and truthful
@@ -406,19 +406,19 @@ Primary files:
 - export-audit test or report infrastructure under the libopforge worktree
 
 Implementation tasks:
-- [ ] list overlapping public exports
-- [ ] name one canonical module for each overlapping concept
-- [ ] mark every other overlapping export as compatibility-oriented
-- [ ] fail validation when a newly overlapping export appears without an explicit audit decision
+- [x] list overlapping public exports
+- [x] name one canonical module for each overlapping concept
+- [x] mark every other overlapping export as compatibility-oriented
+- [x] fail validation when a newly overlapping export appears without an explicit audit decision
 
 Focused validation:
-- [ ] export-audit test or generated report validation
-- [ ] facade tests proving the canonical homes for the new core and processing error families
+- [x] export-audit test or generated report validation
+- [x] facade tests proving the canonical homes for the new core and processing error families
 
 Commit exit gate:
-- [ ] `cargo test --locked -p libopforge facade_export_audit`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p libopforge facade_export_audit`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - the public surface now has an enforceable canon/compat policy instead of an implied one

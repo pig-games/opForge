@@ -51,7 +51,7 @@ Close review findings `RVW-2026-03-18-001` through `RVW-2026-03-18-003` without 
   - Commit outcome: the shipped developer guide matches the current facade API by documenting `AssemblerWorkflowError` as the top-level Rust assembly failure surface and `AsmRunError` as the assemble-path payload.
   - Definition of done: a Rust host following the main developer guide will handle the same top-level error type that the current `Assembler` and `AssemblerSession` APIs actually return.
 
-- [ ] Item 4: Finish closure evidence and remediation bookkeeping for the reviewed findings.
+- [x] Item 4: Finish closure evidence and remediation bookkeeping for the reviewed findings.
   - Source requirement or finding IDs: `RVW-2026-03-18-001`, `RVW-2026-03-18-002`, and `RVW-2026-03-18-003` (expected closure confirmation only).
   - Expected files: this plan for checkbox updates and one closure artifact for `dev-docs/reviews/libopforge_full_review_2026-03-18.md`.
   - Validation: run `python3 /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/scripts/workflow/check_plan_checkboxes.py /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/dev-docs/NextSteps/libopforge_full_review_remediation_plan_2026-03-18.md`, the full workspace quality gates, and the `Finding Closure Reviewer` plus final `plan-compliance-reviewer` gates.
@@ -62,10 +62,10 @@ Close review findings `RVW-2026-03-18-001` through `RVW-2026-03-18-003` without 
 
 ## Milestones
 
-- [ ] Milestone 1: The public module-item routing helper exposes the neutral processing boundary promised by the facade (`Item 1` complete and committed).
-- [ ] Milestone 2: Routed generic core failures preserve truthful concern classification through the processing facade (`Item 2` complete and committed).
-- [ ] Milestone 3: The main developer guide matches the shipped high-level Rust workflow error contract (`Item 3` complete and committed).
-- [ ] Milestone 4: Closure evidence and bookkeeping are complete for all March 18 findings (`Item 4` complete and committed).
+- [x] Milestone 1: The public module-item routing helper exposes the neutral processing boundary promised by the facade (`Item 1` complete and committed).
+- [x] Milestone 2: Routed generic core failures preserve truthful concern classification through the processing facade (`Item 2` complete and committed).
+- [x] Milestone 3: The main developer guide matches the shipped high-level Rust workflow error contract (`Item 3` complete and committed).
+- [x] Milestone 4: Closure evidence and bookkeeping are complete for all March 18 findings (`Item 4` complete; final commit pending).
 
 ## Blocking Rules
 

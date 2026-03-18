@@ -144,7 +144,7 @@ impl crate::line::RuntimeLineRouter for TestRuntimeLineRouter {
             self.execution_mode,
         )
         .map_err(|err| match err {
-            engine::EngineError::Core(err) => err,
+            engine::EngineError::Core(err) => err.into_parse_error(),
             engine::EngineError::Processor(err) => opcore::parser::ParseError {
                 message: err.summary().to_string(),
                 span: opcore::tokenizer::Span {

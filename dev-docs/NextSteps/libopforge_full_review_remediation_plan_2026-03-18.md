@@ -33,7 +33,7 @@ Close review findings `RVW-2026-03-18-001` through `RVW-2026-03-18-003` without 
   - Commit outcome: the stable facade stops surfacing runtime-model-unavailable and unsupported-processor-return failures as `ParseError`, and the model-backed module-item routing helper is available through the published `libopforge::processing` surface.
   - Definition of done: a host using the named public module-item routing helpers can distinguish core-owned failures from processor/orchestration failures without treating runtime-model setup problems as source parse errors.
 
-- [ ] Item 2: Preserve specific `CoreErrorKind` classification across the processing boundary.
+- [x] Item 2: Preserve specific `CoreErrorKind` classification across the processing boundary.
   - Source requirement or finding IDs: `RVW-2026-03-18-002` (expected full closure).
   - Expected files: `crates/opforge-engine/src/processing.rs`, `crates/opforge-types/src/processing.rs` only if a narrow structured routing-error carrier is required, and `crates/opforge-lib/src/lib.rs`.
   - Validation: add focused tests proving routed generic core failures such as conditional or module-item failures retain their specific public `CoreErrorKind` values when surfaced through `processing::EngineError::Core`, then run `cargo test --locked -p engine` if engine-local coverage is added and `cargo test --locked -p libopforge`.

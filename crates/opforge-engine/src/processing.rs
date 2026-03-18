@@ -16,10 +16,106 @@ use vm::vm_opasm::HierarchyExecutionModel;
 use vm::vm_opcore::parse_expression_tokens as parse_vm_expression_tokens;
 use vm::vm_opcore::process_module_item_request_with_model as process_module_item_request_vm;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineCoreErrorKind {
+    Parse,
+    Statement,
+    Module,
+    Use,
+    Import,
+    Macro,
+    Conditional,
+    Repetition,
+    Namespace,
+    Scope,
+    Struct,
+    Segment,
+}
+
+#[derive(Debug, Clone)]
+pub struct EngineCoreError {
+    kind: EngineCoreErrorKind,
+    parse_error: ParseError,
+}
+
+impl EngineCoreError {
+    fn line_parse(line: &str, parse_error: ParseError) -> Self {
+        Self {
+            kind: classify_line_parse_error_kind(line, &parse_error.message),
+            parse_error,
+        }
+    }
+
+    fn module_item(line: &str, parse_error: ParseError) -> Self {
+        Self {
+            kind: classify_module_item_error_kind(line, &parse_error.message),
+            parse_error,
+        }
+    }
+
+    pub fn kind(&self) -> EngineCoreErrorKind {
+        self.kind
+    }
+
+    pub fn parse_error(&self) -> &ParseError {
+        &self.parse_error
+    }
+
+    pub fn into_parse_error(self) -> ParseError {
+        self.parse_error
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EngineError {
-    Core(ParseError),
+    Core(EngineCoreError),
     Processor(ProcessorError),
+}
+
+fn classify_module_item_error_kind(line: &str, message: &str) -> EngineCoreErrorKind {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with(".use") {
+        if message.contains("import list")
+            || message.contains("Wildcard import")
+            || message.contains("parameter")
+            || message.contains("Expected '(' after 'with'")
+        {
+            EngineCoreErrorKind::Import
+        } else {
+            EngineCoreErrorKind::Use
+        }
+    } else {
+        EngineCoreErrorKind::Module
+    }
+}
+
+fn classify_line_parse_error_kind(line: &str, message: &str) -> EngineCoreErrorKind {
+    let trimmed = line.trim_start();
+    let lower = trimmed.to_ascii_lowercase();
+    let message_lower = message.to_ascii_lowercase();
+    if lower.starts_with(".if") || lower.starts_with(".endif") {
+        EngineCoreErrorKind::Conditional
+    } else if lower.starts_with(".for")
+        || lower.starts_with(".bfor")
+        || lower.starts_with(".endfor")
+        || lower.starts_with(".while")
+        || lower.starts_with(".bwhile")
+        || lower.starts_with(".endwhile")
+    {
+        EngineCoreErrorKind::Repetition
+    } else if lower.starts_with(".endsegment") || lower.starts_with(".segment") {
+        EngineCoreErrorKind::Segment
+    } else if lower.starts_with(".endn") || lower.starts_with(".namespace") {
+        EngineCoreErrorKind::Namespace
+    } else if lower.starts_with(".endblock") || lower.starts_with(".endmodule") {
+        EngineCoreErrorKind::Scope
+    } else if lower.starts_with(".endmacro") || lower.starts_with(".macro") {
+        EngineCoreErrorKind::Macro
+    } else if message_lower.contains("struct literal") {
+        EngineCoreErrorKind::Struct
+    } else {
+        EngineCoreErrorKind::Statement
+    }
 }
 
 impl EngineError {
@@ -167,6 +263,7 @@ pub fn route_module_item_line_with_model(
             register_checker,
         ),
         trace,
+        line,
         line_num,
     )
 }
@@ -174,6 +271,7 @@ pub fn route_module_item_line_with_model(
 fn finish_module_item_route(
     outcome: ProcessingOutcome<LineAst, ParseError>,
     mut trace: LineProcessingTrace,
+    line: &str,
     line_num: u32,
 ) -> Result<(Option<LineAst>, LineProcessingTrace), EngineError> {
     match outcome {
@@ -188,7 +286,9 @@ fn finish_module_item_route(
                 Some(format!("line:{line_num}")),
             ))
         }
-        ProcessingOutcome::Error(err) => Err(EngineError::Core(err)),
+        ProcessingOutcome::Error(err) => {
+            Err(EngineError::Core(EngineCoreError::module_item(line, err)))
+        }
     }
 }
 
@@ -268,7 +368,9 @@ pub fn editor_route_line_with_model_in_mode(
 
     match process_opcore_statement_request(line, line_num) {
         ProcessingOutcome::Done(ast) => Ok((ast, trace, lockstep_report)),
-        ProcessingOutcome::Error(err) => Err(EngineError::Core(err)),
+        ProcessingOutcome::Error(err) => {
+            Err(EngineError::Core(EngineCoreError::line_parse(line, err)))
+        }
         ProcessingOutcome::Return(ProcessingReturn::Request { request }) => {
             let ctx = ProcessorLineRequestContext {
                 model,
@@ -662,9 +764,10 @@ mod tests {
         editor_route_line_with_model, editor_route_line_with_model_in_mode,
         finish_module_item_route, process_opcore_expression_request,
         process_opcore_expression_request_with_mode, record_expr_lockstep_result,
-        route_module_item_line, route_module_item_line_with_model, ContinuationHead, EngineError,
-        ExecutionMode, LineProcessingTrace, LockstepStage, OpcoreRequestKind, ProcessingOutcome,
-        ProcessingRequestKind, ProcessingReturn, ProcessorErrorKind,
+        route_module_item_line, route_module_item_line_with_model, ContinuationHead,
+        EngineCoreErrorKind, EngineError, ExecutionMode, LineProcessingTrace, LockstepStage,
+        OpcoreRequestKind, ProcessingOutcome, ProcessingRequestKind, ProcessingReturn,
+        ProcessorErrorKind,
     };
     use opcore::parser::{Expr, LineAst};
     use opcore::tokenizer::{Span, Token, TokenKind, Tokenizer};
@@ -943,6 +1046,7 @@ mod tests {
                 },
             }),
             LineProcessingTrace::default(),
+            "lda #$01",
             1,
         )
         .expect_err("unsupported module-item return should surface invalid request");
@@ -959,6 +1063,52 @@ mod tests {
                 assert_eq!(err.details().len(), 1);
             }
             other => panic!("expected processor error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn route_module_item_line_with_model_preserves_use_core_error_kind() {
+        let model = crate::editor_default_runtime_model().expect("default runtime model");
+        let register_checker = register_checker_none();
+        let err = route_module_item_line_with_model(
+            model,
+            crate::DEFAULT_TOKENIZER_CPU_ID,
+            None,
+            ".use",
+            1,
+            &register_checker,
+        )
+        .expect_err("invalid use directive should fail");
+
+        match err {
+            EngineError::Core(err) => {
+                assert_eq!(err.kind(), EngineCoreErrorKind::Use);
+                assert!(!err.parse_error().message.is_empty());
+            }
+            other => panic!("expected core error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn editor_route_line_with_model_preserves_conditional_core_error_kind() {
+        let model = crate::editor_default_runtime_model().expect("default runtime model");
+        let register_checker = register_checker_none();
+        let err = editor_route_line_with_model(
+            model,
+            crate::DEFAULT_TOKENIZER_CPU_ID,
+            None,
+            ".if \"unterminated",
+            1,
+            &register_checker,
+        )
+        .expect_err("invalid conditional should fail");
+
+        match err {
+            EngineError::Core(err) => {
+                assert_eq!(err.kind(), EngineCoreErrorKind::Conditional);
+                assert_eq!(err.parse_error().span.line, 1);
+            }
+            other => panic!("expected core error, got {other:?}"),
         }
     }
 }

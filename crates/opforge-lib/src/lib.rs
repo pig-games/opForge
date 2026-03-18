@@ -173,11 +173,35 @@ pub mod processing {
 
     impl std::error::Error for EngineError {}
 
+    fn map_engine_core_error_kind(
+        kind: ::engine::EngineCoreErrorKind,
+    ) -> super::opcore::CoreErrorKind {
+        match kind {
+            ::engine::EngineCoreErrorKind::Parse => super::opcore::CoreErrorKind::Parse,
+            ::engine::EngineCoreErrorKind::Statement => super::opcore::CoreErrorKind::Statement,
+            ::engine::EngineCoreErrorKind::Module => super::opcore::CoreErrorKind::Module,
+            ::engine::EngineCoreErrorKind::Use => super::opcore::CoreErrorKind::Use,
+            ::engine::EngineCoreErrorKind::Import => super::opcore::CoreErrorKind::Import,
+            ::engine::EngineCoreErrorKind::Macro => super::opcore::CoreErrorKind::Macro,
+            ::engine::EngineCoreErrorKind::Conditional => super::opcore::CoreErrorKind::Conditional,
+            ::engine::EngineCoreErrorKind::Repetition => super::opcore::CoreErrorKind::Repetition,
+            ::engine::EngineCoreErrorKind::Namespace => super::opcore::CoreErrorKind::Namespace,
+            ::engine::EngineCoreErrorKind::Scope => super::opcore::CoreErrorKind::Scope,
+            ::engine::EngineCoreErrorKind::Struct => super::opcore::CoreErrorKind::Struct,
+            ::engine::EngineCoreErrorKind::Segment => super::opcore::CoreErrorKind::Segment,
+        }
+    }
+
+    fn map_engine_core_error(err: ::engine::EngineCoreError) -> super::opcore::CoreError {
+        super::opcore::CoreError::from_routed_parse(
+            map_engine_core_error_kind(err.kind()),
+            err.into_parse_error(),
+        )
+    }
+
     fn map_engine_error(err: ::engine::EngineError) -> EngineError {
         match err {
-            ::engine::EngineError::Core(err) => {
-                EngineError::Core(super::opcore::CoreError::from(err))
-            }
+            ::engine::EngineError::Core(err) => EngineError::Core(map_engine_core_error(err)),
             ::engine::EngineError::Processor(err) => EngineError::Processor(err),
         }
     }
@@ -622,6 +646,50 @@ pub mod opcore {
     impl From<LineParseError> for CoreError {
         fn from(err: LineParseError) -> Self {
             Self::LineParse(err)
+        }
+    }
+
+    impl ModuleItemError {
+        pub(crate) fn from_kind_and_parse_error(kind: CoreErrorKind, err: ParseError) -> Self {
+            Self {
+                kind,
+                message: err.message,
+                span: err.span,
+            }
+        }
+    }
+
+    impl LineParseError {
+        pub(crate) fn from_kind_and_parse_error(kind: CoreErrorKind, err: ParseError) -> Self {
+            Self {
+                kind,
+                message: err.message,
+                span: err.span,
+            }
+        }
+    }
+
+    impl CoreError {
+        pub(crate) fn from_routed_parse(kind: CoreErrorKind, err: ParseError) -> Self {
+            match kind {
+                CoreErrorKind::Module | CoreErrorKind::Use | CoreErrorKind::Import => {
+                    Self::ModuleItem(ModuleItemError::from_kind_and_parse_error(kind, err))
+                }
+                CoreErrorKind::Statement
+                | CoreErrorKind::Conditional
+                | CoreErrorKind::Repetition => {
+                    Self::LineParse(LineParseError::from_kind_and_parse_error(kind, err))
+                }
+                CoreErrorKind::Macro
+                | CoreErrorKind::Namespace
+                | CoreErrorKind::Scope
+                | CoreErrorKind::Segment => Self::Macro(MacroError::new(
+                    err.message,
+                    Some(err.span.line),
+                    Some(err.span.col_start),
+                )),
+                _ => Self::Parse(err),
+            }
         }
     }
 
@@ -4286,8 +4354,33 @@ mod tests {
 
         match err {
             processing::EngineError::Core(err) => {
-                assert_eq!(err.kind(), opcore::CoreErrorKind::Parse);
-                assert_eq!(err.code(), "opcore.parse");
+                assert_eq!(err.kind(), opcore::CoreErrorKind::Conditional);
+                assert_eq!(err.code(), "opcore.conditional");
+            }
+            other => panic!("expected core error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn public_processing_api_routes_module_item_failures_through_specific_core_error() {
+        let asm_registry = registry::default_asm_registry();
+        let model = processing::HierarchyExecutionModel::from_registry(&asm_registry)
+            .expect("runtime model should build");
+        let register_checker = processing::register_checker_none();
+        let err = processing::route_module_item_line_with_model(
+            &model,
+            "8085",
+            None,
+            ".use",
+            1,
+            &register_checker,
+        )
+        .expect_err("invalid use directive should fail");
+
+        match err {
+            processing::EngineError::Core(err) => {
+                assert_eq!(err.kind(), opcore::CoreErrorKind::Use);
+                assert_eq!(err.code(), "opcore.use");
             }
             other => panic!("expected core error, got {other:?}"),
         }

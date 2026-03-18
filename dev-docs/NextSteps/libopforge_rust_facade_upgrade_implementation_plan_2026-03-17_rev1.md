@@ -57,7 +57,7 @@ This plan is complete when all of the following are true:
 - [ ] `LFR-010` Publish concern inventories in the facade surface and guide
 - [ ] `LFR-011` Add guide and rustdoc example coverage for the stabilized entry paths
 - [ ] Milestone A exit gate: named core domain is established and truthful
-- [ ] Milestone B exit gate: neutral orchestration and workflow packaging are established
+- [x] Milestone B exit gate: neutral orchestration and workflow packaging are established
 - [ ] Milestone C exit gate: public-shape policy and documentation are explicit
 
 Tracking note:
@@ -513,9 +513,9 @@ Exit gate:
 ### Milestone B: Neutral orchestration and workflow packaging established
 
 Includes:
-- [ ] `LFR-006`
-- [ ] `LFR-007`
-- [ ] `LFR-008`
+- [x] `LFR-006`
+- [x] `LFR-007`
+- [x] `LFR-008`
 
 Exit gate:
 - `engine` stays processor-neutral while high-level assembler workflows own their own wrapper surface

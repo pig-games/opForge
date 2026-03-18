@@ -271,7 +271,8 @@ The `portable` submodule mirrors the pattern from `opcore`, exposing portable to
 
 ## 7. Diagnostics and metadata
 
-High-level assembly returns `AsmRunReport` on success and `AsmRunError` on failure.
+High-level assembly returns `AsmRunReport` on success and `AssemblerWorkflowError` on failure.
+When assembly itself fails after request validation, the `AssemblerWorkflowError::Assemble` variant carries the underlying `AsmRunError` payload.
 
 Useful report accessors:
 

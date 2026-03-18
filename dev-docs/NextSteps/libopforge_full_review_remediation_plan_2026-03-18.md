@@ -42,7 +42,7 @@ Close review findings `RVW-2026-03-18-001` through `RVW-2026-03-18-003` without 
   - Commit outcome: engine-side routing no longer flattens core-owned failures to `ParseError` before the facade maps them back into `CoreError`, so the public processing boundary preserves the truthful concern taxonomy promised by the completed facade plan.
   - Definition of done: a routed conditional, module, `.use`, import, macro, namespace, scope, preprocess, struct, or segment failure that reaches the stable processing facade still reports the same specific `CoreErrorKind` a direct `opcore` caller would observe.
 
-- [ ] Item 3: Update the developer guide and guide validation for the high-level workflow error contract.
+- [x] Item 3: Update the developer guide and guide validation for the high-level workflow error contract.
   - Source requirement or finding IDs: `RVW-2026-03-18-003` (expected full closure).
   - Expected files: `documentation/libopforge-developer-guide.md` and `crates/opforge-lib/src/lib.rs` only if a narrow guide assertion update is required.
   - Validation: update guide checks so they assert that high-level Rust assembly prose names `AssemblerWorkflowError` as the failure contract and describes `AsmRunError` only as the `Assemble` payload, then run `cargo test --locked -p libopforge`.

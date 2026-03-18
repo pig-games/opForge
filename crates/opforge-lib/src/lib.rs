@@ -3814,6 +3814,21 @@ mod tests {
     }
 
     #[test]
+    fn facade_guide_high_level_workflow_error_contract_matches_public_api() {
+        let guide = CONCERN_INVENTORY_GUIDE_PATH;
+
+        assert!(guide.contains(
+            "High-level assembly returns `AsmRunReport` on success and `AssemblerWorkflowError` on failure."
+        ));
+        assert!(guide.contains(
+            "`AssemblerWorkflowError::Assemble` variant carries the underlying `AsmRunError` payload"
+        ));
+        assert!(!guide.contains(
+            "High-level assembly returns `AsmRunReport` on success and `AsmRunError` on failure."
+        ));
+    }
+
+    #[test]
     fn facade_guide_examples_publish_and_run_stable_entry_paths() {
         let guide = CONCERN_INVENTORY_GUIDE_PATH;
 

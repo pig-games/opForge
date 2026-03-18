@@ -6,6 +6,61 @@
 //! Lower-level free functions remain available where they are part of the
 //! assembler host boundary, and host-facing tooling exports live under
 //! dedicated stable modules.
+//!
+//! ```
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use libopforge::asm::{Assembler, LabelOutputFormat, OutputFormat};
+//! use libopforge::io::{MemoryOutputSink, MemorySourceProvider};
+//! use std::path::Path;
+//!
+//! let source_provider = MemorySourceProvider::new().with_file(
+//!     "/virtual/main.asm",
+//!     ".module main\n    .byte $2a\n.endmodule\n",
+//! );
+//! let output_sink = MemoryOutputSink::new();
+//!
+//! let report = Assembler::builder(Path::new("/virtual/main.asm"))
+//!     .output_base("/virtual/main")
+//!     .output_format(OutputFormat::Text)
+//!     .label_output_format(LabelOutputFormat::Vice)
+//!     .source_provider(&source_provider)
+//!     .output_sink(&output_sink)
+//!     .assemble()?;
+//!
+//! assert_eq!(report.error_count(), 0);
+//! assert!(output_sink
+//!     .text("/virtual/main.lst")?
+//!     .expect("listing output")
+//!     .contains(".byte $2a"));
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ```
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use libopforge::asm::{AssemblerSession, LabelOutputFormat, OutputFormat};
+//! use libopforge::io::{MemoryOutputSink, MemorySourceProvider};
+//!
+//! let source_provider = MemorySourceProvider::new().with_file(
+//!     "/virtual/main.asm",
+//!     ".module main\n    .byte $00\n.endmodule\n",
+//! );
+//! let output_sink = MemoryOutputSink::new();
+//!
+//! let prepared = AssemblerSession::builder("/virtual/main.asm")
+//!     .output_base("/virtual/main")
+//!     .source_provider(source_provider.clone())
+//!     .output_sink(output_sink.clone())
+//!     .output_format(OutputFormat::Text)
+//!     .label_output_format(LabelOutputFormat::Vice)
+//!     .prepare()?;
+//!
+//! assert_eq!(prepared.root_module_id(), "main");
+//! assert!(!prepared.cpu_name().is_empty());
+//! assert_eq!(prepared.assemble()?.error_count(), 0);
+//! # Ok(())
+//! # }
+//! ```
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -185,6 +240,24 @@ pub mod processing {
 /// resolution helpers for hosts that need discovery or validation. It does not
 /// own full custom extension authoring workflows beyond that discovery surface.
 pub mod registry {
+    /// ```
+    /// use libopforge::registry;
+    ///
+    /// let asm_registry = registry::default_asm_registry();
+    /// let snapshot = registry::CapabilitySnapshot::from_registry(&asm_registry);
+    /// let resolved = registry::resolve_target_cpu(
+    ///     &asm_registry,
+    ///     Some("8085"),
+    ///     registry::CpuType::new("8085"),
+    /// )
+    /// .expect("registered cpu should resolve");
+    /// let view = snapshot
+    ///     .view_for_cpu(resolved)
+    ///     .expect("capability view should exist");
+    ///
+    /// assert_eq!(view.family_id, "intel8080");
+    /// assert!(!view.mnemonics.is_empty());
+    /// ```
     pub use ::engine::{
         capabilities_report, capabilities_report_json, cpusupport_report, cpusupport_report_json,
         default_cpu, parse_cpu_directive_name, resolve_cpu_for_line, resolve_target_cpu,
@@ -203,6 +276,15 @@ pub mod registry {
 /// Owns formatter configuration, run reports, and file-level formatting output.
 /// It does not redefine assembler or language-core diagnostics taxonomies.
 pub mod formatter {
+    /// ```
+    /// use libopforge::formatter::{FormatterConfig, FormatterEngine};
+    ///
+    /// let engine = FormatterEngine::new(FormatterConfig::default());
+    /// let output = engine.format_source_with_diagnostics("start:  lda #$10,x ; comment\n");
+    ///
+    /// assert_eq!(output.rendered, "start:  lda #$10, x  ; comment\n");
+    /// assert!(output.diagnostics.is_empty());
+    /// ```
     pub use ::formatter::{
         FormatMode, FormatterConfig, FormatterDiagnostic, FormatterEngine, FormatterFileReport,
         FormatterOutput, FormatterRunReport, FormatterRunSummary,
@@ -215,6 +297,22 @@ pub mod formatter {
 /// preprocess concerns, and the stable `CoreError` domain for generic language
 /// failures. It does not own assembler statement encoding or artifact output.
 pub mod opcore {
+    /// ```
+    /// use libopforge::opcore;
+    /// use libopforge::processing;
+    ///
+    /// let tokenized = opcore::tokenize_line("1 + 2", 1).expect("tokenization should succeed");
+    /// let expr = opcore::parse_expression(tokenized).expect("expression parse should succeed");
+    /// assert!(matches!(expr, opcore::Expr::Binary { .. }));
+    ///
+    /// match opcore::process_module_item(".use math as m", 2) {
+    ///     processing::ProcessingOutcome::Done(opcore::LineAst::Use(use_ast)) => {
+    ///         assert_eq!(use_ast.module_id, "math");
+    ///         assert_eq!(use_ast.alias.as_deref(), Some("m"));
+    ///     }
+    ///     other => panic!("expected .use AST, got {other:?}"),
+    /// }
+    /// ```
     pub use ::opcore::expr::EvalError;
     pub use ::opcore::expression::expr_text;
     pub use ::opcore::macro_processor::{MacroError, MacroProcessor};
@@ -586,6 +684,34 @@ pub mod opcore {
 /// and lockstep divergence or match reporting. It does not own statement
 /// processing or registry discovery.
 pub mod lockstep {
+    /// ```
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use libopforge::asm::{AssemblerSession, LabelOutputFormat, OutputFormat};
+    /// use libopforge::io::{MemoryOutputSink, MemorySourceProvider};
+    /// use libopforge::lockstep::{ContinuationHead, ExecutionMode};
+    ///
+    /// let source_provider = MemorySourceProvider::new().with_file(
+    ///     "/virtual/main.asm",
+    ///     ".module main\n    lda #$42\n.endmodule\n",
+    /// );
+    /// let output_sink = MemoryOutputSink::new();
+    ///
+    /// let report = AssemblerSession::builder("/virtual/main.asm")
+    ///     .output_base("/virtual/main")
+    ///     .source_provider(source_provider.clone())
+    ///     .output_sink(output_sink.clone())
+    ///     .execution_mode(ExecutionMode::Lockstep {
+    ///         continuation_head: ContinuationHead::Vm,
+    ///     })
+    ///     .output_format(OutputFormat::Text)
+    ///     .label_output_format(LabelOutputFormat::Vice)
+    ///     .assemble()?;
+    ///
+    /// assert_eq!(report.error_count(), 0);
+    /// assert!(!report.lockstep_report().matches().is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub use ::engine::{
         ContinuationHead, ExecutionMode, LockstepCheckpoint, LockstepComparisonCategory,
         LockstepDivergence, LockstepMatch, LockstepReport, LockstepStage,
@@ -599,6 +725,36 @@ pub mod lockstep {
 /// Root-level assembler re-exports remain compatibility-oriented; canonical
 /// host imports for this domain live under `libopforge::asm`.
 pub mod asm {
+    /// ```
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use libopforge::asm::{Assembler, AssemblerWorkflowErrorKind, LabelOutputFormat, OutputFormat};
+    /// use libopforge::diagnostics::AsmErrorKind;
+    /// use libopforge::io::{MemoryOutputSink, MemorySourceProvider};
+    /// use std::path::Path;
+    ///
+    /// let source_provider = MemorySourceProvider::new().with_file(
+    ///     "/virtual/main.asm",
+    ///     ".module main\n.this_is_not_a_real_directive\n.endmodule\n",
+    /// );
+    /// let output_sink = MemoryOutputSink::new();
+    ///
+    /// let err = match Assembler::builder(Path::new("/virtual/main.asm"))
+    ///     .output_base("/virtual/main")
+    ///     .output_format(OutputFormat::Text)
+    ///     .label_output_format(LabelOutputFormat::Vice)
+    ///     .source_provider(&source_provider)
+    ///     .output_sink(&output_sink)
+    ///     .assemble()
+    /// {
+    ///     Ok(_) => panic!("invalid source should fail"),
+    ///     Err(err) => err,
+    /// };
+    ///
+    /// assert_eq!(err.kind(), AssemblerWorkflowErrorKind::Assemble);
+    /// assert_eq!(err.as_assemble().expect("assemble payload").kind(), AsmErrorKind::Assembler);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub use ::asm::output::{
         parse_bin_output_arg, parse_bin_range_str, resolve_bin_path, resolve_output_path,
         BinOutputSpec, BinRange, DependencyOutputPolicy, LabelOutputFormat, OutputFormat,
@@ -844,6 +1000,26 @@ pub mod asm {
     /// full assembly session, including portable statement forms. It does not
     /// own high-level assembly orchestration or artifact emission.
     pub mod opasm {
+        /// ```
+        /// use libopforge::asm::opasm;
+        /// use libopforge::opcore;
+        /// use libopforge::processing;
+        ///
+        /// let tokenized = opasm::tokenize_statement(opasm::StatementRequest::new(".byte 1, 2", 1))
+        ///     .expect("statement tokenization should succeed");
+        /// assert!(!tokenized.tokens.is_empty());
+        ///
+        /// let processed = opasm::process_statement(opasm::StatementRequest::new(".module demo", 2), None)
+        ///     .expect("statement processing should succeed");
+        /// assert!(matches!(processed.parsed.ast, opcore::LineAst::Statement(..)));
+        /// assert_eq!(
+        ///     processed.trace.requests(),
+        ///     &[processing::ProcessingRequestKind::Processor {
+        ///         processor: "asm".to_string(),
+        ///         kind: "statement".to_string(),
+        ///     }]
+        /// );
+        /// ```
         pub use ::asm::opasm::{
             default_register_checker, parse_statement, process_statement, tokenize_statement,
             StatementExprProcessor, StatementParseResult, StatementProcessResult, StatementRequest,
@@ -2530,6 +2706,117 @@ mod tests {
 
     const CONCERN_INVENTORY_GUIDE_PATH: &str =
         include_str!("../../../documentation/libopforge-developer-guide.md");
+    const GUIDE_EXAMPLE_BORROWED: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs"
+    );
+    const GUIDE_EXAMPLE_FILESYSTEM: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs"
+    );
+    const GUIDE_EXAMPLE_FORMATTER: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_formatter.rs"
+    );
+    const GUIDE_EXAMPLE_IN_MEMORY: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs"
+    );
+    const GUIDE_EXAMPLE_LOCKSTEP: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs"
+    );
+    const GUIDE_EXAMPLE_OPASM: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_opasm.rs"
+    );
+    const GUIDE_EXAMPLE_OPCORE: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_opcore.rs"
+    );
+    const GUIDE_EXAMPLE_PREPARED: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_prepared.rs"
+    );
+    const GUIDE_EXAMPLE_REGISTRY: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_registry.rs"
+    );
+    const GUIDE_EXAMPLE_WORKFLOW_ERROR: &str = include_str!(
+        "../../../documentation/libopforge-developer-guide-examples/libopforge_workflow_error.rs"
+    );
+
+    mod guide_example_borrowed {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs"
+        ));
+    }
+    mod guide_example_filesystem {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs"
+        ));
+    }
+    mod guide_example_formatter {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_formatter.rs"
+        ));
+    }
+    mod guide_example_in_memory {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs"
+        ));
+    }
+    mod guide_example_lockstep {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs"
+        ));
+    }
+    mod guide_example_opasm {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_opasm.rs"
+        ));
+    }
+    mod guide_example_opcore {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_opcore.rs"
+        ));
+    }
+    mod guide_example_prepared {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_prepared.rs"
+        ));
+    }
+    mod guide_example_registry {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_registry.rs"
+        ));
+    }
+    mod guide_example_workflow_error {
+        use crate as libopforge;
+
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../documentation/libopforge-developer-guide-examples/libopforge_workflow_error.rs"
+        ));
+    }
 
     const ASM_ROOT_COMPAT_EXPORT_AUDIT: &[&str] = &[
         "AssembleOptions",
@@ -3427,6 +3714,88 @@ mod tests {
         assert!(guide.contains("Concern inventories"));
         assert!(guide.contains("CLI or host presentation may specialize wording"));
         assert!(guide.contains("module-first API"));
+    }
+
+    #[test]
+    fn facade_guide_examples_publish_and_run_stable_entry_paths() {
+        let guide = CONCERN_INVENTORY_GUIDE_PATH;
+
+        for (path, source, marker) in [
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs",
+                GUIDE_EXAMPLE_BORROWED,
+                "Assembler::builder",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs",
+                GUIDE_EXAMPLE_IN_MEMORY,
+                "AssemblerSession::builder",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_prepared.rs",
+                GUIDE_EXAMPLE_PREPARED,
+                ".prepare()?",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs",
+                GUIDE_EXAMPLE_LOCKSTEP,
+                "ExecutionMode::Lockstep",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs",
+                GUIDE_EXAMPLE_FILESYSTEM,
+                "out_dir",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_workflow_error.rs",
+                GUIDE_EXAMPLE_WORKFLOW_ERROR,
+                "AssemblerWorkflowErrorKind",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_opcore.rs",
+                GUIDE_EXAMPLE_OPCORE,
+                "opcore::tokenize_line",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_registry.rs",
+                GUIDE_EXAMPLE_REGISTRY,
+                "CapabilitySnapshot::from_registry",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_formatter.rs",
+                GUIDE_EXAMPLE_FORMATTER,
+                "FormatterEngine::new",
+            ),
+            (
+                "documentation/libopforge-developer-guide-examples/libopforge_opasm.rs",
+                GUIDE_EXAMPLE_OPASM,
+                "opasm::process_statement",
+            ),
+        ] {
+            assert!(
+                guide.contains(path),
+                "developer guide should reference {path}"
+            );
+            assert!(
+                source.contains(marker),
+                "example {path} should include {marker}"
+            );
+            assert!(
+                source.contains("run_example"),
+                "example {path} should expose run_example"
+            );
+        }
+
+        guide_example_borrowed::run_example().expect("borrowed guide example");
+        guide_example_in_memory::run_example().expect("in-memory guide example");
+        guide_example_prepared::run_example().expect("prepared guide example");
+        guide_example_lockstep::run_example().expect("lockstep guide example");
+        guide_example_filesystem::run_example().expect("filesystem guide example");
+        guide_example_workflow_error::run_example().expect("workflow error guide example");
+        guide_example_opcore::run_example().expect("opcore guide example");
+        guide_example_registry::run_example().expect("registry guide example");
+        guide_example_formatter::run_example().expect("formatter guide example");
+        guide_example_opasm::run_example().expect("opasm guide example");
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::fs;
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn main() -> Result<(), Box<dyn Error>> {
+pub fn run_example() -> Result<(), Box<dyn Error>> {
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let work_dir = std::env::temp_dir().join(format!(
         "libopforge-filesystem-example-{}-{nanos}",
@@ -45,4 +45,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("hex path: {}", hex_path.display());
 
     Ok(())
+}
+
+#[allow(dead_code)]
+fn main() -> Result<(), Box<dyn Error>> {
+    run_example()
 }

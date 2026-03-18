@@ -107,6 +107,10 @@ Use:
 - `ExecutionMode::Rust` when you want the native Rust continuation head.
 - `ExecutionMode::Lockstep { continuation_head: ... }` when validating Rust/VM parity and consuming a `LockstepReport`.
 
+Reference example:
+
+- `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`
+
 ### 4.3 `check()` versus `assemble()`
 
 Use `check()` when you want validation without output-side effects.
@@ -130,6 +134,10 @@ Contract split:
 - `Assembler::prepare()` and `AssemblerSession::prepare()` preserve the full grouped config needed for later prepared execution.
 - the free `prepare()` helper supports preparation inputs plus `output_base` and `execution_mode`; when omitted, `execution_mode` still defaults explicitly to `Vm`.
 - if you need a prepared flow with custom sinks, output overrides, or broader reusable output configuration, prefer `Assembler` or `AssemblerSession`.
+
+Reference example:
+
+- `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`
 
 ## 5. High-level Rust integration patterns
 
@@ -159,8 +167,11 @@ The workspace's public examples use this model because it maps cleanly onto in-m
 
 Reference examples:
 
+- `documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs`
 - `documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs`
 - `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`
+- `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`
+- `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`
 
 ### 5.3 In-memory integration
 
@@ -338,8 +349,16 @@ The FFI implementation is a useful reference even for Rust developers because it
 
 These are the best reference points when you want to see how the library is used in practice:
 
+- `documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs`: minimal borrowed builder flow using `Assembler` plus memory-backed host adapters
 - `documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs`: minimal in-memory embedding example using `AssemblerSession`, `MemorySourceProvider`, and `MemoryOutputSink`
 - `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`: minimal filesystem-backed example using the same owned/session surface
+- `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`: prepared-session example that inspects stable metadata before final emission
+- `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`: lockstep execution example that consumes `LockstepReport` matches through the facade
+- `documentation/libopforge-developer-guide-examples/libopforge_workflow_error.rs`: stable workflow-error inspection without reaching into internal crates
+- `documentation/libopforge-developer-guide-examples/libopforge_opcore.rs`: expression parsing and module-item handling through `libopforge::opcore`
+- `documentation/libopforge-developer-guide-examples/libopforge_registry.rs`: CPU capability discovery and target resolution via `libopforge::registry`
+- `documentation/libopforge-developer-guide-examples/libopforge_formatter.rs`: source formatting through `libopforge::formatter`
+- `documentation/libopforge-developer-guide-examples/libopforge_opasm.rs`: CPU-aware statement processing through `libopforge::asm::opasm`
 - `crates/opforge-cli-core/src/run.rs`: useful for seeing how CLI options map onto the current assembler config model, even though it still goes through the internal `api` crate
 - `crates/opforge-ffi/src/lib.rs`: shows how the session/report model is exposed to C and C++
 - `crates/opforge-engine/src/processing.rs`: useful if you are implementing tooling near the editor-routing boundary

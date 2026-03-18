@@ -476,19 +476,19 @@ Primary files:
 - rustdoc examples in `crates/opforge-lib/src/lib.rs` as needed
 
 Implementation tasks:
-- [ ] add or update examples for borrowed, owned, prepared, `opcore`-only, assembler-workflow, `asm::opasm`, formatter, registry, and lockstep entry paths
-- [ ] keep the examples consumer-shaped but facade-local; do not turn this slice into downstream-crate remediation
-- [ ] ensure example wording and code reflect the canon/compat policy and the finalized workflow/error boundaries
+- [x] add or update examples for borrowed, owned, prepared, `opcore`-only, assembler-workflow, `asm::opasm`, formatter, registry, and lockstep entry paths
+- [x] keep the examples consumer-shaped but facade-local; do not turn this slice into downstream-crate remediation
+- [x] ensure example wording and code reflect the canon/compat policy and the finalized workflow/error boundaries
 
 Focused validation:
-- [ ] `cargo test --locked -p libopforge --doc`
-- [ ] `cargo test --locked -p libopforge facade_guide_examples`
+- [x] `cargo test --locked -p libopforge --doc`
+- [x] `cargo test --locked -p libopforge facade_guide_examples`
 
 Commit exit gate:
-- [ ] `cargo test --locked -p libopforge --doc`
-- [ ] `cargo test --locked -p libopforge facade_guide_examples`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p libopforge --doc`
+- [x] `cargo test --locked -p libopforge facade_guide_examples`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - the documented facade entry paths are covered by compilation-backed examples instead of prose-only guidance

@@ -3,8 +3,9 @@ use libopforge::asm::{
 };
 use libopforge::io::{MemoryOutputSink, MemorySourceProvider};
 use std::error::Error;
+use std::io;
 
-fn main() -> Result<(), Box<dyn Error>> {
+pub fn run_example() -> Result<(), Box<dyn Error>> {
     let source_provider = MemorySourceProvider::new().with_file(
         "/virtual/main.asm",
         ".module main\n    .byte $00\n.endmodule\n",
@@ -27,8 +28,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let listing = output_sink
         .text("/virtual/main.lst")
-        .ok_or("missing listing")?;
-    let hex = output_sink.text("/virtual/main.hex").ok_or("missing hex")?;
+        ?
+        .ok_or_else(|| io::Error::other("missing listing"))?;
+    let hex = output_sink
+        .text("/virtual/main.hex")?
+        .ok_or_else(|| io::Error::other("missing hex"))?;
     assert!(listing.contains(".byte $00"), "listing:\n{listing}");
     assert!(hex.contains(":0100000000FF"), "hex:\n{hex}");
 
@@ -42,4 +46,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("hex:\n{hex}");
 
     Ok(())
+}
+
+#[allow(dead_code)]
+fn main() -> Result<(), Box<dyn Error>> {
+    run_example()
 }

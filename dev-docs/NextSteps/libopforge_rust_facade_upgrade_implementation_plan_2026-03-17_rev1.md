@@ -46,7 +46,7 @@ This plan is complete when all of the following are true:
 ## Progress checklist
 
 - [x] `LFR-001` Add `CoreError` and `CoreErrorKind` with leaf conversions
-- [ ] `LFR-002` Classify module, `.use`, and import failures under `CoreError`
+- [x] `LFR-002` Classify module, `.use`, and import failures under `CoreError`
 - [ ] `LFR-003` Classify macro, conditional, and repetition failures under `CoreError`
 - [ ] `LFR-004` Classify namespace, scope, and preprocess failures under `CoreError`
 - [ ] `LFR-005` Classify struct and segment failures under `CoreError` and remove pure-`opcore` assembler-error coupling
@@ -152,19 +152,19 @@ Primary files:
 - `crates/opforge-vm/src/vm_opcore.rs`
 
 Implementation tasks:
-- [ ] classify public module, `.use`, and import failures under `CoreErrorKind`
-- [ ] add any dedicated core leaf wrappers only if they remain canonical members of `CoreError`
-- [ ] preserve successful portable and non-portable `process_module_item` behavior
+- [x] classify public module, `.use`, and import failures under `CoreErrorKind`
+- [x] add any dedicated core leaf wrappers only if they remain canonical members of `CoreError`
+- [x] preserve successful portable and non-portable `process_module_item` behavior
 
 Focused validation:
-- [ ] tests for module-item, `.use`, and import failures mapping to `CoreErrorKind`
-- [ ] regression tests for successful `process_module_item` paths across native and portable helpers
+- [x] tests for module-item, `.use`, and import failures mapping to `CoreErrorKind`
+- [x] regression tests for successful `process_module_item` paths across native and portable helpers
 
 Commit exit gate:
-- [ ] `cargo test --locked -p opforge-core`
-- [ ] `cargo test --locked -p opforge-vm`
-- [ ] `cargo test --locked -p libopforge`
-- [ ] full pre-commit quality gate
+- [x] `cargo test --locked -p opforge-core`
+- [x] `cargo test --locked -p opforge-vm`
+- [x] `cargo test --locked -p libopforge`
+- [x] full pre-commit quality gate
 
 Definition of done:
 - the public module-entry concern family no longer escapes through assembler-owned umbrellas

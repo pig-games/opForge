@@ -71,10 +71,46 @@ pub mod opcore {
     pub use ::opcore::expression::expr_text;
     pub use ::opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError, UseItem};
     pub use ::opcore::services::{
-        parse_expression, parse_expression_tokens, process_module_item, tokenize_line,
-        TokenizedLine,
+        parse_expression, parse_expression_tokens, tokenize_line, TokenizedLine,
     };
     pub use ::opcore::tokenizer::{Span, Token, TokenKind, TokenizeError, Tokenizer};
+
+    fn code_for_kind(kind: CoreErrorKind) -> &'static str {
+        match kind {
+            CoreErrorKind::Tokenize => "opcore.tokenize",
+            CoreErrorKind::Parse => "opcore.parse",
+            CoreErrorKind::Expr => "opcore.expr",
+            CoreErrorKind::Statement => "opcore.statement",
+            CoreErrorKind::Module => "opcore.module",
+            CoreErrorKind::Use => "opcore.use",
+            CoreErrorKind::Import => "opcore.import",
+            CoreErrorKind::Macro => "opcore.macro",
+            CoreErrorKind::Conditional => "opcore.conditional",
+            CoreErrorKind::Repetition => "opcore.repetition",
+            CoreErrorKind::Namespace => "opcore.namespace",
+            CoreErrorKind::Scope => "opcore.scope",
+            CoreErrorKind::Preprocess => "opcore.preprocess",
+            CoreErrorKind::Struct => "opcore.struct",
+            CoreErrorKind::Segment => "opcore.segment",
+        }
+    }
+
+    fn classify_module_item_kind(line: &str, message: &str) -> CoreErrorKind {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(".use") {
+            if message.contains("import list")
+                || message.contains("Wildcard import")
+                || message.contains("parameter")
+                || message.contains("Expected '(' after 'with'")
+            {
+                CoreErrorKind::Import
+            } else {
+                CoreErrorKind::Use
+            }
+        } else {
+            CoreErrorKind::Module
+        }
+    }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum CoreErrorKind {
@@ -96,11 +132,49 @@ pub mod opcore {
     }
 
     #[derive(Debug, Clone)]
+    pub struct ModuleItemError {
+        kind: CoreErrorKind,
+        pub message: String,
+        pub span: Span,
+    }
+
+    impl ModuleItemError {
+        fn from_parse_error(line: &str, err: ParseError) -> Self {
+            Self {
+                kind: classify_module_item_kind(line, &err.message),
+                message: err.message,
+                span: err.span,
+            }
+        }
+
+        pub fn kind(&self) -> CoreErrorKind {
+            self.kind
+        }
+
+        pub fn summary(&self) -> &str {
+            &self.message
+        }
+
+        pub fn code(&self) -> &str {
+            code_for_kind(self.kind)
+        }
+    }
+
+    impl std::fmt::Display for ModuleItemError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.summary())
+        }
+    }
+
+    impl std::error::Error for ModuleItemError {}
+
+    #[derive(Debug, Clone)]
     #[non_exhaustive]
     pub enum CoreError {
         Tokenize(TokenizeError),
         Parse(ParseError),
         Expr(EvalError),
+        ModuleItem(ModuleItemError),
     }
 
     impl CoreError {
@@ -109,6 +183,7 @@ pub mod opcore {
                 Self::Tokenize(_) => CoreErrorKind::Tokenize,
                 Self::Parse(_) => CoreErrorKind::Parse,
                 Self::Expr(_) => CoreErrorKind::Expr,
+                Self::ModuleItem(err) => err.kind(),
             }
         }
 
@@ -117,27 +192,12 @@ pub mod opcore {
                 Self::Tokenize(err) => &err.message,
                 Self::Parse(err) => &err.message,
                 Self::Expr(err) => &err.message,
+                Self::ModuleItem(err) => err.summary(),
             }
         }
 
         pub fn code(&self) -> &str {
-            match self.kind() {
-                CoreErrorKind::Tokenize => "opcore.tokenize",
-                CoreErrorKind::Parse => "opcore.parse",
-                CoreErrorKind::Expr => "opcore.expr",
-                CoreErrorKind::Statement => "opcore.statement",
-                CoreErrorKind::Module => "opcore.module",
-                CoreErrorKind::Use => "opcore.use",
-                CoreErrorKind::Import => "opcore.import",
-                CoreErrorKind::Macro => "opcore.macro",
-                CoreErrorKind::Conditional => "opcore.conditional",
-                CoreErrorKind::Repetition => "opcore.repetition",
-                CoreErrorKind::Namespace => "opcore.namespace",
-                CoreErrorKind::Scope => "opcore.scope",
-                CoreErrorKind::Preprocess => "opcore.preprocess",
-                CoreErrorKind::Struct => "opcore.struct",
-                CoreErrorKind::Segment => "opcore.segment",
-            }
+            code_for_kind(self.kind())
         }
     }
 
@@ -167,6 +227,31 @@ pub mod opcore {
         }
     }
 
+    impl From<ModuleItemError> for CoreError {
+        fn from(err: ModuleItemError) -> Self {
+            Self::ModuleItem(err)
+        }
+    }
+
+    pub fn process_module_item(
+        line: &str,
+        line_num: u32,
+    ) -> ::types::processing::ProcessingOutcome<LineAst, ModuleItemError> {
+        match ::opcore::services::process_module_item(line, line_num) {
+            ::types::processing::ProcessingOutcome::Done(ast) => {
+                ::types::processing::ProcessingOutcome::Done(ast)
+            }
+            ::types::processing::ProcessingOutcome::Return(ret) => {
+                ::types::processing::ProcessingOutcome::Return(ret)
+            }
+            ::types::processing::ProcessingOutcome::Error(err) => {
+                ::types::processing::ProcessingOutcome::Error(ModuleItemError::from_parse_error(
+                    line, err,
+                ))
+            }
+        }
+    }
+
     pub mod portable {
         use ::types::processing::ProcessingOutcome;
 
@@ -175,7 +260,7 @@ pub mod opcore {
             PortableTokenKind,
         };
 
-        pub use super::{ParseError, TokenizeError};
+        pub use super::{ModuleItemError, ParseError, TokenizeError};
 
         #[derive(Debug, Clone, PartialEq, Eq)]
         pub struct TokenizedLine {
@@ -213,7 +298,7 @@ pub mod opcore {
         pub fn process_module_item(
             line: &str,
             line_num: u32,
-        ) -> ProcessingOutcome<PortableLineAst, ParseError> {
+        ) -> ProcessingOutcome<PortableLineAst, ModuleItemError> {
             match super::process_module_item(line, line_num) {
                 ProcessingOutcome::Done(ast) => {
                     ProcessingOutcome::Done(PortableLineAst::from_core_line_ast(&ast))
@@ -2473,6 +2558,35 @@ mod tests {
     }
 
     #[test]
+    fn public_opcore_module_item_errors_classify_module_use_and_import_failures() {
+        let module_err = match opcore::process_module_item(".module \"unterminated", 11) {
+            processing::ProcessingOutcome::Error(err) => err,
+            other => panic!("expected module-item error, got {other:?}"),
+        };
+        assert_eq!(module_err.kind(), opcore::CoreErrorKind::Module);
+        assert_eq!(module_err.code(), "opcore.module");
+        assert!(!module_err.summary().is_empty());
+
+        let use_err = match opcore::process_module_item(".use", 12) {
+            processing::ProcessingOutcome::Error(err) => err,
+            other => panic!("expected .use error, got {other:?}"),
+        };
+        assert_eq!(use_err.kind(), opcore::CoreErrorKind::Use);
+        assert_eq!(use_err.code(), "opcore.use");
+
+        let import_err = match opcore::process_module_item(".use math ()", 13) {
+            processing::ProcessingOutcome::Error(err) => err,
+            other => panic!("expected import error, got {other:?}"),
+        };
+        assert_eq!(import_err.kind(), opcore::CoreErrorKind::Import);
+        assert_eq!(import_err.code(), "opcore.import");
+
+        let wrapped = opcore::CoreError::from(import_err);
+        assert_eq!(wrapped.kind(), opcore::CoreErrorKind::Import);
+        assert_eq!(wrapped.code(), "opcore.import");
+    }
+
+    #[test]
     fn public_portable_opcore_api_tokenizes_and_parses_expression() {
         let tokenized =
             opcore::portable::tokenize_line("1 + 2", 1).expect("tokenization should succeed");
@@ -2514,6 +2628,7 @@ mod tests {
         let _core_error_type: Option<opcore::CoreError> = None;
         let _core_error_kind = opcore::CoreErrorKind::Tokenize;
         let _eval_error_type: Option<opcore::EvalError> = None;
+        let _module_item_error_type: Option<opcore::ModuleItemError> = None;
     }
 
     #[test]

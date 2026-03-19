@@ -68,7 +68,7 @@ Implement the documentation and rustdoc changes needed to close `RVW-2026-03-19-
   - Commit outcome: add a focused rustdoc pass for the `processing::*` public routing helpers and the `AssemblerBuilder` setter surface using short "when to use this" guidance and stable guide-example links
   - Definition of done: the `processing` routing helpers and `AssemblerBuilder` public methods have inline rustdoc that explains selection intent, default behavior, and the relevant guide example path without changing runtime behavior or widening to unrelated public surfaces
 
-- [ ] Item 5
+- [x] Item 5
   - Source requirement or finding IDs: `RVW-2026-03-19-002` (expected closure: full)
   - Expected files: `crates/opforge-lib/src/lib.rs`; `documentation/libopforge-developer-guide.md` only if the existing examples need stable section labels to support the final rustdoc links
   - Validation: `cd /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib && cargo doc --locked -p libopforge --no-deps`; `cd /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib && cargo test --locked -p libopforge`
@@ -82,7 +82,7 @@ Implement the documentation and rustdoc changes needed to close `RVW-2026-03-19-
 - [x] Milestone 1: stale documentation references are removed and the developer-guide roadmap is current
 - [x] Milestone 2: the Embedding Cookbook and Execution Modes and Lockstep guide are published and linked from the main guide
 - [x] Milestone 3: all four companion guides exist and the developer guide has been reduced to index and decision-matrix duties
-- [ ] Milestone 4: the processing and builder rustdoc pass is complete and ready for closure review
+- [x] Milestone 4: the processing and builder rustdoc pass is complete and ready for closure review
 
 ## Closure Evidence
 

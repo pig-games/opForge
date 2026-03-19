@@ -2212,132 +2212,236 @@ impl AssemblerSessionBuilder {
         }
     }
 
+    /// Overrides the derived output base used for default artifact names.
+    ///
+    /// Use this when the owned host wants stable artifact naming independent
+    /// of `root_path`. See `documentation/libopforge-embedding-cookbook.md` and
+    /// `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`.
     pub fn output_base(mut self, output_base: impl Into<String>) -> Self {
         self.config.source.output_base = output_base.into();
         self
     }
 
+    /// Replaces the preprocessor define list for this owned request.
+    ///
+    /// Use this when the host already owns the full define set as session
+    /// state and wants to move it into the facade.
     pub fn defines(mut self, defines: impl Into<Vec<String>>) -> Self {
         self.config.source.defines = defines.into();
         self
     }
 
+    /// Replaces the include search roots for source loading.
+    ///
+    /// Use this when the owned host controls include resolution directly.
     pub fn include_paths(mut self, include_paths: impl Into<Vec<PathBuf>>) -> Self {
         self.config.source.include_paths = include_paths.into();
         self
     }
 
+    /// Replaces the module search roots for `.use` and related module loading.
+    ///
+    /// Use this when module resolution must follow host-owned search roots.
     pub fn module_paths(mut self, module_paths: impl Into<Vec<PathBuf>>) -> Self {
         self.config.source.module_paths = module_paths.into();
         self
     }
 
+    /// Overrides the preprocessor macro-expansion depth limit.
+    ///
+    /// Use this only when the host needs a deliberate non-default recursion
+    /// budget for trusted inputs.
     pub fn pp_macro_depth(mut self, pp_macro_depth: usize) -> Self {
         self.config.source.pp_macro_depth = pp_macro_depth;
         self
     }
 
+    /// Chooses the execution head for this owned request.
+    ///
+    /// Use this only when the session owns an explicit `Vm`, `Rust`, or
+    /// `Lockstep` decision instead of the stable default. See
+    /// `documentation/libopforge-execution-modes-and-lockstep-guide.md` and
+    /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
         self.config.execution.execution_mode = execution_mode;
         self
     }
 
+    /// Forces a target CPU instead of relying on source-driven resolution.
+    ///
+    /// Use this when CPU choice lives in project settings, service state, or a
+    /// host UI rather than the source text.
     pub fn cpu_override(mut self, cpu_override: impl Into<String>) -> Self {
         self.config.execution.cpu_override = Some(cpu_override.into());
         self
     }
 
+    /// Overrides the loop-iteration safety budget for this owned request.
+    ///
+    /// Use this only when the host needs a deliberate non-default execution
+    /// ceiling for trusted input.
     pub fn max_loop_iterations(mut self, max_loop_iterations: u32) -> Self {
         self.config.execution.max_loop_iterations = max_loop_iterations;
         self
     }
 
+    /// Supplies an explicit opasm runtime package artifact path.
+    ///
+    /// Use this when the host manages VM runtime artifacts directly instead of
+    /// relying on the default lookup path.
     pub fn opasm_package_path(mut self, opasm_package_path: impl Into<PathBuf>) -> Self {
         self.config.execution.opasm_package_path = Some(opasm_package_path.into());
         self
     }
 
+    /// Sets the output directory for filesystem-backed artifact emission.
+    ///
+    /// Use this when emitted files should land outside the source tree. See
+    /// `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`.
     pub fn out_dir(mut self, out_dir: impl Into<PathBuf>) -> Self {
         self.config.output.out_dir = Some(out_dir.into());
         self
     }
 
+    /// Chooses the primary output format for the owned session.
+    ///
+    /// Use this when the host wants output selection to be part of the stored
+    /// request shape.
     pub fn output_format(mut self, output_format: OutputFormat) -> Self {
         self.config.output.output_format = output_format;
         self
     }
 
+    /// Sets the optional go/start address override.
+    ///
+    /// Use this when the host owns emitted start-address policy directly.
     pub fn go_addr(mut self, go_addr: impl Into<String>) -> Self {
         self.config.output.go_addr = Some(go_addr.into());
         self
     }
 
+    /// Replaces the explicit binary-output specifications.
+    ///
+    /// Use this when the host needs named binary ranges instead of the default
+    /// output set.
     pub fn bin_specs(mut self, bin_specs: impl Into<Vec<BinOutputSpec>>) -> Self {
         self.config.output.bin_specs = bin_specs.into();
         self
     }
 
+    /// Sets the fill byte and marks it as explicitly configured.
+    ///
+    /// Use this when emitted binary ranges must use a host-chosen fill value.
     pub fn fill_byte(mut self, fill_byte: u8) -> Self {
         self.config.output.fill_byte = fill_byte;
         self.config.output.fill_byte_set = true;
         self
     }
 
+    /// Writes labels to an explicit labels-file path.
+    ///
+    /// Use this when label output should be emitted as a separate artifact.
     pub fn labels_file(mut self, labels_file: impl Into<PathBuf>) -> Self {
         self.config.output.labels_file = Some(labels_file.into());
         self
     }
 
+    /// Enables dependency-file emission for the configured output policy.
+    ///
+    /// Use this when the host wants make-style or related dependency output in
+    /// addition to the main run report.
     pub fn dependency_output(mut self, dependency_output: DependencyOutputPolicy) -> Self {
         self.config.output.dependency_output = Some(dependency_output);
         self
     }
 
+    /// Overrides the primary output filename stem or path.
+    ///
+    /// Use this when artifact naming must follow the host's naming contract
+    /// rather than the derived `output_base` path.
     pub fn outfile_override(mut self, outfile_override: impl Into<String>) -> Self {
         self.config.output.outfile_override = Some(outfile_override.into());
         self
     }
 
+    /// Overrides the default listing filename.
+    ///
+    /// Use this when listing output must use a host-chosen name distinct from
+    /// the derived output base.
     pub fn list_name_override(mut self, list_name_override: impl Into<String>) -> Self {
         self.config.output.list_name_override = Some(list_name_override.into());
         self
     }
 
+    /// Overrides the default hex filename.
+    ///
+    /// Use this when hex output must use a host-chosen name distinct from the
+    /// derived output base.
     pub fn hex_name_override(mut self, hex_name_override: impl Into<String>) -> Self {
         self.config.output.hex_name_override = Some(hex_name_override.into());
         self
     }
 
+    /// Chooses the label-file format when label emission is enabled.
+    ///
+    /// Use this when downstream tools expect a specific label syntax such as
+    /// the VICE-oriented example in
+    /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn label_output_format(mut self, label_output_format: LabelOutputFormat) -> Self {
         self.config.output.label_output_format = label_output_format;
         self
     }
 
+    /// Sets the optional header title used by text-oriented outputs.
+    ///
+    /// Use this when the host wants a stable presentation title in listing or
+    /// related text outputs.
     pub fn header_title(mut self, header_title: impl Into<String>) -> Self {
         self.config.output.header_title = header_title.into();
         self
     }
 
+    /// Toggles the normal default artifact set for this owned request.
+    ///
+    /// Use this when the host wants the standard emitted artifacts on or off
+    /// without overriding each output class individually.
     pub fn default_outputs(mut self, default_outputs: bool) -> Self {
         self.config.output.default_outputs = default_outputs;
         self
     }
 
+    /// Forces output suppression even when output-related settings are present.
+    ///
+    /// Use this when the host is intentionally building a diagnostics-first
+    /// flow and wants the same no-output behavior that `check()` applies.
     pub fn no_outputs(mut self, no_outputs: bool) -> Self {
         self.config.output.no_outputs = no_outputs;
         self
     }
 
+    /// Enables or disables conditional-debug diagnostics for this request.
+    ///
+    /// Use this when the host wants extra conditional-expansion visibility in
+    /// emitted diagnostics.
     pub fn debug_conditionals(mut self, debug_conditionals: bool) -> Self {
         self.config.diagnostics.debug_conditionals = debug_conditionals;
         self
     }
 
+    /// Sets the tab width used when rendering diagnostics.
+    ///
+    /// Use this when the host's editor or source presentation uses a known tab
+    /// size and diagnostics should align to that view.
     pub fn tab_size(mut self, tab_size: usize) -> Self {
         self.config.diagnostics.tab_size = Some(tab_size);
         self
     }
 
+    /// Moves a concrete source provider into the owned session.
+    ///
+    /// Use this when the host wants the session to own the provider directly,
+    /// such as the in-memory path in
+    /// `documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs`.
     pub fn source_provider<T>(mut self, source_provider: T) -> Self
     where
         T: SourceProvider + 'static,
@@ -2346,11 +2450,20 @@ impl AssemblerSessionBuilder {
         self
     }
 
+    /// Reuses an existing shared `Arc<dyn SourceProvider>` in the owned session.
+    ///
+    /// Use this when the host already shares one provider across workers or
+    /// long-lived sessions and does not want another allocation boundary.
     pub fn source_provider_arc(mut self, source_provider: Arc<dyn SourceProvider>) -> Self {
         self.config.source.source_provider = Some(source_provider);
         self
     }
 
+    /// Moves a concrete output sink into the owned session.
+    ///
+    /// Use this when the host wants the session to own the sink directly, such
+    /// as the in-memory path in
+    /// `documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs`.
     pub fn output_sink<T>(mut self, output_sink: T) -> Self
     where
         T: OutputSink + 'static,
@@ -2359,6 +2472,10 @@ impl AssemblerSessionBuilder {
         self
     }
 
+    /// Reuses an existing shared `Arc<dyn OutputSink>` in the owned session.
+    ///
+    /// Use this when the host already shares one sink across workers or
+    /// long-lived sessions and wants the session to adopt that shared handle.
     pub fn output_sink_arc(mut self, output_sink: Arc<dyn OutputSink>) -> Self {
         self.config.output.output_sink = Some(output_sink);
         self
@@ -2609,7 +2726,8 @@ impl AssemblerSession {
     /// Starts an owned builder with default grouped configuration.
     ///
     /// Prefer this for owned or non-borrowing integrations that want the
-    /// fluent builder happy path.
+    /// fluent builder happy path. See
+    /// `documentation/libopforge-embedding-cookbook.md`.
     pub fn builder(root_path: impl Into<PathBuf>) -> AssemblerSessionBuilder {
         AssemblerSessionBuilder::new(root_path)
     }
@@ -2617,7 +2735,8 @@ impl AssemblerSession {
     /// Creates an owned session from an existing grouped config value.
     ///
     /// Use this when the host already has an [`OwnedAssemblerConfig`] and wants
-    /// the stable owned workflow handle directly.
+    /// the stable owned workflow handle directly. See
+    /// `documentation/libopforge-embedding-cookbook.md`.
     pub fn with_config(root_path: impl Into<PathBuf>, config: OwnedAssemblerConfig) -> Self {
         AssemblerSessionBuilder::with_config(root_path, config).build()
     }
@@ -2635,7 +2754,8 @@ impl AssemblerSession {
     /// Runs a one-shot high-level assembly.
     ///
     /// This is the direct owned execution path when the host wants outputs now
-    /// and does not need to retain prepared state.
+    /// and does not need to retain prepared state. See
+    /// `documentation/libopforge-embedding-cookbook.md`.
     pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         assemble_raw(self.root_path.as_path(), self.config.as_borrowed())
             .map_err(map_asm_run_error_to_workflow)
@@ -2646,7 +2766,9 @@ impl AssemblerSession {
     /// When `output_base` is omitted in the config, the prepared session stores
     /// the root-path-derived base so later prepared execution uses the same
     /// resolved path. Use this when the host needs reusable prepared state that
-    /// is independent of borrowed input lifetimes.
+    /// is independent of borrowed input lifetimes. See
+    /// `documentation/libopforge-embedding-cookbook.md` and
+    /// `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`.
     pub fn prepare(&self) -> Result<PreparedAssemblySession, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         let (prepared, resolved_input_base) = {
@@ -2687,7 +2809,7 @@ impl AssemblerSession {
     /// This suppresses default outputs, labels, dependency output, bin specs,
     /// and output-file overrides before running the high-level workflow. Use it
     /// when the host wants the owned-session path but only needs diagnostics and
-    /// metadata.
+    /// metadata. See `documentation/libopforge-diagnostics-and-fixits-guide.md`.
     pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_owned_config_for_check(&mut config);
@@ -2703,21 +2825,35 @@ impl<'a> PreparedAssembly<'a> {
     }
 
     /// Returns the prepared root module identifier.
+    ///
+    /// Use this when the host needs a stable module identifier before final
+    /// emission, such as the prepared-session flow in
+    /// `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`.
     pub fn root_module_id(&self) -> &str {
         self.root_module_id.as_str()
     }
 
     /// Returns the resolved CPU name for the prepared assembly.
+    ///
+    /// Use this when the host wants to display or persist the CPU chosen by
+    /// preparation before running outputs.
     pub fn cpu_name(&self) -> &str {
         self.cpu.as_str()
     }
 
     /// Returns the source map collected during preparation.
+    ///
+    /// Use this when diagnostics or editor navigation must map expanded lines
+    /// back to original source files. See
+    /// `documentation/libopforge-diagnostics-and-fixits-guide.md`.
     pub fn source_map(&self) -> &SourceMap {
         &self.source_map
     }
 
     /// Returns dependency files discovered during preparation.
+    ///
+    /// Use this when the host wants dependency metadata before choosing
+    /// whether to emit outputs.
     pub fn dependency_files(&self) -> &[PathBuf] {
         &self.dependency_files
     }
@@ -2792,7 +2928,8 @@ impl PreparedAssemblySession {
     /// Executes the prepared assembly using the stored prepared state.
     ///
     /// Reuses the owned prepared state, including the resolved `output_base`,
-    /// expanded lines, and dependency metadata captured during `prepare()`.
+    /// expanded lines, and dependency metadata captured during `prepare()`. See
+    /// `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`.
     pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let borrowed = self.config.as_borrowed();
         run_public_prepared_assembly(
@@ -2815,7 +2952,8 @@ impl PreparedAssemblySession {
     /// Validates the prepared assembly without emitting outputs.
     ///
     /// This keeps the prepared-session reuse path but suppresses artifact
-    /// emission in the same way as the owned high-level `check()` path.
+    /// emission in the same way as the owned high-level `check()` path. See
+    /// `documentation/libopforge-diagnostics-and-fixits-guide.md`.
     pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_owned_config_for_check(&mut config);

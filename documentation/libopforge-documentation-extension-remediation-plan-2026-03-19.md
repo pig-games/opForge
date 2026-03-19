@@ -59,7 +59,7 @@ Implement the documentation and rustdoc changes needed to close `RVW-2026-03-19-
   - Commit outcome: publish the extension and diagnostics companion guides, then reduce the main developer guide to an index plus high-level decision matrix that points readers into all four companion documents
   - Definition of done: all four promised companion guides exist under `documentation/`, the developer guide no longer carries the detailed task guidance moved into those companion docs, and `RVW-2026-03-19-001` has closure-ready documentation structure without unrelated manual or README expansion
 
-- [ ] Item 4
+- [x] Item 4
   - Source requirement or finding IDs: `RVW-2026-03-19-002` (expected closure: partial)
   - Expected files: `crates/opforge-lib/src/lib.rs`; `documentation/libopforge-developer-guide.md` only if a stable example anchor or cross-reference label must be added for the new rustdoc links
   - Validation: `cd /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib && cargo doc --locked -p libopforge --no-deps`; `cd /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib && cargo test --locked -p libopforge`

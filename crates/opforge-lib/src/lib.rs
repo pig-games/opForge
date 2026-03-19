@@ -180,6 +180,11 @@ pub mod processing {
         }
     }
 
+    /// Routes one line through the default editor-style processing boundary.
+    ///
+    /// Use this when a host wants to ask whether a line belongs to `opcore`
+    /// or should fall through to assembler processing without prebuilding an
+    /// explicit runtime model. See `documentation/libopforge-diagnostics-and-fixits-guide.md`.
     pub fn editor_route_line(
         line: &str,
         line_num: u32,
@@ -187,6 +192,11 @@ pub mod processing {
         ::engine::editor_route_line(line, line_num).map_err(map_engine_error)
     }
 
+    /// Routes a line only when the caller expects an `opcore` module-item path.
+    ///
+    /// Use this for `.module`, `.use`, and related editor flows that want to
+    /// keep assembler-only lines as `None` instead of forcing statement
+    /// processing. See `documentation/libopforge-diagnostics-and-fixits-guide.md`.
     pub fn route_module_item_line(
         line: &str,
         line_num: u32,
@@ -194,6 +204,13 @@ pub mod processing {
         ::engine::route_module_item_line(line, line_num).map_err(map_engine_error)
     }
 
+    /// Routes a module-item line with an explicit runtime model and CPU context.
+    ///
+    /// Use this when the host already owns the execution model, CPU id,
+    /// dialect override, and register-checking policy rather than relying on
+    /// the default runtime-model lookup path. See
+    /// `documentation/libopforge-cpu-family-extension-guide.md` for the
+    /// lower-level model and registry boundary.
     pub fn route_module_item_line_with_model(
         model: &::vm::vm_opasm::HierarchyExecutionModel,
         cpu_id: &str,
@@ -213,6 +230,12 @@ pub mod processing {
         .map_err(map_engine_error)
     }
 
+    /// Routes one line with an explicit runtime model and CPU context.
+    ///
+    /// Use this when an editor or service wants the default routing behavior
+    /// but must control the execution model, CPU id, dialect override, or
+    /// register-checking policy explicitly. See
+    /// `documentation/libopforge-diagnostics-and-fixits-guide.md`.
     pub fn editor_route_line_with_model(
         model: &::vm::vm_opasm::HierarchyExecutionModel,
         cpu_id: &str,
@@ -232,6 +255,13 @@ pub mod processing {
         .map_err(map_engine_error)
     }
 
+    /// Routes one line with an explicit runtime model and lockstep-aware mode.
+    ///
+    /// Use this when the host wants editor-style routing plus an explicit
+    /// execution-mode choice, including `Lockstep`, and needs the resulting
+    /// `LockstepReport`. See
+    /// `documentation/libopforge-execution-modes-and-lockstep-guide.md` and
+    /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn editor_route_line_with_model_in_mode(
         model: &::vm::vm_opasm::HierarchyExecutionModel,
         cpu_id: &str,
@@ -1876,137 +1906,249 @@ impl<'a> AssemblerBuilder<'a> {
         Self { root_path, config }
     }
 
+    /// Overrides the derived output base used for default artifact names.
+    ///
+    /// Use this when listing, hex, or label outputs must not be derived from
+    /// `root_path`. See `documentation/libopforge-embedding-cookbook.md` and
+    /// `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`.
     pub fn output_base(mut self, output_base: &'a str) -> Self {
         self.config.source.output_base = output_base;
         self
     }
 
+    /// Replaces the preprocessor define list for this borrowed request.
+    ///
+    /// Use this when the host already owns the full define set and wants to
+    /// pass it through unchanged on a one-shot borrowed build.
     pub fn defines(mut self, defines: &'a [String]) -> Self {
         self.config.source.defines = defines;
         self
     }
 
+    /// Replaces the include search roots for source loading.
+    ///
+    /// Use this when the host controls include resolution directly instead of
+    /// relying on the default path layout.
     pub fn include_paths(mut self, include_paths: &'a [PathBuf]) -> Self {
         self.config.source.include_paths = include_paths;
         self
     }
 
+    /// Replaces the module search roots for `.use` and related module loading.
+    ///
+    /// Use this when module resolution must follow host-owned search roots.
     pub fn module_paths(mut self, module_paths: &'a [PathBuf]) -> Self {
         self.config.source.module_paths = module_paths;
         self
     }
 
+    /// Overrides the preprocessor macro-expansion depth limit.
+    ///
+    /// Use this only when the host needs a non-default recursion budget for a
+    /// known source corpus.
     pub fn pp_macro_depth(mut self, pp_macro_depth: usize) -> Self {
         self.config.source.pp_macro_depth = pp_macro_depth;
         self
     }
 
+    /// Supplies a borrowed source provider for non-filesystem or remapped input.
+    ///
+    /// Use this when the host already owns a `SourceProvider`, such as the
+    /// memory-backed path in
+    /// `documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs`.
     pub fn source_provider(mut self, source_provider: &'a dyn SourceProvider) -> Self {
         self.config.source.source_provider = Some(source_provider);
         self
     }
 
+    /// Chooses the execution head for this borrowed request.
+    ///
+    /// Use this only when the request owns an explicit `Vm`, `Rust`, or
+    /// `Lockstep` decision instead of using the stable default. See
+    /// `documentation/libopforge-execution-modes-and-lockstep-guide.md` and
+    /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
         self.config.execution.execution_mode = execution_mode;
         self
     }
 
+    /// Forces a target CPU instead of relying on source-driven resolution.
+    ///
+    /// Use this when the host owns CPU selection in project config or UI.
     pub fn cpu_override(mut self, cpu_override: &'a str) -> Self {
         self.config.execution.cpu_override = Some(cpu_override);
         self
     }
 
+    /// Overrides the loop-iteration safety budget for this request.
+    ///
+    /// Use this only when the host needs a deliberate non-default execution
+    /// ceiling for trusted input.
     pub fn max_loop_iterations(mut self, max_loop_iterations: u32) -> Self {
         self.config.execution.max_loop_iterations = max_loop_iterations;
         self
     }
 
+    /// Supplies an explicit opasm runtime package artifact path.
+    ///
+    /// Use this when the host manages VM runtime artifacts directly instead of
+    /// relying on the default lookup path.
     pub fn opasm_package_path(mut self, opasm_package_path: &'a Path) -> Self {
         self.config.execution.opasm_package_path = Some(opasm_package_path);
         self
     }
 
+    /// Sets the output directory for filesystem-backed artifact emission.
+    ///
+    /// Use this when artifact files should be emitted away from the source
+    /// tree. See `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`.
     pub fn out_dir(mut self, out_dir: &'a Path) -> Self {
         self.config.output.out_dir = Some(out_dir);
         self
     }
 
+    /// Chooses the primary output format for the high-level run.
+    ///
+    /// Use this when the host wants text, binary, or other output selection as
+    /// part of the request shape.
     pub fn output_format(mut self, output_format: OutputFormat) -> Self {
         self.config.output.output_format = output_format;
         self
     }
 
+    /// Sets the optional go/start address override.
+    ///
+    /// Use this when the host owns the emitted start-address policy rather
+    /// than leaving it to source-driven defaults.
     pub fn go_addr(mut self, go_addr: &'a str) -> Self {
         self.config.output.go_addr = Some(go_addr);
         self
     }
 
+    /// Replaces the explicit binary-output specifications.
+    ///
+    /// Use this when the host needs one or more named binary ranges instead of
+    /// the default output set.
     pub fn bin_specs(mut self, bin_specs: &'a [BinOutputSpec]) -> Self {
         self.config.output.bin_specs = bin_specs;
         self
     }
 
+    /// Sets the fill byte and marks it as explicitly configured.
+    ///
+    /// Use this when emitted binary ranges must use a host-chosen fill value
+    /// rather than the default behavior.
     pub fn fill_byte(mut self, fill_byte: u8) -> Self {
         self.config.output.fill_byte = fill_byte;
         self.config.output.fill_byte_set = true;
         self
     }
 
+    /// Writes labels to an explicit labels-file path.
+    ///
+    /// Use this when the host wants label output as a separate artifact rather
+    /// than relying only on the main report.
     pub fn labels_file(mut self, labels_file: &'a Path) -> Self {
         self.config.output.labels_file = Some(labels_file);
         self
     }
 
+    /// Enables dependency-file emission for the configured output policy.
+    ///
+    /// Use this when the host wants make-style or related dependency output in
+    /// addition to the main run report.
     pub fn dependency_output(mut self, dependency_output: &'a DependencyOutputPolicy) -> Self {
         self.config.output.dependency_output = Some(dependency_output);
         self
     }
 
+    /// Overrides the primary output filename stem or path.
+    ///
+    /// Use this when artifact naming must follow the host's naming contract
+    /// instead of the derived `output_base` path.
     pub fn outfile_override(mut self, outfile_override: &'a str) -> Self {
         self.config.output.outfile_override = Some(outfile_override);
         self
     }
 
+    /// Overrides the default listing filename.
+    ///
+    /// Use this when listing output must use a host-chosen name distinct from
+    /// the derived output base.
     pub fn list_name_override(mut self, list_name_override: &'a str) -> Self {
         self.config.output.list_name_override = Some(list_name_override);
         self
     }
 
+    /// Overrides the default hex filename.
+    ///
+    /// Use this when hex output must use a host-chosen name distinct from the
+    /// derived output base.
     pub fn hex_name_override(mut self, hex_name_override: &'a str) -> Self {
         self.config.output.hex_name_override = Some(hex_name_override);
         self
     }
 
+    /// Chooses the label-file format when label emission is enabled.
+    ///
+    /// Use this when downstream tools expect a specific label syntax such as
+    /// the VICE-oriented example in
+    /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn label_output_format(mut self, label_output_format: LabelOutputFormat) -> Self {
         self.config.output.label_output_format = label_output_format;
         self
     }
 
+    /// Sets the optional header title used by text-oriented outputs.
+    ///
+    /// Use this when the host wants a stable presentation title in listing or
+    /// related text outputs.
     pub fn header_title(mut self, header_title: &'a str) -> Self {
         self.config.output.header_title = header_title;
         self
     }
 
+    /// Toggles the normal default artifact set for this request.
+    ///
+    /// Use this when the host wants the standard emitted artifacts on or off
+    /// without overriding each output class individually.
     pub fn default_outputs(mut self, default_outputs: bool) -> Self {
         self.config.output.default_outputs = default_outputs;
         self
     }
 
+    /// Forces output suppression even when output-related settings are present.
+    ///
+    /// Use this when the host is intentionally building a diagnostics-first
+    /// flow and wants the same no-output behavior that `check()` applies.
     pub fn no_outputs(mut self, no_outputs: bool) -> Self {
         self.config.output.no_outputs = no_outputs;
         self
     }
 
+    /// Enables or disables conditional-debug diagnostics for this request.
+    ///
+    /// Use this when the host wants extra conditional-expansion visibility in
+    /// emitted diagnostics.
     pub fn debug_conditionals(mut self, debug_conditionals: bool) -> Self {
         self.config.diagnostics.debug_conditionals = debug_conditionals;
         self
     }
 
+    /// Sets the tab width used when rendering diagnostics.
+    ///
+    /// Use this when the host's editor or source presentation uses a known tab
+    /// size and diagnostics should align to that view.
     pub fn tab_size(mut self, tab_size: usize) -> Self {
         self.config.diagnostics.tab_size = Some(tab_size);
         self
     }
 
+    /// Supplies a borrowed output sink for non-filesystem or captured artifacts.
+    ///
+    /// Use this when the host already owns an `OutputSink`, such as the
+    /// memory-backed path in
+    /// `documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs`.
     pub fn output_sink(mut self, output_sink: &'a dyn OutputSink) -> Self {
         self.config.output.output_sink = Some(output_sink);
         self

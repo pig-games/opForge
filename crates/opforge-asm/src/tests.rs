@@ -56,7 +56,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use types::lockstep::LockstepReport;
+use types::lockstep::{ContinuationHead, LockstepReport};
 use types::processing::{LineProcessingTrace, OpcoreRequestKind, ProcessingRequestKind};
 use types::symbol::{SymbolTable, SymbolTableResult, SymbolVisibility};
 use vm::builder::{build_hierarchy_chunks_from_registry, build_hierarchy_package_from_registry};
@@ -264,6 +264,24 @@ fn assert_partitioned_assembler_execution(assembler: &Assembler) {
     }
 }
 
+fn assert_lockstep_report_clean(report: &LockstepReport, context: &str) {
+    assert!(
+        report.divergences().is_empty(),
+        "expected clean lockstep report in {context}, got divergences: {:?}",
+        report.divergences()
+    );
+}
+
+fn runtime_enabled_execution_mode(enable_runtime: bool) -> ExecutionMode {
+    if enable_runtime {
+        ExecutionMode::Lockstep {
+            continuation_head: ContinuationHead::Vm,
+        }
+    } else {
+        ExecutionMode::Rust
+    }
+}
+
 fn assert_partitioned_report_traces(traces: &[(u8, u32, LineProcessingTrace)], context: &str) {
     assert!(
         !traces.is_empty(),
@@ -284,6 +302,27 @@ fn make_asm_line<'a>(symbols: &'a mut SymbolTable, registry: &'a ModuleRegistry)
 
 fn process_line(asm: &mut AsmLine<'_>, line: &str, addr: u32, pass: u8) -> LineStatus {
     asm.process(line, 1, addr, pass)
+}
+
+fn process_asmline_with_execution_mode(
+    asm: &mut AsmLine<'_>,
+    execution_mode: ExecutionMode,
+    line: &str,
+    line_num: u32,
+    addr: u32,
+    pass: u8,
+) -> LineStatus {
+    asm.set_runtime_line_router(Some(make_test_runtime_line_router(execution_mode)));
+    let status = asm.process(line, line_num, addr, pass);
+    assert_partitioned_asmline_execution(asm);
+    if matches!(execution_mode, ExecutionMode::Lockstep { .. }) {
+        let report = asm.take_runtime_lockstep_report();
+        assert_lockstep_report_clean(
+            &report,
+            &format!("asm line execution mode {:?} for `{line}`", execution_mode),
+        );
+    }
+    status
 }
 
 fn duplicate_instruction_registration_keys(
@@ -627,17 +666,17 @@ fn assemble_line_with_runtime_mode(
     let mut symbols = SymbolTable::new();
     let registry = default_registry();
     let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);
-    let execution_mode = if enable_opthread_runtime {
-        ExecutionMode::Vm
-    } else {
-        ExecutionMode::Rust
-    };
+    let execution_mode = runtime_enabled_execution_mode(enable_opthread_runtime);
     asm.set_runtime_line_router(Some(make_test_runtime_line_router(execution_mode)));
     asm.clear_conditionals();
     asm.clear_scopes();
     let status = asm.process(line, 1, 0, 2);
     let message = asm.error().map(|err| err.to_string());
     assert_partitioned_asmline_execution(&mut asm);
+    if matches!(execution_mode, ExecutionMode::Lockstep { .. }) {
+        let report = asm.take_runtime_lockstep_report();
+        assert_lockstep_report_clean(&report, &format!("asm line runtime mode for `{line}`"));
+    }
     (status, message, asm.bytes().to_vec())
 }
 
@@ -650,17 +689,20 @@ fn assemble_line_with_runtime_mode_no_injection(
     let registry = default_registry();
     let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);
     let has_model = asm.opthread_execution_model.is_some();
-    let execution_mode = if enable_opthread_runtime {
-        ExecutionMode::Vm
-    } else {
-        ExecutionMode::Rust
-    };
+    let execution_mode = runtime_enabled_execution_mode(enable_opthread_runtime);
     asm.set_runtime_line_router(Some(make_test_runtime_line_router(execution_mode)));
     asm.clear_conditionals();
     asm.clear_scopes();
     let status = asm.process(line, 1, 0, 2);
     let message = asm.error().map(|err| err.to_string());
     assert_partitioned_asmline_execution(&mut asm);
+    if matches!(execution_mode, ExecutionMode::Lockstep { .. }) {
+        let report = asm.take_runtime_lockstep_report();
+        assert_lockstep_report_clean(
+            &report,
+            &format!("asm line runtime mode without injection for `{line}`"),
+        );
+    }
     (status, message, asm.bytes().to_vec(), has_model)
 }
 
@@ -672,17 +714,20 @@ fn assemble_line_diagnostic_with_runtime_mode(
     let mut symbols = SymbolTable::new();
     let registry = default_registry();
     let mut asm = AsmLine::with_cpu(&mut symbols, cpu, &registry);
-    let execution_mode = if enable_runtime_model {
-        ExecutionMode::Vm
-    } else {
-        ExecutionMode::Rust
-    };
+    let execution_mode = runtime_enabled_execution_mode(enable_runtime_model);
     asm.set_runtime_line_router(Some(make_test_runtime_line_router(execution_mode)));
 
     asm.clear_conditionals();
     asm.clear_scopes();
     let status = asm.process(line, 1, 0, 2);
     assert_partitioned_asmline_execution(&mut asm);
+    if matches!(execution_mode, ExecutionMode::Lockstep { .. }) {
+        let report = asm.take_runtime_lockstep_report();
+        assert_lockstep_report_clean(
+            &report,
+            &format!("asm diagnostic runtime mode for `{line}`"),
+        );
+    }
     let diag = asm.error().cloned().map(|err| {
         let mut diag = Diagnostic::new(
             1,
@@ -796,11 +841,7 @@ fn assemble_source_entries_with_runtime_mode(
 ) -> AssembleEntriesResult {
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
-    let execution_mode = if enable_opthread_runtime {
-        ExecutionMode::Vm
-    } else {
-        ExecutionMode::Rust
-    };
+    let execution_mode = runtime_enabled_execution_mode(enable_opthread_runtime);
     assembler.set_runtime_line_router(Some(make_test_runtime_line_router(execution_mode)));
 
     let lines: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
@@ -811,6 +852,12 @@ fn assemble_source_entries_with_runtime_mode(
         .pass2(&lines, &mut listing)
         .map_err(|err| format!("Pass2 failed: {err}"))?;
     assert_partitioned_assembler_execution(&assembler);
+    if matches!(execution_mode, ExecutionMode::Lockstep { .. }) {
+        assert_lockstep_report_clean(
+            assembler.runtime_lockstep_report(),
+            "assemble_source_entries_with_runtime_mode",
+        );
+    }
 
     let entries = assembler
         .image()
@@ -1317,6 +1364,24 @@ fn assemble_example(
     assemble_example_with_base(asm_path, out_dir, base, allow_error_outputs)
 }
 
+fn assert_lockstep_reference_report_clean(
+    report: &LockstepReport,
+    label: &str,
+    expect_matches: bool,
+) {
+    assert!(
+        report.divergences().is_empty(),
+        "lockstep divergences recorded for {label}: {:?}",
+        report.divergences()
+    );
+    if expect_matches {
+        assert!(
+            !report.matches().is_empty(),
+            "expected lockstep matches for {label}"
+        );
+    }
+}
+
 fn assemble_example_with_base(
     asm_path: &Path,
     out_dir: &Path,
@@ -1327,7 +1392,9 @@ fn assemble_example_with_base(
     let header_title = format!("opForge Assembler v{VERSION}");
     let result = run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
-        execution_mode: ExecutionMode::Vm,
+        execution_mode: ExecutionMode::Lockstep {
+            continuation_head: ContinuationHead::Vm,
+        },
         input_base: base,
         defines: &[],
         include_paths: &[],
@@ -1368,6 +1435,18 @@ fn assemble_example_with_base(
             report.runtime_processing_traces(),
             &format!("successful run report for {base}"),
         );
+        assert_lockstep_reference_report_clean(
+            report.lockstep_report(),
+            &format!("successful reference run for {base}"),
+            true,
+        );
+    }
+    if let Err(err) = &result {
+        assert_lockstep_reference_report_clean(
+            err.lockstep_report(),
+            &format!("failed reference run for {base}"),
+            false,
+        );
     }
 
     let mut map_outputs: Vec<(String, Vec<u8>)> = fs::read_dir(&out_dir)
@@ -1400,11 +1479,7 @@ fn assemble_example_entries_with_runtime_mode(
     let expanded_lines = graph.lines;
 
     let mut assembler = Assembler::new();
-    let execution_mode = if enable_opthread_runtime {
-        ExecutionMode::Vm
-    } else {
-        ExecutionMode::Rust
-    };
+    let execution_mode = runtime_enabled_execution_mode(enable_opthread_runtime);
     assembler.set_runtime_line_router(Some(make_test_runtime_line_router(execution_mode)));
     assembler.root_metadata.root_module_id =
         Some(root_module_id_from_lines(asm_path, &root_lines).map_err(|err| err.to_string())?);
@@ -1428,6 +1503,13 @@ fn assemble_example_entries_with_runtime_mode(
         .filter(|diag| diag.severity == Severity::Error)
         .map(|diag| format!("{}:{}", diag.line, diag.error.message()))
         .collect();
+
+    if matches!(execution_mode, ExecutionMode::Lockstep { .. }) {
+        assert_lockstep_report_clean(
+            assembler.runtime_lockstep_report(),
+            &format!("assemble_example_entries_with_runtime_mode for {}", asm_path.display()),
+        );
+    }
 
     if pass1.errors > 0 || pass2.errors > 0 {
         return Ok((entries, diagnostics));
@@ -1549,7 +1631,9 @@ fn assemble_example_error(asm_path: &Path) -> Option<String> {
 
     match run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
-        execution_mode: ExecutionMode::Vm,
+        execution_mode: ExecutionMode::Lockstep {
+            continuation_head: ContinuationHead::Vm,
+        },
         input_base,
         defines: &[],
         include_paths: &[],
@@ -1581,6 +1665,11 @@ fn assemble_example_error(asm_path: &Path) -> Option<String> {
     }) {
         Ok(_) => None,
         Err(err) => {
+            assert_lockstep_reference_report_clean(
+                err.lockstep_report(),
+                &format!("failed reference error run for {}", asm_path.display()),
+                false,
+            );
             assert_partitioned_report_traces(
                 err.runtime_processing_traces(),
                 &format!("failed run report for {}", asm_path.display()),
@@ -10430,7 +10519,14 @@ fn vm_runtime_intel8085_path_uses_package_forms() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    MVI A,$42", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    MVI A,$42",
+        1,
+        0,
+        2,
+    );
     assert_eq!(status, LineStatus::Ok);
     assert_eq!(asm.bytes(), &[0x00, 0x42]);
 }
@@ -10458,7 +10554,8 @@ fn vm_runtime_z80_dialect_path_uses_package_forms() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LD A,B", 1, 0, 2);
+    let status =
+        process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    LD A,B", 1, 0, 2);
     assert_eq!(status, LineStatus::Ok);
     assert_eq!(asm.bytes(), &[0x00]);
 }
@@ -10563,7 +10660,14 @@ fn vm_runtime_mos6502_missing_tabl_program_errors_instead_of_fallback() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #$10", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #$10",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message.to_ascii_lowercase().contains("missing vm program"));
@@ -10593,7 +10697,14 @@ fn vm_runtime_mos6502_parser_vm_failure_errors_instead_of_host_parser_fallback()
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #$10", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #$10",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -10628,7 +10739,14 @@ fn vm_runtime_mos6502_expression_contract_breakage_errors_instead_of_fallback() 
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #$10", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #$10",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -10693,7 +10811,14 @@ fn vm_runtime_mos6502_data_eval_survives_host_evaluator_failpoint() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    .byte 1+2", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    .byte 1+2",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
     assert_eq!(asm.bytes(), &[3]);
@@ -10718,7 +10843,14 @@ fn vm_runtime_i8085_data_eval_survives_host_evaluator_failpoint() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    .byte 1+2", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    .byte 1+2",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
     assert_eq!(asm.bytes(), &[3]);
@@ -10743,7 +10875,14 @@ fn vm_runtime_mos6502_expr_parse_survives_core_parser_failpoint() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    .byte 1+2", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    .byte 1+2",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
     assert_eq!(asm.bytes(), &[3]);
@@ -10768,7 +10907,14 @@ fn vm_runtime_i8085_expr_parse_survives_core_parser_failpoint() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    .byte 1+2", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    .byte 1+2",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
     assert_eq!(asm.bytes(), &[3]);
@@ -10793,7 +10939,14 @@ fn vm_runtime_mos6502_instruction_expr_parse_survives_core_parser_failpoint() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #(1+2)", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #(1+2)",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
     assert_eq!(asm.bytes(), &[0xA9, 0x03]);
@@ -10818,7 +10971,14 @@ fn vm_runtime_i8085_instruction_expr_parse_survives_core_parser_failpoint() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    MVI A, 1+2", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    MVI A, 1+2",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
     assert_eq!(asm.bytes(), &[0x3E, 0x03]);
@@ -10843,7 +11003,14 @@ fn vm_runtime_mos6502_instruction_expr_eval_survives_host_evaluator_failpoint() 
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #(1+2)", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #(1+2)",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
     assert_eq!(asm.bytes(), &[0xA9, 0x03]);
@@ -10868,7 +11035,14 @@ fn vm_runtime_i8085_instruction_expr_eval_survives_host_evaluator_failpoint() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    MVI A, 1+2", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    MVI A, 1+2",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
     assert_eq!(asm.bytes(), &[0x3E, 0x03]);
@@ -11003,7 +11177,8 @@ fn vm_runtime_mos6502_eval_expr_uses_portable_eval_by_default_when_certified() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #3", 1, 0, 2);
+    let status =
+        process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    LDA #3", 1, 0, 2);
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11040,7 +11215,8 @@ fn vm_runtime_mos6502_eval_expr_force_host_override_disables_default_vm() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #3", 1, 0, 2);
+    let status =
+        process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    LDA #3", 1, 0, 2);
     assert_eq!(status, LineStatus::Ok);
 }
 
@@ -11068,7 +11244,14 @@ fn vm_runtime_mos6502_data_directive_eval_uses_portable_eval_by_default_when_cer
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    .byte ($10 + 1)", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    .byte ($10 + 1)",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11101,7 +11284,14 @@ fn vm_runtime_intel8085_data_directive_eval_uses_portable_eval_by_default() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    .db (1 + 2)", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    .db (1 + 2)",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11134,7 +11324,14 @@ fn vm_runtime_mos6502_layout_directive_eval_uses_portable_eval_by_default_when_c
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process(".region ram, $1000, $10ff, align=(1+1)", 1, 0, 1);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        ".region ram, $1000, $10ff, align=(1+1)",
+        1,
+        0,
+        1,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11167,7 +11364,14 @@ fn vm_runtime_intel8085_layout_directive_eval_uses_portable_eval_by_default() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process(".region ram, $1000, $10ff, align=(1+1)", 1, 0, 1);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        ".region ram, $1000, $10ff, align=(1+1)",
+        1,
+        0,
+        1,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11288,8 +11492,20 @@ fn vm_runtime_mos6502_output_directive_eval_uses_portable_eval_by_default_when_c
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    assert_eq!(asm.process(".module main", 1, 0, 1), LineStatus::Ok);
-    let status = asm.process(
+    assert_eq!(
+        process_asmline_with_execution_mode(
+            &mut asm,
+            ExecutionMode::Vm,
+            ".module main",
+            1,
+            0,
+            1,
+        ),
+        LineStatus::Ok
+    );
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
         ".output \"out.bin\", format=bin, sections=code, image=\"$1000..$1001\", fill=(1+2)",
         2,
         0,
@@ -11327,8 +11543,20 @@ fn vm_runtime_intel8085_output_directive_eval_uses_portable_eval_by_default() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    assert_eq!(asm.process(".module main", 1, 0, 1), LineStatus::Ok);
-    let status = asm.process(
+    assert_eq!(
+        process_asmline_with_execution_mode(
+            &mut asm,
+            ExecutionMode::Vm,
+            ".module main",
+            1,
+            0,
+            1,
+        ),
+        LineStatus::Ok
+    );
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
         ".output \"out.bin\", format=bin, sections=code, image=\"$1000..$1001\", fill=(1+2)",
         2,
         0,
@@ -11353,7 +11581,14 @@ fn vm_runtime_mos6502_selector_unknown_symbol_uses_explicit_compat_fallback() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA missing_label", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA missing_label",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11390,7 +11625,14 @@ fn vm_runtime_mos6502_selector_non_compat_eval_error_does_not_fallback() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA $10 + 1", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA $10 + 1",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11624,7 +11866,8 @@ fn vm_runtime_intel8085_eval_expr_uses_portable_eval_by_default_when_authoritati
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    MVI A, 3", 1, 0, 2);
+    let status =
+        process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    MVI A, 3", 1, 0, 2);
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11657,7 +11900,8 @@ fn vm_runtime_motorola6800_eval_expr_uses_portable_eval_by_default_when_authorit
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #3", 1, 0, 2);
+    let status =
+        process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    LDA #3", 1, 0, 2);
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(
@@ -11692,7 +11936,8 @@ fn vm_runtime_intel8085_eval_expr_uses_portable_eval_when_opted_in() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    MVI A, 3", 1, 0, 2);
+    let status =
+        process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    MVI A, 3", 1, 0, 2);
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message.to_ascii_lowercase().contains("ope007"));
@@ -11722,7 +11967,14 @@ fn vm_runtime_mos6502_missing_tokenizer_vm_program_errors_instead_of_fallback() 
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #$10", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #$10",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message
@@ -11754,7 +12006,14 @@ fn vm_runtime_mos6502_invalid_tokenizer_vm_opcode_errors_instead_of_fallback() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #$10", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #$10",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message
@@ -11789,7 +12048,14 @@ fn vm_runtime_mos6502_delegate_tokenizer_vm_opcode_errors_instead_of_fallback() 
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #$10", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #$10",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message
@@ -11821,7 +12087,14 @@ fn vm_runtime_mos6502_malformed_tokenizer_vm_state_table_errors_instead_of_fallb
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA #$10", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA #$10",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message
@@ -11853,7 +12126,8 @@ fn vm_runtime_intel8080_family_tokenization_requires_vm_tokens_when_authoritativ
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LD A,B", 1, 0, 2);
+    let status =
+        process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    LD A,B", 1, 0, 2);
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message
@@ -11885,7 +12159,8 @@ fn vm_runtime_intel8080_family_tokenization_is_vm_strict_even_when_runtime_flag_
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LD A,B", 1, 0, 2);
+    let status =
+        process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    LD A,B", 1, 0, 2);
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message
@@ -11912,7 +12187,14 @@ fn vm_runtime_m6502_missing_selector_errors_instead_of_resolve_fallback() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA $1234", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA $1234",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message.contains("No instruction found for LDA"));
@@ -11937,7 +12219,14 @@ fn vm_runtime_m65c02_missing_selector_errors_instead_of_resolve_fallback() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA $1234", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA $1234",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message.contains("No instruction found for LDA"));
@@ -11964,7 +12253,14 @@ fn vm_runtime_m65816_missing_selector_errors_instead_of_resolve_fallback() {
     asm.clear_conditionals();
     asm.clear_scopes();
 
-    let status = asm.process("    LDA $1234", 1, 0, 2);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    LDA $1234",
+        1,
+        0,
+        2,
+    );
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
     assert!(message.contains("No instruction found for LDA"));
@@ -12179,7 +12475,14 @@ fn vm_runtime_mos6502_selector_conflict_reports_deterministic_error() {
         asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks.clone()));
         asm.clear_conditionals();
         asm.clear_scopes();
-        let status = asm.process("    LDA $1234", 1, 0, 2);
+        let status = process_asmline_with_execution_mode(
+            &mut asm,
+            ExecutionMode::Vm,
+            "    LDA $1234",
+            1,
+            0,
+            2,
+        );
         let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
         (status, message)
     };
@@ -12190,7 +12493,14 @@ fn vm_runtime_mos6502_selector_conflict_reports_deterministic_error() {
         asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));
         asm.clear_conditionals();
         asm.clear_scopes();
-        let status = asm.process("    LDA $1234", 1, 0, 2);
+        let status = process_asmline_with_execution_mode(
+            &mut asm,
+            ExecutionMode::Vm,
+            "    LDA $1234",
+            1,
+            0,
+            2,
+        );
         let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
         (status, message)
     };

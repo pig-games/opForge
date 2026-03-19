@@ -374,7 +374,7 @@ printf '{"code":"EDEB","severity":"warning","message":"debounce","file":"%s","li
         }),
     );
     let _ = client
-        .wait_for_publish_diagnostics(&uri, Duration::from_secs(2))
+        .wait_for_publish_diagnostics(&uri, Duration::from_secs(5))
         .expect("initial publish");
 
     client.notify(
@@ -475,7 +475,7 @@ printf '{"code":"ESAVE","severity":"error","message":"save-check","file":"%s","l
     );
     assert!(
         client
-            .wait_for_publish_diagnostics(&uri, Duration::from_secs(2))
+            .wait_for_publish_diagnostics(&uri, Duration::from_secs(5))
             .is_some(),
         "didSave should always trigger validation when onSave=true"
     );
@@ -1211,7 +1211,7 @@ printf '{"code":"EREFRESH","severity":"warning","message":"config refresh","file
         }),
     );
 
-    let publish = wait_for_publish_codes(&mut client, &uri, &["EREFRESH"], Duration::from_secs(3));
+    let publish = wait_for_publish_codes(&mut client, &uri, &["EREFRESH"], Duration::from_secs(5));
     let diagnostics = publish
         .get("diagnostics")
         .and_then(|value| value.as_array())

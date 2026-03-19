@@ -108,6 +108,59 @@ struct TestRuntimeLineRouter {
     execution_mode: ExecutionMode,
 }
 
+fn core_error_into_parse_error(
+    err: opcore::CoreError,
+    fallback_line: u32,
+) -> opcore::parser::ParseError {
+    match err {
+        opcore::CoreError::Parse(err) => err,
+        opcore::CoreError::ModuleItem(err) => opcore::parser::ParseError {
+            message: err.message,
+            span: err.span,
+        },
+        opcore::CoreError::LineParse(err) => opcore::parser::ParseError {
+            message: err.message,
+            span: err.span,
+        },
+        opcore::CoreError::Tokenize(err) => opcore::parser::ParseError {
+            message: err.message,
+            span: err.span,
+        },
+        opcore::CoreError::Expr(err) => opcore::parser::ParseError {
+            message: err.message,
+            span: err.span.unwrap_or(opcore::tokenizer::Span {
+                line: fallback_line,
+                col_start: 1,
+                col_end: 1,
+            }),
+        },
+        opcore::CoreError::Macro(err) => opcore::parser::ParseError {
+            message: err.message().to_string(),
+            span: opcore::tokenizer::Span {
+                line: err.line().unwrap_or(fallback_line),
+                col_start: err.column().unwrap_or(1),
+                col_end: err.column().unwrap_or(1),
+            },
+        },
+        opcore::CoreError::Preprocess(err) => opcore::parser::ParseError {
+            message: err.message().to_string(),
+            span: opcore::tokenizer::Span {
+                line: err.line().unwrap_or(fallback_line),
+                col_start: err.column().unwrap_or(1),
+                col_end: err.column().unwrap_or(1),
+            },
+        },
+        other => opcore::parser::ParseError {
+            message: other.summary().to_string(),
+            span: opcore::tokenizer::Span {
+                line: fallback_line,
+                col_start: 1,
+                col_end: 1,
+            },
+        },
+    }
+}
+
 impl crate::line::RuntimeLineRouter for TestRuntimeLineRouter {
     fn parse_line(
         &self,
@@ -144,7 +197,7 @@ impl crate::line::RuntimeLineRouter for TestRuntimeLineRouter {
             self.execution_mode,
         )
         .map_err(|err| match err {
-            engine::EngineError::Core(err) => err.into_parse_error(),
+            engine::EngineError::Core(err) => core_error_into_parse_error(err, line_num),
             engine::EngineError::Processor(err) => opcore::parser::ParseError {
                 message: err.summary().to_string(),
                 span: opcore::tokenizer::Span {

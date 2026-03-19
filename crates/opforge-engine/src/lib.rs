@@ -2111,15 +2111,19 @@ mod tests {
         FamilyOperandSet, OperandSet,
     };
     use std::path::{Path, PathBuf};
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
     use std::sync::atomic::{AtomicU64, Ordering};
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
     use std::time::{SystemTime, UNIX_EPOCH};
     use types::processing::{OpcoreRequestKind, ProcessingRequestKind};
     use types::symbol::SymbolTable;
 
     const TEST_FAMILY: CpuFamily = CpuFamily::new("test-family");
     const TEST_CPU: CpuType = CpuType::new("test-cpu");
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
     static TEMP_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
 
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
     fn unique_temp_dir(prefix: &str) -> PathBuf {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)

@@ -4223,7 +4223,7 @@ mod tests {
         let asm_registry = registry::default_asm_registry();
         let model = processing::HierarchyExecutionModel::from_registry(&asm_registry)
             .expect("runtime model should build");
-        let register_checker = ::registry::syntax::register_checker_none();
+        let register_checker = processing::register_checker_none();
         let err = processing::editor_route_line_with_model(
             &model,
             "m6502",

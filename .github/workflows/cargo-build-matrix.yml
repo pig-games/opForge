@@ -53,6 +53,9 @@ jobs:
       - name: Run FFI ABI contract test
         run: cargo test -p ffi exported_header_matches_rust_abi_contract --locked
 
+      - name: Test libopforge vm-runtime-only facade lane
+        run: cargo test -p libopforge --features vm-runtime-only --locked
+
       - name: Build vm-only embedded
         run: cargo build --release --locked --features vm-runtime-only
 

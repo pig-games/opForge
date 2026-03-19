@@ -6,7 +6,7 @@
 
 > **Draft interface notice:** This document defines the intended architecture and boundary contracts for the library split. Most workspace crate names have now converged on the short-name model, but semantic ownership is still partially transitional.
 
-> **Execution guidance:** The earlier handoff documents are historical records of completed slices. Current follow-on public API work is driven by `documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md`, together with `/Users/erik/Code/Retro/opForge/AGENTS.md`.
+> **Execution guidance:** The earlier handoff documents are historical records of completed slices. Current follow-on public API work is tracked through the maintained `libopforge` developer guide and the active branch-local workflow artifacts, together with `/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/AGENTS.md`.
 
 ---
 

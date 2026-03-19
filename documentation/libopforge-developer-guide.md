@@ -394,18 +394,21 @@ If you already have a tool and want to add opForge support, the easiest mapping 
 
 That approach lets opForge adapt to an existing host architecture without forcing the host to adopt filesystem-only assumptions.
 
-## 13. Recommended follow-up documentation
+## 13. Documentation roadmap and decision boundaries
 
-This guide should be the entrypoint, but the repo would benefit from a small developer-doc set around it:
+This guide remains the entrypoint for `libopforge`, but it should not become the catch-all reference for every host-facing task. Use the matrix below to decide where detail belongs as the companion documents land.
 
-- a focused "Embedding Cookbook" with short recipes for common host patterns
-- a "CPU/Family Extension Guide" for contributors working below the stable facade
-- a "Diagnostics and Fixits" guide for IDE and CI integrators
-- an "Execution Modes and Lockstep" guide for runtime/parity work
+| If you are trying to... | Primary document | Decision boundary |
+|---|---|---|
+| embed `libopforge` into a CLI, IDE, service, FFI host, or test harness | this guide today; future `Embedding Cookbook` | keep orientation, stable facade entrypoints, and end-to-end host setup here; move task recipes and host-pattern walkthroughs into the cookbook |
+| choose between Rust and VM execution, understand lockstep expectations, or reason about parity-sensitive runtime paths | this guide today; future `Execution Modes and Lockstep` guide | keep the high-level runtime model here; move detailed mode-selection rules, parity notes, and lockstep workflows into the runtime guide |
+| extend CPU or family support below the stable facade | `documentation/libopforge-specification.md` today; future `CPU/Family Extension Guide` | keep public architecture boundaries in the specification; move contributor implementation steps and extension checklists into the extension guide |
+| integrate diagnostics, fixits, and editor or CI feedback loops | this guide today; future `Diagnostics and Fixits` guide | keep the stable diagnostic contract here; move IDE, CI, and fixit-consumer recipes into the diagnostics guide |
 
-For now, the most useful companion documents are:
+Until those companion guides are published, keep detailed material in the closest matching section above and update this matrix whenever content moves.
+
+The maintained companion documents for the current branch are:
 
 - `README.md`
 - `documentation/libopforge-specification.md`
-- `documentation/libopforge-api-aesthetics-improvement-plan-v0_1.md`
 - `documentation/vm-boundary-protocol-v1.md`

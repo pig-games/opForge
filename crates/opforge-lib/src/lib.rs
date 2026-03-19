@@ -1067,8 +1067,14 @@ pub mod asm {
 /// [`OwnedAssemblerConfig`] when the host wants to own strings, paths, and
 /// provider handles instead of borrowing them for a single call.
 ///
-/// If `output_base` is left empty, the public `prepare()` and `assemble()`
-/// flows derive it from the root source path by removing the source extension.
+/// Defaults keep the path lists empty, set `pp_macro_depth` to `32`, and leave
+/// `source_provider` unset. If `output_base` is left empty, the public
+/// `prepare()` and `assemble()` flows derive it from the root source path by
+/// removing the source extension.
+///
+/// See the developer guide sections `4.1 output_base matters` and
+/// `5.2 Owned or non-borrowing host integration` for the intended owned-host
+/// workflow.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct OwnedSourceOptions {
@@ -1098,6 +1104,12 @@ impl Default for OwnedSourceOptions {
 /// Use this when the host needs the owned-session API to remember execution
 /// mode, CPU overrides, or package paths across multiple `prepare()`,
 /// `assemble()`, or `check()` calls.
+///
+/// Defaults use [`ExecutionMode::Vm`], no CPU override, `1000`
+/// `max_loop_iterations`, and no opasm package path.
+///
+/// See the developer guide sections `4.2 Execution mode defaults` and
+/// `5.2 Owned or non-borrowing host integration`.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct OwnedExecutionOptions {
@@ -1122,6 +1134,14 @@ impl Default for OwnedExecutionOptions {
 ///
 /// Use this with [`AssemblerSession`] when artifact routing, output naming, or
 /// sink configuration must outlive a single borrowed call.
+///
+/// Defaults keep outputs enabled, use [`OutputFormat::Text`], use
+/// [`LabelOutputFormat::Vice`], leave all file overrides unset, and use
+/// `"libopforge"` as the default header title.
+///
+/// See the developer guide sections `4.1 output_base matters`,
+/// `4.3 check() versus assemble()`, and `5.2 Owned or non-borrowing host
+/// integration`.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct OwnedOutputOptions {
@@ -1171,6 +1191,11 @@ impl Default for OwnedOutputOptions {
 ///
 /// This is the owned counterpart to [`AssemblerConfig`]. Prefer it when the
 /// host naturally stores `String`, `PathBuf`, and `Arc` state between runs.
+/// The default value is just the combination of the individual owned option
+/// defaults for source, execution, output, and diagnostics.
+///
+/// See the developer guide sections `5.2 Owned or non-borrowing host
+/// integration` and `5.4 Reusing prepared state`.
 #[derive(Clone, Default)]
 #[non_exhaustive]
 pub struct OwnedAssemblerConfig {
@@ -1478,6 +1503,13 @@ fn map_asm_run_error_to_workflow(err: AsmRunError) -> asm::AssemblerWorkflowErro
 /// references are already available. If `output_base` is empty, the prepared
 /// flow derives it from `root_path` and stores the resolved value for later
 /// prepared execution.
+///
+/// Defaults use [`ExecutionMode::Vm`], no CPU override, `1000`
+/// `max_loop_iterations`, empty define and path lists, and no source provider.
+///
+/// See the developer guide sections `4.1 output_base matters`,
+/// `4.2 Execution mode defaults`, `4.4 prepare() versus one-shot execution`,
+/// and `5.1 Borrowed host integration`.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct PrepareOptions<'a> {
@@ -1516,6 +1548,14 @@ impl<'a> Default for PrepareOptions<'a> {
 /// Use this when the host wants a direct assemble call without building an
 /// [`Assembler`] or [`AssemblerSession`]. If `output_base` is empty, the public
 /// assembly path derives it from `root_path` by removing the source extension.
+///
+/// Defaults use [`ExecutionMode::Vm`], [`OutputFormat::Text`],
+/// [`LabelOutputFormat::Vice`], `default_outputs = true`, `no_outputs = false`,
+/// and no file overrides, sink, or source provider.
+///
+/// See the developer guide sections `4.1 output_base matters`,
+/// `4.2 Execution mode defaults`, `4.3 check() versus assemble()`, and
+/// `5.1 Borrowed host integration`.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct AssembleOptions<'a> {
@@ -1588,6 +1628,12 @@ impl<'a> Default for AssembleOptions<'a> {
 ///
 /// Prefer this when the host already owns the underlying strings and paths and
 /// only needs to borrow them for a single assembly workflow.
+/// Defaults keep `output_base` empty so it can be derived later, keep the path
+/// and define lists empty, set `pp_macro_depth` to `32`, and leave
+/// `source_provider` unset.
+///
+/// See the developer guide sections `4.1 output_base matters` and
+/// `5.1 Borrowed host integration`.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct SourceOptions<'a> {
@@ -1613,6 +1659,14 @@ impl<'a> Default for SourceOptions<'a> {
 }
 
 /// Borrowed execution-only configuration used by [`AssemblerConfig`].
+///
+/// Prefer this when the host wants borrowed grouped configuration but still
+/// needs to override execution mode, CPU selection, or opasm package source.
+/// Defaults use [`ExecutionMode::Vm`], no CPU override, `1000`
+/// `max_loop_iterations`, and no opasm package path.
+///
+/// See the developer guide sections `4.2 Execution mode defaults` and
+/// `5.1 Borrowed host integration`.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct ExecutionOptions<'a> {
@@ -1634,6 +1688,15 @@ impl<'a> Default for ExecutionOptions<'a> {
 }
 
 /// Borrowed output-only configuration used by [`AssemblerConfig`].
+///
+/// Prefer this when the host wants borrowed grouped configuration for output
+/// routing without committing to the one-shot [`AssembleOptions`] shape.
+/// Defaults use [`OutputFormat::Text`], [`LabelOutputFormat::Vice`],
+/// `default_outputs = true`, `no_outputs = false`, and no output-directory,
+/// file, or sink overrides.
+///
+/// See the developer guide sections `4.1 output_base matters`,
+/// `4.3 check() versus assemble()`, and `5.1 Borrowed host integration`.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct OutputOptions<'a> {
@@ -1679,6 +1742,13 @@ impl<'a> Default for OutputOptions<'a> {
 }
 
 /// Borrowed diagnostics configuration used by [`AssemblerConfig`].
+///
+/// Use this to opt into debug conditional traces or a specific tab width while
+/// keeping the rest of the grouped config borrowed.
+/// Defaults leave debug conditionals disabled and do not force a tab size.
+///
+/// See the developer guide sections `4.3 check() versus assemble()` and
+/// `7. Diagnostics and metadata`.
 #[derive(Clone, Default)]
 #[non_exhaustive]
 pub struct DiagnosticsOptions {
@@ -1690,6 +1760,11 @@ pub struct DiagnosticsOptions {
 ///
 /// Prefer this when the host already owns the underlying config data and can
 /// lend it to the facade for the lifetime of one builder or assembler value.
+/// The default value is just the combination of the individual borrowed option
+/// defaults for source, execution, output, and diagnostics.
+///
+/// See the developer guide sections `5.1 Borrowed host integration`,
+/// `4.1 output_base matters`, and `4.2 Execution mode defaults`.
 #[derive(Clone, Default)]
 #[non_exhaustive]
 pub struct AssemblerConfig<'a> {

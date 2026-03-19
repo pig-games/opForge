@@ -44,7 +44,7 @@ Implement the remediation changes needed to support closure of `RVW-2026-03-19-0
   - Commit outcome: repair the `vm-runtime-only` facade test path to use the facade-visible runtime-model construction and add an always-on `libopforge` `vm-runtime-only` test lane in the existing cargo build matrix
   - Definition of done: the failing processing test no longer depends on `::engine::editor_default_runtime_model()`, `cargo test --locked -p libopforge --features vm-runtime-only` passes locally, the CI matrix exercises that lane explicitly, and the staged diff remains limited to the review-directed public-crate validation fix
 
-- [ ] Item 2
+- [x] Item 2
   - Source requirement or finding IDs: `RVW-2026-03-19-002` (expected closure: partial)
   - Expected files: `crates/opforge-lib/src/lib.rs`; `documentation/libopforge-developer-guide.md` only if a missing anchor or stable section link is strictly required to support the new rustdoc cross-references
   - Validation: `cargo doc --locked -p libopforge --no-deps`; `cargo test --locked -p libopforge`
@@ -65,7 +65,7 @@ Implement the remediation changes needed to support closure of `RVW-2026-03-19-0
 ## Milestones
 
 - [x] Milestone 1: `RVW-2026-03-19-001` is fully remediated and the `vm-runtime-only` public-crate lane is green locally and in CI configuration
-- [ ] Milestone 2: the option and grouped-config portion of `RVW-2026-03-19-002` is documented and landed as its own commit
+- [x] Milestone 2: the option and grouped-config portion of `RVW-2026-03-19-002` is documented and landed as its own commit
 - [ ] Milestone 3: the builder and prepared-session portion of `RVW-2026-03-19-002` is documented and the finding is ready for closure evidence
 
 ## Closure Evidence

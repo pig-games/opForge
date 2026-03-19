@@ -1856,7 +1856,12 @@ impl<'a> From<AssemblerConfig<'a>> for AssembleOptions<'a> {
 ///
 /// Use this when the host wants fluent configuration on top of borrowed data.
 /// Prefer [`AssemblerConfig`] when grouped config construction is a better fit
-/// than chained setters.
+/// than chained setters. This is the borrowed happy path when you want to
+/// configure once and then call `build()`, `prepare()`, `assemble()`, or
+/// `check()` immediately.
+///
+/// See the developer guide sections `5.1 Borrowed host integration` and
+/// `4.4 prepare() versus one-shot execution`.
 pub struct AssemblerBuilder<'a> {
     root_path: &'a Path,
     config: AssemblerConfig<'a>,
@@ -1864,6 +1869,9 @@ pub struct AssemblerBuilder<'a> {
 
 impl<'a> AssemblerBuilder<'a> {
     /// Starts a borrowed builder from an existing grouped config value.
+    ///
+    /// Use this when the host already assembled an [`AssemblerConfig`] and only
+    /// wants the fluent builder entrypoint for the last few adjustments.
     pub fn with_config(root_path: &'a Path, config: AssemblerConfig<'a>) -> Self {
         Self { root_path, config }
     }
@@ -2005,16 +2013,27 @@ impl<'a> AssemblerBuilder<'a> {
     }
 
     /// Finishes configuration and returns the borrowed assembler handle.
+    ///
+    /// Prefer this over `assemble()` or `prepare()` when the host wants to keep
+    /// the assembled borrowed workflow object around for repeated high-level
+    /// calls.
     pub fn build(self) -> Assembler<'a> {
         Assembler::with_config(self.root_path, self.config)
     }
 
     /// Prepares the assembly once and returns reusable prepared state.
+    ///
+    /// This preserves the resolved `output_base`, expanded sources, and
+    /// dependency metadata so the host can inspect or reuse the prepared state
+    /// before later output emission.
     pub fn prepare(self) -> Result<PreparedAssembly<'a>, asm::AssemblerWorkflowError> {
         self.build().prepare()
     }
 
     /// Runs a one-shot high-level assembly using the builder configuration.
+    ///
+    /// Use this when the host wants the borrowed happy path without keeping the
+    /// intermediate [`Assembler`] value.
     pub fn assemble(self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         self.build().assemble()
     }
@@ -2023,6 +2042,8 @@ impl<'a> AssemblerBuilder<'a> {
     ///
     /// This normalizes the output configuration so default outputs, labels,
     /// dependency output, bin specs, and output-file overrides are suppressed.
+    /// Use it when the host wants diagnostics and dependency discovery without
+    /// producing listing, hex, label, or other artifact files.
     pub fn check(self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         self.build().check()
     }
@@ -2030,11 +2051,18 @@ impl<'a> AssemblerBuilder<'a> {
 
 impl AssemblerSessionBuilder {
     /// Starts an owned builder with default grouped configuration.
+    ///
+    /// This is the easiest owned entrypoint for services, FFI-facing hosts, and
+    /// other integrations that want to move `String`, `PathBuf`, and `Arc`
+    /// values into the facade.
     pub fn new(root_path: impl Into<PathBuf>) -> Self {
         Self::with_config(root_path, OwnedAssemblerConfig::default())
     }
 
     /// Starts an owned builder from an existing grouped config value.
+    ///
+    /// Use this when the host already materialized an [`OwnedAssemblerConfig`]
+    /// and wants the fluent builder only for final overrides.
     pub fn with_config(root_path: impl Into<PathBuf>, config: OwnedAssemblerConfig) -> Self {
         Self {
             root_path: root_path.into(),
@@ -2195,6 +2223,10 @@ impl AssemblerSessionBuilder {
     }
 
     /// Finishes configuration and returns the owned-session handle.
+    ///
+    /// Prefer this when the host wants to retain the session and call
+    /// `prepare()`, `assemble()`, or `check()` multiple times with the same
+    /// owned configuration.
     pub fn build(self) -> AssemblerSession {
         AssemblerSession {
             root_path: self.root_path,
@@ -2203,11 +2235,19 @@ impl AssemblerSessionBuilder {
     }
 
     /// Prepares the session once and returns reusable owned prepared state.
+    ///
+    /// This is the owned reuse path described in the developer guide section
+    /// `5.4 Reusing prepared state`. The prepared session keeps the resolved
+    /// `output_base`, expanded lines, source map, and dependency metadata for
+    /// later `assemble()` or `check()` calls.
     pub fn prepare(self) -> Result<PreparedAssemblySession, asm::AssemblerWorkflowError> {
         self.build().prepare()
     }
 
     /// Runs a one-shot high-level assembly using the owned configuration.
+    ///
+    /// Use this when the host wants owned ergonomics but does not need to keep
+    /// the intermediate [`AssemblerSession`] or prepared state.
     pub fn assemble(self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         self.build().assemble()
     }
@@ -2216,6 +2256,8 @@ impl AssemblerSessionBuilder {
     ///
     /// This normalizes the output configuration so default outputs, labels,
     /// dependency output, bin specs, and output-file overrides are suppressed.
+    /// Use it when the host wants owned configuration and full validation
+    /// without producing artifacts on disk or in the configured sink.
     pub fn check(self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         self.build().check()
     }
@@ -2226,6 +2268,12 @@ impl AssemblerSessionBuilder {
 /// Use this when the host can borrow configuration for the duration of one
 /// workflow or one prepared session. Prefer [`AssemblerSession`] when the host
 /// needs owned configuration that survives independently of borrowed inputs.
+/// `Assembler` is the main borrowed facade type for the high-level happy path:
+/// create it with [`Assembler::new`] or [`Assembler::with_config`], then call
+/// `assemble()`, `prepare()`, or `check()`.
+///
+/// See the developer guide sections `5.1 Borrowed host integration` and
+/// `4.4 prepare() versus one-shot execution`.
 pub struct Assembler<'a> {
     root_path: &'a Path,
     config: AssemblerConfig<'a>,
@@ -2234,7 +2282,12 @@ pub struct Assembler<'a> {
 /// Builder for the owned high-level [`AssemblerSession`] workflow.
 ///
 /// Prefer this when the host wants fluent setters but needs owned `String`,
-/// `PathBuf`, and `Arc` values rather than borrowed references.
+/// `PathBuf`, and `Arc` values rather than borrowed references. This is the
+/// owned happy path before choosing whether to keep an [`AssemblerSession`],
+/// emit outputs immediately, or prepare reusable state.
+///
+/// See the developer guide sections `5.2 Owned or non-borrowing host
+/// integration` and `5.4 Reusing prepared state`.
 pub struct AssemblerSessionBuilder {
     root_path: PathBuf,
     config: OwnedAssemblerConfig,
@@ -2245,6 +2298,11 @@ pub struct AssemblerSessionBuilder {
 ///
 /// Use this when configuration must be retained and reused across multiple
 /// prepare, assemble, or check calls without keeping borrowed inputs alive.
+/// This is the stable owned counterpart to [`Assembler`] for long-lived host
+/// integrations.
+///
+/// See the developer guide sections `5.2 Owned or non-borrowing host
+/// integration` and `5.4 Reusing prepared state`.
 pub struct AssemblerSession {
     root_path: PathBuf,
     config: OwnedAssemblerConfig,
@@ -2255,7 +2313,11 @@ pub struct AssemblerSession {
 ///
 /// This preserves the expanded module graph, source map, dependency files, and
 /// resolved output base so the host can inspect metadata before later
-/// `assemble()` or `check()` calls.
+/// `assemble()` or `check()` calls. Reuse this when preparation is expensive
+/// relative to repeated execution or validation.
+///
+/// See the developer guide sections `4.4 prepare() versus one-shot execution`
+/// and `5.4 Reusing prepared state`.
 pub struct PreparedAssemblySession {
     root_path: PathBuf,
     config: OwnedAssemblerConfig,
@@ -2276,7 +2338,12 @@ pub struct PreparedAssemblySession {
 ///
 /// Use this when the host wants to inspect preparation metadata such as the
 /// root module, resolved CPU, source map, or dependency files before deciding
-/// whether to emit outputs.
+/// whether to emit outputs. The prepared value retains the resolved
+/// `output_base` so later borrowed `assemble()` or `check()` calls stay aligned
+/// with the preparation step.
+///
+/// See the developer guide sections `4.4 prepare() versus one-shot execution`
+/// and `5.4 Reusing prepared state`.
 pub struct PreparedAssembly<'a> {
     root_path: &'a Path,
     config: AssemblerConfig<'a>,
@@ -2294,6 +2361,9 @@ pub struct PreparedAssembly<'a> {
 
 impl<'a> Assembler<'a> {
     /// Creates a borrowed assembler with default grouped configuration.
+    ///
+    /// Use this when the root path is known and the rest of the borrowed
+    /// configuration can be applied through the returned value or its builder.
     pub fn new(root_path: &'a Path) -> Self {
         Self {
             root_path,
@@ -2302,11 +2372,17 @@ impl<'a> Assembler<'a> {
     }
 
     /// Starts a borrowed builder with default grouped configuration.
+    ///
+    /// Prefer this over [`Assembler::new`] when the host wants the fluent
+    /// builder path from the start.
     pub fn builder(root_path: &'a Path) -> AssemblerBuilder<'a> {
         AssemblerBuilder::with_config(root_path, AssemblerConfig::default())
     }
 
     /// Creates a borrowed assembler from an existing grouped config value.
+    ///
+    /// Use this when the host already has an [`AssemblerConfig`] and wants the
+    /// stable borrowed workflow handle directly.
     pub fn with_config<T>(root_path: &'a Path, config: T) -> Self
     where
         T: Into<AssemblerConfig<'a>>,
@@ -2333,6 +2409,9 @@ impl<'a> Assembler<'a> {
     }
 
     /// Runs a one-shot high-level assembly.
+    ///
+    /// This is the direct borrowed execution path when the host wants outputs
+    /// now and does not need to retain prepared state.
     pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         assemble(self.root_path, self.config.clone().into())
     }
@@ -2341,7 +2420,8 @@ impl<'a> Assembler<'a> {
     ///
     /// When `output_base` is omitted in the config, the prepared value stores
     /// the root-path-derived base so later prepared execution uses the same
-    /// resolved path.
+    /// resolved path. Use this when the host needs to inspect metadata or reuse
+    /// the expanded assembly state before deciding whether to emit outputs.
     pub fn prepare(&self) -> Result<PreparedAssembly<'a>, asm::AssemblerWorkflowError> {
         let (prepared, effective) = prepare_public_assembly(PublicPrepareRequest {
             root_path: self.root_path,
@@ -2373,7 +2453,9 @@ impl<'a> Assembler<'a> {
     /// Validates without emitting outputs.
     ///
     /// This suppresses default outputs, labels, dependency output, bin specs,
-    /// and output-file overrides before running the high-level workflow.
+    /// and output-file overrides before running the high-level workflow. Use it
+    /// when the host wants the same high-level pipeline as `assemble()` but with
+    /// artifact emission suppressed.
     pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_output_options_for_check(&mut config.output);
@@ -2383,11 +2465,17 @@ impl<'a> Assembler<'a> {
 
 impl AssemblerSession {
     /// Starts an owned builder with default grouped configuration.
+    ///
+    /// Prefer this for owned or non-borrowing integrations that want the
+    /// fluent builder happy path.
     pub fn builder(root_path: impl Into<PathBuf>) -> AssemblerSessionBuilder {
         AssemblerSessionBuilder::new(root_path)
     }
 
     /// Creates an owned session from an existing grouped config value.
+    ///
+    /// Use this when the host already has an [`OwnedAssemblerConfig`] and wants
+    /// the stable owned workflow handle directly.
     pub fn with_config(root_path: impl Into<PathBuf>, config: OwnedAssemblerConfig) -> Self {
         AssemblerSessionBuilder::with_config(root_path, config).build()
     }
@@ -2403,6 +2491,9 @@ impl AssemblerSession {
     }
 
     /// Runs a one-shot high-level assembly.
+    ///
+    /// This is the direct owned execution path when the host wants outputs now
+    /// and does not need to retain prepared state.
     pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         assemble_raw(self.root_path.as_path(), self.config.as_borrowed())
             .map_err(map_asm_run_error_to_workflow)
@@ -2412,7 +2503,8 @@ impl AssemblerSession {
     ///
     /// When `output_base` is omitted in the config, the prepared session stores
     /// the root-path-derived base so later prepared execution uses the same
-    /// resolved path.
+    /// resolved path. Use this when the host needs reusable prepared state that
+    /// is independent of borrowed input lifetimes.
     pub fn prepare(&self) -> Result<PreparedAssemblySession, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         let (prepared, resolved_input_base) = {
@@ -2451,7 +2543,9 @@ impl AssemblerSession {
     /// Validates without emitting outputs.
     ///
     /// This suppresses default outputs, labels, dependency output, bin specs,
-    /// and output-file overrides before running the high-level workflow.
+    /// and output-file overrides before running the high-level workflow. Use it
+    /// when the host wants the owned-session path but only needs diagnostics and
+    /// metadata.
     pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_owned_config_for_check(&mut config);
@@ -2487,6 +2581,9 @@ impl<'a> PreparedAssembly<'a> {
     }
 
     /// Executes the prepared assembly using the stored prepared state.
+    ///
+    /// Reuses the output-base resolution captured during `prepare()` so the
+    /// emitted artifacts stay aligned with the preparation step.
     pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let input_base = self
             .resolved_output_base
@@ -2510,6 +2607,9 @@ impl<'a> PreparedAssembly<'a> {
     }
 
     /// Validates the prepared assembly without emitting outputs.
+    ///
+    /// This reuses the stored prepared state but suppresses artifact emission in
+    /// the same way as the high-level borrowed `check()` path.
     pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_output_options_for_check(&mut config.output);
@@ -2548,6 +2648,9 @@ impl PreparedAssemblySession {
     }
 
     /// Executes the prepared assembly using the stored prepared state.
+    ///
+    /// Reuses the owned prepared state, including the resolved `output_base`,
+    /// expanded lines, and dependency metadata captured during `prepare()`.
     pub fn assemble(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let borrowed = self.config.as_borrowed();
         run_public_prepared_assembly(
@@ -2568,6 +2671,9 @@ impl PreparedAssemblySession {
     }
 
     /// Validates the prepared assembly without emitting outputs.
+    ///
+    /// This keeps the prepared-session reuse path but suppresses artifact
+    /// emission in the same way as the owned high-level `check()` path.
     pub fn check(&self) -> Result<AsmRunReport, asm::AssemblerWorkflowError> {
         let mut config = self.config.clone();
         normalize_owned_config_for_check(&mut config);

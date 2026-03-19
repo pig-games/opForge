@@ -53,7 +53,7 @@ Implement the remediation changes needed to support closure of `RVW-2026-03-19-0
   - Commit outcome: add consistent rustdoc to the grouped and option-centric public facade types so docs.rs and IDE hover explain when to use owned versus borrowed configuration paths and what default behavior each option set carries
   - Definition of done: `OwnedSourceOptions`, `OwnedExecutionOptions`, `OwnedOutputOptions`, `OwnedAssemblerConfig`, `PrepareOptions`, `AssembleOptions`, `SourceOptions`, `ExecutionOptions`, `OutputOptions`, `DiagnosticsOptions`, and `AssemblerConfig` all have inline rustdoc that covers intended use, default behavior, and guide cross-reference points without changing runtime behavior
 
-- [ ] Item 3
+- [x] Item 3
   - Source requirement or finding IDs: `RVW-2026-03-19-002` (expected closure: full)
   - Expected files: `crates/opforge-lib/src/lib.rs`
   - Validation: `cargo doc --locked -p libopforge --no-deps`; `cargo test --locked -p libopforge`
@@ -66,7 +66,7 @@ Implement the remediation changes needed to support closure of `RVW-2026-03-19-0
 
 - [x] Milestone 1: `RVW-2026-03-19-001` is fully remediated and the `vm-runtime-only` public-crate lane is green locally and in CI configuration
 - [x] Milestone 2: the option and grouped-config portion of `RVW-2026-03-19-002` is documented and landed as its own commit
-- [ ] Milestone 3: the builder and prepared-session portion of `RVW-2026-03-19-002` is documented and the finding is ready for closure evidence
+- [x] Milestone 3: the builder and prepared-session portion of `RVW-2026-03-19-002` is documented and the finding is ready for closure evidence
 
 ## Closure Evidence
 

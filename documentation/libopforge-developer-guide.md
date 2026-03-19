@@ -111,6 +111,8 @@ Reference example:
 
 - `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`
 
+For mode-selection recipes and lockstep-specific workflow guidance, see the `Execution Modes and Lockstep Guide` in `documentation/libopforge-execution-modes-and-lockstep-guide.md`.
+
 ### 4.3 `check()` versus `assemble()`
 
 Use `check()` when you want validation without output-side effects.
@@ -140,6 +142,8 @@ Reference example:
 - `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`
 
 ## 5. High-level Rust integration patterns
+
+For task-first host recipes, see the `Embedding Cookbook` in `documentation/libopforge-embedding-cookbook.md`.
 
 ### 5.1 Borrowed host integration
 
@@ -400,15 +404,23 @@ This guide remains the entrypoint for `libopforge`, but it should not become the
 
 | If you are trying to... | Primary document | Decision boundary |
 |---|---|---|
-| embed `libopforge` into a CLI, IDE, service, FFI host, or test harness | this guide today; future `Embedding Cookbook` | keep orientation, stable facade entrypoints, and end-to-end host setup here; move task recipes and host-pattern walkthroughs into the cookbook |
-| choose between Rust and VM execution, understand lockstep expectations, or reason about parity-sensitive runtime paths | this guide today; future `Execution Modes and Lockstep` guide | keep the high-level runtime model here; move detailed mode-selection rules, parity notes, and lockstep workflows into the runtime guide |
+| embed `libopforge` into a CLI, IDE, service, FFI host, or test harness | `Embedding Cookbook` (`documentation/libopforge-embedding-cookbook.md`) | keep orientation and stable facade boundaries here; use the cookbook for task recipes and host-pattern walkthroughs |
+| choose between Rust and VM execution, understand lockstep expectations, or reason about parity-sensitive runtime paths | `Execution Modes and Lockstep Guide` (`documentation/libopforge-execution-modes-and-lockstep-guide.md`) | keep the high-level runtime model here; use the runtime guide for mode-selection rules, parity notes, and lockstep workflows |
 | extend CPU or family support below the stable facade | `documentation/libopforge-specification.md` today; future `CPU/Family Extension Guide` | keep public architecture boundaries in the specification; move contributor implementation steps and extension checklists into the extension guide |
 | integrate diagnostics, fixits, and editor or CI feedback loops | this guide today; future `Diagnostics and Fixits` guide | keep the stable diagnostic contract here; move IDE, CI, and fixit-consumer recipes into the diagnostics guide |
 
-Until those companion guides are published, keep detailed material in the closest matching section above and update this matrix whenever content moves.
+Task-first entry links:
+
+- `Embedding Cookbook`: `documentation/libopforge-embedding-cookbook.md`
+- `Execution Modes and Lockstep Guide`: `documentation/libopforge-execution-modes-and-lockstep-guide.md`
+- Extension architecture boundaries: `documentation/libopforge-specification.md`
+
+Until the remaining companion guides are published, keep detailed diagnostics and extension material in the closest matching section above and update this matrix whenever content moves.
 
 The maintained companion documents for the current branch are:
 
 - `README.md`
+- `documentation/libopforge-embedding-cookbook.md`
+- `documentation/libopforge-execution-modes-and-lockstep-guide.md`
 - `documentation/libopforge-specification.md`
 - `documentation/vm-boundary-protocol-v1.md`

@@ -50,7 +50,7 @@ Implement the documentation and rustdoc changes needed to close `RVW-2026-03-19-
   - Commit outcome: publish the host-integration and runtime-selection companion guides and wire the developer guide to them with stable task-based entry links
   - Definition of done: the documentation set contains a usable Embedding Cookbook and Execution Modes and Lockstep guide, the developer guide routes readers to those documents for task-specific detail, and the new content stays within the review's host-facing documentation scope
 
-- [ ] Item 3
+- [x] Item 3
   - Source requirement or finding IDs: `RVW-2026-03-19-001` (expected closure: full)
   - Expected files: `documentation/libopforge-cpu-family-extension-guide.md`; `documentation/libopforge-diagnostics-and-fixits-guide.md`; `documentation/libopforge-developer-guide.md`
   - Validation: `cd /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib && cargo test --locked -p libopforge`; `cd /Users/erik/Code/Retro/opForge/worktrees/libopforge-lib && rg -n "CPU/Family Extension Guide|Diagnostics and Fixits|Embedding Cookbook|Execution Modes and Lockstep" documentation/libopforge-developer-guide.md documentation/libopforge-*.md`
@@ -81,7 +81,7 @@ Implement the documentation and rustdoc changes needed to close `RVW-2026-03-19-
 
 - [x] Milestone 1: stale documentation references are removed and the developer-guide roadmap is current
 - [x] Milestone 2: the Embedding Cookbook and Execution Modes and Lockstep guide are published and linked from the main guide
-- [ ] Milestone 3: all four companion guides exist and the developer guide has been reduced to index and decision-matrix duties
+- [x] Milestone 3: all four companion guides exist and the developer guide has been reduced to index and decision-matrix duties
 - [ ] Milestone 4: the processing and builder rustdoc pass is complete and ready for closure review
 
 ## Closure Evidence

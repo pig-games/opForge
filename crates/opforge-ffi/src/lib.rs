@@ -3113,14 +3113,7 @@ pub unsafe extern "C" fn opforge_opcore_tokenize_line(
     Box::into_raw(Box::new(report))
 }
 
-#[no_mangle]
-/// Read the processor status from an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_status(
+fn tokenize_report_status_impl(
     report: *const OpforgeOpcoreTokenizeReport,
 ) -> OpforgeProcessorStatus {
     tokenize_report_ref(report).map_or(OpforgeProcessorStatus::InvalidRequest, |report| {
@@ -3128,27 +3121,11 @@ pub unsafe extern "C" fn opforge_opcore_tokenize_report_status(
     })
 }
 
-#[no_mangle]
-/// Return the token count for an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_count(
-    report: *const OpforgeOpcoreTokenizeReport,
-) -> usize {
+fn tokenize_report_token_count_impl(report: *const OpforgeOpcoreTokenizeReport) -> usize {
     tokenize_report_ref(report).map_or(0, |report| report.tokens.len())
 }
 
-#[no_mangle]
-/// Return the token kind at `index` for an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_kind(
+fn tokenize_report_token_kind_impl(
     report: *const OpforgeOpcoreTokenizeReport,
     index: usize,
 ) -> OpforgeTokenKind {
@@ -3158,28 +3135,14 @@ pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_kind(
         .unwrap_or(OpforgeTokenKind::Invalid)
 }
 
-#[no_mangle]
-/// Borrow the token source text at `index` for an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_text(
+fn tokenize_report_token_text_impl(
     report: *const OpforgeOpcoreTokenizeReport,
     index: usize,
 ) -> *const c_char {
     tokenize_report_ref(report).map_or(std::ptr::null(), |report| report.token_text_ptr(index))
 }
 
-#[no_mangle]
-/// Return the token line at `index` for an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_line(
+fn tokenize_report_token_line_impl(
     report: *const OpforgeOpcoreTokenizeReport,
     index: usize,
 ) -> u32 {
@@ -3188,14 +3151,7 @@ pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_line(
         .map_or(0, |token| token.span.line)
 }
 
-#[no_mangle]
-/// Return the token start column at `index` for an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_col_start(
+fn tokenize_report_token_col_start_impl(
     report: *const OpforgeOpcoreTokenizeReport,
     index: usize,
 ) -> usize {
@@ -3204,14 +3160,7 @@ pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_col_start(
         .map_or(0, |token| token.span.col_start)
 }
 
-#[no_mangle]
-/// Return the token end column at `index` for an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_col_end(
+fn tokenize_report_token_col_end_impl(
     report: *const OpforgeOpcoreTokenizeReport,
     index: usize,
 ) -> usize {
@@ -3220,68 +3169,23 @@ pub unsafe extern "C" fn opforge_opcore_tokenize_report_token_col_end(
         .map_or(0, |token| token.span.col_end)
 }
 
-#[no_mangle]
-/// Borrow the error message from an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_error_message(
-    report: *const OpforgeOpcoreTokenizeReport,
-) -> *const c_char {
+fn tokenize_report_error_message_impl(report: *const OpforgeOpcoreTokenizeReport) -> *const c_char {
     tokenize_report_ref(report).map_or(std::ptr::null(), |report| report.error_message_ptr())
 }
 
-#[no_mangle]
-/// Return the error line from an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_error_line(
-    report: *const OpforgeOpcoreTokenizeReport,
-) -> u32 {
+fn tokenize_report_error_line_impl(report: *const OpforgeOpcoreTokenizeReport) -> u32 {
     tokenize_report_ref(report).map_or(0, |report| report.error_line)
 }
 
-#[no_mangle]
-/// Return the error start column from an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_error_col_start(
-    report: *const OpforgeOpcoreTokenizeReport,
-) -> usize {
+fn tokenize_report_error_col_start_impl(report: *const OpforgeOpcoreTokenizeReport) -> usize {
     tokenize_report_ref(report).map_or(0, |report| report.error_col_start)
 }
 
-#[no_mangle]
-/// Return the error end column from an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_error_col_end(
-    report: *const OpforgeOpcoreTokenizeReport,
-) -> usize {
+fn tokenize_report_error_col_end_impl(report: *const OpforgeOpcoreTokenizeReport) -> usize {
     tokenize_report_ref(report).map_or(0, |report| report.error_col_end)
 }
 
-#[no_mangle]
-/// Free an `opforge_opcore_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_tokenize_line`.
-pub unsafe extern "C" fn opforge_opcore_tokenize_report_free(
-    report: *mut OpforgeOpcoreTokenizeReport,
-) {
+fn tokenize_report_free_impl(report: *mut OpforgeOpcoreTokenizeReport) {
     if report.is_null() {
         return;
     }
@@ -3289,6 +3193,134 @@ pub unsafe extern "C" fn opforge_opcore_tokenize_report_free(
         drop(Box::from_raw(report));
     }
 }
+
+macro_rules! define_tokenize_report_accessors {
+    (
+        report_ty = $report_ty:ty,
+        surface = $surface:literal,
+        constructor = $constructor:literal,
+        status = $status_fn:ident,
+        token_count = $token_count_fn:ident,
+        token_kind = $token_kind_fn:ident,
+        token_text = $token_text_fn:ident,
+        token_line = $token_line_fn:ident,
+        token_col_start = $token_col_start_fn:ident,
+        token_col_end = $token_col_end_fn:ident,
+        error_message = $error_message_fn:ident,
+        error_line = $error_line_fn:ident,
+        error_col_start = $error_col_start_fn:ident,
+        error_col_end = $error_col_end_fn:ident,
+        free = $free_fn:ident
+    ) => {
+        #[no_mangle]
+        #[doc = concat!("Read the processor status from an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $status_fn(report: *const $report_ty) -> OpforgeProcessorStatus {
+            tokenize_report_status_impl(report as *const OpforgeOpcoreTokenizeReport)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the token count for an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $token_count_fn(report: *const $report_ty) -> usize {
+            tokenize_report_token_count_impl(report as *const OpforgeOpcoreTokenizeReport)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the token kind at `index` for an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $token_kind_fn(
+            report: *const $report_ty,
+            index: usize,
+        ) -> OpforgeTokenKind {
+            tokenize_report_token_kind_impl(report as *const OpforgeOpcoreTokenizeReport, index)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Borrow the token source text at `index` for an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $token_text_fn(
+            report: *const $report_ty,
+            index: usize,
+        ) -> *const c_char {
+            tokenize_report_token_text_impl(report as *const OpforgeOpcoreTokenizeReport, index)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the token line at `index` for an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $token_line_fn(report: *const $report_ty, index: usize) -> u32 {
+            tokenize_report_token_line_impl(report as *const OpforgeOpcoreTokenizeReport, index)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the token start column at `index` for an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $token_col_start_fn(
+            report: *const $report_ty,
+            index: usize,
+        ) -> usize {
+            tokenize_report_token_col_start_impl(
+                report as *const OpforgeOpcoreTokenizeReport,
+                index,
+            )
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the token end column at `index` for an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $token_col_end_fn(
+            report: *const $report_ty,
+            index: usize,
+        ) -> usize {
+            tokenize_report_token_col_end_impl(
+                report as *const OpforgeOpcoreTokenizeReport,
+                index,
+            )
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Borrow the error message from an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $error_message_fn(report: *const $report_ty) -> *const c_char {
+            tokenize_report_error_message_impl(report as *const OpforgeOpcoreTokenizeReport)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the error line from an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $error_line_fn(report: *const $report_ty) -> u32 {
+            tokenize_report_error_line_impl(report as *const OpforgeOpcoreTokenizeReport)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the error start column from an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $error_col_start_fn(report: *const $report_ty) -> usize {
+            tokenize_report_error_col_start_impl(report as *const OpforgeOpcoreTokenizeReport)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the error end column from an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $error_col_end_fn(report: *const $report_ty) -> usize {
+            tokenize_report_error_col_end_impl(report as *const OpforgeOpcoreTokenizeReport)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Free an `", $surface, "` tokenize report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $free_fn(report: *mut $report_ty) {
+            tokenize_report_free_impl(report as *mut OpforgeOpcoreTokenizeReport);
+        }
+    };
+}
+
+define_tokenize_report_accessors!(
+    report_ty = OpforgeOpcoreTokenizeReport,
+    surface = "opforge_opcore_*",
+    constructor = "opforge_opcore_tokenize_line",
+    status = opforge_opcore_tokenize_report_status,
+    token_count = opforge_opcore_tokenize_report_token_count,
+    token_kind = opforge_opcore_tokenize_report_token_kind,
+    token_text = opforge_opcore_tokenize_report_token_text,
+    token_line = opforge_opcore_tokenize_report_token_line,
+    token_col_start = opforge_opcore_tokenize_report_token_col_start,
+    token_col_end = opforge_opcore_tokenize_report_token_col_end,
+    error_message = opforge_opcore_tokenize_report_error_message,
+    error_line = opforge_opcore_tokenize_report_error_line,
+    error_col_start = opforge_opcore_tokenize_report_error_col_start,
+    error_col_end = opforge_opcore_tokenize_report_error_col_end,
+    free = opforge_opcore_tokenize_report_free
+);
 
 #[no_mangle]
 /// Tokenize one assembler statement line through the stable lower-level `opforge_opasm_*` surface.
@@ -3338,182 +3370,23 @@ pub unsafe extern "C" fn opforge_opasm_tokenize_statement(
     Box::into_raw(Box::new(report))
 }
 
-#[no_mangle]
-/// Read the processor status from an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_status(
-    report: *const OpforgeOpasmTokenizeReport,
-) -> OpforgeProcessorStatus {
-    tokenize_report_ref(report).map_or(OpforgeProcessorStatus::InvalidRequest, |report| {
-        report.status
-    })
-}
-
-#[no_mangle]
-/// Return the token count for an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_token_count(
-    report: *const OpforgeOpasmTokenizeReport,
-) -> usize {
-    tokenize_report_ref(report).map_or(0, |report| report.tokens.len())
-}
-
-#[no_mangle]
-/// Return the token kind at `index` for an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_token_kind(
-    report: *const OpforgeOpasmTokenizeReport,
-    index: usize,
-) -> OpforgeTokenKind {
-    tokenize_report_ref(report)
-        .and_then(|report| report.tokens.get(index))
-        .map(|token| map_portable_token_kind(&token.kind))
-        .unwrap_or(OpforgeTokenKind::Invalid)
-}
-
-#[no_mangle]
-/// Borrow the token source text at `index` for an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_token_text(
-    report: *const OpforgeOpasmTokenizeReport,
-    index: usize,
-) -> *const c_char {
-    tokenize_report_ref(report).map_or(std::ptr::null(), |report| report.token_text_ptr(index))
-}
-
-#[no_mangle]
-/// Return the token line at `index` for an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_token_line(
-    report: *const OpforgeOpasmTokenizeReport,
-    index: usize,
-) -> u32 {
-    tokenize_report_ref(report)
-        .and_then(|report| report.tokens.get(index))
-        .map_or(0, |token| token.span.line)
-}
-
-#[no_mangle]
-/// Return the token start column at `index` for an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_token_col_start(
-    report: *const OpforgeOpasmTokenizeReport,
-    index: usize,
-) -> usize {
-    tokenize_report_ref(report)
-        .and_then(|report| report.tokens.get(index))
-        .map_or(0, |token| token.span.col_start)
-}
-
-#[no_mangle]
-/// Return the token end column at `index` for an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_token_col_end(
-    report: *const OpforgeOpasmTokenizeReport,
-    index: usize,
-) -> usize {
-    tokenize_report_ref(report)
-        .and_then(|report| report.tokens.get(index))
-        .map_or(0, |token| token.span.col_end)
-}
-
-#[no_mangle]
-/// Borrow the parse error message from an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_error_message(
-    report: *const OpforgeOpasmTokenizeReport,
-) -> *const c_char {
-    tokenize_report_ref(report).map_or(std::ptr::null(), |report| report.error_message_ptr())
-}
-
-#[no_mangle]
-/// Return the error line from an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_error_line(
-    report: *const OpforgeOpasmTokenizeReport,
-) -> u32 {
-    tokenize_report_ref(report).map_or(0, |report| report.error_line)
-}
-
-#[no_mangle]
-/// Return the error start column from an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_error_col_start(
-    report: *const OpforgeOpasmTokenizeReport,
-) -> usize {
-    tokenize_report_ref(report).map_or(0, |report| report.error_col_start)
-}
-
-#[no_mangle]
-/// Return the error end column from an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_error_col_end(
-    report: *const OpforgeOpasmTokenizeReport,
-) -> usize {
-    tokenize_report_ref(report).map_or(0, |report| report.error_col_end)
-}
-
-#[no_mangle]
-/// Free an `opforge_opasm_*` tokenize report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_tokenize_statement`.
-pub unsafe extern "C" fn opforge_opasm_tokenize_report_free(
-    report: *mut OpforgeOpasmTokenizeReport,
-) {
-    if report.is_null() {
-        return;
-    }
-    unsafe {
-        drop(Box::from_raw(report));
-    }
-}
+define_tokenize_report_accessors!(
+    report_ty = OpforgeOpasmTokenizeReport,
+    surface = "opforge_opasm_*",
+    constructor = "opforge_opasm_tokenize_statement",
+    status = opforge_opasm_tokenize_report_status,
+    token_count = opforge_opasm_tokenize_report_token_count,
+    token_kind = opforge_opasm_tokenize_report_token_kind,
+    token_text = opforge_opasm_tokenize_report_token_text,
+    token_line = opforge_opasm_tokenize_report_token_line,
+    token_col_start = opforge_opasm_tokenize_report_token_col_start,
+    token_col_end = opforge_opasm_tokenize_report_token_col_end,
+    error_message = opforge_opasm_tokenize_report_error_message,
+    error_line = opforge_opasm_tokenize_report_error_line,
+    error_col_start = opforge_opasm_tokenize_report_error_col_start,
+    error_col_end = opforge_opasm_tokenize_report_error_col_end,
+    free = opforge_opasm_tokenize_report_free
+);
 
 #[no_mangle]
 /// Parse one assembler-oriented statement/directive through the stable lower-level
@@ -5635,12 +5508,12 @@ mod tests {
         LabelOutputFormat, OpforgeAsmDiagnosticsOptions, OpforgeAsmExecutionOptions,
         OpforgeAsmOutputOptions, OpforgeAsmRequest, OpforgeAsmSourceOptions,
         OpforgeDiagnosticSeverity, OpforgeExprNodeKind, OpforgeLineAstKind,
-        OpforgeOpasmProcessConfig, OpforgeOutputCallbacks, OpforgePreparedAsmSession,
-        OpforgeProcessorStatus, OpforgeStatus, OpforgeStringList, OpforgeTokenKind,
-        OPFORGE_DEFAULT_OUTPUTS_DEFAULT, OPFORGE_DEFAULT_OUTPUTS_DISABLE,
-        OPFORGE_DEFAULT_OUTPUTS_ENABLE, OPFORGE_EXECUTION_MODE_DEFAULT,
-        OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST, OPFORGE_EXECUTION_MODE_LOCKSTEP_VM,
-        OPFORGE_EXECUTION_MODE_RUST, OPFORGE_EXECUTION_MODE_VM,
+        OpforgeOpasmProcessConfig, OpforgeOpasmTokenizeReport, OpforgeOpcoreTokenizeReport,
+        OpforgeOutputCallbacks, OpforgePreparedAsmSession, OpforgeProcessorStatus, OpforgeStatus,
+        OpforgeStringList, OpforgeTokenKind, OPFORGE_DEFAULT_OUTPUTS_DEFAULT,
+        OPFORGE_DEFAULT_OUTPUTS_DISABLE, OPFORGE_DEFAULT_OUTPUTS_ENABLE,
+        OPFORGE_EXECUTION_MODE_DEFAULT, OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST,
+        OPFORGE_EXECUTION_MODE_LOCKSTEP_VM, OPFORGE_EXECUTION_MODE_RUST, OPFORGE_EXECUTION_MODE_VM,
         OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT, OPFORGE_OUTPUT_FORMAT_TEXT,
     };
     use std::ffi::c_void;
@@ -7679,6 +7552,91 @@ mod tests {
                 >= unsafe { opforge_opasm_tokenize_report_error_col_start(report) }
         );
         unsafe { opforge_opasm_tokenize_report_free(report) };
+    }
+
+    #[test]
+    fn ffi_tokenize_report_accessors_preserve_null_defaults_across_surfaces() {
+        let opcore = std::ptr::null::<OpforgeOpcoreTokenizeReport>();
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_status(opcore) },
+            OpforgeProcessorStatus::InvalidRequest
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_token_count(opcore) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_token_kind(opcore, 0) },
+            OpforgeTokenKind::Invalid
+        );
+        assert!(unsafe { opforge_opcore_tokenize_report_token_text(opcore, 0) }.is_null());
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_token_line(opcore, 0) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_token_col_start(opcore, 0) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_token_col_end(opcore, 0) },
+            0
+        );
+        assert!(unsafe { opforge_opcore_tokenize_report_error_message(opcore) }.is_null());
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_error_line(opcore) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_error_col_start(opcore) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_error_col_end(opcore) },
+            0
+        );
+        unsafe { opforge_opcore_tokenize_report_free(std::ptr::null_mut()) };
+
+        let opasm = std::ptr::null::<OpforgeOpasmTokenizeReport>();
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_status(opasm) },
+            OpforgeProcessorStatus::InvalidRequest
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_token_count(opasm) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_token_kind(opasm, 0) },
+            OpforgeTokenKind::Invalid
+        );
+        assert!(unsafe { opforge_opasm_tokenize_report_token_text(opasm, 0) }.is_null());
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_token_line(opasm, 0) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_token_col_start(opasm, 0) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_token_col_end(opasm, 0) },
+            0
+        );
+        assert!(unsafe { opforge_opasm_tokenize_report_error_message(opasm) }.is_null());
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_error_line(opasm) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_error_col_start(opasm) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_tokenize_report_error_col_end(opasm) },
+            0
+        );
+        unsafe { opforge_opasm_tokenize_report_free(std::ptr::null_mut()) };
     }
 
     #[test]

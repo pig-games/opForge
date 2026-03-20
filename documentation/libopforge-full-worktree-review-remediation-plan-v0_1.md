@@ -37,7 +37,7 @@ changing public behavior.
   - Commit outcome: planned: one commit that makes borrowed and owned builders thin frontends over one private config-mutating implementation
   - Definition of done: duplicated builder setter behavior is routed through one internal implementation path while public borrowed and owned APIs stay behaviorally identical
 
-- [ ] Item 2: Introduce a private FFI helper layer and migrate one cohesive tokenize-report family
+- [x] Item 2: Introduce a private FFI helper layer and migrate one cohesive tokenize-report family
   - Source requirement or finding IDs: RVW-2026-03-20-001 (expected partial closure)
   - Expected files: `crates/opforge-ffi/src/lib.rs`; `crates/opforge-ffi/tests/abi_contract.rs`
   - Validation: `cargo test -q -p ffi`; verify the migrated tokenize-report family keeps the same null handling, status values, and exported signatures

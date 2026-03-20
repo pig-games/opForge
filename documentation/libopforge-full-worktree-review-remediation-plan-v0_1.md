@@ -55,7 +55,7 @@ changing public behavior.
   - Commit outcome: planned: one commit that rolls the helper layer out to the repeated report accessor and paired assemble/check clusters called out by the review
   - Definition of done: the targeted repetitive FFI accessor and paired entrypoint clusters are derived from one shared internal layer, handwritten duplication is materially reduced, and RVW-2026-03-20-001 is fully closed
 
-- [ ] Item 4: Replace repeated workflow error wrapper storage and impls with one private shared detail type
+- [x] Item 4: Replace repeated workflow error wrapper storage and impls with one private shared detail type
   - Source requirement or finding IDs: RVW-2026-03-20-003 (expected full closure)
   - Expected files: `crates/opforge-lib/src/lib.rs`
   - Validation: `cargo test -q -p libopforge`; verify the public workflow error variants still expose the same codes, summaries, and trait behavior
@@ -84,7 +84,7 @@ changing public behavior.
 
 ## Milestones
 
-- [ ] Milestone 1: public `opforge-lib` facade duplication is reduced by completing Items 1 and 4
+- [x] Milestone 1: public `opforge-lib` facade duplication is reduced by completing Items 1 and 4
 - [ ] Milestone 2: FFI repetition is reduced through the shared helper rollout in Items 2 and 3
 - [ ] Milestone 3: tooling-layer duplication is reduced by completing Items 5 and 6
 

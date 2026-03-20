@@ -566,128 +566,71 @@ pub mod asm {
     }
 
     #[derive(Debug, Clone)]
-    pub struct InvalidArgumentError {
+    struct WorkflowErrorDetail {
         code: String,
         summary: String,
     }
 
-    impl InvalidArgumentError {
-        pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
+    impl WorkflowErrorDetail {
+        fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
             Self {
                 code: code.into(),
                 summary: summary.into(),
             }
         }
 
-        pub fn code(&self) -> &str {
+        fn code(&self) -> &str {
             &self.code
         }
 
-        pub fn summary(&self) -> &str {
+        fn summary(&self) -> &str {
             &self.summary
         }
     }
 
-    impl std::fmt::Display for InvalidArgumentError {
+    impl std::fmt::Display for WorkflowErrorDetail {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(self.summary())
         }
     }
 
-    impl std::error::Error for InvalidArgumentError {}
-
-    #[derive(Debug, Clone)]
-    pub struct InvalidRequestError {
-        code: String,
-        summary: String,
-    }
-
-    impl InvalidRequestError {
-        pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
-            Self {
-                code: code.into(),
-                summary: summary.into(),
+    macro_rules! define_workflow_error_wrapper {
+        ($name:ident) => {
+            #[derive(Debug, Clone)]
+            pub struct $name {
+                detail: WorkflowErrorDetail,
             }
-        }
 
-        pub fn code(&self) -> &str {
-            &self.code
-        }
+            impl $name {
+                pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
+                    Self {
+                        detail: WorkflowErrorDetail::new(code, summary),
+                    }
+                }
 
-        pub fn summary(&self) -> &str {
-            &self.summary
-        }
-    }
+                pub fn code(&self) -> &str {
+                    self.detail.code()
+                }
 
-    impl std::fmt::Display for InvalidRequestError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(self.summary())
-        }
-    }
-
-    impl std::error::Error for InvalidRequestError {}
-
-    #[derive(Debug, Clone)]
-    pub struct HostIoError {
-        code: String,
-        summary: String,
-    }
-
-    impl HostIoError {
-        pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
-            Self {
-                code: code.into(),
-                summary: summary.into(),
+                pub fn summary(&self) -> &str {
+                    self.detail.summary()
+                }
             }
-        }
 
-        pub fn code(&self) -> &str {
-            &self.code
-        }
-
-        pub fn summary(&self) -> &str {
-            &self.summary
-        }
-    }
-
-    impl std::fmt::Display for HostIoError {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(self.summary())
-        }
-    }
-
-    impl std::error::Error for HostIoError {}
-
-    #[derive(Debug, Clone)]
-    pub struct InternalErrorReport {
-        code: String,
-        summary: String,
-    }
-
-    impl InternalErrorReport {
-        pub fn new(code: impl Into<String>, summary: impl Into<String>) -> Self {
-            Self {
-                code: code.into(),
-                summary: summary.into(),
+            impl std::fmt::Display for $name {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    self.detail.fmt(f)
+                }
             }
-        }
 
-        pub fn code(&self) -> &str {
-            &self.code
-        }
-
-        pub fn summary(&self) -> &str {
-            &self.summary
-        }
+            impl std::error::Error for $name {}
+        };
     }
 
-    impl std::fmt::Display for InternalErrorReport {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str(self.summary())
-        }
-    }
-
-    impl std::error::Error for InternalErrorReport {}
+    define_workflow_error_wrapper!(InvalidArgumentError);
+    define_workflow_error_wrapper!(InvalidRequestError);
+    define_workflow_error_wrapper!(HostIoError);
+    define_workflow_error_wrapper!(InternalErrorReport);
 
     #[derive(Debug)]
     pub enum AssemblerWorkflowError {
@@ -4887,6 +4830,88 @@ mod tests {
             workflow_error.as_assemble().expect("assemble error").kind(),
             diagnostics::AsmErrorKind::Directive
         );
+    }
+
+    #[test]
+    fn public_workflow_error_wrappers_preserve_stable_wrapper_behavior() {
+        let invalid_argument =
+            asm::InvalidArgumentError::new("asm.workflow.invalid_argument", "bad cpu override");
+        assert_eq!(invalid_argument.code(), "asm.workflow.invalid_argument");
+        assert_eq!(invalid_argument.summary(), "bad cpu override");
+        assert_eq!(invalid_argument.to_string(), "bad cpu override");
+        let invalid_argument_err: &dyn std::error::Error = &invalid_argument;
+        assert_eq!(invalid_argument_err.to_string(), "bad cpu override");
+        let invalid_argument_workflow =
+            asm::AssemblerWorkflowError::InvalidArgument(invalid_argument.clone());
+        assert_eq!(
+            invalid_argument_workflow.kind(),
+            asm::AssemblerWorkflowErrorKind::InvalidArgument
+        );
+        assert_eq!(
+            invalid_argument_workflow
+                .as_invalid_argument()
+                .expect("invalid argument payload")
+                .code(),
+            "asm.workflow.invalid_argument"
+        );
+        assert_eq!(invalid_argument_workflow.summary(), "bad cpu override");
+        assert_eq!(invalid_argument_workflow.to_string(), "bad cpu override");
+
+        let invalid_request = asm::InvalidRequestError::new(
+            "asm.workflow.invalid_request",
+            "runtime model is unavailable",
+        );
+        assert_eq!(invalid_request.code(), "asm.workflow.invalid_request");
+        assert_eq!(invalid_request.summary(), "runtime model is unavailable");
+        assert_eq!(invalid_request.to_string(), "runtime model is unavailable");
+        let invalid_request_workflow =
+            asm::AssemblerWorkflowError::InvalidRequest(invalid_request.clone());
+        assert_eq!(
+            invalid_request_workflow.kind(),
+            asm::AssemblerWorkflowErrorKind::InvalidRequest
+        );
+        assert_eq!(
+            invalid_request_workflow
+                .as_invalid_request()
+                .expect("invalid request payload")
+                .summary(),
+            "runtime model is unavailable"
+        );
+        assert_eq!(
+            invalid_request_workflow.code(),
+            "asm.workflow.invalid_request"
+        );
+
+        let host_io = asm::HostIoError::new("asm.workflow.io", "failed to write listing");
+        assert_eq!(host_io.code(), "asm.workflow.io");
+        assert_eq!(host_io.summary(), "failed to write listing");
+        assert_eq!(host_io.to_string(), "failed to write listing");
+        let host_io_workflow = asm::AssemblerWorkflowError::Io(host_io.clone());
+        assert_eq!(host_io_workflow.kind(), asm::AssemblerWorkflowErrorKind::Io);
+        assert_eq!(
+            host_io_workflow.as_io().expect("io payload").summary(),
+            "failed to write listing"
+        );
+        assert_eq!(host_io_workflow.to_string(), "failed to write listing");
+
+        let internal =
+            asm::InternalErrorReport::new("asm.workflow.internal", "processor contract failed");
+        assert_eq!(internal.code(), "asm.workflow.internal");
+        assert_eq!(internal.summary(), "processor contract failed");
+        assert_eq!(internal.to_string(), "processor contract failed");
+        let internal_workflow = asm::AssemblerWorkflowError::Internal(internal.clone());
+        assert_eq!(
+            internal_workflow.kind(),
+            asm::AssemblerWorkflowErrorKind::Internal
+        );
+        assert_eq!(
+            internal_workflow
+                .as_internal()
+                .expect("internal payload")
+                .code(),
+            "asm.workflow.internal"
+        );
+        assert_eq!(internal_workflow.summary(), "processor contract failed");
     }
 
     #[test]

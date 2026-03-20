@@ -2,13 +2,15 @@
 mod release_ffi_support;
 
 use ffi::{
-    opforge_asm_assemble_file_with_request, opforge_asm_report_error_count,
-    opforge_asm_report_free, opforge_asm_report_status, opforge_asm_session_assemble,
+    opforge_asm_assemble_file_with_request, opforge_asm_check_file_with_request,
+    opforge_asm_report_error_count, opforge_asm_report_free, opforge_asm_report_status,
+    opforge_asm_session_assemble, opforge_asm_session_check,
     opforge_asm_session_create_with_request, opforge_asm_session_create_with_request_report,
-    opforge_asm_session_free, opforge_diag_code_from_asm_report,
+    opforge_asm_session_free, opforge_asm_session_prepare, opforge_diag_code_from_asm_report,
     opforge_diag_fixit_applicability_from_asm_report, opforge_diag_fixit_count_from_asm_report,
     opforge_diag_fixit_replacement_from_asm_report, opforge_diag_help_count_from_asm_report,
-    opforge_diag_help_from_asm_report, OpforgeAsmDiagnosticsOptions, OpforgeAsmExecutionOptions,
+    opforge_diag_help_from_asm_report, opforge_prepared_asm_session_check,
+    opforge_prepared_asm_session_free, OpforgeAsmDiagnosticsOptions, OpforgeAsmExecutionOptions,
     OpforgeAsmOutputOptions, OpforgeAsmRequest, OpforgeAsmSourceOptions, OpforgeProcessorStatus,
     OpforgeStatus, OpforgeStringList, OPFORGE_DEFAULT_OUTPUTS_DISABLE,
     OPFORGE_DEFAULT_OUTPUTS_ENABLE, OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST,
@@ -225,6 +227,7 @@ fn exported_header_matches_rust_abi_contract() {
          /* Public high-level assembler entrypoints: keep this block aligned with opforge.h. */\n\
          static void (*asm_request_init_fn)(opforge_asm_request *) = opforge_asm_request_init;\n\
          static opforge_asm_report *(*assemble_with_request_fn)(const opforge_asm_request *) = opforge_asm_assemble_file_with_request;\n\
+         static opforge_asm_report *(*check_with_request_fn)(const opforge_asm_request *) = opforge_asm_check_file_with_request;\n\
          static opforge_asm_report *(*assemble_memory_with_request_fn)(const opforge_asm_request *, const char *, const opforge_output_callbacks *) = opforge_asm_assemble_memory_with_request;\n\
          static opforge_asm_report *(*check_memory_with_request_fn)(const opforge_asm_request *, const char *, const opforge_output_callbacks *) = opforge_asm_check_memory_with_request;\n\
          static opforge_asm_session *(*asm_session_create_with_request_fn)(const opforge_asm_request *) = opforge_asm_session_create_with_request;\n\
@@ -316,7 +319,7 @@ fn exported_header_matches_rust_abi_contract() {
          static void (*opcore_expr_free_fn)(opforge_opcore_expr_report *) = opforge_opcore_expr_report_free;\n\
          static opforge_opcore_module_item_report *(*opcore_module_item_fn)(const char *, uint32_t) = opforge_opcore_process_module_item;\n\
          static void (*opcore_module_item_free_fn)(opforge_opcore_module_item_report *) = opforge_opcore_module_item_report_free;\n\
-         int main(void) {{ return asm_request_init_fn != 0 && assemble_with_request_fn != 0 && assemble_memory_with_request_fn != 0 && check_memory_with_request_fn != 0 && asm_session_create_with_request_fn != 0 && asm_session_create_with_request_report_fn != 0 && asm_session_prepare_fn != 0 && asm_session_assemble_fn != 0 && asm_session_check_fn != 0 && prepared_asm_session_assemble_fn != 0 && prepared_asm_session_check_fn != 0 && asm_session_free_fn != 0 && prepared_asm_session_free_fn != 0 && diag_count_fn != 0 && diag_severity_fn != 0 && diag_line_fn != 0 && diag_col_start_fn != 0 && diag_col_end_fn != 0 && diag_message_fn != 0 && diag_code_fn != 0 && diag_file_fn != 0 && diag_related_span_count_fn != 0 && diag_related_span_file_fn != 0 && diag_related_span_line_fn != 0 && diag_related_span_col_start_fn != 0 && diag_related_span_col_end_fn != 0 && diag_related_span_label_fn != 0 && diag_related_span_is_primary_fn != 0 && diag_note_count_fn != 0 && diag_note_fn != 0 && diag_help_count_fn != 0 && diag_help_fn != 0 && diag_fixit_count_fn != 0 && diag_fixit_file_fn != 0 && diag_fixit_line_fn != 0 && diag_fixit_col_start_fn != 0 && diag_fixit_col_end_fn != 0 && diag_fixit_replacement_fn != 0 && diag_fixit_applicability_fn != 0 && registry_default_fn != 0 && registry_cpu_count_fn != 0 && registry_cpu_id_fn != 0 && registry_cpu_view_fn != 0 && registry_cpu_view_family_fn != 0 && registry_cpu_view_mnemonic_count_fn != 0 && registry_cpu_view_mnemonic_fn != 0 && registry_free_fn != 0 && registry_cpu_view_free_fn != 0 && opcore_tokenize_fn != 0 && opcore_tokenize_status_fn != 0 && opcore_tokenize_count_fn != 0 && opcore_tokenize_kind_fn != 0 && opcore_tokenize_text_fn != 0 && opcore_tokenize_line_fn != 0 && opcore_tokenize_col_start_fn != 0 && opcore_tokenize_col_end_fn != 0 && opcore_tokenize_error_message_fn != 0 && opcore_tokenize_error_line_fn != 0 && opcore_tokenize_error_col_start_fn != 0 && opcore_tokenize_error_col_end_fn != 0 && opcore_tokenize_free_fn != 0 && opasm_tokenize_fn != 0 && opasm_tokenize_status_fn != 0 && opasm_tokenize_count_fn != 0 && opasm_tokenize_kind_fn != 0 && opasm_tokenize_text_fn != 0 && opasm_tokenize_line_fn != 0 && opasm_tokenize_col_start_fn != 0 && opasm_tokenize_col_end_fn != 0 && opasm_tokenize_error_message_fn != 0 && opasm_tokenize_error_line_fn != 0 && opasm_tokenize_error_col_start_fn != 0 && opasm_tokenize_error_col_end_fn != 0 && opasm_tokenize_free_fn != 0 && opasm_parse_fn != 0 && opasm_parse_free_fn != 0 && opasm_process_fn != 0 && opasm_process_trace_fn != 0 && processing_trace_count_fn != 0 && processing_trace_text_fn != 0 && processing_trace_free_fn != 0 && opasm_process_lockstep_fn != 0 && lockstep_match_count_fn != 0 && lockstep_divergence_count_fn != 0 && lockstep_match_stage_fn != 0 && lockstep_match_request_fn != 0 && lockstep_divergence_reason_fn != 0 && lockstep_report_free_fn != 0 && opasm_process_free_fn != 0 && opcore_expr_fn != 0 && opcore_expr_free_fn != 0 && opcore_module_item_fn != 0 && opcore_module_item_free_fn != 0 ? 0 : 1; }}\n",
+         int main(void) {{ return asm_request_init_fn != 0 && assemble_with_request_fn != 0 && check_with_request_fn != 0 && assemble_memory_with_request_fn != 0 && check_memory_with_request_fn != 0 && asm_session_create_with_request_fn != 0 && asm_session_create_with_request_report_fn != 0 && asm_session_prepare_fn != 0 && asm_session_assemble_fn != 0 && asm_session_check_fn != 0 && prepared_asm_session_assemble_fn != 0 && prepared_asm_session_check_fn != 0 && asm_session_free_fn != 0 && prepared_asm_session_free_fn != 0 && diag_count_fn != 0 && diag_severity_fn != 0 && diag_line_fn != 0 && diag_col_start_fn != 0 && diag_col_end_fn != 0 && diag_message_fn != 0 && diag_code_fn != 0 && diag_file_fn != 0 && diag_related_span_count_fn != 0 && diag_related_span_file_fn != 0 && diag_related_span_line_fn != 0 && diag_related_span_col_start_fn != 0 && diag_related_span_col_end_fn != 0 && diag_related_span_label_fn != 0 && diag_related_span_is_primary_fn != 0 && diag_note_count_fn != 0 && diag_note_fn != 0 && diag_help_count_fn != 0 && diag_help_fn != 0 && diag_fixit_count_fn != 0 && diag_fixit_file_fn != 0 && diag_fixit_line_fn != 0 && diag_fixit_col_start_fn != 0 && diag_fixit_col_end_fn != 0 && diag_fixit_replacement_fn != 0 && diag_fixit_applicability_fn != 0 && registry_default_fn != 0 && registry_cpu_count_fn != 0 && registry_cpu_id_fn != 0 && registry_cpu_view_fn != 0 && registry_cpu_view_family_fn != 0 && registry_cpu_view_mnemonic_count_fn != 0 && registry_cpu_view_mnemonic_fn != 0 && registry_free_fn != 0 && registry_cpu_view_free_fn != 0 && opcore_tokenize_fn != 0 && opcore_tokenize_status_fn != 0 && opcore_tokenize_count_fn != 0 && opcore_tokenize_kind_fn != 0 && opcore_tokenize_text_fn != 0 && opcore_tokenize_line_fn != 0 && opcore_tokenize_col_start_fn != 0 && opcore_tokenize_col_end_fn != 0 && opcore_tokenize_error_message_fn != 0 && opcore_tokenize_error_line_fn != 0 && opcore_tokenize_error_col_start_fn != 0 && opcore_tokenize_error_col_end_fn != 0 && opcore_tokenize_free_fn != 0 && opasm_tokenize_fn != 0 && opasm_tokenize_status_fn != 0 && opasm_tokenize_count_fn != 0 && opasm_tokenize_kind_fn != 0 && opasm_tokenize_text_fn != 0 && opasm_tokenize_line_fn != 0 && opasm_tokenize_col_start_fn != 0 && opasm_tokenize_col_end_fn != 0 && opasm_tokenize_error_message_fn != 0 && opasm_tokenize_error_line_fn != 0 && opasm_tokenize_error_col_start_fn != 0 && opasm_tokenize_error_col_end_fn != 0 && opasm_tokenize_free_fn != 0 && opasm_parse_fn != 0 && opasm_parse_free_fn != 0 && opasm_process_fn != 0 && opasm_process_trace_fn != 0 && processing_trace_count_fn != 0 && processing_trace_text_fn != 0 && processing_trace_free_fn != 0 && opasm_process_lockstep_fn != 0 && lockstep_match_count_fn != 0 && lockstep_divergence_count_fn != 0 && lockstep_match_stage_fn != 0 && lockstep_match_request_fn != 0 && lockstep_divergence_reason_fn != 0 && lockstep_report_free_fn != 0 && opasm_process_free_fn != 0 && opcore_expr_fn != 0 && opcore_expr_free_fn != 0 && opcore_module_item_fn != 0 && opcore_module_item_free_fn != 0 ? 0 : 1; }}\n",
         mode_rust = OPFORGE_EXECUTION_MODE_RUST,
         mode_vm = OPFORGE_EXECUTION_MODE_VM,
         mode_lockstep_rust = OPFORGE_EXECUTION_MODE_LOCKSTEP_RUST,
@@ -642,6 +645,26 @@ fn exported_grouped_request_session_create_report_exposes_failures_and_success()
         OpforgeStatus::Ok
     );
     unsafe { opforge_asm_report_free(assemble_report) };
+
+    let check_report = unsafe { opforge_asm_session_check(session) };
+    assert!(!check_report.is_null());
+    assert_eq!(
+        unsafe { opforge_asm_report_status(check_report) },
+        OpforgeStatus::Ok
+    );
+    unsafe { opforge_asm_report_free(check_report) };
+
+    let prepared = unsafe { opforge_asm_session_prepare(session) };
+    assert!(!prepared.is_null());
+    let prepared_check_report = unsafe { opforge_prepared_asm_session_check(prepared) };
+    assert!(!prepared_check_report.is_null());
+    assert_eq!(
+        unsafe { opforge_asm_report_status(prepared_check_report) },
+        OpforgeStatus::Ok
+    );
+    unsafe { opforge_asm_report_free(prepared_check_report) };
+    unsafe { opforge_prepared_asm_session_free(prepared) };
+
     unsafe { opforge_asm_session_free(session) };
 }
 
@@ -763,6 +786,14 @@ fn exported_boundary_rejects_invalid_requests() {
     assert!(null_request_message.contains("request"));
     unsafe { opforge_asm_report_free(null_request) };
 
+    let null_check_request = unsafe { opforge_asm_check_file_with_request(std::ptr::null()) };
+    assert!(!null_check_request.is_null());
+    assert_eq!(
+        unsafe { opforge_asm_report_status(null_check_request) },
+        OpforgeStatus::InvalidRequest
+    );
+    unsafe { opforge_asm_report_free(null_check_request) };
+
     let null_root_request = basic_request(
         std::ptr::null(),
         std::ptr::null(),
@@ -820,4 +851,20 @@ fn exported_boundary_rejects_invalid_requests() {
             .expect("ffi invalid request message utf8");
     assert!(invalid_mode_message.contains("execution_mode"));
     unsafe { opforge_asm_report_free(invalid_mode) };
+
+    let null_session_check = unsafe { opforge_asm_session_check(std::ptr::null()) };
+    assert!(!null_session_check.is_null());
+    assert_eq!(
+        unsafe { opforge_asm_report_status(null_session_check) },
+        OpforgeStatus::InvalidRequest
+    );
+    unsafe { opforge_asm_report_free(null_session_check) };
+
+    let null_prepared_check = unsafe { opforge_prepared_asm_session_check(std::ptr::null()) };
+    assert!(!null_prepared_check.is_null());
+    assert_eq!(
+        unsafe { opforge_asm_report_status(null_prepared_check) },
+        OpforgeStatus::InvalidRequest
+    );
+    unsafe { opforge_asm_report_free(null_prepared_check) };
 }

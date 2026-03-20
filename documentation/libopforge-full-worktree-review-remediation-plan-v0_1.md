@@ -46,7 +46,7 @@ changing public behavior.
   - Commit outcome: planned: one commit that proves the generation/helper pattern on `opforge_opcore_*` and `opforge_opasm_*` tokenize-report wrappers
   - Definition of done: one cohesive FFI wrapper family is derived from shared internal helpers or macros, the ABI stays unchanged, and RVW-2026-03-20-001 is partially closed with a reusable pattern in place
 
-- [ ] Item 3: Extend the FFI helper layer to the remaining targeted report accessors and paired high-level entrypoints
+- [x] Item 3: Extend the FFI helper layer to the remaining targeted report accessors and paired high-level entrypoints
   - Source requirement or finding IDs: RVW-2026-03-20-001 (expected full closure)
   - Expected files: `crates/opforge-ffi/src/lib.rs`; `crates/opforge-ffi/tests/abi_contract.rs`; `crates/opforge-ffi/tests/release_panic_boundary.rs`
   - Validation: `cargo test -q -p ffi`; verify assembled/check entrypoints and migrated accessor groups preserve panic boundaries, invalid-request behavior, and ownership rules

@@ -2278,6 +2278,91 @@ fn default_asm_request() -> OpforgeAsmRequest {
     }
 }
 
+fn invalid_request_asm_report(message: impl Into<String>) -> OpforgeAsmReport {
+    OpforgeAsmReport::error(
+        OpforgeStatus::InvalidRequest,
+        Vec::new(),
+        0,
+        0,
+        0,
+        0,
+        message,
+    )
+}
+
+fn into_ffi_asm_report(
+    result: Result<OpforgeAsmReport, FfiAsmReportError>,
+) -> *mut OpforgeAsmReport {
+    match result {
+        Ok(report) => into_report_handle(report),
+        Err(report) => into_report_handle(*report),
+    }
+}
+
+fn with_request_report_boundary(
+    boundary_name: &'static str,
+    panic_point: Option<&'static str>,
+    request: *const OpforgeAsmRequest,
+    run: impl FnOnce(&OpforgeAsmRequest) -> Result<OpforgeAsmReport, FfiAsmReportError>,
+) -> *mut OpforgeAsmReport {
+    ffi_report_boundary(boundary_name, || {
+        if let Some(point) = panic_point {
+            ffi_test_maybe_panic(point);
+        }
+        let Some(request) = (!request.is_null()).then(|| unsafe { &*request }) else {
+            return into_report_handle(invalid_request_asm_report(
+                "request pointer must not be null",
+            ));
+        };
+        into_ffi_asm_report(run(request))
+    })
+}
+
+fn with_session_report_boundary(
+    boundary_name: &'static str,
+    session: *const OpforgeAsmSession,
+    run: impl FnOnce(
+        &api::asm::AssemblerSession,
+    ) -> Result<api::diagnostics::AsmRunReport, api::asm::AssemblerWorkflowError>,
+) -> *mut OpforgeAsmReport {
+    ffi_report_boundary(boundary_name, || {
+        ffi_test_maybe_panic(boundary_name);
+        let Some(session) = asm_session_ref(session) else {
+            return into_report_handle(invalid_request_asm_report(
+                "session pointer must not be null",
+            ));
+        };
+        into_report_handle(asm_report_from_workflow_result(run(&session.session)))
+    })
+}
+
+fn with_prepared_session_report_boundary(
+    boundary_name: &'static str,
+    prepared: *const OpforgePreparedAsmSession,
+    run: impl FnOnce(
+        &api::asm::PreparedAssemblySession,
+    ) -> Result<api::diagnostics::AsmRunReport, api::asm::AssemblerWorkflowError>,
+) -> *mut OpforgeAsmReport {
+    ffi_report_boundary(boundary_name, || {
+        ffi_test_maybe_panic(boundary_name);
+        let Some(prepared) = prepared_asm_session_ref(prepared) else {
+            return into_report_handle(invalid_request_asm_report(
+                "prepared session pointer must not be null",
+            ));
+        };
+        if let Some(report) = prepared.failure.as_ref() {
+            return into_report_handle(report.clone());
+        }
+        let Some(prepared_session) = prepared.prepared.as_ref() else {
+            return into_report_handle(ffi_internal_error_report(
+                boundary_name,
+                "missing prepared session state",
+            ));
+        };
+        into_report_handle(asm_report_from_workflow_result(run(prepared_session)))
+    })
+}
+
 #[no_mangle]
 /// Initialize a grouped high-level assembler request with stable Rust facade defaults.
 ///
@@ -2303,25 +2388,12 @@ pub unsafe extern "C" fn opforge_asm_request_init(request: *mut OpforgeAsmReques
 pub unsafe extern "C" fn opforge_asm_assemble_file_with_request(
     request: *const OpforgeAsmRequest,
 ) -> *mut OpforgeAsmReport {
-    ffi_report_boundary("opforge_asm_assemble_file_with_request", || {
-        ffi_test_maybe_panic("opforge_asm_assemble_file_with_request");
-        if request.is_null() {
-            return into_report_handle(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "request pointer must not be null",
-            ));
-        }
-        let request = unsafe { &*request };
-        match run_high_level_assembler_with_request(request, false) {
-            Ok(report) => into_report_handle(report),
-            Err(report) => into_report_handle(*report),
-        }
-    })
+    with_request_report_boundary(
+        "opforge_asm_assemble_file_with_request",
+        Some("opforge_asm_assemble_file_with_request"),
+        request,
+        |request| run_high_level_assembler_with_request(request, false),
+    )
 }
 
 #[no_mangle]
@@ -2336,24 +2408,12 @@ pub unsafe extern "C" fn opforge_asm_assemble_file_with_request(
 pub unsafe extern "C" fn opforge_asm_check_file_with_request(
     request: *const OpforgeAsmRequest,
 ) -> *mut OpforgeAsmReport {
-    ffi_report_boundary("opforge_asm_check_file_with_request", || {
-        if request.is_null() {
-            return into_report_handle(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "request pointer must not be null",
-            ));
-        }
-        let request = unsafe { &*request };
-        match run_high_level_assembler_with_request(request, true) {
-            Ok(report) => into_report_handle(report),
-            Err(report) => into_report_handle(*report),
-        }
-    })
+    with_request_report_boundary(
+        "opforge_asm_check_file_with_request",
+        Some("opforge_asm_check_file_with_request"),
+        request,
+        |request| run_high_level_assembler_with_request(request, true),
+    )
 }
 
 #[no_mangle]
@@ -2379,29 +2439,14 @@ pub unsafe extern "C" fn opforge_asm_assemble_memory_with_request(
     source_text: *const c_char,
     callbacks: *const OpforgeOutputCallbacks,
 ) -> *mut OpforgeAsmReport {
-    ffi_report_boundary("opforge_asm_assemble_memory_with_request", || {
-        if request.is_null() {
-            return into_report_handle(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "request pointer must not be null",
-            ));
-        }
-        let request = unsafe { &*request };
-        match run_high_level_assembler_in_memory_with_request(
-            request,
-            source_text,
-            callbacks,
-            false,
-        ) {
-            Ok(report) => into_report_handle(report),
-            Err(report) => into_report_handle(*report),
-        }
-    })
+    with_request_report_boundary(
+        "opforge_asm_assemble_memory_with_request",
+        Some("opforge_asm_assemble_memory_with_request"),
+        request,
+        |request| {
+            run_high_level_assembler_in_memory_with_request(request, source_text, callbacks, false)
+        },
+    )
 }
 
 #[no_mangle]
@@ -2424,25 +2469,14 @@ pub unsafe extern "C" fn opforge_asm_check_memory_with_request(
     source_text: *const c_char,
     callbacks: *const OpforgeOutputCallbacks,
 ) -> *mut OpforgeAsmReport {
-    ffi_report_boundary("opforge_asm_check_memory_with_request", || {
-        if request.is_null() {
-            return into_report_handle(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "request pointer must not be null",
-            ));
-        }
-        let request = unsafe { &*request };
-        match run_high_level_assembler_in_memory_with_request(request, source_text, callbacks, true)
-        {
-            Ok(report) => into_report_handle(report),
-            Err(report) => into_report_handle(*report),
-        }
-    })
+    with_request_report_boundary(
+        "opforge_asm_check_memory_with_request",
+        Some("opforge_asm_check_memory_with_request"),
+        request,
+        |request| {
+            run_high_level_assembler_in_memory_with_request(request, source_text, callbacks, true)
+        },
+    )
 }
 
 #[no_mangle]
@@ -2578,20 +2612,8 @@ pub unsafe extern "C" fn opforge_asm_session_prepare(
 pub unsafe extern "C" fn opforge_asm_session_assemble(
     session: *const OpforgeAsmSession,
 ) -> *mut OpforgeAsmReport {
-    ffi_report_boundary("opforge_asm_session_assemble", || {
-        let Some(session) = asm_session_ref(session) else {
-            return into_report_handle(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "session pointer must not be null",
-            ));
-        };
-        let report = asm_report_from_workflow_result(session.session.assemble());
-        into_report_handle(report)
+    with_session_report_boundary("opforge_asm_session_assemble", session, |session| {
+        session.assemble()
     })
 }
 
@@ -2605,20 +2627,8 @@ pub unsafe extern "C" fn opforge_asm_session_assemble(
 pub unsafe extern "C" fn opforge_asm_session_check(
     session: *const OpforgeAsmSession,
 ) -> *mut OpforgeAsmReport {
-    ffi_report_boundary("opforge_asm_session_check", || {
-        let Some(session) = asm_session_ref(session) else {
-            return into_report_handle(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "session pointer must not be null",
-            ));
-        };
-        let report = asm_report_from_workflow_result(session.session.check());
-        into_report_handle(report)
+    with_session_report_boundary("opforge_asm_session_check", session, |session| {
+        session.check()
     })
 }
 
@@ -2632,30 +2642,11 @@ pub unsafe extern "C" fn opforge_asm_session_check(
 pub unsafe extern "C" fn opforge_prepared_asm_session_assemble(
     prepared: *const OpforgePreparedAsmSession,
 ) -> *mut OpforgeAsmReport {
-    ffi_report_boundary("opforge_prepared_asm_session_assemble", || {
-        let Some(prepared) = prepared_asm_session_ref(prepared) else {
-            return into_report_handle(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "prepared session pointer must not be null",
-            ));
-        };
-        if let Some(report) = prepared.failure.as_ref() {
-            return into_report_handle(report.clone());
-        }
-        let Some(prepared_session) = prepared.prepared.as_ref() else {
-            return into_report_handle(ffi_internal_error_report(
-                "opforge_prepared_asm_session_assemble",
-                "missing prepared session state",
-            ));
-        };
-        let report = asm_report_from_workflow_result(prepared_session.assemble());
-        into_report_handle(report)
-    })
+    with_prepared_session_report_boundary(
+        "opforge_prepared_asm_session_assemble",
+        prepared,
+        |prepared| prepared.assemble(),
+    )
 }
 
 #[no_mangle]
@@ -2668,30 +2659,11 @@ pub unsafe extern "C" fn opforge_prepared_asm_session_assemble(
 pub unsafe extern "C" fn opforge_prepared_asm_session_check(
     prepared: *const OpforgePreparedAsmSession,
 ) -> *mut OpforgeAsmReport {
-    ffi_report_boundary("opforge_prepared_asm_session_check", || {
-        let Some(prepared) = prepared_asm_session_ref(prepared) else {
-            return into_report_handle(OpforgeAsmReport::error(
-                OpforgeStatus::InvalidRequest,
-                Vec::new(),
-                0,
-                0,
-                0,
-                0,
-                "prepared session pointer must not be null",
-            ));
-        };
-        if let Some(report) = prepared.failure.as_ref() {
-            return into_report_handle(report.clone());
-        }
-        let Some(prepared_session) = prepared.prepared.as_ref() else {
-            return into_report_handle(ffi_internal_error_report(
-                "opforge_prepared_asm_session_check",
-                "missing prepared session state",
-            ));
-        };
-        let report = asm_report_from_workflow_result(prepared_session.check());
-        into_report_handle(report)
-    })
+    with_prepared_session_report_boundary(
+        "opforge_prepared_asm_session_check",
+        prepared,
+        |prepared| prepared.check(),
+    )
 }
 
 #[no_mangle]
@@ -3429,198 +3401,228 @@ pub unsafe extern "C" fn opforge_opasm_parse_statement(
     Box::into_raw(Box::new(report))
 }
 
-#[no_mangle]
-/// Read the processor status from an `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_status(
-    report: *const OpforgeOpasmParseReport,
+fn free_boxed_handle<T>(handle: *mut T) {
+    if handle.is_null() {
+        return;
+    }
+    unsafe {
+        drop(Box::from_raw(handle));
+    }
+}
+
+fn module_item_report_status_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
 ) -> OpforgeProcessorStatus {
-    module_item_report_ref(report).map_or(OpforgeProcessorStatus::InvalidRequest, |report| {
+    report.map_or(OpforgeProcessorStatus::InvalidRequest, |report| {
         report.status
     })
 }
 
-#[no_mangle]
-/// Return the parsed line kind from an `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_kind(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_kind_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
 ) -> OpforgeLineAstKind {
-    module_item_report_ref(report).map_or(OpforgeLineAstKind::Invalid, |report| report.line_kind)
+    report.map_or(OpforgeLineAstKind::Invalid, |report| report.line_kind)
 }
 
-#[no_mangle]
-/// Borrow the module id from a use-shaped `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_use_module_id(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_use_module_id_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
 ) -> *const c_char {
-    module_item_report_ref(report).map_or(std::ptr::null(), |report| report.use_module_id_ptr())
+    report.map_or(std::ptr::null(), |report| report.use_module_id_ptr())
 }
 
-#[no_mangle]
-/// Borrow the alias from a use-shaped `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_use_alias(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_use_alias_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
 ) -> *const c_char {
-    module_item_report_ref(report).map_or(std::ptr::null(), |report| report.use_alias_ptr())
+    report.map_or(std::ptr::null(), |report| report.use_alias_ptr())
 }
 
-#[no_mangle]
-/// Return the imported item count from a use-shaped `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_use_item_count(
-    report: *const OpforgeOpasmParseReport,
-) -> usize {
-    module_item_report_ref(report).map_or(0, |report| report.use_item_names.len())
+fn module_item_report_use_item_count_impl(report: Option<&OpforgeOpcoreModuleItemReport>) -> usize {
+    report.map_or(0, |report| report.use_item_names.len())
 }
 
-#[no_mangle]
-/// Borrow one imported item name from a use-shaped `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_use_item_name(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_use_item_name_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
     index: usize,
 ) -> *const c_char {
-    module_item_report_ref(report)
-        .map_or(std::ptr::null(), |report| report.use_item_name_ptr(index))
+    report.map_or(std::ptr::null(), |report| report.use_item_name_ptr(index))
 }
 
-#[no_mangle]
-/// Borrow the mnemonic from a statement-shaped `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_statement_mnemonic(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_statement_mnemonic_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
 ) -> *const c_char {
-    module_item_report_ref(report)
-        .map_or(std::ptr::null(), |report| report.statement_mnemonic_ptr())
+    report.map_or(std::ptr::null(), |report| report.statement_mnemonic_ptr())
 }
 
-#[no_mangle]
-/// Return the operand count from a statement-shaped `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_statement_operand_count(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_statement_operand_count_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
 ) -> usize {
-    module_item_report_ref(report).map_or(0, |report| report.statement_operand_texts.len())
+    report.map_or(0, |report| report.statement_operand_texts.len())
 }
 
-#[no_mangle]
-/// Borrow one operand text from a statement-shaped `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_statement_operand_text(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_statement_operand_text_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
     index: usize,
 ) -> *const c_char {
-    module_item_report_ref(report).map_or(std::ptr::null(), |report| {
+    report.map_or(std::ptr::null(), |report| {
         report.statement_operand_text_ptr(index)
     })
 }
 
-#[no_mangle]
-/// Borrow the parse error message from an `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_error_message(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_error_message_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
 ) -> *const c_char {
-    module_item_report_ref(report).map_or(std::ptr::null(), |report| report.error_message_ptr())
+    report.map_or(std::ptr::null(), |report| report.error_message_ptr())
 }
 
-#[no_mangle]
-/// Return the error line from an `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_error_line(
-    report: *const OpforgeOpasmParseReport,
-) -> u32 {
-    module_item_report_ref(report).map_or(0, |report| report.error_line)
+fn module_item_report_error_line_impl(report: Option<&OpforgeOpcoreModuleItemReport>) -> u32 {
+    report.map_or(0, |report| report.error_line)
 }
 
-#[no_mangle]
-/// Return the error start column from an `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_error_col_start(
-    report: *const OpforgeOpasmParseReport,
+fn module_item_report_error_col_start_impl(
+    report: Option<&OpforgeOpcoreModuleItemReport>,
 ) -> usize {
-    module_item_report_ref(report).map_or(0, |report| report.error_col_start)
+    report.map_or(0, |report| report.error_col_start)
 }
 
-#[no_mangle]
-/// Return the error end column from an `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_error_col_end(
-    report: *const OpforgeOpasmParseReport,
-) -> usize {
-    module_item_report_ref(report).map_or(0, |report| report.error_col_end)
+fn module_item_report_error_col_end_impl(report: Option<&OpforgeOpcoreModuleItemReport>) -> usize {
+    report.map_or(0, |report| report.error_col_end)
 }
 
-#[no_mangle]
-/// Free an `opforge_opasm_*` parse report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_parse_statement`.
-pub unsafe extern "C" fn opforge_opasm_parse_report_free(report: *mut OpforgeOpasmParseReport) {
-    if report.is_null() {
-        return;
-    }
-    unsafe {
-        drop(Box::from_raw(report));
-    }
+macro_rules! define_module_item_report_accessors {
+    (
+        report_ty = $report_ty:ty,
+        surface = $surface:literal,
+        constructor = $constructor:literal,
+        report_ref = $report_ref:expr,
+        status = $status_fn:ident,
+        kind = $kind_fn:ident,
+        use_module_id = $use_module_id_fn:ident,
+        use_alias = $use_alias_fn:ident,
+        use_item_count = $use_item_count_fn:ident,
+        use_item_name = $use_item_name_fn:ident,
+        statement_mnemonic = $statement_mnemonic_fn:ident,
+        statement_operand_count = $statement_operand_count_fn:ident,
+        statement_operand_text = $statement_operand_text_fn:ident,
+        error_message = $error_message_fn:ident,
+        error_line = $error_line_fn:ident,
+        error_col_start = $error_col_start_fn:ident,
+        error_col_end = $error_col_end_fn:ident,
+        free = $free_fn:ident
+    ) => {
+        #[no_mangle]
+        #[doc = concat!("Read the processor status from an `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $status_fn(report: *const $report_ty) -> OpforgeProcessorStatus {
+            module_item_report_status_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the line kind from an `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $kind_fn(report: *const $report_ty) -> OpforgeLineAstKind {
+            module_item_report_kind_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Borrow the module id from a use-shaped `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $use_module_id_fn(report: *const $report_ty) -> *const c_char {
+            module_item_report_use_module_id_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Borrow the alias from a use-shaped `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $use_alias_fn(report: *const $report_ty) -> *const c_char {
+            module_item_report_use_alias_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the imported item count from a use-shaped `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $use_item_count_fn(report: *const $report_ty) -> usize {
+            module_item_report_use_item_count_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Borrow one imported item name from a use-shaped `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $use_item_name_fn(
+            report: *const $report_ty,
+            index: usize,
+        ) -> *const c_char {
+            module_item_report_use_item_name_impl(($report_ref)(report), index)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Borrow the statement mnemonic from a statement-shaped `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $statement_mnemonic_fn(
+            report: *const $report_ty,
+        ) -> *const c_char {
+            module_item_report_statement_mnemonic_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the statement operand count from a statement-shaped `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $statement_operand_count_fn(report: *const $report_ty) -> usize {
+            module_item_report_statement_operand_count_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Borrow one statement operand text from a statement-shaped `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $statement_operand_text_fn(
+            report: *const $report_ty,
+            index: usize,
+        ) -> *const c_char {
+            module_item_report_statement_operand_text_impl(($report_ref)(report), index)
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Borrow the error message from an `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $error_message_fn(report: *const $report_ty) -> *const c_char {
+            module_item_report_error_message_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the error line from an `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $error_line_fn(report: *const $report_ty) -> u32 {
+            module_item_report_error_line_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the error start column from an `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $error_col_start_fn(report: *const $report_ty) -> usize {
+            module_item_report_error_col_start_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Return the error end column from an `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $error_col_end_fn(report: *const $report_ty) -> usize {
+            module_item_report_error_col_end_impl(($report_ref)(report))
+        }
+
+        #[no_mangle]
+        #[doc = concat!("Free an `", $surface, "` report.\n\n# Safety\n\n`report` must be null or a pointer previously returned by this library from\n`", $constructor, "`.")]
+        pub unsafe extern "C" fn $free_fn(report: *mut $report_ty) {
+            free_boxed_handle(report);
+        }
+    };
 }
+
+define_module_item_report_accessors!(
+    report_ty = OpforgeOpasmParseReport,
+    surface = "opforge_opasm_*",
+    constructor = "opforge_opasm_parse_statement",
+    report_ref = |report: *const OpforgeOpasmParseReport| module_item_report_ref(report),
+    status = opforge_opasm_parse_report_status,
+    kind = opforge_opasm_parse_report_kind,
+    use_module_id = opforge_opasm_parse_report_use_module_id,
+    use_alias = opforge_opasm_parse_report_use_alias,
+    use_item_count = opforge_opasm_parse_report_use_item_count,
+    use_item_name = opforge_opasm_parse_report_use_item_name,
+    statement_mnemonic = opforge_opasm_parse_report_statement_mnemonic,
+    statement_operand_count = opforge_opasm_parse_report_statement_operand_count,
+    statement_operand_text = opforge_opasm_parse_report_statement_operand_text,
+    error_message = opforge_opasm_parse_report_error_message,
+    error_line = opforge_opasm_parse_report_error_line,
+    error_col_start = opforge_opasm_parse_report_error_col_start,
+    error_col_end = opforge_opasm_parse_report_error_col_end,
+    free = opforge_opasm_parse_report_free
+);
 
 #[no_mangle]
 /// Process one assembler-oriented line/directive through the stable lower-level
@@ -3715,134 +3717,28 @@ fn lockstep_report_ref(
     }
 }
 
-#[no_mangle]
-/// Read the processor status from an `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_status(
-    report: *const OpforgeOpasmProcessReport,
-) -> OpforgeProcessorStatus {
-    process_report_ref(report).map_or(OpforgeProcessorStatus::InvalidRequest, |report| {
-        report.parsed.status
-    })
-}
-
-#[no_mangle]
-/// Return the processed line kind from an `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_kind(
-    report: *const OpforgeOpasmProcessReport,
-) -> OpforgeLineAstKind {
-    process_report_ref(report).map_or(OpforgeLineAstKind::Invalid, |report| {
-        report.parsed.line_kind
-    })
-}
-
-#[no_mangle]
-/// Borrow the module id from a use-shaped `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_use_module_id(
-    report: *const OpforgeOpasmProcessReport,
-) -> *const c_char {
-    process_report_ref(report).map_or(std::ptr::null(), |report| report.parsed.use_module_id_ptr())
-}
-
-#[no_mangle]
-/// Borrow the alias from a use-shaped `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_use_alias(
-    report: *const OpforgeOpasmProcessReport,
-) -> *const c_char {
-    process_report_ref(report).map_or(std::ptr::null(), |report| report.parsed.use_alias_ptr())
-}
-
-#[no_mangle]
-/// Return the imported item count from a use-shaped `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_use_item_count(
-    report: *const OpforgeOpasmProcessReport,
-) -> usize {
-    process_report_ref(report).map_or(0, |report| report.parsed.use_item_names.len())
-}
-
-#[no_mangle]
-/// Borrow one imported item name from a use-shaped `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_use_item_name(
-    report: *const OpforgeOpasmProcessReport,
-    index: usize,
-) -> *const c_char {
-    process_report_ref(report).map_or(std::ptr::null(), |report| {
-        report.parsed.use_item_name_ptr(index)
-    })
-}
-
-#[no_mangle]
-/// Borrow the mnemonic from a statement-shaped `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_statement_mnemonic(
-    report: *const OpforgeOpasmProcessReport,
-) -> *const c_char {
-    process_report_ref(report).map_or(std::ptr::null(), |report| {
-        report.parsed.statement_mnemonic_ptr()
-    })
-}
-
-#[no_mangle]
-/// Return the operand count from a statement-shaped `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_statement_operand_count(
-    report: *const OpforgeOpasmProcessReport,
-) -> usize {
-    process_report_ref(report).map_or(0, |report| report.parsed.statement_operand_texts.len())
-}
-
-#[no_mangle]
-/// Borrow one operand text from a statement-shaped `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_statement_operand_text(
-    report: *const OpforgeOpasmProcessReport,
-    index: usize,
-) -> *const c_char {
-    process_report_ref(report).map_or(std::ptr::null(), |report| {
-        report.parsed.statement_operand_text_ptr(index)
-    })
-}
+define_module_item_report_accessors!(
+    report_ty = OpforgeOpasmProcessReport,
+    surface = "opforge_opasm_*",
+    constructor = "opforge_opasm_process_statement",
+    report_ref = |report: *const OpforgeOpasmProcessReport| {
+        process_report_ref(report).map(|report| &report.parsed)
+    },
+    status = opforge_opasm_process_report_status,
+    kind = opforge_opasm_process_report_kind,
+    use_module_id = opforge_opasm_process_report_use_module_id,
+    use_alias = opforge_opasm_process_report_use_alias,
+    use_item_count = opforge_opasm_process_report_use_item_count,
+    use_item_name = opforge_opasm_process_report_use_item_name,
+    statement_mnemonic = opforge_opasm_process_report_statement_mnemonic,
+    statement_operand_count = opforge_opasm_process_report_statement_operand_count,
+    statement_operand_text = opforge_opasm_process_report_statement_operand_text,
+    error_message = opforge_opasm_process_report_error_message,
+    error_line = opforge_opasm_process_report_error_line,
+    error_col_start = opforge_opasm_process_report_error_col_start,
+    error_col_end = opforge_opasm_process_report_error_col_end,
+    free = opforge_opasm_process_report_free
+);
 
 #[no_mangle]
 /// Return the number of processing requests recorded for an `opforge_opasm_*` processing report.
@@ -4250,74 +4146,6 @@ pub unsafe extern "C" fn opforge_lockstep_report_divergence_reason_code(
 }
 
 #[no_mangle]
-/// Borrow the processing error message from an `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_error_message(
-    report: *const OpforgeOpasmProcessReport,
-) -> *const c_char {
-    process_report_ref(report).map_or(std::ptr::null(), |report| report.parsed.error_message_ptr())
-}
-
-#[no_mangle]
-/// Return the processing error line from an `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_error_line(
-    report: *const OpforgeOpasmProcessReport,
-) -> u32 {
-    process_report_ref(report).map_or(0, |report| report.parsed.error_line)
-}
-
-#[no_mangle]
-/// Return the processing error start column from an `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_error_col_start(
-    report: *const OpforgeOpasmProcessReport,
-) -> usize {
-    process_report_ref(report).map_or(0, |report| report.parsed.error_col_start)
-}
-
-#[no_mangle]
-/// Return the processing error end column from an `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_error_col_end(
-    report: *const OpforgeOpasmProcessReport,
-) -> usize {
-    process_report_ref(report).map_or(0, |report| report.parsed.error_col_end)
-}
-
-#[no_mangle]
-/// Free an `opforge_opasm_*` processing report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opasm_process_statement`.
-pub unsafe extern "C" fn opforge_opasm_process_report_free(report: *mut OpforgeOpasmProcessReport) {
-    if report.is_null() {
-        return;
-    }
-    unsafe {
-        drop(Box::from_raw(report));
-    }
-}
-
-#[no_mangle]
 /// Free a processing trace handle previously returned by this library.
 ///
 /// # Safety
@@ -4325,12 +4153,7 @@ pub unsafe extern "C" fn opforge_opasm_process_report_free(report: *mut OpforgeO
 /// `trace` must be null or a pointer previously returned by
 /// `opforge_opasm_process_report_processing_trace`.
 pub unsafe extern "C" fn opforge_processing_trace_free(trace: *mut OpforgeProcessingTrace) {
-    if trace.is_null() {
-        return;
-    }
-    unsafe {
-        drop(Box::from_raw(trace));
-    }
+    free_boxed_handle(trace);
 }
 
 #[no_mangle]
@@ -4341,12 +4164,7 @@ pub unsafe extern "C" fn opforge_processing_trace_free(trace: *mut OpforgeProces
 /// `report` must be null or a pointer previously returned by
 /// `opforge_opasm_process_report_lockstep_report`.
 pub unsafe extern "C" fn opforge_lockstep_report_free(report: *mut OpforgeLockstepReport) {
-    if report.is_null() {
-        return;
-    }
-    unsafe {
-        drop(Box::from_raw(report));
-    }
+    free_boxed_handle(report);
 }
 
 #[no_mangle]
@@ -4691,200 +4509,26 @@ pub unsafe extern "C" fn opforge_opcore_process_module_item(
     Box::into_raw(Box::new(report))
 }
 
-#[no_mangle]
-/// Read the processor status from an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_status(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> OpforgeProcessorStatus {
-    module_item_report_ref(report).map_or(OpforgeProcessorStatus::InvalidRequest, |report| {
-        report.status
-    })
-}
-
-#[no_mangle]
-/// Read the portable line kind from an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_kind(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> OpforgeLineAstKind {
-    module_item_report_ref(report).map_or(OpforgeLineAstKind::Invalid, |report| report.line_kind)
-}
-
-#[no_mangle]
-/// Borrow the `.use` module id from an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_use_module_id(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> *const c_char {
-    module_item_report_ref(report).map_or(std::ptr::null(), |report| report.use_module_id_ptr())
-}
-
-#[no_mangle]
-/// Borrow the `.use` alias from an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_use_alias(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> *const c_char {
-    module_item_report_ref(report).map_or(std::ptr::null(), |report| report.use_alias_ptr())
-}
-
-#[no_mangle]
-/// Return the imported item count from a `.use` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_use_item_count(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> usize {
-    module_item_report_ref(report).map_or(0, |report| report.use_item_names.len())
-}
-
-#[no_mangle]
-/// Borrow one imported item name from a `.use` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_use_item_name(
-    report: *const OpforgeOpcoreModuleItemReport,
-    index: usize,
-) -> *const c_char {
-    module_item_report_ref(report)
-        .map_or(std::ptr::null(), |report| report.use_item_name_ptr(index))
-}
-
-#[no_mangle]
-/// Borrow the statement mnemonic from a statement-shaped module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_statement_mnemonic(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> *const c_char {
-    module_item_report_ref(report)
-        .map_or(std::ptr::null(), |report| report.statement_mnemonic_ptr())
-}
-
-#[no_mangle]
-/// Return the statement operand count from a statement-shaped module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_statement_operand_count(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> usize {
-    module_item_report_ref(report).map_or(0, |report| report.statement_operand_texts.len())
-}
-
-#[no_mangle]
-/// Borrow one statement operand text from a statement-shaped module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_statement_operand_text(
-    report: *const OpforgeOpcoreModuleItemReport,
-    index: usize,
-) -> *const c_char {
-    module_item_report_ref(report).map_or(std::ptr::null(), |report| {
-        report.statement_operand_text_ptr(index)
-    })
-}
-
-#[no_mangle]
-/// Borrow the parse error message from an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_error_message(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> *const c_char {
-    module_item_report_ref(report).map_or(std::ptr::null(), |report| report.error_message_ptr())
-}
-
-#[no_mangle]
-/// Return the error line from an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_error_line(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> u32 {
-    module_item_report_ref(report).map_or(0, |report| report.error_line)
-}
-
-#[no_mangle]
-/// Return the error start column from an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_error_col_start(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> usize {
-    module_item_report_ref(report).map_or(0, |report| report.error_col_start)
-}
-
-#[no_mangle]
-/// Return the error end column from an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_error_col_end(
-    report: *const OpforgeOpcoreModuleItemReport,
-) -> usize {
-    module_item_report_ref(report).map_or(0, |report| report.error_col_end)
-}
-
-#[no_mangle]
-/// Free an `opforge_opcore_*` module-item report.
-///
-/// # Safety
-///
-/// `report` must be null or a pointer previously returned by this library from
-/// `opforge_opcore_process_module_item`.
-pub unsafe extern "C" fn opforge_opcore_module_item_report_free(
-    report: *mut OpforgeOpcoreModuleItemReport,
-) {
-    if report.is_null() {
-        return;
-    }
-    unsafe {
-        drop(Box::from_raw(report));
-    }
-}
+define_module_item_report_accessors!(
+    report_ty = OpforgeOpcoreModuleItemReport,
+    surface = "opforge_opcore_*",
+    constructor = "opforge_opcore_process_module_item",
+    report_ref = |report: *const OpforgeOpcoreModuleItemReport| module_item_report_ref(report),
+    status = opforge_opcore_module_item_report_status,
+    kind = opforge_opcore_module_item_report_kind,
+    use_module_id = opforge_opcore_module_item_report_use_module_id,
+    use_alias = opforge_opcore_module_item_report_use_alias,
+    use_item_count = opforge_opcore_module_item_report_use_item_count,
+    use_item_name = opforge_opcore_module_item_report_use_item_name,
+    statement_mnemonic = opforge_opcore_module_item_report_statement_mnemonic,
+    statement_operand_count = opforge_opcore_module_item_report_statement_operand_count,
+    statement_operand_text = opforge_opcore_module_item_report_statement_operand_text,
+    error_message = opforge_opcore_module_item_report_error_message,
+    error_line = opforge_opcore_module_item_report_error_line,
+    error_col_start = opforge_opcore_module_item_report_error_col_start,
+    error_col_end = opforge_opcore_module_item_report_error_col_end,
+    free = opforge_opcore_module_item_report_free
+);
 
 #[no_mangle]
 /// Read the status from an `opforge_asm_*` report handle.
@@ -5427,7 +5071,7 @@ mod tests {
         opforge_asm_check_memory_with_request, opforge_asm_report_error_count,
         opforge_asm_report_free, opforge_asm_report_lockstep_match_count,
         opforge_asm_report_message, opforge_asm_report_status, opforge_asm_report_warning_count,
-        opforge_asm_request_init, opforge_asm_session_assemble,
+        opforge_asm_request_init, opforge_asm_session_assemble, opforge_asm_session_check,
         opforge_asm_session_create_with_request, opforge_asm_session_free,
         opforge_asm_session_prepare, opforge_diag_code_from_asm_report,
         opforge_diag_col_end_from_asm_report, opforge_diag_column_from_asm_report,
@@ -5478,8 +5122,11 @@ mod tests {
         opforge_opcore_expr_report_node_child, opforge_opcore_expr_report_node_child_count,
         opforge_opcore_expr_report_node_count, opforge_opcore_expr_report_node_kind,
         opforge_opcore_expr_report_node_line, opforge_opcore_expr_report_node_text,
-        opforge_opcore_expr_report_status, opforge_opcore_module_item_report_error_message,
-        opforge_opcore_module_item_report_free, opforge_opcore_module_item_report_kind,
+        opforge_opcore_expr_report_status, opforge_opcore_module_item_report_error_col_end,
+        opforge_opcore_module_item_report_error_col_start,
+        opforge_opcore_module_item_report_error_line,
+        opforge_opcore_module_item_report_error_message, opforge_opcore_module_item_report_free,
+        opforge_opcore_module_item_report_kind,
         opforge_opcore_module_item_report_statement_mnemonic,
         opforge_opcore_module_item_report_statement_operand_count,
         opforge_opcore_module_item_report_statement_operand_text,
@@ -5508,7 +5155,8 @@ mod tests {
         LabelOutputFormat, OpforgeAsmDiagnosticsOptions, OpforgeAsmExecutionOptions,
         OpforgeAsmOutputOptions, OpforgeAsmRequest, OpforgeAsmSourceOptions,
         OpforgeDiagnosticSeverity, OpforgeExprNodeKind, OpforgeLineAstKind,
-        OpforgeOpasmProcessConfig, OpforgeOpasmTokenizeReport, OpforgeOpcoreTokenizeReport,
+        OpforgeOpasmParseReport, OpforgeOpasmProcessConfig, OpforgeOpasmProcessReport,
+        OpforgeOpasmTokenizeReport, OpforgeOpcoreModuleItemReport, OpforgeOpcoreTokenizeReport,
         OpforgeOutputCallbacks, OpforgePreparedAsmSession, OpforgeProcessorStatus, OpforgeStatus,
         OpforgeStringList, OpforgeTokenKind, OPFORGE_DEFAULT_OUTPUTS_DEFAULT,
         OPFORGE_DEFAULT_OUTPUTS_DISABLE, OPFORGE_DEFAULT_OUTPUTS_ENABLE,
@@ -6193,6 +5841,40 @@ mod tests {
     }
 
     #[test]
+    fn ffi_check_entry_point_contains_forced_panic() {
+        let work_dir = make_temp_dir("ffi-boundary-check-panic");
+        let source_path = work_dir.join("main.asm");
+        fs::write(&source_path, ".module main\n    nop\n.endmodule\n").expect("write source");
+        let root = CString::new(source_path.to_string_lossy().as_bytes()).expect("root cstr");
+        let request = basic_request(
+            root.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            OPFORGE_EXECUTION_MODE_VM,
+            0,
+        );
+
+        ffi_test_hooks::arm("opforge_asm_check_file_with_request");
+        let report = unsafe { opforge_asm_check_file_with_request(&request) };
+
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::AssembleError
+        );
+        let message = unsafe { CStr::from_ptr(opforge_asm_report_message(report)) }
+            .to_str()
+            .expect("ffi panic message utf8");
+        assert!(message.contains("internal libopforge panic"), "{message}");
+        assert!(
+            message.contains("opforge_asm_check_file_with_request"),
+            "{message}"
+        );
+
+        unsafe { opforge_asm_report_free(report) };
+    }
+
+    #[test]
     fn ffi_nullable_handle_entry_point_contains_forced_panic() {
         let work_dir = make_temp_dir("ffi-boundary-session-panic");
         let source_path = work_dir.join("main.asm");
@@ -6210,6 +5892,82 @@ mod tests {
         let session = unsafe { opforge_asm_session_create_with_request(&request) };
 
         assert!(session.is_null());
+    }
+
+    #[test]
+    fn ffi_session_check_entry_point_contains_forced_panic() {
+        let work_dir = make_temp_dir("ffi-boundary-session-check-panic");
+        let source_path = work_dir.join("main.asm");
+        fs::write(&source_path, ".module main\n    nop\n.endmodule\n").expect("write source");
+        let root = CString::new(source_path.to_string_lossy().as_bytes()).expect("root cstr");
+        let request = basic_request(
+            root.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            OPFORGE_EXECUTION_MODE_VM,
+            0,
+        );
+
+        let session = unsafe { opforge_asm_session_create_with_request(&request) };
+        assert!(!session.is_null());
+
+        ffi_test_hooks::arm("opforge_asm_session_check");
+        let report = unsafe { opforge_asm_session_check(session) };
+
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::AssembleError
+        );
+        let message = unsafe { CStr::from_ptr(opforge_asm_report_message(report)) }
+            .to_str()
+            .expect("ffi panic message utf8");
+        assert!(message.contains("internal libopforge panic"), "{message}");
+        assert!(message.contains("opforge_asm_session_check"), "{message}");
+
+        unsafe { opforge_asm_report_free(report) };
+        unsafe { opforge_asm_session_free(session) };
+    }
+
+    #[test]
+    fn ffi_prepared_session_check_entry_point_contains_forced_panic() {
+        let work_dir = make_temp_dir("ffi-boundary-prepared-check-panic");
+        let source_path = work_dir.join("main.asm");
+        fs::write(&source_path, ".module main\n    nop\n.endmodule\n").expect("write source");
+        let root = CString::new(source_path.to_string_lossy().as_bytes()).expect("root cstr");
+        let request = basic_request(
+            root.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            OPFORGE_EXECUTION_MODE_VM,
+            0,
+        );
+
+        let session = unsafe { opforge_asm_session_create_with_request(&request) };
+        assert!(!session.is_null());
+        let prepared = unsafe { opforge_asm_session_prepare(session) };
+        assert!(!prepared.is_null());
+
+        ffi_test_hooks::arm("opforge_prepared_asm_session_check");
+        let report = unsafe { opforge_prepared_asm_session_check(prepared) };
+
+        assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_asm_report_status(report) },
+            OpforgeStatus::AssembleError
+        );
+        let message = unsafe { CStr::from_ptr(opforge_asm_report_message(report)) }
+            .to_str()
+            .expect("ffi panic message utf8");
+        assert!(message.contains("internal libopforge panic"), "{message}");
+        assert!(
+            message.contains("opforge_prepared_asm_session_check"),
+            "{message}"
+        );
+
+        unsafe { opforge_asm_report_free(report) };
+        unsafe { opforge_prepared_asm_session_free(prepared) };
+        unsafe { opforge_asm_session_free(session) };
     }
 
     #[test]
@@ -8085,6 +7843,90 @@ mod tests {
                 .expect("ffi module-item error utf8");
         assert!(!message.is_empty());
         unsafe { opforge_opcore_module_item_report_free(report) };
+    }
+
+    #[test]
+    fn ffi_module_item_report_accessors_preserve_null_defaults_across_surfaces() {
+        let parse = std::ptr::null::<OpforgeOpasmParseReport>();
+        assert_eq!(
+            unsafe { opforge_opasm_parse_report_status(parse) },
+            OpforgeProcessorStatus::InvalidRequest
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_parse_report_kind(parse) },
+            OpforgeLineAstKind::Invalid
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_parse_report_statement_operand_count(parse) },
+            0
+        );
+        assert!(unsafe { opforge_opasm_parse_report_error_message(parse) }.is_null());
+        assert_eq!(unsafe { opforge_opasm_parse_report_error_line(parse) }, 0);
+        assert_eq!(
+            unsafe { opforge_opasm_parse_report_error_col_start(parse) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_parse_report_error_col_end(parse) },
+            0
+        );
+        unsafe { opforge_opasm_parse_report_free(std::ptr::null_mut()) };
+
+        let process = std::ptr::null::<OpforgeOpasmProcessReport>();
+        assert_eq!(
+            unsafe { opforge_opasm_process_report_status(process) },
+            OpforgeProcessorStatus::InvalidRequest
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_process_report_kind(process) },
+            OpforgeLineAstKind::Invalid
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_process_report_statement_operand_count(process) },
+            0
+        );
+        assert!(unsafe { opforge_opasm_process_report_error_message(process) }.is_null());
+        assert_eq!(
+            unsafe { opforge_opasm_process_report_error_line(process) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_process_report_error_col_start(process) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opasm_process_report_error_col_end(process) },
+            0
+        );
+        unsafe { opforge_opasm_process_report_free(std::ptr::null_mut()) };
+
+        let module_item = std::ptr::null::<OpforgeOpcoreModuleItemReport>();
+        assert_eq!(
+            unsafe { opforge_opcore_module_item_report_status(module_item) },
+            OpforgeProcessorStatus::InvalidRequest
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_module_item_report_kind(module_item) },
+            OpforgeLineAstKind::Invalid
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_module_item_report_statement_operand_count(module_item) },
+            0
+        );
+        assert!(unsafe { opforge_opcore_module_item_report_error_message(module_item) }.is_null());
+        assert_eq!(
+            unsafe { opforge_opcore_module_item_report_error_line(module_item) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_module_item_report_error_col_start(module_item) },
+            0
+        );
+        assert_eq!(
+            unsafe { opforge_opcore_module_item_report_error_col_end(module_item) },
+            0
+        );
+        unsafe { opforge_opcore_module_item_report_free(std::ptr::null_mut()) };
     }
 
     #[test]

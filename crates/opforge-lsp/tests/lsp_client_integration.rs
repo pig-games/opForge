@@ -1071,7 +1071,7 @@ printf '{"code":"ESTAGED","severity":"warning","message":"overlay staged include
         .filter_map(|diag| diag.get("code").and_then(|value| value.as_str()))
         .collect();
     assert!(
-        codes.iter().any(|code| *code == "ESTAGED"),
+        codes.contains(&"ESTAGED"),
         "overlay should stage include and module dependencies without widening, got {codes:?}"
     );
 

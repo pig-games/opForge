@@ -1270,6 +1270,477 @@ impl OwnedAssemblerConfig {
     }
 }
 
+trait SharedBuilderSourceConfig {
+    type OutputBase;
+    type Defines;
+    type IncludePaths;
+    type ModulePaths;
+    type SourceProvider;
+
+    fn set_output_base(&mut self, output_base: Self::OutputBase);
+    fn set_defines(&mut self, defines: Self::Defines);
+    fn set_include_paths(&mut self, include_paths: Self::IncludePaths);
+    fn set_module_paths(&mut self, module_paths: Self::ModulePaths);
+    fn set_pp_macro_depth(&mut self, pp_macro_depth: usize);
+    fn set_source_provider(&mut self, source_provider: Self::SourceProvider);
+}
+
+trait SharedBuilderExecutionConfig {
+    type CpuOverride;
+    type OpasmPackagePath;
+
+    fn set_execution_mode(&mut self, execution_mode: ExecutionMode);
+    fn set_cpu_override(&mut self, cpu_override: Self::CpuOverride);
+    fn set_max_loop_iterations(&mut self, max_loop_iterations: u32);
+    fn set_opasm_package_path(&mut self, opasm_package_path: Self::OpasmPackagePath);
+}
+
+trait SharedBuilderOutputConfig {
+    type OutDir;
+    type GoAddr;
+    type BinSpecs;
+    type LabelsFile;
+    type DependencyOutput;
+    type OutfileOverride;
+    type ListNameOverride;
+    type HexNameOverride;
+    type HeaderTitle;
+    type OutputSink;
+
+    fn set_out_dir(&mut self, out_dir: Self::OutDir);
+    fn set_output_format(&mut self, output_format: OutputFormat);
+    fn set_go_addr(&mut self, go_addr: Self::GoAddr);
+    fn set_bin_specs(&mut self, bin_specs: Self::BinSpecs);
+    fn set_fill_byte(&mut self, fill_byte: u8);
+    fn set_labels_file(&mut self, labels_file: Self::LabelsFile);
+    fn set_dependency_output(&mut self, dependency_output: Self::DependencyOutput);
+    fn set_outfile_override(&mut self, outfile_override: Self::OutfileOverride);
+    fn set_list_name_override(&mut self, list_name_override: Self::ListNameOverride);
+    fn set_hex_name_override(&mut self, hex_name_override: Self::HexNameOverride);
+    fn set_label_output_format(&mut self, label_output_format: LabelOutputFormat);
+    fn set_header_title(&mut self, header_title: Self::HeaderTitle);
+    fn set_default_outputs(&mut self, default_outputs: bool);
+    fn set_no_outputs(&mut self, no_outputs: bool);
+    fn set_output_sink(&mut self, output_sink: Self::OutputSink);
+}
+
+trait SharedBuilderDiagnosticsConfig {
+    fn set_debug_conditionals(&mut self, debug_conditionals: bool);
+    fn set_tab_size(&mut self, tab_size: usize);
+}
+
+impl<'a> SharedBuilderSourceConfig for AssemblerConfig<'a> {
+    type OutputBase = &'a str;
+    type Defines = &'a [String];
+    type IncludePaths = &'a [PathBuf];
+    type ModulePaths = &'a [PathBuf];
+    type SourceProvider = &'a dyn SourceProvider;
+
+    fn set_output_base(&mut self, output_base: Self::OutputBase) {
+        self.source.output_base = output_base;
+    }
+
+    fn set_defines(&mut self, defines: Self::Defines) {
+        self.source.defines = defines;
+    }
+
+    fn set_include_paths(&mut self, include_paths: Self::IncludePaths) {
+        self.source.include_paths = include_paths;
+    }
+
+    fn set_module_paths(&mut self, module_paths: Self::ModulePaths) {
+        self.source.module_paths = module_paths;
+    }
+
+    fn set_pp_macro_depth(&mut self, pp_macro_depth: usize) {
+        self.source.pp_macro_depth = pp_macro_depth;
+    }
+
+    fn set_source_provider(&mut self, source_provider: Self::SourceProvider) {
+        self.source.source_provider = Some(source_provider);
+    }
+}
+
+impl SharedBuilderSourceConfig for OwnedAssemblerConfig {
+    type OutputBase = String;
+    type Defines = Vec<String>;
+    type IncludePaths = Vec<PathBuf>;
+    type ModulePaths = Vec<PathBuf>;
+    type SourceProvider = Arc<dyn SourceProvider>;
+
+    fn set_output_base(&mut self, output_base: Self::OutputBase) {
+        self.source.output_base = output_base;
+    }
+
+    fn set_defines(&mut self, defines: Self::Defines) {
+        self.source.defines = defines;
+    }
+
+    fn set_include_paths(&mut self, include_paths: Self::IncludePaths) {
+        self.source.include_paths = include_paths;
+    }
+
+    fn set_module_paths(&mut self, module_paths: Self::ModulePaths) {
+        self.source.module_paths = module_paths;
+    }
+
+    fn set_pp_macro_depth(&mut self, pp_macro_depth: usize) {
+        self.source.pp_macro_depth = pp_macro_depth;
+    }
+
+    fn set_source_provider(&mut self, source_provider: Self::SourceProvider) {
+        self.source.source_provider = Some(source_provider);
+    }
+}
+
+impl<'a> SharedBuilderExecutionConfig for AssemblerConfig<'a> {
+    type CpuOverride = &'a str;
+    type OpasmPackagePath = &'a Path;
+
+    fn set_execution_mode(&mut self, execution_mode: ExecutionMode) {
+        self.execution.execution_mode = execution_mode;
+    }
+
+    fn set_cpu_override(&mut self, cpu_override: Self::CpuOverride) {
+        self.execution.cpu_override = Some(cpu_override);
+    }
+
+    fn set_max_loop_iterations(&mut self, max_loop_iterations: u32) {
+        self.execution.max_loop_iterations = max_loop_iterations;
+    }
+
+    fn set_opasm_package_path(&mut self, opasm_package_path: Self::OpasmPackagePath) {
+        self.execution.opasm_package_path = Some(opasm_package_path);
+    }
+}
+
+impl SharedBuilderExecutionConfig for OwnedAssemblerConfig {
+    type CpuOverride = String;
+    type OpasmPackagePath = PathBuf;
+
+    fn set_execution_mode(&mut self, execution_mode: ExecutionMode) {
+        self.execution.execution_mode = execution_mode;
+    }
+
+    fn set_cpu_override(&mut self, cpu_override: Self::CpuOverride) {
+        self.execution.cpu_override = Some(cpu_override);
+    }
+
+    fn set_max_loop_iterations(&mut self, max_loop_iterations: u32) {
+        self.execution.max_loop_iterations = max_loop_iterations;
+    }
+
+    fn set_opasm_package_path(&mut self, opasm_package_path: Self::OpasmPackagePath) {
+        self.execution.opasm_package_path = Some(opasm_package_path);
+    }
+}
+
+impl<'a> SharedBuilderOutputConfig for AssemblerConfig<'a> {
+    type OutDir = &'a Path;
+    type GoAddr = &'a str;
+    type BinSpecs = &'a [BinOutputSpec];
+    type LabelsFile = &'a Path;
+    type DependencyOutput = &'a DependencyOutputPolicy;
+    type OutfileOverride = &'a str;
+    type ListNameOverride = &'a str;
+    type HexNameOverride = &'a str;
+    type HeaderTitle = &'a str;
+    type OutputSink = &'a dyn OutputSink;
+
+    fn set_out_dir(&mut self, out_dir: Self::OutDir) {
+        self.output.out_dir = Some(out_dir);
+    }
+
+    fn set_output_format(&mut self, output_format: OutputFormat) {
+        self.output.output_format = output_format;
+    }
+
+    fn set_go_addr(&mut self, go_addr: Self::GoAddr) {
+        self.output.go_addr = Some(go_addr);
+    }
+
+    fn set_bin_specs(&mut self, bin_specs: Self::BinSpecs) {
+        self.output.bin_specs = bin_specs;
+    }
+
+    fn set_fill_byte(&mut self, fill_byte: u8) {
+        self.output.fill_byte = fill_byte;
+        self.output.fill_byte_set = true;
+    }
+
+    fn set_labels_file(&mut self, labels_file: Self::LabelsFile) {
+        self.output.labels_file = Some(labels_file);
+    }
+
+    fn set_dependency_output(&mut self, dependency_output: Self::DependencyOutput) {
+        self.output.dependency_output = Some(dependency_output);
+    }
+
+    fn set_outfile_override(&mut self, outfile_override: Self::OutfileOverride) {
+        self.output.outfile_override = Some(outfile_override);
+    }
+
+    fn set_list_name_override(&mut self, list_name_override: Self::ListNameOverride) {
+        self.output.list_name_override = Some(list_name_override);
+    }
+
+    fn set_hex_name_override(&mut self, hex_name_override: Self::HexNameOverride) {
+        self.output.hex_name_override = Some(hex_name_override);
+    }
+
+    fn set_label_output_format(&mut self, label_output_format: LabelOutputFormat) {
+        self.output.label_output_format = label_output_format;
+    }
+
+    fn set_header_title(&mut self, header_title: Self::HeaderTitle) {
+        self.output.header_title = header_title;
+    }
+
+    fn set_default_outputs(&mut self, default_outputs: bool) {
+        self.output.default_outputs = default_outputs;
+    }
+
+    fn set_no_outputs(&mut self, no_outputs: bool) {
+        self.output.no_outputs = no_outputs;
+    }
+
+    fn set_output_sink(&mut self, output_sink: Self::OutputSink) {
+        self.output.output_sink = Some(output_sink);
+    }
+}
+
+impl SharedBuilderOutputConfig for OwnedAssemblerConfig {
+    type OutDir = PathBuf;
+    type GoAddr = String;
+    type BinSpecs = Vec<BinOutputSpec>;
+    type LabelsFile = PathBuf;
+    type DependencyOutput = DependencyOutputPolicy;
+    type OutfileOverride = String;
+    type ListNameOverride = String;
+    type HexNameOverride = String;
+    type HeaderTitle = String;
+    type OutputSink = Arc<dyn OutputSink>;
+
+    fn set_out_dir(&mut self, out_dir: Self::OutDir) {
+        self.output.out_dir = Some(out_dir);
+    }
+
+    fn set_output_format(&mut self, output_format: OutputFormat) {
+        self.output.output_format = output_format;
+    }
+
+    fn set_go_addr(&mut self, go_addr: Self::GoAddr) {
+        self.output.go_addr = Some(go_addr);
+    }
+
+    fn set_bin_specs(&mut self, bin_specs: Self::BinSpecs) {
+        self.output.bin_specs = bin_specs;
+    }
+
+    fn set_fill_byte(&mut self, fill_byte: u8) {
+        self.output.fill_byte = fill_byte;
+        self.output.fill_byte_set = true;
+    }
+
+    fn set_labels_file(&mut self, labels_file: Self::LabelsFile) {
+        self.output.labels_file = Some(labels_file);
+    }
+
+    fn set_dependency_output(&mut self, dependency_output: Self::DependencyOutput) {
+        self.output.dependency_output = Some(dependency_output);
+    }
+
+    fn set_outfile_override(&mut self, outfile_override: Self::OutfileOverride) {
+        self.output.outfile_override = Some(outfile_override);
+    }
+
+    fn set_list_name_override(&mut self, list_name_override: Self::ListNameOverride) {
+        self.output.list_name_override = Some(list_name_override);
+    }
+
+    fn set_hex_name_override(&mut self, hex_name_override: Self::HexNameOverride) {
+        self.output.hex_name_override = Some(hex_name_override);
+    }
+
+    fn set_label_output_format(&mut self, label_output_format: LabelOutputFormat) {
+        self.output.label_output_format = label_output_format;
+    }
+
+    fn set_header_title(&mut self, header_title: Self::HeaderTitle) {
+        self.output.header_title = header_title;
+    }
+
+    fn set_default_outputs(&mut self, default_outputs: bool) {
+        self.output.default_outputs = default_outputs;
+    }
+
+    fn set_no_outputs(&mut self, no_outputs: bool) {
+        self.output.no_outputs = no_outputs;
+    }
+
+    fn set_output_sink(&mut self, output_sink: Self::OutputSink) {
+        self.output.output_sink = Some(output_sink);
+    }
+}
+
+impl<'a> SharedBuilderDiagnosticsConfig for AssemblerConfig<'a> {
+    fn set_debug_conditionals(&mut self, debug_conditionals: bool) {
+        self.diagnostics.debug_conditionals = debug_conditionals;
+    }
+
+    fn set_tab_size(&mut self, tab_size: usize) {
+        self.diagnostics.tab_size = Some(tab_size);
+    }
+}
+
+impl SharedBuilderDiagnosticsConfig for OwnedAssemblerConfig {
+    fn set_debug_conditionals(&mut self, debug_conditionals: bool) {
+        self.diagnostics.debug_conditionals = debug_conditionals;
+    }
+
+    fn set_tab_size(&mut self, tab_size: usize) {
+        self.diagnostics.tab_size = Some(tab_size);
+    }
+}
+
+struct SharedBuilderMut<'a, C> {
+    config: &'a mut C,
+}
+
+impl<'a, C> SharedBuilderMut<'a, C> {
+    fn new(config: &'a mut C) -> Self {
+        Self { config }
+    }
+}
+
+impl<C> SharedBuilderMut<'_, C>
+where
+    C: SharedBuilderSourceConfig,
+{
+    fn output_base(&mut self, output_base: C::OutputBase) {
+        self.config.set_output_base(output_base);
+    }
+
+    fn defines(&mut self, defines: C::Defines) {
+        self.config.set_defines(defines);
+    }
+
+    fn include_paths(&mut self, include_paths: C::IncludePaths) {
+        self.config.set_include_paths(include_paths);
+    }
+
+    fn module_paths(&mut self, module_paths: C::ModulePaths) {
+        self.config.set_module_paths(module_paths);
+    }
+
+    fn pp_macro_depth(&mut self, pp_macro_depth: usize) {
+        self.config.set_pp_macro_depth(pp_macro_depth);
+    }
+
+    fn source_provider(&mut self, source_provider: C::SourceProvider) {
+        self.config.set_source_provider(source_provider);
+    }
+}
+
+impl<C> SharedBuilderMut<'_, C>
+where
+    C: SharedBuilderExecutionConfig,
+{
+    fn execution_mode(&mut self, execution_mode: ExecutionMode) {
+        self.config.set_execution_mode(execution_mode);
+    }
+
+    fn cpu_override(&mut self, cpu_override: C::CpuOverride) {
+        self.config.set_cpu_override(cpu_override);
+    }
+
+    fn max_loop_iterations(&mut self, max_loop_iterations: u32) {
+        self.config.set_max_loop_iterations(max_loop_iterations);
+    }
+
+    fn opasm_package_path(&mut self, opasm_package_path: C::OpasmPackagePath) {
+        self.config.set_opasm_package_path(opasm_package_path);
+    }
+}
+
+impl<C> SharedBuilderMut<'_, C>
+where
+    C: SharedBuilderOutputConfig,
+{
+    fn out_dir(&mut self, out_dir: C::OutDir) {
+        self.config.set_out_dir(out_dir);
+    }
+
+    fn output_format(&mut self, output_format: OutputFormat) {
+        self.config.set_output_format(output_format);
+    }
+
+    fn go_addr(&mut self, go_addr: C::GoAddr) {
+        self.config.set_go_addr(go_addr);
+    }
+
+    fn bin_specs(&mut self, bin_specs: C::BinSpecs) {
+        self.config.set_bin_specs(bin_specs);
+    }
+
+    fn fill_byte(&mut self, fill_byte: u8) {
+        self.config.set_fill_byte(fill_byte);
+    }
+
+    fn labels_file(&mut self, labels_file: C::LabelsFile) {
+        self.config.set_labels_file(labels_file);
+    }
+
+    fn dependency_output(&mut self, dependency_output: C::DependencyOutput) {
+        self.config.set_dependency_output(dependency_output);
+    }
+
+    fn outfile_override(&mut self, outfile_override: C::OutfileOverride) {
+        self.config.set_outfile_override(outfile_override);
+    }
+
+    fn list_name_override(&mut self, list_name_override: C::ListNameOverride) {
+        self.config.set_list_name_override(list_name_override);
+    }
+
+    fn hex_name_override(&mut self, hex_name_override: C::HexNameOverride) {
+        self.config.set_hex_name_override(hex_name_override);
+    }
+
+    fn label_output_format(&mut self, label_output_format: LabelOutputFormat) {
+        self.config.set_label_output_format(label_output_format);
+    }
+
+    fn header_title(&mut self, header_title: C::HeaderTitle) {
+        self.config.set_header_title(header_title);
+    }
+
+    fn default_outputs(&mut self, default_outputs: bool) {
+        self.config.set_default_outputs(default_outputs);
+    }
+
+    fn no_outputs(&mut self, no_outputs: bool) {
+        self.config.set_no_outputs(no_outputs);
+    }
+
+    fn output_sink(&mut self, output_sink: C::OutputSink) {
+        self.config.set_output_sink(output_sink);
+    }
+}
+
+impl<C> SharedBuilderMut<'_, C>
+where
+    C: SharedBuilderDiagnosticsConfig,
+{
+    fn debug_conditionals(&mut self, debug_conditionals: bool) {
+        self.config.set_debug_conditionals(debug_conditionals);
+    }
+
+    fn tab_size(&mut self, tab_size: usize) {
+        self.config.set_tab_size(tab_size);
+    }
+}
+
 fn normalize_output_options_for_check(output: &mut OutputOptions<'_>) {
     output.default_outputs = false;
     output.out_dir = None;
@@ -1912,7 +2383,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// `root_path`. See `documentation/libopforge-embedding-cookbook.md` and
     /// `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`.
     pub fn output_base(mut self, output_base: &'a str) -> Self {
-        self.config.source.output_base = output_base;
+        SharedBuilderMut::new(&mut self.config).output_base(output_base);
         self
     }
 
@@ -1921,7 +2392,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host already owns the full define set and wants to
     /// pass it through unchanged on a one-shot borrowed build.
     pub fn defines(mut self, defines: &'a [String]) -> Self {
-        self.config.source.defines = defines;
+        SharedBuilderMut::new(&mut self.config).defines(defines);
         self
     }
 
@@ -1930,7 +2401,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host controls include resolution directly instead of
     /// relying on the default path layout.
     pub fn include_paths(mut self, include_paths: &'a [PathBuf]) -> Self {
-        self.config.source.include_paths = include_paths;
+        SharedBuilderMut::new(&mut self.config).include_paths(include_paths);
         self
     }
 
@@ -1938,7 +2409,7 @@ impl<'a> AssemblerBuilder<'a> {
     ///
     /// Use this when module resolution must follow host-owned search roots.
     pub fn module_paths(mut self, module_paths: &'a [PathBuf]) -> Self {
-        self.config.source.module_paths = module_paths;
+        SharedBuilderMut::new(&mut self.config).module_paths(module_paths);
         self
     }
 
@@ -1947,7 +2418,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this only when the host needs a non-default recursion budget for a
     /// known source corpus.
     pub fn pp_macro_depth(mut self, pp_macro_depth: usize) -> Self {
-        self.config.source.pp_macro_depth = pp_macro_depth;
+        SharedBuilderMut::new(&mut self.config).pp_macro_depth(pp_macro_depth);
         self
     }
 
@@ -1957,7 +2428,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// memory-backed path in
     /// `documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs`.
     pub fn source_provider(mut self, source_provider: &'a dyn SourceProvider) -> Self {
-        self.config.source.source_provider = Some(source_provider);
+        SharedBuilderMut::new(&mut self.config).source_provider(source_provider);
         self
     }
 
@@ -1968,7 +2439,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// `documentation/libopforge-execution-modes-and-lockstep-guide.md` and
     /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
-        self.config.execution.execution_mode = execution_mode;
+        SharedBuilderMut::new(&mut self.config).execution_mode(execution_mode);
         self
     }
 
@@ -1976,7 +2447,7 @@ impl<'a> AssemblerBuilder<'a> {
     ///
     /// Use this when the host owns CPU selection in project config or UI.
     pub fn cpu_override(mut self, cpu_override: &'a str) -> Self {
-        self.config.execution.cpu_override = Some(cpu_override);
+        SharedBuilderMut::new(&mut self.config).cpu_override(cpu_override);
         self
     }
 
@@ -1985,7 +2456,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this only when the host needs a deliberate non-default execution
     /// ceiling for trusted input.
     pub fn max_loop_iterations(mut self, max_loop_iterations: u32) -> Self {
-        self.config.execution.max_loop_iterations = max_loop_iterations;
+        SharedBuilderMut::new(&mut self.config).max_loop_iterations(max_loop_iterations);
         self
     }
 
@@ -1994,7 +2465,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host manages VM runtime artifacts directly instead of
     /// relying on the default lookup path.
     pub fn opasm_package_path(mut self, opasm_package_path: &'a Path) -> Self {
-        self.config.execution.opasm_package_path = Some(opasm_package_path);
+        SharedBuilderMut::new(&mut self.config).opasm_package_path(opasm_package_path);
         self
     }
 
@@ -2003,7 +2474,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when artifact files should be emitted away from the source
     /// tree. See `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`.
     pub fn out_dir(mut self, out_dir: &'a Path) -> Self {
-        self.config.output.out_dir = Some(out_dir);
+        SharedBuilderMut::new(&mut self.config).out_dir(out_dir);
         self
     }
 
@@ -2012,7 +2483,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host wants text, binary, or other output selection as
     /// part of the request shape.
     pub fn output_format(mut self, output_format: OutputFormat) -> Self {
-        self.config.output.output_format = output_format;
+        SharedBuilderMut::new(&mut self.config).output_format(output_format);
         self
     }
 
@@ -2021,7 +2492,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host owns the emitted start-address policy rather
     /// than leaving it to source-driven defaults.
     pub fn go_addr(mut self, go_addr: &'a str) -> Self {
-        self.config.output.go_addr = Some(go_addr);
+        SharedBuilderMut::new(&mut self.config).go_addr(go_addr);
         self
     }
 
@@ -2030,7 +2501,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host needs one or more named binary ranges instead of
     /// the default output set.
     pub fn bin_specs(mut self, bin_specs: &'a [BinOutputSpec]) -> Self {
-        self.config.output.bin_specs = bin_specs;
+        SharedBuilderMut::new(&mut self.config).bin_specs(bin_specs);
         self
     }
 
@@ -2039,8 +2510,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when emitted binary ranges must use a host-chosen fill value
     /// rather than the default behavior.
     pub fn fill_byte(mut self, fill_byte: u8) -> Self {
-        self.config.output.fill_byte = fill_byte;
-        self.config.output.fill_byte_set = true;
+        SharedBuilderMut::new(&mut self.config).fill_byte(fill_byte);
         self
     }
 
@@ -2049,7 +2519,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host wants label output as a separate artifact rather
     /// than relying only on the main report.
     pub fn labels_file(mut self, labels_file: &'a Path) -> Self {
-        self.config.output.labels_file = Some(labels_file);
+        SharedBuilderMut::new(&mut self.config).labels_file(labels_file);
         self
     }
 
@@ -2058,7 +2528,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host wants make-style or related dependency output in
     /// addition to the main run report.
     pub fn dependency_output(mut self, dependency_output: &'a DependencyOutputPolicy) -> Self {
-        self.config.output.dependency_output = Some(dependency_output);
+        SharedBuilderMut::new(&mut self.config).dependency_output(dependency_output);
         self
     }
 
@@ -2067,7 +2537,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when artifact naming must follow the host's naming contract
     /// instead of the derived `output_base` path.
     pub fn outfile_override(mut self, outfile_override: &'a str) -> Self {
-        self.config.output.outfile_override = Some(outfile_override);
+        SharedBuilderMut::new(&mut self.config).outfile_override(outfile_override);
         self
     }
 
@@ -2076,7 +2546,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when listing output must use a host-chosen name distinct from
     /// the derived output base.
     pub fn list_name_override(mut self, list_name_override: &'a str) -> Self {
-        self.config.output.list_name_override = Some(list_name_override);
+        SharedBuilderMut::new(&mut self.config).list_name_override(list_name_override);
         self
     }
 
@@ -2085,7 +2555,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when hex output must use a host-chosen name distinct from the
     /// derived output base.
     pub fn hex_name_override(mut self, hex_name_override: &'a str) -> Self {
-        self.config.output.hex_name_override = Some(hex_name_override);
+        SharedBuilderMut::new(&mut self.config).hex_name_override(hex_name_override);
         self
     }
 
@@ -2095,7 +2565,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// the VICE-oriented example in
     /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn label_output_format(mut self, label_output_format: LabelOutputFormat) -> Self {
-        self.config.output.label_output_format = label_output_format;
+        SharedBuilderMut::new(&mut self.config).label_output_format(label_output_format);
         self
     }
 
@@ -2104,7 +2574,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host wants a stable presentation title in listing or
     /// related text outputs.
     pub fn header_title(mut self, header_title: &'a str) -> Self {
-        self.config.output.header_title = header_title;
+        SharedBuilderMut::new(&mut self.config).header_title(header_title);
         self
     }
 
@@ -2113,7 +2583,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host wants the standard emitted artifacts on or off
     /// without overriding each output class individually.
     pub fn default_outputs(mut self, default_outputs: bool) -> Self {
-        self.config.output.default_outputs = default_outputs;
+        SharedBuilderMut::new(&mut self.config).default_outputs(default_outputs);
         self
     }
 
@@ -2122,7 +2592,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host is intentionally building a diagnostics-first
     /// flow and wants the same no-output behavior that `check()` applies.
     pub fn no_outputs(mut self, no_outputs: bool) -> Self {
-        self.config.output.no_outputs = no_outputs;
+        SharedBuilderMut::new(&mut self.config).no_outputs(no_outputs);
         self
     }
 
@@ -2131,7 +2601,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host wants extra conditional-expansion visibility in
     /// emitted diagnostics.
     pub fn debug_conditionals(mut self, debug_conditionals: bool) -> Self {
-        self.config.diagnostics.debug_conditionals = debug_conditionals;
+        SharedBuilderMut::new(&mut self.config).debug_conditionals(debug_conditionals);
         self
     }
 
@@ -2140,7 +2610,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// Use this when the host's editor or source presentation uses a known tab
     /// size and diagnostics should align to that view.
     pub fn tab_size(mut self, tab_size: usize) -> Self {
-        self.config.diagnostics.tab_size = Some(tab_size);
+        SharedBuilderMut::new(&mut self.config).tab_size(tab_size);
         self
     }
 
@@ -2150,7 +2620,7 @@ impl<'a> AssemblerBuilder<'a> {
     /// memory-backed path in
     /// `documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs`.
     pub fn output_sink(mut self, output_sink: &'a dyn OutputSink) -> Self {
-        self.config.output.output_sink = Some(output_sink);
+        SharedBuilderMut::new(&mut self.config).output_sink(output_sink);
         self
     }
 
@@ -2218,7 +2688,7 @@ impl AssemblerSessionBuilder {
     /// of `root_path`. See `documentation/libopforge-embedding-cookbook.md` and
     /// `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`.
     pub fn output_base(mut self, output_base: impl Into<String>) -> Self {
-        self.config.source.output_base = output_base.into();
+        SharedBuilderMut::new(&mut self.config).output_base(output_base.into());
         self
     }
 
@@ -2227,7 +2697,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host already owns the full define set as session
     /// state and wants to move it into the facade.
     pub fn defines(mut self, defines: impl Into<Vec<String>>) -> Self {
-        self.config.source.defines = defines.into();
+        SharedBuilderMut::new(&mut self.config).defines(defines.into());
         self
     }
 
@@ -2235,7 +2705,7 @@ impl AssemblerSessionBuilder {
     ///
     /// Use this when the owned host controls include resolution directly.
     pub fn include_paths(mut self, include_paths: impl Into<Vec<PathBuf>>) -> Self {
-        self.config.source.include_paths = include_paths.into();
+        SharedBuilderMut::new(&mut self.config).include_paths(include_paths.into());
         self
     }
 
@@ -2243,7 +2713,7 @@ impl AssemblerSessionBuilder {
     ///
     /// Use this when module resolution must follow host-owned search roots.
     pub fn module_paths(mut self, module_paths: impl Into<Vec<PathBuf>>) -> Self {
-        self.config.source.module_paths = module_paths.into();
+        SharedBuilderMut::new(&mut self.config).module_paths(module_paths.into());
         self
     }
 
@@ -2252,7 +2722,7 @@ impl AssemblerSessionBuilder {
     /// Use this only when the host needs a deliberate non-default recursion
     /// budget for trusted inputs.
     pub fn pp_macro_depth(mut self, pp_macro_depth: usize) -> Self {
-        self.config.source.pp_macro_depth = pp_macro_depth;
+        SharedBuilderMut::new(&mut self.config).pp_macro_depth(pp_macro_depth);
         self
     }
 
@@ -2263,7 +2733,7 @@ impl AssemblerSessionBuilder {
     /// `documentation/libopforge-execution-modes-and-lockstep-guide.md` and
     /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn execution_mode(mut self, execution_mode: ExecutionMode) -> Self {
-        self.config.execution.execution_mode = execution_mode;
+        SharedBuilderMut::new(&mut self.config).execution_mode(execution_mode);
         self
     }
 
@@ -2272,7 +2742,7 @@ impl AssemblerSessionBuilder {
     /// Use this when CPU choice lives in project settings, service state, or a
     /// host UI rather than the source text.
     pub fn cpu_override(mut self, cpu_override: impl Into<String>) -> Self {
-        self.config.execution.cpu_override = Some(cpu_override.into());
+        SharedBuilderMut::new(&mut self.config).cpu_override(cpu_override.into());
         self
     }
 
@@ -2281,7 +2751,7 @@ impl AssemblerSessionBuilder {
     /// Use this only when the host needs a deliberate non-default execution
     /// ceiling for trusted input.
     pub fn max_loop_iterations(mut self, max_loop_iterations: u32) -> Self {
-        self.config.execution.max_loop_iterations = max_loop_iterations;
+        SharedBuilderMut::new(&mut self.config).max_loop_iterations(max_loop_iterations);
         self
     }
 
@@ -2290,7 +2760,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host manages VM runtime artifacts directly instead of
     /// relying on the default lookup path.
     pub fn opasm_package_path(mut self, opasm_package_path: impl Into<PathBuf>) -> Self {
-        self.config.execution.opasm_package_path = Some(opasm_package_path.into());
+        SharedBuilderMut::new(&mut self.config).opasm_package_path(opasm_package_path.into());
         self
     }
 
@@ -2299,7 +2769,7 @@ impl AssemblerSessionBuilder {
     /// Use this when emitted files should land outside the source tree. See
     /// `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`.
     pub fn out_dir(mut self, out_dir: impl Into<PathBuf>) -> Self {
-        self.config.output.out_dir = Some(out_dir.into());
+        SharedBuilderMut::new(&mut self.config).out_dir(out_dir.into());
         self
     }
 
@@ -2308,7 +2778,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host wants output selection to be part of the stored
     /// request shape.
     pub fn output_format(mut self, output_format: OutputFormat) -> Self {
-        self.config.output.output_format = output_format;
+        SharedBuilderMut::new(&mut self.config).output_format(output_format);
         self
     }
 
@@ -2316,7 +2786,7 @@ impl AssemblerSessionBuilder {
     ///
     /// Use this when the host owns emitted start-address policy directly.
     pub fn go_addr(mut self, go_addr: impl Into<String>) -> Self {
-        self.config.output.go_addr = Some(go_addr.into());
+        SharedBuilderMut::new(&mut self.config).go_addr(go_addr.into());
         self
     }
 
@@ -2325,7 +2795,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host needs named binary ranges instead of the default
     /// output set.
     pub fn bin_specs(mut self, bin_specs: impl Into<Vec<BinOutputSpec>>) -> Self {
-        self.config.output.bin_specs = bin_specs.into();
+        SharedBuilderMut::new(&mut self.config).bin_specs(bin_specs.into());
         self
     }
 
@@ -2333,8 +2803,7 @@ impl AssemblerSessionBuilder {
     ///
     /// Use this when emitted binary ranges must use a host-chosen fill value.
     pub fn fill_byte(mut self, fill_byte: u8) -> Self {
-        self.config.output.fill_byte = fill_byte;
-        self.config.output.fill_byte_set = true;
+        SharedBuilderMut::new(&mut self.config).fill_byte(fill_byte);
         self
     }
 
@@ -2342,7 +2811,7 @@ impl AssemblerSessionBuilder {
     ///
     /// Use this when label output should be emitted as a separate artifact.
     pub fn labels_file(mut self, labels_file: impl Into<PathBuf>) -> Self {
-        self.config.output.labels_file = Some(labels_file.into());
+        SharedBuilderMut::new(&mut self.config).labels_file(labels_file.into());
         self
     }
 
@@ -2351,7 +2820,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host wants make-style or related dependency output in
     /// addition to the main run report.
     pub fn dependency_output(mut self, dependency_output: DependencyOutputPolicy) -> Self {
-        self.config.output.dependency_output = Some(dependency_output);
+        SharedBuilderMut::new(&mut self.config).dependency_output(dependency_output);
         self
     }
 
@@ -2360,7 +2829,7 @@ impl AssemblerSessionBuilder {
     /// Use this when artifact naming must follow the host's naming contract
     /// rather than the derived `output_base` path.
     pub fn outfile_override(mut self, outfile_override: impl Into<String>) -> Self {
-        self.config.output.outfile_override = Some(outfile_override.into());
+        SharedBuilderMut::new(&mut self.config).outfile_override(outfile_override.into());
         self
     }
 
@@ -2369,7 +2838,7 @@ impl AssemblerSessionBuilder {
     /// Use this when listing output must use a host-chosen name distinct from
     /// the derived output base.
     pub fn list_name_override(mut self, list_name_override: impl Into<String>) -> Self {
-        self.config.output.list_name_override = Some(list_name_override.into());
+        SharedBuilderMut::new(&mut self.config).list_name_override(list_name_override.into());
         self
     }
 
@@ -2378,7 +2847,7 @@ impl AssemblerSessionBuilder {
     /// Use this when hex output must use a host-chosen name distinct from the
     /// derived output base.
     pub fn hex_name_override(mut self, hex_name_override: impl Into<String>) -> Self {
-        self.config.output.hex_name_override = Some(hex_name_override.into());
+        SharedBuilderMut::new(&mut self.config).hex_name_override(hex_name_override.into());
         self
     }
 
@@ -2388,7 +2857,7 @@ impl AssemblerSessionBuilder {
     /// the VICE-oriented example in
     /// `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`.
     pub fn label_output_format(mut self, label_output_format: LabelOutputFormat) -> Self {
-        self.config.output.label_output_format = label_output_format;
+        SharedBuilderMut::new(&mut self.config).label_output_format(label_output_format);
         self
     }
 
@@ -2397,7 +2866,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host wants a stable presentation title in listing or
     /// related text outputs.
     pub fn header_title(mut self, header_title: impl Into<String>) -> Self {
-        self.config.output.header_title = header_title.into();
+        SharedBuilderMut::new(&mut self.config).header_title(header_title.into());
         self
     }
 
@@ -2406,7 +2875,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host wants the standard emitted artifacts on or off
     /// without overriding each output class individually.
     pub fn default_outputs(mut self, default_outputs: bool) -> Self {
-        self.config.output.default_outputs = default_outputs;
+        SharedBuilderMut::new(&mut self.config).default_outputs(default_outputs);
         self
     }
 
@@ -2415,7 +2884,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host is intentionally building a diagnostics-first
     /// flow and wants the same no-output behavior that `check()` applies.
     pub fn no_outputs(mut self, no_outputs: bool) -> Self {
-        self.config.output.no_outputs = no_outputs;
+        SharedBuilderMut::new(&mut self.config).no_outputs(no_outputs);
         self
     }
 
@@ -2424,7 +2893,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host wants extra conditional-expansion visibility in
     /// emitted diagnostics.
     pub fn debug_conditionals(mut self, debug_conditionals: bool) -> Self {
-        self.config.diagnostics.debug_conditionals = debug_conditionals;
+        SharedBuilderMut::new(&mut self.config).debug_conditionals(debug_conditionals);
         self
     }
 
@@ -2433,7 +2902,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host's editor or source presentation uses a known tab
     /// size and diagnostics should align to that view.
     pub fn tab_size(mut self, tab_size: usize) -> Self {
-        self.config.diagnostics.tab_size = Some(tab_size);
+        SharedBuilderMut::new(&mut self.config).tab_size(tab_size);
         self
     }
 
@@ -2446,7 +2915,7 @@ impl AssemblerSessionBuilder {
     where
         T: SourceProvider + 'static,
     {
-        self.config.source.source_provider = Some(Arc::new(source_provider));
+        SharedBuilderMut::new(&mut self.config).source_provider(Arc::new(source_provider));
         self
     }
 
@@ -2455,7 +2924,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host already shares one provider across workers or
     /// long-lived sessions and does not want another allocation boundary.
     pub fn source_provider_arc(mut self, source_provider: Arc<dyn SourceProvider>) -> Self {
-        self.config.source.source_provider = Some(source_provider);
+        SharedBuilderMut::new(&mut self.config).source_provider(source_provider);
         self
     }
 
@@ -2468,7 +2937,7 @@ impl AssemblerSessionBuilder {
     where
         T: OutputSink + 'static,
     {
-        self.config.output.output_sink = Some(Arc::new(output_sink));
+        SharedBuilderMut::new(&mut self.config).output_sink(Arc::new(output_sink));
         self
     }
 
@@ -2477,7 +2946,7 @@ impl AssemblerSessionBuilder {
     /// Use this when the host already shares one sink across workers or
     /// long-lived sessions and wants the session to adopt that shared handle.
     pub fn output_sink_arc(mut self, output_sink: Arc<dyn OutputSink>) -> Self {
-        self.config.output.output_sink = Some(output_sink);
+        SharedBuilderMut::new(&mut self.config).output_sink(output_sink);
         self
     }
 
@@ -3795,6 +4264,170 @@ mod tests {
         assert!(listing.contains(".byte $00"), "listing:\n{listing}");
         let hex = expect_text(&output_sink, "/virtual/main.hex");
         assert!(hex.contains(":0100000000FF"), "hex:\n{hex}");
+    }
+
+    #[test]
+    fn public_borrowed_and_owned_builders_share_common_config_mutations() {
+        let defines = vec!["FEATURE=1".to_string()];
+        let include_paths = vec![PathBuf::from("/virtual/include")];
+        let module_paths = vec![PathBuf::from("/virtual/modules")];
+        let bin_specs = vec![asm::BinOutputSpec {
+            name: Some("bank0.bin".to_string()),
+            range: None,
+        }];
+        let dependency_output = asm::DependencyOutputPolicy {
+            path: PathBuf::from("/virtual/out/main.d"),
+            append: true,
+            make_phony: false,
+        };
+        let labels_file = PathBuf::from("/virtual/out/symbols.lbl");
+        let opasm_package_path = PathBuf::from("/virtual/runtime.opasm");
+        let out_dir = PathBuf::from("/virtual/out");
+        let source_provider = io::MemorySourceProvider::new()
+            .with_file("/virtual/main.asm", ".module main\nnop\n.endmodule\n");
+        let borrowed_output_sink = io::MemoryOutputSink::new();
+        let owned_output_sink = io::MemoryOutputSink::new();
+
+        let borrowed = Assembler::builder(Path::new("/virtual/main.asm"))
+            .output_base("/virtual/main")
+            .defines(&defines)
+            .include_paths(&include_paths)
+            .module_paths(&module_paths)
+            .pp_macro_depth(64)
+            .source_provider(&source_provider)
+            .execution_mode(lockstep::ExecutionMode::Lockstep {
+                continuation_head: lockstep::ContinuationHead::Rust,
+            })
+            .cpu_override("8085")
+            .max_loop_iterations(2048)
+            .opasm_package_path(opasm_package_path.as_path())
+            .out_dir(out_dir.as_path())
+            .output_format(asm::OutputFormat::Text)
+            .go_addr("1234")
+            .bin_specs(&bin_specs)
+            .fill_byte(0xEA)
+            .labels_file(labels_file.as_path())
+            .dependency_output(&dependency_output)
+            .outfile_override("custom.out")
+            .list_name_override("custom.lst")
+            .hex_name_override("custom.hex")
+            .label_output_format(asm::LabelOutputFormat::Vice)
+            .header_title("Shared builder test")
+            .default_outputs(false)
+            .no_outputs(true)
+            .debug_conditionals(true)
+            .tab_size(8)
+            .output_sink(&borrowed_output_sink)
+            .build();
+
+        let owned = AssemblerSession::builder("/virtual/main.asm")
+            .output_base("/virtual/main")
+            .defines(defines.clone())
+            .include_paths(include_paths.clone())
+            .module_paths(module_paths.clone())
+            .pp_macro_depth(64)
+            .source_provider(source_provider.clone())
+            .execution_mode(lockstep::ExecutionMode::Lockstep {
+                continuation_head: lockstep::ContinuationHead::Rust,
+            })
+            .cpu_override("8085")
+            .max_loop_iterations(2048)
+            .opasm_package_path(opasm_package_path.clone())
+            .out_dir(out_dir.clone())
+            .output_format(asm::OutputFormat::Text)
+            .go_addr("1234")
+            .bin_specs(bin_specs.clone())
+            .fill_byte(0xEA)
+            .labels_file(labels_file.clone())
+            .dependency_output(dependency_output.clone())
+            .outfile_override("custom.out")
+            .list_name_override("custom.lst")
+            .hex_name_override("custom.hex")
+            .label_output_format(asm::LabelOutputFormat::Vice)
+            .header_title("Shared builder test")
+            .default_outputs(false)
+            .no_outputs(true)
+            .debug_conditionals(true)
+            .tab_size(8)
+            .output_sink(owned_output_sink.clone())
+            .build();
+
+        let borrowed_options: AssembleOptions<'_> = borrowed.config().clone().into();
+        let owned_options = owned.config().as_borrowed();
+
+        assert_eq!(borrowed_options.output_base, owned_options.output_base);
+        assert_eq!(borrowed_options.defines, owned_options.defines);
+        assert_eq!(borrowed_options.include_paths, owned_options.include_paths);
+        assert_eq!(borrowed_options.module_paths, owned_options.module_paths);
+        assert_eq!(
+            borrowed_options.pp_macro_depth,
+            owned_options.pp_macro_depth
+        );
+        assert_eq!(borrowed_options.cpu_override, owned_options.cpu_override);
+        assert_eq!(
+            borrowed_options.max_loop_iterations,
+            owned_options.max_loop_iterations
+        );
+        assert_eq!(
+            borrowed_options.opasm_package_path,
+            owned_options.opasm_package_path
+        );
+        assert_eq!(borrowed_options.out_dir, owned_options.out_dir);
+        assert_eq!(borrowed_options.output_format, owned_options.output_format);
+        assert_eq!(borrowed_options.go_addr, owned_options.go_addr);
+        assert_eq!(
+            borrowed_options.bin_specs.len(),
+            owned_options.bin_specs.len()
+        );
+        assert_eq!(
+            borrowed_options.bin_specs[0].name.as_deref(),
+            owned_options.bin_specs[0].name.as_deref()
+        );
+        assert!(borrowed_options.bin_specs[0].range.is_none());
+        assert!(owned_options.bin_specs[0].range.is_none());
+        assert_eq!(borrowed_options.fill_byte, owned_options.fill_byte);
+        assert_eq!(borrowed_options.fill_byte_set, owned_options.fill_byte_set);
+        assert_eq!(
+            borrowed_options.default_outputs,
+            owned_options.default_outputs
+        );
+        assert_eq!(borrowed_options.labels_file, owned_options.labels_file);
+        let borrowed_dep = borrowed_options
+            .dependency_output
+            .expect("borrowed dependency output");
+        let owned_dep = owned_options
+            .dependency_output
+            .expect("owned dependency output");
+        assert_eq!(borrowed_dep.path, owned_dep.path);
+        assert_eq!(borrowed_dep.append, owned_dep.append);
+        assert_eq!(borrowed_dep.make_phony, owned_dep.make_phony);
+        assert_eq!(
+            borrowed_options.label_output_format,
+            owned_options.label_output_format
+        );
+        assert_eq!(
+            borrowed_options.outfile_override,
+            owned_options.outfile_override
+        );
+        assert_eq!(
+            borrowed_options.list_name_override,
+            owned_options.list_name_override
+        );
+        assert_eq!(
+            borrowed_options.hex_name_override,
+            owned_options.hex_name_override
+        );
+        assert_eq!(borrowed_options.header_title, owned_options.header_title);
+        assert_eq!(
+            borrowed_options.debug_conditionals,
+            owned_options.debug_conditionals
+        );
+        assert_eq!(borrowed_options.tab_size, owned_options.tab_size);
+        assert!(borrowed_options.source_provider.is_some());
+        assert!(owned_options.source_provider.is_some());
+        assert!(borrowed_options.output_sink.is_some());
+        assert!(owned_options.output_sink.is_some());
+        assert_eq!(borrowed_options.no_outputs, owned_options.no_outputs);
     }
 
     #[test]

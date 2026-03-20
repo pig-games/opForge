@@ -2361,6 +2361,92 @@ fn routine_document_events_keep_rooted_index_incremental() {
 }
 
 #[test]
+fn did_change_refreshes_open_document_symbols_without_rooted_rebuild() {
+    let temp_dir = unique_temp_dir();
+    let math_file = temp_dir.join("math.asm");
+    let math_uri = path_to_file_uri(&math_file);
+
+    let initial_text = ".module math\n.pub\nvalue = 42\n.endmodule\n";
+    let changed_text = ".module math\n.pub\ntotal = 43\n.endmodule\n";
+    write_text(&math_file, initial_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": initial_text
+            }
+        }),
+    );
+
+    let initial_symbols = client.request("workspace/symbol", json!({ "query": "value" }));
+    let initial_symbol_entries = initial_symbols.as_array().expect("workspace symbol array");
+    assert!(initial_symbol_entries.iter().any(|entry| {
+        entry
+            .get("location")
+            .and_then(|value| value.get("uri"))
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 2
+            },
+            "contentChanges": [
+                {"text": changed_text}
+            ]
+        }),
+    );
+
+    let changed_symbols = client.request("workspace/symbol", json!({ "query": "total" }));
+    let changed_symbol_entries = changed_symbols.as_array().expect("workspace symbol array");
+    assert!(changed_symbol_entries.iter().any(|entry| {
+        entry
+            .get("location")
+            .and_then(|value| value.get("uri"))
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    let stale_symbols = client.request("workspace/symbol", json!({ "query": "value" }));
+    let stale_symbol_entries = stale_symbols.as_array().expect("workspace symbol array");
+    assert!(
+        !stale_symbol_entries.iter().any(|entry| {
+            entry
+                .get("location")
+                .and_then(|value| value.get("uri"))
+                .and_then(|value| value.as_str())
+                .is_some_and(|uri| uri == math_uri)
+        }),
+        "didChange should refresh indexed symbols for the open document"
+    );
+
+    let stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        stats.get("rootedRebuilds").and_then(|value| value.as_u64()),
+        Some(1),
+        "didChange should keep the rooted workspace index incremental"
+    );
+
+    client.shutdown();
+}
+
+#[test]
 fn overlapping_validations_publish_only_newest_version_results() {
     let temp_dir = unique_temp_dir();
     let script_path = temp_dir.join("validator.sh");

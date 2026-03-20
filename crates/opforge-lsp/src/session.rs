@@ -209,6 +209,14 @@ impl LspSession {
         Vec::new()
     }
 
+    fn upsert_open_document_state(&mut self, uri: &str, version: i64, text: String) {
+        let path = uri_to_path(uri);
+        let mut state = DocumentState::new(uri.to_string(), path, version, text);
+        state.refresh_derived_state(self.context.registry());
+        self.documents.insert(uri.to_string(), state);
+        self.refresh_workspace_index_for_document(uri);
+    }
+
     fn handle_did_open(&mut self, params: &Value) -> Vec<OutboundMessage> {
         let Some(doc) = params.get("textDocument") else {
             return Vec::new();
@@ -222,11 +230,7 @@ impl LspSession {
             .unwrap_or_default()
             .to_string();
         let version = doc.get("version").and_then(Value::as_i64).unwrap_or(0);
-        let path = uri_to_path(uri);
-        let mut state = DocumentState::new(uri.to_string(), path, version, text);
-        state.refresh_derived_state(self.context.registry());
-        self.documents.insert(uri.to_string(), state);
-        self.refresh_workspace_index_for_document(uri);
+        self.upsert_open_document_state(uri, version, text);
         self.maybe_validate_and_publish(uri, true)
     }
 
@@ -249,11 +253,7 @@ impl LspSession {
         if text.is_empty() && !self.documents.contains_key(uri) {
             return Vec::new();
         }
-        let path = uri_to_path(uri);
-        let mut state = DocumentState::new(uri.to_string(), path, version, text);
-        state.refresh_derived_state(self.context.registry());
-        self.documents.insert(uri.to_string(), state);
-        self.refresh_workspace_index_for_document(uri);
+        self.upsert_open_document_state(uri, version, text);
         self.maybe_validate_and_publish(uri, false)
     }
 

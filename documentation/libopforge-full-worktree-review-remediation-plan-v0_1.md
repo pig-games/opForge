@@ -73,7 +73,7 @@ changing public behavior.
   - Commit outcome: planned: one commit that defines each cfg-specific profile label once and derives the longer banner/help strings from it
   - Definition of done: the cfg matrix for build-profile text is authored once, duplicate literal maintenance is removed, and CLI output stays unchanged
 
-- [ ] Item 6: Extract shared document upsert flow for LSP open/change notifications
+- [x] Item 6: Extract shared document upsert flow for LSP open/change notifications
   - Source requirement or finding IDs: RVW-2026-03-20-005 (expected full closure)
   - Expected files: `crates/opforge-lsp/src/session.rs`; `crates/opforge-lsp/tests/lsp_client_integration.rs`
   - Validation: `cargo test -q -p lsp`; verify `didOpen` and `didChange` still refresh derived state, update the workspace index, and preserve force-validate behavior
@@ -85,8 +85,8 @@ changing public behavior.
 ## Milestones
 
 - [x] Milestone 1: public `opforge-lib` facade duplication is reduced by completing Items 1 and 4
-- [ ] Milestone 2: FFI repetition is reduced through the shared helper rollout in Items 2 and 3
-- [ ] Milestone 3: tooling-layer duplication is reduced by completing Items 5 and 6
+- [x] Milestone 2: FFI repetition is reduced through the shared helper rollout in Items 2 and 3
+- [x] Milestone 3: tooling-layer duplication is reduced by completing Items 5 and 6
 
 ## Blocking Rules
 

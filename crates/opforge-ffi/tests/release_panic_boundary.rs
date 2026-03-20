@@ -14,6 +14,7 @@ use std::fs;
 use std::os::raw::c_char;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use release_ffi_support::{build_release_ffi_cdylib, release_ffi_library_path};
@@ -98,6 +99,11 @@ fn basic_request(root_path: *const c_char) -> OpforgeAsmRequest {
             tab_size: 0,
         },
     }
+}
+
+fn release_ffi_parent_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 fn assemble_ok_main() {
@@ -335,8 +341,10 @@ fn release_profile_catches_forced_ffi_panic() {
         return;
     }
 
+    let _guard = release_ffi_parent_lock()
+        .lock()
+        .expect("lock release-ffi parent tests");
     build_release_ffi_cdylib(true);
-
     let status = run_child(MODE_PANIC);
 
     assert!(
@@ -352,8 +360,10 @@ fn release_profile_loads_and_assembles_smoke() {
         return;
     }
 
+    let _guard = release_ffi_parent_lock()
+        .lock()
+        .expect("lock release-ffi parent tests");
     build_release_ffi_cdylib(true);
-
     let status = run_child(MODE_SMOKE);
 
     assert!(
@@ -369,8 +379,10 @@ fn release_profile_loads_and_checks_smoke() {
         return;
     }
 
+    let _guard = release_ffi_parent_lock()
+        .lock()
+        .expect("lock release-ffi parent tests");
     build_release_ffi_cdylib(true);
-
     let status = run_child(MODE_CHECK_SMOKE);
 
     assert!(
@@ -386,8 +398,10 @@ fn release_profile_session_and_prepared_checks_smoke() {
         return;
     }
 
+    let _guard = release_ffi_parent_lock()
+        .lock()
+        .expect("lock release-ffi parent tests");
     build_release_ffi_cdylib(true);
-
     let status = run_child(MODE_SESSION_SMOKE);
 
     assert!(

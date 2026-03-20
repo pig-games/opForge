@@ -14,7 +14,7 @@ This guide explains when to choose `ExecutionMode::Vm`, `ExecutionMode::Rust`, o
 
 The stable config types default to `ExecutionMode::Vm`.
 
-That default is appropriate for normal builds, validations, and host integrations that do not need to override the continuation head explicitly. If your host does not have a concrete reason to choose a different mode, keep the default and let the high-level facade own the policy.
+That default suits normal builds, validations, and host integrations that do not need to override the continuation head explicitly.
 
 ## 3. When to choose `Vm`
 
@@ -110,4 +110,4 @@ Keep parity reporting in the structured lockstep model instead of flattening it 
 - Prefer `Lockstep` over custom dual-run host logic when parity is the requirement.
 - Keep execution-mode choice in the host request/config model so the reason for a non-default mode remains explicit.
 
-For task-first host integration recipes, continue with `documentation/libopforge-embedding-cookbook.md`.
+Embedding recipes for borrowed, owned, in-memory, and FFI-oriented hosts are in `documentation/libopforge-embedding-cookbook.md`.

@@ -4,9 +4,9 @@ This guide is for developers who want to embed opForge as a library, build new t
 
 It documents the stable libopforge host surface in this branch/worktree as of `v0.9.5`.
 
-## 1. Start here
+## 1. Integration map
 
-If you are building:
+Common integration starting points:
 
 | Use case | Start with | Why |
 |---|---|---|
@@ -19,7 +19,7 @@ If you are building:
 | C or C++ host integration | `crates/opforge-ffi` | Thin ABI layer over the same library/session model |
 | New CPU/family/dialect implementations | direct workspace crates (`registry`, `families`, `vm`) | This is advanced extension work, not the normal stable embedding path |
 
-Recommendation: for external Rust consumers, depend on `libopforge` and stay inside its module tree unless you are intentionally extending opForge itself.
+External Rust consumers should depend on `libopforge` and stay inside its module tree unless they are intentionally extending opForge itself.
 
 ## 2. Workspace map
 
@@ -63,7 +63,7 @@ Important boundary notes:
 
 ### 3.1 Concern inventories
 
-The stable facade is organized by concern ownership. Use the module-first API and treat each module below as the canonical home for that concern boundary.
+Each public module has a distinct ownership boundary.
 
 | Module | Owns | Does not own |
 |---|---|---|
@@ -111,7 +111,7 @@ Reference example:
 
 - `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`
 
-For mode-selection recipes and lockstep-specific workflow guidance, see the `Execution Modes and Lockstep Guide` in `documentation/libopforge-execution-modes-and-lockstep-guide.md`.
+Detailed execution-mode and lockstep behavior is documented in `documentation/libopforge-execution-modes-and-lockstep-guide.md`.
 
 ### 4.3 `check()` versus `assemble()`
 
@@ -143,19 +143,19 @@ Reference example:
 
 ## 5. High-level Rust integration patterns
 
-For task-first host recipes, see the `Embedding Cookbook` in `documentation/libopforge-embedding-cookbook.md`.
+Concrete embedding recipes are collected in `documentation/libopforge-embedding-cookbook.md`.
 
 ### 5.1 Borrowed host integration
 
 Use `Assembler::builder(...)` when your host already owns its providers and sinks and can keep them alive for the duration of the call. This remains the best fit for short-lived build-tool or command-wrapper requests.
 
-Keep the main guide at the boundary level: use the `Embedding Cookbook` for the concrete borrowed-host recipe, builder-shape choices, and example-driven setup.
+A borrowed-host example is in `documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs`. Additional borrowed/session setup examples are in `documentation/libopforge-embedding-cookbook.md`.
 
 ### 5.2 Owned or non-borrowing host integration
 
 Use `AssemblerSession::builder(...)` when your host needs owned state, long-lived sessions, or FFI-friendly ergonomics. This is still the recommended default for new integrations.
 
-Detailed task guidance, host-pattern decisions, and step-by-step session recipes now live in the `Embedding Cookbook`.
+Additional owned/session setup examples are in `documentation/libopforge-embedding-cookbook.md`.
 
 Reference examples:
 
@@ -169,17 +169,17 @@ Reference examples:
 
 For editors, tests, and embedded hosts, use the concrete memory adapters re-exported from `libopforge::io`.
 
-The `Embedding Cookbook` now carries the concrete in-memory recipe, including when to use `MemoryOutputSink::bytes()` versus `text()` and how to map the owned/session path onto non-filesystem hosts.
+The in-memory recipe, including `MemoryOutputSink::bytes()` versus `text()`, is documented in `documentation/libopforge-embedding-cookbook.md`.
 
 ### 5.4 Reusing prepared state
 
 If your tool needs stable metadata before deciding whether to emit outputs, use a prepared session and treat that prepared boundary as the reusable handoff point for source-map, CPU, and dependency data.
 
-The `Embedding Cookbook` carries the task-level prepared-session recipe, while the `Execution Modes and Lockstep Guide` covers when prepared flows should also own an explicit execution-mode decision.
+Prepared-session examples are in `documentation/libopforge-embedding-cookbook.md`. Runtime-mode details for prepared flows are in `documentation/libopforge-execution-modes-and-lockstep-guide.md`.
 
 ## 6. Tooling-oriented lower-level APIs
 
-Not every tool wants full assembly. The stable facade also exposes lower-level services for syntax-aware tooling, but this guide now keeps those APIs at a routing level and leaves diagnostics consumption details to the diagnostics companion guide.
+Not every tool needs full assembly. The stable facade also exposes lower-level services for syntax-aware tooling.
 
 ### 6.1 `libopforge::opcore`
 
@@ -192,7 +192,7 @@ Use `opcore` when you need generic language services that are not tied to full a
 
 This is a good fit for syntax highlighting, expression-aware UIs, and quick validation of `.use`, `.module`, and related module-item forms.
 
-The `portable` submodule exposes portable token and AST structures derived from the VM portable contract. Use this when your tool wants a serialization-friendly or FFI-friendly view rather than Rust-native parser types.
+The `portable` submodule exposes portable token and AST structures derived from the VM portable contract. It is useful for tools that want a serialization-friendly or FFI-friendly view rather than Rust-native parser types.
 
 ### 6.2 `libopforge::processing`
 
@@ -225,7 +225,7 @@ The `portable` submodule mirrors the pattern from `opcore`, exposing portable to
 High-level assembly returns `AsmRunReport` on success and `AssemblerWorkflowError` on failure.
 When assembly itself fails after request validation, the `AssemblerWorkflowError::Assemble` variant carries the underlying `AsmRunError` payload.
 
-For task-level host guidance on diagnostics, fixits, and source-map remapping, continue with `documentation/libopforge-diagnostics-and-fixits-guide.md`.
+Detailed diagnostics, fixits, and source-map handling is documented in `documentation/libopforge-diagnostics-and-fixits-guide.md`.
 
 Useful report accessors:
 
@@ -254,13 +254,13 @@ Prepared sessions additionally expose:
 - `SourceMap`, which maps expanded lines back to original source origins
 - dependency file lists gathered during expansion/module loading
 
-If your tool needs to present diagnostics against preprocessed sources but navigate back to original files, `SourceMap` is the first place to look. The diagnostics companion guide carries the host-facing consumption patterns.
+If your tool needs to present diagnostics against preprocessed sources but navigate back to original files, `SourceMap` is the first place to look. Host-facing consumption patterns are documented in `documentation/libopforge-diagnostics-and-fixits-guide.md`.
 
 ## 8. Registry and capability introspection
 
 Use `libopforge::registry` when your tool needs to discover what the current build knows about CPUs or to validate user CPU selections before assembling.
 
-For contributor-oriented CPU, family, or dialect work below the stable facade, continue with `documentation/libopforge-cpu-family-extension-guide.md` plus `documentation/libopforge-specification.md`.
+Contributor-oriented CPU, family, and dialect work below the stable facade is documented in `documentation/libopforge-cpu-family-extension-guide.md` and `documentation/libopforge-specification.md`.
 
 Useful entrypoints:
 
@@ -292,7 +292,7 @@ The FFI surface is split into:
 
 For non-Rust consumers, use the high-level `opforge_asm_*_with_request(...)` and session-oriented APIs built around `opforge_asm_request`.
 
-The concrete non-Rust host recipe now lives in the `Embedding Cookbook`; keep this section as the boundary summary.
+Concrete non-Rust host recipes are in `documentation/libopforge-embedding-cookbook.md`.
 
 If you are shipping the shared library for a host integration, build it with the unwind-safe FFI profile:
 
@@ -323,48 +323,9 @@ These are the best reference points when you want to see how the library is used
 
 One nuance worth calling out: some internal workspace crates still depend on the internal `api` crate or lower-level crates directly. For external consumers, the guide examples under `documentation/libopforge-developer-guide-examples/` are the best model because they use the intended public `libopforge` facade directly.
 
-## 11. Guidance for new tools
+## 11. Companion documents
 
-If you are starting a new integration today, use the companion docs by task:
-
-- `Embedding Cookbook` for host shape, owned-versus-borrowed setup, in-memory adapters, prepared sessions, and FFI entry paths
-- `Execution Modes and Lockstep Guide` for explicit `Vm`, `Rust`, and `Lockstep` decisions
-- `Diagnostics and Fixits Guide` for validation/reporting flows and structured fixit handling
-- `CPU/Family Extension Guide` only if you are intentionally working below the stable facade on builtin architecture support
-
-## 12. Guidance for integrating into an existing tool
-
-If you already have a tool and want to add opForge support, keep the integration map short:
-
-1. Use the `Embedding Cookbook` to choose the host entry shape.
-2. Use the `Execution Modes and Lockstep Guide` only if the tool owns an explicit runtime-mode decision.
-3. Use the `Diagnostics and Fixits Guide` for validation/reporting behavior instead of flattening diagnostics early.
-4. Add `opcore`, `processing`, or `asm::opasm` only when the tool genuinely needs line-level or statement-level behavior.
-
-That keeps the main guide as the index and stable boundary overview rather than the catch-all task manual.
-
-## 13. Documentation roadmap and decision boundaries
-
-This guide remains the entrypoint for `libopforge`, but it should not become the catch-all reference for every host-facing task. Use the matrix below to decide where detail belongs as the companion documents land.
-
-| If you are trying to... | Primary document | Decision boundary |
-|---|---|---|
-| embed `libopforge` into a CLI, IDE, service, FFI host, or test harness | `Embedding Cookbook` (`documentation/libopforge-embedding-cookbook.md`) | keep orientation and stable facade boundaries here; use the cookbook for task recipes and host-pattern walkthroughs |
-| choose between Rust and VM execution, understand lockstep expectations, or reason about parity-sensitive runtime paths | `Execution Modes and Lockstep Guide` (`documentation/libopforge-execution-modes-and-lockstep-guide.md`) | keep the high-level runtime model here; use the runtime guide for mode-selection rules, parity notes, and lockstep workflows |
-| extend CPU or family support below the stable facade | `CPU/Family Extension Guide` (`documentation/libopforge-cpu-family-extension-guide.md`) | keep public architecture boundaries in the specification; use the extension guide for contributor workflows and validation checklists |
-| integrate diagnostics, fixits, and editor or CI feedback loops | `Diagnostics and Fixits Guide` (`documentation/libopforge-diagnostics-and-fixits-guide.md`) | keep the stable diagnostic contract here; use the diagnostics guide for IDE, CI, and fixit-consumer workflows |
-
-Task-first entry links:
-
-- `Embedding Cookbook`: `documentation/libopforge-embedding-cookbook.md`
-- `Execution Modes and Lockstep Guide`: `documentation/libopforge-execution-modes-and-lockstep-guide.md`
-- `CPU/Family Extension Guide`: `documentation/libopforge-cpu-family-extension-guide.md`
-- `Diagnostics and Fixits Guide`: `documentation/libopforge-diagnostics-and-fixits-guide.md`
-- Extension architecture boundaries: `documentation/libopforge-specification.md`
-
-Use the main guide for boundary orientation and the documentation map. Use the companion guides for task-specific execution details.
-
-The maintained companion documents for the current branch are:
+The companion documents for the current branch are:
 
 - `README.md`
 - `documentation/libopforge-cpu-family-extension-guide.md`
@@ -373,3 +334,11 @@ The maintained companion documents for the current branch are:
 - `documentation/libopforge-execution-modes-and-lockstep-guide.md`
 - `documentation/libopforge-specification.md`
 - `documentation/vm-boundary-protocol-v1.md`
+
+The main topics covered by those documents are:
+
+- `Embedding Cookbook`: borrowed, owned, in-memory, prepared-session, and FFI-oriented embedding recipes
+- `Execution Modes and Lockstep Guide`: `Vm`, `Rust`, and `Lockstep` mode selection and continuation-head behavior
+- `Diagnostics and Fixits Guide`: diagnostics, fixits, source maps, and report consumption
+- `CPU/Family Extension Guide`: contributor-facing CPU, family, and dialect extension work below the stable facade
+- `libopforge-specification.md`: architecture boundaries and lower-level ownership rules

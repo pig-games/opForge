@@ -2,16 +2,16 @@
 
 This guide is for contributors working below the stable `libopforge` facade on new CPU, family, or dialect behavior. It is not the normal embedding path for downstream hosts.
 
-## 1. When to use this guide
+## 1. Scope
 
-Use this guide when you are:
+This guide covers:
 
 - adding a CPU to an existing family
 - introducing or adjusting a family or dialect mapping
 - wiring registry metadata for new builtin architecture support
 - validating extension work against the current stable host boundary
 
-If you only need to inspect builtin CPUs, families, or capabilities from a host, stay in `libopforge::registry` and the main developer guide instead.
+Builtin CPU, family, and capability lookup for host integrations is covered by `libopforge::registry` and the main developer guide.
 
 ## 2. Boundary map
 
@@ -28,19 +28,19 @@ The stable facade's registry surface is primarily for lookup and introspection. 
 
 Before changing extension code, read `documentation/libopforge-specification.md`.
 
-Use the specification for:
+The specification covers:
 
 - layer ownership between `libopforge`, `engine`, `opcore`, `asm`, `vm`, and registry/family crates
 - public-boundary rules for what belongs in the stable facade versus internal implementation crates
 - processor and runtime constraints that extension work must respect
 
-Use this guide for the contributor workflow once those boundaries are understood.
+This guide focuses on contributor workflow within those boundaries.
 
 ## 4. Typical extension paths
 
 ### 4.1 Add a CPU to an existing family
 
-Use this path when the family model already exists and you are extending builtin coverage.
+This path applies when the family model already exists and builtin coverage is expanding.
 
 1. Add or update the family-specific instruction and operand behavior in the owning workspace crates.
 2. Register the CPU metadata and resolution path through the registry layer.
@@ -49,7 +49,7 @@ Use this path when the family model already exists and you are extending builtin
 
 ## 4.2 Add a family or dialect
 
-Use this path when the architecture split itself changes.
+This path applies when the architecture split itself changes.
 
 1. Recheck the architecture specification before adding new public assumptions.
 2. Add the family or dialect behavior in the owning workspace crates rather than growing `libopforge` first.
@@ -87,4 +87,4 @@ Useful public-facing checks usually include:
 - `documentation/libopforge-developer-guide-examples/libopforge_opasm.rs`
 - `crates/opforge-engine/src/processing.rs` for editor-routing boundaries
 
-Return to `documentation/libopforge-developer-guide.md` when you need the high-level host boundary or the documentation map across the full companion-doc set.
+The high-level host boundary is described in `documentation/libopforge-developer-guide.md`.

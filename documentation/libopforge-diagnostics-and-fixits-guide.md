@@ -1,10 +1,10 @@
 # libopforge Diagnostics and Fixits Guide
 
-This guide is the task-focused companion for hosts that consume diagnostics, fixits, and related metadata from the stable `libopforge` surface.
+This guide describes diagnostics, fixits, and related metadata in the stable `libopforge` surface.
 
-## 1. When to use this guide
+## 1. Scope
 
-Use this guide when you are:
+Topics covered here:
 
 - surfacing assembler diagnostics in an IDE, editor, CI system, or service response
 - deciding between `check()` and `assemble()` for validation-oriented workflows
@@ -102,4 +102,4 @@ Use those paths to improve interactivity, but keep the high-level `Diagnostic` c
 - `documentation/libopforge-developer-guide-examples/libopforge_opasm.rs`
 - `documentation/libopforge-execution-modes-and-lockstep-guide.md` for parity-related report handling
 
-Return to `documentation/libopforge-developer-guide.md` for the high-level documentation map across embedding, execution modes, extension work, and diagnostics.
+The broader `libopforge` API boundary is described in `documentation/libopforge-developer-guide.md`.

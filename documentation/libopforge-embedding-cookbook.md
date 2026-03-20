@@ -1,6 +1,6 @@
 # libopforge Embedding Cookbook
 
-This cookbook is the task-first companion to the main `libopforge` developer guide. Use it when you already know you are embedding the library into a host and want the shortest path to the right API shape.
+This cookbook collects short `libopforge` embedding recipes for common host shapes.
 
 ## 1. Quick chooser
 
@@ -14,7 +14,7 @@ This cookbook is the task-first companion to the main `libopforge` developer gui
 
 ## 2. Recipe: short-lived Rust build command
 
-Use this when your host already owns filesystem paths and only needs one request at a time.
+This recipe fits hosts that already own filesystem paths and only need one request at a time.
 
 1. Start with `Assembler::builder(root_path)`.
 2. Set only the request-specific knobs your command actually owns, such as `output_format(...)` or `cpu_override(...)`.
@@ -26,7 +26,7 @@ Reference example: `documentation/libopforge-developer-guide-examples/libopforge
 
 ## 3. Recipe: long-lived or callback-driven host
 
-Use this when your host has a request pipeline, worker pool, GUI session, or other owned state that should outlive a single borrowed call.
+This recipe fits hosts with a request pipeline, worker pool, GUI session, or other owned state that should outlive a single borrowed call.
 
 1. Start with `AssemblerSession::builder(root_path)`.
 2. Attach host-owned source and output adapters, explicit `output_base`, and any reusable config.
@@ -41,7 +41,7 @@ Reference examples:
 
 ## 4. Recipe: in-memory editor or test host
 
-Use this when your host does not want temporary files for source input or emitted outputs.
+This recipe fits hosts that keep sources and outputs outside the filesystem.
 
 1. Build a `MemorySourceProvider` with virtual file paths.
 2. Capture outputs in `MemoryOutputSink`.
@@ -53,11 +53,11 @@ Reference example: `documentation/libopforge-developer-guide-examples/libopforge
 
 ## 5. Recipe: build preview before emission
 
-Use a prepared flow when your host needs metadata before deciding whether to emit outputs.
+Prepared flows are useful when the host needs metadata before deciding whether to emit outputs.
 
 1. Call `prepare()` or `AssemblerSession::prepare()`.
 2. Inspect `root_module_id()`, `cpu_name()`, `source_map()`, and `dependency_files()`.
-3. Decide whether to continue with `assemble()` or `check()` on the prepared value.
+3. Choose `assemble()` or `check()` for the prepared value.
 
 This is useful for IDE previews, dependency-graph reconciliation, and build systems that separate expansion from output emission.
 
@@ -65,7 +65,7 @@ Reference example: `documentation/libopforge-developer-guide-examples/libopforge
 
 ## 6. Recipe: background validation in an existing tool
 
-Use this when you want diagnostics without generating listings, hex, labels, or other outputs.
+This recipe focuses on diagnostics without generating listings, hex, labels, or other outputs.
 
 1. Map your source abstraction onto `SourceProvider`.
 2. Map your artifact abstraction onto `OutputSink` only if your host also performs real assembly.
@@ -76,7 +76,7 @@ If your tool also exposes line-level editing features, pair this with `libopforg
 
 ## 7. Recipe: non-Rust host through FFI
 
-Use this when the host cannot call the Rust facade directly.
+This recipe covers hosts that cannot call the Rust facade directly.
 
 1. Build the shared library with `make build-ffi-release` or `cargo build -p ffi --profile release-ffi --locked --lib`.
 2. Use the `opforge_asm_*_with_request(...)` and session-oriented APIs around `opforge_asm_request`.
@@ -94,4 +94,4 @@ Reference implementation: `crates/opforge-ffi/src/lib.rs`.
 - Use memory-backed providers and sinks for tests, editors, overlays, and sandboxed environments.
 - Use prepared flows when your host needs dependency or source-map metadata before emission.
 
-For execution-mode selection, lockstep parity workflows, and continuation-head choices, continue with `documentation/libopforge-execution-modes-and-lockstep-guide.md`.
+Execution-mode selection, continuation-head choices, and lockstep parity workflows are documented in `documentation/libopforge-execution-modes-and-lockstep-guide.md`.

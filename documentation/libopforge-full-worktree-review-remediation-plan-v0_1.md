@@ -64,7 +64,7 @@ changing public behavior.
   - Commit outcome: planned: one commit that removes four near-identical wrapper impl blocks without changing the public error types
   - Definition of done: `InvalidArgumentError`, `InvalidRequestError`, `HostIoError`, and `InternalErrorReport` reuse one private implementation path while their public behavior remains unchanged
 
-- [ ] Item 5: Canonicalize build-profile strings in CLI core
+- [x] Item 5: Canonicalize build-profile strings in CLI core
   - Source requirement or finding IDs: RVW-2026-03-20-004 (expected full closure)
   - Expected files: `crates/opforge-cli-core/src/cli.rs`
   - Validation: `cargo test -q -p cli-core`; verify `BUILD_PROFILE_SUMMARY`, `LONG_VERSION`, and `HELP_BUILD_PROFILE` still report the same strings for each cfg case

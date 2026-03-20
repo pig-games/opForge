@@ -57,93 +57,38 @@ fn with_env_lock<T>(action: impl FnOnce() -> T) -> T {
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[cfg(all(
-    feature = "vm-runtime-only",
-    feature = "vm-runtime-opasm-unbundled",
-    feature = "vm-runtime-opasm-artifact"
-))]
-pub const BUILD_PROFILE_SUMMARY: &str = "vm-only | unbundled (artifact default)";
-#[cfg(all(
-    feature = "vm-runtime-only",
-    feature = "vm-runtime-opasm-unbundled",
-    not(feature = "vm-runtime-opasm-artifact")
-))]
-pub const BUILD_PROFILE_SUMMARY: &str = "vm-only | unbundled (external package required)";
-#[cfg(all(
-    feature = "vm-runtime-only",
-    not(feature = "vm-runtime-opasm-unbundled")
-))]
-pub const BUILD_PROFILE_SUMMARY: &str = "vm-only | bundled";
-#[cfg(not(feature = "vm-runtime-only"))]
-pub const BUILD_PROFILE_SUMMARY: &str = "full-runtime | bundled";
+macro_rules! define_build_profile_strings {
+    ($summary:literal) => {
+        pub const BUILD_PROFILE_SUMMARY: &str = $summary;
+        const LONG_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " | ", $summary);
+        const HELP_BUILD_PROFILE: &str = concat!(
+            "Build profile: v",
+            env!("CARGO_PKG_VERSION"),
+            " | ",
+            $summary
+        );
+    };
+}
 
 #[cfg(all(
     feature = "vm-runtime-only",
     feature = "vm-runtime-opasm-unbundled",
     feature = "vm-runtime-opasm-artifact"
 ))]
-const LONG_VERSION: &str = concat!(
-    env!("CARGO_PKG_VERSION"),
-    " | ",
-    "vm-only | unbundled (artifact default)"
-);
+define_build_profile_strings!("vm-only | unbundled (artifact default)");
 #[cfg(all(
     feature = "vm-runtime-only",
     feature = "vm-runtime-opasm-unbundled",
     not(feature = "vm-runtime-opasm-artifact")
 ))]
-const LONG_VERSION: &str = concat!(
-    env!("CARGO_PKG_VERSION"),
-    " | ",
-    "vm-only | unbundled (external package required)"
-);
+define_build_profile_strings!("vm-only | unbundled (external package required)");
 #[cfg(all(
     feature = "vm-runtime-only",
     not(feature = "vm-runtime-opasm-unbundled")
 ))]
-const LONG_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " | ", "vm-only | bundled");
+define_build_profile_strings!("vm-only | bundled");
 #[cfg(not(feature = "vm-runtime-only"))]
-const LONG_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " | ", "full-runtime | bundled");
-
-#[cfg(all(
-    feature = "vm-runtime-only",
-    feature = "vm-runtime-opasm-unbundled",
-    feature = "vm-runtime-opasm-artifact"
-))]
-const HELP_BUILD_PROFILE: &str = concat!(
-    "Build profile: v",
-    env!("CARGO_PKG_VERSION"),
-    " | ",
-    "vm-only | unbundled (artifact default)"
-);
-#[cfg(all(
-    feature = "vm-runtime-only",
-    feature = "vm-runtime-opasm-unbundled",
-    not(feature = "vm-runtime-opasm-artifact")
-))]
-const HELP_BUILD_PROFILE: &str = concat!(
-    "Build profile: v",
-    env!("CARGO_PKG_VERSION"),
-    " | ",
-    "vm-only | unbundled (external package required)"
-);
-#[cfg(all(
-    feature = "vm-runtime-only",
-    not(feature = "vm-runtime-opasm-unbundled")
-))]
-const HELP_BUILD_PROFILE: &str = concat!(
-    "Build profile: v",
-    env!("CARGO_PKG_VERSION"),
-    " | ",
-    "vm-only | bundled"
-);
-#[cfg(not(feature = "vm-runtime-only"))]
-const HELP_BUILD_PROFILE: &str = concat!(
-    "Build profile: v",
-    env!("CARGO_PKG_VERSION"),
-    " | ",
-    "full-runtime | bundled"
-);
+define_build_profile_strings!("full-runtime | bundled");
 
 const LONG_ABOUT: &str =
     "Multi-CPU assembler supporting Intel 8080/8085, Zilog Z80, Motorola 6809/Hitachi 6309, MOS 6502, WDC 65C02, WDC 65816, and CSG 45GS02.
@@ -1670,6 +1615,22 @@ mod tests {
         let rendered = cmd.render_version().to_string();
         assert!(rendered.contains(env!("CARGO_PKG_VERSION")));
         assert!(rendered.contains(BUILD_PROFILE_SUMMARY));
+    }
+
+    #[test]
+    fn build_profile_banner_strings_match_summary_variant() {
+        assert_eq!(
+            LONG_VERSION,
+            format!("{} | {}", env!("CARGO_PKG_VERSION"), BUILD_PROFILE_SUMMARY)
+        );
+        assert_eq!(
+            HELP_BUILD_PROFILE,
+            format!(
+                "Build profile: v{} | {}",
+                env!("CARGO_PKG_VERSION"),
+                BUILD_PROFILE_SUMMARY
+            )
+        );
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]

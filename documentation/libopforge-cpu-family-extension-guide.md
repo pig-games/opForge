@@ -1,6 +1,8 @@
 # libopforge CPU/Family Extension Guide
 
-This guide is for contributors working below the stable `libopforge` facade on new CPU, family, or dialect behavior. It is not the normal embedding path for downstream hosts.
+This guide is for contributors working below the current published
+`libopforge` preview facade on new CPU, family, or dialect behavior. It is
+not the normal embedding path for downstream hosts.
 
 ## 1. Scope
 
@@ -9,20 +11,22 @@ This guide covers:
 - adding a CPU to an existing family
 - introducing or adjusting a family or dialect mapping
 - wiring registry metadata for new builtin architecture support
-- validating extension work against the current stable host boundary
+- validating extension work against the current preview host boundary
 
 Builtin CPU, family, and capability lookup for host integrations is covered by `libopforge::registry` and the main developer guide.
 
 ## 2. Boundary map
 
-| Change you need | Primary place to work | Keep out of the stable facade until... |
+| Change you need | Primary place to work | Keep out of the preview facade until... |
 |---|---|---|
 | inspect builtin CPUs, families, aliases, or capabilities | `libopforge::registry` consumer APIs | never widen the facade just for internal contributor convenience |
-| add a CPU under an existing builtin family | workspace `registry`, `families`, and related CPU/runtime crates | the new behavior is stable enough that hosts need a new published capability or documentable contract |
-| add a new family or dialect | workspace `registry`, `families`, parser/VM integration crates, and the architecture specification | the ownership boundary and validation story are stable |
+| add a CPU under an existing builtin family | workspace `registry`, `families`, and related CPU/runtime crates | the new behavior is mature enough that hosts need a new published capability or documentable contract |
+| add a new family or dialect | workspace `registry`, `families`, parser/VM integration crates, and the architecture specification | the ownership boundary and validation story are mature |
 | publish a new host-visible extension capability | architecture/spec work first, then `libopforge` once the contract is deliberate | the public boundary and long-form docs are agreed |
 
-The stable facade's registry surface is primarily for lookup and introspection. Full custom family or CPU registration remains advanced lower-level workspace work.
+The preview facade's registry surface is primarily for lookup and
+introspection. Full custom family or CPU registration remains advanced
+lower-level workspace work.
 
 ## 3. Start from the architecture boundary
 
@@ -31,7 +35,7 @@ Before changing extension code, read `documentation/libopforge-specification.md`
 The specification covers:
 
 - layer ownership between `libopforge`, `engine`, `opcore`, `asm`, `vm`, and registry/family crates
-- public-boundary rules for what belongs in the stable facade versus internal implementation crates
+- public-boundary rules for what belongs in the preview facade versus internal implementation crates
 - processor and runtime constraints that extension work must respect
 
 This guide focuses on contributor workflow within those boundaries.
@@ -54,16 +58,18 @@ This path applies when the architecture split itself changes.
 1. Recheck the architecture specification before adding new public assumptions.
 2. Add the family or dialect behavior in the owning workspace crates rather than growing `libopforge` first.
 3. Make registry metadata, parser/runtime integration, and validation converge before proposing new facade exposure.
-4. Only after the internal ownership is stable should host-facing documentation or facade surface area expand.
+4. Only after the internal ownership is mature and documented should
+   host-facing documentation or facade surface area expand.
 
 ## 4.3 Publish new host-visible extension behavior
 
-Only move extension details into the stable facade when hosts genuinely need a new published contract.
+Only move extension details into the preview facade when hosts genuinely need a
+new published contract.
 
 That usually means all of the following are true:
 
 - registry/capability discovery is not enough
-- the ownership boundary is stable
+- the ownership boundary is mature
 - the examples and long-form docs can explain the contract clearly
 - the public API can stay narrow and deliberate
 

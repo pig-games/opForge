@@ -14,12 +14,16 @@ It was originally inspired by [64tass](https://tass64.sourceforge.net) in terms 
 Detailed documentation:
 
 - [opForge Reference Manual](documentation/opForge-reference-manual.md): assembler syntax, directives, expressions, formatter behavior, and CLI semantics
-- [libopforge Developer Guide](documentation/libopforge-developer-guide.md): public Rust embedding surface, workspace layering, stable API boundary, and host integration guidance
+- [libopforge Developer Guide](documentation/libopforge-developer-guide.md): public Rust embedding surface, workspace layering, preview API boundary, and host integration guidance
 - [Embedding Cookbook](documentation/libopforge-embedding-cookbook.md): embedding recipes for borrowed, owned, in-memory, and prepared-session hosts
 - [Execution Modes and Lockstep Guide](documentation/libopforge-execution-modes-and-lockstep-guide.md): `Rust`, `Vm`, and `Lockstep` execution choices plus parity workflows
 - [Diagnostics and Fixits Guide](documentation/libopforge-diagnostics-and-fixits-guide.md): diagnostics, fixits, source maps, and report consumption
 - [VM Boundary & Protocol Specification](documentation/vm-boundary-protocol-v1.md): VM host/runtime protocol details
 - [`examples/`](examples): sample assembler programs and reference fixtures
+
+`libopforge` and `opforge-ffi` are published and usable, but they are still
+pre-1.0 host surfaces. Treat `v0.9.6` as a documented public preview rather
+than a long-term stable API promise.
 
 ## Installation
 
@@ -60,7 +64,7 @@ The full CLI surface, output-routing rules, directive semantics, and formatter c
 
 Embedding documentation:
 
-- [libopforge Developer Guide](documentation/libopforge-developer-guide.md): stable Rust embedding surface, workspace layering, and API boundaries
+- [libopforge Developer Guide](documentation/libopforge-developer-guide.md): current Rust embedding surface, workspace layering, and preview API boundaries
 - [Embedding Cookbook](documentation/libopforge-embedding-cookbook.md): builder/session setup, in-memory hosts, prepared sessions, and FFI-oriented recipes
 - [Execution Modes and Lockstep Guide](documentation/libopforge-execution-modes-and-lockstep-guide.md): runtime-mode selection and parity workflows
 - [Diagnostics and Fixits Guide](documentation/libopforge-diagnostics-and-fixits-guide.md): diagnostics, fixits, and source-map handling

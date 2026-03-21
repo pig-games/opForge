@@ -1,24 +1,30 @@
 # libopforge Execution Modes and Lockstep Guide
 
-This guide explains when to choose `ExecutionMode::Vm`, `ExecutionMode::Rust`, or `ExecutionMode::Lockstep { continuation_head: ... }` in the stable `libopforge` facade.
+This guide explains when to choose `ExecutionMode::Vm`,
+`ExecutionMode::Rust`, or `ExecutionMode::Lockstep { continuation_head: ... }`
+in the published preview `libopforge` facade.
+
+The mode names and defaults below describe `v0.9.6`; they are not yet a
+long-term stable API commitment.
 
 ## 1. Quick chooser
 
 | Mode | Use it when... | What you get | Avoid it when... |
 |---|---|---|---|
-| `ExecutionMode::Vm` | you want the normal stable default path | the current default execution model used by the high-level config surface | you specifically need the native Rust continuation head or parity comparison |
+| `ExecutionMode::Vm` | you want the normal current default path | the current default execution model used by the high-level config surface | you specifically need the native Rust continuation head or parity comparison |
 | `ExecutionMode::Rust` | you want the native Rust continuation head for a request | explicit execution through the Rust head without lockstep comparison | you are validating Rust/VM parity or you want the documented default path |
 | `ExecutionMode::Lockstep { continuation_head }` | you need parity validation between the Rust and VM heads | a normal assembly/report flow plus a `LockstepReport` with matches, checkpoints, and divergences | you only need one execution head and do not intend to consume parity data |
 
 ## 2. Default behavior
 
-The stable config types default to `ExecutionMode::Vm`.
+The current config types default to `ExecutionMode::Vm`.
 
 That default suits normal builds, validations, and host integrations that do not need to override the continuation head explicitly.
 
 ## 3. When to choose `Vm`
 
-Choose `Vm` when you want the normal supported execution path without parity analysis.
+Choose `Vm` when you want the normal documented execution path without parity
+analysis.
 
 This is the right default for:
 

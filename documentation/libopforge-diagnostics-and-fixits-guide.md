@@ -1,6 +1,10 @@
 # libopforge Diagnostics and Fixits Guide
 
-This guide describes diagnostics, fixits, and related metadata in the stable `libopforge` surface.
+This guide describes diagnostics, fixits, and related metadata in the current
+published `libopforge` preview surface.
+
+The API names and report types described here are usable today, but they are
+still part of a pre-1.0 surface and may change across future `0.x` releases.
 
 ## 1. Scope
 
@@ -21,7 +25,7 @@ Topics covered here:
 | per-diagnostic UI and fixits | `AsmRunReport::diagnostics()` and `Diagnostic` | preserves structured codes, spans, notes, help, and fixits |
 | remapping diagnostics to original source files | prepared-session `SourceMap` | bridges expanded/preprocessed positions back to original sources |
 
-## 3. Stable failure contract
+## 3. Current failure contract
 
 High-level assembly returns `AsmRunReport` on success and `AssemblerWorkflowError` on failure.
 When assembly itself fails after request validation, the `AssemblerWorkflowError::Assemble` variant carries the underlying `AsmRunError` payload.
@@ -48,7 +52,8 @@ Start with `diagnostics()` and the aggregate counts for ordinary host reporting.
 
 ## 5. What a `Diagnostic` can carry
 
-The stable diagnostic model is richer than line plus message. A `Diagnostic` can carry:
+The current diagnostic model is richer than line plus message. A `Diagnostic`
+can carry:
 
 - severity
 - diagnostic code

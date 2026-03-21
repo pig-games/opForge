@@ -16,7 +16,8 @@ It is designed for the current branch state, where:
 
 - `libopforge` and `cli-core` are already at `0.9.6`,
 - most split component crates are still at `0.1.0`,
-- some surfaces are documented as stable host surfaces,
+- some surfaces are now published as pre-1.0 host surfaces and should not yet
+  be treated as post-1.0 stable APIs,
 - some lower-level crates are still effectively internal implementation crates.
 
 ## Problem
@@ -24,7 +25,8 @@ It is designed for the current branch state, where:
 The current workspace has meaningful public surfaces, but it does not yet have
 an explicit semver policy that answers:
 
-- which crates are treated as stable public contracts,
+- which crates are treated as public compatibility contracts while still
+  pre-1.0,
 - which crates are still internal/transitional,
 - when a change requires a version bump,
 - which version component should change,
@@ -38,7 +40,7 @@ Without that policy, version numbers risk becoming either:
 ## Goals
 
 - [x] Define a compatibility-first semver policy for the workspace.
-- [x] Distinguish stable public crates from internal implementation crates.
+- [x] Distinguish public contract crates from internal implementation crates.
 - [x] Define version-bump criteria for major, minor, and patch changes.
 - [x] Define a pre-1.0 policy that is still idiomatic for Rust/Cargo crates.
 - [x] Require version-impact classification during planning and review.
@@ -73,10 +75,10 @@ Without that policy, version numbers risk becoming either:
 
 Every crate must be classified into one of these semver classes.
 
-#### Class A: stable public crates
+#### Class A: public contract crates
 
 These crates own documented external contracts and should be versioned as true
-public APIs.
+public APIs even while they remain pre-1.0.
 
 Current likely members:
 
@@ -179,7 +181,7 @@ For any release-bearing change:
 
 #### 6.1 Post-1.0 crates (`1.x.y` and above)
 
-For stable public crates that have graduated to `1.x.y`, use standard semver:
+For public crates that have graduated to `1.x.y`, use standard semver:
 
 - `MAJOR`:
   - any breaking public API/ABI/protocol/CLI contract change,
@@ -220,19 +222,19 @@ matches Cargo's compatibility behavior for pre-1.0 crates.
 
 #### 7.1 `libopforge`
 
-`libopforge` should bump for changes to the curated stable host facade.
+`libopforge` should bump for changes to the curated preview host facade.
 
 Breaking examples:
 
-- removing or renaming stable modules,
-- changing stable type names or function signatures,
+- removing or renaming documented preview modules,
+- changing documented type names or function signatures,
 - tightening input requirements in a way that invalidates existing host code,
 - changing builder/session behavior in a way that breaks current call patterns,
 - changing public output-routing semantics in an incompatible way.
 
 Compatible examples:
 
-- adding new stable modules,
+- adding new documented preview modules,
 - adding new builder methods without breaking existing calls,
 - additive diagnostics/reporting helpers,
 - new optional execution or output modes.

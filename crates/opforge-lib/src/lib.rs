@@ -5749,8 +5749,9 @@ mod tests {
         let labels_text = fs::read_to_string(&labels_path).expect("read labels");
         assert!(labels_text.contains("main.start"), "labels:\n{labels_text}");
         let dependency_text = fs::read_to_string(&dependency_path).expect("read deps");
+        let canonical_source_path = fs::canonicalize(&source_path).expect("canonical source");
         assert!(
-            dependency_text.contains(stable_path_string(&source_path).as_str()),
+            dependency_text.contains(stable_path_string(&canonical_source_path).as_str()),
             "deps:\n{dependency_text}"
         );
     }

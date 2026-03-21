@@ -1,1 +1,0 @@
-PASS: Source and mode are explicit, RVW-2026-03-20-001 through RVW-2026-03-20-005 are mapped into ordered commit-sized work items, full quality gates and `plan-compliance-reviewer` are required before each commit, and the plan keeps the active worktree `AGENTS.md` rules binding without widening scope.

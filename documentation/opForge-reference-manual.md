@@ -3,7 +3,7 @@
 This document describes the opForge assembler language, directives, and tooling.
 It follows a chapter layout similar to 64tass. Sections marked **Planned** describe 
 features that are not implemented yet.
-This manual is validated against opForge CLI `0.9.5` (crate `0.9.5`).
+This manual is validated against opForge CLI `0.9.6` (crate `0.9.6`).
 
 ## 1. Introduction
 

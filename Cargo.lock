@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "cli-core"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "clap",
  "engine",
@@ -365,7 +365,7 @@ dependencies = [
 
 [[package]]
 name = "libopforge"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "asm",
  "engine",

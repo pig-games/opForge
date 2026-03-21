@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 relfar branch opcode overrides
@@ -38,17 +38,19 @@ Lines: 32  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 2800 (10240)
-far_bpl         : 2900 (10496)
-far_bmi         : 2901 (10497)
-far_bvc         : 2902 (10498)
-far_bvs         : 2903 (10499)
-far_bsr         : 2904 (10500)
-far_bra         : 2905 (10501)
-far_bcc         : 2906 (10502)
-far_bcs         : 2907 (10503)
-far_bne         : 2908 (10504)
-far_beq         : 2909 (10505)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+far_bcc          2906      prv  lbl 
+far_bcs          2907      prv  lbl 
+far_beq          2909      prv  lbl 
+far_bmi          2901      prv  lbl 
+far_bne          2908      prv  lbl 
+far_bpl          2900      prv  lbl 
+far_bra          2905      prv  lbl 
+far_bsr          2904      prv  lbl 
+far_bvc          2902      prv  lbl 
+far_bvs          2903      prv  lbl 
+start            2800      prv  lbl 
 
 Total memory is 41 bytes
 

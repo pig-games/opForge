@@ -1,0 +1,1329 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Erik van der Tier
+
+// Preprocessor for .IFDEF/.IFNDEF/.ELSE/.ELSEIF/.ENDIF/.INCLUDE directives.
+
+use std::collections::{HashMap, HashSet};
+use std::fmt;
+use std::io;
+use std::path::{Path, PathBuf};
+
+use crate::text_utils::{is_ident_char, is_ident_start, split_comment, to_upper, Cursor};
+
+#[derive(Debug, Clone)]
+pub struct PreprocessError {
+    message: String,
+    line: Option<u32>,
+    column: Option<usize>,
+    source: Option<String>,
+    file: Option<String>,
+}
+
+impl PreprocessError {
+    fn new(msg: impl Into<String>) -> Self {
+        Self {
+            message: msg.into(),
+            line: None,
+            column: None,
+            source: None,
+            file: None,
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn line(&self) -> Option<u32> {
+        self.line
+    }
+
+    pub fn column(&self) -> Option<usize> {
+        self.column
+    }
+
+    pub fn source(&self) -> Option<&str> {
+        self.source.as_deref()
+    }
+
+    pub fn file(&self) -> Option<&str> {
+        self.file.as_deref()
+    }
+
+    fn with_context(
+        mut self,
+        line: u32,
+        column: Option<usize>,
+        source: &str,
+        file: Option<&str>,
+    ) -> Self {
+        if self.line.is_none() {
+            self.line = Some(line);
+            self.column = column;
+            self.source = Some(source.to_string());
+            self.file = file.map(|f| f.to_string());
+        }
+        self
+    }
+}
+
+impl fmt::Display for PreprocessError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for PreprocessError {}
+
+pub trait PreprocessFileLoader: fmt::Debug + Send + Sync {
+    fn read_to_string(&self, path: &Path) -> io::Result<String>;
+    fn is_file(&self, path: &Path) -> bool;
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct FsPreprocessFileLoader;
+
+impl PreprocessFileLoader for FsPreprocessFileLoader {
+    fn read_to_string(&self, path: &Path) -> io::Result<String> {
+        std::fs::read_to_string(path)
+    }
+
+    fn is_file(&self, path: &Path) -> bool {
+        path.is_file()
+    }
+
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        path.canonicalize()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct MacroDef {
+    is_function: bool,
+    params: Vec<String>,
+    body: String,
+}
+
+#[derive(Debug, Clone)]
+struct CondFrame {
+    active: bool,
+    any_true: bool,
+    in_else: bool,
+}
+
+#[derive(Debug, Default)]
+struct ConditionalState {
+    stack: Vec<CondFrame>,
+}
+
+impl ConditionalState {
+    fn clear(&mut self) {
+        self.stack.clear();
+    }
+
+    fn is_empty(&self) -> bool {
+        self.stack.is_empty()
+    }
+
+    fn is_active(&self) -> bool {
+        self.stack.iter().all(|frame| frame.active)
+    }
+
+    fn push_ifdef(&mut self, cond: bool) {
+        let parent_active = self.is_active();
+        let frame = CondFrame {
+            any_true: cond,
+            active: parent_active && cond,
+            in_else: false,
+        };
+        self.stack.push(frame);
+    }
+
+    fn handle_else(&mut self, name: &str, defined: bool) -> Result<(), PreprocessError> {
+        if self.stack.is_empty() {
+            return Err(PreprocessError::new(
+                "ELSE found without matching IFDEF/IFNDEF",
+            ));
+        }
+        let parent_active = self
+            .stack
+            .iter()
+            .take(self.stack.len().saturating_sub(1))
+            .all(|frame| frame.active);
+        let Some(last_frame) = self.stack.last() else {
+            return Err(PreprocessError::new(
+                "Internal preprocessor error: missing conditional frame",
+            ));
+        };
+        if last_frame.in_else {
+            return Err(PreprocessError::new("ELSE found after ELSE"));
+        }
+
+        let Some(frame) = self.stack.last_mut() else {
+            return Err(PreprocessError::new(
+                "Internal preprocessor error: missing mutable conditional frame",
+            ));
+        };
+        if name.is_empty() {
+            frame.active = parent_active && !frame.any_true;
+            frame.any_true = true;
+            frame.in_else = true;
+        } else if !frame.any_true && defined && parent_active {
+            frame.active = true;
+            frame.any_true = true;
+        } else {
+            frame.active = false;
+        }
+        Ok(())
+    }
+
+    fn handle_endif(&mut self) -> Result<(), PreprocessError> {
+        if self.stack.is_empty() {
+            return Err(PreprocessError::new(
+                "ENDIF found without matching IFDEF/IFNDEF",
+            ));
+        }
+        self.stack.pop();
+        Ok(())
+    }
+}
+
+struct MacroExpander<'a> {
+    macros: &'a HashMap<String, MacroDef>,
+    max_depth: usize,
+}
+
+impl<'a> MacroExpander<'a> {
+    fn new(macros: &'a HashMap<String, MacroDef>, max_depth: usize) -> Self {
+        Self { macros, max_depth }
+    }
+
+    fn expand_object_macros(&self, code: &str) -> String {
+        let mut out = String::new();
+        let mut in_single = false;
+        let mut in_double = false;
+        let bytes = code.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            match c {
+                '\'' if !in_double => in_single = !in_single,
+                '"' if !in_single => in_double = !in_double,
+                _ => {}
+            }
+            if !in_single && !in_double && is_ident_start(bytes[i]) {
+                let mut j = i + 1;
+                while j < bytes.len() && is_ident_char(bytes[j]) {
+                    j += 1;
+                }
+                let tok = &code[i..j];
+                if let Some(m) = self.macros.get(&to_upper(tok)) {
+                    if !m.is_function {
+                        out.push_str(&m.body);
+                        i = j;
+                        continue;
+                    }
+                }
+                out.push_str(tok);
+                i = j;
+            } else {
+                out.push(c);
+                i += 1;
+            }
+        }
+        out
+    }
+
+    fn expand_line(&self, line: &str, depth: usize) -> Result<Vec<String>, PreprocessError> {
+        let mut macro_stack = Vec::new();
+        self.expand_line_internal(line, depth, &mut macro_stack)
+    }
+
+    fn expand_line_internal(
+        &self,
+        line: &str,
+        depth: usize,
+        macro_stack: &mut Vec<String>,
+    ) -> Result<Vec<String>, PreprocessError> {
+        if depth > self.max_depth {
+            return Err(PreprocessError::new(format!(
+                "Preprocessor macro expansion exceeded maximum depth ({})",
+                self.max_depth
+            )));
+        }
+        let (code, comment) = split_comment(line);
+        let expanded = self.expand_object_macros(code);
+
+        let parts = split_unquoted_backslash(&expanded);
+        if parts.len() > 1 {
+            let mut out = Vec::new();
+            for part in parts {
+                let rec = self.expand_line_internal(&part, depth + 1, macro_stack)?;
+                out.extend(rec);
+            }
+            if !comment.is_empty() && !out.is_empty() {
+                out[0].push_str(comment);
+            }
+            return Ok(out);
+        }
+
+        let mut out_lines = vec![String::new()];
+        let bytes = expanded.as_bytes();
+        let mut in_single = false;
+        let mut in_double = false;
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            match c {
+                '\'' if !in_double => in_single = !in_single,
+                '"' if !in_single => in_double = !in_double,
+                _ => {}
+            }
+            if !in_single && !in_double && is_ident_start(bytes[i]) {
+                let mut j = i + 1;
+                while j < bytes.len() && is_ident_char(bytes[j]) {
+                    j += 1;
+                }
+                let tok = &expanded[i..j];
+                if let Some(m) = self.macros.get(&to_upper(tok)) {
+                    if m.is_function {
+                        let macro_name = to_upper(tok);
+                        let mut k = j;
+                        while k < bytes.len() && (bytes[k] as char).is_ascii_whitespace() {
+                            k += 1;
+                        }
+                        if k < bytes.len() && bytes[k] == b'(' {
+                            if let Some(start_idx) =
+                                macro_stack.iter().position(|name| *name == macro_name)
+                            {
+                                let mut chain = macro_stack[start_idx..].to_vec();
+                                chain.push(macro_name.clone());
+                                return Err(PreprocessError::new(format!(
+                                    "Preprocessor macro expansion cycle detected: {}",
+                                    chain.join(" -> ")
+                                )));
+                            }
+
+                            let mut paren = 0usize;
+                            let mut args_str = String::new();
+                            let mut p = k;
+                            let mut s_in_single = false;
+                            let mut s_in_double = false;
+                            let mut esc = false;
+                            while p < bytes.len() {
+                                let ch = bytes[p] as char;
+                                match ch {
+                                    _ if esc => {
+                                        args_str.push(ch);
+                                        esc = false;
+                                        p += 1;
+                                        continue;
+                                    }
+                                    '\\' => {
+                                        esc = true;
+                                        args_str.push(ch);
+                                        p += 1;
+                                        continue;
+                                    }
+                                    '\'' if !s_in_double => {
+                                        s_in_single = !s_in_single;
+                                    }
+                                    '"' if !s_in_single => {
+                                        s_in_double = !s_in_double;
+                                    }
+                                    '(' if !s_in_single && !s_in_double => {
+                                        if paren > 0 {
+                                            args_str.push(ch);
+                                        }
+                                        paren += 1;
+                                        p += 1;
+                                        continue;
+                                    }
+                                    ')' if !s_in_single && !s_in_double => {
+                                        paren -= 1;
+                                        if paren == 0 {
+                                            break;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                                if paren > 0 {
+                                    args_str.push(ch);
+                                }
+                                p += 1;
+                            }
+                            if p >= bytes.len() {
+                                if let Some(last) = out_lines.last_mut() {
+                                    last.push_str(tok);
+                                } else {
+                                    return Err(PreprocessError::new(
+                                        "Internal preprocessor error: output buffer unexpectedly empty",
+                                    ));
+                                }
+                                i = j;
+                                continue;
+                            }
+
+                            let mut args = Vec::new();
+                            let mut cur = String::new();
+                            let mut a_in_single = false;
+                            let mut a_in_double = false;
+                            let mut a_esc = false;
+                            for ch in args_str.chars() {
+                                match ch {
+                                    _ if a_esc => {
+                                        cur.push(ch);
+                                        a_esc = false;
+                                    }
+                                    '\\' => {
+                                        a_esc = true;
+                                        cur.push(ch);
+                                    }
+                                    '\'' if !a_in_double => {
+                                        a_in_single = !a_in_single;
+                                        cur.push(ch);
+                                    }
+                                    '"' if !a_in_single => {
+                                        a_in_double = !a_in_double;
+                                        cur.push(ch);
+                                    }
+                                    ',' if !a_in_single && !a_in_double => {
+                                        args.push(trim(&cur).to_string());
+                                        cur.clear();
+                                    }
+                                    _ => cur.push(ch),
+                                }
+                            }
+                            if !cur.is_empty() {
+                                args.push(trim(&cur).to_string());
+                            }
+
+                            let body = self.expand_function(m, &args);
+                            macro_stack.push(macro_name);
+                            let parts = split_unquoted_backslash(&body);
+                            let mut expanded_parts = Vec::new();
+                            for part in parts {
+                                let rec = match self.expand_line_internal(
+                                    &part,
+                                    depth + 1,
+                                    macro_stack,
+                                ) {
+                                    Ok(rec) => rec,
+                                    Err(err) => {
+                                        macro_stack.pop();
+                                        return Err(err);
+                                    }
+                                };
+                                expanded_parts.extend(rec);
+                            }
+                            macro_stack.pop();
+                            if !expanded_parts.is_empty() {
+                                if let Some(last) = out_lines.last_mut() {
+                                    last.push_str(&expanded_parts[0]);
+                                } else {
+                                    return Err(PreprocessError::new(
+                                        "Internal preprocessor error: output buffer unexpectedly empty",
+                                    ));
+                                }
+                                for part in expanded_parts.iter().skip(1) {
+                                    out_lines.push(part.clone());
+                                }
+                            }
+                            i = p + 1;
+                            continue;
+                        }
+                    }
+                }
+                if let Some(last) = out_lines.last_mut() {
+                    last.push_str(tok);
+                } else {
+                    return Err(PreprocessError::new(
+                        "Internal preprocessor error: output buffer unexpectedly empty",
+                    ));
+                }
+                i = j;
+            } else {
+                if let Some(last) = out_lines.last_mut() {
+                    last.push(c);
+                } else {
+                    return Err(PreprocessError::new(
+                        "Internal preprocessor error: output buffer unexpectedly empty",
+                    ));
+                }
+                i += 1;
+            }
+        }
+        if !comment.is_empty() {
+            out_lines[0].push_str(comment);
+        }
+        Ok(out_lines)
+    }
+
+    fn expand_function(&self, m: &MacroDef, args: &[String]) -> String {
+        let mut out = String::new();
+        let mut in_single = false;
+        let mut in_double = false;
+        let bytes = m.body.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let c = bytes[i] as char;
+            match c {
+                '\'' if !in_double => in_single = !in_single,
+                '"' if !in_single => in_double = !in_double,
+                _ => {}
+            }
+            if !in_single && !in_double && is_ident_start(bytes[i]) {
+                let mut j = i + 1;
+                while j < bytes.len() && is_ident_char(bytes[j]) {
+                    j += 1;
+                }
+                let tok = &m.body[i..j];
+                let up = to_upper(tok);
+                let mut replaced = false;
+                for (idx, param) in m.params.iter().enumerate() {
+                    if up == *param {
+                        if let Some(value) = args.get(idx) {
+                            out.push_str(value);
+                        }
+                        replaced = true;
+                        break;
+                    }
+                }
+                if !replaced {
+                    out.push_str(tok);
+                }
+                i = j;
+            } else {
+                out.push(c);
+                i += 1;
+            }
+        }
+        out
+    }
+}
+
+#[derive(Debug)]
+pub struct Preprocessor {
+    macros: HashMap<String, MacroDef>,
+    cond_state: ConditionalState,
+    lines: Vec<String>,
+    in_asm_macro: bool,
+    include_roots: Vec<PathBuf>,
+    seen_files: HashSet<PathBuf>,
+    include_stack: Vec<PathBuf>,
+    max_depth: usize,
+}
+
+impl Preprocessor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_max_depth(max_depth: usize) -> Self {
+        Self {
+            macros: HashMap::new(),
+            cond_state: ConditionalState::default(),
+            lines: Vec::new(),
+            in_asm_macro: false,
+            include_roots: Vec::new(),
+            seen_files: HashSet::new(),
+            include_stack: Vec::new(),
+            max_depth,
+        }
+    }
+
+    pub fn add_include_root(&mut self, root: PathBuf) {
+        self.include_roots.push(root);
+    }
+
+    pub fn define(&mut self, name: &str, value: &str) {
+        let m = MacroDef {
+            is_function: false,
+            params: Vec::new(),
+            body: value.to_string(),
+        };
+        self.macros.insert(to_upper(name), m);
+    }
+
+    pub fn process_file(&mut self, path: &str) -> Result<(), PreprocessError> {
+        let loader = FsPreprocessFileLoader;
+        self.process_file_with_loader(path, &loader)
+    }
+
+    pub fn process_file_with_loader(
+        &mut self,
+        path: &str,
+        loader: &dyn PreprocessFileLoader,
+    ) -> Result<(), PreprocessError> {
+        self.lines.clear();
+        self.cond_state.clear();
+        self.in_asm_macro = false;
+        self.seen_files.clear();
+        self.include_stack.clear();
+        self.process_file_internal(Path::new(path), loader)
+    }
+
+    pub fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    pub fn seen_files(&self) -> Vec<PathBuf> {
+        let mut files: Vec<PathBuf> = self.seen_files.iter().cloned().collect();
+        files.sort();
+        files
+    }
+
+    fn process_file_internal(
+        &mut self,
+        path: &Path,
+        loader: &dyn PreprocessFileLoader,
+    ) -> Result<(), PreprocessError> {
+        if self.include_stack.len() >= self.max_depth {
+            return Err(PreprocessError::new(format!(
+                "INCLUDE nesting exceeded maximum depth ({})",
+                self.max_depth
+            )));
+        }
+
+        let identity = self.include_identity(path, loader);
+        if let Some(start_idx) = self.include_stack.iter().position(|item| *item == identity) {
+            return Err(self.include_cycle_error(start_idx, &identity));
+        }
+
+        self.include_stack.push(identity.clone());
+        self.seen_files.insert(identity);
+
+        let path_text = path.to_string_lossy().to_string();
+        let contents = match loader.read_to_string(path) {
+            Ok(contents) => contents,
+            Err(_) => {
+                self.include_stack.pop();
+                return Err(PreprocessError::new(format!(
+                    "Error opening file: {path_text}"
+                )));
+            }
+        };
+        let base_dir = dirname(path_text.as_str());
+        for (index, line) in contents.lines().enumerate() {
+            let line_num = index as u32 + 1;
+            if let Err(err) = self.process_line(line, &base_dir, line_num, &path_text, loader) {
+                self.include_stack.pop();
+                return Err(err);
+            }
+        }
+        self.include_stack.pop();
+        Ok(())
+    }
+
+    fn include_identity(&self, path: &Path, loader: &dyn PreprocessFileLoader) -> PathBuf {
+        loader
+            .canonicalize(path)
+            .unwrap_or_else(|_| path.to_path_buf())
+    }
+
+    fn include_cycle_error(&self, start_idx: usize, reentered: &Path) -> PreprocessError {
+        let mut chain: Vec<String> = self.include_stack[start_idx..]
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect();
+        chain.push(reentered.to_string_lossy().to_string());
+        PreprocessError::new(format!("INCLUDE cycle detected: {}", chain.join(" -> ")))
+    }
+
+    fn process_line(
+        &mut self,
+        line: &str,
+        base_dir: &str,
+        line_num: u32,
+        file_path: &str,
+        loader: &dyn PreprocessFileLoader,
+    ) -> Result<(), PreprocessError> {
+        let (code, _comment) = split_comment(line);
+        let trimmed = ltrim(code);
+        let asm_macro_directive = parse_asm_macro_directive(trimmed);
+        let next_in_asm_macro = match asm_macro_directive {
+            Some(AsmMacroDirective::Start) => true,
+            Some(AsmMacroDirective::End) => false,
+            None => self.in_asm_macro,
+        };
+        let expander = MacroExpander::new(&self.macros, self.max_depth);
+        if trimmed.is_empty() {
+            if self.is_active() {
+                self.lines.push(line.to_string());
+            }
+            return Ok(());
+        }
+
+        let is_hash_directive = trimmed.starts_with('#');
+        let is_dot_directive = trimmed.starts_with('.');
+        let leading = code.len().saturating_sub(trimmed.len());
+
+        let mut pos = 0usize;
+        let bytes = trimmed.as_bytes();
+        match bytes.first() {
+            Some(b'#') | Some(b'.') => {
+                pos = 1;
+                while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
+                    pos += 1;
+                }
+            }
+            _ => {}
+        }
+        let start = pos;
+        while pos < bytes.len() && is_ident_char(bytes[pos]) {
+            pos += 1;
+        }
+        let token = to_upper(&trimmed[start..pos]);
+        let rest = trim(&trimmed[pos..]);
+        let column = leading.saturating_add(start).saturating_add(1);
+
+        let is_else_directive = token == "ELSE" || token == "ELSEIF" || token == "ENDIF";
+        let is_pp_directive =
+            token == "IFDEF" || token == "IFNDEF" || token == "INCLUDE" || is_else_directive;
+        if is_hash_directive && is_pp_directive {
+            let err = PreprocessError::new("Preprocessor directives must use '.'");
+            return Err(err.with_context(line_num, Some(column), line, Some(file_path)));
+        }
+        if is_dot_directive && is_pp_directive {
+            if is_else_directive && self.cond_state.is_empty() {
+                // Pass through .else/.elseif/.endif for assembler conditionals.
+            } else {
+                return self
+                    .handle_directive(&token, rest, base_dir, loader)
+                    .map_err(|err| {
+                        err.with_context(line_num, Some(column), line, Some(file_path))
+                    });
+            }
+        }
+
+        if self.in_asm_macro || asm_macro_directive.is_some() {
+            if self.is_active() {
+                self.lines.push(line.to_string());
+            }
+            self.in_asm_macro = next_in_asm_macro;
+            return Ok(());
+        }
+
+        if !self.is_active() {
+            self.in_asm_macro = next_in_asm_macro;
+            return Ok(());
+        }
+        let expanded = expander
+            .expand_line(line, 0)
+            .map_err(|err| err.with_context(line_num, None, line, Some(file_path)))?;
+        self.lines.extend(expanded);
+        self.in_asm_macro = next_in_asm_macro;
+        Ok(())
+    }
+
+    fn handle_directive(
+        &mut self,
+        token: &str,
+        rest: &str,
+        base_dir: &str,
+        loader: &dyn PreprocessFileLoader,
+    ) -> Result<(), PreprocessError> {
+        match token {
+            "IFDEF" => self.handle_ifdef(rest, false),
+            "IFNDEF" => self.handle_ifdef(rest, true),
+            "ELSE" | "ELSEIF" => self.handle_else(rest),
+            "ENDIF" => self.handle_endif(),
+            "INCLUDE" => {
+                if !self.is_active() {
+                    return Ok(());
+                }
+                self.handle_include(rest, base_dir, loader)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn handle_ifdef(&mut self, rest: &str, negated: bool) -> Result<(), PreprocessError> {
+        let name = to_upper(trim(rest));
+        if name.is_empty() {
+            return Err(PreprocessError::new("IFDEF/IFNDEF missing name"));
+        }
+        let defined = self.is_defined(&name);
+        let cond = match negated {
+            true => !defined,
+            false => defined,
+        };
+        self.cond_state.push_ifdef(cond);
+        Ok(())
+    }
+
+    fn handle_else(&mut self, rest: &str) -> Result<(), PreprocessError> {
+        let name = to_upper(trim(rest));
+        let defined = if name.is_empty() {
+            false
+        } else {
+            self.is_defined(&name)
+        };
+        self.cond_state.handle_else(&name, defined)?;
+        Ok(())
+    }
+
+    fn handle_endif(&mut self) -> Result<(), PreprocessError> {
+        self.cond_state.handle_endif()?;
+        Ok(())
+    }
+
+    fn handle_include(
+        &mut self,
+        rest: &str,
+        base_dir: &str,
+        loader: &dyn PreprocessFileLoader,
+    ) -> Result<(), PreprocessError> {
+        if !self.is_active() {
+            return Ok(());
+        }
+        let r = trim(rest);
+        let r = match (r.as_bytes().first(), r.as_bytes().last()) {
+            (Some(b'"'), Some(b'"')) | (Some(b'\''), Some(b'\'')) if r.len() >= 2 => {
+                &r[1..r.len() - 1]
+            }
+            _ => r,
+        };
+        if r.is_empty() {
+            return Err(PreprocessError::new("INCLUDE missing file"));
+        }
+        let (path, searched) = self.resolve_include_path(base_dir, r, loader);
+        if let Some(path) = path {
+            return self.process_file_internal(path.as_path(), loader);
+        }
+
+        let searched_text = searched
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Err(PreprocessError::new(format!(
+            "INCLUDE file not found: {r} (searched: {searched_text})"
+        )))
+    }
+
+    fn resolve_include_path(
+        &self,
+        base_dir: &str,
+        include: &str,
+        loader: &dyn PreprocessFileLoader,
+    ) -> (Option<PathBuf>, Vec<PathBuf>) {
+        let mut allowed_roots = Vec::new();
+        allowed_roots.push(PathBuf::from(base_dir));
+        for root in &self.include_roots {
+            allowed_roots.push(root.clone());
+        }
+
+        let include_path = Path::new(include);
+        if include_path.is_absolute() {
+            let absolute = include_path.to_path_buf();
+            let found = if loader.is_file(&absolute)
+                && self.include_within_allowed_roots(&absolute, &allowed_roots, loader)
+            {
+                Some(absolute.clone())
+            } else {
+                None
+            };
+            return (found, vec![absolute]);
+        }
+
+        let mut candidates = Vec::new();
+        candidates.push(Path::new(base_dir).join(include));
+        for root in &self.include_roots {
+            candidates.push(root.join(include));
+        }
+
+        let found = candidates
+            .iter()
+            .find(|candidate| {
+                loader.is_file(candidate)
+                    && self.include_within_allowed_roots(candidate, &allowed_roots, loader)
+            })
+            .cloned();
+        (found, candidates)
+    }
+
+    fn include_within_allowed_roots(
+        &self,
+        candidate: &Path,
+        allowed_roots: &[PathBuf],
+        loader: &dyn PreprocessFileLoader,
+    ) -> bool {
+        let candidate = match loader.canonicalize(candidate) {
+            Ok(path) => path,
+            Err(_) => return false,
+        };
+
+        allowed_roots.iter().any(|root| {
+            loader
+                .canonicalize(root)
+                .map(|root| candidate.starts_with(&root))
+                .unwrap_or(false)
+        })
+    }
+
+    fn is_active(&self) -> bool {
+        self.cond_state.is_active()
+    }
+
+    fn is_defined(&self, name: &str) -> bool {
+        self.macros.contains_key(&to_upper(name))
+    }
+}
+
+impl Default for Preprocessor {
+    fn default() -> Self {
+        Self {
+            macros: HashMap::new(),
+            cond_state: ConditionalState::default(),
+            lines: Vec::new(),
+            in_asm_macro: false,
+            include_roots: Vec::new(),
+            seen_files: HashSet::new(),
+            include_stack: Vec::new(),
+            max_depth: 64,
+        }
+    }
+}
+
+fn split_unquoted_backslash(s: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut cur = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escape = false;
+    for ch in s.chars() {
+        match ch {
+            _ if escape => {
+                cur.push(ch);
+                escape = false;
+            }
+            '\\' if in_single || in_double => {
+                cur.push(ch);
+                escape = true;
+            }
+            '\\' => {
+                parts.push(cur);
+                cur = String::new();
+            }
+            '\'' if !in_double => {
+                in_single = !in_single;
+                cur.push(ch);
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                cur.push(ch);
+            }
+            _ => cur.push(ch),
+        }
+    }
+    parts.push(cur);
+    parts
+}
+
+fn trim(s: &str) -> &str {
+    s.trim()
+}
+
+fn ltrim(s: &str) -> &str {
+    s.trim_start()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AsmMacroDirective {
+    Start,
+    End,
+}
+
+fn parse_asm_macro_directive(trimmed: &str) -> Option<AsmMacroDirective> {
+    let mut cursor = Cursor::new(trimmed);
+    cursor.skip_ws();
+    cursor.peek()?;
+    match cursor.peek() {
+        Some(b'.') => {
+            cursor.next();
+        }
+        Some(ch) if is_ident_start(ch) => {
+            cursor.take_ident()?;
+            if let Some(b':') = cursor.peek() {
+                cursor.next();
+            }
+            cursor.skip_ws();
+            match cursor.peek() {
+                Some(b'.') => {
+                    cursor.next();
+                }
+                _ => return None,
+            }
+        }
+        _ => return None,
+    }
+
+    cursor.skip_ws();
+    let directive = cursor.take_ident()?.to_ascii_uppercase();
+    match directive.as_str() {
+        "MACRO" | "SEGMENT" | "STATEMENT" => Some(AsmMacroDirective::Start),
+        "ENDMACRO" | "ENDM" | "ENDSEGMENT" | "ENDS" | "ENDSTATEMENT" => {
+            Some(AsmMacroDirective::End)
+        }
+        _ => None,
+    }
+}
+
+fn dirname(path: &str) -> String {
+    Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| ".".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MacroDef, MacroExpander, Preprocessor};
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file(name: &str, contents: &str) -> PathBuf {
+        let dir = temp_dir();
+        let path = dir.join(name);
+        fs::write(&path, contents).unwrap();
+        path
+    }
+
+    fn temp_dir() -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        dir.push(format!("opForge-preproc-{}", nanos));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn ifdef_selects_true_branch() {
+        let path = temp_file(
+            "test.asm",
+            ".IFDEF FOO\nVAL .const 1\n.ELSE\nVAL .const 2\n.ENDIF\n",
+        );
+        let mut pp = Preprocessor::new();
+        pp.define("FOO", "1");
+        assert!(pp.process_file(path.to_str().unwrap()).is_ok());
+        let lines = pp.lines();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].trim(), "VAL .const 1");
+    }
+
+    #[test]
+    fn object_macro_expands() {
+        let path = temp_file("macro.asm", ".byte ADD\n");
+        let mut pp = Preprocessor::new();
+        pp.define("ADD", "1 + 2");
+        assert!(pp.process_file(path.to_str().unwrap()).is_ok());
+        let lines = pp.lines();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].trim(), ".byte 1 + 2");
+    }
+
+    #[test]
+    fn splits_unquoted_backslash() {
+        let path = temp_file("split.asm", ".byte 1\\.byte 2\n");
+        let mut pp = Preprocessor::new();
+        assert!(pp.process_file(path.to_str().unwrap()).is_ok());
+        let lines = pp.lines();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].trim(), ".byte 1");
+        assert_eq!(lines[1].trim(), ".byte 2");
+    }
+
+    #[test]
+    fn passes_through_else_when_no_preproc_block() {
+        let path = temp_file("else_pass.asm", ".ELSE\n");
+        let mut pp = Preprocessor::new();
+        assert!(pp.process_file(path.to_str().unwrap()).is_ok());
+        let lines = pp.lines();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].trim(), ".ELSE");
+    }
+
+    #[test]
+    fn reports_missing_include_path() {
+        let path = temp_file("bad_include.asm", ".INCLUDE\n");
+        let mut pp = Preprocessor::new();
+        let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
+        assert_eq!(err.message(), "INCLUDE missing file");
+    }
+
+    #[test]
+    fn rejects_hash_directives() {
+        let path = temp_file("hash_directive.asm", "#IFDEF FOO\n");
+        let mut pp = Preprocessor::new();
+        let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
+        assert_eq!(err.message(), "Preprocessor directives must use '.'");
+    }
+
+    #[test]
+    fn macro_expansion_depth_errors() {
+        let mut macros = HashMap::new();
+        macros.insert(
+            "F".to_string(),
+            MacroDef {
+                is_function: true,
+                params: vec!["X".to_string()],
+                body: "F(X)".to_string(),
+            },
+        );
+        let expander = MacroExpander::new(&macros, 1);
+        let err = expander.expand_line("F(1)", 0).unwrap_err();
+        assert!(err.message().contains("cycle detected"));
+    }
+
+    #[test]
+    fn preprocessor_macro_depth_errors_with_low_limit() {
+        let path = temp_file("depth.asm", "X\n");
+        let mut pp = Preprocessor::with_max_depth(1);
+        pp.define("X", "X\\X");
+        let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
+        assert!(err.message().contains("maximum depth"));
+    }
+
+    #[test]
+    fn mutually_recursive_function_macros_report_cycle() {
+        let mut macros = HashMap::new();
+        macros.insert(
+            "A".to_string(),
+            MacroDef {
+                is_function: true,
+                params: vec!["X".to_string()],
+                body: "B(X)".to_string(),
+            },
+        );
+        macros.insert(
+            "B".to_string(),
+            MacroDef {
+                is_function: true,
+                params: vec!["Y".to_string()],
+                body: "A(Y)".to_string(),
+            },
+        );
+
+        let expander = MacroExpander::new(&macros, 8);
+        let err = expander.expand_line("A(1)", 0).unwrap_err();
+        assert!(err.message().contains("cycle detected"));
+        assert!(err.message().contains("A -> B -> A"));
+    }
+
+    #[test]
+    fn include_prefers_including_file_directory_before_include_roots() {
+        let project = temp_dir();
+        let local = project.join("defs.inc");
+        let root = project.join("root");
+        fs::create_dir_all(&root).unwrap();
+        let root_defs = root.join("defs.inc");
+        let main = root.join("main.asm");
+
+        fs::write(&local, "VALUE .const 99\n").unwrap();
+        fs::write(&root_defs, "VALUE .const 42\n").unwrap();
+        fs::write(&main, ".include \"defs.inc\"\n.byte VALUE\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        pp.add_include_root(project);
+        pp.process_file(main.to_str().unwrap()).unwrap();
+        let lines = pp.lines();
+        assert!(lines.iter().any(|line| line.contains("VALUE .const 42")));
+        assert!(!lines.iter().any(|line| line.contains("VALUE .const 99")));
+    }
+
+    #[test]
+    fn include_missing_reports_all_searched_paths() {
+        let project = temp_dir();
+        let inc_a = project.join("inc-a");
+        let inc_b = project.join("inc-b");
+        fs::create_dir_all(&inc_a).unwrap();
+        fs::create_dir_all(&inc_b).unwrap();
+        let main = project.join("main.asm");
+        fs::write(&main, ".include \"missing.inc\"\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        pp.add_include_root(inc_a.clone());
+        pp.add_include_root(inc_b.clone());
+        let err = pp.process_file(main.to_str().unwrap()).unwrap_err();
+        let message = err.message();
+
+        assert!(message.contains("INCLUDE file not found: missing.inc"));
+        assert!(message.contains(project.join("missing.inc").to_string_lossy().as_ref()));
+        assert!(message.contains(inc_a.join("missing.inc").to_string_lossy().as_ref()));
+        assert!(message.contains(inc_b.join("missing.inc").to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn include_self_cycle_reports_chain() {
+        let project = temp_dir();
+        let main = project.join("main.asm");
+        fs::write(&main, ".include \"main.asm\"\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        let err = pp.process_file(main.to_str().unwrap()).unwrap_err();
+        let message = err.message();
+
+        assert!(message.contains("INCLUDE cycle detected:"));
+        let main_text = main.to_string_lossy().to_string();
+        assert_eq!(message.matches(&main_text).count(), 2);
+    }
+
+    #[test]
+    fn include_multi_hop_cycle_reports_full_chain() {
+        let project = temp_dir();
+        let a = project.join("a.asm");
+        let b = project.join("b.asm");
+        let c = project.join("c.asm");
+
+        fs::write(&a, ".include \"b.asm\"\n").unwrap();
+        fs::write(&b, ".include \"c.asm\"\n").unwrap();
+        fs::write(&c, ".include \"a.asm\"\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        let err = pp.process_file(a.to_str().unwrap()).unwrap_err();
+        let message = err.message();
+
+        assert!(message.contains("INCLUDE cycle detected:"));
+        assert!(message.contains("a.asm"));
+        assert!(message.contains("b.asm"));
+        assert!(message.contains("c.asm"));
+        assert!(message.contains("->"));
+        assert!(message.ends_with("a.asm"));
+    }
+
+    #[test]
+    fn repeat_include_without_cycle_is_allowed() {
+        let project = temp_dir();
+        let common = project.join("common.inc");
+        let main = project.join("main.asm");
+
+        fs::write(&common, "VALUE .const 1\n").unwrap();
+        fs::write(
+            &main,
+            ".include \"common.inc\"\n.include \"common.inc\"\n.byte VALUE\n",
+        )
+        .unwrap();
+
+        let mut pp = Preprocessor::new();
+        pp.process_file(main.to_str().unwrap()).unwrap();
+        let lines = pp.lines();
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line.contains("VALUE .const 1"))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn include_depth_limit_errors_when_nesting_exceeds_max_depth() {
+        let project = temp_dir();
+        let a = project.join("a.asm");
+        let b = project.join("b.asm");
+        let c = project.join("c.asm");
+
+        fs::write(&a, ".include \"b.asm\"\n").unwrap();
+        fs::write(&b, ".include \"c.asm\"\n").unwrap();
+        fs::write(&c, ".byte 1\n").unwrap();
+
+        let mut pp = Preprocessor::with_max_depth(2);
+        let err = pp.process_file(a.to_str().unwrap()).unwrap_err();
+        assert!(err
+            .message()
+            .contains("INCLUDE nesting exceeded maximum depth"));
+    }
+
+    #[test]
+    fn include_depth_limit_allows_boundary_nesting() {
+        let project = temp_dir();
+        let a = project.join("a.asm");
+        let b = project.join("b.asm");
+
+        fs::write(&a, ".include \"b.asm\"\n").unwrap();
+        fs::write(&b, ".byte 1\n").unwrap();
+
+        let mut pp = Preprocessor::with_max_depth(2);
+        assert!(pp.process_file(a.to_str().unwrap()).is_ok());
+        assert!(pp.lines().iter().any(|line| line.contains(".byte 1")));
+    }
+
+    #[test]
+    fn include_rejects_traversal_outside_base_dir_without_include_root() {
+        let project = temp_dir();
+        let src = project.join("src");
+        fs::create_dir_all(&src).unwrap();
+        let secret = project.join("secret.inc");
+        let main = src.join("main.asm");
+
+        fs::write(&secret, "VALUE .const 7\n").unwrap();
+        fs::write(&main, ".include \"../secret.inc\"\n.byte VALUE\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        let err = pp.process_file(main.to_str().unwrap()).unwrap_err();
+        assert!(err.message().contains("INCLUDE file not found"));
+    }
+
+    #[test]
+    fn include_allows_parent_relative_path_when_explicit_include_root_matches() {
+        let project = temp_dir();
+        let src = project.join("src");
+        fs::create_dir_all(&src).unwrap();
+        let secret = project.join("secret.inc");
+        let main = src.join("main.asm");
+
+        fs::write(&secret, "VALUE .const 7\n").unwrap();
+        fs::write(&main, ".include \"../secret.inc\"\n.byte VALUE\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        pp.add_include_root(project);
+        pp.process_file(main.to_str().unwrap()).unwrap();
+        assert!(pp
+            .lines()
+            .iter()
+            .any(|line| line.contains("VALUE .const 7")));
+    }
+
+    #[test]
+    fn include_allows_parent_relative_path_within_project_tree() {
+        let project = temp_dir();
+        let src = project.join("src");
+        let modules = src.join("modules");
+        fs::create_dir_all(&modules).unwrap();
+        let shared = src.join("mforth.shared.inc");
+        let main = modules.join("mforth.base.asm");
+
+        fs::write(&shared, "VALUE .const 7\n").unwrap();
+        fs::write(&main, ".include \"../mforth.shared.inc\"\n.byte VALUE\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        pp.add_include_root(src.clone());
+        pp.process_file(main.to_str().unwrap()).unwrap();
+        assert!(pp
+            .lines()
+            .iter()
+            .any(|line| line.contains("VALUE .const 7")));
+    }
+
+    #[test]
+    fn mixed_include_and_macro_recursion_respects_max_depth() {
+        let project = temp_dir();
+        let a = project.join("a.asm");
+        let b = project.join("b.asm");
+
+        fs::write(&a, ".include \"b.asm\"\n").unwrap();
+        fs::write(&b, "X\n").unwrap();
+
+        let mut pp = Preprocessor::with_max_depth(2);
+        pp.define("X", "X\\X");
+        let err = pp.process_file(a.to_str().unwrap()).unwrap_err();
+        assert!(err.message().contains("maximum depth"));
+    }
+}

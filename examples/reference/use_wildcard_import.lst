@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Wildcard selective import for all public symbols.
@@ -32,7 +32,9 @@ Lines: 26  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-wildcard.import.lib.VAL: 0011 (17)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+wildcard.import.lib.VAL  0011      pub  lbl 
 
 Total memory is 7 bytes
 

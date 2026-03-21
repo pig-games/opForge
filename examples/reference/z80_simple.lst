@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Simple Z80 CPU test
@@ -65,7 +65,9 @@ Lines: 59  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-skip            : 0034 (52)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+skip             0034      prv  lbl 
 
 Total memory is 81 bytes
 

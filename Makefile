@@ -1,19 +1,40 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Erik van der Tier
 
-.PHONY: build release clean fmt clippy audit reference reference-test test test-core test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opcpu-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf
+.PHONY: build release clean fmt clippy audit reference reference-test test test-core test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opasm-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-cli build-lsp build-ffi build-ffi-release test-ffi-packaging build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf
 
 MANUAL_MD := documentation/opForge-reference-manual.md
 MANUAL_PDF := documentation/opForge-reference-manual.pdf
-VM_RUNTIME_ARTIFACT := target/vm/opforge-vm-runtime.opcpu
+VM_RUNTIME_ARTIFACT := target/vm/opforge-vm-runtime.opasm
 
 build:
-	cargo clippy -- -D warnings
-	cargo build
+	cargo clippy --workspace -- -D warnings
+	cargo build --workspace
+
+build-cli:
+	cargo build -p cli
+
+build-lsp:
+	cargo build -p lsp
+
+build-ffi:
+	cargo build -p ffi
+
+build-ffi-release:
+	cargo build -p ffi --profile release-ffi --locked --lib
+
+test-ffi-packaging: build-ffi-release
+	@if [ -f target/release-ffi/libopforge.dylib ] || [ -f target/release-ffi/libopforge.so ] || [ -f target/release-ffi/opforge.dll ]; then \
+		true; \
+	else \
+		echo "expected shared library basename libopforge in target/release-ffi"; \
+		exit 1; \
+	fi
 
 release:
-	cargo clippy -- -D warnings
-	cargo build --release
+	cargo clippy --workspace -- -D warnings
+	cargo build --workspace --release --exclude ffi
+	$(MAKE) build-ffi-release
 
 clean:
 	cargo clean
@@ -22,24 +43,24 @@ fmt:
 	cargo fmt --all
 
 clippy:
-	cargo clippy -- -D warnings
+	cargo clippy --workspace -- -D warnings
 
 audit:
 	cargo audit
 
 test:
-	cargo test
+	cargo test --workspace
 	../scripts/cleanup-build-artifacts.sh ..
 
 test-core:
-	cargo test --no-default-features
+	cargo test --workspace --no-default-features
 	../scripts/cleanup-build-artifacts.sh ..
 
 test-vm-runtime:
 	cargo test vm_runtime_mos6502_
 
 test-vm-runtime-artifact:
-	cargo test --features vm-runtime-opcpu-artifact vm_runtime_artifact_
+	cargo test --features vm-runtime-opasm-artifact vm_runtime_artifact_
 
 test-vm-runtime-intel:
 	cargo test vm_runtime_intel8080_
@@ -68,68 +89,68 @@ ci-vm-intel8080:
 	make test-vm-runtime-intel
 
 build-vm-package:
-	cargo run --bin build_vm_package -- target/vm/hierarchy.opcpu
+	cargo run -p cli --bin build_vm_package -- target/vm/hierarchy.opasm
 
 build-vm-runtime-artifact:
-	cargo run --bin build_vm_package -- $(VM_RUNTIME_ARTIFACT)
+	cargo run -p cli --features vm-runtime-only,vm-runtime-opasm-artifact --bin build_vm_package -- $(VM_RUNTIME_ARTIFACT)
 
 vm-only-build: build-vm-runtime-artifact
-	cargo build --features vm-runtime-only,vm-runtime-opcpu-artifact
+	cargo build -p cli --features vm-runtime-only,vm-runtime-opasm-artifact --bin opforge
 
 vm-only-release: build-vm-runtime-artifact
-	cargo build --release --features vm-runtime-only,vm-runtime-opcpu-artifact
+	cargo build -p cli --release --features vm-runtime-only,vm-runtime-opasm-artifact --bin opforge
 
 vm-only-build-embedded:
-	cargo build --features vm-runtime-only
+	cargo build -p cli --features vm-runtime-only --bin opforge
 
 vm-only-release-embedded:
-	cargo build --release --features vm-runtime-only
+	cargo build -p cli --release --features vm-runtime-only --bin opforge
 
 vm-only-build-unbundled:
-	cargo build --features vm-runtime-only,vm-runtime-opcpu-unbundled
+	cargo build -p cli --features vm-runtime-only,vm-runtime-opasm-unbundled --bin opforge
 
 vm-only-release-unbundled:
-	cargo build --release --features vm-runtime-only,vm-runtime-opcpu-unbundled
+	cargo build -p cli --release --features vm-runtime-only,vm-runtime-opasm-unbundled --bin opforge
 
 vm-only-build-unbundled-artifact: build-vm-runtime-artifact
-	cargo build --features vm-runtime-only,vm-runtime-opcpu-unbundled,vm-runtime-opcpu-artifact
+	cargo build -p cli --features vm-runtime-only,vm-runtime-opasm-unbundled,vm-runtime-opasm-artifact --bin opforge
 
 vm-only-release-unbundled-artifact: build-vm-runtime-artifact
-	cargo build --release --features vm-runtime-only,vm-runtime-opcpu-unbundled,vm-runtime-opcpu-artifact
+	cargo build -p cli --release --features vm-runtime-only,vm-runtime-opasm-unbundled,vm-runtime-opasm-artifact --bin opforge
 
-test-vm-opcpu-modes:
-	CARGO_TARGET_DIR=target/vmcheck-embedded cargo build --features vm-runtime-only --bin opforge
+test-vm-opasm-modes:
+	CARGO_TARGET_DIR=target/vmcheck-embedded cargo build -p cli --features vm-runtime-only --bin opforge
 	target/vmcheck-embedded/debug/opforge --print-cpusupport >/dev/null
-	CARGO_TARGET_DIR=target/vmcheck-unbundled cargo build --features vm-runtime-only,vm-runtime-opcpu-unbundled --bin opforge
+	CARGO_TARGET_DIR=target/vmcheck-unbundled cargo build -p cli --features vm-runtime-only,vm-runtime-opasm-unbundled --bin opforge
 	@if target/vmcheck-unbundled/debug/opforge -i examples/6502_simple.asm -l >/dev/null 2>&1; then \
 		echo "expected vm-only unbundled run without package to fail"; \
 		exit 1; \
 	fi
 	$(MAKE) build-vm-runtime-artifact
-	target/vmcheck-unbundled/debug/opforge --opcpu-package $(abspath $(VM_RUNTIME_ARTIFACT)) -i examples/6502_simple.asm -l >/dev/null
-	CARGO_TARGET_DIR=target/vmcheck-unbundled-artifact cargo build --features vm-runtime-only,vm-runtime-opcpu-unbundled,vm-runtime-opcpu-artifact --bin opforge
-	target/vmcheck-unbundled-artifact/debug/opforge --opcpu-package $(abspath $(VM_RUNTIME_ARTIFACT)) -i examples/6502_simple.asm -l >/dev/null
+	target/vmcheck-unbundled/debug/opforge --opasm-package $(abspath $(VM_RUNTIME_ARTIFACT)) -i examples/6502_simple.asm -l >/dev/null
+	CARGO_TARGET_DIR=target/vmcheck-unbundled-artifact cargo build -p cli --features vm-runtime-only,vm-runtime-opasm-unbundled,vm-runtime-opasm-artifact --bin opforge
+	target/vmcheck-unbundled-artifact/debug/opforge --opasm-package $(abspath $(VM_RUNTIME_ARTIFACT)) -i examples/6502_simple.asm -l >/dev/null
 
 test-build-profile-matrix:
 	cargo test version_flag_reports_build_profile
 	cargo test --features vm-runtime-only version_flag_reports_build_profile
-	cargo test --features vm-runtime-only,vm-runtime-opcpu-artifact version_flag_reports_build_profile
-	cargo test --features vm-runtime-only,vm-runtime-opcpu-unbundled version_flag_reports_build_profile
-	cargo test --features vm-runtime-only,vm-runtime-opcpu-unbundled,vm-runtime-opcpu-artifact version_flag_reports_build_profile
+	cargo test --features vm-runtime-only,vm-runtime-opasm-artifact version_flag_reports_build_profile
+	cargo test --features vm-runtime-only,vm-runtime-opasm-unbundled version_flag_reports_build_profile
+	cargo test --features vm-runtime-only,vm-runtime-opasm-unbundled,vm-runtime-opasm-artifact version_flag_reports_build_profile
 
 test-build-combo-smoke:
 	cargo test load_module_graph_resolves_mforth_style_use_directives
 	cargo test --features vm-runtime-only load_module_graph_resolves_mforth_style_use_directives
-	cargo test --features vm-runtime-only,vm-runtime-opcpu-artifact load_module_graph_resolves_mforth_style_use_directives
-	cargo test --features vm-runtime-only,vm-runtime-opcpu-unbundled load_module_graph_resolves_mforth_style_use_directives
-	cargo test --features vm-runtime-only,vm-runtime-opcpu-unbundled,vm-runtime-opcpu-artifact load_module_graph_resolves_mforth_style_use_directives
+	cargo test --features vm-runtime-only,vm-runtime-opasm-artifact load_module_graph_resolves_mforth_style_use_directives
+	cargo test --features vm-runtime-only,vm-runtime-opasm-unbundled load_module_graph_resolves_mforth_style_use_directives
+	cargo test --features vm-runtime-only,vm-runtime-opasm-unbundled,vm-runtime-opasm-artifact load_module_graph_resolves_mforth_style_use_directives
 
 reference-test:
-	cargo test examples_match_reference_outputs
+	cargo test -p asm examples_match_reference_outputs
 	../scripts/cleanup-build-artifacts.sh ..
 
 reference:
-	opForge_UPDATE_REFERENCE=1 cargo test examples_match_reference_outputs -- --nocapture
+	opForge_UPDATE_REFERENCE=1 cargo test -p asm examples_match_reference_outputs -- --nocapture
 
 manual-pdf:
 	mkdir -p documentation

@@ -1,0 +1,20 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+default-run = "opforge"
+
+[features]
+default = []
+vm-runtime-only = ["api/vm-runtime-only", "cli-core/vm-runtime-only"]
+vm-runtime-opasm-unbundled = ["api/vm-runtime-opasm-unbundled", "cli-core/vm-runtime-opasm-unbundled"]
+vm-runtime-opasm-artifact = ["api/vm-runtime-opasm-artifact", "cli-core/vm-runtime-opasm-artifact"]
+vm-parity = ["api/vm-parity"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+cli-core = { path = "../opforge-cli-core" }
+api = { package = "libopforge", path = "../opforge-lib" }
+engine = { path = "../opforge-engine" }

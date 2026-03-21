@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Module import across files
@@ -23,7 +23,9 @@ Lines: 17  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-lib.math.VALUE  : 0005 (5)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+lib.math.VALUE   0005      pub  lbl 
 
 Total memory is 2 bytes
 

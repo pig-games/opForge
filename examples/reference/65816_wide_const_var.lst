@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65816 wide .const/.var listing coverage
@@ -17,8 +17,10 @@ Lines: 11  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-main.const_wide : 123456 (1193046)
-main.var_wide   : 12345 (74565)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.const_wide  123456    prv  lbl 
+main.var_wide    012345    prv  var 
 
 Total memory is 0 bytes
 

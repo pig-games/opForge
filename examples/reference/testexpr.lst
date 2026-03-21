@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 0000    21 08 00                    1          LXI  H, TAB2-1
@@ -15,9 +15,11 @@ Lines: 9  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-EXEC            : 0007 (7)
-CHKIO           : 0008 (8)
-TAB2            : 0009 (9)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+CHKIO            0008      prv  lbl 
+EXEC             0007      prv  lbl 
+TAB2             0009      prv  lbl 
 
 Total memory is 13 bytes
 

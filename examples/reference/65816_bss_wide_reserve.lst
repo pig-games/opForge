@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65816 wide-address BSS reserve coverage
@@ -21,8 +21,10 @@ Lines: 15  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-main.start      : 10000 (65536)
-main.end_label  : 23880 (145536)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.end_label   023880    prv  lbl 
+main.start       010000    prv  lbl 
 
 Total memory is 0 bytes
 

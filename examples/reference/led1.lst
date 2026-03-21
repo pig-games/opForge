@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Test program for 8085 SBC.  Blinks an LED on SOD forever.
@@ -42,11 +42,13 @@ Lines: 36  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-START           : 8003 (32771)
-D1PT1           : 8009 (32777)
-D1PT2           : 800a (32778)
-D2PT1           : 8019 (32793)
-D2PT2           : 801a (32794)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+D1PT1            8009      prv  lbl 
+D1PT2            800A      prv  lbl 
+D2PT1            8019      prv  lbl 
+D2PT2            801A      prv  lbl 
+START            8003      prv  lbl 
 
 Total memory is 38 bytes
 

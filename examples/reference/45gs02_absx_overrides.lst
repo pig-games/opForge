@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 absolute,X opcode overrides
@@ -23,7 +23,9 @@ Lines: 17  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 2200 (8704)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            2200      prv  lbl 
 
 Total memory is 25 bytes
 

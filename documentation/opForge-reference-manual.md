@@ -806,7 +806,7 @@ tmp .const 3        ; resolves in caller scope unless body adds explicit .block
 
 See also:
 - [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md) (host/VM boundary + strictness rules)
-- [VM Ultimate64 ABI Contract (v1)](vm-ultimate64-abi-contract-v1.md) (constrained-runtime ABI for `*.opcpu`)
+- [VM Ultimate64 ABI Contract (v1)](vm-ultimate64-abi-contract-v1.md) (constrained-runtime ABI for `*.opasm`)
 
 - The VM runtime bridge provides host-facing target selection:
   - `set_active_cpu(cpu_id)`
@@ -817,14 +817,18 @@ See also:
 
 #### VM runtime package source selection
 
-- opForge supports explicit VM runtime package loading with `--opcpu-package <FILE>` (or `OPFORGE_OPCPU_PACKAGE`).
-- Package source precedence is:
-  1. explicit package path (`--opcpu-package` / `OPFORGE_OPCPU_PACKAGE`)
-  2. default artifact path `target/vm/opforge-vm-runtime.opcpu` (when `vm-runtime-opcpu-artifact` is enabled)
-  3. bundled/runtime-generated fallback (disabled when `vm-runtime-opcpu-unbundled` is enabled)
-- In `vm-runtime-only` + `vm-runtime-opcpu-unbundled` builds, runtime package sourcing is mandatory:
-  - either provide `--opcpu-package <FILE>`
+- The CLI supports explicit VM runtime package loading with `--opasm-package <FILE>` (or `OPFORGE_OPASM_PACKAGE`).
+- The high-level assembly/session path accepts the same kind of explicit `.opasm` package override through its request/config surface.
+- Package source precedence for those paths is:
+  1. explicit package path
+  2. default artifact path `target/vm/opforge-vm-runtime.opasm` (when `vm-runtime-opasm-artifact` is enabled)
+  3. bundled/runtime-generated fallback (disabled when `vm-runtime-opasm-unbundled` is enabled)
+- In `vm-runtime-only` + `vm-runtime-opasm-unbundled` builds, runtime package sourcing is mandatory:
+  - either provide `--opasm-package <FILE>`
   - or enable artifact mode and provide the default artifact file
+- Lower-level engine/editor helpers such as `libopforge::processing`, `editor_parse_line`, and `editor_route_line` do not broaden this into CLI-style fallback behavior.
+- In `vm-runtime-only` mode, those helpers should be called with an explicit runtime model via the `*_with_model` entrypoints, or with the default artifact file present when `vm-runtime-opasm-artifact` is enabled.
+- If neither an explicit model nor the default artifact is available, those helpers report an unavailable runtime model instead of generating or bundling one implicitly.
 
 ## 6. Compatibility
 
@@ -879,7 +883,7 @@ Other options:
 - `--fmt-stdout`: format exactly one input file and write the result to stdout.
 - `--fmt-config <FILE>`: formatter config file path (requires a formatter mode flag).
 - `--cpu <ID>`: select initial CPU before source parsing (`.cpu` in source can still override later).
-- `--opcpu-package <FILE>`: load runtime `.opcpu` package from FILE and prefer it over artifact/bundled package sources.
+- `--opasm-package <FILE>`: load runtime `.opasm` package from FILE and prefer it over artifact/bundled package sources.
 - `--print-capabilities`: print deterministic capability metadata and exit.
 - `--print-cpusupport`: print deterministic CPU support metadata and exit.
 - `--pp-macro-depth <N>`: maximum preprocessor macro expansion depth (default `64`, minimum `1`).

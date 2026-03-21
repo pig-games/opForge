@@ -7,16 +7,16 @@ This release completes the ranges/lists/repetition feature rollout and strengthe
 ## Highlights
 
 - Completed ranges/lists/repetition implementation including typed struct literals and repetition semantics across assembler, formatter, and LSP surfaces.
-- Added explicit VM runtime package sourcing controls (`--opcpu-package` / `OPFORGE_OPCPU_PACKAGE`) and documented VM-only package-source modes.
+- Added explicit VM runtime package sourcing controls (`--opasm-package` / `OPFORGE_OPASM_PACKAGE`) and documented VM-only package-source modes.
 - Added VM-only build matrix validation to quality gates (`embedded`, `artifact`, `unbundled`, `unbundled+artifact`).
 - Hardened LSP concurrent validation behavior to avoid overlay workspace collisions.
 - Promoted release process hygiene with quality-gate and release-binary workflow hardening.
 
 ## Added
 
-- VM runtime package-source selection and override plumbing for `.opcpu` loading.
+- VM runtime package-source selection and override plumbing for `.opasm` loading.
 - Make targets for VM package-source validation and build/profile combo smoke coverage:
-  - `make test-vm-opcpu-modes`
+  - `make test-vm-opasm-modes`
   - `make test-build-profile-matrix`
   - `make test-build-combo-smoke`
 - Documentation and examples for ranges/lists/repetition, scoped repetition, and struct literal usage patterns.
@@ -41,7 +41,7 @@ Release validation covers both standard and VM-only combinations:
 - `cargo clippy -- -D warnings`
 - `cargo audit`
 - `cargo test --locked`
-- `make test-vm-opcpu-modes`
+- `make test-vm-opasm-modes`
 - `make test-build-profile-matrix`
 - `make test-build-combo-smoke`
 

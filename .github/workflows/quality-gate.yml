@@ -33,11 +33,24 @@ jobs:
       - name: Security audit
         run: cargo audit
 
+      - name: Require C compiler for FFI ABI coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          for compiler in cc clang gcc; do
+            if command -v "${compiler}" >/dev/null 2>&1; then
+              "${compiler}" --version
+              exit 0
+            fi
+          done
+          echo "error: no supported C compiler found for FFI ABI contract coverage" >&2
+          exit 1
+
       - name: Test suite
         run: cargo test --locked
 
-  vm-opcpu-modes:
-    name: VM opcpu modes + build combos
+  vm-opasm-modes:
+    name: VM opasm modes + build combos
     runs-on: ubuntu-latest
 
     steps:
@@ -51,7 +64,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Validate vm package source modes
-        run: make test-vm-opcpu-modes
+        run: make test-vm-opasm-modes
 
       - name: Validate build-profile matrix
         run: make test-build-profile-matrix

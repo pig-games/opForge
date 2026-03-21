@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65816 runtime state assumptions (.assume) + explicit operand overrides
@@ -39,7 +39,9 @@ Lines: 33  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 123400 (1192960)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            123400    prv  lbl 
 
 Total memory is 37 bytes
 

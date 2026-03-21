@@ -1,0 +1,12 @@
+[package]
+name = "families"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+opcore = { path = "../opforge-core" }
+registry = { path = "../opforge-registry" }
+
+[dev-dependencies]
+types = { path = "../opforge-types" }

@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Macro and segment syntax example
@@ -27,7 +27,9 @@ Lines: 21  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-VAL             : 0007 (7)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+VAL              0007      prv  lbl 
 
 Total memory is 6 bytes
 

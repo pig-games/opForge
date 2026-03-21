@@ -1,4 +1,4 @@
-opForge Assembler v0.9.5
+opForge Assembler v0.9.5 | full-runtime | bundled
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Scoped repetition with inferred struct fields and indexed member access.
@@ -16,33 +16,29 @@ ADDR    BYTES                    LINE  SOURCE
 0004    02                         10  x .byte i
 0005    0C                         11  y .byte i + 10
 ----                               13  
-----                               14  .word points[1].x
-   14 | .word points[1].x
-      ^
-ERROR: Member expression requires struct base value
-----                               15  .word points[1].y
-   15 | .word points[1].y
-      ^
-ERROR: Member expression requires struct base value
+0006    02 00                      14  .word points[1].x
+0008    03 00                      15  .word points[1].y
 
-Lines: 15  Errors: 2  Warnings: 0
+Lines: 15  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-Point           : 0002 (2)
-Point.x         : 0000 (0)
-Point.y         : 0001 (1)
-__scope1.x      : 0000 (0)
-__scope1.y      : 0001 (1)
-__scope2.x      : 0002 (2)
-__scope2.y      : 0003 (3)
-__scope3.x      : 0004 (4)
-__scope3.y      : 0005 (5)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+Point            0002      prv  lbl 
+Point.x          0000      prv  lbl 
+Point.y          0001      prv  lbl 
+__scope1.x       0000      prv  lbl 
+__scope1.y       0001      prv  lbl 
+__scope2.x       0002      prv  lbl 
+__scope2.y       0003      prv  lbl 
+__scope3.x       0004      prv  lbl 
+__scope3.y       0005      prv  lbl 
 
-Total memory is 6 bytes
+Total memory is 10 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0000    00 0A 01 0B 02 0C
+0000    00 0A 01 0B 02 0C 02 00 03 00

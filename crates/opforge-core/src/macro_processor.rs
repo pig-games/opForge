@@ -1,0 +1,1225 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Erik van der Tier
+
+// Assembler macro processor implementing 64tass-style .macro/.endmacro expansion.
+
+use crate::parser::StatementSignature;
+use crate::text_utils::to_upper;
+use std::collections::{HashMap, HashSet};
+
+#[path = "macro_processor_args_subst.rs"]
+mod macro_processor_args_subst;
+#[path = "macro_processor_definitions.rs"]
+mod macro_processor_definitions;
+#[path = "macro_processor_directives.rs"]
+mod macro_processor_directives;
+#[cfg(test)]
+#[path = "macro_processor_statements.rs"]
+mod macro_processor_statements;
+use macro_processor_args_subst::{parse_macro_params, substitute_line};
+use macro_processor_definitions::{
+    build_macro_args, format_macro_block_start, parse_macro_def_line, parse_macro_end_line,
+    parse_macro_invocation,
+};
+#[cfg(test)]
+use macro_processor_directives::parse_statement_directive;
+use macro_processor_directives::{
+    parse_namespace_directive, parse_scope_directive, parse_visibility_directive,
+    NamespaceDirective, ScopeDirective, VisibilityDirective,
+};
+#[cfg(test)]
+use macro_processor_statements::{expand_statement_invocation, parse_statement_def_line};
+
+#[derive(Debug, Clone)]
+pub struct MacroError {
+    message: String,
+    line: Option<u32>,
+    column: Option<usize>,
+}
+
+impl MacroError {
+    pub fn new(message: impl Into<String>, line: Option<u32>, column: Option<usize>) -> Self {
+        Self {
+            message: message.into(),
+            line,
+            column,
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn line(&self) -> Option<u32> {
+        self.line
+    }
+
+    pub fn column(&self) -> Option<usize> {
+        self.column
+    }
+}
+
+#[derive(Debug, Clone)]
+struct MacroParam {
+    name: Option<String>,
+    default: Option<String>,
+    #[allow(dead_code)]
+    type_name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct MacroDef {
+    params: Vec<MacroParam>,
+    body: Vec<String>,
+    wrap_scope: bool,
+    visibility: CompileTimeVisibility,
+}
+
+#[derive(Debug, Clone)]
+struct StatementDef {
+    keyword: String,
+    signature: StatementSignature,
+    body: Vec<String>,
+    visibility: CompileTimeVisibility,
+}
+
+#[derive(Debug, Clone)]
+struct StatementSupport {
+    defs: HashMap<String, Vec<StatementDef>>,
+    hooks: StatementSupportHooks,
+}
+
+#[derive(Debug, Clone)]
+struct MacroInvocation {
+    label: Option<String>,
+    resolved_key: String,
+    args: Vec<String>,
+    full_list: String,
+    indent: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacroKind {
+    Macro,
+    Segment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StructuralScopeKind {
+    Scope,
+    Namespace,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompileTimeVisibility {
+    Public,
+    Private,
+}
+
+impl CompileTimeVisibility {
+    fn is_public(self) -> bool {
+        matches!(self, Self::Public)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatementDirectiveKind {
+    Def,
+    End,
+}
+
+pub type StatementDefinitionParser =
+    fn(&str, u32) -> Result<(String, StatementSignature), MacroError>;
+pub type StatementInvocationExpander =
+    fn(&str, u32, usize, &mut MacroProcessor) -> Result<Option<Vec<String>>, MacroError>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct StatementSupportHooks {
+    pub classify_directive: fn(&str) -> Option<StatementDirectiveKind>,
+    pub parse_definition: StatementDefinitionParser,
+    pub expand_invocation: StatementInvocationExpander,
+}
+
+#[cfg(test)]
+fn classify_default_statement_directive(code: &str) -> Option<StatementDirectiveKind> {
+    match parse_statement_directive(code) {
+        Some(macro_processor_directives::StatementDirective::Def) => {
+            Some(StatementDirectiveKind::Def)
+        }
+        Some(macro_processor_directives::StatementDirective::End) => {
+            Some(StatementDirectiveKind::End)
+        }
+        None => None,
+    }
+}
+
+#[cfg(test)]
+pub fn expand_statement_support_invocation(
+    code: &str,
+    line_num: u32,
+    depth: usize,
+    processor: &mut MacroProcessor,
+) -> Result<Option<Vec<String>>, MacroError> {
+    expand_statement_invocation(code, line_num, depth, processor)
+}
+
+#[derive(Debug, Clone)]
+struct MacroArgs {
+    positional: Vec<String>,
+    named: HashMap<String, String>,
+    full_list: String,
+}
+
+pub fn substitute_macro_line_with_named_args(
+    line: &str,
+    positional: &[String],
+    named: &HashMap<String, String>,
+    full_list: &str,
+) -> String {
+    substitute_line(
+        line,
+        &MacroArgs {
+            positional: positional.to_vec(),
+            named: named.clone(),
+            full_list: full_list.to_string(),
+        },
+    )
+}
+
+/// Opaque collection of macro/segment/statement definitions exported by a module.
+#[derive(Debug, Clone, Default)]
+pub struct MacroExports {
+    macros: HashMap<String, MacroDef>,
+}
+
+impl MacroExports {
+    /// All exported macro/segment names (uppercased).
+    pub fn names(&self) -> HashSet<String> {
+        self.macros.keys().cloned().collect()
+    }
+
+    /// Exported compile-time symbol visibilities (uppercased names).
+    pub fn visibility_index(&self) -> HashMap<String, CompileTimeVisibility> {
+        let mut vis = HashMap::new();
+        for (name, def) in &self.macros {
+            vis.insert(name.clone(), def.visibility);
+        }
+        vis
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeStatementExport {
+    keyword: String,
+    signature: StatementSignature,
+    body: Vec<String>,
+    visibility: CompileTimeVisibility,
+}
+
+impl NativeStatementExport {
+    pub fn keyword(&self) -> &str {
+        &self.keyword
+    }
+
+    pub fn signature(&self) -> &StatementSignature {
+        &self.signature
+    }
+
+    pub fn body(&self) -> &[String] {
+        &self.body
+    }
+
+    pub fn visibility(&self) -> CompileTimeVisibility {
+        self.visibility
+    }
+}
+
+pub struct MacroProcessor {
+    macros: HashMap<String, MacroDef>,
+    statement_support: Option<StatementSupport>,
+    injected_names: HashSet<String>,
+    visibility_stack: Vec<CompileTimeVisibility>,
+    namespace_stack: Vec<Option<String>>,
+    structure_stack: Vec<StructuralScopeKind>,
+    max_depth: usize,
+}
+
+impl Default for MacroProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MacroProcessor {
+    pub fn new() -> Self {
+        Self {
+            macros: HashMap::new(),
+            statement_support: None,
+            injected_names: HashSet::new(),
+            visibility_stack: vec![CompileTimeVisibility::Private],
+            namespace_stack: Vec::new(),
+            structure_stack: Vec::new(),
+            max_depth: 64,
+        }
+    }
+
+    /// Set the maximum expansion depth for macro/segment/statement recursion.
+    ///
+    /// This should be wired to the `--pp-macro-depth` CLI option so that
+    /// the assembler-level macro expander respects the same depth limit as
+    /// the preprocessor.
+    pub fn with_max_depth(mut self, depth: usize) -> Self {
+        self.max_depth = depth;
+        self
+    }
+
+    #[cfg(test)]
+    pub fn with_statement_support(mut self) -> Self {
+        self.statement_support = Some(StatementSupport {
+            defs: HashMap::new(),
+            hooks: StatementSupportHooks {
+                classify_directive: classify_default_statement_directive,
+                parse_definition: parse_statement_def_line,
+                expand_invocation: expand_statement_support_invocation,
+            },
+        });
+        self
+    }
+
+    pub fn with_statement_support_hooks(mut self, hooks: StatementSupportHooks) -> Self {
+        self.statement_support = Some(StatementSupport {
+            defs: HashMap::new(),
+            hooks,
+        });
+        self
+    }
+
+    /// Inject selected exports by name (for selective `.use` imports).
+    pub fn inject_from(&mut self, exports: &MacroExports, names: &[String]) {
+        for name in names {
+            let upper = name.to_ascii_uppercase();
+            if let Some(def) = exports.macros.get(&upper) {
+                if def.visibility.is_public() {
+                    self.injected_names.insert(upper.clone());
+                    self.macros.insert(upper.clone(), def.clone());
+                }
+            }
+        }
+    }
+
+    /// Inject all exports (for wildcard `.use` without an items list).
+    pub fn inject_all(&mut self, exports: &MacroExports) {
+        for (name, def) in &exports.macros {
+            if def.visibility.is_public() {
+                self.injected_names.insert(name.clone());
+                self.macros.insert(name.clone(), def.clone());
+            }
+        }
+    }
+
+    /// Inject all exports under a qualifier (for bare `.use module` and aliases).
+    pub fn inject_qualified(&mut self, exports: &MacroExports, qualifier: &str) {
+        for (name, def) in &exports.macros {
+            if def.visibility.is_public() {
+                let qualified = to_upper(&format!("{qualifier}.{name}"));
+                self.injected_names.insert(qualified.clone());
+                self.macros.insert(qualified, def.clone());
+            }
+        }
+    }
+
+    /// Take the natively-defined (not injected) exports from this processor.
+    pub fn take_native_exports(&mut self) -> MacroExports {
+        let all_macros = std::mem::take(&mut self.macros);
+        let injected = &self.injected_names;
+        let macros = all_macros
+            .into_iter()
+            .filter(|(name, _)| !injected.contains(name))
+            .collect();
+        MacroExports { macros }
+    }
+
+    pub fn inject_statement_defs_from(
+        &mut self,
+        exports: &[NativeStatementExport],
+        names: &[String],
+    ) {
+        for name in names {
+            let upper = name.to_ascii_uppercase();
+            let public_defs: Vec<StatementDef> = exports
+                .iter()
+                .filter(|def| def.keyword == upper && def.visibility.is_public())
+                .map(|def| StatementDef {
+                    keyword: def.keyword.clone(),
+                    signature: def.signature.clone(),
+                    body: def.body.clone(),
+                    visibility: def.visibility,
+                })
+                .collect();
+            if !public_defs.is_empty() {
+                self.injected_names.insert(upper.clone());
+                self.statement_support
+                    .as_mut()
+                    .expect("statement support enabled")
+                    .defs
+                    .insert(upper, public_defs);
+            }
+        }
+    }
+
+    pub fn inject_all_statement_defs(&mut self, exports: &[NativeStatementExport]) {
+        let mut defs_by_name: HashMap<String, Vec<StatementDef>> = HashMap::new();
+        for def in exports {
+            if !def.visibility.is_public() {
+                continue;
+            }
+            defs_by_name
+                .entry(def.keyword.clone())
+                .or_default()
+                .push(StatementDef {
+                    keyword: def.keyword.clone(),
+                    signature: def.signature.clone(),
+                    body: def.body.clone(),
+                    visibility: def.visibility,
+                });
+        }
+        for (name, defs) in defs_by_name {
+            self.injected_names.insert(name.clone());
+            self.statement_support
+                .as_mut()
+                .expect("statement support enabled")
+                .defs
+                .insert(name, defs);
+        }
+    }
+
+    pub fn inject_qualified_statement_defs(
+        &mut self,
+        exports: &[NativeStatementExport],
+        qualifier: &str,
+    ) {
+        let mut defs_by_name: HashMap<String, Vec<StatementDef>> = HashMap::new();
+        for def in exports {
+            if !def.visibility.is_public() {
+                continue;
+            }
+            let qualified = to_upper(&format!("{qualifier}.{}", def.keyword));
+            defs_by_name
+                .entry(qualified)
+                .or_default()
+                .push(StatementDef {
+                    keyword: def.keyword.clone(),
+                    signature: def.signature.clone(),
+                    body: def.body.clone(),
+                    visibility: def.visibility,
+                });
+        }
+        for (name, defs) in defs_by_name {
+            self.injected_names.insert(name.clone());
+            self.statement_support
+                .as_mut()
+                .expect("statement support enabled")
+                .defs
+                .insert(name, defs);
+        }
+    }
+
+    pub fn take_native_statement_defs(&mut self) -> Vec<NativeStatementExport> {
+        let all_statements = self
+            .statement_support
+            .as_mut()
+            .map(|support| std::mem::take(&mut support.defs))
+            .unwrap_or_default();
+        let injected = &self.injected_names;
+        let mut exports = Vec::new();
+        for (name, defs) in all_statements {
+            if injected.contains(&name) {
+                continue;
+            }
+            for def in defs {
+                exports.push(NativeStatementExport {
+                    keyword: def.keyword,
+                    signature: def.signature,
+                    body: def.body,
+                    visibility: def.visibility,
+                });
+            }
+        }
+        exports
+    }
+
+    pub fn statement_defs(&self) -> Vec<NativeStatementExport> {
+        self.statement_support
+            .as_ref()
+            .map(|support| {
+                support
+                    .defs
+                    .values()
+                    .flat_map(|defs| defs.iter())
+                    .map(|def| NativeStatementExport {
+                        keyword: def.keyword.clone(),
+                        signature: def.signature.clone(),
+                        body: def.body.clone(),
+                        visibility: def.visibility,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn expand_nested_statement_lines(
+        &mut self,
+        lines: &[String],
+        depth: usize,
+    ) -> Result<Vec<String>, MacroError> {
+        self.expand_lines(lines, depth)
+    }
+
+    pub fn expand(&mut self, lines: &[String]) -> Result<Vec<String>, MacroError> {
+        self.expand_lines(lines, 0)
+    }
+
+    fn current_visibility(&self) -> CompileTimeVisibility {
+        self.visibility_stack
+            .last()
+            .copied()
+            .unwrap_or(CompileTimeVisibility::Private)
+    }
+
+    fn push_visibility(&mut self) {
+        let current = self.current_visibility();
+        self.visibility_stack.push(current);
+    }
+
+    fn pop_visibility(&mut self) {
+        if self.visibility_stack.len() > 1 {
+            self.visibility_stack.pop();
+        }
+    }
+
+    fn set_visibility(&mut self, visibility: CompileTimeVisibility) {
+        if let Some(current) = self.visibility_stack.last_mut() {
+            *current = visibility;
+        } else {
+            self.visibility_stack.push(visibility);
+        }
+    }
+
+    fn push_namespace_scope(&mut self, name: Option<String>) {
+        self.namespace_stack
+            .push(name.map(|part| part.to_ascii_uppercase()));
+    }
+
+    fn pop_namespace_scope(&mut self) {
+        self.namespace_stack.pop();
+    }
+
+    fn current_namespace_parts(&self) -> Vec<&str> {
+        self.namespace_stack
+            .iter()
+            .filter_map(|part| part.as_deref())
+            .collect()
+    }
+
+    fn qualify_macro_name(&self, name: &str) -> String {
+        let mut parts = self.current_namespace_parts();
+        let macro_name = name.to_ascii_uppercase();
+        if parts.is_empty() {
+            macro_name
+        } else {
+            parts.push(macro_name.as_str());
+            parts.join(".")
+        }
+    }
+
+    fn apply_visibility_directive(&mut self, directive: VisibilityDirective) {
+        match directive {
+            VisibilityDirective::SetPublic => self.set_visibility(CompileTimeVisibility::Public),
+            VisibilityDirective::SetPrivate => self.set_visibility(CompileTimeVisibility::Private),
+        }
+    }
+
+    fn push_scope(&mut self) {
+        self.push_visibility();
+        self.structure_stack.push(StructuralScopeKind::Scope);
+    }
+
+    fn pop_scope(&mut self, line_num: u32) -> Result<(), MacroError> {
+        match self.structure_stack.last().copied() {
+            Some(StructuralScopeKind::Scope) => {
+                self.structure_stack.pop();
+                self.pop_visibility();
+                Ok(())
+            }
+            Some(StructuralScopeKind::Namespace) | None => Err(MacroError::new(
+                ".endblock/.endmodule found without matching .block/.module",
+                Some(line_num),
+                Some(1),
+            )),
+        }
+    }
+
+    fn push_namespace(&mut self, name: Option<String>) {
+        self.push_visibility();
+        self.push_namespace_scope(name);
+        self.structure_stack.push(StructuralScopeKind::Namespace);
+    }
+
+    fn pop_namespace(&mut self, line_num: u32) -> Result<(), MacroError> {
+        match self.structure_stack.last().copied() {
+            Some(StructuralScopeKind::Namespace) => {
+                self.structure_stack.pop();
+                self.pop_namespace_scope();
+                self.pop_visibility();
+                Ok(())
+            }
+            Some(StructuralScopeKind::Scope) | None => Err(MacroError::new(
+                ".endn/.endnamespace found without matching .namespace",
+                Some(line_num),
+                Some(1),
+            )),
+        }
+    }
+
+    fn expand_lines(&mut self, lines: &[String], depth: usize) -> Result<Vec<String>, MacroError> {
+        if depth > self.max_depth {
+            return Err(MacroError::new(
+                format!(
+                    "Expansion exceeded maximum depth ({}) (macro or statement)",
+                    self.max_depth
+                ),
+                None,
+                None,
+            ));
+        }
+
+        let mut out = Vec::new();
+        let mut current: Option<(String, MacroDef, MacroKind)> = None;
+        let mut current_statement: Option<StatementDef> = None;
+        let mut skip_statement_body = false;
+        let statement_hooks = self.statement_support.as_ref().map(|support| support.hooks);
+
+        for (idx, line) in lines.iter().enumerate() {
+            let line_num = idx as u32 + 1;
+            let (code, _) = crate::text_utils::split_comment(line);
+
+            if current.is_none() && current_statement.is_none() && !skip_statement_body {
+                if let Some(directive) = parse_visibility_directive(code) {
+                    self.apply_visibility_directive(directive);
+                }
+                if let Some(scope_directive) = parse_scope_directive(code) {
+                    match scope_directive {
+                        ScopeDirective::Push => self.push_scope(),
+                        ScopeDirective::Pop => self.pop_scope(line_num)?,
+                    }
+                }
+                if let Some(namespace_directive) = parse_namespace_directive(code) {
+                    match namespace_directive {
+                        NamespaceDirective::Push(name) => self.push_namespace(name),
+                        NamespaceDirective::Pop => self.pop_namespace(line_num)?,
+                    }
+                }
+            }
+
+            if let Some((name, params, kind)) = parse_macro_def_line(code, line_num)? {
+                if current.is_some() {
+                    return Err(MacroError::new(
+                        "Nested .macro/.segment definitions are not supported",
+                        Some(line_num),
+                        Some(1),
+                    ));
+                }
+                if current_statement.is_some() {
+                    return Err(MacroError::new(
+                        "Nested .statement definitions are not supported",
+                        Some(line_num),
+                        Some(1),
+                    ));
+                }
+                if name.is_empty() {
+                    return Err(MacroError::new(
+                        "Macro name is required before .macro",
+                        Some(line_num),
+                        Some(1),
+                    ));
+                }
+                let macro_key = self.qualify_macro_name(&name);
+                if self.macros.contains_key(&macro_key) {
+                    return Err(MacroError::new(
+                        "Macro already defined",
+                        Some(line_num),
+                        Some(1),
+                    ));
+                }
+                let param_defs = parse_macro_params(&params, line_num)?;
+                let wrap_scope = kind == MacroKind::Macro;
+                current = Some((
+                    macro_key,
+                    MacroDef {
+                        params: param_defs,
+                        body: Vec::new(),
+                        wrap_scope,
+                        visibility: self.current_visibility(),
+                    },
+                    kind,
+                ));
+                continue;
+            }
+
+            if let Some(kind) = parse_macro_end_line(code) {
+                let Some((name, def, active_kind)) = current.take() else {
+                    let message = match kind {
+                        MacroKind::Macro => ".endmacro found without matching .macro",
+                        MacroKind::Segment => ".endsegment found without matching .segment",
+                    };
+                    return Err(MacroError::new(message, Some(line_num), Some(1)));
+                };
+                if kind != active_kind {
+                    let message = match kind {
+                        MacroKind::Macro => "Expected .endsegment for .segment",
+                        MacroKind::Segment => "Expected .endmacro for .macro",
+                    };
+                    return Err(MacroError::new(message, Some(line_num), Some(1)));
+                }
+                self.macros.insert(name, def);
+                continue;
+            }
+
+            if let Some(statement_hooks) = statement_hooks {
+                if skip_statement_body {
+                    if matches!(
+                        (statement_hooks.classify_directive)(code),
+                        Some(StatementDirectiveKind::End)
+                    ) {
+                        skip_statement_body = false;
+                    }
+                    continue;
+                }
+
+                if let Some(kind) = (statement_hooks.classify_directive)(code) {
+                    match kind {
+                        StatementDirectiveKind::Def => {
+                            if current_statement.is_some() {
+                                return Err(MacroError::new(
+                                    "Nested .statement definitions are not supported",
+                                    Some(line_num),
+                                    Some(1),
+                                ));
+                            }
+                            if current.is_some() {
+                                return Err(MacroError::new(
+                                    "Cannot define .statement inside .macro/.segment",
+                                    Some(line_num),
+                                    Some(1),
+                                ));
+                            }
+                            match (statement_hooks.parse_definition)(code, line_num) {
+                                Ok((keyword, signature)) => {
+                                    current_statement = Some(StatementDef {
+                                        keyword,
+                                        signature,
+                                        body: Vec::new(),
+                                        visibility: self.current_visibility(),
+                                    });
+                                    continue;
+                                }
+                                Err(err) => {
+                                    return Err(err);
+                                }
+                            }
+                        }
+                        StatementDirectiveKind::End => {
+                            if let Some(def) = current_statement.take() {
+                                let key = to_upper(&def.keyword);
+                                self.statement_support
+                                    .as_mut()
+                                    .expect("statement support enabled")
+                                    .defs
+                                    .entry(key)
+                                    .or_default()
+                                    .push(def);
+                                continue;
+                            }
+                            out.push(line.clone());
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            if let Some(def) = current_statement.as_mut() {
+                def.body.push(line.clone());
+                continue;
+            }
+
+            if let Some((name, def, _kind)) = current.as_mut() {
+                let _ = name;
+                def.body.push(line.clone());
+                continue;
+            }
+
+            if let Some(inv) =
+                parse_macro_invocation(code, &self.macros, &self.namespace_stack, line_num)?
+            {
+                let def = self
+                    .macros
+                    .get(&inv.resolved_key)
+                    .cloned()
+                    .ok_or_else(|| MacroError::new("Unknown macro", Some(line_num), Some(1)))?;
+                let args = build_macro_args(&def, &inv);
+                let mut expanded = Vec::new();
+                if def.wrap_scope {
+                    expanded.push(format_macro_block_start(&inv));
+                }
+                for body_line in &def.body {
+                    expanded.push(substitute_line(body_line, &args));
+                }
+                if def.wrap_scope {
+                    expanded.push(format!("{}{}", inv.indent, ".endblock"));
+                } else if let Some(label) = &inv.label {
+                    if let Some(first) = expanded.first_mut() {
+                        let trimmed = first.trim_start();
+                        if trimmed.is_empty() {
+                            *first = label.clone();
+                        } else {
+                            *first = format!("{label} {trimmed}");
+                        }
+                    } else {
+                        expanded.push(label.clone());
+                    }
+                }
+                let nested = self.expand_lines(&expanded, depth + 1)?;
+                out.extend(nested);
+                continue;
+            }
+
+            if let Some(statement_hooks) = statement_hooks {
+                if let Some(expanded) =
+                    (statement_hooks.expand_invocation)(code, line_num, depth, self)?
+                {
+                    out.extend(expanded);
+                    continue;
+                }
+            }
+
+            out.push(line.clone());
+        }
+
+        if let Some((_name, _def, kind)) = current {
+            let message = match kind {
+                MacroKind::Macro => "Missing .endmacro for macro definition",
+                MacroKind::Segment => "Missing .endsegment for segment definition",
+            };
+            return Err(MacroError::new(message, None, None));
+        }
+
+        if current_statement.is_some() {
+            return Err(MacroError::new(
+                "Missing .endstatement for statement definition",
+                None,
+                None,
+            ));
+        }
+
+        Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CompileTimeVisibility, MacroProcessor};
+
+    #[test]
+    fn visibility_index_tracks_public_and_private_macros() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".pub".to_string(),
+            "PUB .macro".to_string(),
+            "    .byte 1".to_string(),
+            ".endmacro".to_string(),
+            ".priv".to_string(),
+            "PRIV .macro".to_string(),
+            "    .byte 2".to_string(),
+            ".endmacro".to_string(),
+        ];
+
+        let _ = mp.expand(&lines).expect("expand");
+        let exports = mp.take_native_exports();
+        let visibility = exports.visibility_index();
+
+        assert_eq!(visibility.get("PUB"), Some(&CompileTimeVisibility::Public));
+        assert_eq!(
+            visibility.get("PRIV"),
+            Some(&CompileTimeVisibility::Private)
+        );
+    }
+
+    #[test]
+    fn inject_all_imports_only_public_macros() {
+        let mut producer = MacroProcessor::new();
+        let lines = vec![
+            ".pub".to_string(),
+            "PUB .macro".to_string(),
+            "    .byte 1".to_string(),
+            ".endmacro".to_string(),
+            ".priv".to_string(),
+            "PRIV .macro".to_string(),
+            "    .byte 2".to_string(),
+            ".endmacro".to_string(),
+        ];
+
+        let _ = producer.expand(&lines).expect("expand");
+        let exports = producer.take_native_exports();
+
+        let mut consumer = MacroProcessor::new();
+        consumer.inject_all(&exports);
+
+        assert!(consumer.macros.contains_key("PUB"));
+        assert!(!consumer.macros.contains_key("PRIV"));
+    }
+
+    #[test]
+    fn expands_simple_macro_with_params() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            "COPY .macro src, dst".to_string(),
+            "    lda .src".to_string(),
+            "    sta .dst".to_string(),
+            ".endmacro".to_string(),
+            "    .COPY $12, $34".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.iter().any(|line| line.trim() == ".block"));
+        assert!(out.contains(&"    lda $12".to_string()));
+        assert!(out.contains(&"    sta $34".to_string()));
+        assert!(out.iter().any(|line| line.trim() == ".endblock"));
+    }
+
+    #[test]
+    fn expands_named_and_default_params() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            "M .macro first, second=2".to_string(),
+            "    .byte .first, .second".to_string(),
+            ".endmacro".to_string(),
+            "    .M 1".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 1, 2".to_string()));
+    }
+
+    #[test]
+    fn expands_text_and_list_refs() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            "MSG .macro text".to_string(),
+            "    .byte @1".to_string(),
+            "    .word .@".to_string(),
+            ".endmacro".to_string(),
+            "    .MSG 1+2".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 1+2".to_string()));
+        assert!(out.contains(&"    .word 1+2".to_string()));
+    }
+
+    #[test]
+    fn macro_args_preserve_list_and_range_literals() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            "MIX .macro values, span".to_string(),
+            "    .byte .len(.values), .len(.span)".to_string(),
+            ".endmacro".to_string(),
+            "    .MIX {1,2,3}, 0..=6:2".to_string(),
+            "    .MIX({4,5}, 1..=3)".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte .len({1,2,3}), .len(0..=6:2)".to_string()));
+        assert!(out.contains(&"    .byte .len({4,5}), .len(1..=3)".to_string()));
+    }
+
+    #[test]
+    fn expands_segment_without_scope_block() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            "INLINE .segment val".to_string(),
+            "    .byte .val".to_string(),
+            ".endsegment".to_string(),
+            "    .INLINE 7".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 7".to_string()));
+        assert!(!out.iter().any(|line| line.trim() == ".block"));
+        assert!(!out.iter().any(|line| line.trim() == ".endblock"));
+    }
+
+    #[test]
+    fn segment_args_preserve_list_literals() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            "INLINE .segment values".to_string(),
+            "    .byte .len(.values)".to_string(),
+            ".endsegment".to_string(),
+            "    .INLINE {10,20,30}".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte .len({10,20,30})".to_string()));
+        assert!(!out.iter().any(|line| line.trim() == ".block"));
+        assert!(!out.iter().any(|line| line.trim() == ".endblock"));
+    }
+
+    #[test]
+    fn expands_directive_first_macro_with_paren_call() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".macro COPY(src, dst)".to_string(),
+            "    lda .src".to_string(),
+            "    sta .dst".to_string(),
+            ".endmacro".to_string(),
+            "    .COPY($12, $34)".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.iter().any(|line| line.trim() == ".block"));
+        assert!(out.contains(&"    lda $12".to_string()));
+        assert!(out.contains(&"    sta $34".to_string()));
+        assert!(out.iter().any(|line| line.trim() == ".endblock"));
+    }
+
+    #[test]
+    fn expands_zero_arg_macro_with_and_without_parens() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            "PING .macro".to_string(),
+            "    .byte 1".to_string(),
+            ".endmacro".to_string(),
+            "    .PING".to_string(),
+            "    .PING()".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.iter().any(|line| line.trim() == ".block"));
+        assert!(out.iter().filter(|line| line.trim() == ".byte 1").count() >= 2);
+    }
+
+    #[test]
+    fn default_macro_processor_does_not_expand_statement_definitions() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            ".statement LOAD byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            "    LOAD 7".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out
+            .iter()
+            .any(|line| line.trim() == ".statement LOAD byte:val"));
+        assert!(out.iter().any(|line| line.trim() == "LOAD 7"));
+    }
+
+    #[test]
+    fn expands_statement_with_capture() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".statement LOAD byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            "    LOAD 7".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 7".to_string()));
+        assert!(!out
+            .iter()
+            .any(|line| line.trim_start().starts_with(".statement")));
+    }
+
+    #[test]
+    fn expands_statement_with_keyword_parameterization() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".statement move.b char:dst \",\" char:src".to_string(),
+            "    .byte 'b'".to_string(),
+            ".endstatement".to_string(),
+            "    move.b a,b".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 'b'".to_string()));
+    }
+
+    #[test]
+    fn statement_with_label_attaches_correctly() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".statement LOAD byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            "label: LOAD 7".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.iter().any(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with("label") && line.contains(".byte 7")
+        }));
+    }
+
+    #[test]
+    fn empty_statement_body_expands_to_nothing() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".statement NOOP".to_string(),
+            ".endstatement".to_string(),
+            "    NOOP".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(!out.iter().any(|line| line.contains("NOOP")));
+    }
+
+    #[test]
+    fn statement_longest_keyword_wins() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".statement MOVE byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            ".statement MOVE.B byte:val".to_string(),
+            "    .byte .val + 1".to_string(),
+            ".endstatement".to_string(),
+            "    MOVE.B 3".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 3 + 1".to_string()));
+        assert!(!out.contains(&"    .byte 3".to_string()));
+    }
+
+    #[test]
+    fn statement_numeric_literal_spelling_is_preserved() {
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".statement LOAD byte:val".to_string(),
+            "    .byte .val".to_string(),
+            ".endstatement".to_string(),
+            "    LOAD 0ffh".to_string(),
+            "    LOAD %1010".to_string(),
+            "    LOAD $ff".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte 0ffh".to_string()));
+        assert!(out.contains(&"    .byte %1010".to_string()));
+        assert!(out.contains(&"    .byte $ff".to_string()));
+    }
+
+    #[test]
+    fn statement_dollar_hex_ending_in_suffix_chars() {
+        // Regression: $BB was misinterpreted because the trailing-B binary
+        // suffix heuristic in parse_number fired before the $ prefix check,
+        // causing byte-capture matching to fail.
+        let mut mp = MacroProcessor::new().with_statement_support();
+        let lines = vec![
+            ".statement PUSHB byte:v".to_string(),
+            "    .byte .v".to_string(),
+            ".endstatement".to_string(),
+            "    PUSHB $AA".to_string(),
+            "    PUSHB $BB".to_string(),
+            "    PUSHB $AB".to_string(),
+            "    PUSHB $0B".to_string(),
+            "    PUSHB $FB".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.contains(&"    .byte $AA".to_string()), "missing $AA");
+        assert!(out.contains(&"    .byte $BB".to_string()), "missing $BB");
+        assert!(out.contains(&"    .byte $AB".to_string()), "missing $AB");
+        assert!(out.contains(&"    .byte $0B".to_string()), "missing $0B");
+        assert!(out.contains(&"    .byte $FB".to_string()), "missing $FB");
+    }
+
+    #[test]
+    fn resolves_same_macro_name_by_nearest_namespace_scope() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            ".namespace outer".to_string(),
+            "BEGIN .macro".to_string(),
+            "    .byte 1".to_string(),
+            ".endmacro".to_string(),
+            "    .BEGIN".to_string(),
+            "    .namespace inner".to_string(),
+            "BEGIN .macro".to_string(),
+            "    .byte 2".to_string(),
+            ".endmacro".to_string(),
+            "    .BEGIN".to_string(),
+            "    .endn".to_string(),
+            "    .BEGIN".to_string(),
+            ".endn".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        let rendered = out.join("\n");
+        assert!(
+            rendered.contains(".byte 1\n") || rendered.contains(".byte 1\r\n"),
+            "expected outer namespace expansion: {rendered}"
+        );
+        assert!(
+            rendered.contains(".byte 2\n") || rendered.contains(".byte 2\r\n"),
+            "expected inner namespace expansion: {rendered}"
+        );
+        let one_count = out.iter().filter(|line| line.trim() == ".byte 1").count();
+        let two_count = out.iter().filter(|line| line.trim() == ".byte 2").count();
+        assert_eq!(one_count, 2, "outer macro should be selected twice");
+        assert_eq!(two_count, 1, "inner macro should be selected once");
+    }
+
+    #[test]
+    fn falls_back_to_global_macro_when_namespace_local_not_found() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            "GLOBAL .macro".to_string(),
+            "    .byte 9".to_string(),
+            ".endmacro".to_string(),
+            ".namespace outer".to_string(),
+            "    .GLOBAL".to_string(),
+            ".endn".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.iter().any(|line| line.trim() == ".byte 9"));
+    }
+
+    #[test]
+    fn supports_name_first_namespace_spelling_for_macro_resolution() {
+        let mut mp = MacroProcessor::new();
+        let lines = vec![
+            "outer .namespace".to_string(),
+            "BEGIN .macro".to_string(),
+            "    .byte 3".to_string(),
+            ".endmacro".to_string(),
+            "    .BEGIN".to_string(),
+            ".endn".to_string(),
+        ];
+        let out = mp.expand(&lines).expect("expand");
+        assert!(out.iter().any(|line| line.trim() == ".byte 3"));
+    }
+
+    #[test]
+    fn reports_unmatched_namespace_close() {
+        let mut mp = MacroProcessor::new();
+
+        let err = mp
+            .expand(&[".endn".to_string()])
+            .expect_err("namespace close should fail");
+
+        assert_eq!(
+            err.message(),
+            ".endn/.endnamespace found without matching .namespace"
+        );
+    }
+
+    #[test]
+    fn reports_unmatched_scope_close() {
+        let mut mp = MacroProcessor::new();
+
+        let err = mp
+            .expand(&[".endblock".to_string()])
+            .expect_err("scope close should fail");
+
+        assert_eq!(
+            err.message(),
+            ".endblock/.endmodule found without matching .block/.module"
+        );
+    }
+}

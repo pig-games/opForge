@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Demonstrate statement signature syntax.
@@ -12,7 +12,9 @@ Lines: 6  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 0000 (0)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            0000      prv  lbl 
 
 Total memory is 1 bytes
 

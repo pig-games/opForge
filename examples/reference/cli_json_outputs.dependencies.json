@@ -10,6 +10,7 @@
   ],
   "targets": [
     "cli_json_outputs.hex",
+    "cli_json_outputs.labels.json",
     "cli_json_outputs.lst"
   ]
 }

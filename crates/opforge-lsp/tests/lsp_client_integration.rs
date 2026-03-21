@@ -1,0 +1,2972 @@
+mod common;
+
+use std::fs;
+use std::io::ErrorKind;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use serde_json::json;
+
+use common::lsp_client::{path_to_file_uri, LspTestClient};
+
+static TEMP_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
+
+fn unique_temp_dir() -> PathBuf {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let pid = std::process::id();
+    let seq = TEMP_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+    let base = std::env::temp_dir();
+    for attempt in 0..32u32 {
+        let dir = base.join(format!("lsp-it-{pid}-{now}-{seq}-{attempt}"));
+        match fs::create_dir(&dir) {
+            Ok(()) => return dir,
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => continue,
+            Err(err) => panic!("create temp dir {}: {err}", dir.display()),
+        }
+    }
+    panic!("exhausted temp dir retries for opforge lsp integration tests");
+}
+
+fn unique_temp_file(name: &str) -> PathBuf {
+    unique_temp_dir().join(name)
+}
+
+fn write_text(path: &PathBuf, text: &str) {
+    fs::write(path, text).expect("write file");
+}
+
+fn write_executable_script(path: &PathBuf, script: &str) {
+    fs::write(path, script).expect("write script");
+    #[cfg(unix)]
+    {
+        let mut perms = fs::metadata(path).expect("metadata").permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(path, perms).expect("chmod script");
+    }
+}
+
+fn init_with_validator(client: &mut LspTestClient, script: &Path, debounce_ms: u64, on_save: bool) {
+    init_with_validator_config(client, script, debounce_ms, on_save, &[], &[], &[]);
+}
+
+fn init_with_validator_config(
+    client: &mut LspTestClient,
+    script: &Path,
+    debounce_ms: u64,
+    on_save: bool,
+    roots: &[String],
+    include_paths: &[String],
+    module_paths: &[String],
+) {
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "opforgePath": script.to_string_lossy().to_string(),
+            "roots": roots,
+            "includePaths": include_paths,
+            "modulePaths": module_paths,
+            "validation": {
+                "debounceMs": debounce_ms,
+                "onSave": on_save
+            }
+        }
+    }));
+    client.notify("initialized", json!({}));
+}
+
+fn wait_for_path(path: &Path, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if path.exists() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("timed out waiting for {}", path.display());
+}
+
+fn published_diagnostic_codes(notification: &serde_json::Value) -> Vec<String> {
+    notification
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|diag| diag.get("code").and_then(|value| value.as_str()))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn wait_for_publish_codes(
+    client: &mut LspTestClient,
+    uri: &str,
+    expected_codes: &[&str],
+    timeout: Duration,
+) -> serde_json::Value {
+    let mut expected: Vec<String> = expected_codes
+        .iter()
+        .map(|code| (*code).to_string())
+        .collect();
+    expected.sort();
+    let deadline = Instant::now() + timeout;
+    loop {
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for diagnostics {:?} on {}",
+            expected,
+            uri
+        );
+        let Some(notification) =
+            client.wait_for_publish_diagnostics(uri, Duration::from_millis(250))
+        else {
+            continue;
+        };
+        let mut actual = published_diagnostic_codes(&notification);
+        actual.sort();
+        if actual == expected {
+            return notification;
+        }
+    }
+}
+
+#[test]
+fn initialize_reports_core_capabilities() {
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let result = client.initialize(json!({}));
+    let caps = result.get("capabilities").expect("capabilities");
+    assert!(caps.get("completionProvider").is_some());
+    assert!(caps.get("hoverProvider").is_some());
+    assert!(caps.get("definitionProvider").is_some());
+    assert!(caps.get("referencesProvider").is_some());
+    assert!(caps.get("renameProvider").is_some());
+    assert!(caps.get("documentSymbolProvider").is_some());
+    assert!(caps.get("codeActionProvider").is_some());
+    assert!(client
+        .wait_for_notification("window/logMessage", Duration::from_millis(20))
+        .is_none());
+    client.shutdown();
+}
+
+#[test]
+fn completion_uses_nearest_prior_cpu_context() {
+    let temp_file = unique_temp_file("completion.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".cpu 6502\n    lda #$01\n.cpu z80\n    djnz target\n"
+            }
+        }),
+    );
+
+    let completion = client.request(
+        "textDocument/completion",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 3, "character": 8}
+        }),
+    );
+    let items = completion.as_array().expect("completion array");
+    assert!(
+        items.iter().any(|item| {
+            item.get("label")
+                .and_then(|value| value.as_str())
+                .is_some_and(|label| label.eq_ignore_ascii_case("djnz"))
+        }),
+        "expected z80 mnemonic suggestion at z80 context line"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn diagnostics_are_deduplicated_by_stable_key() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+printf '{"code":"E001","severity":"error","message":"dup","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+printf '{"code":"E001","severity":"error","message":"dup","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+"#,
+    );
+
+    let file = temp_dir.join("dedup.asm");
+    write_text(&file, "nop\n");
+    let uri = path_to_file_uri(&file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+
+    let publish = client
+        .wait_for_publish_diagnostics(&uri, Duration::from_secs(2))
+        .expect("publish diagnostics");
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "duplicate diagnostics should be deduped"
+    );
+    client.shutdown();
+}
+
+#[test]
+fn invalid_validator_path_publishes_validation_failure_diagnostic() {
+    let file = unique_temp_file("missing-validator.asm");
+    write_text(&file, "nop\n");
+    let uri = path_to_file_uri(&file);
+    let missing_validator = file
+        .parent()
+        .expect("temp dir")
+        .join("definitely-missing-opforge");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &missing_validator, 0, true);
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+
+    let publish =
+        wait_for_publish_codes(&mut client, &uri, &["LSPVALIDATOR"], Duration::from_secs(3));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(diagnostics.iter().any(|diag| {
+        diag.get("message")
+            .and_then(|value| value.as_str())
+            .is_some_and(|message| message.contains("could not start validator"))
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn failing_validator_without_json_diagnostics_publishes_validation_failure() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+echo "validator exploded" >&2
+exit 7
+"#,
+    );
+
+    let file = temp_dir.join("failing-validator.asm");
+    write_text(&file, "nop\n");
+    let uri = path_to_file_uri(&file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+
+    let publish =
+        wait_for_publish_codes(&mut client, &uri, &["LSPVALIDATOR"], Duration::from_secs(3));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(diagnostics.iter().any(|diag| {
+        diag.get("message")
+            .and_then(|value| value.as_str())
+            .is_some_and(|message| message.contains("status 7"))
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn debounce_blocks_rapid_revalidation_but_allows_later_changes() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+printf '{"code":"EDEB","severity":"warning","message":"debounce","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+"#,
+    );
+
+    let file = temp_dir.join("debounce.asm");
+    write_text(&file, "nop\n");
+    let uri = path_to_file_uri(&file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 3000, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+    let _ = client
+        .wait_for_publish_diagnostics(&uri, Duration::from_secs(5))
+        .expect("initial publish");
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {"uri": uri, "version": 2},
+            "contentChanges": [{"text": "nop\n"}]
+        }),
+    );
+    assert!(
+        client
+            .wait_for_publish_diagnostics(&uri, Duration::from_millis(150))
+            .is_none(),
+        "rapid didChange should be debounced"
+    );
+
+    thread::sleep(Duration::from_millis(3200));
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {"uri": uri, "version": 3},
+            "contentChanges": [{"text": "nop\n"}]
+        }),
+    );
+    assert!(
+        client
+            .wait_for_publish_diagnostics(&uri, Duration::from_secs(2))
+            .is_some(),
+        "later didChange should trigger validation after debounce window"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn on_save_forces_validation_even_when_change_is_debounced() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+printf '{"code":"ESAVE","severity":"error","message":"save-check","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+"#,
+    );
+
+    let file = temp_dir.join("onsave.asm");
+    write_text(&file, "nop\n");
+    let uri = path_to_file_uri(&file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 5000, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+    let _ = client
+        .wait_for_publish_diagnostics(&uri, Duration::from_secs(2))
+        .expect("initial publish");
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {"uri": uri, "version": 2},
+            "contentChanges": [{"text": "nop\n"}]
+        }),
+    );
+    assert!(
+        client
+            .wait_for_publish_diagnostics(&uri, Duration::from_millis(150))
+            .is_none(),
+        "didChange should be debounced"
+    );
+
+    client.notify(
+        "textDocument/didSave",
+        json!({
+            "textDocument": {"uri": uri},
+            "text": "nop\n"
+        }),
+    );
+    assert!(
+        client
+            .wait_for_publish_diagnostics(&uri, Duration::from_secs(5))
+            .is_some(),
+        "didSave should always trigger validation when onSave=true"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn overlay_remaps_dependency_diagnostics_to_original_uri() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+base="$(basename "$infile")"
+if [ "$base" != "root.asm" ]; then
+  exit 0
+fi
+dep="$(dirname "$infile")/helper.asm"
+printf '{"code":"EDEP","severity":"error","message":"dependency-diagnostic","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$dep"
+"#,
+    );
+
+    let root_file = temp_dir.join("root.asm");
+    let helper_file = temp_dir.join("helper.asm");
+    write_text(&root_file, ".use helper\n");
+    write_text(&helper_file, "value = 1\n");
+    let root_uri = path_to_file_uri(&root_file);
+    let helper_uri = path_to_file_uri(&helper_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": helper_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "value = 2\n"
+            }
+        }),
+    );
+    let _ = client.wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(1));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let dep_publish = loop {
+        assert!(
+            Instant::now() < deadline,
+            "dependency diagnostics publish with EDEP was not observed"
+        );
+        let Some(candidate) =
+            client.wait_for_publish_diagnostics(&helper_uri, Duration::from_millis(400))
+        else {
+            continue;
+        };
+        let diagnostics = candidate
+            .get("diagnostics")
+            .and_then(|value| value.as_array())
+            .expect("diagnostics array");
+        if diagnostics.iter().any(|diag| {
+            diag.get("code")
+                .and_then(|value| value.as_str())
+                .is_some_and(|code| code == "EDEP")
+        }) {
+            break candidate;
+        }
+    };
+    let diagnostics = dep_publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0]
+            .get("code")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        "EDEP"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn overlay_root_does_not_widen_to_unrelated_open_documents() {
+    let temp_dir = unique_temp_dir();
+    let project_a = temp_dir.join("project_a");
+    let project_b = temp_dir.join("project_b");
+    fs::create_dir_all(&project_a).expect("create project a");
+    fs::create_dir_all(&project_b).expect("create project b");
+
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+widened="$(dirname "$infile")/../project_b/unrelated.asm"
+if [ -f "$widened" ]; then
+  printf '{"code":"EWIDE","severity":"error","message":"overlay widened to unrelated project","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+fi
+"#,
+    );
+
+    let root_file = project_a.join("root.asm");
+    let unrelated_file = project_b.join("unrelated.asm");
+    write_text(&root_file, "nop\n");
+    write_text(&unrelated_file, "foreign = 1\n");
+    let root_uri = path_to_file_uri(&root_file);
+    let unrelated_uri = path_to_file_uri(&unrelated_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": unrelated_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "foreign = 2\n"
+            }
+        }),
+    );
+    let _ = client.wait_for_publish_diagnostics(&unrelated_uri, Duration::from_secs(2));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(&mut client, &root_uri, &[], Duration::from_secs(3));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(
+        diagnostics.is_empty(),
+        "overlay should stay inside project_a"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn shared_dependency_diagnostics_merge_across_roots_and_survive_unrelated_close() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+base="$(basename "$infile")"
+helper="$(dirname "$infile")/helper.asm"
+case "$base" in
+  root_a.asm)
+    code="EA"
+    ;;
+  root_b.asm)
+    code="EB"
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+printf '{"code":"%s","severity":"error","message":"shared-helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$code" "$helper"
+"#,
+    );
+
+    let helper_file = temp_dir.join("helper.asm");
+    let root_a = temp_dir.join("root_a.asm");
+    let root_b = temp_dir.join("root_b.asm");
+    write_text(&helper_file, "value = 1\n");
+    write_text(&root_a, ".use helper\n");
+    write_text(&root_b, ".use helper\n");
+
+    let helper_uri = path_to_file_uri(&helper_file);
+    let root_a_uri = path_to_file_uri(&root_a);
+    let root_b_uri = path_to_file_uri(&root_b);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": helper_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "value = 1\n"
+            }
+        }),
+    );
+    let _ = client.wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(1));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_a_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+    let _ = wait_for_publish_codes(&mut client, &helper_uri, &["EA"], Duration::from_secs(3));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_b_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+    let _ = wait_for_publish_codes(
+        &mut client,
+        &helper_uri,
+        &["EA", "EB"],
+        Duration::from_secs(3),
+    );
+
+    client.notify(
+        "textDocument/didClose",
+        json!({
+            "textDocument": {
+                "uri": root_a_uri
+            }
+        }),
+    );
+    let close_publish =
+        wait_for_publish_codes(&mut client, &helper_uri, &["EB"], Duration::from_secs(3));
+    let diagnostics = close_publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1);
+
+    client.shutdown();
+}
+
+#[test]
+fn overlay_uses_workspace_root_and_rebased_module_paths_for_sibling_files() {
+    let temp_dir = unique_temp_dir();
+    let src_dir = temp_dir.join("src");
+    let shared_dir = temp_dir.join("shared");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&shared_dir).expect("create shared dir");
+
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+module_path=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --module-path)
+      module_path="$2"
+      shift 2
+      ;;
+    --infile)
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+helper="$module_path/helper.asm"
+if [ ! -f "$helper" ]; then
+  printf '{"code":"EMISS","severity":"error","message":"missing rebased helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$helper"
+  exit 0
+fi
+if grep -q "value = 2" "$helper"; then
+  printf '{"code":"EHELP","severity":"warning","message":"saw rebased helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$helper"
+fi
+"#,
+    );
+
+    let root_file = src_dir.join("root.asm");
+    let helper_file = shared_dir.join("helper.asm");
+    write_text(&root_file, ".use helper\n");
+    write_text(&helper_file, "value = 1\n");
+    let root_uri = path_to_file_uri(&root_file);
+    let helper_uri = path_to_file_uri(&helper_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator_config(
+        &mut client,
+        &script_path,
+        0,
+        true,
+        &[temp_dir.to_string_lossy().to_string()],
+        &[],
+        &["shared".to_string()],
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": helper_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "value = 2\n"
+            }
+        }),
+    );
+    let _ = client.wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(1));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+
+    let publish = client
+        .wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(3))
+        .expect("rebased helper diagnostics");
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(diagnostics.iter().any(|diag| {
+        diag.get("code")
+            .and_then(|value| value.as_str())
+            .is_some_and(|code| code == "EHELP")
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn overlay_rebases_relative_validator_paths_from_workspace_root() {
+    let temp_dir = unique_temp_dir();
+    let workspace_dir = temp_dir.join("workspace");
+    let src_dir = workspace_dir.join("src");
+    let include_dir = temp_dir.join("external-includes");
+    let shared_dir = temp_dir.join("external-shared");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&include_dir).expect("create include dir");
+    fs::create_dir_all(&shared_dir).expect("create shared dir");
+
+    let expected_include = include_dir.to_string_lossy().replace('\\', "/");
+    let expected_module = shared_dir.to_string_lossy().replace('\\', "/");
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        &format!(
+            r#"#!/bin/sh
+set -eu
+infile=""
+include_path=""
+module_path=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --infile)
+            infile="$2"
+            shift 2
+            ;;
+        --include-path)
+            include_path="$2"
+            shift 2
+            ;;
+        --module-path)
+            module_path="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+normalize() {{
+    printf '%s' "$1" | tr '\\' '/'
+}}
+
+if [ "$(normalize "$include_path")" != "{expected_include}" ]; then
+    printf '{{"code":"EBADINC","severity":"error","message":"include path was not rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+    exit 0
+fi
+
+if [ "$(normalize "$module_path")" != "{expected_module}" ]; then
+    printf '{{"code":"EBADMOD","severity":"error","message":"module path was not rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+    exit 0
+fi
+
+printf '{{"code":"EOK","severity":"warning","message":"validator paths were rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+"#
+        ),
+    );
+
+    let root_file = src_dir.join("root.asm");
+    write_text(&root_file, "nop\n");
+    let root_uri = path_to_file_uri(&root_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator_config(
+        &mut client,
+        &script_path,
+        0,
+        true,
+        &[workspace_dir.to_string_lossy().to_string()],
+        &["../external-includes".to_string()],
+        &["../external-shared".to_string()],
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(&mut client, &root_uri, &["EOK"], Duration::from_secs(3));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "expected one validator-path diagnostic"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn overlay_stages_only_active_and_dependency_files() {
+    let temp_dir = unique_temp_dir();
+    let workspace_dir = temp_dir.join("workspace");
+    let src_dir = workspace_dir.join("src");
+    let deps_dir = workspace_dir.join("deps");
+    let noise_dir = workspace_dir.join("noise");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&deps_dir).expect("create deps dir");
+    fs::create_dir_all(&noise_dir).expect("create noise dir");
+
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+module_path=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --infile)
+      infile="$2"
+      shift 2
+      ;;
+    --module-path)
+      module_path="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+helper="$module_path/helper.asm"
+include_file="$(dirname "$infile")/inc.asm"
+overlay_root="$(dirname "$module_path")"
+if [ ! -f "$helper" ]; then
+  printf '{"code":"EMISS","severity":"error","message":"missing staged helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+  exit 0
+fi
+if [ ! -f "$include_file" ]; then
+    printf '{"code":"EINC","severity":"error","message":"missing staged include file","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+    exit 0
+fi
+if [ -f "$overlay_root/noise/unrelated.asm" ]; then
+  printf '{"code":"EWIDE","severity":"error","message":"overlay copied unrelated workspace file","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+    exit 0
+fi
+printf '{"code":"ESTAGED","severity":"warning","message":"overlay staged include and module dependencies without widening","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+"#,
+    );
+
+    let root_file = src_dir.join("root.asm");
+    let include_file = src_dir.join("inc.asm");
+    let helper_file = deps_dir.join("helper.asm");
+    let unrelated_file = noise_dir.join("unrelated.asm");
+    write_text(&root_file, ".include \"inc.asm\"\n.use helper\n");
+    write_text(&include_file, "FROM_INC = 1\n");
+    write_text(
+        &helper_file,
+        ".module helper\n.pub\nvalue = 1\n.endmodule\n",
+    );
+    write_text(&unrelated_file, "noise = 1\n");
+    let root_uri = path_to_file_uri(&root_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator_config(
+        &mut client,
+        &script_path,
+        0,
+        true,
+        &[workspace_dir.to_string_lossy().to_string()],
+        &[],
+        &["deps".to_string()],
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".include \"inc.asm\"\n.use helper\n"
+            }
+        }),
+    );
+
+    let publish = client
+        .wait_for_publish_diagnostics(&root_uri, Duration::from_secs(6))
+        .expect("staged dependency diagnostics");
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    let codes: Vec<&str> = diagnostics
+        .iter()
+        .filter_map(|diag| diag.get("code").and_then(|value| value.as_str()))
+        .collect();
+    assert!(
+        codes.contains(&"ESTAGED"),
+        "overlay should stage include and module dependencies without widening, got {codes:?}"
+    );
+
+    client.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn overlay_refuses_symlinked_dependency_directories() {
+    let temp_dir = unique_temp_dir();
+    let workspace_dir = temp_dir.join("workspace");
+    let src_dir = workspace_dir.join("src");
+    let real_deps_dir = temp_dir.join("real_deps");
+    fs::create_dir_all(&workspace_dir).expect("create workspace dir");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&real_deps_dir).expect("create real deps dir");
+    symlink(&real_deps_dir, workspace_dir.join("deps")).expect("create deps symlink");
+
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+exit 0
+"#,
+    );
+
+    let root_file = src_dir.join("root.asm");
+    let helper_file = real_deps_dir.join("helper.asm");
+    write_text(&root_file, ".use helper\n");
+    write_text(
+        &helper_file,
+        ".module helper\n.pub\nvalue = 1\n.endmodule\n",
+    );
+    let root_uri = path_to_file_uri(&root_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator_config(
+        &mut client,
+        &script_path,
+        0,
+        true,
+        &[workspace_dir.to_string_lossy().to_string()],
+        &[],
+        &["deps".to_string()],
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(
+        &mut client,
+        &root_uri,
+        &["LSPVALIDATOR"],
+        Duration::from_secs(3),
+    );
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(diagnostics.iter().any(|diag| {
+        diag.get("message")
+            .and_then(|value| value.as_str())
+            .is_some_and(|message| message.contains("symlink"))
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn config_change_revalidates_open_documents_without_followup_edit() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+printf '{"code":"EREFRESH","severity":"warning","message":"config refresh","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
+"#,
+    );
+
+    let file = temp_dir.join("refresh.asm");
+    write_text(&file, "nop\n");
+    let uri = path_to_file_uri(&file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, false);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "nop\n"
+            }
+        }),
+    );
+    assert!(
+        client
+            .wait_for_publish_diagnostics(&uri, Duration::from_millis(250))
+            .is_none(),
+        "didOpen should not validate while onSave=false"
+    );
+
+    client.notify(
+        "workspace/didChangeConfiguration",
+        json!({
+            "settings": {
+                "opforgeLsp": {
+                    "opforgePath": script_path.to_string_lossy().to_string(),
+                    "validation": {
+                        "debounceMs": 0,
+                        "onSave": true
+                    }
+                }
+            }
+        }),
+    );
+
+    let publish = wait_for_publish_codes(&mut client, &uri, &["EREFRESH"], Duration::from_secs(5));
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "config refresh should trigger one rerun"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_resolves_local_symbol_declaration() {
+    let temp_file = unique_temp_file("definition.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "label: nop\n    jmp label\n"
+            }
+        }),
+    );
+
+    let definitions = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 1, "character": 10}
+        }),
+    );
+    let entries = definitions.as_array().expect("definition array");
+    assert!(!entries.is_empty(), "expected at least one definition");
+    let first = &entries[0];
+    assert_eq!(
+        first
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        uri
+    );
+    assert_eq!(
+        first
+            .get("range")
+            .and_then(|range| range.get("start"))
+            .and_then(|start| start.get("line"))
+            .and_then(|line| line.as_u64())
+            .unwrap_or(999),
+        0
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn workspace_symbols_ignore_excluded_shadow_directories() {
+    let temp_dir = unique_temp_dir();
+    let live_dir = temp_dir.join("src");
+    let worktrees_dir = temp_dir.join("worktrees").join("shadow");
+    let build_dir = temp_dir.join("build");
+    fs::create_dir_all(&live_dir).expect("create live dir");
+    fs::create_dir_all(&worktrees_dir).expect("create worktrees dir");
+    fs::create_dir_all(&build_dir).expect("create build dir");
+
+    write_text(&live_dir.join("live.asm"), "live_label: nop\n");
+    write_text(&worktrees_dir.join("shadow.asm"), "shadow_label: nop\n");
+    write_text(&build_dir.join("generated.asm"), "generated_label: nop\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    let live_symbols = client.request(
+        "workspace/symbol",
+        json!({
+            "query": "live_label"
+        }),
+    );
+    let live_entries = live_symbols.as_array().expect("live symbol array");
+    assert_eq!(live_entries.len(), 1, "expected live source to be indexed");
+
+    let shadow_symbols = client.request(
+        "workspace/symbol",
+        json!({
+            "query": "label"
+        }),
+    );
+    let shadow_entries = shadow_symbols.as_array().expect("shadow symbol array");
+    let names: Vec<&str> = shadow_entries
+        .iter()
+        .filter_map(|entry| entry.get("name").and_then(|value| value.as_str()))
+        .collect();
+    assert!(names.contains(&"live_label"));
+    assert!(
+        !names.contains(&"shadow_label"),
+        "worktree shadow symbols must be excluded from workspace indexing"
+    );
+    assert!(
+        !names.contains(&"generated_label"),
+        "build output symbols must be excluded from workspace indexing"
+    );
+
+    client.shutdown();
+}
+
+#[cfg(unix)]
+#[test]
+fn workspace_symbols_ignore_symlinked_directories_under_root() {
+    let temp_dir = unique_temp_dir();
+    let external_root = unique_temp_dir();
+    let live_dir = temp_dir.join("src");
+    let external_dir = external_root.join("external");
+    let symlinked_dir = live_dir.join("linked");
+    fs::create_dir_all(&live_dir).expect("create live dir");
+    fs::create_dir_all(&external_dir).expect("create external dir");
+    symlink(&external_dir, &symlinked_dir).expect("create symlinked dir");
+
+    write_text(&live_dir.join("live.asm"), "live_label: nop\n");
+    write_text(&external_dir.join("linked.asm"), "linked_label: nop\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    let symbols = client.request(
+        "workspace/symbol",
+        json!({
+            "query": "label"
+        }),
+    );
+    let entries = symbols.as_array().expect("workspace symbol array");
+    let names: Vec<&str> = entries
+        .iter()
+        .filter_map(|entry| entry.get("name").and_then(|value| value.as_str()))
+        .collect();
+    assert!(names.contains(&"live_label"));
+    assert!(
+        !names.contains(&"linked_label"),
+        "directory symlinks under a configured root must not be traversed"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_resolves_module_target_via_workspace_rooted_relative_module_path() {
+    let temp_dir = unique_temp_dir();
+    let src_dir = temp_dir.join("src");
+    let shared_dir = temp_dir.join("shared");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&shared_dir).expect("create shared dir");
+
+    let main_file = src_dir.join("main.asm");
+    let helper_file = shared_dir.join("helper.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let helper_uri = path_to_file_uri(&helper_file);
+    write_text(&main_file, ".use helper\n");
+    write_text(&helper_file, ".module helper\nvalue = 1\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()],
+            "modulePaths": ["shared"]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
+            }
+        }),
+    );
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 0, "character": 6}
+        }),
+    );
+    let entries = defs.as_array().expect("definition array");
+    assert!(entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == helper_uri)
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_returns_deterministic_multi_results_for_module_targets() {
+    let temp_dir = unique_temp_dir();
+    let mods_a = temp_dir.join("a_mods");
+    let mods_b = temp_dir.join("b_mods");
+    fs::create_dir_all(&mods_a).expect("mods a");
+    fs::create_dir_all(&mods_b).expect("mods b");
+    write_text(&mods_a.join("math.asm"), "value = 1\n");
+    write_text(&mods_b.join("math.inc"), "value = 2\n");
+
+    let main = temp_dir.join("main.asm");
+    write_text(&main, ".use math\n");
+    let uri = path_to_file_uri(&main);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "modulePaths": [
+                mods_b.to_string_lossy().to_string(),
+                mods_a.to_string_lossy().to_string()
+            ]
+        }
+    }));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use math\n"
+            }
+        }),
+    );
+
+    let first = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 0, "character": 6}
+        }),
+    );
+    let second = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 0, "character": 6}
+        }),
+    );
+    let first_items = first.as_array().expect("first definition array");
+    let second_items = second.as_array().expect("second definition array");
+    assert!(first_items.len() >= 2);
+    assert_eq!(first_items.len(), second_items.len());
+    let first_uris: Vec<String> = first_items
+        .iter()
+        .filter_map(|item| item.get("uri").and_then(|value| value.as_str()))
+        .map(ToString::to_string)
+        .collect();
+    let second_uris: Vec<String> = second_items
+        .iter()
+        .filter_map(|item| item.get("uri").and_then(|value| value.as_str()))
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        first_uris, second_uris,
+        "definition order must be deterministic"
+    );
+    assert_eq!(
+        first_uris[0], uri,
+        "local/module declaration should rank first"
+    );
+    let mut sorted = first_uris[1..].to_vec();
+    sorted.sort();
+    assert_eq!(
+        first_uris[1..].to_vec(),
+        sorted,
+        "non-local candidates should use stable lexicographic order"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn code_actions_mark_machine_applicable_as_preferred() {
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    let actions = client.request(
+        "textDocument/codeAction",
+        json!({
+            "textDocument": {"uri": "file:///tmp/fixits.asm"},
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 5}
+            },
+            "context": {
+                "diagnostics": [{
+                    "message": "missing endif",
+                    "data": {
+                        "fixits": [
+                            {
+                                "line": 1,
+                                "col_start": 1,
+                                "col_end": 1,
+                                "replacement": ".endif",
+                                "applicability": "machine-applicable"
+                            },
+                            {
+                                "line": 1,
+                                "col_start": 1,
+                                "col_end": 1,
+                                "replacement": ".endiff",
+                                "applicability": "maybe-incorrect"
+                            }
+                        ]
+                    }
+                }]
+            }
+        }),
+    );
+    let entries = actions.as_array().expect("code action array");
+    assert_eq!(entries.len(), 2);
+    let preferred_count = entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("isPreferred")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
+        })
+        .count();
+    assert_eq!(preferred_count, 1);
+
+    client.shutdown();
+}
+
+#[test]
+fn hover_returns_semantic_symbol_metadata_for_assignments() {
+    let temp_file = unique_temp_file("hover_semantic.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\nvalue = 42\n    lda value\n.endmodule\n"
+            }
+        }),
+    );
+
+    let hover = client.request(
+        "textDocument/hover",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 2, "character": 9}
+        }),
+    );
+    let contents = hover
+        .get("contents")
+        .and_then(|value| value.get("value"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(contents.contains("Kind: `assignment`"));
+    assert!(contents.contains("Scope: `module:math`"));
+    assert!(contents.contains("Value: `42`"));
+    assert!(contents.contains("Decl: `value = 42`"));
+
+    client.shutdown();
+}
+
+#[test]
+fn completion_includes_semantic_scope_detail_for_symbols() {
+    let temp_file = unique_temp_file("completion_semantic.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\nvalue = 42\n    lda va\n.endmodule\n"
+            }
+        }),
+    );
+
+    let completion = client.request(
+        "textDocument/completion",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 2, "character": 10}
+        }),
+    );
+    let items = completion.as_array().expect("completion array");
+    let value_item = items.iter().find(|item| {
+        item.get("label")
+            .and_then(|value| value.as_str())
+            .is_some_and(|label| label.eq_ignore_ascii_case("value"))
+    });
+    let value_item = value_item.expect("value symbol completion item");
+    let detail = value_item
+        .get("detail")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(detail.contains("assignment"));
+    assert!(detail.contains("module:math"));
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_resolves_imported_symbol_via_alias_qualified_reference() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+
+    write_text(
+        &main_file,
+        ".module app\n.use math as M\n    lda M.value\n.endmodule\n",
+    );
+    write_text(&math_file, ".module math\n.pub\nvalue = 42\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math as M\n    lda M.value\n.endmodule\n"
+            }
+        }),
+    );
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    let entries = defs.as_array().expect("definition array");
+    assert!(
+        !entries.is_empty(),
+        "expected imported definition candidate"
+    );
+    assert_eq!(
+        entries[0]
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        math_uri
+    );
+    assert_eq!(
+        entries[0]
+            .get("range")
+            .and_then(|range| range.get("start"))
+            .and_then(|start| start.get("line"))
+            .and_then(|line| line.as_u64())
+            .unwrap_or(999),
+        2
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_prefers_local_symbol_over_imported_selective_alias() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+
+    write_text(
+        &main_file,
+        ".module app\n.use math (value as result)\nresult = 1\n    lda result\n.endmodule\n",
+    );
+    write_text(&math_file, ".module math\n.pub\nvalue = 42\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math (value as result)\nresult = 1\n    lda result\n.endmodule\n"
+            }
+        }),
+    );
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 3, "character": 10}
+        }),
+    );
+    let entries = defs.as_array().expect("definition array");
+    assert!(!entries.is_empty(), "expected local definition candidate");
+    assert_eq!(
+        entries[0]
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        main_uri
+    );
+    assert_eq!(
+        entries[0]
+            .get("range")
+            .and_then(|range| range.get("start"))
+            .and_then(|start| start.get("line"))
+            .and_then(|line| line.as_u64())
+            .unwrap_or(999),
+        2
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn completion_and_hover_resolve_selective_import_alias_symbols() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+
+    write_text(
+        &main_file,
+        ".module app\n.use math (value as result)\n    lda res\n    lda result\n.endmodule\n",
+    );
+    write_text(&math_file, ".module math\n.pub\nvalue = 42\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math (value as result)\n    lda res\n    lda result\n.endmodule\n"
+            }
+        }),
+    );
+
+    let completion = client.request(
+        "textDocument/completion",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    let items = completion.as_array().expect("completion array");
+    let imported = items.iter().find(|item| {
+        item.get("label")
+            .and_then(|value| value.as_str())
+            .is_some_and(|label| label.eq_ignore_ascii_case("result"))
+            && item
+                .get("detail")
+                .and_then(|value| value.as_str())
+                .is_some_and(|detail| detail.contains("imported"))
+    });
+    assert!(
+        imported.is_some(),
+        "expected imported selective alias completion"
+    );
+
+    let hover = client.request(
+        "textDocument/hover",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 3, "character": 10}
+        }),
+    );
+    let contents = hover
+        .get("contents")
+        .and_then(|value| value.get("value"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(contents.contains("Decl: `value = 42`"));
+    assert!(contents.contains("Kind: `assignment`"));
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_and_hover_resolve_struct_member_field_declarations() {
+    let temp_file = unique_temp_file("member_field_definition.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let source = "Point .struct\nx .byte ?\ny .byte ?\n.endstruct\n\np0 .const Point { x: 1, y: 2 }\n    lda p0.x\n";
+    write_text(&temp_file, source);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": source
+            }
+        }),
+    );
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 6, "character": 11}
+        }),
+    );
+    let entries = defs.as_array().expect("definition array");
+    assert!(!entries.is_empty(), "expected field definition candidate");
+    assert_eq!(
+        entries[0]
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        uri
+    );
+    assert_eq!(
+        entries[0]
+            .get("range")
+            .and_then(|range| range.get("start"))
+            .and_then(|start| start.get("line"))
+            .and_then(|line| line.as_u64())
+            .unwrap_or(999),
+        1
+    );
+
+    let hover = client.request(
+        "textDocument/hover",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 6, "character": 11}
+        }),
+    );
+    let contents = hover
+        .get("contents")
+        .and_then(|value| value.get("value"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(contents.contains("Kind: `field`"));
+    assert!(contents.contains("Owner: `Point`"));
+
+    client.shutdown();
+}
+
+#[test]
+fn completion_suggests_fields_for_indexed_member_context() {
+    let temp_file = unique_temp_file("indexed_member_completion.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let source = "points .bfor i in 0..=2\nx .byte i\ny .byte i + 1\n.endfor\n    lda points[1].\n";
+    write_text(&temp_file, source);
+    let completion_col = "    lda points[1].".len();
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": source
+            }
+        }),
+    );
+
+    let completion = client.request(
+        "textDocument/completion",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 4, "character": completion_col}
+        }),
+    );
+    let items = completion.as_array().expect("completion array");
+    let has_x = items.iter().any(|item| {
+        item.get("label")
+            .and_then(|value| value.as_str())
+            .is_some_and(|label| label.eq_ignore_ascii_case("x"))
+            && item
+                .get("detail")
+                .and_then(|value| value.as_str())
+                .is_some_and(|detail| detail.contains("field of points"))
+    });
+    let has_y = items.iter().any(|item| {
+        item.get("label")
+            .and_then(|value| value.as_str())
+            .is_some_and(|label| label.eq_ignore_ascii_case("y"))
+            && item
+                .get("detail")
+                .and_then(|value| value.as_str())
+                .is_some_and(|detail| detail.contains("field of points"))
+    });
+    assert!(has_x, "expected x field completion for indexed member base");
+    assert!(has_y, "expected y field completion for indexed member base");
+
+    client.shutdown();
+}
+
+#[test]
+fn workspace_symbol_supports_partial_query_with_stable_order() {
+    let temp_dir = unique_temp_dir();
+    let file_a = temp_dir.join("alpha.asm");
+    let file_b = temp_dir.join("beta.asm");
+    let uri_a = path_to_file_uri(&file_a);
+    let uri_b = path_to_file_uri(&file_b);
+    write_text(&file_a, ".module alpha\nvalueOne = 1\n.endmodule\n");
+    write_text(&file_b, ".module beta\nvalueTwo = 2\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri_a,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module alpha\nvalueOne = 1\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri_b,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module beta\nvalueTwo = 2\n.endmodule\n"
+            }
+        }),
+    );
+
+    let first = client.request("workspace/symbol", json!({ "query": "value" }));
+    let second = client.request("workspace/symbol", json!({ "query": "value" }));
+    let first_items = first.as_array().expect("workspace symbol array");
+    let second_items = second.as_array().expect("workspace symbol array");
+    assert!(
+        first_items.len() >= 2,
+        "expected both value symbols to be returned"
+    );
+    assert_eq!(first_items.len(), second_items.len());
+
+    let first_locations: Vec<String> = first_items
+        .iter()
+        .filter_map(|item| item.get("location"))
+        .filter_map(|location| location.get("uri"))
+        .filter_map(|uri| uri.as_str())
+        .map(ToString::to_string)
+        .collect();
+    let second_locations: Vec<String> = second_items
+        .iter()
+        .filter_map(|item| item.get("location"))
+        .filter_map(|location| location.get("uri"))
+        .filter_map(|uri| uri.as_str())
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        first_locations, second_locations,
+        "workspace symbol ordering must be deterministic"
+    );
+
+    let names: Vec<String> = first_items
+        .iter()
+        .filter_map(|item| item.get("name").and_then(|value| value.as_str()))
+        .map(ToString::to_string)
+        .collect();
+    assert!(names
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case("valueOne")));
+    assert!(names
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case("valueTwo")));
+
+    client.shutdown();
+}
+
+#[test]
+fn workspace_symbol_matches_substring_queries() {
+    let temp_dir = unique_temp_dir();
+    let file = temp_dir.join("substring.asm");
+    let uri = path_to_file_uri(&file);
+    write_text(
+        &file,
+        ".module search\nalphaValue = 1\nbetaThing = 2\n.endmodule\n",
+    );
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module search\nalphaValue = 1\nbetaThing = 2\n.endmodule\n"
+            }
+        }),
+    );
+
+    let result = client.request("workspace/symbol", json!({ "query": "phaVal" }));
+    let items = result.as_array().expect("workspace symbol array");
+    assert!(
+        items.iter().any(|item| {
+            item.get("name")
+                .and_then(|value| value.as_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("alphaValue"))
+        }),
+        "substring query should match alphaValue"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn did_close_rehydrates_rooted_symbols_from_disk() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+
+    write_text(
+        &main_file,
+        ".module app\n.use math as M\n    lda M.value\n.endmodule\n",
+    );
+    write_text(&math_file, ".module math\n.pub\nvalue = 42\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math as M\n    lda M.value\n.endmodule\n"
+            }
+        }),
+    );
+
+    client.notify(
+        "textDocument/didClose",
+        json!({
+            "textDocument": {
+                "uri": math_uri
+            }
+        }),
+    );
+
+    let symbols = client.request("workspace/symbol", json!({ "query": "value" }));
+    let symbol_entries = symbols.as_array().expect("workspace symbol array");
+    assert!(symbol_entries.iter().any(|entry| {
+        entry
+            .get("location")
+            .and_then(|value| value.get("uri"))
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    let def_entries = defs.as_array().expect("definition array");
+    assert!(def_entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn routine_document_events_keep_rooted_index_incremental() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+
+    let main_text = ".module app\n.use math as M\n    lda M.value\n.endmodule\n";
+    let math_text = ".module math\n.pub\nvalue = 42\n.endmodule\n";
+    let saved_math_text = ".module math\n.pub\nvalue = 43\n.endmodule\n";
+    write_text(&main_file, main_text);
+    write_text(&math_file, math_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    let initial_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        initial_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "initialize should perform exactly one rooted rebuild"
+    );
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": math_text
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": main_text
+            }
+        }),
+    );
+
+    let open_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        open_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "didOpen should not force a rooted rebuild"
+    );
+
+    let defs_while_open = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    let defs_while_open_entries = defs_while_open.as_array().expect("definition array");
+    assert!(defs_while_open_entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 2
+            },
+            "contentChanges": [
+                {"text": saved_math_text}
+            ]
+        }),
+    );
+
+    let change_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        change_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "didChange should not force a rooted rebuild"
+    );
+
+    let changed_symbols = client.request("workspace/symbol", json!({ "query": "value" }));
+    let changed_symbol_entries = changed_symbols.as_array().expect("workspace symbol array");
+    assert!(changed_symbol_entries.iter().any(|entry| {
+        entry
+            .get("location")
+            .and_then(|value| value.get("uri"))
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    write_text(&math_file, saved_math_text);
+    client.notify(
+        "textDocument/didSave",
+        json!({
+            "textDocument": {
+                "uri": math_uri
+            },
+            "text": saved_math_text
+        }),
+    );
+
+    let save_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        save_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "didSave should not force a rooted rebuild"
+    );
+
+    client.notify(
+        "textDocument/didClose",
+        json!({
+            "textDocument": {
+                "uri": math_uri
+            }
+        }),
+    );
+
+    let close_stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        close_stats
+            .get("rootedRebuilds")
+            .and_then(|value| value.as_u64()),
+        Some(1),
+        "didClose should rehydrate the rooted file without a full rebuild"
+    );
+
+    let defs_after_close = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    let defs_after_close_entries = defs_after_close.as_array().expect("definition array");
+    assert!(defs_after_close_entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn did_change_refreshes_open_document_symbols_without_rooted_rebuild() {
+    let temp_dir = unique_temp_dir();
+    let math_file = temp_dir.join("math.asm");
+    let math_uri = path_to_file_uri(&math_file);
+
+    let initial_text = ".module math\n.pub\nvalue = 42\n.endmodule\n";
+    let changed_text = ".module math\n.pub\ntotal = 43\n.endmodule\n";
+    write_text(&math_file, initial_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": initial_text
+            }
+        }),
+    );
+
+    let initial_symbols = client.request("workspace/symbol", json!({ "query": "value" }));
+    let initial_symbol_entries = initial_symbols.as_array().expect("workspace symbol array");
+    assert!(initial_symbol_entries.iter().any(|entry| {
+        entry
+            .get("location")
+            .and_then(|value| value.get("uri"))
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 2
+            },
+            "contentChanges": [
+                {"text": changed_text}
+            ]
+        }),
+    );
+
+    let changed_symbols = client.request("workspace/symbol", json!({ "query": "total" }));
+    let changed_symbol_entries = changed_symbols.as_array().expect("workspace symbol array");
+    assert!(changed_symbol_entries.iter().any(|entry| {
+        entry
+            .get("location")
+            .and_then(|value| value.get("uri"))
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+    }));
+
+    let stale_symbols = client.request("workspace/symbol", json!({ "query": "value" }));
+    let stale_symbol_entries = stale_symbols.as_array().expect("workspace symbol array");
+    assert!(
+        !stale_symbol_entries.iter().any(|entry| {
+            entry
+                .get("location")
+                .and_then(|value| value.get("uri"))
+                .and_then(|value| value.as_str())
+                .is_some_and(|uri| uri == math_uri)
+        }),
+        "didChange should refresh indexed symbols for the open document"
+    );
+
+    let stats = client.request("opforge/internalWorkspaceIndexStats", json!({}));
+    assert_eq!(
+        stats.get("rootedRebuilds").and_then(|value| value.as_u64()),
+        Some(1),
+        "didChange should keep the rooted workspace index incremental"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn overlapping_validations_publish_only_newest_version_results() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    let slow_started_path = temp_dir.join("slow.started");
+    write_executable_script(
+        &script_path,
+        &format!(
+            r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+if grep -q "slow-version" "$infile"; then
+  : > "{slow_started_path}"
+  sleep 1
+  printf '{{"code":"EOLD","severity":"warning","message":"stale","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+  exit 0
+fi
+printf '{{"code":"ENEW","severity":"warning","message":"fresh","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+"#,
+            slow_started_path = slow_started_path.display()
+        ),
+    );
+
+    let file = temp_dir.join("cancel.asm");
+    write_text(&file, "slow-version\n");
+    let uri = path_to_file_uri(&file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "slow-version\n"
+            }
+        }),
+    );
+    wait_for_path(&slow_started_path, Duration::from_secs(2));
+    thread::sleep(Duration::from_millis(100));
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {"uri": uri, "version": 2},
+            "contentChanges": [{"text": "fast-version\n"}]
+        }),
+    );
+
+    let publish = client
+        .wait_for_publish_diagnostics(&uri, Duration::from_secs(6))
+        .expect("newest diagnostics publish");
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0]
+            .get("code")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        "ENEW"
+    );
+
+    assert!(
+        client
+            .wait_for_publish_diagnostics(&uri, Duration::from_millis(1300))
+            .is_none(),
+        "stale slow validation result should be suppressed"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn validation_backpressure_replays_latest_request_after_capacity_returns() {
+    let temp_dir = unique_temp_dir();
+    let script_path = temp_dir.join("validator.sh");
+    let first_started = temp_dir.join("first.started");
+    let second_started = temp_dir.join("second.started");
+    write_executable_script(
+        &script_path,
+        &format!(
+            r#"#!/bin/sh
+set -eu
+infile=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--infile" ]; then
+    infile="$2"
+    shift 2
+    continue
+  fi
+  shift
+done
+base="$(basename "$infile")"
+if grep -q "slow-version" "$infile"; then
+  if [ "$base" = "first.asm" ]; then
+    : > "{first_started}"
+  else
+    : > "{second_started}"
+  fi
+  sleep 1
+  printf '{{"code":"ESLOW","severity":"warning","message":"slow","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+  exit 0
+fi
+printf '{{"code":"EFAST","severity":"warning","message":"fast","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
+"#,
+            first_started = first_started.display(),
+            second_started = second_started.display()
+        ),
+    );
+
+    let first_file = temp_dir.join("first.asm");
+    let second_file = temp_dir.join("second.asm");
+    write_text(&first_file, "slow-version\n");
+    write_text(&second_file, "slow-version\n");
+    let first_uri = path_to_file_uri(&first_file);
+    let second_uri = path_to_file_uri(&second_file);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    init_with_validator(&mut client, &script_path, 0, true);
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": first_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "slow-version\n"
+            }
+        }),
+    );
+    wait_for_path(&first_started, Duration::from_secs(5));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": second_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "slow-version\n"
+            }
+        }),
+    );
+    wait_for_path(&second_started, Duration::from_secs(5));
+    thread::sleep(Duration::from_millis(100));
+
+    client.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {"uri": first_uri, "version": 2},
+            "contentChanges": [{"text": "fast-version\n"}]
+        }),
+    );
+
+    let publish = client
+        .wait_for_publish_diagnostics(&first_uri, Duration::from_secs(5))
+        .expect("replayed latest diagnostics publish");
+    let diagnostics = publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(diagnostics.iter().any(|diag| {
+        diag.get("code")
+            .and_then(|value| value.as_str())
+            .is_some_and(|code| code == "EFAST")
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn references_return_local_declaration_and_uses() {
+    let temp_file = unique_temp_file("references_local.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "label: nop\n    jmp label\n    .word label\n"
+            }
+        }),
+    );
+
+    let refs = client.request(
+        "textDocument/references",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 1, "character": 10},
+            "context": {"includeDeclaration": true}
+        }),
+    );
+    let entries = refs.as_array().expect("references array");
+    assert!(
+        entries.len() >= 3,
+        "expected declaration and both use references"
+    );
+    let lines: Vec<u64> = entries
+        .iter()
+        .filter_map(|entry| entry.get("range"))
+        .filter_map(|range| range.get("start"))
+        .filter_map(|start| start.get("line"))
+        .filter_map(|line| line.as_u64())
+        .collect();
+    assert!(lines.contains(&0));
+    assert!(lines.contains(&1));
+    assert!(lines.contains(&2));
+
+    client.shutdown();
+}
+
+#[test]
+fn references_resolve_imported_alias_qualified_symbols() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+    write_text(
+        &main_file,
+        ".module app\n.use math as M\n    lda M.value\n    sta M.value\n.endmodule\n",
+    );
+    write_text(&math_file, ".module math\n.pub\nvalue = 42\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math as M\n    lda M.value\n    sta M.value\n.endmodule\n"
+            }
+        }),
+    );
+
+    let refs = client.request(
+        "textDocument/references",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11},
+            "context": {"includeDeclaration": true}
+        }),
+    );
+    let entries = refs.as_array().expect("references array");
+    assert!(
+        entries.len() >= 3,
+        "expected imported declaration and two alias-qualified references"
+    );
+    let has_decl = entries.iter().any(|entry| {
+        entry
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .is_some_and(|uri| uri == math_uri)
+            && entry
+                .get("range")
+                .and_then(|range| range.get("start"))
+                .and_then(|start| start.get("line"))
+                .and_then(|line| line.as_u64())
+                .is_some_and(|line| line == 2)
+    });
+    assert!(
+        has_decl,
+        "expected reference list to include imported declaration"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn rename_updates_local_declaration_and_references() {
+    let temp_file = unique_temp_file("rename_local.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "label: nop\n    jmp label\n    .word label\n"
+            }
+        }),
+    );
+
+    let result = client.request(
+        "textDocument/rename",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 1, "character": 10},
+            "newName": "target"
+        }),
+    );
+
+    let edits = result
+        .get("changes")
+        .and_then(|changes| changes.get(&uri))
+        .and_then(|value| value.as_array())
+        .expect("rename edits for local uri");
+    assert!(edits.len() >= 3);
+    assert!(edits.iter().all(|edit| {
+        edit.get("newText")
+            .and_then(|value| value.as_str())
+            .is_some_and(|text| text == "target")
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn rename_updates_imported_declaration_and_alias_qualified_uses() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+    write_text(
+        &main_file,
+        ".module app\n.use math as M\n    lda M.value\n    sta M.value\n.endmodule\n",
+    );
+    write_text(&math_file, ".module math\n.pub\nvalue = 42\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math as M\n    lda M.value\n    sta M.value\n.endmodule\n"
+            }
+        }),
+    );
+
+    let result = client.request(
+        "textDocument/rename",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11},
+            "newName": "count"
+        }),
+    );
+    let changes = result.get("changes").expect("workspace edit changes");
+    let math_edits = changes
+        .get(&math_uri)
+        .and_then(|value| value.as_array())
+        .expect("rename edits for math module");
+    assert!(math_edits.iter().any(|edit| {
+        edit.get("newText")
+            .and_then(|value| value.as_str())
+            .is_some_and(|text| text == "count")
+    }));
+
+    let main_edits = changes
+        .get(&main_uri)
+        .and_then(|value| value.as_array())
+        .expect("rename edits for main module");
+    assert!(main_edits.iter().any(|edit| {
+        edit.get("newText")
+            .and_then(|value| value.as_str())
+            .is_some_and(|text| text == "M.count")
+    }));
+
+    client.shutdown();
+}
+
+#[test]
+fn prepare_rename_returns_leaf_span_for_alias_qualified_symbol() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+    write_text(
+        &main_file,
+        ".module app\n.use math as M\n    lda M.value\n.endmodule\n",
+    );
+    write_text(&math_file, ".module math\n.pub\nvalue = 42\n.endmodule\n");
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math as M\n    lda M.value\n.endmodule\n"
+            }
+        }),
+    );
+
+    let result = client.request(
+        "textDocument/prepareRename",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 11}
+        }),
+    );
+    assert_eq!(
+        result
+            .get("placeholder")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        "value"
+    );
+    let start_char = result
+        .get("range")
+        .and_then(|range| range.get("start"))
+        .and_then(|start| start.get("character"))
+        .and_then(|value| value.as_u64())
+        .unwrap_or(999);
+    let end_char = result
+        .get("range")
+        .and_then(|range| range.get("end"))
+        .and_then(|end| end.get("character"))
+        .and_then(|value| value.as_u64())
+        .unwrap_or(999);
+    assert_eq!(start_char, 10);
+    assert_eq!(end_char, 15);
+
+    client.shutdown();
+}
+
+#[test]
+fn prepare_rename_returns_null_for_non_symbol_position() {
+    let temp_file = unique_temp_file("prepare_rename_null.asm");
+    let uri = path_to_file_uri(&temp_file);
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": "label: nop\n"
+            }
+        }),
+    );
+
+    let result = client.request(
+        "textDocument/prepareRename",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 0, "character": 5}
+        }),
+    );
+    assert!(result.is_null(), "prepare rename should return null on ':'");
+
+    client.shutdown();
+}

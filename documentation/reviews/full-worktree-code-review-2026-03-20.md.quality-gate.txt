@@ -1,0 +1,1 @@
+PASS: Findings are material and maintainability-focused, use stable IDs and file references, separate issue from impact, provide one fix direction each, and leave no open questions.

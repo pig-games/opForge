@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; MOS 6502-family forward-reference sizing stability
@@ -28,10 +28,12 @@ Lines: 22  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-m6502_start     : 00fd (253)
-m6502_target    : 0101 (257)
-m65c02_start    : 01fd (509)
-m65c02_target   : 0201 (513)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+m6502_start      00FD      prv  lbl 
+m6502_target     0101      prv  lbl 
+m65c02_start     01FD      prv  lbl 
+m65c02_target    0201      prv  lbl 
 
 Total memory is 10 bytes
 

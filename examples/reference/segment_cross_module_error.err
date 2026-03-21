@@ -1,5 +1,5 @@
 Assembly failed:
-24: ERROR [asm402]
-   24 |     .EMIT_BYTE $AA      ; ERROR: EMIT_BYTE not imported
+18: ERROR [asm402]
+   18 |     .EMIT_BYTE $AA      ; ERROR: EMIT_BYTE not imported
                         ^
 ERROR: No instruction found for .EMIT_BYTE

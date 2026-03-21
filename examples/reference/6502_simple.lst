@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Simple 6502 test program
@@ -54,7 +54,9 @@ Lines: 48  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 1000 (4096)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
 
 Total memory is 49 bytes
 

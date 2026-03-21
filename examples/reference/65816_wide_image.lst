@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 65816 wide-address placement and output example
@@ -32,7 +32,9 @@ Lines: 26  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-main.start      : 123400 (1192960)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.start       123400    prv  lbl 
 
 Total memory is 19 bytes
 

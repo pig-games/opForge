@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 immediate RTS form
@@ -15,7 +15,9 @@ Lines: 9  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 0f00 (3840)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            0F00      prv  lbl 
 
 Total memory is 2 bytes
 

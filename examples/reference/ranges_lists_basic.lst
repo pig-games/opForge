@@ -17,7 +17,9 @@ Lines: 11  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-values          : 0000 (0)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+values           0000      prv  lbl 
 
 Total memory is 5 bytes
 

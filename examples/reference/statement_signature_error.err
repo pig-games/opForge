@@ -1,1 +1,5 @@
-Preprocess failed: Missing closing }]
+Assembly failed:
+3: ERROR [asm102]
+    3 | .statement sta "[" byte:a ","[{char:reg}
+                                       ^
+ERROR: Missing closing }]

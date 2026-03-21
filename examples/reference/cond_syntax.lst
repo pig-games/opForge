@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Conditional assembly (.if/.elseif/.else/.endif) coverage
@@ -64,8 +64,10 @@ Lines: 58  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-TRUE            : 0001 (1)
-FALSE           : 0000 (0)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+FALSE            0000      prv  lbl 
+TRUE             0001      prv  lbl 
 
 Total memory is 6 bytes
 

@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Simple 65816 test program
@@ -48,9 +48,11 @@ Lines: 42  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 0400 (1024)
-near_label      : 0411 (1041)
-far_label       : 0429 (1065)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+far_label        0429      prv  lbl 
+near_label       0411      prv  lbl 
+start            0400      prv  lbl 
 
 Total memory is 43 bytes
 

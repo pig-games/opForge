@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; 45GS02 short relative branch opcode overrides
@@ -24,16 +24,18 @@ Lines: 18  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-start           : 2700 (9984)
-l1              : 2702 (9986)
-l2              : 2704 (9988)
-l3              : 2706 (9990)
-l4              : 2708 (9992)
-l5              : 270a (9994)
-l6              : 270c (9996)
-l7              : 270e (9998)
-l8              : 2710 (10000)
-done            : 2712 (10002)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+done             2712      prv  lbl 
+l1               2702      prv  lbl 
+l2               2704      prv  lbl 
+l3               2706      prv  lbl 
+l4               2708      prv  lbl 
+l5               270A      prv  lbl 
+l6               270C      prv  lbl 
+l7               270E      prv  lbl 
+l8               2710      prv  lbl 
+start            2700      prv  lbl 
 
 Total memory is 19 bytes
 

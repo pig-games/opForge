@@ -1,5 +1,5 @@
 Assembly failed:
-14: ERROR [asm402]
-   14 |     PUSHB $AA
+8: ERROR [asm402]
+    8 |     PUSHB $AA
              ^
 ERROR: No instruction found for PUSHB

@@ -1,4 +1,4 @@
-opForge Assembler v0.9.4
+opForge Assembler v0.9.5
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  .module segment.export.lib
@@ -31,7 +31,9 @@ Lines: 25  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
-segment.export.lib.LIBVAL: 0042 (66)
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+segment.export.lib.LIBVAL  0042      pub  lbl 
 
 Total memory is 5 bytes
 

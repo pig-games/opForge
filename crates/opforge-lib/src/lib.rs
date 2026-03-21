@@ -3467,6 +3467,7 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use types::path_display::stable_path_string;
 
     static TEMP_DIR_SEQ: AtomicU64 = AtomicU64::new(1);
 
@@ -5749,7 +5750,7 @@ mod tests {
         assert!(labels_text.contains("main.start"), "labels:\n{labels_text}");
         let dependency_text = fs::read_to_string(&dependency_path).expect("read deps");
         assert!(
-            dependency_text.contains(source_path.to_string_lossy().as_ref()),
+            dependency_text.contains(stable_path_string(&source_path).as_str()),
             "deps:\n{dependency_text}"
         );
     }
@@ -5796,7 +5797,7 @@ mod tests {
             "deps:\n{dependency_text}"
         );
         assert!(
-            dependency_text.contains(labels_path.to_string_lossy().as_ref()),
+            dependency_text.contains(stable_path_string(&labels_path).as_str()),
             "deps:\n{dependency_text}"
         );
     }

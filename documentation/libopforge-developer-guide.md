@@ -2,7 +2,7 @@
 
 This guide is for developers who want to embed opForge as a library, build new tools on top of it, or integrate it into an existing build/editor/runtime environment.
 
-It documents the stable libopforge host surface in this branch/worktree as of `v0.9.5`.
+It documents the stable libopforge host surface in this branch/worktree as of `v0.9.6`.
 
 ## 1. Integration map
 

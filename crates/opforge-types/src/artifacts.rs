@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use serde_json::json;
 
+use crate::path_display::{stable_path_string, stable_path_text};
 use crate::symbol::SymbolTable;
 
 #[derive(Debug, Clone)]
@@ -99,7 +100,7 @@ pub fn render_dependencies(
     let mut targets: Vec<String> = targets
         .iter()
         .filter(|target| !target.is_empty())
-        .map(|target| make_escape_path(target))
+        .map(|target| make_escape_path(stable_path_text(target).as_str()))
         .collect();
     targets.sort();
     targets.dedup();
@@ -109,7 +110,7 @@ pub fn render_dependencies(
 
     let mut dependencies: Vec<String> = dependencies
         .iter()
-        .map(|path| make_escape_path(path.to_string_lossy().as_ref()))
+        .map(|path| make_escape_path(stable_path_string(path).as_str()))
         .collect();
     dependencies.sort();
     dependencies.dedup();
@@ -137,4 +138,34 @@ pub fn render_dependencies(
         }
         body
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::{render_dependencies, OutputFormat};
+
+    #[test]
+    fn render_dependencies_normalizes_windows_style_paths() {
+        let body = render_dependencies(
+            OutputFormat::Text,
+            &[
+                String::from(r"\\?\C:\build\main.lst"),
+                String::from(r"\\?\UNC\server\share\main.hex"),
+            ],
+            &[
+                PathBuf::from(r"\\?\C:\src\main.asm"),
+                PathBuf::from(r"\\server\share\dep.asm"),
+            ],
+            false,
+        )
+        .expect("dependencies should render");
+
+        assert!(body.contains("C:/build/main.lst"), "body:\n{body}");
+        assert!(body.contains("//server/share/main.hex"), "body:\n{body}");
+        assert!(body.contains("C:/src/main.asm"), "body:\n{body}");
+        assert!(body.contains("//server/share/dep.asm"), "body:\n{body}");
+        assert!(!body.contains('\\'), "body:\n{body}");
+    }
 }

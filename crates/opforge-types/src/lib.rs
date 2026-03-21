@@ -10,6 +10,7 @@ pub mod hierarchy;
 pub mod image;
 pub mod line_ast;
 pub mod lockstep;
+pub mod path_display;
 pub mod processing;
 pub mod source_map;
 pub mod symbol;

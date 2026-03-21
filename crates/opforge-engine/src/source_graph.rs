@@ -11,6 +11,7 @@ use opcore::macro_processor::CompileTimeVisibility;
 use opcore::modules::{expr_to_ident, extract_module_block, UseDirectiveSpec};
 use opcore::parser::{Expr, LineAst, Parser};
 use opcore::tokenizer::ConditionalKind;
+use types::path_display::stable_path_string;
 use types::processing::ProcessingOutcome;
 use types::source_map::{SourceMap, SourceOrigin};
 use types::symbol::SymbolVisibility;
@@ -623,13 +624,13 @@ pub fn load_module_graph_with_provider(
     let mut combined = Vec::new();
     let mut origins = Vec::new();
     for (module_path, dep_lines) in expanded_deps {
-        let file_name = module_path.to_string_lossy().to_string();
+        let file_name = stable_path_string(&module_path);
         for (idx, line) in dep_lines.iter().enumerate() {
             combined.push(line.clone());
             origins.push(SourceOrigin::new(Some(file_name.clone()), idx as u32 + 1));
         }
     }
-    let root_file = root_path.to_string_lossy().to_string();
+    let root_file = stable_path_string(root_path);
     for (idx, line) in expanded_root.iter().enumerate() {
         combined.push(line.clone());
         origins.push(SourceOrigin::new(Some(root_file.clone()), idx as u32 + 1));

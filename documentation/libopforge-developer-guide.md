@@ -2,7 +2,13 @@
 
 This guide is for developers who want to embed opForge as a library, build new tools on top of it, or integrate it into an existing build/editor/runtime environment.
 
-It documents the stable libopforge host surface in this branch/worktree as of `v0.9.6`.
+It documents the current published `libopforge` host surface in this
+branch/worktree as of `v0.9.6`.
+
+> Status note: `libopforge` `v0.9.6` is a published pre-1.0 preview API. It is
+> the recommended current integration path, but names, signatures, module
+> boundaries, defaults, and behavior may still change across future `0.x`
+> releases.
 
 ## 1. Integration map
 
@@ -10,14 +16,14 @@ Common integration starting points:
 
 | Use case | Start with | Why |
 |---|---|---|
-| Rust CLI, build tool, GUI, server | `libopforge::asm` | This is the supported high-level embedding surface |
+| Rust CLI, build tool, GUI, server | `libopforge::asm` | This is the recommended high-level embedding surface today |
 | In-memory editor, browser-like host, tests | `libopforge::asm` + `libopforge::io` | Swap filesystem I/O for memory-backed providers/sinks |
 | Background validation or repeated builds | `AssemblerSession::builder(...)`, `prepare()`, `check()` | These separate ownership, preparation, and execution cleanly while keeping the host entry path builder-first |
 | Syntax-aware editor features | `libopforge::opcore`, `libopforge::processing`, `libopforge::asm::opasm` | These expose tokenization, expression parsing, line routing, and statement processing |
 | CPU discovery or support UI | `libopforge::registry` | Introspect builtin CPUs/families/dialects without touching internals |
-| Formatter hosts | `libopforge::formatter` | Access the stable formatter surface without depending on lower-level crates |
+| Formatter hosts | `libopforge::formatter` | Access the current formatter surface without depending on lower-level crates |
 | C or C++ host integration | `crates/opforge-ffi` | Thin ABI layer over the same library/session model |
-| New CPU/family/dialect implementations | direct workspace crates (`registry`, `families`, `vm`) | This is advanced extension work, not the normal stable embedding path |
+| New CPU/family/dialect implementations | direct workspace crates (`registry`, `families`, `vm`) | This is advanced extension work, not the normal preview embedding path |
 
 External Rust consumers should depend on `libopforge` and stay inside its module tree unless they are intentionally extending opForge itself.
 
@@ -25,8 +31,8 @@ External Rust consumers should depend on `libopforge` and stay inside its module
 
 The workspace is deliberately layered.
 
-- `crates/opforge-lib` (package name `libopforge`) is the published facade crate. It defines the supported module layout and is the crate downstream Rust code should import.
-- the facade remains curated and host-facing. It defines the stable module groups, config types, session types, and high-level helpers directly from the crate-owned layout.
+- `crates/opforge-lib` (package name `libopforge`) is the published facade crate. It defines the current module layout and is the crate downstream Rust code should import for the pre-1.0 host surface.
+- the facade remains curated and host-facing. It defines the current module groups, config types, session types, and high-level helpers directly from the crate-owned layout.
 - `crates/opforge-engine` owns orchestration: source loading, preprocessing, module graph expansion, registry bootstrap, output routing, runtime model loading, and lockstep coordination.
 - `crates/opforge-core` (`opcore`) owns non-assembler language semantics such as tokenization, expressions, module-item handling, macro processing, and scopes.
 - `crates/opforge-asm` owns assembler-specific behavior: statement parsing, evaluation, encoding, listings, output payloads, and assembler diagnostics/reporting.
@@ -39,9 +45,9 @@ The practical mental model is:
 1. `opcore` decides whether a line is generic language structure or must be handed to another processor.
 2. `asm` handles assembler statements and output-oriented execution.
 3. `engine` ties source expansion, registry lookup, execution mode, and output sinks together.
-4. `libopforge` presents the supported host boundary over those pieces.
+4. `libopforge` presents the current documented host boundary over those pieces.
 
-## 3. Stable API boundary
+## 3. Current published API boundary
 
 The root crate intentionally exposes a module-first API:
 
@@ -57,9 +63,9 @@ The root crate intentionally exposes a module-first API:
 
 Important boundary notes:
 
-- The normal supported Rust embedding path is `libopforge::asm::Assembler` or `libopforge::asm::AssemblerSession`.
+- The normal recommended Rust embedding path is `libopforge::asm::Assembler` or `libopforge::asm::AssemblerSession`.
 - The `libopforge` package in `crates/opforge-lib` is the public facade. External consumers should target that crate rather than the lower-level workspace crates directly.
-- The registry module in the stable facade is primarily for lookup and introspection. Full custom family/CPU registration is still an advanced lower-level workflow in the workspace crates.
+- The registry module in the preview facade is primarily for lookup and introspection. Full custom family/CPU registration is still an advanced lower-level workflow in the workspace crates.
 
 ### 3.1 Concern inventories
 
@@ -71,13 +77,16 @@ Each public module has a distinct ownership boundary.
 | `libopforge::asm::opasm` | CPU-aware statement tokenization, parsing, processing, and portable statement forms without full assembly | Full assembly orchestration, artifact emission, or registry discovery |
 | `libopforge::opcore` | Generic non-assembler language services: tokenization, expressions, module items, macros, preprocess, and `CoreError` | Assembler statement encoding, listings, or artifact output |
 | `libopforge::processing` | Processor-neutral routing, processing traces, neutral processor failures, and editor-style line dispatch | High-level assembler workflow packaging or generic language ownership |
-| `libopforge::diagnostics` | Stable assembler diagnostics, run reports, and assembler diagnostic taxonomy | Source loading, registry discovery, or execution-mode policy |
-| `libopforge::io` | Stable filesystem and memory-backed source and output adapters | Diagnostics taxonomy, CPU selection, or assembly semantics |
-| `libopforge::registry` | CPU, family, and capability lookup plus builtin registry introspection | Full custom extension authoring as a stable facade concern |
+| `libopforge::diagnostics` | Current assembler diagnostics, run reports, and assembler diagnostic taxonomy | Source loading, registry discovery, or execution-mode policy |
+| `libopforge::io` | Current filesystem and memory-backed source and output adapters | Diagnostics taxonomy, CPU selection, or assembly semantics |
+| `libopforge::registry` | CPU, family, and capability lookup plus builtin registry introspection | Full custom extension authoring as a preview-facade concern |
 | `libopforge::lockstep` | Execution-head selection, lockstep checkpoints, and parity reporting | Statement parsing, assembly workflow, or registry discovery |
-| `libopforge::formatter` | Stable formatter configuration, formatter runs, and formatter reports | Reclassifying assembler or opcore diagnostics |
+| `libopforge::formatter` | Current formatter configuration, formatter runs, and formatter reports | Reclassifying assembler or opcore diagnostics |
 
-CLI or host presentation may specialize wording more than lower API layers do. The stable library boundary preserves structured categories, codes, and ownership boundaries even when higher-level tools choose different user-facing phrasing.
+CLI or host presentation may specialize wording more than lower API layers do.
+The current library boundary preserves structured categories, codes, and
+ownership boundaries even when higher-level tools choose different user-facing
+phrasing.
 
 ## 4. Assembly lifecycle
 
@@ -95,11 +104,14 @@ All high-level assembly flows share the same stages:
 
 `output_base` is not cosmetic. It drives output naming when you use default outputs such as listing and hex files.
 
-In the stable Rust API, when `output_base` is omitted, the public `assemble()` and `prepare()` paths derive it from `root_path` by removing the source extension. If your host wants artifact names that differ from that path-derived default, set `output_base` explicitly.
+In the current Rust API, when `output_base` is omitted, the public `assemble()`
+and `prepare()` paths derive it from `root_path` by removing the source
+extension. If your host wants artifact names that differ from that
+path-derived default, set `output_base` explicitly.
 
 ### 4.2 Execution mode defaults
 
-The default execution mode in the stable config types is `ExecutionMode::Vm`.
+The default execution mode in the current config types is `ExecutionMode::Vm`.
 
 Use:
 
@@ -117,7 +129,11 @@ Detailed execution-mode and lockstep behavior is documented in `documentation/li
 
 Use `check()` when you want validation without output-side effects.
 
-In the stable API, `check()` explicitly normalizes the output configuration so it disables default outputs, labels, dependency output, binary specs, and output-file overrides before assembling. Internally that means forcing `no_outputs = true`, which makes `check()` the right background-validation call for editor tooling and CI-style validation.
+In the current API, `check()` explicitly normalizes the output configuration so
+it disables default outputs, labels, dependency output, binary specs, and
+output-file overrides before assembling. Internally that means forcing
+`no_outputs = true`, which makes `check()` the right background-validation call
+for editor tooling and CI-style validation.
 
 ### 4.4 `prepare()` versus one-shot execution
 
@@ -173,13 +189,16 @@ The in-memory recipe, including `MemoryOutputSink::bytes()` versus `text()`, is 
 
 ### 5.4 Reusing prepared state
 
-If your tool needs stable metadata before deciding whether to emit outputs, use a prepared session and treat that prepared boundary as the reusable handoff point for source-map, CPU, and dependency data.
+If your tool needs published metadata before deciding whether to emit outputs,
+use a prepared session and treat that prepared boundary as the reusable handoff
+point for source-map, CPU, and dependency data.
 
 Prepared-session examples are in `documentation/libopforge-embedding-cookbook.md`. Runtime-mode details for prepared flows are in `documentation/libopforge-execution-modes-and-lockstep-guide.md`.
 
 ## 6. Tooling-oriented lower-level APIs
 
-Not every tool needs full assembly. The stable facade also exposes lower-level services for syntax-aware tooling.
+Not every tool needs full assembly. The preview facade also exposes lower-level
+services for syntax-aware tooling.
 
 ### 6.1 `libopforge::opcore`
 
@@ -247,7 +266,8 @@ The diagnostic model is richer than just line + message. A `Diagnostic` can carr
 - help entries
 - fixits
 
-That makes the stable report boundary suitable for IDEs, CI annotation, and automated fixit flows.
+That makes the current report boundary suitable for IDEs, CI annotation, and
+automated fixit flows.
 
 Prepared sessions additionally expose:
 
@@ -260,7 +280,9 @@ If your tool needs to present diagnostics against preprocessed sources but navig
 
 Use `libopforge::registry` when your tool needs to discover what the current build knows about CPUs or to validate user CPU selections before assembling.
 
-Contributor-oriented CPU, family, and dialect work below the stable facade is documented in `documentation/libopforge-cpu-family-extension-guide.md` and `documentation/libopforge-specification.md`.
+Contributor-oriented CPU, family, and dialect work below the current facade is
+documented in `documentation/libopforge-cpu-family-extension-guide.md` and
+`documentation/libopforge-specification.md`.
 
 Useful entrypoints:
 
@@ -277,11 +299,16 @@ This is appropriate for:
 - diagnostics that want to report known CPU aliases/families
 - capability/help UIs
 
-Important limit: the stable facade exposes registry consumption and inspection well, but it is not yet the polished high-level extension API for registering brand new families from downstream code. For that work, go directly to the workspace registry/family crates and treat it as advanced platform development.
+Important limit: the preview facade exposes registry consumption and inspection
+well, but it is not yet the polished high-level extension API for registering
+brand new families from downstream code. For that work, go directly to the
+workspace registry/family crates and treat it as advanced platform
+development.
 
 ## 9. FFI and non-Rust hosts
 
-`crates/opforge-ffi` mirrors the stable Rust API shape rather than inventing a separate orchestration model.
+`crates/opforge-ffi` mirrors the current Rust API shape rather than inventing a
+separate orchestration model.
 
 The FFI surface is split into:
 
@@ -301,7 +328,9 @@ If you are shipping the shared library for a host integration, build it with the
 
 Do not distribute the FFI library produced indirectly by a workspace-wide `cargo build --release`; the workspace release profile is `panic = "abort"`, while the report-returning FFI entrypoints are designed to return structured internal-error reports across panic boundaries. The plain convenience constructor `opforge_asm_session_create_with_request(...)` is intentionally a nullable-handle path and collapses internal panics to `NULL`.
 
-The FFI implementation is a useful reference even for Rust developers because it shows how to map the owned/session model into long-lived handles and callback-driven I/O without bypassing the stable library path.
+The FFI implementation is a useful reference even for Rust developers because
+it shows how to map the owned/session model into long-lived handles and
+callback-driven I/O without bypassing the documented library path.
 
 ## 10. Existing tool integrations in this repo
 
@@ -310,9 +339,9 @@ These are the best reference points when you want to see how the library is used
 - `documentation/libopforge-developer-guide-examples/libopforge_borrowed.rs`: minimal borrowed builder flow using `Assembler` plus memory-backed host adapters
 - `documentation/libopforge-developer-guide-examples/libopforge_in_memory.rs`: minimal in-memory embedding example using `AssemblerSession`, `MemorySourceProvider`, and `MemoryOutputSink`
 - `documentation/libopforge-developer-guide-examples/libopforge_filesystem.rs`: minimal filesystem-backed example using the same owned/session surface
-- `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`: prepared-session example that inspects stable metadata before final emission
+- `documentation/libopforge-developer-guide-examples/libopforge_prepared.rs`: prepared-session example that inspects current metadata before final emission
 - `documentation/libopforge-developer-guide-examples/libopforge_lockstep.rs`: lockstep execution example that consumes `LockstepReport` matches through the facade
-- `documentation/libopforge-developer-guide-examples/libopforge_workflow_error.rs`: stable workflow-error inspection without reaching into internal crates
+- `documentation/libopforge-developer-guide-examples/libopforge_workflow_error.rs`: current workflow-error inspection without reaching into internal crates
 - `documentation/libopforge-developer-guide-examples/libopforge_opcore.rs`: expression parsing and module-item handling through `libopforge::opcore`
 - `documentation/libopforge-developer-guide-examples/libopforge_registry.rs`: CPU capability discovery and target resolution via `libopforge::registry`
 - `documentation/libopforge-developer-guide-examples/libopforge_formatter.rs`: source formatting through `libopforge::formatter`
@@ -340,5 +369,5 @@ The main topics covered by those documents are:
 - `Embedding Cookbook`: borrowed, owned, in-memory, prepared-session, and FFI-oriented embedding recipes
 - `Execution Modes and Lockstep Guide`: `Vm`, `Rust`, and `Lockstep` mode selection and continuation-head behavior
 - `Diagnostics and Fixits Guide`: diagnostics, fixits, source maps, and report consumption
-- `CPU/Family Extension Guide`: contributor-facing CPU, family, and dialect extension work below the stable facade
+- `CPU/Family Extension Guide`: contributor-facing CPU, family, and dialect extension work below the preview facade
 - `libopforge-specification.md`: architecture boundaries and lower-level ownership rules

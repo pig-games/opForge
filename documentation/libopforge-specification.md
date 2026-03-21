@@ -8,6 +8,11 @@
 
 > **Execution guidance:** The earlier handoff documents are historical records of completed slices. Current follow-on public API work is tracked through the maintained `libopforge` developer guide and the active branch-local workflow artifacts, together with `/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/AGENTS.md`.
 
+> **Status note:** The currently published `libopforge` and `opforge-ffi`
+> surfaces are pre-1.0 preview interfaces. References below to an eventual
+> stable API describe the target state, not a claim that `v0.9.6` has already
+> reached it.
+
 ---
 
 ## 1. Executive Summary
@@ -103,7 +108,7 @@ libopforge/
 │   ├── registry/     (package name `registry`, directory still `opforge-registry/`)
 │   ├── families/     (package name `families`, directory still `opforge-families/`)
 │   ├── engine/       (package name `engine`, directory still `opforge-engine/`)
-│   ├── api/          (transitional internal facade; the stable public contract is the `libopforge` module layout)
+│   ├── api/          (transitional internal facade; the current published contract is the `libopforge` module layout)
 │   ├── formatter/    (directory still `opforge-formatter/`)
 │   ├── lsp/          (directory still `opforge-lsp/`)
 │   ├── cli/          (directory still `opforge-cli/`)
@@ -121,7 +126,7 @@ In particular:
 - current `opcore` is still a mixed language-plus-assembler front end in some areas,
 - current `vm` still contains assembler-facing concerns,
 - current `registry` should still be interpreted as the assembler registry layer,
-- current root crate is now the curated stable public facade, not the main implementation owner.
+- current root crate is now the curated published preview facade, not the main implementation owner.
 
 ---
 
@@ -936,10 +941,10 @@ The parser may remain shared temporarily, but the spec target is semantic separa
 
 The initial stable API can remain assembler-first, but it should be shaped so that a future generic processing API can sit beside or above it.
 
-### 9.1 Current stable Rust embedding boundary
+### 9.1 Current published preview Rust embedding boundary
 
-The current stable Rust embedding boundary is assembler-first and runs through
-the root `libopforge` facade and its stable module map.
+The current published preview Rust embedding boundary is assembler-first and
+runs through the root `libopforge` facade and its current module map.
 
 What is implemented today:
 
@@ -949,24 +954,26 @@ What is implemented today:
   adapters are both supported,
 - execution mode selection (`Rust`, `Vm`, `Lockstep`) is part of the public
   host surface,
-- formatter access and capability reporting now live under stable facade
+- formatter access and capability reporting now live under the published facade
   modules rather than a separate overflow namespace.
 
-This surface is functional, supported, and documented as the stable
-module-partitioned host API for the current branch.
+This surface is functional, published, and documented as the current
+module-partitioned pre-1.0 host API for the current branch. It should not yet
+be treated as a defended stable contract.
 
 ### 9.2 Near-term API redesign direction
 
-The current stable Rust layout is:
+The current preview Rust layout is:
 
 - `libopforge::asm` is the high-level assembler-oriented API,
 - `libopforge::asm::opasm` is the lower-level assembler processor API,
 - `libopforge::opcore` is the sibling lower-level non-assembler processor API,
-- `libopforge::formatter` is the stable formatter API,
+- `libopforge::formatter` is the current formatter API,
 - `Assembler` is implemented on top of `engine`, `opasm`, `opcore`, and shared
-  stable cross-cutting modules such as diagnostics, I/O, registry, processing,
+  current cross-cutting modules such as diagnostics, I/O, registry, processing,
   and lockstep,
-- higher-level APIs dog-food lower-level stable APIs rather than bypassing them
+- higher-level APIs dog-food lower-level published APIs rather than bypassing
+  them
   with private parallel entrypoints.
 
 ### 9.3 Implemented assembler-first API base shape
@@ -1015,9 +1022,9 @@ let report = AssemblerSession::builder("examples/helloworld.asm")
 
 The current libopforge API Aesthetics Improvement Plan is therefore not about
 inventing the first public API. It is about refining the implemented base shape
-into a cleaner and more strongly partitioned stable surface.
+into a cleaner and more strongly partitioned public surface.
 
-The supported root-facade import style is module-first:
+The recommended root-facade import style is module-first:
 
 - `libopforge::asm::Assembler`
 - `libopforge::asm::AssemblerConfig`
@@ -1028,21 +1035,23 @@ The root crate should not be treated as a flat re-export bag for these items.
 
 ### 9.4 API rule
 
-These APIs must be implemented above the semantic split. They must not directly expose root-crate internals or assembler-only registry details as part of the stable boundary.
+These APIs must be implemented above the semantic split. They must not directly
+expose root-crate internals or assembler-only registry details as part of the
+published preview boundary.
 
-### 9.5 Current stable facade policy
+### 9.5 Current preview facade policy
 
-The current stable Rust embedding boundary is assembler-first and runs through
-the root `libopforge` crate and its stable module layout.
+The current published preview Rust embedding boundary is assembler-first and
+runs through the root `libopforge` crate and its current module layout.
 
 This branch intentionally applies the libopforge API-aesthetics rename set as a
 source-breaking cleanup. The old public names are not kept as compatibility
-aliases in the stable facade.
+aliases in the preview facade.
 
 - `libopforge` is a curated facade, not an escape hatch for all workspace crates.
-- Types and functions exposed through `libopforge::asm`, `libopforge::opcore`, `libopforge::diagnostics`, `libopforge::io`, `libopforge::processing`, `libopforge::registry`, `libopforge::lockstep`, and `libopforge::formatter` define the current stable Rust host surface.
+- Types and functions exposed through `libopforge::asm`, `libopforge::opcore`, `libopforge::diagnostics`, `libopforge::io`, `libopforge::processing`, `libopforge::registry`, `libopforge::lockstep`, and `libopforge::formatter` define the current published pre-1.0 Rust host surface.
 - Lower-level crates such as `asm`, `engine`, `vm`, `registry`, `families`, `formatter`, `lsp`, and `opcore` remain implementation crates or advanced dependencies, not part of the root facade contract.
-- Consumers that need those lower-level crates should depend on them explicitly and treat them as more transitional than the curated `libopforge` stable modules.
+- Consumers that need those lower-level crates should depend on them explicitly and treat them as more transitional than the curated `libopforge` preview modules.
 
 This resolves the first public-boundary choice for the current slice: the root
 crate remains assembler-oriented today rather than introducing a generic
@@ -1074,7 +1083,8 @@ Current exported ABI groups:
 
 High-level FFI note:
 
-- the stable assembler-oriented FFI surface is `opforge_asm_request` plus the
+- the current assembler-oriented preview FFI surface is `opforge_asm_request`
+  plus the
   `opforge_asm_*_with_request(...)` entrypoints.
 - this branch intentionally renames the grouped request fields to
   `output_base` and `no_outputs`; the C ABI layout is preserved, but C/C++
@@ -1105,21 +1115,21 @@ Current request/result contract:
 - high-level `opforge_asm_*` reports now support rich `opforge_diag_*`
   enumeration for diagnostic code, file, related-span, help, and fix-it data
   in addition to the primary severity/message/span fields.
-- the preferred grouped high-level FFI request mirrors the stable Rust config
+- the preferred grouped high-level FFI request mirrors the current Rust config
   families explicitly through `opforge_asm_source_options`,
   `opforge_asm_execution_options`, `opforge_asm_output_options`,
   `opforge_asm_diagnostics_options`, and the top-level
   `opforge_asm_request`.
-- `opforge_asm_execution_options` includes the stable Rust request-scoped
+- `opforge_asm_execution_options` includes the current Rust request-scoped
   execution override slice: `cpu_override`, `max_loop_iterations`, and
   `opasm_package_path`.
-- `opforge_asm_output_options` includes the stable Rust output override slice:
+- `opforge_asm_output_options` includes the current Rust output override slice:
   `go_addr`, textual `bin_specs`, `fill_byte` with `fill_byte_set`, and
   `no_outputs`, in addition to the existing default-output and metadata
   path controls.
 - grouped FFI `label_output_format = OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT` now
-  means "use the stable Rust facade default" rather than the renderer's
-  separate `LabelOutputFormat::Default` variant; today that stable default is
+  means "use the current Rust facade default" rather than the renderer's
+  separate `LabelOutputFormat::Default` variant; today that current default is
   VICE-style text labels.
 
 Header and review policy:
@@ -1131,7 +1141,7 @@ Header and review policy:
 
 Rust facade policy:
 
-- `libopforge` is the stable public Rust facade.
+- `libopforge` is the published pre-1.0 public Rust facade.
 - Advanced implementation crates remain explicit workspace dependencies rather than being re-exported through an overflow namespace in `libopforge`.
 
 Current validation strategy:
@@ -1224,13 +1234,13 @@ Exact names may change, but the semantic split should not.
 
 - add source/output traits,
 - move session orchestration into `engine`,
-- expose public API through the stable `libopforge` module layout.
+- expose public API through the current `libopforge` module layout.
 
 ### Phase 7 — Thin hosts
 
 - rewire CLI to `libopforge`,
 - rewire LSP to library-first paths,
-- add FFI on top of stable session boundaries.
+- add FFI on top of current session boundaries.
 
 ### Phase 8 — Future processing platform preparation
 

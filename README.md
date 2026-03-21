@@ -7,7 +7,7 @@ It currently ships builtin support for:
 - MOS 6502 family processors: 6502, 65C02, 65816, and 45GS02
 - Motorola 6800 family processors: 6809 and HD6309
 
-It is partly inspired by [64tass](https://tass64.sourceforge.net) in terms of feature scope and notation style.
+It was originally inspired by [64tass](https://tass64.sourceforge.net) in terms of feature scope and notation style.
 
 ## Documentation
 

@@ -20,6 +20,12 @@
     .byte '.src', .srcnum
 .endstatement
 
+.statement addi.l "#"[{long:dst}] "," char:src[{byte:srcnum}]
+    .byte 'l'
+    .long .dst
+    .byte '.src', .srcnum
+.endstatement
+
 start
     LOAD 7
     LOAD $ff
@@ -28,3 +34,6 @@ start
     lda [$05],y
     move.b d0,d2
     move.l d0, d2
+    addi.l #$12345678, d0
+label = $12345678 >> 2
+    addi.l #label, d0

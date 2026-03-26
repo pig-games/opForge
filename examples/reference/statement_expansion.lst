@@ -1,4 +1,4 @@
-opForge Assembler v0.9.5
+opForge Assembler v0.9.6 | full-runtime | bundled
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Demonstrate .statement expansion.
@@ -7,31 +7,41 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                4  
 ----                                5  
 ----                                6  
-----                                7  start
-0000    07                          8      .byte 7
-0001    FF                          9      .byte $ff
-0002    0A                         10      .byte %1010
-0003    FF                         11      .byte 0ffh
-0004    05                         12      .byte $05
-0005    62                         13      .byte 'b'
-0006    64 00                      14      .byte 'd', 0
-0008    64 02                      15      .byte 'd', 2
-000A    6C                         16      .byte 'l'
-000B    64 00                      17      .byte 'd', 0
-000D    64 02                      18      .byte 'd', 2
+----                                7  
+----                                8  start
+0000    07                          9      .byte 7
+0001    FF                         10      .byte $ff
+0002    0A                         11      .byte %1010
+0003    FF                         12      .byte 0ffh
+0004    05                         13      .byte $05
+0005    62                         14      .byte 'b'
+0006    64 00                      15      .byte 'd', 0
+0008    64 02                      16      .byte 'd', 2
+000A    6C                         17      .byte 'l'
+000B    64 00                      18      .byte 'd', 0
+000D    64 02                      19      .byte 'd', 2
+000F    6C                         20      .byte 'l'
+0010    78 56 34 12                21      .long $12345678
+0014    64 00                      22      .byte 'd', 0
+----    EQU 048D159E               23  label = $12345678 >> 2
+0016    6C                         24      .byte 'l'
+0017    9E 15 8D 04                25      .long label
+001B    64 00                      26      .byte 'd', 0
 
-Lines: 18  Errors: 0  Warnings: 0
+Lines: 26  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
+label            048D159E  prv  lbl 
 start            0000      prv  lbl 
 
-Total memory is 15 bytes
+Total memory is 29 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0000    07 FF 0A FF 05 62 64 00 64 02 6C 64 00 64 02
+0000    07 FF 0A FF 05 62 64 00 64 02 6C 64 00 64 02 6C
+0010    78 56 34 12 64 00 6C 9E 15 8D 04 64 00

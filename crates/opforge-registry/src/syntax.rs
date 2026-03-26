@@ -455,7 +455,7 @@ fn prev_span_at(tokens: &[Token], cursor: usize, fallback: Span) -> Span {
 fn is_valid_capture_type_name(type_name: &str) -> bool {
     matches!(
         type_name.to_ascii_lowercase().as_str(),
-        "byte" | "word" | "char" | "str"
+        "byte" | "word" | "long" | "char" | "str"
     )
 }
 
@@ -668,6 +668,27 @@ mod tests {
 
         assert_eq!(def.keyword, "LDA");
         assert_eq!(def.signature.atoms.len(), 3);
+    }
+
+    #[test]
+    fn parse_statement_definition_from_line_accepts_long_capture_type() {
+        let def = parse_statement_definition_from_line(".statement ADDI \"#\" [{ long:value }]", 1)
+            .expect("statement definition with long capture should parse");
+
+        assert_eq!(def.keyword, "ADDI");
+        assert_eq!(def.signature.atoms.len(), 2);
+        assert!(matches!(
+            def.signature.atoms[1],
+            SignatureAtom::Boundary { .. }
+        ));
+    }
+
+    #[test]
+    fn parse_statement_definition_from_line_rejects_unknown_capture_type() {
+        let err = parse_statement_definition_from_line(".statement MOVE [{ quad:value }]", 1)
+            .expect_err("unknown capture type should fail");
+
+        assert_eq!(err.message, "Unknown statement capture type: quad");
     }
 
     #[test]

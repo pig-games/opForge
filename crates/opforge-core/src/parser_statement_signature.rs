@@ -69,6 +69,10 @@ fn value_fits_word(value: i64) -> bool {
     (-32768..=0xffff).contains(&value)
 }
 
+fn value_fits_long(value: i64) -> bool {
+    (-2147483648..=0xffff_ffff).contains(&value)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SignatureScore {
     literal_atoms: usize,
@@ -189,6 +193,7 @@ fn token_matches_capture_type(type_name: &str, token: &Token) -> bool {
     match type_name.to_ascii_lowercase().as_str() {
         "byte" => token_matches_byte(token),
         "word" => token_matches_word(token),
+        "long" => token_matches_long(token),
         "char" => token_matches_char(token),
         "str" => token_matches_str(token),
         _ => matches_any_capture_token(token),
@@ -198,7 +203,7 @@ fn token_matches_capture_type(type_name: &str, token: &Token) -> bool {
 pub(super) fn is_valid_capture_type(type_name: &str) -> bool {
     matches!(
         type_name.to_ascii_lowercase().as_str(),
-        "byte" | "word" | "char" | "str"
+        "byte" | "word" | "long" | "char" | "str"
     )
 }
 
@@ -226,6 +231,14 @@ fn token_matches_word(token: &Token) -> bool {
         TokenKind::Number(lit) => parse_number(&lit.text).is_some_and(value_fits_word),
         TokenKind::Identifier(_) | TokenKind::Register(_) => true,
         TokenKind::String(lit) => lit.bytes.len() == 1 || lit.bytes.len() == 2,
+        _ => false,
+    }
+}
+
+fn token_matches_long(token: &Token) -> bool {
+    match &token.kind {
+        TokenKind::Number(lit) => parse_number(&lit.text).is_some_and(value_fits_long),
+        TokenKind::Identifier(_) | TokenKind::Register(_) => true,
         _ => false,
     }
 }

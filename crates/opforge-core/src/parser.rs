@@ -1530,7 +1530,7 @@ mod tests {
         match_statement_signature, select_statement_signature, AssignOp, BinaryOp, ConditionalKind,
         Expr, LineAst, Parser, SignatureAtom,
     };
-    use crate::tokenizer::{Span, Tokenizer};
+    use crate::tokenizer::{NumberLiteral, Span, Token, TokenKind, Tokenizer};
     use types::line_ast::{ConditionalAst, PackAst, PlaceAst, UseAst};
 
     fn tokenize_line(line: &str) -> Vec<crate::tokenizer::Token> {
@@ -1996,6 +1996,53 @@ mod tests {
 
         let str_tokens = tokenize_line("\"AB\"");
         assert!(match_statement_signature(&signature, &str_tokens).is_some());
+    }
+
+    #[test]
+    fn statement_signature_long_capture_rejects_out_of_range_and_strings() {
+        let mut parser = Parser::from_line(".statement foo long:a", 1).unwrap();
+        let signature = match parser.parse_compat_mixed_line().unwrap() {
+            LineAst::StatementDef(def) => def.signature,
+            _ => panic!("Expected statement definition"),
+        };
+
+        let ok_tokens = tokenize_line("4294967295");
+        assert!(match_statement_signature(&signature, &ok_tokens).is_some());
+
+        let bad_tokens = tokenize_line("4294967296");
+        assert!(match_statement_signature(&signature, &bad_tokens).is_none());
+
+        let ok_negative_tokens = vec![Token {
+            kind: TokenKind::Number(NumberLiteral {
+                text: "-2147483648".to_string(),
+                base: 10,
+            }),
+            span: Span {
+                line: 1,
+                col_start: 1,
+                col_end: 11,
+            },
+        }];
+        assert!(match_statement_signature(&signature, &ok_negative_tokens).is_some());
+
+        let bad_negative_tokens = vec![Token {
+            kind: TokenKind::Number(NumberLiteral {
+                text: "-2147483649".to_string(),
+                base: 10,
+            }),
+            span: Span {
+                line: 1,
+                col_start: 1,
+                col_end: 11,
+            },
+        }];
+        assert!(match_statement_signature(&signature, &bad_negative_tokens).is_none());
+
+        let label_tokens = tokenize_line("LABEL");
+        assert!(match_statement_signature(&signature, &label_tokens).is_some());
+
+        let str_tokens = tokenize_line("\"ABCD\"");
+        assert!(match_statement_signature(&signature, &str_tokens).is_none());
     }
 
     #[test]

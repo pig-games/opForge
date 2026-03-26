@@ -723,9 +723,13 @@ Rules:
 - Boundary spans `[{ ... }]` enforce adjacency rules within the span.
 
 Capture types (built-in):
-- `byte`, `word`, `char`, `str`
-- `byte`/`word` enforce numeric literal range checks.
-- Identifiers/registers also match capture types (resolved later by expression handling).
+- `byte`, `word`, `long`, `char`, `str`
+- `byte` matches a single token that is either a numeric literal in `-128..=255`, an identifier/register, or a 1-byte quoted string.
+- `word` matches a single token that is either a numeric literal in `-32768..=65535`, an identifier/register, or a 1-2 byte quoted string.
+- `long` matches a single token that is either a numeric literal in `-2147483648..=4294967295` or an identifier/register. Quoted strings do not match `long`.
+- Capture matching is single-token only. Multi-token expressions such as `label+4` or `1<<24` do not match `long` captures.
+
+Reference example: [examples/statement_expansion.asm](../examples/statement_expansion.asm)
 
 Expansion model:
 - `.statement` definitions are expanded by the macro processor **before parsing**.

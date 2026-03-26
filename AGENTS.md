@@ -2,35 +2,33 @@
 
 This file provides guidance for AI coding agents working in this worktree.
 
-This branch-local copy exists so agent instructions are easy to find and evolve
-inside the `libopforge-lib` worktree. It should be treated as the short-term
-working version for this branch and later merged or reconciled back into the
-main repository `AGENTS.md`.
+This file defines the merged opForge workflow rules and custom-agent routing
+used in the main repository.
 
 ## Branch-local workflow notes
 
-In addition to the rules below, this worktree currently has:
+In addition to the rules below, this repository currently has:
 
-- a plan execution gate in [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/plan-compliance-reviewer.md)
-- a workflow design proposal in [documentation/opforge-agent-workflow-proposal-v0_1.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/documentation/opforge-agent-workflow-proposal-v0_1.md)
+- a plan execution gate in [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-compliance-reviewer.md)
+- a workflow design proposal in [documentation/opforge-agent-workflow-proposal-v0_1.md](/Users/erik/Code/Retro/opForge/documentation/opforge-agent-workflow-proposal-v0_1.md)
 
-When plan-driven work is active in this branch, prefer using the local
-`agents/` definitions in this worktree rather than relying on external path
+When plan-driven work is active in this repository, prefer using the local
+`agents/` definitions and custom agents in this repo rather than relying on external path
 references.
 
 ## Agent skills
 
-This worktree includes branch-local workflow skills under `skills/`.
+This repository includes workflow skills under `skills/`.
 
-- Start here: [skills/README.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/README.md)
+- Start here: [skills/README.md](/Users/erik/Code/Retro/opForge/skills/README.md)
 - Workflow skills in this worktree:
-  - [skills/opforge-review-reporting/SKILL.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/opforge-review-reporting/SKILL.md)
-  - [skills/opforge-plan-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/opforge-plan-authoring/SKILL.md)
-  - [skills/opforge-spec-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/opforge-spec-authoring/SKILL.md)
-  - [skills/opforge-review-closure/SKILL.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/opforge-review-closure/SKILL.md)
+  - [skills/opforge-review-reporting/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-reporting/SKILL.md)
+  - [skills/opforge-plan-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-plan-authoring/SKILL.md)
+  - [skills/opforge-spec-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-spec-authoring/SKILL.md)
+  - [skills/opforge-review-closure/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-closure/SKILL.md)
 
 These workflow skills cover review/reporting/planning/spec/closure work for this
-branch.
+repository.
 
 Implementation-focused opForge skills may still exist outside this worktree in
 the main repository or in the active Codex session environment. Use them when
@@ -47,10 +45,10 @@ The canonical artifact types for this worktree are:
 
 Preferred templates:
 
-- [templates/spec-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/spec-template.md)
-- [templates/plan-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/plan-template.md)
-- [templates/review-report-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/review-report-template.md)
-- [templates/finding-closure-report-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/finding-closure-report-template.md)
+- [templates/spec-template.md](/Users/erik/Code/Retro/opForge/templates/spec-template.md)
+- [templates/plan-template.md](/Users/erik/Code/Retro/opForge/templates/plan-template.md)
+- [templates/review-report-template.md](/Users/erik/Code/Retro/opForge/templates/review-report-template.md)
+- [templates/finding-closure-report-template.md](/Users/erik/Code/Retro/opForge/templates/finding-closure-report-template.md)
 
 Plan-specific rule:
 
@@ -59,42 +57,42 @@ Plan-specific rule:
 
 Helper scripts:
 
-- [scripts/workflow/new_artifact_from_template.sh](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/scripts/workflow/new_artifact_from_template.sh)
-- [scripts/workflow/check_plan_checkboxes.py](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/scripts/workflow/check_plan_checkboxes.py)
-- [scripts/workflow/check_review_report.py](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/scripts/workflow/check_review_report.py)
-- [scripts/workflow/run_review_workflow.sh](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/scripts/workflow/run_review_workflow.sh)
+- [scripts/workflow/new_artifact_from_template.sh](/Users/erik/Code/Retro/opForge/scripts/workflow/new_artifact_from_template.sh)
+- [scripts/workflow/check_plan_checkboxes.py](/Users/erik/Code/Retro/opForge/scripts/workflow/check_plan_checkboxes.py)
+- [scripts/workflow/check_review_report.py](/Users/erik/Code/Retro/opForge/scripts/workflow/check_review_report.py)
+- [scripts/workflow/run_review_workflow.sh](/Users/erik/Code/Retro/opForge/scripts/workflow/run_review_workflow.sh)
 
 ## Workflow routing rules
 
 Use the following routing rules by default:
 
 - for code review reports, use the review workflow:
-  - [skills/opforge-review-reporting/SKILL.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/opforge-review-reporting/SKILL.md)
+  - [skills/opforge-review-reporting/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-reporting/SKILL.md)
   - for multi-model code review, prefer the branch-local triple review stack:
-    - [.github/agents/review-triple-orchestrator.agent.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/.github/agents/review-triple-orchestrator.agent.md)
+    - [.github/agents/review-triple-orchestrator.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-triple-orchestrator.agent.md)
 - for implementation or remediation plans, use:
-  - [skills/opforge-plan-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/opforge-plan-authoring/SKILL.md)
+  - [skills/opforge-plan-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-plan-authoring/SKILL.md)
 - for new behavioral specs, use:
-  - [skills/opforge-spec-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/opforge-spec-authoring/SKILL.md)
+  - [skills/opforge-spec-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-spec-authoring/SKILL.md)
 - for review finding closure claims, use:
-  - [skills/opforge-review-closure/SKILL.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/skills/opforge-review-closure/SKILL.md)
+  - [skills/opforge-review-closure/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-closure/SKILL.md)
 
 ## Workflow gates
 
 Use the following branch-local gates:
 
 - spec quality gate:
-  - [agents/spec-quality-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/spec-quality-reviewer.md)
+  - [agents/spec-quality-reviewer.md](/Users/erik/Code/Retro/opForge/agents/spec-quality-reviewer.md)
 - review report quality gate:
-  - [agents/review-report-quality-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/review-report-quality-reviewer.md)
+  - [agents/review-report-quality-reviewer.md](/Users/erik/Code/Retro/opForge/agents/review-report-quality-reviewer.md)
 - plan quality gate:
-  - [agents/plan-quality-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/plan-quality-reviewer.md)
+  - [agents/plan-quality-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-quality-reviewer.md)
 - execution compliance gate:
-  - [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/plan-compliance-reviewer.md)
+  - [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-compliance-reviewer.md)
 - finding closure gate:
-  - [agents/finding-closure-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/finding-closure-reviewer.md)
+  - [agents/finding-closure-reviewer.md](/Users/erik/Code/Retro/opForge/agents/finding-closure-reviewer.md)
 - optional traceability gate for larger efforts:
-  - [agents/artifact-traceability-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/artifact-traceability-reviewer.md)
+  - [agents/artifact-traceability-reviewer.md](/Users/erik/Code/Retro/opForge/agents/artifact-traceability-reviewer.md)
 
 Rules:
 

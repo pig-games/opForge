@@ -19,7 +19,7 @@ Write specs that reduce implementation drift and support direct plan derivation.
 
 ## Required structure
 
-Use [templates/spec-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/spec-template.md).
+Use [templates/spec-template.md](/Users/erik/Code/Retro/opForge/templates/spec-template.md).
 
 ## Guardrails
 

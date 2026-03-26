@@ -32,12 +32,12 @@ Instead, the repository should provide those expectations directly through:
 The current repository already has useful building blocks:
 
 - a strong top-level [AGENTS.md](/Users/erik/Code/Retro/opForge/AGENTS.md),
-- a plan execution gate in [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/plan-compliance-reviewer.md),
+- a plan execution gate in [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-compliance-reviewer.md),
 - a multi-model code-review stack in
-  - [.github/agents/review-triple-orchestrator.agent.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/.github/agents/review-triple-orchestrator.agent.md),
-  - [.github/agents/review-correctness.agent.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/.github/agents/review-correctness.agent.md),
-  - [.github/agents/review-security.agent.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/.github/agents/review-security.agent.md),
-  - [.github/agents/review-tests-quality.agent.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/.github/agents/review-tests-quality.agent.md).
+  - [.github/agents/review-triple-orchestrator.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-triple-orchestrator.agent.md),
+  - [.github/agents/review-correctness.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-correctness.agent.md),
+  - [.github/agents/review-security.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-security.agent.md),
+  - [.github/agents/review-tests-quality.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-tests-quality.agent.md).
 
 The main missing pieces are:
 
@@ -263,7 +263,7 @@ The repository should expand `agents/` with narrow gates. Each gate should be sh
 
 ### Existing sub-agent to keep
 
-- [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/agents/plan-compliance-reviewer.md)
+- [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-compliance-reviewer.md)
 
 This should remain the execution-phase gate.
 

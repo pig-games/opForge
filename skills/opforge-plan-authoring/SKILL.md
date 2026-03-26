@@ -34,7 +34,7 @@ Valid plan modes:
 
 ## Required structure
 
-Use [templates/plan-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/plan-template.md).
+Use [templates/plan-template.md](/Users/erik/Code/Retro/opForge/templates/plan-template.md).
 
 For remediation plans, each work item must also list:
 

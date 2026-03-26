@@ -1,7 +1,6 @@
 # opForge Workflow Skills
 
-This directory contains the branch-local workflow skills for the
-`libopforge-lib` worktree.
+This directory contains the workflow skills for the merged opForge repository.
 
 Included skills:
 
@@ -12,5 +11,5 @@ Included skills:
 
 These skills are for workflow artifacts and gates, not for opForge feature
 implementation itself. They are intended to make planning, review, and closure
-work consistent inside this worktree.
+work consistent inside this repository.
 

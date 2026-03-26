@@ -352,11 +352,193 @@ These are the best reference points when you want to see how the library is used
 
 One nuance worth calling out: some internal workspace crates still depend on the internal `api` crate or lower-level crates directly. For external consumers, the guide examples under `documentation/libopforge-developer-guide-examples/` are the best model because they use the intended public `libopforge` facade directly.
 
-## 11. Companion documents
+## 11. Developing platform-native assemblers
+
+This chapter is for contributors who want to make an 8-bit machine execute assembler behavior natively.
+
+For a native C64-, Mega65-, or Atari-class runtime, the question is:
+
+> What pieces of the current assembler pipeline must exist on the target machine so it can do the same work deterministically under tight memory and CPU limits?
+
+### 11.1 Native goal
+
+The native goal is not "port the whole Rust codebase."
+
+The native goal is to provide 8-bit implementations of the runtime stages that matter on the hot path:
+
+- load a runtime package and resolve the active pipeline
+- tokenize one source line
+- parse one source line into the expected envelope shape
+- parse and evaluate expressions under the same contract rules
+- resolve an instruction candidate and emit its bytes
+- report deterministic diagnostics through a stable native ABI
+
+If those pieces behave the same way as the current reference path, the native runtime can stand in for the Rust-hosted VM path.
+
+### 11.2 Treat Rust as the executable specification
+
+When doing native runtime work, the Rust implementation is most useful as an executable specification of:
+
+- opcode meanings
+- contract/version checks
+- budget enforcement
+- owner precedence (`dialect -> cpu -> family`)
+- expected input/output shapes
+- deterministic failure behavior
+
+The most important reference documents are:
+
+- `documentation/opforge-assembler-vm-path-guide-v0_1.md`
+- `documentation/vm-boundary-protocol-v1.md`
+- `documentation/vm-ultimate64-abi-contract-v1.md`
+
+The most important reference code is:
+
+- `crates/opforge-package/src/package.rs`
+  opcode tables and contract descriptors
+- `crates/opforge-vm/src/runtime_model_core.rs`
+  runtime-model loading, lookup, and budget/compatibility enforcement
+- `crates/opforge-vm/src/execution_model/parser_vm.rs`
+  parser VM execution semantics
+- `crates/opforge-vm/src/bytecode.rs`
+  encode-bytecode execution semantics
+- `crates/opforge-core/src/expr_vm.rs`
+  portable expression evaluator VM semantics
+
+The target-native implementation should aim to reproduce those semantics, not the Rust source structure.
+
+### 11.3 Native components you actually need
+
+For an 8-bit-native runtime, the practical component list is:
+
+- package loader
+  parse the package/container format, deep-copy the runtime data you need, and reject unsupported versions deterministically
+- pipeline selector
+  resolve the active `dialect -> cpu -> family` ownership chain for the current request
+- tokenizer VM executor
+  run `TKVM` programs against one line buffer with the same budgets and diagnostic behavior
+- parser VM executor
+  run `PRVM` envelopes over the produced token stream and return the expected line shape
+- expression parser/evaluator support
+  provide the expression parser/evaluator behavior required by the active contract path
+- encode bytecode executor
+  run the minimal bytecode emitter that produces final instruction bytes from resolved operand byte slices
+- native ABI surface
+  expose stable entrypoints for init/load/set-pipeline/tokenize/parse/encode/error retrieval
+- deterministic scratch-memory strategy
+  decide where token buffers, parser state, expression stacks, temporary operand bytes, and last-error storage live
+
+That is the native runtime core. Everything else is supporting integration work.
+
+### 11.4 Know which VM lives where
+
+The current runtime is not one VM. It is several small runtimes with different jobs.
+
+For native bring-up, this split matters:
+
+- Tokenizer VM (`TKVM`)
+  opcode definitions: `crates/opforge-package/src/package.rs`
+  reference executor: `crates/opforge-vm/src/runtime_model_core.rs`
+- Parser VM (`PRVM`)
+  opcode definitions: `crates/opforge-package/src/package.rs`
+  reference executor: `crates/opforge-vm/src/execution_model/parser_vm.rs`
+- Expression evaluator VM (`EXPR`)
+  opcode definitions and reference executor: `crates/opforge-core/src/expr_vm.rs`
+- Encode bytecode VM
+  reference executor: `crates/opforge-vm/src/bytecode.rs`
+- Native 6502 harness surface
+  reference ABI constants: `crates/opforge-vm/src/native6502_abi.rs`
+  reference harness behavior: `crates/opforge-vm/src/native6502.rs`
+
+Treat these as separate bring-up targets. On an 8-bit machine it is usually better to get one of them fully correct than to partially implement all of them at once.
+
+### 11.5 The current native reference surface
+
+The current reference for "how should a native runtime be called?" is the 6502-native harness.
+
+Start with:
+
+- `crates/opforge-vm/src/native6502_abi.rs`
+- `crates/opforge-vm/src/native6502.rs`
+- `documentation/vm-ultimate64-abi-contract-v1.md`
+
+Those define the current stable envelope concepts:
+
+- ABI magic and version
+- fixed control-block layout
+- entrypoint ordinals
+- request/response expectations
+- package load lifetime rules
+- deterministic diagnostic/error namespaces
+
+The key point is that a native runtime is expected to look like a compact service surface, not like a whole alternate build system.
+
+### 11.6 What the host still does today
+
+The current architecture still has Rust on the outside:
+
+- preprocessing and include expansion
+- module-graph loading
+- macro expansion
+- pass 1 / pass 2 orchestration
+- image/list/map/hex/bin/label output emission
+
+That host work is coordinated mainly in:
+
+- `crates/opforge-engine/src/lib.rs`
+- `crates/opforge-engine/src/source_graph.rs`
+- `crates/opforge-asm/src/engine.rs`
+- `crates/opforge-asm/src/line.rs`
+
+For native-runtime contributors, these files matter because they define:
+
+- when the native runtime is invoked
+- what inputs it receives
+- what outputs it must return
+- which work is still intentionally outside the native boundary
+
+So yes, Rust is still part of the current end-to-end architecture. But for native-runtime work, it should be read as the outer coordinator and behavioral reference, not as the implementation focus.
+
+### 11.7 Suggested bring-up order for an 8-bit implementation
+
+The safest order for native bring-up is usually:
+
+1. implement the control block / entrypoint ABI
+2. implement package loading and pipeline selection
+3. implement tokenizer VM execution
+4. implement parser VM execution
+5. implement encode-bytecode execution
+6. implement expression evaluation
+7. implement expression-parser compatibility behavior if required by the active rollout
+8. connect the full `load_package -> set_pipeline -> tokenize -> parse -> encode -> last_error` flow
+
+That order keeps the surface testable at each step and mirrors the current native smoke-flow expectations documented in `documentation/vm-ultimate64-abi-contract-v1.md`.
+
+### 11.8 Reading order for native implementation work
+
+If the real goal is "make an 8-bit machine do what the Rust assembler path is doing," read in this order:
+
+1. `documentation/opforge-assembler-vm-path-guide-v0_1.md`
+2. `documentation/vm-boundary-protocol-v1.md`
+3. `documentation/vm-ultimate64-abi-contract-v1.md`
+4. `crates/opforge-vm/src/native6502_abi.rs`
+5. `crates/opforge-vm/src/native6502.rs`
+6. `crates/opforge-package/src/package.rs`
+7. `crates/opforge-vm/src/runtime_model_core.rs`
+8. `crates/opforge-vm/src/execution_model/parser_vm.rs`
+9. `crates/opforge-vm/src/bytecode.rs`
+10. `crates/opforge-core/src/expr_vm.rs`
+11. `crates/opforge-asm/src/line.rs`
+12. `crates/opforge-engine/src/lib.rs`
+
+That sequence keeps the focus on native runtime semantics first, then shows how the current host wraps those semantics into the larger assembler workflow.
+
+## 12. Companion documents
 
 The companion documents for the current branch are:
 
 - `README.md`
+- `documentation/opforge-assembler-vm-path-guide-v0_1.md`
 - `documentation/libopforge-cpu-family-extension-guide.md`
 - `documentation/libopforge-diagnostics-and-fixits-guide.md`
 - `documentation/libopforge-embedding-cookbook.md`
@@ -366,6 +548,7 @@ The companion documents for the current branch are:
 
 The main topics covered by those documents are:
 
+- `Assembler VM Path Guide`: assembler file-to-artifact flow, Rust/VM handoff points, current `opcore` VM coverage, and per-VM opcode references
 - `Embedding Cookbook`: borrowed, owned, in-memory, prepared-session, and FFI-oriented embedding recipes
 - `Execution Modes and Lockstep Guide`: `Vm`, `Rust`, and `Lockstep` mode selection and continuation-head behavior
 - `Diagnostics and Fixits Guide`: diagnostics, fixits, source maps, and report consumption

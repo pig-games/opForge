@@ -21,7 +21,7 @@ and closure tracking.
 
 ## Required structure
 
-Use [templates/review-report-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/review-report-template.md).
+Use [templates/review-report-template.md](/Users/erik/Code/Retro/opForge/templates/review-report-template.md).
 
 Each finding must include:
 

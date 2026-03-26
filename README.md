@@ -19,6 +19,7 @@ Detailed documentation:
 - [Execution Modes and Lockstep Guide](documentation/libopforge-execution-modes-and-lockstep-guide.md): `Rust`, `Vm`, and `Lockstep` execution choices plus parity workflows
 - [Diagnostics and Fixits Guide](documentation/libopforge-diagnostics-and-fixits-guide.md): diagnostics, fixits, source maps, and report consumption
 - [VM Boundary & Protocol Specification](documentation/vm-boundary-protocol-v1.md): VM host/runtime protocol details
+- [Assembler VM Path Guide](documentation/opforge-assembler-vm-path-guide-v0_1.md): contributor-facing walkthrough of the assembler VM path from source file through tokenization, parsing, expression handling, encoding, and artifact emission
 - [`examples/`](examples): sample assembler programs and reference fixtures
 
 `libopforge` and `opforge-ffi` are published and usable, but they are still

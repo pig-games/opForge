@@ -58,7 +58,7 @@ Without that policy, version numbers risk becoming either:
 
 ## Invariants / Constraints
 
-- The active worktree [AGENTS.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/AGENTS.md)
+- The active worktree [AGENTS.md](/Users/erik/Code/Retro/opForge/AGENTS.md)
   rules remain binding for all plan, review, and release work.
 - Version changes must be driven by compatibility impact, not by implementation
   effort alone.
@@ -119,10 +119,10 @@ raw code churn.
 Examples:
 
 - `libopforge` owns the documented Rust host facade described in
-  [README.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/README.md),
-  [libopforge Developer Guide](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/documentation/libopforge-developer-guide.md),
+  [README.md](/Users/erik/Code/Retro/opForge/README.md),
+  [libopforge Developer Guide](/Users/erik/Code/Retro/opForge/documentation/libopforge-developer-guide.md),
   and
-  [libopforge Architecture Specification](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/documentation/libopforge-specification.md).
+  [libopforge Architecture Specification](/Users/erik/Code/Retro/opForge/documentation/libopforge-specification.md).
 - `opforge-ffi` owns the exported C ABI and header contract.
 - `opforge-cli` and `opforge-cli-core` own CLI flags, defaults, user-visible
   behavior, and output contract expectations described in the reference manual

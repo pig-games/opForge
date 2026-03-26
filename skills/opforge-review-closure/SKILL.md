@@ -26,7 +26,7 @@ difference between:
 
 ## Required structure
 
-Use [templates/finding-closure-report-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/finding-closure-report-template.md).
+Use [templates/finding-closure-report-template.md](/Users/erik/Code/Retro/opForge/templates/finding-closure-report-template.md).
 
 ## Guardrails
 

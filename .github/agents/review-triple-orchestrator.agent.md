@@ -19,8 +19,8 @@ the final GPT-5.4 adjudication and synthesis yourself.
 
 You must load:
 
-1. the active worktree [AGENTS.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/AGENTS.md)
-2. the branch-local review template [templates/review-report-template.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/templates/review-report-template.md)
+1. the active worktree [AGENTS.md](/Users/erik/Code/Retro/opForge/AGENTS.md)
+2. the branch-local review template [templates/review-report-template.md](/Users/erik/Code/Retro/opForge/templates/review-report-template.md)
 3. the review scope
 4. the target review artifact path ending in `.md`
 

@@ -55,7 +55,7 @@ That helps conscientious agents, but it does not reliably block drift.
 
 ## Invariants / Constraints
 
-- The active worktree [AGENTS.md](/Users/erik/Code/Retro/opForge/worktrees/libopforge-lib/AGENTS.md)
+- The active worktree [AGENTS.md](/Users/erik/Code/Retro/opForge/AGENTS.md)
   rules remain binding.
 - Enforcement should prefer small deterministic scripts over large opaque
   validators.

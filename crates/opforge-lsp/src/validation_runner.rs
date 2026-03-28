@@ -150,16 +150,6 @@ fn resolve_opforge_path_with_current_exe(config: &LspConfig, current_exe: Option
         return path.clone();
     }
 
-    for root in &config.roots {
-        let workspace_candidate = Path::new(root)
-            .join("target")
-            .join("debug")
-            .join(opforge_binary_name());
-        if workspace_candidate.is_file() {
-            return workspace_candidate.to_string_lossy().to_string();
-        }
-    }
-
     if let Some(current_exe) = current_exe {
         if let Some(current_exe_dir) = current_exe.parent() {
             let candidate = current_exe_dir.join(opforge_binary_name());
@@ -321,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_path_prefers_workspace_target_debug_binary() {
+    fn resolve_path_ignores_workspace_target_debug_binary_without_explicit_opt_in() {
         let temp_root =
             std::env::temp_dir().join(format!("lsp-workspace-test-{}", std::process::id()));
         let target_debug = temp_root.join("target").join("debug");
@@ -334,7 +324,7 @@ mod tests {
             ..LspConfig::default()
         };
         let resolved = resolve_opforge_path_with_current_exe(&config, None);
-        assert_eq!(resolved, workspace_opforge.to_string_lossy());
+        assert_eq!(resolved, "opforge");
 
         let _ = std::fs::remove_file(workspace_opforge);
         let _ = std::fs::remove_dir_all(temp_root);

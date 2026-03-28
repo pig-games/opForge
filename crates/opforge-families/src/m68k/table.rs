@@ -89,6 +89,14 @@ pub enum MnemonicKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum M68010MnemonicKind {
+    Bkpt,
+    Movec,
+    Moves,
+    Rtd,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConditionCode {
     True,
     False,
@@ -219,6 +227,14 @@ pub struct ParsedMnemonic {
     pub has_unknown_size_suffix: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParsedM68010Mnemonic {
+    pub kind: M68010MnemonicKind,
+    pub display_name: String,
+    pub size: Option<OperationSize>,
+    pub has_unknown_size_suffix: bool,
+}
+
 fn base_kind(base: &str) -> Option<MnemonicKind> {
     match base {
         "MOVE" => Some(MnemonicKind::Move),
@@ -342,21 +358,35 @@ fn base_kind(base: &str) -> Option<MnemonicKind> {
     }
 }
 
-pub fn parse_mnemonic(mnemonic: &str) -> Option<ParsedMnemonic> {
+fn m68010_base_kind(base: &str) -> Option<M68010MnemonicKind> {
+    match base {
+        "BKPT" => Some(M68010MnemonicKind::Bkpt),
+        "MOVEC" => Some(M68010MnemonicKind::Movec),
+        "MOVES" => Some(M68010MnemonicKind::Moves),
+        "RTD" => Some(M68010MnemonicKind::Rtd),
+        _ => None,
+    }
+}
+
+fn split_size_suffix(mnemonic: &str) -> (String, Option<OperationSize>, bool) {
     let upper = mnemonic.to_ascii_uppercase();
-    let (base, size, has_unknown_size_suffix) = match upper.rsplit_once('.') {
+    match upper.rsplit_once('.') {
         Some((base, suffix)) => match suffix {
-            "B" => (base, Some(OperationSize::Byte), false),
-            "W" => (base, Some(OperationSize::Word), false),
-            "L" => (base, Some(OperationSize::Long), false),
-            _ => (base, None, true),
+            "B" => (base.to_string(), Some(OperationSize::Byte), false),
+            "W" => (base.to_string(), Some(OperationSize::Word), false),
+            "L" => (base.to_string(), Some(OperationSize::Long), false),
+            _ => (base.to_string(), None, true),
         },
-        None => (upper.as_str(), None, false),
-    };
+        None => (upper, None, false),
+    }
+}
+
+pub fn parse_mnemonic(mnemonic: &str) -> Option<ParsedMnemonic> {
+    let (base, size, has_unknown_size_suffix) = split_size_suffix(mnemonic);
 
     Some(ParsedMnemonic {
-        kind: base_kind(base)?,
-        display_name: base.to_string(),
+        kind: base_kind(base.as_str())?,
+        display_name: base,
         size,
         has_unknown_size_suffix,
     })
@@ -364,6 +394,21 @@ pub fn parse_mnemonic(mnemonic: &str) -> Option<ParsedMnemonic> {
 
 pub fn has_mnemonic(mnemonic: &str) -> bool {
     parse_mnemonic(mnemonic).is_some()
+}
+
+pub fn parse_m68010_mnemonic(mnemonic: &str) -> Option<ParsedM68010Mnemonic> {
+    let (base, size, has_unknown_size_suffix) = split_size_suffix(mnemonic);
+
+    Some(ParsedM68010Mnemonic {
+        kind: m68010_base_kind(base.as_str())?,
+        display_name: base,
+        size,
+        has_unknown_size_suffix,
+    })
+}
+
+pub fn has_m68010_mnemonic(mnemonic: &str) -> bool {
+    parse_m68010_mnemonic(mnemonic).is_some()
 }
 
 #[cfg(test)]
@@ -434,5 +479,18 @@ mod tests {
         assert_eq!(branch.kind, MnemonicKind::Bcc(ConditionCode::Cs));
         assert_eq!(branch.size, Some(OperationSize::Word));
         assert_eq!(branch.display_name, "BLO");
+    }
+
+    #[test]
+    fn parse_m68010_mnemonic_tracks_size_suffix_state() {
+        assert!(has_m68010_mnemonic("BKPT"));
+        assert!(has_m68010_mnemonic("movec"));
+        assert!(has_m68010_mnemonic("MOVES.W"));
+        assert!(has_m68010_mnemonic("rtd"));
+
+        let moves_unknown = parse_m68010_mnemonic("MOVES.Q").expect("MOVES base should parse");
+        assert_eq!(moves_unknown.kind, M68010MnemonicKind::Moves);
+        assert_eq!(moves_unknown.size, None);
+        assert!(moves_unknown.has_unknown_size_suffix);
     }
 }

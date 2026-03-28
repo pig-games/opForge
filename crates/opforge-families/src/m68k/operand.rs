@@ -26,6 +26,17 @@ pub enum SpecialRegisterKind {
     Usp,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ControlRegisterKind {
+    Sfc,
+    Dfc,
+    Vbr,
+    Cacr,
+    Caar,
+    Msp,
+    Isp,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterListRegister {
     Data(u8),
@@ -44,6 +55,10 @@ pub enum FamilyOperand {
     },
     SpecialRegister {
         register: SpecialRegisterKind,
+        span: Span,
+    },
+    ControlRegister {
+        register: ControlRegisterKind,
         span: Span,
     },
     AddressIndirect {
@@ -105,6 +120,7 @@ impl FamilyOperand {
             Self::DataRegister { span, .. }
             | Self::AddressRegister { span, .. }
             | Self::SpecialRegister { span, .. }
+            | Self::ControlRegister { span, .. }
             | Self::AddressIndirect { span, .. }
             | Self::AddressPostincrement { span, .. }
             | Self::AddressPredecrement { span, .. }

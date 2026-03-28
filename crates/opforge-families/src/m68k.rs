@@ -12,7 +12,10 @@ mod table;
 
 pub use handler::M68KFamilyHandler;
 pub use operand::{FamilyOperand, Operand};
-pub use table::has_mnemonic;
+pub use table::{
+    has_m68010_mnemonic, has_mnemonic, parse_m68010_mnemonic, parse_mnemonic, M68010MnemonicKind,
+    MnemonicKind, OperationSize,
+};
 
 pub fn is_register(name: &str) -> bool {
     matches!(

@@ -3,7 +3,10 @@
 
 //! Motorola 68000 CPU handler implementation.
 
-use crate::families::m68k::{has_mnemonic, FamilyOperand, M68KFamilyHandler, Operand};
+use crate::families::m68k::operand::SpecialRegisterKind;
+use crate::families::m68k::{
+    has_mnemonic, parse_mnemonic, FamilyOperand, M68KFamilyHandler, MnemonicKind, Operand,
+};
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
 #[derive(Debug)]
@@ -43,10 +46,29 @@ impl CpuHandler for M68000CpuHandler {
 
     fn encode_instruction(
         &self,
-        _mnemonic: &str,
-        _operands: &[Operand],
+        mnemonic: &str,
+        operands: &[Operand],
         _ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
+        if matches!(
+            parse_mnemonic(mnemonic).map(|parsed| parsed.kind),
+            Some(MnemonicKind::Move)
+        ) && matches!(
+            operands,
+            [
+                Operand::SpecialRegister {
+                    register: SpecialRegisterKind::Ccr,
+                    ..
+                },
+                _
+            ]
+        ) {
+            return EncodeResult::error_with_span(
+                "MOVE from CCR is not supported on baseline 68000",
+                operands[0].span(),
+            );
+        }
+
         EncodeResult::NotFound
     }
 

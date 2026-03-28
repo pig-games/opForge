@@ -3135,6 +3135,46 @@ fn m68000_system_and_register_utility_slice_emits_expected_bytes() {
 }
 
 #[test]
+fn m68010_delta_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    BKPT #3"),
+        vec![0x48, 0x4B]
+    );
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    MOVE CCR,D0"),
+        vec![0x42, 0xC0]
+    );
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    MOVE CCR,($1234).W"),
+        vec![0x42, 0xF8, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    MOVEC SFC,D0"),
+        vec![0x4E, 0x7A, 0x00, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    MOVEC D1,DFC"),
+        vec![0x4E, 0x7B, 0x10, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    MOVEC VBR,A2"),
+        vec![0x4E, 0x7A, 0xA8, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    MOVES.W D0,(A0)"),
+        vec![0x0E, 0x50, 0x08, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    MOVES.L (A1),A2"),
+        vec![0x0E, 0x91, 0xA0, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68010_cpu_id, "    RTD #4"),
+        vec![0x4E, 0x74, 0x00, 0x04]
+    );
+}
+
+#[test]
 fn m68000_compare_and_operand_state_slice_emits_expected_bytes() {
     assert_eq!(
         assemble_bytes(m68000_cpu_id, "    CMPA.W ($1234).W,A0"),
@@ -3691,6 +3731,49 @@ fn m68000_branch_and_immediate_diagnostics_are_deterministic() {
         "unexpected diagnostics: {:?}",
         assembler.diagnostics
     );
+}
+
+#[test]
+fn m68010_delta_and_m68000_rejection_diagnostics_are_deterministic() {
+    for (line, expected) in [
+        ("    BKPT #3", "No instruction found for BKPT"),
+        ("    MOVEC SFC,D0", "No instruction found for MOVEC"),
+        ("    MOVES.W D0,(A0)", "No instruction found for MOVES"),
+        ("    RTD #4", "No instruction found for RTD"),
+    ] {
+        let (status, message) = assemble_line_status(m68000_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+        let message = message.expect("expected m68000 later-delta diagnostic");
+        assert!(
+            message.contains(expected),
+            "unexpected diagnostic for '{line}': {message}"
+        );
+    }
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVE CCR,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected baseline MOVE from CCR diagnostic");
+    assert!(message.contains("MOVE from CCR is not supported"));
+
+    let (status, message) = assemble_line_status(m68010_cpu_id, "    BKPT #8");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected BKPT range diagnostic");
+    assert!(message.contains("out of range (0-7)"));
+
+    let (status, message) = assemble_line_status(m68010_cpu_id, "    MOVEC CACR,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVEC control register diagnostic");
+    assert!(message.contains("unsupported MOVEC control register for m68010"));
+
+    let (status, message) = assemble_line_status(m68010_cpu_id, "    MOVES.W D0,4(PC)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVES addressing diagnostic");
+    assert!(message.contains("invalid destination effective address for MOVES.W"));
+
+    let (status, message) = assemble_line_status(m68010_cpu_id, "    RTD #$10000");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected RTD range diagnostic");
+    assert!(message.contains("16-bit signed range"));
 }
 
 #[test]

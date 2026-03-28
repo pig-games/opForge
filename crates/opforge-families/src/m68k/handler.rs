@@ -5,8 +5,8 @@
 
 use super::is_register;
 use super::operand::{
-    span_from_expr, span_from_exprs, AbsoluteSize, FamilyOperand, IndexSize, Operand,
-    RegisterListRegister, SpecialRegisterKind,
+    span_from_expr, span_from_exprs, AbsoluteSize, ControlRegisterKind, FamilyOperand, IndexSize,
+    Operand, RegisterListRegister, SpecialRegisterKind,
 };
 use super::table::{
     parse_mnemonic, BitMnemonic, ConditionCode, MnemonicKind, OperationSize, ShiftMnemonic,
@@ -24,7 +24,7 @@ pub struct M68KFamilyHandler;
 const MAX_M68000_ABSOLUTE_ADDRESS: i64 = 0x00FF_FFFF;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum EffectiveAddressKind {
+pub(crate) enum EffectiveAddressKind {
     DataRegister,
     AddressRegister,
     AddressIndirect,
@@ -39,10 +39,10 @@ enum EffectiveAddressKind {
 }
 
 #[derive(Debug)]
-struct EncodedEffectiveAddress {
-    bits: u16,
-    extension: Vec<u8>,
-    kind: EffectiveAddressKind,
+pub(crate) struct EncodedEffectiveAddress {
+    pub(crate) bits: u16,
+    pub(crate) extension: Vec<u8>,
+    pub(crate) kind: EffectiveAddressKind,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -87,11 +87,38 @@ impl M68KFamilyHandler {
     fn parse_special_register(
         expr: &Expr,
     ) -> Option<(SpecialRegisterKind, opcore::tokenizer::Span)> {
-        let (name, span) = Self::parse_register_name(expr)?;
+        let (name, span) = match expr {
+            Expr::Register(name, span) | Expr::Identifier(name, span) => {
+                (name.to_ascii_uppercase(), *span)
+            }
+            _ => return None,
+        };
         let register = match name.as_str() {
             "CCR" => SpecialRegisterKind::Ccr,
             "SR" => SpecialRegisterKind::Sr,
             "USP" => SpecialRegisterKind::Usp,
+            _ => return None,
+        };
+        Some((register, span))
+    }
+
+    fn parse_control_register(
+        expr: &Expr,
+    ) -> Option<(ControlRegisterKind, opcore::tokenizer::Span)> {
+        let (name, span) = match expr {
+            Expr::Register(name, span) | Expr::Identifier(name, span) => {
+                (name.to_ascii_uppercase(), *span)
+            }
+            _ => return None,
+        };
+        let register = match name.as_str() {
+            "SFC" => ControlRegisterKind::Sfc,
+            "DFC" => ControlRegisterKind::Dfc,
+            "VBR" => ControlRegisterKind::Vbr,
+            "CACR" => ControlRegisterKind::Cacr,
+            "CAAR" => ControlRegisterKind::Caar,
+            "MSP" => ControlRegisterKind::Msp,
+            "ISP" => ControlRegisterKind::Isp,
             _ => return None,
         };
         Some((register, span))
@@ -502,6 +529,9 @@ impl M68KFamilyHandler {
         }
         if let Some((register, span)) = Self::parse_special_register(expr) {
             return Ok(FamilyOperand::SpecialRegister { register, span });
+        }
+        if let Some((register, span)) = Self::parse_control_register(expr) {
+            return Ok(FamilyOperand::ControlRegister { register, span });
         }
 
         match expr {
@@ -1069,10 +1099,7 @@ impl M68KFamilyHandler {
                     ..
                 },
                 _,
-            ) => EncodeResult::error_with_span(
-                "MOVE from CCR is not supported on baseline 68000",
-                src.span(),
-            ),
+            ) => EncodeResult::NotFound,
             (
                 Operand::SpecialRegister {
                     register: SpecialRegisterKind::Usp,
@@ -3193,7 +3220,7 @@ impl M68KFamilyHandler {
         EncodeResult::ok(bytes)
     }
 
-    fn encode_effective_address(
+    pub(crate) fn encode_effective_address(
         &self,
         operand: &Operand,
         size: Option<OperationSize>,
@@ -3228,6 +3255,10 @@ impl M68KFamilyHandler {
             }
             Operand::SpecialRegister { .. } => Err(EncodeResult::error_with_span(
                 "68000 special registers are not valid effective addresses",
+                operand.span(),
+            )),
+            Operand::ControlRegister { .. } => Err(EncodeResult::error_with_span(
+                "68000 control registers are not valid effective addresses",
                 operand.span(),
             )),
             Operand::AddressIndirect { register, .. } => {
@@ -3571,7 +3602,7 @@ impl M68KFamilyHandler {
         )
     }
 
-    fn data_alterable(kind: EffectiveAddressKind) -> bool {
+    pub(crate) fn data_alterable(kind: EffectiveAddressKind) -> bool {
         matches!(
             kind,
             EffectiveAddressKind::DataRegister
@@ -3599,7 +3630,7 @@ impl M68KFamilyHandler {
         )
     }
 
-    fn memory_alterable(kind: EffectiveAddressKind) -> bool {
+    pub(crate) fn memory_alterable(kind: EffectiveAddressKind) -> bool {
         matches!(
             kind,
             EffectiveAddressKind::AddressIndirect
@@ -3629,7 +3660,7 @@ impl M68KFamilyHandler {
         Self::data_alterable(kind)
     }
 
-    fn size_bits(size: OperationSize) -> u16 {
+    pub(crate) fn size_bits(size: OperationSize) -> u16 {
         match size {
             OperationSize::Byte => 0b00,
             OperationSize::Word => 0b01,
@@ -3699,6 +3730,9 @@ impl M68KFamilyHandler {
             Operand::SpecialRegister { .. } => {
                 unreachable!("68000 special registers are not effective addresses")
             }
+            Operand::ControlRegister { .. } => {
+                unreachable!("68000 control registers are not effective addresses")
+            }
             Operand::AddressIndirect { .. } => EffectiveAddressKind::AddressIndirect,
             Operand::AddressPostincrement { .. } => EffectiveAddressKind::AddressPostincrement,
             Operand::AddressPredecrement { .. } => EffectiveAddressKind::AddressPredecrement,
@@ -3729,13 +3763,13 @@ impl M68KFamilyHandler {
         )
     }
 
-    fn data_register_number(name: &str) -> Option<u8> {
+    pub(crate) fn data_register_number(name: &str) -> Option<u8> {
         let suffix = name.strip_prefix('D')?;
         let reg = suffix.parse::<u8>().ok()?;
         (reg <= 7).then_some(reg)
     }
 
-    fn address_register_number(name: &str) -> Option<u8> {
+    pub(crate) fn address_register_number(name: &str) -> Option<u8> {
         if name.eq_ignore_ascii_case("SP") {
             return Some(7);
         }
@@ -3754,7 +3788,7 @@ impl M68KFamilyHandler {
         (reg << 9) | (mode << 6)
     }
 
-    fn emit_word(bytes: &mut Vec<u8>, value: u16) {
+    pub(crate) fn emit_word(bytes: &mut Vec<u8>, value: u16) {
         bytes.push((value >> 8) as u8);
         bytes.push(value as u8);
     }
@@ -3774,7 +3808,7 @@ impl M68KFamilyHandler {
         (0..=u8::MAX as i64).contains(&value).then_some(value as u8)
     }
 
-    fn encode_signed_word(value: i64) -> Option<u16> {
+    pub(crate) fn encode_signed_word(value: i64) -> Option<u16> {
         (-32768..=32767)
             .contains(&value)
             .then_some((value as i16) as u16)
@@ -3922,7 +3956,7 @@ impl M68KFamilyHandler {
             .map(|value| (Self::normalize_wrapped_i32(value), false))
     }
 
-    fn eval_expr(expr: &Expr, ctx: &dyn AssemblerContext) -> Result<i64, String> {
+    pub(crate) fn eval_expr(expr: &Expr, ctx: &dyn AssemblerContext) -> Result<i64, String> {
         if Self::expr_is_unresolved(expr, ctx) {
             return Ok(0);
         }
@@ -6749,9 +6783,7 @@ mod tests {
             &ctx,
         );
         match invalid_move_ccr {
-            EncodeResult::Error(message, _) => {
-                assert!(message.contains("MOVE from CCR is not supported"));
-            }
+            EncodeResult::NotFound => {}
             other => panic!("expected legality error, got {other:?}"),
         }
 

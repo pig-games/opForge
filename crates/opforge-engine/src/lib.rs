@@ -2481,6 +2481,38 @@ mod tests {
             registry.resolve_cpu_name("mc68000"),
             Some(CpuType::new("m68000"))
         );
+        assert_eq!(
+            registry.resolve_cpu_name("68010"),
+            Some(CpuType::new("m68010"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68010"),
+            Some(CpuType::new("m68010"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68020"),
+            Some(CpuType::new("m68020"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68020"),
+            Some(CpuType::new("m68020"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68030"),
+            Some(CpuType::new("m68030"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68030"),
+            Some(CpuType::new("m68030"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68040"),
+            Some(CpuType::new("m68040"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68040"),
+            Some(CpuType::new("m68040"))
+        );
     }
 
     #[test]

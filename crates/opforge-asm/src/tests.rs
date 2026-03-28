@@ -36,6 +36,10 @@ use families::m65816::module::CPU_ID as m65816_cpu_id;
 use families::m65c02::instructions::CPU_INSTRUCTION_TABLE as M65C02_INSTRUCTION_TABLE;
 use families::m65c02::module::CPU_ID as m65c02_cpu_id;
 use families::m68000::module::CPU_ID as m68000_cpu_id;
+use families::m68010::module::CPU_ID as m68010_cpu_id;
+use families::m68020::module::CPU_ID as m68020_cpu_id;
+use families::m68030::module::CPU_ID as m68030_cpu_id;
+use families::m68040::module::CPU_ID as m68040_cpu_id;
 use families::m6809::module::CPU_ID as m6809_cpu_id;
 use families::z80::module::CPU_ID as z80_cpu_id;
 use families::{
@@ -2375,6 +2379,10 @@ fn cpusupport_report_has_stable_shape() {
     assert!(text.lines().any(|line| line.starts_with("cpu=8085;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=m6502;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=m68000;")));
+    assert!(text.lines().any(|line| line.starts_with("cpu=m68010;")));
+    assert!(text.lines().any(|line| line.starts_with("cpu=m68020;")));
+    assert!(text.lines().any(|line| line.starts_with("cpu=m68030;")));
+    assert!(text.lines().any(|line| line.starts_with("cpu=m68040;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=m6809;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=hd6309;")));
 }
@@ -2388,6 +2396,10 @@ fn cpusupport_report_json_has_stable_shape() {
     assert!(cpus.iter().any(|entry| entry["cpu"] == "8085"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m6502"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m68000"));
+    assert!(cpus.iter().any(|entry| entry["cpu"] == "m68010"));
+    assert!(cpus.iter().any(|entry| entry["cpu"] == "m68020"));
+    assert!(cpus.iter().any(|entry| entry["cpu"] == "m68030"));
+    assert!(cpus.iter().any(|entry| entry["cpu"] == "m68040"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m6809"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "hd6309"));
     assert!(cpus
@@ -2648,33 +2660,53 @@ fn default_native_diagnostic_codes_are_declared_in_vm_catalog() {
 }
 
 #[test]
-fn hierarchy_package_resolves_m68000_pipeline() {
+fn hierarchy_package_resolves_m68k_lineage_pipelines() {
     let registry = default_registry();
-    assert_eq!(registry.resolve_cpu_name("68000"), Some(m68000_cpu_id));
-    assert_eq!(registry.resolve_cpu_name("mc68000"), Some(m68000_cpu_id));
-
     let package = build_hierarchy_package_from_registry(&registry)
         .expect("runtime package build should succeed");
     let model = load_opasm_model_from_package_bytes(package.as_slice());
-    let resolved = model
-        .resolve_pipeline(m68000_cpu_id.as_str(), None)
-        .expect("m68000 pipeline should resolve");
+    let cases = [
+        ("68000", "mc68000", m68000_cpu_id),
+        ("68010", "mc68010", m68010_cpu_id),
+        ("68020", "mc68020", m68020_cpu_id),
+        ("68030", "mc68030", m68030_cpu_id),
+        ("68040", "mc68040", m68040_cpu_id),
+    ];
 
-    assert_eq!(resolved.family_id.as_str(), "motorola68000");
-    assert_eq!(resolved.cpu_id.as_str(), "m68000");
-    assert_eq!(resolved.dialect_id.to_ascii_lowercase(), "motorola68k");
+    for (short_alias, mc_alias, cpu_id) in cases {
+        assert_eq!(registry.resolve_cpu_name(short_alias), Some(cpu_id));
+        assert_eq!(registry.resolve_cpu_name(mc_alias), Some(cpu_id));
+
+        let resolved = model
+            .resolve_pipeline(cpu_id.as_str(), None)
+            .expect("m68k lineage pipeline should resolve");
+
+        assert_eq!(resolved.family_id.as_str(), "motorola68000");
+        assert_eq!(resolved.cpu_id, cpu_id.as_str());
+        assert_eq!(resolved.dialect_id.to_ascii_lowercase(), "motorola68k");
+    }
 }
 
 #[test]
-fn m68000_pipeline_reports_big_endian_24bit_target_metadata() {
+fn m68k_lineage_pipelines_report_expected_target_metadata() {
     let registry = default_registry();
-    let resolved = registry
-        .resolve_pipeline(m68000_cpu_id, None)
-        .expect("m68000 pipeline should resolve");
+    let cases = [
+        (m68000_cpu_id, 0x00FF_FFFF),
+        (m68010_cpu_id, 0x00FF_FFFF),
+        (m68020_cpu_id, 0xFFFF_FFFF),
+        (m68030_cpu_id, 0xFFFF_FFFF),
+        (m68040_cpu_id, 0xFFFF_FFFF),
+    ];
 
-    assert_eq!(resolved.cpu.max_program_address(), 0x00FF_FFFF);
-    assert_eq!(resolved.cpu.native_word_size_bytes(), 2);
-    assert!(!resolved.cpu.is_little_endian());
+    for (cpu_id, max_address) in cases {
+        let resolved = registry
+            .resolve_pipeline(cpu_id, None)
+            .expect("m68k lineage pipeline should resolve");
+
+        assert_eq!(resolved.cpu.max_program_address(), max_address);
+        assert_eq!(resolved.cpu.native_word_size_bytes(), 2);
+        assert!(!resolved.cpu.is_little_endian());
+    }
 }
 
 #[test]
@@ -6750,14 +6782,32 @@ fn cpu_6809_and_hd6309_aliases_are_accepted() {
 }
 
 #[test]
-fn cpu_68000_aliases_are_accepted() {
+fn cpu_m68k_lineage_aliases_are_accepted() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();
     let mut asm = make_asm_line(&mut symbols, &registry);
 
-    assert_eq!(process_line(&mut asm, ".cpu 68000", 0, 1), LineStatus::Ok);
-    assert_eq!(process_line(&mut asm, ".cpu m68000", 0, 1), LineStatus::Ok);
-    assert_eq!(process_line(&mut asm, ".cpu mc68000", 0, 1), LineStatus::Ok);
+    let aliases = [
+        ".cpu 68000",
+        ".cpu m68000",
+        ".cpu mc68000",
+        ".cpu 68010",
+        ".cpu m68010",
+        ".cpu mc68010",
+        ".cpu 68020",
+        ".cpu m68020",
+        ".cpu mc68020",
+        ".cpu 68030",
+        ".cpu m68030",
+        ".cpu mc68030",
+        ".cpu 68040",
+        ".cpu m68040",
+        ".cpu mc68040",
+    ];
+
+    for alias in aliases {
+        assert_eq!(process_line(&mut asm, alias, 0, 1), LineStatus::Ok);
+    }
 }
 
 #[test]

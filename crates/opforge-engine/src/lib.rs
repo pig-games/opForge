@@ -337,11 +337,58 @@ pub fn build_default_runtime_package_bytes() -> Option<Vec<u8>> {
     build_hierarchy_package_from_registry(&registry).ok()
 }
 
+#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+fn default_runtime_model() -> Option<&'static HierarchyExecutionModel> {
+    let base_dir = std::env::current_dir().ok()?;
+    editor_default_runtime_model_for_dir(base_dir.as_path())
+}
+
+#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+fn editor_default_runtime_model_for_dir(base_dir: &Path) -> Option<&'static HierarchyExecutionModel> {
+    let artifact_path = default_runtime_artifact_path_for_dir(base_dir);
+    default_runtime_model_for_artifact_path(artifact_path.as_path())
+}
+
+#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+fn default_runtime_model_for_artifact_path(
+    artifact_path: &Path,
+) -> Option<&'static HierarchyExecutionModel> {
+    static MODEL_CACHE: OnceLock<Mutex<HashMap<PathBuf, &'static HierarchyExecutionModel>>> =
+        OnceLock::new();
+
+    let cache = MODEL_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(model) = cache
+        .lock()
+        .expect("runtime model cache lock")
+        .get(artifact_path)
+        .copied()
+    {
+        return Some(model);
+    }
+
+    let package_bytes = std::fs::read(artifact_path).ok()?;
+    let model = vm::vm_opasm::load_model_from_package_bytes(package_bytes.as_slice()).ok()?;
+
+    let mut cache = cache.lock().expect("runtime model cache lock");
+    if let Some(model) = cache.get(artifact_path).copied() {
+        return Some(model);
+    }
+
+    let leaked: &'static HierarchyExecutionModel = Box::leak(Box::new(model));
+    cache.insert(artifact_path.to_path_buf(), leaked);
+    Some(leaked)
+}
+
+#[cfg(not(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact")))]
 fn default_runtime_model() -> Option<&'static HierarchyExecutionModel> {
     static MODEL: OnceLock<Option<HierarchyExecutionModel>> = OnceLock::new();
     MODEL.get_or_init(build_default_runtime_model).as_ref()
 }
 
+#[cfg_attr(
+    all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"),
+    allow(dead_code)
+)]
 fn build_default_runtime_model() -> Option<HierarchyExecutionModel> {
     #[cfg(feature = "vm-runtime-only")]
     {
@@ -364,6 +411,7 @@ fn build_default_runtime_model() -> Option<HierarchyExecutionModel> {
 }
 
 #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+#[allow(dead_code)]
 fn build_default_runtime_model_for_dir(base_dir: &Path) -> Option<HierarchyExecutionModel> {
     let path = default_runtime_artifact_path_for_dir(base_dir);
     let package_bytes = std::fs::read(path).ok()?;
@@ -2160,6 +2208,29 @@ mod tests {
         assert!(
             super::build_default_runtime_model_for_dir(temp_dir.as_path()).is_some(),
             "expected vm-runtime-only artifact lookup to load the default runtime model"
+        );
+    }
+
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+    #[test]
+    fn editor_default_runtime_model_for_dir_recovers_after_artifact_is_created() {
+        let temp_dir = unique_temp_dir("engine-runtime-recovers-after-miss");
+
+        assert!(
+            super::editor_default_runtime_model_for_dir(temp_dir.as_path()).is_none(),
+            "expected no editor runtime model before artifact exists"
+        );
+
+        let artifact_path = super::default_runtime_artifact_path_for_dir(temp_dir.as_path());
+        let package_bytes = super::build_default_runtime_package_bytes()
+            .expect("build default runtime package bytes");
+        std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
+            .expect("create artifact parent");
+        std::fs::write(artifact_path, package_bytes).expect("write runtime artifact");
+
+        assert!(
+            super::editor_default_runtime_model_for_dir(temp_dir.as_path()).is_some(),
+            "expected editor runtime model lookup to recover after artifact is created"
         );
     }
 

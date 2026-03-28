@@ -1337,6 +1337,9 @@ fn tokenizer_vm_parity_checklist_for_family(family_id: &str) -> Option<&'static 
         "mos6502" => Some("Phase 6 tokenizer VM parity matrix (full corpus)"),
         "intel8080" => Some("Phase 6 tokenizer VM parity matrix (full corpus)"),
         "motorola6800" => Some("Phase 6 tokenizer VM parity matrix (full corpus)"),
+        "motorola68000" => {
+            Some("Phase 6 tokenizer VM parity matrix (staged motorola68000 baseline)")
+        }
         _ => None,
     }
 }
@@ -1351,6 +1354,9 @@ fn expr_parser_vm_parity_checklist_for_family(family_id: &str) -> Option<&'stati
         }
         "motorola6800" => {
             Some("Phase 8 expression parser VM parity corpus and deterministic diff gates")
+        }
+        "motorola68000" => {
+            Some("Phase 8 expression parser VM parity corpus and deterministic diff gates for staged motorola68000 support")
         }
         _ => None,
     }

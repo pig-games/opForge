@@ -155,6 +155,10 @@ pub trait AssemblerContext {
     fn current_address(&self) -> u32;
     fn pass(&self) -> u8;
 
+    fn scalar_value_symbol(&self, _name: &str) -> Option<i64> {
+        None
+    }
+
     fn cpu_state_flag(&self, _key: &str) -> Option<u32> {
         None
     }

@@ -1,0 +1,35 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; SPDX-License-Identifier: GPL-3.0-or-later
+----                                2  
+----                                3  .cpu 68000
+----                                4  
+0000    22 48                       5      MOVEA.L A0,A1
+0002    30 10                       6      MOVE.W (A0),D0
+0004    32 18                       7      MOVE.W (A0)+,D1
+0006    34 21                       8      MOVE.W -(A1),D2
+0008    36 2A 00 04                 9      MOVE.W 4(A2),D3
+000C    3A 33 48 06                10      MOVE.W 6(A3,D4.L),D5
+0010    3C 38 12 34                11      MOVE.W ($1234).W,D6
+0014    2E 39 00 12 34 56          12      MOVE.L ($123456).L,D7
+001A    30 3A 00 08                13      MOVE.W 8(PC),D0
+001E    34 3B 10 06                14      MOVE.W 6(PC,D1.W),D2
+0022    36 3C 12 34                15      MOVE.W #$1234,D3
+0026    4E 75                      16      RTS
+
+Lines: 16  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+(none)
+
+Total memory is 40 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0000    22 48 30 10 32 18 34 21 36 2A 00 04 3A 33 48 06
+0010    3C 38 12 34 2E 39 00 12 34 56 30 3A 00 08 34 3B
+0020    10 06 36 3C 12 34 4E 75

@@ -619,6 +619,45 @@ impl RuntimeExpressionParser {
 
     fn parse_postfix_expr(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
         loop {
+            if let Some(Token {
+                kind: TokenKind::OpenParen,
+                span: open_span,
+            }) = self.peek().cloned()
+            {
+                let start_span = span_of_expr(&expr);
+                if open_span.col_start == start_span.col_end {
+                    self.index += 1;
+                    let mut elements = vec![expr];
+                    if self.consume_kind(TokenKind::CloseParen) {
+                        return Err(ParseError {
+                            message: "Expected expression inside postfix tuple".to_string(),
+                            span: open_span,
+                        });
+                    }
+
+                    elements.push(self.parse_expr()?);
+                    while self.consume_comma() {
+                        elements.push(self.parse_expr()?);
+                    }
+
+                    let close_span = self.current_span();
+                    if !self.consume_kind(TokenKind::CloseParen) {
+                        return Err(ParseError {
+                            message: "Missing ')' in postfix tuple".to_string(),
+                            span: self.current_span(),
+                        });
+                    }
+
+                    let span = Span {
+                        line: start_span.line,
+                        col_start: start_span.col_start,
+                        col_end: close_span.col_end,
+                    };
+                    expr = Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span);
+                    continue;
+                }
+            }
+
             if self.consume_kind(TokenKind::OpenBracket) {
                 let index = self.parse_expr()?;
                 let close_span = self.current_span();
@@ -675,6 +714,28 @@ impl RuntimeExpressionParser {
                     },
                 };
                 continue;
+            }
+
+            if let Some(Token {
+                kind: TokenKind::Operator(OperatorKind::Plus),
+                span: plus_span,
+            }) = self.peek().cloned()
+            {
+                let start_span = span_of_expr(&expr);
+                if matches!(expr, Expr::Indirect(_, _)) && plus_span.col_start == start_span.col_end
+                {
+                    self.index += 1;
+                    expr = Expr::Unary {
+                        op: UnaryOp::Plus,
+                        expr: Box::new(expr),
+                        span: Span {
+                            line: start_span.line,
+                            col_start: start_span.col_start,
+                            col_end: plus_span.col_end,
+                        },
+                    };
+                    continue;
+                }
             }
 
             break;

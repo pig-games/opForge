@@ -35,11 +35,12 @@ use families::m65816::instructions::CPU_INSTRUCTION_TABLE as M65816_INSTRUCTION_
 use families::m65816::module::CPU_ID as m65816_cpu_id;
 use families::m65c02::instructions::CPU_INSTRUCTION_TABLE as M65C02_INSTRUCTION_TABLE;
 use families::m65c02::module::CPU_ID as m65c02_cpu_id;
+use families::m68000::module::CPU_ID as m68000_cpu_id;
 use families::m6809::module::CPU_ID as m6809_cpu_id;
 use families::z80::module::CPU_ID as z80_cpu_id;
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
-    register_motorola6800_family_stack,
+    register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
 use opcore::macro_processor::MacroProcessor;
 use package::{
@@ -91,6 +92,7 @@ fn default_registry() -> ModuleRegistry {
     register_intel8080_family_stack(&mut registry);
     register_mos6502_family_stack(&mut registry);
     register_motorola6800_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
     registry
 }
 
@@ -2372,6 +2374,7 @@ fn cpusupport_report_has_stable_shape() {
     assert!(text.starts_with("opforge-cpusupport-v1\n"));
     assert!(text.lines().any(|line| line.starts_with("cpu=8085;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=m6502;")));
+    assert!(text.lines().any(|line| line.starts_with("cpu=m68000;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=m6809;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=hd6309;")));
 }
@@ -2384,6 +2387,7 @@ fn cpusupport_report_json_has_stable_shape() {
     let cpus = value["cpus"].as_array().expect("cpus array");
     assert!(cpus.iter().any(|entry| entry["cpu"] == "8085"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m6502"));
+    assert!(cpus.iter().any(|entry| entry["cpu"] == "m68000"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m6809"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "hd6309"));
     assert!(cpus
@@ -2641,6 +2645,1062 @@ fn default_native_diagnostic_codes_are_declared_in_vm_catalog() {
             kind
         );
     }
+}
+
+#[test]
+fn hierarchy_package_resolves_m68000_pipeline() {
+    let registry = default_registry();
+    assert_eq!(registry.resolve_cpu_name("68000"), Some(m68000_cpu_id));
+    assert_eq!(registry.resolve_cpu_name("mc68000"), Some(m68000_cpu_id));
+
+    let package = build_hierarchy_package_from_registry(&registry)
+        .expect("runtime package build should succeed");
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+    let resolved = model
+        .resolve_pipeline(m68000_cpu_id.as_str(), None)
+        .expect("m68000 pipeline should resolve");
+
+    assert_eq!(resolved.family_id.as_str(), "motorola68000");
+    assert_eq!(resolved.cpu_id.as_str(), "m68000");
+    assert_eq!(resolved.dialect_id.to_ascii_lowercase(), "motorola68k");
+}
+
+#[test]
+fn m68000_pipeline_reports_big_endian_24bit_target_metadata() {
+    let registry = default_registry();
+    let resolved = registry
+        .resolve_pipeline(m68000_cpu_id, None)
+        .expect("m68000 pipeline should resolve");
+
+    assert_eq!(resolved.cpu.max_program_address(), 0x00FF_FFFF);
+    assert_eq!(resolved.cpu.native_word_size_bytes(), 2);
+    assert!(!resolved.cpu.is_little_endian());
+}
+
+#[test]
+fn cpu_68000_emit_word_uses_big_endian_order() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    let status = process_line(&mut asm, "    .cpu 68000", 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+
+    let status = process_line(&mut asm, "    .emit word, $1234", 0, 2);
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm.bytes(), &[0x12, 0x34]);
+}
+
+#[test]
+fn m68000_movement_and_addressing_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W #$1234,D0"),
+        vec![0x30, 0x3C, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.L D0,(A1)"),
+        vec![0x22, 0x80]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVEA.L ($123456).L,A0"),
+        vec![0x20, 0x79, 0x00, 0x12, 0x34, 0x56]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    LEA 4(A0,D1.W),A1"),
+        vec![0x43, 0xF0, 0x10, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    PEA 4(A0)"),
+        vec![0x48, 0x68, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    JMP 4(PC)"),
+        vec![0x4E, 0xFA, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    JSR (A0)"),
+        vec![0x4E, 0x90]
+    );
+}
+
+#[test]
+fn m68000_identity_scale_aliases_match_existing_indexed_forms() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    LEA 4(A0,D1.W),A1"),
+        assemble_bytes(m68000_cpu_id, "    LEA 4(A0,D1.W*1),A1")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W 0(A0,D1.W),D0"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.W (A0,D1*1),D0")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W 0(PC,D2.L),D3"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.W (PC,D2.L*1),D3")
+    );
+}
+
+#[test]
+fn m68000_pc_shorthand_alias_matches_zero_displacement_form() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    JMP 0(PC)"),
+        assemble_bytes(m68000_cpu_id, "    JMP (PC)")
+    );
+}
+
+#[test]
+fn m68000_scaled_index_aliases_above_identity_stay_rejected() {
+    for line in [
+        "    LEA 4(A0,D1.W*2),A1",
+        "    LEA 4(A0,D1.W*4),A1",
+        "    LEA 4(A0,D1.W*8),A1",
+        "    MOVE.W (PC,D2.L*2),D3",
+    ] {
+        let (status, message) = assemble_line_status(m68000_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+        let message = message.expect("expected scaled-index rejection diagnostic");
+        let expected = if line.contains("(PC,") {
+            "invalid 68000 displacement base register"
+        } else {
+            "invalid 68000 index register"
+        };
+        assert!(
+            message.contains(expected),
+            "unexpected diagnostic for '{line}': {message}"
+        );
+    }
+}
+
+#[test]
+fn m68000_movement_and_addressing_slice_rejects_illegal_effective_addresses() {
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVE.W D0,A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVE legality diagnostic");
+    assert!(message.contains("invalid destination effective address for MOVE.W"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    LEA #1,A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected LEA legality diagnostic");
+    assert!(message.contains("invalid source effective address for LEA"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    JMP D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected JMP legality diagnostic");
+    assert!(message.contains("invalid source effective address for JMP"));
+}
+
+#[test]
+fn m68000_lockstep_runtime_accepts_extended_addressing_forms() {
+    let lines = [
+        "    LEA 4(A0,D1.W),A1",
+        "    PEA 4(A0)",
+        "    JMP 4(PC)",
+        "    MOVE.L (A0)+,(A1)",
+        "    MOVE.W 4(A3),D2",
+    ];
+
+    for line in lines {
+        let expected = assemble_bytes(m68000_cpu_id, line);
+        let mut symbols = SymbolTable::new();
+        let registry = default_registry();
+        let mut asm = AsmLine::with_cpu(&mut symbols, m68000_cpu_id, &registry);
+        asm.clear_conditionals();
+        asm.clear_scopes();
+
+        let status = process_asmline_with_execution_mode(
+            &mut asm,
+            ExecutionMode::Lockstep {
+                continuation_head: ContinuationHead::Vm,
+            },
+            line,
+            1,
+            0,
+            2,
+        );
+        assert_eq!(
+            status,
+            LineStatus::Ok,
+            "lockstep runtime should accept `{line}`"
+        );
+        assert_eq!(
+            asm.bytes().to_vec(),
+            expected,
+            "lockstep runtime bytes should match host path for `{line}`"
+        );
+    }
+}
+
+#[test]
+fn m68000_arithmetic_control_quick_and_shift_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ADD.W #1,D0"),
+        vec![0xD0, 0x7C, 0x00, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ADDA.L (A0),A1"),
+        vec![0xD3, 0xD0]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    AND.B (A0),D0"),
+        vec![0xC0, 0x10]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SUB.L D1,D0"),
+        vec![0x90, 0x81]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    CMP.W (A0),D1"),
+        vec![0xB2, 0x50]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    OR.L #$12345678,D2"),
+        vec![0x84, 0xBC, 0x12, 0x34, 0x56, 0x78]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EOR.W D0,(A1)"),
+        vec![0xB1, 0x51]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BRA $0004"),
+        vec![0x60, 0x00, 0x00, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BNE.W $0008"),
+        vec![0x66, 0x00, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BSR.W $0008"),
+        vec![0x61, 0x00, 0x00, 0x04]
+    );
+    assert_eq!(assemble_bytes(m68000_cpu_id, "    RTS"), vec![0x4E, 0x75]);
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVEQ #-1,D0"),
+        vec![0x70, 0xFF]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ADDQ.W #8,D0"),
+        vec![0x50, 0x40]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SUBQ.L #1,(A0)"),
+        vec![0x53, 0x90]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ASL.B #1,D0"),
+        vec![0xE3, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ROR.W #1,D3"),
+        vec![0xE2, 0x5B]
+    );
+}
+
+#[test]
+fn m68000_data_register_to_memory_binary_ops_encode_and_reject_illegal_destinations() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ADD.W D0,(A0)"),
+        vec![0xD1, 0x50]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SUB.W D0,(A0)"),
+        vec![0x91, 0x50]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    AND.W D0,(A0)"),
+        vec![0xC1, 0x50]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    OR.W D0,(A0)"),
+        vec![0x81, 0x50]
+    );
+
+    for (line, expected) in [
+        (
+            "    ADD.W D0,4(PC)",
+            "invalid destination effective address for ADD.W",
+        ),
+        (
+            "    SUB.W D0,#1",
+            "invalid destination effective address for SUB.W",
+        ),
+        (
+            "    AND.W D0,A0",
+            "invalid destination effective address for AND.W",
+        ),
+        (
+            "    OR.W D0,0(PC,D1.W)",
+            "invalid destination effective address for OR.W",
+        ),
+    ] {
+        let (status, message) = assemble_line_status(m68000_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+        let message = message.expect("expected binary-op legality diagnostic");
+        assert!(
+            message.contains(expected),
+            "unexpected diagnostic for '{line}': {message}"
+        );
+    }
+}
+
+#[test]
+fn m68000_absolute_short_sign_extension_accepts_high_memory_only_when_round_trippable() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W ($1234).W,D0"),
+        vec![0x30, 0x38, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W ($FF8000).W,D0"),
+        vec![0x30, 0x38, 0x80, 0x00]
+    );
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVE.W ($018000).W,D0");
+    assert_eq!(
+        status,
+        LineStatus::Error,
+        "expected rejection for absolute-short overflow"
+    );
+    let message = message.expect("expected absolute-short range diagnostic");
+    assert!(
+        message.contains("68000 absolute .W address out of 16-bit range"),
+        "unexpected diagnostic for absolute-short overflow: {message}"
+    );
+}
+
+#[test]
+fn m68000_immediate_and_unary_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ORI.B #$12,D0"),
+        vec![0x00, 0x00, 0x00, 0x12]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ANDI.W #$1234,(A0)"),
+        vec![0x02, 0x50, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ADDI.W #1,4(A0)"),
+        vec![0x06, 0x68, 0x00, 0x01, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SUBI.B #1,(A1)+"),
+        vec![0x04, 0x19, 0x00, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EORI.L #$12345678,D1"),
+        vec![0x0A, 0x81, 0x12, 0x34, 0x56, 0x78]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    CMPI.W #$1234,($1234).W"),
+        vec![0x0C, 0x78, 0x12, 0x34, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    CMPI.W #1,4(PC)"),
+        vec![0x0C, 0x7A, 0x00, 0x01, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    CLR.W D2"),
+        vec![0x42, 0x42]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    NEG.B (A0)"),
+        vec![0x44, 0x10]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    NOT.L D3"),
+        vec![0x46, 0x83]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    TST.W 4(A3)"),
+        vec![0x4A, 0x6B, 0x00, 0x04]
+    );
+}
+
+#[test]
+fn m68000_system_and_register_utility_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    LINK A6,#-8"),
+        vec![0x4E, 0x56, 0xFF, 0xF8]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE SR,D0"),
+        vec![0x40, 0xC0]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE ($1234).W,CCR"),
+        vec![0x44, 0xF8, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE #$2700,SR"),
+        vec![0x46, 0xFC, 0x27, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE USP,A1"),
+        vec![0x4E, 0x69]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE A2,USP"),
+        vec![0x4E, 0x62]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ANDI #$1F,CCR"),
+        vec![0x02, 0x3C, 0x00, 0x1F]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ORI #$2700,SR"),
+        vec![0x00, 0x7C, 0x27, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EORI #$0F,CCR"),
+        vec![0x0A, 0x3C, 0x00, 0x0F]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EXG D0,D1"),
+        vec![0xC1, 0x41]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EXG A2,A3"),
+        vec![0xC5, 0x4B]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EXG D2,A3"),
+        vec![0xC5, 0x8B]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EXG A3,D2"),
+        vec![0xC5, 0x8B]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SWAP D0"),
+        vec![0x48, 0x40]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EXT.W D1"),
+        vec![0x48, 0x81]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    EXT.L D2"),
+        vec![0x48, 0xC2]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    TRAP #15"),
+        vec![0x4E, 0x4F]
+    );
+    assert_eq!(assemble_bytes(m68000_cpu_id, "    NOP"), vec![0x4E, 0x71]);
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    STOP #$2700"),
+        vec![0x4E, 0x72, 0x27, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    UNLK A6"),
+        vec![0x4E, 0x5E]
+    );
+    assert_eq!(assemble_bytes(m68000_cpu_id, "    RESET"), vec![0x4E, 0x70]);
+    assert_eq!(assemble_bytes(m68000_cpu_id, "    RTE"), vec![0x4E, 0x73]);
+    assert_eq!(assemble_bytes(m68000_cpu_id, "    RTR"), vec![0x4E, 0x77]);
+    assert_eq!(assemble_bytes(m68000_cpu_id, "    TRAPV"), vec![0x4E, 0x76]);
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ILLEGAL"),
+        vec![0x4A, 0xFC]
+    );
+}
+
+#[test]
+fn m68000_compare_and_operand_state_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    CMPA.W ($1234).W,A0"),
+        vec![0xB0, 0xF8, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    CMPA.L ($123456).L,A1"),
+        vec![0xB3, 0xF9, 0x00, 0x12, 0x34, 0x56]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    NEGX.B D0"),
+        vec![0x40, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    NEGX.W (A0)"),
+        vec![0x40, 0x50]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    NBCD D1"),
+        vec![0x48, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    NBCD -(A2)"),
+        vec![0x48, 0x22]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    TAS D2"),
+        vec![0x4A, 0xC2]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    TAS (A3)"),
+        vec![0x4A, 0xD3]
+    );
+}
+
+#[test]
+fn m68000_condition_loop_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SNE D0"),
+        vec![0x56, 0xC0]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ST (A0)"),
+        vec![0x50, 0xD0]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SF ($1234).W"),
+        vec![0x51, 0xF8, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    DBRA D1,$0000"),
+        vec![0x51, 0xC9, 0xFF, 0xFE]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    DBNE D2,$0008"),
+        vec![0x56, 0xCA, 0x00, 0x06]
+    );
+}
+
+#[test]
+fn m68000_bit_operation_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BTST #3,D0"),
+        vec![0x08, 0x00, 0x00, 0x03]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BTST D1,(A0)"),
+        vec![0x03, 0x10]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BTST #1,4(A1)"),
+        vec![0x08, 0x29, 0x00, 0x01, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BTST #1,4(PC)"),
+        vec![0x08, 0x3A, 0x00, 0x01, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BCHG #5,D2"),
+        vec![0x08, 0x42, 0x00, 0x05]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BCHG D3,($1234).W"),
+        vec![0x07, 0x78, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BCLR #1,(A1)"),
+        vec![0x08, 0x91, 0x00, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BCLR D4,D5"),
+        vec![0x09, 0x85]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BSET #7,($123456).L"),
+        vec![0x08, 0xF9, 0x00, 0x07, 0x00, 0x12, 0x34, 0x56]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BSET D6,4(A2)"),
+        vec![0x0D, 0xEA, 0x00, 0x04]
+    );
+}
+
+#[test]
+fn m68000_btst_accepts_pc_relative_read_only_destinations() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BTST #1,4(PC)"),
+        vec![0x08, 0x3A, 0x00, 0x01, 0x00, 0x04]
+    );
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    BTST #1,#1");
+    assert_eq!(
+        status,
+        LineStatus::Error,
+        "expected rejection for immediate destination"
+    );
+    let message = message.expect("expected BTST legality diagnostic");
+    assert!(
+        message.contains("invalid destination effective address for BTST"),
+        "unexpected diagnostic for immediate destination: {message}"
+    );
+
+    let example =
+        std::fs::read_to_string(workspace_root().join("examples/68000_bit_operations.asm"))
+            .expect("read 68000 bit-operation example");
+    assert!(
+        example.contains("BTST #1,4(PC)"),
+        "shipped 68000 bit-operation example should cover legal BTST PC-relative destination"
+    );
+}
+
+#[test]
+fn m68000_multiply_divide_check_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    CHK ($1234).W,D0"),
+        vec![0x41, 0xB8, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MULU.W (A0),D1"),
+        vec![0xC2, 0xD0]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MULS #$00FF,D2"),
+        vec![0xC5, 0xFC, 0x00, 0xFF]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    DIVU ($123456).L,D3"),
+        vec![0x86, 0xF9, 0x00, 0x12, 0x34, 0x56]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    DIVS.W 4(PC),D4"),
+        vec![0x89, 0xFA, 0x00, 0x04]
+    );
+}
+
+#[test]
+fn m68000_extend_bcd_and_cmpm_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ADDX.B D0,D1"),
+        vec![0xD3, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ADDX.W -(A0),-(A1)"),
+        vec![0xD3, 0x48]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SUBX.L D2,D3"),
+        vec![0x97, 0x82]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ABCD D4,D5"),
+        vec![0xCB, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    SBCD -(A2),-(A3)"),
+        vec![0x87, 0x0A]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    CMPM.W (A4)+,(A5)+"),
+        vec![0xBB, 0x4C]
+    );
+}
+
+#[test]
+fn m68000_rotate_and_memory_shift_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ROXL.B #1,D0"),
+        vec![0xE3, 0x10]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ROXR.W D1,D2"),
+        vec![0xE2, 0x72]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ASL (A0)"),
+        vec![0xE1, 0xD0]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    LSR.W ($1234).W"),
+        vec![0xE2, 0xF8, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ROXL 4(A1)"),
+        vec![0xE5, 0xE9, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    ROR.W -(A2)"),
+        vec![0xE6, 0xE2]
+    );
+}
+
+#[test]
+fn m68000_movem_and_movep_slice_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVEM.W D0-D2/A6,-(A7)"),
+        vec![0x48, 0xA7, 0xE0, 0x02]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVEM.L (A0)+,D1/D3/A2-A4"),
+        vec![0x4C, 0xD8, 0x1C, 0x0A]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVEP.W D5,4(A1)"),
+        vec![0x0B, 0x89, 0x00, 0x04]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVEP.L 6(A2),D6"),
+        vec![0x0D, 0x4A, 0x00, 0x06]
+    );
+}
+
+#[test]
+fn m68000_addressing_matrix_emits_expected_bytes() {
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVEA.L A0,A1"),
+        vec![0x22, 0x48]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W 6(A3,D4.L),D5"),
+        vec![0x3A, 0x33, 0x48, 0x06]
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W 6(PC,D1.W),D2"),
+        vec![0x34, 0x3B, 0x10, 0x06]
+    );
+}
+
+#[test]
+fn m68000_pc_relative_label_operands_allow_forward_references_in_pass1() {
+    let lines = [
+        ".cpu 68000",
+        ".org $1000",
+        "    MOVE.W label(PC),D0",
+        "    MOVE.W label(PC,D1.W),D2",
+        "label:",
+        "    .byte $12,$34",
+    ];
+
+    let assembler = run_pass1(&lines);
+    assert!(
+        !assembler
+            .diagnostics
+            .iter()
+            .any(|diag| diag.severity == Severity::Error),
+        "unexpected pass1 diagnostics: {:?}",
+        assembler
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.severity == Severity::Error)
+            .map(|diag| format!("{}:{}", diag.line, diag.error.message()))
+            .collect::<Vec<_>>()
+    );
+
+    let assembler = run_passes(&lines);
+    let entries = assembler.image().entries().expect("image entries");
+    assert_eq!(
+        entries,
+        vec![
+            (0x1000, 0x30),
+            (0x1001, 0x3A),
+            (0x1002, 0x00),
+            (0x1003, 0x06),
+            (0x1004, 0x34),
+            (0x1005, 0x3B),
+            (0x1006, 0x10),
+            (0x1007, 0x02),
+            (0x1008, 0x12),
+            (0x1009, 0x34),
+        ]
+    );
+}
+
+#[test]
+fn m68000_pc_relative_label_operands_encode_signed_backward_displacements() {
+    let assembler = run_passes(&[
+        ".cpu 68000",
+        ".org $1000",
+        "label:",
+        "    .byte $12,$34",
+        "    MOVE.W label(PC),D0",
+        "    MOVE.W label(PC,D1.W),D2",
+    ]);
+    let entries = assembler.image().entries().expect("image entries");
+    assert_eq!(
+        entries,
+        vec![
+            (0x1000, 0x12),
+            (0x1001, 0x34),
+            (0x1002, 0x30),
+            (0x1003, 0x3A),
+            (0x1004, 0xFF),
+            (0x1005, 0xFC),
+            (0x1006, 0x34),
+            (0x1007, 0x3B),
+            (0x1008, 0x10),
+            (0x1009, 0xF8),
+        ]
+    );
+}
+
+#[test]
+fn m68000_pc_relative_scalar_symbols_encode_literal_displacements() {
+    let assembler = run_passes(&[
+        ".cpu 68000",
+        ".org $1000",
+        "disp .const 4",
+        "idx .set 2",
+        "    MOVE.W disp(PC),D0",
+        "    MOVE.W idx(PC,D1.W),D2",
+        "    MOVE.W target(PC),D3",
+        "target:",
+        "    .word $1234",
+    ]);
+    let entries = assembler.image().entries().expect("image entries");
+    assert_eq!(
+        entries,
+        vec![
+            (0x1000, 0x30),
+            (0x1001, 0x3A),
+            (0x1002, 0x00),
+            (0x1003, 0x04),
+            (0x1004, 0x34),
+            (0x1005, 0x3B),
+            (0x1006, 0x10),
+            (0x1007, 0x02),
+            (0x1008, 0x36),
+            (0x1009, 0x3A),
+            (0x100A, 0x00),
+            (0x100B, 0x02),
+            (0x100C, 0x34),
+            (0x100D, 0x12),
+        ]
+    );
+}
+
+#[test]
+fn m68000_branch_and_immediate_diagnostics_are_deterministic() {
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    BRA.B $0002");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected BRA.B zero-displacement diagnostic");
+    assert!(message.contains("zero displacement"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEQ #128,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVEQ range diagnostic");
+    assert!(message.contains("signed 8-bit range"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ADDQ.W #9,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ADDQ range diagnostic");
+    assert!(message.contains("out of range (1-8)"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ASL.B #9,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ASL range diagnostic");
+    assert!(message.contains("out of range (1-8)"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ADDI.W #1,A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ADDI legality diagnostic");
+    assert!(message.contains("invalid destination effective address for ADDI.W"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    TST.W A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected TST legality diagnostic");
+    assert!(message.contains("invalid destination effective address for TST.W"));
+
+    for line in [
+        "    CMP.B D0,(A0)",
+        "    CMP.W D0,($1234).W",
+        "    CMP.L D0,($123456).L",
+    ] {
+        let (status, message) = assemble_line_status(m68000_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected CMP legality diagnostic for '{line}'"
+        );
+        let message = message.expect("expected CMP legality diagnostic");
+        assert!(
+            message.contains("invalid destination effective address for CMP"),
+            "unexpected diagnostic for '{line}': {message}"
+        );
+    }
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    SWAP A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected SWAP legality diagnostic");
+    assert!(message.contains("SWAP operand must be a data register"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    EXG D0,(A0)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected EXG legality diagnostic");
+    assert!(message.contains("data/address register pairs"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    SNE A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected SNE legality diagnostic");
+    assert!(message.contains("invalid destination effective address for SNE"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    DBRA A0,$0000");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected DBRA legality diagnostic");
+    assert!(message.contains("counter must be a data register"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    TRAP #16");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected TRAP range diagnostic");
+    assert!(message.contains("out of range (0-15)"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    STOP D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected STOP operand diagnostic");
+    assert!(message.contains("STOP operand must be an immediate status word"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    CMPA.B D0,A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected CMPA size diagnostic");
+    assert!(message.contains("does not support .B size"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    NBCD A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected NBCD legality diagnostic");
+    assert!(message.contains("invalid destination effective address for NBCD"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVE CCR,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVE from CCR diagnostic");
+    assert!(message.contains("MOVE from CCR is not supported"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVE D0,USP");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVE USP source diagnostic");
+    assert!(message.contains("MOVE USP source must be an address register"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ANDI.W #1,CCR");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ANDI to CCR size diagnostic");
+    assert!(message.contains("ANDI does not support .W size"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVE A0,SR");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVE to SR legality diagnostic");
+    assert!(message.contains("invalid source effective address for MOVE to SR"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    BTST A0,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected BTST bit-number diagnostic");
+    assert!(message.contains("BTST bit number must be an immediate value or data register"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    BCHG #1,4(PC)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected BCHG legality diagnostic");
+    assert!(message.contains("invalid destination effective address for BCHG"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    BCLR #-1,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected BCLR bit-range diagnostic");
+    assert!(message.contains("out of range (0-255)"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    CHK.L D0,D1");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected CHK size diagnostic");
+    assert!(message.contains("CHK does not support .L size"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MULU A0,D1");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MULU legality diagnostic");
+    assert!(message.contains("invalid source effective address for MULU"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    DIVU D0,A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected DIVU destination diagnostic");
+    assert!(message.contains("DIVU destination must be a data register"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ADDX.W D0,-(A1)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ADDX operand-shape diagnostic");
+    assert!(message.contains(
+        "ADDX operands must both be data registers or both be predecrement address operands"
+    ));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ABCD.B D0,D1");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ABCD size diagnostic");
+    assert!(message.contains("ABCD does not accept a size suffix"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    CMPM.W A0,A1");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected CMPM operand-shape diagnostic");
+    assert!(message.contains("CMPM operands must both be postincrement address operands"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ROXL.L (A0)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ROXL memory-size diagnostic");
+    assert!(message.contains("ROXL memory form does not support .L size"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ROXR.W #1,(A0)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ROXR register-form diagnostic");
+    assert!(message.contains("ROXR destination must be a data register"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    ROR 4(PC)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected ROR memory-form legality diagnostic");
+    assert!(message.contains("invalid destination effective address for ROR"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEM.W D0/D0,(A0)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVEM duplicate-list diagnostic");
+    assert!(message.contains("duplicate register in MOVEM list: D0"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEM.B D0,(A0)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVEM size diagnostic");
+    assert!(message.contains("MOVEM does not support .B size"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEP.W D0,(A0)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVEP addressing diagnostic");
+    assert!(message.contains("MOVEP memory operand must use d16(An) addressing"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEP.B D0,4(A0)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected MOVEP size diagnostic");
+    assert!(message.contains("MOVEP does not support .B size"));
+
+    let assembler = run_pass1(&[".cpu 68000", "    BRA later", "later:", "    RTS"]);
+    assert!(
+        !assembler
+            .diagnostics
+            .iter()
+            .any(|diag| diag.severity == Severity::Error),
+        "unexpected diagnostics: {:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn m68000_alias_spellings_match_canonical_baseline_forms() {
+    let (bra_entries, bra_diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68000", "    BRA target", "target:", "    RTS"],
+        false,
+    )
+    .expect("BRA alias assembly should succeed");
+    let (bra_word_entries, bra_word_diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68000", "    BRA.W target", "target:", "    RTS"],
+        false,
+    )
+    .expect("BRA.W assembly should succeed");
+    assert!(
+        bra_diagnostics.is_empty(),
+        "unexpected BRA diagnostics: {bra_diagnostics:?}"
+    );
+    assert!(
+        bra_word_diagnostics.is_empty(),
+        "unexpected BRA.W diagnostics: {bra_word_diagnostics:?}"
+    );
+    assert_eq!(
+        bra_entries, bra_word_entries,
+        "unsuffixed BRA should match BRA.W"
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W (A0,D1),D0"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.W 0(A0,D1.W),D0")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W (PC,D1),D0"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.W 0(PC,D1.W),D0")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W $1234.W,D0"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.W ($1234).W,D0")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.L $123456.L,D0"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.L ($123456).L,D0")
+    );
 }
 
 fn assert_vm_native_diagnostic_core_parity(native_diag: &Diagnostic, runtime_diag: &Diagnostic) {
@@ -3201,6 +4261,42 @@ fn diff_text(expected: &str, actual: &str, max_lines: usize) -> String {
     }
 
     out
+}
+
+#[test]
+fn m68000_example_programs_assemble_in_reference_workflow() {
+    let repo_root = workspace_root();
+    let examples_dir = repo_root.join("examples");
+    let out_dir = create_temp_dir("m68000-example-smoke");
+
+    for stem in [
+        "68000_basic_moves",
+        "68000_aliases",
+        "68000_allmodes",
+        "68000_address_arithmetic_shifts",
+        "68000_branching",
+        "68000_bit_operations",
+        "68000_condition_loops",
+        "68000_control_addressing",
+        "68000_effective_addresses",
+        "68000_arithmetic_sizes",
+        "68000_addressing_matrix",
+        "68000_extend_bcd_cmpm",
+        "68000_movem_movep",
+        "68000_rotate_memory_shift",
+        "68000_multiply_divide_check",
+        "68000_exchange_registers",
+        "68000_immediate_unary",
+        "68000_system_register_misc",
+        "68000_compare_operand_state",
+    ] {
+        let asm_path = examples_dir.join(format!("{stem}.asm"));
+        if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+            let diagnostic = assemble_example_error(&asm_path)
+                .unwrap_or_else(|| format!("failed to assemble {stem}: {err:?}"));
+            panic!("{diagnostic}");
+        }
+    }
 }
 
 fn normalize_listing_for_reference_compare(text: &str) -> String {
@@ -5651,6 +6747,17 @@ fn cpu_6809_and_hd6309_aliases_are_accepted() {
         process_line(&mut asm, ".cpu hitachi6309", 0, 1),
         LineStatus::Ok
     );
+}
+
+#[test]
+fn cpu_68000_aliases_are_accepted() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    assert_eq!(process_line(&mut asm, ".cpu 68000", 0, 1), LineStatus::Ok);
+    assert_eq!(process_line(&mut asm, ".cpu m68000", 0, 1), LineStatus::Ok);
+    assert_eq!(process_line(&mut asm, ".cpu mc68000", 0, 1), LineStatus::Ok);
 }
 
 #[test]

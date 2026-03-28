@@ -1,0 +1,36 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 control-transfer and indexed-addressing smoke fixture
+----                                2  .cpu 68000
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    43 F0 10 04                 6      LEA 4(A0,D1.W),A1
+1004    48 68 00 04                 7      PEA 4(A0)
+1008    61 00 00 04                 8      BSR.W helper
+100C    4E FA 00 04                 9      JMP 4(PC)
+----                               10  helper
+1010    4E 90                      11      JSR (A0)
+1012    52 40                      12      ADDQ.W #1,D0
+1014    4E 75                      13      RTS
+----                               14  
+----                               15  .end
+
+Lines: 15  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+helper           1010      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 22 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    43 F0 10 04 48 68 00 04 61 00 00 04 4E FA 00 04
+1010    4E 90 52 40 4E 75

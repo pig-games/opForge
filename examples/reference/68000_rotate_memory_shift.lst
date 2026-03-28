@@ -1,0 +1,30 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  .cpu 68000
+----                                2  
+----                                3  start
+0000    E3 10                       4      ROXL.B #1,D0
+0002    E2 72                       5      ROXR.W D1,D2
+0004    E1 D0                       6      ASL (A0)
+0006    E2 F8 12 34                 7      LSR.W ($1234).W
+000A    E5 E9 00 04                 8      ROXL 4(A1)
+000E    E6 E2                       9      ROR.W -(A2)
+0010    4E 75                      10      RTS
+
+Lines: 10  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            0000      prv  lbl 
+
+Total memory is 18 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0000    E3 10 E2 72 E1 D0 E2 F8 12 34 E5 E9 00 04 E6 E2
+0010    4E 75

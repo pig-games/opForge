@@ -9,7 +9,7 @@ used in the main repository.
 
 In addition to the rules below, this repository currently has:
 
-- a plan execution gate in [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-compliance-reviewer.md)
+- a plan execution gate in [agents/plan-compliance-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-compliance-reviewer.agent.md)
 - a workflow design proposal in [documentation/opforge-agent-workflow-proposal-v0_1.md](/Users/erik/Code/Retro/opForge/documentation/opforge-agent-workflow-proposal-v0_1.md)
 
 When plan-driven work is active in this repository, prefer using the local
@@ -69,7 +69,7 @@ Use the following routing rules by default:
 - for code review reports, use the review workflow:
   - [skills/opforge-review-reporting/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-reporting/SKILL.md)
   - for multi-model code review, prefer the branch-local triple review stack:
-    - [.github/agents/review-triple-orchestrator.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-triple-orchestrator.agent.md)
+    - [agents/review-triple-orchestrator.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-triple-orchestrator.agent.md)
 - for implementation or remediation plans, use:
   - [skills/opforge-plan-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-plan-authoring/SKILL.md)
 - for new behavioral specs, use:
@@ -82,17 +82,17 @@ Use the following routing rules by default:
 Use the following branch-local gates:
 
 - spec quality gate:
-  - [agents/spec-quality-reviewer.md](/Users/erik/Code/Retro/opForge/agents/spec-quality-reviewer.md)
+  - [agents/spec-quality-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/spec-quality-reviewer.agent.md)
 - review report quality gate:
-  - [agents/review-report-quality-reviewer.md](/Users/erik/Code/Retro/opForge/agents/review-report-quality-reviewer.md)
+  - [agents/review-report-quality-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-report-quality-reviewer.agent.md)
 - plan quality gate:
-  - [agents/plan-quality-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-quality-reviewer.md)
+  - [agents/plan-quality-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-quality-reviewer.agent.md)
 - execution compliance gate:
-  - [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-compliance-reviewer.md)
+  - [agents/plan-compliance-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-compliance-reviewer.agent.md)
 - finding closure gate:
-  - [agents/finding-closure-reviewer.md](/Users/erik/Code/Retro/opForge/agents/finding-closure-reviewer.md)
+  - [agents/finding-closure-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/finding-closure-reviewer.agent.md)
 - optional traceability gate for larger efforts:
-  - [agents/artifact-traceability-reviewer.md](/Users/erik/Code/Retro/opForge/agents/artifact-traceability-reviewer.md)
+  - [agents/artifact-traceability-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/artifact-traceability-reviewer.agent.md)
 
 Rules:
 

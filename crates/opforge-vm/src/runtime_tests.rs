@@ -1861,6 +1861,68 @@ fn runtime_expression_parser_parses_index_member_postfix_chain() {
 }
 
 #[test]
+fn runtime_expression_parser_parses_postfix_indirect_tuple_for_68k_addressing() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("4(A0,D1.W)", 1);
+    let expr = parse_expression_tokens(tokens, end_span, None)
+        .expect("direct runtime parser should parse postfix indirect tuple");
+
+    match expr {
+        Expr::Indirect(inner, _) => match *inner {
+            Expr::Tuple(elements, _) => {
+                assert_eq!(elements.len(), 3);
+                assert!(matches!(elements[0], Expr::Number(ref n, _) if n == "4"));
+                assert!(matches!(
+                    elements[1],
+                    Expr::Register(ref reg, _) | Expr::Identifier(ref reg, _)
+                        if reg.eq_ignore_ascii_case("A0")
+                ));
+                match &elements[2] {
+                    Expr::Identifier(name, _) => {
+                        assert_eq!(name.to_ascii_uppercase(), "D1.W");
+                    }
+                    Expr::Member { base, field, .. } => {
+                        assert_eq!(field, "W");
+                        assert!(matches!(
+                            base.as_ref(),
+                            Expr::Register(reg, _) | Expr::Identifier(reg, _)
+                                if reg.eq_ignore_ascii_case("D1")
+                        ));
+                    }
+                    other => panic!("expected index-size member expression, got {other:?}"),
+                }
+            }
+            other => panic!("expected tuple inside indirect, got {other:?}"),
+        },
+        other => panic!("expected indirect tuple AST, got {other:?}"),
+    }
+}
+
+#[test]
+fn runtime_expression_parser_parses_postincrement_indirect_for_68k_addressing() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("(A0)+", 1);
+    let expr = parse_expression_tokens(tokens, end_span, None)
+        .expect("direct runtime parser should parse postincrement indirect");
+
+    match expr {
+        Expr::Unary {
+            op: UnaryOp::Plus,
+            expr,
+            ..
+        } => match expr.as_ref() {
+            Expr::Indirect(inner, _) => {
+                assert!(matches!(
+                    inner.as_ref(),
+                    Expr::Register(reg, _) | Expr::Identifier(reg, _)
+                        if reg.eq_ignore_ascii_case("A0")
+                ));
+            }
+            other => panic!("expected indirect operand inside postincrement, got {other:?}"),
+        },
+        other => panic!("expected unary-plus postincrement AST, got {other:?}"),
+    }
+}
+
+#[test]
 fn runtime_expression_parser_parses_call_with_list_and_placeholder_args() {
     let (tokens, end_span) = tokenize_core_expr_tokens(".pick({1,2},?)", 1);
     let expr = parse_expression_tokens(tokens, end_span, None)

@@ -130,6 +130,13 @@ impl FormatterHookRegistry {
         ));
 
         self.register_dialect_hook(Box::new(
+            crate::builtin_hooks::Motorola68KDialectFormatterHook,
+        ));
+        self.register_family_hook(Box::new(
+            crate::builtin_hooks::Motorola68KFamilyFormatterHook,
+        ));
+
+        self.register_dialect_hook(Box::new(
             crate::builtin_hooks::TransparentDialectFormatterHook,
         ));
         self.register_family_hook(Box::new(crate::builtin_hooks::Mos6502FamilyFormatterHook));
@@ -142,6 +149,7 @@ impl FormatterHookRegistry {
         self.register_cpu_hook(Box::new(crate::builtin_hooks::M45GS02FormatterHook));
         self.register_cpu_hook(Box::new(crate::builtin_hooks::M6809FormatterHook));
         self.register_cpu_hook(Box::new(crate::builtin_hooks::HD6309FormatterHook));
+        self.register_cpu_hook(Box::new(crate::builtin_hooks::M68000FormatterHook));
     }
 }
 
@@ -156,7 +164,7 @@ mod tests {
         parse_document, tokenize_source, ActivePipeline, CpuFormatterHook, DialectFormatterHook,
         FamilyFormatterHook, FormatterHints, FormatterHookContext, GlobalFormatterHook,
     };
-    use families::families::{intel8080, m6800, mos6502};
+    use families::families::{intel8080, m6800, m68k, mos6502};
     use registry::cpu::{CpuFamily, CpuType};
 
     #[test]
@@ -192,6 +200,11 @@ mod tests {
                 cpu: crate::m45gs02::module::CPU_ID,
                 family: mos6502::module::FAMILY_ID,
                 dialect: mos6502::module::DIALECT_TRANSPARENT.to_string(),
+            },
+            ActivePipeline {
+                cpu: crate::m68000::module::CPU_ID,
+                family: m68k::module::FAMILY_ID,
+                dialect: m68k::module::DIALECT_MOTOROLA68K.to_string(),
             },
             ActivePipeline {
                 cpu: crate::m6809::module::CPU_ID,

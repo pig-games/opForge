@@ -1,0 +1,50 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 system and register-utility smoke fixture
+----                                2  .cpu 68000
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    4E 56 FF F8                 6      LINK A6,#-8
+1004    40 C0                       7      MOVE SR,D0
+1006    44 F8 12 34                 8      MOVE ($1234).W,CCR
+100A    46 FC 27 00                 9      MOVE #$2700,SR
+100E    4E 69                      10      MOVE USP,A1
+1010    4E 62                      11      MOVE A2,USP
+1012    02 3C 00 1F                12      ANDI #$1F,CCR
+1016    00 7C 27 00                13      ORI #$2700,SR
+101A    0A 3C 00 0F                14      EORI #$0F,CCR
+101E    48 40                      15      SWAP D0
+1020    48 81                      16      EXT.W D1
+1022    48 C2                      17      EXT.L D2
+1024    4E 4F                      18      TRAP #15
+1026    4E 71                      19      NOP
+1028    4E 72 27 00                20      STOP #$2700
+102C    4E 5E                      21      UNLK A6
+102E    4E 70                      22      RESET
+1030    4E 73                      23      RTE
+1032    4E 77                      24      RTR
+1034    4E 76                      25      TRAPV
+1036    4A FC                      26      ILLEGAL
+----                               27  
+----                               28  .end
+
+Lines: 28  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 56 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    4E 56 FF F8 40 C0 44 F8 12 34 46 FC 27 00 4E 69
+1010    4E 62 02 3C 00 1F 00 7C 27 00 0A 3C 00 0F 48 40
+1020    48 81 48 C2 4E 4F 4E 71 4E 72 27 00 4E 5E 4E 70
+1030    4E 73 4E 77 4E 76 4A FC

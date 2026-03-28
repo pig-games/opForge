@@ -8,7 +8,7 @@ use asm::listing::{ListingLine, ListingWriter};
 use asm::output::{RegionState, RootMetadata, SectionState};
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
-    register_motorola6800_family_stack,
+    register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
 use opcore::expression::{expr_span, AstEvalError, AstEvalErrorKind};
 use opcore::scope::ScopeKind;
@@ -43,6 +43,7 @@ fn build_default_registry_for_tests() -> ModuleRegistry {
     register_intel8080_family_stack(&mut registry);
     register_mos6502_family_stack(&mut registry);
     register_motorola6800_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
     registry
 }
 

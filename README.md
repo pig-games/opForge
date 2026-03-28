@@ -6,6 +6,7 @@ It currently ships builtin support for:
 - Intel 8080 family processors: 8080 alias, 8085, and Z80
 - MOS 6502 family processors: 6502, 65C02, 65816, and 45GS02
 - Motorola 6800 family processors: 6809 and HD6309
+- Motorola 68000 family processors: baseline 68000 via `68000`, `m68000`, and `mc68000`
 
 It is originally inspired by [64tass](https://tass64.sourceforge.net) in terms of feature scope and notation style.
 

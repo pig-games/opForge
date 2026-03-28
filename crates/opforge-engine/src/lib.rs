@@ -26,7 +26,7 @@ use asm::output::{
 };
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
-    register_motorola6800_family_stack,
+    register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
 use opcore::parser::{LineAst, ParseError};
 use opcore::preprocess::{PreprocessFileLoader, Preprocessor};
@@ -323,6 +323,7 @@ pub fn build_default_asm_registry() -> AsmRegistry {
     register_intel8080_family_stack(&mut registry);
     register_mos6502_family_stack(&mut registry);
     register_motorola6800_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
     registry
 }
 
@@ -2400,6 +2401,14 @@ mod tests {
         assert_eq!(
             registry.resolve_cpu_name("mega65"),
             Some(CpuType::new("45gs02"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68000"),
+            Some(CpuType::new("m68000"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68000"),
+            Some(CpuType::new("m68000"))
         );
     }
 

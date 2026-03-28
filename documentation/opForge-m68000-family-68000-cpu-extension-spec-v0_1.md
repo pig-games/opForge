@@ -1,224 +1,227 @@
-# opForge Motorola 68000 Family Extension Spec (v0.1, starting with 68000)
+# opForge Motorola 68000 Family Extension Spec (v0.1, 68000 baseline)
 
-## Goal
-Add Motorola 68000-family support to opForge using the existing family/CPU/dialect architecture, with initial delivery focused on `68000`.
+## Summary
+This specification defines the minimum behavior required to add first-class
+Motorola 68000-family support to the current crate-based opForge architecture.
+The v0.1 delivery is intentionally narrow: one new family, one baseline CPU,
+one canonical dialect, deterministic diagnostics, and documentation that only
+claims shipped behavior.
 
-This specification defines architecture boundaries, implementation phases, tests, diagnostics, and acceptance criteria for first-class 68k assembly support.
+## Problem
+opForge currently ships Intel 8080-family, MOS 6502-family, and Motorola
+6800-family support, but it has no Motorola 68000-family registration,
+operand model, encode path, or user-facing documentation. That gap blocks
+`.cpu 68000` source, prevents 68k capability discovery, and leaves the current
+family/CPU/dialect architecture without a 24-bit big-endian 68k target.
 
-## Scope
-In scope:
-- new 68000 family module (operand parser + family encoding table)
-- new CPU module for canonical `m68000` / alias `68000`
-- registry wiring, `.cpu` aliases, `cpusupport`/capabilities reporting
-- assembler tests plus examples/reference fixtures for baseline 68000 behavior
-- documentation updates for supported CPUs and syntax usage
+## Goals
 
-Out of scope for v0.1:
-- non-68000 Motorola lines (already separate family work)
-- post-68000 CPUs (for example `68010`, `68EC020`, `68020`) beyond registration placeholders
-- macro-language or directive redesign unrelated to CPU support
-- broad third-party dialect compatibility layers in first pass
+- [ ] `REQ-M68K-001`: Add a new `motorola68000` family and baseline `m68000`
+      CPU with aliases `68000` and `mc68000` using the current crate-based
+      registry stack.
+- [ ] `REQ-M68K-002`: Support a narrow but useful canonical `motorola68k`
+      syntax for baseline 68000 operands and instructions, plus a narrow set of
+      deterministic idiomatic baseline aliases that map directly to those
+      canonical forms.
+- [ ] `REQ-M68K-003`: Preserve deterministic native-assembler behavior for
+      two-pass resolution, size legality, branch sizing, diagnostics, and
+      big-endian data emission.
+- [ ] `REQ-M68K-004`: Expose 68000 support through registry discovery,
+      `cpusupport`/capabilities reporting, tests, examples, and user-facing
+      documentation.
+- [ ] `REQ-M68K-005`: Keep family-level ownership extensible for later
+      `68010`/`68020` work without redesigning the family/CPU boundary during
+      v0.1.
 
-## Baseline Constraints (from current opForge architecture)
-1. Shared semantics belong in a family module; CPU-only behavior belongs in CPU modules.
-2. Dialects are mapping/rewrite layers and never emit bytes directly.
-3. Two-pass assembly behavior is preserved.
-4. Validation order remains: `cargo fmt`, `cargo clippy -- -D warnings`, `cargo audit`, full tests.
-5. Reference outputs update only for intentional behavior changes.
+## Non-Goals
 
-## Target Runtime Matrix (68000 family, initial subset)
+- [ ] `NREQ-M68K-001`: Enable post-68000 CPUs or instructions in v0.1
+      (`68010`, `68EC020`, `68020`, or later).
+- [ ] `NREQ-M68K-002`: Add broad compatibility dialects or syntax shims beyond
+      canonical `motorola68k` and the explicit baseline aliases listed in this
+      spec.
+- [ ] `NREQ-M68K-003`: Redesign directives, macro language, listing format, or
+      general expression semantics for 68k-specific preferences.
+- [ ] `NREQ-M68K-004`: Make `motorola68000` authoritative for VM encode,
+      expression VM, or parser VM rollout in v0.1.
+- [ ] `NREQ-M68K-005`: Widen the preview `libopforge` facade beyond normal
+      builtin registry/discovery surfaces just to expose internal
+      implementation details.
 
-| Family | Dialect(s) | CPU (canonical) | Aliases | Notes |
-|---|---|---|---|---|
-| `motorola68000` | `motorola68k` (initial pass-through) | `m68000` | `68000`, `mc68000` | baseline target for v0.1 |
+## Invariants / Constraints
+- Shared operand parsing, family-common encode tables, and family-common
+  diagnostics belong in a new 68000 family implementation under
+  `crates/opforge-families`.
+- CPU identity, aliases, default dialect, target metadata, and future CPU-only
+  gating belong in a separate `m68000` CPU module under
+  `crates/opforge-families`.
+- The implementation must fit the current workspace layout rather than the
+  older monolithic `src/` layout. The primary integration surfaces are
+  `crates/opforge-families`, `crates/opforge-asm`, `crates/opforge-engine`,
+  `crates/opforge-formatter`, and selected `crates/opforge-vm` smoke coverage
+  where registry-derived hierarchy data must stay coherent.
+- The family module namespace for this work is `m68k`, leaving `m68000` for the
+  baseline CPU module namespace.
+- Dialect modules may rewrite syntax into canonical forms but must not emit
+  bytes directly.
+- Two-pass assembly behavior remains in force.
+- While `.cpu m68000` is active, target metadata must report
+  `max_program_address() = 0x00FF_FFFF`, `native_word_size_bytes() = 2`, and
+  big-endian multi-byte emission.
+- Reference outputs may change only for intentional behavior deltas and only
+  after tests demonstrate the new behavior.
 
-Design choice:
-- Start with one canonical syntax (`motorola68k`) and preserve room for compatibility dialects later.
-- Keep CPU identity separate from family parser/encoder ownership.
+## Behavioral Contract
+### CPU identity and discovery
+- The family id is `motorola68000`.
+- The canonical dialect id is `motorola68k`.
+- The baseline CPU id is `m68000` with aliases `68000` and `mc68000`.
+- `.cpu 68000`, `.cpu m68000`, and `.cpu mc68000` resolve to the same CPU.
+- Registry-derived discovery surfaces, including `cpusupport` and capabilities
+  reports, must list the new family and CPU deterministically.
 
-## Architecture and Layering Plan
+### Ownership boundaries
+- Family-level behavior lives in `crates/opforge-families/src/m68k.rs` and
+  `crates/opforge-families/src/m68k/*` and owns:
+  - register recognition for data registers, address registers, PC, and any
+    family-common special registers needed for the baseline slice
+  - canonical 68000 effective-address parsing
+  - family-common instruction lookup and encoding
+  - branch displacement and effective-address legality checks shared by future
+    68000-family CPUs
+- CPU-level behavior lives in `crates/opforge-families/src/m68000.rs` and
+  `crates/opforge-families/src/m68000/*` and owns:
+  - CPU id, aliases, default dialect, and target metadata
+  - explicit rejection of later-CPU instructions if future family tables widen
+    beyond baseline 68000
+- Formatter integration in v0.1 is limited to keeping builtin hook
+  registration coherent for the new family/cpu. It does not promise
+  68k-specific reformatting rules beyond preserving current generic formatter
+  behavior.
+- VM integration in v0.1 is limited to keeping registry-derived
+  hierarchy-package generation coherent when `motorola68000` is registered. It
+  does not claim authoritative family-specific encode/runtime parity.
 
-### Family ownership (`src/families/m68000/*`)
-Family module owns:
-- operand parsing for 68000 addressing forms
-- instruction table entries common to all future 68000-family CPUs
-- branch displacement/range validation shared at family level
-- register token parsing (data/address registers, special registers)
-- extension seams for future CPUs (`68010`, `68020`) without registry redesign
+### Canonical operand baseline
+The v0.1 canonical syntax must accept these operand families:
+1. Data register direct: `Dn`
+2. Address register direct: `An`
+3. Address register indirect: `(An)`
+4. Postincrement and predecrement: `(An)+`, `-(An)`
+5. Address-register displacement: `d16(An)`
+6. 68000 indexed address form: `d8(An,Xn.SIZE)` where `SIZE` is `.W` or `.L`
+7. Absolute short and long: `(expr).W`, `(expr).L`
+8. PC-relative displacement and indexed forms: `d16(PC)`, `d8(PC,Xn.SIZE)`
+9. Immediate: `#expr`
 
-Proposed files:
-- `src/families/m68000/mod.rs`
-- `src/families/m68000/module.rs`
-- `src/families/m68000/handler.rs`
-- `src/families/m68000/operand.rs`
-- `src/families/m68000/table.rs`
-- `src/families/m68000/dialect.rs`
-- `src/families/m68000/formatter.rs` (starter no-op formatter hook)
+### Supported idiomatic baseline aliases
+The current v0.1 surface also accepts these deterministic baseline aliases:
+1. Motorola-style parenthesized displacement aliases for baseline displacement
+   modes: `(d16,An)` and `(d16,PC)`
+2. Motorola-style parenthesized indexed aliases for baseline indexed modes:
+   `(d8,An,Xn)`, `(d8,An,Xn.W)`, `(d8,An,Xn.L)`, `(d8,PC,Xn)`,
+   `(d8,PC,Xn.W)`, and `(d8,PC,Xn.L)`
+3. Identity-scale indexed aliases for the existing baseline indexed forms:
+  `d8(An,Xn.SIZE*1)`, `(d8,An,Xn.SIZE*1)`, `(An,Xn*1)`, `(An,Xn.W*1)`,
+  `(An,Xn.L*1)`, `d8(PC,Xn.SIZE*1)`, `(d8,PC,Xn.SIZE*1)`, `(PC,Xn*1)`,
+  `(PC,Xn.W*1)`, and `(PC,Xn.L*1)`
+4. Zero-displacement indexed aliases: `(An,Xn)`, `(An,Xn.W)`, `(An,Xn.L)`,
+  `(PC,Xn)`, `(PC,Xn.W)`, and `(PC,Xn.L)`
+5. Zero-displacement PC-relative shorthand alias: `(PC)`
+6. Non-parenthesized absolute-width aliases that preserve explicit width:
+   `expr.W` and `expr.L`
+7. Unsuffixed baseline branch mnemonics `BRA`, `BSR`, and `Bcc`, which default
+   to `.W`
 
-### CPU ownership (`src/m68000/*`)
-`m68000` CPU module owns:
-- CPU identity, aliases, and capability metadata
-- 68000-only constraints (for example unsupported 68010+ instructions)
-- CPU-specific validation if future family table contains wider 68k superset entries
+The v0.1 baseline does not include 68020-style scaled indexes (`*2`, `*4`,
+`*8`), memory-indirect forms, base suppression, ambiguous absolute width
+inference, or broader compatibility alias sets beyond the forms listed above.
 
-Proposed files:
-- `src/m68000/mod.rs`
-- `src/m68000/module.rs`
-- `src/m68000/instructions.rs` (only if CPU-specific table split is needed)
-
-### Registry and assembler wiring
-Update registration and visibility in:
-- `src/families/mod.rs`
-- `src/lib.rs`
-- `src/assembler/mod.rs` (imports)
-- `src/assembler/engine.rs` (`register_family`, `register_cpu`)
-- `src/assembler/tests.rs` registry test helpers
-
-## 68000 Operand and Encoding Model (v0.1 baseline)
-
-### Required addressing forms
-1. Data register direct (`Dn`)
-2. Address register direct (`An`)
-3. Address register indirect (`(An)`)
-4. Postincrement/predecrement (`(An)+`, `-(An)`)
-5. Displacement (`d16(An)`)
-6. Indexed (`d8(An,Xn)`)
-7. Absolute short/long (`(xxx).W`, `(xxx).L`)
-8. Program counter relative (`d16(PC)`, `d8(PC,Xn)`)
-9. Immediate (`#imm`)
-
-### Baseline instruction class coverage
-v0.1 baseline should include representative instructions across core classes:
+### Baseline instruction coverage
+The v0.1 baseline must cover representative instructions across these classes:
 - data movement: `MOVE`, `MOVEA`, `LEA`, `PEA`
-- arithmetic/logic: `ADD`, `ADDA`, `SUB`, `SUBA`, `CMP`, `AND`, `OR`, `EOR`
+- arithmetic and logic: `ADD`, `ADDA`, `SUB`, `SUBA`, `CMP`, `AND`, `OR`,
+  `EOR`
 - control flow: `BRA`, `BSR`, `Bcc`, `JMP`, `JSR`, `RTS`
-- shifts/rotates: `ASL`, `ASR`, `LSL`, `LSR`, `ROL`, `ROR`
-- quick/immediate forms: `MOVEQ`, `ADDQ`, `SUBQ`
+- shifts and rotates: `ASL`, `ASR`, `LSL`, `LSR`, `ROL`, `ROR`
+- quick and immediate-sensitive forms: `MOVEQ`, `ADDQ`, `SUBQ`
 
-### Size suffix and width policy
-- Supported operation sizes for baseline: `.B`, `.W`, `.L` where legal.
-- Width legality is instruction-specific and must be validated in encoder tables.
-- Missing/implicit size behavior should follow canonical 68000 defaults per instruction and be documented in diagnostics when ambiguous.
+### Size, address, and branch policy
+- Supported operation sizes in the baseline are `.B`, `.W`, and `.L` where the
+  instruction encoding legally permits them.
+- Size legality is enforced in the encode tables, not by ad hoc parser-only
+  checks.
+- Unsuffixed instructions may use canonical 68000 defaults only when the
+  resulting encoding is deterministic; otherwise the assembler must emit a
+  diagnostic that requires an explicit size suffix.
+- Unsuffixed `BRA`, `BSR`, and `Bcc` default to word displacement in the
+  shipped baseline alias surface.
+- Absolute width selection must be explicit via `.W` or `.L` in the canonical
+  syntax for the baseline slice.
+- Multi-byte data emission under `.cpu m68000` follows big-endian order for the
+  directives that already consult CPU endianness in the current assembler
+  pipeline.
 
-### Endianness and address model
-- 68000 stores multi-byte values in big-endian order.
-- CPU handler target metadata for baseline:
-  - `max_program_address() = 0x00FF_FFFF` (24-bit logical address space)
-  - `native_word_size_bytes() = 2`
-  - `is_little_endian() = false`
+### Diagnostics
+The baseline implementation must provide deterministic diagnostics for:
+- unknown register tokens
+- invalid effective-address forms for a mnemonic
+- invalid size suffixes for a mnemonic or operand combination
+- immediate values that do not fit the selected size
+- branch displacements outside the selected encoding range
+- non-deterministic branch or size selection that requires an explicit suffix
+- attempts to use later-CPU-only instructions while targeting `m68000`, if
+  wider family tables exist
 
-This impacts `.word`, `.emit word`, and size-aware emission behavior when `.cpu 68000` is active.
-
-## Syntax and Dialect Policy
-- Initial dialect: `motorola68k` as pass-through canonical grammar.
-- Source selection remains `.cpu`-driven; no new `.dialect` directive in v0.1.
-- Compatibility dialects (for example GNU/vasm style variants) are deferred until baseline stability.
-
-## Error Model and Diagnostics
-Required baseline diagnostics:
-- unknown register token
-- invalid effective-address form for instruction
-- invalid size suffix for mnemonic/operand combination
-- immediate out-of-range for chosen size
-- branch displacement out of range (`BRA/Bcc/BSR` short/word forms)
-- CPU-gating errors for non-68000 instructions (if entered through aliases)
-
-Diagnostics should follow current opForge style:
-- instruction-context-rich messages
-- deterministic wording for fixture stability
-- span-aware operand highlighting when available
-
-## Test Plan
-
-### Unit tests (new family and CPU modules)
-- operand parser tests for each effective-address class
-- encoding tests for representative instruction+mode combinations
-- negative tests for illegal mode/size combinations
-- branch displacement boundary tests
-
-### Integration tests (`src/assembler/tests.rs`)
-- `.cpu 68000` and `.cpu m68000` alias resolution
-- `cpusupport_report` and capabilities include family/cpu entries
-- `.word`/`.emit word` big-endian behavior under 68000 mode
-- unknown CPU error path includes new aliases as candidates
-
-### Examples and references
-Add baseline examples:
-- `examples/68000_basic_moves.asm`
-- `examples/68000_branching.asm`
-- `examples/68000_effective_addresses.asm`
-- `examples/68000_arithmetic_sizes.asm`
-
-Reference outputs:
-- generated under `examples/reference/*` using existing project conventions
-- regenerated only after tests pass except intentional output deltas
-
-## Documentation Updates Required
-When implementation lands, update:
-- `README.md` CPU support list and minimal 68000 sample
-- `documentation/opForge-reference-manual.md`
-  - supported CPU table
-  - `.cpu` aliases
-  - 68000 syntax notes and size suffix behavior
-
-Release notes policy:
-- create notes only in the next release file for the next tag
-- never edit already-tagged release notes
-
-## Phased Delivery Plan
-
-### Phase 0: Scaffolding and registration
-- create family/CPU module skeletons
-- wire registry and assembler startup paths
-- add `cpusupport` visibility tests
-
-Exit criteria:
-- `.cpu 68000` resolves cleanly
-- deterministic capabilities output includes `motorola68000` and `m68000`
-
-### Phase 1: Baseline operand + encoder path
-- implement family operand parser and core instruction tables
-- implement baseline CPU handler metadata and validation
-- add unit/integration tests and baseline examples
-
-Exit criteria:
-- representative 68000 programs assemble correctly
-- no regressions in existing families
-
-### Phase 2: Diagnostics hardening and fixture stabilization
-- refine diagnostic wording/span anchors
-- lock branch/size boundary tests
-- generate fixture references for examples
-
-Exit criteria:
-- fixture outputs stable across repeated test runs
-- negative tests cover major operand/size failure classes
-
-### Phase 3: Docs completion and quality gate
-- sync README/manual docs
-- run full validation workflow
-
-Exit criteria:
-- docs and behavior are consistent
-- required quality gates pass
-
-## Risks and Open Decisions
-1. Canonical 68k syntax variant for baseline:
-   - decide exact accepted punctuation/case and keep it strict in v0.1.
-
-2. Immediate range and default-size policy:
-   - require explicit size for ambiguous forms or infer defaults per mnemonic.
-
-3. Address expression width handling:
-   - decide when unresolved symbols force `.W` vs `.L` encoding or require explicit suffix.
-
-4. Future CPU layering:
-   - reserve extension points for `68010`/`68020` without over-generalizing v0.1.
+## Boundary Cases
+- A register token valid in another architecture must still diagnose as unknown
+  in 68000 mode if it is not part of the 68000 register set.
+- PC-relative forms must reject illegal combinations rather than silently
+  rewriting them.
+- Accepted idiomatic aliases must assemble to the same bytes as their
+  equivalent canonical baseline forms.
+- Negative displacements and immediate values must respect signed range rules
+  for the chosen encoding size.
+- The assembler must not silently choose absolute short vs absolute long when
+  the canonical syntax omitted the required `.W` or `.L`.
+- Big-endian emission under `.cpu m68000` must affect existing size-aware data
+  directives without changing behavior for other CPUs.
 
 ## Acceptance Criteria
-This spec is considered fulfilled when:
-1. `m68000` is registered under new `motorola68000` family with documented aliases.
-2. Baseline effective-address forms and instruction classes above are assembled with correct bytes.
-3. Size/addressing diagnostics are deterministic and covered by negative tests.
-4. Examples and reference outputs are present and validated.
-5. README/manual updates document shipped 68000 support.
+
+- [ ] `AC-M68K-001`: `.cpu 68000`, `.cpu m68000`, and `.cpu mc68000` resolve to
+      `m68000`, and registry discovery surfaces list `motorola68000` and
+      `m68000`.
+- [ ] `AC-M68K-002`: Baseline operand families and instruction classes in this
+      spec assemble to correct bytes in native assembler tests.
+- [ ] `AC-M68K-003`: Size, branch, and effective-address validation errors are
+      deterministic and covered by negative tests.
+- [ ] `AC-M68K-004`: Size-aware data emission under `.cpu m68000` uses
+      big-endian byte order where the current assembler pipeline consults CPU
+      endianness.
+- [ ] `AC-M68K-005`: A small 68000 example/reference corpus exists and is
+      validated with the repository's normal example/reference workflow.
+- [ ] `AC-M68K-006`: README and reference-manual updates describe only shipped
+      `m68000` baseline behavior and do not over-claim later-CPU or
+      authoritative VM support.
+- [ ] `AC-M68K-007`: The supported idiomatic baseline aliases in this spec
+      assemble identically to their canonical forms in focused alias-parity
+      tests.
+
+## Validation Expectations
+- Add focused unit tests in the new 68000 family and CPU modules under
+  `crates/opforge-families`.
+- Add integration coverage in `crates/opforge-asm/src/tests.rs` for CPU alias
+  resolution, registry discovery, native data-emission behavior,
+  representative 68000 assembly, and canonical-versus-alias parity.
+- Verify `crates/opforge-engine` and any registry-derived hierarchy-package
+  smoke coverage still succeed once the new family stack is registered.
+- If formatter hooks are registered, add a focused formatter registry smoke
+  test rather than broad formatter redesign work.
+- Run the repository's required implementation gates for execution work:
+  `cargo fmt`, `cargo clippy -- -D warnings`, `cargo audit`, and `make test`.
+
+## Open Questions
+None for v0.1. The module naming, branch-size policy, narrow alias scope,
+canonical absolute-width syntax, formatter scope, and VM-scope decisions above
+are the decisions this plan is intended to implement.

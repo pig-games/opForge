@@ -73,6 +73,14 @@
           "default": null,
           "description": "Default CPU used when no .cpu directive is active."
         },
+        "opforgeLsp.serverPath": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Optional explicit path to the opforge-lsp executable. Supports absolute paths, ${workspaceFolder} expansion, ~/ home expansion, and workspace-relative paths. Changing this setting restarts the language client."
+        },
         "opforgeLsp.opforgePath": {
           "type": [
             "string",
@@ -98,10 +106,12 @@
     "compile": "tsc -p .",
     "watch": "tsc -watch -p ."
   },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.92.0",
-    "typescript": "^5.6.0",
-    "vscode-languageclient": "^9.0.1"
+    "typescript": "^5.6.0"
   }
 }

@@ -7,7 +7,7 @@ This manual is validated against opForge CLI `0.9.6` (crate `0.9.6`).
 
 ## 1. Introduction
 
-opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), and Motorola 6800-family CPUs (6809/HD6309). It supports:
+opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), Motorola 6800-family CPUs (6809/HD6309), and the baseline Motorola 68000 CPU (`68000`/`m68000`/`mc68000`). It supports:
 - Dot-prefixed directives and conditionals.
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
 - Preprocessor directives for includes and conditional compilation.
@@ -17,7 +17,7 @@ opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502
 The `.cpu` directive currently accepts `8080` (alias for `8085`), `8085`, `z80`,
 `6502`, `m6502`, `65c02`, `65816`, `65c816`, `w65c816`, `45gs02`, `m45gs02`,
 `mega65`, `4510`, `csg4510`, `6809`, `m6809`, `mc6809`, `6309`, `m6309`,
-`h6309`, `hitachi6309`, and `hd6309`.
+`h6309`, `hitachi6309`, `hd6309`, `68000`, `m68000`, and `mc68000`.
 
 ## 2. Usage tips
 
@@ -591,9 +591,17 @@ Examples in the repo:
 .cpu h6309
 .cpu hitachi6309
 .cpu hd6309
+.cpu 68000
+.cpu m68000
+.cpu mc68000
 ```
 
-Planned (not currently supported): `68000` and related CPUs.
+Baseline Motorola 68000 support is available through `.cpu 68000`,
+`.cpu m68000`, and `.cpu mc68000`.
+
+Current v0.1 coverage is limited to the baseline 68000 CPU and the canonical
+opForge syntax supported by the shipped examples. Later 68000-family CPUs
+remain unsupported in this release.
 
 65816 support includes the phase-1 instruction set and phase-2 24-bit addressing work:
 - Implements selected 65816 mnemonics and operand forms.
@@ -1028,11 +1036,15 @@ Instruction mnemonics are selected by `.cpu`:
 ## 14. Appendix: multi-CPU architecture
 
 This appendix describes the modular architecture that allows opForge to support
-multiple CPU targets (8085, Z80, 6502, 65C02, 65816) through a common framework.
+multiple CPU targets through a common framework, including Intel 8080-family
+CPUs, MOS 6502-family CPUs, Motorola 6800-family CPUs, and the baseline
+Motorola 68000 CPU.
 
 ### Overview
 
-The assembler is organized into layers with hierarchical parsing and encoding:
+The assembler is organized into layers with hierarchical parsing and encoding.
+The diagram below is schematic and does not attempt to list every currently
+registered family or CPU:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

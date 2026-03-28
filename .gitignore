@@ -51,3 +51,8 @@ Icon?
 
 # Generated PDF text extractions (local reference)
 /documentation/_pdf_extract/
+
+# Local VS Code client Node artifacts
+/clients/vscode/node_modules/
+/clients/vscode/out/
+/clients/vscode/package-lock.json

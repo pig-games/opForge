@@ -41,6 +41,14 @@ impl CpuHandler for M68000CpuHandler {
         family_operands: &[FamilyOperand],
         _ctx: &dyn AssemblerContext,
     ) -> Result<Vec<Operand>, String> {
+        if family_operands
+            .iter()
+            .any(|operand| matches!(operand, FamilyOperand::FullExtension { .. }))
+        {
+            return Err(
+                "68020+ full-extension addressing is not supported on baseline 68000".to_string(),
+            );
+        }
         Ok(family_operands.to_vec())
     }
 

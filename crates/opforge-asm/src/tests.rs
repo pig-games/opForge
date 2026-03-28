@@ -3811,6 +3811,59 @@ fn baseline_m68k_cpus_reject_68020_memory_indirect_operands_deterministically() 
 }
 
 #[test]
+fn later_m68k_cpus_accept_full_extension_shared_baseline_surface() {
+    let expected_non_indirect = vec![0x30, 0x30, 0x1D, 0x20, 0x00, 0x04];
+    let expected_preindexed = vec![0x30, 0x30, 0x1D, 0x12, 0x00, 0x08];
+
+    for cpu in [m68020_cpu_id, m68030_cpu_id, m68040_cpu_id] {
+        assert_eq!(
+            assemble_bytes(cpu, "    MOVE.W (4.W,A0,D1.L*4),D0"),
+            expected_non_indirect
+        );
+        assert_eq!(
+            assemble_bytes(cpu, "    MOVE.W 4.W(A0,D1.L*4),D0"),
+            expected_non_indirect
+        );
+        assert_eq!(
+            assemble_bytes(cpu, "    MOVE.W ([,A0,D1.L*4],8.W),D0"),
+            expected_preindexed
+        );
+        assert_eq!(
+            assemble_bytes(cpu, "    MOVE.W ([A0,D1.L*4],8.W),D0"),
+            expected_preindexed
+        );
+    }
+}
+
+#[test]
+fn later_m68k_cpus_accept_moves_with_full_extension_addressing() {
+    let expected_store = vec![0x0E, 0x70, 0x08, 0x00, 0x1D, 0x20, 0x00, 0x04];
+    let expected_load = vec![0x0E, 0xB0, 0xA0, 0x00, 0x1D, 0x12, 0x00, 0x08];
+
+    for cpu in [m68020_cpu_id, m68030_cpu_id, m68040_cpu_id] {
+        assert_eq!(
+            assemble_bytes(cpu, "    MOVES.W D0,(4.W,A0,D1.L*4)"),
+            expected_store
+        );
+        assert_eq!(
+            assemble_bytes(cpu, "    MOVES.L ([A0,D1.L*4],8.W),A2"),
+            expected_load
+        );
+    }
+}
+
+#[test]
+fn m68010_rejects_moves_with_68020_full_extension_addressing() {
+    let (status, message) = assemble_line_status(m68010_cpu_id, "    MOVES.W D0,(4.W,A0,D1.L*4)");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected m68010 later-family MOVES diagnostic");
+    assert!(
+        message.contains("68020+ full-extension addressing is not supported"),
+        "unexpected m68010 MOVES full-extension diagnostic: {message}"
+    );
+}
+
+#[test]
 fn m68000_alias_spellings_match_canonical_baseline_forms() {
     let (bra_entries, bra_diagnostics) = assemble_source_entries_with_runtime_mode(
         &[".cpu 68000", "    BRA target", "target:", "    RTS"],

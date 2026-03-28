@@ -186,7 +186,7 @@ system-programming features.
   - Commit outcome: one commit that completes the full `68020+` addressing
     syntax surface before broader instruction-family enablement begins
 
-- [ ] `M68K-LINEAGE-005`: Enable the shared baseline instruction families and
+- [x] `M68K-LINEAGE-005`: Enable the shared baseline instruction families and
       later `MOVES` operand roles on the shipped `68020+` addressing model.
   - Validation: focused encode or legality tests proving the intended shared
     baseline mnemonics and later `MOVES` forms now accept the shipped `68020+`
@@ -395,7 +395,7 @@ system-programming features.
       spec-quality-approved before implementation execution starts
 - [x] Milestone 1: CPU registration foundation complete (`M68K-LINEAGE-001`)
 - [x] Milestone 2: `m68010` delta complete (`M68K-LINEAGE-002`)
-- [ ] Milestone 3: full `68020+` parsing and addressing complete
+- [x] Milestone 3: full `68020+` parsing and addressing complete
       (`M68K-LINEAGE-003`, `M68K-LINEAGE-004`, `M68K-LINEAGE-005`)
 - [ ] Milestone 4: grouped `m68020` instruction families complete
       (`M68K-LINEAGE-006`, `M68K-LINEAGE-007`)

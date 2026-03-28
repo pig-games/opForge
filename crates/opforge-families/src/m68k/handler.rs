@@ -1075,13 +1075,6 @@ impl M68KFamilyHandler {
             ));
         }
 
-        if operands
-            .iter()
-            .any(|operand| matches!(operand, Operand::FullExtension { .. }))
-        {
-            return EncodeResult::NotFound;
-        }
-
         match parsed.kind {
             MnemonicKind::Move => self.encode_move(parsed.size, operands, ctx),
             MnemonicKind::MoveA => self.encode_movea(parsed.size, operands, ctx),
@@ -3658,7 +3651,9 @@ impl M68KFamilyHandler {
                 "68000 control registers are not valid effective addresses",
                 operand.span(),
             )),
-            Operand::FullExtension { .. } => Err(EncodeResult::NotFound),
+            Operand::FullExtension { .. } => {
+                self.encode_full_extension_effective_address(operand, ctx)
+            }
             Operand::AddressIndirect { register, .. } => {
                 let Some(reg) = Self::address_register_number(register) else {
                     return Err(EncodeResult::error_with_span(
@@ -4131,9 +4126,15 @@ impl M68KFamilyHandler {
             Operand::ControlRegister { .. } => {
                 unreachable!("68000 control registers are not effective addresses")
             }
-            Operand::FullExtension { .. } => {
-                unreachable!("68020 full-extension operands are not baseline effective addresses")
-            }
+            Operand::FullExtension { .. } => match operand {
+                Operand::FullExtension { base, .. } => match base {
+                    FullExtensionBase::Pc => EffectiveAddressKind::PcIndexed,
+                    FullExtensionBase::Address(_) | FullExtensionBase::Suppressed => {
+                        EffectiveAddressKind::AddressIndexed
+                    }
+                },
+                _ => unreachable!("matched above"),
+            },
             Operand::AddressIndirect { .. } => EffectiveAddressKind::AddressIndirect,
             Operand::AddressPostincrement { .. } => EffectiveAddressKind::AddressPostincrement,
             Operand::AddressPredecrement { .. } => EffectiveAddressKind::AddressPredecrement,
@@ -4254,6 +4255,284 @@ impl M68KFamilyHandler {
             }
         }
         Some(bytes)
+    }
+
+    fn full_extension_kind(base: &FullExtensionBase) -> EffectiveAddressKind {
+        match base {
+            FullExtensionBase::Pc => EffectiveAddressKind::PcIndexed,
+            FullExtensionBase::Address(_) | FullExtensionBase::Suppressed => {
+                EffectiveAddressKind::AddressIndexed
+            }
+        }
+    }
+
+    fn full_extension_ea_bits(base: &FullExtensionBase) -> Result<u16, EncodeResult<Vec<u8>>> {
+        match base {
+            FullExtensionBase::Address(register) => {
+                let Some(reg) = Self::address_register_number(register) else {
+                    return Err(EncodeResult::error_with_span(
+                        "invalid 68020 full-extension base register",
+                        opcore::tokenizer::Span::default(),
+                    ));
+                };
+                Ok((0b110_u16 << 3) | reg as u16)
+            }
+            FullExtensionBase::Pc => Ok((0b111_u16 << 3) | 0b011),
+            // The base register field is ignored when base suppression is active.
+            FullExtensionBase::Suppressed => Ok(0b110_u16 << 3),
+        }
+    }
+
+    fn full_extension_index_bits(index: &FullExtensionIndex) -> Result<u16, EncodeResult<Vec<u8>>> {
+        let (register, address_bit) = if let Some(reg) = Self::data_register_number(&index.register)
+        {
+            (reg, 0_u16)
+        } else if let Some(reg) = Self::address_register_number(&index.register) {
+            (reg, 1_u16)
+        } else {
+            return Err(EncodeResult::error(
+                "invalid 68020 full-extension index register",
+            ));
+        };
+        let size_bit = match index.size {
+            IndexSize::Word => 0_u16,
+            IndexSize::Long => 1_u16,
+        };
+        let scale_bits = match index.scale {
+            IndexScale::One => 0_u16,
+            IndexScale::Two => 0b01,
+            IndexScale::Four => 0b10,
+            IndexScale::Eight => 0b11,
+        };
+        Ok((address_bit << 15) | ((register as u16) << 12) | (size_bit << 11) | (scale_bits << 9))
+    }
+
+    fn encode_full_extension_displacement(
+        displacement: &(Expr, AbsoluteSize),
+        pc_relative: bool,
+        label: &str,
+        span: opcore::tokenizer::Span,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<(u16, Vec<u8>), EncodeResult<Vec<u8>>> {
+        let (expr, size) = displacement;
+        let value = if pc_relative {
+            match Self::eval_pc_relative_displacement(expr, ctx) {
+                Ok(value) => value,
+                Err(err) => return Err(EncodeResult::error_with_span(err, span)),
+            }
+        } else {
+            match Self::eval_expr(expr, ctx) {
+                Ok(value) => value,
+                Err(err) => return Err(EncodeResult::error_with_span(err, span)),
+            }
+        };
+
+        match size {
+            AbsoluteSize::Word => {
+                let Some(encoded) = Self::encode_signed_word(value) else {
+                    return Err(EncodeResult::error_with_span(
+                        format!("68020 full-extension {label} out of 16-bit signed range"),
+                        span,
+                    ));
+                };
+                let mut bytes = Vec::new();
+                Self::emit_word(&mut bytes, encoded);
+                Ok((0b10_u16 << 4, bytes))
+            }
+            AbsoluteSize::Long => {
+                if !((i32::MIN as i64)..=(i32::MAX as i64)).contains(&value) {
+                    return Err(EncodeResult::error_with_span(
+                        format!("68020 full-extension {label} out of 32-bit signed range"),
+                        span,
+                    ));
+                }
+                let mut bytes = Vec::new();
+                Self::emit_long(&mut bytes, value as i32 as u32);
+                Ok((0b11_u16 << 4, bytes))
+            }
+        }
+    }
+
+    fn encode_full_extension_effective_address(
+        &self,
+        operand: &Operand,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<EncodedEffectiveAddress, EncodeResult<Vec<u8>>> {
+        let Operand::FullExtension {
+            base_displacement,
+            base,
+            index,
+            memory_indirection,
+            outer_displacement,
+            ..
+        } = operand
+        else {
+            unreachable!("full-extension encoder called with non full-extension operand")
+        };
+        let span = operand.span();
+
+        if memory_indirection.is_none() && outer_displacement.is_some() {
+            return Err(EncodeResult::error_with_span(
+                "68020 full-extension outer displacement requires memory-indirect form",
+                span,
+            ));
+        }
+
+        let bits = Self::full_extension_ea_bits(base).map_err(|_| {
+            EncodeResult::error_with_span("invalid 68020 full-extension base register", span)
+        })?;
+
+        let base_suppress_bit = matches!(base, FullExtensionBase::Suppressed) as u16;
+        let index_suppress_bit = index.is_none() as u16;
+
+        let index_bits = match index {
+            Some(index) => Self::full_extension_index_bits(index).map_err(|_| {
+                EncodeResult::error_with_span("invalid 68020 full-extension index register", span)
+            })?,
+            None => 0,
+        };
+
+        let (base_displacement_bits, mut base_displacement_bytes) = match base_displacement {
+            Some(displacement) => Self::encode_full_extension_displacement(
+                displacement,
+                matches!(base, FullExtensionBase::Pc),
+                "base displacement",
+                span,
+                ctx,
+            )?,
+            None => (0b01_u16 << 4, Vec::new()),
+        };
+
+        let (outer_displacement_selector, mut outer_displacement_bytes) =
+            match (memory_indirection, outer_displacement) {
+                (None, None) => (0_u16, Vec::new()),
+                (Some(MemoryIndirectionKind::Preindexed), None) => (0b001, Vec::new()),
+                (Some(MemoryIndirectionKind::Preindexed), Some(displacement)) => {
+                    let selector = match displacement.1 {
+                        AbsoluteSize::Word => 0b010,
+                        AbsoluteSize::Long => 0b011,
+                    };
+                    let (_, bytes) = Self::encode_full_extension_displacement(
+                        displacement,
+                        false,
+                        "outer displacement",
+                        span,
+                        ctx,
+                    )?;
+                    (selector, bytes)
+                }
+                (Some(MemoryIndirectionKind::Postindexed), None) => (0b101, Vec::new()),
+                (Some(MemoryIndirectionKind::Postindexed), Some(displacement)) => {
+                    let selector = match displacement.1 {
+                        AbsoluteSize::Word => 0b110,
+                        AbsoluteSize::Long => 0b111,
+                    };
+                    let (_, bytes) = Self::encode_full_extension_displacement(
+                        displacement,
+                        false,
+                        "outer displacement",
+                        span,
+                        ctx,
+                    )?;
+                    (selector, bytes)
+                }
+                (None, Some(_)) => unreachable!("handled above"),
+            };
+
+        let extension_word = index_bits
+            | 0x0100
+            | (base_suppress_bit << 7)
+            | (index_suppress_bit << 6)
+            | base_displacement_bits
+            | outer_displacement_selector;
+
+        let mut extension = Vec::new();
+        Self::emit_word(&mut extension, extension_word);
+        extension.append(&mut base_displacement_bytes);
+        extension.append(&mut outer_displacement_bytes);
+
+        Ok(EncodedEffectiveAddress {
+            bits,
+            extension,
+            kind: Self::full_extension_kind(base),
+        })
+    }
+
+    pub(crate) fn general_register_descriptor(operand: &Operand) -> Option<(u16, u16)> {
+        match operand {
+            Operand::DataRegister { register, .. } => {
+                Some((0, Self::data_register_number(register)? as u16))
+            }
+            Operand::AddressRegister { register, .. } => {
+                Some((1, Self::address_register_number(register)? as u16))
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn encode_moves_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let Some(size) = size else {
+            return EncodeResult::error("MOVES requires an explicit size suffix (.B, .W, or .L)");
+        };
+
+        let [src, dst] = operands else {
+            return EncodeResult::error("MOVES expects two operands");
+        };
+
+        let (dr_bit, register_operand, ea_operand) = if Self::general_register_descriptor(src)
+            .is_some()
+        {
+            (1_u16, src, dst)
+        } else if Self::general_register_descriptor(dst).is_some() {
+            (0_u16, dst, src)
+        } else {
+            return EncodeResult::error(
+                "MOVES expects one data/address register and one memory-alterable effective address",
+            );
+        };
+
+        let Some((ad_bit, register_bits)) = Self::general_register_descriptor(register_operand)
+        else {
+            return EncodeResult::error_with_span(
+                "MOVES register operand must be a data or address register",
+                register_operand.span(),
+            );
+        };
+
+        let ea = match self.encode_effective_address(ea_operand, Some(size), ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::memory_alterable(ea.kind) {
+            return EncodeResult::error_with_span(
+                if dr_bit == 0 {
+                    format!(
+                        "invalid source effective address for MOVES{}",
+                        size.suffix()
+                    )
+                } else {
+                    format!(
+                        "invalid destination effective address for MOVES{}",
+                        size.suffix()
+                    )
+                },
+                ea_operand.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x0E00 | (Self::size_bits(size) << 6) | ea.bits);
+        Self::emit_word(
+            &mut bytes,
+            (ad_bit << 15) | (register_bits << 12) | (dr_bit << 11),
+        );
+        bytes.extend_from_slice(&ea.extension);
+        EncodeResult::ok(bytes)
     }
 
     fn index_extension_word(index: &str, index_size: IndexSize, displacement: u8) -> Option<u16> {

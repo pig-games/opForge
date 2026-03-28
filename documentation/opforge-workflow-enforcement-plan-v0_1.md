@@ -289,9 +289,14 @@ reinforce them.
 
 Desired alignment:
 
-- `plan-quality-reviewer`
-  - checks conceptual soundness
-  - script checks structural completeness
+- `plan-quality-orchestrator`
+  - performs the preferred plan-quality gate review
+  - `scripts/workflow/run_plan_workflow.sh` drives the artifact through the
+    structural checker and requires orchestrator `PASS`
+- `spec-quality-orchestrator`
+  - performs the preferred spec-quality gate review
+  - `scripts/workflow/run_spec_workflow.sh` drives the artifact through the
+    structural checker and requires orchestrator `PASS`
 - `plan-compliance-reviewer`
   - checks actual slice evidence and plan adherence
   - script checks that required fields exist before/after execution

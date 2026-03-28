@@ -213,7 +213,7 @@ system-programming features.
     model usable by the carried-forward instruction surface before grouped
     `m68020` delta enablement begins
 
-- [ ] `M68K-LINEAGE-006`: Implement the first grouped `m68020` instruction
+- [x] `M68K-LINEAGE-006`: Implement the first grouped `m68020` instruction
       delta slice: `MOVEC` register-matrix expansion, long branches, `LINK.L`,
       `EXTB.L`, and long integer multiply or divide families.
   - Validation: focused `m68020` encode or legality tests for the grouped

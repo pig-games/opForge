@@ -5,8 +5,9 @@
 
 use crate::families::m68k::operand::{ControlRegisterKind, SpecialRegisterKind};
 use crate::families::m68k::{
-    has_m68010_mnemonic, has_mnemonic, parse_m68010_mnemonic, parse_mnemonic, FamilyOperand,
-    M68010MnemonicKind, M68KFamilyHandler, MnemonicKind, Operand, OperationSize,
+    has_m68010_mnemonic, has_m68020_mnemonic, has_mnemonic, parse_m68010_mnemonic,
+    parse_m68020_mnemonic, parse_mnemonic, FamilyOperand, M68010MnemonicKind, M68020MnemonicKind,
+    M68KFamilyHandler, MnemonicKind, Operand, OperationSize,
 };
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
@@ -25,6 +26,29 @@ impl M68010CpuHandler {
     pub fn new() -> Self {
         Self {
             family: M68KFamilyHandler::new(),
+        }
+    }
+
+    fn reject_m68020_only_baseline_forms(&self, mnemonic: &str) -> Option<EncodeResult<Vec<u8>>> {
+        let parsed = parse_mnemonic(mnemonic)?;
+        match (parsed.kind, parsed.size) {
+            (
+                MnemonicKind::Bra | MnemonicKind::Bsr | MnemonicKind::Bcc(_),
+                Some(OperationSize::Long),
+            ) => Some(EncodeResult::error(format!(
+                "{} does not support .L size on m68010",
+                parsed.display_name
+            ))),
+            (MnemonicKind::Link, Some(OperationSize::Long)) => Some(EncodeResult::error(
+                "LINK does not support .L size on m68010",
+            )),
+            (MnemonicKind::Muls | MnemonicKind::Mulu, Some(OperationSize::Long)) => {
+                Some(EncodeResult::error(format!(
+                    "{} does not support .L size on m68010",
+                    parsed.display_name
+                )))
+            }
+            _ => None,
         }
     }
 
@@ -322,6 +346,10 @@ impl CpuHandler for M68010CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
+        if let Some(result) = self.reject_m68020_only_baseline_forms(mnemonic) {
+            return result;
+        }
+
         let has_later_full_extension = operands
             .iter()
             .any(|operand| matches!(operand, Operand::FullExtension { .. }));
@@ -356,6 +384,14 @@ impl CpuHandler for M68010CpuHandler {
             }
         }
 
+        if let Some(parsed) = parse_m68020_mnemonic(mnemonic) {
+            return match parsed.kind {
+                M68020MnemonicKind::Extb => {
+                    EncodeResult::error("EXTB is only supported on m68020 and later")
+                }
+            };
+        }
+
         let Some(parsed) = parse_m68010_mnemonic(mnemonic) else {
             return EncodeResult::NotFound;
         };
@@ -381,6 +417,6 @@ impl CpuHandler for M68010CpuHandler {
     }
 
     fn supports_mnemonic(&self, mnemonic: &str) -> bool {
-        has_mnemonic(mnemonic) || has_m68010_mnemonic(mnemonic)
+        has_mnemonic(mnemonic) || has_m68010_mnemonic(mnemonic) || has_m68020_mnemonic(mnemonic)
     }
 }

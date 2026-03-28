@@ -3864,6 +3864,118 @@ fn m68010_rejects_moves_with_68020_full_extension_addressing() {
 }
 
 #[test]
+fn m68020_first_instruction_group_assembles() {
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    MOVEC CACR,D0"),
+        vec![0x4E, 0x7A, 0x00, 0x02]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    MOVEC D1,MSP"),
+        vec![0x4E, 0x7B, 0x18, 0x03]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    LINK.L A6,#-8"),
+        vec![0x48, 0x0E, 0xFF, 0xFF, 0xFF, 0xF8]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    EXTB.L D2"),
+        vec![0x49, 0xC2]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    MULU.L (A0),D1"),
+        vec![0x4C, 0x10, 0x14, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    MULS.L ($1234).W,D2"),
+        vec![0x4C, 0x38, 0x2C, 0x00, 0x12, 0x34]
+    );
+}
+
+#[test]
+fn m68020_long_branch_family_assembles() {
+    for (branch_line, opcode_hi) in [
+        ("    BRA.L target", 0x60),
+        ("    BSR.L target", 0x61),
+        ("    BNE.L target", 0x66),
+    ] {
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+            &[".cpu 68020", branch_line, "    NOP", "target:", "    RTS"],
+            false,
+        )
+        .expect("m68020 long-branch program should assemble");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics for '{branch_line}': {diagnostics:?}"
+        );
+        let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+        assert_eq!(
+            bytes,
+            vec![opcode_hi, 0xFF, 0x00, 0x00, 0x00, 0x02, 0x4E, 0x71, 0x4E, 0x75],
+            "unexpected bytes for '{branch_line}'"
+        );
+    }
+}
+
+#[test]
+fn earlier_m68k_cpus_reject_first_m68020_instruction_group() {
+    for (cpu, cpu_name) in [(m68000_cpu_id, "baseline 68000"), (m68010_cpu_id, "m68010")] {
+        for (line, expected) in [
+            ("    BRA.L $0008", ".L size"),
+            ("    LINK.L A6,#-8", ".L size"),
+            ("    EXTB.L D0", "m68020 and later"),
+            ("    MULU.L (A0),D1", ".L size"),
+        ] {
+            let (status, message) = assemble_line_status(cpu, line);
+            assert_eq!(
+                status,
+                LineStatus::Error,
+                "expected rejection on {cpu_name}"
+            );
+            let message = message.expect("expected later-family instruction diagnostic");
+            assert!(
+                message.contains(expected),
+                "unexpected diagnostic on {cpu_name} for '{line}': {message}"
+            );
+        }
+    }
+
+    let (status, message) = assemble_line_status(m68010_cpu_id, "    MOVEC CACR,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected m68010 MOVEC matrix diagnostic");
+    assert!(message.contains("unsupported MOVEC control register for m68010"));
+
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVEC CACR,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected m68000 MOVEC diagnostic");
+    assert!(message.contains("MOVEC is not supported on baseline 68000"));
+}
+
+#[test]
+fn later_m68k_carry_forward_cpus_do_not_claim_first_m68020_instruction_group_yet() {
+    for (cpu, cpu_name) in [(m68030_cpu_id, "m68030"), (m68040_cpu_id, "m68040")] {
+        for line in [
+            "    BRA.L $0008",
+            "    LINK.L A6,#-8",
+            "    EXTB.L D0",
+            "    MULU.L (A0),D1",
+            "    MOVEC CACR,D0",
+        ] {
+            let (status, message) = assemble_line_status(cpu, line);
+            assert_eq!(
+                status,
+                LineStatus::Error,
+                "expected rejection on {cpu_name}"
+            );
+            let message = message.expect("expected missing later-family instruction diagnostic");
+            assert!(
+                message.contains("No instruction found"),
+                "unexpected diagnostic on {cpu_name} for '{line}': {message}"
+            );
+        }
+    }
+}
+
+#[test]
 fn m68000_alias_spellings_match_canonical_baseline_forms() {
     let (bra_entries, bra_diagnostics) = assemble_source_entries_with_runtime_mode(
         &[".cpu 68000", "    BRA target", "target:", "    RTS"],

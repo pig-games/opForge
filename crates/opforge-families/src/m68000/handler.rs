@@ -3,9 +3,11 @@
 
 //! Motorola 68000 CPU handler implementation.
 
-use crate::families::m68k::operand::SpecialRegisterKind;
+use crate::families::m68k::operand::{ControlRegisterKind, SpecialRegisterKind};
 use crate::families::m68k::{
-    has_mnemonic, parse_mnemonic, FamilyOperand, M68KFamilyHandler, MnemonicKind, Operand,
+    has_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic, parse_mnemonic, FamilyOperand,
+    M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler, MnemonicKind, Operand,
+    OperationSize,
 };
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
@@ -24,6 +26,29 @@ impl M68000CpuHandler {
     pub fn new() -> Self {
         Self {
             family: M68KFamilyHandler::new(),
+        }
+    }
+
+    fn reject_m68020_only_baseline_forms(&self, mnemonic: &str) -> Option<EncodeResult<Vec<u8>>> {
+        let parsed = parse_mnemonic(mnemonic)?;
+        match (parsed.kind, parsed.size) {
+            (
+                MnemonicKind::Bra | MnemonicKind::Bsr | MnemonicKind::Bcc(_),
+                Some(OperationSize::Long),
+            ) => Some(EncodeResult::error(format!(
+                "{} does not support .L size on baseline 68000",
+                parsed.display_name
+            ))),
+            (MnemonicKind::Link, Some(OperationSize::Long)) => Some(EncodeResult::error(
+                "LINK does not support .L size on baseline 68000",
+            )),
+            (MnemonicKind::Muls | MnemonicKind::Mulu, Some(OperationSize::Long)) => {
+                Some(EncodeResult::error(format!(
+                    "{} does not support .L size on baseline 68000",
+                    parsed.display_name
+                )))
+            }
+            _ => None,
         }
     }
 }
@@ -58,6 +83,43 @@ impl CpuHandler for M68000CpuHandler {
         operands: &[Operand],
         _ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
+        if let Some(result) = self.reject_m68020_only_baseline_forms(mnemonic) {
+            return result;
+        }
+
+        if let Some(parsed) = parse_m68010_mnemonic(mnemonic) {
+            return match parsed.kind {
+                M68010MnemonicKind::Movec
+                    if operands.iter().any(|operand| {
+                        matches!(
+                            operand,
+                            Operand::ControlRegister {
+                                register: ControlRegisterKind::Cacr
+                                    | ControlRegisterKind::Caar
+                                    | ControlRegisterKind::Msp
+                                    | ControlRegisterKind::Isp,
+                                ..
+                            }
+                        )
+                    }) =>
+                {
+                    EncodeResult::error("MOVEC is not supported on baseline 68000")
+                }
+                M68010MnemonicKind::Bkpt
+                | M68010MnemonicKind::Movec
+                | M68010MnemonicKind::Moves
+                | M68010MnemonicKind::Rtd => EncodeResult::NotFound,
+            };
+        }
+
+        if let Some(parsed) = parse_m68020_mnemonic(mnemonic) {
+            return match parsed.kind {
+                M68020MnemonicKind::Extb => {
+                    EncodeResult::error("EXTB is only supported on m68020 and later")
+                }
+            };
+        }
+
         if parse_mnemonic(mnemonic).is_some()
             && operands
                 .iter()

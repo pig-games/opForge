@@ -1084,6 +1084,9 @@ impl M68KFamilyHandler {
             MnemonicKind::Pea => self.encode_pea(parsed.size, operands, ctx),
             MnemonicKind::Jmp => self.encode_jmp(parsed.size, operands, ctx),
             MnemonicKind::Jsr => self.encode_jsr(parsed.size, operands, ctx),
+            MnemonicKind::Link if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
+            }
             MnemonicKind::Link => self.encode_link(parsed.size, operands, ctx),
             MnemonicKind::Unlk => self.encode_unlk(parsed.size, operands),
             MnemonicKind::Exg => self.encode_exg(parsed.size, operands),
@@ -1205,11 +1208,20 @@ impl M68KFamilyHandler {
             MnemonicKind::Divu => {
                 self.encode_word_data_register_math("DIVU", 0x80C0, parsed.size, operands, ctx)
             }
+            MnemonicKind::Bra if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
+            }
             MnemonicKind::Bra => {
                 self.encode_branch(&parsed.display_name, None, parsed.size, operands, ctx)
             }
+            MnemonicKind::Bsr if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
+            }
             MnemonicKind::Bsr => {
                 self.encode_branch(&parsed.display_name, None, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Bcc(_) if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
             }
             MnemonicKind::Bcc(condition) => self.encode_branch(
                 &parsed.display_name,
@@ -1223,8 +1235,14 @@ impl M68KFamilyHandler {
             }
             MnemonicKind::Rts => self.encode_rts(parsed.size, operands),
             MnemonicKind::Moveq => self.encode_moveq(parsed.size, operands, ctx),
+            MnemonicKind::Muls if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
+            }
             MnemonicKind::Muls => {
                 self.encode_word_data_register_math("MULS", 0xC1C0, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Mulu if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
             }
             MnemonicKind::Mulu => {
                 self.encode_word_data_register_math("MULU", 0xC0C0, parsed.size, operands, ctx)
@@ -1930,6 +1948,53 @@ impl M68KFamilyHandler {
         EncodeResult::ok(bytes)
     }
 
+    pub(crate) fn encode_link_long_instruction(
+        &self,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [reg, displacement] = operands else {
+            return EncodeResult::error(
+                "LINK expects an address register and an immediate displacement",
+            );
+        };
+
+        let reg_name = match reg {
+            Operand::AddressRegister { register, .. } => register,
+            _ => {
+                return EncodeResult::error_with_span(
+                    "LINK first operand must be an address register",
+                    reg.span(),
+                );
+            }
+        };
+        let Some(reg_bits) = Self::address_register_number(reg_name) else {
+            return EncodeResult::error_with_span("invalid LINK register", reg.span());
+        };
+
+        let Operand::Immediate { expr, .. } = displacement else {
+            return EncodeResult::error_with_span(
+                "LINK displacement must be an immediate value",
+                displacement.span(),
+            );
+        };
+        let (value, _) = match Self::eval_expr_or_placeholder(expr, ctx, 0) {
+            Ok(result) => result,
+            Err(err) => return EncodeResult::error_with_span(err, displacement.span()),
+        };
+        if !((i32::MIN as i64)..=(i32::MAX as i64)).contains(&value) {
+            return EncodeResult::error_with_span(
+                format!("LINK displacement {value} out of 32-bit signed range"),
+                displacement.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x4808 | reg_bits as u16);
+        Self::emit_long(&mut bytes, value as i32 as u32);
+        EncodeResult::ok(bytes)
+    }
+
     fn encode_unlk(
         &self,
         size: Option<OperationSize>,
@@ -2132,6 +2197,43 @@ impl M68KFamilyHandler {
 
         let mut bytes = Vec::new();
         Self::emit_word(&mut bytes, opcode_base | reg_bits as u16);
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_extb_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+    ) -> EncodeResult<Vec<u8>> {
+        match size {
+            Some(OperationSize::Long) => {}
+            Some(OperationSize::Byte) => {
+                return EncodeResult::error("EXTB does not support .B size");
+            }
+            Some(OperationSize::Word) => {
+                return EncodeResult::error("EXTB does not support .W size");
+            }
+            None => return EncodeResult::error("EXTB requires an explicit .L size"),
+        }
+
+        let [reg] = operands else {
+            return EncodeResult::error("EXTB expects one data register operand");
+        };
+        let reg_name = match reg {
+            Operand::DataRegister { register, .. } => register,
+            _ => {
+                return EncodeResult::error_with_span(
+                    "EXTB operand must be a data register",
+                    reg.span(),
+                );
+            }
+        };
+        let Some(reg_bits) = Self::data_register_number(reg_name) else {
+            return EncodeResult::error_with_span("invalid EXTB register", reg.span());
+        };
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x49C0 | reg_bits as u16);
         EncodeResult::ok(bytes)
     }
 
@@ -2539,6 +2641,55 @@ impl M68KFamilyHandler {
             &mut bytes,
             opcode_base | ((dst_reg as u16) << 9) | Self::effective_address_bits(src_ea.bits),
         );
+        bytes.extend_from_slice(&src_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_long_data_register_multiply(
+        &self,
+        mnemonic: &str,
+        signed: bool,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [src, dst] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects two operands"));
+        };
+
+        let dst_register = match dst {
+            Operand::DataRegister { register, .. } => register,
+            _ => {
+                return EncodeResult::error_with_span(
+                    format!("{mnemonic} destination must be a data register"),
+                    dst.span(),
+                );
+            }
+        };
+        let Some(dst_reg) = Self::data_register_number(dst_register) else {
+            return EncodeResult::error_with_span(
+                format!("invalid {mnemonic} destination register"),
+                dst.span(),
+            );
+        };
+
+        let src_ea = match self.encode_effective_address(src, Some(OperationSize::Long), ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::logic_allows_source(src_ea.kind) {
+            return EncodeResult::error_with_span(
+                format!("invalid source effective address for {mnemonic}"),
+                src.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(
+            &mut bytes,
+            0x4C00 | Self::effective_address_bits(src_ea.bits),
+        );
+        let extension = ((dst_reg as u16) << 12) | if signed { 1 << 11 } else { 0 } | (1 << 10);
+        Self::emit_word(&mut bytes, extension);
         bytes.extend_from_slice(&src_ea.extension);
         EncodeResult::ok(bytes)
     }
@@ -3046,6 +3197,53 @@ impl M68KFamilyHandler {
                 EncodeResult::ok(bytes)
             }
         }
+    }
+
+    pub(crate) fn encode_long_branch_instruction(
+        &self,
+        mnemonic: &str,
+        condition: Option<ConditionCode>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [target] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects one branch target"));
+        };
+        let Operand::BranchTarget { expr, .. } = target else {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} requires a branch target expression"),
+                target.span(),
+            );
+        };
+
+        let condition_bits = match condition {
+            Some(code) => code.opcode_bits(),
+            None if mnemonic.eq_ignore_ascii_case("BRA") => 0x0,
+            None => 0x1,
+        };
+
+        let offset = if Self::expr_is_unresolved(expr, ctx) {
+            0
+        } else {
+            let target_value = match ctx.eval_expr(expr) {
+                Ok(value) => Self::normalize_wrapped_i32(value),
+                Err(err) => {
+                    return EncodeResult::error_with_span(err, target.span());
+                }
+            };
+            target_value - (ctx.current_address() as i64 + 6)
+        };
+        if !((i32::MIN as i64)..=(i32::MAX as i64)).contains(&offset) {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic}.L branch displacement out of range: offset {offset}"),
+                target.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x6000 | (condition_bits << 8) | 0x00FF);
+        Self::emit_long(&mut bytes, offset as i32 as u32);
+        EncodeResult::ok(bytes)
     }
 
     fn encode_dbcc(

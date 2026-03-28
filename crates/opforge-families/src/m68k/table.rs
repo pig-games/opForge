@@ -97,6 +97,11 @@ pub enum M68010MnemonicKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum M68020MnemonicKind {
+    Extb,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConditionCode {
     True,
     False,
@@ -235,6 +240,14 @@ pub struct ParsedM68010Mnemonic {
     pub has_unknown_size_suffix: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParsedM68020Mnemonic {
+    pub kind: M68020MnemonicKind,
+    pub display_name: String,
+    pub size: Option<OperationSize>,
+    pub has_unknown_size_suffix: bool,
+}
+
 fn base_kind(base: &str) -> Option<MnemonicKind> {
     match base {
         "MOVE" => Some(MnemonicKind::Move),
@@ -368,6 +381,13 @@ fn m68010_base_kind(base: &str) -> Option<M68010MnemonicKind> {
     }
 }
 
+fn m68020_base_kind(base: &str) -> Option<M68020MnemonicKind> {
+    match base {
+        "EXTB" => Some(M68020MnemonicKind::Extb),
+        _ => None,
+    }
+}
+
 fn split_size_suffix(mnemonic: &str) -> (String, Option<OperationSize>, bool) {
     let upper = mnemonic.to_ascii_uppercase();
     match upper.rsplit_once('.') {
@@ -409,6 +429,21 @@ pub fn parse_m68010_mnemonic(mnemonic: &str) -> Option<ParsedM68010Mnemonic> {
 
 pub fn has_m68010_mnemonic(mnemonic: &str) -> bool {
     parse_m68010_mnemonic(mnemonic).is_some()
+}
+
+pub fn parse_m68020_mnemonic(mnemonic: &str) -> Option<ParsedM68020Mnemonic> {
+    let (base, size, has_unknown_size_suffix) = split_size_suffix(mnemonic);
+
+    Some(ParsedM68020Mnemonic {
+        kind: m68020_base_kind(base.as_str())?,
+        display_name: base,
+        size,
+        has_unknown_size_suffix,
+    })
+}
+
+pub fn has_m68020_mnemonic(mnemonic: &str) -> bool {
+    parse_m68020_mnemonic(mnemonic).is_some()
 }
 
 #[cfg(test)]
@@ -492,5 +527,16 @@ mod tests {
         assert_eq!(moves_unknown.kind, M68010MnemonicKind::Moves);
         assert_eq!(moves_unknown.size, None);
         assert!(moves_unknown.has_unknown_size_suffix);
+    }
+
+    #[test]
+    fn parse_m68020_mnemonic_tracks_size_suffix_state() {
+        assert!(has_m68020_mnemonic("EXTB"));
+        assert!(has_m68020_mnemonic("extb.l"));
+
+        let extb_unknown = parse_m68020_mnemonic("EXTB.Q").expect("EXTB base should parse");
+        assert_eq!(extb_unknown.kind, M68020MnemonicKind::Extb);
+        assert_eq!(extb_unknown.size, None);
+        assert!(extb_unknown.has_unknown_size_suffix);
     }
 }

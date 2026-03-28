@@ -3777,6 +3777,23 @@ fn m68010_delta_and_m68000_rejection_diagnostics_are_deterministic() {
 }
 
 #[test]
+fn baseline_m68k_cpus_reject_68020_full_extension_operands_deterministically() {
+    for (cpu, cpu_name) in [(m68000_cpu_id, "baseline 68000"), (m68010_cpu_id, "m68010")] {
+        let (status, message) = assemble_line_status(cpu, "    MOVE.W (,A0,D1.L*4),D0");
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected rejection on {cpu_name}"
+        );
+        let message = message.expect("expected later-family addressing diagnostic");
+        assert!(
+            message.contains("68020+ full-extension addressing is not supported"),
+            "unexpected diagnostic on {cpu_name}: {message}"
+        );
+    }
+}
+
+#[test]
 fn m68000_alias_spellings_match_canonical_baseline_forms() {
     let (bra_entries, bra_diagnostics) = assemble_source_entries_with_runtime_mode(
         &[".cpu 68000", "    BRA target", "target:", "    RTS"],

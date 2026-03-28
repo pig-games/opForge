@@ -50,6 +50,16 @@ impl CpuHandler for M68000CpuHandler {
         operands: &[Operand],
         _ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
+        if parse_mnemonic(mnemonic).is_some()
+            && operands
+                .iter()
+                .any(|operand| matches!(operand, Operand::FullExtension { .. }))
+        {
+            return EncodeResult::error(
+                "68020+ full-extension addressing is not supported on baseline 68000",
+            );
+        }
+
         if matches!(
             parse_mnemonic(mnemonic).map(|parsed| parsed.kind),
             Some(MnemonicKind::Move)

@@ -5,8 +5,9 @@
 
 use super::is_register;
 use super::operand::{
-    span_from_expr, span_from_exprs, AbsoluteSize, ControlRegisterKind, FamilyOperand, IndexSize,
-    Operand, RegisterListRegister, SpecialRegisterKind,
+    span_from_expr, span_from_exprs, AbsoluteSize, ControlRegisterKind, FamilyOperand,
+    FullExtensionBase, FullExtensionIndex, IndexScale, IndexSize, Operand, RegisterListRegister,
+    SpecialRegisterKind,
 };
 use super::table::{
     parse_mnemonic, BitMnemonic, ConditionCode, MnemonicKind, OperationSize, ShiftMnemonic,
@@ -135,7 +136,9 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn parse_index_register(expr: &Expr) -> Option<(String, IndexSize, opcore::tokenizer::Span)> {
+    fn parse_scaled_index_register(
+        expr: &Expr,
+    ) -> Option<(String, IndexSize, IndexScale, opcore::tokenizer::Span)> {
         if let Expr::Binary {
             op: BinaryOp::Multiply,
             left,
@@ -143,11 +146,15 @@ impl M68KFamilyHandler {
             ..
         } = expr
         {
-            if matches!(right.as_ref(), Expr::Number(text, _) if text == "1") {
-                let (register, size, _) = Self::parse_index_register(left)?;
-                return Some((register, size, expr_span(expr)));
-            }
-            return None;
+            let scale = match right.as_ref() {
+                Expr::Number(text, _) if text == "1" => IndexScale::One,
+                Expr::Number(text, _) if text == "2" => IndexScale::Two,
+                Expr::Number(text, _) if text == "4" => IndexScale::Four,
+                Expr::Number(text, _) if text == "8" => IndexScale::Eight,
+                _ => return None,
+            };
+            let (register, size, _, _) = Self::parse_scaled_index_register(left)?;
+            return Some((register, size, scale, expr_span(expr)));
         }
 
         if let Expr::Register(name, span) | Expr::Identifier(name, span) = expr {
@@ -162,7 +169,7 @@ impl M68KFamilyHandler {
                 return None;
             };
             if register != "PC" && is_register(&register) {
-                return Some((register, size, *span));
+                return Some((register, size, IndexScale::One, *span));
             }
             return None;
         }
@@ -179,7 +186,116 @@ impl M68KFamilyHandler {
         if name == "PC" {
             return None;
         }
-        Some((name, size, *span))
+        Some((name, size, IndexScale::One, *span))
+    }
+
+    fn parse_index_register(expr: &Expr) -> Option<(String, IndexSize, opcore::tokenizer::Span)> {
+        let (register, size, scale, span) = Self::parse_scaled_index_register(expr)?;
+        (scale == IndexScale::One).then_some((register, size, span))
+    }
+
+    fn parse_full_extension_displacement(
+        expr: &Expr,
+    ) -> Result<Option<(Expr, AbsoluteSize)>, FamilyParseError> {
+        if matches!(expr, Expr::Placeholder(_)) {
+            return Ok(None);
+        }
+
+        let Expr::Member { base, field, span } = expr else {
+            return Err(FamilyParseError::new(
+                "68020 full-extension base displacement requires explicit .W or .L",
+                expr_span(expr),
+            ));
+        };
+        let size = match field.to_ascii_uppercase().as_str() {
+            "W" => AbsoluteSize::Word,
+            "L" => AbsoluteSize::Long,
+            _ => {
+                return Err(FamilyParseError::new(
+                    "68020 full-extension base displacement requires explicit .W or .L",
+                    *span,
+                ))
+            }
+        };
+        if Self::parse_register_name(base).is_some() || matches!(base.as_ref(), Expr::Tuple(_, _)) {
+            return Err(FamilyParseError::new(
+                "68020 full-extension base displacement must be an expression, not a register form",
+                expr_span(base),
+            ));
+        }
+        Ok(Some(((**base).clone(), size)))
+    }
+
+    fn parse_full_extension_base(expr: &Expr) -> Result<FullExtensionBase, FamilyParseError> {
+        if matches!(expr, Expr::Placeholder(_)) {
+            return Ok(FullExtensionBase::Suppressed);
+        }
+        if let Some((name, _)) = Self::parse_address_register(expr) {
+            return Ok(FullExtensionBase::Address(name));
+        }
+        if Self::parse_pc_register(expr).is_some() {
+            return Ok(FullExtensionBase::Pc);
+        }
+        Err(FamilyParseError::new(
+            "invalid 68020 full-extension base register",
+            expr_span(expr),
+        ))
+    }
+
+    fn parse_full_extension_index(
+        expr: &Expr,
+    ) -> Result<Option<FullExtensionIndex>, FamilyParseError> {
+        if matches!(expr, Expr::Placeholder(_)) {
+            return Ok(None);
+        }
+        let Some((register, size, scale, _)) = Self::parse_scaled_index_register(expr) else {
+            return Err(FamilyParseError::new(
+                "invalid 68020 full-extension index register; expected Xn.W or Xn.L with optional *1, *2, *4, or *8",
+                expr_span(expr),
+            ));
+        };
+        Ok(Some(FullExtensionIndex {
+            register,
+            size,
+            scale,
+        }))
+    }
+
+    fn parse_full_extension_tuple(
+        &self,
+        elements: &[Expr],
+        span: opcore::tokenizer::Span,
+    ) -> Option<Result<FamilyOperand, FamilyParseError>> {
+        let [displacement, base, index] = elements else {
+            return None;
+        };
+        if !matches!(displacement, Expr::Placeholder(_))
+            && !matches!(base, Expr::Placeholder(_))
+            && !matches!(index, Expr::Placeholder(_))
+            && !matches!(displacement, Expr::Member { .. })
+        {
+            return None;
+        }
+
+        Some((|| {
+            let base_displacement = Self::parse_full_extension_displacement(displacement)?;
+            let base = Self::parse_full_extension_base(base)?;
+            let index = Self::parse_full_extension_index(index)?;
+
+            if matches!(base, FullExtensionBase::Suppressed) && index.is_none() {
+                return Err(FamilyParseError::new(
+                    "68020 full-extension operand cannot suppress both base and index",
+                    span,
+                ));
+            }
+
+            Ok(FamilyOperand::FullExtension {
+                base_displacement,
+                base,
+                index,
+                span,
+            })
+        })())
     }
 
     fn parse_movem_register_list_register(
@@ -431,6 +547,10 @@ impl M68KFamilyHandler {
         elements: &[Expr],
         span: opcore::tokenizer::Span,
     ) -> Result<FamilyOperand, FamilyParseError> {
+        if let Some(result) = self.parse_full_extension_tuple(elements, span) {
+            return result;
+        }
+
         match elements {
             [first, second] => {
                 if let Some((index_name, index_size, _)) = Self::parse_index_register(second) {
@@ -683,6 +803,13 @@ impl M68KFamilyHandler {
                 "unsupported size suffix for {}",
                 parsed.display_name
             ));
+        }
+
+        if operands
+            .iter()
+            .any(|operand| matches!(operand, Operand::FullExtension { .. }))
+        {
+            return EncodeResult::NotFound;
         }
 
         match parsed.kind {
@@ -3261,6 +3388,7 @@ impl M68KFamilyHandler {
                 "68000 control registers are not valid effective addresses",
                 operand.span(),
             )),
+            Operand::FullExtension { .. } => Err(EncodeResult::NotFound),
             Operand::AddressIndirect { register, .. } => {
                 let Some(reg) = Self::address_register_number(register) else {
                     return Err(EncodeResult::error_with_span(
@@ -3732,6 +3860,9 @@ impl M68KFamilyHandler {
             }
             Operand::ControlRegister { .. } => {
                 unreachable!("68000 control registers are not effective addresses")
+            }
+            Operand::FullExtension { .. } => {
+                unreachable!("68020 full-extension operands are not baseline effective addresses")
             }
             Operand::AddressIndirect { .. } => EffectiveAddressKind::AddressIndirect,
             Operand::AddressPostincrement { .. } => EffectiveAddressKind::AddressPostincrement,
@@ -4439,6 +4570,179 @@ mod tests {
                 ..
             } if text == "0"
         ));
+    }
+
+    #[test]
+    fn parses_canonical_68020_full_extension_operands() {
+        let handler = M68KFamilyHandler::new();
+        let address_full_extension = Expr::Indirect(
+            Box::new(Expr::Tuple(
+                vec![
+                    Expr::Member {
+                        base: Box::new(Expr::Number("4".to_string(), span())),
+                        field: "W".to_string(),
+                        span: span(),
+                    },
+                    Expr::Register("A0".to_string(), span()),
+                    Expr::Binary {
+                        op: BinaryOp::Multiply,
+                        left: Box::new(Expr::Identifier("D1.L".to_string(), span())),
+                        right: Box::new(Expr::Number("4".to_string(), span())),
+                        span: span(),
+                    },
+                ],
+                span(),
+            )),
+            span(),
+        );
+        let pc_full_extension = Expr::Indirect(
+            Box::new(Expr::Tuple(
+                vec![
+                    Expr::Member {
+                        base: Box::new(Expr::Identifier("disp".to_string(), span())),
+                        field: "L".to_string(),
+                        span: span(),
+                    },
+                    Expr::Identifier("PC".to_string(), span()),
+                    Expr::Identifier("D2".to_string(), span()),
+                ],
+                span(),
+            )),
+            span(),
+        );
+        let base_suppressed = Expr::Indirect(
+            Box::new(Expr::Tuple(
+                vec![
+                    Expr::Member {
+                        base: Box::new(Expr::Number("8".to_string(), span())),
+                        field: "W".to_string(),
+                        span: span(),
+                    },
+                    Expr::Placeholder(span()),
+                    Expr::Identifier("D3.W".to_string(), span()),
+                ],
+                span(),
+            )),
+            span(),
+        );
+        let index_suppressed = Expr::Indirect(
+            Box::new(Expr::Tuple(
+                vec![
+                    Expr::Placeholder(span()),
+                    Expr::Register("A4".to_string(), span()),
+                    Expr::Placeholder(span()),
+                ],
+                span(),
+            )),
+            span(),
+        );
+
+        let operands = handler
+            .parse_operands(
+                "MOVE",
+                &[
+                    address_full_extension,
+                    pc_full_extension,
+                    base_suppressed,
+                    index_suppressed,
+                ],
+            )
+            .expect("operands");
+
+        assert!(matches!(
+            &operands[0],
+            FamilyOperand::FullExtension {
+                base_displacement: Some((Expr::Number(text, _), AbsoluteSize::Word)),
+                base: FullExtensionBase::Address(base),
+                index: Some(FullExtensionIndex {
+                    register,
+                    size: IndexSize::Long,
+                    scale: IndexScale::Four,
+                }),
+                ..
+            } if text == "4" && base == "A0" && register == "D1"
+        ));
+        assert!(matches!(
+            &operands[1],
+            FamilyOperand::FullExtension {
+                base_displacement: Some((Expr::Identifier(name, _), AbsoluteSize::Long)),
+                base: FullExtensionBase::Pc,
+                index: Some(FullExtensionIndex {
+                    register,
+                    size: IndexSize::Word,
+                    scale: IndexScale::One,
+                }),
+                ..
+            } if name == "disp" && register == "D2"
+        ));
+        assert!(matches!(
+            &operands[2],
+            FamilyOperand::FullExtension {
+                base_displacement: Some((Expr::Number(text, _), AbsoluteSize::Word)),
+                base: FullExtensionBase::Suppressed,
+                index: Some(FullExtensionIndex {
+                    register,
+                    size: IndexSize::Word,
+                    scale: IndexScale::One,
+                }),
+                ..
+            } if text == "8" && register == "D3"
+        ));
+        assert!(matches!(
+            &operands[3],
+            FamilyOperand::FullExtension {
+                base_displacement: None,
+                base: FullExtensionBase::Address(base),
+                index: None,
+                ..
+            } if base == "A4"
+        ));
+    }
+
+    #[test]
+    fn rejects_malformed_68020_full_extension_operands_deterministically() {
+        let handler = M68KFamilyHandler::new();
+        let err = handler
+            .parse_operands(
+                "MOVE",
+                &[Expr::Indirect(
+                    Box::new(Expr::Tuple(
+                        vec![
+                            Expr::Number("4".to_string(), span()),
+                            Expr::Placeholder(span()),
+                            Expr::Identifier("D1.W".to_string(), span()),
+                        ],
+                        span(),
+                    )),
+                    span(),
+                )],
+            )
+            .expect_err("missing explicit full-extension displacement width should fail");
+        assert!(err
+            .message
+            .contains("68020 full-extension base displacement requires explicit .W or .L"));
+
+        let err = handler
+            .parse_operands(
+                "MOVE",
+                &[Expr::Indirect(
+                    Box::new(Expr::Tuple(
+                        vec![
+                            Expr::Member {
+                                base: Box::new(Expr::Number("4".to_string(), span())),
+                                field: "W".to_string(),
+                                span: span(),
+                            },
+                            Expr::Placeholder(span()),
+                            Expr::Placeholder(span()),
+                        ],
+                        span(),
+                    )),
+                    span(),
+                )],
+            )
+            .expect_err("suppressing both base and index should fail");
+        assert!(err.message.contains("cannot suppress both base and index"));
     }
 
     #[test]

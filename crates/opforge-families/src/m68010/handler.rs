@@ -316,12 +316,22 @@ impl CpuHandler for M68010CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
+        let has_later_full_extension = operands
+            .iter()
+            .any(|operand| matches!(operand, Operand::FullExtension { .. }));
+
         if let Some(parsed) = parse_mnemonic(mnemonic) {
             if parsed.has_unknown_size_suffix {
                 return EncodeResult::error(format!(
                     "unsupported size suffix for {}",
                     parsed.display_name
                 ));
+            }
+
+            if has_later_full_extension {
+                return EncodeResult::error(
+                    "68020+ full-extension addressing is not supported on m68010",
+                );
             }
 
             if matches!(parsed.kind, MnemonicKind::Move)
@@ -348,6 +358,12 @@ impl CpuHandler for M68010CpuHandler {
                 "unsupported size suffix for {}",
                 parsed.display_name
             ));
+        }
+
+        if has_later_full_extension {
+            return EncodeResult::error(
+                "68020+ full-extension addressing is not supported on m68010",
+            );
         }
 
         match parsed.kind {

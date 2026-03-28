@@ -20,6 +20,14 @@ pub enum AbsoluteSize {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IndexScale {
+    One,
+    Two,
+    Four,
+    Eight,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpecialRegisterKind {
     Ccr,
     Sr,
@@ -41,6 +49,20 @@ pub enum ControlRegisterKind {
 pub enum RegisterListRegister {
     Data(u8),
     Address(u8),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FullExtensionBase {
+    Address(String),
+    Pc,
+    Suppressed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FullExtensionIndex {
+    pub register: String,
+    pub size: IndexSize,
+    pub scale: IndexScale,
 }
 
 #[derive(Clone, Debug)]
@@ -95,6 +117,12 @@ pub enum FamilyOperand {
         index_size: IndexSize,
         span: Span,
     },
+    FullExtension {
+        base_displacement: Option<(Expr, AbsoluteSize)>,
+        base: FullExtensionBase,
+        index: Option<FullExtensionIndex>,
+        span: Span,
+    },
     Absolute {
         expr: Expr,
         size: AbsoluteSize,
@@ -128,6 +156,7 @@ impl FamilyOperand {
             | Self::AddressIndexed { span, .. }
             | Self::PcDisplacement { span, .. }
             | Self::PcIndexed { span, .. }
+            | Self::FullExtension { span, .. }
             | Self::Absolute { span, .. }
             | Self::RegisterList { span, .. }
             | Self::BranchTarget { span, .. }

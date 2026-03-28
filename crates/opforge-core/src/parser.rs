@@ -1160,13 +1160,36 @@ impl Parser {
                 kind: TokenKind::OpenParen,
                 span: open_span,
             }) => {
-                let expr = self.parse_expr()?;
+                let mut elements = Vec::new();
+                if matches!(
+                    self.peek(),
+                    Some(Token {
+                        kind: TokenKind::Comma,
+                        ..
+                    })
+                ) {
+                    elements.push(Expr::Placeholder(self.current_span()));
+                } else {
+                    elements.push(self.parse_expr()?);
+                }
 
                 if self.consume_comma() {
-                    let mut elements = vec![expr];
-                    elements.push(self.parse_expr()?);
-                    while self.consume_comma() {
-                        elements.push(self.parse_expr()?);
+                    loop {
+                        if matches!(
+                            self.peek(),
+                            Some(Token {
+                                kind: TokenKind::Comma | TokenKind::CloseParen,
+                                ..
+                            })
+                        ) {
+                            elements.push(Expr::Placeholder(self.current_span()));
+                        } else {
+                            elements.push(self.parse_expr()?);
+                        }
+
+                        if !self.consume_comma() {
+                            break;
+                        }
                     }
 
                     let close_span = self.current_span();
@@ -1185,6 +1208,7 @@ impl Parser {
                     // The handler will inspect the inner Expr::Tuple
                     Ok(Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span))
                 } else {
+                    let expr = elements.pop().expect("single parenthesized expression");
                     let close_span = self.current_span();
                     if !self.consume_kind(TokenKind::CloseParen) {
                         return Err(ParseError {
@@ -1885,6 +1909,71 @@ mod tests {
                         ));
                     }
                     other => panic!("expected indexed tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_full_extension_tuple_with_omitted_base_displacement() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE (,A0,D1.L*4),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 3);
+                        assert!(matches!(&elements[0], Expr::Placeholder(_)));
+                        assert!(matches!(&elements[1], Expr::Register(name, _) if name == "A0"));
+                        assert!(matches!(
+                            &elements[2],
+                            Expr::Binary {
+                                op: BinaryOp::Multiply,
+                                left,
+                                right,
+                                ..
+                            }
+                                if matches!(left.as_ref(), Expr::Identifier(text, _) if text.eq_ignore_ascii_case("D1.L"))
+                                    && matches!(right.as_ref(), Expr::Number(text, _) if text == "4")
+                        ));
+                    }
+                    other => panic!("expected full-extension tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_full_extension_tuple_with_base_and_index_suppression() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE (4.W,,),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 3);
+                        assert!(matches!(
+                            &elements[0],
+                            Expr::Member { field, .. } if field.eq_ignore_ascii_case("W")
+                        ));
+                        assert!(matches!(&elements[1], Expr::Placeholder(_)));
+                        assert!(matches!(&elements[2], Expr::Placeholder(_)));
+                    }
+                    other => panic!("expected full-extension tuple, got {other:?}"),
                 },
                 other => panic!("expected indirect operand, got {other:?}"),
             },

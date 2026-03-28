@@ -6,8 +6,8 @@
 use super::is_register;
 use super::operand::{
     span_from_expr, span_from_exprs, AbsoluteSize, ControlRegisterKind, FamilyOperand,
-    FullExtensionBase, FullExtensionIndex, IndexScale, IndexSize, Operand, RegisterListRegister,
-    SpecialRegisterKind,
+    FullExtensionBase, FullExtensionIndex, IndexScale, IndexSize, MemoryIndirectionKind, Operand,
+    RegisterListRegister, SpecialRegisterKind,
 };
 use super::table::{
     parse_mnemonic, BitMnemonic, ConditionCode, MnemonicKind, OperationSize, ShiftMnemonic,
@@ -23,6 +23,13 @@ use std::collections::HashSet;
 pub struct M68KFamilyHandler;
 
 const MAX_M68000_ABSOLUTE_ADDRESS: i64 = 0x00FF_FFFF;
+type FullExtensionBaseDisplacement = Option<(Expr, AbsoluteSize)>;
+type PreindexedIndirectInner = (
+    FullExtensionBaseDisplacement,
+    FullExtensionBase,
+    Option<FullExtensionIndex>,
+);
+type PostindexedIndirectInner = (FullExtensionBaseDisplacement, FullExtensionBase);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EffectiveAddressKind {
@@ -201,29 +208,96 @@ impl M68KFamilyHandler {
             return Ok(None);
         }
 
-        let Expr::Member { base, field, span } = expr else {
-            return Err(FamilyParseError::new(
-                "68020 full-extension base displacement requires explicit .W or .L",
-                expr_span(expr),
-            ));
-        };
-        let size = match field.to_ascii_uppercase().as_str() {
-            "W" => AbsoluteSize::Word,
-            "L" => AbsoluteSize::Long,
+        let (base, size) = match expr {
+            Expr::Member { base, field, span } => {
+                let size = match field.to_ascii_uppercase().as_str() {
+                    "W" => AbsoluteSize::Word,
+                    "L" => AbsoluteSize::Long,
+                    _ => {
+                        return Err(FamilyParseError::new(
+                            "68020 full-extension base displacement requires explicit .W or .L",
+                            *span,
+                        ))
+                    }
+                };
+                ((**base).clone(), size)
+            }
+            Expr::Identifier(name, span) => {
+                let (base, size) = if let Some(base) = name.strip_suffix(".W") {
+                    (base, AbsoluteSize::Word)
+                } else if let Some(base) = name.strip_suffix(".L") {
+                    (base, AbsoluteSize::Long)
+                } else {
+                    return Err(FamilyParseError::new(
+                        "68020 full-extension base displacement requires explicit .W or .L",
+                        *span,
+                    ));
+                };
+                (Expr::Identifier(base.to_string(), *span), size)
+            }
             _ => {
                 return Err(FamilyParseError::new(
                     "68020 full-extension base displacement requires explicit .W or .L",
-                    *span,
+                    expr_span(expr),
                 ))
             }
         };
-        if Self::parse_register_name(base).is_some() || matches!(base.as_ref(), Expr::Tuple(_, _)) {
+        if Self::parse_register_name(&base).is_some() || matches!(base, Expr::Tuple(_, _)) {
             return Err(FamilyParseError::new(
                 "68020 full-extension base displacement must be an expression, not a register form",
-                expr_span(base),
+                expr_span(&base),
             ));
         }
-        Ok(Some(((**base).clone(), size)))
+        Ok(Some((base, size)))
+    }
+
+    fn parse_outer_displacement(
+        expr: &Expr,
+    ) -> Result<Option<(Expr, AbsoluteSize)>, FamilyParseError> {
+        if matches!(expr, Expr::Placeholder(_)) {
+            return Ok(None);
+        }
+
+        let (base, size) = match expr {
+            Expr::Member { base, field, span } => {
+                let size =
+                    match field.to_ascii_uppercase().as_str() {
+                        "W" => AbsoluteSize::Word,
+                        "L" => AbsoluteSize::Long,
+                        _ => return Err(FamilyParseError::new(
+                            "68020 full-extension outer displacement requires explicit .W or .L",
+                            *span,
+                        )),
+                    };
+                ((**base).clone(), size)
+            }
+            Expr::Identifier(name, span) => {
+                let (base, size) = if let Some(base) = name.strip_suffix(".W") {
+                    (base, AbsoluteSize::Word)
+                } else if let Some(base) = name.strip_suffix(".L") {
+                    (base, AbsoluteSize::Long)
+                } else {
+                    return Err(FamilyParseError::new(
+                        "68020 full-extension outer displacement requires explicit .W or .L",
+                        *span,
+                    ));
+                };
+                (Expr::Identifier(base.to_string(), *span), size)
+            }
+            _ => {
+                return Err(FamilyParseError::new(
+                    "68020 full-extension outer displacement requires explicit .W or .L",
+                    expr_span(expr),
+                ))
+            }
+        };
+        if Self::parse_register_name(&base).is_some() || matches!(base, Expr::Tuple(_, _)) {
+            return Err(FamilyParseError::new(
+                "68020 full-extension outer displacement must be an expression, not a register form",
+                expr_span(&base),
+            ));
+        }
+        Ok(Some((base, size)))
     }
 
     fn parse_full_extension_base(expr: &Expr) -> Result<FullExtensionBase, FamilyParseError> {
@@ -269,10 +343,20 @@ impl M68KFamilyHandler {
         let [displacement, base, index] = elements else {
             return None;
         };
+        let has_later_family_scale = matches!(
+            Self::parse_scaled_index_register(index),
+            Some((_, _, scale, _)) if scale != IndexScale::One
+        );
         if !matches!(displacement, Expr::Placeholder(_))
             && !matches!(base, Expr::Placeholder(_))
             && !matches!(index, Expr::Placeholder(_))
             && !matches!(displacement, Expr::Member { .. })
+            && !matches!(
+                displacement,
+                Expr::Identifier(name, _) if name.to_ascii_uppercase().ends_with(".W")
+                    || name.to_ascii_uppercase().ends_with(".L")
+            )
+            && !has_later_family_scale
         {
             return None;
         }
@@ -293,9 +377,186 @@ impl M68KFamilyHandler {
                 base_displacement,
                 base,
                 index,
+                memory_indirection: None,
+                outer_displacement: None,
                 span,
             })
         })())
+    }
+
+    fn build_full_extension_operand(
+        base_displacement: Option<(Expr, AbsoluteSize)>,
+        base: FullExtensionBase,
+        index: Option<FullExtensionIndex>,
+        memory_indirection: Option<MemoryIndirectionKind>,
+        outer_displacement: Option<(Expr, AbsoluteSize)>,
+        span: opcore::tokenizer::Span,
+    ) -> Result<FamilyOperand, FamilyParseError> {
+        if matches!(base, FullExtensionBase::Suppressed) && index.is_none() {
+            return Err(FamilyParseError::new(
+                "68020 full-extension operand cannot suppress both base and index",
+                span,
+            ));
+        }
+
+        Ok(FamilyOperand::FullExtension {
+            base_displacement,
+            base,
+            index,
+            memory_indirection,
+            outer_displacement,
+            span,
+        })
+    }
+
+    fn parse_preindexed_indirect_inner(
+        expr: &Expr,
+    ) -> Result<PreindexedIndirectInner, FamilyParseError> {
+        match expr {
+            Expr::Tuple(elements, _) => match elements.as_slice() {
+                [displacement, base, index] => Ok((
+                    Self::parse_full_extension_displacement(displacement)?,
+                    Self::parse_full_extension_base(base)?,
+                    Self::parse_full_extension_index(index)?,
+                )),
+                [base, index] => {
+                    let base = Self::parse_full_extension_base(base)?;
+                    let Some(index) = Self::parse_full_extension_index(index)? else {
+                        return Err(FamilyParseError::new(
+                            "68020 preindexed alias requires an explicit index register",
+                            expr_span(index),
+                        ));
+                    };
+                    Ok((None, base, Some(index)))
+                }
+                _ => Err(FamilyParseError::new(
+                    "invalid 68020 preindexed memory-indirect operand shape",
+                    expr_span(expr),
+                )),
+            },
+            _ => Err(FamilyParseError::new(
+                "invalid 68020 preindexed memory-indirect operand shape",
+                expr_span(expr),
+            )),
+        }
+    }
+
+    fn parse_postindexed_indirect_inner(
+        expr: &Expr,
+    ) -> Result<PostindexedIndirectInner, FamilyParseError> {
+        match expr {
+            Expr::Tuple(elements, _) => match elements.as_slice() {
+                [displacement, base] => Ok((
+                    Self::parse_full_extension_displacement(displacement)?,
+                    Self::parse_full_extension_base(base)?,
+                )),
+                _ => Err(FamilyParseError::new(
+                    "invalid 68020 postindexed memory-indirect operand shape",
+                    expr_span(expr),
+                )),
+            },
+            _ => Ok((None, Self::parse_full_extension_base(expr)?)),
+        }
+    }
+
+    fn parse_preindexed_memory_indirect(
+        &self,
+        inner: &Expr,
+        outer_displacement: Option<&Expr>,
+        span: opcore::tokenizer::Span,
+    ) -> Result<FamilyOperand, FamilyParseError> {
+        let (base_displacement, base, index) = Self::parse_preindexed_indirect_inner(inner)?;
+        let outer_displacement = match outer_displacement {
+            Some(expr) => {
+                let Some(displacement) = Self::parse_outer_displacement(expr)? else {
+                    return Err(FamilyParseError::new(
+                        "68020 preindexed memory-indirect outer displacement cannot be omitted explicitly",
+                        expr_span(expr),
+                    ));
+                };
+                Some(displacement)
+            }
+            None => None,
+        };
+
+        Self::build_full_extension_operand(
+            base_displacement,
+            base,
+            index,
+            Some(MemoryIndirectionKind::Preindexed),
+            outer_displacement,
+            span,
+        )
+    }
+
+    fn parse_postindexed_memory_indirect(
+        &self,
+        inner: &Expr,
+        index_expr: &Expr,
+        outer_displacement: Option<&Expr>,
+        span: opcore::tokenizer::Span,
+    ) -> Result<FamilyOperand, FamilyParseError> {
+        let (base_displacement, base) = Self::parse_postindexed_indirect_inner(inner)?;
+        let index = Self::parse_full_extension_index(index_expr)?;
+        let outer_displacement = match outer_displacement {
+            Some(expr) => {
+                let Some(displacement) = Self::parse_outer_displacement(expr)? else {
+                    return Err(FamilyParseError::new(
+                        "68020 postindexed memory-indirect outer displacement cannot be omitted explicitly",
+                        expr_span(expr),
+                    ));
+                };
+                Some(displacement)
+            }
+            None => None,
+        };
+
+        Self::build_full_extension_operand(
+            base_displacement,
+            base,
+            index,
+            Some(MemoryIndirectionKind::Postindexed),
+            outer_displacement,
+            span,
+        )
+    }
+
+    fn parse_memory_indirect_tuple(
+        &self,
+        elements: &[Expr],
+        span: opcore::tokenizer::Span,
+    ) -> Result<FamilyOperand, FamilyParseError> {
+        let Some((first, rest)) = elements.split_first() else {
+            return Err(FamilyParseError::new(
+                "invalid 68020 memory-indirect operand shape",
+                span,
+            ));
+        };
+        let Expr::IndirectLong(inner, _) = first else {
+            return Err(FamilyParseError::new(
+                "invalid 68020 memory-indirect operand shape",
+                expr_span(first),
+            ));
+        };
+
+        match rest {
+            [second] => {
+                if matches!(second, Expr::Placeholder(_))
+                    || Self::parse_scaled_index_register(second).is_some()
+                {
+                    self.parse_postindexed_memory_indirect(inner, second, None, span)
+                } else {
+                    self.parse_preindexed_memory_indirect(inner, Some(second), span)
+                }
+            }
+            [index, outer] => {
+                self.parse_postindexed_memory_indirect(inner, index, Some(outer), span)
+            }
+            _ => Err(FamilyParseError::new(
+                "invalid 68020 memory-indirect operand shape",
+                span,
+            )),
+        }
     }
 
     fn parse_movem_register_list_register(
@@ -660,7 +921,16 @@ impl M68KFamilyHandler {
                 span: *span,
             }),
             Expr::Indirect(inner, span) => match inner.as_ref() {
-                Expr::Tuple(elements, _) => self.parse_indirect_tuple(elements, *span),
+                Expr::Tuple(elements, _) => {
+                    if matches!(elements.first(), Some(Expr::IndirectLong(_, _))) {
+                        self.parse_memory_indirect_tuple(elements, *span)
+                    } else {
+                        self.parse_indirect_tuple(elements, *span)
+                    }
+                }
+                Expr::IndirectLong(inner, _) => {
+                    self.parse_preindexed_memory_indirect(inner, None, *span)
+                }
                 inner_expr => {
                     if Self::parse_pc_register(inner_expr).is_some() {
                         return Ok(FamilyOperand::PcDisplacement {
@@ -4180,7 +4450,10 @@ impl FamilyHandler for M68KFamilyHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use opcore::expression::expr_text;
+    use opcore::parser::LineAst;
     use opcore::tokenizer::Span;
+    use registry::syntax::{parser_from_line_with_registers, register_checker_from_fn};
     use std::collections::HashMap;
     use types::symbol::{SymbolTable, SymbolTableResult, SymbolVisibility};
 
@@ -4197,6 +4470,91 @@ mod tests {
             i64::from_str_radix(hex, 16).map_err(|err| err.to_string())
         } else {
             text.parse::<i64>().map_err(|err| err.to_string())
+        }
+    }
+
+    fn parse_operand_from_source(source: &str) -> FamilyOperand {
+        let mut parser = parser_from_line_with_registers(
+            source,
+            1,
+            register_checker_from_fn(crate::m68k::is_register),
+        )
+        .expect("parser");
+        let line = parser.parse_compat_mixed_line().expect("line parse");
+        let LineAst::Statement(statement) = line else {
+            panic!("expected statement, got {line:?}");
+        };
+        let mnemonic = statement.mnemonic.as_deref().expect("mnemonic");
+        let mut operands = M68KFamilyHandler::new()
+            .parse_operands(mnemonic, &statement.operands)
+            .expect("operand parse");
+        assert_eq!(operands.len(), 2, "expected MOVE source and destination");
+        operands.remove(0)
+    }
+
+    fn parse_operand_error_from_source(source: &str) -> FamilyParseError {
+        let mut parser = parser_from_line_with_registers(
+            source,
+            1,
+            register_checker_from_fn(crate::m68k::is_register),
+        )
+        .expect("parser");
+        let line = parser.parse_compat_mixed_line().expect("line parse");
+        let LineAst::Statement(statement) = line else {
+            panic!("expected statement, got {line:?}");
+        };
+        let mnemonic = statement.mnemonic.as_deref().expect("mnemonic");
+        M68KFamilyHandler::new()
+            .parse_operands(mnemonic, &statement.operands)
+            .expect_err("expected operand parse failure")
+    }
+
+    fn assert_full_extension_operand(
+        operand: &FamilyOperand,
+        expected_base_displacement: Option<(&str, AbsoluteSize)>,
+        expected_base: FullExtensionBase,
+        expected_index: Option<(&str, IndexSize, IndexScale)>,
+        expected_memory_indirection: Option<MemoryIndirectionKind>,
+        expected_outer_displacement: Option<(&str, AbsoluteSize)>,
+    ) {
+        let FamilyOperand::FullExtension {
+            base_displacement,
+            base,
+            index,
+            memory_indirection,
+            outer_displacement,
+            ..
+        } = operand
+        else {
+            panic!("expected full-extension operand, got {operand:?}");
+        };
+
+        match (base_displacement.as_ref(), expected_base_displacement) {
+            (Some((expr, size)), Some((text, expected_size))) => {
+                assert_eq!(expr_text(expr).as_deref(), Some(text));
+                assert_eq!(*size, expected_size);
+            }
+            (None, None) => {}
+            other => panic!("unexpected base displacement: {other:?}"),
+        }
+        assert_eq!(base, &expected_base);
+        match (index.as_ref(), expected_index) {
+            (Some(actual), Some((register, size, scale))) => {
+                assert_eq!(actual.register, register);
+                assert_eq!(actual.size, size);
+                assert_eq!(actual.scale, scale);
+            }
+            (None, None) => {}
+            other => panic!("unexpected index: {other:?}"),
+        }
+        assert_eq!(*memory_indirection, expected_memory_indirection);
+        match (outer_displacement.as_ref(), expected_outer_displacement) {
+            (Some((expr, size)), Some((text, expected_size))) => {
+                assert_eq!(expr_text(expr).as_deref(), Some(text));
+                assert_eq!(*size, expected_size);
+            }
+            (None, None) => {}
+            other => panic!("unexpected outer displacement: {other:?}"),
         }
     }
 
@@ -4770,7 +5128,81 @@ mod tests {
             )
             .expect_err("non-identity scales should stay rejected");
 
-        assert!(err.message.contains("invalid 68000 index register"));
+        assert!(err
+            .message
+            .contains("68020 full-extension base displacement requires explicit .W or .L"));
+    }
+
+    #[test]
+    fn normalizes_68020_memory_indirect_aliases_to_canonical_operands() {
+        let canonical_preindexed = parse_operand_from_source("    MOVE ([,A0,D1.L*4],8.W),D0");
+        let alias_preindexed = parse_operand_from_source("    MOVE ([A0,D1.L*4],8.W),D0");
+        let canonical_postindexed = parse_operand_from_source("    MOVE ([,A3],D2.W*2,outer.L),D0");
+        let alias_postindexed = parse_operand_from_source("    MOVE ([A3],D2.W*2,outer.L),D0");
+
+        assert_full_extension_operand(
+            &canonical_preindexed,
+            None,
+            FullExtensionBase::Address("A0".to_string()),
+            Some(("D1", IndexSize::Long, IndexScale::Four)),
+            Some(MemoryIndirectionKind::Preindexed),
+            Some(("8", AbsoluteSize::Word)),
+        );
+        assert_full_extension_operand(
+            &alias_preindexed,
+            None,
+            FullExtensionBase::Address("A0".to_string()),
+            Some(("D1", IndexSize::Long, IndexScale::Four)),
+            Some(MemoryIndirectionKind::Preindexed),
+            Some(("8", AbsoluteSize::Word)),
+        );
+        assert_full_extension_operand(
+            &canonical_postindexed,
+            None,
+            FullExtensionBase::Address("A3".to_string()),
+            Some(("D2", IndexSize::Word, IndexScale::Two)),
+            Some(MemoryIndirectionKind::Postindexed),
+            Some(("outer", AbsoluteSize::Long)),
+        );
+        assert_full_extension_operand(
+            &alias_postindexed,
+            None,
+            FullExtensionBase::Address("A3".to_string()),
+            Some(("D2", IndexSize::Word, IndexScale::Two)),
+            Some(MemoryIndirectionKind::Postindexed),
+            Some(("outer", AbsoluteSize::Long)),
+        );
+    }
+
+    #[test]
+    fn normalizes_68020_width_explicit_sugar_to_canonical_full_extension_operands() {
+        let canonical = parse_operand_from_source("    MOVE (disp.W,A0,D1.L*4),D0");
+        let alias = parse_operand_from_source("    MOVE disp.W(A0,D1.L*4),D0");
+
+        assert_full_extension_operand(
+            &canonical,
+            Some(("disp", AbsoluteSize::Word)),
+            FullExtensionBase::Address("A0".to_string()),
+            Some(("D1", IndexSize::Long, IndexScale::Four)),
+            None,
+            None,
+        );
+        assert_full_extension_operand(
+            &alias,
+            Some(("disp", AbsoluteSize::Word)),
+            FullExtensionBase::Address("A0".to_string()),
+            Some(("D1", IndexSize::Long, IndexScale::Four)),
+            None,
+            None,
+        );
+    }
+
+    #[test]
+    fn rejects_widthless_68020_displacement_leading_sugar_deterministically() {
+        let err = parse_operand_error_from_source("    MOVE disp(A0,D1.L*4),D0");
+        assert!(err
+            .message
+            .contains("68020 full-extension base displacement requires explicit .W or .L"));
     }
 
     #[test]

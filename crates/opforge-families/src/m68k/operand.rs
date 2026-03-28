@@ -65,6 +65,12 @@ pub struct FullExtensionIndex {
     pub scale: IndexScale,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemoryIndirectionKind {
+    Preindexed,
+    Postindexed,
+}
+
 #[derive(Clone, Debug)]
 pub enum FamilyOperand {
     DataRegister {
@@ -121,6 +127,8 @@ pub enum FamilyOperand {
         base_displacement: Option<(Expr, AbsoluteSize)>,
         base: FullExtensionBase,
         index: Option<FullExtensionIndex>,
+        memory_indirection: Option<MemoryIndirectionKind>,
+        outer_displacement: Option<(Expr, AbsoluteSize)>,
         span: Span,
     },
     Absolute {

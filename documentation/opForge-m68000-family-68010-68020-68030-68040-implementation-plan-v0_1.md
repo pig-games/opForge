@@ -71,7 +71,7 @@ system-programming features.
 
 ## Work Items
 
-- [ ] `M68K-LINEAGE-001`: Add `m68010`, `m68020`, `m68030`, and `m68040`
+- [x] `M68K-LINEAGE-001`: Add `m68010`, `m68020`, `m68030`, and `m68040`
       registry wiring, CPU metadata, and family capability hooks without
       enabling new later-family syntax or encodes yet.
   - Validation: focused CPU-resolution, capabilities, and metadata tests plus
@@ -106,7 +106,7 @@ system-programming features.
   - Commit outcome: one commit that makes the new CPUs discoverable and
     testable as separate targets while leaving their live ISA surfaces narrow
 
-- [ ] `M68K-LINEAGE-002`: Implement the full `m68010` non-MMU, non-FPU integer
+- [x] `M68K-LINEAGE-002`: Implement the full `m68010` non-MMU, non-FPU integer
       delta on top of the baseline `68000` addressing model.
   - Validation: focused `m68010` encode or legality tests for `BKPT`,
     `MOVEC`, `MOVES`, `MOVE.W CCR,<ea>`, and `RTD`, negative tests showing
@@ -130,7 +130,7 @@ system-programming features.
   - Commit outcome: one commit that establishes the complete source-backed
     `m68010` CPU delta before any `68020+` addressing work begins
 
-- [ ] `M68K-LINEAGE-003`: Extend the parser and operand model for core
+- [x] `M68K-LINEAGE-003`: Extend the parser and operand model for core
   `68020+` full-extension addressing, excluding memory-indirect encode
   enablement.
   - Definition of done: the accepted core `68020+` operand families parse
@@ -160,7 +160,7 @@ system-programming features.
     syntax structurally available without yet claiming the full memory-indirect
     surface
 
-- [ ] `M68K-LINEAGE-004`: Extend the parser and operand model for the full
+- [x] `M68K-LINEAGE-004`: Extend the parser and operand model for the full
       accepted `68020+` memory-indirect, outer-displacement, alias-normalized,
       and omission-driven full-extension addressing surface.
   - Validation: focused parser and operand-model tests covering accepted
@@ -391,10 +391,10 @@ system-programming features.
 
 ## Milestones
 
-- [ ] Milestone 0: prerequisite later-CPU spec artifact landed and
+- [x] Milestone 0: prerequisite later-CPU spec artifact landed and
       spec-quality-approved before implementation execution starts
-- [ ] Milestone 1: CPU registration foundation complete (`M68K-LINEAGE-001`)
-- [ ] Milestone 2: `m68010` delta complete (`M68K-LINEAGE-002`)
+- [x] Milestone 1: CPU registration foundation complete (`M68K-LINEAGE-001`)
+- [x] Milestone 2: `m68010` delta complete (`M68K-LINEAGE-002`)
 - [ ] Milestone 3: full `68020+` parsing and addressing complete
       (`M68K-LINEAGE-003`, `M68K-LINEAGE-004`, `M68K-LINEAGE-005`)
 - [ ] Milestone 4: grouped `m68020` instruction families complete

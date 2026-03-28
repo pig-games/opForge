@@ -2793,7 +2793,7 @@ fn m68000_scaled_index_aliases_above_identity_stay_rejected() {
         let expected = if line.contains("(PC,") {
             "invalid 68000 displacement base register"
         } else {
-            "invalid 68000 index register"
+            "68020 full-extension base displacement requires explicit .W or .L"
         };
         assert!(
             message.contains(expected),
@@ -3780,6 +3780,23 @@ fn m68010_delta_and_m68000_rejection_diagnostics_are_deterministic() {
 fn baseline_m68k_cpus_reject_68020_full_extension_operands_deterministically() {
     for (cpu, cpu_name) in [(m68000_cpu_id, "baseline 68000"), (m68010_cpu_id, "m68010")] {
         let (status, message) = assemble_line_status(cpu, "    MOVE.W (,A0,D1.L*4),D0");
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected rejection on {cpu_name}"
+        );
+        let message = message.expect("expected later-family addressing diagnostic");
+        assert!(
+            message.contains("68020+ full-extension addressing is not supported"),
+            "unexpected diagnostic on {cpu_name}: {message}"
+        );
+    }
+}
+
+#[test]
+fn baseline_m68k_cpus_reject_68020_memory_indirect_operands_deterministically() {
+    for (cpu, cpu_name) in [(m68000_cpu_id, "baseline 68000"), (m68010_cpu_id, "m68010")] {
+        let (status, message) = assemble_line_status(cpu, "    MOVE.W ([A0],D1.W*2,8.W),D0");
         assert_eq!(
             status,
             LineStatus::Error,

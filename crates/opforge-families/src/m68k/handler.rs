@@ -2797,7 +2797,8 @@ impl M68KFamilyHandler {
             &mut bytes,
             0x4C00 | Self::effective_address_bits(src_ea.bits),
         );
-        let extension = ((dst_reg as u16) << 12) | if signed { 1 << 11 } else { 0 } | (1 << 10);
+        let extension =
+            ((dst_reg as u16) << 12) | if signed { 1 << 11 } else { 0 } | dst_reg as u16;
         Self::emit_word(&mut bytes, extension);
         bytes.extend_from_slice(&src_ea.extension);
         EncodeResult::ok(bytes)
@@ -9443,6 +9444,52 @@ mod tests {
                 &ctx,
             ),
             &[0x60, 0xFF, 0x00, 0x00, 0x00, 0x06],
+        );
+    }
+
+    #[test]
+    fn long_multiply_single_register_extension_uses_destination_register_bits() {
+        let handler = M68KFamilyHandler::new();
+        let ctx = TestContext::default();
+
+        for dst_reg in 0_u8..=7 {
+            expect_encoded(
+                handler.encode_long_data_register_multiply(
+                    "MULS.L",
+                    true,
+                    &[
+                        Operand::AddressIndirect {
+                            register: "A0".to_string(),
+                            span: span(),
+                        },
+                        Operand::DataRegister {
+                            register: format!("D{dst_reg}"),
+                            span: span(),
+                        },
+                    ],
+                    &ctx,
+                ),
+                &[0x4C, 0x10, (dst_reg << 4) | 0x08, dst_reg],
+            );
+        }
+
+        expect_encoded(
+            handler.encode_long_data_register_multiply(
+                "MULU.L",
+                false,
+                &[
+                    Operand::AddressIndirect {
+                        register: "A0".to_string(),
+                        span: span(),
+                    },
+                    Operand::DataRegister {
+                        register: "D5".to_string(),
+                        span: span(),
+                    },
+                ],
+                &ctx,
+            ),
+            &[0x4C, 0x10, 0x50, 0x05],
         );
     }
 }

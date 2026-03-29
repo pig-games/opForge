@@ -57,7 +57,7 @@ the remediation work and the follow-up spec.
     `displacement = target − (instr_addr + 2)` for a word branch to a
     known-address label
 
-- [ ] Item 2 — Fix `MULS.L` / `MULU.L` single-register extension word encoding
+- [x] Item 2 — Fix `MULS.L` / `MULU.L` single-register extension word encoding
   - Source requirement or finding IDs: RVW-2026-03-29-002; Testing Gap 2
   - Expected closure: fully closes RVW-2026-03-29-002; fully addresses Testing Gap 2
   - Expected files:

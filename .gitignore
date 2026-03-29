@@ -44,6 +44,7 @@ Icon?
 # Local AI agent guidance
 /scripts/route_workflow.sh
 /.tmp_yaml/
+/.tmp-spec-manual/
 .vscode/settings.json
 
 # Local workspace-only content (temporary)

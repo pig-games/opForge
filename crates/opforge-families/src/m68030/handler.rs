@@ -162,7 +162,19 @@ impl CpuHandler for M68030CpuHandler {
             };
 
             return match parsed.kind {
-                FpuMnemonicKind::Fmove | FpuMnemonicKind::Fmovem => {
+                FpuMnemonicKind::Fmove
+                | FpuMnemonicKind::Fmovem
+                | FpuMnemonicKind::Fadd
+                | FpuMnemonicKind::Fsub
+                | FpuMnemonicKind::Fmul
+                | FpuMnemonicKind::Fdiv
+                | FpuMnemonicKind::Fsqrt
+                | FpuMnemonicKind::Fabs
+                | FpuMnemonicKind::Fneg
+                | FpuMnemonicKind::Fcmp
+                | FpuMnemonicKind::Ftst
+                | FpuMnemonicKind::Fint
+                | FpuMnemonicKind::Fintrz => {
                     self.base.encode_instruction(mnemonic, operands, ctx)
                 }
                 _ => EncodeResult::error(format!(

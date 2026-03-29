@@ -236,7 +236,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that proves a narrow working external-FPU encode
     path before broader arithmetic families are enabled
 
-- [ ] `M68KMF-007`: Implement the external-FPU arithmetic, compare/test, and named conversion slice for `m68020` and `m68030`.
+- [x] `M68KMF-007`: Implement the external-FPU arithmetic, compare/test, and named conversion slice for `m68020` and `m68030`.
   - Validation: focused encode or legality tests for `FADD`, `FSUB`, `FMUL`, `FDIV`, `FSQRT`, `FABS`, `FNEG`, `FCMP`, `FTST`, `FINT`, `FINTRZ`, and format-converting `FMOVE` forms on external-FPU hosts, plus `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`, `cargo audit`, and `make test`
   - Definition of done: `FADD`, `FSUB`, `FMUL`, `FDIV`, `FSQRT`, `FABS`, `FNEG`, `FCMP`, `FTST`, `FINT`, `FINTRZ`, and format-converting `FMOVE` forms assemble on legal external-FPU hosts and remain unavailable on integer-only configurations
   - Source requirement or finding IDs: `REQ-M68KMF-006`, `REQ-M68KMF-007`,
@@ -366,7 +366,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
       (`M68KMF-001`, `M68KMF-002`)
 - [ ] Milestone 2: minimal MMU scope complete (`M68KMF-003`, `M68KMF-004`)
 - [x] Milestone 3: FPU parsing and legality foundation complete (`M68KMF-005`)
-- [ ] Milestone 4: external-FPU core movement and arithmetic complete
+- [x] Milestone 4: external-FPU core movement and arithmetic complete
       (`M68KMF-006`, `M68KMF-007`)
 - [ ] Milestone 5: integrated `m68040` core FPU surface complete (`M68KMF-008`)
 - [ ] Milestone 6: FPU conditionals and save or restore complete (`M68KMF-009`)

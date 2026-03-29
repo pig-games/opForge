@@ -4804,7 +4804,7 @@ fn diff_text(expected: &str, actual: &str, max_lines: usize) -> String {
 }
 
 #[test]
-fn m68000_example_programs_assemble_in_reference_workflow() {
+fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
     let repo_root = workspace_root();
     let examples_dir = repo_root.join("examples");
     let out_dir = create_temp_dir("m68000-example-smoke");
@@ -4829,6 +4829,9 @@ fn m68000_example_programs_assemble_in_reference_workflow() {
         "68000_immediate_unary",
         "68000_system_register_misc",
         "68000_compare_operand_state",
+        "68010_delta",
+        "68020_full_extension_addressing",
+        "68020_later_families",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));
         if let Err(err) = assemble_example(&asm_path, &out_dir, false) {

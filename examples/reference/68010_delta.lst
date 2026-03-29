@@ -1,0 +1,36 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68010 delta smoke fixture
+----                                2  .cpu 68010
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    48 4B                       6      BKPT #3
+1002    42 C0                       7      MOVE CCR,D0
+1004    42 F8 12 34                 8      MOVE CCR,($1234).W
+1008    4E 7A 00 00                 9      MOVEC SFC,D0
+100C    4E 7B 10 01                10      MOVEC D1,DFC
+1010    4E 7A A8 01                11      MOVEC VBR,A2
+1014    0E 50 08 00                12      MOVES.W D0,(A0)
+1018    0E 91 A0 00                13      MOVES.L (A1),A2
+101C    4E 74 00 04                14      RTD #4
+----                               15  
+----                               16  .end
+
+Lines: 16  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 32 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    48 4B 42 C0 42 F8 12 34 4E 7A 00 00 4E 7B 10 01
+1010    4E 7A A8 01 0E 50 08 00 0E 91 A0 00 4E 74 00 04

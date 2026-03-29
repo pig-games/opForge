@@ -317,7 +317,7 @@ system-programming features.
   - Commit outcome: one commit that makes `m68040` a real target with explicit
     additions and removals, not a vague family alias
 
-- [ ] `M68K-LINEAGE-010`: Add example, reference, and integration coverage for
+- [x] `M68K-LINEAGE-010`: Add example, reference, and integration coverage for
       the shipped `m68010` and `m68020` surfaces, including full `68020+`
       addressing and the grouped later instruction families.
   - Validation: focused example-assembly smoke tests, fail-before-update

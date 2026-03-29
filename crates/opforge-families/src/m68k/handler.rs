@@ -6937,6 +6937,30 @@ mod tests {
     }
 
     #[test]
+    fn m68010_moves_delegates_to_family_encoder() {
+        let handler = crate::m68010::M68010CpuHandler::new();
+        let ctx = TestContext::default();
+
+        expect_encoded(
+            handler.encode_instruction(
+                "MOVES.W",
+                &[
+                    Operand::DataRegister {
+                        register: "D1".to_string(),
+                        span: span(),
+                    },
+                    Operand::AddressIndirect {
+                        register: "A0".to_string(),
+                        span: span(),
+                    },
+                ],
+                &ctx,
+            ),
+            &[0x0E, 0x50, 0x18, 0x00],
+        );
+    }
+
+    #[test]
     fn parses_movem_register_list_operands() {
         let handler = M68KFamilyHandler::new();
         let register_list = Expr::Binary {

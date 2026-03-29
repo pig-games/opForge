@@ -145,77 +145,6 @@ impl M68010CpuHandler {
         EncodeResult::ok(bytes)
     }
 
-    fn encode_moves(
-        &self,
-        size: Option<OperationSize>,
-        operands: &[Operand],
-        ctx: &dyn AssemblerContext,
-    ) -> EncodeResult<Vec<u8>> {
-        let Some(size) = size else {
-            return EncodeResult::error("MOVES requires an explicit size suffix (.B, .W, or .L)");
-        };
-
-        let [src, dst] = operands else {
-            return EncodeResult::error("MOVES expects two operands");
-        };
-
-        let (dr_bit, register_operand, ea_operand) = if Self::general_register_descriptor(src)
-            .is_some()
-        {
-            (1_u16, src, dst)
-        } else if Self::general_register_descriptor(dst).is_some() {
-            (0_u16, dst, src)
-        } else {
-            return EncodeResult::error(
-                    "MOVES expects one data/address register and one memory-alterable effective address",
-                );
-        };
-
-        let Some((ad_bit, register_bits)) = Self::general_register_descriptor(register_operand)
-        else {
-            return EncodeResult::error_with_span(
-                "MOVES register operand must be a data or address register",
-                register_operand.span(),
-            );
-        };
-
-        let ea = match self
-            .family
-            .encode_effective_address(ea_operand, Some(size), ctx)
-        {
-            Ok(ea) => ea,
-            Err(err) => return err,
-        };
-        if !M68KFamilyHandler::memory_alterable(ea.kind) {
-            return EncodeResult::error_with_span(
-                if dr_bit == 0 {
-                    format!(
-                        "invalid source effective address for MOVES{}",
-                        size.suffix()
-                    )
-                } else {
-                    format!(
-                        "invalid destination effective address for MOVES{}",
-                        size.suffix()
-                    )
-                },
-                ea_operand.span(),
-            );
-        }
-
-        let mut bytes = Vec::new();
-        M68KFamilyHandler::emit_word(
-            &mut bytes,
-            0x0E00 | (M68KFamilyHandler::size_bits(size) << 6) | ea.bits,
-        );
-        M68KFamilyHandler::emit_word(
-            &mut bytes,
-            (ad_bit << 15) | (register_bits << 12) | (dr_bit << 11),
-        );
-        bytes.extend_from_slice(&ea.extension);
-        EncodeResult::ok(bytes)
-    }
-
 }
 
 impl CpuHandler for M68010CpuHandler {
@@ -317,7 +246,10 @@ impl CpuHandler for M68010CpuHandler {
                 self.family.encode_bkpt_instruction(parsed.size, operands, ctx)
             }
             M68010MnemonicKind::Movec => self.encode_movec(parsed.size, operands),
-            M68010MnemonicKind::Moves => self.encode_moves(parsed.size, operands, ctx),
+            M68010MnemonicKind::Moves => {
+                self.family
+                    .encode_moves_instruction(parsed.size, operands, ctx)
+            }
             M68010MnemonicKind::Rtd => {
                 self.family.encode_rtd_instruction(parsed.size, operands, ctx)
             }

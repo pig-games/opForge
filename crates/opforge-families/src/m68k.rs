@@ -7,6 +7,7 @@ pub mod module;
 mod handler;
 
 pub mod operand;
+pub mod state;
 
 mod table;
 

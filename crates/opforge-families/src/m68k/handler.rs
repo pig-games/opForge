@@ -5377,7 +5377,9 @@ impl M68KFamilyHandler {
     }
 
     fn encode_absolute_long(&self, value: i64) -> Option<u32> {
-        (0..=self.max_absolute_address).contains(&value).then_some(value as u32)
+        (0..=self.max_absolute_address)
+            .contains(&value)
+            .then_some(value as u32)
     }
 
     fn encode_immediate(size: OperationSize, value: i64) -> Option<Vec<u8>> {
@@ -9813,11 +9815,16 @@ mod tests {
         ];
 
         expect_encoded(
-            m68020.family().encode_instruction("MOVE.L", &operands, &ctx),
+            m68020
+                .family()
+                .encode_instruction("MOVE.L", &operands, &ctx),
             &[0x20, 0x39, 0x01, 0x00, 0x00, 0x00],
         );
 
-        match m68000.family().encode_instruction("MOVE.L", &operands, &ctx) {
+        match m68000
+            .family()
+            .encode_instruction("MOVE.L", &operands, &ctx)
+        {
             EncodeResult::Error(message, _) => {
                 assert!(message.contains("68000 absolute .L address out of 24-bit range"));
             }
@@ -9910,7 +9917,10 @@ mod tests {
             },
         ];
 
-        expect_encoded(m68020.encode_instruction("CHK.L", &operands, &ctx), &[0x43, 0x10]);
+        expect_encoded(
+            m68020.encode_instruction("CHK.L", &operands, &ctx),
+            &[0x43, 0x10],
+        );
         assert!(matches!(
             baseline.encode_instruction("CHK.L", &operands, &ctx),
             EncodeResult::NotFound

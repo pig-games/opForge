@@ -3,9 +3,13 @@
 
 //! Motorola 68040 CPU module.
 
+use std::collections::HashMap;
+
 use crate::families::m68k::module::{
     M68KFamilyOperands, M68KOperands, DIALECT_MOTOROLA68K, FAMILY_ID as M68K_FAMILY_ID,
 };
+use crate::families::m68k::state;
+use opcore::parser::Expr;
 use registry::cpu::{CpuFamily, CpuType};
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 use registry::registry::{CpuHandlerDyn, CpuModule, FamilyOperandSet, OperandSet};
@@ -36,6 +40,10 @@ impl CpuModule for M68040CpuModule {
 
     fn default_dialect(&self) -> &'static str {
         DIALECT_MOTOROLA68K
+    }
+
+    fn runtime_directive_ids(&self) -> &'static [&'static str] {
+        state::RUNTIME_DIRECTIVE_IDS
     }
 
     fn handler(&self) -> Box<dyn CpuHandlerDyn> {
@@ -93,5 +101,19 @@ impl CpuHandlerDyn for M68040CpuHandler {
 
     fn is_little_endian(&self) -> bool {
         false
+    }
+
+    fn runtime_state_defaults(&self) -> HashMap<String, u32> {
+        state::initial_runtime_state()
+    }
+
+    fn apply_runtime_directive(
+        &self,
+        directive: &str,
+        operands: &[Expr],
+        ctx: &dyn AssemblerContext,
+        state_flags: &mut HashMap<String, u32>,
+    ) -> Result<bool, String> {
+        state::apply_runtime_directive(directive, operands, CPU_ID, ctx, state_flags)
     }
 }

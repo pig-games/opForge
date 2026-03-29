@@ -2756,6 +2756,83 @@ fn m68k_lineage_pipelines_report_expected_target_metadata() {
 }
 
 #[test]
+fn m68k_lineage_runtime_directives_expose_fpu_selector() {
+    let registry = default_registry();
+
+    for cpu_id in [
+        m68000_cpu_id,
+        m68010_cpu_id,
+        m68020_cpu_id,
+        m68030_cpu_id,
+        m68040_cpu_id,
+    ] {
+        assert_eq!(
+            registry.cpu_runtime_directive_ids(cpu_id),
+            vec!["FPU".to_string()]
+        );
+    }
+}
+
+#[test]
+fn m68k_fpu_directive_accepts_only_legal_cpu_pairings() {
+    let legal_cases = [
+        (m68000_cpu_id, ".fpu none"),
+        (m68010_cpu_id, ".fpu none"),
+        (m68020_cpu_id, ".fpu 68881"),
+        (m68020_cpu_id, ".fpu 68882"),
+        (m68030_cpu_id, ".fpu 68881"),
+        (m68030_cpu_id, ".fpu 68882"),
+        (m68040_cpu_id, ".fpu 68040"),
+    ];
+
+    for (cpu, line) in legal_cases {
+        let (status, message) = assemble_line_status(cpu, line);
+        assert_eq!(status, LineStatus::Ok, "expected `{line}` to succeed");
+        assert!(message.is_none(), "unexpected diagnostic for `{line}`");
+    }
+
+    let illegal_cases = [
+        (m68000_cpu_id, ".fpu 68881", "m68000", "68881"),
+        (m68010_cpu_id, ".fpu 68040", "m68010", "68040"),
+        (m68020_cpu_id, ".fpu 68040", "m68020", "68040"),
+        (m68030_cpu_id, ".fpu 68040", "m68030", "68040"),
+        (m68040_cpu_id, ".fpu 68881", "m68040", "68881"),
+    ];
+
+    for (cpu, line, cpu_name, fpu_name) in illegal_cases {
+        let (status, message) = assemble_line_status(cpu, line);
+        assert_eq!(status, LineStatus::Error, "expected `{line}` to fail");
+        let message = message.expect("expected .fpu diagnostic");
+        assert!(
+            message.contains(cpu_name),
+            "missing CPU name in `{message}`"
+        );
+        assert!(
+            message.contains(fpu_name),
+            "missing FPU target in `{message}`"
+        );
+    }
+}
+
+#[test]
+fn m68k_cpu_directive_resets_fpu_selection_to_none() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    assert_eq!(process_line(&mut asm, ".cpu 68020", 0, 1), LineStatus::Ok);
+    assert_eq!(process_line(&mut asm, ".fpu 68881", 0, 1), LineStatus::Ok);
+    assert_eq!(process_line(&mut asm, ".cpu 68040", 0, 1), LineStatus::Ok);
+    assert_eq!(process_line(&mut asm, ".fpu 68040", 0, 1), LineStatus::Ok);
+
+    let status = process_line(&mut asm, ".fpu 68881", 0, 1);
+    assert_eq!(status, LineStatus::Error);
+    let message = asm.error_message();
+    assert!(message.contains("m68040"));
+    assert!(message.contains("68881"));
+}
+
+#[test]
 fn cpu_68000_emit_word_uses_big_endian_order() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();
@@ -4975,7 +5052,10 @@ fn examples_match_reference_outputs() {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("<unknown>");
-        let relative_dir = relative_stem.parent().map(Path::to_path_buf).unwrap_or_default();
+        let relative_dir = relative_stem
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
         let fixture_out_dir = out_dir.join(&relative_dir);
         fs::create_dir_all(&fixture_out_dir)
             .unwrap_or_else(|err| panic!("Create fixture output directory: {err}"));
@@ -5186,7 +5266,10 @@ fn examples_match_reference_outputs() {
 #[test]
 fn project_root_example_matches_reference_outputs() {
     let repo_root = workspace_root();
-    let example_dir = repo_root.join("examples").join("opcore").join("project_root");
+    let example_dir = repo_root
+        .join("examples")
+        .join("opcore")
+        .join("project_root");
     let asm_path = example_dir.join("main.asm");
     let reference_dir = repo_root.join("examples").join("reference").join("opcore");
     let update_reference = std::env::var("opForge_UPDATE_REFERENCE").is_ok();

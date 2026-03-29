@@ -91,7 +91,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
 
 ## Work Items
 
-- [ ] `M68KMF-001`: Add `.fpu` directive infrastructure, runtime state, host
+- [x] `M68KMF-001`: Add `.fpu` directive infrastructure, runtime state, host
       pairing diagnostics, and explicit preservation coverage for the existing
       family id, dialect id, and shipped integer CPU identities.
   - Validation: focused registry and runtime-directive tests for `motorola68000`,

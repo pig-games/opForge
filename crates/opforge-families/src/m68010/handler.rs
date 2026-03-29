@@ -144,7 +144,6 @@ impl M68010CpuHandler {
         );
         EncodeResult::ok(bytes)
     }
-
 }
 
 impl CpuHandler for M68010CpuHandler {
@@ -243,7 +242,8 @@ impl CpuHandler for M68010CpuHandler {
 
         match parsed.kind {
             M68010MnemonicKind::Bkpt => {
-                self.family.encode_bkpt_instruction(parsed.size, operands, ctx)
+                self.family
+                    .encode_bkpt_instruction(parsed.size, operands, ctx)
             }
             M68010MnemonicKind::Movec => self.encode_movec(parsed.size, operands),
             M68010MnemonicKind::Moves => {
@@ -251,7 +251,8 @@ impl CpuHandler for M68010CpuHandler {
                     .encode_moves_instruction(parsed.size, operands, ctx)
             }
             M68010MnemonicKind::Rtd => {
-                self.family.encode_rtd_instruction(parsed.size, operands, ctx)
+                self.family
+                    .encode_rtd_instruction(parsed.size, operands, ctx)
             }
         }
     }

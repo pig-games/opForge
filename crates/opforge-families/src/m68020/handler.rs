@@ -324,10 +324,12 @@ impl CpuHandler for M68020CpuHandler {
             }
             M68010MnemonicKind::Movec => self.encode_movec(parsed.size, operands),
             M68010MnemonicKind::Bkpt => {
-                self.family.encode_bkpt_instruction(parsed.size, operands, ctx)
+                self.family
+                    .encode_bkpt_instruction(parsed.size, operands, ctx)
             }
             M68010MnemonicKind::Rtd => {
-                self.family.encode_rtd_instruction(parsed.size, operands, ctx)
+                self.family
+                    .encode_rtd_instruction(parsed.size, operands, ctx)
             }
         }
     }

@@ -77,7 +77,7 @@ the remediation work and the follow-up spec.
     and ORs in `dst_reg as u16`; tests validate the extension word for each
     destination register D0–D7
 
-- [ ] Item 3 — Lift 24-bit absolute address cap for 68020 / 68030 / 68040
+- [x] Item 3 — Lift 24-bit absolute address cap for 68020 / 68030 / 68040
   - Source requirement or finding IDs: RVW-2026-03-29-003; Testing Gap 5
   - Expected closure: fully closes RVW-2026-03-29-003; fully addresses Testing Gap 5
   - Expected files:

@@ -25,7 +25,7 @@ impl Default for M68020CpuHandler {
 impl M68020CpuHandler {
     pub fn new() -> Self {
         Self {
-            family: M68KFamilyHandler::new(),
+            family: M68KFamilyHandler::new_with_max_absolute_address(u32::MAX as i64),
         }
     }
 

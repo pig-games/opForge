@@ -20,8 +20,10 @@ use registry::family::{
 };
 use std::collections::HashSet;
 
-#[derive(Debug, Default)]
-pub struct M68KFamilyHandler;
+#[derive(Debug)]
+pub struct M68KFamilyHandler {
+    max_absolute_address: i64,
+}
 
 const MAX_M68000_ABSOLUTE_ADDRESS: i64 = 0x00FF_FFFF;
 type FullExtensionBaseDisplacement = Option<(Expr, AbsoluteSize)>;
@@ -63,7 +65,13 @@ enum MovemRegisterToken {
 
 impl M68KFamilyHandler {
     pub fn new() -> Self {
-        Self
+        Self::new_with_max_absolute_address(MAX_M68000_ABSOLUTE_ADDRESS)
+    }
+
+    pub fn new_with_max_absolute_address(max_absolute_address: i64) -> Self {
+        Self {
+            max_absolute_address,
+        }
     }
 
     fn parse_register_name(expr: &Expr) -> Option<(String, opcore::tokenizer::Span)> {
@@ -4798,7 +4806,7 @@ impl M68KFamilyHandler {
                             return Err(EncodeResult::error_with_span(err, operand.span()));
                         }
                     };
-                    let Some(encoded) = Self::encode_absolute_word(value) else {
+                    let Some(encoded) = self.encode_absolute_word(value) else {
                         return Err(EncodeResult::error_with_span(
                             "68000 absolute .W address out of 16-bit range",
                             operand.span(),
@@ -4819,7 +4827,7 @@ impl M68KFamilyHandler {
                             return Err(EncodeResult::error_with_span(err, operand.span()));
                         }
                     };
-                    let Some(encoded) = Self::encode_absolute_long(value) else {
+                    let Some(encoded) = self.encode_absolute_long(value) else {
                         return Err(EncodeResult::error_with_span(
                             "68000 absolute .L address out of 24-bit range",
                             operand.span(),
@@ -5228,20 +5236,18 @@ impl M68KFamilyHandler {
             .then_some((value as i16) as u16)
     }
 
-    fn encode_absolute_word(value: i64) -> Option<u16> {
-        if !(0..=MAX_M68000_ABSOLUTE_ADDRESS).contains(&value) {
+    fn encode_absolute_word(&self, value: i64) -> Option<u16> {
+        if !(0..=self.max_absolute_address).contains(&value) {
             return None;
         }
 
         let encoded = value as u16;
-        let sign_extended = ((encoded as i16) as i32 as u32) & (MAX_M68000_ABSOLUTE_ADDRESS as u32);
+        let sign_extended = ((encoded as i16) as i32 as u32) & (self.max_absolute_address as u32);
         (i64::from(sign_extended) == value).then_some(encoded)
     }
 
-    fn encode_absolute_long(value: i64) -> Option<u32> {
-        (0..=MAX_M68000_ABSOLUTE_ADDRESS)
-            .contains(&value)
-            .then_some(value as u32)
+    fn encode_absolute_long(&self, value: i64) -> Option<u32> {
+        (0..=self.max_absolute_address).contains(&value).then_some(value as u32)
     }
 
     fn encode_immediate(size: OperationSize, value: i64) -> Option<Vec<u8>> {
@@ -5751,9 +5757,12 @@ impl FamilyHandler for M68KFamilyHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::m68000::M68000CpuHandler;
+    use crate::m68020::M68020CpuHandler;
     use opcore::expression::expr_text;
     use opcore::parser::LineAst;
     use opcore::tokenizer::Span;
+    use registry::family::{CpuHandler, FamilyHandler};
     use registry::syntax::{parser_from_line_with_registers, register_checker_from_fn};
     use std::collections::HashMap;
     use types::symbol::{SymbolTable, SymbolTableResult, SymbolVisibility};
@@ -9491,5 +9500,35 @@ mod tests {
             ),
             &[0x4C, 0x10, 0x50, 0x05],
         );
+    }
+
+    #[test]
+    fn absolute_long_addresses_above_24_bits_are_allowed_on_m68020_only() {
+        let m68020 = M68020CpuHandler::new();
+        let m68000 = M68000CpuHandler::new();
+        let ctx = TestContext::default();
+        let operands = [
+            Operand::Absolute {
+                expr: Expr::Number("$01000000".to_string(), span()),
+                size: AbsoluteSize::Long,
+                span: span(),
+            },
+            Operand::DataRegister {
+                register: "D0".to_string(),
+                span: span(),
+            },
+        ];
+
+        expect_encoded(
+            m68020.family().encode_instruction("MOVE.L", &operands, &ctx),
+            &[0x20, 0x39, 0x01, 0x00, 0x00, 0x00],
+        );
+
+        match m68000.family().encode_instruction("MOVE.L", &operands, &ctx) {
+            EncodeResult::Error(message, _) => {
+                assert!(message.contains("68000 absolute .L address out of 24-bit range"));
+            }
+            other => panic!("expected 68000 range error, got {other:?}"),
+        }
     }
 }

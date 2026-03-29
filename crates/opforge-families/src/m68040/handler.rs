@@ -242,6 +242,32 @@ impl M68040CpuHandler {
         bytes.extend_from_slice(&(value as u32).to_be_bytes());
         EncodeResult::ok(bytes)
     }
+
+    fn encode_pflush(&self, operands: &[Operand]) -> EncodeResult<Vec<u8>> {
+        let [operand] = operands else {
+            return EncodeResult::error(
+                "PFLUSH expects exactly one address-indirect operand on m68040",
+            );
+        };
+
+        let Operand::AddressIndirect { register, .. } = operand else {
+            return EncodeResult::error_with_span(
+                "PFLUSH operand must use address-indirect syntax '(An)' on m68040",
+                operand.span(),
+            );
+        };
+
+        let Some(register_bits) = M68KFamilyHandler::address_register_number(register) else {
+            return EncodeResult::error_with_span(
+                "PFLUSH operand must use an address register",
+                operand.span(),
+            );
+        };
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, 0xF508 | register_bits as u16);
+        EncodeResult::ok(bytes)
+    }
 }
 
 impl CpuHandler for M68040CpuHandler {
@@ -285,14 +311,14 @@ impl CpuHandler for M68040CpuHandler {
             }
 
             match parsed.kind {
+                M68020MnemonicKind::Pflush => {
+                    return self.encode_pflush(operands);
+                }
                 M68020MnemonicKind::Callm => {
                     return EncodeResult::error("CALLM is not supported on m68040");
                 }
                 M68020MnemonicKind::Rtm => {
                     return EncodeResult::error("RTM is not supported on m68040");
-                }
-                M68020MnemonicKind::Pflush => {
-                    return EncodeResult::error("PFLUSH is not yet supported on m68040");
                 }
                 _ => {}
             }

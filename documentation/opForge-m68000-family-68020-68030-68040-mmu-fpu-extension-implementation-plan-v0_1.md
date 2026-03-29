@@ -163,7 +163,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that establishes the first narrow new MMU
     compatibility slice without bundling in `m68040` or broader PMMU families
 
-- [ ] `M68KMF-004`: Widen the MMU slice to `m68040` and finish the intentional
+- [x] `M68KMF-004`: Widen the MMU slice to `m68040` and finish the intentional
       MMU boundary by locking negative coverage for out-of-scope PMMU families.
   - Validation: focused legality or encoding tests for `PFLUSH` on `m68040`,
     focused negative tests for `PMOVE`, `PLOAD`, `PTEST`, `PBcc`, `PDBcc`,

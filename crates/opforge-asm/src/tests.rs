@@ -4282,6 +4282,48 @@ fn pre_m68030_cpus_reject_pflush_with_explicit_diagnostics() {
 }
 
 #[test]
+fn m68040_accepts_pflush_with_address_indirect_form() {
+    for (line, expected) in [
+        ("    PFLUSH (A0)", vec![0xF5, 0x08]),
+        ("    PFLUSH (A6)", vec![0xF5, 0x0E]),
+    ] {
+        assert_eq!(
+            assemble_bytes(m68040_cpu_id, line),
+            expected,
+            "unexpected encoding for '{line}'"
+        );
+    }
+}
+
+#[test]
+fn m68030_and_m68040_reject_out_of_scope_pmmu_families_deterministically() {
+    let lines = [
+        "    PMOVE",
+        "    PLOAD",
+        "    PTEST",
+        "    PBCC",
+        "    PDBCC",
+        "    PSCC",
+        "    PTRAPCC",
+        "    PVALID",
+        "    PSAVE",
+        "    PRESTORE",
+    ];
+
+    for cpu in [m68030_cpu_id, m68040_cpu_id] {
+        for line in lines {
+            let (status, message) = assemble_line_status(cpu, line);
+            assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+            let message = message.expect("expected out-of-scope PMMU diagnostic");
+            assert!(
+                message.contains("No instruction found"),
+                "unexpected PMMU boundary diagnostic on {cpu:?} for '{line}': {message}"
+            );
+        }
+    }
+}
+
+#[test]
 fn m68040_carries_forward_first_m68020_instruction_group_with_restrictions() {
     for line in [
         "    BRA.L $0008",
@@ -4411,7 +4453,10 @@ fn m68040_restriction_set_rejects_deterministically() {
         ("    CALLM #5,($1234).W", "CALLM is not supported on m68040"),
         ("    RTM A0", "RTM is not supported on m68040"),
         ("    MOVEC CAAR,D0", "MOVEC CAAR is not supported on m68040"),
-        ("    PFLUSH #0,#0", "PFLUSH is not yet supported on m68040"),
+        (
+            "    PFLUSH #0,#0",
+            "PFLUSH expects exactly one address-indirect operand on m68040",
+        ),
         ("    PMOVE D0,D1", "No instruction found"),
         ("    FMOVE D0,D1", "No instruction found"),
     ] {

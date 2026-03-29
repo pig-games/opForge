@@ -219,7 +219,7 @@ the remediation work and the follow-up spec.
     `self.family.encode_moves_instruction`; all existing MOVES tests pass
     unchanged
 
-- [ ] Item 10 — Write follow-up specification for non-MMU residual risks
+- [x] Item 10 — Write follow-up specification for non-MMU residual risks
   - Source requirement or finding IDs: review residual risks 1, 2, 3, 5 from
     `documentation/reviews/68000-family-review-2026-03-29-01.md` (Residual
     Risks section):
@@ -254,7 +254,7 @@ the remediation work and the follow-up spec.
 - [x] Milestone 2 — High-severity ISA gaps resolved (Items 3–5)
 - [x] Milestone 3 — Medium-severity issues resolved (Items 6–8)
 - [x] Milestone 4 — Low-severity maintenance resolved (Item 9)
-- [ ] Milestone 5 — Follow-up spec authored for non-MMU residual risks (Item 10)
+- [x] Milestone 5 — Follow-up spec authored for non-MMU residual risks (Item 10)
 
 ## Out-of-Scope (Residual Risks — deferred)
 

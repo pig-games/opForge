@@ -222,6 +222,52 @@ impl M68KFamilyHandler {
         EncodeResult::ok(bytes)
     }
 
+    pub(crate) fn encode_move_from_ccr_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [src, dst] = operands else {
+            return EncodeResult::error("MOVE expects two operands");
+        };
+        if !matches!(
+            src,
+            Operand::SpecialRegister {
+                register: SpecialRegisterKind::Ccr,
+                ..
+            }
+        ) {
+            return EncodeResult::NotFound;
+        }
+
+        match size {
+            None | Some(OperationSize::Word) => {}
+            Some(OperationSize::Byte) => {
+                return EncodeResult::error("MOVE from CCR does not support .B size");
+            }
+            Some(OperationSize::Long) => {
+                return EncodeResult::error("MOVE from CCR does not support .L size");
+            }
+        }
+
+        let dst_ea = match self.encode_effective_address(dst, Some(OperationSize::Word), ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::data_alterable(dst_ea.kind) {
+            return EncodeResult::error_with_span(
+                "invalid destination effective address for MOVE from CCR",
+                dst.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x42C0 | dst_ea.bits);
+        bytes.extend_from_slice(&dst_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
     fn parse_scaled_index_register(
         expr: &Expr,
     ) -> Option<(String, IndexSize, IndexScale, opcore::tokenizer::Span)> {
@@ -9638,5 +9684,37 @@ mod tests {
         assert_bkpt_rtd(&M68020CpuHandler::new(), &ctx);
         assert_bkpt_rtd(&M68030CpuHandler::new(), &ctx);
         assert_bkpt_rtd(&M68040CpuHandler::new(), &ctx);
+    }
+
+    #[test]
+    fn later_cpus_encode_move_from_ccr() {
+        let ctx = TestContext::default();
+
+        fn assert_move_from_ccr<H: CpuHandler<Family = M68KFamilyHandler>>(
+            handler: &H,
+            ctx: &TestContext,
+        ) {
+            expect_encoded(
+                handler.encode_instruction(
+                    "MOVE",
+                    &[
+                        Operand::SpecialRegister {
+                            register: SpecialRegisterKind::Ccr,
+                            span: span(),
+                        },
+                        Operand::DataRegister {
+                            register: "D0".to_string(),
+                            span: span(),
+                        },
+                    ],
+                    ctx,
+                ),
+                &[0x42, 0xC0],
+            );
+        }
+
+        assert_move_from_ccr(&M68020CpuHandler::new(), &ctx);
+        assert_move_from_ccr(&M68030CpuHandler::new(), &ctx);
+        assert_move_from_ccr(&M68040CpuHandler::new(), &ctx);
     }
 }

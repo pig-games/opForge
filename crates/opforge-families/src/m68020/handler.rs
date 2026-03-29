@@ -3,7 +3,7 @@
 
 //! Motorola 68020 CPU handler implementation.
 
-use crate::families::m68k::operand::ControlRegisterKind;
+use crate::families::m68k::operand::{ControlRegisterKind, SpecialRegisterKind};
 use crate::families::m68k::{
     has_m68020_mnemonic, has_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic,
     parse_mnemonic, FamilyOperand, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler,
@@ -121,6 +121,23 @@ impl CpuHandler for M68020CpuHandler {
                     "unsupported size suffix for {}",
                     parsed.display_name
                 ));
+            }
+
+            if matches!(parsed.kind, MnemonicKind::Move)
+                && matches!(
+                    operands,
+                    [
+                        Operand::SpecialRegister {
+                            register: SpecialRegisterKind::Ccr,
+                            ..
+                        },
+                        _
+                    ]
+                )
+            {
+                return self
+                    .family
+                    .encode_move_from_ccr_instruction(parsed.size, operands, ctx);
             }
 
             match parsed.kind {

@@ -121,7 +121,7 @@ the remediation work and the follow-up spec.
     and `Rtd` to the family handler's encoders; `supports_mnemonic` includes
     both; positive encoding tests exist for each on m68020, m68030, and m68040
 
-- [ ] Item 5 — Add `MOVE CCR,<ea>` delegation to 68020 / 68030 / 68040
+- [x] Item 5 — Add `MOVE CCR,<ea>` delegation to 68020 / 68030 / 68040
   - Source requirement or finding IDs: RVW-2026-03-29-005; Testing Gap 3 (partial)
   - Expected closure: fully closes RVW-2026-03-29-005; fully closes Testing Gap 3 (combined with Item 4)
   - Expected files:
@@ -250,8 +250,8 @@ the remediation work and the follow-up spec.
 
 ## Milestones
 
-- [ ] Milestone 1 — Critical bugs resolved (Items 1–2)
-- [ ] Milestone 2 — High-severity ISA gaps resolved (Items 3–5)
+- [x] Milestone 1 — Critical bugs resolved (Items 1–2)
+- [x] Milestone 2 — High-severity ISA gaps resolved (Items 3–5)
 - [ ] Milestone 3 — Medium-severity issues resolved (Items 6–8)
 - [ ] Milestone 4 — Low-severity maintenance resolved (Item 9)
 - [ ] Milestone 5 — Follow-up spec authored for non-MMU residual risks (Item 10)

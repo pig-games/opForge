@@ -58,47 +58,8 @@ impl M68010CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        let [src, dst] = operands else {
-            return EncodeResult::error("MOVE expects two operands");
-        };
-        if !matches!(
-            src,
-            Operand::SpecialRegister {
-                register: SpecialRegisterKind::Ccr,
-                ..
-            }
-        ) {
-            return EncodeResult::NotFound;
-        }
-
-        match size {
-            None | Some(OperationSize::Word) => {}
-            Some(OperationSize::Byte) => {
-                return EncodeResult::error("MOVE from CCR does not support .B size");
-            }
-            Some(OperationSize::Long) => {
-                return EncodeResult::error("MOVE from CCR does not support .L size");
-            }
-        }
-
-        let dst_ea = match self
-            .family
-            .encode_effective_address(dst, Some(OperationSize::Word), ctx)
-        {
-            Ok(ea) => ea,
-            Err(err) => return err,
-        };
-        if !M68KFamilyHandler::data_alterable(dst_ea.kind) {
-            return EncodeResult::error_with_span(
-                "invalid destination effective address for MOVE from CCR",
-                dst.span(),
-            );
-        }
-
-        let mut bytes = Vec::new();
-        M68KFamilyHandler::emit_word(&mut bytes, 0x42C0 | dst_ea.bits);
-        bytes.extend_from_slice(&dst_ea.extension);
-        EncodeResult::ok(bytes)
+        self.family
+            .encode_move_from_ccr_instruction(size, operands, ctx)
     }
 
     fn general_register_descriptor(operand: &Operand) -> Option<(u16, u16)> {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use opcore::tokenizer::Span;
 
@@ -373,6 +373,135 @@ pub fn resolve_output_path(base: &str, name: Option<String>, extension: &str) ->
     Some(path.to_string_lossy().to_string())
 }
 
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(Path::new("/")),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if path.is_absolute() {
+                    if matches!(
+                        normalized.components().next_back(),
+                        Some(Component::Normal(_))
+                    ) {
+                        normalized.pop();
+                    }
+                } else {
+                    match normalized.components().next_back() {
+                        Some(Component::Normal(_)) => {
+                            normalized.pop();
+                        }
+                        Some(Component::ParentDir) | None => normalized.push(".."),
+                        Some(Component::RootDir) | Some(Component::Prefix(_)) => {}
+                        Some(Component::CurDir) => {}
+                    }
+                }
+            }
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+    if normalized.as_os_str().is_empty() && path.is_absolute() {
+        PathBuf::from("/")
+    } else {
+        normalized
+    }
+}
+
+fn path_depth(path: &Path) -> usize {
+    path.components()
+        .filter(|component| matches!(component, Component::Normal(_) | Component::ParentDir))
+        .count()
+}
+
+pub fn anchor_relative_output_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    if path.is_absolute() {
+        return Ok(path.to_path_buf());
+    }
+
+    let mut anchored = normalize_path(root);
+    let min_depth = path_depth(&anchored);
+    let mut depth = min_depth;
+
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => return Ok(path.to_path_buf()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if depth == min_depth {
+                    return Err(format!(
+                        "Output path escapes resolved output root: {}",
+                        path.display()
+                    ));
+                }
+                anchored.pop();
+                depth -= 1;
+            }
+            Component::Normal(part) => {
+                anchored.push(part);
+                depth += 1;
+            }
+        }
+    }
+
+    Ok(anchored)
+}
+
+pub fn resolve_output_path_checked(
+    base: &str,
+    name: Option<String>,
+    extension: &str,
+) -> Result<Option<String>, String> {
+    let Some(name) = name else {
+        return Ok(None);
+    };
+    if name.is_empty() {
+        return Ok(Some(format!("{base}.{extension}")));
+    }
+
+    let mut path = PathBuf::from(&name);
+    if path.extension().is_none() {
+        path = PathBuf::from(format!("{name}.{extension}"));
+    }
+    if path.is_relative() {
+        let root = Path::new(base)
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        path = anchor_relative_output_path(root, &path)?;
+    }
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
+pub fn resolve_bin_path_checked(
+    base: &str,
+    name: Option<&str>,
+    range: Option<&BinRange>,
+    bin_count: usize,
+    index: usize,
+) -> Result<String, String> {
+    let raw = resolve_bin_path(base, name, range, bin_count, index);
+    let Some(name) = name.filter(|name| !name.is_empty()) else {
+        return Ok(raw);
+    };
+
+    let mut path = PathBuf::from(name);
+    if path.extension().is_none() {
+        path = PathBuf::from(format!("{name}.bin"));
+    }
+    if path.is_relative() {
+        let root = Path::new(base)
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        path = anchor_relative_output_path(root, &path)?;
+        return Ok(path.to_string_lossy().to_string());
+    }
+
+    Ok(raw)
+}
+
 #[must_use]
 pub fn resolve_output_base(
     input_base: &str,
@@ -486,5 +615,48 @@ mod tests {
         // Only the final component of input_base is kept; the subdirectory is rewritten.
         let result = resolve_output_base("subdir/myfile", Some(&out_dir), &meta, "8085", None);
         assert_eq!(result, "/out/myfile");
+    }
+
+    #[test]
+    fn anchor_relative_output_path_keeps_nested_paths_within_root() {
+        let resolved =
+            anchor_relative_output_path(Path::new("/virtual/out"), Path::new("build/main.hex"))
+                .expect("nested output path should remain within root");
+
+        assert_eq!(resolved, PathBuf::from("/virtual/out/build/main.hex"));
+    }
+
+    #[test]
+    fn anchor_relative_output_path_rejects_escape_from_root() {
+        let error =
+            anchor_relative_output_path(Path::new("/virtual/out"), Path::new("../main.hex"))
+                .expect_err("escape should be rejected");
+
+        assert!(error.contains("escapes resolved output root"));
+    }
+
+    #[test]
+    fn resolve_output_path_checked_rejects_parent_escape() {
+        let error = resolve_output_path_checked("src/main", Some("../out".to_string()), "hex")
+            .expect_err("path escape should be rejected");
+
+        assert!(error.contains("escapes resolved output root"));
+    }
+
+    #[test]
+    fn resolve_bin_path_checked_anchors_relative_explicit_name() {
+        let resolved =
+            resolve_bin_path_checked("/virtual/out/main", Some("build/image"), None, 1, 0)
+                .expect("relative bin path should be anchored");
+
+        assert_eq!(resolved, "/virtual/out/build/image.bin");
+    }
+
+    #[test]
+    fn resolve_bin_path_checked_rejects_parent_escape() {
+        let error = resolve_bin_path_checked("/virtual/out/main", Some("../image"), None, 1, 0)
+            .expect_err("bin path escape should be rejected");
+
+        assert!(error.contains("escapes resolved output root"));
     }
 }

@@ -8,7 +8,10 @@ pub use types::artifacts::{
     format_addr, render_dependencies, render_labels, DependencyOutputPolicy, LabelOutputFormat,
     OutputFormat,
 };
-pub use vm::output_model::is_valid_hex_2;
+pub use vm::output_model::{
+    anchor_relative_output_path, is_valid_hex_2, resolve_bin_path_checked,
+    resolve_output_path_checked,
+};
 pub use vm::vm_opasm::{
     build_export_sections_payloads, build_mapfile_text, parse_bin_output_arg, parse_bin_range_str,
     resolve_bin_path, resolve_output_base, resolve_output_path, BinOutputSpec, BinRange,

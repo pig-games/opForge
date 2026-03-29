@@ -7,7 +7,7 @@ This manual is validated against opForge CLI `0.9.6` (crate `0.9.6`).
 
 ## 1. Introduction
 
-opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), Motorola 6800-family CPUs (6809/HD6309), and the baseline Motorola 68000 CPU (`68000`/`m68000`/`mc68000`). It supports:
+opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), Motorola 6800-family CPUs (6809/HD6309), and Motorola 68000-family CPUs (`68000`/`m68000`/`mc68000`, `68010`/`m68010`/`mc68010`, `68020`/`m68020`/`mc68020`, `68030`/`m68030`/`mc68030`, and `68040`/`m68040`/`mc68040`). It supports:
 - Dot-prefixed directives and conditionals.
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
 - Preprocessor directives for includes and conditional compilation.
@@ -17,7 +17,9 @@ opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502
 The `.cpu` directive currently accepts `8080` (alias for `8085`), `8085`, `z80`,
 `6502`, `m6502`, `65c02`, `65816`, `65c816`, `w65c816`, `45gs02`, `m45gs02`,
 `mega65`, `4510`, `csg4510`, `6809`, `m6809`, `mc6809`, `6309`, `m6309`,
-`h6309`, `hitachi6309`, `hd6309`, `68000`, `m68000`, and `mc68000`.
+`h6309`, `hitachi6309`, `hd6309`, `68000`, `m68000`, `mc68000`, `68010`,
+`m68010`, `mc68010`, `68020`, `m68020`, `mc68020`, `68030`, `m68030`,
+`mc68030`, `68040`, `m68040`, and `mc68040`.
 
 ## 2. Usage tips
 
@@ -594,14 +596,29 @@ Examples in the repo:
 .cpu 68000
 .cpu m68000
 .cpu mc68000
+.cpu 68010
+.cpu m68010
+.cpu mc68010
+.cpu 68020
+.cpu m68020
+.cpu mc68020
+.cpu 68030
+.cpu m68030
+.cpu mc68030
+.cpu 68040
+.cpu m68040
+.cpu mc68040
 ```
 
-Baseline Motorola 68000 support is available through `.cpu 68000`,
-`.cpu m68000`, and `.cpu mc68000`.
+Motorola 68000-family support is available through the baseline `68000` aliases
+plus the shipped later-family targets `68010`, `68020`, `68030`, and `68040`.
 
-Current v0.1 coverage is limited to the baseline 68000 CPU and the canonical
-opForge syntax supported by the shipped examples. Later 68000-family CPUs
-remain unsupported in this release.
+Current shipped scope is the non-MMU, non-FPU integer surface for those CPUs.
+`68010` keeps baseline `68000` addressing. `68020`, `68030`, and `68040`
+accept the shipped `68020+` full-extension addressing forms. `68040`
+additionally accepts `MOVE16` and rejects `CALLM`, `RTM`, and `MOVEC CAAR`.
+MMU, PMMU, FPU, coprocessor, and cache-control surfaces remain out of scope in
+this release.
 
 65816 support includes the phase-1 instruction set and phase-2 24-bit addressing work:
 - Implements selected 65816 mnemonics and operand forms.
@@ -898,6 +915,9 @@ Other options:
 - `--opasm-package <FILE>`: load runtime `.opasm` package from FILE and prefer it over artifact/bundled package sources.
 - `--print-capabilities`: print deterministic capability metadata and exit.
 - `--print-cpusupport`: print deterministic CPU support metadata and exit.
+
+The default capability and CPU-support reports include the shipped Motorola
+68000-family lineage entries through `m68040`.
 - `--pp-macro-depth <N>`: maximum preprocessor macro expansion depth (default `64`, minimum `1`).
 - `--max-loop-iterations <N>`: maximum `.for`/`.while` iterations before emitting an error (default `65536`, minimum `1`).
 - `--input-asm-ext <EXT>`: additional accepted source-file extension for direct file inputs.
@@ -1037,8 +1057,8 @@ Instruction mnemonics are selected by `.cpu`:
 
 This appendix describes the modular architecture that allows opForge to support
 multiple CPU targets through a common framework, including Intel 8080-family
-CPUs, MOS 6502-family CPUs, Motorola 6800-family CPUs, and the baseline
-Motorola 68000 CPU.
+CPUs, MOS 6502-family CPUs, Motorola 6800-family CPUs, and the shipped
+Motorola 68000-family lineage through `m68040`.
 
 ### Overview
 

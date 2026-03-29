@@ -367,7 +367,7 @@ system-programming features.
     observable through stable examples and references without bundling all four
     CPUs into one fixture sweep
 
-- [ ] `M68K-LINEAGE-012`: Sync user-facing documentation, capabilities
+- [x] `M68K-LINEAGE-012`: Sync user-facing documentation, capabilities
       reporting, and release-facing notes to the shipped `m68010`, `m68020`,
       `m68030`, and `m68040` behavior.
   - Validation: documentation smoke review against real examples and CPU
@@ -401,7 +401,7 @@ system-programming features.
       (`M68K-LINEAGE-006`, `M68K-LINEAGE-007`)
 - [x] Milestone 5: `m68030` carry-forward and `m68040` restriction slices
       complete (`M68K-LINEAGE-008`, `M68K-LINEAGE-009`)
-- [ ] Milestone 6: examples, references, and documentation complete
+- [x] Milestone 6: examples, references, and documentation complete
       (`M68K-LINEAGE-010`, `M68K-LINEAGE-011`, `M68K-LINEAGE-012`)
 
 ## Blocking Rules

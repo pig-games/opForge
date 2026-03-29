@@ -6,7 +6,14 @@ It currently ships builtin support for:
 - Intel 8080 family processors: 8080 alias, 8085, and Z80
 - MOS 6502 family processors: 6502, 65C02, 65816, and 45GS02
 - Motorola 6800 family processors: 6809 and HD6309
-- Motorola 68000 family processors: baseline 68000 via `68000`, `m68000`, and `mc68000`
+- Motorola 68000 family processors: `68000`, `68010`, `68020`, `68030`, and `68040` with the corresponding `m68000`/`mc68000` through `m68040`/`mc68040` aliases
+
+Motorola 68000-family coverage currently spans the shipped integer surface for
+`68000`, `68010`, `68020`, `68030`, and `68040`. `68010` keeps baseline
+68000 addressing, `68020`/`68030`/`68040` add the shipped `68020+`
+full-extension addressing surface, and `68040` adds `MOVE16` while rejecting
+`CALLM`, `RTM`, and `MOVEC CAAR`. MMU, PMMU, FPU, coprocessor, and
+cache-control surfaces remain out of scope.
 
 It is originally inspired by [64tass](https://tass64.sourceforge.net) in terms of feature scope and notation style.
 
@@ -61,6 +68,9 @@ opforge --fmt -i examples/helloworld.asm
 ```
 
 The full CLI surface, output-routing rules, directive semantics, and formatter configuration are documented in the [reference manual](documentation/opForge-reference-manual.md) and `opforge --help`.
+
+To inspect the currently registered CPU and capability surface directly, use
+`opforge --print-cpusupport` or `opforge --print-capabilities`.
 
 ## Embedding
 

@@ -183,7 +183,7 @@ the remediation work and the follow-up spec.
     parser table maps their string names; `movec_control_register_code` returns
     correct PRM codes; positive tests exist
 
-- [ ] Item 8 — Remove spurious 68020-mnemonic advertising from `M68010CpuHandler::supports_mnemonic`
+- [x] Item 8 — Remove spurious 68020-mnemonic advertising from `M68010CpuHandler::supports_mnemonic`
   - Source requirement or finding IDs: RVW-2026-03-29-008
   - Expected closure: fully closes RVW-2026-03-29-008
   - Expected files:
@@ -252,7 +252,7 @@ the remediation work and the follow-up spec.
 
 - [x] Milestone 1 — Critical bugs resolved (Items 1–2)
 - [x] Milestone 2 — High-severity ISA gaps resolved (Items 3–5)
-- [ ] Milestone 3 — Medium-severity issues resolved (Items 6–8)
+- [x] Milestone 3 — Medium-severity issues resolved (Items 6–8)
 - [ ] Milestone 4 — Low-severity maintenance resolved (Item 9)
 - [ ] Milestone 5 — Follow-up spec authored for non-MMU residual risks (Item 10)
 

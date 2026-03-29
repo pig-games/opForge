@@ -5,9 +5,9 @@
 
 use crate::families::m68k::operand::{ControlRegisterKind, SpecialRegisterKind};
 use crate::families::m68k::{
-    has_m68010_mnemonic, has_m68020_mnemonic, has_mnemonic, parse_m68010_mnemonic,
-    parse_m68020_mnemonic, parse_mnemonic, FamilyOperand, M68010MnemonicKind, M68020MnemonicKind,
-    M68KFamilyHandler, MnemonicKind, Operand, OperationSize,
+    has_m68010_mnemonic, has_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic,
+    parse_mnemonic, FamilyOperand, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler,
+    MnemonicKind, Operand, OperationSize,
 };
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
@@ -325,6 +325,6 @@ impl CpuHandler for M68010CpuHandler {
     }
 
     fn supports_mnemonic(&self, mnemonic: &str) -> bool {
-        has_mnemonic(mnemonic) || has_m68010_mnemonic(mnemonic) || has_m68020_mnemonic(mnemonic)
+        has_mnemonic(mnemonic) || has_m68010_mnemonic(mnemonic)
     }
 }

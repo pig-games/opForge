@@ -6929,6 +6929,14 @@ mod tests {
     }
 
     #[test]
+    fn m68010_supports_only_genuine_m68010_extensions() {
+        let handler = crate::m68010::M68010CpuHandler::new();
+
+        assert!(!handler.supports_mnemonic("BFTST"));
+        assert!(handler.supports_mnemonic("MOVES.W"));
+    }
+
+    #[test]
     fn parses_movem_register_list_operands() {
         let handler = M68KFamilyHandler::new();
         let register_list = Expr::Binary {

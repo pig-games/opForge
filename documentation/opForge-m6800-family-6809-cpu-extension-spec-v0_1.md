@@ -148,16 +148,16 @@ Diagnostics should match current opForge style:
 
 ### Examples and references
 Add baseline examples:
-- `examples/6809_simple.asm`
-- `examples/6809_indexed_modes.asm`
-- `examples/6809_branches.asm`
-- `examples/6809_register_ops.asm`
+- `examples/motorola6800/6809_simple.asm`
+- `examples/motorola6800/6809_indexed_modes.asm`
+- `examples/motorola6800/6809_branches.asm`
+- `examples/motorola6800/6809_register_ops.asm`
 
 Add extension example (phase with `hd6309`):
-- `examples/6309_extensions.asm`
+- `examples/motorola6800/6309_extensions.asm`
 
 Reference outputs:
-- generated under `examples/reference/*` per current project conventions
+- generated under `examples/reference/motorola6800/*` per current project conventions
 - update only after tests pass except intentional output deltas
 
 ## Documentation Updates Required

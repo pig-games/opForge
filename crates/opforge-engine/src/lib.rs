@@ -2868,6 +2868,7 @@ mod tests {
         let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
         let root_path = repo_root
             .join("examples")
+            .join("opcore")
             .join("project_root")
             .join("main.asm");
         let include_roots = vec![root_path.parent().expect("root parent").to_path_buf()];
@@ -3087,6 +3088,7 @@ mod tests {
         let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
         let root_path = repo_root
             .join("examples")
+            .join("opcore")
             .join("project_root")
             .join("main.asm");
         let include_paths = vec![root_path.parent().expect("root parent").to_path_buf()];

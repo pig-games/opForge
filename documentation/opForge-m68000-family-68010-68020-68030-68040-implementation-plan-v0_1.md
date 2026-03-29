@@ -331,8 +331,8 @@ system-programming features.
     required
   - Source requirement or finding IDs: `REQ-M68KLINEAGE-011`,
     `REQ-M68KLINEAGE-012`, `AC-M68KLINEAGE-010`
-  - Expected files: `crates/opforge-asm/src/tests.rs`, `examples/68010_*.asm`,
-    `examples/68020_*.asm`, and the corresponding `examples/reference/*`
+  - Expected files: `crates/opforge-asm/src/tests.rs`, `examples/motorola68000/68010_*.asm`,
+    `examples/motorola68000/68020_*.asm`, and the corresponding `examples/reference/motorola68000/*`
     artifacts
   - Full quality gates: `cargo fmt --all`,
     `cargo clippy --workspace -- -D warnings`, `cargo audit`, `make test`
@@ -355,8 +355,8 @@ system-programming features.
     stable except where an intentional shared-output change is required
   - Source requirement or finding IDs: `REQ-M68KLINEAGE-011`,
     `REQ-M68KLINEAGE-012`, `AC-M68KLINEAGE-010`
-  - Expected files: `crates/opforge-asm/src/tests.rs`, `examples/68030_*.asm`,
-    `examples/68040_*.asm`, and the corresponding `examples/reference/*`
+  - Expected files: `crates/opforge-asm/src/tests.rs`, `examples/motorola68000/68030_*.asm`,
+    `examples/motorola68000/68040_*.asm`, and the corresponding `examples/reference/motorola68000/*`
     artifacts
   - Full quality gates: `cargo fmt --all`,
     `cargo clippy --workspace -- -D warnings`, `cargo audit`, `make test`

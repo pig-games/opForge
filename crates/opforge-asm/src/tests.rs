@@ -1370,6 +1370,52 @@ fn assemble_example(
     assemble_example_with_base(asm_path, out_dir, base, allow_error_outputs)
 }
 
+fn should_skip_example_dir(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("reference" | "vm" | "opthread" | "project_root" | "lib")
+    )
+}
+
+fn collect_example_asm_files(dir: &Path) -> Vec<PathBuf> {
+    fn walk(dir: &Path, files: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(dir)
+            .unwrap_or_else(|err| panic!("Read example directory {}: {err}", dir.display()))
+            .filter_map(Result::ok)
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                if should_skip_example_dir(&path) {
+                    continue;
+                }
+                walk(&path, files);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("asm") {
+                files.push(path);
+            }
+        }
+    }
+
+    let mut files = Vec::new();
+    walk(dir, &mut files);
+    files.sort();
+    files
+}
+
+fn example_relative_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
+    asm_path
+        .strip_prefix(examples_dir)
+        .unwrap_or_else(|_| {
+            panic!(
+                "Example path {} is not under examples root {}",
+                asm_path.display(),
+                examples_dir.display()
+            )
+        })
+        .with_extension("")
+}
+
 fn assert_lockstep_reference_report_clean(
     report: &LockstepReport,
     label: &str,
@@ -2507,8 +2553,8 @@ fn json_array_as_sorted_filenames(value: &serde_json::Value, key: &str) -> Vec<S
 #[test]
 fn cli_json_outputs_example_matches_reference() {
     let repo_root = workspace_root();
-    let examples_dir = repo_root.join("examples");
-    let reference_dir = examples_dir.join("reference");
+    let examples_dir = repo_root.join("examples").join("opcore");
+    let reference_dir = repo_root.join("examples").join("reference").join("opcore");
     let update_reference = std::env::var("opForge_UPDATE_REFERENCE").is_ok();
 
     let nanos = SystemTime::now()
@@ -3297,9 +3343,10 @@ fn m68000_btst_accepts_pc_relative_read_only_destinations() {
         "unexpected diagnostic for immediate destination: {message}"
     );
 
-    let example =
-        std::fs::read_to_string(workspace_root().join("examples/68000_bit_operations.asm"))
-            .expect("read 68000 bit-operation example");
+    let example = std::fs::read_to_string(
+        workspace_root().join("examples/motorola68000/68000_bit_operations.asm"),
+    )
+    .expect("read 68000 bit-operation example");
     assert!(
         example.contains("BTST #1,4(PC)"),
         "shipped 68000 bit-operation example should cover legal BTST PC-relative destination"
@@ -4810,31 +4857,31 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
     let out_dir = create_temp_dir("m68000-example-smoke");
 
     for stem in [
-        "68000_basic_moves",
-        "68000_aliases",
-        "68000_allmodes",
-        "68000_address_arithmetic_shifts",
-        "68000_branching",
-        "68000_bit_operations",
-        "68000_condition_loops",
-        "68000_control_addressing",
-        "68000_effective_addresses",
-        "68000_arithmetic_sizes",
-        "68000_addressing_matrix",
-        "68000_extend_bcd_cmpm",
-        "68000_movem_movep",
-        "68000_rotate_memory_shift",
-        "68000_multiply_divide_check",
-        "68000_exchange_registers",
-        "68000_immediate_unary",
-        "68000_system_register_misc",
-        "68000_compare_operand_state",
-        "68010_delta",
-        "68020_full_extension_addressing",
-        "68020_later_families",
-        "68030_carry_forward",
-        "68040_movec_mmu_registers",
-        "68040_move16_carry_forward",
+        "motorola68000/68000_basic_moves",
+        "motorola68000/68000_aliases",
+        "motorola68000/68000_allmodes",
+        "motorola68000/68000_address_arithmetic_shifts",
+        "motorola68000/68000_branching",
+        "motorola68000/68000_bit_operations",
+        "motorola68000/68000_condition_loops",
+        "motorola68000/68000_control_addressing",
+        "motorola68000/68000_effective_addresses",
+        "motorola68000/68000_arithmetic_sizes",
+        "motorola68000/68000_addressing_matrix",
+        "motorola68000/68000_extend_bcd_cmpm",
+        "motorola68000/68000_movem_movep",
+        "motorola68000/68000_rotate_memory_shift",
+        "motorola68000/68000_multiply_divide_check",
+        "motorola68000/68000_exchange_registers",
+        "motorola68000/68000_immediate_unary",
+        "motorola68000/68000_system_register_misc",
+        "motorola68000/68000_compare_operand_state",
+        "motorola68000/68010_delta",
+        "motorola68000/68020_full_extension_addressing",
+        "motorola68000/68020_later_families",
+        "motorola68000/68030_carry_forward",
+        "motorola68000/68040_movec_mmu_registers",
+        "motorola68000/68040_move16_carry_forward",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));
         if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -4889,8 +4936,7 @@ fn has_error_example_suffix(base: &str) -> bool {
     base.ends_with("_error")
 }
 
-fn read_example_error_reference(reference_dir: &Path, base: &str) -> Option<String> {
-    let path = reference_dir.join(format!("{base}.err"));
+fn read_example_error_reference(path: &Path) -> Option<String> {
     fs::read_to_string(path)
         .ok()
         .map(|text| text.trim_end_matches(['\n', '\r']).to_string())
@@ -4916,13 +4962,7 @@ fn examples_match_reference_outputs() {
         fs::create_dir_all(&reference_dir).expect("Create reference directory");
     }
 
-    let mut asm_files: Vec<PathBuf> = fs::read_dir(&examples_dir)
-        .expect("Read examples directory")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|s| s.to_str()) == Some("asm"))
-        .collect();
-    asm_files.sort();
+    let asm_files = collect_example_asm_files(&examples_dir);
     assert!(
         !asm_files.is_empty(),
         "No .asm examples found in {}",
@@ -4930,13 +4970,18 @@ fn examples_match_reference_outputs() {
     );
 
     for asm_path in asm_files {
+        let relative_stem = example_relative_stem(&examples_dir, &asm_path);
         let base = asm_path
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("<unknown>");
-        let ref_err_path = reference_dir.join(format!("{base}.err"));
+        let relative_dir = relative_stem.parent().map(Path::to_path_buf).unwrap_or_default();
+        let fixture_out_dir = out_dir.join(&relative_dir);
+        fs::create_dir_all(&fixture_out_dir)
+            .unwrap_or_else(|err| panic!("Create fixture output directory: {err}"));
+        let ref_err_path = reference_dir.join(&relative_stem).with_extension("err");
 
-        let expected_error = read_example_error_reference(&reference_dir, base)
+        let expected_error = read_example_error_reference(&ref_err_path)
             .or_else(|| expected_example_error(base).map(|value| value.to_string()));
         let allow_error_outputs = has_error_example_suffix(base);
         if let Some(expected) = expected_error {
@@ -4971,15 +5016,15 @@ fn examples_match_reference_outputs() {
         }
 
         if allow_error_outputs {
-            let map_outputs = match assemble_example(&asm_path, &out_dir, true) {
+            let map_outputs = match assemble_example(&asm_path, &fixture_out_dir, true) {
                 Ok(outputs) => outputs,
                 Err(err) => panic!("Failed to assemble {base}: {err}"),
             };
 
-            let ref_hex_path = reference_dir.join(format!("{base}.hex"));
-            let ref_lst_path = reference_dir.join(format!("{base}.lst"));
-            let out_hex_path = out_dir.join(format!("{base}.hex"));
-            let out_lst_path = out_dir.join(format!("{base}.lst"));
+            let ref_hex_path = reference_dir.join(&relative_stem).with_extension("hex");
+            let ref_lst_path = reference_dir.join(&relative_stem).with_extension("lst");
+            let out_hex_path = fixture_out_dir.join(format!("{base}.hex"));
+            let out_lst_path = fixture_out_dir.join(format!("{base}.lst"));
             let out_hex = fs::read(&out_hex_path).ok();
             let out_lst = fs::read(&out_lst_path).ok();
 
@@ -4991,6 +5036,9 @@ fn examples_match_reference_outputs() {
             let out_lst = out_lst.expect("checked output list presence");
 
             if update_reference {
+                if let Some(parent) = ref_hex_path.parent() {
+                    fs::create_dir_all(parent).expect("Create reference output parent");
+                }
                 fs::write(&ref_hex_path, &out_hex).unwrap_or_else(|err| {
                     panic!(
                         "Failed to write reference hex {}: {err}",
@@ -5004,7 +5052,7 @@ fn examples_match_reference_outputs() {
                     )
                 });
                 for (map_name, out_map) in &map_outputs {
-                    let ref_map_path = reference_dir.join(map_name);
+                    let ref_map_path = reference_dir.join(&relative_dir).join(map_name);
                     fs::write(&ref_map_path, out_map).unwrap_or_else(|err| {
                         panic!(
                             "Failed to write reference map {}: {err}",
@@ -5030,7 +5078,7 @@ fn examples_match_reference_outputs() {
                     panic!("List mismatch for {base}\n{diff}");
                 }
                 for (map_name, out_map) in &map_outputs {
-                    let ref_map_path = reference_dir.join(map_name);
+                    let ref_map_path = reference_dir.join(&relative_dir).join(map_name);
                     let ref_map = fs::read(&ref_map_path).unwrap_or_else(|err| {
                         panic!("Missing reference map {}: {err}", ref_map_path.display())
                     });
@@ -5047,17 +5095,20 @@ fn examples_match_reference_outputs() {
         }
 
         if update_reference {
-            let map_outputs = match assemble_example(&asm_path, &out_dir, false) {
+            let map_outputs = match assemble_example(&asm_path, &fixture_out_dir, false) {
                 Ok(outputs) => outputs,
                 Err(err) => panic!("Failed to assemble {base}: {err}"),
             };
 
-            let out_hex = fs::read(out_dir.join(format!("{base}.hex")))
+            let out_hex = fs::read(fixture_out_dir.join(format!("{base}.hex")))
                 .unwrap_or_else(|err| panic!("Missing output hex for {base}: {err}"));
-            let out_lst = fs::read(out_dir.join(format!("{base}.lst")))
+            let out_lst = fs::read(fixture_out_dir.join(format!("{base}.lst")))
                 .unwrap_or_else(|err| panic!("Missing output list for {base}: {err}"));
-            let ref_hex_path = reference_dir.join(format!("{base}.hex"));
-            let ref_lst_path = reference_dir.join(format!("{base}.lst"));
+            let ref_hex_path = reference_dir.join(&relative_stem).with_extension("hex");
+            let ref_lst_path = reference_dir.join(&relative_stem).with_extension("lst");
+            if let Some(parent) = ref_hex_path.parent() {
+                fs::create_dir_all(parent).expect("Create reference parent directory");
+            }
             fs::write(&ref_hex_path, &out_hex).unwrap_or_else(|err| {
                 panic!(
                     "Failed to write reference hex {}: {err}",
@@ -5071,7 +5122,7 @@ fn examples_match_reference_outputs() {
                 )
             });
             for (map_name, out_map) in &map_outputs {
-                let ref_map_path = reference_dir.join(map_name);
+                let ref_map_path = reference_dir.join(&relative_dir).join(map_name);
                 fs::write(&ref_map_path, out_map).unwrap_or_else(|err| {
                     panic!(
                         "Failed to write reference map {}: {err}",
@@ -5090,17 +5141,17 @@ fn examples_match_reference_outputs() {
             continue;
         }
 
-        let map_outputs = match assemble_example(&asm_path, &out_dir, false) {
+        let map_outputs = match assemble_example(&asm_path, &fixture_out_dir, false) {
             Ok(outputs) => outputs,
             Err(err) => panic!("Failed to assemble {base}: {err}"),
         };
 
-        let out_hex = fs::read(out_dir.join(format!("{base}.hex")))
+        let out_hex = fs::read(fixture_out_dir.join(format!("{base}.hex")))
             .unwrap_or_else(|err| panic!("Missing output hex for {base}: {err}"));
-        let out_lst = fs::read(out_dir.join(format!("{base}.lst")))
+        let out_lst = fs::read(fixture_out_dir.join(format!("{base}.lst")))
             .unwrap_or_else(|err| panic!("Missing output list for {base}: {err}"));
-        let ref_hex_path = reference_dir.join(format!("{base}.hex"));
-        let ref_lst_path = reference_dir.join(format!("{base}.lst"));
+        let ref_hex_path = reference_dir.join(&relative_stem).with_extension("hex");
+        let ref_lst_path = reference_dir.join(&relative_stem).with_extension("lst");
         let ref_hex = fs::read(&ref_hex_path).unwrap_or_else(|err| {
             panic!("Missing reference hex {}: {err}", ref_hex_path.display())
         });
@@ -5118,7 +5169,7 @@ fn examples_match_reference_outputs() {
             panic!("List mismatch for {base}\n{diff}");
         }
         for (map_name, out_map) in &map_outputs {
-            let ref_map_path = reference_dir.join(map_name);
+            let ref_map_path = reference_dir.join(&relative_dir).join(map_name);
             let ref_map = fs::read(&ref_map_path).unwrap_or_else(|err| {
                 panic!("Missing reference map {}: {err}", ref_map_path.display())
             });
@@ -5135,9 +5186,9 @@ fn examples_match_reference_outputs() {
 #[test]
 fn project_root_example_matches_reference_outputs() {
     let repo_root = workspace_root();
-    let example_dir = repo_root.join("examples").join("project_root");
+    let example_dir = repo_root.join("examples").join("opcore").join("project_root");
     let asm_path = example_dir.join("main.asm");
-    let reference_dir = repo_root.join("examples").join("reference");
+    let reference_dir = repo_root.join("examples").join("reference").join("opcore");
     let update_reference = std::env::var("opForge_UPDATE_REFERENCE").is_ok();
 
     let nanos = SystemTime::now()
@@ -14059,7 +14110,7 @@ fn vm_runtime_mos6502_selector_conflict_reports_deterministic_error() {
 
 #[test]
 fn vm_runtime_mos6502_example_programs_match_native_mode() {
-    let base = workspace_root().join("examples");
+    let base = workspace_root().join("examples").join("mos6502");
     let corpus = ["6502_simple.asm", "6502_allmodes.asm", "mos6502_modes.asm"];
 
     for name in corpus {
@@ -14107,7 +14158,7 @@ fn vm_runtime_mos6502_relocation_heavy_program_matches_native_mode() {
 
 #[test]
 fn vm_runtime_m65c02_example_programs_match_native_mode() {
-    let base = workspace_root().join("examples");
+    let base = workspace_root().join("examples").join("mos6502");
     let corpus = ["65c02_simple.asm", "65c02_allmodes.asm"];
 
     for name in corpus {
@@ -14127,7 +14178,7 @@ fn vm_runtime_m65c02_example_programs_match_native_mode() {
 
 #[test]
 fn vm_runtime_m65816_example_programs_match_native_mode() {
-    let base = workspace_root().join("examples");
+    let base = workspace_root().join("examples").join("mos6502");
     let corpus = [
         "65816_simple.asm",
         "65816_allmodes.asm",

@@ -350,7 +350,7 @@ Member resolution keeps a unified namespace:
 - exact dotted symbols are resolved first;
 - typed member access fallback is applied only when no exact dotted symbol exists.
 
-Reference example: [examples/struct_literal_instance_basic.asm](../examples/struct_literal_instance_basic.asm)
+Reference example: [examples/struct_literal_instance_basic.asm](../examples/opcore/struct_literal_instance_basic.asm)
 
 ### 4.10 Modules and metadata
 
@@ -445,9 +445,9 @@ Output base precedence:
 4. input base (file basename or folder name)
 
 Examples in the repo:
-- [examples/module_use_autoload.asm](../examples/module_use_autoload.asm)
-- [examples/module_metadata_output.asm](../examples/module_metadata_output.asm)
-- [examples/project_root/main.asm](../examples/project_root/main.asm)
+- [examples/module_use_autoload.asm](../examples/opcore/module_use_autoload.asm)
+- [examples/module_metadata_output.asm](../examples/opcore/module_metadata_output.asm)
+- [examples/project_root/main.asm](../examples/opcore/project_root/main.asm)
 
 Match form:
 
@@ -565,8 +565,8 @@ SCOPE .block
 ```
 
 Examples in the repo:
-- [examples/scopes.asm](../examples/scopes.asm)
-- [examples/scopes_namespace.asm](../examples/scopes_namespace.asm)
+- [examples/scopes.asm](../examples/opcore/scopes.asm)
+- [examples/scopes_namespace.asm](../examples/opcore/scopes_namespace.asm)
 
 ### 4.7 Target CPU
 
@@ -754,7 +754,7 @@ Capture types (built-in):
 - `long` matches a single token that is either a numeric literal in `-2147483648..=4294967295` or an identifier/register. Quoted strings do not match `long`.
 - Capture matching is single-token only. Multi-token expressions such as `label+4` or `1<<24` do not match `long` captures.
 
-Reference example: [examples/statement_expansion.asm](../examples/statement_expansion.asm)
+Reference example: [examples/statement_expansion.asm](../examples/opcore/statement_expansion.asm)
 
 Expansion model:
 - `.statement` definitions are expanded by the macro processor **before parsing**.

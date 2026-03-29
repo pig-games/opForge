@@ -50,7 +50,7 @@ use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use types::image::ImageStore;
 use types::line_ast::{ConditionalAst, PackAst, PlaceAst, UseAst};
 
@@ -234,18 +234,40 @@ fn tokenizer_edge_case_lines() -> Vec<String> {
 }
 
 fn tokenizer_example_lines() -> Vec<String> {
+    fn should_skip_example_dir(path: &Path) -> bool {
+        matches!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("reference" | "vm" | "opthread" | "project_root" | "lib")
+        )
+    }
+
+    fn collect_asm_files(dir: &Path, files: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(dir)
+            .unwrap_or_else(|err| panic!("read example directory {}: {err}", dir.display()))
+            .filter_map(Result::ok)
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                if should_skip_example_dir(&path) {
+                    continue;
+                }
+                collect_asm_files(&path, files);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("asm") {
+                files.push(path);
+            }
+        }
+    }
+
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .canonicalize()
         .expect("workspace root");
     let examples_dir = repo_root.join("examples");
-    let mut asm_files: Vec<PathBuf> = fs::read_dir(&examples_dir)
-        .expect("read examples directory")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
-        .collect();
+    let mut asm_files = Vec::new();
+    collect_asm_files(&examples_dir, &mut asm_files);
     asm_files.sort();
 
     let mut lines = Vec::new();

@@ -3073,6 +3073,140 @@ fn m68040_rejects_external_fpu_targets_for_core_surface() {
 }
 
 #[test]
+fn m68020_and_m68030_fpu_conditional_slice_assembles() {
+    for cpu in ["68020", "68030"] {
+        let cpu_directive = format!(".cpu {cpu}");
+        let source = [
+            cpu_directive.as_str(),
+            ".fpu 68881",
+            "    FBEQ after_fb",
+            "after_fb:",
+            "    FDBNE D0,after_fdb",
+            "after_fdb:",
+            "    FSNE D0",
+            "    FTRAPGT.W #1",
+            "    FSAVE (A0)",
+            "    FRESTORE (A0)+",
+        ];
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("FPU conditional slice should assemble");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics for {cpu}: {diagnostics:?}"
+        );
+
+        let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+        assert_eq!(
+            bytes,
+            vec![
+                0xF0, 0x81, 0x00, 0x02, 0xF0, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF0, 0x40, 0x00, 0x0E,
+                0xF0, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF1, 0x10, 0xF1, 0x58,
+            ],
+            "unexpected bytes for {cpu}"
+        );
+    }
+}
+
+#[test]
+fn m68k_fpu_conditional_slice_keeps_68881_and_68882_identical() {
+    let source_68881 = [
+        ".cpu 68020",
+        ".fpu 68881",
+        "    FBEQ after_fb",
+        "after_fb:",
+        "    FDBNE D0,after_fdb",
+        "after_fdb:",
+        "    FSNE D0",
+        "    FTRAPGT.W #1",
+        "    FSAVE (A0)",
+        "    FRESTORE (A0)+",
+    ];
+    let source_68882 = [
+        ".cpu 68020",
+        ".fpu 68882",
+        "    FBEQ after_fb",
+        "after_fb:",
+        "    FDBNE D0,after_fdb",
+        "after_fdb:",
+        "    FSNE D0",
+        "    FTRAPGT.W #1",
+        "    FSAVE (A0)",
+        "    FRESTORE (A0)+",
+    ];
+
+    let (entries_68881, diagnostics_68881) =
+        assemble_source_entries_with_runtime_mode(&source_68881, false)
+            .expect("68881 conditional slice should assemble");
+    let (entries_68882, diagnostics_68882) =
+        assemble_source_entries_with_runtime_mode(&source_68882, false)
+            .expect("68882 conditional slice should assemble");
+
+    assert!(diagnostics_68881.is_empty(), "{diagnostics_68881:?}");
+    assert!(diagnostics_68882.is_empty(), "{diagnostics_68882:?}");
+
+    let bytes_68881: Vec<u8> = entries_68881.iter().map(|(_, byte)| *byte).collect();
+    let bytes_68882: Vec<u8> = entries_68882.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes_68881, bytes_68882);
+    assert_eq!(
+        bytes_68881,
+        vec![
+            0xF0, 0x81, 0x00, 0x02, 0xF0, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF0, 0x40, 0x00, 0x0E,
+            0xF0, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF1, 0x10, 0xF1, 0x58,
+        ]
+    );
+}
+
+#[test]
+fn m68040_fpu_conditional_slice_assembles_only_under_fpu_68040() {
+    let source = [
+        ".cpu 68040",
+        ".fpu 68040",
+        "    FBEQ after_fb",
+        "after_fb:",
+        "    FDBNE D0,after_fdb",
+        "after_fdb:",
+        "    FSNE D0",
+        "    FTRAPGT.W #1",
+        "    FSAVE (A0)",
+        "    FRESTORE (A0)+",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("m68040 FPU conditional slice should assemble");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xF0, 0x81, 0x00, 0x02, 0xF0, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF0, 0x40, 0x00, 0x0E,
+            0xF0, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF1, 0x10, 0xF1, 0x58,
+        ]
+    );
+}
+
+#[test]
+fn m68040_rejects_external_fpu_targets_for_conditional_slice() {
+    for (source, expected_target) in [
+        vec![".cpu 68040", ".fpu 68881", "    FSNE D0"],
+        vec![".cpu 68040", ".fpu 68882", "    FBEQ after_fb", "after_fb:"],
+    ]
+    .into_iter()
+    .zip(["68881", "68882"])
+    {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("legal .fpu targets for m68040 FPU instructions: 68040"))
+            .unwrap_or_else(|| panic!("missing m68040 target diagnostic: {diagnostics:?}"));
+        assert!(
+            diagnostic.contains("m68040"),
+            "missing cpu name for {expected_target}: {diagnostics:?}"
+        );
+    }
+}
+
+#[test]
 fn cpu_68000_emit_word_uses_big_endian_order() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();

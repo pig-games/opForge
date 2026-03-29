@@ -11,6 +11,7 @@ use crate::families::m68k::{
     parse_m68020_mnemonic, parse_mnemonic, FamilyOperand, FpuMnemonicKind, M68010MnemonicKind,
     M68020MnemonicKind, M68KFamilyHandler, MnemonicKind, Operand, OperationSize,
 };
+use opcore::parser::Expr;
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
 #[derive(Debug)]
@@ -116,6 +117,93 @@ impl M68020CpuHandler {
             ),
             (0 | 2 | 3 | 4 | 5 | 6, _) | (7, 0 | 1)
         )
+    }
+
+    fn fpu_save_operand(bits: u16) -> bool {
+        matches!(
+            (
+                Self::effective_address_mode(bits),
+                Self::effective_address_register(bits),
+            ),
+            (2 | 4 | 5 | 6, _) | (7, 0 | 1)
+        )
+    }
+
+    fn fpu_restore_operand(bits: u16) -> bool {
+        matches!(
+            (
+                Self::effective_address_mode(bits),
+                Self::effective_address_register(bits),
+            ),
+            (2 | 3 | 5 | 6, _) | (7, 0..=3)
+        )
+    }
+
+    fn fpu_condition_code(suffix: &str) -> Option<u16> {
+        match suffix {
+            "F" => Some(0x0000),
+            "EQ" => Some(0x0001),
+            "OGT" => Some(0x0002),
+            "OGE" => Some(0x0003),
+            "OLT" => Some(0x0004),
+            "OLE" => Some(0x0005),
+            "OGL" => Some(0x0006),
+            "OR" => Some(0x0007),
+            "UN" => Some(0x0008),
+            "UEQ" => Some(0x0009),
+            "UGT" => Some(0x000A),
+            "UGE" => Some(0x000B),
+            "ULT" => Some(0x000C),
+            "ULE" => Some(0x000D),
+            "NE" => Some(0x000E),
+            "T" => Some(0x000F),
+            "SF" => Some(0x0010),
+            "SEQ" => Some(0x0011),
+            "GT" => Some(0x0012),
+            "GE" => Some(0x0013),
+            "LT" => Some(0x0014),
+            "LE" => Some(0x0015),
+            "GL" => Some(0x0016),
+            "GLE" => Some(0x0017),
+            "NGLE" => Some(0x0018),
+            "NGL" => Some(0x0019),
+            "NLE" => Some(0x001A),
+            "NLT" => Some(0x001B),
+            "NGE" => Some(0x001C),
+            "NGT" => Some(0x001D),
+            "SNE" => Some(0x001E),
+            "ST" => Some(0x001F),
+            _ => None,
+        }
+    }
+
+    fn fpu_condition_from_mnemonic(
+        mnemonic: &str,
+        prefix: &str,
+    ) -> Result<u16, EncodeResult<Vec<u8>>> {
+        let suffix = mnemonic.strip_prefix(prefix).ok_or_else(|| {
+            EncodeResult::error(format!("unsupported FPU conditional mnemonic {mnemonic}"))
+        })?;
+        let suffix = suffix.to_ascii_uppercase();
+        if prefix == "FDB" && suffix == "RA" {
+            return Ok(0x0000);
+        }
+        Self::fpu_condition_code(&suffix).ok_or_else(|| {
+            EncodeResult::error(format!("unsupported FPU conditional mnemonic {mnemonic}"))
+        })
+    }
+
+    fn branch_offset(
+        expr: &Expr,
+        ctx: &dyn AssemblerContext,
+        base_bytes: i64,
+    ) -> Result<(i64, bool), String> {
+        let (target, unresolved) = M68KFamilyHandler::eval_expr_or_placeholder(expr, ctx, 0)?;
+        if unresolved {
+            Ok((0, true))
+        } else {
+            Ok((target - (ctx.current_address() as i64 + base_bytes), false))
+        }
     }
 
     fn fpu_register_list_mask(
@@ -503,6 +591,314 @@ impl M68020CpuHandler {
         }
     }
 
+    fn encode_fbcc(
+        &self,
+        mnemonic: &str,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [target] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects one branch target"));
+        };
+        let Operand::BranchTarget { expr, .. } = target else {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} requires a branch target expression"),
+                target.span(),
+            );
+        };
+
+        let condition = match Self::fpu_condition_from_mnemonic(mnemonic, "FB") {
+            Ok(condition) => condition,
+            Err(err) => return err,
+        };
+        let (opcode, offset) = match size {
+            Some(OperationSize::Byte) => {
+                return EncodeResult::error(format!("{mnemonic} does not support .B size"));
+            }
+            Some(OperationSize::Long) => {
+                let (offset, _) = match Self::branch_offset(expr, ctx, 2) {
+                    Ok(result) => result,
+                    Err(err) => return EncodeResult::error_with_span(err, target.span()),
+                };
+                (0xF0C0 | condition, offset)
+            }
+            Some(OperationSize::Word) | None => {
+                let (offset, _) = match Self::branch_offset(expr, ctx, 2) {
+                    Ok(result) => result,
+                    Err(err) => return EncodeResult::error_with_span(err, target.span()),
+                };
+                (0xF080 | condition, offset)
+            }
+        };
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, opcode);
+        match size {
+            Some(OperationSize::Long) => {
+                if !((i32::MIN as i64)..=(i32::MAX as i64)).contains(&offset) {
+                    return EncodeResult::error_with_span(
+                        format!("{mnemonic}.L branch displacement out of range: offset {offset}"),
+                        target.span(),
+                    );
+                }
+                bytes.extend_from_slice(&(offset as i32 as u32).to_be_bytes());
+            }
+            Some(OperationSize::Word) | None => {
+                let Some(encoded) = M68KFamilyHandler::encode_signed_word(offset) else {
+                    return EncodeResult::error_with_span(
+                        format!("{mnemonic}.W branch displacement out of range: offset {offset}"),
+                        target.span(),
+                    );
+                };
+                M68KFamilyHandler::emit_word(&mut bytes, encoded);
+            }
+            Some(OperationSize::Byte) => unreachable!("handled above"),
+        }
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_fdbcc(
+        &self,
+        mnemonic: &str,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
+        }
+
+        let [counter, target] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects a data register and target"));
+        };
+        let counter_register = match counter {
+            Operand::DataRegister { register, .. } => register,
+            _ => {
+                return EncodeResult::error_with_span(
+                    format!("{mnemonic} counter must be a data register"),
+                    counter.span(),
+                );
+            }
+        };
+        let Some(counter_bits) = M68KFamilyHandler::data_register_number(counter_register) else {
+            return EncodeResult::error_with_span(
+                format!("invalid {mnemonic} counter register"),
+                counter.span(),
+            );
+        };
+        let Operand::BranchTarget { expr, .. } = target else {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} requires a branch target expression"),
+                target.span(),
+            );
+        };
+
+        let condition = match Self::fpu_condition_from_mnemonic(mnemonic, "FDB") {
+            Ok(condition) => condition,
+            Err(err) => return err,
+        };
+        let (offset, _) = match Self::branch_offset(expr, ctx, 4) {
+            Ok(result) => result,
+            Err(err) => return EncodeResult::error_with_span(err, target.span()),
+        };
+        let Some(encoded_displacement) = M68KFamilyHandler::encode_signed_word(offset) else {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} branch displacement out of range: offset {offset}"),
+                target.span(),
+            );
+        };
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, 0xF048 | counter_bits as u16);
+        M68KFamilyHandler::emit_word(&mut bytes, condition);
+        M68KFamilyHandler::emit_word(&mut bytes, encoded_displacement);
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_fscc(
+        &self,
+        mnemonic: &str,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
+        }
+        let [dst] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects one operand"));
+        };
+
+        let dst_ea = match self
+            .family
+            .encode_effective_address(dst, Some(OperationSize::Byte), ctx)
+        {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::fpu_scalar_destination_operand(dst_ea.bits) {
+            return EncodeResult::error_with_span(
+                format!("invalid destination effective address for {mnemonic}"),
+                dst.span(),
+            );
+        }
+
+        let condition = match Self::fpu_condition_from_mnemonic(mnemonic, "FS") {
+            Ok(condition) => condition,
+            Err(err) => return err,
+        };
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, 0xF040 | (dst_ea.bits & 0x003F));
+        M68KFamilyHandler::emit_word(&mut bytes, condition);
+        bytes.extend_from_slice(&dst_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_ftrapcc(
+        &self,
+        mnemonic: &str,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let condition = match Self::fpu_condition_from_mnemonic(mnemonic, "FTRAP") {
+            Ok(condition) => condition,
+            Err(err) => return err,
+        };
+
+        let mut bytes = Vec::new();
+        match size {
+            None => {
+                if !operands.is_empty() {
+                    return EncodeResult::error(format!(
+                        "unsized {mnemonic} does not take an immediate operand"
+                    ));
+                }
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF07C);
+                M68KFamilyHandler::emit_word(&mut bytes, condition);
+            }
+            Some(size @ (OperationSize::Word | OperationSize::Long)) => {
+                let [immediate] = operands else {
+                    return EncodeResult::error(format!(
+                        "{mnemonic}{} expects one immediate operand",
+                        size.suffix()
+                    ));
+                };
+                let Operand::Immediate { expr, .. } = immediate else {
+                    return EncodeResult::error_with_span(
+                        format!("{mnemonic}{} operand must be immediate", size.suffix()),
+                        immediate.span(),
+                    );
+                };
+                let value = match M68KFamilyHandler::eval_expr(expr, ctx) {
+                    Ok(value) => value,
+                    Err(err) => return EncodeResult::error_with_span(err, immediate.span()),
+                };
+
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    0xF078
+                        | if size == OperationSize::Word {
+                            0x0002
+                        } else {
+                            0x0003
+                        },
+                );
+                M68KFamilyHandler::emit_word(&mut bytes, condition);
+                match size {
+                    OperationSize::Word => {
+                        if !(-32768..=65535).contains(&value) {
+                            return EncodeResult::error_with_span(
+                                format!("{mnemonic}.W immediate {value} out of range"),
+                                immediate.span(),
+                            );
+                        }
+                        M68KFamilyHandler::emit_word(&mut bytes, value as u16);
+                    }
+                    OperationSize::Long => {
+                        if !(-2_147_483_648..=4_294_967_295).contains(&value) {
+                            return EncodeResult::error_with_span(
+                                format!("{mnemonic}.L immediate {value} out of range"),
+                                immediate.span(),
+                            );
+                        }
+                        bytes.extend_from_slice(&(value as i32 as u32).to_be_bytes());
+                    }
+                    OperationSize::Byte => unreachable!("filtered above"),
+                }
+            }
+            Some(OperationSize::Byte) => {
+                return EncodeResult::error(format!("{mnemonic} does not support .B size"));
+            }
+        }
+
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_fsave(
+        &self,
+        mnemonic: &str,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
+        }
+        let [dst] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects one operand"));
+        };
+
+        let dst_ea = match self.family.encode_effective_address(dst, None, ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::fpu_save_operand(dst_ea.bits) {
+            return EncodeResult::error_with_span(
+                format!("invalid destination effective address for {mnemonic}"),
+                dst.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, 0xF100 | (dst_ea.bits & 0x003F));
+        bytes.extend_from_slice(&dst_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_frestore(
+        &self,
+        mnemonic: &str,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
+        }
+        let [src] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects one operand"));
+        };
+
+        let src_ea = match self.family.encode_effective_address(src, None, ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::fpu_restore_operand(src_ea.bits) {
+            return EncodeResult::error_with_span(
+                format!("invalid source effective address for {mnemonic}"),
+                src.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, 0xF140 | (src_ea.bits & 0x003F));
+        bytes.extend_from_slice(&src_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
     pub(crate) fn encode_supported_fpu_core_mnemonic(
         &self,
         mnemonic: &str,
@@ -601,6 +997,24 @@ impl M68020CpuHandler {
                 true,
                 ctx,
             ),
+            FpuMnemonicKind::Fbranch => {
+                self.encode_fbcc(&parsed.display_name, parsed.size, operands, ctx)
+            }
+            FpuMnemonicKind::Fdbcc => {
+                self.encode_fdbcc(&parsed.display_name, parsed.size, operands, ctx)
+            }
+            FpuMnemonicKind::Fscc => {
+                self.encode_fscc(&parsed.display_name, parsed.size, operands, ctx)
+            }
+            FpuMnemonicKind::Ftrapcc => {
+                self.encode_ftrapcc(&parsed.display_name, parsed.size, operands, ctx)
+            }
+            FpuMnemonicKind::Fsave => {
+                self.encode_fsave(&parsed.display_name, parsed.size, operands, ctx)
+            }
+            FpuMnemonicKind::Frestore => {
+                self.encode_frestore(&parsed.display_name, parsed.size, operands, ctx)
+            }
             _ => return None,
         })
     }
@@ -1030,6 +1444,7 @@ mod tests {
     #[derive(Default)]
     struct TestContext {
         state_flags: HashMap<String, u32>,
+        current_address: u32,
         symbols: SymbolTable,
     }
 
@@ -1038,11 +1453,21 @@ mod tests {
             self.state_flags.insert(key.to_string(), value);
             self
         }
+
+        fn with_current_address(mut self, value: u32) -> Self {
+            self.current_address = value;
+            self
+        }
     }
 
     impl AssemblerContext for TestContext {
-        fn eval_expr(&self, _expr: &Expr) -> Result<i64, String> {
-            Err("unexpected expression evaluation in test".to_string())
+        fn eval_expr(&self, expr: &Expr) -> Result<i64, String> {
+            match expr {
+                Expr::Number(value, _) => value
+                    .parse::<i64>()
+                    .map_err(|err| format!("failed to parse test number `{value}`: {err}")),
+                _ => Err("unexpected expression evaluation in test".to_string()),
+            }
         }
 
         fn symbols(&self) -> &SymbolTable {
@@ -1058,7 +1483,7 @@ mod tests {
         }
 
         fn current_address(&self) -> u32 {
-            0
+            self.current_address
         }
 
         fn pass(&self) -> u8 {
@@ -1199,6 +1624,96 @@ mod tests {
         ) {
             EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x50, 0x3A]),
             other => panic!("expected FTST.W encoding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn conditional_and_state_fpu_slice_encodes_for_external_targets_on_m68020() {
+        let handler = M68020CpuHandler::new();
+        let branch_ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 1)
+            .with_current_address(0);
+
+        match handler.encode_instruction(
+            "FBEQ",
+            &[Operand::BranchTarget {
+                expr: Expr::Number("4".to_string(), Default::default()),
+                span: Default::default(),
+            }],
+            &branch_ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x81, 0x00, 0x02]),
+            other => panic!("expected FBEQ encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FDBNE",
+            &[
+                Operand::DataRegister {
+                    register: "D0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::BranchTarget {
+                    expr: Expr::Number("6".to_string(), Default::default()),
+                    span: Default::default(),
+                },
+            ],
+            &branch_ctx,
+        ) {
+            EncodeResult::Ok(bytes) => {
+                assert_eq!(bytes, vec![0xF0, 0x48, 0x00, 0x0E, 0x00, 0x02])
+            }
+            other => panic!("expected FDBNE encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FSNE",
+            &[Operand::DataRegister {
+                register: "D0".to_string(),
+                span: Default::default(),
+            }],
+            &branch_ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x40, 0x00, 0x0E]),
+            other => panic!("expected FSNE encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FTRAPGT.W",
+            &[Operand::Immediate {
+                expr: Expr::Number("1".to_string(), Default::default()),
+                span: Default::default(),
+            }],
+            &branch_ctx,
+        ) {
+            EncodeResult::Ok(bytes) => {
+                assert_eq!(bytes, vec![0xF0, 0x7A, 0x00, 0x12, 0x00, 0x01])
+            }
+            other => panic!("expected FTRAPGT.W encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FSAVE",
+            &[Operand::AddressIndirect {
+                register: "A0".to_string(),
+                span: Default::default(),
+            }],
+            &branch_ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF1, 0x10]),
+            other => panic!("expected FSAVE encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FRESTORE",
+            &[Operand::AddressPostincrement {
+                register: "A0".to_string(),
+                span: Default::default(),
+            }],
+            &branch_ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF1, 0x58]),
+            other => panic!("expected FRESTORE encoding, got {other:?}"),
         }
     }
 }

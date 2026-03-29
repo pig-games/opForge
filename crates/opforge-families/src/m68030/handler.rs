@@ -174,7 +174,13 @@ impl CpuHandler for M68030CpuHandler {
                 | FpuMnemonicKind::Fcmp
                 | FpuMnemonicKind::Ftst
                 | FpuMnemonicKind::Fint
-                | FpuMnemonicKind::Fintrz => {
+                | FpuMnemonicKind::Fintrz
+                | FpuMnemonicKind::Fbranch
+                | FpuMnemonicKind::Fdbcc
+                | FpuMnemonicKind::Fscc
+                | FpuMnemonicKind::Ftrapcc
+                | FpuMnemonicKind::Fsave
+                | FpuMnemonicKind::Frestore => {
                     self.base.encode_instruction(mnemonic, operands, ctx)
                 }
                 _ => EncodeResult::error(format!(

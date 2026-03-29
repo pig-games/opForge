@@ -5956,7 +5956,7 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn eval_expr_or_placeholder(
+    pub(crate) fn eval_expr_or_placeholder(
         expr: &Expr,
         ctx: &dyn AssemblerContext,
         placeholder: i64,
@@ -6006,6 +6006,42 @@ impl FamilyHandler for M68KFamilyHandler {
             Some(FpuMnemonicKind::Fmovem)
         ) {
             return self.parse_fmovem_operands(exprs);
+        }
+
+        if matches!(
+            parse_fpu_mnemonic(mnemonic).map(|parsed| parsed.kind),
+            Some(FpuMnemonicKind::Fbranch)
+        ) {
+            let [expr] = exprs else {
+                return Err(FamilyParseError::new(
+                    "68000 FPU branches expect one target operand",
+                    exprs.first().map(span_from_expr).unwrap_or_default(),
+                ));
+            };
+            return Ok(vec![FamilyOperand::BranchTarget {
+                expr: expr.clone(),
+                span: span_from_expr(expr),
+            }]);
+        }
+
+        if matches!(
+            parse_fpu_mnemonic(mnemonic).map(|parsed| parsed.kind),
+            Some(FpuMnemonicKind::Fdbcc)
+        ) {
+            let [counter, expr] = exprs else {
+                return Err(FamilyParseError::new(
+                    "68000 FDBcc instructions expect a data register and target operand",
+                    exprs.first().map(span_from_expr).unwrap_or_default(),
+                ));
+            };
+            let counter = self.parse_single_operand(counter)?;
+            return Ok(vec![
+                counter,
+                FamilyOperand::BranchTarget {
+                    expr: expr.clone(),
+                    span: span_from_expr(expr),
+                },
+            ]);
         }
 
         if matches!(

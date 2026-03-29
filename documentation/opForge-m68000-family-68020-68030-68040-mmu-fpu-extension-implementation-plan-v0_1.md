@@ -274,7 +274,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that widens the proven core FPU encode path to
     the integrated `m68040` target without bundling the remaining FPU families
 
-- [ ] `M68KMF-009`: Implement the floating-point conditional families and
+- [x] `M68KMF-009`: Implement the floating-point conditional families and
       `FSAVE`/`FRESTORE` on all legal FPU targets.
   - Validation: focused encode or legality tests for `FBcc`, `FDBcc`, `FScc`,
     `FTRAPcc`, `FSAVE`, and `FRESTORE` on `.fpu 68881`, `.fpu 68882`, and
@@ -369,7 +369,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
 - [x] Milestone 4: external-FPU core movement and arithmetic complete
       (`M68KMF-006`, `M68KMF-007`)
 - [x] Milestone 5: integrated `m68040` core FPU surface complete (`M68KMF-008`)
-- [ ] Milestone 6: FPU conditionals and save or restore complete (`M68KMF-009`)
+- [x] Milestone 6: FPU conditionals and save or restore complete (`M68KMF-009`)
 - [ ] Milestone 7: remaining transcendental and extended-math surface complete
       (`M68KMF-010`, `M68KMF-011`)
 - [ ] Milestone 8: capabilities, examples, references, and docs complete

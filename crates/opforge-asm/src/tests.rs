@@ -4074,55 +4074,92 @@ fn earlier_m68k_cpus_reject_second_instruction_group() {
 }
 
 #[test]
-fn later_m68k_carry_forward_cpus_do_not_claim_first_m68020_instruction_group_yet() {
-    for (cpu, cpu_name) in [(m68030_cpu_id, "m68030"), (m68040_cpu_id, "m68040")] {
-        for line in [
-            "    BRA.L $0008",
-            "    LINK.L A6,#-8",
-            "    EXTB.L D0",
-            "    MULU.L (A0),D1",
-            "    MOVEC CACR,D0",
-        ] {
-            let (status, message) = assemble_line_status(cpu, line);
-            assert_eq!(
-                status,
-                LineStatus::Error,
-                "expected rejection on {cpu_name}"
-            );
-            let message = message.expect("expected missing later-family instruction diagnostic");
-            assert!(
-                message.contains("No instruction found"),
-                "unexpected diagnostic on {cpu_name} for '{line}': {message}"
-            );
-        }
+fn m68030_carries_forward_first_m68020_instruction_group() {
+    for line in [
+        "    BRA.L $0008",
+        "    LINK.L A6,#-8",
+        "    EXTB.L D0",
+        "    MULU.L (A0),D1",
+        "    MOVEC CACR,D0",
+    ] {
+        assert_eq!(
+            assemble_bytes(m68030_cpu_id, line),
+            assemble_bytes(m68020_cpu_id, line),
+            "expected m68030 carry-forward bytes for '{line}'"
+        );
     }
 }
 
 #[test]
-fn later_m68k_carry_forward_cpus_do_not_claim_second_instruction_group_yet() {
-    for (cpu, cpu_name) in [(m68030_cpu_id, "m68030"), (m68040_cpu_id, "m68040")] {
-        for line in [
-            "    CAS.W D0,D1,(A0)",
-            "    CAS2.W D0:D1,D2:D3,(A0):(A1)",
-            "    CHK2.W ($1234).W,D0",
-            "    BFTST D0{3:5}",
-            "    PACK D0,D1,#1",
-            "    TRAPNE",
-            "    CALLM #5,($1234).W",
-            "    RTM A0",
-        ] {
-            let (status, message) = assemble_line_status(cpu, line);
-            assert_eq!(
-                status,
-                LineStatus::Error,
-                "expected rejection on {cpu_name}"
-            );
-            let message = message.expect("expected missing later-family instruction diagnostic");
-            assert!(
-                message.contains("No instruction found"),
-                "unexpected diagnostic on {cpu_name} for '{line}': {message}"
-            );
-        }
+fn m68030_carries_forward_second_m68020_instruction_group() {
+    for line in [
+        "    CAS.W D0,D1,(A0)",
+        "    CAS2.W D0:D1,D2:D3,(A0):(A1)",
+        "    BFTST D0{3:5}",
+        "    PACK D0,D1,#1",
+        "    TRAPNE",
+        "    CALLM #5,($1234).W",
+        "    RTM A0",
+    ] {
+        assert_eq!(
+            assemble_bytes(m68030_cpu_id, line),
+            assemble_bytes(m68020_cpu_id, line),
+            "expected m68030 carry-forward bytes for '{line}'"
+        );
+    }
+}
+
+#[test]
+fn m68030_rejects_out_of_scope_system_surfaces_deterministically() {
+    for line in ["    PMOVE D0,D1", "    PFLUSHA", "    FMOVE D0,D1"] {
+        let (status, message) = assemble_line_status(m68030_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+        let message = message.expect("expected out-of-scope system diagnostic");
+        assert!(
+            message.contains("No instruction found"),
+            "unexpected m68030 system-surface diagnostic for '{line}': {message}"
+        );
+    }
+}
+
+#[test]
+fn m68040_does_not_claim_first_m68020_instruction_group_yet() {
+    for line in [
+        "    BRA.L $0008",
+        "    LINK.L A6,#-8",
+        "    EXTB.L D0",
+        "    MULU.L (A0),D1",
+        "    MOVEC CACR,D0",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection on m68040");
+        let message = message.expect("expected missing later-family instruction diagnostic");
+        assert!(
+            message.contains("No instruction found"),
+            "unexpected diagnostic on m68040 for '{line}': {message}"
+        );
+    }
+}
+
+#[test]
+fn m68040_does_not_claim_second_instruction_group_yet() {
+    for line in [
+        "    CAS.W D0,D1,(A0)",
+        "    CAS2.W D0:D1,D2:D3,(A0):(A1)",
+        "    CHK2.W ($1234).W,D0",
+        "    BFTST D0{3:5}",
+        "    PACK D0,D1,#1",
+        "    TRAPNE",
+        "    CALLM #5,($1234).W",
+        "    RTM A0",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection on m68040");
+        let message = message.expect("expected missing later-family instruction diagnostic");
+        assert!(
+            message.contains("No instruction found"),
+            "unexpected diagnostic on m68040 for '{line}': {message}"
+        );
     }
 }
 

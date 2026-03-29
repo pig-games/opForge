@@ -3,15 +3,13 @@
 
 //! Motorola 68030 CPU handler implementation.
 
-use crate::families::m68k::{
-    has_mnemonic, parse_m68010_mnemonic, FamilyOperand, M68010MnemonicKind, M68KFamilyHandler,
-    Operand,
-};
+use crate::families::m68k::{FamilyOperand, M68KFamilyHandler, Operand};
+use crate::m68020::M68020CpuHandler;
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
 #[derive(Debug)]
 pub struct M68030CpuHandler {
-    family: M68KFamilyHandler,
+    base: M68020CpuHandler,
 }
 
 impl Default for M68030CpuHandler {
@@ -23,7 +21,7 @@ impl Default for M68030CpuHandler {
 impl M68030CpuHandler {
     pub fn new() -> Self {
         Self {
-            family: M68KFamilyHandler::new(),
+            base: M68020CpuHandler::new(),
         }
     }
 }
@@ -32,16 +30,16 @@ impl CpuHandler for M68030CpuHandler {
     type Family = M68KFamilyHandler;
 
     fn family(&self) -> &Self::Family {
-        &self.family
+        self.base.family()
     }
 
     fn resolve_operands(
         &self,
-        _mnemonic: &str,
+        mnemonic: &str,
         family_operands: &[FamilyOperand],
-        _ctx: &dyn AssemblerContext,
+        ctx: &dyn AssemblerContext,
     ) -> Result<Vec<Operand>, String> {
-        Ok(family_operands.to_vec())
+        self.base.resolve_operands(mnemonic, family_operands, ctx)
     }
 
     fn encode_instruction(
@@ -50,32 +48,10 @@ impl CpuHandler for M68030CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        let Some(parsed) = parse_m68010_mnemonic(mnemonic) else {
-            return EncodeResult::NotFound;
-        };
-        if parsed.has_unknown_size_suffix {
-            return EncodeResult::error(format!(
-                "unsupported size suffix for {}",
-                parsed.display_name
-            ));
-        }
-
-        match parsed.kind {
-            M68010MnemonicKind::Moves => {
-                self.family
-                    .encode_moves_instruction(parsed.size, operands, ctx)
-            }
-            M68010MnemonicKind::Bkpt | M68010MnemonicKind::Movec | M68010MnemonicKind::Rtd => {
-                EncodeResult::NotFound
-            }
-        }
+        self.base.encode_instruction(mnemonic, operands, ctx)
     }
 
     fn supports_mnemonic(&self, mnemonic: &str) -> bool {
-        has_mnemonic(mnemonic)
-            || matches!(
-                parse_m68010_mnemonic(mnemonic),
-                Some(parsed) if matches!(parsed.kind, M68010MnemonicKind::Moves)
-            )
+        self.base.supports_mnemonic(mnemonic)
     }
 }

@@ -268,7 +268,7 @@ system-programming features.
   - Commit outcome: one commit that completes the in-scope `m68020`
     later-family instruction surface before pure carry-forward CPUs are enabled
 
-- [ ] `M68K-LINEAGE-008`: Implement the `m68030` CPU enablement slice defined by
+- [x] `M68K-LINEAGE-008`: Implement the `m68030` CPU enablement slice defined by
       the source-backed delta matrix while keeping excluded MMU or coprocessor
       space rejected.
   - Validation: focused `m68030` CPU-selection and legality tests proving the

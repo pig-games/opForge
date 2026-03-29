@@ -139,7 +139,7 @@ the remediation work and the follow-up spec.
     CCR-source MOVE form; m68030/040 inherit through m68020; positive tests
     exist for all three later CPUs
 
-- [ ] Item 6 — Change `encode_chk` to return `NotFound` for `.L`; add `CHK.L` to `M68020CpuHandler`
+- [x] Item 6 — Change `encode_chk` to return `NotFound` for `.L`; add `CHK.L` to `M68020CpuHandler`
   - Source requirement or finding IDs: RVW-2026-03-29-006; Testing Gap 4
   - Expected closure: fully closes RVW-2026-03-29-006; fully addresses Testing Gap 4
   - Expected files:

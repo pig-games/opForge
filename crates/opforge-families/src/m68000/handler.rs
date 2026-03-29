@@ -48,6 +48,9 @@ impl M68000CpuHandler {
                     parsed.display_name
                 )))
             }
+            (MnemonicKind::Chk, Some(OperationSize::Long)) => Some(EncodeResult::error(
+                "CHK does not support .L size on baseline 68000",
+            )),
             _ => None,
         }
     }

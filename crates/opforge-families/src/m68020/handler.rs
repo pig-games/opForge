@@ -91,6 +91,48 @@ impl M68020CpuHandler {
         );
         EncodeResult::ok(bytes)
     }
+
+    fn encode_chk_long(
+        &self,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [src, dst] = operands else {
+            return EncodeResult::error("CHK.L expects two operands");
+        };
+
+        let Operand::DataRegister { register, .. } = dst else {
+            return EncodeResult::error_with_span(
+                "CHK.L destination must be a data register",
+                dst.span(),
+            );
+        };
+        let Some(dst_reg) = M68KFamilyHandler::data_register_number(register) else {
+            return EncodeResult::error_with_span("invalid CHK.L destination register", dst.span());
+        };
+
+        let src_ea = match self
+            .family
+            .encode_effective_address(src, Some(OperationSize::Long), ctx)
+        {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !M68KFamilyHandler::logic_allows_source(src_ea.kind) {
+            return EncodeResult::error_with_span(
+                "invalid source effective address for CHK.L",
+                src.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(
+            &mut bytes,
+            0x4100 | ((dst_reg as u16) << 9) | (src_ea.bits & 0x3F),
+        );
+        bytes.extend_from_slice(&src_ea.extension);
+        EncodeResult::ok(bytes)
+    }
 }
 
 impl CpuHandler for M68020CpuHandler {
@@ -185,6 +227,9 @@ impl CpuHandler for M68020CpuHandler {
                         operands,
                         ctx,
                     );
+                }
+                MnemonicKind::Chk if matches!(parsed.size, Some(OperationSize::Long)) => {
+                    return self.encode_chk_long(operands, ctx);
                 }
                 _ => {}
             }

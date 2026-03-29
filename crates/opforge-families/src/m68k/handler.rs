@@ -2937,7 +2937,7 @@ impl M68KFamilyHandler {
         match size {
             None | Some(OperationSize::Word) => {}
             Some(OperationSize::Long) => {
-                return EncodeResult::error("CHK does not support .L size on baseline 68000");
+                return EncodeResult::NotFound;
             }
             Some(OperationSize::Byte) => {
                 return EncodeResult::error("CHK does not support .B size");
@@ -5091,7 +5091,7 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn logic_allows_source(kind: EffectiveAddressKind) -> bool {
+    pub(crate) fn logic_allows_source(kind: EffectiveAddressKind) -> bool {
         matches!(
             kind,
             EffectiveAddressKind::DataRegister
@@ -9157,10 +9157,8 @@ mod tests {
             &ctx,
         );
         match invalid_chk {
-            EncodeResult::Error(message, _) => {
-                assert!(message.contains("CHK does not support .L size"));
-            }
-            other => panic!("expected legality error, got {other:?}"),
+            EncodeResult::NotFound => {}
+            other => panic!("expected cpu-level deferral, got {other:?}"),
         }
 
         let invalid_mulu = handler.encode_instruction(
@@ -9716,5 +9714,35 @@ mod tests {
         assert_move_from_ccr(&M68020CpuHandler::new(), &ctx);
         assert_move_from_ccr(&M68030CpuHandler::new(), &ctx);
         assert_move_from_ccr(&M68040CpuHandler::new(), &ctx);
+    }
+
+    #[test]
+    fn chk_long_is_handled_by_m68020_and_deferred_by_baseline() {
+        let m68020 = M68020CpuHandler::new();
+        let baseline = M68KFamilyHandler::new();
+        let m68000 = M68000CpuHandler::new();
+        let ctx = TestContext::default();
+        let operands = [
+            Operand::AddressIndirect {
+                register: "A0".to_string(),
+                span: span(),
+            },
+            Operand::DataRegister {
+                register: "D1".to_string(),
+                span: span(),
+            },
+        ];
+
+        expect_encoded(m68020.encode_instruction("CHK.L", &operands, &ctx), &[0x43, 0x10]);
+        assert!(matches!(
+            baseline.encode_instruction("CHK.L", &operands, &ctx),
+            EncodeResult::NotFound
+        ));
+        match m68000.encode_instruction("CHK.L", &operands, &ctx) {
+            EncodeResult::Error(message, _) => {
+                assert!(message.contains("CHK does not support .L size on baseline 68000"));
+            }
+            other => panic!("expected m68000 CPU-level rejection, got {other:?}"),
+        }
     }
 }

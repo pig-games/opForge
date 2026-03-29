@@ -78,6 +78,7 @@ The proposed agent set is:
 - `Spec Author Gemini 3.1 Pro` as the acceptance-criteria and validation leaf
   author
 
+
 The orchestrator must execute this workflow:
 
 1. Normalize the user request into one explicit specification scope, one target

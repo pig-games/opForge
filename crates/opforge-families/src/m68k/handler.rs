@@ -25,6 +25,12 @@ pub struct M68KFamilyHandler {
     max_absolute_address: i64,
 }
 
+impl Default for M68KFamilyHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 const MAX_M68000_ABSOLUTE_ADDRESS: i64 = 0x00FF_FFFF;
 type FullExtensionBaseDisplacement = Option<(Expr, AbsoluteSize)>;
 type PreindexedIndirectInner = (

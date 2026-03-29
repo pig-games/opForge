@@ -4267,6 +4267,70 @@ fn m68040_carries_forward_first_m68020_instruction_group_with_restrictions() {
 }
 
 #[test]
+fn m68040_accepts_shipped_mmu_movec_registers_with_stable_encodings() {
+    for (line, expected) in [
+        ("    MOVEC TC,D0", vec![0x4E, 0x7A, 0x00, 0x03]),
+        ("    MOVEC ITT0,D0", vec![0x4E, 0x7A, 0x00, 0x04]),
+        ("    MOVEC ITT1,D0", vec![0x4E, 0x7A, 0x00, 0x05]),
+        ("    MOVEC DTT0,D0", vec![0x4E, 0x7A, 0x00, 0x06]),
+        ("    MOVEC DTT1,D0", vec![0x4E, 0x7A, 0x00, 0x07]),
+        ("    MOVEC MMUSR,D0", vec![0x4E, 0x7A, 0x08, 0x05]),
+        ("    MOVEC URP,D0", vec![0x4E, 0x7A, 0x08, 0x06]),
+        ("    MOVEC SRP,D0", vec![0x4E, 0x7A, 0x08, 0x07]),
+        ("    MOVEC D1,TC", vec![0x4E, 0x7B, 0x10, 0x03]),
+        ("    MOVEC D1,ITT0", vec![0x4E, 0x7B, 0x10, 0x04]),
+        ("    MOVEC D1,ITT1", vec![0x4E, 0x7B, 0x10, 0x05]),
+        ("    MOVEC D1,DTT0", vec![0x4E, 0x7B, 0x10, 0x06]),
+        ("    MOVEC D1,DTT1", vec![0x4E, 0x7B, 0x10, 0x07]),
+        ("    MOVEC D1,MMUSR", vec![0x4E, 0x7B, 0x18, 0x05]),
+        ("    MOVEC D1,URP", vec![0x4E, 0x7B, 0x18, 0x06]),
+        ("    MOVEC D1,SRP", vec![0x4E, 0x7B, 0x18, 0x07]),
+    ] {
+        assert_eq!(
+            assemble_bytes(m68040_cpu_id, line),
+            expected,
+            "unexpected encoding for '{line}'"
+        );
+    }
+}
+
+#[test]
+fn earlier_m68k_cpus_reject_shipped_mmu_movec_registers_deterministically() {
+    let mmu_movec_lines = [
+        "    MOVEC TC,D0",
+        "    MOVEC ITT0,D0",
+        "    MOVEC ITT1,D0",
+        "    MOVEC DTT0,D0",
+        "    MOVEC DTT1,D0",
+        "    MOVEC MMUSR,D0",
+        "    MOVEC URP,D0",
+        "    MOVEC SRP,D0",
+    ];
+
+    for line in mmu_movec_lines {
+        let (status, message) = assemble_line_status(m68000_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+        let message = message.expect("expected baseline MOVEC diagnostic");
+        assert!(
+            message.contains("No instruction found for MOVEC"),
+            "unexpected m68000 diagnostic for '{line}': {message}"
+        );
+    }
+
+    for cpu in [m68010_cpu_id, m68020_cpu_id, m68030_cpu_id] {
+        for line in mmu_movec_lines {
+            let (status, message) = assemble_line_status(cpu, line);
+            assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+            let message = message.expect("expected unsupported MMU MOVEC diagnostic");
+            assert!(
+                message.contains("unsupported MOVEC control register"),
+                "unexpected diagnostic on {cpu:?} for '{line}': {message}"
+            );
+        }
+    }
+}
+
+#[test]
 fn m68040_carries_forward_second_instruction_group_with_restrictions() {
     for line in [
         "    CAS.W D0,D1,(A0)",

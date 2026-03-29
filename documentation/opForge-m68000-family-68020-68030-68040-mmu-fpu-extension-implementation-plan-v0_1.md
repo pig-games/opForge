@@ -118,7 +118,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
     deterministic, and opt-in while preserving the existing family identity and
     integer-only surface
 
-- [ ] `M68KMF-002`: Preserve and lock down the shipped MMU-related `MOVEC`
+- [x] `M68KMF-002`: Preserve and lock down the shipped MMU-related `MOVEC`
       surface with focused regression coverage before adding new MMU behavior.
   - Validation: focused regression tests for shipped MMU-related `MOVEC`
     registers where currently supported, focused negative tests on earlier CPUs,

@@ -136,6 +136,14 @@ impl M68KFamilyHandler {
             "CAAR" => ControlRegisterKind::Caar,
             "MSP" => ControlRegisterKind::Msp,
             "ISP" => ControlRegisterKind::Isp,
+            "TC" => ControlRegisterKind::Tc,
+            "ITT0" => ControlRegisterKind::Itt0,
+            "ITT1" => ControlRegisterKind::Itt1,
+            "DTT0" => ControlRegisterKind::Dtt0,
+            "DTT1" => ControlRegisterKind::Dtt1,
+            "MMUSR" => ControlRegisterKind::Mmusr,
+            "URP" => ControlRegisterKind::Urp,
+            "SRP" => ControlRegisterKind::Srp,
             _ => return None,
         };
         Some((register, span))
@@ -6787,6 +6795,137 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn parses_extended_control_register_operands() {
+        let handler = M68KFamilyHandler::new();
+        let operands = handler
+            .parse_operands(
+                "MOVEC",
+                &[
+                    Expr::Identifier("TC".to_string(), span()),
+                    Expr::Identifier("ITT0".to_string(), span()),
+                    Expr::Identifier("MMUSR".to_string(), span()),
+                    Expr::Identifier("URP".to_string(), span()),
+                    Expr::Identifier("SRP".to_string(), span()),
+                ],
+            )
+            .expect("control register operands");
+
+        assert!(matches!(
+            operands[0],
+            FamilyOperand::ControlRegister {
+                register: ControlRegisterKind::Tc,
+                ..
+            }
+        ));
+        assert!(matches!(
+            operands[1],
+            FamilyOperand::ControlRegister {
+                register: ControlRegisterKind::Itt0,
+                ..
+            }
+        ));
+        assert!(matches!(
+            operands[2],
+            FamilyOperand::ControlRegister {
+                register: ControlRegisterKind::Mmusr,
+                ..
+            }
+        ));
+        assert!(matches!(
+            operands[3],
+            FamilyOperand::ControlRegister {
+                register: ControlRegisterKind::Urp,
+                ..
+            }
+        ));
+        assert!(matches!(
+            operands[4],
+            FamilyOperand::ControlRegister {
+                register: ControlRegisterKind::Srp,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn m68040_encodes_extended_movec_registers() {
+        let handler = M68040CpuHandler::new();
+        let ctx = TestContext::default();
+
+        expect_encoded(
+            handler.encode_instruction(
+                "MOVEC",
+                &[
+                    Operand::ControlRegister {
+                        register: ControlRegisterKind::Tc,
+                        span: span(),
+                    },
+                    Operand::DataRegister {
+                        register: "D0".to_string(),
+                        span: span(),
+                    },
+                ],
+                &ctx,
+            ),
+            &[0x4E, 0x7A, 0x00, 0x03],
+        );
+
+        expect_encoded(
+            handler.encode_instruction(
+                "MOVEC",
+                &[
+                    Operand::ControlRegister {
+                        register: ControlRegisterKind::Urp,
+                        span: span(),
+                    },
+                    Operand::AddressRegister {
+                        register: "A0".to_string(),
+                        span: span(),
+                    },
+                ],
+                &ctx,
+            ),
+            &[0x4E, 0x7A, 0x88, 0x06],
+        );
+
+        expect_encoded(
+            handler.encode_instruction(
+                "MOVEC",
+                &[
+                    Operand::ControlRegister {
+                        register: ControlRegisterKind::Mmusr,
+                        span: span(),
+                    },
+                    Operand::DataRegister {
+                        register: "D1".to_string(),
+                        span: span(),
+                    },
+                ],
+                &ctx,
+            ),
+            &[0x4E, 0x7A, 0x18, 0x05],
+        );
+
+        expect_encoded(
+            handler.encode_instruction(
+                "MOVEC",
+                &[
+                    Operand::ControlRegister {
+                        register: ControlRegisterKind::Dtt1,
+                        span: span(),
+                    },
+                    Operand::AddressRegister {
+                        register: "A1".to_string(),
+                        span: span(),
+                    },
+                ],
+                &ctx,
+            ),
+            &[0x4E, 0x7A, 0x90, 0x07],
+        );
     }
 
     #[test]

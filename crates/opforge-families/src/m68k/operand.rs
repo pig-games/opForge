@@ -43,6 +43,14 @@ pub enum ControlRegisterKind {
     Caar,
     Msp,
     Isp,
+    Tc,
+    Itt0,
+    Itt1,
+    Dtt0,
+    Dtt1,
+    Mmusr,
+    Urp,
+    Srp,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

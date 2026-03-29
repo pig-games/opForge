@@ -158,7 +158,7 @@ the remediation work and the follow-up spec.
   - Definition of done: `encode_chk` returns `NotFound` for `.L`; m68020
     `CHK.L` path is implemented; positive test for `CHK.L` on 68020 passes
 
-- [ ] Item 7 — Add 68040 MMU / translation-control registers to `ControlRegisterKind` and MOVEC handler
+- [x] Item 7 — Add 68040 MMU / translation-control registers to `ControlRegisterKind` and MOVEC handler
   - Source requirement or finding IDs: RVW-2026-03-29-007; Testing Gap 6
   - Expected closure: fully closes RVW-2026-03-29-007; fully addresses Testing Gap 6
   - Expected files:

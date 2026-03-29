@@ -83,7 +83,15 @@ impl M68010CpuHandler {
             ControlRegisterKind::Cacr
             | ControlRegisterKind::Caar
             | ControlRegisterKind::Msp
-            | ControlRegisterKind::Isp => None,
+            | ControlRegisterKind::Isp
+            | ControlRegisterKind::Tc
+            | ControlRegisterKind::Itt0
+            | ControlRegisterKind::Itt1
+            | ControlRegisterKind::Dtt0
+            | ControlRegisterKind::Dtt1
+            | ControlRegisterKind::Mmusr
+            | ControlRegisterKind::Urp
+            | ControlRegisterKind::Srp => None,
         }
     }
 

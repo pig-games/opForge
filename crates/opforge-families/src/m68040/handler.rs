@@ -57,6 +57,14 @@ impl M68040CpuHandler {
             ControlRegisterKind::Cacr => Some(0x002),
             ControlRegisterKind::Msp => Some(0x803),
             ControlRegisterKind::Isp => Some(0x804),
+            ControlRegisterKind::Tc => Some(0x003),
+            ControlRegisterKind::Itt0 => Some(0x004),
+            ControlRegisterKind::Itt1 => Some(0x005),
+            ControlRegisterKind::Dtt0 => Some(0x006),
+            ControlRegisterKind::Dtt1 => Some(0x007),
+            ControlRegisterKind::Mmusr => Some(0x805),
+            ControlRegisterKind::Urp => Some(0x806),
+            ControlRegisterKind::Srp => Some(0x807),
             ControlRegisterKind::Caar => None,
         }
     }

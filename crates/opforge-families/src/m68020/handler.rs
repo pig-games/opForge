@@ -38,6 +38,14 @@ impl M68020CpuHandler {
             ControlRegisterKind::Caar => Some(0x802),
             ControlRegisterKind::Msp => Some(0x803),
             ControlRegisterKind::Isp => Some(0x804),
+            ControlRegisterKind::Tc
+            | ControlRegisterKind::Itt0
+            | ControlRegisterKind::Itt1
+            | ControlRegisterKind::Dtt0
+            | ControlRegisterKind::Dtt1
+            | ControlRegisterKind::Mmusr
+            | ControlRegisterKind::Urp
+            | ControlRegisterKind::Srp => None,
         }
     }
 

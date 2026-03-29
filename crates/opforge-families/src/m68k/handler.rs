@@ -3265,7 +3265,7 @@ impl M68KFamilyHandler {
                             return EncodeResult::error_with_span(err, target.span());
                         }
                     };
-                    target_value - (ctx.current_address() as i64 + 4)
+                    target_value - (ctx.current_address() as i64 + 2)
                 };
                 let Some(encoded) = Self::encode_signed_word(offset) else {
                     return EncodeResult::error_with_span(
@@ -3289,7 +3289,7 @@ impl M68KFamilyHandler {
                             return EncodeResult::error_with_span(err, target.span());
                         }
                     };
-                    target_value - (ctx.current_address() as i64 + 4)
+                    target_value - (ctx.current_address() as i64 + 2)
                 };
                 let Some(encoded) = Self::encode_signed_word(word_offset) else {
                     return EncodeResult::error_with_span(
@@ -3340,7 +3340,7 @@ impl M68KFamilyHandler {
                     return EncodeResult::error_with_span(err, target.span());
                 }
             };
-            target_value - (ctx.current_address() as i64 + 6)
+            target_value - (ctx.current_address() as i64 + 2)
         };
         if !((i32::MIN as i64)..=(i32::MAX as i64)).contains(&offset) {
             return EncodeResult::error_with_span(
@@ -7145,7 +7145,7 @@ mod tests {
                 }],
                 &ctx,
             ),
-            &[0x60, 0x00, 0x00, 0x00],
+            &[0x60, 0x00, 0x00, 0x02],
         );
 
         expect_encoded(
@@ -7157,7 +7157,7 @@ mod tests {
                 }],
                 &ctx,
             ),
-            &[0x66, 0x00, 0x00, 0x04],
+            &[0x66, 0x00, 0x00, 0x06],
         );
 
         expect_encoded(
@@ -7169,7 +7169,7 @@ mod tests {
                 }],
                 &ctx,
             ),
-            &[0x61, 0x00, 0x00, 0x04],
+            &[0x61, 0x00, 0x00, 0x06],
         );
 
         expect_encoded(handler.encode_instruction("RTS", &[], &ctx), &[0x4E, 0x75]);
@@ -9397,5 +9397,52 @@ mod tests {
             }
             other => panic!("expected ASL range diagnostic, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn branch_word_displacements_are_based_on_pc_plus_two() {
+        let handler = M68KFamilyHandler::new();
+        let ctx = TestContext {
+            current_address: 0x1000,
+            pass: 2,
+            ..Default::default()
+        }
+        .with_symbol("target", 0x1008);
+
+        expect_encoded(
+            handler.encode_instruction(
+                "BRA.W",
+                &[Operand::BranchTarget {
+                    expr: Expr::Identifier("target".to_string(), span()),
+                    span: span(),
+                }],
+                &ctx,
+            ),
+            &[0x60, 0x00, 0x00, 0x06],
+        );
+    }
+
+    #[test]
+    fn branch_long_displacements_are_based_on_pc_plus_two() {
+        let handler = M68KFamilyHandler::new();
+        let ctx = TestContext {
+            current_address: 0x1000,
+            pass: 2,
+            ..Default::default()
+        }
+        .with_symbol("target", 0x1008);
+
+        expect_encoded(
+            handler.encode_long_branch_instruction(
+                "BRA",
+                None,
+                &[Operand::BranchTarget {
+                    expr: Expr::Identifier("target".to_string(), span()),
+                    span: span(),
+                }],
+                &ctx,
+            ),
+            &[0x60, 0xFF, 0x00, 0x00, 0x00, 0x06],
+        );
     }
 }

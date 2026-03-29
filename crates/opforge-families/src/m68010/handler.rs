@@ -389,6 +389,10 @@ impl CpuHandler for M68010CpuHandler {
                 M68020MnemonicKind::Extb => {
                     EncodeResult::error("EXTB is only supported on m68020 and later")
                 }
+                _ => EncodeResult::error(format!(
+                    "{} is only supported on m68020 and later",
+                    parsed.display_name
+                )),
             };
         }
 

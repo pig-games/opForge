@@ -2,6 +2,88 @@
 
 use super::*;
 
+fn base_mnemonic_name(name: &str) -> &str {
+    name.split('.').next().unwrap_or(name)
+}
+
+fn is_m68k_cas2_mnemonic(name: &str) -> bool {
+    base_mnemonic_name(name).eq_ignore_ascii_case("CAS2")
+}
+
+fn is_m68k_bitfield_mnemonic(name: &str) -> bool {
+    matches!(
+        base_mnemonic_name(name).to_ascii_uppercase().as_str(),
+        "BFTST" | "BFEXTU" | "BFCHG" | "BFEXTS" | "BFCLR" | "BFFFO" | "BFSET" | "BFINS"
+    )
+}
+
+fn is_m68k_bitfield_operand(name: &str, operand_index: usize) -> bool {
+    match base_mnemonic_name(name).to_ascii_uppercase().as_str() {
+        "BFINS" => operand_index == 1,
+        "BFTST" | "BFEXTU" | "BFCHG" | "BFEXTS" | "BFCLR" | "BFFFO" | "BFSET" => operand_index == 0,
+        _ => false,
+    }
+}
+
+fn build_call_expr(name: &str, args: Vec<Expr>) -> Expr {
+    let start = span_of_expr(
+        args.first()
+            .expect("call expressions require at least one arg"),
+    );
+    let end = span_of_expr(
+        args.last()
+            .expect("call expressions require at least one arg"),
+    );
+    Expr::Call {
+        name: name.to_string(),
+        args,
+        span: Span {
+            line: start.line,
+            col_start: start.col_start,
+            col_end: end.col_end,
+        },
+    }
+}
+
+fn parse_m68k_statement_operand(
+    parser: &mut Parser,
+    mnemonic: Option<&str>,
+    operand_index: usize,
+) -> Result<Expr, ParseError> {
+    let mut expr = parser.parse_expr()?;
+
+    if mnemonic.is_some_and(is_m68k_cas2_mnemonic)
+        && operand_index <= 2
+        && parser.consume_kind(TokenKind::Colon)
+    {
+        let right = parser.parse_expr()?;
+        expr = build_call_expr(".pair", vec![expr, right]);
+    }
+
+    if mnemonic.is_some_and(is_m68k_bitfield_mnemonic)
+        && mnemonic.is_some_and(|name| is_m68k_bitfield_operand(name, operand_index))
+        && parser.consume_kind(TokenKind::OpenBrace)
+    {
+        let offset = parser.parse_expr()?;
+        if !parser.consume_kind(TokenKind::Colon) {
+            return Err(ParseError {
+                message: "Expected ':' in bit-field selector".to_string(),
+                span: parser.current_span(),
+            });
+        }
+        let width = parser.parse_expr()?;
+        if !parser.consume_kind(TokenKind::CloseBrace) {
+            return Err(ParseError {
+                message: "Missing '}' in bit-field selector".to_string(),
+                span: parser.current_span(),
+            });
+        }
+        expr = build_call_expr(".bitfield", vec![expr, offset, width]);
+    }
+
+    Ok(expr)
+}
+
 pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, ParseError> {
     if parser.tokens.is_empty() {
         return Ok(LineAst::Empty);
@@ -318,7 +400,7 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
         if parser.consume_comma() {
             let comma_span = parser.prev_span();
             operands.push(Expr::Number("0".to_string(), comma_span));
-            match parser.parse_expr() {
+            match parse_m68k_statement_operand(parser, mnemonic.as_deref(), operands.len()) {
                 Ok(expr) => operands.push(expr),
                 Err(err) => {
                     operands.push(Expr::Error(err.message, err.span));
@@ -330,7 +412,7 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
                 }
             }
         } else {
-            match parser.parse_expr() {
+            match parse_m68k_statement_operand(parser, mnemonic.as_deref(), operands.len()) {
                 Ok(expr) => operands.push(expr),
                 Err(err) => {
                     operands.push(Expr::Error(err.message, err.span));
@@ -343,7 +425,7 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
             }
         }
         while parser.consume_comma() {
-            match parser.parse_expr() {
+            match parse_m68k_statement_operand(parser, mnemonic.as_deref(), operands.len()) {
                 Ok(expr) => operands.push(expr),
                 Err(err) => {
                     operands.push(Expr::Error(err.message, err.span));

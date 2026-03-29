@@ -188,6 +188,56 @@ impl CpuHandler for M68020CpuHandler {
                 M68020MnemonicKind::Extb => {
                     self.family.encode_extb_instruction(parsed.size, operands)
                 }
+                M68020MnemonicKind::Cas => {
+                    self.family
+                        .encode_cas_instruction(parsed.size, operands, ctx)
+                }
+                M68020MnemonicKind::Cas2 => {
+                    self.family.encode_cas2_instruction(parsed.size, operands)
+                }
+                M68020MnemonicKind::Chk2 => self.family.encode_chk2_cmp2_instruction(
+                    "CHK2",
+                    true,
+                    parsed.size,
+                    operands,
+                    ctx,
+                ),
+                M68020MnemonicKind::Cmp2 => self.family.encode_chk2_cmp2_instruction(
+                    "CMP2",
+                    false,
+                    parsed.size,
+                    operands,
+                    ctx,
+                ),
+                M68020MnemonicKind::BitField(mnemonic) => {
+                    self.family
+                        .encode_bit_field_instruction(mnemonic, parsed.size, operands, ctx)
+                }
+                M68020MnemonicKind::Pack => self.family.encode_pack_unpk_instruction(
+                    "PACK",
+                    0x8140,
+                    parsed.size,
+                    operands,
+                    ctx,
+                ),
+                M68020MnemonicKind::Unpk => self.family.encode_pack_unpk_instruction(
+                    "UNPK",
+                    0x8180,
+                    parsed.size,
+                    operands,
+                    ctx,
+                ),
+                M68020MnemonicKind::Trapcc(condition) => {
+                    self.family
+                        .encode_trapcc_instruction(condition, parsed.size, operands, ctx)
+                }
+                M68020MnemonicKind::Callm => {
+                    self.family
+                        .encode_callm_instruction(parsed.size, operands, ctx)
+                }
+                M68020MnemonicKind::Rtm => {
+                    self.family.encode_rtm_instruction(parsed.size, operands)
+                }
             };
         };
         if parsed.has_unknown_size_suffix {

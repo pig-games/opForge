@@ -5,12 +5,13 @@
 
 use super::is_register;
 use super::operand::{
-    span_from_expr, span_from_exprs, AbsoluteSize, ControlRegisterKind, FamilyOperand,
-    FullExtensionBase, FullExtensionIndex, IndexScale, IndexSize, MemoryIndirectionKind, Operand,
-    RegisterListRegister, SpecialRegisterKind,
+    span_from_expr, span_from_exprs, AbsoluteSize, BitFieldSelector, ControlRegisterKind,
+    FamilyOperand, FullExtensionBase, FullExtensionIndex, IndexScale, IndexSize,
+    MemoryIndirectionKind, Operand, RegisterListRegister, SpecialRegisterKind,
 };
 use super::table::{
-    parse_mnemonic, BitMnemonic, ConditionCode, MnemonicKind, OperationSize, ShiftMnemonic,
+    parse_mnemonic, BitFieldMnemonic, BitMnemonic, ConditionCode, MnemonicKind, OperationSize,
+    ShiftMnemonic,
 };
 use opcore::expression::expr_span;
 use opcore::parser::{BinaryOp, Expr, UnaryOp};
@@ -199,6 +200,103 @@ impl M68KFamilyHandler {
     fn parse_index_register(expr: &Expr) -> Option<(String, IndexSize, opcore::tokenizer::Span)> {
         let (register, size, scale, span) = Self::parse_scaled_index_register(expr)?;
         (scale == IndexScale::One).then_some((register, size, span))
+    }
+
+    fn parse_general_register(expr: &Expr) -> Option<(String, opcore::tokenizer::Span)> {
+        Self::parse_data_register(expr).or_else(|| Self::parse_address_register(expr))
+    }
+
+    fn parse_pair_operand(
+        &self,
+        args: &[Expr],
+        span: opcore::tokenizer::Span,
+    ) -> Result<FamilyOperand, FamilyParseError> {
+        let [left, right] = args else {
+            return Err(FamilyParseError::new(
+                "68020 register-pair syntax expects exactly two elements",
+                span,
+            ));
+        };
+
+        if let (Some((left_name, _)), Some((right_name, _))) = (
+            Self::parse_general_register(left),
+            Self::parse_general_register(right),
+        ) {
+            return Ok(FamilyOperand::RegisterPair {
+                left: left_name,
+                right: right_name,
+                span,
+            });
+        }
+
+        if let (Expr::Indirect(left_inner, _), Expr::Indirect(right_inner, _)) = (left, right) {
+            let Some((left_name, _)) = Self::parse_general_register(left_inner.as_ref()) else {
+                return Err(FamilyParseError::new(
+                    "68020 indirect register pairs require simple (Rn) operands",
+                    expr_span(left),
+                ));
+            };
+            let Some((right_name, _)) = Self::parse_general_register(right_inner.as_ref()) else {
+                return Err(FamilyParseError::new(
+                    "68020 indirect register pairs require simple (Rn) operands",
+                    expr_span(right),
+                ));
+            };
+            return Ok(FamilyOperand::IndirectRegisterPair {
+                left: left_name,
+                right: right_name,
+                span,
+            });
+        }
+
+        Err(FamilyParseError::new(
+            "68020 register-pair syntax requires Rn:Rn or (Rn):(Rn)",
+            span,
+        ))
+    }
+
+    fn parse_bit_field_selector(
+        expr: &Expr,
+        role: &str,
+    ) -> Result<BitFieldSelector, FamilyParseError> {
+        if let Some((register, span)) = Self::parse_data_register(expr) {
+            return Ok(BitFieldSelector::DataRegister { register, span });
+        }
+
+        if Self::parse_register_name(expr).is_some() {
+            return Err(FamilyParseError::new(
+                format!("68020 bit-field {role} must be an expression or data register"),
+                expr_span(expr),
+            ));
+        }
+
+        Ok(BitFieldSelector::Immediate {
+            expr: expr.clone(),
+            span: expr_span(expr),
+        })
+    }
+
+    fn parse_bit_field_operand(
+        &self,
+        args: &[Expr],
+        span: opcore::tokenizer::Span,
+    ) -> Result<FamilyOperand, FamilyParseError> {
+        let [base, offset, width] = args else {
+            return Err(FamilyParseError::new(
+                "68020 bit-field syntax expects base, offset, and width",
+                span,
+            ));
+        };
+        let base = self.parse_single_operand(base)?;
+        let offset = Self::parse_bit_field_selector(offset, "offset")?;
+        let width = Self::parse_bit_field_selector(width, "width")?;
+
+        Ok(FamilyOperand::BitField {
+            base: Box::new(base),
+            offset,
+            width,
+            span,
+        })
     }
 
     fn parse_full_extension_displacement(
@@ -896,6 +994,17 @@ impl M68KFamilyHandler {
     }
 
     fn parse_single_operand(&self, expr: &Expr) -> Result<FamilyOperand, FamilyParseError> {
+        if let Expr::Call { name, args, span } = expr {
+            return match name.as_str() {
+                ".pair" => self.parse_pair_operand(args, *span),
+                ".bitfield" => self.parse_bit_field_operand(args, *span),
+                _ => Err(FamilyParseError::new(
+                    "unsupported Motorola 68000 operand form",
+                    *span,
+                )),
+            };
+        }
+
         if let Some((name, span)) = Self::parse_data_register(expr) {
             return Ok(FamilyOperand::DataRegister {
                 register: name,
@@ -3808,6 +3917,676 @@ impl M68KFamilyHandler {
         EncodeResult::ok(bytes)
     }
 
+    fn m68020_cas_size_bits(
+        mnemonic: &str,
+        size: Option<OperationSize>,
+    ) -> Result<u16, EncodeResult<Vec<u8>>> {
+        let Some(size) = size else {
+            return Err(EncodeResult::error(format!(
+                "{mnemonic} requires an explicit size suffix"
+            )));
+        };
+        match size {
+            OperationSize::Byte => Ok(0b01),
+            OperationSize::Word => Ok(0b10),
+            OperationSize::Long => Ok(0b11),
+        }
+    }
+
+    pub(crate) fn encode_cas_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let size_bits = match Self::m68020_cas_size_bits("CAS", size) {
+            Ok(bits) => bits,
+            Err(err) => return err,
+        };
+        let Some(size) = size else {
+            unreachable!("validated above");
+        };
+        let [compare, update, destination] = operands else {
+            return EncodeResult::error("CAS expects compare, update, and destination operands");
+        };
+
+        let Operand::DataRegister {
+            register: compare_register,
+            ..
+        } = compare
+        else {
+            return EncodeResult::error_with_span(
+                format!(
+                    "CAS{} compare operand must be a data register",
+                    size.suffix()
+                ),
+                compare.span(),
+            );
+        };
+        let Some(compare_bits) = Self::data_register_number(compare_register) else {
+            return EncodeResult::error_with_span(
+                format!("invalid CAS{} compare register", size.suffix()),
+                compare.span(),
+            );
+        };
+
+        let Operand::DataRegister {
+            register: update_register,
+            ..
+        } = update
+        else {
+            return EncodeResult::error_with_span(
+                format!(
+                    "CAS{} update operand must be a data register",
+                    size.suffix()
+                ),
+                update.span(),
+            );
+        };
+        let Some(update_bits) = Self::data_register_number(update_register) else {
+            return EncodeResult::error_with_span(
+                format!("invalid CAS{} update register", size.suffix()),
+                update.span(),
+            );
+        };
+
+        let destination_ea = match self.encode_effective_address(destination, Some(size), ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::memory_alterable(destination_ea.kind) {
+            return EncodeResult::error_with_span(
+                format!(
+                    "invalid destination effective address for CAS{}",
+                    size.suffix()
+                ),
+                destination.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(
+            &mut bytes,
+            0x08C0 | (size_bits << 9) | Self::effective_address_bits(destination_ea.bits),
+        );
+        Self::emit_word(
+            &mut bytes,
+            ((update_bits as u16) << 6) | compare_bits as u16,
+        );
+        bytes.extend_from_slice(&destination_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_cas2_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+    ) -> EncodeResult<Vec<u8>> {
+        let size_bits = match size {
+            Some(OperationSize::Word) => 0b10,
+            Some(OperationSize::Long) => 0b11,
+            Some(OperationSize::Byte) => {
+                return EncodeResult::error("CAS2 does not support .B size");
+            }
+            None => return EncodeResult::error("CAS2 requires an explicit .W or .L size suffix"),
+        };
+        let [compare_pair, update_pair, memory_pair] = operands else {
+            return EncodeResult::error("CAS2 expects compare, update, and memory-pair operands");
+        };
+
+        let Operand::RegisterPair {
+            left: compare_left,
+            right: compare_right,
+            ..
+        } = compare_pair
+        else {
+            return EncodeResult::error_with_span(
+                "CAS2 compare operand must be a data-register pair",
+                compare_pair.span(),
+            );
+        };
+        let (Some(compare_left_bits), Some(compare_right_bits)) = (
+            Self::data_register_number(compare_left),
+            Self::data_register_number(compare_right),
+        ) else {
+            return EncodeResult::error_with_span(
+                "CAS2 compare operand must be a data-register pair",
+                compare_pair.span(),
+            );
+        };
+
+        let Operand::RegisterPair {
+            left: update_left,
+            right: update_right,
+            ..
+        } = update_pair
+        else {
+            return EncodeResult::error_with_span(
+                "CAS2 update operand must be a data-register pair",
+                update_pair.span(),
+            );
+        };
+        let (Some(update_left_bits), Some(update_right_bits)) = (
+            Self::data_register_number(update_left),
+            Self::data_register_number(update_right),
+        ) else {
+            return EncodeResult::error_with_span(
+                "CAS2 update operand must be a data-register pair",
+                update_pair.span(),
+            );
+        };
+
+        let Operand::IndirectRegisterPair {
+            left: memory_left,
+            right: memory_right,
+            ..
+        } = memory_pair
+        else {
+            return EncodeResult::error_with_span(
+                "CAS2 memory operand must use (Rn):(Rn) register-pair syntax",
+                memory_pair.span(),
+            );
+        };
+        let (Some((memory_left_da, memory_left_bits)), Some((memory_right_da, memory_right_bits))) = (
+            Self::general_register_name_descriptor(memory_left),
+            Self::general_register_name_descriptor(memory_right),
+        ) else {
+            return EncodeResult::error_with_span(
+                "CAS2 memory operand must use (Rn):(Rn) register-pair syntax",
+                memory_pair.span(),
+            );
+        };
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x08FC | (size_bits << 9));
+        Self::emit_word(
+            &mut bytes,
+            (memory_left_da << 15)
+                | (memory_left_bits << 12)
+                | ((update_left_bits as u16) << 6)
+                | compare_left_bits as u16,
+        );
+        Self::emit_word(
+            &mut bytes,
+            (memory_right_da << 15)
+                | (memory_right_bits << 12)
+                | ((update_right_bits as u16) << 6)
+                | compare_right_bits as u16,
+        );
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_chk2_cmp2_instruction(
+        &self,
+        mnemonic: &str,
+        trap_on_failure: bool,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let Some(size) = size else {
+            return EncodeResult::error(format!(
+                "{mnemonic} requires an explicit size suffix (.B, .W, or .L)"
+            ));
+        };
+        let [bounds, register] = operands else {
+            return EncodeResult::error(format!(
+                "{mnemonic} expects a bounds operand and register"
+            ));
+        };
+        let Some((address_bit, register_bits)) = Self::general_register_descriptor(register) else {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} register operand must be a data or address register"),
+                register.span(),
+            );
+        };
+
+        let bounds_ea = match self.encode_effective_address(bounds, Some(size), ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::single_ea_control_mode(bounds_ea.kind) {
+            return EncodeResult::error_with_span(
+                format!(
+                    "invalid bounds effective address for {mnemonic}{}",
+                    size.suffix()
+                ),
+                bounds.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(
+            &mut bytes,
+            0x00C0 | (Self::size_bits(size) << 9) | Self::effective_address_bits(bounds_ea.bits),
+        );
+        Self::emit_word(
+            &mut bytes,
+            (address_bit << 15) | (register_bits << 12) | ((trap_on_failure as u16) << 11),
+        );
+        bytes.extend_from_slice(&bounds_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_bit_field_selector_offset(
+        selector: &BitFieldSelector,
+        mnemonic: BitFieldMnemonic,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<u16, EncodeResult<Vec<u8>>> {
+        match selector {
+            BitFieldSelector::DataRegister { register, span } => {
+                let Some(bits) = Self::data_register_number(register) else {
+                    return Err(EncodeResult::error_with_span(
+                        format!("invalid {} offset register", mnemonic.as_str()),
+                        *span,
+                    ));
+                };
+                Ok((1_u16 << 11) | ((bits as u16) << 6))
+            }
+            BitFieldSelector::Immediate { expr, span } => {
+                let (value, _) = match Self::eval_expr_or_placeholder(expr, ctx, 0) {
+                    Ok(result) => result,
+                    Err(err) => return Err(EncodeResult::error_with_span(err, *span)),
+                };
+                if !(0..=31).contains(&value) {
+                    return Err(EncodeResult::error_with_span(
+                        format!(
+                            "{} bit-field offset {value} out of range (0-31)",
+                            mnemonic.as_str()
+                        ),
+                        *span,
+                    ));
+                }
+                Ok(((value as u16) & 0x1F) << 6)
+            }
+        }
+    }
+
+    fn encode_bit_field_selector_width(
+        selector: &BitFieldSelector,
+        mnemonic: BitFieldMnemonic,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<u16, EncodeResult<Vec<u8>>> {
+        match selector {
+            BitFieldSelector::DataRegister { register, span } => {
+                let Some(bits) = Self::data_register_number(register) else {
+                    return Err(EncodeResult::error_with_span(
+                        format!("invalid {} width register", mnemonic.as_str()),
+                        *span,
+                    ));
+                };
+                Ok((1_u16 << 5) | bits as u16)
+            }
+            BitFieldSelector::Immediate { expr, span } => {
+                let (value, _) = match Self::eval_expr_or_placeholder(expr, ctx, 1) {
+                    Ok(result) => result,
+                    Err(err) => return Err(EncodeResult::error_with_span(err, *span)),
+                };
+                if !(1..=32).contains(&value) {
+                    return Err(EncodeResult::error_with_span(
+                        format!(
+                            "{} bit-field width {value} out of range (1-32)",
+                            mnemonic.as_str()
+                        ),
+                        *span,
+                    ));
+                }
+                Ok((value as u16) & 0x1F)
+            }
+        }
+    }
+
+    pub(crate) fn encode_bit_field_instruction(
+        &self,
+        mnemonic: BitFieldMnemonic,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error(format!(
+                "{} does not accept a size suffix",
+                mnemonic.as_str()
+            ));
+        }
+
+        let (register_bits, bit_field_operand) = match mnemonic {
+            BitFieldMnemonic::Bftst
+            | BitFieldMnemonic::Bfchg
+            | BitFieldMnemonic::Bfclr
+            | BitFieldMnemonic::Bfset => {
+                let [bit_field] = operands else {
+                    return EncodeResult::error(format!(
+                        "{} expects one operand",
+                        mnemonic.as_str()
+                    ));
+                };
+                (0_u16, bit_field)
+            }
+            BitFieldMnemonic::Bfextu | BitFieldMnemonic::Bfexts | BitFieldMnemonic::Bfffo => {
+                let [bit_field, register_operand] = operands else {
+                    return EncodeResult::error(format!(
+                        "{} expects a bit-field operand and data-register destination",
+                        mnemonic.as_str()
+                    ));
+                };
+                let Operand::DataRegister { register, .. } = register_operand else {
+                    return EncodeResult::error_with_span(
+                        format!("{} destination must be a data register", mnemonic.as_str()),
+                        register_operand.span(),
+                    );
+                };
+                let Some(bits) = Self::data_register_number(register) else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {} destination register", mnemonic.as_str()),
+                        register_operand.span(),
+                    );
+                };
+                ((bits as u16) << 12, bit_field)
+            }
+            BitFieldMnemonic::Bfins => {
+                let [register_operand, bit_field] = operands else {
+                    return EncodeResult::error(
+                        "BFINS expects a data-register source and bit-field destination",
+                    );
+                };
+                let Operand::DataRegister { register, .. } = register_operand else {
+                    return EncodeResult::error_with_span(
+                        "BFINS source must be a data register",
+                        register_operand.span(),
+                    );
+                };
+                let Some(bits) = Self::data_register_number(register) else {
+                    return EncodeResult::error_with_span(
+                        "invalid BFINS source register",
+                        register_operand.span(),
+                    );
+                };
+                ((bits as u16) << 12, bit_field)
+            }
+        };
+
+        let Operand::BitField {
+            base,
+            offset,
+            width,
+            ..
+        } = bit_field_operand
+        else {
+            return EncodeResult::error_with_span(
+                format!("{} expects bit-field brace syntax", mnemonic.as_str()),
+                bit_field_operand.span(),
+            );
+        };
+
+        let base_ea = match self.encode_effective_address(base.as_ref(), None, ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        let base_ok = match mnemonic {
+            BitFieldMnemonic::Bftst
+            | BitFieldMnemonic::Bfextu
+            | BitFieldMnemonic::Bfexts
+            | BitFieldMnemonic::Bfffo => Self::bit_field_read_mode(base_ea.kind),
+            BitFieldMnemonic::Bfchg
+            | BitFieldMnemonic::Bfclr
+            | BitFieldMnemonic::Bfset
+            | BitFieldMnemonic::Bfins => Self::bit_field_write_mode(base_ea.kind),
+        };
+        if !base_ok {
+            return EncodeResult::error_with_span(
+                format!(
+                    "invalid bit-field effective address for {}",
+                    mnemonic.as_str()
+                ),
+                base.span(),
+            );
+        }
+
+        let offset_bits = match Self::encode_bit_field_selector_offset(offset, mnemonic, ctx) {
+            Ok(bits) => bits,
+            Err(err) => return err,
+        };
+        let width_bits = match Self::encode_bit_field_selector_width(width, mnemonic, ctx) {
+            Ok(bits) => bits,
+            Err(err) => return err,
+        };
+
+        let mut bytes = Vec::new();
+        Self::emit_word(
+            &mut bytes,
+            mnemonic.opcode_base() | Self::effective_address_bits(base_ea.bits),
+        );
+        Self::emit_word(&mut bytes, register_bits | offset_bits | width_bits);
+        bytes.extend_from_slice(&base_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_pack_unpk_instruction(
+        &self,
+        mnemonic: &str,
+        opcode_base: u16,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
+        }
+        let [src, dst, adjustment] = operands else {
+            return EncodeResult::error(format!(
+                "{mnemonic} expects source, destination, and adjustment operands"
+            ));
+        };
+        let Operand::Immediate { expr, .. } = adjustment else {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} adjustment must be an immediate value"),
+                adjustment.span(),
+            );
+        };
+        let (adjustment_value, _) = match Self::eval_expr_or_placeholder(expr, ctx, 0) {
+            Ok(result) => result,
+            Err(err) => return EncodeResult::error_with_span(err, adjustment.span()),
+        };
+        let Some(adjustment_word) = Self::encode_signed_word(adjustment_value) else {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} adjustment {adjustment_value} out of 16-bit signed range"),
+                adjustment.span(),
+            );
+        };
+
+        let (mode_bit, src_bits, dst_bits) = match (src, dst) {
+            (
+                Operand::DataRegister {
+                    register: src_reg, ..
+                },
+                Operand::DataRegister {
+                    register: dst_reg, ..
+                },
+            ) => {
+                let Some(src_bits) = Self::data_register_number(src_reg) else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {mnemonic} source register"),
+                        src.span(),
+                    );
+                };
+                let Some(dst_bits) = Self::data_register_number(dst_reg) else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {mnemonic} destination register"),
+                        dst.span(),
+                    );
+                };
+                (0_u16, src_bits as u16, dst_bits as u16)
+            }
+            (
+                Operand::AddressPredecrement {
+                    register: src_reg, ..
+                },
+                Operand::AddressPredecrement {
+                    register: dst_reg, ..
+                },
+            ) => {
+                let Some(src_bits) = Self::address_register_number(src_reg) else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {mnemonic} source register"),
+                        src.span(),
+                    );
+                };
+                let Some(dst_bits) = Self::address_register_number(dst_reg) else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {mnemonic} destination register"),
+                        dst.span(),
+                    );
+                };
+                (1_u16, src_bits as u16, dst_bits as u16)
+            }
+            _ => {
+                return EncodeResult::error(format!(
+                    "{mnemonic} expects either Dx,Dy or -(Ax),-(Ay) operands"
+                ));
+            }
+        };
+
+        let mut bytes = Vec::new();
+        Self::emit_word(
+            &mut bytes,
+            opcode_base | (dst_bits << 9) | (mode_bit << 3) | src_bits,
+        );
+        Self::emit_word(&mut bytes, adjustment_word);
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_trapcc_instruction(
+        &self,
+        condition: ConditionCode,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let opmode = match size {
+            None => 0b100,
+            Some(OperationSize::Word) => 0b010,
+            Some(OperationSize::Long) => 0b011,
+            Some(OperationSize::Byte) => {
+                return EncodeResult::error("TRAPcc does not support .B size");
+            }
+        };
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x50F8 | (condition.opcode_bits() << 8) | opmode);
+
+        match size {
+            None => {
+                if !operands.is_empty() {
+                    return EncodeResult::error(
+                        "unsized TRAPcc does not take an immediate operand",
+                    );
+                }
+            }
+            Some(size @ (OperationSize::Word | OperationSize::Long)) => {
+                let [immediate] = operands else {
+                    return EncodeResult::error(format!(
+                        "TRAPcc{} expects one immediate operand",
+                        size.suffix()
+                    ));
+                };
+                let Operand::Immediate { expr, .. } = immediate else {
+                    return EncodeResult::error_with_span(
+                        format!("TRAPcc{} operand must be immediate", size.suffix()),
+                        immediate.span(),
+                    );
+                };
+                let (value, _) = match Self::eval_expr_or_placeholder(expr, ctx, 0) {
+                    Ok(result) => result,
+                    Err(err) => return EncodeResult::error_with_span(err, immediate.span()),
+                };
+                let Some(encoded) = Self::encode_immediate(size, value) else {
+                    return EncodeResult::error_with_span(
+                        format!("TRAPcc{} immediate {value} out of range", size.suffix()),
+                        immediate.span(),
+                    );
+                };
+                bytes.extend_from_slice(&encoded);
+            }
+            Some(OperationSize::Byte) => unreachable!("handled above"),
+        }
+
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_callm_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error("CALLM does not accept a size suffix");
+        }
+        let [immediate, destination] = operands else {
+            return EncodeResult::error("CALLM expects an immediate count and control-mode target");
+        };
+        let Operand::Immediate { expr, .. } = immediate else {
+            return EncodeResult::error_with_span(
+                "CALLM count operand must be immediate",
+                immediate.span(),
+            );
+        };
+        let (count, _) = match Self::eval_expr_or_placeholder(expr, ctx, 0) {
+            Ok(result) => result,
+            Err(err) => return EncodeResult::error_with_span(err, immediate.span()),
+        };
+        let Some(count_bits) = Self::encode_unsigned_byte(count) else {
+            return EncodeResult::error_with_span(
+                format!("CALLM count {count} out of range (0-255)"),
+                immediate.span(),
+            );
+        };
+
+        let destination_ea = match self.encode_effective_address(destination, None, ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::single_ea_control_mode(destination_ea.kind) {
+            return EncodeResult::error_with_span(
+                "invalid destination effective address for CALLM",
+                destination.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(
+            &mut bytes,
+            0x06C0 | Self::effective_address_bits(destination_ea.bits),
+        );
+        Self::emit_word(&mut bytes, count_bits as u16);
+        bytes.extend_from_slice(&destination_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_rtm_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error("RTM does not accept a size suffix");
+        }
+        let [register] = operands else {
+            return EncodeResult::error("RTM expects one data or address register operand");
+        };
+        let Some((address_bit, register_bits)) = Self::general_register_descriptor(register) else {
+            return EncodeResult::error_with_span(
+                "RTM operand must be a data or address register",
+                register.span(),
+            );
+        };
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x06C0 | (address_bit << 3) | register_bits);
+        EncodeResult::ok(bytes)
+    }
+
     pub(crate) fn encode_effective_address(
         &self,
         operand: &Operand,
@@ -4054,6 +4833,16 @@ impl M68KFamilyHandler {
                     })
                 }
             },
+            Operand::RegisterPair { .. } | Operand::IndirectRegisterPair { .. } => {
+                Err(EncodeResult::error_with_span(
+                    "68020 register pairs are not standalone effective addresses",
+                    operand.span(),
+                ))
+            }
+            Operand::BitField { .. } => Err(EncodeResult::error_with_span(
+                "68020 bit-field operands are not standalone effective addresses",
+                operand.span(),
+            )),
             Operand::RegisterList { .. } => Err(EncodeResult::error_with_span(
                 "68000 register lists are not valid effective addresses",
                 operand.span(),
@@ -4221,6 +5010,16 @@ impl M68KFamilyHandler {
         )
     }
 
+    fn control_alterable(kind: EffectiveAddressKind) -> bool {
+        matches!(
+            kind,
+            EffectiveAddressKind::AddressIndirect
+                | EffectiveAddressKind::AddressDisplacement
+                | EffectiveAddressKind::AddressIndexed
+                | EffectiveAddressKind::Absolute
+        )
+    }
+
     pub(crate) fn memory_alterable(kind: EffectiveAddressKind) -> bool {
         matches!(
             kind,
@@ -4235,6 +5034,14 @@ impl M68KFamilyHandler {
 
     fn eor_allows_destination(kind: EffectiveAddressKind) -> bool {
         Self::data_alterable(kind)
+    }
+
+    fn bit_field_read_mode(kind: EffectiveAddressKind) -> bool {
+        matches!(kind, EffectiveAddressKind::DataRegister) || Self::single_ea_control_mode(kind)
+    }
+
+    fn bit_field_write_mode(kind: EffectiveAddressKind) -> bool {
+        matches!(kind, EffectiveAddressKind::DataRegister) || Self::control_alterable(kind)
     }
 
     fn quick_allows_destination(kind: EffectiveAddressKind, size: OperationSize) -> bool {
@@ -4341,6 +5148,12 @@ impl M68KFamilyHandler {
             Operand::PcDisplacement { .. } => EffectiveAddressKind::PcDisplacement,
             Operand::PcIndexed { .. } => EffectiveAddressKind::PcIndexed,
             Operand::Absolute { .. } => EffectiveAddressKind::Absolute,
+            Operand::RegisterPair { .. } | Operand::IndirectRegisterPair { .. } => {
+                unreachable!("68020 register pairs are not effective addresses")
+            }
+            Operand::BitField { .. } => {
+                unreachable!("68020 bit-field wrappers are not direct effective addresses")
+            }
             Operand::RegisterList { .. } => {
                 unreachable!("68000 register lists are not effective addresses")
             }
@@ -4659,13 +5472,23 @@ impl M68KFamilyHandler {
     pub(crate) fn general_register_descriptor(operand: &Operand) -> Option<(u16, u16)> {
         match operand {
             Operand::DataRegister { register, .. } => {
-                Some((0, Self::data_register_number(register)? as u16))
+                Some(Self::general_register_name_descriptor(register)?)
             }
             Operand::AddressRegister { register, .. } => {
-                Some((1, Self::address_register_number(register)? as u16))
+                Some(Self::general_register_name_descriptor(register)?)
             }
             _ => None,
         }
+    }
+
+    fn general_register_name_descriptor(name: &str) -> Option<(u16, u16)> {
+        if let Some(reg) = Self::data_register_number(name) {
+            return Some((0, reg as u16));
+        }
+        if let Some(reg) = Self::address_register_number(name) {
+            return Some((1, reg as u16));
+        }
+        None
     }
 
     pub(crate) fn encode_moves_instruction(
@@ -4951,6 +5774,12 @@ mod tests {
     }
 
     fn parse_operand_from_source(source: &str) -> FamilyOperand {
+        let mut operands = parse_operands_from_source(source);
+        assert_eq!(operands.len(), 2, "expected MOVE source and destination");
+        operands.remove(0)
+    }
+
+    fn parse_operands_from_source(source: &str) -> Vec<FamilyOperand> {
         let mut parser = parser_from_line_with_registers(
             source,
             1,
@@ -4962,11 +5791,9 @@ mod tests {
             panic!("expected statement, got {line:?}");
         };
         let mnemonic = statement.mnemonic.as_deref().expect("mnemonic");
-        let mut operands = M68KFamilyHandler::new()
+        M68KFamilyHandler::new()
             .parse_operands(mnemonic, &statement.operands)
-            .expect("operand parse");
-        assert_eq!(operands.len(), 2, "expected MOVE source and destination");
-        operands.remove(0)
+            .expect("operand parse")
     }
 
     fn parse_operand_error_from_source(source: &str) -> FamilyParseError {
@@ -5925,6 +6752,65 @@ mod tests {
             .parse_operands("MOVE", &[operand])
             .expect_err("invalid suffix");
         assert!(err.message.contains("index register"));
+    }
+
+    #[test]
+    fn parses_cas2_register_pair_operands() {
+        let operands = parse_operands_from_source("    CAS2.L D0:D1,D2:D3,(A0):(A1)");
+        assert!(matches!(
+            operands.as_slice(),
+            [
+                FamilyOperand::RegisterPair { left, right, .. },
+                FamilyOperand::RegisterPair {
+                    left: update_left,
+                    right: update_right,
+                    ..
+                },
+                FamilyOperand::IndirectRegisterPair {
+                    left: memory_left,
+                    right: memory_right,
+                    ..
+                }
+            ] if left == "D0"
+                && right == "D1"
+                && update_left == "D2"
+                && update_right == "D3"
+                && memory_left == "A0"
+                && memory_right == "A1"
+        ));
+    }
+
+    #[test]
+    fn parses_bitfield_brace_operands() {
+        let operands = parse_operands_from_source("    BFEXTU ($1234).W{D1:8},D2");
+        let FamilyOperand::BitField {
+            base,
+            offset,
+            width,
+            ..
+        } = &operands[0]
+        else {
+            panic!("expected bit-field operand, got {:?}", operands[0]);
+        };
+        assert!(matches!(
+            base.as_ref(),
+            FamilyOperand::Absolute {
+                expr: Expr::Number(text, _),
+                size: AbsoluteSize::Word,
+                ..
+            } if text == "$1234"
+        ));
+        assert!(matches!(
+            offset,
+            BitFieldSelector::DataRegister { register, .. } if register == "D1"
+        ));
+        assert!(matches!(
+            width,
+            BitFieldSelector::Immediate {
+                expr: Expr::Number(text, _),
+                ..
+            } if text == "8"
+        ));
     }
 
     #[test]

@@ -3917,6 +3917,101 @@ fn m68020_long_branch_family_assembles() {
 }
 
 #[test]
+fn m68020_second_instruction_group_assembles() {
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    CAS.W D0,D1,(A0)"),
+        vec![0x0C, 0xD0, 0x00, 0x40]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    CAS2.L D0:D1,D2:D3,(A0):(A1)"),
+        vec![0x0E, 0xFC, 0x80, 0x80, 0x90, 0xC1]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    CHK2.L ($1234).W,A1"),
+        vec![0x04, 0xF8, 0x98, 0x00, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    CMP2.B ($1234).W,D0"),
+        vec![0x00, 0xF8, 0x00, 0x00, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    BFTST D0{3:5}"),
+        vec![0xE8, 0xC0, 0x00, 0xC5]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    BFEXTU ($1234).W{D1:8},D2"),
+        vec![0xE9, 0xF8, 0x28, 0x48, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    BFINS D3,(A0){4:D4}"),
+        vec![0xEF, 0xD0, 0x31, 0x24]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    PACK D0,D1,#-1"),
+        vec![0x83, 0x40, 0xFF, 0xFF]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    UNPK -(A0),-(A1),#1"),
+        vec![0x83, 0x88, 0x00, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    TRAPNE"),
+        vec![0x56, 0xFC]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    TRAPGT.W #$1234"),
+        vec![0x5E, 0xFA, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    CALLM #5,($1234).W"),
+        vec![0x06, 0xF8, 0x00, 0x05, 0x12, 0x34]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    RTM A3"),
+        vec![0x06, 0xCB]
+    );
+}
+
+#[test]
+fn m68020_second_instruction_group_reports_legality_errors_deterministically() {
+    for (line, expected) in [
+        (
+            "    CAS.B D0,D1,D0",
+            "invalid destination effective address for CAS.B",
+        ),
+        (
+            "    CAS2.B D0:D1,D2:D3,(A0):(A1)",
+            "CAS2 does not support .B size",
+        ),
+        (
+            "    CMP2.W D0,D1",
+            "invalid bounds effective address for CMP2.W",
+        ),
+        (
+            "    BFINS D0,(4,PC){1:1}",
+            "invalid bit-field effective address for BFINS",
+        ),
+        (
+            "    TRAPT #1",
+            "unsized TRAPcc does not take an immediate operand",
+        ),
+        ("    CALLM #300,($1234).W", "CALLM count 300 out of range"),
+        (
+            "    RTM #1",
+            "RTM operand must be a data or address register",
+        ),
+    ] {
+        let (status, message) = assemble_line_status(m68020_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+        let message = message.expect("expected legality diagnostic");
+        assert!(
+            message.contains(expected),
+            "unexpected diagnostic for '{line}': {message}"
+        );
+    }
+}
+
+#[test]
 fn earlier_m68k_cpus_reject_first_m68020_instruction_group() {
     for (cpu, cpu_name) in [(m68000_cpu_id, "baseline 68000"), (m68010_cpu_id, "m68010")] {
         for (line, expected) in [
@@ -3951,6 +4046,34 @@ fn earlier_m68k_cpus_reject_first_m68020_instruction_group() {
 }
 
 #[test]
+fn earlier_m68k_cpus_reject_second_instruction_group() {
+    for (cpu, cpu_name) in [(m68000_cpu_id, "baseline 68000"), (m68010_cpu_id, "m68010")] {
+        for line in [
+            "    CAS.W D0,D1,(A0)",
+            "    CAS2.W D0:D1,D2:D3,(A0):(A1)",
+            "    CHK2.W ($1234).W,D0",
+            "    BFTST D0{3:5}",
+            "    PACK D0,D1,#1",
+            "    TRAPNE",
+            "    CALLM #5,($1234).W",
+            "    RTM A0",
+        ] {
+            let (status, message) = assemble_line_status(cpu, line);
+            assert_eq!(
+                status,
+                LineStatus::Error,
+                "expected rejection on {cpu_name}"
+            );
+            let message = message.expect("expected later-family instruction diagnostic");
+            assert!(
+                message.contains("m68020 and later"),
+                "unexpected diagnostic on {cpu_name} for '{line}': {message}"
+            );
+        }
+    }
+}
+
+#[test]
 fn later_m68k_carry_forward_cpus_do_not_claim_first_m68020_instruction_group_yet() {
     for (cpu, cpu_name) in [(m68030_cpu_id, "m68030"), (m68040_cpu_id, "m68040")] {
         for line in [
@@ -3959,6 +4082,34 @@ fn later_m68k_carry_forward_cpus_do_not_claim_first_m68020_instruction_group_yet
             "    EXTB.L D0",
             "    MULU.L (A0),D1",
             "    MOVEC CACR,D0",
+        ] {
+            let (status, message) = assemble_line_status(cpu, line);
+            assert_eq!(
+                status,
+                LineStatus::Error,
+                "expected rejection on {cpu_name}"
+            );
+            let message = message.expect("expected missing later-family instruction diagnostic");
+            assert!(
+                message.contains("No instruction found"),
+                "unexpected diagnostic on {cpu_name} for '{line}': {message}"
+            );
+        }
+    }
+}
+
+#[test]
+fn later_m68k_carry_forward_cpus_do_not_claim_second_instruction_group_yet() {
+    for (cpu, cpu_name) in [(m68030_cpu_id, "m68030"), (m68040_cpu_id, "m68040")] {
+        for line in [
+            "    CAS.W D0,D1,(A0)",
+            "    CAS2.W D0:D1,D2:D3,(A0):(A1)",
+            "    CHK2.W ($1234).W,D0",
+            "    BFTST D0{3:5}",
+            "    PACK D0,D1,#1",
+            "    TRAPNE",
+            "    CALLM #5,($1234).W",
+            "    RTM A0",
         ] {
             let (status, message) = assemble_line_status(cpu, line);
             assert_eq!(

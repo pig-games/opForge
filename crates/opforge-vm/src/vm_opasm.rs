@@ -213,12 +213,24 @@ pub fn render_dependencies(
     types::artifacts::render_dependencies(output_format, targets, dependencies, make_phony)
 }
 
+#[derive(Clone, Copy, Default)]
+pub(crate) struct OperandExprParseHints<'a> {
+    pub(crate) mnemonic: Option<&'a str>,
+    pub(crate) operand_index: usize,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct OperandExprBoundary {
+    pub(crate) end_span: Span,
+    pub(crate) end_token_text: Option<String>,
+}
+
 pub(crate) fn parse_operand_expr_range(
     tokens: &[Token],
     start: usize,
     end: usize,
-    end_span: Span,
-    end_token_text: Option<String>,
+    boundary: OperandExprBoundary,
+    hints: OperandExprParseHints<'_>,
     expr_parse_ctx: &crate::vm_opasm_parse::VmExprParseContext<'_>,
     operands: &mut Vec<Expr>,
 ) -> Result<(), ParseError> {
@@ -226,13 +238,39 @@ pub(crate) fn parse_operand_expr_range(
         let span = tokens
             .get(start)
             .map(|token| token.span)
-            .unwrap_or(end_span);
+            .unwrap_or(boundary.end_span);
         operands.push(Expr::Error("Expected expression".to_string(), span));
         return Ok(());
     }
     let boundary_token = tokens.get(end);
-    let expr_end_span = boundary_token.map(|token| token.span).unwrap_or(end_span);
+    let expr_end_span = boundary_token
+        .map(|token| token.span)
+        .unwrap_or(boundary.end_span);
     if let Some(expr) = parse_indexed_register_postfix_operand(&tokens[start..end]) {
+        operands.push(expr);
+        return Ok(());
+    }
+    if let Some(expr) = parse_bitfield_suffix_operand(
+        &tokens[start..end],
+        hints.mnemonic,
+        hints.operand_index,
+        expr_parse_ctx,
+        expr_end_span,
+        boundary.end_token_text.clone(),
+        boundary_token,
+    )? {
+        operands.push(expr);
+        return Ok(());
+    }
+    if let Some(expr) = parse_register_pair_operand(
+        &tokens[start..end],
+        hints.mnemonic,
+        hints.operand_index,
+        expr_parse_ctx,
+        expr_end_span,
+        boundary.end_token_text.clone(),
+        boundary_token,
+    )? {
         operands.push(expr);
         return Ok(());
     }
@@ -240,13 +278,220 @@ pub(crate) fn parse_operand_expr_range(
         expr_parse_ctx,
         &tokens[start..end],
         expr_end_span,
-        end_token_text,
+        boundary.end_token_text,
         boundary_token,
     ) {
         Ok(expr) => operands.push(expr),
         Err(err) => operands.push(Expr::Error(err.message, err.span)),
     }
     Ok(())
+}
+
+fn base_mnemonic_name(name: &str) -> &str {
+    name.split('.').next().unwrap_or(name)
+}
+
+fn is_m68k_cas2_mnemonic(name: &str) -> bool {
+    base_mnemonic_name(name).eq_ignore_ascii_case("CAS2")
+}
+
+fn is_m68k_bitfield_operand(name: &str, operand_index: usize) -> bool {
+    match base_mnemonic_name(name).to_ascii_uppercase().as_str() {
+        "BFINS" => operand_index == 1,
+        "BFTST" | "BFEXTU" | "BFCHG" | "BFEXTS" | "BFCLR" | "BFFFO" | "BFSET" => operand_index == 0,
+        _ => false,
+    }
+}
+
+fn parse_expr_slice(
+    expr_parse_ctx: &crate::vm_opasm_parse::VmExprParseContext<'_>,
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Result<Expr, ParseError> {
+    crate::vm_opcore::parse_expr_with_vm_contract_and_boundary(
+        expr_parse_ctx,
+        tokens,
+        end_span,
+        end_token_text,
+        None,
+    )
+}
+
+fn build_call_expr(name: &str, args: Vec<Expr>) -> Expr {
+    let start_span = opcore::expression::expr_span(args.first().expect("call requires args"));
+    let end_span = opcore::expression::expr_span(args.last().expect("call requires args"));
+    Expr::Call {
+        name: name.to_string(),
+        args,
+        span: Span {
+            line: start_span.line,
+            col_start: start_span.col_start,
+            col_end: end_span.col_end,
+        },
+    }
+}
+
+fn parse_register_pair_operand(
+    tokens: &[Token],
+    mnemonic: Option<&str>,
+    operand_index: usize,
+    expr_parse_ctx: &crate::vm_opasm_parse::VmExprParseContext<'_>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    _boundary_token: Option<&Token>,
+) -> Result<Option<Expr>, ParseError> {
+    if !mnemonic.is_some_and(is_m68k_cas2_mnemonic) || operand_index > 2 {
+        return Ok(None);
+    }
+
+    let mut depth_paren = 0i32;
+    let mut depth_bracket = 0i32;
+    let mut depth_brace = 0i32;
+    let mut colon_index = None;
+
+    for (index, token) in tokens.iter().enumerate() {
+        if depth_paren == 0
+            && depth_bracket == 0
+            && depth_brace == 0
+            && matches!(token.kind, TokenKind::Colon)
+        {
+            colon_index = Some(index);
+            break;
+        }
+        update_group_depths_for_token(
+            &token.kind,
+            &mut depth_paren,
+            &mut depth_bracket,
+            &mut depth_brace,
+        );
+    }
+
+    let Some(colon_index) = colon_index else {
+        return Ok(None);
+    };
+    let left = parse_expr_slice(
+        expr_parse_ctx,
+        &tokens[..colon_index],
+        tokens[colon_index].span,
+        Some(":".to_string()),
+    )?;
+    let right = parse_expr_slice(
+        expr_parse_ctx,
+        &tokens[colon_index + 1..],
+        end_span,
+        end_token_text,
+    )?;
+
+    let left_is_register_pair_half = matches!(left, Expr::Register(_, _) | Expr::Indirect(_, _));
+    let right_is_register_pair_half = matches!(right, Expr::Register(_, _) | Expr::Indirect(_, _));
+    if !(left_is_register_pair_half && right_is_register_pair_half) {
+        return Ok(None);
+    }
+
+    Ok(Some(build_call_expr(".pair", vec![left, right])))
+}
+
+fn parse_bitfield_suffix_operand(
+    tokens: &[Token],
+    mnemonic: Option<&str>,
+    operand_index: usize,
+    expr_parse_ctx: &crate::vm_opasm_parse::VmExprParseContext<'_>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    _boundary_token: Option<&Token>,
+) -> Result<Option<Expr>, ParseError> {
+    if !mnemonic.is_some_and(|name| is_m68k_bitfield_operand(name, operand_index)) {
+        return Ok(None);
+    }
+
+    let Some(last) = tokens.last() else {
+        return Ok(None);
+    };
+    if !matches!(last.kind, TokenKind::CloseBrace) {
+        return Ok(None);
+    }
+
+    let mut depth_paren = 0i32;
+    let mut depth_bracket = 0i32;
+    let mut depth_brace = 0i32;
+    let mut open_brace_index = None;
+
+    for (index, token) in tokens.iter().enumerate() {
+        if depth_paren == 0
+            && depth_bracket == 0
+            && depth_brace == 0
+            && matches!(token.kind, TokenKind::OpenBrace)
+        {
+            open_brace_index = Some(index);
+            break;
+        }
+        update_group_depths_for_token(
+            &token.kind,
+            &mut depth_paren,
+            &mut depth_bracket,
+            &mut depth_brace,
+        );
+    }
+
+    let Some(open_brace_index) = open_brace_index else {
+        return Ok(None);
+    };
+    if open_brace_index == 0 || open_brace_index + 1 >= tokens.len() {
+        return Ok(None);
+    }
+
+    let mut inner_depth_paren = 0i32;
+    let mut inner_depth_bracket = 0i32;
+    let mut inner_depth_brace = 0i32;
+    let mut colon_index = None;
+    for (offset, token) in tokens[open_brace_index + 1..tokens.len() - 1]
+        .iter()
+        .enumerate()
+    {
+        if inner_depth_paren == 0
+            && inner_depth_bracket == 0
+            && inner_depth_brace == 0
+            && matches!(token.kind, TokenKind::Colon)
+        {
+            colon_index = Some(open_brace_index + 1 + offset);
+            break;
+        }
+        update_group_depths_for_token(
+            &token.kind,
+            &mut inner_depth_paren,
+            &mut inner_depth_bracket,
+            &mut inner_depth_brace,
+        );
+    }
+
+    let Some(colon_index) = colon_index else {
+        return Ok(None);
+    };
+
+    let base = parse_expr_slice(
+        expr_parse_ctx,
+        &tokens[..open_brace_index],
+        tokens[open_brace_index].span,
+        Some("{".to_string()),
+    )?;
+    let offset = parse_expr_slice(
+        expr_parse_ctx,
+        &tokens[open_brace_index + 1..colon_index],
+        tokens[colon_index].span,
+        Some(":".to_string()),
+    )?;
+    let width = parse_expr_slice(
+        expr_parse_ctx,
+        &tokens[colon_index + 1..tokens.len() - 1],
+        end_span,
+        end_token_text,
+    )?;
+
+    Ok(Some(build_call_expr(
+        ".bitfield",
+        vec![base, offset, width],
+    )))
 }
 
 fn parse_indexed_register_postfix_operand(tokens: &[Token]) -> Option<Expr> {

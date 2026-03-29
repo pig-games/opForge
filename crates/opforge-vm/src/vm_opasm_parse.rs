@@ -11,7 +11,10 @@ use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_parse_utils::{parse_span_at_end, runtime_bridge_error_to_parse_error};
 use crate::tokenizer_runtime_utils;
-use crate::vm_opasm::{parse_operand_expr_range, split_top_level_comma_ranges};
+use crate::vm_opasm::{
+    parse_operand_expr_range, split_top_level_comma_ranges, OperandExprBoundary,
+    OperandExprParseHints,
+};
 use crate::vm_opcore::parse_expr_with_vm_contract;
 use crate::vm_opcore::HierarchyExecutionModel;
 
@@ -434,8 +437,14 @@ fn parse_instruction_at(
                 tokens,
                 start,
                 end,
-                end_span,
-                end_token_text.clone(),
+                OperandExprBoundary {
+                    end_span,
+                    end_token_text: end_token_text.clone(),
+                },
+                OperandExprParseHints {
+                    mnemonic: Some(mnemonic.as_str()),
+                    operand_index: range_idx,
+                },
                 expr_parse_ctx,
                 &mut operands,
             )?;

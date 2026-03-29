@@ -99,6 +99,56 @@ pub enum M68010MnemonicKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum M68020MnemonicKind {
     Extb,
+    Cas,
+    Cas2,
+    Chk2,
+    Cmp2,
+    BitField(BitFieldMnemonic),
+    Pack,
+    Unpk,
+    Trapcc(ConditionCode),
+    Callm,
+    Rtm,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BitFieldMnemonic {
+    Bftst,
+    Bfextu,
+    Bfchg,
+    Bfexts,
+    Bfclr,
+    Bfffo,
+    Bfset,
+    Bfins,
+}
+
+impl BitFieldMnemonic {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Bftst => "BFTST",
+            Self::Bfextu => "BFEXTU",
+            Self::Bfchg => "BFCHG",
+            Self::Bfexts => "BFEXTS",
+            Self::Bfclr => "BFCLR",
+            Self::Bfffo => "BFFFO",
+            Self::Bfset => "BFSET",
+            Self::Bfins => "BFINS",
+        }
+    }
+
+    pub fn opcode_base(self) -> u16 {
+        match self {
+            Self::Bftst => 0xE8C0,
+            Self::Bfextu => 0xE9C0,
+            Self::Bfchg => 0xEAC0,
+            Self::Bfexts => 0xEBC0,
+            Self::Bfclr => 0xECC0,
+            Self::Bfffo => 0xEDC0,
+            Self::Bfset => 0xEEC0,
+            Self::Bfins => 0xEFC0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -384,6 +434,38 @@ fn m68010_base_kind(base: &str) -> Option<M68010MnemonicKind> {
 fn m68020_base_kind(base: &str) -> Option<M68020MnemonicKind> {
     match base {
         "EXTB" => Some(M68020MnemonicKind::Extb),
+        "CAS" => Some(M68020MnemonicKind::Cas),
+        "CAS2" => Some(M68020MnemonicKind::Cas2),
+        "CHK2" => Some(M68020MnemonicKind::Chk2),
+        "CMP2" => Some(M68020MnemonicKind::Cmp2),
+        "BFTST" => Some(M68020MnemonicKind::BitField(BitFieldMnemonic::Bftst)),
+        "BFEXTU" => Some(M68020MnemonicKind::BitField(BitFieldMnemonic::Bfextu)),
+        "BFCHG" => Some(M68020MnemonicKind::BitField(BitFieldMnemonic::Bfchg)),
+        "BFEXTS" => Some(M68020MnemonicKind::BitField(BitFieldMnemonic::Bfexts)),
+        "BFCLR" => Some(M68020MnemonicKind::BitField(BitFieldMnemonic::Bfclr)),
+        "BFFFO" => Some(M68020MnemonicKind::BitField(BitFieldMnemonic::Bfffo)),
+        "BFSET" => Some(M68020MnemonicKind::BitField(BitFieldMnemonic::Bfset)),
+        "BFINS" => Some(M68020MnemonicKind::BitField(BitFieldMnemonic::Bfins)),
+        "PACK" => Some(M68020MnemonicKind::Pack),
+        "UNPK" => Some(M68020MnemonicKind::Unpk),
+        "TRAPT" => Some(M68020MnemonicKind::Trapcc(ConditionCode::True)),
+        "TRAPF" => Some(M68020MnemonicKind::Trapcc(ConditionCode::False)),
+        "TRAPHI" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Hi)),
+        "TRAPLS" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Ls)),
+        "TRAPCC" | "TRAPHS" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Cc)),
+        "TRAPCS" | "TRAPLO" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Cs)),
+        "TRAPNE" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Ne)),
+        "TRAPEQ" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Eq)),
+        "TRAPVC" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Vc)),
+        "TRAPVS" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Vs)),
+        "TRAPPL" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Pl)),
+        "TRAPMI" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Mi)),
+        "TRAPGE" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Ge)),
+        "TRAPLT" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Lt)),
+        "TRAPGT" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Gt)),
+        "TRAPLE" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Le)),
+        "CALLM" => Some(M68020MnemonicKind::Callm),
+        "RTM" => Some(M68020MnemonicKind::Rtm),
         _ => None,
     }
 }
@@ -533,10 +615,25 @@ mod tests {
     fn parse_m68020_mnemonic_tracks_size_suffix_state() {
         assert!(has_m68020_mnemonic("EXTB"));
         assert!(has_m68020_mnemonic("extb.l"));
+        assert!(has_m68020_mnemonic("CAS.B"));
+        assert!(has_m68020_mnemonic("CAS2.W"));
+        assert!(has_m68020_mnemonic("BFEXTU"));
+        assert!(has_m68020_mnemonic("PACK"));
+        assert!(has_m68020_mnemonic("TRAPNE.W"));
+        assert!(has_m68020_mnemonic("CALLM"));
+        assert!(has_m68020_mnemonic("RTM"));
 
         let extb_unknown = parse_m68020_mnemonic("EXTB.Q").expect("EXTB base should parse");
         assert_eq!(extb_unknown.kind, M68020MnemonicKind::Extb);
         assert_eq!(extb_unknown.size, None);
         assert!(extb_unknown.has_unknown_size_suffix);
+
+        let trap_unknown = parse_m68020_mnemonic("TRAPGT.Q").expect("TRAPGT base should parse");
+        assert_eq!(
+            trap_unknown.kind,
+            M68020MnemonicKind::Trapcc(ConditionCode::Gt)
+        );
+        assert_eq!(trap_unknown.size, None);
+        assert!(trap_unknown.has_unknown_size_suffix);
     }
 }

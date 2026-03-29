@@ -241,7 +241,7 @@ system-programming features.
     `m68020` later-family instruction group instead of leaving `m68020`
     parser-only
 
-- [ ] `M68K-LINEAGE-007`: Implement the second grouped `m68020` instruction
+- [x] `M68K-LINEAGE-007`: Implement the second grouped `m68020` instruction
       delta slice: `CAS`, `CAS2`, `CHK2`, `CMP2`, the bit-field family,
       `PACK`, `UNPK`, `TRAPcc`, `CALLM`, and `RTM`.
   - Validation: focused `m68020` encode or legality tests for the grouped
@@ -397,7 +397,7 @@ system-programming features.
 - [x] Milestone 2: `m68010` delta complete (`M68K-LINEAGE-002`)
 - [x] Milestone 3: full `68020+` parsing and addressing complete
       (`M68K-LINEAGE-003`, `M68K-LINEAGE-004`, `M68K-LINEAGE-005`)
-- [ ] Milestone 4: grouped `m68020` instruction families complete
+- [x] Milestone 4: grouped `m68020` instruction families complete
       (`M68K-LINEAGE-006`, `M68K-LINEAGE-007`)
 - [ ] Milestone 5: `m68030` carry-forward and `m68040` restriction slices
       complete (`M68K-LINEAGE-008`, `M68K-LINEAGE-009`)

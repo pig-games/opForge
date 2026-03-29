@@ -72,6 +72,12 @@ pub enum MemoryIndirectionKind {
 }
 
 #[derive(Clone, Debug)]
+pub enum BitFieldSelector {
+    DataRegister { register: String, span: Span },
+    Immediate { expr: Expr, span: Span },
+}
+
+#[derive(Clone, Debug)]
 pub enum FamilyOperand {
     DataRegister {
         register: String,
@@ -136,6 +142,22 @@ pub enum FamilyOperand {
         size: AbsoluteSize,
         span: Span,
     },
+    RegisterPair {
+        left: String,
+        right: String,
+        span: Span,
+    },
+    IndirectRegisterPair {
+        left: String,
+        right: String,
+        span: Span,
+    },
+    BitField {
+        base: Box<FamilyOperand>,
+        offset: BitFieldSelector,
+        width: BitFieldSelector,
+        span: Span,
+    },
     RegisterList {
         registers: Vec<RegisterListRegister>,
         span: Span,
@@ -166,6 +188,9 @@ impl FamilyOperand {
             | Self::PcIndexed { span, .. }
             | Self::FullExtension { span, .. }
             | Self::Absolute { span, .. }
+            | Self::RegisterPair { span, .. }
+            | Self::IndirectRegisterPair { span, .. }
+            | Self::BitField { span, .. }
             | Self::RegisterList { span, .. }
             | Self::BranchTarget { span, .. }
             | Self::Immediate { span, .. } => *span,

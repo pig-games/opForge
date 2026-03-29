@@ -6,10 +6,10 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 1000                    3  .org $1000
 ----                                4  
 ----                                5  start
-1000    60 FF 00 00 00 30           6      BRA.L far_target
+1000    60 FF 00 00 00 34           6      BRA.L far_target
 1006    48 0E FF FF FF F8           7      LINK.L A6,#-8
 100C    49 C0                       8      EXTB.L D0
-100E    4C 10 14 00                 9      MULU.L (A0),D1
+100E    4C 10 10 01                 9      MULU.L (A0),D1
 1012    4E 7A 00 02                10      MOVEC CACR,D0
 1016    0C D0 00 40                11      CAS.W D0,D1,(A0)
 101A    0C FC 80 80 90 C1          12      CAS2.W D0:D1,D2:D3,(A0):(A1)
@@ -38,7 +38,7 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    60 FF 00 00 00 30 48 0E FF FF FF F8 49 C0 4C 10
-1010    14 00 4E 7A 00 02 0C D0 00 40 0C FC 80 80 90 C1
+1000    60 FF 00 00 00 34 48 0E FF FF FF F8 49 C0 4C 10
+1010    10 01 4E 7A 00 02 0C D0 00 40 0C FC 80 80 90 C1
 1020    02 F8 08 00 12 34 83 40 00 01 56 FC F6 20 90 00
 1030    F6 19 00 00 12 34 4E 75

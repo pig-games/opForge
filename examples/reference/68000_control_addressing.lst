@@ -8,7 +8,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                5  start
 1000    43 F0 10 04                 6      LEA 4(A0,D1.W),A1
 1004    48 68 00 04                 7      PEA 4(A0)
-1008    61 00 00 04                 8      BSR.W helper
+1008    61 00 00 06                 8      BSR.W helper
 100C    4E FA 00 04                 9      JMP 4(PC)
 ----                               10  helper
 1010    4E 90                      11      JSR (A0)
@@ -32,5 +32,5 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    43 F0 10 04 48 68 00 04 61 00 00 04 4E FA 00 04
+1000    43 F0 10 04 48 68 00 04 61 00 00 06 4E FA 00 04
 1010    4E 90 52 40 4E 75

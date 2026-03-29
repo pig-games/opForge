@@ -1,4 +1,4 @@
-opForge Assembler v0.9.6 | full-runtime | bundled
+opForge Assembler v0.9.6
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Motorola 68000 idiomatic alias spellings
@@ -11,12 +11,12 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                8  ; ========================================
 ----                                9  ; BRANCH DEFAULTS
 ----                               10  ; ========================================
-1000    60 00 00 14                11          BRA.W branch_target
-1004    60 00 00 10                12          BRA branch_target
-1008    66 00 00 40                13          BNE.W done
-100C    66 00 00 3C                14          BNE done
-1010    61 00 00 3A                15          BSR.W helper
-1014    61 00 00 36                16          BSR helper
+1000    60 00 00 16                11          BRA.W branch_target
+1004    60 00 00 12                12          BRA branch_target
+1008    66 00 00 42                13          BNE.W done
+100C    66 00 00 3E                14          BNE done
+1010    61 00 00 3C                15          BSR.W helper
+1014    61 00 00 38                16          BSR helper
 ----                               17  
 ----                               18  branch_target
 ----                               19  ; ========================================
@@ -68,8 +68,8 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    60 00 00 14 60 00 00 10 66 00 00 40 66 00 00 3C
-1010    61 00 00 3A 61 00 00 36 30 30 10 00 30 30 10 00
+1000    60 00 00 16 60 00 00 12 66 00 00 42 66 00 00 3E
+1010    61 00 00 3C 61 00 00 38 30 30 10 00 30 30 10 00
 1020    30 30 10 00 36 3B 20 00 36 3B 20 00 36 3B 20 00
 1030    4E FA 00 00 4E FA 00 00 38 38 12 34 38 38 12 34
 1040    2A 39 00 12 34 56 2A 39 00 12 34 56 4E 75 4E 75

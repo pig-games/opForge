@@ -10,11 +10,11 @@ ADDR    BYTES                    LINE  SOURCE
 1004    4E 7B 18 03                 7      MOVEC D1,MSP
 1008    48 0E FF FF FF F8           8      LINK.L A6,#-8
 100E    49 C2                       9      EXTB.L D2
-1010    4C 10 14 00                10      MULU.L (A0),D1
-1014    4C 38 2C 00 12 34          11      MULS.L ($1234).W,D2
-101A    60 FF 00 00 00 3A          12      BRA.L far_target
-1020    61 FF 00 00 00 32          13      BSR.L helper
-1026    66 FF 00 00 00 2E          14      BNE.L far_target
+1010    4C 10 10 01                10      MULU.L (A0),D1
+1014    4C 38 28 02 12 34          11      MULS.L ($1234).W,D2
+101A    60 FF 00 00 00 3E          12      BRA.L far_target
+1020    61 FF 00 00 00 36          13      BSR.L helper
+1026    66 FF 00 00 00 32          14      BNE.L far_target
 102C    0C D0 00 40                15      CAS.W D0,D1,(A0)
 1030    0E FC 80 80 90 C1          16      CAS2.L D0:D1,D2:D3,(A0):(A1)
 1036    04 F8 98 00 12 34          17      CHK2.L ($1234).W,A1
@@ -50,8 +50,8 @@ GENERATED OUTPUT
 ADDR    BYTES
 ------  -----------------------
 1000    4E 7A 00 02 4E 7B 18 03 48 0E FF FF FF F8 49 C2
-1010    4C 10 14 00 4C 38 2C 00 12 34 60 FF 00 00 00 3A
-1020    61 FF 00 00 00 32 66 FF 00 00 00 2E 0C D0 00 40
+1010    4C 10 10 01 4C 38 28 02 12 34 60 FF 00 00 00 3E
+1020    61 FF 00 00 00 36 66 FF 00 00 00 32 0C D0 00 40
 1030    0E FC 80 80 90 C1 04 F8 98 00 12 34 00 F8 00 00
 1040    12 34 83 40 FF FF 83 88 00 01 56 FC 5E FA 12 34
 1050    06 F8 00 05 12 34 06 CB 4E 75 4E 71 4E 75

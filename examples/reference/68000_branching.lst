@@ -7,11 +7,11 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                4  
 ----                                5  start
 1000    70 01                       6      MOVEQ #1,D0
-1002    60 00 00 02                 7      BRA.W middle
+1002    60 00 00 04                 7      BRA.W middle
 1006    70 00                       8      MOVEQ #0,D0
 ----                                9  middle
 1008    52 40                      10      ADDQ.W #1,D0
-100A    66 00 00 02                11      BNE.W done
+100A    66 00 00 04                11      BNE.W done
 100E    53 40                      12      SUBQ.W #1,D0
 ----                               13  done
 1010    4E 75                      14      RTS
@@ -34,5 +34,5 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    70 01 60 00 00 02 70 00 52 40 66 00 00 02 53 40
+1000    70 01 60 00 00 04 70 00 52 40 66 00 00 04 53 40
 1010    4E 75

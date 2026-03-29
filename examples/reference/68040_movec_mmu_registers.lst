@@ -1,0 +1,33 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68040 MOVEC MMU/control-register smoke fixture
+----                                2  .cpu 68040
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    4E 7A 00 03                 6      MOVEC TC,D0
+1004    4E 7A 18 05                 7      MOVEC MMUSR,D1
+1008    4E 7A 88 06                 8      MOVEC URP,A0
+100C    4E 7A 90 07                 9      MOVEC DTT1,A1
+1010    4E 7B A8 07                10      MOVEC A2,SRP
+1014    4E 75                      11      RTS
+----                               12  
+----                               13  .end
+
+Lines: 13  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 22 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    4E 7A 00 03 4E 7A 18 05 4E 7A 88 06 4E 7A 90 07
+1010    4E 7B A8 07 4E 75

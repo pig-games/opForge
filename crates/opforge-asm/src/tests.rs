@@ -2893,15 +2893,15 @@ fn m68000_arithmetic_control_quick_and_shift_slice_emits_expected_bytes() {
     );
     assert_eq!(
         assemble_bytes(m68000_cpu_id, "    BRA $0004"),
-        vec![0x60, 0x00, 0x00, 0x00]
+        vec![0x60, 0x00, 0x00, 0x02]
     );
     assert_eq!(
         assemble_bytes(m68000_cpu_id, "    BNE.W $0008"),
-        vec![0x66, 0x00, 0x00, 0x04]
+        vec![0x66, 0x00, 0x00, 0x06]
     );
     assert_eq!(
         assemble_bytes(m68000_cpu_id, "    BSR.W $0008"),
-        vec![0x61, 0x00, 0x00, 0x04]
+        vec![0x61, 0x00, 0x00, 0x06]
     );
     assert_eq!(assemble_bytes(m68000_cpu_id, "    RTS"), vec![0x4E, 0x75]);
     assert_eq!(
@@ -3883,11 +3883,11 @@ fn m68020_first_instruction_group_assembles() {
     );
     assert_eq!(
         assemble_bytes(m68020_cpu_id, "    MULU.L (A0),D1"),
-        vec![0x4C, 0x10, 0x14, 0x00]
+        vec![0x4C, 0x10, 0x10, 0x01]
     );
     assert_eq!(
         assemble_bytes(m68020_cpu_id, "    MULS.L ($1234).W,D2"),
-        vec![0x4C, 0x38, 0x2C, 0x00, 0x12, 0x34]
+        vec![0x4C, 0x38, 0x28, 0x02, 0x12, 0x34]
     );
 }
 
@@ -3910,7 +3910,7 @@ fn m68020_long_branch_family_assembles() {
         let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
         assert_eq!(
             bytes,
-            vec![opcode_hi, 0xFF, 0x00, 0x00, 0x00, 0x02, 0x4E, 0x71, 0x4E, 0x75],
+            vec![opcode_hi, 0xFF, 0x00, 0x00, 0x00, 0x06, 0x4E, 0x71, 0x4E, 0x75],
             "unexpected bytes for '{branch_line}'"
         );
     }
@@ -4833,6 +4833,7 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "68020_full_extension_addressing",
         "68020_later_families",
         "68030_carry_forward",
+        "68040_movec_mmu_registers",
         "68040_move16_carry_forward",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));

@@ -252,7 +252,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that completes the core external-FPU arithmetic
     slice without yet widening to the integrated `m68040` host
 
-- [ ] `M68KMF-008`: Widen the shipped core FPU surface to the integrated
+- [x] `M68KMF-008`: Widen the shipped core FPU surface to the integrated
       `m68040` host under `.fpu 68040`.
   - Validation: focused encode or legality tests for the shipped move,
     arithmetic, compare/test, and conversion families on `m68040` with
@@ -368,7 +368,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
 - [x] Milestone 3: FPU parsing and legality foundation complete (`M68KMF-005`)
 - [x] Milestone 4: external-FPU core movement and arithmetic complete
       (`M68KMF-006`, `M68KMF-007`)
-- [ ] Milestone 5: integrated `m68040` core FPU surface complete (`M68KMF-008`)
+- [x] Milestone 5: integrated `m68040` core FPU surface complete (`M68KMF-008`)
 - [ ] Milestone 6: FPU conditionals and save or restore complete (`M68KMF-009`)
 - [ ] Milestone 7: remaining transcendental and extended-math surface complete
       (`M68KMF-010`, `M68KMF-011`)

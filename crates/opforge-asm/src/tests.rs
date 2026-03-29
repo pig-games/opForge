@@ -3028,6 +3028,51 @@ fn m68k_external_fpu_arithmetic_slice_keeps_68881_and_68882_identical() {
 }
 
 #[test]
+fn m68040_core_fpu_surface_assembles_only_under_fpu_68040() {
+    let source = [
+        ".cpu 68040",
+        ".fpu 68040",
+        "    FMOVE FP0,FP1",
+        "    FMOVEM FP0/FP2,(A0)",
+        "    FADD FP0,FP1",
+        "    FSQRT FP4",
+        "    FMOVE.B D0,FP1",
+        "    FTST.W D0",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("m68040 core FPU surface should assemble");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xF0, 0x00, 0x00, 0x80, 0xF0, 0x10, 0xF0, 0x05, 0xF0, 0x00, 0x00, 0xA2, 0xF0, 0x00,
+            0x12, 0x04, 0xF0, 0x00, 0x58, 0x80, 0xF0, 0x00, 0x50, 0x3A,
+        ]
+    );
+}
+
+#[test]
+fn m68040_rejects_external_fpu_targets_for_core_surface() {
+    for (source, expected_target) in [
+        ([".cpu 68040", ".fpu 68881", "    FADD FP0,FP1"], "68881"),
+        ([".cpu 68040", ".fpu 68882", "    FMOVE FP0,FP1"], "68882"),
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("legal .fpu targets for m68040 FPU instructions: 68040"))
+            .unwrap_or_else(|| panic!("missing m68040 target diagnostic: {diagnostics:?}"));
+        assert!(
+            diagnostic.contains("m68040"),
+            "missing cpu name for {expected_target}: {diagnostics:?}"
+        );
+    }
+}
+
+#[test]
 fn cpu_68000_emit_word_uses_big_endian_order() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();

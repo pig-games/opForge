@@ -503,6 +503,108 @@ impl M68020CpuHandler {
         }
     }
 
+    pub(crate) fn encode_supported_fpu_core_mnemonic(
+        &self,
+        mnemonic: &str,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> Option<EncodeResult<Vec<u8>>> {
+        let parsed = parse_fpu_mnemonic(mnemonic)?;
+        if parsed.has_unknown_size_suffix {
+            return Some(EncodeResult::error(format!(
+                "unsupported size suffix for {}",
+                parsed.display_name
+            )));
+        }
+
+        Some(match parsed.kind {
+            FpuMnemonicKind::Fmove => self.encode_fmove(parsed.size, operands, ctx),
+            FpuMnemonicKind::Fmovem => self.encode_fmovem(parsed.size, operands, ctx),
+            FpuMnemonicKind::Fadd => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0022,
+                parsed.size,
+                operands,
+                false,
+                ctx,
+            ),
+            FpuMnemonicKind::Fsub => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0028,
+                parsed.size,
+                operands,
+                false,
+                ctx,
+            ),
+            FpuMnemonicKind::Fmul => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0023,
+                parsed.size,
+                operands,
+                false,
+                ctx,
+            ),
+            FpuMnemonicKind::Fdiv => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0020,
+                parsed.size,
+                operands,
+                false,
+                ctx,
+            ),
+            FpuMnemonicKind::Fsqrt => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0004,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fabs => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0018,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fneg => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x001A,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fcmp => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0038,
+                parsed.size,
+                operands,
+                false,
+                ctx,
+            ),
+            FpuMnemonicKind::Ftst => self.encode_ftst(parsed.size, operands, ctx),
+            FpuMnemonicKind::Fint => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0001,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fintrz => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0003,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            _ => return None,
+        })
+    }
+
     fn encode_fmovem(
         &self,
         size: Option<OperationSize>,
@@ -723,92 +825,9 @@ impl CpuHandler for M68020CpuHandler {
                 Err(err) => return err,
             };
 
-            return match parsed.kind {
-                FpuMnemonicKind::Fmove => self.encode_fmove(parsed.size, operands, ctx),
-                FpuMnemonicKind::Fmovem => self.encode_fmovem(parsed.size, operands, ctx),
-                FpuMnemonicKind::Fadd => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0022,
-                    parsed.size,
-                    operands,
-                    false,
-                    ctx,
-                ),
-                FpuMnemonicKind::Fsub => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0028,
-                    parsed.size,
-                    operands,
-                    false,
-                    ctx,
-                ),
-                FpuMnemonicKind::Fmul => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0023,
-                    parsed.size,
-                    operands,
-                    false,
-                    ctx,
-                ),
-                FpuMnemonicKind::Fdiv => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0020,
-                    parsed.size,
-                    operands,
-                    false,
-                    ctx,
-                ),
-                FpuMnemonicKind::Fsqrt => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0004,
-                    parsed.size,
-                    operands,
-                    true,
-                    ctx,
-                ),
-                FpuMnemonicKind::Fabs => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0018,
-                    parsed.size,
-                    operands,
-                    true,
-                    ctx,
-                ),
-                FpuMnemonicKind::Fneg => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x001A,
-                    parsed.size,
-                    operands,
-                    true,
-                    ctx,
-                ),
-                FpuMnemonicKind::Fcmp => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0038,
-                    parsed.size,
-                    operands,
-                    false,
-                    ctx,
-                ),
-                FpuMnemonicKind::Ftst => self.encode_ftst(parsed.size, operands, ctx),
-                FpuMnemonicKind::Fint => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0001,
-                    parsed.size,
-                    operands,
-                    true,
-                    ctx,
-                ),
-                FpuMnemonicKind::Fintrz => self.encode_fpu_result_operation(
-                    &parsed.display_name,
-                    0x0003,
-                    parsed.size,
-                    operands,
-                    true,
-                    ctx,
-                ),
-                _ => self.deferred_fpu_message(&parsed.display_name, target_name),
-            };
+            return self
+                .encode_supported_fpu_core_mnemonic(mnemonic, operands, ctx)
+                .unwrap_or_else(|| self.deferred_fpu_message(&parsed.display_name, target_name));
         }
 
         if let Some(parsed) = parse_mnemonic(mnemonic) {

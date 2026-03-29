@@ -8,6 +8,7 @@ use crate::families::m68k::{
     has_fpu_mnemonic, parse_fpu_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic,
     FamilyOperand, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler, Operand,
 };
+use crate::m68020::M68020CpuHandler;
 use crate::m68030::M68030CpuHandler;
 use opcore::tokenizer::Span;
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
@@ -15,6 +16,7 @@ use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 #[derive(Debug)]
 pub struct M68040CpuHandler {
     base: M68030CpuHandler,
+    fpu_core: M68020CpuHandler,
 }
 
 #[derive(Debug)]
@@ -35,6 +37,7 @@ impl M68040CpuHandler {
     pub fn new() -> Self {
         Self {
             base: M68030CpuHandler::new(),
+            fpu_core: M68020CpuHandler::new(),
         }
     }
 
@@ -47,31 +50,35 @@ impl M68040CpuHandler {
         }
     }
 
-    fn handle_fpu_mnemonic(
+    fn validate_fpu_mnemonic(
         &self,
         display_name: &str,
         ctx: &dyn AssemblerContext,
-    ) -> EncodeResult<Vec<u8>> {
+    ) -> Result<&'static str, EncodeResult<Vec<u8>>> {
         let target = ctx
             .cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY)
             .unwrap_or(0);
 
         if target == 0 {
-            return EncodeResult::error(format!(
+            return Err(EncodeResult::error(format!(
                 "{display_name} requires an active .fpu target on m68040; legal .fpu targets for m68040 FPU instructions: 68040"
-            ));
+            )));
         }
 
         if !Self::LEGAL_FPU_TARGETS.contains(&target) {
-            return EncodeResult::error(format!(
+            return Err(EncodeResult::error(format!(
                 "{display_name} is not available with .fpu {} on m68040; legal .fpu targets for m68040 FPU instructions: 68040",
                 Self::fpu_target_name(target),
-            ));
+            )));
         }
 
+        Ok(Self::fpu_target_name(target))
+    }
+
+    fn deferred_fpu_message(&self, display_name: &str, target_name: &str) -> EncodeResult<Vec<u8>> {
         EncodeResult::error(format!(
             "{display_name} is recognized for .fpu {} on m68040, but FPU encoding is not yet implemented",
-            Self::fpu_target_name(target),
+            target_name,
         ))
     }
 
@@ -338,7 +345,16 @@ impl CpuHandler for M68040CpuHandler {
                     parsed.display_name
                 ));
             }
-            return self.handle_fpu_mnemonic(&parsed.display_name, ctx);
+
+            let target_name = match self.validate_fpu_mnemonic(&parsed.display_name, ctx) {
+                Ok(target_name) => target_name,
+                Err(err) => return err,
+            };
+
+            return self
+                .fpu_core
+                .encode_supported_fpu_core_mnemonic(mnemonic, operands, ctx)
+                .unwrap_or_else(|| self.deferred_fpu_message(&parsed.display_name, target_name));
         }
 
         if let Some(parsed) = Self::parse_move16_mnemonic(mnemonic) {
@@ -462,6 +478,31 @@ mod tests {
                 assert!(message.contains("legal .fpu targets for m68040 FPU instructions: 68040"));
             }
             other => panic!("expected incompatible-target diagnostic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn core_fpu_surface_encodes_for_68040_target() {
+        let handler = M68040CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 3);
+
+        match handler.encode_instruction(
+            "FADD",
+            &[
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x00, 0xA2]),
+            other => panic!("expected FADD encoding, got {other:?}"),
         }
     }
 }

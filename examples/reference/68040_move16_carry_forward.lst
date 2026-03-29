@@ -1,0 +1,44 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68040 carry-forward and MOVE16 smoke fixture
+----                                2  .cpu 68040
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    60 FF 00 00 00 30           6      BRA.L far_target
+1006    48 0E FF FF FF F8           7      LINK.L A6,#-8
+100C    49 C0                       8      EXTB.L D0
+100E    4C 10 14 00                 9      MULU.L (A0),D1
+1012    4E 7A 00 02                10      MOVEC CACR,D0
+1016    0C D0 00 40                11      CAS.W D0,D1,(A0)
+101A    0C FC 80 80 90 C1          12      CAS2.W D0:D1,D2:D3,(A0):(A1)
+1020    02 F8 08 00 12 34          13      CHK2.W ($1234).W,D0
+1026    83 40 00 01                14      PACK D0,D1,#1
+102A    56 FC                      15      TRAPNE
+102C    F6 20 90 00                16      MOVE16 (A0)+,(A1)+
+1030    F6 19 00 00 12 34          17      MOVE16 ($1234).L,(A1)
+----                               18  far_target
+1036    4E 75                      19      RTS
+----                               20  
+----                               21  .end
+
+Lines: 21  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+far_target       1036      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 56 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    60 FF 00 00 00 30 48 0E FF FF FF F8 49 C0 4C 10
+1010    14 00 4E 7A 00 02 0C D0 00 40 0C FC 80 80 90 C1
+1020    02 F8 08 00 12 34 83 40 00 01 56 FC F6 20 90 00
+1030    F6 19 00 00 12 34 4E 75

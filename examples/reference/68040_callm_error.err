@@ -1,0 +1,5 @@
+Assembly failed:
+5: ERROR [asm402]
+    5 |     CALLM #5,($1234).W
+                      ^
+ERROR: CALLM is not supported on m68040

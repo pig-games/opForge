@@ -342,7 +342,7 @@ system-programming features.
   - Commit outcome: one commit that makes the first two later-family CPU
     surfaces observable through stable shipped examples and references
 
-- [ ] `M68K-LINEAGE-011`: Add example, reference, and integration coverage for
+- [x] `M68K-LINEAGE-011`: Add example, reference, and integration coverage for
       the shipped `m68030` and `m68040` surfaces, including `m68040`
       restrictions and `MOVE16`.
   - Validation: focused example-assembly smoke tests, fail-before-update

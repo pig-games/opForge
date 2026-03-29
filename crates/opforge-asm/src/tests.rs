@@ -4832,6 +4832,8 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "68010_delta",
         "68020_full_extension_addressing",
         "68020_later_families",
+        "68030_carry_forward",
+        "68040_move16_carry_forward",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));
         if let Err(err) = assemble_example(&asm_path, &out_dir, false) {

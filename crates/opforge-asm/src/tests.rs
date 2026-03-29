@@ -2856,9 +2856,9 @@ fn m68k_fpu_mnemonics_fail_explicitly_when_fpu_is_disabled() {
 fn m68k_fpu_mnemonics_enter_legality_path_once_fpu_is_enabled() {
     for (source, expected_target, expected_mnemonic) in [
         (
-            [".cpu 68020", ".fpu 68881", "    FMOVE FPCR,FP0"],
+            [".cpu 68020", ".fpu 68881", "    FADD FP0,FP1"],
             "68881",
-            "FMOVE",
+            "FADD",
         ),
         (
             [".cpu 68030", ".fpu 68882", "    FADD FP0,FP1"],
@@ -2882,6 +2882,71 @@ fn m68k_fpu_mnemonics_enter_legality_path_once_fpu_is_enabled() {
         assert!(diagnostic.contains(expected_target));
         assert!(diagnostic.contains(expected_mnemonic));
     }
+}
+
+#[test]
+fn m68020_and_m68030_external_fpu_move_slice_assembles() {
+    for cpu in ["68020", "68030"] {
+        let cpu_directive = format!(".cpu {cpu}");
+        let source = [
+            cpu_directive.as_str(),
+            ".fpu 68881",
+            "    FMOVE FP0,FP1",
+            "    FMOVE.L D0,FPCR",
+            "    FMOVE.L FPSR,D1",
+            "    FMOVEM FP0/FP2,(A0)",
+            "    FMOVEM (A0)+,FP1/FP3",
+        ];
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("external-FPU move slice should assemble");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics for {cpu}: {diagnostics:?}"
+        );
+        let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+        assert_eq!(
+            bytes,
+            vec![
+                0xF0, 0x00, 0x00, 0x80, 0xF0, 0x00, 0x90, 0x00, 0xF0, 0x01, 0xA8, 0x00, 0xF0, 0x10,
+                0xF0, 0x05, 0xF0, 0x18, 0xD0, 0x0A,
+            ],
+            "unexpected bytes for {cpu}"
+        );
+    }
+}
+
+#[test]
+fn m68k_external_fpu_move_slice_keeps_68881_and_68882_identical() {
+    let source_68881 = [
+        ".cpu 68020",
+        ".fpu 68881",
+        "    FMOVE FP0,FP1",
+        "    FMOVEM FP0/FP2,-(A1)",
+    ];
+    let source_68882 = [
+        ".cpu 68020",
+        ".fpu 68882",
+        "    FMOVE FP0,FP1",
+        "    FMOVEM FP0/FP2,-(A1)",
+    ];
+
+    let (entries_68881, diagnostics_68881) =
+        assemble_source_entries_with_runtime_mode(&source_68881, false)
+            .expect("68881 move slice should assemble");
+    let (entries_68882, diagnostics_68882) =
+        assemble_source_entries_with_runtime_mode(&source_68882, false)
+            .expect("68882 move slice should assemble");
+
+    assert!(diagnostics_68881.is_empty(), "{diagnostics_68881:?}");
+    assert!(diagnostics_68882.is_empty(), "{diagnostics_68882:?}");
+
+    let bytes_68881: Vec<u8> = entries_68881.iter().map(|(_, byte)| *byte).collect();
+    let bytes_68882: Vec<u8> = entries_68882.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes_68881, bytes_68882);
+    assert_eq!(
+        bytes_68881,
+        vec![0xF0, 0x00, 0x00, 0x80, 0xF0, 0x21, 0xE0, 0xA0]
+    );
 }
 
 #[test]

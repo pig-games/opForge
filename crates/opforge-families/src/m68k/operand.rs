@@ -64,6 +64,7 @@ pub enum FpuControlRegisterKind {
 pub enum RegisterListRegister {
     Data(u8),
     Address(u8),
+    FpuData(u8),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

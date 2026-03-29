@@ -4,7 +4,7 @@
 //! Motorola 68030 CPU handler implementation.
 
 use crate::families::m68k::{
-    has_fpu_mnemonic, parse_fpu_mnemonic, parse_m68020_mnemonic, M68020MnemonicKind, OperationSize,
+    parse_fpu_mnemonic, parse_m68020_mnemonic, FpuMnemonicKind, M68020MnemonicKind, OperationSize,
 };
 use crate::families::m68k::{FamilyOperand, M68KFamilyHandler, Operand};
 use crate::m68020::M68020CpuHandler;
@@ -43,28 +43,25 @@ impl M68030CpuHandler {
         &self,
         display_name: &str,
         ctx: &dyn AssemblerContext,
-    ) -> EncodeResult<Vec<u8>> {
+    ) -> Result<&'static str, EncodeResult<Vec<u8>>> {
         let target = ctx
             .cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY)
             .unwrap_or(0);
 
         if target == 0 {
-            return EncodeResult::error(format!(
+            return Err(EncodeResult::error(format!(
                 "{display_name} requires an active .fpu target on m68030; legal .fpu targets for m68030 FPU instructions: 68881, 68882"
-            ));
+            )));
         }
 
         if !Self::LEGAL_FPU_TARGETS.contains(&target) {
-            return EncodeResult::error(format!(
+            return Err(EncodeResult::error(format!(
                 "{display_name} is not available with .fpu {} on m68030; legal .fpu targets for m68030 FPU instructions: 68881, 68882",
                 Self::fpu_target_name(target),
-            ));
+            )));
         }
 
-        EncodeResult::error(format!(
-            "{display_name} is recognized for .fpu {} on m68030, but FPU encoding is not yet implemented",
-            Self::fpu_target_name(target),
-        ))
+        Ok(Self::fpu_target_name(target))
     }
 
     fn encode_pflush(
@@ -151,11 +148,28 @@ impl CpuHandler for M68030CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if has_fpu_mnemonic(mnemonic) {
-            let display_name = parse_fpu_mnemonic(mnemonic)
-                .map(|parsed| parsed.display_name)
-                .unwrap_or_else(|| mnemonic.to_string());
-            return self.handle_fpu_mnemonic(&display_name, ctx);
+        if let Some(parsed) = parse_fpu_mnemonic(mnemonic) {
+            if parsed.has_unknown_size_suffix {
+                return EncodeResult::error(format!(
+                    "unsupported size suffix for {}",
+                    parsed.display_name
+                ));
+            }
+
+            let target_name = match self.handle_fpu_mnemonic(&parsed.display_name, ctx) {
+                Ok(target_name) => target_name,
+                Err(err) => return err,
+            };
+
+            return match parsed.kind {
+                FpuMnemonicKind::Fmove | FpuMnemonicKind::Fmovem => {
+                    self.base.encode_instruction(mnemonic, operands, ctx)
+                }
+                _ => EncodeResult::error(format!(
+                    "{} is recognized for .fpu {} on m68030, but FPU encoding is not yet implemented",
+                    parsed.display_name, target_name
+                )),
+            };
         }
 
         if let Some(parsed) = parse_m68020_mnemonic(mnemonic) {

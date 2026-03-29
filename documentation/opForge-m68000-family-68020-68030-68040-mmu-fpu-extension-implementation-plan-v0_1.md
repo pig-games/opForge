@@ -212,7 +212,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that makes the FPU surface parseable and
     diagnosable without prematurely claiming any encode family
 
-- [ ] `M68KMF-006`: Implement the external-FPU move and register-transfer slice
+- [x] `M68KMF-006`: Implement the external-FPU move and register-transfer slice
       for `m68020` and `m68030` under `.fpu 68881` and `.fpu 68882`.
   - Validation: focused encode or legality tests for `FMOVE`, `FMOVEM`, and FPU
     control-register transfers on `m68020` and `m68030` with `.fpu 68881` or

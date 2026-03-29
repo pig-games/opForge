@@ -3,11 +3,13 @@
 
 //! Motorola 68020 CPU handler implementation.
 
-use crate::families::m68k::operand::{ControlRegisterKind, SpecialRegisterKind};
+use crate::families::m68k::operand::{
+    ControlRegisterKind, FpuControlRegisterKind, RegisterListRegister, SpecialRegisterKind,
+};
 use crate::families::m68k::{
     has_fpu_mnemonic, has_m68020_mnemonic, has_mnemonic, parse_fpu_mnemonic, parse_m68010_mnemonic,
-    parse_m68020_mnemonic, parse_mnemonic, FamilyOperand, M68010MnemonicKind, M68020MnemonicKind,
-    M68KFamilyHandler, MnemonicKind, Operand, OperationSize,
+    parse_m68020_mnemonic, parse_mnemonic, FamilyOperand, FpuMnemonicKind, M68010MnemonicKind,
+    M68020MnemonicKind, M68KFamilyHandler, MnemonicKind, Operand, OperationSize,
 };
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
@@ -40,32 +42,264 @@ impl M68020CpuHandler {
         }
     }
 
-    fn handle_fpu_mnemonic(
+    fn validate_fpu_target(
         &self,
         display_name: &str,
         ctx: &dyn AssemblerContext,
-    ) -> EncodeResult<Vec<u8>> {
+    ) -> Result<&'static str, EncodeResult<Vec<u8>>> {
         let target = ctx
             .cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY)
             .unwrap_or(0);
 
         if target == 0 {
-            return EncodeResult::error(format!(
+            return Err(EncodeResult::error(format!(
                 "{display_name} requires an active .fpu target on m68020; legal .fpu targets for m68020 FPU instructions: 68881, 68882"
-            ));
+            )));
         }
 
         if !Self::LEGAL_FPU_TARGETS.contains(&target) {
-            return EncodeResult::error(format!(
+            return Err(EncodeResult::error(format!(
                 "{display_name} is not available with .fpu {} on m68020; legal .fpu targets for m68020 FPU instructions: 68881, 68882",
                 Self::fpu_target_name(target),
-            ));
+            )));
         }
 
+        Ok(Self::fpu_target_name(target))
+    }
+
+    fn deferred_fpu_message(&self, display_name: &str, target_name: &str) -> EncodeResult<Vec<u8>> {
         EncodeResult::error(format!(
             "{display_name} is recognized for .fpu {} on m68020, but FPU encoding is not yet implemented",
-            Self::fpu_target_name(target),
+            target_name,
         ))
+    }
+
+    fn fpu_control_register_field(register: FpuControlRegisterKind) -> u16 {
+        match register {
+            FpuControlRegisterKind::Fpcr => 0b100 << 10,
+            FpuControlRegisterKind::Fpsr => 0b010 << 10,
+            FpuControlRegisterKind::Fpiar => 0b001 << 10,
+        }
+    }
+
+    fn effective_address_mode(bits: u16) -> u16 {
+        (bits >> 3) & 0b111
+    }
+
+    fn effective_address_register(bits: u16) -> u16 {
+        bits & 0b111
+    }
+
+    fn fpu_register_list_mask(
+        registers: &[RegisterListRegister],
+        reverse: bool,
+    ) -> Result<u16, EncodeResult<Vec<u8>>> {
+        let mut mask = 0_u16;
+        for register in registers {
+            let RegisterListRegister::FpuData(reg) = register else {
+                return Err(EncodeResult::error(
+                    "FMOVEM currently supports only FP register lists on m68020",
+                ));
+            };
+            let bit = if reverse {
+                7 - *reg as u16
+            } else {
+                *reg as u16
+            };
+            mask |= 1_u16 << bit;
+        }
+        Ok(mask)
+    }
+
+    fn fmovem_register_to_memory_destination(bits: u16) -> bool {
+        matches!(
+            (
+                Self::effective_address_mode(bits),
+                Self::effective_address_register(bits),
+            ),
+            (2 | 4 | 5 | 6, _) | (7, 0 | 1)
+        )
+    }
+
+    fn fmovem_memory_to_register_source(bits: u16) -> bool {
+        matches!(
+            (
+                Self::effective_address_mode(bits),
+                Self::effective_address_register(bits),
+            ),
+            (2 | 3 | 5 | 6, _) | (7, 0 | 1)
+        )
+    }
+
+    fn encode_fmove(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+    ) -> EncodeResult<Vec<u8>> {
+        let [src, dst] = operands else {
+            return EncodeResult::error("FMOVE expects two operands");
+        };
+
+        match (size, src, dst) {
+            (
+                None,
+                Operand::FpuDataRegister {
+                    register: src_register,
+                    ..
+                },
+                Operand::FpuDataRegister {
+                    register: dst_register,
+                    ..
+                },
+            ) => {
+                let Some(src_reg) = M68KFamilyHandler::fpu_data_register_number(src_register) else {
+                    return EncodeResult::error_with_span(
+                        "invalid FMOVE source FP register",
+                        src.span(),
+                    );
+                };
+                let Some(dst_reg) = M68KFamilyHandler::fpu_data_register_number(dst_register) else {
+                    return EncodeResult::error_with_span(
+                        "invalid FMOVE destination FP register",
+                        dst.span(),
+                    );
+                };
+
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF000);
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    ((src_reg as u16) << 10) | ((dst_reg as u16) << 7),
+                );
+                EncodeResult::ok(bytes)
+            }
+            (
+                Some(OperationSize::Long),
+                Operand::DataRegister { register, .. },
+                Operand::FpuControlRegister {
+                    register: control, ..
+                },
+            ) => {
+                let Some(reg_bits) = M68KFamilyHandler::data_register_number(register) else {
+                    return EncodeResult::error_with_span(
+                        "invalid FMOVE.L source data register",
+                        src.span(),
+                    );
+                };
+
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF000 | reg_bits as u16);
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    0x8000 | Self::fpu_control_register_field(*control),
+                );
+                EncodeResult::ok(bytes)
+            }
+            (
+                Some(OperationSize::Long),
+                Operand::FpuControlRegister {
+                    register: control, ..
+                },
+                Operand::DataRegister { register, .. },
+            ) => {
+                let Some(reg_bits) = M68KFamilyHandler::data_register_number(register) else {
+                    return EncodeResult::error_with_span(
+                        "invalid FMOVE.L destination data register",
+                        dst.span(),
+                    );
+                };
+
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF000 | reg_bits as u16);
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    0xA000 | Self::fpu_control_register_field(*control),
+                );
+                EncodeResult::ok(bytes)
+            }
+            (Some(OperationSize::Byte), _, _) | (Some(OperationSize::Word), _, _) => {
+                EncodeResult::error(
+                    "FMOVE currently supports only unsuffixed FP-register moves and .L data-register control transfers on m68020",
+                )
+            }
+            (Some(OperationSize::Long), _, _) => EncodeResult::error(
+                "FMOVE.L currently supports only data-register <-> FP control-register transfers on m68020",
+            ),
+            (None, _, _) => EncodeResult::error(
+                "FMOVE currently supports only FPn-to-FPm register moves on m68020; scalar and memory forms remain for a later slice",
+            ),
+        }
+    }
+
+    fn encode_fmovem(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error(
+                "FMOVEM currently supports only unsuffixed FP register-list transfers on m68020",
+            );
+        }
+
+        let [src, dst] = operands else {
+            return EncodeResult::error("FMOVEM expects two operands");
+        };
+
+        match (src, dst) {
+            (Operand::RegisterList { registers, .. }, dst) => {
+                let dst_ea = match self.family.encode_effective_address(dst, None, ctx) {
+                    Ok(ea) => ea,
+                    Err(err) => return err,
+                };
+                if !Self::fmovem_register_to_memory_destination(dst_ea.bits) {
+                    return EncodeResult::error_with_span(
+                        "invalid destination effective address for FMOVEM",
+                        dst.span(),
+                    );
+                }
+
+                let predecrement = Self::effective_address_mode(dst_ea.bits) == 4;
+                let mask = match Self::fpu_register_list_mask(registers, predecrement) {
+                    Ok(mask) => mask,
+                    Err(err) => return err,
+                };
+
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF000 | (dst_ea.bits & 0x003F));
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    if predecrement { 0xE000 } else { 0xF000 } | mask,
+                );
+                bytes.extend_from_slice(&dst_ea.extension);
+                EncodeResult::ok(bytes)
+            }
+            (src, Operand::RegisterList { registers, .. }) => {
+                let src_ea = match self.family.encode_effective_address(src, None, ctx) {
+                    Ok(ea) => ea,
+                    Err(err) => return err,
+                };
+                if !Self::fmovem_memory_to_register_source(src_ea.bits) {
+                    return EncodeResult::error_with_span(
+                        "invalid source effective address for FMOVEM",
+                        src.span(),
+                    );
+                }
+
+                let mask = match Self::fpu_register_list_mask(registers, false) {
+                    Ok(mask) => mask,
+                    Err(err) => return err,
+                };
+
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF000 | (src_ea.bits & 0x003F));
+                M68KFamilyHandler::emit_word(&mut bytes, 0xD000 | mask);
+                bytes.extend_from_slice(&src_ea.extension);
+                EncodeResult::ok(bytes)
+            }
+            _ => EncodeResult::error("FMOVEM expects exactly one FP register-list operand"),
+        }
     }
 
     fn movec_control_register_code(register: ControlRegisterKind) -> Option<u16> {
@@ -211,7 +445,17 @@ impl CpuHandler for M68020CpuHandler {
                     parsed.display_name
                 ));
             }
-            return self.handle_fpu_mnemonic(&parsed.display_name, ctx);
+
+            let target_name = match self.validate_fpu_target(&parsed.display_name, ctx) {
+                Ok(target_name) => target_name,
+                Err(err) => return err,
+            };
+
+            return match parsed.kind {
+                FpuMnemonicKind::Fmove => self.encode_fmove(parsed.size, operands),
+                FpuMnemonicKind::Fmovem => self.encode_fmovem(parsed.size, operands, ctx),
+                _ => self.deferred_fpu_message(&parsed.display_name, target_name),
+            };
         }
 
         if let Some(parsed) = parse_mnemonic(mnemonic) {
@@ -470,6 +714,52 @@ mod tests {
                 assert!(message.contains("68881, 68882"));
             }
             other => panic!("expected incompatible-target diagnostic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fmove_and_fmovem_encode_for_external_fpu_targets_on_m68020() {
+        let handler = M68020CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 1);
+
+        match handler.encode_instruction(
+            "FMOVE",
+            &[
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x00, 0x80]),
+            other => panic!("expected FMOVE encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FMOVEM",
+            &[
+                Operand::RegisterList {
+                    registers: vec![
+                        RegisterListRegister::FpuData(0),
+                        RegisterListRegister::FpuData(2),
+                    ],
+                    span: Default::default(),
+                },
+                Operand::AddressIndirect {
+                    register: "A0".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x10, 0xF0, 0x05]),
+            other => panic!("expected FMOVEM encoding, got {other:?}"),
         }
     }
 }

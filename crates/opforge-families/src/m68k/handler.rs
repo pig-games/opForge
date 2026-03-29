@@ -10,8 +10,8 @@ use super::operand::{
     IndexSize, MemoryIndirectionKind, Operand, RegisterListRegister, SpecialRegisterKind,
 };
 use super::table::{
-    parse_mnemonic, BitFieldMnemonic, BitMnemonic, ConditionCode, MnemonicKind, OperationSize,
-    ShiftMnemonic,
+    parse_fpu_mnemonic, parse_mnemonic, BitFieldMnemonic, BitMnemonic, ConditionCode,
+    FpuMnemonicKind, MnemonicKind, OperationSize, ShiftMnemonic,
 };
 use opcore::expression::expr_span;
 use opcore::parser::{BinaryOp, Expr, UnaryOp};
@@ -67,6 +67,12 @@ enum MovemRegisterToken {
     Register(RegisterListRegister, opcore::tokenizer::Span),
     Separator(opcore::tokenizer::Span),
     Range(opcore::tokenizer::Span),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RegisterListFamily {
+    Integer,
+    Fpu,
 }
 
 impl M68KFamilyHandler {
@@ -825,22 +831,32 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn parse_movem_register_list_register(
+    fn parse_register_list_register(
         expr: &Expr,
+        family: RegisterListFamily,
     ) -> Option<(RegisterListRegister, opcore::tokenizer::Span)> {
-        if let Some((name, span)) = Self::parse_data_register(expr) {
-            let reg = Self::data_register_number(&name)?;
-            return Some((RegisterListRegister::Data(reg), span));
+        match family {
+            RegisterListFamily::Integer => {
+                if let Some((name, span)) = Self::parse_data_register(expr) {
+                    let reg = Self::data_register_number(&name)?;
+                    return Some((RegisterListRegister::Data(reg), span));
+                }
+                if let Some((name, span)) = Self::parse_address_register(expr) {
+                    let reg = Self::address_register_number(&name)?;
+                    return Some((RegisterListRegister::Address(reg), span));
+                }
+                None
+            }
+            RegisterListFamily::Fpu => {
+                let (name, span) = Self::parse_fpu_data_register(expr)?;
+                let reg = Self::fpu_data_register_number(&name)?;
+                Some((RegisterListRegister::FpuData(reg), span))
+            }
         }
-        if let Some((name, span)) = Self::parse_address_register(expr) {
-            let reg = Self::address_register_number(&name)?;
-            return Some((RegisterListRegister::Address(reg), span));
-        }
-        None
     }
 
-    fn movem_register_list_candidate(expr: &Expr) -> bool {
-        if Self::parse_movem_register_list_register(expr).is_some() {
+    fn register_list_candidate(expr: &Expr, family: RegisterListFamily) -> bool {
+        if Self::parse_register_list_register(expr, family).is_some() {
             return true;
         }
 
@@ -857,12 +873,22 @@ impl M68KFamilyHandler {
         match register {
             RegisterListRegister::Data(reg) => format!("D{reg}"),
             RegisterListRegister::Address(reg) => format!("A{reg}"),
+            RegisterListRegister::FpuData(reg) => format!("FP{reg}"),
         }
     }
 
-    fn expand_movem_register_range(
+    fn expected_register_list_item_description(family: RegisterListFamily) -> &'static str {
+        match family {
+            RegisterListFamily::Integer => "data or address register",
+            RegisterListFamily::Fpu => "FPU data register",
+        }
+    }
+
+    fn expand_register_list_range(
         start: RegisterListRegister,
         end: RegisterListRegister,
+        family: RegisterListFamily,
+        mnemonic_name: &str,
         span: opcore::tokenizer::Span,
     ) -> Result<Vec<RegisterListRegister>, FamilyParseError> {
         match (start, end) {
@@ -876,18 +902,31 @@ impl M68KFamilyHandler {
             {
                 Ok((start..=end).map(RegisterListRegister::Address).collect())
             }
+            (RegisterListRegister::FpuData(start), RegisterListRegister::FpuData(end))
+                if start <= end =>
+            {
+                Ok((start..=end).map(RegisterListRegister::FpuData).collect())
+            }
             _ => Err(FamilyParseError::new(
-                "MOVEM register ranges must stay within one ascending register family",
+                format!(
+                    "{mnemonic_name} register ranges must stay within one ascending {} family",
+                    match family {
+                        RegisterListFamily::Integer => "integer register",
+                        RegisterListFamily::Fpu => "FPU register",
+                    }
+                ),
                 span,
             )),
         }
     }
 
-    fn flatten_movem_register_list_tokens(
+    fn flatten_register_list_tokens(
         expr: &Expr,
         tokens: &mut Vec<MovemRegisterToken>,
+        family: RegisterListFamily,
+        mnemonic_name: &str,
     ) -> Result<(), FamilyParseError> {
-        if let Some((register, span)) = Self::parse_movem_register_list_register(expr) {
+        if let Some((register, span)) = Self::parse_register_list_register(expr, family) {
             tokens.push(MovemRegisterToken::Register(register, span));
             return Ok(());
         }
@@ -900,32 +939,43 @@ impl M68KFamilyHandler {
         } = expr
         else {
             return Err(FamilyParseError::new(
-                "invalid MOVEM register list; expected data/address registers, ranges, and '/' separators",
+                format!(
+                    "invalid {mnemonic_name} register list; expected {}s, ranges, and '/' separators",
+                    Self::expected_register_list_item_description(family)
+                ),
                 span_from_expr(expr),
             ));
         };
 
         match op {
             BinaryOp::Divide => {
-                Self::flatten_movem_register_list_tokens(left, tokens)?;
+                Self::flatten_register_list_tokens(left, tokens, family, mnemonic_name)?;
                 tokens.push(MovemRegisterToken::Separator(*span));
-                Self::flatten_movem_register_list_tokens(right, tokens)
+                Self::flatten_register_list_tokens(right, tokens, family, mnemonic_name)
             }
             BinaryOp::Subtract => {
-                Self::flatten_movem_register_list_tokens(left, tokens)?;
+                Self::flatten_register_list_tokens(left, tokens, family, mnemonic_name)?;
                 tokens.push(MovemRegisterToken::Range(*span));
-                Self::flatten_movem_register_list_tokens(right, tokens)
+                Self::flatten_register_list_tokens(right, tokens, family, mnemonic_name)
             }
             _ => Err(FamilyParseError::new(
-                "invalid MOVEM register list; expected data/address registers, ranges, and '/' separators",
+                format!(
+                    "invalid {mnemonic_name} register list; expected {}s, ranges, and '/' separators",
+                    Self::expected_register_list_item_description(family)
+                ),
                 *span,
             )),
         }
     }
 
-    fn parse_movem_register_list(&self, expr: &Expr) -> Result<FamilyOperand, FamilyParseError> {
+    fn parse_register_list(
+        &self,
+        expr: &Expr,
+        family: RegisterListFamily,
+        mnemonic_name: &str,
+    ) -> Result<FamilyOperand, FamilyParseError> {
         let mut tokens = Vec::new();
-        Self::flatten_movem_register_list_tokens(expr, &mut tokens)?;
+        Self::flatten_register_list_tokens(expr, &mut tokens, family, mnemonic_name)?;
 
         let mut registers = Vec::new();
         let mut seen = HashSet::new();
@@ -937,7 +987,10 @@ impl M68KFamilyHandler {
                 Some(MovemRegisterToken::Separator(span))
                 | Some(MovemRegisterToken::Range(span)) => {
                     return Err(FamilyParseError::new(
-                        "MOVEM register list items must begin with a data or address register",
+                        format!(
+                            "{mnemonic_name} register list items must begin with a {}",
+                            Self::expected_register_list_item_description(family)
+                        ),
                         *span,
                     ))
                 }
@@ -954,12 +1007,15 @@ impl M68KFamilyHandler {
                 index += 1;
                 let Some(MovemRegisterToken::Register(end, _)) = tokens.get(index) else {
                     return Err(FamilyParseError::new(
-                        "MOVEM register ranges must end with a data or address register",
+                        format!(
+                            "{mnemonic_name} register ranges must end with a {}",
+                            Self::expected_register_list_item_description(family)
+                        ),
                         range_span,
                     ));
                 };
                 index += 1;
-                Self::expand_movem_register_range(start, *end, range_span)?
+                Self::expand_register_list_range(start, *end, family, mnemonic_name, range_span)?
             } else {
                 vec![start]
             };
@@ -968,7 +1024,7 @@ impl M68KFamilyHandler {
                 if !seen.insert(register) {
                     return Err(FamilyParseError::new(
                         format!(
-                            "duplicate register in MOVEM list: {}",
+                            "duplicate register in {mnemonic_name} list: {}",
                             Self::format_register_list_register(register)
                         ),
                         start_span,
@@ -987,13 +1043,16 @@ impl M68KFamilyHandler {
                 }
                 Some(MovemRegisterToken::Range(span)) => {
                     return Err(FamilyParseError::new(
-                        "MOVEM register ranges must start with a data or address register",
+                        format!(
+                            "{mnemonic_name} register ranges must start with a {}",
+                            Self::expected_register_list_item_description(family)
+                        ),
                         *span,
                     ))
                 }
                 Some(MovemRegisterToken::Register(_, span)) => {
                     return Err(FamilyParseError::new(
-                        "MOVEM register list items must be separated with '/'",
+                        format!("{mnemonic_name} register list items must be separated with '/'"),
                         *span,
                     ))
                 }
@@ -1015,13 +1074,13 @@ impl M68KFamilyHandler {
             ));
         };
 
-        let left_candidate = Self::movem_register_list_candidate(left);
-        let right_candidate = Self::movem_register_list_candidate(right);
+        let left_candidate = Self::register_list_candidate(left, RegisterListFamily::Integer);
+        let right_candidate = Self::register_list_candidate(right, RegisterListFamily::Integer);
         let mut deferred_error = None;
 
         if left_candidate {
             match (
-                self.parse_movem_register_list(left),
+                self.parse_register_list(left, RegisterListFamily::Integer, "MOVEM"),
                 self.parse_single_operand(right),
             ) {
                 (Ok(list), Ok(other)) => return Ok(vec![list, other]),
@@ -1033,7 +1092,58 @@ impl M68KFamilyHandler {
         if right_candidate {
             match (
                 self.parse_single_operand(left),
-                self.parse_movem_register_list(right),
+                self.parse_register_list(right, RegisterListFamily::Integer, "MOVEM"),
+            ) {
+                (Ok(other), Ok(list)) => return Ok(vec![other, list]),
+                (Err(err), _) => {
+                    deferred_error.get_or_insert(err);
+                }
+                (_, Err(err)) => {
+                    deferred_error.get_or_insert(err);
+                }
+            }
+        }
+
+        if let Some(err) = deferred_error {
+            return Err(err);
+        }
+
+        Ok(vec![
+            self.parse_single_operand(left)?,
+            self.parse_single_operand(right)?,
+        ])
+    }
+
+    fn parse_fmovem_operands(
+        &self,
+        exprs: &[Expr],
+    ) -> Result<Vec<FamilyOperand>, FamilyParseError> {
+        let [left, right] = exprs else {
+            return Err(FamilyParseError::new(
+                "FMOVEM expects two operands",
+                exprs.first().map(span_from_expr).unwrap_or_default(),
+            ));
+        };
+
+        let left_candidate = Self::register_list_candidate(left, RegisterListFamily::Fpu);
+        let right_candidate = Self::register_list_candidate(right, RegisterListFamily::Fpu);
+        let mut deferred_error = None;
+
+        if left_candidate {
+            match (
+                self.parse_register_list(left, RegisterListFamily::Fpu, "FMOVEM"),
+                self.parse_single_operand(right),
+            ) {
+                (Ok(list), Ok(other)) => return Ok(vec![list, other]),
+                (Err(err), _) => deferred_error = Some(err),
+                (_, Err(err)) => deferred_error = Some(err),
+            }
+        }
+
+        if right_candidate {
+            match (
+                self.parse_single_operand(left),
+                self.parse_register_list(right, RegisterListFamily::Fpu, "FMOVEM"),
             ) {
                 (Ok(other), Ok(list)) => return Ok(vec![other, list]),
                 (Err(err), _) => {
@@ -5301,6 +5411,9 @@ impl M68KFamilyHandler {
             let bit = match register {
                 RegisterListRegister::Data(reg) => *reg as u16,
                 RegisterListRegister::Address(reg) => 8 + *reg as u16,
+                RegisterListRegister::FpuData(_) => {
+                    unreachable!("integer MOVEM should not receive FPU register lists")
+                }
             };
             let bit = if predecrement { 15 - bit } else { bit };
             mask | (1_u16 << bit)
@@ -5370,6 +5483,12 @@ impl M68KFamilyHandler {
 
     pub(crate) fn data_register_number(name: &str) -> Option<u8> {
         let suffix = name.strip_prefix('D')?;
+        let reg = suffix.parse::<u8>().ok()?;
+        (reg <= 7).then_some(reg)
+    }
+
+    pub(crate) fn fpu_data_register_number(name: &str) -> Option<u8> {
+        let suffix = name.strip_prefix("FP")?;
         let reg = suffix.parse::<u8>().ok()?;
         (reg <= 7).then_some(reg)
     }
@@ -5882,6 +6001,13 @@ impl FamilyHandler for M68KFamilyHandler {
         mnemonic: &str,
         exprs: &[Expr],
     ) -> Result<Vec<Self::FamilyOperand>, FamilyParseError> {
+        if matches!(
+            parse_fpu_mnemonic(mnemonic).map(|parsed| parsed.kind),
+            Some(FpuMnemonicKind::Fmovem)
+        ) {
+            return self.parse_fmovem_operands(exprs);
+        }
+
         if matches!(
             parse_mnemonic(mnemonic).map(|parsed| parsed.kind),
             Some(MnemonicKind::Movem)

@@ -31,6 +31,22 @@ use libopforge::registry::{
 
 static OVERLAY_DIR_SEQUENCE: AtomicUsize = AtomicUsize::new(1);
 
+struct ValidationWorkerGuard {
+    counter: Arc<AtomicUsize>,
+}
+
+impl ValidationWorkerGuard {
+    fn new(counter: Arc<AtomicUsize>) -> Self {
+        Self { counter }
+    }
+}
+
+impl Drop for ValidationWorkerGuard {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum OutboundMessage {
     Response {
@@ -939,9 +955,9 @@ impl LspSession {
         let counter = Arc::clone(&self.active_validations);
         counter.fetch_add(1, Ordering::Relaxed);
         thread::spawn(move || {
+            let _guard = ValidationWorkerGuard::new(counter);
             let result = run_validation_task(config, doc, documents, generation, root_uri);
             let _ = tx.send(result);
-            counter.fetch_sub(1, Ordering::Relaxed);
         });
         true
     }

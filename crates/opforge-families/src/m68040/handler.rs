@@ -118,15 +118,23 @@ impl M68040CpuHandler {
         EncodeResult::ok(bytes)
     }
 
-    fn encode_move16(&self, operands: &[Operand], ctx: &dyn AssemblerContext) -> EncodeResult<Vec<u8>> {
+    fn encode_move16(
+        &self,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
         let [src, dst] = operands else {
             return EncodeResult::error("MOVE16 expects two operands");
         };
 
         match (src, dst) {
             (
-                Operand::AddressPostincrement { register: src_reg, .. },
-                Operand::AddressPostincrement { register: dst_reg, .. },
+                Operand::AddressPostincrement {
+                    register: src_reg, ..
+                },
+                Operand::AddressPostincrement {
+                    register: dst_reg, ..
+                },
             ) => {
                 let Some(src_bits) = M68KFamilyHandler::address_register_number(src_reg) else {
                     return EncodeResult::error_with_span(
@@ -146,7 +154,8 @@ impl M68040CpuHandler {
                 EncodeResult::ok(bytes)
             }
             (
-                Operand::AddressIndirect { register, .. } | Operand::AddressPostincrement { register, .. },
+                Operand::AddressIndirect { register, .. }
+                | Operand::AddressPostincrement { register, .. },
                 Operand::Absolute {
                     expr,
                     size: AbsoluteSize::Long,
@@ -158,7 +167,9 @@ impl M68040CpuHandler {
                 match src {
                     Operand::AddressIndirect { .. } => 0b10,
                     Operand::AddressPostincrement { .. } => 0b00,
-                    _ => unreachable!("MOVE16 register->absolute match should be indirect or postincrement"),
+                    _ => unreachable!(
+                        "MOVE16 register->absolute match should be indirect or postincrement"
+                    ),
                 },
                 src.span(),
                 ctx,
@@ -169,14 +180,17 @@ impl M68040CpuHandler {
                     size: AbsoluteSize::Long,
                     ..
                 },
-                Operand::AddressIndirect { register, .. } | Operand::AddressPostincrement { register, .. },
+                Operand::AddressIndirect { register, .. }
+                | Operand::AddressPostincrement { register, .. },
             ) => self.encode_move16_absolute(
                 register,
                 expr,
                 match dst {
                     Operand::AddressIndirect { .. } => 0b11,
                     Operand::AddressPostincrement { .. } => 0b01,
-                    _ => unreachable!("MOVE16 absolute->register match should be indirect or postincrement"),
+                    _ => unreachable!(
+                        "MOVE16 absolute->register match should be indirect or postincrement"
+                    ),
                 },
                 dst.span(),
                 ctx,

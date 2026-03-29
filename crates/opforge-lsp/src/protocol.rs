@@ -126,9 +126,7 @@ fn read_lsp_message(reader: &mut impl BufRead) -> io::Result<Option<Value>> {
             if length > MAX_LSP_MESSAGE_BYTES {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!(
-                        "LSP message exceeds maximum size of {MAX_LSP_MESSAGE_BYTES} bytes"
-                    ),
+                    format!("LSP message exceeds maximum size of {MAX_LSP_MESSAGE_BYTES} bytes"),
                 ));
             }
             content_length = Some(length);

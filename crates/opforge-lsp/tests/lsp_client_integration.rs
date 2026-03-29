@@ -161,7 +161,10 @@ fn shutdown_waits_for_exit_and_rejects_subsequent_requests() {
     client.notify("initialized", json!({}));
 
     let shutdown = client.shutdown_request();
-    assert!(shutdown.is_null(), "shutdown should acknowledge with null result");
+    assert!(
+        shutdown.is_null(),
+        "shutdown should acknowledge with null result"
+    );
     assert!(
         !client.wait_for_exit(Duration::from_millis(200)),
         "server should remain alive until exit notification"

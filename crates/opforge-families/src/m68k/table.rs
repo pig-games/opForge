@@ -113,6 +113,31 @@ pub enum M68020MnemonicKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FpuMnemonicKind {
+    Fmove,
+    Fmovem,
+    Fadd,
+    Fsub,
+    Fmul,
+    Fdiv,
+    Fsqrt,
+    Fabs,
+    Fneg,
+    Fcmp,
+    Ftst,
+    Fint,
+    Fintrz,
+    Fsave,
+    Frestore,
+    Fsin,
+    Fcos,
+    Fbranch,
+    Fdbcc,
+    Fscc,
+    Ftrapcc,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BitFieldMnemonic {
     Bftst,
     Bfextu,
@@ -294,6 +319,14 @@ pub struct ParsedM68010Mnemonic {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ParsedM68020Mnemonic {
     pub kind: M68020MnemonicKind,
+    pub display_name: String,
+    pub size: Option<OperationSize>,
+    pub has_unknown_size_suffix: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParsedFpuMnemonic {
+    pub kind: FpuMnemonicKind,
     pub display_name: String,
     pub size: Option<OperationSize>,
     pub has_unknown_size_suffix: bool,
@@ -530,6 +563,48 @@ pub fn has_m68020_mnemonic(mnemonic: &str) -> bool {
     parse_m68020_mnemonic(mnemonic).is_some()
 }
 
+fn fpu_base_kind(base: &str) -> Option<FpuMnemonicKind> {
+    match base {
+        "FMOVE" => Some(FpuMnemonicKind::Fmove),
+        "FMOVEM" => Some(FpuMnemonicKind::Fmovem),
+        "FADD" => Some(FpuMnemonicKind::Fadd),
+        "FSUB" => Some(FpuMnemonicKind::Fsub),
+        "FMUL" => Some(FpuMnemonicKind::Fmul),
+        "FDIV" => Some(FpuMnemonicKind::Fdiv),
+        "FSQRT" => Some(FpuMnemonicKind::Fsqrt),
+        "FABS" => Some(FpuMnemonicKind::Fabs),
+        "FNEG" => Some(FpuMnemonicKind::Fneg),
+        "FCMP" => Some(FpuMnemonicKind::Fcmp),
+        "FTST" => Some(FpuMnemonicKind::Ftst),
+        "FINT" => Some(FpuMnemonicKind::Fint),
+        "FINTRZ" => Some(FpuMnemonicKind::Fintrz),
+        "FSAVE" => Some(FpuMnemonicKind::Fsave),
+        "FRESTORE" => Some(FpuMnemonicKind::Frestore),
+        "FSIN" => Some(FpuMnemonicKind::Fsin),
+        "FCOS" => Some(FpuMnemonicKind::Fcos),
+        _ if base.starts_with("FDB") && base.len() > 3 => Some(FpuMnemonicKind::Fdbcc),
+        _ if base.starts_with("FTRAP") && base.len() > 5 => Some(FpuMnemonicKind::Ftrapcc),
+        _ if base.starts_with("FB") && base.len() > 2 => Some(FpuMnemonicKind::Fbranch),
+        _ if base.starts_with("FS") && base.len() > 2 => Some(FpuMnemonicKind::Fscc),
+        _ => None,
+    }
+}
+
+pub fn parse_fpu_mnemonic(mnemonic: &str) -> Option<ParsedFpuMnemonic> {
+    let (base, size, has_unknown_size_suffix) = split_size_suffix(mnemonic);
+
+    Some(ParsedFpuMnemonic {
+        kind: fpu_base_kind(base.as_str())?,
+        display_name: base,
+        size,
+        has_unknown_size_suffix,
+    })
+}
+
+pub fn has_fpu_mnemonic(mnemonic: &str) -> bool {
+    parse_fpu_mnemonic(mnemonic).is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,5 +713,22 @@ mod tests {
         );
         assert_eq!(trap_unknown.size, None);
         assert!(trap_unknown.has_unknown_size_suffix);
+    }
+
+    #[test]
+    fn parse_fpu_mnemonic_tracks_size_suffix_state() {
+        assert!(has_fpu_mnemonic("FMOVE"));
+        assert!(has_fpu_mnemonic("FMOVEM"));
+        assert!(has_fpu_mnemonic("FADD"));
+        assert!(has_fpu_mnemonic("FSIN"));
+        assert!(has_fpu_mnemonic("FBNE"));
+        assert!(has_fpu_mnemonic("FDBEQ"));
+        assert!(has_fpu_mnemonic("FSGE"));
+        assert!(has_fpu_mnemonic("FTRAPGT"));
+
+        let move_unknown = parse_fpu_mnemonic("FMOVE.X").expect("FMOVE base should parse");
+        assert_eq!(move_unknown.kind, FpuMnemonicKind::Fmove);
+        assert_eq!(move_unknown.size, None);
+        assert!(move_unknown.has_unknown_size_suffix);
     }
 }

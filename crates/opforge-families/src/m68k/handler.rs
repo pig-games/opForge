@@ -6,8 +6,8 @@
 use super::is_register;
 use super::operand::{
     span_from_expr, span_from_exprs, AbsoluteSize, BitFieldSelector, ControlRegisterKind,
-    FamilyOperand, FullExtensionBase, FullExtensionIndex, IndexScale, IndexSize,
-    MemoryIndirectionKind, Operand, RegisterListRegister, SpecialRegisterKind,
+    FamilyOperand, FpuControlRegisterKind, FullExtensionBase, FullExtensionIndex, IndexScale,
+    IndexSize, MemoryIndirectionKind, Operand, RegisterListRegister, SpecialRegisterKind,
 };
 use super::table::{
     parse_mnemonic, BitFieldMnemonic, BitMnemonic, ConditionCode, MnemonicKind, OperationSize,
@@ -150,6 +150,36 @@ impl M68KFamilyHandler {
             "MMUSR" => ControlRegisterKind::Mmusr,
             "URP" => ControlRegisterKind::Urp,
             "SRP" => ControlRegisterKind::Srp,
+            _ => return None,
+        };
+        Some((register, span))
+    }
+
+    fn parse_fpu_data_register(expr: &Expr) -> Option<(String, opcore::tokenizer::Span)> {
+        let (name, span) = match expr {
+            Expr::Register(name, span) | Expr::Identifier(name, span) => {
+                (name.to_ascii_uppercase(), *span)
+            }
+            _ => return None,
+        };
+        let suffix = name.strip_prefix("FP")?;
+        let reg = suffix.parse::<u8>().ok()?;
+        (reg <= 7).then_some((name, span))
+    }
+
+    fn parse_fpu_control_register(
+        expr: &Expr,
+    ) -> Option<(FpuControlRegisterKind, opcore::tokenizer::Span)> {
+        let (name, span) = match expr {
+            Expr::Register(name, span) | Expr::Identifier(name, span) => {
+                (name.to_ascii_uppercase(), *span)
+            }
+            _ => return None,
+        };
+        let register = match name.as_str() {
+            "FPCR" => FpuControlRegisterKind::Fpcr,
+            "FPSR" => FpuControlRegisterKind::Fpsr,
+            "FPIAR" => FpuControlRegisterKind::Fpiar,
             _ => return None,
         };
         Some((register, span))
@@ -1160,6 +1190,15 @@ impl M68KFamilyHandler {
         }
         if let Some((register, span)) = Self::parse_control_register(expr) {
             return Ok(FamilyOperand::ControlRegister { register, span });
+        }
+        if let Some((name, span)) = Self::parse_fpu_data_register(expr) {
+            return Ok(FamilyOperand::FpuDataRegister {
+                register: name,
+                span,
+            });
+        }
+        if let Some((register, span)) = Self::parse_fpu_control_register(expr) {
+            return Ok(FamilyOperand::FpuControlRegister { register, span });
         }
 
         match expr {
@@ -4767,6 +4806,14 @@ impl M68KFamilyHandler {
                 "68000 control registers are not valid effective addresses",
                 operand.span(),
             )),
+            Operand::FpuDataRegister { .. } => Err(EncodeResult::error_with_span(
+                "FPU data registers are not valid effective addresses",
+                operand.span(),
+            )),
+            Operand::FpuControlRegister { .. } => Err(EncodeResult::error_with_span(
+                "FPU control registers are not valid effective addresses",
+                operand.span(),
+            )),
             Operand::FullExtension { .. } => {
                 self.encode_full_extension_effective_address(operand, ctx)
             }
@@ -5269,6 +5316,12 @@ impl M68KFamilyHandler {
             }
             Operand::ControlRegister { .. } => {
                 unreachable!("68000 control registers are not effective addresses")
+            }
+            Operand::FpuDataRegister { .. } => {
+                unreachable!("FPU data registers are not effective addresses")
+            }
+            Operand::FpuControlRegister { .. } => {
+                unreachable!("FPU control registers are not effective addresses")
             }
             Operand::FullExtension { .. } => match operand {
                 Operand::FullExtension { base, .. } => match base {
@@ -6010,6 +6063,7 @@ mod tests {
     struct TestContext {
         values: HashMap<String, i64>,
         scalar_symbols: HashMap<String, i64>,
+        state_flags: HashMap<String, u32>,
         symbols: SymbolTable,
         current_address: u32,
         pass: u8,
@@ -6077,6 +6131,10 @@ mod tests {
 
         fn scalar_value_symbol(&self, name: &str) -> Option<i64> {
             self.scalar_symbols.get(name).copied()
+        }
+
+        fn cpu_state_flag(&self, key: &str) -> Option<u32> {
+            self.state_flags.get(key).copied()
         }
     }
 
@@ -6966,6 +7024,54 @@ mod tests {
             ),
             &[0x0E, 0x50, 0x18, 0x00],
         );
+    }
+
+    #[test]
+    fn parses_fpu_data_register_operands_without_global_register_tokens() {
+        let handler = M68KFamilyHandler::new();
+        for register in ["FP0", "FP1", "FP2", "FP3", "FP4", "FP5", "FP6", "FP7"] {
+            let operands = handler
+                .parse_operands(
+                    "FMOVE",
+                    &[
+                        Expr::Identifier(register.to_string(), span()),
+                        Expr::Identifier("FP0".to_string(), span()),
+                    ],
+                )
+                .expect("operand parse");
+            match &operands[0] {
+                FamilyOperand::FpuDataRegister {
+                    register: parsed, ..
+                } => assert_eq!(parsed, register),
+                other => panic!("expected FPU data register operand, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn parses_fpu_control_register_operands_without_global_register_tokens() {
+        let handler = M68KFamilyHandler::new();
+        for (source, expected) in [
+            ("FPCR", FpuControlRegisterKind::Fpcr),
+            ("FPSR", FpuControlRegisterKind::Fpsr),
+            ("FPIAR", FpuControlRegisterKind::Fpiar),
+        ] {
+            let operands = handler
+                .parse_operands(
+                    "FMOVE",
+                    &[
+                        Expr::Identifier(source.to_string(), span()),
+                        Expr::Identifier("FP0".to_string(), span()),
+                    ],
+                )
+                .expect("operand parse");
+            match &operands[0] {
+                FamilyOperand::FpuControlRegister { register, .. } => {
+                    assert_eq!(*register, expected)
+                }
+                other => panic!("expected FPU control register operand, got {other:?}"),
+            }
+        }
     }
 
     #[test]

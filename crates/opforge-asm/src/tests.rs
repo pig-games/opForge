@@ -2833,6 +2833,58 @@ fn m68k_cpu_directive_resets_fpu_selection_to_none() {
 }
 
 #[test]
+fn m68k_fpu_mnemonics_fail_explicitly_when_fpu_is_disabled() {
+    for (source, expected_cpu, expected_mnemonic) in [
+        ([".cpu 68020", "    FMOVE FP0,FP1"], "m68020", "FMOVE"),
+        ([".cpu 68030", "    FADD FP0,FP1"], "m68030", "FADD"),
+        ([".cpu 68040", "    FSIN FP0,FP1"], "m68040", "FSIN"),
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("requires an active .fpu target"))
+            .unwrap_or_else(|| {
+                panic!("missing disabled-FPU diagnostic for {expected_mnemonic}: {diagnostics:?}")
+            });
+        assert!(diagnostic.contains(expected_cpu));
+        assert!(diagnostic.contains(expected_mnemonic));
+    }
+}
+
+#[test]
+fn m68k_fpu_mnemonics_enter_legality_path_once_fpu_is_enabled() {
+    for (source, expected_target, expected_mnemonic) in [
+        (
+            [".cpu 68020", ".fpu 68881", "    FMOVE FPCR,FP0"],
+            "68881",
+            "FMOVE",
+        ),
+        (
+            [".cpu 68030", ".fpu 68882", "    FADD FP0,FP1"],
+            "68882",
+            "FADD",
+        ),
+        (
+            [".cpu 68040", ".fpu 68040", "    FSIN FP0,FP1"],
+            "68040",
+            "FSIN",
+        ),
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("FPU encoding is not yet implemented"))
+            .unwrap_or_else(|| {
+                panic!("missing deferred-FPU diagnostic for {expected_mnemonic}: {diagnostics:?}")
+            });
+        assert!(diagnostic.contains(expected_target));
+        assert!(diagnostic.contains(expected_mnemonic));
+    }
+}
+
+#[test]
 fn cpu_68000_emit_word_uses_big_endian_order() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();
@@ -4235,12 +4287,19 @@ fn m68030_carries_forward_second_m68020_instruction_group() {
 
 #[test]
 fn m68030_rejects_out_of_scope_system_surfaces_deterministically() {
-    for line in ["    PMOVE D0,D1", "    PFLUSHA", "    FMOVE D0,D1"] {
+    for (line, expected) in [
+        ("    PMOVE D0,D1", "No instruction found"),
+        ("    PFLUSHA", "No instruction found"),
+        (
+            "    FMOVE D0,D1",
+            "requires an active .fpu target on m68030",
+        ),
+    ] {
         let (status, message) = assemble_line_status(m68030_cpu_id, line);
         assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
         let message = message.expect("expected out-of-scope system diagnostic");
         assert!(
-            message.contains("No instruction found"),
+            message.contains(expected),
             "unexpected m68030 system-surface diagnostic for '{line}': {message}"
         );
     }
@@ -4458,7 +4517,10 @@ fn m68040_restriction_set_rejects_deterministically() {
             "PFLUSH expects exactly one address-indirect operand on m68040",
         ),
         ("    PMOVE D0,D1", "No instruction found"),
-        ("    FMOVE D0,D1", "No instruction found"),
+        (
+            "    FMOVE D0,D1",
+            "requires an active .fpu target on m68040",
+        ),
     ] {
         let (status, message) = assemble_line_status(m68040_cpu_id, line);
         assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");

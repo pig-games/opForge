@@ -3,7 +3,9 @@
 
 //! Motorola 68030 CPU handler implementation.
 
-use crate::families::m68k::{parse_m68020_mnemonic, M68020MnemonicKind, OperationSize};
+use crate::families::m68k::{
+    has_fpu_mnemonic, parse_fpu_mnemonic, parse_m68020_mnemonic, M68020MnemonicKind, OperationSize,
+};
 use crate::families::m68k::{FamilyOperand, M68KFamilyHandler, Operand};
 use crate::m68020::M68020CpuHandler;
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
@@ -20,10 +22,49 @@ impl Default for M68030CpuHandler {
 }
 
 impl M68030CpuHandler {
+    const LEGAL_FPU_TARGETS: [u32; 2] = [1, 2];
+
     pub fn new() -> Self {
         Self {
             base: M68020CpuHandler::new(),
         }
+    }
+
+    fn fpu_target_name(state_value: u32) -> &'static str {
+        match state_value {
+            1 => "68881",
+            2 => "68882",
+            3 => "68040",
+            _ => "none",
+        }
+    }
+
+    fn handle_fpu_mnemonic(
+        &self,
+        display_name: &str,
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let target = ctx
+            .cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY)
+            .unwrap_or(0);
+
+        if target == 0 {
+            return EncodeResult::error(format!(
+                "{display_name} requires an active .fpu target on m68030; legal .fpu targets for m68030 FPU instructions: 68881, 68882"
+            ));
+        }
+
+        if !Self::LEGAL_FPU_TARGETS.contains(&target) {
+            return EncodeResult::error(format!(
+                "{display_name} is not available with .fpu {} on m68030; legal .fpu targets for m68030 FPU instructions: 68881, 68882",
+                Self::fpu_target_name(target),
+            ));
+        }
+
+        EncodeResult::error(format!(
+            "{display_name} is recognized for .fpu {} on m68030, but FPU encoding is not yet implemented",
+            Self::fpu_target_name(target),
+        ))
     }
 
     fn encode_pflush(
@@ -110,6 +151,13 @@ impl CpuHandler for M68030CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
+        if has_fpu_mnemonic(mnemonic) {
+            let display_name = parse_fpu_mnemonic(mnemonic)
+                .map(|parsed| parsed.display_name)
+                .unwrap_or_else(|| mnemonic.to_string());
+            return self.handle_fpu_mnemonic(&display_name, ctx);
+        }
+
         if let Some(parsed) = parse_m68020_mnemonic(mnemonic) {
             if matches!(parsed.kind, M68020MnemonicKind::Pflush) {
                 if parsed.has_unknown_size_suffix {
@@ -127,5 +175,75 @@ impl CpuHandler for M68030CpuHandler {
 
     fn supports_mnemonic(&self, mnemonic: &str) -> bool {
         self.base.supports_mnemonic(mnemonic)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opcore::parser::Expr;
+    use std::collections::HashMap;
+    use types::symbol::SymbolTable;
+
+    #[derive(Default)]
+    struct TestContext {
+        state_flags: HashMap<String, u32>,
+        symbols: SymbolTable,
+    }
+
+    impl TestContext {
+        fn with_cpu_state_flag(mut self, key: &str, value: u32) -> Self {
+            self.state_flags.insert(key.to_string(), value);
+            self
+        }
+    }
+
+    impl AssemblerContext for TestContext {
+        fn eval_expr(&self, _expr: &Expr) -> Result<i64, String> {
+            Err("unexpected expression evaluation in test".to_string())
+        }
+
+        fn symbols(&self) -> &SymbolTable {
+            &self.symbols
+        }
+
+        fn has_symbol(&self, _name: &str) -> bool {
+            false
+        }
+
+        fn symbol_is_finalized(&self, _name: &str) -> Option<bool> {
+            None
+        }
+
+        fn current_address(&self) -> u32 {
+            0
+        }
+
+        fn pass(&self) -> u8 {
+            2
+        }
+
+        fn scalar_value_symbol(&self, _name: &str) -> Option<i64> {
+            None
+        }
+
+        fn cpu_state_flag(&self, key: &str) -> Option<u32> {
+            self.state_flags.get(key).copied()
+        }
+    }
+
+    #[test]
+    fn fpu_mnemonics_report_incompatible_target_on_m68030() {
+        let handler = M68030CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 3);
+
+        match handler.encode_instruction("FADD", &[], &ctx) {
+            EncodeResult::Error(message, None) => {
+                assert!(message.contains("FADD is not available with .fpu 68040 on m68030"));
+                assert!(message.contains("68881, 68882"));
+            }
+            other => panic!("expected incompatible-target diagnostic, got {other:?}"),
+        }
     }
 }

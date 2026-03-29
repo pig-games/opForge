@@ -53,6 +53,13 @@ pub enum ControlRegisterKind {
     Srp,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FpuControlRegisterKind {
+    Fpcr,
+    Fpsr,
+    Fpiar,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RegisterListRegister {
     Data(u8),
@@ -101,6 +108,14 @@ pub enum FamilyOperand {
     },
     ControlRegister {
         register: ControlRegisterKind,
+        span: Span,
+    },
+    FpuDataRegister {
+        register: String,
+        span: Span,
+    },
+    FpuControlRegister {
+        register: FpuControlRegisterKind,
         span: Span,
     },
     AddressIndirect {
@@ -187,6 +202,8 @@ impl FamilyOperand {
             | Self::AddressRegister { span, .. }
             | Self::SpecialRegister { span, .. }
             | Self::ControlRegister { span, .. }
+            | Self::FpuDataRegister { span, .. }
+            | Self::FpuControlRegister { span, .. }
             | Self::AddressIndirect { span, .. }
             | Self::AddressPostincrement { span, .. }
             | Self::AddressPredecrement { span, .. }

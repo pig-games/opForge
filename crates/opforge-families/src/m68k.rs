@@ -14,9 +14,9 @@ mod table;
 pub use handler::M68KFamilyHandler;
 pub use operand::{FamilyOperand, Operand};
 pub use table::{
-    has_m68010_mnemonic, has_m68020_mnemonic, has_mnemonic, parse_m68010_mnemonic,
-    parse_m68020_mnemonic, parse_mnemonic, M68010MnemonicKind, M68020MnemonicKind, MnemonicKind,
-    OperationSize,
+    has_fpu_mnemonic, has_m68010_mnemonic, has_m68020_mnemonic, has_mnemonic, parse_fpu_mnemonic,
+    parse_m68010_mnemonic, parse_m68020_mnemonic, parse_mnemonic, FpuMnemonicKind,
+    M68010MnemonicKind, M68020MnemonicKind, MnemonicKind, OperationSize,
 };
 
 pub fn is_register(name: &str) -> bool {

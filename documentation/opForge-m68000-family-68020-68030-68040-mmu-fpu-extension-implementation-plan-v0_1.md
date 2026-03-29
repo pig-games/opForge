@@ -186,7 +186,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that completes the spec MMU matrix while keeping
     the shipped MMU scope deliberately minimal
 
-- [ ] `M68KMF-005`: Add FPU register and mnemonic recognition with legality gates
+- [x] `M68KMF-005`: Add FPU register and mnemonic recognition with legality gates
       so FPU-disabled diagnostics work before the encode surface ships.
   - Validation: focused parser and legality tests for `FP0`-`FP7`, `FPCR`,
     `FPSR`, `FPIAR`, FPU mnemonics, and FPU-disabled or incompatible-target
@@ -365,7 +365,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
 - [ ] Milestone 1: selector and stability foundation complete
       (`M68KMF-001`, `M68KMF-002`)
 - [ ] Milestone 2: minimal MMU scope complete (`M68KMF-003`, `M68KMF-004`)
-- [ ] Milestone 3: FPU parsing and legality foundation complete (`M68KMF-005`)
+- [x] Milestone 3: FPU parsing and legality foundation complete (`M68KMF-005`)
 - [ ] Milestone 4: external-FPU core movement and arithmetic complete
       (`M68KMF-006`, `M68KMF-007`)
 - [ ] Milestone 5: integrated `m68040` core FPU surface complete (`M68KMF-008`)

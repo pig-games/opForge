@@ -291,6 +291,9 @@ impl CpuHandler for M68040CpuHandler {
                 M68020MnemonicKind::Rtm => {
                     return EncodeResult::error("RTM is not supported on m68040");
                 }
+                M68020MnemonicKind::Pflush => {
+                    return EncodeResult::error("PFLUSH is not yet supported on m68040");
+                }
                 _ => {}
             }
         }

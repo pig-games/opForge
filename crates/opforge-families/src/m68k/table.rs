@@ -109,6 +109,7 @@ pub enum M68020MnemonicKind {
     Trapcc(ConditionCode),
     Callm,
     Rtm,
+    Pflush,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -466,6 +467,7 @@ fn m68020_base_kind(base: &str) -> Option<M68020MnemonicKind> {
         "TRAPLE" => Some(M68020MnemonicKind::Trapcc(ConditionCode::Le)),
         "CALLM" => Some(M68020MnemonicKind::Callm),
         "RTM" => Some(M68020MnemonicKind::Rtm),
+        "PFLUSH" => Some(M68020MnemonicKind::Pflush),
         _ => None,
     }
 }
@@ -622,6 +624,7 @@ mod tests {
         assert!(has_m68020_mnemonic("TRAPNE.W"));
         assert!(has_m68020_mnemonic("CALLM"));
         assert!(has_m68020_mnemonic("RTM"));
+        assert!(has_m68020_mnemonic("PFLUSH"));
 
         let extb_unknown = parse_m68020_mnemonic("EXTB.Q").expect("EXTB base should parse");
         assert_eq!(extb_unknown.kind, M68020MnemonicKind::Extb);

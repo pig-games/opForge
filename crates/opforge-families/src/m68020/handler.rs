@@ -308,6 +308,9 @@ impl CpuHandler for M68020CpuHandler {
                 M68020MnemonicKind::Rtm => {
                     self.family.encode_rtm_instruction(parsed.size, operands)
                 }
+                M68020MnemonicKind::Pflush => {
+                    EncodeResult::error("PFLUSH is not supported on m68020")
+                }
             };
         };
         if parsed.has_unknown_size_suffix {

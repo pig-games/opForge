@@ -140,7 +140,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that proves the existing MMU-related `MOVEC`
     register surface remains live and non-regressing before `PFLUSH` lands
 
-- [ ] `M68KMF-003`: Implement the first new MMU slice by adding `PFLUSH` support
+- [x] `M68KMF-003`: Implement the first new MMU slice by adding `PFLUSH` support
       on `m68030` and explicit rejection on `m68020` and earlier CPUs.
   - Validation: focused legality or encoding tests for `PFLUSH` on `m68030`,
     focused rejection tests on `m68020`, `m68010`, and `m68000`, plus

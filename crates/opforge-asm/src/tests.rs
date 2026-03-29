@@ -4247,6 +4247,41 @@ fn m68030_rejects_out_of_scope_system_surfaces_deterministically() {
 }
 
 #[test]
+fn m68030_accepts_pflush_immediate_fc_and_mask_with_stable_encoding() {
+    for (line, expected) in [
+        ("    PFLUSH #0,#0", vec![0xF0, 0x00, 0x30, 0x10]),
+        ("    PFLUSH #5,#7", vec![0xF0, 0x00, 0x30, 0xF5]),
+    ] {
+        assert_eq!(
+            assemble_bytes(m68030_cpu_id, line),
+            expected,
+            "unexpected encoding for '{line}'"
+        );
+    }
+}
+
+#[test]
+fn pre_m68030_cpus_reject_pflush_with_explicit_diagnostics() {
+    for cpu in [m68000_cpu_id, m68010_cpu_id] {
+        let (status, message) = assemble_line_status(cpu, "    PFLUSH #0,#0");
+        assert_eq!(status, LineStatus::Error, "expected rejection on {cpu:?}");
+        let message = message.expect("expected pre-m68030 PFLUSH diagnostic");
+        assert!(
+            message.contains("PFLUSH is only supported on m68020 and later"),
+            "unexpected pre-m68030 PFLUSH diagnostic on {cpu:?}: {message}"
+        );
+    }
+
+    let (status, message) = assemble_line_status(m68020_cpu_id, "    PFLUSH #0,#0");
+    assert_eq!(status, LineStatus::Error, "expected m68020 rejection");
+    let message = message.expect("expected m68020 PFLUSH diagnostic");
+    assert!(
+        message.contains("PFLUSH is not supported on m68020"),
+        "unexpected m68020 PFLUSH diagnostic: {message}"
+    );
+}
+
+#[test]
 fn m68040_carries_forward_first_m68020_instruction_group_with_restrictions() {
     for line in [
         "    BRA.L $0008",
@@ -4376,6 +4411,7 @@ fn m68040_restriction_set_rejects_deterministically() {
         ("    CALLM #5,($1234).W", "CALLM is not supported on m68040"),
         ("    RTM A0", "RTM is not supported on m68040"),
         ("    MOVEC CAAR,D0", "MOVEC CAAR is not supported on m68040"),
+        ("    PFLUSH #0,#0", "PFLUSH is not yet supported on m68040"),
         ("    PMOVE D0,D1", "No instruction found"),
         ("    FMOVE D0,D1", "No instruction found"),
     ] {

@@ -293,7 +293,7 @@ system-programming features.
   - Commit outcome: one commit that makes `m68030` behavior explicit and
     testable rather than merely aliasing `m68020` informally
 
-- [ ] `M68K-LINEAGE-009`: Implement the `m68040` CPU enablement slice,
+- [x] `M68K-LINEAGE-009`: Implement the `m68040` CPU enablement slice,
       including `MOVE16` and the explicit `m68040` removal or restriction set.
   - Validation: focused `m68040` legality tests for `MOVE16`, supported and
     unsupported later-family instruction families, deterministic diagnostic
@@ -399,7 +399,7 @@ system-programming features.
       (`M68K-LINEAGE-003`, `M68K-LINEAGE-004`, `M68K-LINEAGE-005`)
 - [x] Milestone 4: grouped `m68020` instruction families complete
       (`M68K-LINEAGE-006`, `M68K-LINEAGE-007`)
-- [ ] Milestone 5: `m68030` carry-forward and `m68040` restriction slices
+- [x] Milestone 5: `m68030` carry-forward and `m68040` restriction slices
       complete (`M68K-LINEAGE-008`, `M68K-LINEAGE-009`)
 - [ ] Milestone 6: examples, references, and documentation complete
       (`M68K-LINEAGE-010`, `M68K-LINEAGE-011`, `M68K-LINEAGE-012`)

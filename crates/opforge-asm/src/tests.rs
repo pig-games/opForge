@@ -4123,26 +4123,27 @@ fn m68030_rejects_out_of_scope_system_surfaces_deterministically() {
 }
 
 #[test]
-fn m68040_does_not_claim_first_m68020_instruction_group_yet() {
+fn m68040_carries_forward_first_m68020_instruction_group_with_restrictions() {
     for line in [
         "    BRA.L $0008",
         "    LINK.L A6,#-8",
         "    EXTB.L D0",
         "    MULU.L (A0),D1",
-        "    MOVEC CACR,D0",
     ] {
-        let (status, message) = assemble_line_status(m68040_cpu_id, line);
-        assert_eq!(status, LineStatus::Error, "expected rejection on m68040");
-        let message = message.expect("expected missing later-family instruction diagnostic");
-        assert!(
-            message.contains("No instruction found"),
-            "unexpected diagnostic on m68040 for '{line}': {message}"
+        assert_eq!(
+            assemble_bytes(m68040_cpu_id, line),
+            assemble_bytes(m68030_cpu_id, line),
+            "expected m68040 carry-forward bytes for '{line}'"
         );
     }
+    assert_eq!(
+        assemble_bytes(m68040_cpu_id, "    MOVEC CACR,D0"),
+        assemble_bytes(m68030_cpu_id, "    MOVEC CACR,D0")
+    );
 }
 
 #[test]
-fn m68040_does_not_claim_second_instruction_group_yet() {
+fn m68040_carries_forward_second_instruction_group_with_restrictions() {
     for line in [
         "    CAS.W D0,D1,(A0)",
         "    CAS2.W D0:D1,D2:D3,(A0):(A1)",
@@ -4150,15 +4151,52 @@ fn m68040_does_not_claim_second_instruction_group_yet() {
         "    BFTST D0{3:5}",
         "    PACK D0,D1,#1",
         "    TRAPNE",
-        "    CALLM #5,($1234).W",
-        "    RTM A0",
     ] {
-        let (status, message) = assemble_line_status(m68040_cpu_id, line);
-        assert_eq!(status, LineStatus::Error, "expected rejection on m68040");
-        let message = message.expect("expected missing later-family instruction diagnostic");
+        assert_eq!(
+            assemble_bytes(m68040_cpu_id, line),
+            assemble_bytes(m68030_cpu_id, line),
+            "expected m68040 carry-forward bytes for '{line}'"
+        );
+    }
+}
+
+#[test]
+fn m68040_move16_is_accepted_and_pre_m68040_cpus_reject_it() {
+    assert_eq!(
+        assemble_bytes(m68040_cpu_id, "    MOVE16 (A0)+,(A1)+"),
+        vec![0xF6, 0x20, 0x90, 0x00]
+    );
+    assert_eq!(
+        assemble_bytes(m68040_cpu_id, "    MOVE16 ($1234).L,(A1)"),
+        vec![0xF6, 0x19, 0x00, 0x00, 0x12, 0x34]
+    );
+
+    for cpu in [m68000_cpu_id, m68010_cpu_id, m68020_cpu_id, m68030_cpu_id] {
+        let (status, message) = assemble_line_status(cpu, "    MOVE16 (A0)+,(A1)+");
+        assert_eq!(status, LineStatus::Error);
+        let message = message.expect("expected pre-m68040 MOVE16 diagnostic");
         assert!(
             message.contains("No instruction found"),
-            "unexpected diagnostic on m68040 for '{line}': {message}"
+            "unexpected pre-m68040 MOVE16 diagnostic on {cpu:?}: {message}"
+        );
+    }
+}
+
+#[test]
+fn m68040_restriction_set_rejects_deterministically() {
+    for (line, expected) in [
+        ("    CALLM #5,($1234).W", "CALLM is not supported on m68040"),
+        ("    RTM A0", "RTM is not supported on m68040"),
+        ("    MOVEC CAAR,D0", "MOVEC CAAR is not supported on m68040"),
+        ("    PMOVE D0,D1", "No instruction found"),
+        ("    FMOVE D0,D1", "No instruction found"),
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+        let message = message.expect("expected m68040 restriction diagnostic");
+        assert!(
+            message.contains(expected),
+            "unexpected m68040 restriction diagnostic for '{line}': {message}"
         );
     }
 }

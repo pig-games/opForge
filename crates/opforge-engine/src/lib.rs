@@ -20,9 +20,9 @@ use asm::engine::Assembler;
 use asm::error::{AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic, Severity};
 use asm::line::RuntimeLineRouter;
 use asm::output::{
-    format_addr, resolve_bin_path, resolve_output_base, resolve_output_path, BinOutputSpec,
-    BinRange, DependencyOutputPolicy, ExportSectionsDirective, MapFileDirective, RegionState,
-    RootMetadata, SectionState,
+    anchor_relative_output_path, format_addr, resolve_bin_path_checked, resolve_output_base,
+    resolve_output_path_checked, BinOutputSpec, BinRange, DependencyOutputPolicy,
+    ExportSectionsDirective, MapFileDirective, RegionState, RootMetadata, SectionState,
 };
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
@@ -344,38 +344,75 @@ fn default_runtime_model() -> Option<&'static HierarchyExecutionModel> {
 }
 
 #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
-fn editor_default_runtime_model_for_dir(base_dir: &Path) -> Option<&'static HierarchyExecutionModel> {
+fn editor_default_runtime_model_for_dir(
+    base_dir: &Path,
+) -> Option<&'static HierarchyExecutionModel> {
     let artifact_path = default_runtime_artifact_path_for_dir(base_dir);
     default_runtime_model_for_artifact_path(artifact_path.as_path())
+}
+
+#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RuntimeArtifactFingerprint {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+impl RuntimeArtifactFingerprint {
+    fn from_path(path: &Path) -> Option<Self> {
+        let metadata = std::fs::metadata(path).ok()?;
+        Some(Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+        })
+    }
+}
+
+#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+#[derive(Debug, Clone, Copy)]
+struct CachedRuntimeModel {
+    fingerprint: RuntimeArtifactFingerprint,
+    model: &'static HierarchyExecutionModel,
 }
 
 #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
 fn default_runtime_model_for_artifact_path(
     artifact_path: &Path,
 ) -> Option<&'static HierarchyExecutionModel> {
-    static MODEL_CACHE: OnceLock<Mutex<HashMap<PathBuf, &'static HierarchyExecutionModel>>> =
-        OnceLock::new();
+    static MODEL_CACHE: OnceLock<Mutex<HashMap<PathBuf, CachedRuntimeModel>>> = OnceLock::new();
 
+    let fingerprint = RuntimeArtifactFingerprint::from_path(artifact_path)?;
     let cache = MODEL_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(model) = cache
+    if let Some(cached) = cache
         .lock()
         .expect("runtime model cache lock")
         .get(artifact_path)
         .copied()
     {
-        return Some(model);
+        if cached.fingerprint == fingerprint {
+            return Some(cached.model);
+        }
     }
 
     let package_bytes = std::fs::read(artifact_path).ok()?;
     let model = vm::vm_opasm::load_model_from_package_bytes(package_bytes.as_slice()).ok()?;
 
     let mut cache = cache.lock().expect("runtime model cache lock");
-    if let Some(model) = cache.get(artifact_path).copied() {
-        return Some(model);
+    if let Some(cached) = cache.get(artifact_path).copied() {
+        if cached.fingerprint == fingerprint {
+            return Some(cached.model);
+        }
     }
 
     let leaked: &'static HierarchyExecutionModel = Box::leak(Box::new(model));
-    cache.insert(artifact_path.to_path_buf(), leaked);
+    cache.insert(
+        artifact_path.to_path_buf(),
+        CachedRuntimeModel {
+            fingerprint,
+            model: leaked,
+        },
+    );
     Some(leaked)
 }
 
@@ -500,14 +537,20 @@ pub fn editor_tokenize_line_with_model(
     )
 }
 
-fn resolve_artifact_output_path(path: &str, out_dir: Option<&Path>) -> PathBuf {
+fn resolve_artifact_output_path(path: &str, out_dir: Option<&Path>) -> Result<PathBuf, AsmError> {
     let raw_path = PathBuf::from(path);
     if raw_path.is_absolute() {
-        raw_path
+        Ok(raw_path)
     } else if let Some(dir) = out_dir {
-        dir.join(raw_path)
+        anchor_relative_output_path(dir, &raw_path).map_err(|err| {
+            AsmError::new(
+                AsmErrorKind::Directive,
+                &err,
+                Some(raw_path.to_string_lossy().as_ref()),
+            )
+        })
     } else {
-        raw_path
+        Ok(raw_path)
     }
 }
 
@@ -536,7 +579,7 @@ pub fn emit_linker_outputs(
     for output in outputs {
         let payload = build_linker_output_payload_with_vm(output, sections)
             .map_err(|err| AsmError::new(AsmErrorKind::Directive, err.message(), err.subject()))?;
-        let output_path = resolve_artifact_output_path(&output.path, out_dir);
+        let output_path = resolve_artifact_output_path(&output.path, out_dir)?;
         ensure_parent_dir(output_sink, &output_path)?;
         let mut file = match output_sink.create_file(&output_path) {
             Ok(file) => file,
@@ -568,7 +611,7 @@ pub fn emit_export_sections(
     output_sink: &dyn OutputSink,
 ) -> Result<(), AsmError> {
     for directive in directives {
-        let target_dir = resolve_artifact_output_path(&directive.dir, out_dir);
+        let target_dir = resolve_artifact_output_path(&directive.dir, out_dir)?;
         if let Err(err) = output_sink.create_dir_all(&target_dir) {
             let dir_text = target_dir.to_string_lossy().to_string();
             return Err(AsmError::new(
@@ -613,7 +656,7 @@ pub fn emit_mapfiles(
 ) -> Result<(), AsmError> {
     for directive in directives {
         let map_text = build_mapfile_text_with_vm(directive, regions, sections, symbols);
-        let output_path = resolve_artifact_output_path(&directive.path, out_dir);
+        let output_path = resolve_artifact_output_path(&directive.path, out_dir)?;
         ensure_parent_dir(output_sink, &output_path)?;
         if let Err(err) = output_sink.write_text(&output_path, &map_text) {
             let path_text = output_path.to_string_lossy().to_string();
@@ -1029,7 +1072,7 @@ impl ResolvedOutputPlan {
     pub fn resolve_bin_outputs(
         &self,
         auto_output_range: Option<(u32, u32)>,
-    ) -> Vec<ResolvedBinOutput> {
+    ) -> Result<Vec<ResolvedBinOutput>, String> {
         let bin_count = self.effective_bin_specs.len();
         self.effective_bin_specs
             .iter()
@@ -1042,14 +1085,14 @@ impl ResolvedOutputPlan {
                         end,
                     })
                 });
-                let path = resolve_bin_path(
+                let path = resolve_bin_path_checked(
                     &self.out_base,
                     spec.name.as_deref(),
                     range.as_ref(),
                     bin_count,
                     index,
-                );
-                ResolvedBinOutput { path, range }
+                )?;
+                Ok(ResolvedBinOutput { path, range })
             })
             .collect()
     }
@@ -1058,13 +1101,12 @@ impl ResolvedOutputPlan {
 fn linker_output_targets(
     outputs: &[asm::output::LinkerOutputDirective],
     out_dir: Option<&Path>,
-) -> Vec<String> {
+) -> Result<Vec<String>, AsmError> {
     outputs
         .iter()
         .map(|output| {
             resolve_artifact_output_path(&output.path, out_dir)
-                .to_string_lossy()
-                .to_string()
+                .map(|path| path.to_string_lossy().to_string())
         })
         .collect()
 }
@@ -1073,24 +1115,26 @@ fn export_sections_targets(
     directives: &[ExportSectionsDirective],
     sections: &HashMap<String, SectionState>,
     out_dir: Option<&Path>,
-) -> Vec<String> {
+) -> Result<Vec<String>, AsmError> {
     let mut targets = Vec::new();
     for directive in directives {
-        let target_dir = resolve_artifact_output_path(&directive.dir, out_dir);
+        let target_dir = resolve_artifact_output_path(&directive.dir, out_dir)?;
         for (filename, _) in build_export_sections_payloads_with_vm(directive, sections) {
             targets.push(target_dir.join(filename).to_string_lossy().to_string());
         }
     }
-    targets
+    Ok(targets)
 }
 
-fn mapfile_targets(directives: &[MapFileDirective], out_dir: Option<&Path>) -> Vec<String> {
+fn mapfile_targets(
+    directives: &[MapFileDirective],
+    out_dir: Option<&Path>,
+) -> Result<Vec<String>, AsmError> {
     directives
         .iter()
         .map(|directive| {
             resolve_artifact_output_path(&directive.path, out_dir)
-                .to_string_lossy()
-                .to_string()
+                .map(|path| path.to_string_lossy().to_string())
         })
         .collect()
 }
@@ -1255,19 +1299,33 @@ pub fn resolve_output_plan(
         request.outfile_override,
     );
     let list_path = match request.list_name_override {
-        Some(name) => resolve_output_path(&out_base, Some(name.to_string()), "lst"),
+        Some(name) => resolve_output_path_checked(&out_base, Some(name.to_string()), "lst"),
         None if effective_default_outputs => {
-            resolve_output_path(&out_base, Some(String::new()), "lst")
+            resolve_output_path_checked(&out_base, Some(String::new()), "lst")
         }
-        None => resolve_output_path(&out_base, output_config.list_name.clone(), "lst"),
-    };
+        None => resolve_output_path_checked(&out_base, output_config.list_name.clone(), "lst"),
+    }
+    .map_err(|err| {
+        AsmRunError::new(
+            AsmError::new(AsmErrorKind::Cli, &err, None),
+            Vec::new(),
+            request.source_lines.to_vec(),
+        )
+    })?;
     let hex_path = match request.hex_name_override {
-        Some(name) => resolve_output_path(&out_base, Some(name.to_string()), "hex"),
+        Some(name) => resolve_output_path_checked(&out_base, Some(name.to_string()), "hex"),
         None if effective_default_outputs => {
-            resolve_output_path(&out_base, Some(String::new()), "hex")
+            resolve_output_path_checked(&out_base, Some(String::new()), "hex")
         }
-        None => resolve_output_path(&out_base, output_config.hex_name.clone(), "hex"),
-    };
+        None => resolve_output_path_checked(&out_base, output_config.hex_name.clone(), "hex"),
+    }
+    .map_err(|err| {
+        AsmRunError::new(
+            AsmError::new(AsmErrorKind::Cli, &err, None),
+            Vec::new(),
+            request.source_lines.to_vec(),
+        )
+    })?;
     if request.pass1_errors == 0 && request.go_addr.is_some() && hex_path.is_none() {
         return Err(AsmRunError::new(
             AsmError::new(
@@ -1586,7 +1644,18 @@ fn run_assembly_with_prepared(
             traces,
         )
     })?;
-    for bin_output in output_plan.resolve_bin_outputs(auto_output_range) {
+    for bin_output in output_plan
+        .resolve_bin_outputs(auto_output_range)
+        .map_err(|err| {
+            let traces = assembler.runtime_processing_traces().to_vec();
+            AsmRunError::new_with_traces(
+                AsmError::new(AsmErrorKind::Cli, &err, None),
+                remap_diags(assembler.take_diagnostics()),
+                expanded_lines.clone(),
+                traces,
+            )
+        })?
+    {
         dependency_targets.push(bin_output.path.clone());
         ensure_parent_dir(output_sink, Path::new(&bin_output.path)).map_err(|err| {
             let traces = assembler.runtime_processing_traces().to_vec();
@@ -1644,19 +1713,46 @@ fn run_assembly_with_prepared(
     if let Some(path) = request.labels_file {
         dependency_targets.push(path.to_string_lossy().to_string());
     }
-    dependency_targets.extend(linker_output_targets(
-        &assembler.root_metadata.linker_outputs,
-        request.out_dir,
-    ));
-    dependency_targets.extend(export_sections_targets(
-        &assembler.root_metadata.export_sections,
-        assembler.sections(),
-        request.out_dir,
-    ));
-    dependency_targets.extend(mapfile_targets(
-        &assembler.root_metadata.mapfiles,
-        request.out_dir,
-    ));
+    dependency_targets.extend(
+        linker_output_targets(&assembler.root_metadata.linker_outputs, request.out_dir).map_err(
+            |err| {
+                let traces = assembler.runtime_processing_traces().to_vec();
+                AsmRunError::new_with_traces(
+                    err,
+                    remap_diags(assembler.take_diagnostics()),
+                    expanded_lines.clone(),
+                    traces,
+                )
+            },
+        )?,
+    );
+    dependency_targets.extend(
+        export_sections_targets(
+            &assembler.root_metadata.export_sections,
+            assembler.sections(),
+            request.out_dir,
+        )
+        .map_err(|err| {
+            let traces = assembler.runtime_processing_traces().to_vec();
+            AsmRunError::new_with_traces(
+                err,
+                remap_diags(assembler.take_diagnostics()),
+                expanded_lines.clone(),
+                traces,
+            )
+        })?,
+    );
+    dependency_targets.extend(
+        mapfile_targets(&assembler.root_metadata.mapfiles, request.out_dir).map_err(|err| {
+            let traces = assembler.runtime_processing_traces().to_vec();
+            AsmRunError::new_with_traces(
+                err,
+                remap_diags(assembler.take_diagnostics()),
+                expanded_lines.clone(),
+                traces,
+            )
+        })?,
+    );
 
     if !request.suppress_outputs {
         if let Err(err) = emit_linker_outputs(
@@ -2151,7 +2247,8 @@ mod tests {
         PreparedAssemblyExecutionRequest,
     };
     use asm::engine::Assembler;
-    use asm::output::{LabelOutputFormat, OutputFormat, RootMetadata};
+    use asm::error::AsmErrorKind;
+    use asm::output::{BinOutputSpec, LabelOutputFormat, OutputFormat, RootMetadata};
     use opcore::parser::Expr;
     use registry::cpu::{CpuFamily, CpuType};
     use registry::family::{AssemblerContext, EncodeResult, FamilyParseError};
@@ -2234,6 +2331,31 @@ mod tests {
         );
     }
 
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+    #[test]
+    fn editor_default_runtime_model_for_dir_invalidates_replaced_artifact() {
+        let temp_dir = unique_temp_dir("engine-runtime-invalidates-replaced-artifact");
+        let artifact_path = super::default_runtime_artifact_path_for_dir(temp_dir.as_path());
+        let package_bytes = super::build_default_runtime_package_bytes()
+            .expect("build default runtime package bytes");
+        std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
+            .expect("create artifact parent");
+        std::fs::write(&artifact_path, package_bytes).expect("write runtime artifact");
+
+        assert!(
+            super::editor_default_runtime_model_for_dir(temp_dir.as_path()).is_some(),
+            "expected initial artifact lookup to succeed"
+        );
+
+        std::fs::write(&artifact_path, b"not-a-valid-runtime-package")
+            .expect("replace runtime artifact with invalid bytes");
+
+        assert!(
+            super::editor_default_runtime_model_for_dir(temp_dir.as_path()).is_none(),
+            "expected replaced artifact to invalidate the cached runtime model"
+        );
+    }
+
     #[test]
     fn resolve_output_plan_requires_a_resolved_base_for_default_outputs() {
         let source_lines = Vec::new();
@@ -2294,6 +2416,77 @@ mod tests {
         assert_eq!(plan.out_base(), "/virtual/out/main");
         assert_eq!(plan.list_path(), Some("/virtual/out/main.lst"));
         assert_eq!(plan.hex_path(), Some("/virtual/out/main.hex"));
+    }
+
+    #[test]
+    fn resolve_output_plan_rejects_list_name_escape() {
+        let source_lines = Vec::new();
+        let result = resolve_output_plan(OutputPlanningRequest {
+            input_base: "/virtual/main",
+            source_lines: &source_lines,
+            out_dir: Some(Path::new("/virtual/out")),
+            metadata: &RootMetadata::default(),
+            cpu_name: "8085",
+            outfile_override: None,
+            list_name_override: Some("../escape"),
+            hex_name_override: None,
+            bin_specs_override: &[],
+            fill_byte: 0,
+            fill_byte_set: false,
+            default_outputs: false,
+            go_addr: None,
+            pass1_errors: 0,
+            suppress_outputs: false,
+        });
+
+        let error = match result {
+            Ok(_) => panic!("list path escape should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("escapes resolved output root"));
+    }
+
+    #[test]
+    fn resolved_output_plan_rejects_bin_name_escape() {
+        let source_lines = Vec::new();
+        let plan = resolve_output_plan(OutputPlanningRequest {
+            input_base: "/virtual/main",
+            source_lines: &source_lines,
+            out_dir: Some(Path::new("/virtual/out")),
+            metadata: &RootMetadata::default(),
+            cpu_name: "8085",
+            outfile_override: None,
+            list_name_override: None,
+            hex_name_override: None,
+            bin_specs_override: &[BinOutputSpec {
+                name: Some("../escape".to_string()),
+                range: None,
+            }],
+            fill_byte: 0,
+            fill_byte_set: false,
+            default_outputs: false,
+            go_addr: None,
+            pass1_errors: 0,
+            suppress_outputs: false,
+        })
+        .expect("plan creation should succeed before bin path resolution");
+
+        let error = plan
+            .resolve_bin_outputs(Some((0, 1)))
+            .expect_err("bin path escape should be rejected");
+
+        assert!(error.contains("escapes resolved output root"));
+    }
+
+    #[test]
+    fn resolve_artifact_output_path_rejects_out_dir_escape() {
+        let error =
+            super::resolve_artifact_output_path("../escape.map", Some(Path::new("/virtual/out")))
+                .expect_err("directive path escape should be rejected");
+
+        assert_eq!(error.kind(), AsmErrorKind::Directive);
+        assert!(error.to_string().contains("escapes resolved output root"));
     }
 
     #[derive(Clone)]

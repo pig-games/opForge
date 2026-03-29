@@ -126,39 +126,6 @@ impl M68010CpuHandler {
         }
     }
 
-    fn encode_bkpt(
-        &self,
-        size: Option<OperationSize>,
-        operands: &[Operand],
-        ctx: &dyn AssemblerContext,
-    ) -> EncodeResult<Vec<u8>> {
-        if size.is_some() {
-            return EncodeResult::error("BKPT does not support size suffixes");
-        }
-
-        let [vector] = operands else {
-            return EncodeResult::error("BKPT expects one immediate vector operand");
-        };
-        let Operand::Immediate { expr, .. } = vector else {
-            return EncodeResult::error_with_span(
-                "BKPT operand must be an immediate vector",
-                vector.span(),
-            );
-        };
-
-        let value = match M68KFamilyHandler::eval_expr(expr, ctx) {
-            Ok(value) => value,
-            Err(err) => return EncodeResult::error_with_span(err, vector.span()),
-        };
-        if !(0..=7).contains(&value) {
-            return EncodeResult::error_with_span("BKPT vector out of range (0-7)", vector.span());
-        }
-
-        let mut bytes = Vec::new();
-        M68KFamilyHandler::emit_word(&mut bytes, 0x4848 | value as u16);
-        EncodeResult::ok(bytes)
-    }
-
     fn encode_movec(
         &self,
         size: Option<OperationSize>,
@@ -280,42 +247,6 @@ impl M68010CpuHandler {
         EncodeResult::ok(bytes)
     }
 
-    fn encode_rtd(
-        &self,
-        size: Option<OperationSize>,
-        operands: &[Operand],
-        ctx: &dyn AssemblerContext,
-    ) -> EncodeResult<Vec<u8>> {
-        if size.is_some() {
-            return EncodeResult::error("RTD does not support size suffixes");
-        }
-
-        let [displacement] = operands else {
-            return EncodeResult::error("RTD expects one immediate displacement operand");
-        };
-        let Operand::Immediate { expr, .. } = displacement else {
-            return EncodeResult::error_with_span(
-                "RTD operand must be an immediate displacement",
-                displacement.span(),
-            );
-        };
-
-        let value = match M68KFamilyHandler::eval_expr(expr, ctx) {
-            Ok(value) => value,
-            Err(err) => return EncodeResult::error_with_span(err, displacement.span()),
-        };
-        let Some(encoded) = M68KFamilyHandler::encode_signed_word(value) else {
-            return EncodeResult::error_with_span(
-                "RTD displacement out of 16-bit signed range",
-                displacement.span(),
-            );
-        };
-
-        let mut bytes = Vec::new();
-        M68KFamilyHandler::emit_word(&mut bytes, 0x4E74);
-        M68KFamilyHandler::emit_word(&mut bytes, encoded);
-        EncodeResult::ok(bytes)
-    }
 }
 
 impl CpuHandler for M68010CpuHandler {
@@ -413,10 +344,14 @@ impl CpuHandler for M68010CpuHandler {
         }
 
         match parsed.kind {
-            M68010MnemonicKind::Bkpt => self.encode_bkpt(parsed.size, operands, ctx),
+            M68010MnemonicKind::Bkpt => {
+                self.family.encode_bkpt_instruction(parsed.size, operands, ctx)
+            }
             M68010MnemonicKind::Movec => self.encode_movec(parsed.size, operands),
             M68010MnemonicKind::Moves => self.encode_moves(parsed.size, operands, ctx),
-            M68010MnemonicKind::Rtd => self.encode_rtd(parsed.size, operands, ctx),
+            M68010MnemonicKind::Rtd => {
+                self.family.encode_rtd_instruction(parsed.size, operands, ctx)
+            }
         }
     }
 

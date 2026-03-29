@@ -152,6 +152,76 @@ impl M68KFamilyHandler {
         }
     }
 
+    pub(crate) fn encode_bkpt_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error("BKPT does not support size suffixes");
+        }
+
+        let [vector] = operands else {
+            return EncodeResult::error("BKPT expects one immediate vector operand");
+        };
+        let Operand::Immediate { expr, .. } = vector else {
+            return EncodeResult::error_with_span(
+                "BKPT operand must be an immediate vector",
+                vector.span(),
+            );
+        };
+
+        let value = match Self::eval_expr(expr, ctx) {
+            Ok(value) => value,
+            Err(err) => return EncodeResult::error_with_span(err, vector.span()),
+        };
+        if !(0..=7).contains(&value) {
+            return EncodeResult::error_with_span("BKPT vector out of range (0-7)", vector.span());
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x4848 | value as u16);
+        EncodeResult::ok(bytes)
+    }
+
+    pub(crate) fn encode_rtd_instruction(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error("RTD does not support size suffixes");
+        }
+
+        let [displacement] = operands else {
+            return EncodeResult::error("RTD expects one immediate displacement operand");
+        };
+        let Operand::Immediate { expr, .. } = displacement else {
+            return EncodeResult::error_with_span(
+                "RTD operand must be an immediate displacement",
+                displacement.span(),
+            );
+        };
+
+        let value = match Self::eval_expr(expr, ctx) {
+            Ok(value) => value,
+            Err(err) => return EncodeResult::error_with_span(err, displacement.span()),
+        };
+        let Some(encoded) = Self::encode_signed_word(value) else {
+            return EncodeResult::error_with_span(
+                "RTD displacement out of 16-bit signed range",
+                displacement.span(),
+            );
+        };
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x4E74);
+        Self::emit_word(&mut bytes, encoded);
+        EncodeResult::ok(bytes)
+    }
+
     fn parse_scaled_index_register(
         expr: &Expr,
     ) -> Option<(String, IndexSize, IndexScale, opcore::tokenizer::Span)> {
@@ -5759,6 +5829,8 @@ mod tests {
     use super::*;
     use crate::m68000::M68000CpuHandler;
     use crate::m68020::M68020CpuHandler;
+    use crate::m68030::M68030CpuHandler;
+    use crate::m68040::M68040CpuHandler;
     use opcore::expression::expr_text;
     use opcore::parser::LineAst;
     use opcore::tokenizer::Span;
@@ -9530,5 +9602,41 @@ mod tests {
             }
             other => panic!("expected 68000 range error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn later_cpus_encode_bkpt_and_rtd() {
+        let ctx = TestContext::default();
+        fn assert_bkpt_rtd<H: CpuHandler<Family = M68KFamilyHandler>>(
+            handler: &H,
+            ctx: &TestContext,
+        ) {
+            expect_encoded(
+                handler.encode_instruction(
+                    "BKPT",
+                    &[Operand::Immediate {
+                        expr: Expr::Number("3".to_string(), span()),
+                        span: span(),
+                    }],
+                    ctx,
+                ),
+                &[0x48, 0x4B],
+            );
+            expect_encoded(
+                handler.encode_instruction(
+                    "RTD",
+                    &[Operand::Immediate {
+                        expr: Expr::Number("-4".to_string(), span()),
+                        span: span(),
+                    }],
+                    ctx,
+                ),
+                &[0x4E, 0x74, 0xFF, 0xFC],
+            );
+        }
+
+        assert_bkpt_rtd(&M68020CpuHandler::new(), &ctx);
+        assert_bkpt_rtd(&M68030CpuHandler::new(), &ctx);
+        assert_bkpt_rtd(&M68040CpuHandler::new(), &ctx);
     }
 }

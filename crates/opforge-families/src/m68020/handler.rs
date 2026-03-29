@@ -253,7 +253,12 @@ impl CpuHandler for M68020CpuHandler {
                     .encode_moves_instruction(parsed.size, operands, ctx)
             }
             M68010MnemonicKind::Movec => self.encode_movec(parsed.size, operands),
-            M68010MnemonicKind::Bkpt | M68010MnemonicKind::Rtd => EncodeResult::NotFound,
+            M68010MnemonicKind::Bkpt => {
+                self.family.encode_bkpt_instruction(parsed.size, operands, ctx)
+            }
+            M68010MnemonicKind::Rtd => {
+                self.family.encode_rtd_instruction(parsed.size, operands, ctx)
+            }
         }
     }
 
@@ -264,7 +269,10 @@ impl CpuHandler for M68020CpuHandler {
                 Some(parsed)
                     if matches!(
                         parsed.kind,
-                        M68010MnemonicKind::Moves | M68010MnemonicKind::Movec
+                        M68010MnemonicKind::Bkpt
+                            | M68010MnemonicKind::Movec
+                            | M68010MnemonicKind::Moves
+                            | M68010MnemonicKind::Rtd
                     )
             )
             || has_m68020_mnemonic(mnemonic)

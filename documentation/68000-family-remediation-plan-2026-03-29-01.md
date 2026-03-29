@@ -103,7 +103,7 @@ the remediation work and the follow-up spec.
     supply 32-bit limits; positive test exists for an address above 16 MB on
     later CPUs
 
-- [ ] Item 4 — Restore `BKPT` and `RTD` on 68020 / 68030 / 68040
+- [x] Item 4 — Restore `BKPT` and `RTD` on 68020 / 68030 / 68040
   - Source requirement or finding IDs: RVW-2026-03-29-004; Testing Gap 3 (partial)
   - Expected closure: fully closes RVW-2026-03-29-004; partially addresses Testing Gap 3 (BKPT and RTD coverage only; MOVE CCR coverage addressed in Item 5)
   - Expected files:

@@ -140,6 +140,19 @@ pub enum FpuMnemonicKind {
     Fcosh,
     Ftanh,
     Fatanh,
+    Fetox,
+    Fetoxm1,
+    Ftentox,
+    Ftwotox,
+    Flogn,
+    Flognp1,
+    Flog10,
+    Flog2,
+    Fgetexp,
+    Fgetman,
+    Fscale,
+    Fmod,
+    Frem,
     Fbranch,
     Fdbcc,
     Fscc,
@@ -600,6 +613,19 @@ fn fpu_base_kind(base: &str) -> Option<FpuMnemonicKind> {
         "FCOSH" => Some(FpuMnemonicKind::Fcosh),
         "FTANH" => Some(FpuMnemonicKind::Ftanh),
         "FATANH" => Some(FpuMnemonicKind::Fatanh),
+        "FETOX" => Some(FpuMnemonicKind::Fetox),
+        "FETOXM1" => Some(FpuMnemonicKind::Fetoxm1),
+        "FTENTOX" => Some(FpuMnemonicKind::Ftentox),
+        "FTWOTOX" => Some(FpuMnemonicKind::Ftwotox),
+        "FLOGN" => Some(FpuMnemonicKind::Flogn),
+        "FLOGNP1" => Some(FpuMnemonicKind::Flognp1),
+        "FLOG10" => Some(FpuMnemonicKind::Flog10),
+        "FLOG2" => Some(FpuMnemonicKind::Flog2),
+        "FGETEXP" => Some(FpuMnemonicKind::Fgetexp),
+        "FGETMAN" => Some(FpuMnemonicKind::Fgetman),
+        "FSCALE" => Some(FpuMnemonicKind::Fscale),
+        "FMOD" => Some(FpuMnemonicKind::Fmod),
+        "FREM" => Some(FpuMnemonicKind::Frem),
         _ if base.starts_with("FDB") && base.len() > 3 => Some(FpuMnemonicKind::Fdbcc),
         _ if base.starts_with("FTRAP") && base.len() > 5 => Some(FpuMnemonicKind::Ftrapcc),
         _ if base.starts_with("FB") && base.len() > 2 => Some(FpuMnemonicKind::Fbranch),
@@ -741,6 +767,10 @@ mod tests {
         assert!(has_fpu_mnemonic("FSIN"));
         assert!(has_fpu_mnemonic("FSINCOS"));
         assert!(has_fpu_mnemonic("FATANH"));
+        assert!(has_fpu_mnemonic("FETOX"));
+        assert!(has_fpu_mnemonic("FLOGNP1"));
+        assert!(has_fpu_mnemonic("FSCALE"));
+        assert!(has_fpu_mnemonic("FREM"));
         assert!(has_fpu_mnemonic("FBNE"));
         assert!(has_fpu_mnemonic("FDBEQ"));
         assert!(has_fpu_mnemonic("FSGE"));

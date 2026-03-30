@@ -1187,6 +1187,110 @@ impl M68020CpuHandler {
                 true,
                 ctx,
             ),
+            FpuMnemonicKind::Fetox => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0010,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fetoxm1 => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0008,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Ftentox => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0012,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Ftwotox => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0011,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Flogn => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0014,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Flognp1 => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0006,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Flog10 => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0015,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Flog2 => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0016,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fgetexp => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x001E,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fgetman => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x001F,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fscale => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0026,
+                parsed.size,
+                operands,
+                false,
+                ctx,
+            ),
+            FpuMnemonicKind::Fmod => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0021,
+                parsed.size,
+                operands,
+                false,
+                ctx,
+            ),
+            FpuMnemonicKind::Frem => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0025,
+                parsed.size,
+                operands,
+                false,
+                ctx,
+            ),
             FpuMnemonicKind::Fbranch => {
                 self.encode_fbcc(&parsed.display_name, parsed.size, operands, ctx)
             }
@@ -1894,6 +1998,86 @@ mod tests {
         ) {
             EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x10, 0x50, 0x8D]),
             other => panic!("expected FATANH encoding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn extended_math_fpu_slice_encodes_for_external_targets_on_m68020() {
+        let handler = M68020CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 1)
+            .with_current_address(0);
+
+        match handler.encode_instruction(
+            "FETOX",
+            &[
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x00, 0x90]),
+            other => panic!("expected FETOX encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FLOGN.W",
+            &[
+                Operand::AddressIndirect {
+                    register: "A0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x10, 0x50, 0x94]),
+            other => panic!("expected FLOGN.W encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FSCALE",
+            &[
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x00, 0xA6]),
+            other => panic!("expected FSCALE encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FREM.W",
+            &[
+                Operand::AddressIndirect {
+                    register: "A0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x10, 0x50, 0xA5]),
+            other => panic!("expected FREM.W encoding, got {other:?}"),
         }
     }
 

@@ -185,6 +185,19 @@ impl CpuHandler for M68030CpuHandler {
                 | FpuMnemonicKind::Fcosh
                 | FpuMnemonicKind::Ftanh
                 | FpuMnemonicKind::Fatanh
+                | FpuMnemonicKind::Fetox
+                | FpuMnemonicKind::Fetoxm1
+                | FpuMnemonicKind::Ftentox
+                | FpuMnemonicKind::Ftwotox
+                | FpuMnemonicKind::Flogn
+                | FpuMnemonicKind::Flognp1
+                | FpuMnemonicKind::Flog10
+                | FpuMnemonicKind::Flog2
+                | FpuMnemonicKind::Fgetexp
+                | FpuMnemonicKind::Fgetman
+                | FpuMnemonicKind::Fscale
+                | FpuMnemonicKind::Fmod
+                | FpuMnemonicKind::Frem
                 | FpuMnemonicKind::Fbranch
                 | FpuMnemonicKind::Fdbcc
                 | FpuMnemonicKind::Fscc

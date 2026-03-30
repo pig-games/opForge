@@ -3290,6 +3290,160 @@ fn m68040_fpu_trig_slice_assembles_only_under_fpu_68040() {
 }
 
 #[test]
+fn m68020_and_m68030_fpu_extended_math_slice_assembles() {
+    for cpu in ["68020", "68030"] {
+        let cpu_directive = format!(".cpu {cpu}");
+        let source = [
+            cpu_directive.as_str(),
+            ".fpu 68881",
+            "    FETOX FP0,FP1",
+            "    FETOXM1 FP0,FP1",
+            "    FTENTOX FP0,FP1",
+            "    FTWOTOX FP0,FP1",
+            "    FLOGN FP0,FP1",
+            "    FLOGNP1 FP0,FP1",
+            "    FLOG10 FP0,FP1",
+            "    FLOG2 FP0,FP1",
+            "    FGETEXP FP0,FP1",
+            "    FGETMAN FP0,FP1",
+            "    FSCALE FP0,FP1",
+            "    FMOD FP0,FP1",
+            "    FREM FP0,FP1",
+        ];
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("FPU extended-math slice should assemble");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics for {cpu}: {diagnostics:?}"
+        );
+
+        let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+        assert_eq!(
+            bytes,
+            vec![
+                0xF0, 0x00, 0x00, 0x90, 0xF0, 0x00, 0x00, 0x88, 0xF0, 0x00, 0x00, 0x92, 0xF0, 0x00,
+                0x00, 0x91, 0xF0, 0x00, 0x00, 0x94, 0xF0, 0x00, 0x00, 0x86, 0xF0, 0x00, 0x00, 0x95,
+                0xF0, 0x00, 0x00, 0x96, 0xF0, 0x00, 0x00, 0x9E, 0xF0, 0x00, 0x00, 0x9F, 0xF0, 0x00,
+                0x00, 0xA6, 0xF0, 0x00, 0x00, 0xA1, 0xF0, 0x00, 0x00, 0xA5,
+            ],
+            "unexpected bytes for {cpu}"
+        );
+    }
+}
+
+#[test]
+fn m68k_fpu_extended_math_slice_keeps_68881_and_68882_identical() {
+    let source_68881 = [
+        ".cpu 68020",
+        ".fpu 68881",
+        "    FETOX FP0,FP1",
+        "    FETOXM1 FP0,FP1",
+        "    FTENTOX FP0,FP1",
+        "    FTWOTOX FP0,FP1",
+        "    FLOGN FP0,FP1",
+        "    FLOGNP1 FP0,FP1",
+        "    FLOG10 FP0,FP1",
+        "    FLOG2 FP0,FP1",
+        "    FGETEXP FP0,FP1",
+        "    FGETMAN FP0,FP1",
+        "    FSCALE FP0,FP1",
+        "    FMOD FP0,FP1",
+        "    FREM FP0,FP1",
+    ];
+    let source_68882 = [
+        ".cpu 68020",
+        ".fpu 68882",
+        "    FETOX FP0,FP1",
+        "    FETOXM1 FP0,FP1",
+        "    FTENTOX FP0,FP1",
+        "    FTWOTOX FP0,FP1",
+        "    FLOGN FP0,FP1",
+        "    FLOGNP1 FP0,FP1",
+        "    FLOG10 FP0,FP1",
+        "    FLOG2 FP0,FP1",
+        "    FGETEXP FP0,FP1",
+        "    FGETMAN FP0,FP1",
+        "    FSCALE FP0,FP1",
+        "    FMOD FP0,FP1",
+        "    FREM FP0,FP1",
+    ];
+
+    let (entries_68881, diagnostics_68881) =
+        assemble_source_entries_with_runtime_mode(&source_68881, false)
+            .expect("68881 extended-math slice should assemble");
+    let (entries_68882, diagnostics_68882) =
+        assemble_source_entries_with_runtime_mode(&source_68882, false)
+            .expect("68882 extended-math slice should assemble");
+
+    assert!(diagnostics_68881.is_empty(), "{diagnostics_68881:?}");
+    assert!(diagnostics_68882.is_empty(), "{diagnostics_68882:?}");
+
+    let bytes_68881: Vec<u8> = entries_68881.iter().map(|(_, byte)| *byte).collect();
+    let bytes_68882: Vec<u8> = entries_68882.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes_68881, bytes_68882);
+}
+
+#[test]
+fn m68040_fpu_extended_math_slice_assembles_only_under_fpu_68040() {
+    let source = [
+        ".cpu 68040",
+        ".fpu 68040",
+        "    FETOX FP0,FP1",
+        "    FETOXM1 FP0,FP1",
+        "    FTENTOX FP0,FP1",
+        "    FTWOTOX FP0,FP1",
+        "    FLOGN FP0,FP1",
+        "    FLOGNP1 FP0,FP1",
+        "    FLOG10 FP0,FP1",
+        "    FLOG2 FP0,FP1",
+        "    FGETEXP FP0,FP1",
+        "    FGETMAN FP0,FP1",
+        "    FSCALE FP0,FP1",
+        "    FMOD FP0,FP1",
+        "    FREM FP0,FP1",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("m68040 FPU extended-math slice should assemble");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xF0, 0x00, 0x00, 0x90, 0xF0, 0x00, 0x00, 0x88, 0xF0, 0x00, 0x00, 0x92, 0xF0, 0x00,
+            0x00, 0x91, 0xF0, 0x00, 0x00, 0x94, 0xF0, 0x00, 0x00, 0x86, 0xF0, 0x00, 0x00, 0x95,
+            0xF0, 0x00, 0x00, 0x96, 0xF0, 0x00, 0x00, 0x9E, 0xF0, 0x00, 0x00, 0x9F, 0xF0, 0x00,
+            0x00, 0xA6, 0xF0, 0x00, 0x00, 0xA1, 0xF0, 0x00, 0x00, 0xA5,
+        ]
+    );
+}
+
+#[test]
+fn m68040_rejects_external_fpu_targets_for_extended_math_slice() {
+    for (source, expected_mnemonic) in [
+        (
+            vec![".cpu 68040", ".fpu 68881", "    FETOX FP0,FP1"],
+            "FETOX",
+        ),
+        (
+            vec![".cpu 68040", ".fpu 68882", "    FSCALE FP0,FP1"],
+            "FSCALE",
+        ),
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with legality diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains(expected_mnemonic))
+            .unwrap_or_else(|| {
+                panic!("missing legality diagnostic for {expected_mnemonic}: {diagnostics:?}")
+            });
+        assert!(diagnostic.contains("m68040"));
+        assert!(diagnostic.contains("legal .fpu targets for m68040 FPU instructions: 68040"));
+    }
+}
+
+#[test]
 fn m68040_rejects_external_fpu_targets_for_trig_slice() {
     for (source, expected_mnemonic) in [
         (vec![".cpu 68040", ".fpu 68881", "    FSIN FP0,FP1"], "FSIN"),

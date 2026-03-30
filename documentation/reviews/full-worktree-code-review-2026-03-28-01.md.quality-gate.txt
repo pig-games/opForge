@@ -1,1 +1,0 @@
-PASS: Findings-first Markdown review with stable IDs, concrete file references, justified severities, separate issue-versus-impact wording, one decisive fix direction per finding, and no unresolved open questions.

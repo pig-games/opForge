@@ -12,6 +12,16 @@ start:
     FMOVE.L FPSR,D3
     FMOVE.L FPIAR,D4
 
+    ; Native floating-point format transfers.
+    FMOVE.S (A0),FP3
+    FMOVE.D (A0)+,FP4
+    FMOVE.X -(A1),FP5
+    FMOVE.P 8(A2),FP6
+    FMOVE.S FP0,(A0)
+    FMOVE.D FP1,8(A0)
+    FMOVE.X FP2,-(A1)
+    FMOVE.P FP3,($123456).L
+
     ; Memory-source addressing families for sized FPU operations.
     FMOVE.W (A0),FP3
     FMOVE.L (A0)+,FP4
@@ -24,6 +34,10 @@ start:
 
     ; Representative arithmetic and transcendental EA forms.
     FADD FP1,FP2
+    FADD.S (A0),FP0
+    FADD.D (A0)+,FP1
+    FADD.X -(A1),FP2
+    FADD.P 8(A2),FP3
     FCOS.W (A0),FP3
     FSINCOS FP3,.pair(FP4,FP5)
 

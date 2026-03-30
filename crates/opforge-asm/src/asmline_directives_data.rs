@@ -214,7 +214,21 @@ impl<'a> AsmLine<'a> {
                 self.symbol_scope.module_active.as_deref(),
             )
         } else {
-            self.symbols.update(&full_name, scalar_val)
+            match self.symbols.entry_mut(&full_name) {
+                Some(entry) if entry.rw && !is_rw => types::symbol::SymbolTableResult::Duplicate,
+                Some(entry) => {
+                    entry.val = scalar_val;
+                    entry.updated = true;
+                    types::symbol::SymbolTableResult::Ok
+                }
+                None => self.symbols.add(
+                    &full_name,
+                    scalar_val,
+                    is_rw,
+                    self.current_visibility(),
+                    self.symbol_scope.module_active.as_deref(),
+                ),
+            }
         };
         if res == types::symbol::SymbolTableResult::Duplicate {
             return self.failure_at(

@@ -8,66 +8,41 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                5  
 ----                                6  start
 ----                                7      ; Integrated move, register, and control-register surface.
-1000    F0 00 00 80                 8      FMOVE FP0,FP1
-1004    F0 10 F0 05                 9      FMOVEM FP0/FP2,(A0)
-1008    F0 18 D0 0A                10      FMOVEM (A0)+,FP1/FP3
-100C    F0 00 90 00                11      FMOVE.L D0,FPCR
-1010    F0 01 A8 00                12      FMOVE.L FPSR,D1
-1014    F0 02 A4 00                13      FMOVE.L FPIAR,D2
+1000    F2 00 00 80                 8      FMOVE FP0,FP1
+1004    F2 10 F0 05                 9      FMOVEM FP0/FP2,(A0)
+1008    F2 18 D0 0A                10      FMOVEM (A0)+,FP1/FP3
+100C    F2 00 90 00                11      FMOVE.L D0,FPCR
+1010    F2 01 A8 00                12      FMOVE.L FPSR,D1
+1014    F2 02 A4 00                13      FMOVE.L FPIAR,D2
 ----                               14  
 ----                               15      ; Core arithmetic and tests.
-1018    F0 00 00 A2                16      FADD FP0,FP1
-101C    F0 00 05 28                17      FSUB FP1,FP2
-1020    F0 00 09 A3                18      FMUL FP2,FP3
-1024    F0 00 0E 20                19      FDIV FP3,FP4
-1028    F0 00 12 04                20      FSQRT FP4
-102C    F0 00 16 98                21      FABS FP5
-1030    F0 00 1B 1A                22      FNEG FP6
-1034    F0 00 1F 81                23      FINT FP7
-1038    F0 00 00 03                24      FINTRZ FP0
-103C    F0 00 00 B8                25      FCMP FP0,FP1
-1040    F0 00 04 BA                26      FTST FP1
+1018    F2 00 00 A2                16      FADD FP0,FP1
+101C    F2 00 05 28                17      FSUB FP1,FP2
+1020    F2 00 09 A3                18      FMUL FP2,FP3
+1024    F2 00 0E 20                19      FDIV FP3,FP4
+1028    F2 00 12 04                20      FSQRT FP4
+102C    F2 00 16 98                21      FABS FP5
+1030    F2 00 1B 1A                22      FNEG FP6
+1034    F2 00 1F 81                23      FINT FP7
+1038    F2 00 00 03                24      FINTRZ FP0
+103C    F2 00 00 B8                25      FCMP FP0,FP1
+1040    F2 00 04 BA                26      FTST FP1
 ----                               27  
 ----                               28      ; Conditional and state-management surface.
-1044    F0 81 00 02                29      FBEQ after_fb
+1044    F2 81 00 02                29      FBEQ after_fb
 ----                               30  after_fb
-1048    F0 48 00 0E 00 02          31      FDBNE D0,after_fdb
+1048    F2 48 00 0E 00 02          31      FDBNE D0,after_fdb
 ----                               32  after_fdb
-104E    F0 43 00 0E                33      FSNE D3
-1052    F0 7A 00 12 00 01          34      FTRAPGT.W #1
-1058    F1 11                      35      FSAVE (A1)
-105A    F1 59                      36      FRESTORE (A1)+
+104E    F2 43 00 0E                33      FSNE D3
+1052    F2 7A 00 12 00 01          34      FTRAPGT.W #1
+1058    F3 11                      35      FSAVE (A1)
+105A    F3 59                      36      FRESTORE (A1)+
 ----                               37  
-----                               38      ; Trig and extended-math surface.
-105C    F0 00 00 8E                39      FSIN FP0,FP1
-1060    F0 12 51 1D                40      FCOS.W (A2),FP2
-1064    F0 00 0E B4                41      FSINCOS FP3,.pair(FP4,FP5)
-1068    F0 00 17 0F                42      FTAN FP5,FP6
-106C    F0 00 1B 8C                43      FASIN FP6,FP7
-1070    F0 00 1C 1C                44      FACOS FP7,FP0
-1074    F0 00 00 8A                45      FATAN FP0,FP1
-1078    F0 00 05 02                46      FSINH FP1,FP2
-107C    F0 00 09 99                47      FCOSH FP2,FP3
-1080    F0 00 0E 09                48      FTANH FP3,FP4
-1084    F0 00 12 8D                49      FATANH FP4,FP5
-1088    F0 00 17 10                50      FETOX FP5,FP6
-108C    F0 00 1B 88                51      FETOXM1 FP6,FP7
-1090    F0 00 1C 12                52      FTENTOX FP7,FP0
-1094    F0 00 00 91                53      FTWOTOX FP0,FP1
-1098    F0 00 05 14                54      FLOGN FP1,FP2
-109C    F0 00 09 86                55      FLOGNP1 FP2,FP3
-10A0    F0 00 0E 15                56      FLOG10 FP3,FP4
-10A4    F0 00 12 96                57      FLOG2 FP4,FP5
-10A8    F0 00 17 1E                58      FGETEXP FP5,FP6
-10AC    F0 00 1B 9F                59      FGETMAN FP6,FP7
-10B0    F0 00 1C 26                60      FSCALE FP7,FP0
-10B4    F0 00 00 A1                61      FMOD FP0,FP1
-10B8    F0 00 05 25                62      FREM FP1,FP2
-10BC    4E 75                      63      RTS
-----                               64  
-----                               65  .end
+105C    4E 75                      38      RTS
+----                               39  
+----                               40  .end
 
-Lines: 65  Errors: 0  Warnings: 0
+Lines: 40  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
@@ -77,21 +52,15 @@ after_fb         1048      prv  lbl
 after_fdb        104E      prv  lbl 
 start            1000      prv  lbl 
 
-Total memory is 190 bytes
+Total memory is 94 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    F0 00 00 80 F0 10 F0 05 F0 18 D0 0A F0 00 90 00
-1010    F0 01 A8 00 F0 02 A4 00 F0 00 00 A2 F0 00 05 28
-1020    F0 00 09 A3 F0 00 0E 20 F0 00 12 04 F0 00 16 98
-1030    F0 00 1B 1A F0 00 1F 81 F0 00 00 03 F0 00 00 B8
-1040    F0 00 04 BA F0 81 00 02 F0 48 00 0E 00 02 F0 43
-1050    00 0E F0 7A 00 12 00 01 F1 11 F1 59 F0 00 00 8E
-1060    F0 12 51 1D F0 00 0E B4 F0 00 17 0F F0 00 1B 8C
-1070    F0 00 1C 1C F0 00 00 8A F0 00 05 02 F0 00 09 99
-1080    F0 00 0E 09 F0 00 12 8D F0 00 17 10 F0 00 1B 88
-1090    F0 00 1C 12 F0 00 00 91 F0 00 05 14 F0 00 09 86
-10A0    F0 00 0E 15 F0 00 12 96 F0 00 17 1E F0 00 1B 9F
-10B0    F0 00 1C 26 F0 00 00 A1 F0 00 05 25 4E 75
+1000    F2 00 00 80 F2 10 F0 05 F2 18 D0 0A F2 00 90 00
+1010    F2 01 A8 00 F2 02 A4 00 F2 00 00 A2 F2 00 05 28
+1020    F2 00 09 A3 F2 00 0E 20 F2 00 12 04 F2 00 16 98
+1030    F2 00 1B 1A F2 00 1F 81 F2 00 00 03 F2 00 00 B8
+1040    F2 00 04 BA F2 81 00 02 F2 48 00 0E 00 02 F2 43
+1050    00 0E F2 7A 00 12 00 01 F3 11 F3 59 4E 75

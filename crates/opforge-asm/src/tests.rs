@@ -2881,7 +2881,7 @@ fn m68k_fpu_mnemonics_assemble_once_fpu_is_enabled() {
     for source in [
         vec![".cpu 68020", ".fpu 68881", "    FSIN FP0,FP1"],
         vec![".cpu 68030", ".fpu 68882", "    FSIN FP0,FP1"],
-        vec![".cpu 68040", ".fpu 68040", "    FSIN FP0,FP1"],
+        vec![".cpu 68040", ".fpu 68040", "    FADD FP0,FP1"],
     ] {
         let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
             .expect("assembly should succeed once the FPU target is enabled");
@@ -2915,12 +2915,138 @@ fn m68020_and_m68030_external_fpu_move_slice_assembles() {
         assert_eq!(
             bytes,
             vec![
-                0xF0, 0x00, 0x00, 0x80, 0xF0, 0x00, 0x90, 0x00, 0xF0, 0x01, 0xA8, 0x00, 0xF0, 0x10,
-                0xF0, 0x05, 0xF0, 0x18, 0xD0, 0x0A,
+                0xF2, 0x00, 0x00, 0x80, 0xF2, 0x00, 0x90, 0x00, 0xF2, 0x01, 0xA8, 0x00, 0xF2, 0x10,
+                0xF0, 0x05, 0xF2, 0x18, 0xD0, 0x0A,
             ],
             "unexpected bytes for {cpu}"
         );
     }
+}
+
+#[test]
+fn m68020_and_m68030_external_fpu_native_format_and_control_state_slice_assembles() {
+    for cpu in ["68020", "68030"] {
+        let cpu_directive = format!(".cpu {cpu}");
+        let source = [
+            cpu_directive.as_str(),
+            ".fpu 68881",
+            "    FMOVE.S (A0),FP0",
+            "    FMOVE.D 8(A0),FP1",
+            "    FMOVE.X ($1234).W,FP2",
+            "    FMOVE.P ($123456).L,FP3",
+            "    FADD.X (A0),FP1",
+            "    FMOVE.L (A0),FPCR",
+            "    FMOVE.L FPCR,(A1)",
+            "    FMOVEM.L (A0),FPCR/FPSR/FPIAR",
+            "    FMOVEM.L FPCR/FPSR/FPIAR,(A1)",
+        ];
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("native-format and control-state slice should assemble");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics for {cpu}: {diagnostics:?}"
+        );
+
+        let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+        assert_eq!(
+            bytes,
+            vec![
+                0xF2, 0x10, 0x44, 0x00, 0xF2, 0x28, 0x54, 0x80, 0x00, 0x08, 0xF2, 0x38, 0x49, 0x00,
+                0x12, 0x34, 0xF2, 0x39, 0x4D, 0x80, 0x00, 0x12, 0x34, 0x56, 0xF2, 0x10, 0x48, 0xA2,
+                0xF2, 0x10, 0x90, 0x00, 0xF2, 0x11, 0xB0, 0x00, 0xF2, 0x10, 0x9C, 0x00, 0xF2, 0x11,
+                0xBC, 0x00,
+            ],
+            "unexpected bytes for {cpu}"
+        );
+    }
+}
+
+#[test]
+fn m68k_fpu_native_fmove_store_forms_encode_on_supported_targets() {
+    for (cpu, fpu) in [("68020", "68881"), ("68030", "68881"), ("68040", "68040")] {
+        let cpu_directive = format!(".cpu {cpu}");
+        let fpu_directive = format!(".fpu {fpu}");
+        let source = [
+            cpu_directive.as_str(),
+            fpu_directive.as_str(),
+            "    FMOVE.S FP0,(A0)",
+            "    FMOVE.D FP1,8(A0)",
+            "    FMOVE.X FP2,-(A1)",
+            "    FMOVE.P FP3,($123456).L",
+        ];
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("native-format FMOVE store forms should assemble");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics for {cpu}/{fpu}: {diagnostics:?}"
+        );
+        let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+        assert_eq!(
+            bytes,
+            vec![
+                0xF2, 0x10, 0x64, 0x00, 0xF2, 0x28, 0x74, 0x80, 0x00, 0x08, 0xF2, 0x21, 0x69, 0x00,
+                0xF2, 0x39, 0x6D, 0x80, 0x00, 0x12, 0x34, 0x56,
+            ],
+            "unexpected bytes for {cpu}/{fpu}"
+        );
+    }
+}
+
+#[test]
+fn m68020_native_fmove_store_forms_reject_illegal_destinations() {
+    for source in [
+        vec![".cpu 68020", ".fpu 68881", "    FMOVE.S FP0,D0"],
+        vec![".cpu 68020", ".fpu 68881", "    FMOVE.X FP0,8(PC)"],
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("invalid destination effective address for FMOVE"))
+            .unwrap_or_else(|| panic!("missing invalid-destination diagnostic: {diagnostics:?}"));
+        assert!(
+            diagnostic.contains("FMOVE.S") || diagnostic.contains("FMOVE.X"),
+            "{diagnostic}"
+        );
+    }
+}
+
+#[test]
+fn m68k_native_fmove_store_forms_reject_unsupported_targets() {
+    for (source, expected, required_fragment) in [
+        (
+            vec![".cpu 68020", "    FMOVE.S FP0,(A0)"],
+            "requires an active .fpu target",
+            Some("FMOVE"),
+        ),
+        (
+            vec![".cpu 68020", ".fpu 68040", "    FMOVE.S FP0,(A0)"],
+            "FPU target 68040 is not supported on m68020",
+            None,
+        ),
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains(expected))
+            .unwrap_or_else(|| panic!("missing unsupported-target diagnostic: {diagnostics:?}"));
+        if let Some(required_fragment) = required_fragment {
+            assert!(diagnostic.contains(required_fragment), "{diagnostic}");
+        }
+    }
+}
+
+#[test]
+fn m68020_external_fpu_native_fmove_rejects_still_unsupported_register_source_forms() {
+    let source = [".cpu 68020", ".fpu 68881", "    FMOVE.X FP0,FP1"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("assembly should finish with diagnostics");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diag| diag.contains("FPU data registers are not valid effective addresses"))
+        .unwrap_or_else(|| panic!("missing FMOVE.X operand diagnostic: {diagnostics:?}"));
+    assert!(diagnostic.contains("FPU data registers are not valid effective addresses"));
 }
 
 #[test]
@@ -2953,7 +3079,7 @@ fn m68k_external_fpu_move_slice_keeps_68881_and_68882_identical() {
     assert_eq!(bytes_68881, bytes_68882);
     assert_eq!(
         bytes_68881,
-        vec![0xF0, 0x00, 0x00, 0x80, 0xF0, 0x21, 0xE0, 0xA0]
+        vec![0xF2, 0x00, 0x00, 0x80, 0xF2, 0x21, 0xE0, 0xA0]
     );
 }
 
@@ -2989,12 +3115,40 @@ fn m68020_and_m68030_external_fpu_arithmetic_slice_assembles() {
         assert_eq!(
             bytes,
             vec![
-                0xF0, 0x00, 0x00, 0xA2, 0xF0, 0x00, 0x05, 0x28, 0xF0, 0x00, 0x09, 0xA3, 0xF0, 0x00,
-                0x0E, 0x20, 0xF0, 0x00, 0x12, 0x04, 0xF0, 0x00, 0x16, 0x98, 0xF0, 0x00, 0x1B, 0x9A,
-                0xF0, 0x00, 0x1C, 0x38, 0xF0, 0x00, 0x04, 0xBA, 0xF0, 0x00, 0x09, 0x81, 0xF0, 0x00,
-                0x0E, 0x03, 0xF0, 0x00, 0x58, 0x80, 0xF0, 0x00, 0x74, 0x00, 0xF0, 0x00, 0x50, 0x3A,
+                0xF2, 0x00, 0x00, 0xA2, 0xF2, 0x00, 0x05, 0x28, 0xF2, 0x00, 0x09, 0xA3, 0xF2, 0x00,
+                0x0E, 0x20, 0xF2, 0x00, 0x12, 0x04, 0xF2, 0x00, 0x16, 0x98, 0xF2, 0x00, 0x1B, 0x9A,
+                0xF2, 0x00, 0x1C, 0x38, 0xF2, 0x00, 0x04, 0xBA, 0xF2, 0x00, 0x09, 0x81, 0xF2, 0x00,
+                0x0E, 0x03, 0xF2, 0x00, 0x58, 0x80, 0xF2, 0x00, 0x70, 0x80, 0xF2, 0x00, 0x50, 0x3A,
             ],
             "unexpected bytes for {cpu}"
+        );
+    }
+}
+
+#[test]
+fn m68k_fmove_integer_conversion_stores_encode_source_fp_register_bits_correctly() {
+    for (cpu, fpu) in [("68020", "68881"), ("68030", "68881"), ("68040", "68040")] {
+        let source = [
+            &format!(".cpu {cpu}"),
+            &format!(".fpu {fpu}"),
+            "    FMOVE.B FP3,D0",
+            "    FMOVE.W FP1,D1",
+            "    FMOVE.L FP2,D2",
+        ];
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("FMOVE integer-conversion stores should assemble");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics for {cpu}: {diagnostics:?}"
+        );
+
+        let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+        assert_eq!(
+            bytes,
+            vec![
+                0xF2, 0x00, 0x79, 0x80, 0xF2, 0x01, 0x70, 0x80, 0xF2, 0x02, 0x61, 0x00,
+            ],
+            "unexpected FMOVE store bytes for {cpu}"
         );
     }
 }
@@ -3031,7 +3185,7 @@ fn m68k_external_fpu_arithmetic_slice_keeps_68881_and_68882_identical() {
     assert_eq!(bytes_68881, bytes_68882);
     assert_eq!(
         bytes_68881,
-        vec![0xF0, 0x00, 0x00, 0xA2, 0xF0, 0x00, 0x58, 0x80, 0xF0, 0x00, 0x50, 0x3A]
+        vec![0xF2, 0x00, 0x00, 0xA2, 0xF2, 0x00, 0x58, 0x80, 0xF2, 0x00, 0x50, 0x3A]
     );
 }
 
@@ -3055,8 +3209,8 @@ fn m68040_core_fpu_surface_assembles_only_under_fpu_68040() {
     assert_eq!(
         bytes,
         vec![
-            0xF0, 0x00, 0x00, 0x80, 0xF0, 0x10, 0xF0, 0x05, 0xF0, 0x00, 0x00, 0xA2, 0xF0, 0x00,
-            0x12, 0x04, 0xF0, 0x00, 0x58, 0x80, 0xF0, 0x00, 0x50, 0x3A,
+            0xF2, 0x00, 0x00, 0x80, 0xF2, 0x10, 0xF0, 0x05, 0xF2, 0x00, 0x00, 0xA2, 0xF2, 0x00,
+            0x12, 0x04, 0xF2, 0x00, 0x58, 0x80, 0xF2, 0x00, 0x50, 0x3A,
         ]
     );
 }
@@ -3107,8 +3261,8 @@ fn m68020_and_m68030_fpu_conditional_slice_assembles() {
         assert_eq!(
             bytes,
             vec![
-                0xF0, 0x81, 0x00, 0x02, 0xF0, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF0, 0x40, 0x00, 0x0E,
-                0xF0, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF1, 0x10, 0xF1, 0x58,
+                0xF2, 0x81, 0x00, 0x02, 0xF2, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF2, 0x40, 0x00, 0x0E,
+                0xF2, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF3, 0x10, 0xF3, 0x58,
             ],
             "unexpected bytes for {cpu}"
         );
@@ -3158,8 +3312,8 @@ fn m68k_fpu_conditional_slice_keeps_68881_and_68882_identical() {
     assert_eq!(
         bytes_68881,
         vec![
-            0xF0, 0x81, 0x00, 0x02, 0xF0, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF0, 0x40, 0x00, 0x0E,
-            0xF0, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF1, 0x10, 0xF1, 0x58,
+            0xF2, 0x81, 0x00, 0x02, 0xF2, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF2, 0x40, 0x00, 0x0E,
+            0xF2, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF3, 0x10, 0xF3, 0x58,
         ]
     );
 }
@@ -3186,8 +3340,8 @@ fn m68040_fpu_conditional_slice_assembles_only_under_fpu_68040() {
     assert_eq!(
         bytes,
         vec![
-            0xF0, 0x81, 0x00, 0x02, 0xF0, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF0, 0x40, 0x00, 0x0E,
-            0xF0, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF1, 0x10, 0xF1, 0x58,
+            0xF2, 0x81, 0x00, 0x02, 0xF2, 0x48, 0x00, 0x0E, 0x00, 0x02, 0xF2, 0x40, 0x00, 0x0E,
+            0xF2, 0x7A, 0x00, 0x12, 0x00, 0x01, 0xF3, 0x10, 0xF3, 0x58,
         ]
     );
 }
@@ -3222,9 +3376,9 @@ fn m68020_and_m68030_fpu_trig_slice_assembles() {
         assert_eq!(
             bytes,
             vec![
-                0xF0, 0x00, 0x00, 0x8E, 0xF0, 0x10, 0x51, 0x1D, 0xF0, 0x00, 0x0E, 0xB4, 0xF0, 0x00,
-                0x00, 0x8F, 0xF0, 0x00, 0x00, 0x8C, 0xF0, 0x00, 0x00, 0x9C, 0xF0, 0x00, 0x00, 0x8A,
-                0xF0, 0x00, 0x00, 0x82, 0xF0, 0x00, 0x00, 0x99, 0xF0, 0x00, 0x00, 0x89, 0xF0, 0x00,
+                0xF2, 0x00, 0x00, 0x8E, 0xF2, 0x10, 0x51, 0x1D, 0xF2, 0x00, 0x0E, 0xB4, 0xF2, 0x00,
+                0x00, 0x8F, 0xF2, 0x00, 0x00, 0x8C, 0xF2, 0x00, 0x00, 0x9C, 0xF2, 0x00, 0x00, 0x8A,
+                0xF2, 0x00, 0x00, 0x82, 0xF2, 0x00, 0x00, 0x99, 0xF2, 0x00, 0x00, 0x89, 0xF2, 0x00,
                 0x00, 0x8D,
             ],
             "unexpected bytes for {cpu}"
@@ -3281,36 +3435,408 @@ fn m68k_fpu_trig_slice_keeps_68881_and_68882_identical() {
 }
 
 #[test]
-fn m68040_fpu_trig_slice_assembles_only_under_fpu_68040() {
-    let source = [
-        ".cpu 68040",
-        ".fpu 68040",
+fn m68k_external_fpu_missing_mnemonics_assemble_on_68020_and_68030() {
+    for (cpu, fpu) in [
+        ("68020", "68881"),
+        ("68020", "68882"),
+        ("68030", "68881"),
+        ("68030", "68882"),
+    ] {
+        let cpu_directive = format!(".cpu {cpu}");
+        let fpu_directive = format!(".fpu {fpu}");
+        let source = [
+            cpu_directive.as_str(),
+            fpu_directive.as_str(),
+            "    FNOP",
+            "    FMOVECR #11,FP0",
+            "    FSGLDIV FP1,FP2",
+            "    FSGLMUL FP3,FP4",
+        ];
+        let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("missing external-FPU mnemonics should assemble");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics for {cpu}/{fpu}: {diagnostics:?}"
+        );
+        let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+        assert_eq!(
+            bytes,
+            vec![
+                0xF2, 0x00, 0x00, 0x00, 0xF2, 0x00, 0x5C, 0x0B, 0xF2, 0x00, 0x05, 0x24, 0xF2, 0x00,
+                0x0E, 0x27,
+            ],
+            "unexpected bytes for {cpu}/{fpu}"
+        );
+    }
+}
+
+#[test]
+fn m68k_external_fpu_missing_mnemonics_reject_disabled_or_integrated_68040_targets() {
+    for mnemonic in [
+        "    FNOP",
+        "    FMOVECR #11,FP0",
+        "    FSGLDIV FP1,FP2",
+        "    FSGLMUL FP3,FP4",
+    ] {
+        for cpu in ["68020", "68030"] {
+            let cpu_directive = format!(".cpu {cpu}");
+            let disabled_source = [cpu_directive.as_str(), ".fpu none", mnemonic];
+            let (_entries, disabled_diagnostics) =
+                assemble_source_entries_with_runtime_mode(&disabled_source, false)
+                    .expect("assembly should finish with diagnostics");
+            let disabled = disabled_diagnostics
+                .iter()
+                .find(|diag| diag.contains("requires an active .fpu target"))
+                .unwrap_or_else(|| {
+                    panic!("missing disabled-FPU diagnostic for {cpu} {mnemonic}: {disabled_diagnostics:?}")
+                });
+            assert!(disabled.contains(&format!("m{}", cpu)), "{disabled}");
+        }
+
+        let integrated_source = vec![".cpu 68040", ".fpu 68040", mnemonic];
+        let (_entries, integrated_diagnostics) =
+            assemble_source_entries_with_runtime_mode(&integrated_source, false)
+                .expect("assembly should finish with diagnostics");
+        let integrated = integrated_diagnostics
+            .iter()
+            .find(|diag| diag.contains("integrated 68040 FPU target"))
+            .unwrap_or_else(|| {
+                panic!("missing integrated-68040 diagnostic for {mnemonic}: {integrated_diagnostics:?}")
+            });
+        assert!(integrated.contains("not supported"), "{integrated}");
+    }
+}
+
+#[test]
+fn m68k_external_fpu_boundary_matrix_matches_the_promised_surface() {
+    struct ExternalFpuBoundaryCase {
+        name: &'static str,
+        lines: &'static [&'static str],
+        allow_integrated_68040: bool,
+    }
+
+    let cases = [
+        ExternalFpuBoundaryCase {
+            name: "FNOP",
+            lines: &["    FNOP"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FMOVE",
+            lines: &["    FMOVE FP0,FP1"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FMOVEM",
+            lines: &["    FMOVEM FP0/FP2,(A0)"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FMOVECR",
+            lines: &["    FMOVECR #11,FP0"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FADD",
+            lines: &["    FADD FP1,FP2"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSUB",
+            lines: &["    FSUB FP2,FP3"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FMUL",
+            lines: &["    FMUL FP3,FP4"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FDIV",
+            lines: &["    FDIV FP4,FP5"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSQRT",
+            lines: &["    FSQRT FP5"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FABS",
+            lines: &["    FABS FP6"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FNEG",
+            lines: &["    FNEG FP7"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FCMP",
+            lines: &["    FCMP FP1,FP2"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FTST",
+            lines: &["    FTST FP3"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FINT",
+            lines: &["    FINT FP0"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FINTRZ",
+            lines: &["    FINTRZ FP1"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSGLDIV",
+            lines: &["    FSGLDIV FP1,FP2"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSGLMUL",
+            lines: &["    FSGLMUL FP3,FP4"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSIN",
+            lines: &["    FSIN FP0,FP1"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FCOS",
+            lines: &["    FCOS.W (A1),FP2"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSINCOS",
+            lines: &["    FSINCOS FP3,.pair(FP4,FP5)"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FTAN",
+            lines: &["    FTAN FP5,FP6"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FASIN",
+            lines: &["    FASIN FP6,FP7"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FACOS",
+            lines: &["    FACOS FP7,FP0"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FATAN",
+            lines: &["    FATAN FP0,FP1"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSINH",
+            lines: &["    FSINH FP1,FP2"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FCOSH",
+            lines: &["    FCOSH FP2,FP3"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FTANH",
+            lines: &["    FTANH FP3,FP4"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FATANH",
+            lines: &["    FATANH FP4,FP5"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FETOX",
+            lines: &["    FETOX FP5,FP6"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FETOXM1",
+            lines: &["    FETOXM1 FP6,FP7"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FTENTOX",
+            lines: &["    FTENTOX FP7,FP0"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FTWOTOX",
+            lines: &["    FTWOTOX FP0,FP1"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FLOGN",
+            lines: &["    FLOGN FP1,FP2"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FLOGNP1",
+            lines: &["    FLOGNP1 FP2,FP3"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FLOG10",
+            lines: &["    FLOG10 FP3,FP4"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FLOG2",
+            lines: &["    FLOG2 FP4,FP5"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FGETEXP",
+            lines: &["    FGETEXP FP5,FP6"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FGETMAN",
+            lines: &["    FGETMAN FP6,FP7"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSCALE",
+            lines: &["    FSCALE FP7,FP0"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FMOD",
+            lines: &["    FMOD FP0,FP1"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FREM",
+            lines: &["    FREM FP1,FP2"],
+            allow_integrated_68040: false,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FSAVE",
+            lines: &["    FSAVE (A0)"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FRESTORE",
+            lines: &["    FRESTORE (A0)+"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FBcc",
+            lines: &["    FBEQ after_fb", "after_fb:"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FDBcc",
+            lines: &["    FDBNE D0,after_fdb", "after_fdb:"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FScc",
+            lines: &["    FSNE D1"],
+            allow_integrated_68040: true,
+        },
+        ExternalFpuBoundaryCase {
+            name: "FTRAPcc",
+            lines: &["    FTRAPGT.W #1"],
+            allow_integrated_68040: true,
+        },
+    ];
+
+    for case in cases {
+        for cpu in ["68020", "68030"] {
+            for fpu in ["68881", "68882"] {
+                let cpu_directive = format!(".cpu {cpu}");
+                let fpu_directive = format!(".fpu {fpu}");
+                let source: Vec<&str> = std::iter::once(cpu_directive.as_str())
+                    .chain(std::iter::once(fpu_directive.as_str()))
+                    .chain(case.lines.iter().copied())
+                    .collect();
+                let (_entries, diagnostics) =
+                    assemble_source_entries_with_runtime_mode(&source, false)
+                        .unwrap_or_else(|err| panic!("{case_name} should assemble on {cpu}/{fpu}: {err}", case_name = case.name));
+                assert!(
+                    diagnostics.is_empty(),
+                    "{case_name} unexpectedly failed on {cpu}/{fpu}: {diagnostics:?}",
+                    case_name = case.name
+                );
+
+                let disabled_source: Vec<&str> = std::iter::once(cpu_directive.as_str())
+                    .chain(std::iter::once(".fpu none"))
+                    .chain(case.lines.iter().copied())
+                    .collect();
+                let (_entries, disabled_diagnostics) =
+                    assemble_source_entries_with_runtime_mode(&disabled_source, false)
+                        .expect("assembly should finish with diagnostics");
+                let disabled = disabled_diagnostics
+                    .iter()
+                    .find(|diag| diag.contains("requires an active .fpu target"))
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{case_name} missing .fpu none diagnostic on {cpu}: {disabled_diagnostics:?}",
+                            case_name = case.name
+                        )
+                    });
+                assert!(disabled.contains(&format!("m{}", cpu)), "{disabled}");
+            }
+        }
+
+        let integrated_source: Vec<&str> = std::iter::once(".cpu 68040")
+            .chain(std::iter::once(".fpu 68040"))
+            .chain(case.lines.iter().copied())
+            .collect();
+        let (_entries, integrated_diagnostics) =
+            assemble_source_entries_with_runtime_mode(&integrated_source, false)
+                .expect("assembly should finish with diagnostics");
+        if case.allow_integrated_68040 {
+            assert!(
+                integrated_diagnostics.is_empty(),
+                "{case_name} should stay available on integrated 68040: {integrated_diagnostics:?}",
+                case_name = case.name
+            );
+        } else {
+            let integrated = integrated_diagnostics
+                .iter()
+                .find(|diag| diag.contains("integrated 68040 FPU target"))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{case_name} missing integrated-68040 rejection: {integrated_diagnostics:?}",
+                        case_name = case.name
+                    )
+                });
+            assert!(integrated.contains("not supported"), "{integrated}");
+        }
+    }
+}
+
+#[test]
+fn m68040_rejects_fsin_class_mnemonics_under_fpu_68040() {
+    for mnemonic in [
         "    FSIN FP0,FP1",
         "    FCOS.W (A0),FP2",
-        "    FSINCOS FP3,.pair(FP4,FP5)",
-        "    FTAN FP0,FP1",
-        "    FASIN FP0,FP1",
-        "    FACOS FP0,FP1",
-        "    FATAN FP0,FP1",
-        "    FSINH FP0,FP1",
-        "    FCOSH FP0,FP1",
-        "    FTANH FP0,FP1",
         "    FATANH FP0,FP1",
-    ];
-    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
-        .expect("m68040 FPU trig slice should assemble");
-    assert!(diagnostics.is_empty(), "{diagnostics:?}");
-
-    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
-    assert_eq!(
-        bytes,
-        vec![
-            0xF0, 0x00, 0x00, 0x8E, 0xF0, 0x10, 0x51, 0x1D, 0xF0, 0x00, 0x0E, 0xB4, 0xF0, 0x00,
-            0x00, 0x8F, 0xF0, 0x00, 0x00, 0x8C, 0xF0, 0x00, 0x00, 0x9C, 0xF0, 0x00, 0x00, 0x8A,
-            0xF0, 0x00, 0x00, 0x82, 0xF0, 0x00, 0x00, 0x99, 0xF0, 0x00, 0x00, 0x89, 0xF0, 0x00,
-            0x00, 0x8D,
-        ]
-    );
+        "    FSINCOS FP3,.pair(FP4,FP5)",
+    ] {
+        let source = vec![".cpu 68040", ".fpu 68040", mnemonic];
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("integrated 68040 FPU target"))
+            .unwrap_or_else(|| panic!("missing integrated-68040 diagnostic for {mnemonic}: {diagnostics:?}"));
+        assert!(diagnostic.contains("m68040") || diagnostic.contains("68040"), "{diagnostic}");
+        assert!(diagnostic.contains("not supported"), "{diagnostic}");
+    }
 }
 
 #[test]
@@ -3345,10 +3871,10 @@ fn m68020_and_m68030_fpu_extended_math_slice_assembles() {
         assert_eq!(
             bytes,
             vec![
-                0xF0, 0x00, 0x00, 0x90, 0xF0, 0x00, 0x00, 0x88, 0xF0, 0x00, 0x00, 0x92, 0xF0, 0x00,
-                0x00, 0x91, 0xF0, 0x00, 0x00, 0x94, 0xF0, 0x00, 0x00, 0x86, 0xF0, 0x00, 0x00, 0x95,
-                0xF0, 0x00, 0x00, 0x96, 0xF0, 0x00, 0x00, 0x9E, 0xF0, 0x00, 0x00, 0x9F, 0xF0, 0x00,
-                0x00, 0xA6, 0xF0, 0x00, 0x00, 0xA1, 0xF0, 0x00, 0x00, 0xA5,
+                0xF2, 0x00, 0x00, 0x90, 0xF2, 0x00, 0x00, 0x88, 0xF2, 0x00, 0x00, 0x92, 0xF2, 0x00,
+                0x00, 0x91, 0xF2, 0x00, 0x00, 0x94, 0xF2, 0x00, 0x00, 0x86, 0xF2, 0x00, 0x00, 0x95,
+                0xF2, 0x00, 0x00, 0x96, 0xF2, 0x00, 0x00, 0x9E, 0xF2, 0x00, 0x00, 0x9F, 0xF2, 0x00,
+                0x00, 0xA6, 0xF2, 0x00, 0x00, 0xA1, 0xF2, 0x00, 0x00, 0xA5,
             ],
             "unexpected bytes for {cpu}"
         );
@@ -3408,38 +3934,17 @@ fn m68k_fpu_extended_math_slice_keeps_68881_and_68882_identical() {
 }
 
 #[test]
-fn m68040_fpu_extended_math_slice_assembles_only_under_fpu_68040() {
-    let source = [
-        ".cpu 68040",
-        ".fpu 68040",
-        "    FETOX FP0,FP1",
-        "    FETOXM1 FP0,FP1",
-        "    FTENTOX FP0,FP1",
-        "    FTWOTOX FP0,FP1",
-        "    FLOGN FP0,FP1",
-        "    FLOGNP1 FP0,FP1",
-        "    FLOG10 FP0,FP1",
-        "    FLOG2 FP0,FP1",
-        "    FGETEXP FP0,FP1",
-        "    FGETMAN FP0,FP1",
-        "    FSCALE FP0,FP1",
-        "    FMOD FP0,FP1",
-        "    FREM FP0,FP1",
-    ];
-    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
-        .expect("m68040 FPU extended-math slice should assemble");
-    assert!(diagnostics.is_empty(), "{diagnostics:?}");
-
-    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
-    assert_eq!(
-        bytes,
-        vec![
-            0xF0, 0x00, 0x00, 0x90, 0xF0, 0x00, 0x00, 0x88, 0xF0, 0x00, 0x00, 0x92, 0xF0, 0x00,
-            0x00, 0x91, 0xF0, 0x00, 0x00, 0x94, 0xF0, 0x00, 0x00, 0x86, 0xF0, 0x00, 0x00, 0x95,
-            0xF0, 0x00, 0x00, 0x96, 0xF0, 0x00, 0x00, 0x9E, 0xF0, 0x00, 0x00, 0x9F, 0xF0, 0x00,
-            0x00, 0xA6, 0xF0, 0x00, 0x00, 0xA1, 0xF0, 0x00, 0x00, 0xA5,
-        ]
-    );
+fn m68040_rejects_extended_math_mnemonics_under_fpu_68040() {
+    for mnemonic in ["    FETOX FP0,FP1", "    FSCALE FP0,FP1", "    FREM FP0,FP1"] {
+        let source = vec![".cpu 68040", ".fpu 68040", mnemonic];
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("integrated 68040 FPU target"))
+            .unwrap_or_else(|| panic!("missing integrated-68040 diagnostic for {mnemonic}: {diagnostics:?}"));
+        assert!(diagnostic.contains("68040"), "{diagnostic}");
+    }
 }
 
 #[test]
@@ -4720,6 +5225,58 @@ fn m68020_long_branch_family_assembles() {
 }
 
 #[test]
+fn m68020_auto_sized_forward_branch_widens_after_layout_stabilization() {
+    let assembler = run_passes(&[
+        ".cpu 68020",
+        ".org $0000",
+        "    BRA far_target",
+        "    .fill byte, 32768, $00",
+        "far_target:",
+        "    RTS",
+    ]);
+
+    let entries = assembler.image().entries().expect("image entries");
+    assert_eq!(
+        entries.iter().take(6).copied().collect::<Vec<_>>(),
+        vec![
+            (0x0000, 0x60),
+            (0x0001, 0xFF),
+            (0x0002, 0x00),
+            (0x0003, 0x00),
+            (0x0004, 0x80),
+            (0x0005, 0x04),
+        ]
+    );
+}
+
+#[test]
+fn explicit_m68020_byte_branch_remains_hard_range_checked_after_symbol_resolution() {
+    let mut assembler = Assembler::new();
+    let lines = vec![
+        ".cpu 68020".to_string(),
+        ".org $0000".to_string(),
+        "    BRA.B far_target".to_string(),
+        "    .fill byte, 32768, $00".to_string(),
+        "far_target:".to_string(),
+        "    RTS".to_string(),
+    ];
+
+    let pass1 = assembler.pass1(&lines);
+    assert!(pass1.errors > 0, "pass1 should report range failure");
+
+    let message = assembler
+        .diagnostics
+        .iter()
+        .find(|diag| diag.severity == Severity::Error)
+        .map(|diag| diag.error.message().to_string())
+        .expect("expected pass2 error diagnostic");
+    assert!(
+        message.contains("BRA.B branch displacement out of range"),
+        "unexpected diagnostic: {message}"
+    );
+}
+
+#[test]
 fn m68020_second_instruction_group_assembles() {
     assert_eq!(
         assemble_bytes(m68020_cpu_id, "    CAS.W D0,D1,(A0)"),
@@ -4773,6 +5330,38 @@ fn m68020_second_instruction_group_assembles() {
         assemble_bytes(m68020_cpu_id, "    RTM A3"),
         vec![0x06, 0xCB]
     );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    DIVS.L (A0),D1"),
+        vec![0x4C, 0x50, 0x18, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    DIVU.L (A0),D1"),
+        vec![0x4C, 0x50, 0x10, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    DIVS.L (A0),D2:D3"),
+        vec![0x4C, 0x50, 0x3C, 0x02]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    DIVU.L (A0),D2:D3"),
+        vec![0x4C, 0x50, 0x34, 0x02]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    DIVSL.L (A0),D2:D3"),
+        vec![0x4C, 0x50, 0x3C, 0x02]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    DIVUL.L (A0),D2:D3"),
+        vec![0x4C, 0x50, 0x34, 0x02]
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    DIVS (A0),D1"),
+        assemble_bytes(m68020_cpu_id, "    DIVS.W (A0),D1")
+    );
+    assert_eq!(
+        assemble_bytes(m68020_cpu_id, "    DIVU (A0),D1"),
+        assemble_bytes(m68020_cpu_id, "    DIVU.W (A0),D1")
+    );
 }
 
 #[test]
@@ -4785,6 +5374,26 @@ fn m68020_second_instruction_group_reports_legality_errors_deterministically() {
         (
             "    CAS2.B D0:D1,D2:D3,(A0):(A1)",
             "CAS2 does not support .B size",
+        ),
+        (
+            "    DIVS.L (A0),D2:D2",
+            "DIVS register-pair destination requires distinct remainder and quotient registers",
+        ),
+        (
+            "    DIVSL.L (A0),D1",
+            "DIVSL destination must be a data-register pair",
+        ),
+        (
+            "    CAS2.W D0:D1,D2:D3,(D0):(A1)",
+            "CAS2 memory operand must use (An):(Am) address-register pair syntax",
+        ),
+        (
+            "    CAS2.W D0:D1,D2:D3,(A0):(D1)",
+            "CAS2 memory operand must use (An):(Am) address-register pair syntax",
+        ),
+        (
+            "    CAS2.W D0:D1,D2:D3,(D0):(D1)",
+            "CAS2 memory operand must use (An):(Am) address-register pair syntax",
         ),
         (
             "    CMP2.W D0,D1",
@@ -4811,6 +5420,55 @@ fn m68020_second_instruction_group_reports_legality_errors_deterministically() {
             message.contains(expected),
             "unexpected diagnostic for '{line}': {message}"
         );
+    }
+}
+
+#[test]
+fn earlier_m68k_cpus_reject_long_divide_surface_with_cpu_level_diagnostics() {
+    for (cpu, cpu_name, expected) in [
+        (
+            m68000_cpu_id,
+            "baseline 68000",
+            "DIVS does not support .L size on baseline 68000",
+        ),
+        (
+            m68010_cpu_id,
+            "m68010",
+            "DIVS does not support .L size on m68010",
+        ),
+    ] {
+        let (status, message) = assemble_line_status(cpu, "    DIVS.L (A0),D1");
+        assert_eq!(status, LineStatus::Error, "expected rejection on {cpu_name}");
+        let message = message.expect("expected long-divide rejection");
+        assert!(
+            message.contains(expected),
+            "unexpected diagnostic on {cpu_name}: {message}"
+        );
+    }
+}
+
+#[test]
+fn m68020_plus_cas2_memory_pairs_require_address_registers() {
+    for cpu in [m68020_cpu_id, m68030_cpu_id, m68040_cpu_id] {
+        assert_eq!(
+            assemble_bytes(cpu, "    CAS2.W D0:D1,D2:D3,(A0):(A1)"),
+            vec![0x0C, 0xFC, 0x80, 0x80, 0x90, 0xC1],
+            "expected legal CAS2 bytes on {cpu:?}"
+        );
+
+        for line in [
+            "    CAS2.W D0:D1,D2:D3,(D0):(A1)",
+            "    CAS2.W D0:D1,D2:D3,(A0):(D1)",
+            "    CAS2.W D0:D1,D2:D3,(D0):(D1)",
+        ] {
+            let (status, message) = assemble_line_status(cpu, line);
+            assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
+            let message = message.expect("expected CAS2 memory-pair diagnostic");
+            assert!(
+                message.contains("CAS2 memory operand must use (An):(Am) address-register pair syntax"),
+                "unexpected diagnostic for '{line}' on {cpu:?}: {message}"
+            );
+        }
     }
 }
 
@@ -4883,6 +5541,10 @@ fn m68030_carries_forward_first_m68020_instruction_group() {
         "    LINK.L A6,#-8",
         "    EXTB.L D0",
         "    MULU.L (A0),D1",
+        "    DIVS.L (A0),D1",
+        "    DIVU.L (A0),D1",
+        "    DIVSL.L (A0),D2:D3",
+        "    DIVUL.L (A0),D2:D3",
         "    MOVEC CACR,D0",
     ] {
         assert_eq!(
@@ -5016,6 +5678,10 @@ fn m68040_carries_forward_first_m68020_instruction_group_with_restrictions() {
         "    LINK.L A6,#-8",
         "    EXTB.L D0",
         "    MULU.L (A0),D1",
+        "    DIVS.L (A0),D1",
+        "    DIVU.L (A0),D1",
+        "    DIVSL.L (A0),D2:D3",
+        "    DIVUL.L (A0),D2:D3",
     ] {
         assert_eq!(
             assemble_bytes(m68040_cpu_id, line),

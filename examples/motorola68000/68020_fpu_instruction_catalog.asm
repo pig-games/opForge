@@ -5,11 +5,23 @@
 
 start:
     ; Core move and arithmetic surface.
+    FNOP
     FMOVE FP0,FP1
+    FMOVECR #11,FP0
+    FMOVE.S (A0),FP2
+    FMOVE.D (A0)+,FP3
+    FMOVE.X -(A1),FP4
+    FMOVE.P 8(A2),FP5
     FADD FP1,FP2
+    FADD.S (A0),FP3
+    FADD.D (A0)+,FP4
+    FADD.X -(A1),FP5
+    FADD.P 8(A2),FP6
     FSUB FP2,FP3
     FMUL FP3,FP4
     FDIV FP4,FP5
+    FSGLDIV FP1,FP2
+    FSGLMUL FP3,FP4
     FSQRT FP5
     FABS FP6
     FNEG FP7

@@ -226,10 +226,10 @@ possible in multi-pass assembly.
       `(An):(Am)` memory-pair operands, and reject a representative mixed
       `(Dn):(Am)` or `(An):(Dm)` form with a diagnostic that states the
       address-register requirement.
-- [ ] `AC-M68K-RESIDUAL-006`: An auto-sized branch whose target is unresolved on
+- [x] `AC-M68K-RESIDUAL-006`: An auto-sized branch whose target is unresolved on
       an early pass is re-evaluated after symbol resolution and does not finish
       as a short branch when the resolved displacement requires `.W` or `.L`.
-- [ ] `AC-M68K-RESIDUAL-007`: Explicit `.B` branches remain hard range-checked,
+- [x] `AC-M68K-RESIDUAL-007`: Explicit `.B` branches remain hard range-checked,
       and final emitted branch displacements continue to equal
       `target - (instr_addr + 2)`.
 - [ ] `AC-M68K-RESIDUAL-008`: The spec explicitly excludes the

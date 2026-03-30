@@ -8,10 +8,10 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                5  
 ----                                6  start
 1000    F0 00 30 10                 7      PFLUSH #0,#0
-1004    F0 00 00 8E                 8      FSIN FP0,FP1
-1008    F0 81 00 02                 9      FBEQ after_fb
+1004    F2 00 00 8E                 8      FSIN FP0,FP1
+1008    F2 81 00 02                 9      FBEQ after_fb
 ----                               10  after_fb
-100C    F0 00 00 90                11      FETOX FP0,FP1
+100C    F2 00 00 90                11      FETOX FP0,FP1
 1010    4E 75                      12      RTS
 ----                               13  
 ----                               14  .end
@@ -31,5 +31,5 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    F0 00 30 10 F0 00 00 8E F0 81 00 02 F0 00 00 90
+1000    F0 00 30 10 F2 00 00 8E F2 81 00 02 F2 00 00 90
 1010    4E 75

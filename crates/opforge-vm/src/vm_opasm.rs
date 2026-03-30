@@ -295,6 +295,13 @@ fn is_m68k_cas2_mnemonic(name: &str) -> bool {
     base_mnemonic_name(name).eq_ignore_ascii_case("CAS2")
 }
 
+fn is_m68k_long_divide_pair_mnemonic(name: &str) -> bool {
+    matches!(
+        base_mnemonic_name(name).to_ascii_uppercase().as_str(),
+        "DIVS" | "DIVU" | "DIVSL" | "DIVUL"
+    )
+}
+
 fn is_m68k_bitfield_operand(name: &str, operand_index: usize) -> bool {
     match base_mnemonic_name(name).to_ascii_uppercase().as_str() {
         "BFINS" => operand_index == 1,
@@ -341,7 +348,9 @@ fn parse_register_pair_operand(
     end_token_text: Option<String>,
     _boundary_token: Option<&Token>,
 ) -> Result<Option<Expr>, ParseError> {
-    if !mnemonic.is_some_and(is_m68k_cas2_mnemonic) || operand_index > 2 {
+    let allow_pair = (mnemonic.is_some_and(is_m68k_cas2_mnemonic) && operand_index <= 2)
+        || (mnemonic.is_some_and(is_m68k_long_divide_pair_mnemonic) && operand_index == 1);
+    if !allow_pair {
         return Ok(None);
     }
 

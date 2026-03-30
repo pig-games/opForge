@@ -9,6 +9,12 @@ start:
     EXTB.L D2
     MULU.L (A0),D1
     MULS.L ($1234).W,D2
+    DIVS.L (A0),D1
+    DIVU.L (A0),D1
+    DIVS.L (A0),D2:D3
+    DIVU.L (A0),D2:D3
+    DIVSL.L (A0),D2:D3
+    DIVUL.L (A0),D2:D3
     BRA.L far_target
     BSR.L helper
     BNE.L far_target

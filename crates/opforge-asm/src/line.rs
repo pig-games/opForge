@@ -757,9 +757,6 @@ impl<'a> AsmLine<'a> {
     }
 
     fn track_section_symbol(&mut self, full_name: &str) {
-        if self.pass != 1 {
-            return;
-        }
         if let Some(section_name) = self.layout.current_section.as_ref() {
             self.layout
                 .section_symbol_sections
@@ -1493,10 +1490,22 @@ impl<'a> AsmLine<'a> {
                 self.current_visibility(),
                 self.symbol_scope.module_active.as_deref(),
             )
-        } else if self.in_section() {
-            SymbolTableResult::Ok
         } else {
-            self.symbols.update(&full_name, self.start_addr)
+            match self.symbols.entry_mut(&full_name) {
+                Some(entry) if entry.rw => SymbolTableResult::Duplicate,
+                Some(entry) => {
+                    entry.val = self.start_addr;
+                    entry.updated = true;
+                    SymbolTableResult::Ok
+                }
+                None => self.symbols.add(
+                    &full_name,
+                    self.start_addr,
+                    false,
+                    self.current_visibility(),
+                    self.symbol_scope.module_active.as_deref(),
+                ),
+            }
         };
 
         if res == SymbolTableResult::Duplicate {
@@ -1577,7 +1586,21 @@ impl<'a> AsmLine<'a> {
                         self.symbol_scope.module_active.as_deref(),
                     )
                 } else {
-                    self.symbols.update(&full_name, scalar_val)
+                    match self.symbols.entry_mut(&full_name) {
+                        Some(entry) if entry.rw && !is_rw => SymbolTableResult::Duplicate,
+                        Some(entry) => {
+                            entry.val = scalar_val;
+                            entry.updated = true;
+                            SymbolTableResult::Ok
+                        }
+                        None => self.symbols.add(
+                            &full_name,
+                            scalar_val,
+                            is_rw,
+                            self.current_visibility(),
+                            self.symbol_scope.module_active.as_deref(),
+                        ),
+                    }
                 };
                 if res == SymbolTableResult::Duplicate {
                     return self.failure_at(

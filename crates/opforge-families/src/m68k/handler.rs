@@ -10,8 +10,9 @@ use super::operand::{
     IndexSize, MemoryIndirectionKind, Operand, RegisterListRegister, SpecialRegisterKind,
 };
 use super::table::{
-    parse_fpu_mnemonic, parse_mnemonic, BitFieldMnemonic, BitMnemonic, ConditionCode,
-    FpuMnemonicKind, MnemonicKind, OperationSize, ShiftMnemonic,
+    parse_fpu_mnemonic, parse_m68020_mnemonic, parse_mnemonic, BitFieldMnemonic, BitMnemonic,
+    ConditionCode, FpuMnemonicKind, M68020MnemonicKind, MnemonicKind, OperationSize,
+    ShiftMnemonic,
 };
 use opcore::expression::expr_span;
 use opcore::parser::{BinaryOp, Expr, UnaryOp};
@@ -859,9 +860,12 @@ impl M68KFamilyHandler {
                 None
             }
             RegisterListFamily::Fpu => {
-                let (name, span) = Self::parse_fpu_data_register(expr)?;
-                let reg = Self::fpu_data_register_number(&name)?;
-                Some((RegisterListRegister::FpuData(reg), span))
+                if let Some((name, span)) = Self::parse_fpu_data_register(expr) {
+                    let reg = Self::fpu_data_register_number(&name)?;
+                    return Some((RegisterListRegister::FpuData(reg), span));
+                }
+                let (register, span) = Self::parse_fpu_control_register(expr)?;
+                Some((RegisterListRegister::FpuControl(register), span))
             }
         }
     }
@@ -885,13 +889,18 @@ impl M68KFamilyHandler {
             RegisterListRegister::Data(reg) => format!("D{reg}"),
             RegisterListRegister::Address(reg) => format!("A{reg}"),
             RegisterListRegister::FpuData(reg) => format!("FP{reg}"),
+            RegisterListRegister::FpuControl(register) => match register {
+                FpuControlRegisterKind::Fpcr => "FPCR".to_string(),
+                FpuControlRegisterKind::Fpsr => "FPSR".to_string(),
+                FpuControlRegisterKind::Fpiar => "FPIAR".to_string(),
+            },
         }
     }
 
     fn expected_register_list_item_description(family: RegisterListFamily) -> &'static str {
         match family {
             RegisterListFamily::Integer => "data or address register",
-            RegisterListFamily::Fpu => "FPU data register",
+            RegisterListFamily::Fpu => "FPU data or control register",
         }
     }
 
@@ -917,6 +926,12 @@ impl M68KFamilyHandler {
                 if start <= end =>
             {
                 Ok((start..=end).map(RegisterListRegister::FpuData).collect())
+            }
+            (RegisterListRegister::FpuControl(_), RegisterListRegister::FpuControl(_)) => {
+                Err(FamilyParseError::new(
+                    format!("{mnemonic_name} control-register lists do not support ranges"),
+                    span,
+                ))
             }
             _ => Err(FamilyParseError::new(
                 format!(
@@ -1294,6 +1309,26 @@ impl M68KFamilyHandler {
             };
         }
 
+        if let Expr::Binary {
+            op: BinaryOp::Divide,
+            left,
+            right,
+            span,
+        } = expr
+        {
+            let pair_like = (Self::parse_general_register(left).is_some()
+                && Self::parse_general_register(right).is_some())
+                || (Self::parse_fpu_data_register(left).is_some()
+                    && Self::parse_fpu_data_register(right).is_some())
+                || matches!(
+                    (left.as_ref(), right.as_ref()),
+                    (Expr::Indirect(_, _), Expr::Indirect(_, _))
+                );
+            if pair_like {
+                return self.parse_pair_operand(&[*left.clone(), *right.clone()], *span);
+            }
+        }
+
         if let Some((name, span)) = Self::parse_data_register(expr) {
             return Ok(FamilyOperand::DataRegister {
                 register: name,
@@ -1465,6 +1500,18 @@ impl M68KFamilyHandler {
         )
     }
 
+    fn is_long_divide_mnemonic(mnemonic: &str) -> bool {
+        matches!(
+            parse_mnemonic(mnemonic),
+            Some(parsed)
+                if matches!(parsed.kind, MnemonicKind::Divs | MnemonicKind::Divu)
+                    && matches!(parsed.size, Some(OperationSize::Long))
+        ) || matches!(
+            parse_m68020_mnemonic(mnemonic),
+            Some(parsed) if matches!(parsed.kind, M68020MnemonicKind::Divsl | M68020MnemonicKind::Divul)
+        )
+    }
+
     fn encode_instruction_impl(
         &self,
         mnemonic: &str,
@@ -1609,34 +1656,19 @@ impl M68KFamilyHandler {
                 ctx,
                 Self::data_alterable,
             ),
+            MnemonicKind::Divs if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
+            }
             MnemonicKind::Divs => {
                 self.encode_word_data_register_math("DIVS", 0x81C0, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Divu if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
             }
             MnemonicKind::Divu => {
                 self.encode_word_data_register_math("DIVU", 0x80C0, parsed.size, operands, ctx)
             }
-            MnemonicKind::Bra if matches!(parsed.size, Some(OperationSize::Long)) => {
-                EncodeResult::NotFound
-            }
-            MnemonicKind::Bra => {
-                self.encode_branch(&parsed.display_name, None, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Bsr if matches!(parsed.size, Some(OperationSize::Long)) => {
-                EncodeResult::NotFound
-            }
-            MnemonicKind::Bsr => {
-                self.encode_branch(&parsed.display_name, None, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Bcc(_) if matches!(parsed.size, Some(OperationSize::Long)) => {
-                EncodeResult::NotFound
-            }
-            MnemonicKind::Bcc(condition) => self.encode_branch(
-                &parsed.display_name,
-                Some(condition),
-                parsed.size,
-                operands,
-                ctx,
-            ),
+            MnemonicKind::Bra | MnemonicKind::Bsr | MnemonicKind::Bcc(_) => EncodeResult::NotFound,
             MnemonicKind::Dbcc(condition) => {
                 self.encode_dbcc(&parsed.display_name, condition, parsed.size, operands, ctx)
             }
@@ -3102,6 +3134,78 @@ impl M68KFamilyHandler {
         EncodeResult::ok(bytes)
     }
 
+    pub(crate) fn encode_long_data_register_divide(
+        &self,
+        mnemonic: &str,
+        signed: bool,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [src, dst] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects two operands"));
+        };
+
+        let (pair_dividend, remainder_reg, quotient_reg) = match dst {
+            Operand::DataRegister { register, .. } => {
+                let Some(reg) = Self::data_register_number(register) else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {mnemonic} destination register"),
+                        dst.span(),
+                    );
+                };
+                (false, reg, reg)
+            }
+            Operand::RegisterPair { left, right, .. } => {
+                let (Some(remainder_reg), Some(quotient_reg)) = (
+                    Self::data_register_number(left),
+                    Self::data_register_number(right),
+                ) else {
+                    return EncodeResult::error_with_span(
+                        format!("{mnemonic} destination must be a data register or data-register pair"),
+                        dst.span(),
+                    );
+                };
+                if remainder_reg == quotient_reg {
+                    return EncodeResult::error_with_span(
+                        format!("{mnemonic} register-pair destination requires distinct remainder and quotient registers"),
+                        dst.span(),
+                    );
+                }
+                (true, remainder_reg, quotient_reg)
+            }
+            _ => {
+                return EncodeResult::error_with_span(
+                    format!("{mnemonic} destination must be a data register or data-register pair"),
+                    dst.span(),
+                );
+            }
+        };
+
+        let src_ea = match self.encode_effective_address(src, Some(OperationSize::Long), ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::logic_allows_source(src_ea.kind) {
+            return EncodeResult::error_with_span(
+                format!("invalid source effective address for {mnemonic}"),
+                src.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(
+            &mut bytes,
+            0x4C40 | Self::effective_address_bits(src_ea.bits),
+        );
+        let extension = ((quotient_reg as u16) << 12)
+            | if signed { 1 << 11 } else { 0 }
+            | if pair_dividend { 1 << 10 } else { 0 }
+            | remainder_reg as u16;
+        Self::emit_word(&mut bytes, extension);
+        bytes.extend_from_slice(&src_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
     fn encode_chk(
         &self,
         size: Option<OperationSize>,
@@ -3495,7 +3599,7 @@ impl M68KFamilyHandler {
         EncodeResult::ok(bytes)
     }
 
-    fn encode_branch(
+    pub(crate) fn encode_branch(
         &self,
         mnemonic: &str,
         condition: Option<ConditionCode>,
@@ -4386,12 +4490,12 @@ impl M68KFamilyHandler {
                 memory_pair.span(),
             );
         };
-        let (Some((memory_left_da, memory_left_bits)), Some((memory_right_da, memory_right_bits))) = (
-            Self::general_register_name_descriptor(memory_left),
-            Self::general_register_name_descriptor(memory_right),
+        let (Some(memory_left_bits), Some(memory_right_bits)) = (
+            Self::address_register_number(memory_left),
+            Self::address_register_number(memory_right),
         ) else {
             return EncodeResult::error_with_span(
-                "CAS2 memory operand must use (Rn):(Rn) register-pair syntax",
+                "CAS2 memory operand must use (An):(Am) address-register pair syntax",
                 memory_pair.span(),
             );
         };
@@ -4400,15 +4504,15 @@ impl M68KFamilyHandler {
         Self::emit_word(&mut bytes, 0x08FC | (size_bits << 9));
         Self::emit_word(
             &mut bytes,
-            (memory_left_da << 15)
-                | (memory_left_bits << 12)
+            (1_u16 << 15)
+                | ((memory_left_bits as u16) << 12)
                 | ((update_left_bits as u16) << 6)
                 | compare_left_bits as u16,
         );
         Self::emit_word(
             &mut bytes,
-            (memory_right_da << 15)
-                | (memory_right_bits << 12)
+            (1_u16 << 15)
+                | ((memory_right_bits as u16) << 12)
                 | ((update_right_bits as u16) << 6)
                 | compare_right_bits as u16,
         );
@@ -5425,6 +5529,9 @@ impl M68KFamilyHandler {
                 RegisterListRegister::FpuData(_) => {
                     unreachable!("integer MOVEM should not receive FPU register lists")
                 }
+                RegisterListRegister::FpuControl(_) => {
+                    unreachable!("integer MOVEM should not receive FPU control-register lists")
+                }
             };
             let bit = if predecrement { 15 - bit } else { bit };
             mask | (1_u16 << bit)
@@ -6090,6 +6197,27 @@ impl FamilyHandler for M68KFamilyHandler {
                     span: span_from_expr(expr),
                 },
             ]);
+        }
+
+        if Self::is_long_divide_mnemonic(mnemonic) {
+            let [src, dst] = exprs else {
+                return Err(FamilyParseError::new(
+                    "long divide instructions expect two operands",
+                    exprs.first().map(span_from_expr).unwrap_or_default(),
+                ));
+            };
+
+            let src = self.parse_single_operand(src)?;
+            let dst = match dst {
+                Expr::Binary {
+                    op: BinaryOp::Divide,
+                    left,
+                    right,
+                    span,
+                } => self.parse_pair_operand(&[*left.clone(), *right.clone()], *span)?,
+                _ => self.parse_single_operand(dst)?,
+            };
+            return Ok(vec![src, dst]);
         }
 
         exprs
@@ -7735,8 +7863,10 @@ mod tests {
         );
 
         expect_encoded(
-            handler.encode_instruction(
+            handler.encode_branch(
                 "BRA",
+                None,
+                None,
                 &[Operand::BranchTarget {
                     expr: Expr::Number("4".to_string(), span()),
                     span: span(),
@@ -7747,8 +7877,10 @@ mod tests {
         );
 
         expect_encoded(
-            handler.encode_instruction(
-                "BNE.W",
+            handler.encode_branch(
+                "BNE",
+                Some(ConditionCode::Ne),
+                Some(OperationSize::Word),
                 &[Operand::BranchTarget {
                     expr: Expr::Number("8".to_string(), span()),
                     span: span(),
@@ -7759,8 +7891,10 @@ mod tests {
         );
 
         expect_encoded(
-            handler.encode_instruction(
-                "BSR.W",
+            handler.encode_branch(
+                "BSR",
+                None,
+                Some(OperationSize::Word),
                 &[Operand::BranchTarget {
                     expr: Expr::Number("8".to_string(), span()),
                     span: span(),
@@ -9906,8 +10040,10 @@ mod tests {
             pass: 1,
             ..Default::default()
         };
-        match handler.encode_instruction(
+        match handler.encode_branch(
             "BRA",
+            None,
+            None,
             &[Operand::BranchTarget {
                 expr: Expr::Identifier("later".to_string(), span()),
                 span: span(),
@@ -9920,8 +10056,10 @@ mod tests {
             other => panic!("expected unresolved BRA word placeholder, got {other:?}"),
         }
 
-        match handler.encode_instruction(
-            "BRA.B",
+        match handler.encode_branch(
+            "BRA",
+            None,
+            Some(OperationSize::Byte),
             &[Operand::BranchTarget {
                 expr: Expr::Number("2".to_string(), span()),
                 span: span(),
@@ -10006,8 +10144,10 @@ mod tests {
         .with_symbol("target", 0x1008);
 
         expect_encoded(
-            handler.encode_instruction(
-                "BRA.W",
+            handler.encode_branch(
+                "BRA",
+                None,
+                Some(OperationSize::Word),
                 &[Operand::BranchTarget {
                     expr: Expr::Identifier("target".to_string(), span()),
                     span: span(),

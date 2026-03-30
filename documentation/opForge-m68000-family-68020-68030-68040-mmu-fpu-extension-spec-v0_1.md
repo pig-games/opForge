@@ -180,7 +180,7 @@ surface include:
 | `m68020` + `.fpu 68881` | External floating-point coprocessor | `FP0`-`FP7`, `FPCR`, `FPSR`, `FPIAR` | Full `68881` floating-point assembler surface | Classic coprocessor model |
 | `m68020` + `.fpu 68882` | External floating-point coprocessor | `FP0`-`FP7`, `FPCR`, `FPSR`, `FPIAR` | Same assembler-visible surface as `68881` | Faster compatible coprocessor |
 | `m68030` + `.fpu 68881` or `.fpu 68882` | External floating-point coprocessor | `FP0`-`FP7`, `FPCR`, `FPSR`, `FPIAR` | Same assembler-visible surface as on `m68020` hosts | `m68030` itself does not integrate the FPU |
-| `m68040` + `.fpu 68040` | Integrated FPU | `FP0`-`FP7`, `FPCR`, `FPSR`, `FPIAR` | Broadly `68881/68882`-compatible floating-point assembler surface | Runtime execution details are out of scope |
+| `m68040` + `.fpu 68040` | Integrated FPU | `FP0`-`FP7`, `FPCR`, `FPSR`, `FPIAR` | Integrated-core subset of the external `68881/68882` assembler surface | Runtime execution details are out of scope |
 
 ### FPU instruction matrix
 | FPU instruction family | `.fpu 68881` | `.fpu 68882` | `.fpu 68040` | Notes |
@@ -189,7 +189,7 @@ surface include:
 | Core arithmetic and compare/test families (`FADD`, `FSUB`, `FMUL`, `FDIV`, `FSQRT`, `FCMP`, `FTST`, conversions) | Yes | Yes | Yes | Assembler-visible legality and encoding only |
 | Floating-point conditional families (`FBcc`, `FDBcc`, `FScc`, `FTRAPcc`) | Yes | Yes | Yes | Accepted as assembler-visible FPU ISA |
 | `FSAVE`, `FRESTORE` | Yes | Yes | Yes | Frame-format execution semantics remain out of scope |
-| Transcendentals and extended math families (`FSIN`, `FCOS`, and related families in the PRM) | Yes | Yes | Yes | `68040` runtime assist expectations are not modeled by opForge |
+| Transcendentals and extended math families (`FSIN`, `FCOS`, and related families in the PRM) | Yes | Yes | No | Remain external-coprocessor-only in the shipped `68040` integrated-core surface |
 
 For this specification, `68881` and `68882` are accepted as distinct target ids
 but share the same instruction legality matrix, register model, and source
@@ -224,9 +224,10 @@ Diagnostics must be explicit about missing optional support. Examples:
   shipped MMU-related `MOVEC` surface
 - `FMOVE` under `.cpu 68040` with `.fpu none` must fail as an FPU-disabled
   instruction
-- `FSIN` under `.cpu 68040` with `.fpu 68040` must assemble successfully when
-  the opcode is architecturally part of the accepted assembler-visible FPU ISA,
-  without implying runtime execution support inside opForge
+- `FSIN` under `.cpu 68040` with `.fpu 68040` must fail with a diagnostic that
+  names the integrated `68040` FPU target as unsupported for that mnemonic,
+  proving that `FSIN`-class transcendental and extended-math families remain
+  outside the shipped integrated-core allowlist
 
 ## Boundary Cases
 - `PFLUSH` is illegal under `.cpu 68020`.

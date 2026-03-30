@@ -42,7 +42,10 @@ impl M68010CpuHandler {
             (MnemonicKind::Link, Some(OperationSize::Long)) => Some(EncodeResult::error(
                 "LINK does not support .L size on m68010",
             )),
-            (MnemonicKind::Muls | MnemonicKind::Mulu, Some(OperationSize::Long)) => {
+            (
+                MnemonicKind::Muls | MnemonicKind::Mulu | MnemonicKind::Divs | MnemonicKind::Divu,
+                Some(OperationSize::Long),
+            ) => {
                 Some(EncodeResult::error(format!(
                     "{} does not support .L size on m68010",
                     parsed.display_name
@@ -209,6 +212,29 @@ impl CpuHandler for M68010CpuHandler {
                 )
             {
                 return self.encode_move_from_ccr(parsed.size, operands, ctx);
+            }
+
+            match parsed.kind {
+                MnemonicKind::Bra => {
+                    return self
+                        .family
+                        .encode_branch(&parsed.display_name, None, parsed.size, operands, ctx);
+                }
+                MnemonicKind::Bsr => {
+                    return self
+                        .family
+                        .encode_branch(&parsed.display_name, None, parsed.size, operands, ctx);
+                }
+                MnemonicKind::Bcc(condition) => {
+                    return self.family.encode_branch(
+                        &parsed.display_name,
+                        Some(condition),
+                        parsed.size,
+                        operands,
+                        ctx,
+                    );
+                }
+                _ => {}
             }
         }
 

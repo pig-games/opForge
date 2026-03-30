@@ -65,6 +65,25 @@ pub struct Assembler {
     pub runtime_lockstep_report: LockstepReport,
 }
 
+const MAX_LAYOUT_STABILIZATION_PASSES: usize = 8;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LayoutStabilitySnapshot {
+    symbols: Vec<(String, u32, bool, bool, Option<String>)>,
+    sections: Vec<(
+        String,
+        u32,
+        u32,
+        u32,
+        bool,
+        u32,
+        vm::output_model::SectionKind,
+        Option<String>,
+        Option<u32>,
+    )>,
+    regions: Vec<(String, u32, u32, u32, u32, Vec<String>)>,
+}
+
 impl Assembler {
     #[cfg(test)]
     fn assert_partitioned_runtime_traces_present(
@@ -87,87 +106,97 @@ impl Assembler {
         }
     }
 
-    pub fn new() -> Self {
-        Self::with_registry(build_default_registry_for_tests())
+    fn cpu_requires_layout_stabilization(&self) -> bool {
+        matches!(
+            self.cpu.as_str(),
+            "68020" | "68030" | "68040" | "m68020" | "m68030" | "m68040"
+        )
     }
 
-    pub fn with_registry(registry: ModuleRegistry) -> Self {
-        Self::with_cpu_and_registry(CpuType::new("8085"), registry)
-    }
+    fn capture_layout_snapshot(&self) -> LayoutStabilitySnapshot {
+        let mut symbols = self
+            .symbols
+            .entries()
+            .iter()
+            .map(|entry| {
+                (
+                    entry.name.clone(),
+                    entry.val,
+                    entry.rw,
+                    entry.updated,
+                    entry.module_id.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        symbols.sort_by(|left, right| left.0.cmp(&right.0));
 
-    pub fn with_cpu(cpu: CpuType) -> Self {
-        Self::with_cpu_and_registry(cpu, build_default_registry_for_tests())
-    }
+        let mut sections = self
+            .sections
+            .iter()
+            .map(|(name, section)| {
+                (
+                    name.clone(),
+                    section.start_pc,
+                    section.pc,
+                    section.max_pc,
+                    section.layout_placed,
+                    section.align,
+                    section.kind,
+                    section.default_region.clone(),
+                    section.base_addr,
+                )
+            })
+            .collect::<Vec<_>>();
+        sections.sort_by(|left, right| left.0.cmp(&right.0));
 
-    pub fn with_cpu_and_registry(cpu: CpuType, registry: ModuleRegistry) -> Self {
-        Self {
-            symbols: SymbolTable::new(),
-            image: ImageStore::new(),
-            sections: HashMap::new(),
-            regions: HashMap::new(),
-            diagnostics: Vec::new(),
-            cpu,
-            registry,
-            root_metadata: RootMetadata::default(),
-            module_macro_names: HashMap::new(),
-            loop_iteration_trace_pass1: Vec::new(),
-            max_loop_iterations: repetition::DEFAULT_MAX_LOOP_ITERATIONS,
-            opasm_package_path: None,
-            runtime_line_router: None,
-            runtime_processing_traces: Vec::new(),
-            runtime_lockstep_report: LockstepReport::default(),
+        let mut regions = self
+            .regions
+            .iter()
+            .map(|(name, region)| {
+                (
+                    name.clone(),
+                    region.start,
+                    region.end,
+                    region.cursor,
+                    region.align,
+                    region
+                        .placed
+                        .iter()
+                        .map(|section| section.name.clone())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        regions.sort_by(|left, right| left.0.cmp(&right.0));
+
+        LayoutStabilitySnapshot {
+            symbols,
+            sections,
+            regions,
         }
     }
 
-    pub fn cpu(&self) -> CpuType {
-        self.cpu
-    }
-
-    pub fn symbols(&self) -> &SymbolTable {
-        &self.symbols
-    }
-
-    pub fn image(&self) -> &ImageStore {
-        &self.image
-    }
-
-    pub fn sections(&self) -> &HashMap<String, SectionState> {
-        &self.sections
-    }
-
-    pub fn regions(&self) -> &HashMap<String, RegionState> {
-        &self.regions
-    }
-
-    pub fn clear_diagnostics(&mut self) {
-        self.diagnostics.clear();
-    }
-
-    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
-        std::mem::take(&mut self.diagnostics)
-    }
-
-    pub fn set_runtime_line_router(
+    fn run_layout_pass(
         &mut self,
-        runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
-    ) {
-        self.runtime_line_router = runtime_line_router;
-    }
-
-    pub fn runtime_processing_traces(&self) -> &[(u8, u32, LineProcessingTrace)] {
-        &self.runtime_processing_traces
-    }
-
-    pub fn runtime_lockstep_report(&self) -> &LockstepReport {
-        &self.runtime_lockstep_report
-    }
-
-    pub fn pass1(&mut self, lines: &[String]) -> PassCounts {
+        lines: &[String],
+        pass_num: u8,
+        capture_runtime_trace: bool,
+        finalize_section_symbols: bool,
+        loop_trace: &mut Vec<(u32, u32)>,
+    ) -> PassCounts {
+        let seeded_sections = if pass_num > 1 {
+            Some(self.sections.clone())
+        } else {
+            None
+        };
+        let seeded_regions = if pass_num > 1 {
+            Some(self.regions.clone())
+        } else {
+            None
+        };
         self.sections.clear();
         self.regions.clear();
-        self.loop_iteration_trace_pass1.clear();
-        self.runtime_processing_traces.clear();
-        self.runtime_lockstep_report = LockstepReport::default();
+        self.diagnostics.clear();
         let mut addr: u32 = 0;
         let line_num: u32 = u32::try_from(lines.len())
             .unwrap_or(u32::MAX.saturating_sub(1))
@@ -176,13 +205,26 @@ impl Assembler {
         let diagnostics = &mut self.diagnostics;
 
         {
-            let root_metadata = std::mem::take(&mut self.root_metadata);
-            let mut asm_line = AsmLine::with_cpu(&mut self.symbols, self.cpu, &self.registry);
+            let root_metadata = if pass_num == 1 {
+                std::mem::take(&mut self.root_metadata)
+            } else {
+                RootMetadata::default()
+            };
+            let mut asm_line =
+                AsmLine::with_cpu_and_metadata(&mut self.symbols, self.cpu, &self.registry, root_metadata);
             asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
-            asm_line.output_state.root_metadata = root_metadata;
             asm_line.clear_conditionals();
             asm_line.clear_scopes();
+            if let (Some(sections), Some(regions)) = (seeded_sections, seeded_regions) {
+                asm_line.layout.sections = sections;
+                asm_line.layout.regions = regions;
+                for section in asm_line.layout.sections.values_mut() {
+                    section.pc = 0;
+                    section.bytes.clear();
+                    section.emitted = false;
+                }
+            }
 
             Self::execute_pass1_lines(
                 lines,
@@ -192,21 +234,24 @@ impl Assembler {
                 &mut addr,
                 &mut counts,
                 diagnostics,
-                &mut self.loop_iteration_trace_pass1,
+                loop_trace,
                 None,
                 self.max_loop_iterations,
+                pass_num,
             );
 
-            self.runtime_processing_traces.extend(
-                asm_line
-                    .take_runtime_processing_traces()
-                    .into_iter()
-                    .map(|(line_num, trace)| (1, line_num, trace)),
-            );
-            self.runtime_lockstep_report
-                .extend(asm_line.take_runtime_lockstep_report());
-            #[cfg(test)]
-            Self::assert_partitioned_runtime_traces_present(lines, &self.runtime_processing_traces);
+            if capture_runtime_trace {
+                self.runtime_processing_traces.extend(
+                    asm_line
+                        .take_runtime_processing_traces()
+                        .into_iter()
+                        .map(|(line_num, trace)| (1, line_num, trace)),
+                );
+                self.runtime_lockstep_report
+                    .extend(asm_line.take_runtime_lockstep_report());
+                #[cfg(test)]
+                Self::assert_partitioned_runtime_traces_present(lines, &self.runtime_processing_traces);
+            }
 
             if !asm_line.cond_is_empty() {
                 let err = AsmError::new(
@@ -312,9 +357,11 @@ impl Assembler {
                 }
             }
 
-            for err in asm_line.finalize_section_symbol_addresses() {
-                diagnostics.push(Diagnostic::new(line_num, Severity::Error, err));
-                counts.errors += 1;
+            if finalize_section_symbols {
+                for err in asm_line.finalize_section_symbol_addresses() {
+                    diagnostics.push(Diagnostic::new(line_num, Severity::Error, err));
+                    counts.errors += 1;
+                }
             }
 
             for (name, section) in &asm_line.layout.sections {
@@ -349,6 +396,7 @@ impl Assembler {
                 }
             }
 
+            self.cpu = asm_line.cpu;
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
@@ -366,6 +414,136 @@ impl Assembler {
         }
 
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+        counts
+    }
+
+    pub fn new() -> Self {
+        Self::with_registry(build_default_registry_for_tests())
+    }
+
+    pub fn with_registry(registry: ModuleRegistry) -> Self {
+        Self::with_cpu_and_registry(CpuType::new("8085"), registry)
+    }
+
+    pub fn with_cpu(cpu: CpuType) -> Self {
+        Self::with_cpu_and_registry(cpu, build_default_registry_for_tests())
+    }
+
+    pub fn with_cpu_and_registry(cpu: CpuType, registry: ModuleRegistry) -> Self {
+        Self {
+            symbols: SymbolTable::new(),
+            image: ImageStore::new(),
+            sections: HashMap::new(),
+            regions: HashMap::new(),
+            diagnostics: Vec::new(),
+            cpu,
+            registry,
+            root_metadata: RootMetadata::default(),
+            module_macro_names: HashMap::new(),
+            loop_iteration_trace_pass1: Vec::new(),
+            max_loop_iterations: repetition::DEFAULT_MAX_LOOP_ITERATIONS,
+            opasm_package_path: None,
+            runtime_line_router: None,
+            runtime_processing_traces: Vec::new(),
+            runtime_lockstep_report: LockstepReport::default(),
+        }
+    }
+
+    pub fn cpu(&self) -> CpuType {
+        self.cpu
+    }
+
+    pub fn symbols(&self) -> &SymbolTable {
+        &self.symbols
+    }
+
+    pub fn image(&self) -> &ImageStore {
+        &self.image
+    }
+
+    pub fn sections(&self) -> &HashMap<String, SectionState> {
+        &self.sections
+    }
+
+    pub fn regions(&self) -> &HashMap<String, RegionState> {
+        &self.regions
+    }
+
+    pub fn clear_diagnostics(&mut self) {
+        self.diagnostics.clear();
+    }
+
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+
+    pub fn set_runtime_line_router(
+        &mut self,
+        runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
+    ) {
+        self.runtime_line_router = runtime_line_router;
+    }
+
+    pub fn runtime_processing_traces(&self) -> &[(u8, u32, LineProcessingTrace)] {
+        &self.runtime_processing_traces
+    }
+
+    pub fn runtime_lockstep_report(&self) -> &LockstepReport {
+        &self.runtime_lockstep_report
+    }
+
+    pub fn pass1(&mut self, lines: &[String]) -> PassCounts {
+        self.loop_iteration_trace_pass1.clear();
+        self.runtime_processing_traces.clear();
+        self.runtime_lockstep_report = LockstepReport::default();
+        let mut pass1_loop_trace = Vec::new();
+        let mut counts = self.run_layout_pass(
+            lines,
+            1,
+            true,
+            true,
+            &mut pass1_loop_trace,
+        );
+        self.loop_iteration_trace_pass1 = pass1_loop_trace;
+        if counts.errors > 0 {
+            return counts;
+        }
+        if !self.cpu_requires_layout_stabilization() {
+            return counts;
+        }
+
+        let mut previous_snapshot = self.capture_layout_snapshot();
+        let mut stabilized = false;
+        for _ in 0..MAX_LAYOUT_STABILIZATION_PASSES {
+            let mut loop_trace = Vec::new();
+            counts = self.run_layout_pass(lines, 2, false, true, &mut loop_trace);
+            if counts.errors > 0 {
+                return counts;
+            }
+
+            let next_snapshot = self.capture_layout_snapshot();
+            if next_snapshot == previous_snapshot {
+                stabilized = true;
+                break;
+            }
+            previous_snapshot = next_snapshot;
+        }
+
+        if !stabilized {
+            self.diagnostics.push(Diagnostic::new(
+                u32::try_from(lines.len())
+                    .unwrap_or(u32::MAX.saturating_sub(1))
+                    .saturating_add(1),
+                Severity::Error,
+                AsmError::new(
+                    AsmErrorKind::Directive,
+                    "layout did not stabilize after residual branch sizing retries",
+                    None,
+                ),
+            ));
+            counts.errors += 1;
+        }
+
         counts
     }
 
@@ -560,6 +738,7 @@ impl Assembler {
             }
         }
 
+        self.cpu = asm_line.cpu;
         self.sections = sections;
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
         Ok(counts)
@@ -577,6 +756,7 @@ impl Assembler {
         pass1_loop_trace: &mut Vec<(u32, u32)>,
         unscoped_repeat_kind: Option<UnscopedRepeatKind>,
         max_loop_iterations: u32,
+        pass_num: u8,
     ) {
         let mut idx = start_idx;
         while idx < end_idx_exclusive {
@@ -785,6 +965,7 @@ impl Assembler {
                                     Some(UnscopedRepeatKind::For)
                                 },
                                 max_loop_iterations,
+                                pass_num,
                             );
                             if plan.var_name.is_some() {
                                 asm_line.pop_loop_var();
@@ -880,22 +1061,23 @@ impl Assembler {
                                 );
                             }
 
-                            Self::execute_pass1_lines(
-                                lines,
-                                idx.saturating_add(1),
-                                end_idx,
-                                asm_line,
+                                Self::execute_pass1_lines(
+                                    lines,
+                                    idx.saturating_add(1),
+                                    end_idx,
+                                    asm_line,
                                 addr,
                                 counts,
                                 diagnostics,
                                 pass1_loop_trace,
                                 if scoped_repeat {
                                     None
-                                } else {
-                                    Some(UnscopedRepeatKind::While)
-                                },
-                                max_loop_iterations,
-                            );
+                                    } else {
+                                        Some(UnscopedRepeatKind::While)
+                                    },
+                                    max_loop_iterations,
+                                    pass_num,
+                                );
 
                             if scoped_repeat {
                                 let _ = asm_line
@@ -940,7 +1122,15 @@ impl Assembler {
                 }
             }
 
-            Self::execute_regular_line_pass1(asm_line, src, line_num, addr, counts, diagnostics);
+            Self::execute_regular_line_pass1(
+                asm_line,
+                src,
+                line_num,
+                addr,
+                counts,
+                diagnostics,
+                pass_num,
+            );
             idx = idx.saturating_add(1);
         }
     }
@@ -952,6 +1142,7 @@ impl Assembler {
         addr: &mut u32,
         counts: &mut PassCounts,
         diagnostics: &mut Vec<Diagnostic>,
+        pass_num: u8,
     ) {
         let line_addr = match asm_line.current_addr(*addr) {
             Ok(line_addr) => line_addr,
@@ -969,7 +1160,7 @@ impl Assembler {
             }
         };
 
-        let status = asm_line.process(src, line_num, line_addr, 1);
+        let status = asm_line.process(src, line_num, line_addr, pass_num);
         let status_failed = status == LineStatus::Pass1Error || status == LineStatus::Error;
         let update_failed = !status_failed && asm_line.update_addresses(addr, status).is_err();
         if status_failed || update_failed {

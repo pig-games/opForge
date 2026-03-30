@@ -8,31 +8,31 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                5  
 ----                                6  start
 ----                                7      ; Touch all FP data registers directly.
-1000    F0 00 00 80                 8      FMOVE FP0,FP1
-1004    F0 00 09 80                 9      FMOVE FP2,FP3
-1008    F0 00 12 80                10      FMOVE FP4,FP5
-100C    F0 00 1B 80                11      FMOVE FP6,FP7
+1000    F2 00 00 80                 8      FMOVE FP0,FP1
+1004    F2 00 09 80                 9      FMOVE FP2,FP3
+1008    F2 00 12 80                10      FMOVE FP4,FP5
+100C    F2 00 1B 80                11      FMOVE FP6,FP7
 ----                               12  
 ----                               13      ; Control-register transfers.
-1010    F0 00 90 00                14      FMOVE.L D0,FPCR
-1014    F0 01 B0 00                15      FMOVE.L FPCR,D1
-1018    F0 02 88 00                16      FMOVE.L D2,FPSR
-101C    F0 03 A8 00                17      FMOVE.L FPSR,D3
-1020    F0 04 84 00                18      FMOVE.L D4,FPIAR
-1024    F0 05 A4 00                19      FMOVE.L FPIAR,D5
+1010    F2 00 90 00                14      FMOVE.L D0,FPCR
+1014    F2 01 B0 00                15      FMOVE.L FPCR,D1
+1018    F2 02 88 00                16      FMOVE.L D2,FPSR
+101C    F2 03 A8 00                17      FMOVE.L FPSR,D3
+1020    F2 04 84 00                18      FMOVE.L D4,FPIAR
+1024    F2 05 A4 00                19      FMOVE.L FPIAR,D5
 ----                               20  
 ----                               21      ; Register-list transfers and paired destinations.
-1028    F0 10 F0 05                22      FMOVEM FP0/FP2,(A0)
-102C    F0 21 E0 0A                23      FMOVEM FP4/FP6,-(A1)
-1030    F0 18 D0 0A                24      FMOVEM (A0)+,FP1/FP3
-1034    F0 19 D0 A0                25      FMOVEM (A1)+,FP5/FP7
-1038    F0 00 03 B6                26      FSINCOS FP0,.pair(FP6,FP7)
+1028    F2 10 F0 05                22      FMOVEM FP0/FP2,(A0)
+102C    F2 21 E0 0A                23      FMOVEM FP4/FP6,-(A1)
+1030    F2 18 D0 0A                24      FMOVEM (A0)+,FP1/FP3
+1034    F2 19 D0 A0                25      FMOVEM (A1)+,FP5/FP7
+1038    F2 00 03 B6                26      FSINCOS FP0,.pair(FP6,FP7)
 ----                               27  
 ----                               28      ; Register-aware unary and binary forms.
-103C    F0 00 05 22                29      FADD FP1,FP2
-1040    F0 00 0E 21                30      FMOD FP3,FP4
-1044    F0 00 17 1F                31      FGETMAN FP5,FP6
-1048    F0 7A 00 12 00 01          32      FTRAPGT.W #1
+103C    F2 00 05 22                29      FADD FP1,FP2
+1040    F2 00 0E 21                30      FMOD FP3,FP4
+1044    F2 00 17 1F                31      FGETMAN FP5,FP6
+1048    F2 7A 00 12 00 01          32      FTRAPGT.W #1
 104E    4E 75                      33      RTS
 ----                               34  
 ----                               35  .end
@@ -51,8 +51,8 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    F0 00 00 80 F0 00 09 80 F0 00 12 80 F0 00 1B 80
-1010    F0 00 90 00 F0 01 B0 00 F0 02 88 00 F0 03 A8 00
-1020    F0 04 84 00 F0 05 A4 00 F0 10 F0 05 F0 21 E0 0A
-1030    F0 18 D0 0A F0 19 D0 A0 F0 00 03 B6 F0 00 05 22
-1040    F0 00 0E 21 F0 00 17 1F F0 7A 00 12 00 01 4E 75
+1000    F2 00 00 80 F2 00 09 80 F2 00 12 80 F2 00 1B 80
+1010    F2 00 90 00 F2 01 B0 00 F2 02 88 00 F2 03 A8 00
+1020    F2 04 84 00 F2 05 A4 00 F2 10 F0 05 F2 21 E0 0A
+1030    F2 18 D0 0A F2 19 D0 A0 F2 00 03 B6 F2 00 05 22
+1040    F2 00 0E 21 F2 00 17 1F F2 7A 00 12 00 01 4E 75

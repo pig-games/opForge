@@ -10,6 +10,13 @@ fn is_m68k_cas2_mnemonic(name: &str) -> bool {
     base_mnemonic_name(name).eq_ignore_ascii_case("CAS2")
 }
 
+fn is_m68k_long_divide_pair_mnemonic(name: &str) -> bool {
+    matches!(
+        base_mnemonic_name(name).to_ascii_uppercase().as_str(),
+        "DIVS" | "DIVU" | "DIVSL" | "DIVUL"
+    )
+}
+
 fn is_m68k_bitfield_mnemonic(name: &str) -> bool {
     matches!(
         base_mnemonic_name(name).to_ascii_uppercase().as_str(),
@@ -52,8 +59,8 @@ fn parse_m68k_statement_operand(
 ) -> Result<Expr, ParseError> {
     let mut expr = parser.parse_expr()?;
 
-    if mnemonic.is_some_and(is_m68k_cas2_mnemonic)
-        && operand_index <= 2
+    if ((mnemonic.is_some_and(is_m68k_cas2_mnemonic) && operand_index <= 2)
+        || (mnemonic.is_some_and(is_m68k_long_divide_pair_mnemonic) && operand_index == 1))
         && parser.consume_kind(TokenKind::Colon)
     {
         let right = parser.parse_expr()?;

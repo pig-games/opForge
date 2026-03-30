@@ -42,7 +42,10 @@ impl M68000CpuHandler {
             (MnemonicKind::Link, Some(OperationSize::Long)) => Some(EncodeResult::error(
                 "LINK does not support .L size on baseline 68000",
             )),
-            (MnemonicKind::Muls | MnemonicKind::Mulu, Some(OperationSize::Long)) => {
+            (
+                MnemonicKind::Muls | MnemonicKind::Mulu | MnemonicKind::Divs | MnemonicKind::Divu,
+                Some(OperationSize::Long),
+            ) => {
                 Some(EncodeResult::error(format!(
                     "{} does not support .L size on baseline 68000",
                     parsed.display_name
@@ -154,6 +157,27 @@ impl CpuHandler for M68000CpuHandler {
                 "MOVE from CCR is not supported on baseline 68000",
                 operands[0].span(),
             );
+        }
+
+        if let Some(parsed) = parse_mnemonic(mnemonic) {
+            return match parsed.kind {
+                MnemonicKind::Bra => {
+                    self.family
+                        .encode_branch(&parsed.display_name, None, parsed.size, operands, _ctx)
+                }
+                MnemonicKind::Bsr => {
+                    self.family
+                        .encode_branch(&parsed.display_name, None, parsed.size, operands, _ctx)
+                }
+                MnemonicKind::Bcc(condition) => self.family.encode_branch(
+                    &parsed.display_name,
+                    Some(condition),
+                    parsed.size,
+                    operands,
+                    _ctx,
+                ),
+                _ => EncodeResult::NotFound,
+            };
         }
 
         EncodeResult::NotFound

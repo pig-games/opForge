@@ -628,10 +628,12 @@ scope.
 
 Current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
 `.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
-while `.fpu 68040` enables the integrated `68040` FPU surface on `68040`.
-Assembler acceptance follows the documented programmer-visible instruction
-surface, but opForge does not model runtime assist behavior or full execution
-semantics for those FPU operations.
+while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`.
+The integrated path intentionally excludes external-coprocessor-only
+`FSIN`-class transcendental and extended-math mnemonics. Assembler acceptance
+follows the documented programmer-visible instruction surface, but opForge does
+not model runtime assist behavior or full execution semantics for those FPU
+operations.
 
 Reference fixtures under `examples/motorola68000/` now include broad FPU surface
 examples such as `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,

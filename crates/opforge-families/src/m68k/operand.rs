@@ -53,7 +53,7 @@ pub enum ControlRegisterKind {
     Srp,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FpuControlRegisterKind {
     Fpcr,
     Fpsr,
@@ -65,6 +65,7 @@ pub enum RegisterListRegister {
     Data(u8),
     Address(u8),
     FpuData(u8),
+    FpuControl(FpuControlRegisterKind),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

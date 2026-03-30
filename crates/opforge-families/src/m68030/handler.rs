@@ -161,7 +161,9 @@ impl CpuHandler for M68030CpuHandler {
             }
 
             return match parsed.kind {
-                FpuMnemonicKind::Fmove
+                FpuMnemonicKind::Fnop
+                | FpuMnemonicKind::Fmove
+                | FpuMnemonicKind::Fmovecr
                 | FpuMnemonicKind::Fmovem
                 | FpuMnemonicKind::Fadd
                 | FpuMnemonicKind::Fsub
@@ -174,6 +176,8 @@ impl CpuHandler for M68030CpuHandler {
                 | FpuMnemonicKind::Ftst
                 | FpuMnemonicKind::Fint
                 | FpuMnemonicKind::Fintrz
+                | FpuMnemonicKind::Fsgldiv
+                | FpuMnemonicKind::Fsglmul
                 | FpuMnemonicKind::Fsin
                 | FpuMnemonicKind::Fcos
                 | FpuMnemonicKind::Fsincos

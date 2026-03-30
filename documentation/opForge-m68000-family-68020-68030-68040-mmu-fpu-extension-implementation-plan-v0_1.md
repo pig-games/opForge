@@ -297,9 +297,9 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that lands the condition-code and state-frame FPU
     slice after the core movement and arithmetic surface is already proven
 
-- [x] `M68KMF-010`: Implement the trig and hyperbolic FPU slice on all legal FPU targets.
-  - Validation: focused encode or legality tests for `FSIN`, `FCOS`, `FSINCOS`, `FTAN`, `FASIN`, `FACOS`, `FATAN`, `FSINH`, `FCOSH`, `FTANH`, and `FATANH` on `.fpu 68881`, `.fpu 68882`, and `.fpu 68040`, plus `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`, `cargo audit`, and `make test`
-  - Definition of done: `FSIN`, `FCOS`, `FSINCOS`, `FTAN`, `FASIN`, `FACOS`, `FATAN`, `FSINH`, `FCOSH`, `FTANH`, and `FATANH` assemble on each legal FPU target, and the implementation remains explicit about assembler-only support
+- [x] `M68KMF-010`: Implement the trig and hyperbolic FPU slice on all legal external FPU targets.
+  - Validation: focused encode or legality tests for `FSIN`, `FCOS`, `FSINCOS`, `FTAN`, `FASIN`, `FACOS`, `FATAN`, `FSINH`, `FCOSH`, `FTANH`, and `FATANH` on `.fpu 68881` and `.fpu 68882`, explicit rejection coverage on `.fpu 68040`, plus `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`, `cargo audit`, and `make test`
+  - Definition of done: `FSIN`, `FCOS`, `FSINCOS`, `FTAN`, `FASIN`, `FACOS`, `FATAN`, `FSINH`, `FCOSH`, `FTANH`, and `FATANH` assemble on each legal external FPU target, `.fpu 68040` rejects them as outside the integrated-core allowlist, and the implementation remains explicit about assembler-only support
   - Source requirement or finding IDs: `REQ-M68KMF-006`, `REQ-M68KMF-007`,
     `REQ-M68KMF-008`, `REQ-M68KMF-009`, `REQ-M68KMF-010`, `AC-M68KMF-005`,
     `AC-M68KMF-006`, `AC-M68KMF-007`
@@ -315,9 +315,9 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that lands the named trigonometric and
     hyperbolic FPU families without bundling the remaining extended-math set
 
-- [x] `M68KMF-011`: Implement the exponent, logarithm, extract, scale, and remainder FPU slice on all legal FPU targets.
-  - Validation: focused encode or legality tests for `FETOX`, `FETOXM1`, `FTENTOX`, `FTWOTOX`, `FLOGN`, `FLOGNP1`, `FLOG10`, `FLOG2`, `FGETEXP`, `FGETMAN`, `FSCALE`, `FMOD`, and `FREM` on `.fpu 68881`, `.fpu 68882`, and `.fpu 68040`, plus `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`, `cargo audit`, and `make test`
-  - Definition of done: `FETOX`, `FETOXM1`, `FTENTOX`, `FTWOTOX`, `FLOGN`, `FLOGNP1`, `FLOG10`, `FLOG2`, `FGETEXP`, `FGETMAN`, `FSCALE`, `FMOD`, and `FREM` assemble on each legal FPU target, and the implementation remains explicit about assembler-only support
+- [x] `M68KMF-011`: Implement the exponent, logarithm, extract, scale, and remainder FPU slice on all legal external FPU targets.
+  - Validation: focused encode or legality tests for `FETOX`, `FETOXM1`, `FTENTOX`, `FTWOTOX`, `FLOGN`, `FLOGNP1`, `FLOG10`, `FLOG2`, `FGETEXP`, `FGETMAN`, `FSCALE`, `FMOD`, and `FREM` on `.fpu 68881` and `.fpu 68882`, explicit rejection coverage on `.fpu 68040`, plus `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`, `cargo audit`, and `make test`
+  - Definition of done: `FETOX`, `FETOXM1`, `FTENTOX`, `FTWOTOX`, `FLOGN`, `FLOGNP1`, `FLOG10`, `FLOG2`, `FGETEXP`, `FGETMAN`, `FSCALE`, `FMOD`, and `FREM` assemble on each legal external FPU target, `.fpu 68040` rejects them as outside the integrated-core allowlist, and the implementation remains explicit about assembler-only support
   - Source requirement or finding IDs: `REQ-M68KMF-006`, `REQ-M68KMF-007`,
     `REQ-M68KMF-008`, `REQ-M68KMF-009`, `REQ-M68KMF-010`, `AC-M68KMF-005`,
     `AC-M68KMF-006`, `AC-M68KMF-007`
@@ -370,7 +370,8 @@ execution semantics, full PMMU support, or non-listed CPU variants.
       (`M68KMF-006`, `M68KMF-007`)
 - [x] Milestone 5: integrated `m68040` core FPU surface complete (`M68KMF-008`)
 - [x] Milestone 6: FPU conditionals and save or restore complete (`M68KMF-009`)
-- [x] Milestone 7: remaining transcendental and extended-math surface complete
+- [x] Milestone 7: remaining external-FPU transcendental and extended-math
+      surface complete, with integrated `68040` rejection kept explicit
       (`M68KMF-010`, `M68KMF-011`)
 - [x] Milestone 8: capabilities, examples, references, and docs complete
       (`M68KMF-012`)

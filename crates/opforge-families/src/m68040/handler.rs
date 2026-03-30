@@ -6,7 +6,8 @@
 use crate::families::m68k::operand::{AbsoluteSize, ControlRegisterKind};
 use crate::families::m68k::{
     has_fpu_mnemonic, parse_fpu_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic,
-    FamilyOperand, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler, Operand,
+    FamilyOperand, FpuMnemonicKind, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler,
+    Operand,
 };
 use crate::m68020::M68020CpuHandler;
 use crate::m68030::M68030CpuHandler;
@@ -80,6 +81,31 @@ impl M68040CpuHandler {
             "{display_name} is recognized for .fpu {} on m68040, but FPU encoding is not yet implemented",
             target_name,
         ))
+    }
+
+    fn supports_integrated_68040_fpu(kind: FpuMnemonicKind) -> bool {
+        matches!(
+            kind,
+            FpuMnemonicKind::Fmove
+                | FpuMnemonicKind::Fmovem
+                | FpuMnemonicKind::Fadd
+                | FpuMnemonicKind::Fsub
+                | FpuMnemonicKind::Fmul
+                | FpuMnemonicKind::Fdiv
+                | FpuMnemonicKind::Fsqrt
+                | FpuMnemonicKind::Fabs
+                | FpuMnemonicKind::Fneg
+                | FpuMnemonicKind::Fcmp
+                | FpuMnemonicKind::Ftst
+                | FpuMnemonicKind::Fint
+                | FpuMnemonicKind::Fintrz
+                | FpuMnemonicKind::Fbranch
+                | FpuMnemonicKind::Fdbcc
+                | FpuMnemonicKind::Fscc
+                | FpuMnemonicKind::Ftrapcc
+                | FpuMnemonicKind::Fsave
+                | FpuMnemonicKind::Frestore
+        )
     }
 
     fn parse_move16_mnemonic(mnemonic: &str) -> Option<ParsedMove16Mnemonic> {
@@ -350,6 +376,12 @@ impl CpuHandler for M68040CpuHandler {
                 Ok(target_name) => target_name,
                 Err(err) => return err,
             };
+            if !Self::supports_integrated_68040_fpu(parsed.kind) {
+                return EncodeResult::error(format!(
+                    "{} is not supported by the integrated 68040 FPU target",
+                    parsed.display_name
+                ));
+            }
 
             return self
                 .fpu_core
@@ -501,8 +533,25 @@ mod tests {
             ],
             &ctx,
         ) {
-            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x00, 0xA2]),
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF2, 0x00, 0x00, 0xA2]),
             other => panic!("expected FADD encoding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn m68040_rejects_transcendental_and_extended_math_mnemonics() {
+        let handler = M68040CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 3);
+
+        for mnemonic in ["FSIN", "FCOS", "FSINCOS", "FETOX", "FLOGN", "FATANH", "FSCALE", "FMOD", "FREM"] {
+            match handler.encode_instruction(mnemonic, &[], &ctx) {
+                EncodeResult::Error(message, None) => {
+                    assert!(message.contains("integrated 68040 FPU target"), "{message}");
+                    assert!(message.contains(mnemonic), "{message}");
+                }
+                other => panic!("expected integrated-68040 legality diagnostic for {mnemonic}, got {other:?}"),
+            }
         }
     }
 }

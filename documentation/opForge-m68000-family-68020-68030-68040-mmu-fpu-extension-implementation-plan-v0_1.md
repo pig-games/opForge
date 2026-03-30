@@ -297,7 +297,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that lands the condition-code and state-frame FPU
     slice after the core movement and arithmetic surface is already proven
 
-- [ ] `M68KMF-010`: Implement the trig and hyperbolic FPU slice on all legal FPU targets.
+- [x] `M68KMF-010`: Implement the trig and hyperbolic FPU slice on all legal FPU targets.
   - Validation: focused encode or legality tests for `FSIN`, `FCOS`, `FSINCOS`, `FTAN`, `FASIN`, `FACOS`, `FATAN`, `FSINH`, `FCOSH`, `FTANH`, and `FATANH` on `.fpu 68881`, `.fpu 68882`, and `.fpu 68040`, plus `cargo fmt --all`, `cargo clippy --workspace -- -D warnings`, `cargo audit`, and `make test`
   - Definition of done: `FSIN`, `FCOS`, `FSINCOS`, `FTAN`, `FASIN`, `FACOS`, `FATAN`, `FSINH`, `FCOSH`, `FTANH`, and `FATANH` assemble on each legal FPU target, and the implementation remains explicit about assembler-only support
   - Source requirement or finding IDs: `REQ-M68KMF-006`, `REQ-M68KMF-007`,

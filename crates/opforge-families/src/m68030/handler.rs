@@ -156,10 +156,9 @@ impl CpuHandler for M68030CpuHandler {
                 ));
             }
 
-            let target_name = match self.handle_fpu_mnemonic(&parsed.display_name, ctx) {
-                Ok(target_name) => target_name,
-                Err(err) => return err,
-            };
+            if let Err(err) = self.handle_fpu_mnemonic(&parsed.display_name, ctx) {
+                return err;
+            }
 
             return match parsed.kind {
                 FpuMnemonicKind::Fmove
@@ -175,6 +174,17 @@ impl CpuHandler for M68030CpuHandler {
                 | FpuMnemonicKind::Ftst
                 | FpuMnemonicKind::Fint
                 | FpuMnemonicKind::Fintrz
+                | FpuMnemonicKind::Fsin
+                | FpuMnemonicKind::Fcos
+                | FpuMnemonicKind::Fsincos
+                | FpuMnemonicKind::Ftan
+                | FpuMnemonicKind::Fasin
+                | FpuMnemonicKind::Facos
+                | FpuMnemonicKind::Fatan
+                | FpuMnemonicKind::Fsinh
+                | FpuMnemonicKind::Fcosh
+                | FpuMnemonicKind::Ftanh
+                | FpuMnemonicKind::Fatanh
                 | FpuMnemonicKind::Fbranch
                 | FpuMnemonicKind::Fdbcc
                 | FpuMnemonicKind::Fscc
@@ -183,10 +193,6 @@ impl CpuHandler for M68030CpuHandler {
                 | FpuMnemonicKind::Frestore => {
                     self.base.encode_instruction(mnemonic, operands, ctx)
                 }
-                _ => EncodeResult::error(format!(
-                    "{} is recognized for .fpu {} on m68030, but FPU encoding is not yet implemented",
-                    parsed.display_name, target_name
-                )),
             };
         }
 

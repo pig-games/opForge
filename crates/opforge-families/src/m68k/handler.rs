@@ -403,6 +403,17 @@ impl M68KFamilyHandler {
             });
         }
 
+        if let (Some((left_name, _)), Some((right_name, _))) = (
+            Self::parse_fpu_data_register(left),
+            Self::parse_fpu_data_register(right),
+        ) {
+            return Ok(FamilyOperand::RegisterPair {
+                left: left_name,
+                right: right_name,
+                span,
+            });
+        }
+
         if let (Expr::Indirect(left_inner, _), Expr::Indirect(right_inner, _)) = (left, right) {
             let Some((left_name, _)) = Self::parse_general_register(left_inner.as_ref()) else {
                 return Err(FamilyParseError::new(
@@ -424,7 +435,7 @@ impl M68KFamilyHandler {
         }
 
         Err(FamilyParseError::new(
-            "68020 register-pair syntax requires Rn:Rn or (Rn):(Rn)",
+            "68020 register-pair syntax requires Rn:Rn, FPn:FPn, or (Rn):(Rn)",
             span,
         ))
     }
@@ -7352,6 +7363,18 @@ mod tests {
                 && update_right == "D3"
                 && memory_left == "A0"
                 && memory_right == "A1"
+        ));
+    }
+
+    #[test]
+    fn parses_fpu_register_pair_operands() {
+        let operands = parse_operands_from_source("    FSINCOS FP0,.pair(FP1,FP2)");
+        assert!(matches!(
+            operands.as_slice(),
+            [
+                FamilyOperand::FpuDataRegister { register: src, .. },
+                FamilyOperand::RegisterPair { left, right, .. },
+            ] if src == "FP0" && left == "FP1" && right == "FP2"
         ));
     }
 

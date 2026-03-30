@@ -131,6 +131,15 @@ pub enum FpuMnemonicKind {
     Frestore,
     Fsin,
     Fcos,
+    Fsincos,
+    Ftan,
+    Fasin,
+    Facos,
+    Fatan,
+    Fsinh,
+    Fcosh,
+    Ftanh,
+    Fatanh,
     Fbranch,
     Fdbcc,
     Fscc,
@@ -582,6 +591,15 @@ fn fpu_base_kind(base: &str) -> Option<FpuMnemonicKind> {
         "FRESTORE" => Some(FpuMnemonicKind::Frestore),
         "FSIN" => Some(FpuMnemonicKind::Fsin),
         "FCOS" => Some(FpuMnemonicKind::Fcos),
+        "FSINCOS" => Some(FpuMnemonicKind::Fsincos),
+        "FTAN" => Some(FpuMnemonicKind::Ftan),
+        "FASIN" => Some(FpuMnemonicKind::Fasin),
+        "FACOS" => Some(FpuMnemonicKind::Facos),
+        "FATAN" => Some(FpuMnemonicKind::Fatan),
+        "FSINH" => Some(FpuMnemonicKind::Fsinh),
+        "FCOSH" => Some(FpuMnemonicKind::Fcosh),
+        "FTANH" => Some(FpuMnemonicKind::Ftanh),
+        "FATANH" => Some(FpuMnemonicKind::Fatanh),
         _ if base.starts_with("FDB") && base.len() > 3 => Some(FpuMnemonicKind::Fdbcc),
         _ if base.starts_with("FTRAP") && base.len() > 5 => Some(FpuMnemonicKind::Ftrapcc),
         _ if base.starts_with("FB") && base.len() > 2 => Some(FpuMnemonicKind::Fbranch),
@@ -721,6 +739,8 @@ mod tests {
         assert!(has_fpu_mnemonic("FMOVEM"));
         assert!(has_fpu_mnemonic("FADD"));
         assert!(has_fpu_mnemonic("FSIN"));
+        assert!(has_fpu_mnemonic("FSINCOS"));
+        assert!(has_fpu_mnemonic("FATANH"));
         assert!(has_fpu_mnemonic("FBNE"));
         assert!(has_fpu_mnemonic("FDBEQ"));
         assert!(has_fpu_mnemonic("FSGE"));

@@ -537,6 +537,113 @@ impl M68020CpuHandler {
         }
     }
 
+    fn encode_fsincos(
+        &self,
+        display_name: &str,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        match operands {
+            [
+                Operand::FpuDataRegister {
+                    register: src_register,
+                    ..
+                },
+                Operand::RegisterPair {
+                    left: dst_cos_register,
+                    right: dst_sin_register,
+                    ..
+                },
+            ] if size.is_none() => {
+                let Some(src_reg) = M68KFamilyHandler::fpu_data_register_number(src_register) else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {display_name} source FP register"),
+                        operands[0].span(),
+                    );
+                };
+                let Some(dst_cos_reg) =
+                    M68KFamilyHandler::fpu_data_register_number(dst_cos_register)
+                else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {display_name} destination FP register pair"),
+                        operands[1].span(),
+                    );
+                };
+                let Some(dst_sin_reg) =
+                    M68KFamilyHandler::fpu_data_register_number(dst_sin_register)
+                else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {display_name} destination FP register pair"),
+                        operands[1].span(),
+                    );
+                };
+
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF000);
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    ((src_reg as u16) << 10) | ((dst_sin_reg as u16) << 7) | (dst_cos_reg as u16) | 0x0030,
+                );
+                EncodeResult::ok(bytes)
+            }
+            [src, Operand::RegisterPair { left: dst_cos_register, right: dst_sin_register, .. }] => {
+                let Some(size) = size else {
+                    return EncodeResult::error(format!(
+                        "{display_name} currently supports FP-register forms without a size suffix and .B, .W, or .L scalar-source forms on m68020",
+                    ));
+                };
+                let Some(dst_cos_reg) =
+                    M68KFamilyHandler::fpu_data_register_number(dst_cos_register)
+                else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {display_name} destination FP register pair"),
+                        operands[1].span(),
+                    );
+                };
+                let Some(dst_sin_reg) =
+                    M68KFamilyHandler::fpu_data_register_number(dst_sin_register)
+                else {
+                    return EncodeResult::error_with_span(
+                        format!("invalid {display_name} destination FP register pair"),
+                        operands[1].span(),
+                    );
+                };
+
+                let src_ea = match self.family.encode_effective_address(src, Some(size), ctx) {
+                    Ok(ea) => ea,
+                    Err(err) => return err,
+                };
+                if !Self::fpu_scalar_source_operand(src_ea.bits) {
+                    return EncodeResult::error_with_span(
+                        format!(
+                            "invalid source effective address for {}{}",
+                            display_name,
+                            size.suffix()
+                        ),
+                        src.span(),
+                    );
+                }
+
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF000 | (src_ea.bits & 0x003F));
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    0x4000
+                        | Self::fpu_scalar_format_bits(size)
+                        | ((dst_sin_reg as u16) << 7)
+                        | (dst_cos_reg as u16)
+                        | 0x0030,
+                );
+                bytes.extend_from_slice(&src_ea.extension);
+                EncodeResult::ok(bytes)
+            }
+            _ => EncodeResult::error(format!(
+                "{display_name} currently supports FP-register source forms with FP-register-pair destinations and sized scalar-source forms on m68020",
+            )),
+        }
+    }
+
     fn encode_ftst(
         &self,
         size: Option<OperationSize>,
@@ -997,6 +1104,89 @@ impl M68020CpuHandler {
                 true,
                 ctx,
             ),
+            FpuMnemonicKind::Fsin => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x000E,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fcos => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x001D,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fsincos => {
+                self.encode_fsincos(&parsed.display_name, parsed.size, operands, ctx)
+            }
+            FpuMnemonicKind::Ftan => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x000F,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fasin => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x000C,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Facos => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x001C,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fatan => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x000A,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fsinh => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0002,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fcosh => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0019,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Ftanh => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x0009,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
+            FpuMnemonicKind::Fatanh => self.encode_fpu_result_operation(
+                &parsed.display_name,
+                0x000D,
+                parsed.size,
+                operands,
+                true,
+                ctx,
+            ),
             FpuMnemonicKind::Fbranch => {
                 self.encode_fbcc(&parsed.display_name, parsed.size, operands, ctx)
             }
@@ -1015,7 +1205,6 @@ impl M68020CpuHandler {
             FpuMnemonicKind::Frestore => {
                 self.encode_frestore(&parsed.display_name, parsed.size, operands, ctx)
             }
-            _ => return None,
         })
     }
 
@@ -1624,6 +1813,87 @@ mod tests {
         ) {
             EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x50, 0x3A]),
             other => panic!("expected FTST.W encoding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn trig_and_hyperbolic_fpu_slice_encodes_for_external_targets_on_m68020() {
+        let handler = M68020CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 1)
+            .with_current_address(0);
+
+        match handler.encode_instruction(
+            "FSIN",
+            &[
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x00, 0x8E]),
+            other => panic!("expected FSIN encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FCOS.W",
+            &[
+                Operand::AddressIndirect {
+                    register: "A0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x10, 0x50, 0x9D]),
+            other => panic!("expected FCOS.W encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FSINCOS",
+            &[
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::RegisterPair {
+                    left: "FP1".to_string(),
+                    right: "FP2".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x00, 0x01, 0x31]),
+            other => panic!("expected FSINCOS encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FATANH.W",
+            &[
+                Operand::AddressIndirect {
+                    register: "A0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF0, 0x10, 0x50, 0x8D]),
+            other => panic!("expected FATANH encoding, got {other:?}"),
         }
     }
 

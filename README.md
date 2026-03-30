@@ -12,8 +12,23 @@ Motorola 68000-family coverage currently spans the shipped integer surface for
 `68000`, `68010`, `68020`, `68030`, and `68040`. `68010` keeps baseline
 68000 addressing, `68020`/`68030`/`68040` add the shipped `68020+`
 full-extension addressing surface, and `68040` adds `MOVE16` while rejecting
-`CALLM`, `RTM`, and `MOVEC CAAR`. MMU, PMMU, FPU, coprocessor, and
-cache-control surfaces remain out of scope.
+`CALLM`, `RTM`, and `MOVEC CAAR`.
+
+The current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
+`68030` and `68040`, and the existing `68040` MMU-related `MOVEC` register
+surface stays available. Broader PMMU/MMU families remain out of scope.
+
+The current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
+`.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
+while `.fpu 68040` enables the integrated `68040` FPU surface on `68040`.
+Broader runtime semantics are not modeled; opForge assembles the documented
+instruction surface and keeps execution behavior out of scope.
+
+The shipped Motorola 68000 example set now includes focused FPU fixtures such as
+`68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
+`68020_fpu_registers`, `68030_pflush_external_fpu`, and
+`68040_integrated_fpu` so the current MMU/FPU surface is visible in
+checked-in source and reference outputs.
 
 It is originally inspired by [64tass](https://tass64.sourceforge.net) in terms of feature scope and notation style.
 

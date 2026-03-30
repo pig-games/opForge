@@ -2451,6 +2451,24 @@ fn cpusupport_report_json_has_stable_shape() {
     assert!(cpus
         .iter()
         .all(|entry| entry.get("family").is_some() && entry.get("default_dialect").is_some()));
+    let m68020 = cpus
+        .iter()
+        .find(|entry| entry["cpu"] == "m68020")
+        .expect("m68020 entry");
+    assert_eq!(m68020["runtime_directives"], serde_json::json!(["FPU"]));
+    assert_eq!(
+        m68020["fpu_targets"],
+        serde_json::json!(["none", "68881", "68882"])
+    );
+    let m68040 = cpus
+        .iter()
+        .find(|entry| entry["cpu"] == "m68040")
+        .expect("m68040 entry");
+    assert_eq!(
+        m68040["mmu_surface"],
+        serde_json::json!(["movec-registers", "pflush"])
+    );
+    assert_eq!(m68040["fpu_targets"], serde_json::json!(["none", "68040"]));
 }
 
 #[test]
@@ -2469,6 +2487,12 @@ fn capabilities_report_json_has_stable_shape() {
         value["cpusupport"]["schema"], "opforge-cpusupport-v1",
         "capabilities json should embed cpu support payload"
     );
+    assert!(value["cpusupport"]["cpus"]
+        .as_array()
+        .expect("cpus array")
+        .iter()
+        .any(|entry| entry["cpu"] == "m68040"
+            && entry["fpu_targets"] == serde_json::json!(["none", "68040"])));
 }
 
 #[test]
@@ -5766,9 +5790,14 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/68010_delta",
         "motorola68000/68020_full_extension_addressing",
         "motorola68000/68020_later_families",
+        "motorola68000/68020_fpu_allmodes",
+        "motorola68000/68020_fpu_instruction_catalog",
+        "motorola68000/68020_fpu_registers",
         "motorola68000/68030_carry_forward",
+        "motorola68000/68030_pflush_external_fpu",
         "motorola68000/68040_movec_mmu_registers",
         "motorola68000/68040_move16_carry_forward",
+        "motorola68000/68040_integrated_fpu",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));
         if let Err(err) = assemble_example(&asm_path, &out_dir, false) {

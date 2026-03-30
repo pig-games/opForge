@@ -25,6 +25,8 @@ __pycache__
 !examples/reference/
 !examples/reference/*.lst
 !examples/reference/*.hex
+!examples/reference/**/*.lst
+!examples/reference/**/*.hex
 
 # macOS filesystem noise
 .DS_Store

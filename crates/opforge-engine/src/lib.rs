@@ -1988,6 +1988,87 @@ pub fn resolve_cpu_for_line(
     selected.or(workspace_default_cpu).unwrap_or(DEFAULT_CPU)
 }
 
+fn canonical_m68k_cpu_name(cpu: &str) -> Option<&'static str> {
+    let lower = cpu.to_ascii_lowercase();
+    let canonical = if let Some(rest) = lower.strip_prefix("mc") {
+        rest
+    } else if let Some(rest) = lower.strip_prefix('m') {
+        rest
+    } else {
+        lower.as_str()
+    };
+
+    match canonical {
+        "68000" => Some("68000"),
+        "68010" => Some("68010"),
+        "68020" => Some("68020"),
+        "68030" => Some("68030"),
+        "68040" => Some("68040"),
+        _ => None,
+    }
+}
+
+fn m68k_cpu_scope(
+    cpu: &str,
+) -> Option<(
+    &'static [&'static str],
+    &'static [&'static str],
+    &'static str,
+)> {
+    match canonical_m68k_cpu_name(cpu)? {
+        "68000" => Some((&["none"], &["none"], "baseline-integer")),
+        "68010" => Some((&["none"], &["none"], "baseline-integer-plus-68010-delta")),
+        "68020" => Some((
+            &["none"],
+            &["none", "68881", "68882"],
+            "full-extension-addressing",
+        )),
+        "68030" => Some((
+            &["pflush"],
+            &["none", "68881", "68882"],
+            "full-extension-addressing",
+        )),
+        "68040" => Some((
+            &["movec-registers", "pflush"],
+            &["none", "68040"],
+            "full-extension-addressing,move16",
+        )),
+        _ => None,
+    }
+}
+
+fn cpu_support_json_entry(registry: &AsmRegistry, cpu: CpuType) -> serde_json::Value {
+    let family = registry
+        .cpu_family_id(cpu)
+        .map(|id| id.as_str().to_string());
+    let default_dialect = registry.cpu_default_dialect(cpu).map(str::to_string);
+    let runtime_directives = registry.cpu_runtime_directive_ids(cpu);
+    let (mmu_surface, fpu_targets, scope_note) = match m68k_cpu_scope(cpu.as_str()) {
+        Some((mmu_surface, fpu_targets, scope_note)) => (
+            mmu_surface
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>(),
+            fpu_targets
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>(),
+            Some(scope_note.to_string()),
+        ),
+        None => (Vec::new(), Vec::new(), None),
+    };
+
+    json!({
+        "cpu": cpu.as_str(),
+        "family": family,
+        "default_dialect": default_dialect,
+        "runtime_directives": runtime_directives,
+        "mmu_surface": mmu_surface,
+        "fpu_targets": fpu_targets,
+        "scope_note": scope_note,
+    })
+}
+
 pub fn parse_cpu_directive_name(line: &str) -> Option<String> {
     let trimmed = line.trim_start();
     if !trimmed.to_ascii_lowercase().starts_with(".cpu") {
@@ -2021,11 +2102,22 @@ pub fn cpusupport_report(registry: &AsmRegistry) -> String {
             .map(|id| id.as_str().to_string())
             .unwrap_or_else(|| "unknown".to_string());
         let dialect = registry.cpu_default_dialect(cpu).unwrap_or("none");
+        let runtime_directives = registry.cpu_runtime_directive_ids(cpu).join(",");
+        let (mmu_surface, fpu_targets, scope_note) = match m68k_cpu_scope(cpu.as_str()) {
+            Some((mmu_surface, fpu_targets, scope_note)) => {
+                (mmu_surface.join(","), fpu_targets.join(","), scope_note)
+            }
+            None => (String::new(), String::new(), ""),
+        };
         lines.push(format!(
-            "cpu={};family={};default_dialect={}",
+            "cpu={};family={};default_dialect={};runtime_directives={};mmu_surface={};fpu_targets={};scope_note={}",
             cpu.as_str(),
             family,
-            dialect
+            dialect,
+            runtime_directives,
+            mmu_surface,
+            fpu_targets,
+            scope_note,
         ));
     }
 
@@ -2038,17 +2130,7 @@ pub fn cpusupport_report_json(registry: &AsmRegistry) -> serde_json::Value {
 
     let cpus: Vec<serde_json::Value> = cpu_ids
         .into_iter()
-        .map(|cpu| {
-            let family = registry
-                .cpu_family_id(cpu)
-                .map(|id| id.as_str().to_string());
-            let default_dialect = registry.cpu_default_dialect(cpu).map(str::to_string);
-            json!({
-                "cpu": cpu.as_str(),
-                "family": family,
-                "default_dialect": default_dialect,
-            })
-        })
+        .map(|cpu| cpu_support_json_entry(registry, cpu))
         .collect();
 
     json!({

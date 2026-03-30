@@ -1,0 +1,91 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68020 external FPU instruction catalog
+----                                2  .cpu 68020
+----                                3  .fpu 68881
+----    EQU 1000                    4  .org $1000
+----                                5  
+----                                6  start
+----                                7      ; Core move and arithmetic surface.
+1000    F0 00 00 80                 8      FMOVE FP0,FP1
+1004    F0 00 05 22                 9      FADD FP1,FP2
+1008    F0 00 09 A8                10      FSUB FP2,FP3
+100C    F0 00 0E 23                11      FMUL FP3,FP4
+1010    F0 00 12 A0                12      FDIV FP4,FP5
+1014    F0 00 16 84                13      FSQRT FP5
+1018    F0 00 1B 18                14      FABS FP6
+101C    F0 00 1F 9A                15      FNEG FP7
+1020    F0 00 00 01                16      FINT FP0
+1024    F0 00 04 83                17      FINTRZ FP1
+1028    F0 00 05 38                18      FCMP FP1,FP2
+102C    F0 00 0D BA                19      FTST FP3
+----                               20  
+----                               21      ; Conditional, trap, and state-control surface.
+1030    F0 81 00 02                22      FBEQ after_fb
+----                               23  after_fb
+1034    F0 48 00 0E 00 02          24      FDBNE D0,after_fdb
+----                               25  after_fdb
+103A    F0 41 00 0E                26      FSNE D1
+103E    F0 7A 00 12 00 01          27      FTRAPGT.W #1
+1044    F1 10                      28      FSAVE (A0)
+1046    F1 58                      29      FRESTORE (A0)+
+----                               30  
+----                               31      ; Trigonometric and hyperbolic surface.
+1048    F0 00 00 8E                32      FSIN FP0,FP1
+104C    F0 11 51 1D                33      FCOS.W (A1),FP2
+1050    F0 00 0E B4                34      FSINCOS FP3,.pair(FP4,FP5)
+1054    F0 00 17 0F                35      FTAN FP5,FP6
+1058    F0 00 1B 8C                36      FASIN FP6,FP7
+105C    F0 00 1C 1C                37      FACOS FP7,FP0
+1060    F0 00 00 8A                38      FATAN FP0,FP1
+1064    F0 00 05 02                39      FSINH FP1,FP2
+1068    F0 00 09 99                40      FCOSH FP2,FP3
+106C    F0 00 0E 09                41      FTANH FP3,FP4
+1070    F0 00 12 8D                42      FATANH FP4,FP5
+----                               43  
+----                               44      ; Extended math surface.
+1074    F0 00 17 10                45      FETOX FP5,FP6
+1078    F0 00 1B 88                46      FETOXM1 FP6,FP7
+107C    F0 00 1C 12                47      FTENTOX FP7,FP0
+1080    F0 00 00 91                48      FTWOTOX FP0,FP1
+1084    F0 00 05 14                49      FLOGN FP1,FP2
+1088    F0 00 09 86                50      FLOGNP1 FP2,FP3
+108C    F0 00 0E 15                51      FLOG10 FP3,FP4
+1090    F0 00 12 96                52      FLOG2 FP4,FP5
+1094    F0 00 17 1E                53      FGETEXP FP5,FP6
+1098    F0 00 1B 9F                54      FGETMAN FP6,FP7
+109C    F0 00 1C 26                55      FSCALE FP7,FP0
+10A0    F0 00 00 A1                56      FMOD FP0,FP1
+10A4    F0 00 05 25                57      FREM FP1,FP2
+10A8    4E 75                      58      RTS
+----                               59  
+----                               60  .end
+
+Lines: 60  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+after_fb         1034      prv  lbl 
+after_fdb        103A      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 170 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    F0 00 00 80 F0 00 05 22 F0 00 09 A8 F0 00 0E 23
+1010    F0 00 12 A0 F0 00 16 84 F0 00 1B 18 F0 00 1F 9A
+1020    F0 00 00 01 F0 00 04 83 F0 00 05 38 F0 00 0D BA
+1030    F0 81 00 02 F0 48 00 0E 00 02 F0 41 00 0E F0 7A
+1040    00 12 00 01 F1 10 F1 58 F0 00 00 8E F0 11 51 1D
+1050    F0 00 0E B4 F0 00 17 0F F0 00 1B 8C F0 00 1C 1C
+1060    F0 00 00 8A F0 00 05 02 F0 00 09 99 F0 00 0E 09
+1070    F0 00 12 8D F0 00 17 10 F0 00 1B 88 F0 00 1C 12
+1080    F0 00 00 91 F0 00 05 14 F0 00 09 86 F0 00 0E 15
+1090    F0 00 12 96 F0 00 17 1E F0 00 1B 9F F0 00 1C 26
+10A0    F0 00 00 A1 F0 00 05 25 4E 75

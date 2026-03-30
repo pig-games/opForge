@@ -333,7 +333,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
   - Commit outcome: one commit that completes the named extended-math FPU
     inventory without widening into runtime semantics
 
-- [ ] `M68KMF-012`: Ship capability reporting, examples, references, and
+- [x] `M68KMF-012`: Ship capability reporting, examples, references, and
       user-facing documentation that reflect the minimal MMU scope and optional
       FPU scope honestly.
   - Validation: focused capability-output checks, example-assembly smoke tests,
@@ -362,9 +362,9 @@ execution semantics, full PMMU support, or non-listed CPU variants.
 
 - [x] Milestone 0: prerequisite spec remains spec-quality-approved and this plan
       passes the branch-local plan-quality gate before execution starts
-- [ ] Milestone 1: selector and stability foundation complete
+- [x] Milestone 1: selector and stability foundation complete
       (`M68KMF-001`, `M68KMF-002`)
-- [ ] Milestone 2: minimal MMU scope complete (`M68KMF-003`, `M68KMF-004`)
+- [x] Milestone 2: minimal MMU scope complete (`M68KMF-003`, `M68KMF-004`)
 - [x] Milestone 3: FPU parsing and legality foundation complete (`M68KMF-005`)
 - [x] Milestone 4: external-FPU core movement and arithmetic complete
       (`M68KMF-006`, `M68KMF-007`)
@@ -372,7 +372,7 @@ execution semantics, full PMMU support, or non-listed CPU variants.
 - [x] Milestone 6: FPU conditionals and save or restore complete (`M68KMF-009`)
 - [x] Milestone 7: remaining transcendental and extended-math surface complete
       (`M68KMF-010`, `M68KMF-011`)
-- [ ] Milestone 8: capabilities, examples, references, and docs complete
+- [x] Milestone 8: capabilities, examples, references, and docs complete
       (`M68KMF-012`)
 
 ## Blocking Rules

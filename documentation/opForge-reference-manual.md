@@ -613,12 +613,31 @@ Examples in the repo:
 Motorola 68000-family support is available through the baseline `68000` aliases
 plus the shipped later-family targets `68010`, `68020`, `68030`, and `68040`.
 
-Current shipped scope is the non-MMU, non-FPU integer surface for those CPUs.
+Current shipped scope includes the integer surface for those CPUs plus the
+narrow MMU and optional FPU additions that are now documented in the active
+68000-family extension workflow.
+
 `68010` keeps baseline `68000` addressing. `68020`, `68030`, and `68040`
 accept the shipped `68020+` full-extension addressing forms. `68040`
 additionally accepts `MOVE16` and rejects `CALLM`, `RTM`, and `MOVEC CAAR`.
-MMU, PMMU, FPU, coprocessor, and cache-control surfaces remain out of scope in
-this release.
+
+Current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
+`68030` and `68040`, and the shipped `68040` MMU-related `MOVEC` register
+surface remains available. Broader PMMU/MMU instruction families stay out of
+scope.
+
+Current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
+`.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
+while `.fpu 68040` enables the integrated `68040` FPU surface on `68040`.
+Assembler acceptance follows the documented programmer-visible instruction
+surface, but opForge does not model runtime assist behavior or full execution
+semantics for those FPU operations.
+
+Reference fixtures under `examples/motorola68000/` now include broad FPU surface
+examples such as `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
+`68020_fpu_registers`, `68030_pflush_external_fpu`, and
+`68040_integrated_fpu`, with matching checked-in outputs under
+`examples/reference/motorola68000/`.
 
 65816 support includes the phase-1 instruction set and phase-2 24-bit addressing work:
 - Implements selected 65816 mnemonics and operand forms.

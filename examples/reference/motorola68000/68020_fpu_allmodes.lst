@@ -1,0 +1,63 @@
+opForge Assembler v0.9.6
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68020 external FPU operand and addressing-mode surface
+----                                2  .cpu 68020
+----                                3  .fpu 68881
+----    EQU 1000                    4  .org $1000
+----                                5  
+----                                6  start
+----                                7      ; Register-direct and sized integer / FP transfers.
+1000    F0 00 00 80                 8      FMOVE FP0,FP1
+1004    F0 00 59 00                 9      FMOVE.B D0,FP2
+1008    F0 01 78 00                10      FMOVE.W FP2,D1
+100C    F0 02 90 00                11      FMOVE.L D2,FPCR
+1010    F0 03 A8 00                12      FMOVE.L FPSR,D3
+1014    F0 04 A4 00                13      FMOVE.L FPIAR,D4
+----                               14  
+----                               15      ; Memory-source addressing families for sized FPU operations.
+1018    F0 10 51 80                16      FMOVE.W (A0),FP3
+101C    F0 18 42 00                17      FMOVE.L (A0)+,FP4
+1020    F0 21 52 80                18      FMOVE.W -(A1),FP5
+1024    F0 2A 43 00 00 08          19      FMOVE.L 8(A2),FP6
+102A    F0 33 53 80 50 00          20      FMOVE.W 0(A3,D5.W),FP7
+1030    F0 38 50 00 12 34          21      FMOVE.W ($1234).W,FP0
+1036    F0 39 40 80 00 12 34 56    22      FMOVE.L ($123456).L,FP1
+103E    F0 3A 51 00 00 08          23      FMOVE.W 8(PC),FP2
+----                               24  
+----                               25      ; Representative arithmetic and transcendental EA forms.
+1044    F0 00 05 22                26      FADD FP1,FP2
+1048    F0 10 51 9D                27      FCOS.W (A0),FP3
+104C    F0 00 0E B4                28      FSINCOS FP3,.pair(FP4,FP5)
+----                               29  
+----                               30      ; State save / restore and register-list transfers.
+1050    F0 14 F0 05                31      FMOVEM FP0/FP2,(A4)
+1054    F0 1C D0 0A                32      FMOVEM (A4)+,FP1/FP3
+1058    F0 25 E0 A0                33      FMOVEM FP0/FP2,-(A5)
+105C    F1 16                      34      FSAVE (A6)
+105E    F1 5E                      35      FRESTORE (A6)+
+1060    4E 75                      36      RTS
+----                               37  
+----                               38  .end
+
+Lines: 38  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 98 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    F0 00 00 80 F0 00 59 00 F0 01 78 00 F0 02 90 00
+1010    F0 03 A8 00 F0 04 A4 00 F0 10 51 80 F0 18 42 00
+1020    F0 21 52 80 F0 2A 43 00 00 08 F0 33 53 80 50 00
+1030    F0 38 50 00 12 34 F0 39 40 80 00 12 34 56 F0 3A
+1040    51 00 00 08 F0 00 05 22 F0 10 51 9D F0 00 0E B4
+1050    F0 14 F0 05 F0 1C D0 0A F0 25 E0 A0 F1 16 F1 5E
+1060    4E 75

@@ -1,0 +1,113 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68000-address-arithmetic-shifts"
+cpu = "68000"
+path = "positive/68000_address_arithmetic_shifts.asm"
+
+[[fixtures]]
+id = "68000-addressing-matrix"
+cpu = "68000"
+path = "positive/68000_addressing_matrix.asm"
+
+[[fixtures]]
+id = "68000-basic-moves"
+cpu = "68000"
+path = "positive/68000_basic_moves.asm"
+
+[[fixtures]]
+id = "68000-bit-operations"
+cpu = "68000"
+path = "positive/68000_bit_operations.asm"
+
+[[fixtures]]
+id = "68000-branching"
+cpu = "68000"
+path = "positive/68000_branching.asm"
+
+[[fixtures]]
+id = "68000-compare-operand-state"
+cpu = "68000"
+path = "positive/68000_compare_operand_state.asm"
+
+[[fixtures]]
+id = "68000-condition-loops"
+cpu = "68000"
+path = "positive/68000_condition_loops.asm"
+
+[[fixtures]]
+id = "68000-control-addressing"
+cpu = "68000"
+path = "positive/68000_control_addressing.asm"
+
+[[fixtures]]
+id = "68000-effective-addresses"
+cpu = "68000"
+path = "positive/68000_effective_addresses.asm"
+
+[[fixtures]]
+id = "68000-exchange-registers"
+cpu = "68000"
+path = "positive/68000_exchange_registers.asm"
+
+[[fixtures]]
+id = "68000-extend-bcd-cmpm"
+cpu = "68000"
+path = "positive/68000_extend_bcd_cmpm.asm"
+
+[[fixtures]]
+id = "68000-movem-movep"
+cpu = "68000"
+path = "positive/68000_movem_movep.asm"
+
+[[fixtures]]
+id = "68000-multiply-divide-check"
+cpu = "68000"
+path = "positive/68000_multiply_divide_check.asm"
+
+[[fixtures]]
+id = "68000-rotate-memory-shift"
+cpu = "68000"
+path = "positive/68000_rotate_memory_shift.asm"
+
+[[fixtures]]
+id = "68000-system-register-misc"
+cpu = "68000"
+path = "positive/68000_system_register_misc.asm"
+
+[[fixtures]]
+id = "unknown-mnemonic"
+cpu = "68000"
+path = "negative/unknown_mnemonic.asm"
+expected_outcome = "error"
+compare_mode = "error_class"
+
+[[fixtures]]
+id = "comma-only"
+cpu = "68000"
+path = "negative/comma_only.asm"
+expected_outcome = "error"
+compare_mode = "error_class"
+
+[[fixtures]]
+id = "opt-directive"
+cpu = "68000"
+path = "documented_divergence/opt_directive.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_error_oracle_success"
+documented_divergence_reason = "vasm Motorola OPT directive support is intentionally outside the current shared subset"
+
+[[fixtures]]
+id = "reclassification-candidate"
+cpu = "68000"
+path = "documented_divergence/reclassification_candidate.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_error_oracle_success"
+documented_divergence_reason = "coverage fixture proving fully comparable documented divergences are reported for reclassification"

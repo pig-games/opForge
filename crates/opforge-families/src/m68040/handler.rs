@@ -544,13 +544,17 @@ mod tests {
         let ctx = TestContext::default()
             .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 3);
 
-        for mnemonic in ["FSIN", "FCOS", "FSINCOS", "FETOX", "FLOGN", "FATANH", "FSCALE", "FMOD", "FREM"] {
+        for mnemonic in [
+            "FSIN", "FCOS", "FSINCOS", "FETOX", "FLOGN", "FATANH", "FSCALE", "FMOD", "FREM",
+        ] {
             match handler.encode_instruction(mnemonic, &[], &ctx) {
                 EncodeResult::Error(message, None) => {
                     assert!(message.contains("integrated 68040 FPU target"), "{message}");
                     assert!(message.contains(mnemonic), "{message}");
                 }
-                other => panic!("expected integrated-68040 legality diagnostic for {mnemonic}, got {other:?}"),
+                other => panic!(
+                    "expected integrated-68040 legality diagnostic for {mnemonic}, got {other:?}"
+                ),
             }
         }
     }

@@ -557,9 +557,7 @@ fn split_size_suffix(mnemonic: &str) -> (String, Option<OperationSize>, bool) {
     }
 }
 
-fn split_fpu_suffix(
-    mnemonic: &str,
-) -> (String, Option<OperationSize>, Option<FpuFormat>, bool) {
+fn split_fpu_suffix(mnemonic: &str) -> (String, Option<OperationSize>, Option<FpuFormat>, bool) {
     let upper = mnemonic.to_ascii_uppercase();
     match upper.rsplit_once('.') {
         Some((base, suffix)) => match suffix {

@@ -1,0 +1,30 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+cpu_profile = "fpu-68882"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68882-smoke-core"
+cpu = "68020"
+path = "positive/68882_smoke_core.asm"
+
+[[fixtures]]
+id = "68882-fnop-byte-divergence"
+cpu = "68020"
+path = "documented_divergence/68020_fpu_fnop.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
+documented_divergence_reason = "FNOP currently encodes differently between opForge and vasm under the 68882 profile"
+
+[[fixtures]]
+id = "68882-fsincos-pair-status-divergence"
+cpu = "68020"
+path = "documented_divergence/68020_fpu_fsincos_pair.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "vasm rejects the current opForge .pair FSINCOS syntax while opForge assembles it under the 68882 profile"

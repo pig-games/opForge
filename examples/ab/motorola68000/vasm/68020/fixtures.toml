@@ -1,0 +1,43 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68020-full-extension-addressing"
+cpu = "68020"
+path = "positive/68020_full_extension_addressing.asm"
+
+[[fixtures]]
+id = "68020-later-families-core"
+cpu = "68020"
+path = "positive/68020_later_families_core.asm"
+
+[[fixtures]]
+id = "68020-link-long-byte-divergence"
+cpu = "68020"
+path = "documented_divergence/68020_link_long.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
+documented_divergence_reason = "LINK.L currently encodes differently between opForge and vasm"
+
+[[fixtures]]
+id = "68020-div-long-alias-byte-divergence"
+cpu = "68020"
+path = "documented_divergence/68020_div_long_aliases.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
+documented_divergence_reason = "DIVSL.L and DIVUL.L currently encode differently between opForge and vasm"
+
+[[fixtures]]
+id = "68020-pack-negative-status-divergence"
+cpu = "68020"
+path = "documented_divergence/68020_pack_negative.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "vasm rejects negative PACK immediates while opForge currently assembles them"

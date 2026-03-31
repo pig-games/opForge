@@ -1373,7 +1373,7 @@ fn assemble_example(
 fn should_skip_example_dir(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
-        Some("reference" | "vm" | "opthread" | "project_root" | "lib")
+        Some("ab" | "reference" | "vm" | "opthread" | "project_root" | "lib")
     )
 }
 
@@ -3145,9 +3145,7 @@ fn m68k_fmove_integer_conversion_stores_encode_source_fp_register_bits_correctly
         let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
         assert_eq!(
             bytes,
-            vec![
-                0xF2, 0x00, 0x79, 0x80, 0xF2, 0x01, 0x70, 0x80, 0xF2, 0x02, 0x61, 0x00,
-            ],
+            vec![0xF2, 0x00, 0x79, 0x80, 0xF2, 0x01, 0x70, 0x80, 0xF2, 0x02, 0x61, 0x00,],
             "unexpected FMOVE store bytes for {cpu}"
         );
     }
@@ -3762,9 +3760,15 @@ fn m68k_external_fpu_boundary_matrix_matches_the_promised_surface() {
                     .chain(std::iter::once(fpu_directive.as_str()))
                     .chain(case.lines.iter().copied())
                     .collect();
-                let (_entries, diagnostics) =
-                    assemble_source_entries_with_runtime_mode(&source, false)
-                        .unwrap_or_else(|err| panic!("{case_name} should assemble on {cpu}/{fpu}: {err}", case_name = case.name));
+                let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+                    &source, false,
+                )
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "{case_name} should assemble on {cpu}/{fpu}: {err}",
+                        case_name = case.name
+                    )
+                });
                 assert!(
                     diagnostics.is_empty(),
                     "{case_name} unexpectedly failed on {cpu}/{fpu}: {diagnostics:?}",
@@ -3833,8 +3837,13 @@ fn m68040_rejects_fsin_class_mnemonics_under_fpu_68040() {
         let diagnostic = diagnostics
             .iter()
             .find(|diag| diag.contains("integrated 68040 FPU target"))
-            .unwrap_or_else(|| panic!("missing integrated-68040 diagnostic for {mnemonic}: {diagnostics:?}"));
-        assert!(diagnostic.contains("m68040") || diagnostic.contains("68040"), "{diagnostic}");
+            .unwrap_or_else(|| {
+                panic!("missing integrated-68040 diagnostic for {mnemonic}: {diagnostics:?}")
+            });
+        assert!(
+            diagnostic.contains("m68040") || diagnostic.contains("68040"),
+            "{diagnostic}"
+        );
         assert!(diagnostic.contains("not supported"), "{diagnostic}");
     }
 }
@@ -3935,14 +3944,20 @@ fn m68k_fpu_extended_math_slice_keeps_68881_and_68882_identical() {
 
 #[test]
 fn m68040_rejects_extended_math_mnemonics_under_fpu_68040() {
-    for mnemonic in ["    FETOX FP0,FP1", "    FSCALE FP0,FP1", "    FREM FP0,FP1"] {
+    for mnemonic in [
+        "    FETOX FP0,FP1",
+        "    FSCALE FP0,FP1",
+        "    FREM FP0,FP1",
+    ] {
         let source = vec![".cpu 68040", ".fpu 68040", mnemonic];
         let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
             .expect("assembly should finish with diagnostics");
         let diagnostic = diagnostics
             .iter()
             .find(|diag| diag.contains("integrated 68040 FPU target"))
-            .unwrap_or_else(|| panic!("missing integrated-68040 diagnostic for {mnemonic}: {diagnostics:?}"));
+            .unwrap_or_else(|| {
+                panic!("missing integrated-68040 diagnostic for {mnemonic}: {diagnostics:?}")
+            });
         assert!(diagnostic.contains("68040"), "{diagnostic}");
     }
 }
@@ -5438,7 +5453,11 @@ fn earlier_m68k_cpus_reject_long_divide_surface_with_cpu_level_diagnostics() {
         ),
     ] {
         let (status, message) = assemble_line_status(cpu, "    DIVS.L (A0),D1");
-        assert_eq!(status, LineStatus::Error, "expected rejection on {cpu_name}");
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected rejection on {cpu_name}"
+        );
         let message = message.expect("expected long-divide rejection");
         assert!(
             message.contains(expected),
@@ -5465,7 +5484,9 @@ fn m68020_plus_cas2_memory_pairs_require_address_registers() {
             assert_eq!(status, LineStatus::Error, "expected rejection for '{line}'");
             let message = message.expect("expected CAS2 memory-pair diagnostic");
             assert!(
-                message.contains("CAS2 memory operand must use (An):(Am) address-register pair syntax"),
+                message.contains(
+                    "CAS2 memory operand must use (An):(Am) address-register pair syntax"
+                ),
                 "unexpected diagnostic for '{line}' on {cpu:?}: {message}"
             );
         }
@@ -16127,4 +16148,105 @@ fn m45gs02_vm_baseline_matches_reference() {
         )
     });
     assert_eq!(snapshot, expected);
+}
+
+#[test]
+fn external_oracle_vasm_success_path_manifests() {
+    let manifest_root = workspace_root().join("examples/ab/motorola68000/vasm");
+    match crate::external_oracle::run_vasm_success_fixture_suite(&manifest_root)
+        .expect("external-oracle suite should complete or skip cleanly")
+    {
+        crate::external_oracle::ExternalOracleSuiteOutcome::Skipped(skip) => {
+            eprintln!("SKIP: {}", skip.reason());
+        }
+        crate::external_oracle::ExternalOracleSuiteOutcome::Completed {
+            fixture_count,
+            artifact_root,
+            notes,
+        } => {
+            assert!(
+                fixture_count > 0,
+                "expected at least one external-oracle fixture"
+            );
+            assert!(
+                notes.is_empty(),
+                "success suite should not emit divergence notes"
+            );
+            eprintln!(
+                "external-oracle compared {fixture_count} fixtures under {}",
+                artifact_root.display()
+            );
+        }
+    }
+}
+
+#[test]
+fn external_oracle_vasm_negative_path_manifests() {
+    let manifest_root = workspace_root().join("examples/ab/motorola68000/vasm");
+    match crate::external_oracle::run_vasm_error_fixture_suite(&manifest_root)
+        .expect("external-oracle negative suite should complete or skip cleanly")
+    {
+        crate::external_oracle::ExternalOracleSuiteOutcome::Skipped(skip) => {
+            eprintln!("SKIP: {}", skip.reason());
+        }
+        crate::external_oracle::ExternalOracleSuiteOutcome::Completed {
+            fixture_count,
+            artifact_root,
+            notes,
+        } => {
+            assert!(
+                fixture_count > 0,
+                "expected at least one external-oracle negative fixture"
+            );
+            assert!(
+                notes.is_empty(),
+                "negative suite should not emit divergence notes"
+            );
+            eprintln!(
+                "external-oracle compared {fixture_count} negative fixtures under {}",
+                artifact_root.display()
+            );
+        }
+    }
+}
+
+#[test]
+fn external_oracle_vasm_documented_divergence_manifests() {
+    let manifest_root = workspace_root().join("examples/ab/motorola68000/vasm");
+    match crate::external_oracle::run_vasm_documented_divergence_fixture_suite(&manifest_root)
+        .expect("external-oracle documented-divergence suite should complete or skip cleanly")
+    {
+        crate::external_oracle::ExternalOracleSuiteOutcome::Skipped(skip) => {
+            eprintln!("SKIP: {}", skip.reason());
+        }
+        crate::external_oracle::ExternalOracleSuiteOutcome::Completed {
+            fixture_count,
+            artifact_root,
+            notes,
+        } => {
+            assert!(
+                fixture_count > 0,
+                "expected at least one documented-divergence fixture"
+            );
+            assert!(
+                notes
+                    .iter()
+                    .any(|note| note.contains("documented divergence matched")),
+                "expected visible documented-divergence note: {notes:?}"
+            );
+            assert!(
+                notes
+                    .iter()
+                    .any(|note| note.contains("reclassification candidate")),
+                "expected reclassification-candidate note: {notes:?}"
+            );
+            eprintln!(
+                "external-oracle compared {fixture_count} documented-divergence fixtures under {}",
+                artifact_root.display()
+            );
+            for note in notes {
+                eprintln!("{note}");
+            }
+        }
+    }
 }

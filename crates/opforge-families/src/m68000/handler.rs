@@ -45,12 +45,10 @@ impl M68000CpuHandler {
             (
                 MnemonicKind::Muls | MnemonicKind::Mulu | MnemonicKind::Divs | MnemonicKind::Divu,
                 Some(OperationSize::Long),
-            ) => {
-                Some(EncodeResult::error(format!(
-                    "{} does not support .L size on baseline 68000",
-                    parsed.display_name
-                )))
-            }
+            ) => Some(EncodeResult::error(format!(
+                "{} does not support .L size on baseline 68000",
+                parsed.display_name
+            ))),
             (MnemonicKind::Chk, Some(OperationSize::Long)) => Some(EncodeResult::error(
                 "CHK does not support .L size on baseline 68000",
             )),
@@ -161,14 +159,20 @@ impl CpuHandler for M68000CpuHandler {
 
         if let Some(parsed) = parse_mnemonic(mnemonic) {
             return match parsed.kind {
-                MnemonicKind::Bra => {
-                    self.family
-                        .encode_branch(&parsed.display_name, None, parsed.size, operands, _ctx)
-                }
-                MnemonicKind::Bsr => {
-                    self.family
-                        .encode_branch(&parsed.display_name, None, parsed.size, operands, _ctx)
-                }
+                MnemonicKind::Bra => self.family.encode_branch(
+                    &parsed.display_name,
+                    None,
+                    parsed.size,
+                    operands,
+                    _ctx,
+                ),
+                MnemonicKind::Bsr => self.family.encode_branch(
+                    &parsed.display_name,
+                    None,
+                    parsed.size,
+                    operands,
+                    _ctx,
+                ),
                 MnemonicKind::Bcc(condition) => self.family.encode_branch(
                     &parsed.display_name,
                     Some(condition),

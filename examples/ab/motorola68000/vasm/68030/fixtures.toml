@@ -1,0 +1,29 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68030-carry-forward-core"
+cpu = "68030"
+path = "positive/68030_carry_forward_core.asm"
+
+[[fixtures]]
+id = "68030-link-long-byte-divergence"
+cpu = "68030"
+path = "documented_divergence/68030_link_long.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
+documented_divergence_reason = "LINK.L currently encodes differently between opForge and vasm on 68030 carry-forward coverage"
+
+[[fixtures]]
+id = "68030-callm-rtm-status-divergence"
+cpu = "68030"
+path = "documented_divergence/68030_callm_rtm.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "vasm rejects CALLM and RTM under its selected 68030 architecture mode while opForge currently assembles them"

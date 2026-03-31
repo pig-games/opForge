@@ -320,7 +320,11 @@ impl M68020CpuHandler {
             match register {
                 RegisterListRegister::FpuData(reg) => {
                     saw_data = true;
-                    let bit = if reverse { 7 - *reg as u16 } else { *reg as u16 };
+                    let bit = if reverse {
+                        7 - *reg as u16
+                    } else {
+                        *reg as u16
+                    };
                     data_mask |= 1_u16 << bit;
                 }
                 RegisterListRegister::FpuControl(register) => {
@@ -1017,10 +1021,7 @@ impl M68020CpuHandler {
                     &mut bytes,
                     Self::fpu_effective_address_word(0x0000, src_ea.bits),
                 );
-                M68KFamilyHandler::emit_word(
-                    &mut bytes,
-                    0x4000 | format_bits | 0x003A,
-                );
+                M68KFamilyHandler::emit_word(&mut bytes, 0x4000 | format_bits | 0x003A);
                 bytes.extend_from_slice(&src_ea.extension);
                 EncodeResult::ok(bytes)
             }
@@ -1450,9 +1451,13 @@ impl M68020CpuHandler {
                 self.encode_fnop(&parsed.display_name, parsed.size, parsed.format, operands)
             }
             FpuMnemonicKind::Fmove => self.encode_fmove(parsed.size, parsed.format, operands, ctx),
-            FpuMnemonicKind::Fmovecr => {
-                self.encode_fmovecr(&parsed.display_name, parsed.size, parsed.format, operands, ctx)
-            }
+            FpuMnemonicKind::Fmovecr => self.encode_fmovecr(
+                &parsed.display_name,
+                parsed.size,
+                parsed.format,
+                operands,
+                ctx,
+            ),
             FpuMnemonicKind::Fmovem => self.encode_fmovem(parsed.size, operands, ctx),
             FpuMnemonicKind::Fadd => self.encode_fpu_result_operation(
                 &parsed.display_name,
@@ -1581,9 +1586,13 @@ impl M68020CpuHandler {
                 true,
                 ctx,
             ),
-            FpuMnemonicKind::Fsincos => {
-                self.encode_fsincos(&parsed.display_name, parsed.size, parsed.format, operands, ctx)
-            }
+            FpuMnemonicKind::Fsincos => self.encode_fsincos(
+                &parsed.display_name,
+                parsed.size,
+                parsed.format,
+                operands,
+                ctx,
+            ),
             FpuMnemonicKind::Ftan => self.encode_fpu_result_operation(
                 &parsed.display_name,
                 0x000F,
@@ -2131,14 +2140,22 @@ impl CpuHandler for M68020CpuHandler {
                     );
                 }
                 MnemonicKind::Bra => {
-                    return self
-                        .family
-                        .encode_branch(&parsed.display_name, None, parsed.size, operands, ctx);
+                    return self.family.encode_branch(
+                        &parsed.display_name,
+                        None,
+                        parsed.size,
+                        operands,
+                        ctx,
+                    );
                 }
                 MnemonicKind::Bsr => {
-                    return self
-                        .family
-                        .encode_branch(&parsed.display_name, None, parsed.size, operands, ctx);
+                    return self.family.encode_branch(
+                        &parsed.display_name,
+                        None,
+                        parsed.size,
+                        operands,
+                        ctx,
+                    );
                 }
                 MnemonicKind::Bcc(condition) => {
                     return self.family.encode_branch(
@@ -2232,17 +2249,25 @@ impl CpuHandler for M68020CpuHandler {
                         return EncodeResult::error("DIVSL requires an explicit .L size suffix");
                     }
                     if !matches!(operands, [_, Operand::RegisterPair { .. }]) {
-                        return EncodeResult::error("DIVSL destination must be a data-register pair");
+                        return EncodeResult::error(
+                            "DIVSL destination must be a data-register pair",
+                        );
                     }
-                    self.family
-                        .encode_long_data_register_divide(&parsed.display_name, true, operands, ctx)
+                    self.family.encode_long_data_register_divide(
+                        &parsed.display_name,
+                        true,
+                        operands,
+                        ctx,
+                    )
                 }
                 M68020MnemonicKind::Divul => {
                     if !matches!(parsed.size, Some(OperationSize::Long)) {
                         return EncodeResult::error("DIVUL requires an explicit .L size suffix");
                     }
                     if !matches!(operands, [_, Operand::RegisterPair { .. }]) {
-                        return EncodeResult::error("DIVUL destination must be a data-register pair");
+                        return EncodeResult::error(
+                            "DIVUL destination must be a data-register pair",
+                        );
                     }
                     self.family.encode_long_data_register_divide(
                         &parsed.display_name,

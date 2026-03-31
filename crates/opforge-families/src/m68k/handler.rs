@@ -11,8 +11,7 @@ use super::operand::{
 };
 use super::table::{
     parse_fpu_mnemonic, parse_m68020_mnemonic, parse_mnemonic, BitFieldMnemonic, BitMnemonic,
-    ConditionCode, FpuMnemonicKind, M68020MnemonicKind, MnemonicKind, OperationSize,
-    ShiftMnemonic,
+    ConditionCode, FpuMnemonicKind, M68020MnemonicKind, MnemonicKind, OperationSize, ShiftMnemonic,
 };
 use opcore::expression::expr_span;
 use opcore::parser::{BinaryOp, Expr, UnaryOp};
@@ -3161,7 +3160,9 @@ impl M68KFamilyHandler {
                     Self::data_register_number(right),
                 ) else {
                     return EncodeResult::error_with_span(
-                        format!("{mnemonic} destination must be a data register or data-register pair"),
+                        format!(
+                            "{mnemonic} destination must be a data register or data-register pair"
+                        ),
                         dst.span(),
                     );
                 };

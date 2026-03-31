@@ -3,6 +3,12 @@
 //! Assembler processing for libopforge.
 
 #[cfg(test)]
+mod external_oracle;
+#[cfg(test)]
+mod normalization;
+#[cfg(test)]
+mod oracle;
+#[cfg(test)]
 mod tests;
 
 pub mod engine;

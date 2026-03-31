@@ -210,8 +210,12 @@ impl Assembler {
             } else {
                 RootMetadata::default()
             };
-            let mut asm_line =
-                AsmLine::with_cpu_and_metadata(&mut self.symbols, self.cpu, &self.registry, root_metadata);
+            let mut asm_line = AsmLine::with_cpu_and_metadata(
+                &mut self.symbols,
+                self.cpu,
+                &self.registry,
+                root_metadata,
+            );
             asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
             asm_line.clear_conditionals();
@@ -250,7 +254,10 @@ impl Assembler {
                 self.runtime_lockstep_report
                     .extend(asm_line.take_runtime_lockstep_report());
                 #[cfg(test)]
-                Self::assert_partitioned_runtime_traces_present(lines, &self.runtime_processing_traces);
+                Self::assert_partitioned_runtime_traces_present(
+                    lines,
+                    &self.runtime_processing_traces,
+                );
             }
 
             if !asm_line.cond_is_empty() {
@@ -497,13 +504,7 @@ impl Assembler {
         self.runtime_processing_traces.clear();
         self.runtime_lockstep_report = LockstepReport::default();
         let mut pass1_loop_trace = Vec::new();
-        let mut counts = self.run_layout_pass(
-            lines,
-            1,
-            true,
-            true,
-            &mut pass1_loop_trace,
-        );
+        let mut counts = self.run_layout_pass(lines, 1, true, true, &mut pass1_loop_trace);
         self.loop_iteration_trace_pass1 = pass1_loop_trace;
         if counts.errors > 0 {
             return counts;
@@ -1061,23 +1062,23 @@ impl Assembler {
                                 );
                             }
 
-                                Self::execute_pass1_lines(
-                                    lines,
-                                    idx.saturating_add(1),
-                                    end_idx,
-                                    asm_line,
+                            Self::execute_pass1_lines(
+                                lines,
+                                idx.saturating_add(1),
+                                end_idx,
+                                asm_line,
                                 addr,
                                 counts,
                                 diagnostics,
                                 pass1_loop_trace,
                                 if scoped_repeat {
                                     None
-                                    } else {
-                                        Some(UnscopedRepeatKind::While)
-                                    },
-                                    max_loop_iterations,
-                                    pass_num,
-                                );
+                                } else {
+                                    Some(UnscopedRepeatKind::While)
+                                },
+                                max_loop_iterations,
+                                pass_num,
+                            );
 
                             if scoped_repeat {
                                 let _ = asm_line

@@ -683,6 +683,7 @@ impl M68020CpuHandler {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn encode_fpu_result_operation(
         &self,
         display_name: &str,

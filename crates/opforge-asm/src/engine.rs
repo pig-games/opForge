@@ -68,6 +68,7 @@ pub struct Assembler {
 const MAX_LAYOUT_STABILIZATION_PASSES: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::type_complexity)]
 struct LayoutStabilitySnapshot {
     symbols: Vec<(String, u32, bool, bool, Option<String>)>,
     sections: Vec<(

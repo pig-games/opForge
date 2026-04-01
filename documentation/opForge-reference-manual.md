@@ -610,16 +610,26 @@ Examples in the repo:
 .cpu mc68040
 ```
 
-Motorola 68000-family support is available through the baseline `68000` aliases
-plus the shipped later-family targets `68010`, `68020`, `68030`, and `68040`.
+Motorola 68000-family support now spans the baseline `68000` aliases plus the
+shipped later-family targets `68010`, `68020`, `68030`, and `68040`.
 
-Current shipped scope includes the integer surface for those CPUs plus the
-narrow MMU and optional FPU additions that are now documented in the active
-68000-family extension workflow.
+Current shipped scope includes the full assembler-facing CPU lineage from
+`68000` through `68040`, plus the narrow MMU and optional FPU additions below.
 
 `68010` keeps baseline `68000` addressing. `68020`, `68030`, and `68040`
 accept the shipped `68020+` full-extension addressing forms. `68040`
 additionally accepts `MOVE16` and rejects `CALLM`, `RTM`, and `MOVEC CAAR`.
+
+```
+.fpu none
+.fpu 68881
+.fpu 68882
+.fpu 68040
+```
+
+On Motorola 68000-family CPUs, `.fpu none` disables optional FPU acceptance,
+`.fpu 68881` and `.fpu 68882` are legal on `68020` and `68030`, and
+`.fpu 68040` is legal on `68040`.
 
 Current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
 `68030` and `68040`, and the shipped `68040` MMU-related `MOVEC` register
@@ -632,7 +642,7 @@ while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`.
 The integrated path intentionally excludes external-coprocessor-only
 `FSIN`-class transcendental and extended-math mnemonics. Assembler acceptance
 follows the documented programmer-visible instruction surface, but opForge does
-not model runtime assist behavior or full execution semantics for those FPU
+not model runtime assist behavior or CPU/FPU execution semantics for those
 operations.
 
 Reference fixtures under `examples/motorola68000/` now include broad FPU surface

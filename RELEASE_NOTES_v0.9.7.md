@@ -2,72 +2,95 @@
 
 ## Scope
 
-This release promotes the split `libopforge` workspace to the next public
-release train, expands the published host-facing preview facade, and hardens
-release and cross-platform validation for the new library-oriented surface.
+This release is centered on the Motorola 68000-family expansion that landed on
+this branch: the shipped assembler surface now spans `68000`, `68010`,
+`68020`, `68030`, and `68040`, adds selector-driven FPU support, adds the
+currently supported narrow MMU slice, and introduces external-oracle
+infrastructure for curated parity checks against existing assemblers.
 
 ## Highlights
 
-- Promoted the published `libopforge` and `cli-core` surface from `0.9.5` to
-  `0.9.7`.
-- Landed the multi-crate workspace split behind a curated published
-  `libopforge` preview facade and shared `cli-core` command surface.
-- Expanded the public Rust and C host-facing APIs for assembly, diagnostics,
-  processing, registry, lockstep, formatter, session, and prepared-session
-  workflows.
-- Kept the `libopforge` and `opforge-ffi` host surfaces explicitly pre-1.0:
-  this release publishes a broader preview API, not a defended stable
-  contract.
-- Strengthened release engineering with `release-ffi` packaging, ABI/export
-  coverage, panic-boundary smoke tests, and broader build-matrix validation.
-- Normalized public dependency/source-map path rendering across platforms so
-  Windows release validation matches the documented host contract.
+- Shipped the Motorola 68000-family CPU lineage from `68000` through `68040`,
+  including the later-family addressing and instruction deltas needed for
+  `68010`, `68020`, `68030`, and `68040`.
+- Added selector-driven FPU support with `.fpu 68881`, `.fpu 68882`, and
+  `.fpu 68040`, plus example/reference coverage for both external and
+  integrated FPU paths.
+- Added the current narrow MMU surface for the 68000 family: `PFLUSH` on
+  `68030` and `68040`, plus the already-shipped `68040` MMU-related `MOVEC`
+  control-register surface.
+- Introduced external-oracle A/B infrastructure, curated `vasm` fixture sets,
+  and contributor guidance for installing and using the local `vasm` wrappers.
+- Closed branch review/remediation follow-up with additional legality,
+  divergence, and parity fixes across the new 68k surface.
 
 ## Added
 
-- Published `libopforge` preview documentation for embedding,
-  diagnostics/fixits, execution modes/lockstep, and FFI usage patterns.
-- Release-FFI smoke and export-surface validation in both release and CI paths.
-- Branch-local workflow assets for plan/review/spec/closure quality gates in
-  this worktree.
+- New Motorola 68000-family CPU targets: `68010`, `68020`, `68030`, and
+  `68040`, with the corresponding `m680xx` and `mc680xx` aliases.
+- `68020+` full-extension addressing support on `68020`, `68030`, and `68040`.
+- New later-family instruction coverage including representative `MOVEC`,
+  `MOVES`, `RTD`, `CALLM`, `RTM`, `CAS`, `CAS2`, `CHK2`, `CMP2`, bit-field,
+  `MOVE16`, and long integer instruction slices where architecturally legal.
+- Selector-driven FPU support:
+  - `.fpu 68881` and `.fpu 68882` on `68020` and `68030`
+  - `.fpu 68040` on `68040`
+- Curated 68k MMU/FPU examples and references such as
+  `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
+  `68030_pflush_external_fpu`, `68040_integrated_fpu`, and
+  `68040_movec_mmu_registers`.
+- External-oracle infrastructure in `opforge-asm` plus curated `vasm`
+  differential fixtures for Motorola 68000-family and MOS 6502-family
+  coverage.
+- Contributor documentation for installing `vasm` and the `opforge-vasm68k` /
+  `vasm68k` wrappers used by the oracle workflow.
 
 ## Changed
 
-- The repository is now organized as a split workspace with dedicated crates
-  for core language semantics, assembler behavior, orchestration, families,
-  formatter, LSP, CLI, FFI, and the published facade.
-- `cli-core` now owns the visible CLI version/build-profile reporting used by
-  `opforge --version` and related command output.
-- Host-facing dependency output and source-origin reporting now use documented
-  slash-form path text instead of leaking platform-specific separator or
-  verbatim-path forms.
+- The public README and reference manual now describe the shipped Motorola
+  68000-family support as a current capability set, including the later-family
+  CPU lineage, `.fpu` selection rules, and the intentionally narrow MMU scope.
+- The 68k example and reference corpus was expanded substantially so canonical
+  addressing, aliases, later-family deltas, FPU selection, and MMU smoke
+  coverage are visible in checked-in source and golden outputs.
+- The external-oracle workflow now distinguishes shared parity, negative
+  parity, and documented divergence fixtures instead of treating all
+  cross-assembler differences the same way.
 
 ## Fixed
 
-- Windows release validation no longer fails on mixed-separator or canonical
-  path-form drift in public `libopforge` dependency/source-map outputs.
-- Release packaging now verifies the unwind-safe FFI build profile and shipped
-  library exports more directly.
-- LSP and assembly host flows in the promoted workspace now share the same
-  documented error/reporting contracts more consistently.
+- Review-remediation fixes tightened later-family legality and parity behavior,
+  including representative `CMP`, PC-relative scalar/data legality, long-divide
+  aliases, `FNOP`, `CALLM`/`RTM`, and `MOVEC` matrix behavior.
+- The external-oracle workflow and curated `vasm` corpora now classify several
+  previously misbucketed 68k fixtures correctly as positive, negative, or
+  documented-divergence cases.
+- Public docs and release surfaces no longer understate the shipped `68000`
+  through `68040` support or describe the new 68k family work as merely
+  planned.
 
 ## Validation
 
 Release validation for this branch included:
 
-- `cargo fmt --all --check`
-- `cargo clippy -- -D warnings`
+- `cargo fmt --all`
+- `cargo clippy --workspace -- -D warnings`
 - `cargo audit`
-- `cargo test --locked`
-- `cargo test -p libopforge public_ --lib`
+- `make test`
+- focused 68k assembler, example/reference, and external-oracle test slices
+- focused version-surface validation such as `cargo test version_flag_reports_build_profile`
+- focused golden-output validation such as `cargo test -p asm examples_match_reference_outputs -- --nocapture`
 
 ## Upgrade Notes
 
-- External Rust consumers targeting the current preview host surface should pin
-  `libopforge` `0.9.7` intentionally and expect breaking changes across future
-  `0.x` releases.
-- Non-Rust consumers should treat `opforge-ffi` the same way: usable today,
-  but not yet a stable long-term ABI promise.
-- CLI/version-facing surfaces now report `0.9.7` through `cli-core`.
-- For release automation, continue using one release-notes file per tag and do
-  not edit previously tagged release-note files.
+- `.cpu` now accepts the full shipped Motorola 68000-family lineage from
+  `68000` through `68040`, including the corresponding `m680xx` and `mc680xx`
+  aliases.
+- FPU assembly is now explicit and selector-driven: use `.fpu 68881` or
+  `.fpu 68882` on `68020`/`68030`, `.fpu 68040` on `68040`, and `.fpu none`
+  to disable optional FPU acceptance on active 68k targets.
+- MMU support remains intentionally narrow. Source that expects broad PMMU/MMU
+  coverage beyond `PFLUSH` and the current `68040` MMU-related `MOVEC`
+  register surface is still out of scope.
+- The external oracle workflow expects a local `vasm` installation and the
+  `opforge-vasm68k` wrapper when running the curated differential tests.

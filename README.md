@@ -8,11 +8,10 @@ It currently ships builtin support for:
 - Motorola 6800 family processors: 6809 and HD6309
 - Motorola 68000 family processors: `68000`, `68010`, `68020`, `68030`, and `68040` with the corresponding `m68000`/`mc68000` through `m68040`/`mc68040` aliases
 
-Motorola 68000-family coverage currently spans the shipped integer surface for
-`68000`, `68010`, `68020`, `68030`, and `68040`. `68010` keeps baseline
-68000 addressing, `68020`/`68030`/`68040` add the shipped `68020+`
-full-extension addressing surface, and `68040` adds `MOVE16` while rejecting
-`CALLM`, `RTM`, and `MOVEC CAAR`.
+Motorola 68000-family support now spans the shipped CPU lineage from `68000`
+through `68040`. `68010` keeps baseline `68000` addressing, `68020`/`68030`/
+`68040` add the shipped `68020+` full-extension addressing surface, and
+`68040` adds `MOVE16` while rejecting `CALLM`, `RTM`, and `MOVEC CAAR`.
 
 The current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
 `68030` and `68040`, and the existing `68040` MMU-related `MOVEC` register
@@ -22,9 +21,9 @@ The current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
 `.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
 while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`.
 That integrated path intentionally excludes external-coprocessor-only
-`FSIN`-class transcendental and extended-math mnemonics. Broader runtime
-semantics are not modeled; opForge assembles the documented instruction surface
-and keeps execution behavior out of scope.
+`FSIN`-class transcendental and extended-math mnemonics. opForge assembles the
+documented programmer-visible instruction surface and keeps runtime execution
+semantics out of scope.
 
 The shipped Motorola 68000 example set now includes focused FPU fixtures such as
 `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
@@ -117,7 +116,11 @@ Common local commands:
 make build
 make test
 make reference-test
+make test-external-oracle
 make build-ffi-release
 ```
 
 Additional build and test lanes are listed in [`Makefile`](Makefile).
+The external-oracle lane expects a local `vasm` installation plus the
+`opforge-vasm68k` wrapper described in
+[`documentation/opForge-vasm-contributor-install-guide.md`](documentation/opForge-vasm-contributor-install-guide.md).

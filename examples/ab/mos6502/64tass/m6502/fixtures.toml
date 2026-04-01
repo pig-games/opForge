@@ -14,3 +14,17 @@ path = "positive/m6502_simple_core.asm"
 id = "m6502-branch-and-jump-core"
 cpu = "m6502"
 path = "positive/m6502_branch_jump_core.asm"
+
+[[fixtures]]
+id = "m6502-wrong-operand-count"
+cpu = "m6502"
+path = "negative/wrong_operand_count.asm"
+expected_outcome = "error"
+compare_mode = "error_class"
+
+[[fixtures]]
+id = "m6502-value-out-of-range"
+cpu = "m6502"
+path = "negative/value_out_of_range.asm"
+expected_outcome = "error"
+compare_mode = "error_class"

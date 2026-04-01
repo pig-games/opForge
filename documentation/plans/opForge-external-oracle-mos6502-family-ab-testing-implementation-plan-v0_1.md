@@ -167,7 +167,7 @@ without affecting the default `examples/reference` or workspace test paths.
     - the adapter no longer leaves `45gs02` target selection implicit
     - all four governed CPU manifests can execute through the same generic harness boundary
 
-- [ ] Work item 5: add bounded negative-fixture support and `64tass` error-class normalization for deterministic shared-subset failures
+- [x] Work item 5: add bounded negative-fixture support and `64tass` error-class normalization for deterministic shared-subset failures
   - Source requirement or finding IDs: `REQ-EXTAB6502-006`, `REQ-EXTAB6502-009`, `REQ-EXTAB6502-010`, `REQ-EXTAB6502-011`, `AC-EXTAB6502-004`, `AC-EXTAB6502-007`, `AC-EXTAB6502-009`
   - Validation: add and run normalization-focused tests plus curated negative-fixture tests, then rerun `cargo test -p asm examples_match_reference_outputs`.
   - Definition of done: `expected_outcome = error` fixtures compare bounded normalized error classes for deterministic MOS-family shared-subset failures instead of raw stderr text.

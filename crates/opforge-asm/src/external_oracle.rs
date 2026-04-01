@@ -1,5 +1,6 @@
 use crate::normalization::{
-    diagnostic_excerpt, normalize_opforge_diagnostics, normalize_vasm_stderr, NormalizedErrorClass,
+    diagnostic_excerpt, normalize_64tass_stderr, normalize_opforge_diagnostics,
+    normalize_vasm_stderr, NormalizedErrorClass,
 };
 use crate::oracle::{
     tass64::Tass64Adapter, vasm::VasmAdapter, ExternalOracleAdapter, OracleAssembleFailure,
@@ -286,6 +287,13 @@ pub(crate) fn run_tass64_success_fixture_suite(
 ) -> Result<ExternalOracleSuiteOutcome, String> {
     let adapter = Tass64Adapter::from_env();
     run_fixture_suite(manifest_root, &adapter, ExpectedOutcome::Success)
+}
+
+pub(crate) fn run_tass64_error_fixture_suite(
+    manifest_root: &Path,
+) -> Result<ExternalOracleSuiteOutcome, String> {
+    let adapter = Tass64Adapter::from_env();
+    run_fixture_suite(manifest_root, &adapter, ExpectedOutcome::Error)
 }
 
 pub(crate) fn run_vasm_error_fixture_suite(
@@ -847,7 +855,8 @@ fn build_status_mismatch(
 
 fn normalize_oracle_diagnostics(oracle_id: &str, text: &str) -> NormalizedErrorClass {
     match oracle_id {
-        "vasm" | "64tass" => normalize_vasm_stderr(text),
+        "vasm" => normalize_vasm_stderr(text),
+        "64tass" => normalize_64tass_stderr(text),
         _ => NormalizedErrorClass::Unclassified,
     }
 }
@@ -2778,7 +2787,7 @@ compare_mode = "error_class"
         .expect_err("mismatched normalized classes should fail");
 
         assert!(err.contains("opforge error class:"));
-        assert!(err.contains("oracle error class: instruction-rejected"));
+        assert!(err.contains("oracle error class: unknown-mnemonic"));
         assert!(err.contains("opforge excerpt:"));
         assert!(err.contains(
             "oracle excerpt: error 2 in line 1 of \"comma_only.asm\": unknown mnemonic <bogus>"

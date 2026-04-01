@@ -214,6 +214,15 @@ impl CpuHandler for M68030CpuHandler {
         }
 
         if let Some(parsed) = parse_m68020_mnemonic(mnemonic) {
+            if matches!(parsed.kind, M68020MnemonicKind::Rtm) {
+                if parsed.has_unknown_size_suffix {
+                    return EncodeResult::error(format!(
+                        "unsupported size suffix for {}",
+                        parsed.display_name
+                    ));
+                }
+                return EncodeResult::error("RTM is only supported on m68020");
+            }
             if matches!(parsed.kind, M68020MnemonicKind::Pflush) {
                 if parsed.has_unknown_size_suffix {
                     return EncodeResult::error(format!(

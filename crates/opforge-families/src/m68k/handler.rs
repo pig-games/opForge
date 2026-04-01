@@ -3137,6 +3137,7 @@ impl M68KFamilyHandler {
         &self,
         mnemonic: &str,
         signed: bool,
+        register_pair_uses_quadword_dividend: bool,
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
@@ -3172,7 +3173,11 @@ impl M68KFamilyHandler {
                         dst.span(),
                     );
                 }
-                (true, remainder_reg, quotient_reg)
+                (
+                    register_pair_uses_quadword_dividend,
+                    remainder_reg,
+                    quotient_reg,
+                )
             }
             _ => {
                 return EncodeResult::error_with_span(

@@ -8,7 +8,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                5  
 ----                                6  start
 ----                                7      ; Core move and arithmetic surface.
-1000    F2 00 00 00                 8      FNOP
+1000    F2 80 00 00                 8      FNOP
 1004    F2 00 00 80                 9      FMOVE FP0,FP1
 1008    F2 00 5C 0B                10      FMOVECR #11,FP0
 100C    F2 10 45 00                11      FMOVE.S (A0),FP2
@@ -90,7 +90,7 @@ GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    F2 00 00 00 F2 00 00 80 F2 00 5C 0B F2 10 45 00
+1000    F2 80 00 00 F2 00 00 80 F2 00 5C 0B F2 10 45 00
 1010    F2 18 55 80 F2 21 4A 00 F2 2A 4E 80 00 08 F2 00
 1020    05 22 F2 10 45 A2 F2 18 56 22 F2 21 4A A2 F2 2A
 1030    4F 22 00 08 F2 00 09 A8 F2 00 0E 23 F2 00 12 A0

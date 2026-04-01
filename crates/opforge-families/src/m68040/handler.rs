@@ -86,7 +86,8 @@ impl M68040CpuHandler {
     fn supports_integrated_68040_fpu(kind: FpuMnemonicKind) -> bool {
         matches!(
             kind,
-            FpuMnemonicKind::Fmove
+            FpuMnemonicKind::Fnop
+                | FpuMnemonicKind::Fmove
                 | FpuMnemonicKind::Fmovem
                 | FpuMnemonicKind::Fadd
                 | FpuMnemonicKind::Fsub

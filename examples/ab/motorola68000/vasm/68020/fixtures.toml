@@ -25,13 +25,9 @@ documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
 documented_divergence_reason = "LINK.L currently encodes differently between opForge and vasm"
 
 [[fixtures]]
-id = "68020-div-long-alias-byte-divergence"
+id = "68020-div-long-aliases"
 cpu = "68020"
-path = "documented_divergence/68020_div_long_aliases.asm"
-expected_outcome = "documented_divergence"
-compare_mode = "bytes"
-documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
-documented_divergence_reason = "DIVSL.L and DIVUL.L currently encode differently between opForge and vasm"
+path = "positive/68020_div_long_aliases.asm"
 
 [[fixtures]]
 id = "68020-pack-negative-status-divergence"

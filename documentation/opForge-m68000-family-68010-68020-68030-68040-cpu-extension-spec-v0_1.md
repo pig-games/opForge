@@ -192,7 +192,7 @@ and incompatibilities.
 | Long integer multiply and divide | No | Yes | Yes | Yes | `MULS.L`, `MULU.L`, `DIVS.L`, `DIVU.L` and legal long-result forms |
 | Bit-field family | No | Yes | Yes | Yes | `BFTST`, `BFEXTU`, `BFCHG`, `BFEXTS`, `BFCLR`, `BFFFO`, `BFSET`, `BFINS` |
 | `PACK`, `UNPK` | No | Yes | Yes | Yes | Added on `m68020` |
-| `RTM` | No | Yes | Yes | No | Removed on `m68040` |
+| `RTM` | No | Yes | No | No | `m68020`-only in this family slice |
 | `TRAPcc` family | No | Yes | Yes | Yes | Added on `m68020` |
 | `MOVE16` | No | No | No | Yes | Added on `m68040` |
 | MMU, PMMU, FPU, coprocessor, cache-control surfaces | No | No | No | No | Explicitly out of scope |
@@ -435,10 +435,11 @@ later-family addressing rules in this specification.
 
 ### Carry-forward policy for m68030
 - `m68030` is a distinct CPU target, not an informal alias of `m68020`.
-- `m68030` carries forward the full in-scope non-MMU, non-FPU `m68020`
-  integer and addressing surface unchanged.
+- `m68030` carries forward the in-scope non-MMU, non-FPU `m68020`
+  integer and addressing surface except for `RTM`.
 - `m68030` adds no further positive integer mnemonic families beyond that
   carry-forward surface in this spec.
+- `RTM` must reject on `m68030`; it remains `m68020`-only in this spec.
 - `m68030` must continue to reject PMMU, MMU, coprocessor, FPU, and any other
   excluded system surface deterministically.
 
@@ -453,8 +454,8 @@ The explicit `m68040` additions and restrictions for this spec are:
 - `MOVE16` is legal only on `m68040`.
 - `CALLM` is illegal on `m68040` and must be rejected even though it is legal
   on `m68020` and `m68030`.
-- `RTM` is illegal on `m68040` and must be rejected even though it is legal on
-  `m68020` and `m68030`.
+- `RTM` is illegal on `m68040` and must be rejected; it is legal on `m68020`
+  but not carried forward to `m68030` in this spec.
 - `CAAR` is illegal in `MOVEC` on `m68040`.
 - MMU, PMMU, FPU, coprocessor, cache-management, and cache/MMU configuration
   surfaces remain out of scope and must be rejected on `m68040`.
@@ -535,9 +536,10 @@ The assembler must provide deterministic diagnostics for:
       multiply/divide, `CAS`, `CAS2`, `CHK2`, `CMP2`, bit-field families,
       `PACK`, `UNPK`, `TRAPcc`, `CALLM`, and `RTM` assemble correctly on
       `m68020` and fail deterministically on earlier CPUs.
-- [ ] `AC-M68KLINEAGE-007`: `m68030` tests demonstrate the same positive
-      in-scope integer and addressing surface as `m68020` and deterministic
-      rejection of out-of-scope MMU or coprocessor forms.
+- [ ] `AC-M68KLINEAGE-007`: `m68030` tests demonstrate the carried-forward
+      positive integer and addressing surface from `m68020` except for `RTM`,
+      plus deterministic rejection of `RTM` and out-of-scope MMU or
+      coprocessor forms.
 - [ ] `AC-M68KLINEAGE-008`: `m68040` tests demonstrate the carried-forward
   later-family surface with representative positive cases for carried-
   forward `CAS` or `CAS2`, `CHK2` or `CMP2`, bit-field forms,
@@ -566,7 +568,8 @@ The assembler must provide deterministic diagnostics for:
   - representative positive byte-encoding cases for the `m68020`-introduced
     instruction families grouped by class: long branches, `LINK.L`, `EXTB.L`,
     long multiply/divide, `CAS`/`CAS2`, `CHK2`/`CMP2`, bit fields,
-    `PACK`/`UNPK`, `TRAPcc`, `CALLM`/`RTM`
+    `PACK`/`UNPK`, `TRAPcc`, `CALLM`, `RTM` on `m68020`, and `RTM` rejection on
+    `m68030`
   - representative positive byte-encoding cases for carried-forward `m68040`
     later-family classes such as `CAS`/`CAS2`, `CHK2`/`CMP2`, bit fields,
     `PACK`/`UNPK`, and `TRAPcc`, plus `MOVE16`

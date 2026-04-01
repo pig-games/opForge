@@ -41,6 +41,7 @@ pub(crate) fn normalize_opforge_diagnostics(text: &str) -> NormalizedErrorClass 
             "unknown mnemonic",
             "instruction not supported",
             "is not supported on",
+            "is only supported on",
         ],
     ) {
         return NormalizedErrorClass::InstructionRejected;
@@ -138,6 +139,23 @@ ERROR: No instruction found for BOGUS"#;
         error: AsmError {
             kind: Instruction,
             message: "CALLM is not supported on m68040",
+        },
+    },
+]"#;
+        assert_eq!(
+            normalize_opforge_diagnostics(diagnostics),
+            NormalizedErrorClass::InstructionRejected
+        );
+    }
+
+    #[test]
+    fn normalization_classifies_opforge_single_cpu_instruction_rejection() {
+        let diagnostics = r#"summary: Errors detected in source.
+[
+    Diagnostic {
+        error: AsmError {
+            kind: Instruction,
+            message: "RTM is only supported on m68020",
         },
     },
 ]"#;

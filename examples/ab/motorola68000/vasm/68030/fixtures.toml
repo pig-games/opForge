@@ -20,10 +20,17 @@ documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
 documented_divergence_reason = "LINK.L currently encodes differently between opForge and vasm on 68030 carry-forward coverage"
 
 [[fixtures]]
-id = "68030-callm-rtm-status-divergence"
+id = "68030-callm-status-divergence"
 cpu = "68030"
-path = "documented_divergence/68030_callm_rtm.asm"
+path = "documented_divergence/68030_callm.asm"
 expected_outcome = "documented_divergence"
 compare_mode = "bytes"
 documented_divergence_kind = "opforge_success_oracle_error"
-documented_divergence_reason = "vasm rejects CALLM and RTM under its selected 68030 architecture mode while opForge currently assembles them"
+documented_divergence_reason = "vasm rejects CALLM under its selected 68030 architecture mode while opForge currently assembles it"
+
+[[fixtures]]
+id = "68030-rtm-error"
+cpu = "68030"
+path = "negative/68030_rtm_error.asm"
+expected_outcome = "error"
+compare_mode = "error_class"

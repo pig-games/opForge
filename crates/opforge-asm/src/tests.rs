@@ -3460,7 +3460,7 @@ fn m68k_external_fpu_missing_mnemonics_assemble_on_68020_and_68030() {
         assert_eq!(
             bytes,
             vec![
-                0xF2, 0x00, 0x00, 0x00, 0xF2, 0x00, 0x5C, 0x0B, 0xF2, 0x00, 0x05, 0x24, 0xF2, 0x00,
+                0xF2, 0x80, 0x00, 0x00, 0xF2, 0x00, 0x5C, 0x0B, 0xF2, 0x00, 0x05, 0x24, 0xF2, 0x00,
                 0x0E, 0x27,
             ],
             "unexpected bytes for {cpu}/{fpu}"
@@ -3470,12 +3470,7 @@ fn m68k_external_fpu_missing_mnemonics_assemble_on_68020_and_68030() {
 
 #[test]
 fn m68k_external_fpu_missing_mnemonics_reject_disabled_or_integrated_68040_targets() {
-    for mnemonic in [
-        "    FNOP",
-        "    FMOVECR #11,FP0",
-        "    FSGLDIV FP1,FP2",
-        "    FSGLMUL FP3,FP4",
-    ] {
+    for mnemonic in ["    FMOVECR #11,FP0", "    FSGLDIV FP1,FP2", "    FSGLMUL FP3,FP4"] {
         for cpu in ["68020", "68030"] {
             let cpu_directive = format!(".cpu {cpu}");
             let disabled_source = [cpu_directive.as_str(), ".fpu none", mnemonic];
@@ -3517,7 +3512,7 @@ fn m68k_external_fpu_boundary_matrix_matches_the_promised_surface() {
         ExternalFpuBoundaryCase {
             name: "FNOP",
             lines: &["    FNOP"],
-            allow_integrated_68040: false,
+            allow_integrated_68040: true,
         },
         ExternalFpuBoundaryCase {
             name: "FMOVE",
@@ -5363,11 +5358,11 @@ fn m68020_second_instruction_group_assembles() {
     );
     assert_eq!(
         assemble_bytes(m68020_cpu_id, "    DIVSL.L (A0),D2:D3"),
-        vec![0x4C, 0x50, 0x3C, 0x02]
+        vec![0x4C, 0x50, 0x38, 0x02]
     );
     assert_eq!(
         assemble_bytes(m68020_cpu_id, "    DIVUL.L (A0),D2:D3"),
-        vec![0x4C, 0x50, 0x34, 0x02]
+        vec![0x4C, 0x50, 0x30, 0x02]
     );
     assert_eq!(
         assemble_bytes(m68020_cpu_id, "    DIVS (A0),D1"),
@@ -5585,7 +5580,6 @@ fn m68030_carries_forward_second_m68020_instruction_group() {
         "    PACK D0,D1,#1",
         "    TRAPNE",
         "    CALLM #5,($1234).W",
-        "    RTM A0",
     ] {
         assert_eq!(
             assemble_bytes(m68030_cpu_id, line),
@@ -5593,6 +5587,19 @@ fn m68030_carries_forward_second_m68020_instruction_group() {
             "expected m68030 carry-forward bytes for '{line}'"
         );
     }
+}
+
+#[test]
+fn m68030_rejects_rtm_while_callm_remains_available() {
+    assert_eq!(
+        assemble_bytes(m68030_cpu_id, "    CALLM #5,($1234).W"),
+        assemble_bytes(m68020_cpu_id, "    CALLM #5,($1234).W")
+    );
+
+    let (status, message) = assemble_line_status(m68030_cpu_id, "    RTM A0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected m68030 RTM diagnostic");
+    assert!(message.contains("RTM is only supported on m68020"));
 }
 
 #[test]
@@ -16233,12 +16240,6 @@ fn external_oracle_vasm_documented_divergence_manifests() {
                     .iter()
                     .any(|note| note.contains("documented divergence matched")),
                 "expected visible documented-divergence note: {notes:?}"
-            );
-            assert!(
-                notes
-                    .iter()
-                    .any(|note| note.contains("reclassification candidate")),
-                "expected reclassification-candidate note: {notes:?}"
             );
             eprintln!(
                 "external-oracle compared {fixture_count} documented-divergence fixtures under {}",

@@ -13,7 +13,6 @@ start:
     PACK D0,D1,#1
     TRAPNE
     CALLM #5,($1234).W
-    RTM A0
 far_target:
     RTS
 

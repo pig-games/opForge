@@ -9,8 +9,8 @@ used in the main repository.
 
 In addition to the rules below, this repository currently has:
 
-- a plan execution gate in [agents/plan-compliance-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-compliance-reviewer.agent.md)
-- a workflow design proposal in [documentation/opforge-agent-workflow-proposal-v0_1.md](/Users/erik/Code/Retro/opForge/documentation/opforge-agent-workflow-proposal-v0_1.md)
+- a plan execution gate in [agents/plan-compliance-reviewer.agent.md](agents/plan-compliance-reviewer.agent.md)
+- a workflow design proposal in [documentation/opforge-agent-workflow-proposal-v0_1.md](documentation/opforge-agent-workflow-proposal-v0_1.md)
 
 When plan-driven work is active in this repository, prefer using the local
 `agents/` definitions and custom agents in this repo rather than relying on external path
@@ -33,12 +33,12 @@ references.
 
 This repository includes workflow skills under `skills/`.
 
-- Start here: [skills/README.md](/Users/erik/Code/Retro/opForge/skills/README.md)
+- Start here: [skills/README.md](skills/README.md)
 - Workflow skills in this worktree:
-  - [skills/opforge-review-reporting/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-reporting/SKILL.md)
-  - [skills/opforge-plan-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-plan-authoring/SKILL.md)
-  - [skills/opforge-spec-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-spec-authoring/SKILL.md)
-  - [skills/opforge-review-closure/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-closure/SKILL.md)
+  - [skills/opforge-review-reporting/SKILL.md](skills/opforge-review-reporting/SKILL.md)
+  - [skills/opforge-plan-authoring/SKILL.md](skills/opforge-plan-authoring/SKILL.md)
+  - [skills/opforge-spec-authoring/SKILL.md](skills/opforge-spec-authoring/SKILL.md)
+  - [skills/opforge-review-closure/SKILL.md](skills/opforge-review-closure/SKILL.md)
 
 These workflow skills cover review/reporting/planning/spec/closure work for this
 repository.
@@ -58,10 +58,10 @@ The canonical artifact types for this worktree are:
 
 Preferred templates:
 
-- [templates/spec-template.md](/Users/erik/Code/Retro/opForge/templates/spec-template.md)
-- [templates/plan-template.md](/Users/erik/Code/Retro/opForge/templates/plan-template.md)
-- [templates/review-report-template.md](/Users/erik/Code/Retro/opForge/templates/review-report-template.md)
-- [templates/finding-closure-report-template.md](/Users/erik/Code/Retro/opForge/templates/finding-closure-report-template.md)
+- [templates/spec-template.md](templates/spec-template.md)
+- [templates/plan-template.md](templates/plan-template.md)
+- [templates/review-report-template.md](templates/review-report-template.md)
+- [templates/finding-closure-report-template.md](templates/finding-closure-report-template.md)
 
 Plan-specific rule:
 
@@ -70,36 +70,36 @@ Plan-specific rule:
 
 Helper scripts:
 
-- [scripts/workflow/new_artifact_from_template.sh](/Users/erik/Code/Retro/opForge/scripts/workflow/new_artifact_from_template.sh)
-- [scripts/workflow/check_spec_artifact.py](/Users/erik/.codex/worktrees/7175/opForge/scripts/workflow/check_spec_artifact.py)
-- [scripts/workflow/check_plan_checkboxes.py](/Users/erik/Code/Retro/opForge/scripts/workflow/check_plan_checkboxes.py)
-- [scripts/workflow/check_review_report.py](/Users/erik/Code/Retro/opForge/scripts/workflow/check_review_report.py)
-- [scripts/workflow/run_spec_workflow.sh](/Users/erik/.codex/worktrees/7175/opForge/scripts/workflow/run_spec_workflow.sh)
-- [scripts/workflow/run_plan_workflow.sh](/Users/erik/.codex/worktrees/7175/opForge/scripts/workflow/run_plan_workflow.sh)
-- [scripts/workflow/run_review_workflow.sh](/Users/erik/Code/Retro/opForge/scripts/workflow/run_review_workflow.sh)
+- [scripts/workflow/new_artifact_from_template.sh](scripts/workflow/new_artifact_from_template.sh)
+- [scripts/workflow/check_spec_artifact.py](scripts/workflow/check_spec_artifact.py)
+- [scripts/workflow/check_plan_checkboxes.py](scripts/workflow/check_plan_checkboxes.py)
+- [scripts/workflow/check_review_report.py](scripts/workflow/check_review_report.py)
+- [scripts/workflow/run_spec_workflow.sh](scripts/workflow/run_spec_workflow.sh)
+- [scripts/workflow/run_plan_workflow.sh](scripts/workflow/run_plan_workflow.sh)
+- [scripts/workflow/run_review_workflow.sh](scripts/workflow/run_review_workflow.sh)
 
 ## Workflow routing rules
 
 Use the following routing rules by default:
 
 - for code review reports, use the review workflow:
-  - [skills/opforge-review-reporting/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-reporting/SKILL.md)
+  - [skills/opforge-review-reporting/SKILL.md](skills/opforge-review-reporting/SKILL.md)
   - for multi-model code review, prefer the branch-local triple review stack:
-    - [agents/review-triple-orchestrator.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-triple-orchestrator.agent.md)
+    - [agents/review-triple-orchestrator.agent.md](agents/review-triple-orchestrator.agent.md)
 - for implementation or remediation plans, use:
-  - [skills/opforge-plan-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-plan-authoring/SKILL.md)
+  - [skills/opforge-plan-authoring/SKILL.md](skills/opforge-plan-authoring/SKILL.md)
   - for high-value or high-ambiguity plan gate review, prefer the branch-local
     multi-agent plan quality gate using the same nested custom-agent pattern as
     the triple review workflow:
-    - [agents/plan-quality-orchestrator.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-quality-orchestrator.agent.md)
+    - [agents/plan-quality-orchestrator.agent.md](agents/plan-quality-orchestrator.agent.md)
 - for new behavioral specs, use:
-  - [skills/opforge-spec-authoring/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-spec-authoring/SKILL.md)
+  - [skills/opforge-spec-authoring/SKILL.md](skills/opforge-spec-authoring/SKILL.md)
   - for high-value or high-ambiguity spec gate review, prefer the branch-local
     multi-agent spec quality gate using the same nested custom-agent pattern as
     the triple review workflow:
-    - [agents/spec-quality-orchestrator.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/spec-quality-orchestrator.agent.md)
+    - [agents/spec-quality-orchestrator.agent.md](agents/spec-quality-orchestrator.agent.md)
 - for review finding closure claims, use:
-  - [skills/opforge-review-closure/SKILL.md](/Users/erik/Code/Retro/opForge/skills/opforge-review-closure/SKILL.md)
+  - [skills/opforge-review-closure/SKILL.md](skills/opforge-review-closure/SKILL.md)
 
 ## Workflow gates
 
@@ -107,20 +107,20 @@ Use the following branch-local gates:
 
 - spec quality gate:
   - preferred multi-agent escalation path:
-    - [agents/spec-quality-orchestrator.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/spec-quality-orchestrator.agent.md)
-  - [agents/spec-quality-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/spec-quality-reviewer.agent.md)
+    - [agents/spec-quality-orchestrator.agent.md](agents/spec-quality-orchestrator.agent.md)
+  - [agents/spec-quality-reviewer.agent.md](agents/spec-quality-reviewer.agent.md)
 - review report quality gate:
-  - [agents/review-report-quality-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-report-quality-reviewer.agent.md)
+  - [agents/review-report-quality-reviewer.agent.md](agents/review-report-quality-reviewer.agent.md)
 - plan quality gate:
   - preferred multi-agent escalation path:
-    - [agents/plan-quality-orchestrator.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-quality-orchestrator.agent.md)
-  - [agents/plan-quality-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-quality-reviewer.agent.md)
+    - [agents/plan-quality-orchestrator.agent.md](agents/plan-quality-orchestrator.agent.md)
+  - [agents/plan-quality-reviewer.agent.md](agents/plan-quality-reviewer.agent.md)
 - execution compliance gate:
-  - [agents/plan-compliance-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-compliance-reviewer.agent.md)
+  - [agents/plan-compliance-reviewer.agent.md](agents/plan-compliance-reviewer.agent.md)
 - finding closure gate:
-  - [agents/finding-closure-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/finding-closure-reviewer.agent.md)
+  - [agents/finding-closure-reviewer.agent.md](agents/finding-closure-reviewer.agent.md)
 - optional traceability gate for larger efforts:
-  - [agents/artifact-traceability-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/artifact-traceability-reviewer.agent.md)
+  - [agents/artifact-traceability-reviewer.agent.md](agents/artifact-traceability-reviewer.agent.md)
 
 Rules:
 

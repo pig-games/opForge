@@ -12,6 +12,11 @@ cpu = "68040"
 path = "positive/68040_integrated_fpu_core.asm"
 
 [[fixtures]]
+id = "68040-fnop-core"
+cpu = "68040"
+path = "positive/68040_fnop.asm"
+
+[[fixtures]]
 id = "68040-fsin-status-divergence"
 cpu = "68040"
 path = "documented_divergence/68040_fsin_error.asm"
@@ -19,15 +24,6 @@ expected_outcome = "documented_divergence"
 compare_mode = "bytes"
 documented_divergence_kind = "opforge_error_oracle_success"
 documented_divergence_reason = "opForge currently rejects FSIN on the integrated 68040 FPU while vasm assembles it"
-
-[[fixtures]]
-id = "68040-fnop-status-divergence"
-cpu = "68040"
-path = "documented_divergence/68040_fnop_error.asm"
-expected_outcome = "documented_divergence"
-compare_mode = "bytes"
-documented_divergence_kind = "opforge_error_oracle_success"
-documented_divergence_reason = "opForge currently rejects FNOP on the integrated 68040 FPU while vasm assembles it"
 
 [[fixtures]]
 id = "68040-fetox-status-divergence"

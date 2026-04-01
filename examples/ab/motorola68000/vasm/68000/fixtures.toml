@@ -104,10 +104,6 @@ documented_divergence_kind = "opforge_error_oracle_success"
 documented_divergence_reason = "vasm Motorola OPT directive support is intentionally outside the current shared subset"
 
 [[fixtures]]
-id = "reclassification-candidate"
+id = "68000-reclassification-candidate"
 cpu = "68000"
-path = "documented_divergence/reclassification_candidate.asm"
-expected_outcome = "documented_divergence"
-compare_mode = "bytes"
-documented_divergence_kind = "opforge_error_oracle_success"
-documented_divergence_reason = "coverage fixture proving fully comparable documented divergences are reported for reclassification"
+path = "positive/reclassification_candidate.asm"

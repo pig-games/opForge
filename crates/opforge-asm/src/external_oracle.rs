@@ -10,7 +10,7 @@ use engine::{
     default_cpu, run_assembly, AssemblyExecutionRequest, ExecutionMode,
     OutputFormat as EngineOutputFormat,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -321,6 +321,7 @@ fn run_fixture_suite<A: ExternalOracleAdapter>(
             let multi_manifest = manifest_paths.len() > 1;
             let mut fixture_count = 0;
             let mut notes = Vec::new();
+            let mut first_mismatch = None;
             for manifest_path in manifest_paths {
                 let manifest = load_manifest(&manifest_path, adapter)?;
                 let selected_fixtures = manifest
@@ -348,27 +349,38 @@ fn run_fixture_suite<A: ExternalOracleAdapter>(
                 };
 
                 for fixture in &selected_fixtures {
-                    if let Some(note) =
-                        run_fixture(&manifest, fixture, adapter, &manifest_artifact_root)
-                            .map_err(|mismatch| {
-                                let rendered = mismatch.render();
-                                let mismatch_path = source_path_with_extension(
-                                    &fixture.source_path,
-                                    "mismatch.txt",
-                                );
-                                let _ = fs::write(&mismatch_path, &rendered);
-                                rendered
-                            })?
-                    {
-                        notes.push(note);
+                    match run_fixture(&manifest, fixture, adapter, &manifest_artifact_root) {
+                        Ok(note) => {
+                            sync_sidecar_report(
+                                &source_path_with_extension(&fixture.source_path, "mismatch.txt"),
+                                None,
+                            );
+                            if let Some(note) = note {
+                                notes.push(note);
+                            }
+                        }
+                        Err(mismatch) => {
+                            let rendered = mismatch.render();
+                            sync_sidecar_report(
+                                &source_path_with_extension(&fixture.source_path, "mismatch.txt"),
+                                Some(rendered.clone()),
+                            );
+                            if first_mismatch.is_none() {
+                                first_mismatch = Some(rendered);
+                            }
+                        }
                     }
                 }
             }
-            Ok(ExternalOracleSuiteOutcome::Completed {
-                fixture_count,
-                artifact_root,
-                notes,
-            })
+            if let Some(rendered) = first_mismatch {
+                Err(rendered)
+            } else {
+                Ok(ExternalOracleSuiteOutcome::Completed {
+                    fixture_count,
+                    artifact_root,
+                    notes,
+                })
+            }
         }
     }
 }
@@ -416,26 +428,36 @@ fn run_fixture<A: ExternalOracleAdapter>(
     let opforge = run_opforge_fixture(manifest, fixture, &fixture_dir);
     let oracle = run_oracle_fixture(manifest, adapter, fixture, &fixture_dir);
 
-    // Write byte diff next to the source file for any bytes-mode fixture where both ran
-    if fixture.compare_mode == CompareMode::Bytes {
-        if let (Ok(ref opforge_ok), Ok(ref oracle_ok)) = (&opforge, &oracle) {
-            write_bytes_comparison_report(
-                &fixture.source_path,
-                &fixture.id,
-                &opforge_ok.bytes,
-                &oracle_ok.bytes,
-            );
-        }
-    }
+    sync_sidecar_report(
+        &source_path_with_extension(&fixture.source_path, "bytes_diff.txt"),
+        if fixture.compare_mode == CompareMode::Bytes {
+            match (&opforge, &oracle) {
+                (Ok(opforge_ok), Ok(oracle_ok)) => Some(render_bytes_comparison_report(
+                    &fixture.id,
+                    &opforge_ok.bytes,
+                    &oracle_ok.bytes,
+                )),
+                _ => None,
+            }
+        } else {
+            None
+        },
+    );
 
-    // Write error report next to the source file whenever at least one side errors
-    {
-        let opforge_err = opforge.as_ref().err().map(|f: &OracleAssembleFailure| f.diagnostics_text.as_str());
-        let oracle_err = oracle.as_ref().err().map(|f: &OracleAssembleFailure| f.diagnostics_text.as_str());
-        if opforge_err.is_some() || oracle_err.is_some() {
-            write_error_report(&fixture.source_path, &fixture.id, opforge_err, oracle_err);
-        }
-    }
+    sync_sidecar_report(
+        &source_path_with_extension(&fixture.source_path, "error_report.txt"),
+        render_error_report(
+            &fixture.id,
+            opforge
+                .as_ref()
+                .err()
+                .map(|failure: &OracleAssembleFailure| failure.diagnostics_text.as_str()),
+            oracle
+                .as_ref()
+                .err()
+                .map(|failure: &OracleAssembleFailure| failure.diagnostics_text.as_str()),
+        ),
+    );
 
     match (opforge, oracle) {
         (Ok(opforge_success), Ok(oracle_success)) => {
@@ -1260,11 +1282,23 @@ fn build_manifest<A: ExternalOracleAdapter>(
     }
 
     let mut seen_ids = HashSet::new();
+    let mut seen_source_paths = HashMap::new();
     for fixture in &builder.fixtures {
         if !seen_ids.insert(fixture.id.clone()) {
             return Err(format!(
                 "Manifest {} contains duplicate fixture id '{}'",
                 manifest_path.display(),
+                fixture.id
+            ));
+        }
+        if let Some(existing_id) =
+            seen_source_paths.insert(fixture.source_path.clone(), fixture.id.clone())
+        {
+            return Err(format!(
+                "Manifest {} contains duplicate canonical fixture source path '{}' for fixtures '{}' and '{}'",
+                manifest_path.display(),
+                fixture.source_path.display(),
+                existing_id,
                 fixture.id
             ));
         }
@@ -1677,12 +1711,11 @@ fn render_hex_diff(opforge: &[u8], oracle: &[u8]) -> String {
     lines.join("\n")
 }
 
-fn write_bytes_comparison_report(
-    source_path: &Path,
+fn render_bytes_comparison_report(
     fixture_id: &str,
     opforge_bytes: &[u8],
     oracle_bytes: &[u8],
-) {
+) -> String {
     let status = if opforge_bytes == oracle_bytes {
         "MATCH"
     } else {
@@ -1701,17 +1734,14 @@ fn write_bytes_comparison_report(
         ),
     ];
     sections.push(render_hex_diff(opforge_bytes, oracle_bytes));
-    let content = sections.join("\n") + "\n";
-    let out = source_path_with_extension(source_path, "bytes_diff.txt");
-    let _ = fs::write(out, content);
+    sections.join("\n") + "\n"
 }
 
-fn write_error_report(
-    source_path: &Path,
+fn render_error_report(
     fixture_id: &str,
     opforge_error: Option<&str>,
     oracle_error: Option<&str>,
-) {
+) -> Option<String> {
     let mut sections = vec![format!("fixture: {fixture_id}")];
     if let Some(msg) = opforge_error {
         sections.push("--- opforge error ---".to_string());
@@ -1722,15 +1752,26 @@ fn write_error_report(
         sections.push(msg.trim_end().to_string());
     }
     if opforge_error.is_none() && oracle_error.is_none() {
-        return;
+        return None;
     }
-    let content = sections.join("\n") + "\n";
-    let out = source_path_with_extension(source_path, "error_report.txt");
-    let _ = fs::write(out, content);
+    Some(sections.join("\n") + "\n")
 }
 
 fn source_path_with_extension(source_path: &Path, new_ext: &str) -> PathBuf {
     source_path.with_extension(new_ext)
+}
+
+fn sync_sidecar_report(path: &Path, content: Option<String>) {
+    match content {
+        Some(content) => {
+            let _ = fs::write(path, content);
+        }
+        None => {
+            if path.exists() {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
 }
 
 fn observed_status_label(status: ObservedStatus) -> &'static str {
@@ -1926,6 +1967,41 @@ path = "positive/second.asm"
         )
         .expect_err("duplicate ids should fail");
         assert!(err.contains("duplicate fixture id 'duplicate'"));
+    }
+
+    #[test]
+    fn external_oracle_manifest_rejects_duplicate_canonical_source_paths() {
+        let dir = temp_dir("external-oracle-duplicate-source-path");
+        write_fixture(&dir, "positive/shared.asm", ".byte $01\n");
+        let manifest_path = write_manifest(
+            &dir,
+            r#"manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "first"
+cpu = "68000"
+path = "positive/shared.asm"
+
+[[fixtures]]
+id = "second"
+cpu = "68010"
+path = "positive/../positive/shared.asm"
+"#,
+        );
+
+        let err = load_manifest(
+            &manifest_path,
+            &FakeAdapter::new(OracleAvailability::Ready, vec![]),
+        )
+        .expect_err("duplicate canonical source paths should fail");
+        assert!(err.contains("duplicate canonical fixture source path"));
+        assert!(err.contains("first"));
+        assert!(err.contains("second"));
     }
 
     #[test]
@@ -2212,6 +2288,197 @@ documented_divergence_kind = "opforge_error_oracle_success"
             let text = fs::read_to_string(&report).unwrap_or_default();
             assert!(text.contains("--- opforge error ---"), "should label opforge error section");
         }
+    }
+
+    #[test]
+    fn external_oracle_rerun_refreshes_success_sidecars() {
+        let dir = temp_dir("external-oracle-sidecar-refresh-success");
+        write_fixture(&dir, "positive/first.asm", ".byte $01, $02\n");
+        let manifest_path = write_manifest(
+            &dir,
+            r#"manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "refresh-success"
+cpu = "68000"
+path = "positive/first.asm"
+"#,
+        );
+        let mismatch_path = dir.join("positive").join("first.mismatch.txt");
+        let diff_path = dir.join("positive").join("first.bytes_diff.txt");
+        let error_path = dir.join("positive").join("first.error_report.txt");
+
+        let first_result = run_fixture_suite(
+            &manifest_path,
+            &FakeAdapter::new(
+                OracleAvailability::Ready,
+                vec![(
+                    "first".to_string(),
+                    FakeOracleResponse::Success(vec![0x01, 0xFF]),
+                )],
+            ),
+            ExpectedOutcome::Success,
+        );
+        assert!(first_result.is_err(), "first run should create a mismatch");
+        assert!(mismatch_path.exists(), "mismatch report should exist after mismatch");
+        assert!(diff_path.exists(), "byte diff should exist after bytes mismatch");
+        fs::write(&error_path, "stale error report").expect("seed stale error report");
+
+        let second_result = run_fixture_suite(
+            &manifest_path,
+            &FakeAdapter::new(
+                OracleAvailability::Ready,
+                vec![(
+                    "first".to_string(),
+                    FakeOracleResponse::Success(vec![0x01, 0x02]),
+                )],
+            ),
+            ExpectedOutcome::Success,
+        )
+        .expect("second run should match cleanly");
+
+        match second_result {
+            ExternalOracleSuiteOutcome::Completed { fixture_count, .. } => {
+                assert_eq!(fixture_count, 1);
+            }
+            ExternalOracleSuiteOutcome::Skipped(_) => panic!("expected completed outcome"),
+        }
+        assert!(
+            !mismatch_path.exists(),
+            "stale mismatch report should be removed after a clean rerun"
+        );
+        assert!(
+            !error_path.exists(),
+            "stale error report should be removed when neither side errors"
+        );
+        let diff_text = fs::read_to_string(&diff_path).expect("read refreshed bytes diff");
+        assert!(diff_text.contains("status: MATCH"));
+    }
+
+    #[test]
+    fn external_oracle_continues_refreshing_sidecars_after_earlier_mismatch() {
+        let dir = temp_dir("external-oracle-sidecar-refresh-after-mismatch");
+        write_fixture(&dir, "positive/first.asm", ".byte $01\n");
+        write_fixture(&dir, "positive/second.asm", ".byte $02\n");
+        let manifest_path = write_manifest(
+            &dir,
+            r#"manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "first-fixture"
+cpu = "68000"
+path = "positive/first.asm"
+
+[[fixtures]]
+id = "second-fixture"
+cpu = "68000"
+path = "positive/second.asm"
+"#,
+        );
+        let second_mismatch = dir.join("positive").join("second.mismatch.txt");
+        let second_error = dir.join("positive").join("second.error_report.txt");
+        let second_diff = dir.join("positive").join("second.bytes_diff.txt");
+        fs::write(&second_mismatch, "stale mismatch").expect("seed stale mismatch");
+        fs::write(&second_error, "stale error").expect("seed stale error");
+
+        let adapter = FakeAdapter::new(
+            OracleAvailability::Ready,
+            vec![
+                (
+                    "first".to_string(),
+                    FakeOracleResponse::Success(vec![0xFF]),
+                ),
+                (
+                    "second".to_string(),
+                    FakeOracleResponse::Success(vec![0x02]),
+                ),
+            ],
+        );
+        let result = run_fixture_suite(&manifest_path, &adapter, ExpectedOutcome::Success);
+        assert!(result.is_err(), "first fixture should still fail the suite");
+        assert_eq!(
+            adapter.seen.lock().expect("seen lock").as_slice(),
+            ["first", "second"],
+            "suite should keep processing fixtures so later sidecars are refreshed"
+        );
+        assert!(
+            !second_mismatch.exists(),
+            "later matching fixture should have stale mismatch removed"
+        );
+        assert!(
+            !second_error.exists(),
+            "later matching fixture should have stale error removed"
+        );
+        let diff_text = fs::read_to_string(&second_diff).expect("read second bytes diff");
+        assert!(diff_text.contains("status: MATCH"));
+    }
+
+    #[test]
+    fn external_oracle_error_run_removes_stale_byte_report_and_refreshes_mismatch() {
+        let dir = temp_dir("external-oracle-sidecar-refresh-error");
+        write_fixture(&dir, "negative/bad.asm", ",\n");
+        let manifest_path = write_manifest(
+            &dir,
+            r#"manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "error"
+compare_mode = "error_class"
+
+[[fixtures]]
+id = "bad-instruction"
+cpu = "68000"
+path = "negative/bad.asm"
+"#,
+        );
+        let diff_path = dir.join("negative").join("bad.bytes_diff.txt");
+        let mismatch_path = dir.join("negative").join("bad.mismatch.txt");
+        let error_path = dir.join("negative").join("bad.error_report.txt");
+        fs::write(&diff_path, "stale bytes diff").expect("seed stale diff");
+        fs::write(&mismatch_path, "stale mismatch").expect("seed stale mismatch");
+
+        let err = run_fixture_suite(
+            &manifest_path,
+            &FakeAdapter::new(
+                OracleAvailability::Ready,
+                vec![(
+                    "bad".to_string(),
+                    FakeOracleResponse::Failure {
+                        summary: "vasm exited with status 1".to_string(),
+                        diagnostics_text: "error 5 in line 1 of \"fixture.asm\": syntax error\n>    ,\n".to_string(),
+                    },
+                )],
+            ),
+            ExpectedOutcome::Error,
+        )
+        .expect_err("mismatched error classes should still refresh sidecars");
+
+        assert!(err.contains("external-oracle mismatch"));
+        assert!(
+            !diff_path.exists(),
+            "bytes diff should be removed when current fixture outcome is an error"
+        );
+        assert!(
+            mismatch_path.exists(),
+            "current mismatch should be written after refreshing stale reports"
+        );
+        let mismatch_text = fs::read_to_string(&mismatch_path).expect("read mismatch report");
+        assert!(mismatch_text.contains("external-oracle mismatch"));
+
+        let report_text = fs::read_to_string(&error_path).expect("read error report");
+        assert!(report_text.contains("--- opforge error ---"));
+        assert!(report_text.contains("+++ oracle error +++"));
     }
 
     #[test]

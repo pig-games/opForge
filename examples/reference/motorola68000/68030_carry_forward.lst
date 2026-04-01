@@ -6,7 +6,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 1000                    3  .org $1000
 ----                                4  
 ----                                5  start
-1000    60 FF 00 00 00 2C           6      BRA.L far_target
+1000    60 FF 00 00 00 2A           6      BRA.L far_target
 1006    48 0E FF FF FF F8           7      LINK.L A6,#-8
 100C    49 C0                       8      EXTB.L D0
 100E    4C 10 10 01                 9      MULU.L (A0),D1
@@ -16,27 +16,26 @@ ADDR    BYTES                    LINE  SOURCE
 1020    83 40 00 01                13      PACK D0,D1,#1
 1024    56 FC                      14      TRAPNE
 1026    06 F8 00 05 12 34          15      CALLM #5,($1234).W
-102C    06 C8                      16      RTM A0
-----                               17  far_target
-102E    4E 75                      18      RTS
-----                               19  
-----                               20  .end
+----                               16  far_target
+102C    4E 75                      17      RTS
+----                               18  
+----                               19  .end
 
-Lines: 20  Errors: 0  Warnings: 0
+Lines: 19  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-far_target       102E      prv  lbl 
+far_target       102C      prv  lbl 
 start            1000      prv  lbl 
 
-Total memory is 48 bytes
+Total memory is 46 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    60 FF 00 00 00 2C 48 0E FF FF FF F8 49 C0 4C 10
+1000    60 FF 00 00 00 2A 48 0E FF FF FF F8 49 C0 4C 10
 1010    10 01 4E 7A 00 02 0C D0 00 40 0C FC 80 80 90 C1
-1020    83 40 00 01 56 FC 06 F8 00 05 12 34 06 C8 4E 75
+1020    83 40 00 01 56 FC 06 F8 00 05 12 34 4E 75

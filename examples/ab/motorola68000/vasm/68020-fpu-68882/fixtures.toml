@@ -12,13 +12,9 @@ cpu = "68020"
 path = "positive/68882_smoke_core.asm"
 
 [[fixtures]]
-id = "68882-fnop-byte-divergence"
+id = "68882-fnop-core"
 cpu = "68020"
-path = "documented_divergence/68020_fpu_fnop.asm"
-expected_outcome = "documented_divergence"
-compare_mode = "bytes"
-documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
-documented_divergence_reason = "FNOP currently encodes differently between opForge and vasm under the 68882 profile"
+path = "positive/68020_fpu_fnop.asm"
 
 [[fixtures]]
 id = "68882-fsincos-pair-status-divergence"

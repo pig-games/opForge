@@ -789,11 +789,6 @@ impl M68020CpuHandler {
                     Self::fpu_scalar_source_operand(src_ea.bits)
                 };
                 if !source_ok {
-                    return EncodeResult::error(format!(
-                        "{display_name} currently supports FP-register forms and sized scalar or native floating-point source forms on m68020",
-                    ));
-                }
-                if !source_ok {
                     return EncodeResult::error_with_span(
                         format!("invalid source effective address for {display_name}{suffix}"),
                         src.span(),
@@ -920,11 +915,6 @@ impl M68020CpuHandler {
                 } else {
                     Self::fpu_scalar_source_operand(src_ea.bits)
                 };
-                if !source_ok {
-                    return EncodeResult::error(format!(
-                        "{display_name} currently supports FP-register source forms with FP-register-pair destinations and sized scalar or native floating-point source forms on m68020",
-                    ));
-                }
                 if !source_ok {
                     return EncodeResult::error_with_span(
                         format!("invalid source effective address for {display_name}{suffix}"),
@@ -1301,7 +1291,7 @@ impl M68020CpuHandler {
         }
 
         let mut bytes = Vec::new();
-        M68KFamilyHandler::emit_word(&mut bytes, Self::fpu_opcode_word(0x0000));
+        M68KFamilyHandler::emit_word(&mut bytes, Self::fpu_opcode_word(0x0080));
         M68KFamilyHandler::emit_word(&mut bytes, 0x0000);
         EncodeResult::ok(bytes)
     }
@@ -2189,6 +2179,7 @@ impl CpuHandler for M68020CpuHandler {
                     return self.family.encode_long_data_register_divide(
                         &parsed.display_name,
                         true,
+                        true,
                         operands,
                         ctx,
                     );
@@ -2197,6 +2188,7 @@ impl CpuHandler for M68020CpuHandler {
                     return self.family.encode_long_data_register_divide(
                         &parsed.display_name,
                         false,
+                        true,
                         operands,
                         ctx,
                     );
@@ -2256,6 +2248,7 @@ impl CpuHandler for M68020CpuHandler {
                     self.family.encode_long_data_register_divide(
                         &parsed.display_name,
                         true,
+                        false,
                         operands,
                         ctx,
                     )
@@ -2271,6 +2264,7 @@ impl CpuHandler for M68020CpuHandler {
                     }
                     self.family.encode_long_data_register_divide(
                         &parsed.display_name,
+                        false,
                         false,
                         operands,
                         ctx,
@@ -2355,7 +2349,7 @@ impl CpuHandler for M68020CpuHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use opcore::parser::Expr;
+    use opcore::{parser::Expr, tokenizer::Span};
     use std::collections::HashMap;
     use types::symbol::SymbolTable;
 
@@ -2916,6 +2910,61 @@ mod tests {
         ) {
             EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF2, 0x11, 0xBC, 0x00]),
             other => panic!("expected FMOVEM.L control-list->memory encoding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn invalid_fpu_source_effective_addresses_report_source_spans_on_m68020() {
+        let handler = M68020CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 1);
+        let source_span = Span {
+            line: 7,
+            col_start: 3,
+            col_end: 5,
+        };
+
+        match handler.encode_instruction(
+            "FADD.W",
+            &[
+                Operand::AddressRegister {
+                    register: "A0".to_string(),
+                    span: source_span,
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Error(message, Some(span)) => {
+                assert_eq!(message, "invalid source effective address for FADD.W");
+                assert_eq!(span, source_span);
+            }
+            other => panic!("expected span-aware FADD.W diagnostic, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FSINCOS.W",
+            &[
+                Operand::AddressRegister {
+                    register: "A0".to_string(),
+                    span: source_span,
+                },
+                Operand::RegisterPair {
+                    left: "FP1".to_string(),
+                    right: "FP2".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Error(message, Some(span)) => {
+                assert_eq!(message, "invalid source effective address for FSINCOS.W");
+                assert_eq!(span, source_span);
+            }
+            other => panic!("expected span-aware FSINCOS.W diagnostic, got {other:?}"),
         }
     }
 }

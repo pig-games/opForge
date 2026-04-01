@@ -48,7 +48,7 @@ use registry::registry::{FamilyOperandSet, OperandSet, ResolvedPipeline};
 use registry::registry::{ModuleRegistry, RegistryError};
 use registry::syntax::RegisterChecker;
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 use types::asm_value::{AsmValue, StructField};
@@ -148,6 +148,7 @@ pub struct AsmLine<'a> {
     pub layout: AsmLayoutState,
     struct_table: StructTable,
     value_symbols: HashMap<String, AsmValue>,
+    scalar_value_symbols: HashSet<String>,
     repeat_iteration_scopes: HashMap<String, Vec<String>>,
     active_struct: Option<ActiveStructDefinition>,
     diagnostics: AsmDiagnosticsState,
@@ -221,6 +222,7 @@ impl<'a> AsmLine<'a> {
             layout: AsmLayoutState::new(),
             struct_table: StructTable::new(),
             value_symbols: HashMap::new(),
+            scalar_value_symbols: HashSet::new(),
             repeat_iteration_scopes: HashMap::new(),
             active_struct: None,
             diagnostics: AsmDiagnosticsState::new(),
@@ -555,17 +557,26 @@ impl<'a> AsmLine<'a> {
 
     pub fn set_value_symbol(&mut self, name: &str, value: AsmValue) {
         self.clear_repeat_iteration_scopes(name);
+        self.scalar_value_symbols
+            .remove(&Self::value_symbol_key(name));
         self.value_symbols
             .insert(Self::value_symbol_key(name), value);
     }
 
-    fn clear_value_symbol(&mut self, name: &str) {
+    fn lookup_value_symbol(&self, name: &str) -> Option<&AsmValue> {
+        self.value_symbols.get(&Self::value_symbol_key(name))
+    }
+
+    fn set_scalar_value_symbol(&mut self, name: &str) {
         self.value_symbols.remove(&Self::value_symbol_key(name));
+        self.scalar_value_symbols
+            .insert(Self::value_symbol_key(name));
         self.clear_repeat_iteration_scopes(name);
     }
 
-    fn lookup_value_symbol(&self, name: &str) -> Option<&AsmValue> {
-        self.value_symbols.get(&Self::value_symbol_key(name))
+    fn has_scalar_value_symbol(&self, name: &str) -> bool {
+        self.scalar_value_symbols
+            .contains(&Self::value_symbol_key(name))
     }
 
     pub fn set_repeat_iteration_scopes(&mut self, name: &str, scopes: Vec<String>) {
@@ -598,7 +609,7 @@ impl<'a> AsmLine<'a> {
 
     fn sync_value_symbol(&mut self, name: &str, value: &AsmValue) {
         match value {
-            AsmValue::Scalar(_) => self.clear_value_symbol(name),
+            AsmValue::Scalar(_) => self.set_scalar_value_symbol(name),
             _ => self.set_value_symbol(name, value.clone()),
         }
     }
@@ -662,6 +673,39 @@ impl<'a> AsmLine<'a> {
         }
     }
 
+    fn resolve_scoped_scalar_value_name(&self, name: &str) -> Option<String> {
+        if name.contains('.') {
+            let candidate = self
+                .resolve_import_alias(name)
+                .unwrap_or_else(|| name.to_string());
+            if self.has_scalar_value_symbol(&candidate) {
+                return Some(candidate);
+            }
+            return None;
+        }
+
+        let mut depth = self.symbol_scope.scope_stack.depth();
+        while depth > 0 {
+            let prefix = self.symbol_scope.scope_stack.prefix(depth);
+            let candidate = format!("{prefix}.{name}");
+            if self.has_scalar_value_symbol(&candidate) {
+                return Some(candidate);
+            }
+            depth = depth.saturating_sub(1);
+        }
+
+        if self.has_scalar_value_symbol(name) {
+            return Some(name.to_string());
+        }
+
+        let imported = self.resolve_imported_name(name)?;
+        if self.has_scalar_value_symbol(&imported) {
+            Some(imported)
+        } else {
+            None
+        }
+    }
+
     pub fn push_loop_var(&mut self, name: &str, value: u32) {
         self.loop_vars.push((name.to_string(), value));
     }
@@ -713,9 +757,6 @@ impl<'a> AsmLine<'a> {
     }
 
     fn track_section_symbol(&mut self, full_name: &str) {
-        if self.pass != 1 {
-            return;
-        }
         if let Some(section_name) = self.layout.current_section.as_ref() {
             self.layout
                 .section_symbol_sections
@@ -1449,10 +1490,22 @@ impl<'a> AsmLine<'a> {
                 self.current_visibility(),
                 self.symbol_scope.module_active.as_deref(),
             )
-        } else if self.in_section() {
-            SymbolTableResult::Ok
         } else {
-            self.symbols.update(&full_name, self.start_addr)
+            match self.symbols.entry_mut(&full_name) {
+                Some(entry) if entry.rw => SymbolTableResult::Duplicate,
+                Some(entry) => {
+                    entry.val = self.start_addr;
+                    entry.updated = true;
+                    SymbolTableResult::Ok
+                }
+                None => self.symbols.add(
+                    &full_name,
+                    self.start_addr,
+                    false,
+                    self.current_visibility(),
+                    self.symbol_scope.module_active.as_deref(),
+                ),
+            }
         };
 
         if res == SymbolTableResult::Duplicate {
@@ -1533,7 +1586,21 @@ impl<'a> AsmLine<'a> {
                         self.symbol_scope.module_active.as_deref(),
                     )
                 } else {
-                    self.symbols.update(&full_name, scalar_val)
+                    match self.symbols.entry_mut(&full_name) {
+                        Some(entry) if entry.rw && !is_rw => SymbolTableResult::Duplicate,
+                        Some(entry) => {
+                            entry.val = scalar_val;
+                            entry.updated = true;
+                            SymbolTableResult::Ok
+                        }
+                        None => self.symbols.add(
+                            &full_name,
+                            scalar_val,
+                            is_rw,
+                            self.current_visibility(),
+                            self.symbol_scope.module_active.as_deref(),
+                        ),
+                    }
                 };
                 if res == SymbolTableResult::Duplicate {
                     return self.failure_at(

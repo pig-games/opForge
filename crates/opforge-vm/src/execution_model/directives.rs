@@ -10,6 +10,7 @@ use types::line_ast::{
 
 use crate::vm_opasm::{
     parse_operand_expr_range, split_top_level_comma_ranges, update_group_depths_for_token,
+    OperandExprBoundary, OperandExprParseHints,
 };
 use crate::vm_opasm_parse::VmExprParseContext;
 use crate::vm_opcore::{parse_expr_with_vm_contract, parse_expr_with_vm_contract_and_boundary};
@@ -136,8 +137,14 @@ pub(crate) fn parse_dot_directive_line_from_tokens(
                     tokens,
                     start,
                     end,
-                    end_span,
-                    end_token_text.clone(),
+                    OperandExprBoundary {
+                        end_span,
+                        end_token_text: end_token_text.clone(),
+                    },
+                    OperandExprParseHints {
+                        mnemonic: None,
+                        operand_index: operands.len(),
+                    },
                     expr_parse_ctx,
                     &mut operands,
                 )?;
@@ -187,8 +194,14 @@ pub(crate) fn parse_dot_directive_line_from_tokens(
                         tokens,
                         start,
                         end,
-                        end_span,
-                        end_token_text.clone(),
+                        OperandExprBoundary {
+                            end_span,
+                            end_token_text: end_token_text.clone(),
+                        },
+                        OperandExprParseHints {
+                            mnemonic: None,
+                            operand_index: exprs.len(),
+                        },
                         expr_parse_ctx,
                         &mut exprs,
                     )?;
@@ -223,8 +236,14 @@ pub(crate) fn parse_dot_directive_line_from_tokens(
                 tokens,
                 start,
                 end,
-                end_span,
-                end_token_text.clone(),
+                OperandExprBoundary {
+                    end_span,
+                    end_token_text: end_token_text.clone(),
+                },
+                OperandExprParseHints {
+                    mnemonic: None,
+                    operand_index: operands.len(),
+                },
                 expr_parse_ctx,
                 &mut operands,
             )?;

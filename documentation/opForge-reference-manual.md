@@ -3,11 +3,11 @@
 This document describes the opForge assembler language, directives, and tooling.
 It follows a chapter layout similar to 64tass. Sections marked **Planned** describe 
 features that are not implemented yet.
-This manual is validated against opForge CLI `0.9.6` (crate `0.9.6`).
+This manual is validated against opForge CLI `0.9.7` (crate `0.9.7`).
 
 ## 1. Introduction
 
-opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), and Motorola 6800-family CPUs (6809/HD6309). It supports:
+opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), Motorola 6800-family CPUs (6809/HD6309), and Motorola 68000-family CPUs (`68000`/`m68000`/`mc68000`, `68010`/`m68010`/`mc68010`, `68020`/`m68020`/`mc68020`, `68030`/`m68030`/`mc68030`, and `68040`/`m68040`/`mc68040`). It supports:
 - Dot-prefixed directives and conditionals.
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
 - Preprocessor directives for includes and conditional compilation.
@@ -17,7 +17,9 @@ opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502
 The `.cpu` directive currently accepts `8080` (alias for `8085`), `8085`, `z80`,
 `6502`, `m6502`, `65c02`, `65816`, `65c816`, `w65c816`, `45gs02`, `m45gs02`,
 `mega65`, `4510`, `csg4510`, `6809`, `m6809`, `mc6809`, `6309`, `m6309`,
-`h6309`, `hitachi6309`, and `hd6309`.
+`h6309`, `hitachi6309`, `hd6309`, `68000`, `m68000`, `mc68000`, `68010`,
+`m68010`, `mc68010`, `68020`, `m68020`, `mc68020`, `68030`, `m68030`,
+`mc68030`, `68040`, `m68040`, and `mc68040`.
 
 ## 2. Usage tips
 
@@ -348,7 +350,7 @@ Member resolution keeps a unified namespace:
 - exact dotted symbols are resolved first;
 - typed member access fallback is applied only when no exact dotted symbol exists.
 
-Reference example: [examples/struct_literal_instance_basic.asm](../examples/struct_literal_instance_basic.asm)
+Reference example: [examples/struct_literal_instance_basic.asm](../examples/opcore/struct_literal_instance_basic.asm)
 
 ### 4.10 Modules and metadata
 
@@ -443,9 +445,9 @@ Output base precedence:
 4. input base (file basename or folder name)
 
 Examples in the repo:
-- [examples/module_use_autoload.asm](../examples/module_use_autoload.asm)
-- [examples/module_metadata_output.asm](../examples/module_metadata_output.asm)
-- [examples/project_root/main.asm](../examples/project_root/main.asm)
+- [examples/module_use_autoload.asm](../examples/opcore/module_use_autoload.asm)
+- [examples/module_metadata_output.asm](../examples/opcore/module_metadata_output.asm)
+- [examples/project_root/main.asm](../examples/opcore/project_root/main.asm)
 
 Match form:
 
@@ -563,8 +565,8 @@ SCOPE .block
 ```
 
 Examples in the repo:
-- [examples/scopes.asm](../examples/scopes.asm)
-- [examples/scopes_namespace.asm](../examples/scopes_namespace.asm)
+- [examples/scopes.asm](../examples/opcore/scopes.asm)
+- [examples/scopes_namespace.asm](../examples/opcore/scopes_namespace.asm)
 
 ### 4.7 Target CPU
 
@@ -591,9 +593,63 @@ Examples in the repo:
 .cpu h6309
 .cpu hitachi6309
 .cpu hd6309
+.cpu 68000
+.cpu m68000
+.cpu mc68000
+.cpu 68010
+.cpu m68010
+.cpu mc68010
+.cpu 68020
+.cpu m68020
+.cpu mc68020
+.cpu 68030
+.cpu m68030
+.cpu mc68030
+.cpu 68040
+.cpu m68040
+.cpu mc68040
 ```
 
-Planned (not currently supported): `68000` and related CPUs.
+Motorola 68000-family support now spans the baseline `68000` aliases plus the
+shipped later-family targets `68010`, `68020`, `68030`, and `68040`.
+
+Current shipped scope includes the full assembler-facing CPU lineage from
+`68000` through `68040`, plus the narrow MMU and optional FPU additions below.
+
+`68010` keeps baseline `68000` addressing. `68020`, `68030`, and `68040`
+accept the shipped `68020+` full-extension addressing forms. `68040`
+additionally accepts `MOVE16` and rejects `CALLM`, `RTM`, and `MOVEC CAAR`.
+
+```
+.fpu none
+.fpu 68881
+.fpu 68882
+.fpu 68040
+```
+
+On Motorola 68000-family CPUs, `.fpu none` disables optional FPU acceptance,
+`.fpu 68881` and `.fpu 68882` are legal on `68020` and `68030`, and
+`.fpu 68040` is legal on `68040`.
+
+Current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
+`68030` and `68040`, and the shipped `68040` MMU-related `MOVEC` register
+surface remains available. Broader PMMU/MMU instruction families stay out of
+scope.
+
+Current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
+`.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
+while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`.
+The integrated path intentionally excludes external-coprocessor-only
+`FSIN`-class transcendental and extended-math mnemonics. Assembler acceptance
+follows the documented programmer-visible instruction surface, but opForge does
+not model runtime assist behavior or CPU/FPU execution semantics for those
+operations.
+
+Reference fixtures under `examples/motorola68000/` now include broad FPU surface
+examples such as `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
+`68020_fpu_registers`, `68030_pflush_external_fpu`, and
+`68040_integrated_fpu`, with matching checked-in outputs under
+`examples/reference/motorola68000/`.
 
 65816 support includes the phase-1 instruction set and phase-2 24-bit addressing work:
 - Implements selected 65816 mnemonics and operand forms.
@@ -729,7 +785,7 @@ Capture types (built-in):
 - `long` matches a single token that is either a numeric literal in `-2147483648..=4294967295` or an identifier/register. Quoted strings do not match `long`.
 - Capture matching is single-token only. Multi-token expressions such as `label+4` or `1<<24` do not match `long` captures.
 
-Reference example: [examples/statement_expansion.asm](../examples/statement_expansion.asm)
+Reference example: [examples/statement_expansion.asm](../examples/opcore/statement_expansion.asm)
 
 Expansion model:
 - `.statement` definitions are expanded by the macro processor **before parsing**.
@@ -890,6 +946,9 @@ Other options:
 - `--opasm-package <FILE>`: load runtime `.opasm` package from FILE and prefer it over artifact/bundled package sources.
 - `--print-capabilities`: print deterministic capability metadata and exit.
 - `--print-cpusupport`: print deterministic CPU support metadata and exit.
+
+The default capability and CPU-support reports include the shipped Motorola
+68000-family lineage entries through `m68040`.
 - `--pp-macro-depth <N>`: maximum preprocessor macro expansion depth (default `64`, minimum `1`).
 - `--max-loop-iterations <N>`: maximum `.for`/`.while` iterations before emitting an error (default `65536`, minimum `1`).
 - `--input-asm-ext <EXT>`: additional accepted source-file extension for direct file inputs.
@@ -1028,11 +1087,15 @@ Instruction mnemonics are selected by `.cpu`:
 ## 14. Appendix: multi-CPU architecture
 
 This appendix describes the modular architecture that allows opForge to support
-multiple CPU targets (8085, Z80, 6502, 65C02, 65816) through a common framework.
+multiple CPU targets through a common framework, including Intel 8080-family
+CPUs, MOS 6502-family CPUs, Motorola 6800-family CPUs, and the shipped
+Motorola 68000-family lineage through `m68040`.
 
 ### Overview
 
-The assembler is organized into layers with hierarchical parsing and encoding:
+The assembler is organized into layers with hierarchical parsing and encoding.
+The diagram below is schematic and does not attempt to list every currently
+registered family or CPU:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

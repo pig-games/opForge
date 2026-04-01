@@ -597,7 +597,14 @@ impl<'a> AsmLine<'a> {
                 self.symbol_scope.module_active.as_deref(),
             )
         } else {
-            self.symbols.update(name, value)
+            match self.symbols.entry_mut(name) {
+                Some(entry) => {
+                    entry.val = value;
+                    entry.updated = true;
+                    SymbolTableResult::Ok
+                }
+                None => SymbolTableResult::NotFound,
+            }
         };
         match result {
             SymbolTableResult::Ok => None,

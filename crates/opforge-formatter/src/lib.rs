@@ -34,6 +34,12 @@ pub mod families {
         }
     }
 
+    pub mod m68k {
+        pub mod module {
+            pub use families::families::m68k::module::*;
+        }
+    }
+
     pub mod mos6502 {
         pub mod module {
             pub use families::families::mos6502::module::*;
@@ -80,6 +86,12 @@ pub mod m6809 {
 pub mod hd6309 {
     pub mod module {
         pub use families::hd6309::module::*;
+    }
+}
+
+pub mod m68000 {
+    pub mod module {
+        pub use families::m68000::module::*;
     }
 }
 

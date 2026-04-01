@@ -1,0 +1,17 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+cpu_profile = "mmu-68040"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68040-movec-mmu-registers"
+cpu = "68040"
+path = "positive/68040_movec_mmu_registers.asm"
+
+[[fixtures]]
+id = "68040-pflush-indirect"
+cpu = "68040"
+path = "positive/68040_pflush_indirect.asm"

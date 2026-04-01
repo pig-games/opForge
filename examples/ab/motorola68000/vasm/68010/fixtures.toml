@@ -1,0 +1,11 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68010-delta"
+cpu = "68010"
+path = "positive/68010_delta.asm"

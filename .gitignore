@@ -21,10 +21,17 @@ __pycache__
 *.hex
 *.bin
 
+# External oracle A/B comparison reports (generated alongside fixture sources)
+*.bytes_diff.txt
+*.mismatch.txt
+*.error_report.txt
+
 # Keep reference outputs checked in
 !examples/reference/
 !examples/reference/*.lst
 !examples/reference/*.hex
+!examples/reference/**/*.lst
+!examples/reference/**/*.hex
 
 # macOS filesystem noise
 .DS_Store
@@ -44,6 +51,7 @@ Icon?
 # Local AI agent guidance
 /scripts/route_workflow.sh
 /.tmp_yaml/
+/.tmp-spec-manual/
 .vscode/settings.json
 
 # Local workspace-only content (temporary)
@@ -51,3 +59,8 @@ Icon?
 
 # Generated PDF text extractions (local reference)
 /documentation/_pdf_extract/
+
+# Local VS Code client Node artifacts
+/clients/vscode/node_modules/
+/clients/vscode/out/
+/clients/vscode/package-lock.json

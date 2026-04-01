@@ -1,0 +1,66 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68040 integrated FPU surface fixture
+----                                2  .cpu 68040
+----                                3  .fpu 68040
+----    EQU 1000                    4  .org $1000
+----                                5  
+----                                6  start
+----                                7      ; Integrated move, register, and control-register surface.
+1000    F2 00 00 80                 8      FMOVE FP0,FP1
+1004    F2 10 F0 05                 9      FMOVEM FP0/FP2,(A0)
+1008    F2 18 D0 0A                10      FMOVEM (A0)+,FP1/FP3
+100C    F2 00 90 00                11      FMOVE.L D0,FPCR
+1010    F2 01 A8 00                12      FMOVE.L FPSR,D1
+1014    F2 02 A4 00                13      FMOVE.L FPIAR,D2
+----                               14  
+----                               15      ; Core arithmetic and tests.
+1018    F2 00 00 A2                16      FADD FP0,FP1
+101C    F2 00 05 28                17      FSUB FP1,FP2
+1020    F2 00 09 A3                18      FMUL FP2,FP3
+1024    F2 00 0E 20                19      FDIV FP3,FP4
+1028    F2 00 12 04                20      FSQRT FP4
+102C    F2 00 16 98                21      FABS FP5
+1030    F2 00 1B 1A                22      FNEG FP6
+1034    F2 00 1F 81                23      FINT FP7
+1038    F2 00 00 03                24      FINTRZ FP0
+103C    F2 00 00 B8                25      FCMP FP0,FP1
+1040    F2 00 04 BA                26      FTST FP1
+----                               27  
+----                               28      ; Conditional and state-management surface.
+1044    F2 81 00 02                29      FBEQ after_fb
+----                               30  after_fb
+1048    F2 48 00 0E 00 02          31      FDBNE D0,after_fdb
+----                               32  after_fdb
+104E    F2 43 00 0E                33      FSNE D3
+1052    F2 7A 00 12 00 01          34      FTRAPGT.W #1
+1058    F3 11                      35      FSAVE (A1)
+105A    F3 59                      36      FRESTORE (A1)+
+----                               37  
+105C    4E 75                      38      RTS
+----                               39  
+----                               40  .end
+
+Lines: 40  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+after_fb         1048      prv  lbl 
+after_fdb        104E      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 94 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    F2 00 00 80 F2 10 F0 05 F2 18 D0 0A F2 00 90 00
+1010    F2 01 A8 00 F2 02 A4 00 F2 00 00 A2 F2 00 05 28
+1020    F2 00 09 A3 F2 00 0E 20 F2 00 12 04 F2 00 16 98
+1030    F2 00 1B 1A F2 00 1F 81 F2 00 00 03 F2 00 00 B8
+1040    F2 00 04 BA F2 81 00 02 F2 48 00 0E 00 02 F2 43
+1050    00 0E F2 7A 00 12 00 01 F3 11 F3 59 4E 75

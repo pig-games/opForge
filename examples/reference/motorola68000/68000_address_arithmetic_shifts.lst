@@ -1,0 +1,36 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 address arithmetic and shift/rotate smoke fixture
+----                                2  .cpu 68000
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    70 01                       6      MOVEQ #1,D0
+1002    72 02                       7      MOVEQ #2,D1
+1004    D3 D0                       8      ADDA.L (A0),A1
+1006    94 F8 12 34                 9      SUBA.W ($1234).W,A2
+100A    E2 00                      10      ASR.B #1,D0
+100C    E3 49                      11      LSL.W #1,D1
+100E    E2 4A                      12      LSR.W #1,D2
+1010    E3 5B                      13      ROL.W #1,D3
+1012    4E 75                      14      RTS
+----                               15  
+----                               16  .end
+
+Lines: 16  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 20 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    70 01 72 02 D3 D0 94 F8 12 34 E2 00 E3 49 E2 4A
+1010    E3 5B 4E 75

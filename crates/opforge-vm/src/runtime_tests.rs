@@ -50,7 +50,7 @@ use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use types::image::ImageStore;
 use types::line_ast::{ConditionalAst, PackAst, PlaceAst, UseAst};
 
@@ -234,18 +234,40 @@ fn tokenizer_edge_case_lines() -> Vec<String> {
 }
 
 fn tokenizer_example_lines() -> Vec<String> {
+    fn should_skip_example_dir(path: &Path) -> bool {
+        matches!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("reference" | "vm" | "opthread" | "project_root" | "lib")
+        )
+    }
+
+    fn collect_asm_files(dir: &Path, files: &mut Vec<PathBuf>) {
+        for entry in fs::read_dir(dir)
+            .unwrap_or_else(|err| panic!("read example directory {}: {err}", dir.display()))
+            .filter_map(Result::ok)
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                if should_skip_example_dir(&path) {
+                    continue;
+                }
+                collect_asm_files(&path, files);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("asm") {
+                files.push(path);
+            }
+        }
+    }
+
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .canonicalize()
         .expect("workspace root");
     let examples_dir = repo_root.join("examples");
-    let mut asm_files: Vec<PathBuf> = fs::read_dir(&examples_dir)
-        .expect("read examples directory")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
-        .collect();
+    let mut asm_files = Vec::new();
+    collect_asm_files(&examples_dir, &mut asm_files);
     asm_files.sort();
 
     let mut lines = Vec::new();
@@ -1857,6 +1879,68 @@ fn runtime_expression_parser_parses_index_member_postfix_chain() {
             assert!(matches!(*base, Expr::Index { .. }));
         }
         other => panic!("expected member expression, got {other:?}"),
+    }
+}
+
+#[test]
+fn runtime_expression_parser_parses_postfix_indirect_tuple_for_68k_addressing() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("4(A0,D1.W)", 1);
+    let expr = parse_expression_tokens(tokens, end_span, None)
+        .expect("direct runtime parser should parse postfix indirect tuple");
+
+    match expr {
+        Expr::Indirect(inner, _) => match *inner {
+            Expr::Tuple(elements, _) => {
+                assert_eq!(elements.len(), 3);
+                assert!(matches!(elements[0], Expr::Number(ref n, _) if n == "4"));
+                assert!(matches!(
+                    elements[1],
+                    Expr::Register(ref reg, _) | Expr::Identifier(ref reg, _)
+                        if reg.eq_ignore_ascii_case("A0")
+                ));
+                match &elements[2] {
+                    Expr::Identifier(name, _) => {
+                        assert_eq!(name.to_ascii_uppercase(), "D1.W");
+                    }
+                    Expr::Member { base, field, .. } => {
+                        assert_eq!(field, "W");
+                        assert!(matches!(
+                            base.as_ref(),
+                            Expr::Register(reg, _) | Expr::Identifier(reg, _)
+                                if reg.eq_ignore_ascii_case("D1")
+                        ));
+                    }
+                    other => panic!("expected index-size member expression, got {other:?}"),
+                }
+            }
+            other => panic!("expected tuple inside indirect, got {other:?}"),
+        },
+        other => panic!("expected indirect tuple AST, got {other:?}"),
+    }
+}
+
+#[test]
+fn runtime_expression_parser_parses_postincrement_indirect_for_68k_addressing() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("(A0)+", 1);
+    let expr = parse_expression_tokens(tokens, end_span, None)
+        .expect("direct runtime parser should parse postincrement indirect");
+
+    match expr {
+        Expr::Unary {
+            op: UnaryOp::Plus,
+            expr,
+            ..
+        } => match expr.as_ref() {
+            Expr::Indirect(inner, _) => {
+                assert!(matches!(
+                    inner.as_ref(),
+                    Expr::Register(reg, _) | Expr::Identifier(reg, _)
+                        if reg.eq_ignore_ascii_case("A0")
+                ));
+            }
+            other => panic!("expected indirect operand inside postincrement, got {other:?}"),
+        },
+        other => panic!("expected unary-plus postincrement AST, got {other:?}"),
     }
 }
 

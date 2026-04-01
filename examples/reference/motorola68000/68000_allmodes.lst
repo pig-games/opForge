@@ -1,0 +1,102 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; 68000 all addressing and operand forms
+----                                2  ; Covers the currently supported canonical 68000 operand families in one file.
+----                                3  
+----                                4          .cpu 68000
+----    EQU 1000                    5          .org $1000
+----                                6  
+----                                7  start
+----                                8  ; ========================================
+----                                9  ; REGISTER DIRECT
+----                               10  ; ========================================
+1000    12 00                      11          MOVE.B D0,D1
+1002    22 48                      12          MOVEA.L A0,A1
+1004    C5 43                      13          EXG D2,D3
+1006    C5 4B                      14          EXG A2,A3
+1008    C9 8C                      15          EXG D4,A4
+----                               16  
+----                               17  ; ========================================
+----                               18  ; ADDRESS REGISTER INDIRECT FAMILY
+----                               19  ; ========================================
+100A    30 10                      20          MOVE.W (A0),D0
+100C    32 18                      21          MOVE.W (A0)+,D1
+100E    34 21                      22          MOVE.W -(A1),D2
+1010    36 2A 00 04                23          MOVE.W 4(A2),D3
+----                               24          ; Canonical / alias pair for zero-displacement indexed form
+1014    3A 33 40 00                25          MOVE.W 0(A3,D4.W),D5
+1018    3A 33 40 00                26          MOVE.W (A3,D4),D5
+----                               27  
+----                               28  ; ========================================
+----                               29  ; ABSOLUTE ADDRESS FAMILY
+----                               30  ; ========================================
+----                               31          ; Canonical / alias pair for absolute short
+101C    3C 38 12 34                32          MOVE.W ($1234).W,D6
+1020    3C 38 12 34                33          MOVE.W $1234.W,D6
+----                               34          ; Canonical / alias pair for absolute long
+1024    2E 39 00 12 34 56          35          MOVE.L ($123456).L,D7
+102A    2E 39 00 12 34 56          36          MOVE.L $123456.L,D7
+1030    48 78 12 34                37          PEA ($1234).W
+1034    4E F9 00 12 34 56          38          JMP ($123456).L
+----                               39  
+----                               40  ; ========================================
+----                               41  ; PC-RELATIVE FAMILY
+----                               42  ; ========================================
+103A    30 3A 00 08                43          MOVE.W 8(PC),D0
+----                               44          ; Canonical / alias pair for zero-displacement PC-indexed form
+103E    34 3B 10 00                45          MOVE.W 0(PC,D1.W),D2
+1042    34 3B 10 00                46          MOVE.W (PC,D1),D2
+----                               47          ; Canonical / alias pair for word-sized branch defaulting
+1046    61 00 00 38                48          BSR.W helper
+104A    61 00 00 34                49          BSR helper
+104E    4E FA 00 04                50          JMP 4(PC)
+----                               51  
+----                               52  ; ========================================
+----                               53  ; IMMEDIATE FAMILY
+----                               54  ; ========================================
+1052    36 3C 12 34                55          MOVE.W #$1234,D3
+1056    00 00 00 12                56          ORI.B #$12,D0
+105A    06 68 00 01 00 04          57          ADDI.W #1,4(A0)
+1060    0C 78 12 34 12 34          58          CMPI.W #$1234,($1234).W
+----                               59  
+----                               60  ; ========================================
+----                               61  ; CONTROL / SPECIAL TRANSFER FORMS
+----                               62  ; ========================================
+1066    43 F0 10 04                63          LEA 4(A0,D1.W),A1
+106A    48 68 00 04                64          PEA 4(A0)
+106E    4E 90                      65          JSR (A0)
+1070    48 A7 E0 02                66          MOVEM.W D0-D2/A6,-(A7)
+1074    4C D8 1C 0A                67          MOVEM.L (A0)+,D1/D3/A2-A4
+1078    0B 89 00 04                68          MOVEP.W D5,4(A1)
+107C    0D 4A 00 06                69          MOVEP.L 6(A2),D6
+----                               70  
+----                               71  helper
+1080    4E 75                      72          RTS
+----                               73  
+----                               74          .end
+
+Lines: 74  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+helper           1080      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 130 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    12 00 22 48 C5 43 C5 4B C9 8C 30 10 32 18 34 21
+1010    36 2A 00 04 3A 33 40 00 3A 33 40 00 3C 38 12 34
+1020    3C 38 12 34 2E 39 00 12 34 56 2E 39 00 12 34 56
+1030    48 78 12 34 4E F9 00 12 34 56 30 3A 00 08 34 3B
+1040    10 00 34 3B 10 00 61 00 00 38 61 00 00 34 4E FA
+1050    00 04 36 3C 12 34 00 00 00 12 06 68 00 01 00 04
+1060    0C 78 12 34 12 34 43 F0 10 04 48 68 00 04 4E 90
+1070    48 A7 E0 02 4C D8 1C 0A 0B 89 00 04 0D 4A 00 06
+1080    4E 75

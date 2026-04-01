@@ -155,6 +155,41 @@ fn initialize_reports_core_capabilities() {
 }
 
 #[test]
+fn shutdown_waits_for_exit_and_rejects_subsequent_requests() {
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+
+    let shutdown = client.shutdown_request();
+    assert!(
+        shutdown.is_null(),
+        "shutdown should acknowledge with null result"
+    );
+    assert!(
+        !client.wait_for_exit(Duration::from_millis(200)),
+        "server should remain alive until exit notification"
+    );
+
+    let post_shutdown = client.request(
+        "workspace/symbol",
+        json!({
+            "query": "label"
+        }),
+    );
+    assert_eq!(
+        post_shutdown.get("code").and_then(|value| value.as_i64()),
+        Some(-32600),
+        "requests after shutdown should be rejected with Invalid Request"
+    );
+
+    client.exit();
+    assert!(
+        client.wait_for_exit(Duration::from_secs(2)),
+        "exit notification should terminate the server"
+    );
+}
+
+#[test]
 fn completion_uses_nearest_prior_cpu_context() {
     let temp_file = unique_temp_file("completion.asm");
     let uri = path_to_file_uri(&temp_file);

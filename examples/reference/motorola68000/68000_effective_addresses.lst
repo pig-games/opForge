@@ -1,0 +1,35 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 effective-address smoke fixture
+----                                2  .cpu 68000
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    30 3C 12 34                 6      MOVE.W #$1234,D0
+1004    22 98                       7      MOVE.L (A0)+,(A1)
+1006    30 22                       8      MOVE.W -(A2),D0
+1008    34 2B 00 04                 9      MOVE.W 4(A3),D2
+100C    20 79 00 00 12 34          10      MOVEA.L ($001234).L,A0
+1012    48 79 00 00 12 34          11      PEA ($001234).L
+1018    4E 90                      12      JSR (A0)
+101A    4E F9 00 00 12 34          13      JMP ($001234).L
+----                               14  
+----                               15  .end
+
+Lines: 15  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 32 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    30 3C 12 34 22 98 30 22 34 2B 00 04 20 79 00 00
+1010    12 34 48 79 00 00 12 34 4E 90 4E F9 00 00 12 34

@@ -732,6 +732,12 @@ impl<'a> AssemblerContext for AsmLine<'a> {
         self.pass
     }
 
+    fn scalar_value_symbol(&self, name: &str) -> Option<i64> {
+        let full_name = self.resolve_scoped_scalar_value_name(name)?;
+        self.lookup_scoped_entry(&full_name)
+            .map(|entry| i64::from(entry.val))
+    }
+
     fn cpu_state_flag(&self, key: &str) -> Option<u32> {
         self.cpu_mode.state_flags.get(key).copied()
     }

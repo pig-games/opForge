@@ -1,0 +1,29 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  .cpu 68000
+----                                2  
+----                                3  start
+0000    D3 00                       4      ADDX.B D0,D1
+0002    D3 48                       5      ADDX.W -(A0),-(A1)
+0004    97 82                       6      SUBX.L D2,D3
+0006    CB 04                       7      ABCD D4,D5
+0008    87 0A                       8      SBCD -(A2),-(A3)
+000A    BB 4C                       9      CMPM.W (A4)+,(A5)+
+000C    4E 75                      10      RTS
+
+Lines: 10  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            0000      prv  lbl 
+
+Total memory is 14 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0000    D3 00 D3 48 97 82 CB 04 87 0A BB 4C 4E 75

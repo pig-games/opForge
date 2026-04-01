@@ -11,6 +11,8 @@ use serde_json::{json, Value};
 use crate::lsp::session::{LspSession, OutboundMessage};
 use libopforge::registry::{default_asm_registry, AsmRegistry};
 
+const MAX_LSP_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
+
 pub fn run_stdio() -> io::Result<()> {
     run_stdio_with_registry(default_asm_registry())
 }
@@ -39,6 +41,11 @@ pub fn run_stdio_with_registry(registry: AsmRegistry) -> io::Result<()> {
                     break;
                 }
             }
+            Ok(InboundMessage::ProtocolError(message)) => {
+                write_lsp_message(&mut writer, &protocol_error_payload(message.as_str()))?;
+                writer.flush()?;
+                break;
+            }
             Ok(InboundMessage::Eof) => break,
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => break,
@@ -49,6 +56,7 @@ pub fn run_stdio_with_registry(registry: AsmRegistry) -> io::Result<()> {
 
 enum InboundMessage {
     Payload(Value),
+    ProtocolError(String),
     Eof,
 }
 
@@ -68,8 +76,8 @@ fn spawn_stdin_reader() -> mpsc::Receiver<InboundMessage> {
                     let _ = tx.send(InboundMessage::Eof);
                     break;
                 }
-                Err(_) => {
-                    let _ = tx.send(InboundMessage::Eof);
+                Err(err) => {
+                    let _ = tx.send(InboundMessage::ProtocolError(err.to_string()));
                     break;
                 }
             }
@@ -80,32 +88,66 @@ fn spawn_stdin_reader() -> mpsc::Receiver<InboundMessage> {
 
 fn read_lsp_message(reader: &mut impl BufRead) -> io::Result<Option<Value>> {
     let mut content_length: Option<usize> = None;
+    let mut saw_headers = false;
 
     loop {
         let mut line = String::new();
         let read = reader.read_line(&mut line)?;
         if read == 0 {
+            if saw_headers {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "unexpected EOF while reading LSP headers",
+                ));
+            }
             return Ok(None);
         }
+        saw_headers = true;
+
         let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
             break;
         }
-        if let Some((name, value)) = trimmed.split_once(':') {
-            if name.eq_ignore_ascii_case("Content-Length") {
-                content_length = value.trim().parse::<usize>().ok();
+
+        let Some((name, value)) = trimmed.split_once(':') else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid LSP header line: {trimmed}"),
+            ));
+        };
+
+        if name.eq_ignore_ascii_case("Content-Length") {
+            let length = value.trim().parse::<usize>().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid Content-Length header: {}", value.trim()),
+                )
+            })?;
+            if length > MAX_LSP_MESSAGE_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("LSP message exceeds maximum size of {MAX_LSP_MESSAGE_BYTES} bytes"),
+                ));
             }
+            content_length = Some(length);
         }
     }
 
     let Some(length) = content_length else {
-        // Missing Content-Length header — skip this message and try reading the
-        // next one rather than treating it as EOF.
-        return read_lsp_message(reader);
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "missing Content-Length header",
+        ));
     };
+
     let mut body = vec![0u8; length];
     reader.read_exact(&mut body)?;
-    let value = serde_json::from_slice::<Value>(&body).unwrap_or_else(|_| json!({}));
+    let value = serde_json::from_slice::<Value>(&body).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid JSON payload: {err}"),
+        )
+    })?;
     Ok(Some(value))
 }
 
@@ -134,5 +176,68 @@ fn outbound_to_json(message: OutboundMessage) -> Value {
             "method": method,
             "params": params,
         }),
+    }
+}
+
+fn protocol_error_payload(message: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": Value::Null,
+        "error": {
+            "code": -32700,
+            "message": message,
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn read_lsp_message_parses_valid_frame() {
+        let input = b"Content-Length: 2\r\n\r\n{}";
+        let mut reader = Cursor::new(input.as_slice());
+
+        let value = read_lsp_message(&mut reader)
+            .expect("valid frame")
+            .expect("payload");
+
+        assert_eq!(value, json!({}));
+    }
+
+    #[test]
+    fn read_lsp_message_rejects_missing_content_length() {
+        let input = b"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n{}";
+        let mut reader = Cursor::new(input.as_slice());
+
+        let err = read_lsp_message(&mut reader).expect_err("missing Content-Length must fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("missing Content-Length"));
+    }
+
+    #[test]
+    fn read_lsp_message_rejects_oversized_frame() {
+        let input = format!("Content-Length: {}\r\n\r\n", MAX_LSP_MESSAGE_BYTES + 1);
+        let mut reader = Cursor::new(input.into_bytes());
+
+        let err = read_lsp_message(&mut reader).expect_err("oversized Content-Length must fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("exceeds maximum size"));
+    }
+
+    #[test]
+    fn read_lsp_message_rejects_invalid_json_payload() {
+        let input = b"Content-Length: 1\r\n\r\n{";
+        let mut reader = Cursor::new(input.as_slice());
+
+        let err = read_lsp_message(&mut reader).expect_err("invalid JSON must fail");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("invalid JSON payload"));
     }
 }

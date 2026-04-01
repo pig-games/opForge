@@ -1,0 +1,562 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Erik van der Tier
+
+//! Motorola 68040 CPU handler implementation.
+
+use crate::families::m68k::operand::{AbsoluteSize, ControlRegisterKind};
+use crate::families::m68k::{
+    has_fpu_mnemonic, parse_fpu_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic,
+    FamilyOperand, FpuMnemonicKind, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler,
+    Operand,
+};
+use crate::m68020::M68020CpuHandler;
+use crate::m68030::M68030CpuHandler;
+use opcore::tokenizer::Span;
+use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
+
+#[derive(Debug)]
+pub struct M68040CpuHandler {
+    base: M68030CpuHandler,
+    fpu_core: M68020CpuHandler,
+}
+
+#[derive(Debug)]
+struct ParsedMove16Mnemonic {
+    display_name: String,
+    has_size_suffix: bool,
+}
+
+impl Default for M68040CpuHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl M68040CpuHandler {
+    const LEGAL_FPU_TARGETS: [u32; 1] = [3];
+
+    pub fn new() -> Self {
+        Self {
+            base: M68030CpuHandler::new(),
+            fpu_core: M68020CpuHandler::new(),
+        }
+    }
+
+    fn fpu_target_name(state_value: u32) -> &'static str {
+        match state_value {
+            1 => "68881",
+            2 => "68882",
+            3 => "68040",
+            _ => "none",
+        }
+    }
+
+    fn validate_fpu_mnemonic(
+        &self,
+        display_name: &str,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<&'static str, EncodeResult<Vec<u8>>> {
+        let target = ctx
+            .cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY)
+            .unwrap_or(0);
+
+        if target == 0 {
+            return Err(EncodeResult::error(format!(
+                "{display_name} requires an active .fpu target on m68040; legal .fpu targets for m68040 FPU instructions: 68040"
+            )));
+        }
+
+        if !Self::LEGAL_FPU_TARGETS.contains(&target) {
+            return Err(EncodeResult::error(format!(
+                "{display_name} is not available with .fpu {} on m68040; legal .fpu targets for m68040 FPU instructions: 68040",
+                Self::fpu_target_name(target),
+            )));
+        }
+
+        Ok(Self::fpu_target_name(target))
+    }
+
+    fn deferred_fpu_message(&self, display_name: &str, target_name: &str) -> EncodeResult<Vec<u8>> {
+        EncodeResult::error(format!(
+            "{display_name} is recognized for .fpu {} on m68040, but FPU encoding is not yet implemented",
+            target_name,
+        ))
+    }
+
+    fn supports_integrated_68040_fpu(kind: FpuMnemonicKind) -> bool {
+        matches!(
+            kind,
+            FpuMnemonicKind::Fnop
+                | FpuMnemonicKind::Fmove
+                | FpuMnemonicKind::Fmovem
+                | FpuMnemonicKind::Fadd
+                | FpuMnemonicKind::Fsub
+                | FpuMnemonicKind::Fmul
+                | FpuMnemonicKind::Fdiv
+                | FpuMnemonicKind::Fsqrt
+                | FpuMnemonicKind::Fabs
+                | FpuMnemonicKind::Fneg
+                | FpuMnemonicKind::Fcmp
+                | FpuMnemonicKind::Ftst
+                | FpuMnemonicKind::Fint
+                | FpuMnemonicKind::Fintrz
+                | FpuMnemonicKind::Fbranch
+                | FpuMnemonicKind::Fdbcc
+                | FpuMnemonicKind::Fscc
+                | FpuMnemonicKind::Ftrapcc
+                | FpuMnemonicKind::Fsave
+                | FpuMnemonicKind::Frestore
+        )
+    }
+
+    fn parse_move16_mnemonic(mnemonic: &str) -> Option<ParsedMove16Mnemonic> {
+        let display_name = mnemonic.to_ascii_uppercase();
+        let (base, suffix) = match display_name.split_once('.') {
+            Some((base, suffix)) => (base, Some(suffix)),
+            None => (display_name.as_str(), None),
+        };
+        let has_size_suffix = suffix.is_some();
+        (base == "MOVE16").then_some(ParsedMove16Mnemonic {
+            display_name,
+            has_size_suffix,
+        })
+    }
+
+    fn movec_control_register_code(register: ControlRegisterKind) -> Option<u16> {
+        match register {
+            ControlRegisterKind::Sfc => Some(0x000),
+            ControlRegisterKind::Dfc => Some(0x001),
+            ControlRegisterKind::Vbr => Some(0x801),
+            ControlRegisterKind::Cacr => Some(0x002),
+            ControlRegisterKind::Msp => Some(0x803),
+            ControlRegisterKind::Isp => Some(0x804),
+            ControlRegisterKind::Tc => Some(0x003),
+            ControlRegisterKind::Itt0 => Some(0x004),
+            ControlRegisterKind::Itt1 => Some(0x005),
+            ControlRegisterKind::Dtt0 => Some(0x006),
+            ControlRegisterKind::Dtt1 => Some(0x007),
+            ControlRegisterKind::Mmusr => Some(0x805),
+            ControlRegisterKind::Urp => Some(0x806),
+            ControlRegisterKind::Srp => Some(0x807),
+            ControlRegisterKind::Caar => None,
+        }
+    }
+
+    fn encode_movec(
+        &self,
+        operands: &[Operand],
+        size_suffix_present: bool,
+    ) -> EncodeResult<Vec<u8>> {
+        if size_suffix_present {
+            return EncodeResult::error("MOVEC does not support size suffixes");
+        }
+
+        let [src, dst] = operands else {
+            return EncodeResult::error("MOVEC expects two operands");
+        };
+
+        let (dr_bit, general_operand, control_operand) = match (src, dst) {
+            (Operand::ControlRegister { .. }, _) => (0_u16, dst, src),
+            (_, Operand::ControlRegister { .. }) => (1_u16, src, dst),
+            _ => {
+                return EncodeResult::error(
+                    "MOVEC expects one control register and one data/address register operand",
+                );
+            }
+        };
+
+        let Some((ad_bit, register_bits)) =
+            M68KFamilyHandler::general_register_descriptor(general_operand)
+        else {
+            return EncodeResult::error_with_span(
+                "MOVEC general register operand must be a data or address register",
+                general_operand.span(),
+            );
+        };
+
+        let Operand::ControlRegister { register, .. } = control_operand else {
+            unreachable!("MOVEC control operand should be a control register");
+        };
+        if matches!(register, ControlRegisterKind::Caar) {
+            return EncodeResult::error_with_span(
+                "MOVEC CAAR is not supported on m68040",
+                control_operand.span(),
+            );
+        }
+        let Some(control_bits) = Self::movec_control_register_code(*register) else {
+            return EncodeResult::error_with_span(
+                "unsupported MOVEC control register for m68040",
+                control_operand.span(),
+            );
+        };
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, 0x4E7A | dr_bit);
+        M68KFamilyHandler::emit_word(
+            &mut bytes,
+            (ad_bit << 15) | (register_bits << 12) | control_bits,
+        );
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_move16(
+        &self,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [src, dst] = operands else {
+            return EncodeResult::error("MOVE16 expects two operands");
+        };
+
+        match (src, dst) {
+            (
+                Operand::AddressPostincrement {
+                    register: src_reg, ..
+                },
+                Operand::AddressPostincrement {
+                    register: dst_reg, ..
+                },
+            ) => {
+                let Some(src_bits) = M68KFamilyHandler::address_register_number(src_reg) else {
+                    return EncodeResult::error_with_span(
+                        "MOVE16 source operand must use an address register",
+                        src.span(),
+                    );
+                };
+                let Some(dst_bits) = M68KFamilyHandler::address_register_number(dst_reg) else {
+                    return EncodeResult::error_with_span(
+                        "MOVE16 destination operand must use an address register",
+                        dst.span(),
+                    );
+                };
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(&mut bytes, 0xF620 | src_bits as u16);
+                M68KFamilyHandler::emit_word(&mut bytes, 0x8000 | ((dst_bits as u16) << 12));
+                EncodeResult::ok(bytes)
+            }
+            (
+                Operand::AddressIndirect { register, .. }
+                | Operand::AddressPostincrement { register, .. },
+                Operand::Absolute {
+                    expr,
+                    size: AbsoluteSize::Long,
+                    ..
+                },
+            ) => self.encode_move16_absolute(
+                register,
+                expr,
+                match src {
+                    Operand::AddressIndirect { .. } => 0b10,
+                    Operand::AddressPostincrement { .. } => 0b00,
+                    _ => unreachable!(
+                        "MOVE16 register->absolute match should be indirect or postincrement"
+                    ),
+                },
+                src.span(),
+                ctx,
+            ),
+            (
+                Operand::Absolute {
+                    expr,
+                    size: AbsoluteSize::Long,
+                    ..
+                },
+                Operand::AddressIndirect { register, .. }
+                | Operand::AddressPostincrement { register, .. },
+            ) => self.encode_move16_absolute(
+                register,
+                expr,
+                match dst {
+                    Operand::AddressIndirect { .. } => 0b11,
+                    Operand::AddressPostincrement { .. } => 0b01,
+                    _ => unreachable!(
+                        "MOVE16 absolute->register match should be indirect or postincrement"
+                    ),
+                },
+                dst.span(),
+                ctx,
+            ),
+            (Operand::Absolute { .. }, _) | (_, Operand::Absolute { .. }) => {
+                EncodeResult::error("MOVE16 absolute operand must use .L size")
+            }
+            _ => EncodeResult::error(
+                "MOVE16 expects '(Ax)+,(Ay)+' or one absolute .L operand paired with (Ay) or (Ay)+",
+            ),
+        }
+    }
+
+    fn encode_move16_absolute(
+        &self,
+        register: &str,
+        expr: &opcore::parser::Expr,
+        opmode: u16,
+        register_span: Span,
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let Some(register_bits) = M68KFamilyHandler::address_register_number(register) else {
+            return EncodeResult::error_with_span(
+                "MOVE16 register operand must use an address register",
+                register_span,
+            );
+        };
+
+        let value = match M68KFamilyHandler::eval_expr(expr, ctx) {
+            Ok(value) => value,
+            Err(message) => return EncodeResult::error(message),
+        };
+        if !(-2_147_483_648..=4_294_967_295).contains(&value) {
+            return EncodeResult::error(format!(
+                "MOVE16 absolute address {value} out of 32-bit range"
+            ));
+        }
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, 0xF600 | (opmode << 3) | register_bits as u16);
+        bytes.extend_from_slice(&(value as u32).to_be_bytes());
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_pflush(&self, operands: &[Operand]) -> EncodeResult<Vec<u8>> {
+        let [operand] = operands else {
+            return EncodeResult::error(
+                "PFLUSH expects exactly one address-indirect operand on m68040",
+            );
+        };
+
+        let Operand::AddressIndirect { register, .. } = operand else {
+            return EncodeResult::error_with_span(
+                "PFLUSH operand must use address-indirect syntax '(An)' on m68040",
+                operand.span(),
+            );
+        };
+
+        let Some(register_bits) = M68KFamilyHandler::address_register_number(register) else {
+            return EncodeResult::error_with_span(
+                "PFLUSH operand must use an address register",
+                operand.span(),
+            );
+        };
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(&mut bytes, 0xF508 | register_bits as u16);
+        EncodeResult::ok(bytes)
+    }
+}
+
+impl CpuHandler for M68040CpuHandler {
+    type Family = M68KFamilyHandler;
+
+    fn family(&self) -> &Self::Family {
+        self.base.family()
+    }
+
+    fn resolve_operands(
+        &self,
+        mnemonic: &str,
+        family_operands: &[FamilyOperand],
+        ctx: &dyn AssemblerContext,
+    ) -> Result<Vec<Operand>, String> {
+        self.base.resolve_operands(mnemonic, family_operands, ctx)
+    }
+
+    fn encode_instruction(
+        &self,
+        mnemonic: &str,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        if let Some(parsed) = parse_fpu_mnemonic(mnemonic) {
+            if parsed.has_unknown_size_suffix {
+                return EncodeResult::error(format!(
+                    "unsupported size suffix for {}",
+                    parsed.display_name
+                ));
+            }
+
+            let target_name = match self.validate_fpu_mnemonic(&parsed.display_name, ctx) {
+                Ok(target_name) => target_name,
+                Err(err) => return err,
+            };
+            if !Self::supports_integrated_68040_fpu(parsed.kind) {
+                return EncodeResult::error(format!(
+                    "{} is not supported by the integrated 68040 FPU target",
+                    parsed.display_name
+                ));
+            }
+
+            return self
+                .fpu_core
+                .encode_supported_fpu_core_mnemonic(mnemonic, operands, ctx)
+                .unwrap_or_else(|| self.deferred_fpu_message(&parsed.display_name, target_name));
+        }
+
+        if let Some(parsed) = Self::parse_move16_mnemonic(mnemonic) {
+            if parsed.has_size_suffix {
+                return EncodeResult::error(format!(
+                    "unsupported size suffix for {}",
+                    parsed.display_name
+                ));
+            }
+            return self.encode_move16(operands, ctx);
+        }
+
+        if let Some(parsed) = parse_m68020_mnemonic(mnemonic) {
+            if parsed.has_unknown_size_suffix {
+                return EncodeResult::error(format!(
+                    "unsupported size suffix for {}",
+                    parsed.display_name
+                ));
+            }
+
+            match parsed.kind {
+                M68020MnemonicKind::Pflush => {
+                    return self.encode_pflush(operands);
+                }
+                M68020MnemonicKind::Callm => {
+                    return EncodeResult::error("CALLM is not supported on m68040");
+                }
+                M68020MnemonicKind::Rtm => {
+                    return EncodeResult::error("RTM is not supported on m68040");
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(parsed) = parse_m68010_mnemonic(mnemonic) {
+            if parsed.has_unknown_size_suffix {
+                return EncodeResult::error(format!(
+                    "unsupported size suffix for {}",
+                    parsed.display_name
+                ));
+            }
+
+            if matches!(parsed.kind, M68010MnemonicKind::Movec) {
+                return self.encode_movec(operands, parsed.size.is_some());
+            }
+        }
+
+        self.base.encode_instruction(mnemonic, operands, ctx)
+    }
+
+    fn supports_mnemonic(&self, mnemonic: &str) -> bool {
+        self.base.supports_mnemonic(mnemonic)
+            || Self::parse_move16_mnemonic(mnemonic).is_some()
+            || has_fpu_mnemonic(mnemonic)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opcore::parser::Expr;
+    use std::collections::HashMap;
+    use types::symbol::SymbolTable;
+
+    #[derive(Default)]
+    struct TestContext {
+        state_flags: HashMap<String, u32>,
+        symbols: SymbolTable,
+    }
+
+    impl TestContext {
+        fn with_cpu_state_flag(mut self, key: &str, value: u32) -> Self {
+            self.state_flags.insert(key.to_string(), value);
+            self
+        }
+    }
+
+    impl AssemblerContext for TestContext {
+        fn eval_expr(&self, _expr: &Expr) -> Result<i64, String> {
+            Err("unexpected expression evaluation in test".to_string())
+        }
+
+        fn symbols(&self) -> &SymbolTable {
+            &self.symbols
+        }
+
+        fn has_symbol(&self, _name: &str) -> bool {
+            false
+        }
+
+        fn symbol_is_finalized(&self, _name: &str) -> Option<bool> {
+            None
+        }
+
+        fn current_address(&self) -> u32 {
+            0
+        }
+
+        fn pass(&self) -> u8 {
+            2
+        }
+
+        fn scalar_value_symbol(&self, _name: &str) -> Option<i64> {
+            None
+        }
+
+        fn cpu_state_flag(&self, key: &str) -> Option<u32> {
+            self.state_flags.get(key).copied()
+        }
+    }
+
+    #[test]
+    fn fpu_mnemonics_report_incompatible_target_on_m68040() {
+        let handler = M68040CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 1);
+
+        match handler.encode_instruction("FSIN", &[], &ctx) {
+            EncodeResult::Error(message, None) => {
+                assert!(message.contains("FSIN is not available with .fpu 68881 on m68040"));
+                assert!(message.contains("legal .fpu targets for m68040 FPU instructions: 68040"));
+            }
+            other => panic!("expected incompatible-target diagnostic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn core_fpu_surface_encodes_for_68040_target() {
+        let handler = M68040CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 3);
+
+        match handler.encode_instruction(
+            "FADD",
+            &[
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP1".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF2, 0x00, 0x00, 0xA2]),
+            other => panic!("expected FADD encoding, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn m68040_rejects_transcendental_and_extended_math_mnemonics() {
+        let handler = M68040CpuHandler::new();
+        let ctx = TestContext::default()
+            .with_cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY, 3);
+
+        for mnemonic in [
+            "FSIN", "FCOS", "FSINCOS", "FETOX", "FLOGN", "FATANH", "FSCALE", "FMOD", "FREM",
+        ] {
+            match handler.encode_instruction(mnemonic, &[], &ctx) {
+                EncodeResult::Error(message, None) => {
+                    assert!(message.contains("integrated 68040 FPU target"), "{message}");
+                    assert!(message.contains(mnemonic), "{message}");
+                }
+                other => panic!(
+                    "expected integrated-68040 legality diagnostic for {mnemonic}, got {other:?}"
+                ),
+            }
+        }
+    }
+}

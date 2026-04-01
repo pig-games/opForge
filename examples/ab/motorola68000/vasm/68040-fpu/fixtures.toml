@@ -1,0 +1,35 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+cpu_profile = "fpu-68040"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68040-integrated-fpu-core"
+cpu = "68040"
+path = "positive/68040_integrated_fpu_core.asm"
+
+[[fixtures]]
+id = "68040-fnop-core"
+cpu = "68040"
+path = "positive/68040_fnop.asm"
+
+[[fixtures]]
+id = "68040-fsin-status-divergence"
+cpu = "68040"
+path = "documented_divergence/68040_fsin_error.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_error_oracle_success"
+documented_divergence_reason = "opForge currently rejects FSIN on the integrated 68040 FPU while vasm assembles it"
+
+[[fixtures]]
+id = "68040-fetox-status-divergence"
+cpu = "68040"
+path = "documented_divergence/68040_fetox_error.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_error_oracle_success"
+documented_divergence_reason = "opForge currently rejects FETOX on the integrated 68040 FPU while vasm assembles it"

@@ -31,13 +31,13 @@ Instead, the repository should provide those expectations directly through:
 
 The current repository already has useful building blocks:
 
-- a strong top-level [AGENTS.md](/Users/erik/Code/Retro/opForge/AGENTS.md),
-- a plan execution gate in [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-compliance-reviewer.md),
+- a strong top-level [AGENTS.md](/Users/erik/.codex/worktrees/7175/opForge/AGENTS.md),
+- a plan execution gate in [agents/plan-compliance-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-compliance-reviewer.agent.md),
 - a multi-model code-review stack in
-  - [.github/agents/review-triple-orchestrator.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-triple-orchestrator.agent.md),
-  - [.github/agents/review-correctness.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-correctness.agent.md),
-  - [.github/agents/review-security.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-security.agent.md),
-  - [.github/agents/review-tests-quality.agent.md](/Users/erik/Code/Retro/opForge/.github/agents/review-tests-quality.agent.md).
+  - [agents/review-triple-orchestrator.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-triple-orchestrator.agent.md),
+  - [agents/review-correctness.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-correctness.agent.md),
+  - [agents/review-security.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-security.agent.md),
+  - [agents/review-tests-quality.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-tests-quality.agent.md).
 
 The main missing pieces are:
 
@@ -60,6 +60,8 @@ The system should follow these principles:
 5. The repository should prefer small, composable agents over one giant "do everything" agent.
 6. Templates should reduce formatting churn, not replace judgment.
 7. Every gate should have a narrow job and a binary pass/fail outcome.
+8. Repository-local supply-chain bans should be explicit, brief, and hard to
+   override accidentally.
 
 ## Proposed System
 
@@ -76,7 +78,7 @@ The recommended system has four layers:
 
 ## Layer 1: AGENTS.md
 
-The top-level [AGENTS.md](/Users/erik/Code/Retro/opForge/AGENTS.md) should remain the authority for repository-wide behavior, but it should be extended with explicit workflow sections.
+The top-level [AGENTS.md](/Users/erik/.codex/worktrees/7175/opForge/AGENTS.md) should remain the authority for repository-wide behavior, but it should be extended with explicit workflow sections.
 
 Recommended additions:
 
@@ -118,6 +120,21 @@ Add a repository-wide gate matrix:
 - every plan work item or phase must end in a new commit before the next one begins
 - no review is considered complete until the required review workflow ran
 - no review finding may be marked fixed until a finding-closure reviewer passes
+
+### 3a. Supply-chain safety section
+
+Add a short hard-deny section to `AGENTS.md` and related workflow docs for any
+repository-banned dependency.
+
+Current recommended ban:
+
+- agents must never install, import, add, recommend, vendor, execute, or
+  otherwise touch `litellm`
+- if a task appears to require `litellm`, the agent must stop, report the
+  policy conflict, and use direct provider SDKs or official APIs instead
+- if `litellm` is found in repo files, CI, helper environments, or generated
+  instructions, it should be treated as a security issue rather than a normal
+  dependency update
 
 ### 4. Templates section
 
@@ -263,11 +280,11 @@ The repository should expand `agents/` with narrow gates. Each gate should be sh
 
 ### Existing sub-agent to keep
 
-- [agents/plan-compliance-reviewer.md](/Users/erik/Code/Retro/opForge/agents/plan-compliance-reviewer.md)
+- [agents/plan-compliance-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-compliance-reviewer.agent.md)
 
 This should remain the execution-phase gate.
 
-### New sub-agent A: spec-quality-reviewer.md
+### New sub-agent A: spec-quality-reviewer.agent.md
 
 Purpose:
 
@@ -287,7 +304,16 @@ Output:
 - `PASS` only if the spec is implementation-ready
 - `FAIL` if ambiguity or missing decision-making would cause drift
 
-### New sub-agent B: review-report-quality-reviewer.md
+Current repository execution note:
+
+- the direct reviewer remains the narrow gate definition
+- the preferred runnable entry point is `scripts/workflow/run_spec_workflow.sh`
+- that workflow script requires a `PASS` result from
+  `agents/spec-quality-orchestrator.agent.md`, which uses the branch-local
+  multi-agent review path when the environment supports nested reviewer-agent
+  launch
+
+### New sub-agent B: review-report-quality-reviewer.agent.md
 
 Purpose:
 
@@ -307,7 +333,7 @@ Output:
 - `PASS` if the review is usable as a remediation input
 - `FAIL` if it is vague, padded, or structurally weak
 
-### New sub-agent C: plan-quality-reviewer.md
+### New sub-agent C: plan-quality-reviewer.agent.md
 
 Purpose:
 
@@ -330,7 +356,16 @@ Output:
 - `PASS` only if the plan can be executed slice by slice
 - `FAIL` if the plan is too broad, skips validation, or hides coupling
 
-### New sub-agent D: finding-closure-reviewer.md
+Current repository execution note:
+
+- the direct reviewer remains the narrow gate definition
+- the preferred runnable entry point is `scripts/workflow/run_plan_workflow.sh`
+- that workflow script requires a `PASS` result from
+  `agents/plan-quality-orchestrator.agent.md`, which uses the branch-local
+  multi-agent review path when the environment supports nested reviewer-agent
+  launch
+
+### New sub-agent D: finding-closure-reviewer.agent.md
 
 Purpose:
 
@@ -354,7 +389,7 @@ Output:
 - `PASS` only if the finding closure claim is supported by evidence
 - `FAIL` if the claim is vague, incomplete, or unsupported
 
-### Optional new sub-agent E: artifact-traceability-reviewer.md
+### Optional new sub-agent E: artifact-traceability-reviewer.agent.md
 
 Purpose:
 
@@ -421,7 +456,10 @@ Recommended division of labor:
 
 - triple review stack: code review
 - review-report-quality-reviewer: review artifact quality
-- plan-quality-reviewer: plan quality for both implementation and remediation workflows
+- spec-quality-orchestrator plus `run_spec_workflow.sh`: preferred spec-quality
+  gate entry point
+- plan-quality-orchestrator plus `run_plan_workflow.sh`: preferred plan-quality
+  gate entry point
 - finding-closure-reviewer: proof that a claimed fix actually closes a prior finding
 - plan-compliance-reviewer: execution compliance
 
@@ -430,9 +468,11 @@ Recommended division of labor:
 ### A. Specification-driven feature work
 
 1. Write spec with `opforge-spec-authoring`
-2. Run `spec-quality-reviewer`
+2. Run `scripts/workflow/run_spec_workflow.sh`, which requires `PASS` from
+  `Spec Quality Orchestrator`
 3. Build plan with `opforge-plan-authoring` in implementation mode
-4. Run `plan-quality-reviewer`
+4. Run `scripts/workflow/run_plan_workflow.sh`, which requires `PASS` from
+  `Plan Quality Orchestrator`
 5. Execute slices
 6. Before each commit run all quality gates and `plan-compliance-reviewer`
 7. Ensure each plan work item or phase lands as its own new commit
@@ -444,7 +484,8 @@ Recommended division of labor:
 2. Normalize output with `opforge-review-reporting`
 3. Run `review-report-quality-reviewer`
 4. Build plan with `opforge-plan-authoring` in remediation mode
-5. Run `plan-quality-reviewer`
+5. Run `scripts/workflow/run_plan_workflow.sh`, which requires `PASS` from
+  `Plan Quality Orchestrator`
 6. Execute slices with full quality gates and `plan-compliance-reviewer` before
    each commit
 7. Ensure each plan work item or phase lands as its own new commit
@@ -500,17 +541,19 @@ To avoid process overload, the first rollout should be small.
 
 Recommended phase 1:
 
-1. update [AGENTS.md](/Users/erik/Code/Retro/opForge/AGENTS.md) with artifact routing and gate rules
+1. update [AGENTS.md](/Users/erik/.codex/worktrees/7175/opForge/AGENTS.md) with artifact routing and gate rules
 2. add four skills:
    - `opforge-review-reporting`
    - `opforge-plan-authoring`
    - `opforge-spec-authoring`
    - `opforge-review-closure`
-3. add four sub-agents:
-   - `spec-quality-reviewer.md`
-   - `plan-quality-reviewer.md`
-   - `review-report-quality-reviewer.md`
-   - `finding-closure-reviewer.md`
+3. add six spec or plan review agents:
+  - `spec-quality-reviewer.agent.md`
+  - `spec-quality-orchestrator.agent.md`
+  - `plan-quality-reviewer.agent.md`
+  - `plan-quality-orchestrator.agent.md`
+  - `review-report-quality-reviewer.agent.md`
+  - `finding-closure-reviewer.agent.md`
 4. add four templates:
    - spec
    - review report
@@ -526,6 +569,7 @@ Phase 2:
 1. refine plan-mode guidance and traceability references
 2. add optional traceability reviewer
 3. add helper scripts for opening artifact templates and validating checklist discipline
+4. add script entry points for spec and plan workflow execution
 
 This second phase is worth doing once the first phase has proven useful.
 
@@ -535,12 +579,14 @@ Suggested final layout:
 
 ```text
 agents/
-  artifact-traceability-reviewer.md
-  plan-compliance-reviewer.md
-  finding-closure-reviewer.md
-  plan-quality-reviewer.md
-  review-report-quality-reviewer.md
-  spec-quality-reviewer.md
+  artifact-traceability-reviewer.agent.md
+  plan-compliance-reviewer.agent.md
+  finding-closure-reviewer.agent.md
+  plan-quality-orchestrator.agent.md
+  plan-quality-reviewer.agent.md
+  review-report-quality-reviewer.agent.md
+  spec-quality-orchestrator.agent.md
+  spec-quality-reviewer.agent.md
 
 skills/
   README.md
@@ -571,6 +617,16 @@ references/
     plan-slice-rules.md
     review-severity-guide.md
     spec-quality-checklist.md
+
+scripts/
+  workflow/
+    check_plan_checkboxes.py
+    check_review_report.py
+    check_spec_artifact.py
+    new_artifact_from_template.sh
+    run_plan_workflow.sh
+    run_review_workflow.sh
+    run_spec_workflow.sh
     traceability-guide.md
 
 scripts/
@@ -606,6 +662,6 @@ Implement phase 1 first:
 1. add the core workflow skills
 2. add the new review/gate sub-agents
 3. add the templates and references
-4. update [AGENTS.md](/Users/erik/Code/Retro/opForge/AGENTS.md) to route tasks into them
+4. update [AGENTS.md](/Users/erik/.codex/worktrees/7175/opForge/AGENTS.md) to route tasks into them
 
 That is the highest-value improvement with the lowest process overhead.

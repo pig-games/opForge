@@ -1,0 +1,36 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 compare and operand-state smoke fixture
+----                                2  .cpu 68000
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    B0 F8 12 34                 6      CMPA.W ($1234).W,A0
+1004    B3 F9 00 12 34 56           7      CMPA.L ($123456).L,A1
+100A    40 00                       8      NEGX.B D0
+100C    40 50                       9      NEGX.W (A0)
+100E    48 01                      10      NBCD D1
+1010    48 22                      11      NBCD -(A2)
+1012    4A C2                      12      TAS D2
+1014    4A D3                      13      TAS (A3)
+1016    4E 75                      14      RTS
+----                               15  
+----                               16  .end
+
+Lines: 16  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 24 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    B0 F8 12 34 B3 F9 00 12 34 56 40 00 40 50 48 01
+1010    48 22 4A C2 4A D3 4E 75

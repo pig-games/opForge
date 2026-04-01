@@ -1,0 +1,5 @@
+Assembly failed:
+6: ERROR [asm402]
+    6 |     FSIN FP0,FP1
+                ^
+ERROR: FSIN is not supported by the integrated 68040 FPU target

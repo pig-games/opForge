@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+const MAX_LSP_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
+
 pub struct LspTestClient {
     child: Child,
     stdin: ChildStdin,
@@ -130,8 +132,17 @@ impl LspTestClient {
     }
 
     pub fn shutdown(&mut self) {
-        let _ = self.request("shutdown", Value::Null);
+        let _ = self.shutdown_request();
+        self.exit();
         let _ = self.wait_for_exit(Duration::from_secs(2));
+    }
+
+    pub fn shutdown_request(&mut self) -> Value {
+        self.request("shutdown", Value::Null)
+    }
+
+    pub fn exit(&mut self) {
+        self.notify("exit", Value::Null);
     }
 
     fn wait_for_response(&mut self, id: u64, timeout: Duration) -> Option<Value> {
@@ -169,7 +180,7 @@ impl LspTestClient {
         self.stdin.flush()
     }
 
-    fn wait_for_exit(&mut self, timeout: Duration) -> bool {
+    pub fn wait_for_exit(&mut self, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
         loop {
             if let Ok(Some(_)) = self.child.try_wait() {
@@ -226,29 +237,61 @@ fn spawn_reader_thread(stdout: ChildStdout) -> Receiver<Value> {
 
 fn read_lsp_message(reader: &mut impl BufRead) -> io::Result<Option<Value>> {
     let mut content_length: Option<usize> = None;
+    let mut saw_headers = false;
     loop {
         let mut line = String::new();
         let read = reader.read_line(&mut line)?;
         if read == 0 {
+            if saw_headers {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "unexpected EOF while reading LSP headers",
+                ));
+            }
             return Ok(None);
         }
+        saw_headers = true;
         let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
             break;
         }
-        if let Some((name, value)) = trimmed.split_once(':') {
-            if name.eq_ignore_ascii_case("Content-Length") {
-                content_length = value.trim().parse::<usize>().ok();
+        let Some((name, value)) = trimmed.split_once(':') else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid LSP header line: {trimmed}"),
+            ));
+        };
+        if name.eq_ignore_ascii_case("Content-Length") {
+            let length = value.trim().parse::<usize>().map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("invalid Content-Length header: {}", value.trim()),
+                )
+            })?;
+            if length > MAX_LSP_MESSAGE_BYTES {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("LSP message exceeds maximum size of {MAX_LSP_MESSAGE_BYTES} bytes"),
+                ));
             }
+            content_length = Some(length);
         }
     }
 
     let Some(length) = content_length else {
-        return Ok(None);
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "missing Content-Length header",
+        ));
     };
     let mut body = vec![0u8; length];
     reader.read_exact(&mut body)?;
-    let value = serde_json::from_slice::<Value>(&body).unwrap_or_else(|_| json!({}));
+    let value = serde_json::from_slice::<Value>(&body).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid JSON payload: {err}"),
+        )
+    })?;
     Ok(Some(value))
 }
 

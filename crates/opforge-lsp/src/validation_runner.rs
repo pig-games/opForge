@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
 use crate::lsp::config::LspConfig;
+
+const VALIDATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Default)]
 pub struct ValidationFixit {
@@ -64,14 +69,11 @@ pub fn run_cli_validation(
     }
     cmd.current_dir(working_dir);
 
-    let output = match cmd.output() {
+    let output = match run_command_with_timeout(&mut cmd, VALIDATION_TIMEOUT) {
         Ok(out) => out,
-        Err(err) => {
+        Err(detail) => {
             return ValidationRunResult {
-                diagnostics: vec![validation_failure_diagnostic(
-                    root_file,
-                    format!("could not start validator: {err}"),
-                )],
+                diagnostics: vec![validation_failure_diagnostic(root_file, detail)],
             }
         }
     };
@@ -90,6 +92,65 @@ pub fn run_cli_validation(
         ));
     }
     ValidationRunResult { diagnostics }
+}
+
+fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Output, String> {
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|err| format!("could not start validator: {err}"))?;
+    let Some(stdout) = child.stdout.take() else {
+        return Err("validator stdout pipe was unavailable".to_string());
+    };
+    let Some(stderr) = child.stderr.take() else {
+        return Err("validator stderr pipe was unavailable".to_string());
+    };
+
+    let stdout_handle = thread::spawn(move || read_pipe(stdout));
+    let stderr_handle = thread::spawn(move || read_pipe(stderr));
+    let started = Instant::now();
+
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if started.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = stdout_handle.join();
+                    let _ = stderr_handle.join();
+                    return Err(format!(
+                        "validator timed out after {} ms",
+                        timeout.as_millis()
+                    ));
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_handle.join();
+                let _ = stderr_handle.join();
+                return Err(format!("could not wait for validator: {err}"));
+            }
+        }
+    };
+
+    let stdout = stdout_handle.join().unwrap_or_default();
+    let stderr = stderr_handle.join().unwrap_or_default();
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+fn read_pipe<R: Read>(mut reader: R) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let _ = reader.read_to_end(&mut bytes);
+    bytes
 }
 
 fn validation_failure_diagnostic(root_file: &Path, detail: String) -> ValidationDiagnostic {
@@ -148,16 +209,6 @@ fn resolve_opforge_path(config: &LspConfig) -> String {
 fn resolve_opforge_path_with_current_exe(config: &LspConfig, current_exe: Option<&Path>) -> String {
     if let Some(path) = &config.opforge_path {
         return path.clone();
-    }
-
-    for root in &config.roots {
-        let workspace_candidate = Path::new(root)
-            .join("target")
-            .join("debug")
-            .join(opforge_binary_name());
-        if workspace_candidate.is_file() {
-            return workspace_candidate.to_string_lossy().to_string();
-        }
     }
 
     if let Some(current_exe) = current_exe {
@@ -321,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_path_prefers_workspace_target_debug_binary() {
+    fn resolve_path_ignores_workspace_target_debug_binary_without_explicit_opt_in() {
         let temp_root =
             std::env::temp_dir().join(format!("lsp-workspace-test-{}", std::process::id()));
         let target_debug = temp_root.join("target").join("debug");
@@ -334,7 +385,7 @@ mod tests {
             ..LspConfig::default()
         };
         let resolved = resolve_opforge_path_with_current_exe(&config, None);
-        assert_eq!(resolved, workspace_opforge.to_string_lossy());
+        assert_eq!(resolved, "opforge");
 
         let _ = std::fs::remove_file(workspace_opforge);
         let _ = std::fs::remove_dir_all(temp_root);
@@ -358,5 +409,17 @@ mod tests {
         let rebased = rebase_config_path("../external/modules", source_root, overlay_root);
 
         assert_eq!(rebased, "/workspace/external/modules");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_command_with_timeout_reports_timeout() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg("sleep 1");
+
+        let error = run_command_with_timeout(&mut cmd, Duration::from_millis(50))
+            .expect_err("hung command should time out");
+
+        assert!(error.contains("validator timed out"));
     }
 }

@@ -10,7 +10,7 @@
 
 > **Status note:** The currently published `libopforge` and `opforge-ffi`
 > surfaces are pre-1.0 preview interfaces. References below to an eventual
-> stable API describe the target state, not a claim that `v0.9.6` has already
+> stable API describe the target state, not a claim that `v0.9.7` has already
 > reached it.
 
 ---

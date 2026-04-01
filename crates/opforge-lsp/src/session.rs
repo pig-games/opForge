@@ -31,6 +31,22 @@ use libopforge::registry::{
 
 static OVERLAY_DIR_SEQUENCE: AtomicUsize = AtomicUsize::new(1);
 
+struct ValidationWorkerGuard {
+    counter: Arc<AtomicUsize>,
+}
+
+impl ValidationWorkerGuard {
+    fn new(counter: Arc<AtomicUsize>) -> Self {
+        Self { counter }
+    }
+}
+
+impl Drop for ValidationWorkerGuard {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum OutboundMessage {
     Response {
@@ -63,6 +79,7 @@ pub struct LspSession {
     active_validations: Arc<AtomicUsize>,
     workspace_index_rebuilds: u64,
     shutdown_requested: bool,
+    exit_requested: bool,
 }
 
 impl Default for LspSession {
@@ -93,11 +110,12 @@ impl LspSession {
             active_validations: Arc::new(AtomicUsize::new(0)),
             workspace_index_rebuilds: 0,
             shutdown_requested: false,
+            exit_requested: false,
         }
     }
 
     pub fn should_exit(&self) -> bool {
-        self.shutdown_requested
+        self.exit_requested
     }
 
     pub fn poll_async_notifications(&mut self) -> Vec<OutboundMessage> {
@@ -131,6 +149,10 @@ impl LspSession {
     }
 
     fn handle_request(&mut self, method: &str, params: &Value) -> Result<Value, (i64, String)> {
+        if self.shutdown_requested && method != "shutdown" {
+            return Err((-32600, "server has shut down".to_string()));
+        }
+
         match method {
             "initialize" => Ok(self.handle_initialize(params)),
             "shutdown" => {
@@ -154,10 +176,14 @@ impl LspSession {
     }
 
     fn handle_notification(&mut self, method: &str, params: &Value) -> Vec<OutboundMessage> {
+        if self.shutdown_requested && method != "exit" {
+            return Vec::new();
+        }
+
         match method {
             "initialized" => Vec::new(),
             "exit" => {
-                self.shutdown_requested = true;
+                self.exit_requested = true;
                 Vec::new()
             }
             "workspace/didChangeConfiguration" => self.handle_config_change(params),
@@ -929,9 +955,9 @@ impl LspSession {
         let counter = Arc::clone(&self.active_validations);
         counter.fetch_add(1, Ordering::Relaxed);
         thread::spawn(move || {
+            let _guard = ValidationWorkerGuard::new(counter);
             let result = run_validation_task(config, doc, documents, generation, root_uri);
             let _ = tx.send(result);
-            counter.fetch_sub(1, Ordering::Relaxed);
         });
         true
     }
@@ -1887,5 +1913,54 @@ mod tests {
             }
         }
         assert!(has_djnz, "z80 completion should include djnz");
+    }
+
+    #[test]
+    fn shutdown_does_not_request_exit_until_exit_notification_arrives() {
+        let mut session = LspSession::new();
+
+        let shutdown = session.handle_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "shutdown",
+            "params": null
+        }));
+
+        assert!(matches!(
+            shutdown.as_slice(),
+            [OutboundMessage::Response {
+                result: Value::Null,
+                ..
+            }]
+        ));
+        assert!(
+            !session.should_exit(),
+            "shutdown alone should not terminate the server"
+        );
+
+        let post_shutdown = session.handle_message(&json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "textDocument/completion",
+            "params": {
+                "textDocument": { "uri": "file:///tmp/example.asm" },
+                "position": { "line": 0, "character": 0 }
+            }
+        }));
+
+        assert!(matches!(
+            post_shutdown.as_slice(),
+            [OutboundMessage::Error { code: -32600, .. }]
+        ));
+
+        let _ = session.handle_message(&json!({
+            "jsonrpc": "2.0",
+            "method": "exit",
+            "params": null
+        }));
+        assert!(
+            session.should_exit(),
+            "exit notification should terminate the server"
+        );
     }
 }

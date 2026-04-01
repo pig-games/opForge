@@ -9,7 +9,13 @@ pub mod m45gs02;
 pub mod m65816;
 pub mod m65c02;
 pub mod m6800;
+pub mod m68000;
+pub mod m68010;
+pub mod m68020;
+pub mod m68030;
+pub mod m68040;
 pub mod m6809;
+pub mod m68k;
 pub mod mos6502;
 pub mod z80;
 
@@ -20,6 +26,10 @@ use registry::registry::AsmRegistry;
 pub mod families {
     pub mod intel8080 {
         pub use crate::intel8080::*;
+    }
+
+    pub mod m68k {
+        pub use crate::m68k::*;
     }
 
     pub mod m6800 {
@@ -43,6 +53,15 @@ pub fn register_motorola6800_family_stack(registry: &mut AsmRegistry) {
     registry.register_cpu(Box::new(hd6309::module::HD6309CpuModule));
 }
 
+pub fn register_motorola68000_family_stack(registry: &mut AsmRegistry) {
+    registry.register_family(Box::new(m68k::module::Motorola68000FamilyModule));
+    registry.register_cpu(Box::new(m68000::module::M68000CpuModule));
+    registry.register_cpu(Box::new(m68010::module::M68010CpuModule));
+    registry.register_cpu(Box::new(m68020::module::M68020CpuModule));
+    registry.register_cpu(Box::new(m68030::module::M68030CpuModule));
+    registry.register_cpu(Box::new(m68040::module::M68040CpuModule));
+}
+
 pub fn register_mos6502_family_stack(registry: &mut AsmRegistry) {
     registry.register_family(Box::new(mos6502::module::MOS6502FamilyModule));
     registry.register_cpu(Box::new(mos6502::module::M6502CpuModule));
@@ -55,7 +74,7 @@ pub fn register_mos6502_family_stack(registry: &mut AsmRegistry) {
 mod tests {
     use super::{
         register_intel8080_family_stack, register_mos6502_family_stack,
-        register_motorola6800_family_stack,
+        register_motorola68000_family_stack, register_motorola6800_family_stack,
     };
     use registry::cpu::CpuType;
     use registry::registry::AsmRegistry;
@@ -93,6 +112,57 @@ mod tests {
             .family_ids()
             .into_iter()
             .any(|family| family.as_str() == "motorola6800"));
+    }
+
+    #[test]
+    fn motorola68000_stack_registration_exposes_expected_aliases() {
+        let mut registry = AsmRegistry::new();
+        register_motorola68000_family_stack(&mut registry);
+
+        assert_eq!(
+            registry.resolve_cpu_name("68000"),
+            Some(CpuType::new("m68000"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68000"),
+            Some(CpuType::new("m68000"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68010"),
+            Some(CpuType::new("m68010"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68010"),
+            Some(CpuType::new("m68010"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68020"),
+            Some(CpuType::new("m68020"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68020"),
+            Some(CpuType::new("m68020"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68030"),
+            Some(CpuType::new("m68030"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68030"),
+            Some(CpuType::new("m68030"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68040"),
+            Some(CpuType::new("m68040"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68040"),
+            Some(CpuType::new("m68040"))
+        );
+        assert!(registry
+            .family_ids()
+            .into_iter()
+            .any(|family| family.as_str() == "motorola68000"));
     }
 
     #[test]

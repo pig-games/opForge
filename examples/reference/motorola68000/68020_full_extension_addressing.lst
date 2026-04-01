@@ -1,0 +1,35 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68020 full-extension addressing smoke fixture
+----                                2  .cpu 68020
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    30 30 1D 20 00 04           6      MOVE.W (4.W,A0,D1.L*4),D0
+1006    32 30 1D 20 00 04           7      MOVE.W 4.W(A0,D1.L*4),D1
+100C    34 30 1D 12 00 08           8      MOVE.W ([A0,D1.L*4],8.W),D2
+1012    36 33 23 17 00 00 00 08     9      MOVE.W ([A3],D2.W*2,8.L),D3
+101A    0E 70 08 00 1D 20 00 04    10      MOVES.W D0,(4.W,A0,D1.L*4)
+1022    0E B0 A0 00 1D 12 00 08    11      MOVES.L ([A0,D1.L*4],8.W),A2
+102A    4E 75                      12      RTS
+----                               13  
+----                               14  .end
+
+Lines: 14  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 44 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    30 30 1D 20 00 04 32 30 1D 20 00 04 34 30 1D 12
+1010    00 08 36 33 23 17 00 00 00 08 0E 70 08 00 1D 20
+1020    00 04 0E B0 A0 00 1D 12 00 08 4E 75

@@ -4,7 +4,7 @@ This guide explains when to choose `ExecutionMode::Vm`,
 `ExecutionMode::Rust`, or `ExecutionMode::Lockstep { continuation_head: ... }`
 in the published preview `libopforge` facade.
 
-The mode names and defaults below describe `v0.9.6`; they are not yet a
+The mode names and defaults below describe `v0.9.7`; they are not yet a
 long-term stable API commitment.
 
 ## 1. Quick chooser

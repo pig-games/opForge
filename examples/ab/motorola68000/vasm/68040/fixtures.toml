@@ -1,0 +1,41 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68040-move16-carry-forward-core"
+cpu = "68040"
+path = "positive/68040_move16_carry_forward_core.asm"
+
+[[fixtures]]
+id = "68040-link-long-byte-divergence"
+cpu = "68040"
+path = "documented_divergence/68040_link_long.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_success_bytes_differ"
+documented_divergence_reason = "LINK.L currently encodes differently between opForge and vasm on 68040 carry-forward coverage"
+
+[[fixtures]]
+id = "68040-callm-error"
+cpu = "68040"
+path = "negative/68040_callm_error.asm"
+expected_outcome = "error"
+compare_mode = "error_class"
+
+[[fixtures]]
+id = "68040-rtm-error"
+cpu = "68040"
+path = "negative/68040_rtm_error.asm"
+expected_outcome = "error"
+compare_mode = "error_class"
+
+[[fixtures]]
+id = "68040-movec-caar-error"
+cpu = "68040"
+path = "negative/68040_movec_caar_error.asm"
+expected_outcome = "error"
+compare_mode = "error_class"

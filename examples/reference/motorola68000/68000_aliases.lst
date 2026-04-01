@@ -1,0 +1,75 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 idiomatic alias spellings
+----                                2  ; Shows accepted alternative source forms that map to baseline canonical modes.
+----                                3  
+----                                4          .cpu 68000
+----    EQU 1000                    5          .org $1000
+----                                6  
+----                                7  start
+----                                8  ; ========================================
+----                                9  ; BRANCH DEFAULTS
+----                               10  ; ========================================
+1000    60 00 00 16                11          BRA.W branch_target
+1004    60 00 00 12                12          BRA branch_target
+1008    66 00 00 42                13          BNE.W done
+100C    66 00 00 3E                14          BNE done
+1010    61 00 00 3C                15          BSR.W helper
+1014    61 00 00 38                16          BSR helper
+----                               17  
+----                               18  branch_target
+----                               19  ; ========================================
+----                               20  ; ZERO-DISPLACEMENT INDEXED FORMS
+----                               21  ; ========================================
+1018    30 30 10 00                22          MOVE.W 0(A0,D1.W),D0
+101C    30 30 10 00                23          MOVE.W (A0,D1),D0
+1020    30 30 10 00                24          MOVE.W (A0,D1.W*1),D0
+1024    36 3B 20 00                25          MOVE.W 0(PC,D2.W),D3
+1028    36 3B 20 00                26          MOVE.W (PC,D2),D3
+102C    36 3B 20 00                27          MOVE.W (PC,D2.W*1),D3
+----                               28  
+----                               29  ; ========================================
+----                               30  ; ZERO-DISPLACEMENT PC-RELATIVE SHORTHAND
+----                               31  ; ========================================
+1030    4E FA 00 00                32          JMP 0(PC)
+1034    4E FA 00 00                33          JMP (PC)
+----                               34  
+----                               35  ; ========================================
+----                               36  ; ABSOLUTE .W / .L FORMS
+----                               37  ; ========================================
+1038    38 38 12 34                38          MOVE.W ($1234).W,D4
+103C    38 38 12 34                39          MOVE.W $1234.W,D4
+1040    2A 39 00 12 34 56          40          MOVE.L ($123456).L,D5
+1046    2A 39 00 12 34 56          41          MOVE.L $123456.L,D5
+----                               42  
+----                               43  done
+104C    4E 75                      44          RTS
+----                               45  
+----                               46  helper
+104E    4E 75                      47          RTS
+----                               48  
+----                               49          .end
+
+Lines: 49  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+branch_target    1018      prv  lbl 
+done             104C      prv  lbl 
+helper           104E      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 80 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    60 00 00 16 60 00 00 12 66 00 00 42 66 00 00 3E
+1010    61 00 00 3C 61 00 00 38 30 30 10 00 30 30 10 00
+1020    30 30 10 00 36 3B 20 00 36 3B 20 00 36 3B 20 00
+1030    4E FA 00 00 4E FA 00 00 38 38 12 34 38 38 12 34
+1040    2A 39 00 12 34 56 2A 39 00 12 34 56 4E 75 4E 75

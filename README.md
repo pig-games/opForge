@@ -6,6 +6,30 @@ It currently ships builtin support for:
 - Intel 8080 family processors: 8080 alias, 8085, and Z80
 - MOS 6502 family processors: 6502, 65C02, 65816, and 45GS02
 - Motorola 6800 family processors: 6809 and HD6309
+- Motorola 68000 family processors: `68000`, `68010`, `68020`, `68030`, and `68040` with the corresponding `m68000`/`mc68000` through `m68040`/`mc68040` aliases
+
+Motorola 68000-family support now spans the shipped CPU lineage from `68000`
+through `68040`. `68010` keeps baseline `68000` addressing, `68020`/`68030`/
+`68040` add the shipped `68020+` full-extension addressing surface, and
+`68040` adds `MOVE16` while rejecting `CALLM`, `RTM`, and `MOVEC CAAR`.
+
+The current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
+`68030` and `68040`, and the existing `68040` MMU-related `MOVEC` register
+surface stays available. Broader PMMU/MMU families remain out of scope.
+
+The current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
+`.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
+while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`.
+That integrated path intentionally excludes external-coprocessor-only
+`FSIN`-class transcendental and extended-math mnemonics. opForge assembles the
+documented programmer-visible instruction surface and keeps runtime execution
+semantics out of scope.
+
+The shipped Motorola 68000 example set now includes focused FPU fixtures such as
+`68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
+`68020_fpu_registers`, `68030_pflush_external_fpu`, and
+`68040_integrated_fpu` so the current MMU/FPU surface is visible in
+checked-in source and reference outputs.
 
 It is originally inspired by [64tass](https://tass64.sourceforge.net) in terms of feature scope and notation style.
 
@@ -23,7 +47,7 @@ Detailed documentation:
 - [`examples/`](examples): sample assembler programs and reference fixtures
 
 `libopforge` and `opforge-ffi` are published and usable, but they are still
-pre-1.0 host surfaces. Treat `v0.9.6` as a documented public preview rather
+pre-1.0 host surfaces. Treat `v0.9.7` as a documented public preview rather
 than a long-term stable API promise.
 
 ## Installation
@@ -61,6 +85,9 @@ opforge --fmt -i examples/helloworld.asm
 
 The full CLI surface, output-routing rules, directive semantics, and formatter configuration are documented in the [reference manual](documentation/opForge-reference-manual.md) and `opforge --help`.
 
+To inspect the currently registered CPU and capability surface directly, use
+`opforge --print-cpusupport` or `opforge --print-capabilities`.
+
 ## Embedding
 
 Embedding documentation:
@@ -89,7 +116,11 @@ Common local commands:
 make build
 make test
 make reference-test
+make test-external-oracle
 make build-ffi-release
 ```
 
 Additional build and test lanes are listed in [`Makefile`](Makefile).
+The external-oracle lane expects a local `vasm` installation plus the
+`opforge-vasm68k` wrapper described in
+[`documentation/opForge-vasm-contributor-install-guide.md`](documentation/opForge-vasm-contributor-install-guide.md).

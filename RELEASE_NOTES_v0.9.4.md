@@ -41,12 +41,12 @@ This release extends opForge in two major areas:
   - `tests/common/lsp_client.rs`
   - `tests/lsp_client_integration.rs`
 - Examples:
-  - `examples/6809_simple.asm`
-  - `examples/6809_indexed_modes.asm`
-  - `examples/6809_branches.asm`
-  - `examples/6809_register_ops.asm`
-  - `examples/6309_extensions.asm`
-- Reference outputs for each added example under `examples/reference/`.
+  - `examples/motorola6800/6809_simple.asm`
+  - `examples/motorola6800/6809_indexed_modes.asm`
+  - `examples/motorola6800/6809_branches.asm`
+  - `examples/motorola6800/6809_register_ops.asm`
+  - `examples/motorola6800/6309_extensions.asm`
+- Reference outputs for each added example under `examples/reference/motorola6800/`.
 
 ## Changed
 

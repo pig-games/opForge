@@ -1,0 +1,39 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 bit-operation smoke fixture
+----                                2  .cpu 68000
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    08 00 00 03                 6      BTST #3,D0
+1004    03 10                       7      BTST D1,(A0)
+1006    08 29 00 01 00 04           8      BTST #1,4(A1)
+100C    08 3A 00 01 00 04           9      BTST #1,4(PC)
+1012    08 42 00 05                10      BCHG #5,D2
+1016    07 78 12 34                11      BCHG D3,($1234).W
+101A    08 91 00 01                12      BCLR #1,(A1)
+101E    09 85                      13      BCLR D4,D5
+1020    08 F9 00 07 00 12 34 56    14      BSET #7,($123456).L
+1028    0D EA 00 04                15      BSET D6,4(A2)
+102C    4E 75                      16      RTS
+----                               17  
+----                               18  .end
+
+Lines: 18  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 46 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    08 00 00 03 03 10 08 29 00 01 00 04 08 3A 00 01
+1010    00 04 08 42 00 05 07 78 12 34 08 91 00 01 09 85
+1020    08 F9 00 07 00 12 34 56 0D EA 00 04 4E 75

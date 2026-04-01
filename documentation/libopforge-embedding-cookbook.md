@@ -3,7 +3,7 @@
 This cookbook collects short `libopforge` embedding recipes for common host shapes.
 
 These recipes target the current published pre-1.0 `libopforge` surface in
-`v0.9.6`, not a finalized stable API.
+`v0.9.7`, not a finalized stable API.
 
 ## 1. Quick chooser
 

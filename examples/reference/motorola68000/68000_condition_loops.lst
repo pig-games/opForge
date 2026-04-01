@@ -1,0 +1,35 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 condition-code and decrement-loop smoke fixture
+----                                2  .cpu 68000
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    56 C0                       6      SNE D0
+1002    50 D0                       7      ST (A0)
+----                                8  loop
+1004    51 C9 FF FE                 9      DBRA D1,loop
+1008    56 CA 00 02                10      DBNE D2,done
+----                               11  done
+100C    4E 75                      12      RTS
+----                               13  
+----                               14  .end
+
+Lines: 14  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+done             100C      prv  lbl 
+loop             1004      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 14 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    56 C0 50 D0 51 C9 FF FE 56 CA 00 02 4E 75

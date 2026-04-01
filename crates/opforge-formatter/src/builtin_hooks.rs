@@ -56,6 +56,26 @@ impl FamilyFormatterHook for Motorola6800FamilyFormatterHook {
     }
 }
 
+pub struct Motorola68KDialectFormatterHook;
+
+impl DialectFormatterHook for Motorola68KDialectFormatterHook {
+    fn family_id(&self) -> CpuFamily {
+        families::families::m68k::module::FAMILY_ID
+    }
+
+    fn dialect_id(&self) -> &'static str {
+        families::families::m68k::module::DIALECT_MOTOROLA68K
+    }
+}
+
+pub struct Motorola68KFamilyFormatterHook;
+
+impl FamilyFormatterHook for Motorola68KFamilyFormatterHook {
+    fn family_id(&self) -> CpuFamily {
+        families::families::m68k::module::FAMILY_ID
+    }
+}
+
 pub struct TransparentDialectFormatterHook;
 
 impl DialectFormatterHook for TransparentDialectFormatterHook {
@@ -137,5 +157,13 @@ pub struct HD6309FormatterHook;
 impl CpuFormatterHook for HD6309FormatterHook {
     fn cpu_id(&self) -> CpuType {
         families::hd6309::module::CPU_ID
+    }
+}
+
+pub struct M68000FormatterHook;
+
+impl CpuFormatterHook for M68000FormatterHook {
+    fn cpu_id(&self) -> CpuType {
+        families::m68000::module::CPU_ID
     }
 }

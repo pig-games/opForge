@@ -1,0 +1,17 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+cpu_profile = "mmu-68030"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68030-pflush-core"
+cpu = "68030"
+path = "positive/68030_pflush_core.asm"
+
+[[fixtures]]
+id = "68030-pflush-nonzero-fc-mask"
+cpu = "68030"
+path = "positive/68030_pflush_nonzero_fc_mask.asm"

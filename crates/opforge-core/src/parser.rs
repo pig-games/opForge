@@ -1160,13 +1160,36 @@ impl Parser {
                 kind: TokenKind::OpenParen,
                 span: open_span,
             }) => {
-                let expr = self.parse_expr()?;
+                let mut elements = Vec::new();
+                if matches!(
+                    self.peek(),
+                    Some(Token {
+                        kind: TokenKind::Comma,
+                        ..
+                    })
+                ) {
+                    elements.push(Expr::Placeholder(self.current_span()));
+                } else {
+                    elements.push(self.parse_expr()?);
+                }
 
                 if self.consume_comma() {
-                    let mut elements = vec![expr];
-                    elements.push(self.parse_expr()?);
-                    while self.consume_comma() {
-                        elements.push(self.parse_expr()?);
+                    loop {
+                        if matches!(
+                            self.peek(),
+                            Some(Token {
+                                kind: TokenKind::Comma | TokenKind::CloseParen,
+                                ..
+                            })
+                        ) {
+                            elements.push(Expr::Placeholder(self.current_span()));
+                        } else {
+                            elements.push(self.parse_expr()?);
+                        }
+
+                        if !self.consume_comma() {
+                            break;
+                        }
                     }
 
                     let close_span = self.current_span();
@@ -1185,6 +1208,7 @@ impl Parser {
                     // The handler will inspect the inner Expr::Tuple
                     Ok(Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span))
                 } else {
+                    let expr = elements.pop().expect("single parenthesized expression");
                     let close_span = self.current_span();
                     if !self.consume_kind(TokenKind::CloseParen) {
                         return Err(ParseError {
@@ -1206,12 +1230,35 @@ impl Parser {
                 kind: TokenKind::OpenBracket,
                 span: open_span,
             }) => {
-                let expr = self.parse_expr()?;
-                if self.consume_comma() {
-                    let mut elements = vec![expr];
+                let mut elements = Vec::new();
+                if matches!(
+                    self.peek(),
+                    Some(Token {
+                        kind: TokenKind::Comma,
+                        ..
+                    })
+                ) {
+                    elements.push(Expr::Placeholder(self.current_span()));
+                } else {
                     elements.push(self.parse_expr()?);
-                    while self.consume_comma() {
-                        elements.push(self.parse_expr()?);
+                }
+                if self.consume_comma() {
+                    loop {
+                        if matches!(
+                            self.peek(),
+                            Some(Token {
+                                kind: TokenKind::Comma | TokenKind::CloseBracket,
+                                ..
+                            })
+                        ) {
+                            elements.push(Expr::Placeholder(self.current_span()));
+                        } else {
+                            elements.push(self.parse_expr()?);
+                        }
+
+                        if !self.consume_comma() {
+                            break;
+                        }
                     }
 
                     let close_span = self.current_span();
@@ -1231,6 +1278,7 @@ impl Parser {
                         span,
                     ))
                 } else {
+                    let expr = elements.pop().expect("single bracketed expression");
                     let close_span = self.current_span();
                     if !self.consume_kind(TokenKind::CloseBracket) {
                         return Err(ParseError {
@@ -1364,6 +1412,45 @@ impl Parser {
 
     fn parse_postfix_expr(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
         loop {
+            if let Some(Token {
+                kind: TokenKind::OpenParen,
+                span: open_span,
+            }) = self.peek().cloned()
+            {
+                let start_span = span_of_expr(&expr);
+                if open_span.col_start == start_span.col_end {
+                    self.index += 1;
+                    let mut elements = vec![expr];
+                    if self.consume_kind(TokenKind::CloseParen) {
+                        return Err(ParseError {
+                            message: "Expected expression inside postfix tuple".to_string(),
+                            span: open_span,
+                        });
+                    }
+
+                    elements.push(self.parse_expr()?);
+                    while self.consume_comma() {
+                        elements.push(self.parse_expr()?);
+                    }
+
+                    let close_span = self.current_span();
+                    if !self.consume_kind(TokenKind::CloseParen) {
+                        return Err(ParseError {
+                            message: "Missing ')' in postfix tuple".to_string(),
+                            span: self.current_span(),
+                        });
+                    }
+
+                    let span = Span {
+                        line: start_span.line,
+                        col_start: start_span.col_start,
+                        col_end: close_span.col_end,
+                    };
+                    expr = Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span);
+                    continue;
+                }
+            }
+
             if self.consume_kind(TokenKind::OpenBracket) {
                 let index = self.parse_expr()?;
                 let close_span = self.current_span();
@@ -1420,6 +1507,28 @@ impl Parser {
                     },
                 };
                 continue;
+            }
+
+            if let Some(Token {
+                kind: TokenKind::Operator(OperatorKind::Plus),
+                span: plus_span,
+            }) = self.peek().cloned()
+            {
+                let start_span = span_of_expr(&expr);
+                if matches!(expr, Expr::Indirect(_, _)) && plus_span.col_start == start_span.col_end
+                {
+                    self.index += 1;
+                    expr = Expr::Unary {
+                        op: UnaryOp::Plus,
+                        expr: Box::new(expr),
+                        span: Span {
+                            line: start_span.line,
+                            col_start: start_span.col_start,
+                            col_end: plus_span.col_end,
+                        },
+                    };
+                    continue;
+                }
             }
 
             break;
@@ -1528,9 +1637,12 @@ fn span_of_expr(expr: &Expr) -> Span {
 mod tests {
     use super::{
         match_statement_signature, select_statement_signature, AssignOp, BinaryOp, ConditionalKind,
-        Expr, LineAst, Parser, SignatureAtom,
+        Expr, LineAst, Parser, SignatureAtom, UnaryOp,
     };
-    use crate::tokenizer::{NumberLiteral, Span, Token, TokenKind, Tokenizer};
+    use crate::expression::expr_text;
+    use crate::tokenizer::{
+        register_checker_from_fn, NumberLiteral, Span, Token, TokenKind, Tokenizer,
+    };
     use types::line_ast::{ConditionalAst, PackAst, PlaceAst, UseAst};
 
     fn tokenize_line(line: &str) -> Vec<crate::tokenizer::Token> {
@@ -1544,6 +1656,29 @@ mod tests {
             tokens.push(token);
         }
         tokens
+    }
+
+    fn is_m68k_register(name: &str) -> bool {
+        matches!(
+            name.to_ascii_uppercase().as_str(),
+            "D0" | "D1"
+                | "D2"
+                | "D3"
+                | "D4"
+                | "D5"
+                | "D6"
+                | "D7"
+                | "A0"
+                | "A1"
+                | "A2"
+                | "A3"
+                | "A4"
+                | "A5"
+                | "A6"
+                | "A7"
+                | "SP"
+                | "PC"
+        )
     }
 
     #[test]
@@ -1684,6 +1819,284 @@ mod tests {
                 assert_eq!(statement.operands.len(), 3);
             }
             _ => panic!("Expected statement"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_postincrement_operand() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE (A0)+,D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.mnemonic.as_deref(), Some("MOVE"));
+                match &statement.operands[0] {
+                    Expr::Unary { op, expr, .. } => {
+                        assert_eq!(*op, UnaryOp::Plus);
+                        assert!(matches!(
+                            expr.as_ref(),
+                            Expr::Indirect(inner, _)
+                                if matches!(inner.as_ref(), Expr::Register(name, _) if name == "A0")
+                        ));
+                    }
+                    other => panic!("expected postincrement operand, got {other:?}"),
+                }
+                assert!(matches!(&statement.operands[1], Expr::Register(name, _) if name == "D0"));
+            }
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_displacement_operand() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE 4(A0),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 2);
+                        assert!(matches!(&elements[0], Expr::Number(text, _) if text == "4"));
+                        assert!(matches!(&elements[1], Expr::Register(name, _) if name == "A0"));
+                    }
+                    other => panic!("expected postfix tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_indexed_operand() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE 4(A0,D1.W),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 3);
+                        assert!(matches!(&elements[0], Expr::Number(text, _) if text == "4"));
+                        assert!(matches!(&elements[1], Expr::Register(name, _) if name == "A0"));
+                        assert!(matches!(
+                            &elements[2],
+                            Expr::Identifier(text, _) if text.eq_ignore_ascii_case("D1.W")
+                        ));
+                    }
+                    other => panic!("expected indexed tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_indexed_identity_scale_alias_operand() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE 4(A0,D1.W*1),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 3);
+                        assert!(matches!(&elements[0], Expr::Number(text, _) if text == "4"));
+                        assert!(matches!(&elements[1], Expr::Register(name, _) if name == "A0"));
+                        assert!(matches!(
+                            &elements[2],
+                            Expr::Binary {
+                                op: BinaryOp::Multiply,
+                                left,
+                                right,
+                                ..
+                            }
+                                if matches!(left.as_ref(), Expr::Identifier(text, _) if text.eq_ignore_ascii_case("D1.W"))
+                                    && matches!(right.as_ref(), Expr::Number(text, _) if text == "1")
+                        ));
+                    }
+                    other => panic!("expected indexed tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_full_extension_tuple_with_omitted_base_displacement() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE (,A0,D1.L*4),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 3);
+                        assert!(matches!(&elements[0], Expr::Placeholder(_)));
+                        assert!(matches!(&elements[1], Expr::Register(name, _) if name == "A0"));
+                        assert!(matches!(
+                            &elements[2],
+                            Expr::Binary {
+                                op: BinaryOp::Multiply,
+                                left,
+                                right,
+                                ..
+                            }
+                                if matches!(left.as_ref(), Expr::Identifier(text, _) if text.eq_ignore_ascii_case("D1.L"))
+                                    && matches!(right.as_ref(), Expr::Number(text, _) if text == "4")
+                        ));
+                    }
+                    other => panic!("expected full-extension tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_full_extension_tuple_with_base_and_index_suppression() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE (4.W,,),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 3);
+                        assert!(matches!(
+                            &elements[0],
+                            Expr::Member { field, .. } if field.eq_ignore_ascii_case("W")
+                        ));
+                        assert!(matches!(&elements[1], Expr::Placeholder(_)));
+                        assert!(matches!(&elements[2], Expr::Placeholder(_)));
+                    }
+                    other => panic!("expected full-extension tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_preindexed_memory_indirect_operand() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE ([disp.W,PC,D4.L*8],outer.L),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 2);
+                        match &elements[0] {
+                            Expr::IndirectLong(bracketed, _) => match bracketed.as_ref() {
+                                Expr::Tuple(inner_elements, _) => {
+                                    assert_eq!(inner_elements.len(), 3);
+                                    assert_eq!(
+                                        expr_text(&inner_elements[0]).as_deref(),
+                                        Some("disp.W")
+                                    );
+                                    assert!(matches!(
+                                        &inner_elements[1],
+                                        Expr::Register(name, _) if name == "PC"
+                                    ));
+                                    assert!(matches!(
+                                        &inner_elements[2],
+                                        Expr::Binary {
+                                            op: BinaryOp::Multiply,
+                                            left,
+                                            right,
+                                            ..
+                                        }
+                                            if matches!(left.as_ref(), Expr::Identifier(text, _) if text.eq_ignore_ascii_case("D4.L"))
+                                                && matches!(right.as_ref(), Expr::Number(text, _) if text == "8")
+                                    ));
+                                }
+                                other => panic!("expected bracketed tuple, got {other:?}"),
+                            },
+                            other => panic!("expected bracketed indirect-long, got {other:?}"),
+                        }
+                        assert_eq!(expr_text(&elements[1]).as_deref(), Some("outer.L"));
+                    }
+                    other => panic!("expected outer tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_postindexed_memory_indirect_operand_with_omissions() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE ([disp.L,A3],,outer.W),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => match inner.as_ref() {
+                    Expr::Tuple(elements, _) => {
+                        assert_eq!(elements.len(), 3);
+                        match &elements[0] {
+                            Expr::IndirectLong(bracketed, _) => match bracketed.as_ref() {
+                                Expr::Tuple(inner_elements, _) => {
+                                    assert_eq!(inner_elements.len(), 2);
+                                    assert_eq!(
+                                        expr_text(&inner_elements[0]).as_deref(),
+                                        Some("disp.L")
+                                    );
+                                    assert!(matches!(
+                                        &inner_elements[1],
+                                        Expr::Register(name, _) if name == "A3"
+                                    ));
+                                }
+                                other => panic!("expected bracketed tuple, got {other:?}"),
+                            },
+                            other => panic!("expected bracketed indirect-long, got {other:?}"),
+                        }
+                        assert!(matches!(&elements[1], Expr::Placeholder(_)));
+                        assert_eq!(expr_text(&elements[2]).as_deref(), Some("outer.W"));
+                    }
+                    other => panic!("expected outer tuple, got {other:?}"),
+                },
+                other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
         }
     }
 

@@ -82,11 +82,11 @@ Delta summary: `119 files changed, 9559 insertions(+), 6431 deletions(-)`.
   - conservative state invalidation:
     `PLB` invalidates known `DBR`, and `PLD`/`TCD` invalidate known `DP`
 - New 65816 examples and golden references:
-  - `examples/65816_simple.asm`
-  - `examples/65816_allmodes.asm`
-  - `examples/65816_wide_image.asm`
-  - `examples/65816_assume_state.asm`
-  - matching `examples/reference/65816_*.hex` and `examples/reference/65816_*.lst`
+  - `examples/mos6502/65816_simple.asm`
+  - `examples/mos6502/65816_allmodes.asm`
+  - `examples/mos6502/65816_wide_image.asm`
+  - `examples/mos6502/65816_assume_state.asm`
+  - matching `examples/reference/mos6502/65816_*.hex` and `examples/reference/mos6502/65816_*.lst`
 - Phase-2 wide-address core behavior:
   - `.org`, region placement (`.region`/`.place`/`.pack`), and linker image spans support wide addresses
   - CLI accepts 4-8 hex digit addresses for `-b/--bin` ranges and `-g/--go`

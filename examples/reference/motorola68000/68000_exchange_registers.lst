@@ -1,0 +1,30 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 register exchange smoke fixture
+----                                2  .cpu 68000
+----    EQU 1000                    3  .org $1000
+----                                4  
+----                                5  start
+1000    C1 41                       6      EXG D0,D1
+1002    C5 4B                       7      EXG A2,A3
+1004    C5 8B                       8      EXG D2,A3
+1006    4E 75                       9      RTS
+----                               10  
+----                               11  .end
+
+Lines: 11  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 8 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    C1 41 C5 4B C5 8B 4E 75

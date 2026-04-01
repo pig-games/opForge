@@ -90,6 +90,11 @@ pub const FAMILY_RUNTIME_ROLLOUT: &[FamilyRuntimeRollout] = &[
         mode: FamilyRuntimeMode::Authoritative,
         migration_checklist: "phase6-motorola6800-rollout-criteria",
     },
+    FamilyRuntimeRollout {
+        family_id: "motorola68000",
+        mode: FamilyRuntimeMode::StagedVerification,
+        migration_checklist: "phase6-motorola68000-runtime-staged-verification",
+    },
 ];
 
 pub fn family_runtime_rollout_policy(family_id: &str) -> Option<&'static FamilyRuntimeRollout> {
@@ -144,6 +149,11 @@ pub const FAMILY_EXPR_EVAL_ROLLOUT: &[FamilyExprEvalRollout] = &[
         family_id: "motorola6800",
         mode: FamilyExprEvalMode::Authoritative,
         migration_checklist: "phase7-motorola6800-expr-vm-authoritative",
+    },
+    FamilyExprEvalRollout {
+        family_id: "motorola68000",
+        mode: FamilyExprEvalMode::StagedVerification,
+        migration_checklist: "phase7-motorola68000-expr-vm-staged-verification",
     },
 ];
 
@@ -214,6 +224,11 @@ pub const FAMILY_EXPR_PARSER_ROLLOUT: &[FamilyExprParserRollout] = &[
         family_id: "motorola6800",
         mode: FamilyExprParserMode::Authoritative,
         migration_checklist: "phase8-motorola6800-expr-parser-vm-authoritative",
+    },
+    FamilyExprParserRollout {
+        family_id: "motorola68000",
+        mode: FamilyExprParserMode::StagedVerification,
+        migration_checklist: "phase8-motorola68000-expr-parser-vm-staged-verification",
     },
 ];
 

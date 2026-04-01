@@ -1,0 +1,44 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Scoped repetition with inferred struct fields and indexed member access.
+----                                2  .cpu 6502
+----                                3  
+----                                4  Point .struct
+----                                5  x .byte ?
+----                                6  y .byte ?
+----                                7  .endstruct
+----                                8  
+0000    00                         10  x .byte i
+0001    0A                         11  y .byte i + 10
+0002    01                         10  x .byte i
+0003    0B                         11  y .byte i + 10
+0004    02                         10  x .byte i
+0005    0C                         11  y .byte i + 10
+----                               13  
+0006    02 00                      14  .word points[1].x
+0008    03 00                      15  .word points[1].y
+
+Lines: 15  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+Point            0002      prv  lbl 
+Point.x          0000      prv  lbl 
+Point.y          0001      prv  lbl 
+__scope1.x       0000      prv  lbl 
+__scope1.y       0001      prv  lbl 
+__scope2.x       0002      prv  lbl 
+__scope2.y       0003      prv  lbl 
+__scope3.x       0004      prv  lbl 
+__scope3.y       0005      prv  lbl 
+
+Total memory is 10 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0000    00 0A 01 0B 02 0C 02 00 03 00

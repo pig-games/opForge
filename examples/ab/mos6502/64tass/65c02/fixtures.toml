@@ -1,0 +1,16 @@
+manifest_version = 1
+family = "mos6502"
+oracle = "64tass"
+oracle_profile = "tass_6502_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "65c02-simple-core"
+cpu = "65c02"
+path = "positive/65c02_simple_core.asm"
+
+[[fixtures]]
+id = "65c02-mode-core"
+cpu = "65c02"
+path = "positive/65c02_mode_core.asm"

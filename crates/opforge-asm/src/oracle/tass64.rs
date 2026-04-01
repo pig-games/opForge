@@ -268,12 +268,15 @@ fn build_command_args(
 }
 
 fn unsupported_cpu_message(cpu: &str) -> String {
-    format!("unsupported 64tass cpu '{cpu}'; current slice supports m6502 only\n")
+    format!(
+        "unsupported 64tass cpu '{cpu}'; current slice supports m6502 and 65c02\n"
+    )
 }
 
 fn canonical_cpu(cpu: &str) -> Option<&'static str> {
     match cpu.to_ascii_lowercase().as_str() {
         "6502" | "m6502" => Some("m6502"),
+        "65c02" | "m65c02" => Some("65c02"),
         _ => None,
     }
 }
@@ -281,6 +284,7 @@ fn canonical_cpu(cpu: &str) -> Option<&'static str> {
 fn cpu_flag(cpu: &str) -> Option<&'static str> {
     match canonical_cpu(cpu) {
         Some("m6502") => Some("--m6502"),
+        Some("65c02") => Some("--m65c02"),
         _ => None,
     }
 }
@@ -349,7 +353,7 @@ mod tests {
     fn external_oracle_64tass_rejects_unsupported_cpu_before_spawn() {
         let dir = temp_dir("external-oracle-64tass-unsupported-cpu");
         let request = OracleAssembleRequest {
-            cpu: "65c02",
+            cpu: "65816",
             cpu_profile: None,
             source_path: Path::new("fixture.asm"),
             output_dir: &dir,
@@ -357,7 +361,7 @@ mod tests {
 
         let err = assemble_flat_binary_with_executable(Path::new("/bin/echo"), request)
             .expect_err("unsupported cpu should fail early");
-        assert!(err.summary.contains("Unsupported 64tass cpu '65c02'"));
+        assert!(err.summary.contains("Unsupported 64tass cpu '65816'"));
         assert!(err.diagnostics_path.exists());
     }
 
@@ -375,6 +379,27 @@ mod tests {
         .expect("m6502 should be supported");
 
         assert_eq!(args[0], OsString::from("--m6502"));
+        assert_eq!(args[1], OsString::from("-b"));
+        assert_eq!(args[2], OsString::from("-f"));
+        assert_eq!(args[3], OsString::from("-o"));
+        assert_eq!(args[4], OsString::from("/tmp/output.bin"));
+        assert_eq!(args[5], OsString::from("/tmp/fixture.asm"));
+    }
+
+    #[test]
+    fn external_oracle_64tass_builds_65c02_flat_binary_command_args() {
+        let args = build_command_args(
+            Path::new("/tmp/output.bin"),
+            &OracleAssembleRequest {
+                cpu: "65c02",
+                cpu_profile: None,
+                source_path: Path::new("/tmp/fixture.asm"),
+                output_dir: Path::new("/tmp"),
+            },
+        )
+        .expect("65c02 should be supported");
+
+        assert_eq!(args[0], OsString::from("--m65c02"));
         assert_eq!(args[1], OsString::from("-b"));
         assert_eq!(args[2], OsString::from("-f"));
         assert_eq!(args[3], OsString::from("-o"));

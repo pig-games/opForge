@@ -16192,6 +16192,36 @@ fn external_oracle_vasm_success_path_manifests() {
 }
 
 #[test]
+fn external_oracle_64tass_mos6502_success_path_manifests() {
+    let manifest_root = workspace_root().join("examples/ab/mos6502/64tass");
+    match crate::external_oracle::run_tass64_success_fixture_suite(&manifest_root)
+        .expect("external-oracle 64tass suite should complete or skip cleanly")
+    {
+        crate::external_oracle::ExternalOracleSuiteOutcome::Skipped(skip) => {
+            eprintln!("SKIP: {}", skip.reason());
+        }
+        crate::external_oracle::ExternalOracleSuiteOutcome::Completed {
+            fixture_count,
+            artifact_root,
+            notes,
+        } => {
+            assert!(
+                fixture_count > 0,
+                "expected at least one external-oracle 64tass fixture"
+            );
+            assert!(
+                notes.is_empty(),
+                "64tass success suite should not emit divergence notes"
+            );
+            eprintln!(
+                "external-oracle compared {fixture_count} 64tass fixtures under {}",
+                artifact_root.display()
+            );
+        }
+    }
+}
+
+#[test]
 fn external_oracle_vasm_negative_path_manifests() {
     let manifest_root = workspace_root().join("examples/ab/motorola68000/vasm");
     match crate::external_oracle::run_vasm_error_fixture_suite(&manifest_root)

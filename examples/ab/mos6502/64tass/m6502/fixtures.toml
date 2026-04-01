@@ -1,0 +1,16 @@
+manifest_version = 1
+family = "mos6502"
+oracle = "64tass"
+oracle_profile = "tass_6502_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "m6502-simple-core"
+cpu = "m6502"
+path = "positive/m6502_simple_core.asm"
+
+[[fixtures]]
+id = "m6502-branch-and-jump-core"
+cpu = "m6502"
+path = "positive/m6502_branch_jump_core.asm"

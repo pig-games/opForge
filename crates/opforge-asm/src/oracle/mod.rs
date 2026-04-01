@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+pub mod tass64;
 pub mod vasm;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

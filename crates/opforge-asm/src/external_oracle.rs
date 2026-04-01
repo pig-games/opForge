@@ -2,8 +2,8 @@ use crate::normalization::{
     diagnostic_excerpt, normalize_opforge_diagnostics, normalize_vasm_stderr, NormalizedErrorClass,
 };
 use crate::oracle::{
-    vasm::VasmAdapter, ExternalOracleAdapter, OracleAssembleFailure, OracleAssembleRequest,
-    OracleAssembleSuccess, OracleAvailability,
+    tass64::Tass64Adapter, vasm::VasmAdapter, ExternalOracleAdapter, OracleAssembleFailure,
+    OracleAssembleRequest, OracleAssembleSuccess, OracleAvailability,
 };
 use cli_core::{LabelOutputFormat as CliLabelOutputFormat, VERSION};
 use engine::{
@@ -278,6 +278,13 @@ pub(crate) fn run_vasm_success_fixture_suite(
     manifest_root: &Path,
 ) -> Result<ExternalOracleSuiteOutcome, String> {
     let adapter = VasmAdapter::from_env();
+    run_fixture_suite(manifest_root, &adapter, ExpectedOutcome::Success)
+}
+
+pub(crate) fn run_tass64_success_fixture_suite(
+    manifest_root: &Path,
+) -> Result<ExternalOracleSuiteOutcome, String> {
+    let adapter = Tass64Adapter::from_env();
     run_fixture_suite(manifest_root, &adapter, ExpectedOutcome::Success)
 }
 
@@ -600,7 +607,7 @@ fn compare_error_outputs(
     oracle: &OracleAssembleFailure,
 ) -> Result<(), StructuredMismatch> {
     let opforge_error_class = normalize_opforge_diagnostics(&opforge.diagnostics_text);
-    let oracle_error_class = normalize_vasm_stderr(&oracle.diagnostics_text);
+    let oracle_error_class = normalize_oracle_diagnostics(manifest.oracle.as_str(), &oracle.diagnostics_text);
 
     if opforge_error_class == oracle_error_class
         && opforge_error_class != NormalizedErrorClass::Unclassified
@@ -793,7 +800,7 @@ fn build_status_mismatch(
     let (oracle_error_class, oracle_excerpt) = oracle_failure
         .map(|failure| {
             (
-                normalize_vasm_stderr(&failure.diagnostics_text),
+                normalize_oracle_diagnostics(manifest.oracle.as_str(), &failure.diagnostics_text),
                 diagnostic_excerpt(&failure.diagnostics_text),
             )
         })
@@ -835,6 +842,13 @@ fn build_status_mismatch(
             .as_ref()
             .and_then(|item| item.reason.clone()),
         byte_mismatch: None,
+    }
+}
+
+fn normalize_oracle_diagnostics(oracle_id: &str, text: &str) -> NormalizedErrorClass {
+    match oracle_id {
+        "vasm" | "64tass" => normalize_vasm_stderr(text),
+        _ => NormalizedErrorClass::Unclassified,
     }
 }
 

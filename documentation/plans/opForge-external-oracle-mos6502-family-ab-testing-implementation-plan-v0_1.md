@@ -60,7 +60,7 @@ without affecting the default `examples/reference` or workspace test paths.
 
 ## Work Items
 
-- [ ] Work item 1: land the first end-to-end `64tass` success-path vertical slice for `m6502`
+- [x] Work item 1: land the first end-to-end `64tass` success-path vertical slice for `m6502`
   - Source requirement or finding IDs: `REQ-EXTAB6502-001`, `REQ-EXTAB6502-002`, `REQ-EXTAB6502-004`, `REQ-EXTAB6502-005`, `REQ-EXTAB6502-008`, `REQ-EXTAB6502-009`, `REQ-EXTAB6502-010`, `AC-EXTAB6502-001`, `AC-EXTAB6502-003`, `AC-EXTAB6502-006`, `AC-EXTAB6502-008`, `AC-EXTAB6502-009`
   - Validation: add and run a focused `64tass` success-path test filter, verify skip-safe behavior when `64tass` is absent, and rerun `cargo test -p asm examples_match_reference_outputs`.
   - Definition of done: one opt-in, skip-safe `m6502` path assembles curated shared-subset fixtures through `64tass` and compares normalized semantic bytes end to end.

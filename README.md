@@ -48,7 +48,7 @@ Detailed documentation:
 - [`examples/`](examples): sample assembler programs and reference fixtures
 
 `libopforge` and `opforge-ffi` are published and usable, but they are still
-pre-1.0 host surfaces. Treat `v0.9.6` as a documented public preview rather
+pre-1.0 host surfaces. Treat `v0.9.7` as a documented public preview rather
 than a long-term stable API promise.
 
 ## Installation

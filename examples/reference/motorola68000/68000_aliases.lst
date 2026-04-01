@@ -1,4 +1,4 @@
-opForge Assembler v0.9.6
+opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Motorola 68000 idiomatic alias spellings

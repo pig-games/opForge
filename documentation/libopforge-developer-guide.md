@@ -3,9 +3,9 @@
 This guide is for developers who want to embed opForge as a library, build new tools on top of it, or integrate it into an existing build/editor/runtime environment.
 
 It documents the current published `libopforge` host surface in this
-branch/worktree as of `v0.9.6`.
+branch/worktree as of `v0.9.7`.
 
-> Status note: `libopforge` `v0.9.6` is a published pre-1.0 preview API. It is
+> Status note: `libopforge` `v0.9.7` is a published pre-1.0 preview API. It is
 > the recommended current integration path, but names, signatures, module
 > boundaries, defaults, and behavior may still change across future `0.x`
 > releases.

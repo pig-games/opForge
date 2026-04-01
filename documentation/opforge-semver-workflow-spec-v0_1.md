@@ -14,7 +14,7 @@ The proposal has three goals:
 
 It is designed for the current branch state, where:
 
-- `libopforge` and `cli-core` are already at `0.9.6`,
+- `libopforge` and `cli-core` are already at `0.9.7`,
 - most split component crates are still at `0.1.0`,
 - some surfaces are now published as pre-1.0 host surfaces and should not yet
   be treated as post-1.0 stable APIs,

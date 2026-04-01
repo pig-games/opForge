@@ -1,4 +1,4 @@
-# opForge v0.9.6 Release Notes
+# opForge v0.9.7 Release Notes
 
 ## Scope
 
@@ -9,7 +9,7 @@ release and cross-platform validation for the new library-oriented surface.
 ## Highlights
 
 - Promoted the published `libopforge` and `cli-core` surface from `0.9.5` to
-  `0.9.6`.
+  `0.9.7`.
 - Landed the multi-crate workspace split behind a curated published
   `libopforge` preview facade and shared `cli-core` command surface.
 - Expanded the public Rust and C host-facing APIs for assembly, diagnostics,
@@ -64,10 +64,10 @@ Release validation for this branch included:
 ## Upgrade Notes
 
 - External Rust consumers targeting the current preview host surface should pin
-  `libopforge` `0.9.6` intentionally and expect breaking changes across future
+  `libopforge` `0.9.7` intentionally and expect breaking changes across future
   `0.x` releases.
 - Non-Rust consumers should treat `opforge-ffi` the same way: usable today,
   but not yet a stable long-term ABI promise.
-- CLI/version-facing surfaces now report `0.9.6` through `cli-core`.
+- CLI/version-facing surfaces now report `0.9.7` through `cli-core`.
 - For release automation, continue using one release-notes file per tag and do
   not edit previously tagged release-note files.

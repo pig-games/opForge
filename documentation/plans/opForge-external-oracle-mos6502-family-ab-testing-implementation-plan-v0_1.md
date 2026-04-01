@@ -115,7 +115,7 @@ without affecting the default `examples/reference` or workspace test paths.
     - `65c02` shared-subset integer/addressing coverage is visible in the corpus
     - the family harness still remains deterministic and skip-safe
 
-- [ ] Work item 3: extend the success corpus to `65816` with explicit state-sensitive fixture handling
+- [x] Work item 3: extend the success corpus to `65816` with explicit state-sensitive fixture handling
   - Source requirement or finding IDs: `REQ-EXTAB6502-003`, `REQ-EXTAB6502-004`, `REQ-EXTAB6502-005`, `REQ-EXTAB6502-009`, `REQ-EXTAB6502-010`, `AC-EXTAB6502-002`, `AC-EXTAB6502-003`
   - Validation: run the `64tass` suite with configured `65816` fixtures that make width/bank-state assumptions explicit, then rerun `cargo test -p asm examples_match_reference_outputs`.
   - Definition of done: the workflow contains a separate `65816` manifest and can compare curated shared-subset `65816` success fixtures without relying on ambient width or bank defaults.

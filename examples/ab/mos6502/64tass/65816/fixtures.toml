@@ -1,0 +1,17 @@
+manifest_version = 1
+family = "mos6502"
+oracle = "64tass"
+oracle_profile = "tass_6502_flat_binary"
+cpu_profile = "native_mx_16_16"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "65816-state-core"
+cpu = "65816"
+path = "positive/65816_state_core.asm"
+
+[[fixtures]]
+id = "65816-width-core"
+cpu = "65816"
+path = "positive/65816_width_core.asm"

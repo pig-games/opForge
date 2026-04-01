@@ -221,7 +221,7 @@ without affecting the default `examples/reference` or workspace test paths.
     - the harness enforces the spec’s divergence kinds and metadata requirements
     - divergence reporting stays actionable and visible to contributors
 
-- [ ] Work item 7: wire the `64tass` path into the explicit opt-in developer workflow and preserve default workspace safety
+- [x] Work item 7: wire the `64tass` path into the explicit opt-in developer workflow and preserve default workspace safety
   - Source requirement or finding IDs: `REQ-EXTAB6502-008`, `REQ-EXTAB6502-009`, `REQ-EXTAB6502-011`, `AC-EXTAB6502-006`, `AC-EXTAB6502-007`, `AC-EXTAB6502-008`, `AC-EXTAB6502-009`
   - Validation: verify the explicit external-oracle command exercises the `64tass` suite when enabled, skips cleanly when `64tass` is unavailable, and leaves default workspace/reference tests dependency-free.
   - Definition of done: the finished `mos6502`/`64tass` workflow is runnable through an explicit opt-in command and remains harmless when not enabled.
@@ -251,7 +251,7 @@ without affecting the default `examples/reference` or workspace test paths.
 - [x] Milestone 1: the first `64tass` baseline path is landed for `m6502` and `65c02` (`Work item 1` and `Work item 2`)
 - [x] Milestone 2: the governed success-path CPU surface is landed through `65816` and `45gs02` (`Work item 3` and `Work item 4`)
 - [x] Milestone 3: bounded negative-path and documented-divergence handling are landed (`Work item 5` and `Work item 6`)
-- [ ] Milestone 4: explicit workflow integration is landed without disturbing default test paths (`Work item 7`)
+- [x] Milestone 4: explicit workflow integration is landed without disturbing default test paths (`Work item 7`)
 
 ## Blocking Rules
 

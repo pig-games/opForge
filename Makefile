@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Erik van der Tier
 
-.PHONY: build release clean fmt clippy audit reference reference-test test test-core test-external-oracle test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opasm-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-cli build-lsp build-ffi build-ffi-release test-ffi-packaging build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf
+.PHONY: build release clean fmt clippy audit reference reference-test test test-core test-external-oracle test-external-oracle-mos6502-64tass test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opasm-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-cli build-lsp build-ffi build-ffi-release test-ffi-packaging build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf
 
 MANUAL_MD := documentation/opForge-reference-manual.md
 MANUAL_PDF := documentation/opForge-reference-manual.pdf
 VM_RUNTIME_ARTIFACT := target/vm/opforge-vm-runtime.opasm
 EXTERNAL_ORACLE_VASM_ENV := $(if $(OPFORGE_VASM_BIN),OPFORGE_VASM_BIN="$(OPFORGE_VASM_BIN)")
+EXTERNAL_ORACLE_64TASS_ENV := $(if $(OPFORGE_64TASS_BIN),OPFORGE_64TASS_BIN="$(OPFORGE_64TASS_BIN)")
 
 build:
 	cargo clippy --workspace -- -D warnings
@@ -59,6 +60,10 @@ test-core:
 
 test-external-oracle:
 	$(EXTERNAL_ORACLE_VASM_ENV) OPFORGE_EXTERNAL_ORACLE_VASM=1 cargo test -p asm external_oracle_ -- --nocapture
+	../scripts/cleanup-build-artifacts.sh ..
+
+test-external-oracle-mos6502-64tass:
+	$(EXTERNAL_ORACLE_64TASS_ENV) OPFORGE_EXTERNAL_ORACLE_64TASS=1 cargo test -p asm external_oracle_64tass_mos6502_ -- --nocapture
 	../scripts/cleanup-build-artifacts.sh ..
 
 test-vm-runtime:

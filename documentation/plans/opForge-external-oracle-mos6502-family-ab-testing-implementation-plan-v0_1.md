@@ -141,7 +141,7 @@ without affecting the default `examples/reference` or workspace test paths.
     - state-sensitive shared-subset assumptions are explicit in source or metadata
     - the harness remains generic rather than adding `65816`-only special cases outside the adapter/metadata boundary
 
-- [ ] Work item 4: extend the success corpus to `45gs02` with explicit oracle target mapping
+- [x] Work item 4: extend the success corpus to `45gs02` with explicit oracle target mapping
   - Source requirement or finding IDs: `REQ-EXTAB6502-003`, `REQ-EXTAB6502-004`, `REQ-EXTAB6502-005`, `REQ-EXTAB6502-009`, `REQ-EXTAB6502-010`, `AC-EXTAB6502-002`, `AC-EXTAB6502-003`
   - Validation: run the `64tass` suite with configured `45gs02` fixtures, verify the adapter selects the intended `45GS02` target rather than a narrower fallback, and rerun `cargo test -p asm examples_match_reference_outputs`.
   - Definition of done: the workflow contains a separate `45gs02` manifest and can compare curated shared-subset `45gs02` success fixtures by normalized semantic bytes using an explicit `45GS02` oracle target.
@@ -249,7 +249,7 @@ without affecting the default `examples/reference` or workspace test paths.
 ## Milestones
 
 - [x] Milestone 1: the first `64tass` baseline path is landed for `m6502` and `65c02` (`Work item 1` and `Work item 2`)
-- [ ] Milestone 2: the governed success-path CPU surface is landed through `65816` and `45gs02` (`Work item 3` and `Work item 4`)
+- [x] Milestone 2: the governed success-path CPU surface is landed through `65816` and `45gs02` (`Work item 3` and `Work item 4`)
 - [ ] Milestone 3: bounded negative-path and documented-divergence handling are landed (`Work item 5` and `Work item 6`)
 - [ ] Milestone 4: explicit workflow integration is landed without disturbing default test paths (`Work item 7`)
 

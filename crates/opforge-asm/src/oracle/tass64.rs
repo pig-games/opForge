@@ -91,7 +91,7 @@ impl ExternalOracleAdapter for Tass64Adapter {
 
     fn supports_profile(&self, cpu: &str, profile: Option<&str>) -> bool {
         match canonical_cpu(cpu) {
-            Some("m6502" | "65c02") => profile.is_none(),
+            Some("m6502" | "65c02" | "45gs02") => profile.is_none(),
             Some("65816") => matches!(profile, Some(CPU_PROFILE_65816_NATIVE_MX_16_16)),
             _ => false,
         }
@@ -274,7 +274,7 @@ fn build_command_args(
 
 fn unsupported_cpu_message(cpu: &str) -> String {
     format!(
-        "unsupported 64tass cpu '{cpu}'; current slice supports m6502, 65c02, and 65816\n"
+        "unsupported 64tass cpu '{cpu}'; current slice supports m6502, 65c02, 65816, and 45gs02\n"
     )
 }
 
@@ -283,6 +283,7 @@ fn canonical_cpu(cpu: &str) -> Option<&'static str> {
         "6502" | "m6502" => Some("m6502"),
         "65c02" | "m65c02" => Some("65c02"),
         "65816" | "65c816" | "w65c816" | "m65816" => Some("65816"),
+        "45gs02" | "m45gs02" => Some("45gs02"),
         _ => None,
     }
 }
@@ -292,6 +293,7 @@ fn cpu_flag(cpu: &str) -> Option<&'static str> {
         Some("m6502") => Some("--m6502"),
         Some("65c02") => Some("--m65c02"),
         Some("65816") => Some("--m65816"),
+        Some("45gs02") => Some("--m45gs02"),
         _ => None,
     }
 }
@@ -360,7 +362,7 @@ mod tests {
     fn external_oracle_64tass_rejects_unsupported_cpu_before_spawn() {
         let dir = temp_dir("external-oracle-64tass-unsupported-cpu");
         let request = OracleAssembleRequest {
-            cpu: "45gs02",
+            cpu: "65ce02",
             cpu_profile: None,
             source_path: Path::new("fixture.asm"),
             output_dir: &dir,
@@ -368,7 +370,7 @@ mod tests {
 
         let err = assemble_flat_binary_with_executable(Path::new("/bin/echo"), request)
             .expect_err("unsupported cpu should fail early");
-        assert!(err.summary.contains("Unsupported 64tass cpu '45gs02'"));
+        assert!(err.summary.contains("Unsupported 64tass cpu '65ce02'"));
         assert!(err.diagnostics_path.exists());
     }
 
@@ -445,5 +447,26 @@ mod tests {
 
         assert!(!adapter.supports_profile("65816", None));
         assert!(adapter.supports_profile("65816", Some(CPU_PROFILE_65816_NATIVE_MX_16_16)));
+    }
+
+    #[test]
+    fn external_oracle_64tass_builds_45gs02_flat_binary_command_args() {
+        let args = build_command_args(
+            Path::new("/tmp/output.bin"),
+            &OracleAssembleRequest {
+                cpu: "45gs02",
+                cpu_profile: None,
+                source_path: Path::new("/tmp/fixture.asm"),
+                output_dir: Path::new("/tmp"),
+            },
+        )
+        .expect("45gs02 should be supported");
+
+        assert_eq!(args[0], OsString::from("--m45gs02"));
+        assert_eq!(args[1], OsString::from("-b"));
+        assert_eq!(args[2], OsString::from("-f"));
+        assert_eq!(args[3], OsString::from("-o"));
+        assert_eq!(args[4], OsString::from("/tmp/output.bin"));
+        assert_eq!(args[5], OsString::from("/tmp/fixture.asm"));
     }
 }

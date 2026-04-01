@@ -1,0 +1,16 @@
+manifest_version = 1
+family = "mos6502"
+oracle = "64tass"
+oracle_profile = "tass_6502_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "45gs02-core-ops"
+cpu = "45gs02"
+path = "positive/45gs02_core_ops.asm"
+
+[[fixtures]]
+id = "45gs02-extension-ops"
+cpu = "45gs02"
+path = "positive/45gs02_extension_ops.asm"

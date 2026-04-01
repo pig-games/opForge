@@ -3470,7 +3470,11 @@ fn m68k_external_fpu_missing_mnemonics_assemble_on_68020_and_68030() {
 
 #[test]
 fn m68k_external_fpu_missing_mnemonics_reject_disabled_or_integrated_68040_targets() {
-    for mnemonic in ["    FMOVECR #11,FP0", "    FSGLDIV FP1,FP2", "    FSGLMUL FP3,FP4"] {
+    for mnemonic in [
+        "    FMOVECR #11,FP0",
+        "    FSGLDIV FP1,FP2",
+        "    FSGLMUL FP3,FP4",
+    ] {
         for cpu in ["68020", "68030"] {
             let cpu_directive = format!(".cpu {cpu}");
             let disabled_source = [cpu_directive.as_str(), ".fpu none", mnemonic];

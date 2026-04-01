@@ -263,10 +263,7 @@ impl StructuredMismatch {
                 "--- opforge  ({} bytes)",
                 byte_mismatch.opforge_len
             ));
-            lines.push(format!(
-                "+++ oracle   ({} bytes)",
-                byte_mismatch.oracle_len
-            ));
+            lines.push(format!("+++ oracle   ({} bytes)", byte_mismatch.oracle_len));
             lines.push(render_hex_diff(
                 &byte_mismatch.opforge_bytes,
                 &byte_mismatch.oracle_bytes,
@@ -869,16 +866,17 @@ fn run_opforge_fixture(
         name: Some(OUTPUT_FILENAME.to_string()),
         range: None,
     }];
-    let source_path = prepare_opforge_source_path(manifest, fixture, &output_dir).map_err(|err| {
-        let _ = fs::write(&diagnostics_path, &err);
-        OracleAssembleFailure {
-            diagnostics_path: diagnostics_path.clone(),
-            stdout_path: None,
-            stderr_path: None,
-            diagnostics_text: err.clone(),
-            summary: err,
-        }
-    })?;
+    let source_path =
+        prepare_opforge_source_path(manifest, fixture, &output_dir).map_err(|err| {
+            let _ = fs::write(&diagnostics_path, &err);
+            OracleAssembleFailure {
+                diagnostics_path: diagnostics_path.clone(),
+                stdout_path: None,
+                stderr_path: None,
+                diagnostics_text: err.clone(),
+                summary: err,
+            }
+        })?;
 
     match run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
@@ -1724,14 +1722,8 @@ fn render_bytes_comparison_report(
     let mut sections = vec![
         format!("fixture: {fixture_id}"),
         format!("status: {status}"),
-        format!(
-            "--- opforge  ({} bytes)",
-            opforge_bytes.len()
-        ),
-        format!(
-            "+++ oracle   ({} bytes)",
-            oracle_bytes.len()
-        ),
+        format!("--- opforge  ({} bytes)", opforge_bytes.len()),
+        format!("+++ oracle   ({} bytes)", oracle_bytes.len()),
     ];
     sections.push(render_hex_diff(opforge_bytes, oracle_bytes));
     sections.join("\n") + "\n"
@@ -2197,7 +2189,10 @@ path = "positive/second.asm"
             .exists());
         // bytes_diff.txt is written next to the source .asm file
         let cmp = dir.join("positive").join("first.bytes_diff.txt");
-        assert!(cmp.exists(), "bytes_diff.txt must exist next to source .asm");
+        assert!(
+            cmp.exists(),
+            "bytes_diff.txt must exist next to source .asm"
+        );
         let cmp_text = fs::read_to_string(&cmp).expect("read bytes_diff.txt");
         assert!(cmp_text.contains("status: MATCH"));
     }
@@ -2241,15 +2236,20 @@ path = "positive/first.asm"
         );
         // mismatch.txt and bytes_diff.txt are written next to the source .asm file
         let mismatch_file = dir.join("positive").join("first.mismatch.txt");
-        assert!(mismatch_file.exists(), "mismatch.txt should be written next to source");
+        assert!(
+            mismatch_file.exists(),
+            "mismatch.txt should be written next to source"
+        );
         let mismatch_text = fs::read_to_string(&mismatch_file).expect("read mismatch.txt");
         assert!(mismatch_text.contains("external-oracle mismatch"));
         assert!(mismatch_text.contains("--- opforge"));
         let diff_file = dir.join("positive").join("first.bytes_diff.txt");
-        assert!(diff_file.exists(), "bytes_diff.txt should be written next to source");
+        assert!(
+            diff_file.exists(),
+            "bytes_diff.txt should be written next to source"
+        );
         let diff_text = fs::read_to_string(&diff_file).expect("read bytes_diff.txt");
         assert!(diff_text.contains("status: MISMATCH"));
-
     }
 
     #[test]
@@ -2276,17 +2276,21 @@ documented_divergence_kind = "opforge_error_oracle_success"
         );
         let adapter = FakeAdapter::new(
             OracleAvailability::Ready,
-            vec![(
-                "bad".to_string(),
-                FakeOracleResponse::Success(vec![]),
-            )],
+            vec![("bad".to_string(), FakeOracleResponse::Success(vec![]))],
         );
         // opForge will fail on INVALID_INSTRUCTION; oracle succeeds (documented divergence)
-        let _outcome = run_fixture_suite(&manifest_path, &adapter, ExpectedOutcome::DocumentedDivergence);
+        let _outcome = run_fixture_suite(
+            &manifest_path,
+            &adapter,
+            ExpectedOutcome::DocumentedDivergence,
+        );
         let report = dir.join("negative").join("bad.error_report.txt");
         if report.exists() {
             let text = fs::read_to_string(&report).unwrap_or_default();
-            assert!(text.contains("--- opforge error ---"), "should label opforge error section");
+            assert!(
+                text.contains("--- opforge error ---"),
+                "should label opforge error section"
+            );
         }
     }
 
@@ -2325,8 +2329,14 @@ path = "positive/first.asm"
             ExpectedOutcome::Success,
         );
         assert!(first_result.is_err(), "first run should create a mismatch");
-        assert!(mismatch_path.exists(), "mismatch report should exist after mismatch");
-        assert!(diff_path.exists(), "byte diff should exist after bytes mismatch");
+        assert!(
+            mismatch_path.exists(),
+            "mismatch report should exist after mismatch"
+        );
+        assert!(
+            diff_path.exists(),
+            "byte diff should exist after bytes mismatch"
+        );
         fs::write(&error_path, "stale error report").expect("seed stale error report");
 
         let second_result = run_fixture_suite(
@@ -2394,10 +2404,7 @@ path = "positive/second.asm"
         let adapter = FakeAdapter::new(
             OracleAvailability::Ready,
             vec![
-                (
-                    "first".to_string(),
-                    FakeOracleResponse::Success(vec![0xFF]),
-                ),
+                ("first".to_string(), FakeOracleResponse::Success(vec![0xFF])),
                 (
                     "second".to_string(),
                     FakeOracleResponse::Success(vec![0x02]),
@@ -2456,7 +2463,9 @@ path = "negative/bad.asm"
                     "bad".to_string(),
                     FakeOracleResponse::Failure {
                         summary: "vasm exited with status 1".to_string(),
-                        diagnostics_text: "error 5 in line 1 of \"fixture.asm\": syntax error\n>    ,\n".to_string(),
+                        diagnostics_text:
+                            "error 5 in line 1 of \"fixture.asm\": syntax error\n>    ,\n"
+                                .to_string(),
                     },
                 )],
             ),
@@ -2564,8 +2573,14 @@ path = "positive/first.asm"
             .join(OUTPUT_FILENAME)
             .exists());
         // bytes_diff.txt is written next to each source .asm file
-        let cmp_file = dir.join("68000").join("positive").join("first.bytes_diff.txt");
-        assert!(cmp_file.exists(), "bytes_diff.txt should be written next to source .asm");
+        let cmp_file = dir
+            .join("68000")
+            .join("positive")
+            .join("first.bytes_diff.txt");
+        assert!(
+            cmp_file.exists(),
+            "bytes_diff.txt should be written next to source .asm"
+        );
         let cmp_text = fs::read_to_string(&cmp_file).expect("read bytes_diff.txt");
         assert!(cmp_text.contains("status: MATCH"));
         assert!(cmp_text.contains("--- opforge"));
@@ -2906,7 +2921,9 @@ documented_divergence_reason = "vasm rejects negative PACK immediates while opFo
                     "pack".to_string(),
                     FakeOracleResponse::Failure {
                         summary: "vasm exited with status 1".to_string(),
-                        diagnostics_text: "error 2026 in line 1 of \"pack.asm\": operand value out of range\n".to_string(),
+                        diagnostics_text:
+                            "error 2026 in line 1 of \"pack.asm\": operand value out of range\n"
+                                .to_string(),
                     },
                 )],
             ),
@@ -2995,9 +3012,18 @@ documented_divergence_reason = "current opForge/link-long encoding differs from 
     fn external_oracle_maps_fpu_profiles_to_opforge_preambles() {
         assert_eq!(opforge_profile_preamble(None), None);
         assert_eq!(opforge_profile_preamble(Some("mmu-68030")), None);
-        assert_eq!(opforge_profile_preamble(Some("fpu-68881")), Some(".fpu 68881\n"));
-        assert_eq!(opforge_profile_preamble(Some("fpu-68882")), Some(".fpu 68882\n"));
-        assert_eq!(opforge_profile_preamble(Some("fpu-68040")), Some(".fpu 68040\n"));
+        assert_eq!(
+            opforge_profile_preamble(Some("fpu-68881")),
+            Some(".fpu 68881\n")
+        );
+        assert_eq!(
+            opforge_profile_preamble(Some("fpu-68882")),
+            Some(".fpu 68882\n")
+        );
+        assert_eq!(
+            opforge_profile_preamble(Some("fpu-68040")),
+            Some(".fpu 68040\n")
+        );
     }
 
     #[test]

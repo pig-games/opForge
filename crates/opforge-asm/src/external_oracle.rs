@@ -58,7 +58,8 @@ impl CompareMode {
 enum DocumentedDivergenceKind {
     OpforgeErrorOracleSuccess,
     OpforgeSuccessOracleError,
-    OpforgeSuccessOracleSuccessBytesDiffer,
+    ByteMismatch,
+    ErrorClassMismatch,
 }
 
 impl DocumentedDivergenceKind {
@@ -66,9 +67,8 @@ impl DocumentedDivergenceKind {
         match self {
             Self::OpforgeErrorOracleSuccess => "opforge_error_oracle_success",
             Self::OpforgeSuccessOracleError => "opforge_success_oracle_error",
-            Self::OpforgeSuccessOracleSuccessBytesDiffer => {
-                "opforge_success_oracle_success_bytes_differ"
-            }
+            Self::ByteMismatch => "byte_mismatch",
+            Self::ErrorClassMismatch => "error_class_mismatch",
         }
     }
 }
@@ -77,6 +77,10 @@ impl DocumentedDivergenceKind {
 struct DocumentedDivergence {
     kind: DocumentedDivergenceKind,
     reason: Option<String>,
+    expected_opforge_status: ObservedStatus,
+    expected_oracle_status: ObservedStatus,
+    expected_opforge_error_class: Option<NormalizedErrorClass>,
+    expected_oracle_error_class: Option<NormalizedErrorClass>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,6 +149,10 @@ struct FixtureBuilder {
     compare_mode: Option<String>,
     documented_divergence_kind: Option<String>,
     documented_divergence_reason: Option<String>,
+    documented_divergence_opforge_status: Option<String>,
+    documented_divergence_oracle_status: Option<String>,
+    documented_divergence_opforge_error_class: Option<String>,
+    documented_divergence_oracle_error_class: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -294,6 +302,17 @@ pub(crate) fn run_tass64_error_fixture_suite(
 ) -> Result<ExternalOracleSuiteOutcome, String> {
     let adapter = Tass64Adapter::from_env();
     run_fixture_suite(manifest_root, &adapter, ExpectedOutcome::Error)
+}
+
+pub(crate) fn run_tass64_documented_divergence_fixture_suite(
+    manifest_root: &Path,
+) -> Result<ExternalOracleSuiteOutcome, String> {
+    let adapter = Tass64Adapter::from_env();
+    run_fixture_suite(
+        manifest_root,
+        &adapter,
+        ExpectedOutcome::DocumentedDivergence,
+    )
 }
 
 pub(crate) fn run_vasm_error_fixture_suite(
@@ -540,6 +559,13 @@ fn run_fixture<A: ExternalOracleAdapter>(
             if fixture.expected_outcome == ExpectedOutcome::Error {
                 compare_error_outputs(manifest, fixture, &opforge_failure, &oracle_failure)
                     .map(|_| None)
+            } else if fixture.expected_outcome == ExpectedOutcome::DocumentedDivergence {
+                evaluate_documented_divergence_error(
+                    manifest,
+                    fixture,
+                    &opforge_failure,
+                    &oracle_failure,
+                )
             } else {
                 Err(build_status_mismatch(
                     manifest,
@@ -758,7 +784,7 @@ fn evaluate_documented_divergence_success(
     }
 
     match documented_divergence.kind {
-        DocumentedDivergenceKind::OpforgeSuccessOracleSuccessBytesDiffer => {
+        DocumentedDivergenceKind::ByteMismatch => {
             let mismatch = compare_success_outputs(manifest, fixture, opforge, oracle)
                 .expect_err("known divergence kind requires mismatched bytes");
             let detail = mismatch
@@ -785,6 +811,83 @@ fn evaluate_documented_divergence_success(
         }
         _ => compare_success_outputs(manifest, fixture, opforge, oracle).map(|_| None),
     }
+}
+
+fn evaluate_documented_divergence_error(
+    manifest: &Manifest,
+    fixture: &Fixture,
+    opforge: &OracleAssembleFailure,
+    oracle: &OracleAssembleFailure,
+) -> Result<Option<String>, StructuredMismatch> {
+    let Some(documented_divergence) = fixture.documented_divergence.as_ref() else {
+        return compare_error_outputs(manifest, fixture, opforge, oracle).map(|_| None);
+    };
+
+    if documented_divergence.kind != DocumentedDivergenceKind::ErrorClassMismatch {
+        return Err(build_status_mismatch(
+            manifest,
+            fixture,
+            ObservedStatus::Error,
+            ObservedStatus::Error,
+            Some(opforge),
+            Some(oracle),
+            None,
+            None,
+        ));
+    }
+
+    let opforge_error_class = normalize_opforge_diagnostics(&opforge.diagnostics_text);
+    let oracle_error_class = normalize_oracle_diagnostics(manifest.oracle.as_str(), &oracle.diagnostics_text);
+
+    if opforge_error_class == oracle_error_class {
+        return Ok(Some(format!(
+            "reclassification candidate for documented divergence fixture '{}': error classes now match as '{}'",
+            fixture.id,
+            opforge_error_class.label()
+        )));
+    }
+
+    if Some(opforge_error_class) == documented_divergence.expected_opforge_error_class
+        && Some(oracle_error_class) == documented_divergence.expected_oracle_error_class
+    {
+        return Ok(Some(format!(
+            "documented divergence matched for fixture '{}': {}{}",
+            fixture.id,
+            documented_divergence.kind.label(),
+            documented_divergence
+                .reason
+                .as_ref()
+                .map(|reason| format!(" ({reason})"))
+                .unwrap_or_default()
+        )));
+    }
+
+    Err(StructuredMismatch {
+        fixture_id: fixture.id.clone(),
+        family: manifest.family.clone(),
+        cpu: fixture.cpu.clone(),
+        oracle_id: manifest.oracle.clone(),
+        compare_mode: fixture.compare_mode,
+        opforge_status: ObservedStatus::Error,
+        oracle_status: ObservedStatus::Error,
+        opforge_output_path: None,
+        oracle_output_path: None,
+        opforge_diagnostics_path: Some(opforge.diagnostics_path.clone()),
+        oracle_diagnostics_path: Some(oracle.diagnostics_path.clone()),
+        opforge_stdout_path: opforge.stdout_path.clone(),
+        oracle_stdout_path: oracle.stdout_path.clone(),
+        opforge_stderr_path: opforge.stderr_path.clone(),
+        oracle_stderr_path: oracle.stderr_path.clone(),
+        opforge_summary: Some(opforge.summary.clone()),
+        oracle_summary: Some(oracle.summary.clone()),
+        opforge_error_class: Some(opforge_error_class),
+        oracle_error_class: Some(oracle_error_class),
+        opforge_excerpt: Some(diagnostic_excerpt(&opforge.diagnostics_text)),
+        oracle_excerpt: Some(diagnostic_excerpt(&oracle.diagnostics_text)),
+        documented_divergence_kind: Some(documented_divergence.kind),
+        documented_divergence_reason: documented_divergence.reason.clone(),
+        byte_mismatch: None,
+    })
 }
 
 fn build_status_mismatch(
@@ -1232,6 +1335,22 @@ fn assign_fixture_value(
             fixture.documented_divergence_reason =
                 Some(parse_string(value, manifest_path, line_no)?);
         }
+        "documented_divergence_opforge_status" => {
+            fixture.documented_divergence_opforge_status =
+                Some(parse_string(value, manifest_path, line_no)?);
+        }
+        "documented_divergence_oracle_status" => {
+            fixture.documented_divergence_oracle_status =
+                Some(parse_string(value, manifest_path, line_no)?);
+        }
+        "documented_divergence_opforge_error_class" => {
+            fixture.documented_divergence_opforge_error_class =
+                Some(parse_string(value, manifest_path, line_no)?);
+        }
+        "documented_divergence_oracle_error_class" => {
+            fixture.documented_divergence_oracle_error_class =
+                Some(parse_string(value, manifest_path, line_no)?);
+        }
         other => {
             return Err(format!(
                 "Unsupported fixture key '{other}' in {}:{line_no}",
@@ -1397,9 +1516,10 @@ fn build_fixture<A: ExternalOracleAdapter>(
         &format!("fixture '{id}'"),
     )?;
 
+    let enforce_explicit_divergence_contract = manifest.oracle.as_deref() == Some("64tass");
     let documented_divergence = match expected_outcome {
-        ExpectedOutcome::DocumentedDivergence => Some(DocumentedDivergence {
-            kind: parse_documented_divergence_kind(
+        ExpectedOutcome::DocumentedDivergence => {
+            let kind = parse_documented_divergence_kind(
                 &builder.documented_divergence_kind.ok_or_else(|| {
                     format!(
                         "Fixture '{id}' in {} missing documented_divergence_kind",
@@ -1408,12 +1528,142 @@ fn build_fixture<A: ExternalOracleAdapter>(
                 })?,
                 manifest_path,
                 &format!("fixture '{id}'"),
-            )?,
-            reason: builder.documented_divergence_reason,
-        }),
+            )?;
+
+            let (default_opforge_status, default_oracle_status) = match kind {
+                DocumentedDivergenceKind::OpforgeErrorOracleSuccess => {
+                    (ObservedStatus::Error, ObservedStatus::Success)
+                }
+                DocumentedDivergenceKind::OpforgeSuccessOracleError => {
+                    (ObservedStatus::Success, ObservedStatus::Error)
+                }
+                DocumentedDivergenceKind::ByteMismatch => {
+                    (ObservedStatus::Success, ObservedStatus::Success)
+                }
+                DocumentedDivergenceKind::ErrorClassMismatch => {
+                    (ObservedStatus::Error, ObservedStatus::Error)
+                }
+            };
+
+            let expected_opforge_status = if enforce_explicit_divergence_contract {
+                parse_observed_status(
+                    &builder
+                        .documented_divergence_opforge_status
+                        .ok_or_else(|| {
+                            format!(
+                                "Fixture '{id}' in {} missing documented_divergence_opforge_status",
+                                manifest_path.display()
+                            )
+                        })?,
+                    manifest_path,
+                    &format!("fixture '{id}'"),
+                )?
+            } else {
+                builder
+                    .documented_divergence_opforge_status
+                    .as_deref()
+                    .map(|value| {
+                        parse_observed_status(
+                            value,
+                            manifest_path,
+                            &format!("fixture '{id}'"),
+                        )
+                    })
+                    .transpose()?
+                    .unwrap_or(default_opforge_status)
+            };
+
+            let expected_oracle_status = if enforce_explicit_divergence_contract {
+                parse_observed_status(
+                    &builder
+                        .documented_divergence_oracle_status
+                        .ok_or_else(|| {
+                            format!(
+                                "Fixture '{id}' in {} missing documented_divergence_oracle_status",
+                                manifest_path.display()
+                            )
+                        })?,
+                    manifest_path,
+                    &format!("fixture '{id}'"),
+                )?
+            } else {
+                builder
+                    .documented_divergence_oracle_status
+                    .as_deref()
+                    .map(|value| {
+                        parse_observed_status(
+                            value,
+                            manifest_path,
+                            &format!("fixture '{id}'"),
+                        )
+                    })
+                    .transpose()?
+                    .unwrap_or(default_oracle_status)
+            };
+
+            if (expected_opforge_status, expected_oracle_status)
+                != (default_opforge_status, default_oracle_status)
+            {
+                return Err(format!(
+                    "Fixture '{id}' in {} has documented divergence statuses '{}'/'{}' that do not match kind '{}', expected '{}'/'{}'",
+                    manifest_path.display(),
+                    observed_status_label(expected_opforge_status),
+                    observed_status_label(expected_oracle_status),
+                    kind.label(),
+                    observed_status_label(default_opforge_status),
+                    observed_status_label(default_oracle_status)
+                ));
+            }
+
+            let expected_opforge_error_class = builder
+                .documented_divergence_opforge_error_class
+                .as_deref()
+                .map(|value| parse_normalized_error_class(value, manifest_path, &format!("fixture '{id}'")))
+                .transpose()?;
+            let expected_oracle_error_class = builder
+                .documented_divergence_oracle_error_class
+                .as_deref()
+                .map(|value| parse_normalized_error_class(value, manifest_path, &format!("fixture '{id}'")))
+                .transpose()?;
+
+            if kind == DocumentedDivergenceKind::ErrorClassMismatch {
+                if expected_opforge_error_class.is_none() || expected_oracle_error_class.is_none() {
+                    return Err(format!(
+                        "Fixture '{id}' in {} with documented_divergence_kind '{}' must set documented_divergence_opforge_error_class and documented_divergence_oracle_error_class",
+                        manifest_path.display(),
+                        kind.label()
+                    ));
+                }
+            } else if expected_opforge_error_class.is_some() || expected_oracle_error_class.is_some() {
+                return Err(format!(
+                    "Fixture '{id}' in {} may only set documented_divergence_*_error_class for documented_divergence_kind 'error_class_mismatch'",
+                    manifest_path.display()
+                ));
+            }
+
+            let reason = builder.documented_divergence_reason.ok_or_else(|| {
+                format!(
+                    "Fixture '{id}' in {} missing documented_divergence_reason",
+                    manifest_path.display()
+                )
+            })?;
+
+            Some(DocumentedDivergence {
+                kind,
+                reason: Some(reason),
+                expected_opforge_status,
+                expected_oracle_status,
+                expected_opforge_error_class,
+                expected_oracle_error_class,
+            })
+        }
         _ => {
             if builder.documented_divergence_kind.is_some()
                 || builder.documented_divergence_reason.is_some()
+                || builder.documented_divergence_opforge_status.is_some()
+                || builder.documented_divergence_oracle_status.is_some()
+                || builder.documented_divergence_opforge_error_class.is_some()
+                || builder.documented_divergence_oracle_error_class.is_some()
             {
                 return Err(format!(
                     "Fixture '{id}' in {} may only set documented_divergence_* fields when expected_outcome = 'documented_divergence'",
@@ -1509,7 +1759,8 @@ fn validate_outcome_compare_mode(
     match (expected_outcome, compare_mode) {
         (ExpectedOutcome::Success, CompareMode::Bytes)
         | (ExpectedOutcome::Error, CompareMode::ErrorClass)
-        | (ExpectedOutcome::DocumentedDivergence, CompareMode::Bytes) => Ok(()),
+        | (ExpectedOutcome::DocumentedDivergence, CompareMode::Bytes)
+        | (ExpectedOutcome::DocumentedDivergence, CompareMode::ErrorClass) => Ok(()),
         _ => Err(format!(
             "Unsupported expected_outcome/compare_mode pairing '{}'/'{}' in {} for {context}",
             expected_outcome.label(),
@@ -1527,11 +1778,45 @@ fn parse_documented_divergence_kind(
     match value {
         "opforge_error_oracle_success" => Ok(DocumentedDivergenceKind::OpforgeErrorOracleSuccess),
         "opforge_success_oracle_error" => Ok(DocumentedDivergenceKind::OpforgeSuccessOracleError),
-        "opforge_success_oracle_success_bytes_differ" => {
-            Ok(DocumentedDivergenceKind::OpforgeSuccessOracleSuccessBytesDiffer)
+        "byte_mismatch" | "opforge_success_oracle_success_bytes_differ" => {
+            Ok(DocumentedDivergenceKind::ByteMismatch)
         }
+        "error_class_mismatch" => Ok(DocumentedDivergenceKind::ErrorClassMismatch),
         other => Err(format!(
             "Unsupported documented_divergence_kind '{other}' in {} for {context}",
+            manifest_path.display()
+        )),
+    }
+}
+
+fn parse_observed_status(value: &str, manifest_path: &Path, context: &str) -> Result<ObservedStatus, String> {
+    match value {
+        "success" => Ok(ObservedStatus::Success),
+        "error" => Ok(ObservedStatus::Error),
+        other => Err(format!(
+            "Unsupported documented divergence status '{other}' in {} for {context}",
+            manifest_path.display()
+        )),
+    }
+}
+
+fn parse_normalized_error_class(
+    value: &str,
+    manifest_path: &Path,
+    context: &str,
+) -> Result<NormalizedErrorClass, String> {
+    match value {
+        "unknown-mnemonic" => Ok(NormalizedErrorClass::UnknownMnemonic),
+        "illegal-addressing-mode" => Ok(NormalizedErrorClass::IllegalAddressingMode),
+        "unsupported-cpu-feature" => Ok(NormalizedErrorClass::UnsupportedCpuFeature),
+        "branch-out-of-range" => Ok(NormalizedErrorClass::BranchOutOfRange),
+        "value-out-of-range" => Ok(NormalizedErrorClass::ValueOutOfRange),
+        "syntax-error" => Ok(NormalizedErrorClass::SyntaxError),
+        "missing-operand" => Ok(NormalizedErrorClass::MissingOperand),
+        "wrong-operand-count" => Ok(NormalizedErrorClass::WrongOperandCount),
+        "unclassified" => Ok(NormalizedErrorClass::Unclassified),
+        other => Err(format!(
+            "Unsupported documented divergence error class '{other}' in {} for {context}",
             manifest_path.display()
         )),
     }
@@ -2295,6 +2580,7 @@ path = "negative/bad.asm"
 expected_outcome = "documented_divergence"
 compare_mode = "error_class"
 documented_divergence_kind = "opforge_error_oracle_success"
+documented_divergence_reason = "test fixture: opforge error while oracle succeeds"
 "#,
         );
         let adapter = FakeAdapter::new(
@@ -2632,6 +2918,7 @@ id = "fnop-profile"
 cpu = "68020"
 path = "documented_divergence/fnop.asm"
 documented_divergence_kind = "opforge_error_oracle_success"
+documented_divergence_reason = "profile forwarding coverage fixture"
 "#,
         );
 
@@ -3020,7 +3307,7 @@ documented_divergence_reason = "current opForge/link-long encoding differs from 
             } => {
                 assert_eq!(fixture_count, 1);
                 assert_eq!(notes.len(), 1);
-                assert!(notes[0].contains("opforge_success_oracle_success_bytes_differ"));
+                assert!(notes[0].contains("byte_mismatch"));
                 assert!(notes[0].contains("--- opforge"));
                 assert!(notes[0].contains("+++ oracle"));
                 // the first row differs so it must have a "-" and "+" line

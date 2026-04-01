@@ -195,7 +195,7 @@ without affecting the default `examples/reference` or workspace test paths.
     - negative fixtures are represented only where the shared subset makes cross-tool failure comparison stable
     - error mismatches are actionable without requiring raw stderr equality
 
-- [ ] Work item 6: add documented-divergence fixtures and spec-complete divergence contract enforcement for MOS-family gaps
+- [x] Work item 6: add documented-divergence fixtures and spec-complete divergence contract enforcement for MOS-family gaps
   - Source requirement or finding IDs: `REQ-EXTAB6502-007`, `REQ-EXTAB6502-009`, `REQ-EXTAB6502-010`, `REQ-EXTAB6502-011`, `AC-EXTAB6502-005`, `AC-EXTAB6502-007`, `AC-EXTAB6502-009`
   - Validation: add and run documented-divergence fixture coverage, verify non-failing behavior only when the observed mismatch still matches the declared divergence contract, then rerun `cargo test -p asm examples_match_reference_outputs`.
   - Definition of done: documented divergences are first-class, machine-checkable MOS-family fixtures and remain visible without becoming silent skips.
@@ -250,7 +250,7 @@ without affecting the default `examples/reference` or workspace test paths.
 
 - [x] Milestone 1: the first `64tass` baseline path is landed for `m6502` and `65c02` (`Work item 1` and `Work item 2`)
 - [x] Milestone 2: the governed success-path CPU surface is landed through `65816` and `45gs02` (`Work item 3` and `Work item 4`)
-- [ ] Milestone 3: bounded negative-path and documented-divergence handling are landed (`Work item 5` and `Work item 6`)
+- [x] Milestone 3: bounded negative-path and documented-divergence handling are landed (`Work item 5` and `Work item 6`)
 - [ ] Milestone 4: explicit workflow integration is landed without disturbing default test paths (`Work item 7`)
 
 ## Blocking Rules

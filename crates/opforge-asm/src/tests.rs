@@ -16252,6 +16252,41 @@ fn external_oracle_64tass_mos6502_negative_path_manifests() {
 }
 
 #[test]
+fn external_oracle_64tass_mos6502_documented_divergence_manifests() {
+    let manifest_root = workspace_root().join("examples/ab/mos6502/64tass");
+    match crate::external_oracle::run_tass64_documented_divergence_fixture_suite(&manifest_root)
+        .expect("external-oracle 64tass documented-divergence suite should complete or skip cleanly")
+    {
+        crate::external_oracle::ExternalOracleSuiteOutcome::Skipped(skip) => {
+            eprintln!("SKIP: {}", skip.reason());
+        }
+        crate::external_oracle::ExternalOracleSuiteOutcome::Completed {
+            fixture_count,
+            artifact_root,
+            notes,
+        } => {
+            assert!(
+                fixture_count > 0,
+                "expected at least one external-oracle 64tass documented-divergence fixture"
+            );
+            assert!(
+                notes
+                    .iter()
+                    .any(|note| note.contains("documented divergence matched") || note.contains("reclassification candidate")),
+                "expected visible documented-divergence note: {notes:?}"
+            );
+            eprintln!(
+                "external-oracle compared {fixture_count} 64tass documented-divergence fixtures under {}",
+                artifact_root.display()
+            );
+            for note in notes {
+                eprintln!("{note}");
+            }
+        }
+    }
+}
+
+#[test]
 fn external_oracle_vasm_negative_path_manifests() {
     let manifest_root = workspace_root().join("examples/ab/motorola68000/vasm");
     match crate::external_oracle::run_vasm_error_fixture_suite(&manifest_root)

@@ -1,0 +1,1 @@
+PASS: source spec and implementation mode are explicit, the plan keeps AGENTS.md binding, work items are ordered and commit-sized with plan-compliance required before each commit, validations and done criteria are concrete, and scope stays bounded to the MOS6502 64tass spec.

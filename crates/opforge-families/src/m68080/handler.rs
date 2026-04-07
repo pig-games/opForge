@@ -143,11 +143,6 @@ impl M68080CpuHandler {
                     if parsed.size != Some(crate::families::m68k::OperationSize::Long) {
                         return EncodeResult::error("MOVIW requires .L size on m68080");
                     }
-                    if !self.apollo_mode_enabled(ctx) {
-                        return EncodeResult::error(
-                            "MOVIW is Apollo-gated on m68080; enable .apollo on",
-                        );
-                    }
                     return self.encode_moviw(operands, ctx);
                 }
                 M68080MnemonicKind::Mov3q => {
@@ -885,6 +880,10 @@ impl M68080CpuHandler {
         EncodeResult::ok(bytes)
     }
 
+    fn move_destination_bits(bits: u16) -> u16 {
+        ((bits & 0x0007) << 9) | ((bits & 0x0038) << 3)
+    }
+
     fn movec_control_register_code_68080(register: ControlRegisterKind) -> Option<u16> {
         match register {
             ControlRegisterKind::Sfc => Some(0x000),
@@ -1453,9 +1452,17 @@ impl M68080CpuHandler {
             Ok(ea) => ea,
             Err(err) => return err,
         };
+        if !M68KFamilyHandler::move_allows_destination(dst_ea.kind) {
+            return EncodeResult::error_with_span(
+                "invalid destination effective address for MOVIW.L",
+                dst.span(),
+            );
+        }
         let mut bytes = Vec::new();
-        // PRM: 1010 0010 00 <mode><reg>  (Line-A)
-        Self::emit_word(&mut bytes, 0xA200 | (dst_ea.bits & 0x3F));
+        Self::emit_word(
+            &mut bytes,
+            0x3000 | Self::move_destination_bits(dst_ea.bits) | 0x003D,
+        );
         Self::emit_word(&mut bytes, imm16);
         bytes.extend_from_slice(&dst_ea.extension);
         EncodeResult::ok(bytes)

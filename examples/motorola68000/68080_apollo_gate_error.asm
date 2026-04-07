@@ -6,6 +6,6 @@
         .org $1000
 
 start:
-        MOVIW.L #$11223344,D0
+        MOV3Q #1,D0
 
         .end

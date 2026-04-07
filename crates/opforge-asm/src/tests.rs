@@ -2901,7 +2901,6 @@ fn m68080_integer_slice() {
 
     let source = [
         ".cpu 68080",
-        "    .apollo on",
         "    MOVEQ #1,D0",
         "    ADDIW.L #$1234,D0",
         "    CMPIW.L #$0102,D1",
@@ -2911,6 +2910,7 @@ fn m68080_integer_slice() {
         "    MOVZ2.W (A0),.pair(D4,D5)",
         "    TOUCH (A1)",
         "    MOVIW.L #$1122,D2",
+        "    .apollo on",
         "    MOV3Q #7,D3",
         "    MOVS.B D0,D1",
         "    MOVZ.W (A0),D2",
@@ -2929,7 +2929,7 @@ fn m68080_integer_slice() {
         vec![
             0x70, 0x01, 0x06, 0xC0, 0x12, 0x34, 0x4E, 0x01, 0x01, 0x02, 0x0E, 0x80, 0x10, 0x10,
             0x0E, 0x50, 0x30, 0x13, 0x0E, 0x50, 0x20, 0xE1, 0x0E, 0x50, 0x41, 0x52, 0xF6, 0x11,
-            0xA2, 0x02, 0x11, 0x22, 0xAE, 0x43, 0xA3, 0x00, 0xA5, 0xD0,
+            0x34, 0x3D, 0x11, 0x22, 0xAE, 0x43, 0xA3, 0x00, 0xA5, 0xD0,
         ]
     );
 
@@ -2938,23 +2938,27 @@ fn m68080_integer_slice() {
     let message = message.expect("expected unsupported-cpu diagnostic for ADDIW");
     assert!(message.contains("only supported on m68080"));
 
-    let default_off_source = [".cpu 68080", "    MOVIW.L #1,D0", "    MOVS.B D0,D1"];
+    let default_off_source = [".cpu 68080", "    MOVIW.L #1,D0"];
     let (_entries, diagnostics) =
         assemble_source_entries_with_runtime_mode(&default_off_source, false)
-            .expect("m68080 integer slice should report deterministic Apollo gating diagnostics");
+            .expect("plain m68080 MOVIW should assemble without Apollo mode");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected default-off MOVIW diagnostics: {diagnostics:?}"
+    );
+
+    let gated_line_a_source = [".cpu 68080", "    MOVS.B D0,D1"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&gated_line_a_source, false)
+            .expect("m68080 line-A slice should report deterministic Apollo gating diagnostics");
     assert!(
         diagnostics
             .iter()
-            .any(|diag| diag.contains("MOVIW is Apollo-gated on m68080; enable .apollo on")),
-        "unexpected default-off Apollo diagnostics: {diagnostics:?}"
+            .any(|diag| diag.contains("MOVS is Apollo-gated on m68080; enable .apollo on")),
+        "unexpected default-off line-A diagnostics: {diagnostics:?}"
     );
 
-    let enabled_source = [
-        ".cpu 68080",
-        "    .apollo on",
-        "    MOVIW.L #1,D0",
-        "    MOVS.B D0,D1",
-    ];
+    let enabled_source = [".cpu 68080", "    .apollo on", "    MOVS.B D0,D1"];
     let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
         .expect("Apollo-enabled m68080 integer forms should assemble");
     assert!(
@@ -2967,7 +2971,6 @@ fn m68080_integer_slice() {
 fn m68080_word_extended_immediates_accept_high_bit_literals() {
     let source = [
         ".cpu 68080",
-        "    .apollo on",
         "    ADDIW.L #$8001,D0",
         "    CMPIW.L #$8001,(A0)",
         "    MOVIW.L #$8123,D0",
@@ -2983,7 +2986,7 @@ fn m68080_word_extended_immediates_accept_high_bit_literals() {
     let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
     assert_eq!(
         bytes,
-        vec![0x06, 0xC0, 0x80, 0x01, 0x4E, 0x10, 0x80, 0x01, 0xA2, 0x00, 0x81, 0x23]
+        vec![0x06, 0xC0, 0x80, 0x01, 0x4E, 0x10, 0x80, 0x01, 0x30, 0x3D, 0x81, 0x23]
     );
 
     let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
@@ -3007,6 +3010,47 @@ fn m68080_word_extended_immediates_accept_high_bit_literals() {
         )),
         "missing CMPIW out-of-range diagnostic: {diagnostics:?}"
     );
+}
+
+#[test]
+fn m68080_moviw_default_encoding_is_not_apollo_gated() {
+    let source = [".cpu 68080", "    MOVIW.L #$1122,D2"];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("plain m68080 MOVIW should assemble without Apollo mode");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected default-off MOVIW diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0x34, 0x3D, 0x11, 0x22]);
+
+    let gated_line_a_source = [".cpu 68080", "    MOVS.B D0,D1"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&gated_line_a_source, false)
+            .expect("m68080 line-A slice should report deterministic Apollo gating diagnostics");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| diag.contains("MOVS is Apollo-gated on m68080; enable .apollo on")),
+        "unexpected default-off line-A diagnostics: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn m68080_moviw_accepts_high_bit_word_patterns() {
+    let source = [".cpu 68080", "    MOVIW.L #$8123,D0"];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("high-bit MOVIW immediates should assemble on m68080");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected MOVIW high-bit diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0x30, 0x3D, 0x81, 0x23]);
 }
 
 #[test]

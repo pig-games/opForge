@@ -29,7 +29,7 @@ path = "documented_divergence/68080_moviw_core.asm"
 expected_outcome = "documented_divergence"
 compare_mode = "bytes"
 documented_divergence_kind = "opforge_success_oracle_error"
-documented_divergence_reason = "opForge accepts MOVIW.L with PRM-true Line-A encoding, while vasm 68080 does not recognise MOVIW as a valid mnemonic"
+documented_divergence_reason = "opForge accepts MOVIW.L with the regular PRM 68080 encoding, while vasm 68080 does not recognise MOVIW as a valid mnemonic"
 
 [[fixtures]]
 id = "68080-mov3q-core-divergence"

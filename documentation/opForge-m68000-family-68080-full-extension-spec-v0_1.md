@@ -124,12 +124,15 @@ optional, or deprioritised.
 ### `.apollo` contract
 
 * `.apollo` remains accepted on `m68080` for backward compatibility.
-* Default mode under `.cpu 68080` is `on` for full-surface instruction
-  legality.
-* `.apollo off` may be used as a strict-compatibility mode that disables
-  Apollo-native subsets only if configured in this revision; if strict mode is
-  not implemented, `.apollo off` must emit deterministic "unsupported mode"
-  diagnostics.
+* Default mode under `.cpu 68080` is `off` for the Line-A-only subset
+  (`CLR.Q`, `MOV3Q`, and `MOVS` / `MOVZ`).
+* `.apollo on` enables only that Line-A subset; AMMX and the integrated 68080
+  FPU remain available without Apollo mode.
+* `.apollo off` is accepted as a strict-compatibility mode that clears the
+  Line-A gate again.
+* Default `MOVIW.L #<imm16>,<ea>` on `m68080` uses the regular 68080 form and
+  does not require `.apollo on`.
+* No deprecated Line-A `MOVIW` compatibility selector is currently exposed.
 * On non-68080 CPUs, `.apollo` is rejected deterministically.
 
 ### `.fpu` contract for `m68080`

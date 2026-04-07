@@ -28,12 +28,12 @@ start:
         PERM #$0ABC,D0,E1
         PERM #$0ABC,E8,E16
 
-        .apollo on
         MOVIW.L #$8123,D3
         MOVIW.L #$0101,(A0)
         MOVIW.L #$0202,($2200).W
         MOVIW.L #$0303,($00102200).L
 
+        .apollo on
         MOV3Q #5,D4
         MOV3Q #-1,D5
         ADDQ.L #1,B0

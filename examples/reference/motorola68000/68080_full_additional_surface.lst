@@ -34,7 +34,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                               31  branchExtBcc
 10B6    4E 71                      32          NOP
 ----                               33  
-10B8    A2 01 55 66                34          MOVIW.L #$5566,D1
+10B8    32 3D 55 66                34          MOVIW.L #$5566,D1
 10BC    AE 42                      35          MOV3Q #7,D2
 10BE    FE 10 08 01                36          LOAD (A0),E0
 10C2    FE 08 9A 10                37          PADD.B E0,E1,E2
@@ -76,7 +76,7 @@ ADDR    BYTES
 1010    4D C1 71 01 4C C0 1A BC 4E 7A 08 08 4E 7B 10 0E
 1020    71 05 40 C0 F6 19 00 00 12 34 51 C9 00 87 60 03
 1030    61 03 66 03
-10B0    4E 71 4E 71 4E 75 4E 71 A2 01 55 66 AE 42 FE 10
+10B0    4E 71 4E 71 4E 75 4E 71 32 3D 55 66 AE 42 FE 10
 10C0    08 01 FE 08 9A 10 FE 00 12 10 FE 00 12 14 FF C0
 10D0    12 13 FE 00 12 16 FE 00 12 0C FE 0A 01 07 FE 3F
 10E0    9E 00 32 10 AB 78 F2 00 00 80 F2 00 5C 0B F2 00

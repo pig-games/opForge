@@ -3968,10 +3968,14 @@ fn m68k_cpu_directive_resets_fpu_selection_to_none() {
 #[test]
 fn m68k_fpu_mnemonics_fail_explicitly_when_fpu_is_disabled() {
     for (source, expected_cpu, expected_mnemonic) in [
-        ([".cpu 68020", "    FMOVE FP0,FP1"], "m68020", "FMOVE"),
-        ([".cpu 68030", "    FADD FP0,FP1"], "m68030", "FADD"),
-        ([".cpu 68040", "    FSIN FP0,FP1"], "m68040", "FSIN"),
-        ([".cpu 68080", "    FSIN FP0,FP1"], "m68080", "FSIN"),
+        (vec![".cpu 68020", "    FMOVE FP0,FP1"], "m68020", "FMOVE"),
+        (vec![".cpu 68030", "    FADD FP0,FP1"], "m68030", "FADD"),
+        (vec![".cpu 68040", "    FSIN FP0,FP1"], "m68040", "FSIN"),
+        (
+            vec![".cpu 68080", ".fpu none", "    FSIN FP0,FP1"],
+            "m68080",
+            "FSIN",
+        ),
     ] {
         let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
             .expect("assembly should finish with diagnostics");
@@ -3987,10 +3991,9 @@ fn m68k_fpu_mnemonics_fail_explicitly_when_fpu_is_disabled() {
 }
 
 #[test]
-fn m68080_fpu_requires_legal_target_and_encodes_legacy_surface() {
+fn m68080_fpu_defaults_to_integrated_target_and_encodes_legacy_surface() {
     let enabled_source = [
         ".cpu 68080",
-        ".fpu 68080",
         "    FNOP",
         "    FMOVE FP0,FP1",
         "    FMOVECR #11,FP0",
@@ -3999,7 +4002,7 @@ fn m68080_fpu_requires_legal_target_and_encodes_legacy_surface() {
         "    FETOX FP0,FP1",
     ];
     let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
-        .expect("68080 FPU legacy surface should assemble");
+        .expect("68080 FPU legacy surface should assemble under plain .cpu 68080");
     assert!(
         diagnostics.is_empty(),
         "unexpected diagnostics for 68080 FPU slice: {diagnostics:?}"

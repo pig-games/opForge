@@ -138,7 +138,11 @@ optional, or deprioritised.
 ### `.fpu` contract for `m68080`
 
 * Legal targets on `m68080`: `none`, `68080`.
-* `68080` target enables full 68080 FPU instruction legality.
+* Plain `.cpu 68080` defaults the runtime FPU target to the integrated
+  `68080` FPU.
+* `.fpu 68080` is an explicit no-op reaffirmation of the default integrated
+  FPU target.
+* `.fpu none` explicitly disables 68080 FPU instruction legality.
 * Illegal targets (e.g. `68881`, `68882`, `68040`) on `m68080` must fail with
   deterministic target/CPU pairing diagnostics.
 
@@ -1705,9 +1709,10 @@ The following table lists all AMMX instruction opcodes (Word 1, bits 9‑0):
 - [ ] `AC-68080-FULL-004`: Full AMMX family matrix assembles for legal forms
       and rejects illegal shapes deterministically — every instruction in
       AMMX-01 through AMMX-15 produces correct bytes.
-- [ ] `AC-68080-FULL-005`: Full 68080 FPU family matrix assembles under legal
-      `.fpu 68080` and rejects illegal target pairings — FPU-01 through FPU-04
-      produce correct bytes.
+- [ ] `AC-68080-FULL-005`: Full 68080 FPU family matrix assembles under the
+  default integrated `.cpu 68080` FPU state or explicit `.fpu 68080`, and
+  rejects illegal target pairings — FPU-01 through FPU-04 produce correct
+  bytes.
 - [ ] `AC-68080-FULL-006`: Non-68080 CPUs deterministically reject 68080-only
       mnemonics and E/B registers.
 - [ ] `AC-68080-FULL-007`: AB suites include 68080 fixtures with explicit
@@ -1798,8 +1803,8 @@ Additionally, the following existing encoders / code paths require extension
 
 - [ ] `Q-68080-FULL-001`: Should `.apollo off` remain a functional strict mode
   or become a compatibility no-op with diagnostic warning?
-- [ ] `Q-68080-FULL-002`: Should `.fpu` default under `.cpu 68080` remain
-  `none` or auto-promote to `68080` for convenience?
+- [x] `Q-68080-FULL-002`: Resolved. `.cpu 68080` defaults the runtime FPU
+  target to `68080`; `.fpu none` explicitly disables the integrated 68080 FPU.
 - [ ] `Q-68080-FULL-003`: Which 68080 FPU syntax aliases should be canonical
   when multiple spellings exist in legacy source corpora?
 - [ ] `Q-68080-FULL-004`: For the PADD/PSUB opcode derivation — the exact

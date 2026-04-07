@@ -66,7 +66,12 @@ impl FpuTarget {
 
 pub fn initial_runtime_state(cpu: CpuType) -> HashMap<String, u32> {
     let mut state = HashMap::new();
-    state.insert(FPU_TARGET_KEY.to_string(), FpuTarget::None.state_value());
+    let default_fpu_target = if cpu.as_str() == "m68080" {
+        FpuTarget::Mc68080
+    } else {
+        FpuTarget::None
+    };
+    state.insert(FPU_TARGET_KEY.to_string(), default_fpu_target.state_value());
     state.insert(APOLLO_MODE_KEY.to_string(), 0);
     state.insert(
         CPU_IS_68080_KEY.to_string(),
@@ -214,9 +219,9 @@ mod tests {
     }
 
     #[test]
-    fn initial_runtime_state_defaults_apollo_off_for_m68080() {
+    fn initial_runtime_state_defaults_to_integrated_fpu_and_apollo_off_for_m68080() {
         let state = initial_runtime_state(CpuType::new("m68080"));
-        assert_eq!(state.get(FPU_TARGET_KEY), Some(&0));
+        assert_eq!(state.get(FPU_TARGET_KEY), Some(&4));
         assert_eq!(state.get(APOLLO_MODE_KEY), Some(&0));
         assert_eq!(state.get(CPU_IS_68080_KEY), Some(&1));
     }

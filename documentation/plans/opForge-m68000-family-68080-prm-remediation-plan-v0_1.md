@@ -5,7 +5,7 @@
 - Source: review report at `dev-docs/reviews/opforge_68080_prm_validation_2026-04-07.md`
 - Mode: remediation
 - Owner: GitHub Copilot (GPT-5.4)
-- Status: execution in progress; WI-1 has passed `plan-compliance-reviewer` and landed as its own commit, and WI-2 through WI-4 are being reconstructed from the saved pre-split diff into one-slice commit states
+- Status: execution in progress; WI-1 and WI-2 have passed `plan-compliance-reviewer` and landed as their own commits, and WI-3 through WI-4 are being reconstructed from the saved pre-split diff into one-slice commit states
 
 ## Objective
 
@@ -77,11 +77,13 @@ canonical `MOVEC IEP3` control-register name.
 
 - WI-1: complete. `plan-compliance-reviewer` PASS and committed as
   `d697a55` (`Removed incorrect Apollo gating from 68080 AMMX instructions.`).
-- WI-2: slice reconstructed and fully validated in the working tree. Default
-  `MOVIW` now emits the regular PRM form without `.apollo on`, the deprecated
-  Line-A `MOVIW` compatibility form is not exposed, and the slice is being
+- WI-2: complete. `plan-compliance-reviewer` PASS and committed as `10f5c52`
+  (`Made regular MOVIW the default 68080 encoding.`).
+- WI-3: slice reconstructed and fully validated in the working tree. Plain
+  `.cpu 68080` now defaults the runtime FPU target to `68080`, `.fpu none`
+  still disables the integrated FPU deterministically, and the slice is being
   advanced through `plan-compliance-reviewer` before commit.
-- A previously validated pre-split working tree exists for WI-2 through WI-4,
+- A previously validated pre-split working tree exists for WI-3 through WI-4,
   but none of those items is complete for workflow purposes until each slice is
   reconstructed as its own commit candidate and passes `plan-compliance-reviewer`.
 - WI-5: draft closure artifacts are being prepared so the final closure pass can
@@ -112,7 +114,7 @@ canonical `MOVEC IEP3` control-register name.
   - Commit outcome: one commit removing AMMX Apollo over-gating and landing the
     targeted regression tests.
 
-- [ ] WI-2: Make the regular `MOVIW` encoding the default 68080 path and isolate
+- [x] WI-2: Make the regular `MOVIW` encoding the default 68080 path and isolate
       the restricted Line-A compatibility form.
   - Source requirement or finding IDs: `RVW-2026-04-07-002` (expected closure:
     full)
@@ -143,8 +145,6 @@ canonical `MOVEC IEP3` control-register name.
     disable states still behave deterministically; capability and diagnostic
     tests reflect the integrated-default 68080 FPU contract.
   - Expected files: `crates/opforge-families/src/m68k/state.rs`,
-    `crates/opforge-families/src/m68080/handler.rs`,
-    `crates/opforge-asm/src/normalization.rs`,
     `crates/opforge-asm/src/tests.rs`,
     `documentation/opForge-m68000-family-68080-full-extension-spec-v0_1.md`
   - Full quality gates: `cargo fmt --all`, `cargo clippy --all-targets
@@ -206,7 +206,7 @@ canonical `MOVEC IEP3` control-register name.
 
 ## Milestones
 
-- [ ] Milestone 1: Apollo boundary and `MOVIW` default behavior corrected
+- [x] Milestone 1: Apollo boundary and `MOVIW` default behavior corrected
       (WI-1 through WI-2).
 - [ ] Milestone 2: Integrated FPU default and `IEP3` naming corrected
       (WI-3 through WI-4).

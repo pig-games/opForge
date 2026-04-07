@@ -25,7 +25,6 @@ pub struct LspConfig {
     pub module_paths: Vec<String>,
     pub defines: Vec<String>,
     pub default_cpu: Option<String>,
-    pub opforge_path: Option<String>,
     pub validation: ValidationConfig,
 }
 
@@ -52,9 +51,6 @@ impl LspConfig {
         }
         if let Some(cpu) = read_optional_string(root.get("defaultCpu")) {
             self.default_cpu = cpu;
-        }
-        if let Some(path) = read_optional_string(root.get("opforgePath")) {
-            self.opforge_path = path;
         }
         if let Some(validation) = root.get("validation") {
             if let Some(ms) = validation.get("debounceMs").and_then(Value::as_u64) {

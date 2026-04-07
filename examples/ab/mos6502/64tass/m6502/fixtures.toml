@@ -16,6 +16,50 @@ cpu = "m6502"
 path = "positive/m6502_branch_jump_core.asm"
 
 [[fixtures]]
+id = "m6502-6502-simple"
+cpu = "m6502"
+path = "documented_divergence/6502_simple.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "byte_mismatch"
+documented_divergence_reason = "Directive normalization allows assembly in both tools, but flat-binary bytes still differ"
+documented_divergence_opforge_status = "success"
+documented_divergence_oracle_status = "success"
+
+[[fixtures]]
+id = "m6502-6502-allmodes"
+cpu = "m6502"
+path = "documented_divergence/6502_allmodes.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "64tass still rejects one or more m6502 allmodes forms after directive normalization"
+documented_divergence_opforge_status = "success"
+documented_divergence_oracle_status = "error"
+
+[[fixtures]]
+id = "m6502-modes"
+cpu = "m6502"
+path = "documented_divergence/mos6502_modes.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "byte_mismatch"
+documented_divergence_reason = "Directive normalization allows assembly in both tools, but flat-binary bytes still differ"
+documented_divergence_opforge_status = "success"
+documented_divergence_oracle_status = "success"
+
+[[fixtures]]
+id = "m6502-forward-ref-stability"
+cpu = "m6502"
+path = "documented_divergence/mos_forward_ref_stability.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "byte_mismatch"
+documented_divergence_reason = "Directive normalization allows assembly in both tools, but flat-binary bytes still differ"
+documented_divergence_opforge_status = "success"
+documented_divergence_oracle_status = "success"
+
+[[fixtures]]
 id = "m6502-wrong-operand-count"
 cpu = "m6502"
 path = "negative/wrong_operand_count.asm"

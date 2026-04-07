@@ -14,6 +14,7 @@ const DEFAULT_EXECUTABLE: &str = "64tass";
 const OUTPUT_FILENAME: &str = "output.bin";
 const STDOUT_FILENAME: &str = "64tass.stdout.txt";
 const STDERR_FILENAME: &str = "64tass.stderr.txt";
+const NORMALIZED_SOURCE_FILENAME: &str = "64tass.normalized.asm";
 const ORACLE_ID: &str = "64tass";
 const ORACLE_PROFILE: &str = "tass_6502_flat_binary";
 const SUPPORTED_FAMILY: &str = "mos6502";
@@ -153,7 +154,36 @@ fn assemble_flat_binary_with_executable(
     let output_path = request.output_dir.join(OUTPUT_FILENAME);
     let stdout_path = request.output_dir.join(STDOUT_FILENAME);
     let stderr_path = request.output_dir.join(STDERR_FILENAME);
-    let command_args = match build_command_args(&output_path, &request) {
+    let normalized_source_path = request.output_dir.join(NORMALIZED_SOURCE_FILENAME);
+    if let Err(err) = write_normalized_source_file(request.source_path, &normalized_source_path) {
+        let diagnostics_text = format!(
+            "Normalize source for 64tass ({} -> {}): {err}\n",
+            request.source_path.display(),
+            normalized_source_path.display()
+        );
+        let _ = fs::write(&stderr_path, &diagnostics_text);
+        let _ = fs::write(&stdout_path, "");
+        return Err(OracleAssembleFailure {
+            diagnostics_path: stderr_path.clone(),
+            stdout_path: Some(stdout_path),
+            stderr_path: Some(stderr_path),
+            diagnostics_text,
+            summary: format!(
+                "Normalize source for 64tass ({} -> {}): {err}",
+                request.source_path.display(),
+                normalized_source_path.display()
+            ),
+        });
+    }
+
+    let normalized_request = OracleAssembleRequest {
+        cpu: request.cpu,
+        cpu_profile: request.cpu_profile,
+        source_path: normalized_source_path.as_path(),
+        output_dir: request.output_dir,
+    };
+
+    let command_args = match build_command_args(&output_path, &normalized_request) {
         Ok(args) => args,
         Err(diagnostics_text) => {
             let _ = fs::write(&stderr_path, &diagnostics_text);
@@ -278,6 +308,94 @@ fn unsupported_cpu_message(cpu: &str) -> String {
     )
 }
 
+fn write_normalized_source_file(input_path: &Path, output_path: &Path) -> std::io::Result<()> {
+    let source = fs::read_to_string(input_path)?;
+    let normalized = normalize_source_text_for_64tass(&source);
+    fs::write(output_path, normalized)
+}
+
+fn normalize_source_text_for_64tass(source: &str) -> String {
+    source
+        .lines()
+        .map(normalize_source_line_for_64tass)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn normalize_source_line_for_64tass(line: &str) -> String {
+    let (indent_len, _) = line
+        .char_indices()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .unwrap_or((line.len(), ' '));
+    let indent = &line[..indent_len];
+    let trimmed = &line[indent_len..];
+
+    if let Some(rest) = strip_directive_case_insensitive(trimmed, ".cpu") {
+        let (operand_raw, comment) = split_comment(rest);
+        let operand = operand_raw.trim();
+        if let Some(cpu) = normalized_cpu_directive_value(operand) {
+            let comment_suffix = comment.map(|c| format!(";{c}")).unwrap_or_default();
+            return format!("{indent}.cpu \"{cpu}\"{comment_suffix}");
+        }
+    }
+
+    if let Some(rest) = strip_directive_case_insensitive(trimmed, ".org") {
+        let (expr_raw, comment) = split_comment(rest);
+        let expr = expr_raw.trim();
+        if !expr.is_empty() {
+            let comment_suffix = comment.map(|c| format!(";{c}")).unwrap_or_default();
+            return format!("{indent}* = {expr}{comment_suffix}");
+        }
+    }
+
+    line.to_string()
+}
+
+fn strip_directive_case_insensitive<'a>(line: &'a str, directive: &str) -> Option<&'a str> {
+    if line.len() < directive.len() {
+        return None;
+    }
+
+    let prefix = &line[..directive.len()];
+    if !prefix.eq_ignore_ascii_case(directive) {
+        return None;
+    }
+
+    let rest = &line[directive.len()..];
+    if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+        Some(rest)
+    } else {
+        None
+    }
+}
+
+fn split_comment(line: &str) -> (&str, Option<&str>) {
+    match line.split_once(';') {
+        Some((head, tail)) => (head, Some(tail)),
+        None => (line, None),
+    }
+}
+
+fn normalized_cpu_directive_value(operand: &str) -> Option<&'static str> {
+    let normalized = strip_surrounding_quotes(operand).trim();
+    match normalized.to_ascii_lowercase().as_str() {
+        "6502" | "m6502" => Some("6502"),
+        "65c02" | "m65c02" => Some("65c02"),
+        "65816" | "65c816" | "w65c816" | "m65816" => Some("65816"),
+        "45gs02" | "m45gs02" | "mega65" => Some("45gs02"),
+        _ => None,
+    }
+}
+
+fn strip_surrounding_quotes(value: &str) -> &str {
+    let value = value.trim();
+    if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
+        &value[1..value.len() - 1]
+    } else {
+        value
+    }
+}
+
 fn canonical_cpu(cpu: &str) -> Option<&'static str> {
     match cpu.to_ascii_lowercase().as_str() {
         "6502" | "m6502" => Some("m6502"),
@@ -361,10 +479,12 @@ mod tests {
     #[test]
     fn external_oracle_64tass_rejects_unsupported_cpu_before_spawn() {
         let dir = temp_dir("external-oracle-64tass-unsupported-cpu");
+        let source_path = dir.join("fixture.asm");
+        fs::write(&source_path, "rts\n").expect("write source");
         let request = OracleAssembleRequest {
             cpu: "65ce02",
             cpu_profile: None,
-            source_path: Path::new("fixture.asm"),
+            source_path: source_path.as_path(),
             output_dir: &dir,
         };
 
@@ -468,5 +588,33 @@ mod tests {
         assert_eq!(args[3], OsString::from("-o"));
         assert_eq!(args[4], OsString::from("/tmp/output.bin"));
         assert_eq!(args[5], OsString::from("/tmp/fixture.asm"));
+    }
+
+    #[test]
+    fn external_oracle_64tass_normalizes_cpu_numeric_and_org_directives() {
+        let input = "        .cpu 6502\n        .org $1000\nrts\n";
+        let normalized = normalize_source_text_for_64tass(input);
+
+        assert!(normalized.contains(".cpu \"6502\""));
+        assert!(normalized.contains("* = $1000"));
+        assert!(!normalized.contains(".org"));
+    }
+
+    #[test]
+    fn external_oracle_64tass_normalizes_cpu_alias_mega65() {
+        let input = ".cpu mega65\n* = $1000\nrts\n";
+        let normalized = normalize_source_text_for_64tass(input);
+
+        assert!(normalized.contains(".cpu \"45gs02\""));
+    }
+
+    #[test]
+    fn external_oracle_64tass_preserves_unrelated_lines_and_comments() {
+        let input = "label .cpu 6502\n.cpu \"65c02\" ; keep comment\n.org $200 ; origin\n";
+        let normalized = normalize_source_text_for_64tass(input);
+
+        assert!(normalized.contains("label .cpu 6502"));
+        assert!(normalized.contains(".cpu \"65c02\"; keep comment"));
+        assert!(normalized.contains("* = $200; origin"));
     }
 }

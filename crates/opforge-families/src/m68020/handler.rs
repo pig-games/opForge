@@ -8,11 +8,12 @@ use crate::families::m68k::operand::{
 };
 use crate::families::m68k::{
     has_fpu_mnemonic, has_m68020_mnemonic, has_mnemonic, parse_fpu_mnemonic, parse_m68010_mnemonic,
-    parse_m68020_mnemonic, parse_mnemonic, FamilyOperand, FpuFormat, FpuMnemonicKind,
-    M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler, MnemonicKind, Operand,
-    OperationSize,
+    parse_m68020_mnemonic, parse_m68080_mnemonic, parse_mnemonic, FamilyOperand, FpuFormat,
+    FpuMnemonicKind, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler, MnemonicKind,
+    Operand, OperationSize,
 };
 use opcore::parser::Expr;
+use opcore::tokenizer::Span;
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -20,6 +21,8 @@ enum FmovemRegisterListEncoding {
     Data(u16),
     Control(u16),
 }
+
+type FpuNativeSourceEffectiveAddress = (u16, Vec<u8>, Option<u16>);
 
 #[derive(Debug)]
 pub struct M68020CpuHandler {
@@ -463,6 +466,232 @@ impl M68020CpuHandler {
         }
     }
 
+    fn encode_fmove_round_zero_conversion(
+        &self,
+        display_name: &str,
+        size: Option<OperationSize>,
+        format: Option<FpuFormat>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+        unsigned: bool,
+    ) -> EncodeResult<Vec<u8>> {
+        let Some(size) = size else {
+            return EncodeResult::error(format!(
+                "{display_name} requires an explicit .B, .W, or .L size suffix on m68020"
+            ));
+        };
+        if format.is_some() {
+            return EncodeResult::error(format!(
+                "{display_name} does not accept floating-point format suffixes on m68020"
+            ));
+        }
+
+        let [src, dst] = operands else {
+            return EncodeResult::error(format!("{display_name} expects two operands: FPn,<ea>"));
+        };
+        let Operand::FpuDataRegister {
+            register: src_register,
+            ..
+        } = src
+        else {
+            return EncodeResult::error_with_span(
+                format!("{display_name} source must be an FP data register"),
+                src.span(),
+            );
+        };
+
+        let Some(src_reg) = M68KFamilyHandler::fpu_data_register_number(src_register) else {
+            return EncodeResult::error_with_span(
+                format!("invalid {display_name} source FP register"),
+                src.span(),
+            );
+        };
+
+        let dst_ea = match self.family.encode_effective_address(dst, Some(size), ctx) {
+            Ok(ea) => ea,
+            Err(err) => return err,
+        };
+        if !Self::fpu_scalar_destination_operand(dst_ea.bits) {
+            return EncodeResult::error_with_span(
+                format!("invalid destination effective address for {display_name}"),
+                dst.span(),
+            );
+        }
+
+        let mut bytes = Vec::new();
+        M68KFamilyHandler::emit_word(
+            &mut bytes,
+            Self::fpu_effective_address_word(0x0000, dst_ea.bits),
+        );
+        M68KFamilyHandler::emit_word(
+            &mut bytes,
+            0x6000
+                | Self::fpu_scalar_format_bits(size)
+                | ((src_reg as u16) << 7)
+                | if unsigned { 0x0003 } else { 0x0001 },
+        );
+        bytes.extend_from_slice(&dst_ea.extension);
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_fpu_immediate_literal(
+        expr: &Expr,
+        span: Span,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<(Vec<u8>, u16), EncodeResult<Vec<u8>>> {
+        let (value_expr, format) = match expr {
+            Expr::Member { base, field, .. } => match field.to_ascii_uppercase().as_str() {
+                "S" => (base.as_ref(), FpuFormat::Single),
+                "D" => (base.as_ref(), FpuFormat::Double),
+                "X" => return Err(EncodeResult::error_with_span(
+                    "extended floating-point immediate literals are not yet implemented on m68020",
+                    span,
+                )),
+                "P" => {
+                    return Err(EncodeResult::error_with_span(
+                        "packed floating-point immediate literals are not supported on m68020",
+                        span,
+                    ))
+                }
+                _ => (expr, FpuFormat::Single),
+            },
+            _ => (expr, FpuFormat::Single),
+        };
+
+        let value = match M68KFamilyHandler::eval_expr(value_expr, ctx) {
+            Ok(value) => value,
+            Err(err) => return Err(EncodeResult::error_with_span(err, span)),
+        };
+        match format {
+            FpuFormat::Single => Ok((
+                (value as f32).to_bits().to_be_bytes().to_vec(),
+                Self::fpu_native_format_bits(FpuFormat::Single),
+            )),
+            FpuFormat::Double => Ok((
+                (value as f64).to_bits().to_be_bytes().to_vec(),
+                Self::fpu_native_format_bits(FpuFormat::Double),
+            )),
+            FpuFormat::Extended | FpuFormat::Packed => unreachable!(),
+        }
+    }
+
+    fn encode_fpu_native_source_effective_address(
+        &self,
+        operand: &Operand,
+        ctx: &dyn AssemblerContext,
+    ) -> Result<FpuNativeSourceEffectiveAddress, EncodeResult<Vec<u8>>> {
+        match operand {
+            Operand::Immediate { expr, span } => {
+                let (bytes, format_bits) = Self::encode_fpu_immediate_literal(expr, *span, ctx)?;
+                Ok(((0b111_u16 << 3) | 0b100, bytes, Some(format_bits)))
+            }
+            _ => {
+                let ea = self.family.encode_effective_address(operand, None, ctx)?;
+                Ok((ea.bits, ea.extension, None))
+            }
+        }
+    }
+
+    fn encode_fmove_data_register_alias(
+        &self,
+        display_name: &str,
+        size: Option<OperationSize>,
+        format: Option<FpuFormat>,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+        data_to_fp: bool,
+    ) -> EncodeResult<Vec<u8>> {
+        let [left, right] = operands else {
+            return EncodeResult::error(format!(
+                "{display_name} expects two operands: {},{}",
+                if data_to_fp { "Dn" } else { "FPn" },
+                if data_to_fp { "FPn" } else { "Dn" }
+            ));
+        };
+
+        let (data_operand, fp_operand) = if data_to_fp {
+            (left, right)
+        } else {
+            (right, left)
+        };
+
+        let Operand::DataRegister { .. } = data_operand else {
+            return EncodeResult::error_with_span(
+                format!("{display_name} data operand must be a data register"),
+                data_operand.span(),
+            );
+        };
+        let Operand::FpuDataRegister {
+            register: fp_register,
+            ..
+        } = fp_operand
+        else {
+            return EncodeResult::error_with_span(
+                format!("{display_name} FP operand must be an FP data register"),
+                fp_operand.span(),
+            );
+        };
+        let Some(fp_reg) = M68KFamilyHandler::fpu_data_register_number(fp_register) else {
+            return EncodeResult::error_with_span(
+                format!("invalid {display_name} FP register"),
+                fp_operand.span(),
+            );
+        };
+
+        match (size, format) {
+            (
+                Some(size @ (OperationSize::Byte | OperationSize::Word | OperationSize::Long)),
+                None,
+            ) => {
+                if data_to_fp {
+                    self.encode_fmove_integer_conversion(size, data_operand, fp_operand, ctx)
+                } else {
+                    self.encode_fmove_integer_conversion(size, fp_operand, data_operand, ctx)
+                }
+            }
+            (
+                None,
+                Some(format @ (FpuFormat::Single | FpuFormat::Double | FpuFormat::Extended)),
+            ) => {
+                let data_ea = match self
+                    .family
+                    .encode_effective_address(data_operand, None, ctx)
+                {
+                    Ok(ea) => ea,
+                    Err(err) => return err,
+                };
+                if Self::effective_address_mode(data_ea.bits) != 0 {
+                    return EncodeResult::error_with_span(
+                        format!("{display_name} data operand must use a data register"),
+                        data_operand.span(),
+                    );
+                }
+
+                let mut bytes = Vec::new();
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    Self::fpu_effective_address_word(0x0000, data_ea.bits),
+                );
+                M68KFamilyHandler::emit_word(
+                    &mut bytes,
+                    (if data_to_fp { 0x4000 } else { 0x6000 })
+                        | Self::fpu_native_format_bits(format)
+                        | ((fp_reg as u16) << 7),
+                );
+                EncodeResult::ok(bytes)
+            }
+            (None, Some(FpuFormat::Packed)) => EncodeResult::error(format!(
+                "{display_name} does not support packed floating-point format on m68020"
+            )),
+            (None, None) => EncodeResult::error(format!(
+                "{display_name} requires an explicit .B, .W, .L, .S, .D, or .X suffix on m68020"
+            )),
+            _ => EncodeResult::error(format!(
+                "unsupported {display_name} suffix combination on m68020"
+            )),
+        }
+    }
+
     fn encode_fmove_native_format(
         &self,
         format: FpuFormat,
@@ -525,27 +754,29 @@ impl M68020CpuHandler {
                     );
                 };
 
-                let src_ea = match self.family.encode_effective_address(src, None, ctx) {
-                    Ok(ea) => ea,
-                    Err(err) => return err,
-                };
-                if !Self::fpu_native_source_operand(src_ea.bits) {
+                let (src_ea_bits, src_ea_extension, format_override) =
+                    match self.encode_fpu_native_source_effective_address(src, ctx) {
+                        Ok(encoded) => encoded,
+                        Err(err) => return err,
+                    };
+                if !Self::fpu_native_source_operand(src_ea_bits) {
                     return EncodeResult::error_with_span(
                         format!("invalid source effective address for FMOVE{suffix}"),
                         src.span(),
                     );
                 }
+                let format_bits = format_override.unwrap_or(format_bits);
 
                 let mut bytes = Vec::new();
                 M68KFamilyHandler::emit_word(
                     &mut bytes,
-                    Self::fpu_effective_address_word(0x0000, src_ea.bits),
+                    Self::fpu_effective_address_word(0x0000, src_ea_bits),
                 );
                 M68KFamilyHandler::emit_word(
                     &mut bytes,
                     0x4000 | format_bits | ((dst_reg as u16) << 7),
                 );
-                bytes.extend_from_slice(&src_ea.extension);
+                bytes.extend_from_slice(&src_ea_extension);
                 EncodeResult::ok(bytes)
             }
             _ => EncodeResult::error(format!(
@@ -564,8 +795,28 @@ impl M68020CpuHandler {
         let [src, dst] = operands else {
             return EncodeResult::error("FMOVE expects two operands");
         };
+        let is_68080 = ctx
+            .cpu_state_flag(crate::families::m68k::state::CPU_IS_68080_KEY)
+            .unwrap_or(0)
+            != 0;
 
         match (size, format, src, dst) {
+            (
+                None,
+                Some(FpuFormat::Double),
+                Operand::DataRegister { .. },
+                Operand::FpuDataRegister { .. },
+            ) if is_68080 => {
+                self.encode_fmove_data_register_alias("FMOVE", size, format, operands, ctx, true)
+            }
+            (
+                None,
+                Some(FpuFormat::Double),
+                Operand::FpuDataRegister { .. },
+                Operand::DataRegister { .. },
+            ) if is_68080 => {
+                self.encode_fmove_data_register_alias("FMOVE", size, format, operands, ctx, false)
+            }
             (
                 None,
                 None,
@@ -780,14 +1031,22 @@ impl M68020CpuHandler {
                     );
                 };
 
-                let src_ea = match self.family.encode_effective_address(src, ea_size, ctx) {
-                    Ok(ea) => ea,
-                    Err(err) => return err,
+                let (src_ea_bits, src_ea_extension, format_override) = if native_format {
+                    match self.encode_fpu_native_source_effective_address(src, ctx) {
+                        Ok(encoded) => encoded,
+                        Err(err) => return err,
+                    }
+                } else {
+                    let src_ea = match self.family.encode_effective_address(src, ea_size, ctx) {
+                        Ok(ea) => ea,
+                        Err(err) => return err,
+                    };
+                    (src_ea.bits, src_ea.extension, None)
                 };
                 let source_ok = if native_format {
-                    Self::fpu_native_source_operand(src_ea.bits)
+                    Self::fpu_native_source_operand(src_ea_bits)
                 } else {
-                    Self::fpu_scalar_source_operand(src_ea.bits)
+                    Self::fpu_scalar_source_operand(src_ea_bits)
                 };
                 if !source_ok {
                     return EncodeResult::error_with_span(
@@ -795,17 +1054,18 @@ impl M68020CpuHandler {
                         src.span(),
                     );
                 }
+                let format_bits = format_override.unwrap_or(format_bits);
 
                 let mut bytes = Vec::new();
                 M68KFamilyHandler::emit_word(
                     &mut bytes,
-                    Self::fpu_effective_address_word(0x0000, src_ea.bits),
+                    Self::fpu_effective_address_word(0x0000, src_ea_bits),
                 );
                 M68KFamilyHandler::emit_word(
                     &mut bytes,
                     0x4000 | format_bits | ((dst_reg as u16) << 7) | opcode,
                 );
-                bytes.extend_from_slice(&src_ea.extension);
+                bytes.extend_from_slice(&src_ea_extension);
                 EncodeResult::ok(bytes)
             }
             _ => EncodeResult::error(format!(
@@ -907,14 +1167,22 @@ impl M68020CpuHandler {
                     );
                 };
 
-                let src_ea = match self.family.encode_effective_address(src, ea_size, ctx) {
-                    Ok(ea) => ea,
-                    Err(err) => return err,
+                let (src_ea_bits, src_ea_extension, format_override) = if native_format {
+                    match self.encode_fpu_native_source_effective_address(src, ctx) {
+                        Ok(encoded) => encoded,
+                        Err(err) => return err,
+                    }
+                } else {
+                    let src_ea = match self.family.encode_effective_address(src, ea_size, ctx) {
+                        Ok(ea) => ea,
+                        Err(err) => return err,
+                    };
+                    (src_ea.bits, src_ea.extension, None)
                 };
                 let source_ok = if native_format {
-                    Self::fpu_native_source_operand(src_ea.bits)
+                    Self::fpu_native_source_operand(src_ea_bits)
                 } else {
-                    Self::fpu_scalar_source_operand(src_ea.bits)
+                    Self::fpu_scalar_source_operand(src_ea_bits)
                 };
                 if !source_ok {
                     return EncodeResult::error_with_span(
@@ -922,17 +1190,18 @@ impl M68020CpuHandler {
                         src.span(),
                     );
                 }
+                let format_bits = format_override.unwrap_or(format_bits);
 
                 let mut bytes = Vec::new();
                 M68KFamilyHandler::emit_word(
                     &mut bytes,
-                    Self::fpu_effective_address_word(0x0000, src_ea.bits),
+                    Self::fpu_effective_address_word(0x0000, src_ea_bits),
                 );
                 M68KFamilyHandler::emit_word(
                     &mut bytes,
                     0x4000 | format_bits | ((dst_sin_reg as u16) << 7) | (dst_cos_reg as u16) | 0x0030,
                 );
-                bytes.extend_from_slice(&src_ea.extension);
+                bytes.extend_from_slice(&src_ea_extension);
                 EncodeResult::ok(bytes)
             }
             _ => EncodeResult::error(format!(
@@ -991,14 +1260,22 @@ impl M68020CpuHandler {
                     }
                 };
 
-                let src_ea = match self.family.encode_effective_address(src, ea_size, ctx) {
-                    Ok(ea) => ea,
-                    Err(err) => return err,
+                let (src_ea_bits, src_ea_extension, format_override) = if native_format {
+                    match self.encode_fpu_native_source_effective_address(src, ctx) {
+                        Ok(encoded) => encoded,
+                        Err(err) => return err,
+                    }
+                } else {
+                    let src_ea = match self.family.encode_effective_address(src, ea_size, ctx) {
+                        Ok(ea) => ea,
+                        Err(err) => return err,
+                    };
+                    (src_ea.bits, src_ea.extension, None)
                 };
                 let source_ok = if native_format {
-                    Self::fpu_native_source_operand(src_ea.bits)
+                    Self::fpu_native_source_operand(src_ea_bits)
                 } else {
-                    Self::fpu_scalar_source_operand(src_ea.bits)
+                    Self::fpu_scalar_source_operand(src_ea_bits)
                 };
                 if !source_ok {
                     return EncodeResult::error_with_span(
@@ -1006,14 +1283,15 @@ impl M68020CpuHandler {
                         src.span(),
                     );
                 }
+                let format_bits = format_override.unwrap_or(format_bits);
 
                 let mut bytes = Vec::new();
                 M68KFamilyHandler::emit_word(
                     &mut bytes,
-                    Self::fpu_effective_address_word(0x0000, src_ea.bits),
+                    Self::fpu_effective_address_word(0x0000, src_ea_bits),
                 );
                 M68KFamilyHandler::emit_word(&mut bytes, 0x4000 | format_bits | 0x003A);
-                bytes.extend_from_slice(&src_ea.extension);
+                bytes.extend_from_slice(&src_ea_extension);
                 EncodeResult::ok(bytes)
             }
             _ => EncodeResult::error("FTST expects exactly one operand"),
@@ -1099,9 +1377,17 @@ impl M68020CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if size.is_some() {
-            return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
-        }
+        let is_68080 = ctx
+            .cpu_state_flag(crate::families::m68k::state::CPU_IS_68080_KEY)
+            .unwrap_or(0)
+            != 0;
+        let long_counter = match size {
+            None => false,
+            Some(OperationSize::Long) if is_68080 => true,
+            Some(_) => {
+                return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
+            }
+        };
 
         let [counter, target] = operands else {
             return EncodeResult::error(format!("{mnemonic} expects a data register and target"));
@@ -1132,11 +1418,29 @@ impl M68020CpuHandler {
             Ok(condition) => condition,
             Err(err) => return err,
         };
-        let (offset, _) = match Self::branch_offset(expr, ctx, 4) {
-            Ok(result) => result,
-            Err(err) => return EncodeResult::error_with_span(err, target.span()),
+        let (target_value, unresolved) =
+            match M68KFamilyHandler::eval_expr_or_placeholder(expr, ctx, 0) {
+                Ok(result) => result,
+                Err(err) => return EncodeResult::error_with_span(err, target.span()),
+            };
+        let offset = if unresolved {
+            0
+        } else if long_counter {
+            target_value - ctx.current_address() as i64
+        } else {
+            target_value - (ctx.current_address() as i64 + 4)
         };
-        let Some(encoded_displacement) = M68KFamilyHandler::encode_signed_word(offset) else {
+        if long_counter && !unresolved && (offset & 1) != 0 {
+            return EncodeResult::error_with_span(
+                format!(
+                    "{mnemonic} branch displacement must be even before applying the long-counter signal"
+                ),
+                target.span(),
+            );
+        }
+        let encoded_offset = if long_counter { offset | 1 } else { offset };
+        let Some(encoded_displacement) = M68KFamilyHandler::encode_signed_word(encoded_offset)
+        else {
             return EncodeResult::error_with_span(
                 format!("{mnemonic} branch displacement out of range: offset {offset}"),
                 target.span(),
@@ -1442,6 +1746,38 @@ impl M68020CpuHandler {
                 self.encode_fnop(&parsed.display_name, parsed.size, parsed.format, operands)
             }
             FpuMnemonicKind::Fmove => self.encode_fmove(parsed.size, parsed.format, operands, ctx),
+            FpuMnemonicKind::Floadi => self.encode_fmove_data_register_alias(
+                &parsed.display_name,
+                parsed.size,
+                parsed.format,
+                operands,
+                ctx,
+                true,
+            ),
+            FpuMnemonicKind::Fstorei => self.encode_fmove_data_register_alias(
+                &parsed.display_name,
+                parsed.size,
+                parsed.format,
+                operands,
+                ctx,
+                false,
+            ),
+            FpuMnemonicKind::Fmoverz => self.encode_fmove_round_zero_conversion(
+                &parsed.display_name,
+                parsed.size,
+                parsed.format,
+                operands,
+                ctx,
+                false,
+            ),
+            FpuMnemonicKind::Fmoveurz => self.encode_fmove_round_zero_conversion(
+                &parsed.display_name,
+                parsed.size,
+                parsed.format,
+                operands,
+                ctx,
+                true,
+            ),
             FpuMnemonicKind::Fmovecr => self.encode_fmovecr(
                 &parsed.display_name,
                 parsed.size,
@@ -1927,6 +2263,7 @@ impl M68020CpuHandler {
             | ControlRegisterKind::Mmusr
             | ControlRegisterKind::Urp
             | ControlRegisterKind::Srp => None,
+            _ => None,
         }
     }
 
@@ -2035,8 +2372,9 @@ impl CpuHandler for M68020CpuHandler {
         &self,
         _mnemonic: &str,
         family_operands: &[FamilyOperand],
-        _ctx: &dyn AssemblerContext,
+        ctx: &dyn AssemblerContext,
     ) -> Result<Vec<Operand>, String> {
+        M68KFamilyHandler::validate_68080_register_compatibility(family_operands, ctx, "m68020+")?;
         Ok(family_operands.to_vec())
     }
 
@@ -2054,6 +2392,19 @@ impl CpuHandler for M68020CpuHandler {
                 ));
             }
 
+            if matches!(
+                parsed.kind,
+                FpuMnemonicKind::Floadi
+                    | FpuMnemonicKind::Fstorei
+                    | FpuMnemonicKind::Fmoverz
+                    | FpuMnemonicKind::Fmoveurz
+            ) {
+                return EncodeResult::error(format!(
+                    "{} is only supported on m68080",
+                    parsed.display_name
+                ));
+            }
+
             let target_name = match self.validate_fpu_target(&parsed.display_name, ctx) {
                 Ok(target_name) => target_name,
                 Err(err) => return err,
@@ -2062,6 +2413,13 @@ impl CpuHandler for M68020CpuHandler {
             return self
                 .encode_supported_fpu_core_mnemonic(mnemonic, operands, ctx)
                 .unwrap_or_else(|| self.deferred_fpu_message(&parsed.display_name, target_name));
+        }
+
+        if let Some(parsed) = parse_m68080_mnemonic(mnemonic) {
+            return EncodeResult::error(format!(
+                "{} is only supported on m68080",
+                parsed.display_name
+            ));
         }
 
         if let Some(parsed) = parse_mnemonic(mnemonic) {
@@ -2831,6 +3189,71 @@ mod tests {
         ) {
             EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![0xF2, 0x10, 0x48, 0xA2]),
             other => panic!("expected FADD.X encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FADD.D",
+            &[
+                Operand::Immediate {
+                    expr: Expr::Number("1".to_string(), Default::default()),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => {
+                assert_eq!(bytes, vec![0xF2, 0x3C, 0x44, 0x22, 0x3F, 0x80, 0x00, 0x00])
+            }
+            other => panic!("expected FADD.D immediate encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FMOVE.X",
+            &[
+                Operand::Immediate {
+                    expr: Expr::Number("1".to_string(), Default::default()),
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => {
+                assert_eq!(bytes, vec![0xF2, 0x3C, 0x44, 0x00, 0x3F, 0x80, 0x00, 0x00])
+            }
+            other => panic!("expected FMOVE.X immediate encoding, got {other:?}"),
+        }
+
+        match handler.encode_instruction(
+            "FADD.D",
+            &[
+                Operand::Immediate {
+                    expr: Expr::Member {
+                        base: Box::new(Expr::Number("1".to_string(), Default::default())),
+                        field: "d".to_string(),
+                        span: Default::default(),
+                    },
+                    span: Default::default(),
+                },
+                Operand::FpuDataRegister {
+                    register: "FP0".to_string(),
+                    span: Default::default(),
+                },
+            ],
+            &ctx,
+        ) {
+            EncodeResult::Ok(bytes) => assert_eq!(
+                bytes,
+                vec![0xF2, 0x3C, 0x54, 0x22, 0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,]
+            ),
+            other => panic!("expected FADD.D explicit double immediate encoding, got {other:?}"),
         }
 
         match handler.encode_instruction(

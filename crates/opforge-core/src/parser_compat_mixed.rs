@@ -391,8 +391,23 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
     let mnemonic = match parser.next() {
         Some(Token {
             kind: TokenKind::Identifier(name),
-            ..
-        }) => Some(name),
+            span,
+        }) => {
+            let mut name = name;
+            if name.to_ascii_uppercase().ends_with(".S")
+                && matches!(
+                    parser.tokens.get(parser.index),
+                    Some(Token {
+                        kind: TokenKind::Operator(OperatorKind::Plus),
+                        span: plus_span,
+                    }) if plus_span.col_start == span.col_end
+                )
+            {
+                parser.index += 1;
+                name.push('+');
+            }
+            Some(name)
+        }
         Some(token) => {
             return Err(ParseError {
                 message: "Expected mnemonic identifier".to_string(),

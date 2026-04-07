@@ -10,7 +10,9 @@ use registry::cpu::CpuType;
 use registry::family::AssemblerContext;
 
 pub const FPU_TARGET_KEY: &str = "m68k.fpu_target";
-pub const RUNTIME_DIRECTIVE_IDS: &[&str] = &["FPU"];
+pub const APOLLO_MODE_KEY: &str = "m68k.apollo_mode";
+pub const CPU_IS_68080_KEY: &str = "m68k.cpu_is_68080";
+pub const RUNTIME_DIRECTIVE_IDS: &[&str] = &["FPU", "APOLLO"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FpuTarget {
@@ -18,6 +20,7 @@ enum FpuTarget {
     Mc68881,
     Mc68882,
     Mc68040,
+    Mc68080,
 }
 
 impl FpuTarget {
@@ -27,6 +30,7 @@ impl FpuTarget {
             Self::Mc68881 => 1,
             Self::Mc68882 => 2,
             Self::Mc68040 => 3,
+            Self::Mc68080 => 4,
         }
     }
 
@@ -36,6 +40,7 @@ impl FpuTarget {
             Self::Mc68881 => "68881",
             Self::Mc68882 => "68882",
             Self::Mc68040 => "68040",
+            Self::Mc68080 => "68080",
         }
     }
 
@@ -53,14 +58,20 @@ impl FpuTarget {
             "68881" => Some(Self::Mc68881),
             "68882" => Some(Self::Mc68882),
             "68040" => Some(Self::Mc68040),
+            "68080" => Some(Self::Mc68080),
             _ => None,
         }
     }
 }
 
-pub fn initial_runtime_state() -> HashMap<String, u32> {
+pub fn initial_runtime_state(cpu: CpuType) -> HashMap<String, u32> {
     let mut state = HashMap::new();
     state.insert(FPU_TARGET_KEY.to_string(), FpuTarget::None.state_value());
+    state.insert(APOLLO_MODE_KEY.to_string(), 0);
+    state.insert(
+        CPU_IS_68080_KEY.to_string(),
+        u32::from(cpu.as_str() == "m68080"),
+    );
     state
 }
 
@@ -71,34 +82,68 @@ pub fn apply_runtime_directive(
     _ctx: &dyn AssemblerContext,
     state: &mut HashMap<String, u32>,
 ) -> Result<bool, String> {
-    if !directive.eq_ignore_ascii_case("FPU") {
-        return Ok(false);
+    if directive.eq_ignore_ascii_case("FPU") {
+        if operands.len() != 1 {
+            return Err(
+                ".fpu requires exactly one target: none, 68881, 68882, 68040, 68080".to_string(),
+            );
+        }
+
+        let target = FpuTarget::parse(&operands[0])
+            .ok_or_else(|| ".fpu requires one of: none, 68881, 68882, 68040, 68080".to_string())?;
+
+        if !cpu_supports_target(cpu, target) {
+            let legal_targets = legal_targets_for_cpu(cpu)
+                .iter()
+                .map(|target| target.display_name())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!(
+                "FPU target {} is not supported on {}; legal .fpu targets for {}: {}",
+                target.display_name(),
+                cpu.as_str(),
+                cpu.as_str(),
+                legal_targets
+            ));
+        }
+
+        state.insert(FPU_TARGET_KEY.to_string(), target.state_value());
+        return Ok(true);
     }
 
-    if operands.len() != 1 {
-        return Err(".fpu requires exactly one target: none, 68881, 68882, 68040".to_string());
+    if directive.eq_ignore_ascii_case("APOLLO") {
+        if cpu.as_str() != "m68080" {
+            return Err(format!(
+                ".apollo is only supported on m68080 (active cpu: {})",
+                cpu.as_str()
+            ));
+        }
+
+        if operands.len() != 1 {
+            return Err(".apollo requires exactly one state: on, off, 1, 0".to_string());
+        }
+
+        let raw = match &operands[0] {
+            Expr::Identifier(name, _) | Expr::Register(name, _) | Expr::Number(name, _) => {
+                name.to_ascii_lowercase()
+            }
+            Expr::String(bytes, _) => std::str::from_utf8(bytes)
+                .map(|value| value.to_ascii_lowercase())
+                .map_err(|_| ".apollo requires one of: on, off, 1, 0".to_string())?,
+            _ => return Err(".apollo requires one of: on, off, 1, 0".to_string()),
+        };
+
+        let enabled = match raw.as_str() {
+            "on" | "1" => 1,
+            "off" | "0" => 0,
+            _ => return Err(".apollo requires one of: on, off, 1, 0".to_string()),
+        };
+
+        state.insert(APOLLO_MODE_KEY.to_string(), enabled);
+        return Ok(true);
     }
 
-    let target = FpuTarget::parse(&operands[0])
-        .ok_or_else(|| ".fpu requires one of: none, 68881, 68882, 68040".to_string())?;
-
-    if !cpu_supports_target(cpu, target) {
-        let legal_targets = legal_targets_for_cpu(cpu)
-            .iter()
-            .map(|target| target.display_name())
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(format!(
-            "FPU target {} is not supported on {}; legal .fpu targets for {}: {}",
-            target.display_name(),
-            cpu.as_str(),
-            cpu.as_str(),
-            legal_targets
-        ));
-    }
-
-    state.insert(FPU_TARGET_KEY.to_string(), target.state_value());
-    Ok(true)
+    Ok(false)
 }
 
 fn cpu_supports_target(cpu: CpuType, target: FpuTarget) -> bool {
@@ -109,6 +154,7 @@ fn legal_targets_for_cpu(cpu: CpuType) -> &'static [FpuTarget] {
     match cpu.as_str() {
         "m68020" | "m68030" => &[FpuTarget::None, FpuTarget::Mc68881, FpuTarget::Mc68882],
         "m68040" => &[FpuTarget::None, FpuTarget::Mc68040],
+        "m68080" => &[FpuTarget::None, FpuTarget::Mc68080],
         "m68000" | "m68010" => &[FpuTarget::None],
         _ => &[FpuTarget::None],
     }
@@ -161,14 +207,24 @@ mod tests {
 
     #[test]
     fn initial_runtime_state_defaults_to_no_fpu() {
-        let state = initial_runtime_state();
+        let state = initial_runtime_state(CpuType::new("m68040"));
         assert_eq!(state.get(FPU_TARGET_KEY), Some(&0));
+        assert_eq!(state.get(APOLLO_MODE_KEY), Some(&0));
+        assert_eq!(state.get(CPU_IS_68080_KEY), Some(&0));
+    }
+
+    #[test]
+    fn initial_runtime_state_defaults_apollo_off_for_m68080() {
+        let state = initial_runtime_state(CpuType::new("m68080"));
+        assert_eq!(state.get(FPU_TARGET_KEY), Some(&0));
+        assert_eq!(state.get(APOLLO_MODE_KEY), Some(&0));
+        assert_eq!(state.get(CPU_IS_68080_KEY), Some(&1));
     }
 
     #[test]
     fn apply_runtime_directive_rejects_illegal_pairings() {
         let ctx = DummyContext;
-        let mut state = initial_runtime_state();
+        let mut state = initial_runtime_state(CpuType::new("m68040"));
         let err = apply_runtime_directive(
             "FPU",
             &[ident("68881")],
@@ -179,5 +235,62 @@ mod tests {
         .expect_err("pairing should be rejected");
         assert!(err.contains("68881"));
         assert!(err.contains("m68040"));
+    }
+
+    #[test]
+    fn apply_runtime_directive_accepts_68080_target_on_m68080() {
+        let ctx = DummyContext;
+        let mut state = initial_runtime_state(CpuType::new("m68080"));
+        assert!(apply_runtime_directive(
+            "FPU",
+            &[ident("68080")],
+            CpuType::new("m68080"),
+            &ctx,
+            &mut state,
+        )
+        .expect(".fpu 68080 should be accepted on m68080"));
+        assert_eq!(state.get(FPU_TARGET_KEY), Some(&4));
+    }
+
+    #[test]
+    fn apollo_directive_rejects_non_68080_cpu() {
+        let ctx = DummyContext;
+        let mut state = initial_runtime_state(CpuType::new("m68040"));
+        let err = apply_runtime_directive(
+            "APOLLO",
+            &[ident("on")],
+            CpuType::new("m68040"),
+            &ctx,
+            &mut state,
+        )
+        .expect_err("non-68080 CPU must be rejected");
+        assert!(err.contains("m68080"));
+        assert!(err.contains("m68040"));
+    }
+
+    #[test]
+    fn apollo_directive_accepts_on_and_off_for_68080() {
+        let ctx = DummyContext;
+        let mut state = initial_runtime_state(CpuType::new("m68080"));
+
+        assert!(apply_runtime_directive(
+            "APOLLO",
+            &[ident("on")],
+            CpuType::new("m68080"),
+            &ctx,
+            &mut state,
+        )
+        .expect(".apollo on should be accepted"));
+        assert_eq!(state.get(APOLLO_MODE_KEY), Some(&1));
+
+        assert!(apply_runtime_directive(
+            "APOLLO",
+            &[ident("off")],
+            CpuType::new("m68080"),
+            &ctx,
+            &mut state,
+        )
+        .expect(".apollo off should be accepted"));
+        assert_eq!(state.get(APOLLO_MODE_KEY), Some(&0));
     }
 }

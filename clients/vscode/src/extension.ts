@@ -109,7 +109,6 @@ function buildInitializationOptions(): { opforgeLsp: Record<string, unknown> } {
       modulePaths: config.get<string[]>("modulePaths", []),
       defines: config.get<string[]>("defines", []),
       defaultCpu: config.get<string | null>("defaultCpu", null),
-      opforgePath: config.get<string | null>("opforgePath", null),
       validation: {
         debounceMs: config.get<number>("validation.debounceMs", 500),
         onSave: config.get<boolean>("validation.onSave", true),

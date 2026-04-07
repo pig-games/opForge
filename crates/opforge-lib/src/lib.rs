@@ -374,7 +374,9 @@ pub mod opcore {
     pub use ::opcore::expression::expr_text;
     pub use ::opcore::macro_processor::{MacroError, MacroProcessor};
     pub use ::opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError, UseItem};
-    pub use ::opcore::preprocess::{PreprocessError, Preprocessor};
+    pub use ::opcore::preprocess::{
+        parse_include_target_from_source_line, PreprocessError, Preprocessor,
+    };
     pub use ::opcore::services::{
         parse_expression, parse_expression_tokens, tokenize_line, TokenizedLine,
     };

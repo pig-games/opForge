@@ -1,0 +1,5 @@
+Assembly failed:
+9: ERROR [asm402]
+    9 |         MOVIW.L #$11223344,D0
+                             ^
+ERROR: MOVIW is Apollo-gated on m68080; enable .apollo on

@@ -416,6 +416,7 @@ fn run_fixture_suite<A: ExternalOracleAdapter>(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn run_fixture<A: ExternalOracleAdapter>(
     manifest: &Manifest,
     fixture: &Fixture,
@@ -582,6 +583,7 @@ fn run_fixture<A: ExternalOracleAdapter>(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn compare_success_outputs(
     manifest: &Manifest,
     fixture: &Fixture,
@@ -634,6 +636,7 @@ fn compare_success_outputs(
     })
 }
 
+#[allow(clippy::result_large_err)]
 fn compare_error_outputs(
     manifest: &Manifest,
     fixture: &Fixture,
@@ -641,7 +644,8 @@ fn compare_error_outputs(
     oracle: &OracleAssembleFailure,
 ) -> Result<(), StructuredMismatch> {
     let opforge_error_class = normalize_opforge_diagnostics(&opforge.diagnostics_text);
-    let oracle_error_class = normalize_oracle_diagnostics(manifest.oracle.as_str(), &oracle.diagnostics_text);
+    let oracle_error_class =
+        normalize_oracle_diagnostics(manifest.oracle.as_str(), &oracle.diagnostics_text);
 
     if opforge_error_class == oracle_error_class
         && opforge_error_class != NormalizedErrorClass::Unclassified
@@ -680,6 +684,7 @@ fn compare_error_outputs(
     })
 }
 
+#[allow(clippy::result_large_err)]
 fn evaluate_documented_divergence_status(
     manifest: &Manifest,
     fixture: &Fixture,
@@ -723,6 +728,7 @@ fn evaluate_documented_divergence_status(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn evaluate_documented_divergence_reverse_status(
     manifest: &Manifest,
     fixture: &Fixture,
@@ -766,6 +772,7 @@ fn evaluate_documented_divergence_reverse_status(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn evaluate_documented_divergence_success(
     manifest: &Manifest,
     fixture: &Fixture,
@@ -813,6 +820,7 @@ fn evaluate_documented_divergence_success(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn evaluate_documented_divergence_error(
     manifest: &Manifest,
     fixture: &Fixture,
@@ -837,7 +845,8 @@ fn evaluate_documented_divergence_error(
     }
 
     let opforge_error_class = normalize_opforge_diagnostics(&opforge.diagnostics_text);
-    let oracle_error_class = normalize_oracle_diagnostics(manifest.oracle.as_str(), &oracle.diagnostics_text);
+    let oracle_error_class =
+        normalize_oracle_diagnostics(manifest.oracle.as_str(), &oracle.diagnostics_text);
 
     if opforge_error_class == oracle_error_class {
         return Ok(Some(format!(
@@ -890,6 +899,7 @@ fn evaluate_documented_divergence_error(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_status_mismatch(
     manifest: &Manifest,
     fixture: &Fixture,
@@ -1563,11 +1573,7 @@ fn build_fixture<A: ExternalOracleAdapter>(
                     .documented_divergence_opforge_status
                     .as_deref()
                     .map(|value| {
-                        parse_observed_status(
-                            value,
-                            manifest_path,
-                            &format!("fixture '{id}'"),
-                        )
+                        parse_observed_status(value, manifest_path, &format!("fixture '{id}'"))
                     })
                     .transpose()?
                     .unwrap_or(default_opforge_status)
@@ -1575,14 +1581,12 @@ fn build_fixture<A: ExternalOracleAdapter>(
 
             let expected_oracle_status = if enforce_explicit_divergence_contract {
                 parse_observed_status(
-                    &builder
-                        .documented_divergence_oracle_status
-                        .ok_or_else(|| {
-                            format!(
-                                "Fixture '{id}' in {} missing documented_divergence_oracle_status",
-                                manifest_path.display()
-                            )
-                        })?,
+                    &builder.documented_divergence_oracle_status.ok_or_else(|| {
+                        format!(
+                            "Fixture '{id}' in {} missing documented_divergence_oracle_status",
+                            manifest_path.display()
+                        )
+                    })?,
                     manifest_path,
                     &format!("fixture '{id}'"),
                 )?
@@ -1591,11 +1595,7 @@ fn build_fixture<A: ExternalOracleAdapter>(
                     .documented_divergence_oracle_status
                     .as_deref()
                     .map(|value| {
-                        parse_observed_status(
-                            value,
-                            manifest_path,
-                            &format!("fixture '{id}'"),
-                        )
+                        parse_observed_status(value, manifest_path, &format!("fixture '{id}'"))
                     })
                     .transpose()?
                     .unwrap_or(default_oracle_status)
@@ -1618,12 +1618,16 @@ fn build_fixture<A: ExternalOracleAdapter>(
             let expected_opforge_error_class = builder
                 .documented_divergence_opforge_error_class
                 .as_deref()
-                .map(|value| parse_normalized_error_class(value, manifest_path, &format!("fixture '{id}'")))
+                .map(|value| {
+                    parse_normalized_error_class(value, manifest_path, &format!("fixture '{id}'"))
+                })
                 .transpose()?;
             let expected_oracle_error_class = builder
                 .documented_divergence_oracle_error_class
                 .as_deref()
-                .map(|value| parse_normalized_error_class(value, manifest_path, &format!("fixture '{id}'")))
+                .map(|value| {
+                    parse_normalized_error_class(value, manifest_path, &format!("fixture '{id}'"))
+                })
                 .transpose()?;
 
             if kind == DocumentedDivergenceKind::ErrorClassMismatch {
@@ -1634,7 +1638,9 @@ fn build_fixture<A: ExternalOracleAdapter>(
                         kind.label()
                     ));
                 }
-            } else if expected_opforge_error_class.is_some() || expected_oracle_error_class.is_some() {
+            } else if expected_opforge_error_class.is_some()
+                || expected_oracle_error_class.is_some()
+            {
                 return Err(format!(
                     "Fixture '{id}' in {} may only set documented_divergence_*_error_class for documented_divergence_kind 'error_class_mismatch'",
                     manifest_path.display()
@@ -1789,7 +1795,11 @@ fn parse_documented_divergence_kind(
     }
 }
 
-fn parse_observed_status(value: &str, manifest_path: &Path, context: &str) -> Result<ObservedStatus, String> {
+fn parse_observed_status(
+    value: &str,
+    manifest_path: &Path,
+    context: &str,
+) -> Result<ObservedStatus, String> {
     match value {
         "success" => Ok(ObservedStatus::Success),
         "error" => Ok(ObservedStatus::Error),
@@ -1916,6 +1926,7 @@ fn first_difference_offset(left: &[u8], right: &[u8]) -> Option<usize> {
     (left.len() != right.len()).then_some(shared)
 }
 
+#[allow(clippy::needless_range_loop)]
 fn render_hex_diff(opforge: &[u8], oracle: &[u8]) -> String {
     const ROW_WIDTH: usize = 8;
     const MAX_ROWS: usize = 64;
@@ -2145,13 +2156,13 @@ mod tests {
         }
 
         fn supports_profile(&self, cpu: &str, profile: Option<&str>) -> bool {
-            match (cpu, profile) {
-                (_, None) => true,
-                ("68020" | "68030", Some("fpu-68881" | "fpu-68882")) => true,
-                ("68030", Some("mmu-68030")) => true,
-                ("68040", Some("fpu-68040" | "mmu-68040")) => true,
-                _ => false,
-            }
+            matches!(
+                (cpu, profile),
+                (_, None)
+                    | ("68020" | "68030", Some("fpu-68881" | "fpu-68882"))
+                    | ("68030", Some("mmu-68030"))
+                    | ("68040", Some("fpu-68040" | "mmu-68040"))
+            )
         }
 
         fn availability(&self) -> OracleAvailability {

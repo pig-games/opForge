@@ -18,7 +18,9 @@ pub const FAMILY_ID: CpuFamily = CpuFamily::new("motorola68000");
 const FAMILY_CPU_NAME: &str = "68000";
 const FAMILY_REGISTER_IDS: &[&str] = &[
     "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7",
-    "SP", "PC", "SR", "CCR", "USP", "SSP",
+    "E0", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13", "E14",
+    "E15", "E16", "E17", "E18", "E19", "E20", "E21", "E22", "E23", "B0", "B1", "B2", "B3", "B4",
+    "B5", "B6", "B7", "SP", "PC", "SR", "CCR", "USP", "SSP",
 ];
 
 pub struct Motorola68000FamilyModule;

@@ -104,7 +104,7 @@ impl CpuHandlerDyn for M68020CpuHandler {
     }
 
     fn runtime_state_defaults(&self) -> HashMap<String, u32> {
-        state::initial_runtime_state()
+        state::initial_runtime_state(CPU_ID)
     }
 
     fn apply_runtime_directive(

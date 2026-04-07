@@ -146,7 +146,10 @@ Proposed LSP settings:
 - `opforgeLsp.defaultCpu`
 - `opforgeLsp.validation.debounceMs` (default 500)
 - `opforgeLsp.validation.onSave` (default true)
-- `opforgeLsp.opforgePath` (optional explicit CLI path)
+
+Deprecated setting:
+
+- `opforgeLsp.opforgePath` is ignored because validation now runs in-process inside the language server
 
 ## Constraints
 

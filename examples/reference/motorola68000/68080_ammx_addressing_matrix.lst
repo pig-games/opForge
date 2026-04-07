@@ -1,0 +1,86 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68080 full supported AMMX matrix for the current opForge slice
+----                                2  
+----                                3          .cpu 68080
+----    EQU 1000                    4          .org $1000
+----                                5  
+----                                6          .apollo on
+----                                7  
+----                                8  start
+1000    FE 10 08 01                 9          LOAD (A0),E0
+1004    FE 17 0A 01                10          LOAD (A7),E2
+1008    FF 3C 01 01 12 34          11          LOAD.W #$1234,D1
+100E    FE 28 0B 01 00 06          12          LOAD 6(A0),E3
+1014    FF 29 0C 01 00 04          13          LOAD 4(B1),E4
+101A    FE 32 0D 01 30 00          14          LOAD 0(A2,D3.W),E5
+1020    FF 33 0E 01 40 06          15          LOAD 6(B3,D4.W),E6
+1026    FE 3A 0F 01 00 9A          16          LOAD ammxTarget(PC),E7
+102C    FE 7B 00 01 50 00          17          LOAD 0(PC,D5.W),E8
+1032    FE 78 01 01 12 34          18          LOAD $1234.W,E9
+1038    FE 79 02 01 00 12 34 56    19          LOAD $00123456.L,E10
+1040    FF AA 30 04 00 04          20          STORE E11,4(B2)
+1046    FE B0 40 04 10 00          21          STORE E12,0(A0,D1.W)
+104C    FE B8 50 04 43 21          22          STORE E13,$4321.W
+----                               23  
+1052    FE 08 9A 10                24          PADD.B E0,E1,E2
+1056    FE 0C DE 11                25          PADD.W E4,E5,E6
+105A    FF C0 12 12                26          PSUB.B E8,E9,E10
+105E    FF C4 56 13                27          PSUB.W E12,E13,E14
+1062    FE 00 12 30                28          PMINSB D0,D1,D2
+1066    FE 00 12 31                29          PMINSW D0,D1,D2
+106A    FE 00 12 32                30          PMINUB D0,D1,D2
+106E    FE 00 12 33                31          PMINUW D0,D1,D2
+1072    FE 00 12 34                32          PMAXSB D0,D1,D2
+1076    FE 00 12 35                33          PMAXSW D0,D1,D2
+107A    FE 00 12 36                34          PMAXUB D0,D1,D2
+107E    FE 00 12 37                35          PMAXUW D0,D1,D2
+1082    FE 00 12 38                36          LSLQ D0,D1,D2
+1086    FE 00 12 39                37          LSRQ D0,D1,D2
+108A    FE 10 01 25                38          STOREM D0,D1,(A0)
+108E    FE 10 03 25                39          STOREM3 D0,#3,(A0)
+1092    FE 30 20 3E 98 60          40          TEX8.512 (A0,(A1,A2)),D0
+1098    FE 30 21 3E 9A 51          41          TEX16.256 (A0,(A1,A2)),D1
+109E    FE 30 22 3E 9E 82          42          TEX24.64 (A0,(A1,A2))*D0,D2
+10A4    FE 30 24 3E 90 30          43          TEX.B (A0,A1*D3,A2),D4
+----                               44  
+10AA    FE 0A 01 07                45          PACK3216 D0,D1,E2
+10AE    FF 02 23 07                46          PACK3216 D2,D3,E10
+----                               47  
+10B2    FE 3F 9E 00 32 10 AB 78    48          VPERM #$3210AB78,D0,E1,E6
+10BA    FF FF 12 00 76 54 32 10    49          VPERM #$76543210,E8,E9,E10
+----                               50  
+----                               51  ammxTarget
+10C2    00                         52          .byte 0
+----                               53  
+----                               54          .end
+
+Lines: 54  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+ammxTarget       10C2      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 195 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    FE 10 08 01 FE 17 0A 01 FF 3C 01 01 12 34 FE 28
+1010    0B 01 00 06 FF 29 0C 01 00 04 FE 32 0D 01 30 00
+1020    FF 33 0E 01 40 06 FE 3A 0F 01 00 9A FE 7B 00 01
+1030    50 00 FE 78 01 01 12 34 FE 79 02 01 00 12 34 56
+1040    FF AA 30 04 00 04 FE B0 40 04 10 00 FE B8 50 04
+1050    43 21 FE 08 9A 10 FE 0C DE 11 FF C0 12 12 FF C4
+1060    56 13 FE 00 12 30 FE 00 12 31 FE 00 12 32 FE 00
+1070    12 33 FE 00 12 34 FE 00 12 35 FE 00 12 36 FE 00
+1080    12 37 FE 00 12 38 FE 00 12 39 FE 10 01 25 FE 10
+1090    03 25 FE 30 20 3E 98 60 FE 30 21 3E 9A 51 FE 30
+10A0    22 3E 9E 82 FE 30 24 3E 90 30 FE 0A 01 07 FF 02
+10B0    23 07 FE 3F 9E 00 32 10 AB 78 FF FF 12 00 76 54
+10C0    32 10 00

@@ -1,0 +1,35 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68080 representative AMMX slice
+----                                2  
+----                                3          .cpu 68080
+----    EQU 1000                    4          .org $1000
+----                                5  
+----                                6          .apollo on
+----                                7  
+----                                8  start
+1000    FE 10 08 01                 9          LOAD (A0),E0
+1004    FE 08 9A 10                10          PADD.B E0,E1,E2
+1008    FF C0 12 13                11          PSUB.W E8,E9,E10
+100C    FE 0A 01 07                12          PACK3216 D0,D1,E2
+1010    FE 3F 9E 00 32 10 AB 78    13          VPERM #$3210AB78,D0,E1,E6
+----                               14  
+----                               15          .end
+
+Lines: 15  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 24 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    FE 10 08 01 FE 08 9A 10 FF C0 12 13 FE 0A 01 07
+1010    FE 3F 9E 00 32 10 AB 78

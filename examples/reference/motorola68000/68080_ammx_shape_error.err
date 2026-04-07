@@ -1,0 +1,5 @@
+Assembly failed:
+9: ERROR [asm402]
+    9 |         PADD.B A0,E1,E2
+               ^
+ERROR: AMMX PADD first operand must be a vector effective address (D0-D7, E0-E23, (An)/(Bn), (An)/(Bn)+, -(An)/(Bn), d16(An)/(Bn), d8(An)/(Bn,Xn), d16(PC), d8(PC,Xn), Abs.W, or Abs.L)

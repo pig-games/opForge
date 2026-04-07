@@ -139,6 +139,7 @@ impl M68040CpuHandler {
             ControlRegisterKind::Urp => Some(0x806),
             ControlRegisterKind::Srp => Some(0x807),
             ControlRegisterKind::Caar => None,
+            _ => None,
         }
     }
 
@@ -356,6 +357,7 @@ impl CpuHandler for M68040CpuHandler {
         family_operands: &[FamilyOperand],
         ctx: &dyn AssemblerContext,
     ) -> Result<Vec<Operand>, String> {
+        M68KFamilyHandler::validate_68080_register_compatibility(family_operands, ctx, "m68040")?;
         self.base.resolve_operands(mnemonic, family_operands, ctx)
     }
 
@@ -369,6 +371,19 @@ impl CpuHandler for M68040CpuHandler {
             if parsed.has_unknown_size_suffix {
                 return EncodeResult::error(format!(
                     "unsupported size suffix for {}",
+                    parsed.display_name
+                ));
+            }
+
+            if matches!(
+                parsed.kind,
+                FpuMnemonicKind::Floadi
+                    | FpuMnemonicKind::Fstorei
+                    | FpuMnemonicKind::Fmoverz
+                    | FpuMnemonicKind::Fmoveurz
+            ) {
+                return EncodeResult::error(format!(
+                    "{} is only supported on m68080",
                     parsed.display_name
                 ));
             }

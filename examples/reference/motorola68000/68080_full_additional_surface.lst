@@ -1,0 +1,83 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68080 bounded additional surface (integer + AMMX + FPU)
+----                                2  
+----                                3          .cpu 68080
+----                                4          .apollo on
+----    EQU 1000                    5          .org $1000
+----                                6  
+----                                7  start
+1000    70 01                       8          MOVEQ #1,D0
+1002    AE 02                       9          CLR.Q D2
+1004    06 C0 10 20                10          ADDIW.L #$1020,D0
+1008    4E 10 11 22                11          CMPIW.L #$1122,(A0)
+100C    71 0A 4B C0                12          EXTUB.L E8
+1010    4D C1                      13          EXTUW.L D1
+1012    71 01 4C C0 1A BC          14          PERM #$0ABC,D0,E1
+1018    4E 7A 08 08                15          MOVEC PCR,D0
+101C    4E 7B 10 0E                16          MOVEC D1,MWR
+1020    71 05 40 C0                17          MOVE SR,E0
+1024    F6 19 00 00 12 34          18          MOVE16 ($1234).L,(A1)
+102A    51 C9 00 87                19          DBRA.L D1,branchExtLoop
+102E    60 03                      20          BRA.S+ branchExtBra
+1030    61 03                      21          BSR.S+ branchExtBsr
+1032    66 03                      22          BNE.S+ branchExtBcc
+----                               23  
+----    EQU 10B0                   24          .org $10B0
+----                               25  branchExtLoop
+10B0    4E 71                      26          NOP
+----                               27  branchExtBra
+10B2    4E 71                      28          NOP
+----                               29  branchExtBsr
+10B4    4E 75                      30          RTS
+----                               31  branchExtBcc
+10B6    4E 71                      32          NOP
+----                               33  
+10B8    A2 01 55 66                34          MOVIW.L #$5566,D1
+10BC    AE 42                      35          MOV3Q #7,D2
+10BE    FE 10 08 01                36          LOAD (A0),E0
+10C2    FE 08 9A 10                37          PADD.B E0,E1,E2
+10C6    FE 00 12 10                38          PADDB D0,D1,D2
+10CA    FE 00 12 14                39          PADDUSB D0,D1,D2
+10CE    FF C0 12 13                40          PSUB.W E8,E9,E10
+10D2    FE 00 12 16                41          PSUBUSB D0,D1,D2
+10D6    FE 00 12 0C                42          PAVGB D0,D1,D2
+10DA    FE 0A 01 07                43          PACK3216 D0,D1,E2
+10DE    FE 3F 9E 00 32 10 AB 78    44          VPERM #$3210AB78,D0,E1,E6
+----                               45  
+----                               46          .fpu 68080
+10E6    F2 00 00 80                47          FMOVE FP0,FP1
+10EA    F2 00 5C 0B                48          FMOVECR #11,FP0
+10EE    F2 00 00 8E                49          FSIN FP0,FP1
+10F2    F2 00 00 90                50          FETOX FP0,FP1
+----                               51  
+----                               52          .end
+
+Lines: 52  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+branchExtBcc     10B6      prv  lbl 
+branchExtBra     10B2      prv  lbl 
+branchExtBsr     10B4      prv  lbl 
+branchExtLoop    10B0      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 122 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    70 01 AE 02 06 C0 10 20 4E 10 11 22 71 0A 4B C0
+1010    4D C1 71 01 4C C0 1A BC 4E 7A 08 08 4E 7B 10 0E
+1020    71 05 40 C0 F6 19 00 00 12 34 51 C9 00 87 60 03
+1030    61 03 66 03
+10B0    4E 71 4E 71 4E 75 4E 71 A2 01 55 66 AE 42 FE 10
+10C0    08 01 FE 08 9A 10 FE 00 12 10 FE 00 12 14 FF C0
+10D0    12 13 FE 00 12 16 FE 00 12 0C FE 0A 01 07 FE 3F
+10E0    9E 00 32 10 AB 78 F2 00 00 80 F2 00 5C 0B F2 00
+10F0    00 8E F2 00 00 90

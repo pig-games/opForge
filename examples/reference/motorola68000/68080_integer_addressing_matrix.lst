@@ -1,0 +1,76 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68080 integer additional forms addressing matrix
+----                                2  
+----                                3          .cpu 68080
+----    EQU 1000                    4          .org $1000
+----                                5  
+----                                6  start
+1000    70 01                       7          MOVEQ #1,D0
+----                                8  
+1002    06 C0 80 01                 9          ADDIW.L #$8001,D0
+1006    06 D0 22 22                10          ADDIW.L #$2222,(A0)
+100A    06 D9 33 33                11          ADDIW.L #$3333,(A1)+
+100E    06 E2 44 44                12          ADDIW.L #$4444,-(A2)
+1012    06 EB 55 55 00 10          13          ADDIW.L #$5555,16(A3)
+1018    06 F4 66 66 10 00          14          ADDIW.L #$6666,0(A4,D1.W)
+101E    06 F8 77 77 12 34          15          ADDIW.L #$7777,($1234).W
+1024    06 F9 01 02 00 12 34 56    16          ADDIW.L #$0102,($123456).L
+----                               17  
+102C    4E 02 80 01                18          CMPIW.L #$8001,D2
+1030    4E 15 10 20                19          CMPIW.L #$1020,(A5)
+1034    4E 2E 11 22 00 0C          20          CMPIW.L #$1122,12(A6)
+103A    4E 38 55 66 21 00          21          CMPIW.L #$5566,($2100).W
+1040    4E 39 7F 00 00 12 34 56    22          CMPIW.L #$7F00,($00123456).L
+----                               23          ; Generated BANK prefix coverage for all currently supported cases.
+1048    71 05 40 C0                24          MOVE SR,E0
+104C    71 0A 4B C0                25          EXTUB.L E8
+1050    71 0F 4D C0                26          EXTUW.L E16
+1054    71 04 4C C0 1A BC          27          PERM #$0ABC,E0,D1
+105A    71 01 4C C0 1A BC          28          PERM #$0ABC,D0,E1
+1060    71 0B 4C C0 0A BC          29          PERM #$0ABC,E8,E16
+----                               30  
+----                               31          .apollo on
+1066    A2 03 81 23                32          MOVIW.L #$8123,D3
+106A    A2 10 01 01                33          MOVIW.L #$0101,(A0)
+106E    A2 38 02 02 22 00          34          MOVIW.L #$0202,($2200).W
+1074    A2 39 03 03 00 10 22 00    35          MOVIW.L #$0303,($00102200).L
+----                               36  
+107C    AA 44                      37          MOV3Q #5,D4
+107E    A0 45                      38          MOV3Q #-1,D5
+1080    52 08                      39          ADDQ.L #1,B0
+1082    51 0F                      40          SUBQ.L #8,B7
+1084    C7 82                      41          CMP.L B2,D3
+1086    43 68 00 01                42          LEA 1(A0),B1
+108A    47 CA                      43          LEA (B2),A3
+108C    12 08                      44          MOVE.L B0,D1
+108E    18 40                      45          MOVE.L D0,B4
+1090    1A 40                      46          MOVEA.L D0,B5
+----                               47  
+----                               48          .end
+
+Lines: 48  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+start            1000      prv  lbl 
+
+Total memory is 146 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    70 01 06 C0 80 01 06 D0 22 22 06 D9 33 33 06 E2
+1010    44 44 06 EB 55 55 00 10 06 F4 66 66 10 00 06 F8
+1020    77 77 12 34 06 F9 01 02 00 12 34 56 4E 02 80 01
+1030    4E 15 10 20 4E 2E 11 22 00 0C 4E 38 55 66 21 00
+1040    4E 39 7F 00 00 12 34 56 71 05 40 C0 71 0A 4B C0
+1050    71 0F 4D C0 71 04 4C C0 1A BC 71 01 4C C0 1A BC
+1060    71 0B 4C C0 0A BC A2 03 81 23 A2 10 01 01 A2 38
+1070    02 02 22 00 A2 39 03 03 00 10 22 00 AA 44 A0 45
+1080    52 08 51 0F C7 82 43 68 00 01 47 CA 12 08 18 40
+1090    1A 40

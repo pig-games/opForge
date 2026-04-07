@@ -51,6 +51,19 @@ pub enum ControlRegisterKind {
     Mmusr,
     Urp,
     Srp,
+    Pcr,
+    Ccc,
+    Iep1,
+    Iep2,
+    Bpc,
+    Bpw,
+    Dch,
+    Dcm,
+    Str,
+    Stc,
+    Sth,
+    Stb,
+    Mwr,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -172,6 +185,11 @@ pub enum FamilyOperand {
         right: String,
         span: Span,
     },
+    RegisterGroup {
+        start: String,
+        end: String,
+        span: Span,
+    },
     IndirectRegisterPair {
         left: String,
         right: String,
@@ -185,6 +203,10 @@ pub enum FamilyOperand {
     },
     RegisterList {
         registers: Vec<RegisterListRegister>,
+        span: Span,
+    },
+    TextureOperand {
+        expr: Expr,
         span: Span,
     },
     BranchTarget {
@@ -216,9 +238,11 @@ impl FamilyOperand {
             | Self::FullExtension { span, .. }
             | Self::Absolute { span, .. }
             | Self::RegisterPair { span, .. }
+            | Self::RegisterGroup { span, .. }
             | Self::IndirectRegisterPair { span, .. }
             | Self::BitField { span, .. }
             | Self::RegisterList { span, .. }
+            | Self::TextureOperand { span, .. }
             | Self::BranchTarget { span, .. }
             | Self::Immediate { span, .. } => *span,
         }

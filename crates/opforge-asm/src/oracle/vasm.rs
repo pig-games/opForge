@@ -150,29 +150,49 @@ fn assemble_flat_binary_with_executable(
     let output_path = request.output_dir.join(OUTPUT_FILENAME);
     let stdout_path = request.output_dir.join(STDOUT_FILENAME);
     let stderr_path = request.output_dir.join(STDERR_FILENAME);
-    let command_args = match build_command_args(&output_path, &request) {
-        Ok(args) => args,
+    if let Err(diagnostics_text) = build_command_args(
+        &output_path,
+        request.cpu,
+        request.cpu_profile,
+        request.source_path,
+    ) {
+        let _ = fs::write(&stderr_path, &diagnostics_text);
+        let _ = fs::write(&stdout_path, "");
+        let summary = if diagnostics_text.contains("cpu/profile combination") {
+            format!(
+                "Unsupported vasm cpu/profile combination '{}'/'{}'",
+                request.cpu,
+                request.cpu_profile.unwrap_or("<none>")
+            )
+        } else {
+            format!("Unsupported vasm cpu '{}'", request.cpu)
+        };
+        return Err(OracleAssembleFailure {
+            diagnostics_path: stderr_path.clone(),
+            stdout_path: Some(stdout_path),
+            stderr_path: Some(stderr_path),
+            diagnostics_text,
+            summary,
+        });
+    }
+
+    let source_path = match prepare_vasm_source_path(&request) {
+        Ok(path) => path,
         Err(diagnostics_text) => {
             let _ = fs::write(&stderr_path, &diagnostics_text);
             let _ = fs::write(&stdout_path, "");
-            let summary = if diagnostics_text.contains("cpu/profile combination") {
-                format!(
-                    "Unsupported vasm cpu/profile combination '{}'/'{}'",
-                    request.cpu,
-                    request.cpu_profile.unwrap_or("<none>")
-                )
-            } else {
-                format!("Unsupported vasm cpu '{}'", request.cpu)
-            };
             return Err(OracleAssembleFailure {
                 diagnostics_path: stderr_path.clone(),
                 stdout_path: Some(stdout_path),
                 stderr_path: Some(stderr_path),
-                diagnostics_text,
-                summary,
+                diagnostics_text: diagnostics_text.clone(),
+                summary: diagnostics_text.trim().to_string(),
             });
         }
     };
+    let command_args =
+        build_command_args(&output_path, request.cpu, request.cpu_profile, &source_path)
+            .expect("validated vasm cpu/profile before source normalization");
 
     let output = match Command::new(executable).args(&command_args).output() {
         Ok(output) => output,
@@ -264,22 +284,97 @@ fn resolve_command_candidate(candidate: &Path, path_entries: &[PathBuf]) -> Opti
 
 fn build_command_args(
     output_path: &Path,
-    request: &OracleAssembleRequest<'_>,
+    cpu: &str,
+    cpu_profile: Option<&str>,
+    source_path: &Path,
 ) -> Result<Vec<OsString>, String> {
-    let cpu_flag = cpu_flag(request.cpu).ok_or_else(|| unsupported_cpu_message(request.cpu))?;
-    let profile_flags = profile_flags(request.cpu, request.cpu_profile)
-        .ok_or_else(|| unsupported_profile_message(request.cpu, request.cpu_profile))?;
+    let cpu_flag = cpu_flag(cpu).ok_or_else(|| unsupported_cpu_message(cpu))?;
+    let profile_flags = profile_flags(cpu, cpu_profile)
+        .ok_or_else(|| unsupported_profile_message(cpu, cpu_profile))?;
 
     let mut args = vec![OsString::from("-Fbin"), OsString::from(cpu_flag)];
     args.extend(profile_flags.iter().copied().map(OsString::from));
     args.push(OsString::from("-o"));
     args.push(output_path.as_os_str().to_os_string());
-    args.push(request.source_path.as_os_str().to_os_string());
+    args.push(source_path.as_os_str().to_os_string());
     Ok(args)
 }
 
+fn prepare_vasm_source_path(request: &OracleAssembleRequest<'_>) -> Result<PathBuf, String> {
+    let source_text = fs::read_to_string(request.source_path).map_err(|err| {
+        format!(
+            "Read vasm fixture source {}: {err}\n",
+            request.source_path.display()
+        )
+    })?;
+    let normalized = normalize_vasm_source_text(&source_text);
+    if normalized == source_text {
+        return Ok(request.source_path.to_path_buf());
+    }
+
+    let wrapped_path = request.output_dir.join("oracle.source.asm");
+    fs::write(&wrapped_path, normalized).map_err(|err| {
+        format!(
+            "Write normalized vasm fixture source {}: {err}\n",
+            wrapped_path.display()
+        )
+    })?;
+    Ok(wrapped_path)
+}
+
+fn normalize_vasm_source_text(source: &str) -> String {
+    let mut normalized = String::with_capacity(source.len());
+    for chunk in source.split_inclusive('\n') {
+        normalized.push_str(&normalize_vasm_line(chunk));
+    }
+    if !source.ends_with('\n') && !source.is_empty() {
+        if let Some(last_line) = source.rsplit_once('\n').map(|(_, tail)| tail) {
+            if !last_line.is_empty() {
+                return normalized;
+            }
+        } else {
+            return normalize_vasm_line(source);
+        }
+    }
+    normalized
+}
+
+fn normalize_vasm_line(line: &str) -> String {
+    let (body, newline) = match line.strip_suffix('\n') {
+        Some(without_newline) => (without_newline, "\n"),
+        None => (line, ""),
+    };
+    if !should_ignore_vasm_directive(body) {
+        return line.to_string();
+    }
+
+    let indent_len = body.len() - body.trim_start().len();
+    let indent = &body[..indent_len];
+    let trimmed = &body[indent_len..];
+    format!("{indent}; {trimmed}{newline}")
+}
+
+fn should_ignore_vasm_directive(line: &str) -> bool {
+    let mut tokens = line.split_whitespace();
+    let Some(directive) = tokens.next() else {
+        return false;
+    };
+
+    if directive.eq_ignore_ascii_case(".apollo") {
+        return true;
+    }
+
+    directive.eq_ignore_ascii_case(".fpu")
+        && tokens.next().is_some_and(|target| {
+            matches!(
+                target.to_ascii_lowercase().as_str(),
+                "68080" | "m68080" | "mc68080"
+            )
+        })
+}
+
 fn unsupported_cpu_message(cpu: &str) -> String {
-    format!("unsupported vasm cpu '{cpu}'; current slice supports 68000 through 68040\n")
+    format!("unsupported vasm cpu '{cpu}'; current slice supports 68000 through 68080\n")
 }
 
 fn unsupported_profile_message(cpu: &str, profile: Option<&str>) -> String {
@@ -296,6 +391,7 @@ fn canonical_cpu(cpu: &str) -> Option<&'static str> {
         "68020" | "mc68020" | "m68020" => Some("68020"),
         "68030" | "mc68030" | "m68030" => Some("68030"),
         "68040" | "mc68040" | "m68040" => Some("68040"),
+        "68080" | "mc68080" | "m68080" => Some("68080"),
         _ => None,
     }
 }
@@ -307,6 +403,7 @@ fn cpu_flag(cpu: &str) -> Option<&'static str> {
         Some("68020") => Some("-m68020"),
         Some("68030") => Some("-m68030"),
         Some("68040") => Some("-m68040"),
+        Some("68080") => Some("-m68080"),
         _ => None,
     }
 }
@@ -399,24 +496,22 @@ mod tests {
     }
 
     #[test]
-    fn external_oracle_vasm_supports_family_cpu_flags_through_68040() {
+    fn external_oracle_vasm_supports_family_cpu_flags_through_68080() {
         assert_eq!(cpu_flag("68000"), Some("-m68000"));
         assert_eq!(cpu_flag("68010"), Some("-m68010"));
         assert_eq!(cpu_flag("68020"), Some("-m68020"));
         assert_eq!(cpu_flag("68030"), Some("-m68030"));
         assert_eq!(cpu_flag("68040"), Some("-m68040"));
+        assert_eq!(cpu_flag("68080"), Some("-m68080"));
     }
 
     #[test]
     fn external_oracle_vasm_builds_profile_specific_command_args() {
         let args = build_command_args(
             Path::new("/tmp/output.bin"),
-            &OracleAssembleRequest {
-                cpu: "68020",
-                cpu_profile: Some("fpu-68881"),
-                source_path: Path::new("/tmp/fnop.asm"),
-                output_dir: Path::new("/tmp"),
-            },
+            "68020",
+            Some("fpu-68881"),
+            Path::new("/tmp/fnop.asm"),
         )
         .expect("68881 profile should be supported");
 
@@ -426,5 +521,73 @@ mod tests {
         assert_eq!(args[3], OsString::from("-o"));
         assert_eq!(args[4], OsString::from("/tmp/output.bin"));
         assert_eq!(args[5], OsString::from("/tmp/fnop.asm"));
+    }
+
+    #[test]
+    fn external_oracle_vasm_builds_68080_command_args_with_native_backend() {
+        let args = build_command_args(
+            Path::new("/tmp/output.bin"),
+            "68080",
+            None,
+            Path::new("/tmp/core.asm"),
+        )
+        .expect("68080 should be supported through the native backend");
+
+        assert_eq!(args[0], OsString::from("-Fbin"));
+        assert_eq!(args[1], OsString::from("-m68080"));
+        assert_eq!(args[2], OsString::from("-o"));
+        assert_eq!(args[3], OsString::from("/tmp/output.bin"));
+        assert_eq!(args[4], OsString::from("/tmp/core.asm"));
+    }
+
+    #[test]
+    fn external_oracle_vasm_normalizes_apollo_directives_out_of_fixture_source() {
+        let dir = temp_dir("external-oracle-vasm-normalize-apollo");
+        let output_dir = dir.join("out");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+        let source_path = dir.join("fixture.asm");
+        fs::write(
+            &source_path,
+            "; fixture\n    .apollo on\nstart:\n    MOVEQ #1,D0\n",
+        )
+        .expect("write source");
+
+        let normalized = prepare_vasm_source_path(&OracleAssembleRequest {
+            cpu: "68080",
+            cpu_profile: None,
+            source_path: &source_path,
+            output_dir: &output_dir,
+        })
+        .expect("normalize source");
+
+        assert_eq!(normalized, output_dir.join("oracle.source.asm"));
+        assert_eq!(
+            fs::read_to_string(&normalized).expect("read normalized source"),
+            "; fixture\n    ; .apollo on\nstart:\n    MOVEQ #1,D0\n"
+        );
+    }
+
+    #[test]
+    fn external_oracle_vasm_normalizes_fpu_68080_directives_out_of_fixture_source() {
+        let dir = temp_dir("external-oracle-vasm-normalize-fpu-68080");
+        let output_dir = dir.join("out");
+        fs::create_dir_all(&output_dir).expect("create output dir");
+        let source_path = dir.join("fixture.asm");
+        fs::write(&source_path, "    .fpu 68080\nstart:\n    FMOVE FP0,FP1\n")
+            .expect("write source");
+
+        let normalized = prepare_vasm_source_path(&OracleAssembleRequest {
+            cpu: "68080",
+            cpu_profile: None,
+            source_path: &source_path,
+            output_dir: &output_dir,
+        })
+        .expect("normalize source");
+
+        assert_eq!(normalized, output_dir.join("oracle.source.asm"));
+        assert_eq!(
+            fs::read_to_string(&normalized).expect("read normalized source"),
+            "    ; .fpu 68080\nstart:\n    FMOVE FP0,FP1\n"
+        );
     }
 }

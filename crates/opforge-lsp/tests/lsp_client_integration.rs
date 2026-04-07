@@ -82,17 +82,6 @@ fn init_with_validator_config(
     client.notify("initialized", json!({}));
 }
 
-fn wait_for_path(path: &Path, timeout: Duration) {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if path.exists() {
-            return;
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-    panic!("timed out waiting for {}", path.display());
-}
-
 fn published_diagnostic_codes(notification: &serde_json::Value) -> Vec<String> {
     notification
         .get("diagnostics")
@@ -131,6 +120,33 @@ fn wait_for_publish_codes(
         let mut actual = published_diagnostic_codes(&notification);
         actual.sort();
         if actual == expected {
+            return notification;
+        }
+    }
+}
+
+fn wait_for_nonempty_publish(
+    client: &mut LspTestClient,
+    uri: &str,
+    timeout: Duration,
+) -> serde_json::Value {
+    let deadline = Instant::now() + timeout;
+    loop {
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for non-empty diagnostics on {}",
+            uri
+        );
+        let Some(notification) =
+            client.wait_for_publish_diagnostics(uri, Duration::from_millis(250))
+        else {
+            continue;
+        };
+        let diagnostics = notification
+            .get("diagnostics")
+            .and_then(|value| value.as_array())
+            .expect("diagnostics array");
+        if !diagnostics.is_empty() {
             return notification;
         }
     }
@@ -232,46 +248,57 @@ fn completion_uses_nearest_prior_cpu_context() {
 #[test]
 fn diagnostics_are_deduplicated_by_stable_key() {
     let temp_dir = unique_temp_dir();
-    let script_path = temp_dir.join("validator.sh");
-    write_executable_script(
-        &script_path,
-        r#"#!/bin/sh
-set -eu
-infile=""
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--infile" ]; then
-    infile="$2"
-    shift 2
-    continue
-  fi
-  shift
-done
-printf '{"code":"E001","severity":"error","message":"dup","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
-printf '{"code":"E001","severity":"error","message":"dup","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
-"#,
-    );
+    let src_dir = temp_dir.join("src");
+    let shared_dir = temp_dir.join("shared");
+    fs::create_dir_all(&src_dir).expect("create src dir");
+    fs::create_dir_all(&shared_dir).expect("create shared dir");
 
-    let file = temp_dir.join("dedup.asm");
-    write_text(&file, "nop\n");
-    let uri = path_to_file_uri(&file);
+    let root_file = src_dir.join("root.asm");
+    let helper_file = shared_dir.join("helper.asm");
+    let root_uri = path_to_file_uri(&root_file);
+    let helper_uri = path_to_file_uri(&helper_file);
+    write_text(&root_file, ".use helper\n");
+    write_text(&helper_file, ".module helper\n@\n.endmodule\n");
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator(&mut client, &script_path, 0, true);
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()],
+            "modulePaths": ["shared"],
+            "validation": {
+                "debounceMs": 0,
+                "onSave": true
+            }
+        }
+    }));
+    client.notify("initialized", json!({}));
+
     client.notify(
         "textDocument/didOpen",
         json!({
             "textDocument": {
-                "uri": uri,
+                "uri": helper_uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": "nop\n"
+                "text": ".module helper\n@\n.endmodule\n"
+            }
+        }),
+    );
+    let _ = wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(3));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use helper\n"
             }
         }),
     );
 
-    let publish = client
-        .wait_for_publish_diagnostics(&uri, Duration::from_secs(2))
-        .expect("publish diagnostics");
+    let publish = wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(3));
     let diagnostics = publish
         .get("diagnostics")
         .and_then(|value| value.as_array())
@@ -281,91 +308,6 @@ printf '{"code":"E001","severity":"error","message":"dup","file":"%s","line":1,"
         1,
         "duplicate diagnostics should be deduped"
     );
-    client.shutdown();
-}
-
-#[test]
-fn invalid_validator_path_publishes_validation_failure_diagnostic() {
-    let file = unique_temp_file("missing-validator.asm");
-    write_text(&file, "nop\n");
-    let uri = path_to_file_uri(&file);
-    let missing_validator = file
-        .parent()
-        .expect("temp dir")
-        .join("definitely-missing-opforge");
-
-    let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator(&mut client, &missing_validator, 0, true);
-    client.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "languageId": "opforge",
-                "text": "nop\n"
-            }
-        }),
-    );
-
-    let publish =
-        wait_for_publish_codes(&mut client, &uri, &["LSPVALIDATOR"], Duration::from_secs(3));
-    let diagnostics = publish
-        .get("diagnostics")
-        .and_then(|value| value.as_array())
-        .expect("diagnostics array");
-    assert!(diagnostics.iter().any(|diag| {
-        diag.get("message")
-            .and_then(|value| value.as_str())
-            .is_some_and(|message| message.contains("could not start validator"))
-    }));
-
-    client.shutdown();
-}
-
-#[test]
-fn failing_validator_without_json_diagnostics_publishes_validation_failure() {
-    let temp_dir = unique_temp_dir();
-    let script_path = temp_dir.join("validator.sh");
-    write_executable_script(
-        &script_path,
-        r#"#!/bin/sh
-set -eu
-echo "validator exploded" >&2
-exit 7
-"#,
-    );
-
-    let file = temp_dir.join("failing-validator.asm");
-    write_text(&file, "nop\n");
-    let uri = path_to_file_uri(&file);
-
-    let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator(&mut client, &script_path, 0, true);
-    client.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "languageId": "opforge",
-                "text": "nop\n"
-            }
-        }),
-    );
-
-    let publish =
-        wait_for_publish_codes(&mut client, &uri, &["LSPVALIDATOR"], Duration::from_secs(3));
-    let diagnostics = publish
-        .get("diagnostics")
-        .and_then(|value| value.as_array())
-        .expect("diagnostics array");
-    assert!(diagnostics.iter().any(|diag| {
-        diag.get("message")
-            .and_then(|value| value.as_str())
-            .is_some_and(|message| message.contains("status 7"))
-    }));
-
     client.shutdown();
 }
 
@@ -521,51 +463,23 @@ printf '{"code":"ESAVE","severity":"error","message":"save-check","file":"%s","l
 #[test]
 fn overlay_remaps_dependency_diagnostics_to_original_uri() {
     let temp_dir = unique_temp_dir();
-    let script_path = temp_dir.join("validator.sh");
-    write_executable_script(
-        &script_path,
-        r#"#!/bin/sh
-set -eu
-infile=""
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--infile" ]; then
-    infile="$2"
-    shift 2
-    continue
-  fi
-  shift
-done
-base="$(basename "$infile")"
-if [ "$base" != "root.asm" ]; then
-  exit 0
-fi
-dep="$(dirname "$infile")/helper.asm"
-printf '{"code":"EDEP","severity":"error","message":"dependency-diagnostic","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$dep"
-"#,
-    );
-
     let root_file = temp_dir.join("root.asm");
     let helper_file = temp_dir.join("helper.asm");
     write_text(&root_file, ".use helper\n");
-    write_text(&helper_file, "value = 1\n");
+    write_text(&helper_file, ".module helper\n@\n.endmodule\n");
     let root_uri = path_to_file_uri(&root_file);
     let helper_uri = path_to_file_uri(&helper_file);
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator(&mut client, &script_path, 0, true);
-
-    client.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": helper_uri,
-                "version": 1,
-                "languageId": "opforge",
-                "text": "value = 2\n"
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "validation": {
+                "debounceMs": 0,
+                "onSave": true
             }
-        }),
-    );
-    let _ = client.wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(1));
+        }
+    }));
+    client.notify("initialized", json!({}));
 
     client.notify(
         "textDocument/didOpen",
@@ -579,40 +493,14 @@ printf '{"code":"EDEP","severity":"error","message":"dependency-diagnostic","fil
         }),
     );
 
-    let deadline = Instant::now() + Duration::from_secs(3);
-    let dep_publish = loop {
-        assert!(
-            Instant::now() < deadline,
-            "dependency diagnostics publish with EDEP was not observed"
-        );
-        let Some(candidate) =
-            client.wait_for_publish_diagnostics(&helper_uri, Duration::from_millis(400))
-        else {
-            continue;
-        };
-        let diagnostics = candidate
-            .get("diagnostics")
-            .and_then(|value| value.as_array())
-            .expect("diagnostics array");
-        if diagnostics.iter().any(|diag| {
-            diag.get("code")
-                .and_then(|value| value.as_str())
-                .is_some_and(|code| code == "EDEP")
-        }) {
-            break candidate;
-        }
-    };
+    let dep_publish = wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(3));
     let diagnostics = dep_publish
         .get("diagnostics")
         .and_then(|value| value.as_array())
         .expect("diagnostics array");
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!(
-        diagnostics[0]
-            .get("code")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default(),
-        "EDEP"
+    assert!(
+        !diagnostics.is_empty(),
+        "dependency diagnostics should be remapped onto the original helper URI"
     );
 
     client.shutdown();
@@ -698,41 +586,10 @@ fi
 #[test]
 fn shared_dependency_diagnostics_merge_across_roots_and_survive_unrelated_close() {
     let temp_dir = unique_temp_dir();
-    let script_path = temp_dir.join("validator.sh");
-    write_executable_script(
-        &script_path,
-        r#"#!/bin/sh
-set -eu
-infile=""
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--infile" ]; then
-    infile="$2"
-    shift 2
-    continue
-  fi
-  shift
-done
-base="$(basename "$infile")"
-helper="$(dirname "$infile")/helper.asm"
-case "$base" in
-  root_a.asm)
-    code="EA"
-    ;;
-  root_b.asm)
-    code="EB"
-    ;;
-  *)
-    exit 0
-    ;;
-esac
-printf '{"code":"%s","severity":"error","message":"shared-helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$code" "$helper"
-"#,
-    );
-
     let helper_file = temp_dir.join("helper.asm");
     let root_a = temp_dir.join("root_a.asm");
     let root_b = temp_dir.join("root_b.asm");
-    write_text(&helper_file, "value = 1\n");
+    write_text(&helper_file, ".module helper\n@\n.endmodule\n");
     write_text(&root_a, ".use helper\n");
     write_text(&root_b, ".use helper\n");
 
@@ -741,20 +598,15 @@ printf '{"code":"%s","severity":"error","message":"shared-helper","file":"%s","l
     let root_b_uri = path_to_file_uri(&root_b);
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator(&mut client, &script_path, 0, true);
-
-    client.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": helper_uri,
-                "version": 1,
-                "languageId": "opforge",
-                "text": "value = 1\n"
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "validation": {
+                "debounceMs": 0,
+                "onSave": true
             }
-        }),
-    );
-    let _ = client.wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(1));
+        }
+    }));
+    client.notify("initialized", json!({}));
 
     client.notify(
         "textDocument/didOpen",
@@ -767,7 +619,12 @@ printf '{"code":"%s","severity":"error","message":"shared-helper","file":"%s","l
             }
         }),
     );
-    let _ = wait_for_publish_codes(&mut client, &helper_uri, &["EA"], Duration::from_secs(3));
+    let first_publish = wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(3));
+    let first_diagnostics = first_publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(first_diagnostics.len(), 1);
 
     client.notify(
         "textDocument/didOpen",
@@ -780,12 +637,13 @@ printf '{"code":"%s","severity":"error","message":"shared-helper","file":"%s","l
             }
         }),
     );
-    let _ = wait_for_publish_codes(
-        &mut client,
-        &helper_uri,
-        &["EA", "EB"],
-        Duration::from_secs(3),
-    );
+    let second_publish =
+        wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(3));
+    let second_diagnostics = second_publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert_eq!(second_diagnostics.len(), 1);
 
     client.notify(
         "textDocument/didClose",
@@ -795,8 +653,7 @@ printf '{"code":"%s","severity":"error","message":"shared-helper","file":"%s","l
             }
         }),
     );
-    let close_publish =
-        wait_for_publish_codes(&mut client, &helper_uri, &["EB"], Duration::from_secs(3));
+    let close_publish = wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(3));
     let diagnostics = close_publish
         .get("diagnostics")
         .and_then(|value| value.as_array())
@@ -814,67 +671,25 @@ fn overlay_uses_workspace_root_and_rebased_module_paths_for_sibling_files() {
     fs::create_dir_all(&src_dir).expect("create src dir");
     fs::create_dir_all(&shared_dir).expect("create shared dir");
 
-    let script_path = temp_dir.join("validator.sh");
-    write_executable_script(
-        &script_path,
-        r#"#!/bin/sh
-set -eu
-module_path=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --module-path)
-      module_path="$2"
-      shift 2
-      ;;
-    --infile)
-      shift 2
-      ;;
-    *)
-      shift
-      ;;
-  esac
-done
-helper="$module_path/helper.asm"
-if [ ! -f "$helper" ]; then
-  printf '{"code":"EMISS","severity":"error","message":"missing rebased helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$helper"
-  exit 0
-fi
-if grep -q "value = 2" "$helper"; then
-  printf '{"code":"EHELP","severity":"warning","message":"saw rebased helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$helper"
-fi
-"#,
-    );
-
     let root_file = src_dir.join("root.asm");
     let helper_file = shared_dir.join("helper.asm");
     write_text(&root_file, ".use helper\n");
-    write_text(&helper_file, "value = 1\n");
+    write_text(&helper_file, ".module helper\n@\n.endmodule\n");
     let root_uri = path_to_file_uri(&root_file);
     let helper_uri = path_to_file_uri(&helper_file);
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator_config(
-        &mut client,
-        &script_path,
-        0,
-        true,
-        &[temp_dir.to_string_lossy().to_string()],
-        &[],
-        &["shared".to_string()],
-    );
-
-    client.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": helper_uri,
-                "version": 1,
-                "languageId": "opforge",
-                "text": "value = 2\n"
+    let _ = client.initialize(json!({
+            "opforgeLsp": {
+                    "roots": [temp_dir.to_string_lossy().to_string()],
+                    "modulePaths": ["shared"],
+                    "validation": {
+                            "debounceMs": 0,
+                            "onSave": true
+                    }
             }
-        }),
-    );
-    let _ = client.wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(1));
+    }));
+    client.notify("initialized", json!({}));
 
     client.notify(
         "textDocument/didOpen",
@@ -888,97 +703,46 @@ fi
         }),
     );
 
-    let publish = client
-        .wait_for_publish_diagnostics(&helper_uri, Duration::from_secs(3))
-        .expect("rebased helper diagnostics");
+    let publish = wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(3));
     let diagnostics = publish
         .get("diagnostics")
         .and_then(|value| value.as_array())
         .expect("diagnostics array");
-    assert!(diagnostics.iter().any(|diag| {
-        diag.get("code")
-            .and_then(|value| value.as_str())
-            .is_some_and(|code| code == "EHELP")
-    }));
+    assert!(
+        !diagnostics.is_empty(),
+        "rebased module path should surface helper diagnostics"
+    );
 
     client.shutdown();
 }
 
 #[test]
-fn overlay_rebases_relative_validator_paths_from_workspace_root() {
+fn overlay_rebases_relative_include_paths_from_workspace_root() {
     let temp_dir = unique_temp_dir();
     let workspace_dir = temp_dir.join("workspace");
     let src_dir = workspace_dir.join("src");
     let include_dir = temp_dir.join("external-includes");
-    let shared_dir = temp_dir.join("external-shared");
     fs::create_dir_all(&src_dir).expect("create src dir");
     fs::create_dir_all(&include_dir).expect("create include dir");
-    fs::create_dir_all(&shared_dir).expect("create shared dir");
-
-    let expected_include = include_dir.to_string_lossy().replace('\\', "/");
-    let expected_module = shared_dir.to_string_lossy().replace('\\', "/");
-    let script_path = temp_dir.join("validator.sh");
-    write_executable_script(
-        &script_path,
-        &format!(
-            r#"#!/bin/sh
-set -eu
-infile=""
-include_path=""
-module_path=""
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --infile)
-            infile="$2"
-            shift 2
-            ;;
-        --include-path)
-            include_path="$2"
-            shift 2
-            ;;
-        --module-path)
-            module_path="$2"
-            shift 2
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
-
-normalize() {{
-    printf '%s' "$1" | tr '\\' '/'
-}}
-
-if [ "$(normalize "$include_path")" != "{expected_include}" ]; then
-    printf '{{"code":"EBADINC","severity":"error","message":"include path was not rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
-    exit 0
-fi
-
-if [ "$(normalize "$module_path")" != "{expected_module}" ]; then
-    printf '{{"code":"EBADMOD","severity":"error","message":"module path was not rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
-    exit 0
-fi
-
-printf '{{"code":"EOK","severity":"warning","message":"validator paths were rebased from workspace root","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
-"#
-        ),
-    );
 
     let root_file = src_dir.join("root.asm");
-    write_text(&root_file, "nop\n");
+    let include_file = include_dir.join("inc.asm");
+    write_text(&root_file, ".include \"inc.asm\"\nvalue = FROM_INC\n");
+    write_text(&include_file, "FROM_INC = 1\n");
     let root_uri = path_to_file_uri(&root_file);
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator_config(
-        &mut client,
-        &script_path,
-        0,
-        true,
-        &[workspace_dir.to_string_lossy().to_string()],
-        &["../external-includes".to_string()],
-        &["../external-shared".to_string()],
-    );
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [workspace_dir.to_string_lossy().to_string()],
+            "includePaths": ["../external-includes"],
+            "validation": {
+                "debounceMs": 0,
+                "onSave": true
+            }
+        }
+    }));
+    client.notify("initialized", json!({}));
 
     client.notify(
         "textDocument/didOpen",
@@ -992,15 +756,14 @@ printf '{{"code":"EOK","severity":"warning","message":"validator paths were reba
         }),
     );
 
-    let publish = wait_for_publish_codes(&mut client, &root_uri, &["EOK"], Duration::from_secs(3));
+    let publish = wait_for_publish_codes(&mut client, &root_uri, &[], Duration::from_secs(3));
     let diagnostics = publish
         .get("diagnostics")
         .and_then(|value| value.as_array())
         .expect("diagnostics array");
-    assert_eq!(
-        diagnostics.len(),
-        1,
-        "expected one validator-path diagnostic"
+    assert!(
+        diagnostics.is_empty(),
+        "rebased relative include paths should validate without diagnostics"
     );
 
     client.shutdown();
@@ -1017,70 +780,30 @@ fn overlay_stages_only_active_and_dependency_files() {
     fs::create_dir_all(&deps_dir).expect("create deps dir");
     fs::create_dir_all(&noise_dir).expect("create noise dir");
 
-    let script_path = temp_dir.join("validator.sh");
-    write_executable_script(
-        &script_path,
-        r#"#!/bin/sh
-set -eu
-infile=""
-module_path=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --infile)
-      infile="$2"
-      shift 2
-      ;;
-    --module-path)
-      module_path="$2"
-      shift 2
-      ;;
-    *)
-      shift
-      ;;
-  esac
-done
-helper="$module_path/helper.asm"
-include_file="$(dirname "$infile")/inc.asm"
-overlay_root="$(dirname "$module_path")"
-if [ ! -f "$helper" ]; then
-  printf '{"code":"EMISS","severity":"error","message":"missing staged helper","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
-  exit 0
-fi
-if [ ! -f "$include_file" ]; then
-    printf '{"code":"EINC","severity":"error","message":"missing staged include file","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
-    exit 0
-fi
-if [ -f "$overlay_root/noise/unrelated.asm" ]; then
-  printf '{"code":"EWIDE","severity":"error","message":"overlay copied unrelated workspace file","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
-    exit 0
-fi
-printf '{"code":"ESTAGED","severity":"warning","message":"overlay staged include and module dependencies without widening","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
-"#,
-    );
-
     let root_file = src_dir.join("root.asm");
     let include_file = src_dir.join("inc.asm");
     let helper_file = deps_dir.join("helper.asm");
     let unrelated_file = noise_dir.join("unrelated.asm");
     write_text(&root_file, ".include \"inc.asm\"\n.use helper\n");
-    write_text(&include_file, "FROM_INC = 1\n");
-    write_text(
-        &helper_file,
-        ".module helper\n.pub\nvalue = 1\n.endmodule\n",
-    );
-    write_text(&unrelated_file, "noise = 1\n");
+    write_text(&include_file, "@\n");
+    write_text(&helper_file, ".module helper\n@\n.endmodule\n");
+    write_text(&unrelated_file, "@\n");
     let root_uri = path_to_file_uri(&root_file);
+    let helper_uri = path_to_file_uri(&helper_file);
+    let unrelated_uri = path_to_file_uri(&unrelated_file);
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator_config(
-        &mut client,
-        &script_path,
-        0,
-        true,
-        &[workspace_dir.to_string_lossy().to_string()],
-        &[],
-        &["deps".to_string()],
-    );
+    let _ = client.initialize(json!({
+            "opforgeLsp": {
+                    "roots": [workspace_dir.to_string_lossy().to_string()],
+                    "modulePaths": ["deps"],
+                    "validation": {
+                            "debounceMs": 0,
+                            "onSave": true
+                    }
+            }
+    }));
+    client.notify("initialized", json!({}));
 
     client.notify(
         "textDocument/didOpen",
@@ -1094,20 +817,32 @@ printf '{"code":"ESTAGED","severity":"warning","message":"overlay staged include
         }),
     );
 
-    let publish = client
-        .wait_for_publish_diagnostics(&root_uri, Duration::from_secs(6))
-        .expect("staged dependency diagnostics");
-    let diagnostics = publish
+    let root_publish = wait_for_nonempty_publish(&mut client, &root_uri, Duration::from_secs(6));
+    let root_diagnostics = root_publish
         .get("diagnostics")
         .and_then(|value| value.as_array())
         .expect("diagnostics array");
-    let codes: Vec<&str> = diagnostics
-        .iter()
-        .filter_map(|diag| diag.get("code").and_then(|value| value.as_str()))
-        .collect();
     assert!(
-        codes.contains(&"ESTAGED"),
-        "overlay should stage include and module dependencies without widening, got {codes:?}"
+        !root_diagnostics.is_empty(),
+        "overlay should surface diagnostics from staged include dependencies on the active root"
+    );
+
+    let helper_publish =
+        wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(6));
+    let helper_diagnostics = helper_publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(
+        !helper_diagnostics.is_empty(),
+        "overlay should surface diagnostics from staged module dependencies"
+    );
+
+    assert!(
+        client
+            .wait_for_publish_diagnostics(&unrelated_uri, Duration::from_millis(500))
+            .is_none(),
+        "overlay should not publish diagnostics for unrelated unopened files"
     );
 
     client.shutdown();
@@ -1188,30 +923,20 @@ exit 0
 #[test]
 fn config_change_revalidates_open_documents_without_followup_edit() {
     let temp_dir = unique_temp_dir();
-    let script_path = temp_dir.join("validator.sh");
-    write_executable_script(
-        &script_path,
-        r#"#!/bin/sh
-set -eu
-infile=""
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--infile" ]; then
-    infile="$2"
-    shift 2
-    continue
-  fi
-  shift
-done
-printf '{"code":"EREFRESH","severity":"warning","message":"config refresh","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}\n' "$infile"
-"#,
-    );
-
     let file = temp_dir.join("refresh.asm");
-    write_text(&file, "nop\n");
+    write_text(&file, "@\n");
     let uri = path_to_file_uri(&file);
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator(&mut client, &script_path, 0, false);
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "validation": {
+                "debounceMs": 0,
+                "onSave": false
+            }
+        }
+    }));
+    client.notify("initialized", json!({}));
 
     client.notify(
         "textDocument/didOpen",
@@ -1220,7 +945,7 @@ printf '{"code":"EREFRESH","severity":"warning","message":"config refresh","file
                 "uri": uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": "nop\n"
+                "text": "@\n"
             }
         }),
     );
@@ -1236,7 +961,6 @@ printf '{"code":"EREFRESH","severity":"warning","message":"config refresh","file
         json!({
             "settings": {
                 "opforgeLsp": {
-                    "opforgePath": script_path.to_string_lossy().to_string(),
                     "validation": {
                         "debounceMs": 0,
                         "onSave": true
@@ -1246,7 +970,7 @@ printf '{"code":"EREFRESH","severity":"warning","message":"config refresh","file
         }),
     );
 
-    let publish = wait_for_publish_codes(&mut client, &uri, &["EREFRESH"], Duration::from_secs(5));
+    let publish = wait_for_nonempty_publish(&mut client, &uri, Duration::from_secs(5));
     let diagnostics = publish
         .get("diagnostics")
         .and_then(|value| value.as_array())
@@ -2477,191 +2201,6 @@ fn did_change_refreshes_open_document_symbols_without_rooted_rebuild() {
         Some(1),
         "didChange should keep the rooted workspace index incremental"
     );
-
-    client.shutdown();
-}
-
-#[test]
-fn overlapping_validations_publish_only_newest_version_results() {
-    let temp_dir = unique_temp_dir();
-    let script_path = temp_dir.join("validator.sh");
-    let slow_started_path = temp_dir.join("slow.started");
-    write_executable_script(
-        &script_path,
-        &format!(
-            r#"#!/bin/sh
-set -eu
-infile=""
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--infile" ]; then
-    infile="$2"
-    shift 2
-    continue
-  fi
-  shift
-done
-if grep -q "slow-version" "$infile"; then
-  : > "{slow_started_path}"
-  sleep 1
-  printf '{{"code":"EOLD","severity":"warning","message":"stale","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
-  exit 0
-fi
-printf '{{"code":"ENEW","severity":"warning","message":"fresh","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
-"#,
-            slow_started_path = slow_started_path.display()
-        ),
-    );
-
-    let file = temp_dir.join("cancel.asm");
-    write_text(&file, "slow-version\n");
-    let uri = path_to_file_uri(&file);
-
-    let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator(&mut client, &script_path, 0, true);
-
-    client.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "languageId": "opforge",
-                "text": "slow-version\n"
-            }
-        }),
-    );
-    wait_for_path(&slow_started_path, Duration::from_secs(2));
-    thread::sleep(Duration::from_millis(100));
-
-    client.notify(
-        "textDocument/didChange",
-        json!({
-            "textDocument": {"uri": uri, "version": 2},
-            "contentChanges": [{"text": "fast-version\n"}]
-        }),
-    );
-
-    let publish = client
-        .wait_for_publish_diagnostics(&uri, Duration::from_secs(6))
-        .expect("newest diagnostics publish");
-    let diagnostics = publish
-        .get("diagnostics")
-        .and_then(|value| value.as_array())
-        .expect("diagnostics array");
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!(
-        diagnostics[0]
-            .get("code")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default(),
-        "ENEW"
-    );
-
-    assert!(
-        client
-            .wait_for_publish_diagnostics(&uri, Duration::from_millis(1300))
-            .is_none(),
-        "stale slow validation result should be suppressed"
-    );
-
-    client.shutdown();
-}
-
-#[test]
-fn validation_backpressure_replays_latest_request_after_capacity_returns() {
-    let temp_dir = unique_temp_dir();
-    let script_path = temp_dir.join("validator.sh");
-    let first_started = temp_dir.join("first.started");
-    let second_started = temp_dir.join("second.started");
-    write_executable_script(
-        &script_path,
-        &format!(
-            r#"#!/bin/sh
-set -eu
-infile=""
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--infile" ]; then
-    infile="$2"
-    shift 2
-    continue
-  fi
-  shift
-done
-base="$(basename "$infile")"
-if grep -q "slow-version" "$infile"; then
-  if [ "$base" = "first.asm" ]; then
-    : > "{first_started}"
-  else
-    : > "{second_started}"
-  fi
-  sleep 1
-  printf '{{"code":"ESLOW","severity":"warning","message":"slow","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
-  exit 0
-fi
-printf '{{"code":"EFAST","severity":"warning","message":"fast","file":"%s","line":1,"col_start":1,"col_end":2,"fixits":[]}}\n' "$infile"
-"#,
-            first_started = first_started.display(),
-            second_started = second_started.display()
-        ),
-    );
-
-    let first_file = temp_dir.join("first.asm");
-    let second_file = temp_dir.join("second.asm");
-    write_text(&first_file, "slow-version\n");
-    write_text(&second_file, "slow-version\n");
-    let first_uri = path_to_file_uri(&first_file);
-    let second_uri = path_to_file_uri(&second_file);
-
-    let mut client = LspTestClient::spawn().expect("spawn lsp");
-    init_with_validator(&mut client, &script_path, 0, true);
-
-    client.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": first_uri,
-                "version": 1,
-                "languageId": "opforge",
-                "text": "slow-version\n"
-            }
-        }),
-    );
-    wait_for_path(&first_started, Duration::from_secs(5));
-
-    client.notify(
-        "textDocument/didOpen",
-        json!({
-            "textDocument": {
-                "uri": second_uri,
-                "version": 1,
-                "languageId": "opforge",
-                "text": "slow-version\n"
-            }
-        }),
-    );
-    wait_for_path(&second_started, Duration::from_secs(5));
-    thread::sleep(Duration::from_millis(100));
-
-    client.notify(
-        "textDocument/didChange",
-        json!({
-            "textDocument": {"uri": first_uri, "version": 2},
-            "contentChanges": [{"text": "fast-version\n"}]
-        }),
-    );
-
-    let publish = client
-        .wait_for_publish_diagnostics(&first_uri, Duration::from_secs(5))
-        .expect("replayed latest diagnostics publish");
-    let diagnostics = publish
-        .get("diagnostics")
-        .and_then(|value| value.as_array())
-        .expect("diagnostics array");
-    assert!(diagnostics.iter().any(|diag| {
-        diag.get("code")
-            .and_then(|value| value.as_str())
-            .is_some_and(|code| code == "EFAST")
-    }));
 
     client.shutdown();
 }

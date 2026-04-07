@@ -75,6 +75,54 @@ impl fmt::Display for PreprocessError {
 
 impl std::error::Error for PreprocessError {}
 
+pub fn parse_include_target_from_source_line(line: &str) -> Option<String> {
+    let (code, _comment) = split_comment(line);
+    let trimmed = ltrim(code);
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let is_hash_directive = trimmed.starts_with('#');
+    let is_dot_directive = trimmed.starts_with('.');
+    let mut pos = 0usize;
+    let bytes = trimmed.as_bytes();
+    match bytes.first() {
+        Some(b'#') | Some(b'.') => {
+            pos = 1;
+            while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
+                pos += 1;
+            }
+        }
+        _ => {}
+    }
+
+    let start = pos;
+    while pos < bytes.len() && is_ident_char(bytes[pos]) {
+        pos += 1;
+    }
+    let token = to_upper(&trimmed[start..pos]);
+    if is_hash_directive || !is_dot_directive || token != "INCLUDE" {
+        return None;
+    }
+
+    parse_include_target_operand(trim(&trimmed[pos..]))
+}
+
+fn parse_include_target_operand(rest: &str) -> Option<String> {
+    let trimmed = trim(rest);
+    let target = match (trimmed.as_bytes().first(), trimmed.as_bytes().last()) {
+        (Some(b'"'), Some(b'"')) | (Some(b'\''), Some(b'\'')) if trimmed.len() >= 2 => {
+            &trimmed[1..trimmed.len() - 1]
+        }
+        _ => trimmed,
+    };
+    if target.is_empty() {
+        None
+    } else {
+        Some(target.to_string())
+    }
+}
+
 pub trait PreprocessFileLoader: fmt::Debug + Send + Sync {
     fn read_to_string(&self, path: &Path) -> io::Result<String>;
     fn is_file(&self, path: &Path) -> bool;
@@ -778,17 +826,10 @@ impl Preprocessor {
         if !self.is_active() {
             return Ok(());
         }
-        let r = trim(rest);
-        let r = match (r.as_bytes().first(), r.as_bytes().last()) {
-            (Some(b'"'), Some(b'"')) | (Some(b'\''), Some(b'\'')) if r.len() >= 2 => {
-                &r[1..r.len() - 1]
-            }
-            _ => r,
-        };
-        if r.is_empty() {
+        let Some(r) = parse_include_target_operand(rest) else {
             return Err(PreprocessError::new("INCLUDE missing file"));
-        }
-        let (path, searched) = self.resolve_include_path(base_dir, r, loader);
+        };
+        let (path, searched) = self.resolve_include_path(base_dir, &r, loader);
         if let Some(path) = path {
             return self.process_file_internal(path.as_path(), loader);
         }
@@ -1056,6 +1097,23 @@ mod tests {
         let mut pp = Preprocessor::new();
         let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
         assert_eq!(err.message(), "INCLUDE missing file");
+    }
+
+    #[test]
+    fn parse_include_target_accepts_single_quotes() {
+        let target = super::parse_include_target_from_source_line(".include 'shared.inc'")
+            .expect("single-quoted include should parse");
+
+        assert_eq!(target, "shared.inc");
+    }
+
+    #[test]
+    fn parse_include_target_preserves_semicolons_inside_quotes() {
+        let target =
+            super::parse_include_target_from_source_line(".include \"dir;name.inc\" ; comment")
+                .expect("quoted include with semicolon should parse");
+
+        assert_eq!(target, "dir;name.inc");
     }
 
     #[test]

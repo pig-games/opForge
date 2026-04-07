@@ -46,6 +46,7 @@ pub enum MnemonicKind {
     Add,
     AddA,
     Addi,
+    Addiw,
     Addx,
     Abcd,
     Chk,
@@ -57,6 +58,7 @@ pub enum MnemonicKind {
     Cmp,
     CmpA,
     Cmpi,
+    Cmpiw,
     Cmpm,
     And,
     Andi,
@@ -72,6 +74,44 @@ pub enum MnemonicKind {
     Dbcc(ConditionCode),
     Rts,
     Moveq,
+    Move2,
+    Movex,
+    Moveh,
+    Moviw,
+    Mov3q,
+    Movs,
+    Movz,
+    Movz2,
+    Touch,
+    Load,
+    Loadi,
+    Store,
+    Storei,
+    Storec,
+    Storeilm,
+    Padd,
+    Psub,
+    Pmul88,
+    Pmulh,
+    Pmull,
+    Pmula,
+    Pand,
+    Pandn,
+    Por,
+    Peor,
+    Bsel,
+    Pcmpeqb,
+    Pcmphib,
+    Pcmpgeb,
+    Pcmpgtb,
+    Pcmpeqw,
+    Pcmphiw,
+    Pcmpgew,
+    Pcmpgtw,
+    Pack3216,
+    Packuswb,
+    Unpack1632,
+    Vperm,
     Muls,
     Mulu,
     Addq,
@@ -115,9 +155,89 @@ pub enum M68020MnemonicKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum M68080MnemonicKind {
+    Addiw,
+    Cmpiw,
+    Clrq,
+    Move2,
+    Movex,
+    Moveh,
+    Moviw,
+    Mov3q,
+    Movs,
+    Movz,
+    Movz2,
+    Touch,
+    Extub,
+    Extuw,
+    Perm,
+    Load,
+    Loadi,
+    Store,
+    Storei,
+    Storec,
+    Storeilm,
+    Padd,
+    Paddb,
+    Paddw,
+    Paddusb,
+    Paddusw,
+    Psub,
+    Psubb,
+    Psubw,
+    Psubusb,
+    Psubusw,
+    Pavgb,
+    Pmaxsb,
+    Pmaxub,
+    Pmaxsw,
+    Pmaxuw,
+    Pminsb,
+    Pminub,
+    Pminsw,
+    Pminuw,
+    Lslq,
+    Lsrq,
+    Bflyb,
+    Bflyw,
+    C2p,
+    Minterm,
+    Transhi,
+    Translo,
+    Storem,
+    Storem3,
+    Tex,
+    Pmul88,
+    Pmulh,
+    Pmull,
+    Pmula,
+    Pand,
+    Pandn,
+    Por,
+    Peor,
+    Bsel,
+    Pcmpeqb,
+    Pcmphib,
+    Pcmpgeb,
+    Pcmpgtb,
+    Pcmpeqw,
+    Pcmphiw,
+    Pcmpgew,
+    Pcmpgtw,
+    Pack3216,
+    Packuswb,
+    Unpack1632,
+    Vperm,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FpuMnemonicKind {
     Fnop,
     Fmove,
+    Floadi,
+    Fstorei,
+    Fmoverz,
+    Fmoveurz,
     Fmovecr,
     Fmovem,
     Fadd,
@@ -361,6 +481,14 @@ pub struct ParsedFpuMnemonic {
     pub has_unknown_size_suffix: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParsedM68080Mnemonic {
+    pub kind: M68080MnemonicKind,
+    pub display_name: String,
+    pub size: Option<OperationSize>,
+    pub has_unknown_size_suffix: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FpuFormat {
     Single,
@@ -395,6 +523,7 @@ fn base_kind(base: &str) -> Option<MnemonicKind> {
         "ADD" => Some(MnemonicKind::Add),
         "ADDA" => Some(MnemonicKind::AddA),
         "ADDI" => Some(MnemonicKind::Addi),
+        "ADDIW" => Some(MnemonicKind::Addiw),
         "ADDX" => Some(MnemonicKind::Addx),
         "ABCD" => Some(MnemonicKind::Abcd),
         "CHK" => Some(MnemonicKind::Chk),
@@ -406,6 +535,7 @@ fn base_kind(base: &str) -> Option<MnemonicKind> {
         "CMP" => Some(MnemonicKind::Cmp),
         "CMPA" => Some(MnemonicKind::CmpA),
         "CMPI" => Some(MnemonicKind::Cmpi),
+        "CMPIW" => Some(MnemonicKind::Cmpiw),
         "CMPM" => Some(MnemonicKind::Cmpm),
         "AND" => Some(MnemonicKind::And),
         "ANDI" => Some(MnemonicKind::Andi),
@@ -449,6 +579,44 @@ fn base_kind(base: &str) -> Option<MnemonicKind> {
         "DBLE" => Some(MnemonicKind::Dbcc(ConditionCode::Le)),
         "RTS" => Some(MnemonicKind::Rts),
         "MOVEQ" => Some(MnemonicKind::Moveq),
+        "MOVE2" => Some(MnemonicKind::Move2),
+        "MOVEX" => Some(MnemonicKind::Movex),
+        "MOVEH" => Some(MnemonicKind::Moveh),
+        "MOVIW" => Some(MnemonicKind::Moviw),
+        "MOV3Q" => Some(MnemonicKind::Mov3q),
+        "MOVS" => Some(MnemonicKind::Movs),
+        "MOVZ" => Some(MnemonicKind::Movz),
+        "MOVZ2" => Some(MnemonicKind::Movz2),
+        "TOUCH" => Some(MnemonicKind::Touch),
+        "LOAD" => Some(MnemonicKind::Load),
+        "LOADI" => Some(MnemonicKind::Loadi),
+        "STORE" => Some(MnemonicKind::Store),
+        "STOREI" => Some(MnemonicKind::Storei),
+        "STOREC" => Some(MnemonicKind::Storec),
+        "STOREILM" => Some(MnemonicKind::Storeilm),
+        "PADD" => Some(MnemonicKind::Padd),
+        "PSUB" => Some(MnemonicKind::Psub),
+        "PMUL88" => Some(MnemonicKind::Pmul88),
+        "PMULH" => Some(MnemonicKind::Pmulh),
+        "PMULL" => Some(MnemonicKind::Pmull),
+        "PMULA" => Some(MnemonicKind::Pmula),
+        "PAND" => Some(MnemonicKind::Pand),
+        "PANDN" => Some(MnemonicKind::Pandn),
+        "POR" => Some(MnemonicKind::Por),
+        "PEOR" => Some(MnemonicKind::Peor),
+        "BSEL" => Some(MnemonicKind::Bsel),
+        "PCMPEQB" => Some(MnemonicKind::Pcmpeqb),
+        "PCMPHIB" => Some(MnemonicKind::Pcmphib),
+        "PCMPGEB" => Some(MnemonicKind::Pcmpgeb),
+        "PCMPGTB" => Some(MnemonicKind::Pcmpgtb),
+        "PCMPEQW" => Some(MnemonicKind::Pcmpeqw),
+        "PCMPHIW" => Some(MnemonicKind::Pcmphiw),
+        "PCMPGEW" => Some(MnemonicKind::Pcmpgew),
+        "PCMPGTW" => Some(MnemonicKind::Pcmpgtw),
+        "PACK3216" => Some(MnemonicKind::Pack3216),
+        "PACKUSWB" | "PACKUSBW" => Some(MnemonicKind::Packuswb),
+        "UNPACK1632" => Some(MnemonicKind::Unpack1632),
+        "VPERM" => Some(MnemonicKind::Vperm),
         "MULS" => Some(MnemonicKind::Muls),
         "MULU" => Some(MnemonicKind::Mulu),
         "ADDQ" => Some(MnemonicKind::Addq),
@@ -544,6 +712,83 @@ fn m68020_base_kind(base: &str) -> Option<M68020MnemonicKind> {
     }
 }
 
+fn m68080_base_kind(base: &str) -> Option<M68080MnemonicKind> {
+    match base {
+        "ADDIW" => Some(M68080MnemonicKind::Addiw),
+        "CMPIW" => Some(M68080MnemonicKind::Cmpiw),
+        "EXTUB" => Some(M68080MnemonicKind::Extub),
+        "EXTUW" => Some(M68080MnemonicKind::Extuw),
+        "PERM" => Some(M68080MnemonicKind::Perm),
+        "MOVE2" => Some(M68080MnemonicKind::Move2),
+        "MOVEX" => Some(M68080MnemonicKind::Movex),
+        "MOVEH" => Some(M68080MnemonicKind::Moveh),
+        "MOVIW" => Some(M68080MnemonicKind::Moviw),
+        "MOV3Q" => Some(M68080MnemonicKind::Mov3q),
+        "MOVS" => Some(M68080MnemonicKind::Movs),
+        "MOVZ" => Some(M68080MnemonicKind::Movz),
+        "MOVZ2" => Some(M68080MnemonicKind::Movz2),
+        "TOUCH" => Some(M68080MnemonicKind::Touch),
+        "LOAD" => Some(M68080MnemonicKind::Load),
+        "LOADI" => Some(M68080MnemonicKind::Loadi),
+        "STORE" => Some(M68080MnemonicKind::Store),
+        "STOREI" => Some(M68080MnemonicKind::Storei),
+        "STOREC" => Some(M68080MnemonicKind::Storec),
+        "STOREILM" => Some(M68080MnemonicKind::Storeilm),
+        "PADD" => Some(M68080MnemonicKind::Padd),
+        "PADDB" => Some(M68080MnemonicKind::Paddb),
+        "PADDW" => Some(M68080MnemonicKind::Paddw),
+        "PADDUSB" => Some(M68080MnemonicKind::Paddusb),
+        "PADDUSW" => Some(M68080MnemonicKind::Paddusw),
+        "PSUB" => Some(M68080MnemonicKind::Psub),
+        "PSUBB" => Some(M68080MnemonicKind::Psubb),
+        "PSUBW" => Some(M68080MnemonicKind::Psubw),
+        "PSUBUSB" => Some(M68080MnemonicKind::Psubusb),
+        "PSUBUSW" => Some(M68080MnemonicKind::Psubusw),
+        "PAVGB" => Some(M68080MnemonicKind::Pavgb),
+        "PMAXSB" => Some(M68080MnemonicKind::Pmaxsb),
+        "PMAXUB" => Some(M68080MnemonicKind::Pmaxub),
+        "PMAXSW" => Some(M68080MnemonicKind::Pmaxsw),
+        "PMAXUW" => Some(M68080MnemonicKind::Pmaxuw),
+        "PMINSB" => Some(M68080MnemonicKind::Pminsb),
+        "PMINUB" => Some(M68080MnemonicKind::Pminub),
+        "PMINSW" => Some(M68080MnemonicKind::Pminsw),
+        "PMINUW" => Some(M68080MnemonicKind::Pminuw),
+        "LSLQ" => Some(M68080MnemonicKind::Lslq),
+        "LSRQ" => Some(M68080MnemonicKind::Lsrq),
+        "BFLYB" => Some(M68080MnemonicKind::Bflyb),
+        "BFLYW" => Some(M68080MnemonicKind::Bflyw),
+        "C2P" => Some(M68080MnemonicKind::C2p),
+        "MINTERM" => Some(M68080MnemonicKind::Minterm),
+        "TRANSHI" => Some(M68080MnemonicKind::Transhi),
+        "TRANSLO" => Some(M68080MnemonicKind::Translo),
+        "STOREM" => Some(M68080MnemonicKind::Storem),
+        "STOREM3" => Some(M68080MnemonicKind::Storem3),
+        "TEX8" | "TEX16" | "TEX24" | "TEX" => Some(M68080MnemonicKind::Tex),
+        "PMUL88" => Some(M68080MnemonicKind::Pmul88),
+        "PMULH" => Some(M68080MnemonicKind::Pmulh),
+        "PMULL" => Some(M68080MnemonicKind::Pmull),
+        "PMULA" => Some(M68080MnemonicKind::Pmula),
+        "PAND" => Some(M68080MnemonicKind::Pand),
+        "PANDN" => Some(M68080MnemonicKind::Pandn),
+        "POR" => Some(M68080MnemonicKind::Por),
+        "PEOR" => Some(M68080MnemonicKind::Peor),
+        "BSEL" => Some(M68080MnemonicKind::Bsel),
+        "PCMPEQB" => Some(M68080MnemonicKind::Pcmpeqb),
+        "PCMPHIB" => Some(M68080MnemonicKind::Pcmphib),
+        "PCMPGEB" => Some(M68080MnemonicKind::Pcmpgeb),
+        "PCMPGTB" => Some(M68080MnemonicKind::Pcmpgtb),
+        "PCMPEQW" => Some(M68080MnemonicKind::Pcmpeqw),
+        "PCMPHIW" => Some(M68080MnemonicKind::Pcmphiw),
+        "PCMPGEW" => Some(M68080MnemonicKind::Pcmpgew),
+        "PCMPGTW" => Some(M68080MnemonicKind::Pcmpgtw),
+        "PACK3216" => Some(M68080MnemonicKind::Pack3216),
+        "PACKUSWB" | "PACKUSBW" => Some(M68080MnemonicKind::Packuswb),
+        "UNPACK1632" => Some(M68080MnemonicKind::Unpack1632),
+        "VPERM" => Some(M68080MnemonicKind::Vperm),
+        _ => None,
+    }
+}
+
 fn split_size_suffix(mnemonic: &str) -> (String, Option<OperationSize>, bool) {
     let upper = mnemonic.to_ascii_uppercase();
     match upper.rsplit_once('.') {
@@ -575,6 +820,10 @@ fn split_fpu_suffix(mnemonic: &str) -> (String, Option<OperationSize>, Option<Fp
 }
 
 pub fn parse_mnemonic(mnemonic: &str) -> Option<ParsedMnemonic> {
+    if mnemonic.eq_ignore_ascii_case("CLR.Q") {
+        return None;
+    }
+
     let (base, size, has_unknown_size_suffix) = split_size_suffix(mnemonic);
 
     Some(ParsedMnemonic {
@@ -619,10 +868,38 @@ pub fn has_m68020_mnemonic(mnemonic: &str) -> bool {
     parse_m68020_mnemonic(mnemonic).is_some()
 }
 
+pub fn parse_m68080_mnemonic(mnemonic: &str) -> Option<ParsedM68080Mnemonic> {
+    if mnemonic.eq_ignore_ascii_case("CLR.Q") {
+        return Some(ParsedM68080Mnemonic {
+            kind: M68080MnemonicKind::Clrq,
+            display_name: "CLR.Q".to_string(),
+            size: None,
+            has_unknown_size_suffix: false,
+        });
+    }
+
+    let (base, size, has_unknown_size_suffix) = split_size_suffix(mnemonic);
+
+    Some(ParsedM68080Mnemonic {
+        kind: m68080_base_kind(base.as_str())?,
+        display_name: base,
+        size,
+        has_unknown_size_suffix,
+    })
+}
+
+pub fn has_m68080_mnemonic(mnemonic: &str) -> bool {
+    parse_m68080_mnemonic(mnemonic).is_some()
+}
+
 fn fpu_base_kind(base: &str) -> Option<FpuMnemonicKind> {
     match base {
         "FNOP" => Some(FpuMnemonicKind::Fnop),
         "FMOVE" => Some(FpuMnemonicKind::Fmove),
+        "FLOADI" => Some(FpuMnemonicKind::Floadi),
+        "FSTOREI" => Some(FpuMnemonicKind::Fstorei),
+        "FMOVERZ" => Some(FpuMnemonicKind::Fmoverz),
+        "FMOVEURZ" => Some(FpuMnemonicKind::Fmoveurz),
         "FMOVECR" => Some(FpuMnemonicKind::Fmovecr),
         "FMOVEM" => Some(FpuMnemonicKind::Fmovem),
         "FADD" => Some(FpuMnemonicKind::Fadd),
@@ -801,9 +1078,135 @@ mod tests {
     }
 
     #[test]
+    fn parse_m68080_mnemonic_tracks_size_suffix_state() {
+        assert!(has_m68080_mnemonic("ADDIW.L"));
+        assert!(has_m68080_mnemonic("CMPIW.L"));
+        assert!(has_m68080_mnemonic("MOVE2"));
+        assert!(has_m68080_mnemonic("MOVEX"));
+        assert!(has_m68080_mnemonic("MOVEH"));
+        assert!(has_m68080_mnemonic("MOVIW.L"));
+        assert!(has_m68080_mnemonic("MOV3Q"));
+        assert!(has_m68080_mnemonic("MOVS"));
+        assert!(has_m68080_mnemonic("MOVZ"));
+        assert!(has_m68080_mnemonic("MOVZ2"));
+        assert!(has_m68080_mnemonic("TOUCH"));
+        assert!(has_m68080_mnemonic("LOAD"));
+        assert!(has_m68080_mnemonic("LOADI"));
+        assert!(has_m68080_mnemonic("STORE"));
+        assert!(has_m68080_mnemonic("STOREI"));
+        assert!(has_m68080_mnemonic("STOREC"));
+        assert!(has_m68080_mnemonic("STOREILM"));
+        assert!(has_m68080_mnemonic("PADD.B"));
+        assert!(has_m68080_mnemonic("PADDB"));
+        assert!(has_m68080_mnemonic("PADDW"));
+        assert!(has_m68080_mnemonic("PADDUSB"));
+        assert!(has_m68080_mnemonic("PADDUSW"));
+        assert!(has_m68080_mnemonic("PSUBB"));
+        assert!(has_m68080_mnemonic("PSUBW"));
+        assert!(has_m68080_mnemonic("PSUBUSB"));
+        assert!(has_m68080_mnemonic("PSUBUSW"));
+        assert!(has_m68080_mnemonic("PAVGB"));
+        assert!(has_m68080_mnemonic("PMAXSB"));
+        assert!(has_m68080_mnemonic("PMAXUB"));
+        assert!(has_m68080_mnemonic("PMAXSW"));
+        assert!(has_m68080_mnemonic("PMAXUW"));
+        assert!(has_m68080_mnemonic("PMINSB"));
+        assert!(has_m68080_mnemonic("PMINUB"));
+        assert!(has_m68080_mnemonic("PMINSW"));
+        assert!(has_m68080_mnemonic("PMINUW"));
+        assert!(has_m68080_mnemonic("LSLQ"));
+        assert!(has_m68080_mnemonic("LSRQ"));
+        assert!(has_m68080_mnemonic("BFLYB"));
+        assert!(has_m68080_mnemonic("BFLYW"));
+        assert!(has_m68080_mnemonic("C2P"));
+        assert!(has_m68080_mnemonic("MINTERM"));
+        assert!(has_m68080_mnemonic("TRANSHI"));
+        assert!(has_m68080_mnemonic("TRANSLO"));
+        assert!(has_m68080_mnemonic("STOREM"));
+        assert!(has_m68080_mnemonic("STOREM3"));
+        assert!(has_m68080_mnemonic("TEX8.512"));
+        assert!(has_m68080_mnemonic("TEX16.256"));
+        assert!(has_m68080_mnemonic("TEX24.64"));
+        assert!(has_m68080_mnemonic("TEX.B"));
+        assert!(has_m68080_mnemonic("PMUL88"));
+        assert!(has_m68080_mnemonic("PMULH"));
+        assert!(has_m68080_mnemonic("PMULL"));
+        assert!(has_m68080_mnemonic("PMULA"));
+        assert!(has_m68080_mnemonic("PAND"));
+        assert!(has_m68080_mnemonic("PANDN"));
+        assert!(has_m68080_mnemonic("POR"));
+        assert!(has_m68080_mnemonic("PEOR"));
+        assert!(has_m68080_mnemonic("BSEL"));
+        assert!(has_m68080_mnemonic("PCMPGTB"));
+        assert!(has_m68080_mnemonic("PCMPGEW"));
+        assert!(has_m68080_mnemonic("PACKUSWB"));
+        assert!(has_m68080_mnemonic("PACKUSBW"));
+        assert!(has_m68080_mnemonic("UNPACK1632"));
+
+        let move2_unknown = parse_m68080_mnemonic("MOVE2.Q").expect("MOVE2 base should parse");
+        assert_eq!(move2_unknown.kind, M68080MnemonicKind::Move2);
+        assert_eq!(move2_unknown.size, None);
+        assert!(move2_unknown.has_unknown_size_suffix);
+
+        let moviw_long = parse_m68080_mnemonic("MOVIW.L").expect("MOVIW.L should parse");
+        assert_eq!(moviw_long.kind, M68080MnemonicKind::Moviw);
+        assert_eq!(moviw_long.size, Some(OperationSize::Long));
+        assert!(!moviw_long.has_unknown_size_suffix);
+
+        let paddb = parse_m68080_mnemonic("PADDB").expect("PADDB should parse");
+        assert_eq!(paddb.kind, M68080MnemonicKind::Paddb);
+        assert_eq!(paddb.size, None);
+        assert!(!paddb.has_unknown_size_suffix);
+
+        let pavgb = parse_m68080_mnemonic("PAVGB").expect("PAVGB should parse");
+        assert_eq!(pavgb.kind, M68080MnemonicKind::Pavgb);
+        assert_eq!(pavgb.size, None);
+        assert!(!pavgb.has_unknown_size_suffix);
+
+        let pmaxsb = parse_m68080_mnemonic("PMAXSB").expect("PMAXSB should parse");
+        assert_eq!(pmaxsb.kind, M68080MnemonicKind::Pmaxsb);
+        assert_eq!(pmaxsb.size, None);
+        assert!(!pmaxsb.has_unknown_size_suffix);
+
+        let lslq = parse_m68080_mnemonic("LSLQ").expect("LSLQ should parse");
+        assert_eq!(lslq.kind, M68080MnemonicKind::Lslq);
+        assert_eq!(lslq.size, None);
+        assert!(!lslq.has_unknown_size_suffix);
+
+        let bflyb = parse_m68080_mnemonic("BFLYB").expect("BFLYB should parse");
+        assert_eq!(bflyb.kind, M68080MnemonicKind::Bflyb);
+        assert_eq!(bflyb.size, None);
+        assert!(!bflyb.has_unknown_size_suffix);
+
+        let minterm = parse_m68080_mnemonic("MINTERM").expect("MINTERM should parse");
+        assert_eq!(minterm.kind, M68080MnemonicKind::Minterm);
+        assert_eq!(minterm.size, None);
+        assert!(!minterm.has_unknown_size_suffix);
+
+        let storem3 = parse_m68080_mnemonic("STOREM3").expect("STOREM3 should parse");
+        assert_eq!(storem3.kind, M68080MnemonicKind::Storem3);
+        assert_eq!(storem3.size, None);
+        assert!(!storem3.has_unknown_size_suffix);
+
+        let tex8 = parse_m68080_mnemonic("TEX8.512").expect("TEX8.512 should parse");
+        assert_eq!(tex8.kind, M68080MnemonicKind::Tex);
+        assert_eq!(tex8.size, None);
+        assert!(tex8.has_unknown_size_suffix);
+
+        let tex_byte = parse_m68080_mnemonic("TEX.B").expect("TEX.B should parse");
+        assert_eq!(tex_byte.kind, M68080MnemonicKind::Tex);
+        assert_eq!(tex_byte.size, Some(OperationSize::Byte));
+        assert!(!tex_byte.has_unknown_size_suffix);
+    }
+
+    #[test]
     fn parse_fpu_mnemonic_tracks_size_suffix_state() {
         assert!(has_fpu_mnemonic("FNOP"));
         assert!(has_fpu_mnemonic("FMOVE"));
+        assert!(has_fpu_mnemonic("FLOADI"));
+        assert!(has_fpu_mnemonic("FSTOREI"));
+        assert!(has_fpu_mnemonic("FMOVERZ"));
+        assert!(has_fpu_mnemonic("FMOVEURZ"));
         assert!(has_fpu_mnemonic("FMOVECR"));
         assert!(has_fpu_mnemonic("FMOVEM"));
         assert!(has_fpu_mnemonic("FADD"));
@@ -846,5 +1249,17 @@ mod tests {
         assert_eq!(move_unknown.size, None);
         assert_eq!(move_unknown.format, None);
         assert!(move_unknown.has_unknown_size_suffix);
+
+        let move_rz = parse_fpu_mnemonic("FMOVERZ.L").expect("FMOVERZ.L should parse");
+        assert_eq!(move_rz.kind, FpuMnemonicKind::Fmoverz);
+        assert_eq!(move_rz.size, Some(OperationSize::Long));
+        assert_eq!(move_rz.format, None);
+        assert!(!move_rz.has_unknown_size_suffix);
+
+        let loadi = parse_fpu_mnemonic("FLOADI.D").expect("FLOADI.D should parse");
+        assert_eq!(loadi.kind, FpuMnemonicKind::Floadi);
+        assert_eq!(loadi.size, None);
+        assert_eq!(loadi.format, Some(FpuFormat::Double));
+        assert!(!loadi.has_unknown_size_suffix);
     }
 }

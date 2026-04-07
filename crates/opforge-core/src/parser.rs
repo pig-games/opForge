@@ -1852,6 +1852,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_68k_extended_short_branch_mnemonic() {
+        let mut parser = Parser::from_line_with_registers(
+            "    BRA.S+ $0082",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.mnemonic.as_deref(), Some("BRA.S+"));
+                assert_eq!(statement.operands.len(), 1);
+            }
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parses_68k_displacement_operand() {
         let mut parser = Parser::from_line_with_registers(
             "    MOVE 4(A0),D0",
@@ -2053,6 +2071,30 @@ mod tests {
                     other => panic!("expected outer tuple, got {other:?}"),
                 },
                 other => panic!("expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_68k_immediate_member_suffix_expression() {
+        let mut parser = Parser::from_line_with_registers(
+            "    FADD #1.d,FP0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Immediate(inner, _) => match inner.as_ref() {
+                    Expr::Member { base, field, .. } => {
+                        assert_eq!(field, "d");
+                        assert!(matches!(base.as_ref(), Expr::Number(text, _) if text == "1"));
+                    }
+                    other => panic!("expected immediate member suffix, got {other:?}"),
+                },
+                other => panic!("expected immediate operand, got {other:?}"),
             },
             other => panic!("Expected statement, got {other:?}"),
         }

@@ -11,37 +11,48 @@ pub mod state;
 
 mod table;
 
+pub(crate) use handler::EffectiveAddressKind;
 pub use handler::M68KFamilyHandler;
 pub use operand::{FamilyOperand, Operand};
 pub use table::{
-    has_fpu_mnemonic, has_m68010_mnemonic, has_m68020_mnemonic, has_mnemonic, parse_fpu_mnemonic,
-    parse_m68010_mnemonic, parse_m68020_mnemonic, parse_mnemonic, FpuFormat, FpuMnemonicKind,
-    M68010MnemonicKind, M68020MnemonicKind, MnemonicKind, OperationSize,
+    has_fpu_mnemonic, has_m68010_mnemonic, has_m68020_mnemonic, has_m68080_mnemonic, has_mnemonic,
+    parse_fpu_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic, parse_m68080_mnemonic,
+    parse_mnemonic, FpuFormat, FpuMnemonicKind, M68010MnemonicKind, M68020MnemonicKind,
+    M68080MnemonicKind, MnemonicKind, OperationSize,
 };
+
+fn parse_numeric_suffix(name: &str, prefix: char) -> Option<u8> {
+    let suffix = name.strip_prefix(prefix)?;
+    suffix.parse::<u8>().ok()
+}
+
+pub fn is_68080_data_bank_register(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    parse_numeric_suffix(&upper, 'E').is_some_and(|reg| reg <= 23)
+}
+
+pub fn is_68080_address_bank_register(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    parse_numeric_suffix(&upper, 'B').is_some_and(|reg| reg <= 7)
+}
+
+pub fn is_data_register(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    parse_numeric_suffix(&upper, 'D').is_some_and(|reg| reg <= 7)
+        || is_68080_data_bank_register(&upper)
+}
+
+pub fn is_address_register(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper == "SP"
+        || parse_numeric_suffix(&upper, 'A').is_some_and(|reg| reg <= 7)
+        || is_68080_address_bank_register(&upper)
+}
 
 pub fn is_register(name: &str) -> bool {
     matches!(
         name.to_ascii_uppercase().as_str(),
-        "D0" | "D1"
-            | "D2"
-            | "D3"
-            | "D4"
-            | "D5"
-            | "D6"
-            | "D7"
-            | "A0"
-            | "A1"
-            | "A2"
-            | "A3"
-            | "A4"
-            | "A5"
-            | "A6"
-            | "A7"
-            | "SP"
-            | "PC"
-            | "SR"
-            | "CCR"
-            | "USP"
-            | "SSP"
-    )
+        "PC" | "SR" | "CCR" | "USP" | "SSP"
+    ) || is_data_register(name)
+        || is_address_register(name)
 }

@@ -1,0 +1,8 @@
+fixture: 68080-fpu-explicit-literal-divergence
++++ oracle error +++
+
+error 9 in line 5 of "/Users/erik/Code/Retro/opForge/target/external-oracle-vasm-documented_divergence-25894-1775292248134915000/68080/68080-fpu-explicit-literal-divergence/oracle/oracle.source.asm": instruction not supported on selected architecture
+>        FADD.D #1.d,FP0
+
+error 9 in line 6 of "/Users/erik/Code/Retro/opForge/target/external-oracle-vasm-documented_divergence-25894-1775292248134915000/68080/68080-fpu-explicit-literal-divergence/oracle/oracle.source.asm": instruction not supported on selected architecture
+>        FMOVE.S #1.s,FP0

@@ -482,7 +482,9 @@ impl Assembler {
     }
 
     pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
-        std::mem::take(&mut self.diagnostics)
+        let mut diagnostics = std::mem::take(&mut self.diagnostics);
+        Self::dedup_diagnostics_preserving_order(&mut diagnostics);
+        diagnostics
     }
 
     pub fn set_runtime_line_router(
@@ -500,6 +502,41 @@ impl Assembler {
         &self.runtime_lockstep_report
     }
 
+    fn dedup_diagnostics_preserving_order(diagnostics: &mut Vec<Diagnostic>) {
+        let mut unique = Vec::with_capacity(diagnostics.len());
+        for diagnostic in diagnostics.drain(..) {
+            if unique
+                .iter()
+                .any(|existing| Self::diagnostics_match(existing, &diagnostic))
+            {
+                continue;
+            }
+            unique.push(diagnostic);
+        }
+        *diagnostics = unique;
+    }
+
+    fn dedup_current_diagnostics(&mut self) {
+        Self::dedup_diagnostics_preserving_order(&mut self.diagnostics);
+    }
+
+    fn diagnostics_match(left: &Diagnostic, right: &Diagnostic) -> bool {
+        left.line == right.line
+            && left.column == right.column
+            && left.col_end == right.col_end
+            && left.code == right.code
+            && left.severity == right.severity
+            && left.error.kind() == right.error.kind()
+            && left.error.message() == right.error.message()
+            && left.file == right.file
+            && left.source == right.source
+            && left.parser_error == right.parser_error
+            && left.related_spans == right.related_spans
+            && left.notes == right.notes
+            && left.help == right.help
+            && left.fixits == right.fixits
+    }
+
     pub fn pass1(&mut self, lines: &[String]) -> PassCounts {
         self.loop_iteration_trace_pass1.clear();
         self.runtime_processing_traces.clear();
@@ -508,9 +545,11 @@ impl Assembler {
         let mut counts = self.run_layout_pass(lines, 1, true, true, &mut pass1_loop_trace);
         self.loop_iteration_trace_pass1 = pass1_loop_trace;
         if counts.errors > 0 {
+            self.dedup_current_diagnostics();
             return counts;
         }
         if !self.cpu_requires_layout_stabilization() {
+            self.dedup_current_diagnostics();
             return counts;
         }
 
@@ -520,6 +559,7 @@ impl Assembler {
             let mut loop_trace = Vec::new();
             counts = self.run_layout_pass(lines, 2, false, true, &mut loop_trace);
             if counts.errors > 0 {
+                self.dedup_current_diagnostics();
                 return counts;
             }
 
@@ -546,6 +586,7 @@ impl Assembler {
             counts.errors += 1;
         }
 
+        self.dedup_current_diagnostics();
         counts
     }
 
@@ -743,6 +784,7 @@ impl Assembler {
         self.cpu = asm_line.cpu;
         self.sections = sections;
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+        self.dedup_current_diagnostics();
         Ok(counts)
     }
 

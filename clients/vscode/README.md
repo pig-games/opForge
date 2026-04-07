@@ -23,10 +23,11 @@ The extension forwards these settings to the language server:
 - `opforgeLsp.defaultCpu`
 - `opforgeLsp.validation.debounceMs`
 - `opforgeLsp.validation.onSave`
-- `opforgeLsp.opforgePath`
 
 The extension itself can be pointed at a specific language-server binary with:
 
 - `opforgeLsp.serverPath`
 
 `opforgeLsp.serverPath` is client-side only. It supports absolute paths, `${workspaceFolder}` expansion, `~/` home expansion, and workspace-relative paths. Updating it restarts the language client so the new server binary is picked up immediately.
+
+`opforgeLsp.opforgePath` is deprecated and ignored. Validation now runs in-process inside `opforge-lsp` rather than shelling out to the CLI.

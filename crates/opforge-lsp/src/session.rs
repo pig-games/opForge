@@ -21,9 +21,10 @@ use crate::lsp::document_state::{DocumentState, UseImportDecl};
 use crate::lsp::document_symbols::document_symbols;
 use crate::lsp::hover::{hover_response, HoverRequestContext};
 use crate::lsp::member_context::{member_completion_context, member_lookup_context};
-use crate::lsp::validation_runner::{run_cli_validation, ValidationDiagnostic};
+use crate::lsp::validation_runner::{run_validation, ValidationDiagnostic};
 use crate::lsp::workspace_index::{IndexedSymbol, WorkspaceIndex};
 use libopforge::io::{MemorySourceProvider, SourceProvider};
+use libopforge::opcore::parse_include_target_from_source_line;
 use libopforge::registry::{
     default_asm_registry, default_cpu, resolve_cpu_for_line, AsmRegistry, AsmRegistryContext,
     CpuType,
@@ -1214,7 +1215,7 @@ fn run_validation_task(
             };
         }
     };
-    let result = run_cli_validation(
+    let result = run_validation(
         &config,
         &overlay.root_file,
         &overlay.working_dir,
@@ -1441,7 +1442,10 @@ fn collect_overlay_include_dependencies(
         return;
     };
 
-    for include_target in include_targets_from_text(&text) {
+    for include_target in text
+        .lines()
+        .filter_map(parse_include_target_from_source_line)
+    {
         let Some(resolved) =
             resolve_overlay_include_target(path, &include_target, include_paths, source_provider)
         else {
@@ -1456,26 +1460,6 @@ fn collect_overlay_include_dependencies(
             );
         }
     }
-}
-
-fn include_targets_from_text(text: &str) -> Vec<String> {
-    text.lines().filter_map(include_target_from_line).collect()
-}
-
-fn include_target_from_line(line: &str) -> Option<String> {
-    let code = line.split(';').next()?.trim_start();
-    let rest = if code.len() >= 8 && code[..8].eq_ignore_ascii_case(".include") {
-        &code[8..]
-    } else if code.len() >= 7 && code[..7].eq_ignore_ascii_case("include") {
-        &code[7..]
-    } else {
-        return None;
-    };
-
-    let rest = rest.trim_start();
-    let remainder = rest.strip_prefix('"')?;
-    let end = remainder.find('"')?;
-    Some(remainder[..end].to_string())
 }
 
 fn resolve_overlay_include_target(
@@ -1838,6 +1822,16 @@ fn rename_span_for_word(
 mod tests {
     use super::*;
 
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{prefix}-{nanos}-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
     #[test]
     fn file_uri_roundtrip_smoke() {
         let path = PathBuf::from("/tmp/opforge test.asm");
@@ -1962,5 +1956,49 @@ mod tests {
             session.should_exit(),
             "exit notification should terminate the server"
         );
+    }
+
+    #[test]
+    fn overlay_dependency_staging_accepts_single_quoted_include_targets() {
+        let temp_dir = unique_temp_dir("lsp-overlay-single-quote");
+        let main = temp_dir.join("main.asm");
+        let include = temp_dir.join("shared.inc");
+
+        fs::write(&main, ".include 'shared.inc'\n.byte VALUE\n").expect("write main source");
+        fs::write(&include, "VALUE .const 1\n").expect("write include source");
+
+        let dependencies = overlay_dependency_files_for_path(
+            &main,
+            &[],
+            Arc::from(MemorySourceProvider::new().with_fs_fallback()),
+        );
+
+        assert!(dependencies.iter().any(|path| path.ends_with("shared.inc")));
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn overlay_dependency_staging_preserves_semicolons_inside_quoted_include_paths() {
+        let temp_dir = unique_temp_dir("lsp-overlay-semicolon");
+        let main = temp_dir.join("main.asm");
+        let include = temp_dir.join("dir;name.inc");
+
+        fs::write(
+            &main,
+            ".include \"dir;name.inc\" ; trailing comment\n.byte VALUE\n",
+        )
+        .expect("write main source");
+        fs::write(&include, "VALUE .const 1\n").expect("write include source");
+
+        let dependencies = overlay_dependency_files_for_path(
+            &main,
+            &[],
+            Arc::from(MemorySourceProvider::new().with_fs_fallback()),
+        );
+
+        assert!(dependencies
+            .iter()
+            .any(|path| path.ends_with("dir;name.inc")));
+        let _ = fs::remove_dir_all(temp_dir);
     }
 }

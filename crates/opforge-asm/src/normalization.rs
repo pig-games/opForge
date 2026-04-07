@@ -30,7 +30,10 @@ impl NormalizedErrorClass {
 pub(crate) fn normalize_opforge_diagnostics(text: &str) -> NormalizedErrorClass {
     let normalized = text.to_ascii_lowercase();
 
-    if contains_any(&normalized, &["unknown mnemonic", "no instruction found for"]) {
+    if contains_any(
+        &normalized,
+        &["unknown mnemonic", "no instruction found for"],
+    ) {
         return NormalizedErrorClass::UnknownMnemonic;
     }
     if contains_any(
@@ -39,11 +42,24 @@ pub(crate) fn normalize_opforge_diagnostics(text: &str) -> NormalizedErrorClass 
             "instruction not supported",
             "is not supported on",
             "is only supported on",
+            "requires .cpu 68080",
+            "apollo-gated on m68080",
+            "requires an active .fpu target on",
+            "unsupported mode in full-profile build",
         ],
     ) {
         return NormalizedErrorClass::UnsupportedCpuFeature;
     }
     if contains_any(&normalized, &["branch out of range"]) {
+        return NormalizedErrorClass::BranchOutOfRange;
+    }
+    if contains_any(
+        &normalized,
+        &[
+            "must be even before applying the long-counter signal",
+            "must be even on m68080",
+        ],
+    ) {
         return NormalizedErrorClass::BranchOutOfRange;
     }
     if contains_any(&normalized, &["operand count", "wrong operand count"]) {
@@ -52,20 +68,41 @@ pub(crate) fn normalize_opforge_diagnostics(text: &str) -> NormalizedErrorClass 
     if contains_any(&normalized, &["missing operand", "expected operand"]) {
         return NormalizedErrorClass::MissingOperand;
     }
-    if contains_any(&normalized, &["illegal addressing mode", "illegal operand types"]) {
+    if contains_any(
+        &normalized,
+        &[
+            "illegal addressing mode",
+            "illegal operand types",
+            "invalid source effective address",
+            "invalid destination effective address",
+            "vector effective address",
+            "must start at an even register",
+            "must be consecutive",
+            "address-indirect or indexed",
+        ],
+    ) {
         return NormalizedErrorClass::IllegalAddressingMode;
     }
     if contains_any(
         &normalized,
-        &["out of range", "too large for", "invalid u8 operand", "invalid u16 operand"],
-    )
-        && contains_any(&normalized, &["branch"])
+        &[
+            "out of range",
+            "too large for",
+            "invalid u8 operand",
+            "invalid u16 operand",
+        ],
+    ) && contains_any(&normalized, &["branch"])
     {
         return NormalizedErrorClass::BranchOutOfRange;
     }
     if contains_any(
         &normalized,
-        &["out of range", "too large for", "invalid u8 operand", "invalid u16 operand"],
+        &[
+            "out of range",
+            "too large for",
+            "invalid u8 operand",
+            "invalid u16 operand",
+        ],
     ) {
         return NormalizedErrorClass::ValueOutOfRange;
     }
@@ -77,6 +114,9 @@ pub(crate) fn normalize_opforge_diagnostics(text: &str) -> NormalizedErrorClass 
             "wrong operand count",
             "too many operands",
             "too few operands",
+            "expects two operands",
+            "expects three operands",
+            "expects four operands",
         ],
     ) {
         return NormalizedErrorClass::WrongOperandCount;
@@ -114,7 +154,17 @@ pub(crate) fn normalize_vasm_stderr(text: &str) -> NormalizedErrorClass {
     ) {
         return NormalizedErrorClass::UnsupportedCpuFeature;
     }
-    if contains_any(&normalized, &["illegal operand types", "illegal addressing mode"]) {
+    if contains_any(&normalized, &["illegal operand types"])
+        && contains_any(&normalized, &["movec caar", "movec\tcaar"])
+    {
+        // VASM reports MOVEC CAAR on 68040 as an operand-type error while opForge
+        // classifies it as an unsupported CPU feature.
+        return NormalizedErrorClass::UnsupportedCpuFeature;
+    }
+    if contains_any(
+        &normalized,
+        &["illegal operand types", "illegal addressing mode"],
+    ) {
         return NormalizedErrorClass::IllegalAddressingMode;
     }
     if contains_any(&normalized, &["out of range"]) {
@@ -173,7 +223,10 @@ pub(crate) fn normalize_64tass_stderr(text: &str) -> NormalizedErrorClass {
     if contains_any(&normalized, &["too large for", "out of range"]) {
         return NormalizedErrorClass::ValueOutOfRange;
     }
-    if contains_any(&normalized, &["missing argument", "missing operand", "no argument"]) {
+    if contains_any(
+        &normalized,
+        &["missing argument", "missing operand", "no argument"],
+    ) {
         return NormalizedErrorClass::MissingOperand;
     }
     if contains_any(
@@ -187,7 +240,10 @@ pub(crate) fn normalize_64tass_stderr(text: &str) -> NormalizedErrorClass {
     ) {
         return NormalizedErrorClass::WrongOperandCount;
     }
-    if contains_any(&normalized, &["syntax error", "identifier expected", "unexpected"]) {
+    if contains_any(
+        &normalized,
+        &["syntax error", "identifier expected", "unexpected"],
+    ) {
         return NormalizedErrorClass::SyntaxError;
     }
 
@@ -279,6 +335,125 @@ ERROR: No instruction found for BOGUS"#;
     }
 
     #[test]
+    fn normalization_classifies_opforge_apollo_gated_rejection() {
+        let diagnostics = r#"summary: Errors detected in source.
+[
+    Diagnostic {
+        error: AsmError {
+            kind: Instruction,
+            message: "PADD is Apollo-gated on m68080; enable .apollo on",
+        },
+    },
+]"#;
+        assert_eq!(
+            normalize_opforge_diagnostics(diagnostics),
+            NormalizedErrorClass::UnsupportedCpuFeature
+        );
+    }
+
+    #[test]
+    fn normalization_classifies_opforge_apollo_off_full_profile_rejection() {
+        let diagnostics = r#"summary: Errors detected in source.
+[
+    Diagnostic {
+        error: AsmError {
+            kind: Directive,
+            message: ".apollo off is not supported in the full-profile m68080 build; unsupported mode in full-profile build",
+        },
+    },
+]"#;
+        assert_eq!(
+            normalize_opforge_diagnostics(diagnostics),
+            NormalizedErrorClass::UnsupportedCpuFeature
+        );
+    }
+
+    #[test]
+    fn normalization_classifies_opforge_fpu_target_gate_rejection() {
+        let diagnostics = r#"summary: Errors detected in source.
+[
+    Diagnostic {
+        error: AsmError {
+            kind: Instruction,
+            message: "FSIN requires an active .fpu target on m68080; legal .fpu targets for m68080 FPU instructions: 68080",
+        },
+    },
+]"#;
+        assert_eq!(
+            normalize_opforge_diagnostics(diagnostics),
+            NormalizedErrorClass::UnsupportedCpuFeature
+        );
+    }
+
+    #[test]
+    fn normalization_classifies_opforge_cpu_gate_rejection() {
+        let diagnostics = r#"summary: Errors detected in source.
+[
+    Diagnostic {
+        error: AsmError {
+            kind: Instruction,
+            message: "register E0 requires .cpu 68080 and is not supported on m68040",
+        },
+    },
+]"#;
+        assert_eq!(
+            normalize_opforge_diagnostics(diagnostics),
+            NormalizedErrorClass::UnsupportedCpuFeature
+        );
+    }
+
+    #[test]
+    fn normalization_classifies_opforge_68080_operand_shape_rejection() {
+        let diagnostics = r#"summary: Errors detected in source.
+[
+    Diagnostic {
+        error: AsmError {
+            kind: Instruction,
+            message: "PACKUSWB destination must be a vector effective address",
+        },
+    },
+]"#;
+        assert_eq!(
+            normalize_opforge_diagnostics(diagnostics),
+            NormalizedErrorClass::IllegalAddressingMode
+        );
+    }
+
+    #[test]
+    fn normalization_classifies_opforge_68080_operand_count_rejection() {
+        let diagnostics = r#"summary: Errors detected in source.
+[
+    Diagnostic {
+        error: AsmError {
+            kind: Instruction,
+            message: "VPERM expects four operands: #imm,a,b,d",
+        },
+    },
+]"#;
+        assert_eq!(
+            normalize_opforge_diagnostics(diagnostics),
+            NormalizedErrorClass::WrongOperandCount
+        );
+    }
+
+    #[test]
+    fn normalization_classifies_opforge_68080_long_counter_alignment_rejection() {
+        let diagnostics = r#"summary: Errors detected in source.
+[
+    Diagnostic {
+        error: AsmError {
+            kind: Instruction,
+            message: "FDBNE branch displacement must be even before applying the long-counter signal",
+        },
+    },
+]"#;
+        assert_eq!(
+            normalize_opforge_diagnostics(diagnostics),
+            NormalizedErrorClass::BranchOutOfRange
+        );
+    }
+
+    #[test]
     fn normalization_classifies_opforge_syntax_errors() {
         let diagnostics = r#"fixture.asm:1: ERROR [otp001]
     1 |     ,
@@ -320,6 +495,16 @@ ERROR: parser VM emitted diagnostic slot 0"#;
     }
 
     #[test]
+    fn normalization_classifies_vasm_movec_caar_unsupported_cpu_feature() {
+        let stderr =
+            "error 1 in line 4 of \"fixture.asm\": illegal operand types\n>    MOVEC CAAR,D0\n";
+        assert_eq!(
+            normalize_vasm_stderr(stderr),
+            NormalizedErrorClass::UnsupportedCpuFeature
+        );
+    }
+
+    #[test]
     fn normalization_extracts_useful_excerpt() {
         let stderr = "vasm 1.8g\n\nerror 2 in line 1 of \"fixture.asm\": unknown mnemonic <bogus>\n> bogus d0,d1\n";
         assert_eq!(
@@ -348,11 +533,11 @@ ERROR: parser VM emitted diagnostic slot 0"#;
 
     #[test]
     fn normalization_classifies_64tass_value_out_of_range() {
-        let stderr = "fixture.asm:1:14: error: too large for a 8 bit unsigned integer bits '$123'\n";
+        let stderr =
+            "fixture.asm:1:14: error: too large for a 8 bit unsigned integer bits '$123'\n";
         assert_eq!(
             normalize_64tass_stderr(stderr),
             NormalizedErrorClass::ValueOutOfRange
         );
     }
 }
-

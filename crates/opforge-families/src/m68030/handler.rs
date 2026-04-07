@@ -139,6 +139,7 @@ impl CpuHandler for M68030CpuHandler {
         family_operands: &[FamilyOperand],
         ctx: &dyn AssemblerContext,
     ) -> Result<Vec<Operand>, String> {
+        M68KFamilyHandler::validate_68080_register_compatibility(family_operands, ctx, "m68030")?;
         self.base.resolve_operands(mnemonic, family_operands, ctx)
     }
 
@@ -158,6 +159,19 @@ impl CpuHandler for M68030CpuHandler {
 
             if let Err(err) = self.handle_fpu_mnemonic(&parsed.display_name, ctx) {
                 return err;
+            }
+
+            if matches!(
+                parsed.kind,
+                FpuMnemonicKind::Floadi
+                    | FpuMnemonicKind::Fstorei
+                    | FpuMnemonicKind::Fmoverz
+                    | FpuMnemonicKind::Fmoveurz
+            ) {
+                return EncodeResult::error(format!(
+                    "{} is only supported on m68080",
+                    parsed.display_name
+                ));
             }
 
             return match parsed.kind {
@@ -210,6 +224,10 @@ impl CpuHandler for M68030CpuHandler {
                 | FpuMnemonicKind::Frestore => {
                     self.base.encode_instruction(mnemonic, operands, ctx)
                 }
+                FpuMnemonicKind::Floadi
+                | FpuMnemonicKind::Fstorei
+                | FpuMnemonicKind::Fmoverz
+                | FpuMnemonicKind::Fmoveurz => unreachable!(),
             };
         }
 

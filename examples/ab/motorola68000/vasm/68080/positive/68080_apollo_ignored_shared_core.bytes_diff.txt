@@ -1,0 +1,5 @@
+fixture: 68080-apollo-ignored-shared-core
+status: MATCH
+--- opforge  (10 bytes)
++++ oracle   (10 bytes)
+

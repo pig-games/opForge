@@ -14,6 +14,7 @@ pub mod m68010;
 pub mod m68020;
 pub mod m68030;
 pub mod m68040;
+pub mod m68080;
 pub mod m6809;
 pub mod m68k;
 pub mod mos6502;
@@ -60,6 +61,7 @@ pub fn register_motorola68000_family_stack(registry: &mut AsmRegistry) {
     registry.register_cpu(Box::new(m68020::module::M68020CpuModule));
     registry.register_cpu(Box::new(m68030::module::M68030CpuModule));
     registry.register_cpu(Box::new(m68040::module::M68040CpuModule));
+    registry.register_cpu(Box::new(m68080::module::M68080CpuModule));
 }
 
 pub fn register_mos6502_family_stack(registry: &mut AsmRegistry) {
@@ -158,6 +160,14 @@ mod tests {
         assert_eq!(
             registry.resolve_cpu_name("mc68040"),
             Some(CpuType::new("m68040"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68080"),
+            Some(CpuType::new("m68080"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68080"),
+            Some(CpuType::new("m68080"))
         );
         assert!(registry
             .family_ids()

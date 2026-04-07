@@ -6,12 +6,19 @@ It currently ships builtin support for:
 - Intel 8080 family processors: 8080 alias, 8085, and Z80
 - MOS 6502 family processors: 6502, 65C02, 65816, and 45GS02
 - Motorola 6800 family processors: 6809 and HD6309
-- Motorola 68000 family processors: `68000`, `68010`, `68020`, `68030`, and `68040` with the corresponding `m68000`/`mc68000` through `m68040`/`mc68040` aliases
+- Motorola 68000 family processors: `68000`, `68010`, `68020`, `68030`, `68040`, and `68080` with the corresponding `m68000`/`mc68000` through `m68080`/`mc68080` aliases
 
 Motorola 68000-family support now spans the shipped CPU lineage from `68000`
-through `68040`. `68010` keeps baseline `68000` addressing, `68020`/`68030`/
+through `68080`. `68010` keeps baseline `68000` addressing, `68020`/`68030`/
 `68040` add the shipped `68020+` full-extension addressing surface, and
 `68040` adds `MOVE16` while rejecting `CALLM`, `RTM`, and `MOVEC CAAR`.
+
+The shipped `68080` surface now includes the full currently documented integer,
+AMMX, and legacy FPU assembler-visible families in scope for this revision,
+including E/B register namespaces and `.fpu 68080`. `.cpu 68080` defaults to
+the Apollo-enabled full profile; `.apollo on` is accepted as an explicit no-op,
+and `.apollo off` is rejected deterministically because strict compatibility
+mode is not implemented in this full-profile build.
 
 The current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
 `68030` and `68040`, and the existing `68040` MMU-related `MOVEC` register

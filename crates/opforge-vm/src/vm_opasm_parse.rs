@@ -410,14 +410,29 @@ fn parse_instruction_at(
         })));
     }
 
-    let mnemonic = match tokens.get(idx) {
+    let (mnemonic, idx) = match tokens.get(idx) {
         Some(Token {
             kind: TokenKind::Identifier(name),
-            ..
-        }) => name.clone(),
+            span,
+        }) => {
+            let mut mnemonic = name.clone();
+            let mut next_idx = idx.saturating_add(1);
+            if mnemonic.to_ascii_uppercase().ends_with(".S")
+                && matches!(
+                    tokens.get(next_idx),
+                    Some(Token {
+                        kind: TokenKind::Operator(OperatorKind::Plus),
+                        span: plus_span,
+                    }) if plus_span.col_start == span.col_end
+                )
+            {
+                next_idx = next_idx.saturating_add(1);
+                mnemonic.push('+');
+            }
+            (mnemonic, next_idx)
+        }
         _ => return Ok(None),
     };
-    let idx = idx.saturating_add(1);
 
     let mut operands: Vec<Expr> = Vec::new();
     if idx < tokens.len() {

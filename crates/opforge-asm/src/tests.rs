@@ -2,6 +2,7 @@ use crate::engine::Assembler;
 use crate::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, Severity};
 use crate::line::{set_host_expr_eval_failpoint_for_tests, AsmLine};
 use crate::listing::ListingWriter;
+use crate::normalization::{normalize_opforge_diagnostics, NormalizedErrorClass};
 use crate::output::{
     build_export_sections_payloads, build_linker_output_payload, build_mapfile_text,
     ExportSectionsFormat, ExportSectionsInclude, LinkerOutputDirective, LinkerOutputFormat,
@@ -40,6 +41,7 @@ use families::m68010::module::CPU_ID as m68010_cpu_id;
 use families::m68020::module::CPU_ID as m68020_cpu_id;
 use families::m68030::module::CPU_ID as m68030_cpu_id;
 use families::m68040::module::CPU_ID as m68040_cpu_id;
+use families::m68080::module::CPU_ID as m68080_cpu_id;
 use families::m6809::module::CPU_ID as m6809_cpu_id;
 use families::z80::module::CPU_ID as z80_cpu_id;
 use families::{
@@ -2429,8 +2431,15 @@ fn cpusupport_report_has_stable_shape() {
     assert!(text.lines().any(|line| line.starts_with("cpu=m68020;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=m68030;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=m68040;")));
+    assert!(text.lines().any(|line| line.starts_with("cpu=m68080;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=m6809;")));
     assert!(text.lines().any(|line| line.starts_with("cpu=hd6309;")));
+    let m68080 = text
+        .lines()
+        .find(|line| line.starts_with("cpu=m68080;"))
+        .expect("m68080 cpusupport line");
+    assert!(m68080.contains("fpu_targets=none,68080"));
+    assert!(m68080.contains("extension_surfaces=apollo,ammx,fpu68080"));
 }
 
 #[test]
@@ -2446,6 +2455,7 @@ fn cpusupport_report_json_has_stable_shape() {
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m68020"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m68030"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m68040"));
+    assert!(cpus.iter().any(|entry| entry["cpu"] == "m68080"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "m6809"));
     assert!(cpus.iter().any(|entry| entry["cpu"] == "hd6309"));
     assert!(cpus
@@ -2455,7 +2465,10 @@ fn cpusupport_report_json_has_stable_shape() {
         .iter()
         .find(|entry| entry["cpu"] == "m68020")
         .expect("m68020 entry");
-    assert_eq!(m68020["runtime_directives"], serde_json::json!(["FPU"]));
+    assert_eq!(
+        m68020["runtime_directives"],
+        serde_json::json!(["APOLLO", "FPU"])
+    );
     assert_eq!(
         m68020["fpu_targets"],
         serde_json::json!(["none", "68881", "68882"])
@@ -2469,6 +2482,23 @@ fn cpusupport_report_json_has_stable_shape() {
         serde_json::json!(["movec-registers", "pflush"])
     );
     assert_eq!(m68040["fpu_targets"], serde_json::json!(["none", "68040"]));
+    let m68080 = cpus
+        .iter()
+        .find(|entry| entry["cpu"] == "m68080")
+        .expect("m68080 entry");
+    assert_eq!(
+        m68080["mmu_surface"],
+        serde_json::json!(["movec-registers", "pflush"])
+    );
+    assert_eq!(m68080["fpu_targets"], serde_json::json!(["none", "68080"]));
+    assert_eq!(
+        m68080["extension_surfaces"],
+        serde_json::json!(["apollo", "ammx", "fpu68080"])
+    );
+    assert_eq!(
+        m68080["scope_note"],
+        serde_json::json!("full-extension-addressing,move16,68080-full-extension-contract")
+    );
 }
 
 #[test]
@@ -2493,6 +2523,13 @@ fn capabilities_report_json_has_stable_shape() {
         .iter()
         .any(|entry| entry["cpu"] == "m68040"
             && entry["fpu_targets"] == serde_json::json!(["none", "68040"])));
+    assert!(value["cpusupport"]["cpus"]
+        .as_array()
+        .expect("cpus array")
+        .iter()
+        .any(|entry| entry["cpu"] == "m68080"
+            && entry["fpu_targets"] == serde_json::json!(["none", "68080"])
+            && entry["extension_surfaces"] == serde_json::json!(["apollo", "ammx", "fpu68080"])));
 }
 
 #[test]
@@ -2741,6 +2778,7 @@ fn hierarchy_package_resolves_m68k_lineage_pipelines() {
         ("68020", "mc68020", m68020_cpu_id),
         ("68030", "mc68030", m68030_cpu_id),
         ("68040", "mc68040", m68040_cpu_id),
+        ("68080", "mc68080", m68080_cpu_id),
     ];
 
     for (short_alias, mc_alias, cpu_id) in cases {
@@ -2766,6 +2804,7 @@ fn m68k_lineage_pipelines_report_expected_target_metadata() {
         (m68020_cpu_id, 0xFFFF_FFFF),
         (m68030_cpu_id, 0xFFFF_FFFF),
         (m68040_cpu_id, 0xFFFF_FFFF),
+        (m68080_cpu_id, 0xFFFF_FFFF),
     ];
 
     for (cpu_id, max_address) in cases {
@@ -2780,7 +2819,7 @@ fn m68k_lineage_pipelines_report_expected_target_metadata() {
 }
 
 #[test]
-fn m68k_lineage_runtime_directives_expose_fpu_selector() {
+fn m68k_lineage_runtime_directives_expose_fpu_and_apollo_selectors() {
     let registry = default_registry();
 
     for cpu_id in [
@@ -2789,12 +2828,1017 @@ fn m68k_lineage_runtime_directives_expose_fpu_selector() {
         m68020_cpu_id,
         m68030_cpu_id,
         m68040_cpu_id,
+        m68080_cpu_id,
     ] {
         assert_eq!(
             registry.cpu_runtime_directive_ids(cpu_id),
-            vec!["FPU".to_string()]
+            vec!["APOLLO".to_string(), "FPU".to_string()]
         );
     }
+}
+
+#[test]
+fn m68k_register_and_runtime_directive_slices() {
+    let (status, message) = assemble_line_status(m68040_cpu_id, "    MOVE.W E10,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected E/B register compatibility diagnostic");
+    assert!(
+        message.contains("requires .cpu 68080"),
+        "unexpected diagnostic: {message}"
+    );
+    assert!(
+        message.contains("m68040"),
+        "unexpected diagnostic: {message}"
+    );
+
+    let (status, message) = assemble_line_status(m68080_cpu_id, ".apollo on");
+    assert_eq!(status, LineStatus::Ok);
+    assert!(message.is_none());
+
+    let (status, message) = assemble_line_status(m68080_cpu_id, ".apollo off");
+    assert_eq!(status, LineStatus::Ok);
+    assert!(message.is_none());
+
+    let (status, message) = assemble_line_status(m68040_cpu_id, ".apollo on");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected .apollo non-68080 diagnostic");
+    assert!(message.contains("only supported on m68080"));
+    assert!(message.contains("m68040"));
+}
+
+#[test]
+fn m68080_integer_slice() {
+    let (status, message) = assemble_line_status(m68080_cpu_id, "    MOVEQ #1,D0");
+    assert_eq!(
+        status,
+        LineStatus::Ok,
+        "baseline m68080 dispatch failed: {message:?}"
+    );
+    let (status, message) = assemble_line_status(m68080_cpu_id, "    ADDI.L #1,D0");
+    assert_eq!(
+        status,
+        LineStatus::Ok,
+        "baseline ADDI.L failed: {message:?}"
+    );
+    let (status, message) = assemble_line_status(m68080_cpu_id, "    CMPI.L #1,D0");
+    assert_eq!(
+        status,
+        LineStatus::Ok,
+        "baseline CMPI.L failed: {message:?}"
+    );
+    let (status, message) = assemble_line_status(m68080_cpu_id, "    ADDIW.L #1,D0");
+    assert_eq!(
+        status,
+        LineStatus::Ok,
+        "single-line ADDIW.L on m68080 failed: {message:?}"
+    );
+    let (status, message) = assemble_line_status(m68080_cpu_id, "    CMPIW.L #1,D0");
+    assert_eq!(
+        status,
+        LineStatus::Ok,
+        "single-line CMPIW.L on m68080 failed: {message:?}"
+    );
+
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    MOVEQ #1,D0",
+        "    ADDIW.L #$1234,D0",
+        "    CMPIW.L #$0102,D1",
+        "    MOVEX.L D0,D1",
+        "    MOVEH (A0),D3",
+        "    MOVE2.W (A0),.pair(D2,D3)",
+        "    MOVZ2.W (A0),.pair(D4,D5)",
+        "    TOUCH (A1)",
+        "    MOVIW.L #$1122,D2",
+        "    MOV3Q #7,D3",
+        "    MOVS.B D0,D1",
+        "    MOVZ.W (A0),D2",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("m68080 representative integer slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0x70, 0x01, 0x06, 0xC0, 0x12, 0x34, 0x4E, 0x01, 0x01, 0x02, 0x0E, 0x80, 0x10, 0x10,
+            0x0E, 0x50, 0x30, 0x13, 0x0E, 0x50, 0x20, 0xE1, 0x0E, 0x50, 0x41, 0x52, 0xF6, 0x11,
+            0xA2, 0x02, 0x11, 0x22, 0xAE, 0x43, 0xA3, 0x00, 0xA5, 0xD0,
+        ]
+    );
+
+    let (status, message) = assemble_line_status(m68040_cpu_id, "    ADDIW.L #1,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected unsupported-cpu diagnostic for ADDIW");
+    assert!(message.contains("only supported on m68080"));
+
+    let default_off_source = [".cpu 68080", "    MOVIW.L #1,D0", "    MOVS.B D0,D1"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&default_off_source, false)
+            .expect("m68080 integer slice should report deterministic Apollo gating diagnostics");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| diag.contains("MOVIW is Apollo-gated on m68080; enable .apollo on")),
+        "unexpected default-off Apollo diagnostics: {diagnostics:?}"
+    );
+
+    let enabled_source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    MOVIW.L #1,D0",
+        "    MOVS.B D0,D1",
+    ];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
+        .expect("Apollo-enabled m68080 integer forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected Apollo-enabled integer diagnostics: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn m68080_word_extended_immediates_accept_high_bit_literals() {
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    ADDIW.L #$8001,D0",
+        "    CMPIW.L #$8001,(A0)",
+        "    MOVIW.L #$8123,D0",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("high-bit word-extended immediates should assemble on m68080");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected high-bit word-immediate diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![0x06, 0xC0, 0x80, 0x01, 0x4E, 0x10, 0x80, 0x01, 0xA2, 0x00, 0x81, 0x23]
+    );
+
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            ".cpu 68080",
+            "    ADDIW.L #$10000,D0",
+            "    CMPIW.L #-32769,(A0)",
+        ],
+        false,
+    )
+    .expect("out-of-range word-pattern immediates should produce diagnostics");
+    assert!(
+        diagnostics.iter().any(|diag| diag.contains(
+            "ADDIW immediate 65536 out of range for 16-bit word pattern (-32768..65535)"
+        )),
+        "missing ADDIW out-of-range diagnostic: {diagnostics:?}"
+    );
+    assert!(
+        diagnostics.iter().any(|diag| diag.contains(
+            "CMPIW immediate -32769 out of range for 16-bit word pattern (-32768..65535)"
+        )),
+        "missing CMPIW out-of-range diagnostic: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn m68080_ammx_full_extension_matrix() {
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    LOAD (A0),E0",
+        "    LOADI (A0),D1",
+        "    STORE D0,(A1)",
+        "    STOREI D0,(B1)",
+        "    STOREC D0,D1,(A2)",
+        "    STOREILM E8,E9,(B2)",
+        "    PADD.B E0,E1,E2",
+        "    PSUB.W E8,E9,E10",
+        "    PMUL88 D0,D1,D2",
+        "    PMULH D0,D1,D2",
+        "    PMULL D0,D1,D2",
+        "    PMULA D0,D1,D2",
+        "    PAND D0,D1,D2",
+        "    POR D0,D1,D2",
+        "    PEOR D0,D1,D2",
+        "    PANDN D0,D1,D2",
+        "    BSEL D0,D1,D2",
+        "    PCMPEQB D0,D1,D2",
+        "    PCMPHIB D0,D1,D2",
+        "    PCMPGEB D0,D1,D2",
+        "    PCMPGTB D0,D1,D2",
+        "    PCMPEQW D0,D1,D2",
+        "    PCMPHIW D0,D1,D2",
+        "    PCMPGEW D0,D1,D2",
+        "    PCMPGTW D0,D1,D2",
+        "    PACK3216 D0,D1,E2",
+        "    PACKUSWB D0,D1,(A2)",
+        "    UNPACK1632 D0,.pair(D2,D3)",
+        "    VPERM #$3210AB78,D0,E1,E6",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("full m68080 AMMX family matrix should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected AMMX diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xFE, 0x10, 0x08, 0x01, 0xFE, 0x10, 0x11, 0x01, 0xFE, 0x11, 0x00, 0x04, 0xFF, 0x11,
+            0x01, 0x04, 0xFE, 0x12, 0x01, 0x24, 0xFF, 0xD2, 0x01, 0x05, 0xFE, 0x08, 0x9A, 0x10,
+            0xFF, 0xC0, 0x12, 0x13, 0xFE, 0x00, 0x12, 0x18, 0xFE, 0x00, 0x12, 0x1A, 0xFE, 0x00,
+            0x12, 0x1B, 0xFE, 0x00, 0x12, 0x19, 0xFE, 0x00, 0x12, 0x08, 0xFE, 0x00, 0x12, 0x09,
+            0xFE, 0x00, 0x12, 0x0A, 0xFE, 0x00, 0x12, 0x0B, 0xFE, 0x00, 0x12, 0x29, 0xFE, 0x00,
+            0x12, 0x20, 0xFE, 0x00, 0x12, 0x22, 0xFE, 0x00, 0x12, 0x2C, 0xFE, 0x00, 0x12, 0x2E,
+            0xFE, 0x00, 0x12, 0x21, 0xFE, 0x00, 0x12, 0x23, 0xFE, 0x00, 0x12, 0x2D, 0xFE, 0x00,
+            0x12, 0x2F, 0xFE, 0x0A, 0x01, 0x07, 0xFE, 0x12, 0x01, 0x06, 0xFE, 0x00, 0x02, 0x1E,
+            0xFE, 0x3F, 0x9E, 0x00, 0x32, 0x10, 0xAB, 0x78,
+        ]
+    );
+
+    for line in [
+        "    LOADI (A0),D1",
+        "    STOREI D0,(A1)",
+        "    PAND D0,D1,D2",
+        "    UNPACK1632 D0,.pair(D2,D3)",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected unsupported-cpu diagnostic for `{line}`"
+        );
+        let message = message.expect("expected unsupported-cpu diagnostic for AMMX line");
+        assert!(
+            message.contains("m68080"),
+            "expected m68080-specific diagnostic for `{line}`: {message}"
+        );
+    }
+
+    let default_off_source = [".cpu 68080", "    PAND D0,D1,D2"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&default_off_source, false)
+            .expect("m68080 AMMX slice should report deterministic Apollo gating diagnostics");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| diag.contains("PAND is Apollo-gated on m68080; enable .apollo on")),
+        "unexpected default-off AMMX diagnostics: {diagnostics:?}"
+    );
+
+    let enabled_source = [".cpu 68080", "    .apollo on", "    PAND D0,D1,D2"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
+        .expect("Apollo-enabled m68080 AMMX forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected Apollo-enabled AMMX diagnostics: {diagnostics:?}"
+    );
+
+    let alias_source = [".cpu 68080", "    .apollo on", "    PACKUSBW D0,D1,(A2)"];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&alias_source, false)
+        .expect("PACKUSBW alias should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected alias diagnostics: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0xFE, 0x12, 0x01, 0x06]);
+
+    let invalid_shape = [".cpu 68080", "    .apollo on", "    PACKUSWB D0,D1,A2"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&invalid_shape, false)
+        .expect("assembly should complete with AMMX operand-shape diagnostics");
+    let shape = diagnostics
+        .iter()
+        .find(|diag| diag.contains("vector effective address"))
+        .cloned()
+        .unwrap_or_else(|| panic!("missing AMMX shape diagnostic: {diagnostics:?}"));
+    assert!(shape.contains("PACKUSWB"));
+    assert_eq!(
+        diagnostics
+            .iter()
+            .filter(|diag| diag.contains("vector effective address"))
+            .count(),
+        1,
+        "expected AMMX shape diagnostic to be deduplicated: {diagnostics:?}"
+    );
+
+    let invalid_even_pair = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    UNPACK1632 D0,.pair(D1,D2)",
+    ];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&invalid_even_pair, false)
+            .expect("assembly should complete with AMMX pair diagnostics");
+    let even_pair = diagnostics
+        .iter()
+        .find(|diag| diag.contains("must start at an even register"))
+        .cloned()
+        .unwrap_or_else(|| panic!("missing AMMX even-pair diagnostic: {diagnostics:?}"));
+    assert!(even_pair.contains("UNPACK1632"));
+
+    let invalid_consecutive_pair = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    UNPACK1632 D0,.pair(D2,D4)",
+    ];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&invalid_consecutive_pair, false)
+            .expect("assembly should complete with AMMX pair diagnostics");
+    let consecutive = diagnostics
+        .iter()
+        .find(|diag| diag.contains("must be consecutive"))
+        .cloned()
+        .unwrap_or_else(|| panic!("missing AMMX consecutive-pair diagnostic: {diagnostics:?}"));
+    assert!(consecutive.contains("UNPACK1632"));
+
+    let invalid_size = [".cpu 68080", "    .apollo on", "    LOADI.W (A0),D1"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&invalid_size, false)
+        .expect("assembly should complete with AMMX size diagnostics");
+    let size = diagnostics
+        .iter()
+        .find(|diag| diag.contains("does not accept a size suffix"))
+        .cloned()
+        .unwrap_or_else(|| panic!("missing AMMX size diagnostic: {diagnostics:?}"));
+    assert!(size.contains("LOADI"));
+
+    let selector_bytes_source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    LOADI (A0),D1",
+        "    LOADI (A0),E7",
+        "    STOREI D0,(A1)",
+        "    STOREI E8,(B1)",
+    ];
+    let (entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&selector_bytes_source, false)
+            .expect("selector-carrier AMMX LOADI/STOREI forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected selector-carrier diagnostics: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xFE, 0x10, 0x11, 0x01, 0xFE, 0x10, 0x1F, 0x01, 0xFE, 0x11, 0x01, 0x04, 0xFF, 0x91,
+            0x01, 0x04,
+        ]
+    );
+
+    for line in ["    LOADI (A0),A1", "    STOREI B0,(A1)"] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+            &[".cpu 68080", "    .apollo on", line],
+            false,
+        )
+        .expect("assembly should complete with selector-register diagnostics");
+        let selector = diagnostics
+            .iter()
+            .find(|diag| diag.contains("selector register must be D0-D7 or E0-E23"))
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!("missing selector-register diagnostic for `{line}`: {diagnostics:?}")
+            });
+        assert!(selector.contains("modulo 64 to D/A/B/E banks"));
+    }
+
+    let expanded_vea_source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    LOAD 6(A0),E0",
+        "    LOAD 4(B1),E1",
+        "    LOAD 0(A2,D3.W),E2",
+        "    LOAD 6(B3,D4.W),E3",
+        "    LOAD target(PC),E4",
+        "    LOAD 0(PC,D5.W),E5",
+        "    LOAD $1234.W,E6",
+        "    LOAD $00123456.L,E7",
+        "    STORE E8,4(B2)",
+        "    STORE E9,0(A0,D1.W)",
+        "    STORE E10,$4321.W",
+        "target:",
+    ];
+    let (entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&expanded_vea_source, false)
+            .expect("expanded AMMX vector effective-address forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected expanded AMMX VEA diagnostics: {diagnostics:?}"
+    );
+    assert!(
+        !entries.is_empty(),
+        "expected emitted bytes for expanded AMMX vector effective-address forms"
+    );
+
+    let invalid_vperm = [".cpu 68080", "    .apollo on", "    VPERM D0,E1,E6"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&invalid_vperm, false)
+        .expect("assembly should complete with AMMX operand-shape diagnostics");
+    let vperm = diagnostics
+        .iter()
+        .find(|diag| diag.contains("expects four operands"))
+        .cloned()
+        .unwrap_or_else(|| panic!("missing AMMX VPERM diagnostic: {diagnostics:?}"));
+    assert!(vperm.contains("VPERM"));
+}
+
+#[test]
+fn m68080_ammx_alias_and_saturated_arithmetic_slice() {
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    PADDB D0,D1,D2",
+        "    PADDW D0,D1,D2",
+        "    PADDUSB D0,D1,D2",
+        "    PADDUSW D0,D1,D2",
+        "    PSUBB D0,D1,D2",
+        "    PSUBW D0,D1,D2",
+        "    PSUBUSB D0,D1,D2",
+        "    PSUBUSW D0,D1,D2",
+        "    PAVGB D0,D1,D2",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 AMMX alias and saturated arithmetic slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected AMMX alias diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xFE, 0x00, 0x12, 0x10, 0xFE, 0x00, 0x12, 0x11, 0xFE, 0x00, 0x12, 0x14, 0xFE, 0x00,
+            0x12, 0x15, 0xFE, 0x00, 0x12, 0x12, 0xFE, 0x00, 0x12, 0x13, 0xFE, 0x00, 0x12, 0x16,
+            0xFE, 0x00, 0x12, 0x17, 0xFE, 0x00, 0x12, 0x0C,
+        ]
+    );
+
+    for line in [
+        "    PADDB D0,D1,D2",
+        "    PADDUSB D0,D1,D2",
+        "    PSUBUSB D0,D1,D2",
+        "    PAVGB D0,D1,D2",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected unsupported-cpu diagnostic for `{line}`"
+        );
+        let message = message.expect("expected unsupported-cpu diagnostic for AMMX alias line");
+        assert!(message.contains("m68080"), "{message}");
+    }
+
+    for line in ["    PADDB.B D0,D1,D2", "    PAVGB.B D0,D1,D2"] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+            &[".cpu 68080", "    .apollo on", line],
+            false,
+        )
+        .expect("assembly should complete with AMMX alias size diagnostics");
+        let message = diagnostics
+            .iter()
+            .find(|diag| diag.contains("does not accept a size suffix"))
+            .cloned()
+            .unwrap_or_else(|| panic!("missing AMMX alias size diagnostic: {diagnostics:?}"));
+        assert!(
+            message.contains("does not accept a size suffix"),
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn m68080_ammx_fixed_opcode_compare_and_shift_slice() {
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    PMINSB D0,D1,D2",
+        "    PMINSW D0,D1,D2",
+        "    PMINUB D0,D1,D2",
+        "    PMINUW D0,D1,D2",
+        "    PMAXSB D0,D1,D2",
+        "    PMAXSW D0,D1,D2",
+        "    PMAXUB D0,D1,D2",
+        "    PMAXUW D0,D1,D2",
+        "    LSLQ D0,D1,D2",
+        "    LSRQ D0,D1,D2",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 fixed-opcode AMMX compare and shift slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected WI-3 AMMX diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xFE, 0x00, 0x12, 0x30, 0xFE, 0x00, 0x12, 0x31, 0xFE, 0x00, 0x12, 0x32, 0xFE, 0x00,
+            0x12, 0x33, 0xFE, 0x00, 0x12, 0x34, 0xFE, 0x00, 0x12, 0x35, 0xFE, 0x00, 0x12, 0x36,
+            0xFE, 0x00, 0x12, 0x37, 0xFE, 0x00, 0x12, 0x38, 0xFE, 0x00, 0x12, 0x39,
+        ]
+    );
+
+    for line in [
+        "    PMINSB D0,D1,D2",
+        "    PMAXUW D0,D1,D2",
+        "    LSLQ D0,D1,D2",
+        "    LSRQ D0,D1,D2",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected unsupported-cpu diagnostic for `{line}`"
+        );
+        let message = message.expect("expected unsupported-cpu diagnostic for WI-3 AMMX line");
+        assert!(message.contains("m68080"), "{message}");
+    }
+}
+
+#[test]
+fn m68080_ammx_pair_and_group_slice() {
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    BFLYB D0,D1,.pair(D2,D3)",
+        "    BFLYW D0,D1,.pair(D2,D3)",
+        "    C2P D0,D2",
+        "    MINTERM D0-D3,D4",
+        "    TRANSHI D0-D3,.pair(D4,D5)",
+        "    TRANSLO D0-D3,.pair(D4,D5)",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 AMMX pair/group slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected WI-4 AMMX diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xFE, 0x00, 0x12, 0x1C, 0xFE, 0x00, 0x12, 0x1D, 0xFE, 0x00, 0x08, 0xA8, 0xFE, 0x00,
+            0x10, 0xAA, 0xFE, 0x00, 0x10, 0x02, 0xFE, 0x00, 0x10, 0x03,
+        ]
+    );
+
+    for line in [
+        "    BFLYB D0,D1,.pair(D2,D3)",
+        "    C2P D0,D2",
+        "    MINTERM D0-D3,D4",
+        "    TRANSHI D0-D3,.pair(D4,D5)",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected unsupported-cpu diagnostic for `{line}`"
+        );
+        let message = message.expect("expected unsupported-cpu diagnostic for WI-4 AMMX line");
+        assert!(message.contains("m68080"), "{message}");
+    }
+
+    for (line, expected) in [
+        (
+            "    BFLYB D0,D1,.pair(D1,D2)",
+            "destination pair must start at an even register",
+        ),
+        (
+            "    TRANSHI D0-D3,.pair(D4,D6)",
+            "destination pair must be consecutive",
+        ),
+        (
+            "    MINTERM D1-D4,D4",
+            "source group must start at a multiple-of-four register",
+        ),
+        (
+            "    TRANSLO D0-D2,.pair(D4,D5)",
+            "source group must cover four consecutive registers",
+        ),
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+            &[".cpu 68080", "    .apollo on", line],
+            false,
+        )
+        .expect("assembly should complete with WI-4 shape diagnostics");
+        let message = diagnostics
+            .iter()
+            .find(|diag| diag.contains(expected))
+            .cloned()
+            .unwrap_or_else(|| panic!("missing WI-4 shape diagnostic: {diagnostics:?}"));
+        assert!(message.contains(expected), "{message}");
+    }
+}
+
+#[test]
+fn m68080_ammx_special_memory_slice() {
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    STOREM D0,D1,(A0)",
+        "    STOREM3 D0,#3,(A0)",
+        "    STOREM3 D0,D2,(A0)",
+        "    TEX8.512 (A0,(A1,A2)),D0",
+        "    TEX16.256 (A0,(A1,A2)),D1",
+        "    TEX24.64 (A0,(A1,A2))*D0,D2",
+        "    TEX.B (A0,A1*D3,A2),D4",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 AMMX special memory slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected WI-5 AMMX diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xFE, 0x10, 0x01, 0x25, 0xFE, 0x10, 0x03, 0x25, 0xFE, 0x10, 0x02, 0x25, 0xFE, 0x30,
+            0x20, 0x3E, 0x98, 0x60, 0xFE, 0x30, 0x21, 0x3E, 0x9A, 0x51, 0xFE, 0x30, 0x22, 0x3E,
+            0x9E, 0x82, 0xFE, 0x30, 0x24, 0x3E, 0x90, 0x30,
+        ]
+    );
+
+    for line in [
+        "    STOREM D0,D1,(A0)",
+        "    STOREM3 D0,#3,(A0)",
+        "    TEX8.512 (A0,(A1,A2)),D0",
+        "    TEX.B (A0,A1*D3,A2),D4",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected unsupported-cpu diagnostic for `{line}`"
+        );
+        let message = message.expect("expected unsupported-cpu diagnostic for WI-5 AMMX line");
+        assert!(message.contains("m68080"), "{message}");
+    }
+
+    for (line, expected) in [
+        (
+            "    STOREM3 D0,#4,(A0)",
+            "STOREM3 mode must be in range 0-3",
+        ),
+        (
+            "    STOREM3 D0,D4,(A0)",
+            "STOREM3 mode must be in range 0-3",
+        ),
+        (
+            "    TEX8.512 (A0,A1,A2),D0",
+            "TEX8.512 source must use (An,(Av,Au)) syntax",
+        ),
+        (
+            "    TEX24.64 (A0,(A1,A2))*D1,D0",
+            "TEX24.64 source must use (An,(Av,Au))*D0 syntax",
+        ),
+        (
+            "    TEX.B (A0,(A1,A2)),D0",
+            "TEX.B source must use (An,Av*Dm,Au) syntax",
+        ),
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+            &[".cpu 68080", "    .apollo on", line],
+            false,
+        )
+        .expect("assembly should complete with WI-5 shape diagnostics");
+        let message = diagnostics
+            .iter()
+            .find(|diag| diag.contains(expected))
+            .cloned()
+            .unwrap_or_else(|| panic!("missing WI-5 shape diagnostic: {diagnostics:?}"));
+        assert!(message.contains(expected), "{message}");
+    }
+}
+
+#[test]
+fn m68080_b_register_integer_slice() {
+    let source = [
+        ".cpu 68080",
+        "    ADDQ.L #1,B0",
+        "    SUBQ.L #8,B7",
+        "    CMP.L B2,D3",
+        "    LEA 1(A0),B1",
+        "    LEA (B2),A3",
+        "    MOVE.L B0,D1",
+        "    MOVE.L D0,B4",
+        "    MOVEA.L D0,B5",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 B-register integer slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected WI-6 B-register diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0x52, 0x08, 0x51, 0x0F, 0xC7, 0x82, 0x43, 0x68, 0x00, 0x01, 0x47, 0xCA, 0x12, 0x08,
+            0x18, 0x40, 0x1A, 0x40,
+        ]
+    );
+
+    for line in [
+        "    ADDQ.L #1,B0",
+        "    CMP.L B2,D3",
+        "    LEA 1(A0),B1",
+        "    MOVE.L B0,D1",
+        "    MOVEA.L D0,B5",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected unsupported-cpu diagnostic for `{line}`"
+        );
+        let message = message.expect("expected unsupported-cpu diagnostic for WI-6 line");
+        assert!(message.contains("requires .cpu 68080"), "{message}");
+    }
+
+    for (line, expected) in [
+        (
+            "    ADDQ.W #1,B0",
+            "ADDQ B-register destination requires .L size on m68080",
+        ),
+        (
+            "    CMP.W B0,D0",
+            "CMP B-register source requires .L size on m68080",
+        ),
+        ("    LEA (B0),B1", "LEA (Bn),Bm is not supported on m68080"),
+        (
+            "    MOVE.L B0,B1",
+            "MOVE does not support Bn-to-Bn transfers on m68080",
+        ),
+        (
+            "    MOVEA.L B0,B1",
+            "MOVEA.L Bn,Bm is not supported on m68080",
+        ),
+    ] {
+        let (status, message) = assemble_line_status(m68080_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected WI-6 legality rejection for `{line}`"
+        );
+        let message = message.expect("expected WI-6 legality diagnostic");
+        assert!(message.contains(expected), "{message}");
+    }
+}
+
+#[test]
+fn m68080_integer_extension_slice() {
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    CLR.Q D2",
+        "    EXTUB.L E8",
+        "    EXTUW.L D1",
+        "    PERM #$ABC,D0,E1",
+        "    MOVEC PCR,D0",
+        "    MOVEC D1,MWR",
+        "    MOVE SR,E0",
+        "    MOVE16 ($1234).L,(A1)",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 integer extension slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected WI-7 integer-extension diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xAE, 0x02, 0x71, 0x0A, 0x4B, 0xC0, 0x4D, 0xC1, 0x71, 0x01, 0x4C, 0xC0, 0x1A, 0xBC,
+            0x4E, 0x7A, 0x08, 0x08, 0x4E, 0x7B, 0x10, 0x0E, 0x71, 0x05, 0x40, 0xC0, 0xF6, 0x19,
+            0x00, 0x00, 0x12, 0x34,
+        ]
+    );
+
+    let (status, message) = assemble_line_status(m68040_cpu_id, "    MOVEC PCR,D0");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected unsupported MOVEC control-register diagnostic");
+    assert!(message.contains("unsupported MOVEC control register for m68040"));
+
+    for (line, expected) in [
+        ("    EXTUB.W D0", "EXTUB does not support .W size"),
+        ("    EXTUW D1", "EXTUW requires an explicit .L size"),
+        (
+            "    PERM #$1000,D0,D1",
+            "PERM selector 4096 out of range (0-4095)",
+        ),
+        (
+            "    PERM #1,(A0),D1",
+            "PERM left register must be D0-D7 or A0-A7",
+        ),
+        ("    MOVE.L SR,E0", "MOVE SR does not support .L size"),
+    ] {
+        let (status, message) = assemble_line_status(m68080_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected WI-7 legality rejection for `{line}`"
+        );
+        let message = message.expect("expected WI-7 legality diagnostic");
+        assert!(message.contains(expected), "{message}");
+    }
+}
+
+#[test]
+fn m68080_generated_bank_prefix_cases() {
+    let source = [
+        ".cpu 68080",
+        "    MOVE SR,E0",
+        "    EXTUB.L E8",
+        "    EXTUW.L E16",
+        "    PERM #$ABC,E0,D1",
+        "    PERM #$ABC,D0,E1",
+        "    PERM #$ABC,E8,E16",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 BANK-prefix cases should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected generated BANK-prefix diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0x71, 0x05, 0x40, 0xC0, 0x71, 0x0A, 0x4B, 0xC0, 0x71, 0x0F, 0x4D, 0xC0, 0x71, 0x04,
+            0x4C, 0xC0, 0x1A, 0xBC, 0x71, 0x01, 0x4C, 0xC0, 0x1A, 0xBC, 0x71, 0x0B, 0x4C, 0xC0,
+            0x0A, 0xBC,
+        ]
+    );
+}
+
+#[test]
+fn m68080_branch_extension_slice() {
+    let source = [
+        ".cpu 68080",
+        "    DBRA.L D1,after_dbra",
+        "    NOP",
+        "after_dbra:",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 DBRA.L slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected WI-8 branch-extension diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0x51, 0xC9, 0x00, 0x07, 0x4E, 0x71]);
+
+    assert_eq!(
+        assemble_bytes(m68080_cpu_id, "    BRA.S+ $0082"),
+        vec![0x60, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68080_cpu_id, "    BSR.S+ $0082"),
+        vec![0x61, 0x01]
+    );
+    assert_eq!(
+        assemble_bytes(m68080_cpu_id, "    BNE.S+ $0084"),
+        vec![0x66, 0x03]
+    );
+
+    let (status, message) = assemble_line_status(m68040_cpu_id, "    DBRA.L D1,$0000");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected unsupported DBRA.L diagnostic on m68040");
+    assert!(
+        message.contains("does not accept a size suffix"),
+        "{message}"
+    );
+
+    let (status, message) = assemble_line_status(m68040_cpu_id, "    BRA.S+ $0082");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected unsupported BRA.S+ diagnostic on m68040");
+    assert!(
+        message.contains("unsupported size suffix") || message.contains("does not support"),
+        "{message}"
+    );
+
+    let (status, message) = assemble_line_status(m68080_cpu_id, "    DBRA.L D1,$0001");
+    assert_eq!(status, LineStatus::Error);
+    let message = message.expect("expected odd-displacement DBRA.L diagnostic");
+    assert!(
+        message.contains("must be even before applying the long-counter signal"),
+        "{message}"
+    );
+
+    for line in ["    BRA.S+ $0083", "    BNE.S+ $0085"] {
+        let (status, message) = assemble_line_status(m68080_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected odd-displacement failure for `{line}`"
+        );
+        let message = message.expect("expected odd-displacement branch diagnostic");
+        assert!(message.contains("must be even on m68080"), "{message}");
+    }
+
+    for line in ["    BRA.S+ $0004", "    BSR.S+ $0080"] {
+        let (status, message) = assemble_line_status(m68080_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected range failure for `{line}`"
+        );
+        let message = message.expect("expected extended-short range diagnostic");
+        assert!(
+            message.contains("extended-short displacement out of range"),
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn m68080_integer_full_extension_matrix() {
+    for line in [
+        "    MOVE2.W (A0),.pair(D1,D2)",
+        "    MOVEX.L D0,D1",
+        "    MOVEH (A0),D1",
+        "    MOVZ2.B (A0),.pair(D1,D2)",
+        "    TOUCH (A0)",
+    ] {
+        let (status, message) = assemble_line_status(m68040_cpu_id, line);
+        assert_eq!(
+            status,
+            LineStatus::Error,
+            "expected unsupported-cpu diagnostic for `{line}`"
+        );
+        let message = message.expect("expected unsupported-cpu diagnostic");
+        assert!(message.contains("supported on m68080"), "{message}");
+    }
+
+    for (line, expected) in [
+        ("    MOVE2 (A0),.pair(D1,D2)", "requires an explicit"),
+        ("    MOVEX D0,D1", "requires an explicit .W or .L"),
+        ("    MOVEH.W (A0),D1", "does not accept a size suffix"),
+        ("    MOVZ2.L (A0),.pair(D1,D2)", "requires .B or .W"),
+        ("    TOUCH D0", "address-indirect or indexed"),
+        (
+            "    MOVE2.W D0,.pair(D1,D2)",
+            "invalid source effective address",
+        ),
+        ("    MOVEH D0,D1", "invalid source effective address"),
+    ] {
+        let (status, message) = assemble_line_status(m68080_cpu_id, line);
+        assert_eq!(status, LineStatus::Error, "expected failure for `{line}`");
+        let message = message.expect("expected deterministic operand diagnostic");
+        assert!(
+            message.contains(expected),
+            "unexpected diagnostic for `{line}`: {message}"
+        );
+    }
+
+    let default_off_source = [".cpu 68080", "    MOVS.B D0,D1"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&default_off_source, false)
+            .expect("m68080 integer form should report deterministic Apollo gating diagnostics");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diag| diag.contains("MOVS is Apollo-gated on m68080; enable .apollo on")),
+        "unexpected default-off integer diagnostics: {diagnostics:?}"
+    );
+
+    let enabled_source = [".cpu 68080", "    .apollo on", "    MOVS.B D0,D1"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
+        .expect("Apollo-enabled m68080 integer forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected Apollo-enabled integer diagnostics: {diagnostics:?}"
+    );
 }
 
 #[test]
@@ -2807,6 +3851,7 @@ fn m68k_fpu_directive_accepts_only_legal_cpu_pairings() {
         (m68030_cpu_id, ".fpu 68881"),
         (m68030_cpu_id, ".fpu 68882"),
         (m68040_cpu_id, ".fpu 68040"),
+        (m68080_cpu_id, ".fpu 68080"),
     ];
 
     for (cpu, line) in legal_cases {
@@ -2821,6 +3866,8 @@ fn m68k_fpu_directive_accepts_only_legal_cpu_pairings() {
         (m68020_cpu_id, ".fpu 68040", "m68020", "68040"),
         (m68030_cpu_id, ".fpu 68040", "m68030", "68040"),
         (m68040_cpu_id, ".fpu 68881", "m68040", "68881"),
+        (m68080_cpu_id, ".fpu 68881", "m68080", "68881"),
+        (m68040_cpu_id, ".fpu 68080", "m68040", "68080"),
     ];
 
     for (cpu, line, cpu_name, fpu_name) in illegal_cases {
@@ -2862,6 +3909,7 @@ fn m68k_fpu_mnemonics_fail_explicitly_when_fpu_is_disabled() {
         ([".cpu 68020", "    FMOVE FP0,FP1"], "m68020", "FMOVE"),
         ([".cpu 68030", "    FADD FP0,FP1"], "m68030", "FADD"),
         ([".cpu 68040", "    FSIN FP0,FP1"], "m68040", "FSIN"),
+        ([".cpu 68080", "    FSIN FP0,FP1"], "m68080", "FSIN"),
     ] {
         let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
             .expect("assembly should finish with diagnostics");
@@ -2877,11 +3925,404 @@ fn m68k_fpu_mnemonics_fail_explicitly_when_fpu_is_disabled() {
 }
 
 #[test]
+fn m68080_fpu_requires_legal_target_and_encodes_legacy_surface() {
+    let enabled_source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FNOP",
+        "    FMOVE FP0,FP1",
+        "    FMOVECR #11,FP0",
+        "    FSIN FP0,FP1",
+        "    FSINCOS FP0,.pair(FP1,FP2)",
+        "    FETOX FP0,FP1",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
+        .expect("68080 FPU legacy surface should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for 68080 FPU slice: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xF2, 0x80, 0x00, 0x00, 0xF2, 0x00, 0x00, 0x80, 0xF2, 0x00, 0x5C, 0x0B, 0xF2, 0x00,
+            0x00, 0x8E, 0xF2, 0x00, 0x01, 0x31, 0xF2, 0x00, 0x00, 0x90,
+        ]
+    );
+
+    let wrong_target_source = [".cpu 68080", ".fpu 68881", "    FMOVE FP0,FP1"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&wrong_target_source, false)
+            .expect("assembly should finish with .fpu pairing diagnostics");
+    let pairing = diagnostics
+        .iter()
+        .find(|diag| diag.contains("FPU target 68881 is not supported on m68080"))
+        .cloned()
+        .unwrap_or_else(|| panic!("missing m68080 .fpu pairing diagnostic: {diagnostics:?}"));
+    assert!(pairing.contains("68080"), "{pairing}");
+}
+
+#[test]
+fn m68080_fpu_invalid_forms_report_68080_wording() {
+    let source = [".cpu 68080", ".fpu 68080", "    FSIN FP0,D0"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("assembly should finish with diagnostics");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diag| diag.contains("FSIN currently supports FP-register forms"))
+        .unwrap_or_else(|| panic!("missing 68080 FPU operand diagnostic: {diagnostics:?}"));
+    assert!(diagnostic.contains("m68080"), "{diagnostic}");
+    assert!(!diagnostic.contains("m68020"), "{diagnostic}");
+}
+
+#[test]
+fn m68080_fpu_immediate_integer_literals_encode() {
+    let source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FADD.D #1,FP0",
+        "    FMOVE.X #1,FP0",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 FPU immediate literals should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for 68080 FPU immediate literals: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xF2, 0x3C, 0x44, 0x22, 0x3F, 0x80, 0x00, 0x00, 0xF2, 0x3C, 0x44, 0x00, 0x3F, 0x80,
+            0x00, 0x00,
+        ]
+    );
+}
+
+#[test]
+fn m68080_fdbcc_long_counter_slice() {
+    let enabled_source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FDBNE.L D0,after_fdb_long",
+        "after_fdb_long:",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
+        .expect("68080 FDBcc.L slice should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for 68080 FDBcc.L slice: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0xF2, 0x48, 0x00, 0x0E, 0x00, 0x07]);
+
+    let disabled_source = [
+        ".cpu 68040",
+        ".fpu 68040",
+        "    FDBNE.L D0,after_fdb_long",
+        "after_fdb_long:",
+    ];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&disabled_source, false)
+            .expect("assembly should finish with non-68080 FDBcc.L diagnostics");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diag| diag.contains("does not accept a size suffix"))
+        .unwrap_or_else(|| panic!("missing FDBcc.L size-suffix diagnostic: {diagnostics:?}"));
+    assert!(diagnostic.contains("FDBNE"), "{diagnostic}");
+
+    let odd_displacement_source = [".cpu 68080", ".fpu 68080", "    FDBNE.L D0,$0007"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&odd_displacement_source, false)
+            .expect("assembly should finish with odd-displacement FDBcc.L diagnostics");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diag| diag.contains("must be even before applying the long-counter signal"))
+        .unwrap_or_else(|| panic!("missing odd-displacement FDBcc.L diagnostic: {diagnostics:?}"));
+    assert!(diagnostic.contains("FDBNE"), "{diagnostic}");
+}
+
+#[test]
+fn m68080_fpu_explicit_immediate_literal_suffixes_encode() {
+    let source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FADD.D #1.d,FP0",
+        "    FMOVE.S #1.s,FP0",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 explicit FPU literal suffixes should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for explicit 68080 FPU literal suffixes: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0xF2, 0x3C, 0x54, 0x22, 0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF2, 0x3C,
+            0x44, 0x00, 0x3F, 0x80, 0x00, 0x00,
+        ]
+    );
+}
+
+#[test]
+fn m68080_fpu_extended_immediate_literal_suffix_is_still_documented_gap() {
+    let source = [".cpu 68080", ".fpu 68080", "    FMOVE.X #1.x,FP0"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("assembly should complete with extended FPU literal diagnostics");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diag| {
+            diag.contains(
+                "extended floating-point immediate literals are not yet implemented on m68080",
+            )
+        })
+        .unwrap_or_else(|| {
+            panic!("missing explicit m68080 .X literal gap diagnostic: {diagnostics:?}")
+        });
+    assert!(diagnostic.contains("m68080"), "{diagnostic}");
+}
+
+#[test]
+fn m68080_ammx_load_word_immediate_encodes() {
+    let source = [".cpu 68080", "    .apollo on", "    LOAD.W #$1234,D1"];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("AMMX LOAD.W immediate should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for AMMX LOAD.W immediate: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0xFF, 0x3C, 0x01, 0x01, 0x12, 0x34]);
+
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[".cpu 68080", "    .apollo on", "    LOAD #$1234,D1"],
+        false,
+    )
+    .expect("assembly should finish with AMMX LOAD immediate diagnostics");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diag| diag.contains("requires .W size"))
+        .unwrap_or_else(|| panic!("missing LOAD.W size diagnostic: {diagnostics:?}"));
+    assert!(
+        diagnostic.contains("LOAD immediate source requires .W size"),
+        "{diagnostic}"
+    );
+}
+
+#[test]
+fn m68080_ammx_generic_immediate_vea_encodes() {
+    let source = [
+        ".cpu 68080",
+        "    .apollo on",
+        "    PADD.B #$1234,D1,D2",
+        "    PADD.W #$1234,D1,D2",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("AMMX generic immediate VEA forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for AMMX generic immediate VEA forms: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![0xFE, 0x3C, 0x12, 0x10, 0x12, 0x34, 0xFF, 0x3C, 0x12, 0x11, 0x12, 0x34,]
+    );
+}
+
+#[test]
+fn m68080_floadi_and_fstorei_encode_with_68080_only_gating() {
+    let enabled_source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FLOADI.D D0,FP0",
+        "    FSTOREI.X FP1,D1",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
+        .expect("68080 FLOADI/FSTOREI should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for 68080 FLOADI/FSTOREI: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0xF2, 0x00, 0x54, 0x00, 0xF2, 0x01, 0x68, 0x80]);
+
+    for source in [
+        [".cpu 68020", ".fpu 68881", "    FLOADI.D D0,FP0"],
+        [".cpu 68030", ".fpu 68882", "    FSTOREI.X FP1,D1"],
+        [".cpu 68040", ".fpu 68040", "    FLOADI.D D0,FP0"],
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with 68080-only gating diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("is only supported on m68080"))
+            .unwrap_or_else(|| panic!("missing 68080-only gating diagnostic: {diagnostics:?}"));
+        assert!(diagnostic.contains("m68080"), "{diagnostic}");
+    }
+}
+
+#[test]
+fn m68080_banked_fpu_three_operand_forms_encode() {
+    let source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FMUL.W E4,FP3,E5",
+        "    FADD.W D0,E1,E2",
+        "    FCMP.W E4,FP3,E5",
+        "    FSCALE E4,FP3,E5",
+        "    FREM E4,FP3,E5",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 banked three-operand FPU forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for 68080 banked three-operand FPU forms: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![
+            0x7D, 0x54, 0xF2, 0x04, 0x51, 0xA3, 0x77, 0x41, 0xF2, 0x00, 0x50, 0xA2, 0x7D, 0x54,
+            0xF2, 0x04, 0x51, 0xB8, 0x7D, 0x54, 0xF2, 0x00, 0x11, 0xA6, 0x7D, 0x54, 0xF2, 0x00,
+            0x11, 0xA5,
+        ]
+    );
+}
+
+#[test]
+fn m68080_fmove_double_data_register_forms_encode_with_68080_only_gating() {
+    let enabled_source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FMOVE.D D0,FP0",
+        "    FMOVE.D FP1,D1",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
+        .expect("68080 FMOVE.D data-register forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for 68080 FMOVE.D data-register forms: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0xF2, 0x00, 0x54, 0x00, 0xF2, 0x01, 0x74, 0x80]);
+
+    for source in [
+        [".cpu 68020", ".fpu 68881", "    FMOVE.D D0,FP0"],
+        [".cpu 68030", ".fpu 68882", "    FMOVE.D FP1,D1"],
+        [".cpu 68040", ".fpu 68040", "    FMOVE.D D0,FP0"],
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with non-68080 FMOVE.D diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| {
+                diag.contains("invalid source effective address for FMOVE.D")
+                    || diag.contains("invalid destination effective address for FMOVE.D")
+            })
+            .unwrap_or_else(|| panic!("missing FMOVE.D data-register diagnostic: {diagnostics:?}"));
+        assert!(diagnostic.contains("FMOVE.D"), "{diagnostic}");
+    }
+}
+
+#[test]
+fn m68080_fmovem_surface_keeps_existing_encoding() {
+    let source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FMOVEM FP0/FP2,(A0)",
+        "    FMOVEM (A0)+,FP1/FP3",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("68080 FMOVEM surface should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for 68080 FMOVEM surface: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0xF2, 0x10, 0xF0, 0x05, 0xF2, 0x18, 0xD0, 0x0A]);
+}
+
+#[test]
+fn m68080_regression_slice_normalizes_new_diagnostics() {
+    for (cpu, line, expected_class) in [
+        (
+            m68040_cpu_id,
+            "    MOVE2.W (A0),.pair(D1,D2)",
+            NormalizedErrorClass::UnsupportedCpuFeature,
+        ),
+        (
+            m68080_cpu_id,
+            "    DBRA.L D1,$0001",
+            NormalizedErrorClass::BranchOutOfRange,
+        ),
+    ] {
+        let (status, message) = assemble_line_status(cpu, line);
+        assert_eq!(status, LineStatus::Error, "expected failure for `{line}`");
+        let message = message.expect("expected diagnostic text");
+        assert_eq!(
+            normalize_opforge_diagnostics(&message),
+            expected_class,
+            "unexpected normalized class for `{line}`: {message}"
+        );
+    }
+
+    let fmoved_source = [".cpu 68040", ".fpu 68040", "    FMOVE.D D0,FP0"];
+    let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&fmoved_source, false)
+        .expect("assembly should finish with FMOVE.D diagnostics under 68040 FPU state");
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diag| diag.contains("invalid source effective address for FMOVE.D"))
+        .unwrap_or_else(|| panic!("missing FMOVE.D operand-shape diagnostic: {diagnostics:?}"));
+    assert_eq!(
+        normalize_opforge_diagnostics(diagnostic),
+        NormalizedErrorClass::IllegalAddressingMode,
+        "unexpected normalized class for FMOVE.D under m68040 FPU state: {diagnostic}"
+    );
+}
+
+#[test]
+fn m68080_fmoverz_and_fmoveurz_encode_with_68080_only_gating() {
+    let enabled_source = [
+        ".cpu 68080",
+        ".fpu 68080",
+        "    FMOVERZ.L FP0,D0",
+        "    FMOVEURZ.W FP1,D1",
+    ];
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&enabled_source, false)
+        .expect("68080 round-zero FPU moves should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for 68080 round-zero FPU moves: {diagnostics:?}"
+    );
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(bytes, vec![0xF2, 0x00, 0x60, 0x01, 0xF2, 0x01, 0x70, 0x83]);
+
+    for source in [
+        [".cpu 68020", ".fpu 68881", "    FMOVERZ.L FP0,D0"],
+        [".cpu 68030", ".fpu 68882", "    FMOVEURZ.W FP1,D1"],
+        [".cpu 68040", ".fpu 68040", "    FMOVERZ.L FP0,D0"],
+    ] {
+        let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+            .expect("assembly should finish with 68080-only gating diagnostics");
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diag| diag.contains("is only supported on m68080"))
+            .unwrap_or_else(|| panic!("missing 68080-only gating diagnostic: {diagnostics:?}"));
+        assert!(diagnostic.contains("m68080"), "{diagnostic}");
+    }
+}
+
+#[test]
 fn m68k_fpu_mnemonics_assemble_once_fpu_is_enabled() {
     for source in [
         vec![".cpu 68020", ".fpu 68881", "    FSIN FP0,FP1"],
         vec![".cpu 68030", ".fpu 68882", "    FSIN FP0,FP1"],
         vec![".cpu 68040", ".fpu 68040", "    FADD FP0,FP1"],
+        vec![".cpu 68080", ".fpu 68080", "    FSIN FP0,FP1"],
     ] {
         let (_entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
             .expect("assembly should succeed once the FPU target is enabled");
@@ -6496,6 +7937,11 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/68040_movec_mmu_registers",
         "motorola68000/68040_move16_carry_forward",
         "motorola68000/68040_integrated_fpu",
+        "motorola68000/68080_integer_addressing_matrix",
+        "motorola68000/68080_ammx_slice",
+        "motorola68000/68080_ammx_addressing_matrix",
+        "motorola68000/68080_fpu_surface",
+        "motorola68000/68080_full_additional_surface",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));
         if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -16255,8 +17701,9 @@ fn external_oracle_64tass_mos6502_negative_path_manifests() {
 fn external_oracle_64tass_mos6502_documented_divergence_manifests() {
     let manifest_root = workspace_root().join("examples/ab/mos6502/64tass");
     match crate::external_oracle::run_tass64_documented_divergence_fixture_suite(&manifest_root)
-        .expect("external-oracle 64tass documented-divergence suite should complete or skip cleanly")
-    {
+        .expect(
+            "external-oracle 64tass documented-divergence suite should complete or skip cleanly",
+        ) {
         crate::external_oracle::ExternalOracleSuiteOutcome::Skipped(skip) => {
             eprintln!("SKIP: {}", skip.reason());
         }
@@ -16272,7 +17719,8 @@ fn external_oracle_64tass_mos6502_documented_divergence_manifests() {
             assert!(
                 notes
                     .iter()
-                    .any(|note| note.contains("documented divergence matched") || note.contains("reclassification candidate")),
+                    .any(|note| note.contains("documented divergence matched")
+                        || note.contains("reclassification candidate")),
                 "expected visible documented-divergence note: {notes:?}"
             );
             eprintln!(

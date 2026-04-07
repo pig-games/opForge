@@ -87,7 +87,8 @@
             "null"
           ],
           "default": null,
-          "description": "Optional explicit path to the opforge CLI executable."
+          "description": "Deprecated. This setting is no longer used because validation now runs in-process.",
+          "markdownDeprecationMessage": "Deprecated: `opforgeLsp.opforgePath` is ignored because opforge-lsp validation now runs in-process through libopforge."
         },
         "opforgeLsp.validation.debounceMs": {
           "type": "number",

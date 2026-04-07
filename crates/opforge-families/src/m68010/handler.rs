@@ -6,8 +6,8 @@
 use crate::families::m68k::operand::{ControlRegisterKind, SpecialRegisterKind};
 use crate::families::m68k::{
     has_m68010_mnemonic, has_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic,
-    parse_mnemonic, FamilyOperand, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler,
-    MnemonicKind, Operand, OperationSize,
+    parse_m68080_mnemonic, parse_mnemonic, FamilyOperand, M68010MnemonicKind, M68020MnemonicKind,
+    M68KFamilyHandler, MnemonicKind, Operand, OperationSize,
 };
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult};
 
@@ -93,6 +93,7 @@ impl M68010CpuHandler {
             | ControlRegisterKind::Mmusr
             | ControlRegisterKind::Urp
             | ControlRegisterKind::Srp => None,
+            _ => None,
         }
     }
 
@@ -158,8 +159,9 @@ impl CpuHandler for M68010CpuHandler {
         &self,
         _mnemonic: &str,
         family_operands: &[FamilyOperand],
-        _ctx: &dyn AssemblerContext,
+        ctx: &dyn AssemblerContext,
     ) -> Result<Vec<Operand>, String> {
+        M68KFamilyHandler::validate_68080_register_compatibility(family_operands, ctx, "m68010")?;
         if family_operands
             .iter()
             .any(|operand| matches!(operand, FamilyOperand::FullExtension { .. }))
@@ -254,6 +256,13 @@ impl CpuHandler for M68010CpuHandler {
                     parsed.display_name
                 )),
             };
+        }
+
+        if let Some(parsed) = parse_m68080_mnemonic(mnemonic) {
+            return EncodeResult::error(format!(
+                "{} is only supported on m68080",
+                parsed.display_name
+            ));
         }
 
         let Some(parsed) = parse_m68010_mnemonic(mnemonic) else {

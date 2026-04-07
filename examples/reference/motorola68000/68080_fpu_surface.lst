@@ -1,0 +1,71 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68080 FPU surface fixture
+----                                2  
+----                                3          .cpu 68080
+----                                4          .fpu 68080
+----    EQU 1000                    5          .org $1000
+----                                6  
+----                                7  start
+1000    F2 80 00 00                 8          FNOP
+1004    F2 00 00 80                 9          FMOVE FP0,FP1
+1008    F2 00 5C 0B                10          FMOVECR #11,FP0
+100C    F2 10 F0 05                11          FMOVEM FP0/FP2,(A0)
+1010    F2 18 D0 0A                12          FMOVEM (A0)+,FP1/FP3
+1014    F2 00 90 00                13          FMOVE.L D0,FPCR
+1018    F2 01 A8 00                14          FMOVE.L FPSR,D1
+101C    F2 00 54 00                15          FMOVE.D D0,FP0
+1020    F2 01 74 80                16          FMOVE.D FP1,D1
+----                               17  
+1024    F2 00 05 22                18          FADD FP1,FP2
+1028    7D 54 F2 04 51 A3          19          FMUL.W E4,FP3,E5
+102E    77 41 F2 00 50 A2          20          FADD.W D0,E1,E2
+1034    7D 54 F2 04 51 B8          21          FCMP.W E4,FP3,E5
+103A    7D 54 F2 00 11 A6          22          FSCALE E4,FP3,E5
+1040    7D 54 F2 00 11 A5          23          FREM E4,FP3,E5
+1046    F2 00 00 8E                24          FSIN FP0,FP1
+104A    F2 00 01 31                25          FSINCOS FP0,.pair(FP1,FP2)
+104E    F2 00 00 90                26          FETOX FP0,FP1
+1052    F2 00 54 00                27          FLOADI.D D0,FP0
+1056    F2 01 68 80                28          FSTOREI.X FP1,D1
+105A    F2 00 60 01                29          FMOVERZ.L FP0,D0
+105E    F2 01 70 83                30          FMOVEURZ.W FP1,D1
+----                               31  
+1062    F2 81 00 02                32          FBEQ after_fb
+----                               33  after_fb
+1066    F2 48 00 0E 00 07          34          FDBNE.L D0,after_fdb_long
+----                               35  after_fdb_long
+106C    F2 48 00 0E 00 02          36          FDBNE D0,after_fdb
+----                               37  after_fdb
+1072    F2 43 00 0E                38          FSNE D3
+----                               39  
+1076    4E 75                      40          RTS
+----                               41  
+----                               42          .end
+
+Lines: 42  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+after_fb         1066      prv  lbl 
+after_fdb        1072      prv  lbl 
+after_fdb_long   106C      prv  lbl 
+start            1000      prv  lbl 
+
+Total memory is 120 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    F2 80 00 00 F2 00 00 80 F2 00 5C 0B F2 10 F0 05
+1010    F2 18 D0 0A F2 00 90 00 F2 01 A8 00 F2 00 54 00
+1020    F2 01 74 80 F2 00 05 22 7D 54 F2 04 51 A3 77 41
+1030    F2 00 50 A2 7D 54 F2 04 51 B8 7D 54 F2 00 11 A6
+1040    7D 54 F2 00 11 A5 F2 00 00 8E F2 00 01 31 F2 00
+1050    00 90 F2 00 54 00 F2 01 68 80 F2 00 60 01 F2 01
+1060    70 83 F2 81 00 02 F2 48 00 0E 00 07 F2 48 00 0E
+1070    00 02 F2 43 00 0E 4E 75

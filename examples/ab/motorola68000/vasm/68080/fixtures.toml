@@ -1,0 +1,137 @@
+manifest_version = 1
+family = "motorola68000"
+oracle = "vasm"
+oracle_profile = "m68k_mot_flat_binary"
+expected_outcome = "success"
+compare_mode = "bytes"
+
+[[fixtures]]
+id = "68080-apollo-ignored-shared-core"
+cpu = "68080"
+path = "positive/68080_apollo_ignored_shared_core.asm"
+
+[[fixtures]]
+id = "68080-addiw-cmpiw-in-range"
+cpu = "68080"
+path = "positive/68080_addiw_cmpiw_in_range.asm"
+
+[[fixtures]]
+id = "68080-addiw-cmpiw-out-of-range"
+cpu = "68080"
+path = "negative/68080_addiw_cmpiw_out_of_range.asm"
+expected_outcome = "error"
+compare_mode = "error_class"
+
+[[fixtures]]
+id = "68080-moviw-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_moviw_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts MOVIW.L with PRM-true Line-A encoding, while vasm 68080 does not recognise MOVIW as a valid mnemonic"
+
+[[fixtures]]
+id = "68080-mov3q-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_mov3q_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts MOV3Q with PRM-true Line-A encoding, while vasm 68080 rejects MOV3Q as an unsupported CPU feature"
+
+[[fixtures]]
+id = "68080-bregister-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_bregister_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts representative 68080 B-register forms, while vasm 68080 does not accept the bounded B-register core surface"
+
+[[fixtures]]
+id = "68080-ammx-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_ammx_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts bounded 68080 AMMX mnemonics, while vasm 68080 still rejects core AMMX mnemonics such as PADD and PSUB"
+
+[[fixtures]]
+id = "68080-ammx-load-word-immediate"
+cpu = "68080"
+path = "positive/68080_ammx_load_word_immediate.asm"
+
+[[fixtures]]
+id = "68080-movs-movz-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_movs_movz_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts MOVS/MOVZ with PRM-true encoding, while vasm 68080 does not recognise MOVS as a valid mnemonic"
+
+[[fixtures]]
+id = "68080-movex-core"
+cpu = "68080"
+path = "positive/68080_movex_core.asm"
+
+[[fixtures]]
+id = "68080-touch-indexed-core"
+cpu = "68080"
+path = "positive/68080_touch_indexed_core.asm"
+
+[[fixtures]]
+id = "68080-moveh-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_moveh_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts MOVEH with PRM-true encoding, while vasm 68080 does not recognise MOVEH as a valid mnemonic"
+
+[[fixtures]]
+id = "68080-move2-movz2-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_move2_movz2_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts MOVE2/MOVZ2 with PRM-true pair encoding, while vasm 68080 does not recognise MOVE2 as a valid mnemonic"
+
+[[fixtures]]
+id = "68080-touch-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_touch_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts simple address-indirect TOUCH forms like (A0), while vasm 1.8g on m68080 rejects those forms with 'illegal operand types' even though indexed forms such as 4(A4,D4.W) assemble successfully"
+
+[[fixtures]]
+id = "68080-branch-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_branch_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts the 68080 long-counter and extended-short branch surface, while vasm 68080 still rejects representative DBcc.L and .S+ branch forms"
+
+[[fixtures]]
+id = "68080-fpu-core-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_fpu_core.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts the bounded 68080 FPU surface under .fpu 68080, including FMOVEM, FMOVE.D Dn↔FPn, FDBcc.L, and round-zero helper forms, while vasm 68080 still rejects representative FPU instructions even after the opForge-only directive is stripped"
+
+[[fixtures]]
+id = "68080-fpu-explicit-literal-divergence"
+cpu = "68080"
+path = "documented_divergence/68080_fpu_explicit_literals.asm"
+expected_outcome = "documented_divergence"
+compare_mode = "bytes"
+documented_divergence_kind = "opforge_success_oracle_error"
+documented_divergence_reason = "opForge accepts explicit 68080 FPU literal suffixes like #.s and #.d, while vasm 68080 still rejects these FPU forms under its selected architecture"

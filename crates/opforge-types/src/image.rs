@@ -4,13 +4,9 @@
 // Image store with hex/bin output helpers.
 
 use std::cell::Cell;
-use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, Read, Write};
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use tempfile::NamedTempFile;
 
-static IMAGE_STORE_COUNTER: AtomicU64 = AtomicU64::new(0);
 thread_local! {
     static IMAGE_STORE_FORCE_OPEN_FAILURE: Cell<bool> = const { Cell::new(false) };
 }
@@ -40,8 +36,7 @@ struct ImageStoreEntry {
 /// Bytes are appended via `store`/`store_slice` and later emitted as
 /// Intel HEX or raw binary output files.
 pub struct ImageStore {
-    path: Option<PathBuf>,
-    file: Option<File>,
+    backing_file: Option<NamedTempFile>,
     entries: usize,
     write_error: Option<io::Error>,
 }
@@ -49,18 +44,9 @@ pub struct ImageStore {
 impl ImageStore {
     /// Create a new image store with the default address-space policy.
     pub fn new() -> Self {
-        let mut path = std::env::temp_dir();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let pid = std::process::id();
-        let counter = IMAGE_STORE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        path.push(format!("opForge-image-{pid}-{nanos}-{counter}.bin"));
         if IMAGE_STORE_FORCE_OPEN_FAILURE.with(Cell::get) {
             return Self {
-                path: Some(path),
-                file: None,
+                backing_file: None,
                 entries: 0,
                 write_error: Some(io::Error::new(
                     io::ErrorKind::PermissionDenied,
@@ -68,21 +54,14 @@ impl ImageStore {
                 )),
             };
         }
-        match OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&path)
-        {
-            Ok(file) => Self {
-                path: Some(path),
-                file: Some(file),
+        match NamedTempFile::new() {
+            Ok(backing_file) => Self {
+                backing_file: Some(backing_file),
                 entries: 0,
                 write_error: None,
             },
             Err(err) => Self {
-                path: Some(path),
-                file: None,
+                backing_file: None,
                 entries: 0,
                 write_error: Some(err),
             },
@@ -113,13 +92,13 @@ impl ImageStore {
         let mut buf = [0u8; ENTRY_SIZE];
         buf[..4].copy_from_slice(&addr.to_be_bytes());
         buf[4] = val;
-        let Some(file) = self.file.as_mut() else {
+        let Some(backing_file) = self.backing_file.as_mut() else {
             self.write_error = Some(io::Error::other(
                 "ImageStore unavailable: no writable temp file",
             ));
             return;
         };
-        if let Err(err) = file.write_all(&buf) {
+        if let Err(err) = backing_file.as_file_mut().write_all(&buf) {
             self.write_error = Some(err);
             return;
         }
@@ -148,12 +127,12 @@ impl ImageStore {
     }
 
     fn read_entries(&self) -> io::Result<Vec<ImageStoreEntry>> {
-        let Some(path) = self.path.as_ref() else {
+        let Some(backing_file) = self.backing_file.as_ref() else {
             return Err(io::Error::other(
                 "ImageStore unavailable: no readable temp file",
             ));
         };
-        let mut reader = BufReader::new(File::open(path)?);
+        let mut reader = BufReader::new(backing_file.reopen()?);
         let mut entries = Vec::new();
         loop {
             let mut buf = [0u8; ENTRY_SIZE];
@@ -176,8 +155,8 @@ impl ImageStore {
         if let Some(err) = &self.write_error {
             return Err(io::Error::new(err.kind(), err.to_string()));
         }
-        if let Some(file) = self.file.as_ref() {
-            file.sync_all()?;
+        if let Some(backing_file) = self.backing_file.as_ref() {
+            backing_file.as_file().sync_all()?;
         }
         Ok(())
     }
@@ -361,14 +340,6 @@ impl Default for ImageStore {
     }
 }
 
-impl Drop for ImageStore {
-    fn drop(&mut self) {
-        if let Some(path) = self.path.as_ref() {
-            let _ = fs::remove_file(path);
-        }
-    }
-}
-
 fn hex_digit(val: u8) -> char {
     match val {
         0..=9 => (b'0' + val) as char,
@@ -549,5 +520,24 @@ mod tests {
                 .expect_err("write should fail when init failed");
             assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         });
+    }
+
+    #[test]
+    fn secure_tempfile_path_does_not_use_legacy_predictable_prefix() {
+        let image = ImageStore::new();
+        let path = image
+            .backing_file
+            .as_ref()
+            .expect("backing tempfile should exist")
+            .path();
+        let filename = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .expect("tempfile name should be utf-8 for this test");
+
+        assert!(
+            !filename.starts_with("opForge-image-"),
+            "expected secure tempfile creation instead of legacy predictable naming"
+        );
     }
 }

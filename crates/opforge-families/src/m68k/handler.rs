@@ -3,15 +3,19 @@
 
 //! Motorola 68000 family handler implementation.
 
-use super::is_register;
 use super::operand::{
     span_from_expr, span_from_exprs, AbsoluteSize, BitFieldSelector, ControlRegisterKind,
     FamilyOperand, FpuControlRegisterKind, FullExtensionBase, FullExtensionIndex, IndexScale,
     IndexSize, MemoryIndirectionKind, Operand, RegisterListRegister, SpecialRegisterKind,
 };
 use super::table::{
-    parse_fpu_mnemonic, parse_m68020_mnemonic, parse_mnemonic, BitFieldMnemonic, BitMnemonic,
-    ConditionCode, FpuMnemonicKind, M68020MnemonicKind, MnemonicKind, OperationSize, ShiftMnemonic,
+    parse_fpu_mnemonic, parse_m68020_mnemonic, parse_m68080_mnemonic, parse_mnemonic,
+    BitFieldMnemonic, BitMnemonic, ConditionCode, FpuMnemonicKind, M68020MnemonicKind,
+    M68080MnemonicKind, MnemonicKind, OperationSize, ParsedMnemonic, ShiftMnemonic,
+};
+use super::{
+    is_68080_address_bank_register, is_68080_data_bank_register, is_address_register,
+    is_data_register, is_register, state,
 };
 use opcore::expression::expr_span;
 use opcore::parser::{BinaryOp, Expr, UnaryOp};
@@ -97,7 +101,7 @@ impl M68KFamilyHandler {
 
     fn parse_data_register(expr: &Expr) -> Option<(String, opcore::tokenizer::Span)> {
         let (name, span) = Self::parse_register_name(expr)?;
-        if name.starts_with('D') {
+        if is_data_register(&name) {
             Some((name, span))
         } else {
             None
@@ -106,11 +110,163 @@ impl M68KFamilyHandler {
 
     fn parse_address_register(expr: &Expr) -> Option<(String, opcore::tokenizer::Span)> {
         let (name, span) = Self::parse_register_name(expr)?;
-        if name.starts_with('A') || name == "SP" {
+        if is_address_register(&name) {
             Some((name, span))
         } else {
             None
         }
+    }
+
+    fn collect_68080_only_registers(operand: &FamilyOperand, out: &mut HashSet<String>) {
+        let mut collect_name = |name: &str| {
+            if is_68080_data_bank_register(name) || is_68080_address_bank_register(name) {
+                out.insert(name.to_ascii_uppercase());
+            }
+        };
+
+        fn collect_expr(expr: &Expr, out: &mut HashSet<String>) {
+            match expr {
+                Expr::Register(name, _) | Expr::Identifier(name, _)
+                    if is_68080_data_bank_register(name)
+                        || is_68080_address_bank_register(name) =>
+                {
+                    out.insert(name.to_ascii_uppercase());
+                }
+                Expr::Indirect(inner, _)
+                | Expr::Immediate(inner, _)
+                | Expr::IndirectLong(inner, _)
+                | Expr::Unary { expr: inner, .. } => collect_expr(inner, out),
+                Expr::List(items, _) | Expr::Tuple(items, _) => {
+                    for item in items {
+                        collect_expr(item, out);
+                    }
+                }
+                Expr::Index { base, index, .. }
+                | Expr::Binary {
+                    left: base,
+                    right: index,
+                    ..
+                } => {
+                    collect_expr(base, out);
+                    collect_expr(index, out);
+                }
+                Expr::Member { base, .. } => collect_expr(base, out),
+                Expr::StructLiteral { fields, .. } => {
+                    for (_, value) in fields {
+                        collect_expr(value, out);
+                    }
+                }
+                Expr::Call { args, .. } => {
+                    for arg in args {
+                        collect_expr(arg, out);
+                    }
+                }
+                Expr::Ternary {
+                    cond,
+                    then_expr,
+                    else_expr,
+                    ..
+                } => {
+                    collect_expr(cond, out);
+                    collect_expr(then_expr, out);
+                    collect_expr(else_expr, out);
+                }
+                Expr::Range {
+                    start, end, step, ..
+                } => {
+                    collect_expr(start, out);
+                    collect_expr(end, out);
+                    if let Some(step) = step {
+                        collect_expr(step, out);
+                    }
+                }
+                Expr::Register(_, _)
+                | Expr::Identifier(_, _)
+                | Expr::Dollar(_)
+                | Expr::Number(_, _)
+                | Expr::String(_, _)
+                | Expr::Placeholder(_)
+                | Expr::Error(_, _) => {}
+            }
+        }
+
+        match operand {
+            FamilyOperand::DataRegister { register, .. }
+            | FamilyOperand::AddressRegister { register, .. }
+            | FamilyOperand::AddressIndirect { register, .. }
+            | FamilyOperand::AddressPostincrement { register, .. }
+            | FamilyOperand::AddressPredecrement { register, .. } => {
+                collect_name(register);
+            }
+            FamilyOperand::AddressDisplacement { base, .. } => {
+                collect_name(base);
+            }
+            FamilyOperand::AddressIndexed { base, index, .. } => {
+                collect_name(base);
+                collect_name(index);
+            }
+            FamilyOperand::RegisterPair { left, right, .. }
+            | FamilyOperand::RegisterGroup {
+                start: left,
+                end: right,
+                ..
+            }
+            | FamilyOperand::IndirectRegisterPair { left, right, .. } => {
+                collect_name(left);
+                collect_name(right);
+            }
+            FamilyOperand::PcIndexed { index, .. } => {
+                collect_name(index);
+            }
+            FamilyOperand::FullExtension { base, index, .. } => {
+                if let super::operand::FullExtensionBase::Address(register) = base {
+                    collect_name(register);
+                }
+                if let Some(index) = index {
+                    collect_name(&index.register);
+                }
+            }
+            FamilyOperand::BitField { base, .. } => {
+                Self::collect_68080_only_registers(base, out);
+            }
+            FamilyOperand::TextureOperand { expr, .. } => collect_expr(expr, out),
+            FamilyOperand::SpecialRegister { .. }
+            | FamilyOperand::ControlRegister { .. }
+            | FamilyOperand::FpuDataRegister { .. }
+            | FamilyOperand::FpuControlRegister { .. }
+            | FamilyOperand::PcDisplacement { .. }
+            | FamilyOperand::Absolute { .. }
+            | FamilyOperand::RegisterList { .. }
+            | FamilyOperand::BranchTarget { .. }
+            | FamilyOperand::Immediate { .. } => {}
+        }
+    }
+
+    pub fn validate_68080_register_compatibility(
+        family_operands: &[FamilyOperand],
+        ctx: &dyn AssemblerContext,
+        cpu_name: &str,
+    ) -> Result<(), String> {
+        let is_68080 = ctx.cpu_state_flag(state::CPU_IS_68080_KEY).unwrap_or(0) != 0;
+        if is_68080 {
+            return Ok(());
+        }
+
+        let mut registers = HashSet::new();
+        for operand in family_operands {
+            Self::collect_68080_only_registers(operand, &mut registers);
+        }
+        if registers.is_empty() {
+            return Ok(());
+        }
+
+        let mut names = registers.into_iter().collect::<Vec<_>>();
+        names.sort();
+        Err(format!(
+            "register {} requires .cpu 68080 and is not supported on {}",
+            names.join(", "),
+            cpu_name
+        ))
     }
 
     fn parse_special_register(
@@ -156,6 +312,19 @@ impl M68KFamilyHandler {
             "MMUSR" => ControlRegisterKind::Mmusr,
             "URP" => ControlRegisterKind::Urp,
             "SRP" => ControlRegisterKind::Srp,
+            "PCR" => ControlRegisterKind::Pcr,
+            "CCC" => ControlRegisterKind::Ccc,
+            "IEP1" => ControlRegisterKind::Iep1,
+            "IEP2" => ControlRegisterKind::Iep2,
+            "BPC" => ControlRegisterKind::Bpc,
+            "BPW" => ControlRegisterKind::Bpw,
+            "DCH" => ControlRegisterKind::Dch,
+            "DCM" => ControlRegisterKind::Dcm,
+            "STR" => ControlRegisterKind::Str,
+            "STC" => ControlRegisterKind::Stc,
+            "STH" => ControlRegisterKind::Sth,
+            "STB" => ControlRegisterKind::Stb,
+            "MWR" => ControlRegisterKind::Mwr,
             _ => return None,
         };
         Some((register, span))
@@ -168,9 +337,12 @@ impl M68KFamilyHandler {
             }
             _ => return None,
         };
-        let suffix = name.strip_prefix("FP")?;
-        let reg = suffix.parse::<u8>().ok()?;
-        (reg <= 7).then_some((name, span))
+        if Self::fpu_data_register_number(&name).is_some()
+            || Self::fpu_banked_data_register_number(&name).is_some()
+        {
+            return Some((name, span));
+        }
+        None
     }
 
     fn parse_fpu_control_register(
@@ -438,6 +610,29 @@ impl M68KFamilyHandler {
             "68020 register-pair syntax requires Rn:Rn, FPn:FPn, or (Rn):(Rn)",
             span,
         ))
+    }
+
+    fn parse_group_operand(
+        &self,
+        start: &Expr,
+        end: &Expr,
+        span: opcore::tokenizer::Span,
+    ) -> Result<FamilyOperand, FamilyParseError> {
+        let (Some((start_name, _)), Some((end_name, _))) = (
+            Self::parse_general_register(start),
+            Self::parse_general_register(end),
+        ) else {
+            return Err(FamilyParseError::new(
+                "68000 register-group syntax requires Rn-Rn",
+                span,
+            ));
+        };
+
+        Ok(FamilyOperand::RegisterGroup {
+            start: start_name,
+            end: end_name,
+            span,
+        })
     }
 
     fn parse_bit_field_selector(
@@ -1296,7 +1491,11 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn parse_single_operand(&self, expr: &Expr) -> Result<FamilyOperand, FamilyParseError> {
+    fn parse_single_operand_with_priority(
+        &self,
+        expr: &Expr,
+        fpu_registers_first: bool,
+    ) -> Result<FamilyOperand, FamilyParseError> {
         if let Expr::Call { name, args, span } = expr {
             return match name.as_str() {
                 ".pair" => self.parse_pair_operand(args, *span),
@@ -1309,22 +1508,59 @@ impl M68KFamilyHandler {
         }
 
         if let Expr::Binary {
-            op: BinaryOp::Divide,
+            op,
             left,
             right,
             span,
         } = expr
         {
-            let pair_like = (Self::parse_general_register(left).is_some()
-                && Self::parse_general_register(right).is_some())
-                || (Self::parse_fpu_data_register(left).is_some()
-                    && Self::parse_fpu_data_register(right).is_some())
-                || matches!(
-                    (left.as_ref(), right.as_ref()),
-                    (Expr::Indirect(_, _), Expr::Indirect(_, _))
-                );
-            if pair_like {
-                return self.parse_pair_operand(&[*left.clone(), *right.clone()], *span);
+            match op {
+                BinaryOp::Divide => {
+                    let pair_like = (Self::parse_general_register(left).is_some()
+                        && Self::parse_general_register(right).is_some())
+                        || (Self::parse_fpu_data_register(left).is_some()
+                            && Self::parse_fpu_data_register(right).is_some())
+                        || matches!(
+                            (left.as_ref(), right.as_ref()),
+                            (Expr::Indirect(_, _), Expr::Indirect(_, _))
+                        );
+                    if pair_like {
+                        return self.parse_pair_operand(&[*left.clone(), *right.clone()], *span);
+                    }
+                }
+                BinaryOp::Subtract => {
+                    let group_like = Self::parse_general_register(left).is_some()
+                        && Self::parse_general_register(right).is_some();
+                    if group_like {
+                        return self.parse_group_operand(left, right, *span);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Expr::Range {
+            start,
+            end,
+            step,
+            span,
+            ..
+        } = expr
+        {
+            if step.is_none() {
+                return self.parse_group_operand(start, end, *span);
+            }
+        }
+
+        if fpu_registers_first {
+            if let Some((name, span)) = Self::parse_fpu_data_register(expr) {
+                return Ok(FamilyOperand::FpuDataRegister {
+                    register: name,
+                    span,
+                });
+            }
+            if let Some((register, span)) = Self::parse_fpu_control_register(expr) {
+                return Ok(FamilyOperand::FpuControlRegister { register, span });
             }
         }
 
@@ -1346,14 +1582,16 @@ impl M68KFamilyHandler {
         if let Some((register, span)) = Self::parse_control_register(expr) {
             return Ok(FamilyOperand::ControlRegister { register, span });
         }
-        if let Some((name, span)) = Self::parse_fpu_data_register(expr) {
-            return Ok(FamilyOperand::FpuDataRegister {
-                register: name,
-                span,
-            });
-        }
-        if let Some((register, span)) = Self::parse_fpu_control_register(expr) {
-            return Ok(FamilyOperand::FpuControlRegister { register, span });
+        if !fpu_registers_first {
+            if let Some((name, span)) = Self::parse_fpu_data_register(expr) {
+                return Ok(FamilyOperand::FpuDataRegister {
+                    register: name,
+                    span,
+                });
+            }
+            if let Some((register, span)) = Self::parse_fpu_control_register(expr) {
+                return Ok(FamilyOperand::FpuControlRegister { register, span });
+            }
         }
 
         match expr {
@@ -1485,6 +1723,14 @@ impl M68KFamilyHandler {
         }
     }
 
+    fn parse_single_operand(&self, expr: &Expr) -> Result<FamilyOperand, FamilyParseError> {
+        self.parse_single_operand_with_priority(expr, false)
+    }
+
+    fn parse_fpu_operand(&self, expr: &Expr) -> Result<FamilyOperand, FamilyParseError> {
+        self.parse_single_operand_with_priority(expr, true)
+    }
+
     fn is_branch_mnemonic(mnemonic: &str) -> bool {
         matches!(
             parse_mnemonic(mnemonic).map(|parsed| parsed.kind),
@@ -1520,6 +1766,12 @@ impl M68KFamilyHandler {
         let Some(parsed) = parse_mnemonic(mnemonic) else {
             return EncodeResult::NotFound;
         };
+
+        if let Some(result) =
+            self.try_encode_m68080_extended_short_branch(&parsed, mnemonic, operands, ctx)
+        {
+            return result;
+        }
 
         if parsed.has_unknown_size_suffix {
             return EncodeResult::error(format!(
@@ -1579,6 +1831,7 @@ impl M68KFamilyHandler {
                 ctx,
                 Self::data_alterable,
             ),
+            MnemonicKind::Addiw => EncodeResult::NotFound,
             MnemonicKind::Addx => {
                 self.encode_extend_binary_op("ADDX", 0xD100, parsed.size, operands)
             }
@@ -1618,6 +1871,7 @@ impl M68KFamilyHandler {
                 ctx,
                 Self::data_addressing,
             ),
+            MnemonicKind::Cmpiw => EncodeResult::NotFound,
             MnemonicKind::Cmpm => self.encode_cmpm(parsed.size, operands),
             MnemonicKind::And => self.encode_data_register_binary_op(
                 "AND",
@@ -1673,6 +1927,44 @@ impl M68KFamilyHandler {
             }
             MnemonicKind::Rts => self.encode_rts(parsed.size, operands),
             MnemonicKind::Moveq => self.encode_moveq(parsed.size, operands, ctx),
+            MnemonicKind::Move2 => EncodeResult::NotFound,
+            MnemonicKind::Movex => EncodeResult::NotFound,
+            MnemonicKind::Moveh => EncodeResult::NotFound,
+            MnemonicKind::Moviw => EncodeResult::NotFound,
+            MnemonicKind::Mov3q => EncodeResult::NotFound,
+            MnemonicKind::Movs => EncodeResult::NotFound,
+            MnemonicKind::Movz => EncodeResult::NotFound,
+            MnemonicKind::Movz2 => EncodeResult::NotFound,
+            MnemonicKind::Touch => EncodeResult::NotFound,
+            MnemonicKind::Load => EncodeResult::NotFound,
+            MnemonicKind::Loadi => EncodeResult::NotFound,
+            MnemonicKind::Store => EncodeResult::NotFound,
+            MnemonicKind::Storei => EncodeResult::NotFound,
+            MnemonicKind::Storec => EncodeResult::NotFound,
+            MnemonicKind::Storeilm => EncodeResult::NotFound,
+            MnemonicKind::Padd => EncodeResult::NotFound,
+            MnemonicKind::Psub => EncodeResult::NotFound,
+            MnemonicKind::Pmul88 => EncodeResult::NotFound,
+            MnemonicKind::Pmulh => EncodeResult::NotFound,
+            MnemonicKind::Pmull => EncodeResult::NotFound,
+            MnemonicKind::Pmula => EncodeResult::NotFound,
+            MnemonicKind::Pand => EncodeResult::NotFound,
+            MnemonicKind::Pandn => EncodeResult::NotFound,
+            MnemonicKind::Por => EncodeResult::NotFound,
+            MnemonicKind::Peor => EncodeResult::NotFound,
+            MnemonicKind::Bsel => EncodeResult::NotFound,
+            MnemonicKind::Pcmpeqb => EncodeResult::NotFound,
+            MnemonicKind::Pcmphib => EncodeResult::NotFound,
+            MnemonicKind::Pcmpgeb => EncodeResult::NotFound,
+            MnemonicKind::Pcmpgtb => EncodeResult::NotFound,
+            MnemonicKind::Pcmpeqw => EncodeResult::NotFound,
+            MnemonicKind::Pcmphiw => EncodeResult::NotFound,
+            MnemonicKind::Pcmpgew => EncodeResult::NotFound,
+            MnemonicKind::Pcmpgtw => EncodeResult::NotFound,
+            MnemonicKind::Pack3216 => EncodeResult::NotFound,
+            MnemonicKind::Packuswb => EncodeResult::NotFound,
+            MnemonicKind::Unpack1632 => EncodeResult::NotFound,
+            MnemonicKind::Vperm => EncodeResult::NotFound,
             MnemonicKind::Muls if matches!(parsed.size, Some(OperationSize::Long)) => {
                 EncodeResult::NotFound
             }
@@ -1716,6 +2008,109 @@ impl M68KFamilyHandler {
         }
     }
 
+    fn try_encode_m68080_extended_short_branch(
+        &self,
+        parsed: &ParsedMnemonic,
+        mnemonic: &str,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> Option<EncodeResult<Vec<u8>>> {
+        if ctx.cpu_state_flag(state::CPU_IS_68080_KEY).unwrap_or(0) == 0
+            || !parsed.has_unknown_size_suffix
+            || !mnemonic.to_ascii_uppercase().ends_with(".S+")
+        {
+            return None;
+        }
+
+        let condition_bits = match parsed.kind {
+            MnemonicKind::Bra => 0x0,
+            MnemonicKind::Bsr => 0x1,
+            MnemonicKind::Bcc(condition) => condition.opcode_bits(),
+            _ => return None,
+        };
+
+        Some(self.encode_m68080_extended_short_branch(mnemonic, condition_bits, operands, ctx))
+    }
+
+    fn encode_m68080_extended_short_branch(
+        &self,
+        mnemonic: &str,
+        condition_bits: u16,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let [target] = operands else {
+            return EncodeResult::error(format!("{mnemonic} expects one branch target"));
+        };
+        let Operand::BranchTarget { expr, .. } = target else {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} requires a branch target expression"),
+                target.span(),
+            );
+        };
+
+        let unresolved = Self::expr_is_unresolved(expr, ctx);
+        let offset = if unresolved {
+            0
+        } else {
+            let target_value = match ctx.eval_expr(expr) {
+                Ok(value) => Self::normalize_wrapped_i32(value),
+                Err(err) => {
+                    return EncodeResult::error_with_span(err, target.span());
+                }
+            };
+            target_value - (ctx.current_address() as i64 + 2)
+        };
+
+        if !unresolved && (offset & 1) != 0 {
+            return EncodeResult::error_with_span(
+                format!("{mnemonic} branch displacement must be even on m68080"),
+                target.span(),
+            );
+        }
+
+        let encoded_displacement = if unresolved {
+            0x01_u8
+        } else {
+            match Self::encode_m68080_extended_short_displacement(offset) {
+                Some(value) => value,
+                None => {
+                    return EncodeResult::error_with_span(
+                        format!(
+                            "{mnemonic} extended-short displacement out of range: offset {offset}"
+                        ),
+                        target.span(),
+                    );
+                }
+            }
+        };
+
+        let mut bytes = Vec::new();
+        Self::emit_word(
+            &mut bytes,
+            0x6000 | (condition_bits << 8) | encoded_displacement as u16,
+        );
+        EncodeResult::ok(bytes)
+    }
+
+    fn encode_m68080_extended_short_displacement(offset: i64) -> Option<u8> {
+        if (offset & 1) != 0 {
+            return None;
+        }
+
+        let encoded = if (128..=254).contains(&offset) {
+            offset - 127
+        } else if (-256..=-132).contains(&offset) {
+            offset + 129
+        } else {
+            return None;
+        };
+
+        (-128..=127)
+            .contains(&encoded)
+            .then_some((encoded as i8) as u8)
+    }
+
     fn encode_move(
         &self,
         size: Option<OperationSize>,
@@ -1735,6 +2130,72 @@ impl M68KFamilyHandler {
         let [src, dst] = operands else {
             return EncodeResult::error("MOVE expects two operands");
         };
+
+        let src_b = Self::b_register_direct_operand(src);
+        let dst_b = Self::b_register_direct_operand(dst);
+        if src_b.is_some() || dst_b.is_some() {
+            if !matches!(size, OperationSize::Long) {
+                return EncodeResult::error_with_span(
+                    "B-register MOVE forms require .L size on m68080",
+                    if dst_b.is_some() {
+                        dst.span()
+                    } else {
+                        src.span()
+                    },
+                );
+            }
+            if src_b.is_some() && dst_b.is_some() {
+                return EncodeResult::error_with_span(
+                    "MOVE does not support Bn-to-Bn transfers on m68080",
+                    dst.span(),
+                );
+            }
+            if let Some(dst_b) = dst_b {
+                let src_ea = match self.encode_effective_address(src, Some(size), ctx) {
+                    Ok(ea) => ea,
+                    Err(err) => return err,
+                };
+                if !Self::move_allows_source(src_ea.kind, size) {
+                    return EncodeResult::error_with_span(
+                        format!("invalid source effective address for MOVE{}", size.suffix()),
+                        src.span(),
+                    );
+                }
+
+                let mut bytes = Vec::new();
+                Self::emit_word(
+                    &mut bytes,
+                    0x1040 | ((dst_b as u16) << 9) | Self::effective_address_bits(src_ea.bits),
+                );
+                bytes.extend_from_slice(&src_ea.extension);
+                return EncodeResult::ok(bytes);
+            }
+
+            let src_b = src_b.expect("checked above");
+            let dst_ea = match self.encode_effective_address(dst, Some(size), ctx) {
+                Ok(ea) => ea,
+                Err(err) => return err,
+            };
+            if !Self::move_allows_destination(dst_ea.kind) {
+                return EncodeResult::error_with_span(
+                    format!(
+                        "invalid destination effective address for MOVE{}",
+                        size.suffix()
+                    ),
+                    dst.span(),
+                );
+            }
+
+            let mut bytes = Vec::new();
+            Self::emit_word(
+                &mut bytes,
+                0x1000
+                    | Self::move_destination_bits(dst_ea.bits)
+                    | ((0b001_u16 << 3) | u16::from(src_b)),
+            );
+            bytes.extend_from_slice(&dst_ea.extension);
+            return EncodeResult::ok(bytes);
+        }
 
         let src_ea = match self.encode_effective_address(src, Some(size), ctx) {
             Ok(ea) => ea,
@@ -1816,6 +2277,9 @@ impl M68KFamilyHandler {
             ) => {
                 if let Err(message) = validate_size(size, OperationSize::Word, "MOVE SR") {
                     return EncodeResult::error(message);
+                }
+                if let Some(result) = Self::encode_move_sr_banked_destination(dst, ctx) {
+                    return result;
                 }
                 let dst_ea =
                     match self.encode_effective_address(dst, Some(OperationSize::Word), ctx) {
@@ -2158,6 +2622,43 @@ impl M68KFamilyHandler {
             return EncodeResult::error("MOVEA expects two operands");
         };
 
+        if let Some(dst_b) = Self::b_register_direct_operand(dst) {
+            if !matches!(size, OperationSize::Long) {
+                return EncodeResult::error_with_span(
+                    "MOVEA B-register destination requires .L size on m68080",
+                    dst.span(),
+                );
+            }
+            if Self::b_register_direct_operand(src).is_some() {
+                return EncodeResult::error_with_span(
+                    "MOVEA.L Bn,Bm is not supported on m68080",
+                    src.span(),
+                );
+            }
+
+            let src_ea = match self.encode_effective_address(src, Some(size), ctx) {
+                Ok(ea) => ea,
+                Err(err) => return err,
+            };
+            if !Self::movea_allows_source(src_ea.kind) {
+                return EncodeResult::error_with_span(
+                    format!(
+                        "invalid source effective address for MOVEA{}",
+                        size.suffix()
+                    ),
+                    src.span(),
+                );
+            }
+
+            let mut bytes = Vec::new();
+            Self::emit_word(
+                &mut bytes,
+                0x1040 | ((dst_b as u16) << 9) | Self::effective_address_bits(src_ea.bits),
+            );
+            bytes.extend_from_slice(&src_ea.extension);
+            return EncodeResult::ok(bytes);
+        }
+
         let dst_register = match dst {
             Operand::AddressRegister { register, .. } => register,
             _ => {
@@ -2211,6 +2712,67 @@ impl M68KFamilyHandler {
         let [src, dst] = operands else {
             return EncodeResult::error("LEA expects two operands");
         };
+
+        let src_b_indirect = Self::b_register_indirect_operand(src);
+        let dst_b_direct = Self::b_register_direct_operand(dst);
+        if src_b_indirect.is_some() || dst_b_direct.is_some() {
+            if src_b_indirect.is_some() && dst_b_direct.is_some() {
+                return EncodeResult::error_with_span(
+                    "LEA (Bn),Bm is not supported on m68080",
+                    dst.span(),
+                );
+            }
+
+            if let Some(dst_b) = dst_b_direct {
+                if !Self::single_ea_control_mode(Self::effective_address_kind(src)) {
+                    return EncodeResult::error_with_span(
+                        "invalid source effective address for LEA",
+                        src.span(),
+                    );
+                }
+
+                let src_ea = match self.encode_effective_address(src, None, ctx) {
+                    Ok(ea) => ea,
+                    Err(err) => return err,
+                };
+
+                let mut bytes = Vec::new();
+                Self::emit_word(
+                    &mut bytes,
+                    0x4140 | ((dst_b as u16) << 9) | Self::effective_address_bits(src_ea.bits),
+                );
+                bytes.extend_from_slice(&src_ea.extension);
+                return EncodeResult::ok(bytes);
+            }
+
+            let src_b = src_b_indirect.expect("checked above");
+            let dst_register = match dst {
+                Operand::AddressRegister { register, .. }
+                    if Self::b_register_number(register).is_none() =>
+                {
+                    register
+                }
+                _ => {
+                    return EncodeResult::error_with_span(
+                        "LEA (Bn) destination must be A0-A7 or SP",
+                        dst.span(),
+                    )
+                }
+            };
+            let Some(dst_reg) = Self::address_register_number(dst_register) else {
+                return EncodeResult::error_with_span(
+                    "invalid LEA destination register",
+                    dst.span(),
+                );
+            };
+
+            let mut bytes = Vec::new();
+            Self::emit_word(
+                &mut bytes,
+                0x41C8 | ((dst_reg as u16) << 9) | u16::from(src_b),
+            );
+            return EncodeResult::ok(bytes);
+        }
 
         let dst_register = match dst {
             Operand::AddressRegister { register, .. } => register,
@@ -2867,6 +3429,44 @@ impl M68KFamilyHandler {
         let [src, dst] = operands else {
             return EncodeResult::error("CMP expects two operands");
         };
+
+        if let Some(src_b) = Self::b_register_direct_operand(src) {
+            if !matches!(size, OperationSize::Long) {
+                return EncodeResult::error_with_span(
+                    "CMP B-register source requires .L size on m68080",
+                    src.span(),
+                );
+            }
+
+            let dst_register = match dst {
+                Operand::DataRegister { register, .. } => register,
+                _ => {
+                    return EncodeResult::error_with_span(
+                        format!(
+                            "invalid destination effective address for CMP{}",
+                            size.suffix()
+                        ),
+                        dst.span(),
+                    )
+                }
+            };
+            let Some(dst_reg) = Self::data_register_number(dst_register) else {
+                return EncodeResult::error_with_span(
+                    format!(
+                        "invalid destination effective address for CMP{}",
+                        size.suffix()
+                    ),
+                    dst.span(),
+                );
+            };
+
+            let mut bytes = Vec::new();
+            Self::emit_word(
+                &mut bytes,
+                0xC180 | ((dst_reg as u16) << 9) | u16::from(src_b),
+            );
+            return EncodeResult::ok(bytes);
+        }
 
         let dst_register = match dst {
             Operand::DataRegister { register, .. } => register,
@@ -3772,7 +4372,16 @@ impl M68KFamilyHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if size.is_some() {
+        let is_68080 = ctx.cpu_state_flag(state::CPU_IS_68080_KEY).unwrap_or(0) != 0;
+        let long_counter = match size {
+            None => false,
+            Some(OperationSize::Long) if is_68080 => true,
+            Some(_) => {
+                return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
+            }
+        };
+
+        if matches!(size, Some(OperationSize::Long)) && !long_counter {
             return EncodeResult::error(format!("{mnemonic} does not accept a size suffix"));
         }
 
@@ -3801,8 +4410,13 @@ impl M68KFamilyHandler {
             );
         };
 
-        let offset = if Self::expr_is_unresolved(expr, ctx) {
-            0
+        let unresolved = Self::expr_is_unresolved(expr, ctx);
+        let offset = if unresolved {
+            if long_counter {
+                1
+            } else {
+                0
+            }
         } else {
             let target_value = match ctx.eval_expr(expr) {
                 Ok(value) => Self::normalize_wrapped_i32(value),
@@ -3810,9 +4424,24 @@ impl M68KFamilyHandler {
                     return EncodeResult::error_with_span(err, target.span());
                 }
             };
-            target_value - (ctx.current_address() as i64 + 2)
+            if long_counter {
+                target_value - ctx.current_address() as i64
+            } else {
+                target_value - (ctx.current_address() as i64 + 2)
+            }
         };
-        let Some(encoded_displacement) = Self::encode_signed_word(offset) else {
+        if long_counter && !unresolved && (offset & 1) != 0 {
+            return EncodeResult::error_with_span(
+                format!(
+                    "{mnemonic} branch displacement must be even before applying the long-counter signal"
+                ),
+                target.span(),
+            );
+        }
+
+        let encoded_offset = if long_counter { offset | 1 } else { offset };
+
+        let Some(encoded_displacement) = Self::encode_signed_word(encoded_offset) else {
             return EncodeResult::error_with_span(
                 format!("{mnemonic} branch displacement out of range: offset {offset}"),
                 target.span(),
@@ -3966,6 +4595,23 @@ impl M68KFamilyHandler {
                 src.span(),
             );
         };
+
+        if let Some(dst_b) = Self::b_register_direct_operand(dst) {
+            if !matches!(size, OperationSize::Long) {
+                return EncodeResult::error_with_span(
+                    format!("{mnemonic} B-register destination requires .L size on m68080"),
+                    dst.span(),
+                );
+            }
+
+            let mut bytes = Vec::new();
+            let opcode_base = if subtract { 0x5108 } else { 0x5008 };
+            Self::emit_word(
+                &mut bytes,
+                opcode_base | (data_bits << 9) | u16::from(dst_b),
+            );
+            return EncodeResult::ok(bytes);
+        }
 
         let dst_ea = match self.encode_effective_address(dst, Some(size), ctx) {
             Ok(ea) => ea,
@@ -5250,6 +5896,14 @@ impl M68KFamilyHandler {
                     })
                 }
             },
+            Operand::RegisterGroup { .. } => Err(EncodeResult::error_with_span(
+                "register groups are not standalone effective addresses",
+                operand.span(),
+            )),
+            Operand::TextureOperand { .. } => Err(EncodeResult::error_with_span(
+                "TEX texture operands are not standalone effective addresses",
+                operand.span(),
+            )),
             Operand::RegisterPair { .. } | Operand::IndirectRegisterPair { .. } => {
                 Err(EncodeResult::error_with_span(
                     "68020 register pairs are not standalone effective addresses",
@@ -5297,7 +5951,7 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn move_allows_source(kind: EffectiveAddressKind, size: OperationSize) -> bool {
+    pub(crate) fn move_allows_source(kind: EffectiveAddressKind, size: OperationSize) -> bool {
         match kind {
             EffectiveAddressKind::DataRegister
             | EffectiveAddressKind::AddressIndirect
@@ -5313,7 +5967,7 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn move_allows_destination(kind: EffectiveAddressKind) -> bool {
+    pub(crate) fn move_allows_destination(kind: EffectiveAddressKind) -> bool {
         matches!(
             kind,
             EffectiveAddressKind::DataRegister
@@ -5577,6 +6231,12 @@ impl M68KFamilyHandler {
             Operand::PcDisplacement { .. } => EffectiveAddressKind::PcDisplacement,
             Operand::PcIndexed { .. } => EffectiveAddressKind::PcIndexed,
             Operand::Absolute { .. } => EffectiveAddressKind::Absolute,
+            Operand::RegisterGroup { .. } => {
+                unreachable!("68080 register groups are not effective addresses")
+            }
+            Operand::TextureOperand { .. } => {
+                unreachable!("TEX texture operands are not effective addresses")
+            }
             Operand::RegisterPair { .. } | Operand::IndirectRegisterPair { .. } => {
                 unreachable!("68020 register pairs are not effective addresses")
             }
@@ -5611,10 +6271,73 @@ impl M68KFamilyHandler {
         (reg <= 7).then_some(reg)
     }
 
+    fn e_register_descriptor(name: &str) -> Option<(u16, u16)> {
+        let upper = name.to_ascii_uppercase();
+        let suffix = upper.strip_prefix('E')?;
+        let reg = suffix.parse::<u8>().ok()?;
+        if reg > 23 {
+            return None;
+        }
+        Some((u16::from(reg / 8 + 1), u16::from(reg % 8)))
+    }
+
+    fn move_sr_bank_prefix_size_bits(body_len: usize) -> Option<u16> {
+        match body_len {
+            2 => Some(0),
+            4 => Some(1),
+            6 => Some(2),
+            8 => Some(3),
+            _ => None,
+        }
+    }
+
+    fn encode_move_sr_banked_destination(
+        dst: &Operand,
+        ctx: &dyn AssemblerContext,
+    ) -> Option<EncodeResult<Vec<u8>>> {
+        if ctx.cpu_state_flag(state::CPU_IS_68080_KEY).unwrap_or(0) == 0 {
+            return None;
+        }
+
+        let Operand::DataRegister { register, .. } = dst else {
+            return None;
+        };
+        let (bank_bits, reg_bits) = Self::e_register_descriptor(register)?;
+
+        let mut body = Vec::new();
+        Self::emit_word(&mut body, 0x40C0 | reg_bits);
+        let Some(size_bits) = Self::move_sr_bank_prefix_size_bits(body.len()) else {
+            return Some(EncodeResult::error(
+                "generated BANK prefix requires a 2, 4, 6, or 8 byte base instruction on m68080",
+            ));
+        };
+
+        let prefix_word =
+            0x7100 | ((size_bits & 0x3) << 6) | ((bank_bits & 0x3) << 2) | (bank_bits & 0x3);
+        let mut bytes = Vec::with_capacity(body.len() + 2);
+        Self::emit_word(&mut bytes, prefix_word);
+        bytes.extend_from_slice(&body);
+        Some(EncodeResult::ok(bytes))
+    }
+
+    fn b_register_number(name: &str) -> Option<u8> {
+        let upper = name.to_ascii_uppercase();
+        let suffix = upper.strip_prefix('B')?;
+        let reg = suffix.parse::<u8>().ok()?;
+        (reg <= 7).then_some(reg)
+    }
+
     pub(crate) fn fpu_data_register_number(name: &str) -> Option<u8> {
         let suffix = name.strip_prefix("FP")?;
         let reg = suffix.parse::<u8>().ok()?;
         (reg <= 7).then_some(reg)
+    }
+
+    pub(crate) fn fpu_banked_data_register_number(name: &str) -> Option<u8> {
+        let upper = name.to_ascii_uppercase();
+        let suffix = upper.strip_prefix('E')?;
+        let reg = suffix.parse::<u8>().ok()?;
+        (reg <= 23).then_some(reg)
     }
 
     pub(crate) fn address_register_number(name: &str) -> Option<u8> {
@@ -5624,6 +6347,20 @@ impl M68KFamilyHandler {
         let suffix = name.strip_prefix('A')?;
         let reg = suffix.parse::<u8>().ok()?;
         (reg <= 7).then_some(reg)
+    }
+
+    fn b_register_direct_operand(operand: &Operand) -> Option<u8> {
+        match operand {
+            Operand::AddressRegister { register, .. } => Self::b_register_number(register),
+            _ => None,
+        }
+    }
+
+    fn b_register_indirect_operand(operand: &Operand) -> Option<u8> {
+        match operand {
+            Operand::AddressIndirect { register, .. } => Self::b_register_number(register),
+            _ => None,
+        }
     }
 
     fn effective_address_bits(bits: u16) -> u16 {
@@ -6126,6 +6863,25 @@ impl FamilyHandler for M68KFamilyHandler {
         exprs: &[Expr],
     ) -> Result<Vec<Self::FamilyOperand>, FamilyParseError> {
         if matches!(
+            parse_m68080_mnemonic(mnemonic).map(|parsed| parsed.kind),
+            Some(M68080MnemonicKind::Tex)
+        ) {
+            let [src, dst] = exprs else {
+                return Err(FamilyParseError::new(
+                    "TEX expects a texture source and a destination data register",
+                    exprs.first().map(span_from_expr).unwrap_or_default(),
+                ));
+            };
+            return Ok(vec![
+                FamilyOperand::TextureOperand {
+                    expr: src.clone(),
+                    span: span_from_expr(src),
+                },
+                self.parse_single_operand(dst)?,
+            ]);
+        }
+
+        if matches!(
             parse_fpu_mnemonic(mnemonic).map(|parsed| parsed.kind),
             Some(FpuMnemonicKind::Fmovem)
         ) {
@@ -6203,6 +6959,13 @@ impl FamilyHandler for M68KFamilyHandler {
                     span: span_from_expr(expr),
                 },
             ]);
+        }
+
+        if parse_fpu_mnemonic(mnemonic).is_some() {
+            return exprs
+                .iter()
+                .map(|expr| self.parse_fpu_operand(expr))
+                .collect();
         }
 
         if Self::is_long_divide_mnemonic(mnemonic) {
@@ -7352,6 +8115,31 @@ mod tests {
                 } => assert_eq!(parsed, register),
                 other => panic!("expected FPU data register operand, got {other:?}"),
             }
+        }
+    }
+
+    #[test]
+    fn parses_banked_68080_fpu_data_register_operands() {
+        let handler = M68KFamilyHandler::new();
+        for register in ["E0", "E4", "E23"] {
+            let operands = handler
+                .parse_operands(
+                    "FMUL",
+                    &[
+                        Expr::Identifier(register.to_string(), span()),
+                        Expr::Identifier("FP3".to_string(), span()),
+                        Expr::Identifier("E5".to_string(), span()),
+                    ],
+                )
+                .expect("operand parse");
+            assert!(matches!(
+                operands.as_slice(),
+                [
+                    FamilyOperand::FpuDataRegister { register: src, .. },
+                    FamilyOperand::FpuDataRegister { register: mid, .. },
+                    FamilyOperand::FpuDataRegister { register: dst, .. },
+                ] if src == register && mid == "FP3" && dst == "E5"
+            ));
         }
     }
 

@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Output, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use libopforge::asm::{Assembler, AssemblerWorkflowError};
+use libopforge::diagnostics::{AsmRunReport, Diagnostic, Severity};
 
 use crate::lsp::config::LspConfig;
-
-const VALIDATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Default)]
 pub struct ValidationFixit {
@@ -40,117 +35,39 @@ pub struct ValidationRunResult {
     pub diagnostics: Vec<ValidationDiagnostic>,
 }
 
-pub fn run_cli_validation(
+pub fn run_validation(
     config: &LspConfig,
     root_file: &Path,
     working_dir: &Path,
     source_root: &Path,
 ) -> ValidationRunResult {
-    let mut cmd = Command::new(resolve_opforge_path(config));
-    cmd.arg("--format")
-        .arg("json")
-        .arg("--diagnostics-style")
-        .arg("rustc")
-        .arg("--infile")
-        .arg(root_file);
+    let include_paths: Vec<PathBuf> = config
+        .include_paths
+        .iter()
+        .map(|include| PathBuf::from(rebase_config_path(include, source_root, working_dir)))
+        .collect();
+    let module_paths: Vec<PathBuf> = config
+        .module_paths
+        .iter()
+        .map(|module| PathBuf::from(rebase_config_path(module, source_root, working_dir)))
+        .collect();
+
+    let mut builder = Assembler::builder(root_file)
+        .defines(&config.defines)
+        .include_paths(&include_paths)
+        .module_paths(&module_paths);
     if let Some(cpu) = &config.default_cpu {
-        cmd.arg("--cpu").arg(cpu);
+        builder = builder.cpu_override(cpu);
     }
-    for include in &config.include_paths {
-        cmd.arg("--include-path")
-            .arg(rebase_config_path(include, source_root, working_dir));
+
+    match builder.check() {
+        Ok(report) => ValidationRunResult {
+            diagnostics: map_report_diagnostics(&report),
+        },
+        Err(error) => ValidationRunResult {
+            diagnostics: map_workflow_error(root_file, error),
+        },
     }
-    for module in &config.module_paths {
-        cmd.arg("--module-path")
-            .arg(rebase_config_path(module, source_root, working_dir));
-    }
-    for define in &config.defines {
-        cmd.arg("--define").arg(define);
-    }
-    cmd.current_dir(working_dir);
-
-    let output = match run_command_with_timeout(&mut cmd, VALIDATION_TIMEOUT) {
-        Ok(out) => out,
-        Err(detail) => {
-            return ValidationRunResult {
-                diagnostics: vec![validation_failure_diagnostic(root_file, detail)],
-            }
-        }
-    };
-
-    let mut diagnostics = Vec::new();
-    diagnostics.extend(parse_json_diag_lines(&String::from_utf8_lossy(
-        &output.stdout,
-    )));
-    diagnostics.extend(parse_json_diag_lines(&String::from_utf8_lossy(
-        &output.stderr,
-    )));
-    if !output.status.success() && diagnostics.is_empty() {
-        diagnostics.push(validation_failure_diagnostic(
-            root_file,
-            validation_exit_message(output.status.code()),
-        ));
-    }
-    ValidationRunResult { diagnostics }
-}
-
-fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<Output, String> {
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|err| format!("could not start validator: {err}"))?;
-    let Some(stdout) = child.stdout.take() else {
-        return Err("validator stdout pipe was unavailable".to_string());
-    };
-    let Some(stderr) = child.stderr.take() else {
-        return Err("validator stderr pipe was unavailable".to_string());
-    };
-
-    let stdout_handle = thread::spawn(move || read_pipe(stdout));
-    let stderr_handle = thread::spawn(move || read_pipe(stderr));
-    let started = Instant::now();
-
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if started.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = stdout_handle.join();
-                    let _ = stderr_handle.join();
-                    return Err(format!(
-                        "validator timed out after {} ms",
-                        timeout.as_millis()
-                    ));
-                }
-                thread::sleep(Duration::from_millis(10));
-            }
-            Err(err) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                let _ = stdout_handle.join();
-                let _ = stderr_handle.join();
-                return Err(format!("could not wait for validator: {err}"));
-            }
-        }
-    };
-
-    let stdout = stdout_handle.join().unwrap_or_default();
-    let stderr = stderr_handle.join().unwrap_or_default();
-    Ok(Output {
-        status,
-        stdout,
-        stderr,
-    })
-}
-
-fn read_pipe<R: Read>(mut reader: R) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    let _ = reader.read_to_end(&mut bytes);
-    bytes
 }
 
 fn validation_failure_diagnostic(root_file: &Path, detail: String) -> ValidationDiagnostic {
@@ -166,11 +83,8 @@ fn validation_failure_diagnostic(root_file: &Path, detail: String) -> Validation
     }
 }
 
-fn validation_exit_message(code: Option<i32>) -> String {
-    match code {
-        Some(code) => format!("validator exited with status {code}"),
-        None => "validator terminated by signal".to_string(),
-    }
+fn map_report_diagnostics(report: &AsmRunReport) -> Vec<ValidationDiagnostic> {
+    report.diagnostics().iter().map(map_diagnostic).collect()
 }
 
 fn rebase_config_path(path: &str, source_root: &Path, overlay_root: &Path) -> String {
@@ -202,194 +116,122 @@ fn normalize_path(path: &Path) -> PathBuf {
     normalized
 }
 
-fn resolve_opforge_path(config: &LspConfig) -> String {
-    resolve_opforge_path_with_current_exe(config, std::env::current_exe().ok().as_deref())
-}
-
-fn resolve_opforge_path_with_current_exe(config: &LspConfig, current_exe: Option<&Path>) -> String {
-    if let Some(path) = &config.opforge_path {
-        return path.clone();
-    }
-
-    if let Some(current_exe) = current_exe {
-        if let Some(current_exe_dir) = current_exe.parent() {
-            let candidate = current_exe_dir.join(opforge_binary_name());
-            if candidate.is_file() {
-                return candidate.to_string_lossy().to_string();
+fn map_workflow_error(
+    root_file: &Path,
+    error: AssemblerWorkflowError,
+) -> Vec<ValidationDiagnostic> {
+    match error {
+        AssemblerWorkflowError::Assemble(error) => {
+            let mut diagnostics: Vec<ValidationDiagnostic> =
+                error.diagnostics().iter().map(map_diagnostic).collect();
+            if diagnostics.is_empty() {
+                diagnostics.push(validation_failure_diagnostic(
+                    root_file,
+                    error.summary().to_string(),
+                ));
             }
-
-            if current_exe_dir.file_name().and_then(|name| name.to_str()) == Some("deps") {
-                if let Some(parent_dir) = current_exe_dir.parent() {
-                    let parent_candidate = parent_dir.join(opforge_binary_name());
-                    if parent_candidate.is_file() {
-                        return parent_candidate.to_string_lossy().to_string();
-                    }
-                }
-            }
+            diagnostics
         }
-    }
-
-    "opforge".to_string()
-}
-
-fn opforge_binary_name() -> &'static str {
-    if cfg!(windows) {
-        "opforge.exe"
-    } else {
-        "opforge"
+        other => vec![ValidationDiagnostic {
+            code: other.code().to_string(),
+            severity: "error".to_string(),
+            message: other.summary().to_string(),
+            file: Some(root_file.to_string_lossy().to_string()),
+            line: 1,
+            col_start: Some(1),
+            col_end: Some(1),
+            fixits: Vec::new(),
+        }],
     }
 }
 
-fn parse_json_diag_lines(text: &str) -> Vec<ValidationDiagnostic> {
-    let mut out = Vec::new();
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
-            continue;
-        }
-        let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
-            continue;
-        };
-        let code = value
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let message = value
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        if code.is_empty() && message.is_empty() {
-            continue;
-        }
-        let severity = value
-            .get("severity")
-            .and_then(Value::as_str)
-            .unwrap_or("error")
-            .to_string();
-        let file = value
-            .get("file")
-            .and_then(Value::as_str)
-            .map(ToString::to_string);
-        let line_num = value.get("line").and_then(Value::as_u64).unwrap_or(1) as u32;
-        let col_start = value
-            .get("col_start")
-            .and_then(Value::as_u64)
-            .map(|v| v as u32);
-        let col_end = value
-            .get("col_end")
-            .and_then(Value::as_u64)
-            .map(|v| v as u32);
-        let fixits = value
-            .get("fixits")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .map(|item| ValidationFixit {
-                        file: item
-                            .get("file")
-                            .and_then(Value::as_str)
-                            .map(ToString::to_string),
-                        line: item.get("line").and_then(Value::as_u64).unwrap_or(1) as u32,
-                        col_start: item
-                            .get("col_start")
-                            .and_then(Value::as_u64)
-                            .map(|v| v as u32),
-                        col_end: item
-                            .get("col_end")
-                            .and_then(Value::as_u64)
-                            .map(|v| v as u32),
-                        replacement: item
-                            .get("replacement")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string(),
-                        applicability: item
-                            .get("applicability")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string(),
-                    })
-                    .collect()
+fn map_diagnostic(diagnostic: &Diagnostic) -> ValidationDiagnostic {
+    let file = diagnostic.file.clone().or_else(|| {
+        diagnostic
+            .parser_error
+            .as_ref()
+            .and_then(|parse| parse.location.file.clone())
+    });
+    let line = diagnostic
+        .parser_error
+        .as_ref()
+        .map(|parse| parse.location.line)
+        .unwrap_or(diagnostic.line);
+    let col_start = diagnostic
+        .parser_error
+        .as_ref()
+        .and_then(|parse| parse.location.col_start)
+        .or(diagnostic.column)
+        .map(|value| value as u32);
+    let col_end = diagnostic
+        .parser_error
+        .as_ref()
+        .and_then(|parse| parse.location.col_end)
+        .or(diagnostic.col_end)
+        .map(|value| value as u32);
+
+    ValidationDiagnostic {
+        code: diagnostic.code.clone(),
+        severity: severity_name(diagnostic.severity).to_string(),
+        message: diagnostic.error.message().to_string(),
+        file,
+        line,
+        col_start,
+        col_end,
+        fixits: diagnostic
+            .fixits
+            .iter()
+            .map(|fixit| ValidationFixit {
+                file: fixit.file.clone(),
+                line: fixit.line,
+                col_start: fixit.col_start.map(|value| value as u32),
+                col_end: fixit.col_end.map(|value| value as u32),
+                replacement: fixit.replacement.clone(),
+                applicability: fixit.applicability.clone(),
             })
-            .unwrap_or_default();
-        out.push(ValidationDiagnostic {
-            code,
-            severity,
-            message,
-            file,
-            line: line_num,
-            col_start,
-            col_end,
-            fixits,
-        });
+            .collect(),
     }
-    out
+}
+
+fn severity_name(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Warning => "warning",
+        Severity::Error => "error",
+    }
+}
+
+#[cfg(test)]
+fn unique_temp_dir(prefix: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("{prefix}-{nanos}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    dir
+}
+
+#[cfg(test)]
+fn write_text(path: &Path, text: &str) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).expect("create parent dir");
+    }
+    std::fs::write(path, text).expect("write test file");
+}
+
+#[cfg(test)]
+fn artifact_emitting_invalid_source() -> &'static str {
+    ".cpu \"6502\"\n.meta.output.name \"artifact\"\n.mapfile \"build/diagnostic.map\", symbols=all\n.org $1000\nbogus\n"
+}
+
+#[cfg(test)]
+fn temp_path_exists(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn resolve_path_prefers_configured_binary() {
-        let config = LspConfig {
-            opforge_path: Some("/tmp/custom-opforge".to_string()),
-            ..LspConfig::default()
-        };
-
-        let resolved = resolve_opforge_path_with_current_exe(&config, None);
-        assert_eq!(resolved, "/tmp/custom-opforge");
-    }
-
-    #[test]
-    fn resolve_path_falls_back_to_path_when_no_local_binary_found() {
-        let config = LspConfig::default();
-        let resolved = resolve_opforge_path_with_current_exe(
-            &config,
-            Some(Path::new("/definitely/not/a/real/path/lsp")),
-        );
-        assert_eq!(resolved, "opforge");
-    }
-
-    #[test]
-    fn resolve_path_uses_binary_adjacent_to_lsp() {
-        let temp_dir = std::env::temp_dir().join(format!("lsp-test-{}", std::process::id()));
-        std::fs::create_dir_all(&temp_dir).expect("create temp test dir");
-        let opforge_path = temp_dir.join(opforge_binary_name());
-        std::fs::write(&opforge_path, b"#!/bin/sh\n").expect("write fake opforge");
-
-        let lsp_path = temp_dir.join("lsp");
-        let config = LspConfig::default();
-        let resolved = resolve_opforge_path_with_current_exe(&config, Some(&lsp_path));
-
-        assert_eq!(resolved, opforge_path.to_string_lossy());
-
-        let _ = std::fs::remove_file(opforge_path);
-        let _ = std::fs::remove_dir(temp_dir);
-    }
-
-    #[test]
-    fn resolve_path_ignores_workspace_target_debug_binary_without_explicit_opt_in() {
-        let temp_root =
-            std::env::temp_dir().join(format!("lsp-workspace-test-{}", std::process::id()));
-        let target_debug = temp_root.join("target").join("debug");
-        std::fs::create_dir_all(&target_debug).expect("create target/debug");
-        let workspace_opforge = target_debug.join(opforge_binary_name());
-        std::fs::write(&workspace_opforge, b"#!/bin/sh\n").expect("write fake opforge");
-
-        let config = LspConfig {
-            roots: vec![temp_root.to_string_lossy().to_string()],
-            ..LspConfig::default()
-        };
-        let resolved = resolve_opforge_path_with_current_exe(&config, None);
-        assert_eq!(resolved, "opforge");
-
-        let _ = std::fs::remove_file(workspace_opforge);
-        let _ = std::fs::remove_dir_all(temp_root);
-    }
 
     #[test]
     fn rebase_config_path_keeps_workspace_relative_targets_in_overlay() {
@@ -411,15 +253,38 @@ mod tests {
         assert_eq!(rebased, "/workspace/external/modules");
     }
 
-    #[cfg(unix)]
     #[test]
-    fn run_command_with_timeout_reports_timeout() {
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg("sleep 1");
+    fn run_validation_uses_read_only_check_path() {
+        let temp_dir = unique_temp_dir("lsp-validation-read-only");
+        let root_file = temp_dir.join("main.asm");
+        write_text(&root_file, artifact_emitting_invalid_source());
 
-        let error = run_command_with_timeout(&mut cmd, Duration::from_millis(50))
-            .expect_err("hung command should time out");
+        let result = run_validation(&LspConfig::default(), &root_file, &temp_dir, &temp_dir);
 
-        assert!(error.contains("validator timed out"));
+        assert!(
+            !result.diagnostics.is_empty(),
+            "expected diagnostics for invalid source"
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.severity == "error"),
+            "expected at least one error diagnostic"
+        );
+        assert!(
+            !temp_path_exists(&temp_dir.join("artifact.lst")),
+            "validation should not emit default listing output"
+        );
+        assert!(
+            !temp_path_exists(&temp_dir.join("artifact.hex")),
+            "validation should not emit default hex output"
+        );
+        assert!(
+            !temp_path_exists(&temp_dir.join("build/diagnostic.map")),
+            "validation should not emit directive-owned mapfiles"
+        );
+
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 }

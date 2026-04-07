@@ -540,6 +540,13 @@ pub fn editor_tokenize_line_with_model(
 fn resolve_artifact_output_path(path: &str, out_dir: Option<&Path>) -> Result<PathBuf, AsmError> {
     let raw_path = PathBuf::from(path);
     if raw_path.is_absolute() {
+        if out_dir.is_some() {
+            return Err(AsmError::new(
+                AsmErrorKind::Directive,
+                "Output path escapes resolved output root",
+                Some(raw_path.to_string_lossy().as_ref()),
+            ));
+        }
         Ok(raw_path)
     } else if let Some(dir) = out_dir {
         anchor_relative_output_path(dir, &raw_path).map_err(|err| {
@@ -2004,34 +2011,50 @@ fn canonical_m68k_cpu_name(cpu: &str) -> Option<&'static str> {
         "68020" => Some("68020"),
         "68030" => Some("68030"),
         "68040" => Some("68040"),
+        "68080" => Some("68080"),
         _ => None,
     }
 }
 
-fn m68k_cpu_scope(
-    cpu: &str,
-) -> Option<(
+type M68kCpuScope = (
+    &'static [&'static str],
     &'static [&'static str],
     &'static [&'static str],
     &'static str,
-)> {
+);
+
+fn m68k_cpu_scope(cpu: &str) -> Option<M68kCpuScope> {
     match canonical_m68k_cpu_name(cpu)? {
-        "68000" => Some((&["none"], &["none"], "baseline-integer")),
-        "68010" => Some((&["none"], &["none"], "baseline-integer-plus-68010-delta")),
+        "68000" => Some((&["none"], &["none"], &[], "baseline-integer")),
+        "68010" => Some((
+            &["none"],
+            &["none"],
+            &[],
+            "baseline-integer-plus-68010-delta",
+        )),
         "68020" => Some((
             &["none"],
             &["none", "68881", "68882"],
+            &[],
             "full-extension-addressing",
         )),
         "68030" => Some((
             &["pflush"],
             &["none", "68881", "68882"],
+            &[],
             "full-extension-addressing",
         )),
         "68040" => Some((
             &["movec-registers", "pflush"],
             &["none", "68040"],
+            &[],
             "full-extension-addressing,move16",
+        )),
+        "68080" => Some((
+            &["movec-registers", "pflush"],
+            &["none", "68080"],
+            &["apollo", "ammx", "fpu68080"],
+            "full-extension-addressing,move16,68080-full-extension-contract",
         )),
         _ => None,
     }
@@ -2043,20 +2066,25 @@ fn cpu_support_json_entry(registry: &AsmRegistry, cpu: CpuType) -> serde_json::V
         .map(|id| id.as_str().to_string());
     let default_dialect = registry.cpu_default_dialect(cpu).map(str::to_string);
     let runtime_directives = registry.cpu_runtime_directive_ids(cpu);
-    let (mmu_surface, fpu_targets, scope_note) = match m68k_cpu_scope(cpu.as_str()) {
-        Some((mmu_surface, fpu_targets, scope_note)) => (
-            mmu_surface
-                .iter()
-                .map(|value| (*value).to_string())
-                .collect::<Vec<_>>(),
-            fpu_targets
-                .iter()
-                .map(|value| (*value).to_string())
-                .collect::<Vec<_>>(),
-            Some(scope_note.to_string()),
-        ),
-        None => (Vec::new(), Vec::new(), None),
-    };
+    let (mmu_surface, fpu_targets, extension_surfaces, scope_note) =
+        match m68k_cpu_scope(cpu.as_str()) {
+            Some((mmu_surface, fpu_targets, extension_surfaces, scope_note)) => (
+                mmu_surface
+                    .iter()
+                    .map(|value| (*value).to_string())
+                    .collect::<Vec<_>>(),
+                fpu_targets
+                    .iter()
+                    .map(|value| (*value).to_string())
+                    .collect::<Vec<_>>(),
+                extension_surfaces
+                    .iter()
+                    .map(|value| (*value).to_string())
+                    .collect::<Vec<_>>(),
+                Some(scope_note.to_string()),
+            ),
+            None => (Vec::new(), Vec::new(), Vec::new(), None),
+        };
 
     json!({
         "cpu": cpu.as_str(),
@@ -2065,6 +2093,7 @@ fn cpu_support_json_entry(registry: &AsmRegistry, cpu: CpuType) -> serde_json::V
         "runtime_directives": runtime_directives,
         "mmu_surface": mmu_surface,
         "fpu_targets": fpu_targets,
+        "extension_surfaces": extension_surfaces,
         "scope_note": scope_note,
     })
 }
@@ -2103,20 +2132,25 @@ pub fn cpusupport_report(registry: &AsmRegistry) -> String {
             .unwrap_or_else(|| "unknown".to_string());
         let dialect = registry.cpu_default_dialect(cpu).unwrap_or("none");
         let runtime_directives = registry.cpu_runtime_directive_ids(cpu).join(",");
-        let (mmu_surface, fpu_targets, scope_note) = match m68k_cpu_scope(cpu.as_str()) {
-            Some((mmu_surface, fpu_targets, scope_note)) => {
-                (mmu_surface.join(","), fpu_targets.join(","), scope_note)
-            }
-            None => (String::new(), String::new(), ""),
-        };
+        let (mmu_surface, fpu_targets, extension_surfaces, scope_note) =
+            match m68k_cpu_scope(cpu.as_str()) {
+                Some((mmu_surface, fpu_targets, extension_surfaces, scope_note)) => (
+                    mmu_surface.join(","),
+                    fpu_targets.join(","),
+                    extension_surfaces.join(","),
+                    scope_note,
+                ),
+                None => (String::new(), String::new(), String::new(), ""),
+            };
         lines.push(format!(
-            "cpu={};family={};default_dialect={};runtime_directives={};mmu_surface={};fpu_targets={};scope_note={}",
+            "cpu={};family={};default_dialect={};runtime_directives={};mmu_surface={};fpu_targets={};extension_surfaces={};scope_note={}",
             cpu.as_str(),
             family,
             dialect,
             runtime_directives,
             mmu_surface,
             fpu_targets,
+            extension_surfaces,
             scope_note,
         ));
     }
@@ -2319,8 +2353,9 @@ pub fn resolve_target_cpu(
 mod tests {
     use super::{
         build_default_asm_registry, capabilities_report, capabilities_report_json,
-        cpusupport_report, cpusupport_report_json, make_runtime_line_router,
-        parse_cpu_directive_name, prepare_assembly_session, resolve_cpu_for_line,
+        cpusupport_report, cpusupport_report_json, emit_export_sections, emit_linker_outputs,
+        emit_mapfiles, export_sections_targets, linker_output_targets, make_runtime_line_router,
+        mapfile_targets, parse_cpu_directive_name, prepare_assembly_session, resolve_cpu_for_line,
         resolve_formatter_module_paths, resolve_output_plan, resolve_target_cpu,
         root_module_id_from_lines, run_assembly, run_prepared_assembly, scan_cpu_transitions,
         AssemblerSessionConfig, AssemblyExecutionRequest, AssemblyPreparationRequest,
@@ -2330,7 +2365,11 @@ mod tests {
     };
     use asm::engine::Assembler;
     use asm::error::AsmErrorKind;
-    use asm::output::{BinOutputSpec, LabelOutputFormat, OutputFormat, RootMetadata};
+    use asm::output::{
+        BinOutputSpec, ExportSectionsDirective, ExportSectionsFormat, ExportSectionsInclude,
+        LabelOutputFormat, LinkerOutputDirective, LinkerOutputFormat, MapFileDirective,
+        MapSymbolsMode, OutputFormat, RootMetadata, SectionState,
+    };
     use opcore::parser::Expr;
     use registry::cpu::{CpuFamily, CpuType};
     use registry::family::{AssemblerContext, EncodeResult, FamilyParseError};
@@ -2571,6 +2610,189 @@ mod tests {
         assert!(error.to_string().contains("escapes resolved output root"));
     }
 
+    fn directive_test_sections() -> std::collections::HashMap<String, SectionState> {
+        let mut sections = std::collections::HashMap::new();
+        sections.insert(
+            "code".to_string(),
+            SectionState {
+                base_addr: Some(0x2000),
+                bytes: vec![0xaa, 0xbb],
+                max_pc: 2,
+                ..SectionState::default()
+            },
+        );
+        sections
+    }
+
+    #[test]
+    fn linker_output_targets_reject_absolute_directive_path_under_out_dir() {
+        let outputs = vec![LinkerOutputDirective {
+            path: "/tmp/output.bin".to_string(),
+            format: LinkerOutputFormat::Bin,
+            sections: vec!["code".to_string()],
+            contiguous: false,
+            image_start: None,
+            image_end: None,
+            fill: None,
+            loadaddr: None,
+        }];
+
+        let error = linker_output_targets(&outputs, Some(Path::new("/virtual/out")))
+            .expect_err("absolute directive path should be rejected under out_dir");
+
+        assert_eq!(error.kind(), AsmErrorKind::Directive);
+        assert!(error.to_string().contains("escapes resolved output root"));
+    }
+
+    #[test]
+    fn emit_linker_outputs_rejects_parent_escape_under_out_dir() {
+        let outputs = vec![LinkerOutputDirective {
+            path: "../escape.bin".to_string(),
+            format: LinkerOutputFormat::Bin,
+            sections: vec!["code".to_string()],
+            contiguous: false,
+            image_start: None,
+            image_end: None,
+            fill: None,
+            loadaddr: None,
+        }];
+        let sink = MemoryOutputSink::new();
+
+        let error = emit_linker_outputs(
+            &outputs,
+            &directive_test_sections(),
+            Some(Path::new("/virtual/out")),
+            &sink,
+        )
+        .expect_err("parent escape should be rejected during linker output emission");
+
+        assert_eq!(error.kind(), AsmErrorKind::Directive);
+        assert!(error.to_string().contains("escapes resolved output root"));
+        assert!(sink.files().is_empty());
+    }
+
+    #[test]
+    fn export_sections_targets_reject_absolute_directive_path_under_out_dir() {
+        let directives = vec![ExportSectionsDirective {
+            dir: "/tmp/export".to_string(),
+            format: ExportSectionsFormat::Bin,
+            include: ExportSectionsInclude::NoBss,
+        }];
+
+        let error = export_sections_targets(
+            &directives,
+            &directive_test_sections(),
+            Some(Path::new("/virtual/out")),
+        )
+        .expect_err("absolute export-sections path should be rejected under out_dir");
+
+        assert_eq!(error.kind(), AsmErrorKind::Directive);
+        assert!(error.to_string().contains("escapes resolved output root"));
+    }
+
+    #[test]
+    fn emit_export_sections_rejects_parent_escape_under_out_dir() {
+        let directives = vec![ExportSectionsDirective {
+            dir: "../escape".to_string(),
+            format: ExportSectionsFormat::Bin,
+            include: ExportSectionsInclude::NoBss,
+        }];
+        let sink = MemoryOutputSink::new();
+
+        let error = emit_export_sections(
+            &directives,
+            &directive_test_sections(),
+            Some(Path::new("/virtual/out")),
+            &sink,
+        )
+        .expect_err("parent escape should be rejected during export-sections emission");
+
+        assert_eq!(error.kind(), AsmErrorKind::Directive);
+        assert!(error.to_string().contains("escapes resolved output root"));
+        assert!(sink.files().is_empty());
+    }
+
+    #[test]
+    fn mapfile_targets_reject_absolute_directive_path_under_out_dir() {
+        let directives = vec![MapFileDirective {
+            path: "/tmp/output.map".to_string(),
+            symbols: MapSymbolsMode::None,
+        }];
+
+        let error = mapfile_targets(&directives, Some(Path::new("/virtual/out")))
+            .expect_err("absolute mapfile path should be rejected under out_dir");
+
+        assert_eq!(error.kind(), AsmErrorKind::Directive);
+        assert!(error.to_string().contains("escapes resolved output root"));
+    }
+
+    #[test]
+    fn emit_mapfiles_rejects_parent_escape_under_out_dir() {
+        let directives = vec![MapFileDirective {
+            path: "../escape.map".to_string(),
+            symbols: MapSymbolsMode::None,
+        }];
+        let sink = MemoryOutputSink::new();
+
+        let error = emit_mapfiles(
+            &directives,
+            &std::collections::HashMap::new(),
+            &directive_test_sections(),
+            &SymbolTable::new(),
+            Some(Path::new("/virtual/out")),
+            &sink,
+        )
+        .expect_err("parent escape should be rejected during mapfile emission");
+
+        assert_eq!(error.kind(), AsmErrorKind::Directive);
+        assert!(error.to_string().contains("escapes resolved output root"));
+        assert!(sink.files().is_empty());
+    }
+
+    #[test]
+    fn directive_artifact_targets_anchor_rooted_relative_paths_under_out_dir() {
+        let linker_outputs = vec![LinkerOutputDirective {
+            path: "nested/output.bin".to_string(),
+            format: LinkerOutputFormat::Bin,
+            sections: vec!["code".to_string()],
+            contiguous: false,
+            image_start: None,
+            image_end: None,
+            fill: None,
+            loadaddr: None,
+        }];
+        let export_directives = vec![ExportSectionsDirective {
+            dir: "nested/export".to_string(),
+            format: ExportSectionsFormat::Bin,
+            include: ExportSectionsInclude::NoBss,
+        }];
+        let mapfile_directives = vec![MapFileDirective {
+            path: "nested/output.map".to_string(),
+            symbols: MapSymbolsMode::None,
+        }];
+        let sections = directive_test_sections();
+
+        assert_eq!(
+            linker_output_targets(&linker_outputs, Some(Path::new("/virtual/out")))
+                .expect("relative linker output should be anchored"),
+            vec!["/virtual/out/nested/output.bin".to_string()]
+        );
+        assert_eq!(
+            export_sections_targets(
+                &export_directives,
+                &sections,
+                Some(Path::new("/virtual/out")),
+            )
+            .expect("relative export-sections path should be anchored"),
+            vec!["/virtual/out/nested/export/code.bin".to_string()]
+        );
+        assert_eq!(
+            mapfile_targets(&mapfile_directives, Some(Path::new("/virtual/out")))
+                .expect("relative mapfile path should be anchored"),
+            vec!["/virtual/out/nested/output.map".to_string()]
+        );
+    }
+
     #[derive(Clone)]
     struct StubOperands;
 
@@ -2787,6 +3009,14 @@ mod tests {
         assert_eq!(
             registry.resolve_cpu_name("mc68040"),
             Some(CpuType::new("m68040"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("68080"),
+            Some(CpuType::new("m68080"))
+        );
+        assert_eq!(
+            registry.resolve_cpu_name("mc68080"),
+            Some(CpuType::new("m68080"))
         );
     }
 

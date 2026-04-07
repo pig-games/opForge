@@ -1,0 +1,162 @@
+# opForge Motorola 68000 Family 68080 Full Extension Specification (v0.1)
+
+## Summary
+This follow-up specification expands the shipped bounded 68080 surface to a
+full 68080 assembler surface in opForge, including integer, AMMX, and FPU
+instruction families and their required legality/diagnostic contracts.
+
+It supersedes the bounded implementation scope of
+`documentation/opForge-m68000-family-68080-extension-spec-v0_1.md` for new
+implementation work while preserving existing 68000-68040 behavior.
+
+## Problem
+The current 68080 implementation intentionally ships only a bounded subset
+(identity, E/B register substrate, runtime Apollo gate, representative integer
+slice, and representative AMMX slice). This leaves large portions of the
+68080 instruction surface unavailable, especially 68080 FPU coverage.
+
+Without a full-surface specification, expansion work will drift on:
+- what “full instruction set” means in assembler scope,
+- how `.apollo` and `.fpu` should behave on `m68080`,
+- how unsupported legacy CPUs should reject 68080 mnemonics,
+- and how diagnostics and AB fixtures should remain deterministic.
+
+## Goals
+- [ ] `REQ-68080-FULL-001`: Expand m68080 mnemonic support from bounded slices
+      to full 68080 assembler-visible instruction family coverage in scope of
+      this revision.
+- [ ] `REQ-68080-FULL-002`: Add full 68080 FPU instruction coverage and
+      legality contracts for `.cpu 68080`.
+- [ ] `REQ-68080-FULL-003`: Preserve existing 68000-68040 behavior and
+      diagnostics unless `.cpu 68080` is active.
+- [ ] `REQ-68080-FULL-004`: Extend operand/register forms needed by full 68080
+      families, including complete E/B register usage and pair/alignment
+      constraints.
+- [ ] `REQ-68080-FULL-005`: Define canonical `.apollo` behavior for expanded
+      68080 support with backward-compatible parsing and deterministic
+      diagnostics.
+- [ ] `REQ-68080-FULL-006`: Define canonical `.fpu` behavior for `m68080`
+      including legal targets and deterministic rejection for illegal pairings.
+- [ ] `REQ-68080-FULL-007`: Provide deterministic feature gating and
+      diagnostics for 68080-only forms on non-68080 CPUs.
+- [ ] `REQ-68080-FULL-008`: Expand AB oracle fixtures for 68080 families,
+      including documented-divergence coverage where external tools lack native
+      68080 support.
+- [ ] `REQ-68080-FULL-009`: Keep parse/encode ownership boundaries explicit:
+      family parse in m68k layer, CPU legality/feature rules in m68080 layer.
+- [ ] `REQ-68080-FULL-010`: Maintain stable diagnostic normalization classes
+      for newly added 68080 errors.
+
+## Non-Goals
+- [ ] `NREQ-68080-FULL-001`: Cycle-accurate Apollo execution timing,
+      scheduling, or microarchitectural performance modeling.
+- [ ] `NREQ-68080-FULL-002`: Emulator/runtime behavior parity guarantees.
+- [ ] `NREQ-68080-FULL-003`: Re-architecting opForge registry/parser VM
+      infrastructure beyond what is required for 68080 surface enablement.
+- [ ] `NREQ-68080-FULL-004`: Introducing non-68080 new CPU families as part of
+      this effort.
+- [ ] `NREQ-68080-FULL-005`: Changing existing 68000-68040 fixture bytes unless
+      explicitly required by bug fixes outside 68080 scope.
+
+## Invariants / Constraints
+- Family id remains `motorola68000`; dialect remains `motorola68k`.
+- Existing 68000-68040 behavior remains authoritative and regression-safe.
+- Parse success does not imply legality; legality stays CPU-context aware.
+- `E*`/`B*` register namespaces remain 68080-reserved.
+- New 68080 diagnostics must normalize into existing classification buckets.
+- AB suite must remain deterministic with explicit documented-divergence
+  contracts where oracle capability differs.
+- Follow-up implementation plans must keep the active worktree `AGENTS.md`
+  workflow and execution rules binding.
+
+## Behavioral Contract
+
+### CPU identity and capability contract
+- `m68080`, `68080`, and `mc68080` remain canonical mappings.
+- Capability surfaces expose full 68080 family support with explicit FPU and
+  AMMX coverage metadata.
+
+### `.apollo` contract (expanded revision)
+- `.apollo` remains accepted on `m68080` for backward compatibility.
+- Default mode under `.cpu 68080` is `on` for full-surface instruction
+  legality.
+- `.apollo off` may be used as a strict-compatibility mode that disables
+  Apollo-native subsets only if configured in this revision; if strict mode is
+  not implemented, `.apollo off` must emit deterministic “unsupported mode in
+  full-profile build” diagnostics.
+- On non-68080 CPUs, `.apollo` is rejected deterministically.
+
+### `.fpu` contract for `m68080`
+- Legal targets on `m68080`: `none`, `68080`.
+- `68080` target enables full 68080 FPU instruction legality in this revision.
+- Illegal targets (for example `68881`, `68882`, `68040`) on `m68080` must
+  fail with deterministic target/cpu pairing diagnostics.
+
+### Instruction-family expansion contract
+- Integer extensions: all remaining 68080 integer families from current gaps
+  list are in scope.
+- AMMX extensions: full documented AMMX family coverage in assembler scope is
+  in scope.
+- FPU extensions: full 68080 FPU assembler-visible family coverage is in scope.
+- Prefix/selector/shape constraints (register pairs, element widths,
+  alignment, immediate limits) must be validated deterministically.
+
+### Cross-CPU legality matrix
+| Surface | m68000 | m68010 | m68020 | m68030 | m68040 | m68080 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Existing shipped behavior | Yes | Yes | Yes | Yes | Yes | Yes |
+| Full 68080 integer families | No | No | No | No | No | Yes |
+| Full AMMX families | No | No | No | No | No | Yes |
+| Full 68080 FPU families | No | No | No | No | No | Yes |
+| E/B register namespaces | No | No | No | No | No | Yes |
+| `.apollo` accepted | No | No | No | No | No | Yes |
+| `.fpu 68080` accepted | No | No | No | No | No | Yes |
+
+### Diagnostics contract
+- Non-68080 CPU usage of 68080 mnemonics reports unsupported CPU feature.
+- Illegal `.fpu` target pairings report legal target set for active CPU.
+- Operand-shape violations report deterministic operand/shape diagnostics.
+- AB documented-divergence fixtures must include explicit divergence kind and
+  reason.
+
+## Boundary Cases
+- Switching `.cpu` from 68080 to earlier CPUs invalidates subsequent E/B,
+  AMMX, and 68080 FPU forms.
+- `.apollo` on non-68080 CPUs always fails deterministically.
+- `.fpu 68080` on non-68080 CPUs always fails deterministically.
+- Ambiguous register-like symbols continue to follow parser token precedence.
+- Full-surface enablement must not silently remap 68080 mnemonics to 68040
+  encodings when dedicated encodings are required.
+
+## Acceptance Criteria
+- [ ] `AC-68080-FULL-001`: `cpusupport`/capabilities report full 68080 support
+      metadata including FPU and AMMX surfaces.
+- [ ] `AC-68080-FULL-002`: Existing 68000-68040 positive/reference fixtures
+      remain unchanged.
+- [ ] `AC-68080-FULL-003`: Full 68080 integer family matrix assembles on
+      `.cpu 68080` with expected bytes.
+- [ ] `AC-68080-FULL-004`: Full AMMX family matrix assembles for legal forms
+      and rejects illegal shapes deterministically.
+- [ ] `AC-68080-FULL-005`: Full 68080 FPU family matrix assembles under legal
+      `.fpu 68080` and rejects illegal target pairings deterministically.
+- [ ] `AC-68080-FULL-006`: Non-68080 CPUs deterministically reject 68080-only
+      mnemonics and E/B registers.
+- [ ] `AC-68080-FULL-007`: AB suites include 68080 fixtures with explicit
+      documented-divergence metadata where required.
+- [ ] `AC-68080-FULL-008`: New diagnostics normalize to existing classes
+      without introducing unstable class names.
+
+## Validation Expectations
+- Add comprehensive 68080 assembler tests by family (integer/AMMX/FPU).
+- Add example/reference matrices for full 68080 family coverage.
+- Add AB fixtures for success/error/documented-divergence paths.
+- Run full quality gates and reference comparison suites.
+- Run spec artifact validation and preserve quality-gate evidence.
+
+## Open Questions
+- [ ] `Q-68080-FULL-001`: Should `.apollo off` remain functional strict mode or
+  become a compatibility no-op with diagnostic warning?
+- [ ] `Q-68080-FULL-002`: Should `.fpu` default under `.cpu 68080` remain
+  `none` or auto-promote to `68080` for convenience?
+- [ ] `Q-68080-FULL-003`: Which 68080 FPU syntax aliases should be canonical
+  when multiple spellings exist in legacy source corpora?

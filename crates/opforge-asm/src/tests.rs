@@ -3681,6 +3681,8 @@ fn m68080_integer_extension_slice() {
         "    PERM #$ABC,D0,E1",
         "    MOVEC PCR,D0",
         "    MOVEC D1,MWR",
+        "    MOVEC IEP3,D2",
+        "    MOVEC D3,STH",
         "    MOVE SR,E0",
         "    MOVE16 ($1234).L,(A1)",
     ];
@@ -3697,8 +3699,8 @@ fn m68080_integer_extension_slice() {
         bytes,
         vec![
             0xAE, 0x02, 0x71, 0x0A, 0x4B, 0xC0, 0x4D, 0xC1, 0x71, 0x01, 0x4C, 0xC0, 0x1A, 0xBC,
-            0x4E, 0x7A, 0x08, 0x08, 0x4E, 0x7B, 0x10, 0x0E, 0x71, 0x05, 0x40, 0xC0, 0xF6, 0x19,
-            0x00, 0x00, 0x12, 0x34,
+            0x4E, 0x7A, 0x08, 0x08, 0x4E, 0x7B, 0x10, 0x0E, 0x4E, 0x7A, 0x20, 0x0C, 0x4E, 0x7B,
+            0x30, 0x0C, 0x71, 0x05, 0x40, 0xC0, 0xF6, 0x19, 0x00, 0x00, 0x12, 0x34,
         ]
     );
 
@@ -3729,6 +3731,29 @@ fn m68080_integer_extension_slice() {
         let message = message.expect("expected WI-7 legality diagnostic");
         assert!(message.contains(expected), "{message}");
     }
+}
+
+#[test]
+fn m68080_movec_iep3_is_canonical_with_sth_alias() {
+    let source = [
+        ".cpu 68080",
+        "    MOVEC IEP3,D2",
+        "    MOVEC D3,IEP3",
+        "    MOVEC D4,STH",
+    ];
+
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&source, false)
+        .expect("m68080 MOVEC IEP3/STH forms should assemble");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected MOVEC IEP3/STH diagnostics: {diagnostics:?}"
+    );
+
+    let bytes: Vec<u8> = entries.iter().map(|(_, byte)| *byte).collect();
+    assert_eq!(
+        bytes,
+        vec![0x4E, 0x7A, 0x20, 0x0C, 0x4E, 0x7B, 0x30, 0x0C, 0x4E, 0x7B, 0x40, 0x0C,]
+    );
 }
 
 #[test]

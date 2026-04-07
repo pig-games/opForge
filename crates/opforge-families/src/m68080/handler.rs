@@ -910,7 +910,7 @@ impl M68080CpuHandler {
             ControlRegisterKind::Dcm => Some(0x80F),
             ControlRegisterKind::Str => Some(0x00A),
             ControlRegisterKind::Stc => Some(0x00B),
-            ControlRegisterKind::Sth => Some(0x00C),
+            ControlRegisterKind::Iep3 => Some(0x00C),
             ControlRegisterKind::Stb => Some(0x00D),
             ControlRegisterKind::Mwr => Some(0x00E),
             ControlRegisterKind::Caar => None,

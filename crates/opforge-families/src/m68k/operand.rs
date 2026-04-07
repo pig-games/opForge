@@ -61,7 +61,7 @@ pub enum ControlRegisterKind {
     Dcm,
     Str,
     Stc,
-    Sth,
+    Iep3,
     Stb,
     Mwr,
 }

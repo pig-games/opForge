@@ -1372,12 +1372,15 @@ The 68080 adds event counter registers accessible via MOVEC:
 | DCM | $80F | Data Cache Miss |
 | STR | $00A | Store Read |
 | STC | $00B | Store Count |
-| STH | $00C | Store Hit |
+| IEP3 | $00C | Instructions Executed Pipe 3 |
 | STB | $00D | Store Buffer |
 | MWR | $00E | Memory Write |
 
 **Note from PRM:** "Reading may be done in user mode on 68080" — unlike
 standard 68k where MOVEC is always privileged.
+
+**Compatibility note:** `STH` remains accepted as a legacy alias for `$00C`,
+but `IEP3` is the canonical 68080 spelling.
 
 **Implementation:**
 

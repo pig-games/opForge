@@ -322,7 +322,7 @@ impl M68KFamilyHandler {
             "DCM" => ControlRegisterKind::Dcm,
             "STR" => ControlRegisterKind::Str,
             "STC" => ControlRegisterKind::Stc,
-            "STH" => ControlRegisterKind::Sth,
+            "IEP3" | "STH" => ControlRegisterKind::Iep3,
             "STB" => ControlRegisterKind::Stb,
             "MWR" => ControlRegisterKind::Mwr,
             _ => return None,

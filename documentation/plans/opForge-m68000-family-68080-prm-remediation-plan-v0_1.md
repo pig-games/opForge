@@ -5,7 +5,7 @@
 - Source: review report at `dev-docs/reviews/opforge_68080_prm_validation_2026-04-07.md`
 - Mode: remediation
 - Owner: GitHub Copilot (GPT-5.4)
-- Status: execution in progress; WI-1 and WI-2 have passed `plan-compliance-reviewer` and landed as their own commits, and WI-3 through WI-4 are being reconstructed from the saved pre-split diff into one-slice commit states
+- Status: execution in progress; WI-1 through WI-4 have passed `plan-compliance-reviewer` and landed or are landing as their own commits, and WI-5 remains for closure artifacts and final review evidence
 
 ## Objective
 
@@ -79,13 +79,10 @@ canonical `MOVEC IEP3` control-register name.
   `d697a55` (`Removed incorrect Apollo gating from 68080 AMMX instructions.`).
 - WI-2: complete. `plan-compliance-reviewer` PASS and committed as `10f5c52`
   (`Made regular MOVIW the default 68080 encoding.`).
-- WI-3: slice reconstructed and fully validated in the working tree. Plain
-  `.cpu 68080` now defaults the runtime FPU target to `68080`, `.fpu none`
-  still disables the integrated FPU deterministically, and the slice is being
-  advanced through `plan-compliance-reviewer` before commit.
-- A previously validated pre-split working tree exists for WI-3 through WI-4,
-  but none of those items is complete for workflow purposes until each slice is
-  reconstructed as its own commit candidate and passes `plan-compliance-reviewer`.
+- WI-3: complete. `plan-compliance-reviewer` PASS and committed as `160f58b`
+  (`Enabled the integrated 68080 FPU by default.`).
+- WI-4: complete. `plan-compliance-reviewer` PASS and ready to commit as the
+  `IEP3` canonicalization slice.
 - WI-5: draft closure artifacts are being prepared so the final closure pass can
   record the validated fixes after commit-level traceability exists.
 - Outstanding workflow work: run one `plan-compliance-reviewer` pass per slice,
@@ -136,7 +133,7 @@ canonical `MOVEC IEP3` control-register name.
   - Commit outcome: one commit rebinding default `MOVIW` to the PRM form and
     isolating any deprecated compatibility encoding behind an explicit request.
 
-- [ ] WI-3: Default `.cpu 68080` to the integrated 68080 FPU target.
+- [x] WI-3: Default `.cpu 68080` to the integrated 68080 FPU target.
   - Source requirement or finding IDs: `RVW-2026-04-07-003` (expected closure:
     full)
   - Validation: `cargo test -p asm m68080_fpu`
@@ -155,7 +152,7 @@ canonical `MOVEC IEP3` control-register name.
   - Commit outcome: one commit making the integrated 68080 FPU default active
     under `.cpu 68080` and updating the supporting tests/docs.
 
-- [ ] WI-4: Canonicalize `IEP3` for `MOVEC` code `$00C` while preserving the
+- [x] WI-4: Canonicalize `IEP3` for `MOVEC` code `$00C` while preserving the
       legacy `STH` alias.
   - Source requirement or finding IDs: `RVW-2026-04-07-004` (expected closure:
     full)
@@ -208,7 +205,7 @@ canonical `MOVEC IEP3` control-register name.
 
 - [x] Milestone 1: Apollo boundary and `MOVIW` default behavior corrected
       (WI-1 through WI-2).
-- [ ] Milestone 2: Integrated FPU default and `IEP3` naming corrected
+- [x] Milestone 2: Integrated FPU default and `IEP3` naming corrected
       (WI-3 through WI-4).
 - [ ] Milestone 3: Closure artifacts and review evidence complete (WI-5).
 

@@ -5,7 +5,7 @@
 - Source: review report at `dev-docs/reviews/opforge_68080_prm_validation_2026-04-07.md`
 - Mode: remediation
 - Owner: GitHub Copilot (GPT-5.4)
-- Status: execution in progress; WI-1 through WI-4 have passed `plan-compliance-reviewer` and landed or are landing as their own commits, and WI-5 remains for closure artifacts and final review evidence
+- Status: execution complete; WI-1 through WI-5 have passed `plan-compliance-reviewer`, the four finding-closure reports have passed `finding-closure-reviewer`, and this final close-out commit records the closure artifacts and final plan state
 
 ## Objective
 
@@ -81,13 +81,12 @@ canonical `MOVEC IEP3` control-register name.
   (`Made regular MOVIW the default 68080 encoding.`).
 - WI-3: complete. `plan-compliance-reviewer` PASS and committed as `160f58b`
   (`Enabled the integrated 68080 FPU by default.`).
-- WI-4: complete. `plan-compliance-reviewer` PASS and ready to commit as the
-  `IEP3` canonicalization slice.
-- WI-5: draft closure artifacts are being prepared so the final closure pass can
-  record the validated fixes after commit-level traceability exists.
-- Outstanding workflow work: run one `plan-compliance-reviewer` pass per slice,
-  create one commit per work item, run `finding-closure-reviewer` on the
-  closure reports, and then update the checkboxes to their final closed state.
+- WI-4: complete. `plan-compliance-reviewer` PASS and committed as `5e6a78b`
+  (`Canonicalized 68080 MOVEC IEP3 naming.`).
+- WI-5: complete. Closure artifacts exist for all four findings, all four
+  `finding-closure-reviewer` passes have been recorded, the checkbox validator
+  passes, and this final close-out commit records the completed workflow state.
+- Outstanding workflow work: none.
 
 ## Work Items
 
@@ -175,7 +174,7 @@ canonical `MOVEC IEP3` control-register name.
   - Commit outcome: one commit making `IEP3` the canonical 68080 name for code
     `$00C` and retaining `STH` only as compatibility surface if needed.
 
-- [ ] WI-5: Produce closure artifacts and final review evidence for findings
+- [x] WI-5: Produce closure artifacts and final review evidence for findings
       `RVW-2026-04-07-001` through `RVW-2026-04-07-004`.
   - Source requirement or finding IDs: `RVW-2026-04-07-001`,
     `RVW-2026-04-07-002`, `RVW-2026-04-07-003`, `RVW-2026-04-07-004`
@@ -196,8 +195,8 @@ canonical `MOVEC IEP3` control-register name.
   - Full quality gates: `cargo fmt --all`, `cargo clippy --all-targets
     --all-features -- -D warnings`, `cargo audit`, `cargo test --workspace`
   - Plan-compliance review evidence: `PASS` confirming the closure artifacts are
-    traceable to the implemented slices and that no finding was prematurely
-    marked fixed.
+    traceable to the implemented slices and that no finding was marked fixed
+    before the required closure reviews passed.
   - Commit outcome: one commit containing the closure reports, final plan
     checkbox updates, and any required traceability evidence.
 
@@ -207,7 +206,7 @@ canonical `MOVEC IEP3` control-register name.
       (WI-1 through WI-2).
 - [x] Milestone 2: Integrated FPU default and `IEP3` naming corrected
       (WI-3 through WI-4).
-- [ ] Milestone 3: Closure artifacts and review evidence complete (WI-5).
+- [x] Milestone 3: Closure artifacts and review evidence complete (WI-5).
 
 ## Blocking Rules
 

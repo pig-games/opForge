@@ -3090,12 +3090,30 @@ fn m68080_ammx_full_extension_matrix() {
     let default_off_source = [".cpu 68080", "    PAND D0,D1,D2"];
     let (_entries, diagnostics) =
         assemble_source_entries_with_runtime_mode(&default_off_source, false)
-            .expect("m68080 AMMX slice should report deterministic Apollo gating diagnostics");
+            .expect("m68080 AMMX slice should assemble without Apollo mode");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected default-off AMMX diagnostics: {diagnostics:?}"
+    );
+
+    let default_off_loadi_source = [".cpu 68080", "    LOADI (A0),D1"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&default_off_loadi_source, false)
+            .expect("m68080 LOADI should assemble without Apollo mode");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected default-off LOADI diagnostics: {diagnostics:?}"
+    );
+
+    let default_off_line_a_source = [".cpu 68080", "    MOVS.B D0,D1"];
+    let (_entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&default_off_line_a_source, false)
+            .expect("m68080 line-A gating regression should produce diagnostics");
     assert!(
         diagnostics
             .iter()
-            .any(|diag| diag.contains("PAND is Apollo-gated on m68080; enable .apollo on")),
-        "unexpected default-off AMMX diagnostics: {diagnostics:?}"
+            .any(|diag| diag.contains("MOVS is Apollo-gated on m68080; enable .apollo on")),
+        "unexpected default-off line-A diagnostics in WI-1 regression: {diagnostics:?}"
     );
 
     let enabled_source = [".cpu 68080", "    .apollo on", "    PAND D0,D1,D2"];

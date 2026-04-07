@@ -257,13 +257,6 @@ fn try_encode_ammx_immediate_vea(
 ) -> Option<EncodeResult<Vec<u8>>> {
     let (opcode, size_context) = ammx_immediate_vea_opcode(mnemonic)?;
 
-    if ctx.cpu_state_flag(state::APOLLO_MODE_KEY).unwrap_or(0) == 0 {
-        return Some(EncodeResult::error(format!(
-            "{} is Apollo-gated on m68080; enable .apollo on",
-            mnemonic.split('.').next().unwrap_or(mnemonic)
-        )));
-    }
-
     let [src, src_operand, dst_operand] = operands else {
         return None;
     };
@@ -387,12 +380,6 @@ fn try_encode_load_word_immediate(
 ) -> Option<EncodeResult<Vec<u8>>> {
     if !mnemonic.eq_ignore_ascii_case("LOAD.W") {
         return None;
-    }
-
-    if ctx.cpu_state_flag(state::APOLLO_MODE_KEY).unwrap_or(0) == 0 {
-        return Some(EncodeResult::error(
-            "LOAD is Apollo-gated on m68080; enable .apollo on",
-        ));
     }
 
     let [src, dst] = operands else {

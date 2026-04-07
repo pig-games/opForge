@@ -1082,9 +1082,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("LOADI", ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error("LOADI does not accept a size suffix on m68080");
         }
@@ -1147,9 +1144,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("STOREI", ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error("STOREI does not accept a size suffix on m68080");
         }
@@ -1223,9 +1217,6 @@ impl M68080CpuHandler {
         ctx: &dyn AssemblerContext,
         src_low_nibble: u16,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo(mnemonic, ctx) {
-            return err;
-        }
         let [src, dst] = operands else {
             return EncodeResult::error(format!(
                 "AMMX {mnemonic} expects two operands: <vea>,Dn/En"
@@ -1310,9 +1301,6 @@ impl M68080CpuHandler {
         dst_low_nibble: u16,
         opcode: u16,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo(mnemonic, ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error(format!(
                 "{mnemonic} does not accept a size suffix on m68080"
@@ -1872,9 +1860,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("PADD", ctx) {
-            return err;
-        }
         let opcode = match size {
             Some(crate::families::m68k::OperationSize::Byte) => 0x10,
             Some(crate::families::m68k::OperationSize::Word) => 0x11,
@@ -1895,9 +1880,6 @@ impl M68080CpuHandler {
         implied_size: crate::families::m68k::OperationSize,
         opcode: u16,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo(mnemonic, ctx) {
-            return err;
-        }
         if parsed_size.is_some() {
             return EncodeResult::error(format!(
                 "{mnemonic} does not accept a size suffix on m68080"
@@ -1918,9 +1900,6 @@ impl M68080CpuHandler {
         ctx: &dyn AssemblerContext,
         opcode: u16,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo(mnemonic, ctx) {
-            return err;
-        }
         if parsed_size.is_some() {
             return EncodeResult::error(format!(
                 "{mnemonic} does not accept a size suffix on m68080"
@@ -1935,9 +1914,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("PSUB", ctx) {
-            return err;
-        }
         let opcode = match size {
             Some(crate::families::m68k::OperationSize::Byte) => 0x12,
             Some(crate::families::m68k::OperationSize::Word) => 0x13,
@@ -1964,9 +1940,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("PACK3216", ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error("PACK3216 does not accept a size suffix on m68080");
         }
@@ -2009,9 +1982,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("UNPACK1632", ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error("UNPACK1632 does not accept a size suffix on m68080");
         }
@@ -2051,9 +2021,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("VPERM", ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error("VPERM does not accept a size suffix on m68080");
         }
@@ -2161,9 +2128,6 @@ impl M68080CpuHandler {
         ctx: &dyn AssemblerContext,
         opcode: u16,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo(mnemonic, ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error(format!(
                 "{mnemonic} does not accept a size suffix on m68080"
@@ -2180,9 +2144,6 @@ impl M68080CpuHandler {
         ctx: &dyn AssemblerContext,
         opcode: u16,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo(mnemonic, ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error(format!(
                 "{mnemonic} does not accept a size suffix on m68080"
@@ -2229,9 +2190,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("C2P", ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error("C2P does not accept a size suffix on m68080");
         }
@@ -2266,11 +2224,8 @@ impl M68080CpuHandler {
         &self,
         size: Option<crate::families::m68k::OperationSize>,
         operands: &[Operand],
-        ctx: &dyn AssemblerContext,
+        _ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("MINTERM", ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error("MINTERM does not accept a size suffix on m68080");
         }
@@ -2306,12 +2261,9 @@ impl M68080CpuHandler {
         mnemonic: &str,
         size: Option<crate::families::m68k::OperationSize>,
         operands: &[Operand],
-        ctx: &dyn AssemblerContext,
+        _ctx: &dyn AssemblerContext,
         opcode: u16,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo(mnemonic, ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error(format!(
                 "{mnemonic} does not accept a size suffix on m68080"
@@ -2352,9 +2304,6 @@ impl M68080CpuHandler {
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("STOREM3", ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error("STOREM3 does not accept a size suffix on m68080");
         }
@@ -2395,12 +2344,8 @@ impl M68080CpuHandler {
         mnemonic: &str,
         size: Option<crate::families::m68k::OperationSize>,
         operands: &[Operand],
-        ctx: &dyn AssemblerContext,
+        _ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo("TEX", ctx) {
-            return err;
-        }
-
         let [src_operand, dst_operand] = operands else {
             return EncodeResult::error(
                 "TEX expects two operands: texture source and destination Dn",
@@ -2487,9 +2432,6 @@ impl M68080CpuHandler {
         ctx: &dyn AssemblerContext,
         opcode: u16,
     ) -> EncodeResult<Vec<u8>> {
-        if let Err(err) = self.require_apollo(mnemonic, ctx) {
-            return err;
-        }
         if size.is_some() {
             return EncodeResult::error(format!(
                 "{mnemonic} does not accept a size suffix on m68080"

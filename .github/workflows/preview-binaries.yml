@@ -1,0 +1,161 @@
+name: Preview Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to build (branch, tag, or commit SHA). Leave blank for the current default ref.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-package:
+    name: Build preview (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_id: linux
+            ext: ""
+            ffi_lib: libopforge.so
+          - os: macos-latest
+            artifact_id: macos
+            ext: ""
+            ffi_lib: libopforge.dylib
+          - os: windows-latest
+            artifact_id: windows-msvc
+            ext: .exe
+            ffi_lib: opforge.dll
+
+    steps:
+      - name: Resolve checkout ref
+        id: resolve_checkout_ref
+        shell: bash
+        env:
+          INPUT_REF: ${{ github.event.inputs.ref }}
+          DEFAULT_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          checkout_ref="${DEFAULT_REF}"
+          if [[ -n "${INPUT_REF}" ]]; then
+            checkout_ref="${INPUT_REF}"
+          fi
+          echo "checkout_ref=${checkout_ref}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve_checkout_ref.outputs.checkout_ref }}
+
+      - name: Resolve preview label
+        id: resolve_preview_label
+        shell: bash
+        env:
+          CHECKOUT_REF: ${{ steps.resolve_checkout_ref.outputs.checkout_ref }}
+        run: |
+          set -euo pipefail
+          raw_label="${CHECKOUT_REF}"
+          if [[ "${raw_label}" == refs/heads/* ]]; then
+            raw_label="${raw_label#refs/heads/}"
+          elif [[ "${raw_label}" == refs/tags/* ]]; then
+            raw_label="${raw_label#refs/tags/}"
+          fi
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          safe_label="${raw_label//\//-}"
+          safe_label="${safe_label// /-}"
+          safe_label="${safe_label//:/-}"
+          if [[ -z "${safe_label}" || "${safe_label}" == "HEAD" ]]; then
+            safe_label="${short_sha}"
+          fi
+          echo "preview_label=${safe_label}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=${short_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build binaries
+        run: cargo build --release --locked --bins
+
+      - name: Build FFI library
+        run: cargo build -p ffi --profile release-ffi --locked --lib
+
+      - name: Run shipped release-ffi smoke test
+        env:
+          OPFORGE_RELEASE_FFI_SKIP_BUILD: "1"
+          OPFORGE_RELEASE_FFI_LIBRARY_PATH: ${{ github.workspace }}/target/release-ffi/${{ matrix.ffi_lib }}
+        run: cargo test -p ffi release_profile_loads_and_assembles_smoke --locked
+
+      - name: Run shipped release-ffi export coverage test
+        env:
+          OPFORGE_RELEASE_FFI_SKIP_BUILD: "1"
+          OPFORGE_RELEASE_FFI_LIBRARY_PATH: ${{ github.workspace }}/target/release-ffi/${{ matrix.ffi_lib }}
+        run: cargo test -p ffi exported_release_ffi_library_exposes_full_header_symbol_surface --locked
+
+      - name: Configure MSVC developer environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Run FFI ABI contract test
+        run: cargo test -p ffi exported_header_matches_rust_abi_contract --locked
+
+      - name: Package preview artifacts
+        shell: bash
+        env:
+          PREVIEW_LABEL: ${{ steps.resolve_preview_label.outputs.preview_label }}
+          SHORT_SHA: ${{ steps.resolve_preview_label.outputs.short_sha }}
+          ARTIFACT_ID: ${{ matrix.artifact_id }}
+          BIN_EXT: ${{ matrix.ext }}
+          FFI_LIB: ${{ matrix.ffi_lib }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          PKG_DIR="opforge-preview-${PREVIEW_LABEL}-${SHORT_SHA}-${ARTIFACT_ID}"
+          mkdir -p "dist/${PKG_DIR}"
+
+          cp "target/release/opforge${BIN_EXT}" "dist/${PKG_DIR}/opforge${BIN_EXT}"
+          cp "target/release/opforge-lsp${BIN_EXT}" "dist/${PKG_DIR}/opforge-lsp${BIN_EXT}"
+          cp "target/release-ffi/${FFI_LIB}" "dist/${PKG_DIR}/${FFI_LIB}"
+          cp "crates/opforge-ffi/opforge.h" "dist/${PKG_DIR}/opforge.h"
+
+          if [[ "${ARTIFACT_ID}" == "windows-msvc" ]]; then
+            for import_lib in opforge.dll.lib opforge.lib; do
+              if [[ -f "target/release-ffi/${import_lib}" ]]; then
+                cp "target/release-ffi/${import_lib}" "dist/${PKG_DIR}/${import_lib}"
+              fi
+            done
+          fi
+
+          cp README.md "dist/${PKG_DIR}/"
+          cp LICENSE "dist/${PKG_DIR}/"
+          tar -C dist -czf "dist/${PKG_DIR}.tar.gz" "${PKG_DIR}"
+
+      - name: Generate checksums
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ matrix.artifact_id }}
+        run: |
+          set -euo pipefail
+          CHECKSUM_FILE="dist/SHA256SUMS-${ARTIFACT_ID}.txt"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum dist/*.tar.gz > "${CHECKSUM_FILE}"
+          else
+            shasum -a 256 dist/*.tar.gz > "${CHECKSUM_FILE}"
+          fi
+
+      - name: Upload preview package
+        uses: actions/upload-artifact@v4
+        with:
+          name: opforge-preview-${{ steps.resolve_preview_label.outputs.preview_label }}-${{ steps.resolve_preview_label.outputs.short_sha }}-${{ matrix.artifact_id }}
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS-*.txt
+          if-no-files-found: error

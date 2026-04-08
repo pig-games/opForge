@@ -1374,6 +1374,20 @@ fn assemble_example(
     assemble_example_with_base(asm_path, out_dir, base, allow_error_outputs)
 }
 
+fn example_uses_srec_reference(asm_path: &Path) -> bool {
+    asm_path
+        .components()
+        .any(|component| component.as_os_str() == "motorola68000")
+}
+
+fn example_reference_payload_extension(asm_path: &Path) -> &'static str {
+    if example_uses_srec_reference(asm_path) {
+        "srec"
+    } else {
+        "hex"
+    }
+}
+
 fn should_skip_example_dir(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
@@ -1446,6 +1460,7 @@ fn assemble_example_with_base(
 ) -> Result<Vec<(String, Vec<u8>)>, String> {
     let out_dir = out_dir.to_path_buf();
     let header_title = format!("opForge Assembler v{VERSION}");
+    let use_srec = example_uses_srec_reference(asm_path);
     let result = run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
         execution_mode: ExecutionMode::Lockstep {
@@ -1474,8 +1489,8 @@ fn assemble_example_with_base(
         dependency_output: None,
         outfile_override: Some(base),
         list_name_override: Some(""),
-        hex_name_override: Some(""),
-        srec_name_override: None,
+        hex_name_override: if use_srec { None } else { Some("") },
+        srec_name_override: if use_srec { Some("") } else { None },
         header_title: &header_title,
         output_sink: None,
         source_provider: None,
@@ -8037,6 +8052,7 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/68080_fpu_surface",
         "motorola68000/68080_full_additional_surface",
         "motorola68000/amigaos/helloworld",
+        "motorola68000/amigaos/writefile",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));
         if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -8134,6 +8150,7 @@ fn examples_match_reference_outputs() {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_default();
+        let payload_extension = example_reference_payload_extension(&asm_path);
         let fixture_out_dir = out_dir.join(&relative_dir);
         fs::create_dir_all(&fixture_out_dir)
             .unwrap_or_else(|err| panic!("Create fixture output directory: {err}"));
@@ -8179,28 +8196,30 @@ fn examples_match_reference_outputs() {
                 Err(err) => panic!("Failed to assemble {base}: {err}"),
             };
 
-            let ref_hex_path = reference_dir.join(&relative_stem).with_extension("hex");
+            let ref_payload_path = reference_dir
+                .join(&relative_stem)
+                .with_extension(payload_extension);
             let ref_lst_path = reference_dir.join(&relative_stem).with_extension("lst");
-            let out_hex_path = fixture_out_dir.join(format!("{base}.hex"));
+            let out_payload_path = fixture_out_dir.join(format!("{base}.{payload_extension}"));
             let out_lst_path = fixture_out_dir.join(format!("{base}.lst"));
-            let out_hex = fs::read(&out_hex_path).ok();
+            let out_payload = fs::read(&out_payload_path).ok();
             let out_lst = fs::read(&out_lst_path).ok();
 
-            if out_hex.is_none() || out_lst.is_none() {
+            if out_payload.is_none() || out_lst.is_none() {
                 continue;
             }
 
-            let out_hex = out_hex.expect("checked output hex presence");
+            let out_payload = out_payload.expect("checked output payload presence");
             let out_lst = out_lst.expect("checked output list presence");
 
             if update_reference {
-                if let Some(parent) = ref_hex_path.parent() {
+                if let Some(parent) = ref_payload_path.parent() {
                     fs::create_dir_all(parent).expect("Create reference output parent");
                 }
-                fs::write(&ref_hex_path, &out_hex).unwrap_or_else(|err| {
+                fs::write(&ref_payload_path, &out_payload).unwrap_or_else(|err| {
                     panic!(
-                        "Failed to write reference hex {}: {err}",
-                        ref_hex_path.display()
+                        "Failed to write reference payload {}: {err}",
+                        ref_payload_path.display()
                     )
                 });
                 fs::write(&ref_lst_path, &out_lst).unwrap_or_else(|err| {
@@ -8219,10 +8238,13 @@ fn examples_match_reference_outputs() {
                     });
                 }
             } else {
-                let ref_hex = fs::read(&ref_hex_path).unwrap_or_else(|err| {
-                    panic!("Missing reference hex {}: {err}", ref_hex_path.display())
+                let ref_payload = fs::read(&ref_payload_path).unwrap_or_else(|err| {
+                    panic!(
+                        "Missing reference payload {}: {err}",
+                        ref_payload_path.display()
+                    )
                 });
-                assert_eq!(out_hex, ref_hex, "Hex mismatch for {base}");
+                assert_eq!(out_payload, ref_payload, "Payload mismatch for {base}");
 
                 let ref_lst = fs::read(&ref_lst_path).unwrap_or_else(|err| {
                     panic!("Missing reference list {}: {err}", ref_lst_path.display())
@@ -8258,19 +8280,21 @@ fn examples_match_reference_outputs() {
                 Err(err) => panic!("Failed to assemble {base}: {err}"),
             };
 
-            let out_hex = fs::read(fixture_out_dir.join(format!("{base}.hex")))
-                .unwrap_or_else(|err| panic!("Missing output hex for {base}: {err}"));
+            let out_payload = fs::read(fixture_out_dir.join(format!("{base}.{payload_extension}")))
+                .unwrap_or_else(|err| panic!("Missing output payload for {base}: {err}"));
             let out_lst = fs::read(fixture_out_dir.join(format!("{base}.lst")))
                 .unwrap_or_else(|err| panic!("Missing output list for {base}: {err}"));
-            let ref_hex_path = reference_dir.join(&relative_stem).with_extension("hex");
+            let ref_payload_path = reference_dir
+                .join(&relative_stem)
+                .with_extension(payload_extension);
             let ref_lst_path = reference_dir.join(&relative_stem).with_extension("lst");
-            if let Some(parent) = ref_hex_path.parent() {
+            if let Some(parent) = ref_payload_path.parent() {
                 fs::create_dir_all(parent).expect("Create reference parent directory");
             }
-            fs::write(&ref_hex_path, &out_hex).unwrap_or_else(|err| {
+            fs::write(&ref_payload_path, &out_payload).unwrap_or_else(|err| {
                 panic!(
-                    "Failed to write reference hex {}: {err}",
-                    ref_hex_path.display()
+                    "Failed to write reference payload {}: {err}",
+                    ref_payload_path.display()
                 )
             });
             fs::write(&ref_lst_path, &out_lst).unwrap_or_else(|err| {
@@ -8304,16 +8328,21 @@ fn examples_match_reference_outputs() {
             Err(err) => panic!("Failed to assemble {base}: {err}"),
         };
 
-        let out_hex = fs::read(fixture_out_dir.join(format!("{base}.hex")))
-            .unwrap_or_else(|err| panic!("Missing output hex for {base}: {err}"));
+        let out_payload = fs::read(fixture_out_dir.join(format!("{base}.{payload_extension}")))
+            .unwrap_or_else(|err| panic!("Missing output payload for {base}: {err}"));
         let out_lst = fs::read(fixture_out_dir.join(format!("{base}.lst")))
             .unwrap_or_else(|err| panic!("Missing output list for {base}: {err}"));
-        let ref_hex_path = reference_dir.join(&relative_stem).with_extension("hex");
+        let ref_payload_path = reference_dir
+            .join(&relative_stem)
+            .with_extension(payload_extension);
         let ref_lst_path = reference_dir.join(&relative_stem).with_extension("lst");
-        let ref_hex = fs::read(&ref_hex_path).unwrap_or_else(|err| {
-            panic!("Missing reference hex {}: {err}", ref_hex_path.display())
+        let ref_payload = fs::read(&ref_payload_path).unwrap_or_else(|err| {
+            panic!(
+                "Missing reference payload {}: {err}",
+                ref_payload_path.display()
+            )
         });
-        assert_eq!(out_hex, ref_hex, "Hex mismatch for {base}");
+        assert_eq!(out_payload, ref_payload, "Payload mismatch for {base}");
 
         let ref_lst = fs::read(&ref_lst_path).unwrap_or_else(|err| {
             panic!("Missing reference list {}: {err}", ref_lst_path.display())

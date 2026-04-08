@@ -84,6 +84,12 @@ Generate binary output from the emitted address range:
 opforge -b -i examples/helloworld.asm
 ```
 
+Generate Motorola S-record output:
+
+```sh
+opforge -s -i examples/helloworld.asm
+```
+
 Format a source file in place:
 
 ```sh

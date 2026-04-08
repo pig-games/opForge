@@ -1043,6 +1043,7 @@ fn run_opforge_fixture(
         outfile_override: Some(fixture.id.as_str()),
         list_name_override: None,
         hex_name_override: None,
+        srec_name_override: None,
         header_title: &header_title,
         output_sink: None,
         source_provider: None,

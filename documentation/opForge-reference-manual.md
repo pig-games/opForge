@@ -12,7 +12,7 @@ opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
 - Preprocessor directives for includes and conditional compilation.
 - Macro expansion with `.macro` and `.segment`.
-- Optional listing, Intel HEX, and binary outputs.
+- Optional listing, Intel HEX, Motorola S-record, and binary outputs.
 
 The `.cpu` directive currently accepts `8080` (alias for `8085`), `8085`, `z80`,
 `6502`, `m6502`, `65c02`, `65816`, `65c816`, `w65c816`, `45gs02`, `m45gs02`,
@@ -913,6 +913,7 @@ Inputs:
 Outputs:
 - `-l, --list [FILE]`: listing output (optional filename).
 - `-x, --hex [FILE]`: Intel HEX output (optional filename).
+- `-s, --srec [FILE]`: Motorola S-record output (optional filename).
 - `-b, --bin [FILE:ssss:eeee|ssss:eeee|FILE]`: binary image with optional range(s), repeatable (`ssss`/`eeee` are 4-8 hex digits).
 - `--dependencies <FILE>`: write Makefile-compatible dependency rules.
 - `--dependencies-append`: append dependency rules to an existing dependency file.
@@ -924,7 +925,7 @@ Outputs:
 Other options:
 - `-o, --outfile <BASE>`: output base name if output filename omitted.
 - `-f, --fill <hh>`: fill byte for binary output (hex). Requires binary output. Defaults to `FF`.
-- `-g, --go <aaaa>`: execution start address in HEX output (4-8 hex digits). Requires HEX output.
+- `-g, --go <aaaa>`: execution start address in HEX/S-record output (4-8 hex digits). Requires HEX or S-record output.
 - `-D, --define <NAME[=VAL]>`: predefine macro (repeatable).
 - `-c, --cond-debug`: include conditional state in listing.
 - `--line-numbers`: listing compatibility flag for line-number column (enabled by default).
@@ -960,14 +961,15 @@ Notes:
 - If multiple inputs are provided, `-o` must be a directory and explicit output
   filenames are not allowed; each input uses its own base name under the output
   directory.
-- With multiple inputs, at least one output type (`-l`, `-x`, `-b`) must be selected.
+- With multiple inputs, at least one output type (`-l`, `-x`, `-s`, `-b`) must be selected.
 - If no outputs are specified for a single input, opForge defaults to list+hex
   when `.meta.output.name` (or `-o`) is available; otherwise output selection is required.
 - Relative output filenames are anchored to the input file's directory.
 - Formatter mode (`--fmt`, `--fmt-check`, `--fmt-write`, `--fmt-stdout`) requires at least one input and cannot be combined with assembler output flags or fixit options.
 - `--fmt-stdout` requires exactly one input.
 - `-b` without a range emits a binary that spans the emitted output.
-- `-g` writes a Start Segment Address record for 16-bit values and a Start Linear Address record for wider values.
+- For Intel HEX, `-g` writes a Start Segment Address record for 16-bit values and a Start Linear Address record for wider values.
+- For S-record output, `-g` writes the start address into the S7/S8/S9 termination record; without `-g`, the termination address is zero.
 
 Formatter config (`--fmt-config`) currently supports these keys:
 

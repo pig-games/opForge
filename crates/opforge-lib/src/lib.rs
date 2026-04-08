@@ -1133,6 +1133,7 @@ pub struct OwnedOutputOptions {
     pub outfile_override: Option<String>,
     pub list_name_override: Option<String>,
     pub hex_name_override: Option<String>,
+    pub srec_name_override: Option<String>,
     pub header_title: String,
     pub output_sink: Option<Arc<dyn OutputSink>>,
     pub no_outputs: bool,
@@ -1154,6 +1155,7 @@ impl Default for OwnedOutputOptions {
             outfile_override: None,
             list_name_override: None,
             hex_name_override: None,
+            srec_name_override: None,
             header_title: "libopforge".to_string(),
             output_sink: None,
             no_outputs: false,
@@ -1207,6 +1209,7 @@ impl OwnedAssemblerConfig {
             outfile_override: self.output.outfile_override.as_deref(),
             list_name_override: self.output.list_name_override.as_deref(),
             hex_name_override: self.output.hex_name_override.as_deref(),
+            srec_name_override: self.output.srec_name_override.as_deref(),
             header_title: self.output.header_title.as_str(),
             source_provider: self.source.source_provider.as_deref(),
             output_sink: self.output.output_sink.as_deref(),
@@ -1249,6 +1252,7 @@ trait SharedBuilderOutputConfig {
     type OutfileOverride;
     type ListNameOverride;
     type HexNameOverride;
+    type SrecNameOverride;
     type HeaderTitle;
     type OutputSink;
 
@@ -1262,6 +1266,7 @@ trait SharedBuilderOutputConfig {
     fn set_outfile_override(&mut self, outfile_override: Self::OutfileOverride);
     fn set_list_name_override(&mut self, list_name_override: Self::ListNameOverride);
     fn set_hex_name_override(&mut self, hex_name_override: Self::HexNameOverride);
+    fn set_srec_name_override(&mut self, srec_name_override: Self::SrecNameOverride);
     fn set_label_output_format(&mut self, label_output_format: LabelOutputFormat);
     fn set_header_title(&mut self, header_title: Self::HeaderTitle);
     fn set_default_outputs(&mut self, default_outputs: bool);
@@ -1389,6 +1394,7 @@ impl<'a> SharedBuilderOutputConfig for AssemblerConfig<'a> {
     type OutfileOverride = &'a str;
     type ListNameOverride = &'a str;
     type HexNameOverride = &'a str;
+    type SrecNameOverride = &'a str;
     type HeaderTitle = &'a str;
     type OutputSink = &'a dyn OutputSink;
 
@@ -1433,6 +1439,10 @@ impl<'a> SharedBuilderOutputConfig for AssemblerConfig<'a> {
         self.output.hex_name_override = Some(hex_name_override);
     }
 
+    fn set_srec_name_override(&mut self, srec_name_override: Self::SrecNameOverride) {
+        self.output.srec_name_override = Some(srec_name_override);
+    }
+
     fn set_label_output_format(&mut self, label_output_format: LabelOutputFormat) {
         self.output.label_output_format = label_output_format;
     }
@@ -1463,6 +1473,7 @@ impl SharedBuilderOutputConfig for OwnedAssemblerConfig {
     type OutfileOverride = String;
     type ListNameOverride = String;
     type HexNameOverride = String;
+    type SrecNameOverride = String;
     type HeaderTitle = String;
     type OutputSink = Arc<dyn OutputSink>;
 
@@ -1505,6 +1516,10 @@ impl SharedBuilderOutputConfig for OwnedAssemblerConfig {
 
     fn set_hex_name_override(&mut self, hex_name_override: Self::HexNameOverride) {
         self.output.hex_name_override = Some(hex_name_override);
+    }
+
+    fn set_srec_name_override(&mut self, srec_name_override: Self::SrecNameOverride) {
+        self.output.srec_name_override = Some(srec_name_override);
     }
 
     fn set_label_output_format(&mut self, label_output_format: LabelOutputFormat) {
@@ -1652,6 +1667,10 @@ where
         self.config.set_hex_name_override(hex_name_override);
     }
 
+    fn srec_name_override(&mut self, srec_name_override: C::SrecNameOverride) {
+        self.config.set_srec_name_override(srec_name_override);
+    }
+
     fn label_output_format(&mut self, label_output_format: LabelOutputFormat) {
         self.config.set_label_output_format(label_output_format);
     }
@@ -1694,6 +1713,7 @@ fn normalize_output_options_for_check(output: &mut OutputOptions<'_>) {
     output.outfile_override = None;
     output.list_name_override = None;
     output.hex_name_override = None;
+    output.srec_name_override = None;
     output.bin_specs = &[];
     output.no_outputs = true;
 }
@@ -1706,6 +1726,7 @@ fn normalize_owned_config_for_check(config: &mut OwnedAssemblerConfig) {
     config.output.outfile_override = None;
     config.output.list_name_override = None;
     config.output.hex_name_override = None;
+    config.output.srec_name_override = None;
     config.output.bin_specs.clear();
     config.output.no_outputs = true;
 }
@@ -1843,6 +1864,7 @@ fn run_public_prepared_assembly(
         outfile_override: options.outfile_override,
         list_name_override: options.list_name_override,
         hex_name_override: options.hex_name_override,
+        srec_name_override: options.srec_name_override,
         header_title: options.header_title,
         output_sink: options.output_sink,
         execution_mode: options.execution_mode,
@@ -2029,6 +2051,7 @@ pub struct AssembleOptions<'a> {
     pub outfile_override: Option<&'a str>,
     pub list_name_override: Option<&'a str>,
     pub hex_name_override: Option<&'a str>,
+    pub srec_name_override: Option<&'a str>,
     pub header_title: &'a str,
     pub source_provider: Option<&'a dyn SourceProvider>,
     pub output_sink: Option<&'a dyn OutputSink>,
@@ -2062,6 +2085,7 @@ impl<'a> Default for AssembleOptions<'a> {
             outfile_override: None,
             list_name_override: None,
             hex_name_override: None,
+            srec_name_override: None,
             header_title: "libopforge",
             source_provider: None,
             output_sink: None,
@@ -2159,6 +2183,7 @@ pub struct OutputOptions<'a> {
     pub outfile_override: Option<&'a str>,
     pub list_name_override: Option<&'a str>,
     pub hex_name_override: Option<&'a str>,
+    pub srec_name_override: Option<&'a str>,
     pub header_title: &'a str,
     pub output_sink: Option<&'a dyn OutputSink>,
     pub no_outputs: bool,
@@ -2180,6 +2205,7 @@ impl<'a> Default for OutputOptions<'a> {
             outfile_override: None,
             list_name_override: None,
             hex_name_override: None,
+            srec_name_override: None,
             header_title: "libopforge",
             output_sink: None,
             no_outputs: false,
@@ -2251,6 +2277,7 @@ impl<'a> From<AssembleOptions<'a>> for AssemblerConfig<'a> {
                 outfile_override: options.outfile_override,
                 list_name_override: options.list_name_override,
                 hex_name_override: options.hex_name_override,
+                srec_name_override: options.srec_name_override,
                 header_title: options.header_title,
                 output_sink: options.output_sink,
                 no_outputs: options.no_outputs,
@@ -2290,6 +2317,7 @@ impl<'a> From<AssemblerConfig<'a>> for AssembleOptions<'a> {
             outfile_override: config.output.outfile_override,
             list_name_override: config.output.list_name_override,
             hex_name_override: config.output.hex_name_override,
+            srec_name_override: config.output.srec_name_override,
             header_title: config.output.header_title,
             source_provider: config.source.source_provider,
             output_sink: config.output.output_sink,
@@ -2501,6 +2529,15 @@ impl<'a> AssemblerBuilder<'a> {
     /// derived output base.
     pub fn hex_name_override(mut self, hex_name_override: &'a str) -> Self {
         SharedBuilderMut::new(&mut self.config).hex_name_override(hex_name_override);
+        self
+    }
+
+    /// Overrides the default Motorola S-record filename.
+    ///
+    /// Use this when S-record output must use a host-chosen name distinct from
+    /// the derived output base.
+    pub fn srec_name_override(mut self, srec_name_override: &'a str) -> Self {
+        SharedBuilderMut::new(&mut self.config).srec_name_override(srec_name_override);
         self
     }
 
@@ -2793,6 +2830,15 @@ impl AssemblerSessionBuilder {
     /// derived output base.
     pub fn hex_name_override(mut self, hex_name_override: impl Into<String>) -> Self {
         SharedBuilderMut::new(&mut self.config).hex_name_override(hex_name_override.into());
+        self
+    }
+
+    /// Overrides the default Motorola S-record filename.
+    ///
+    /// Use this when S-record output must use a host-chosen name distinct from
+    /// the derived output base.
+    pub fn srec_name_override(mut self, srec_name_override: impl Into<String>) -> Self {
+        SharedBuilderMut::new(&mut self.config).srec_name_override(srec_name_override.into());
         self
     }
 
@@ -3440,6 +3486,7 @@ fn assemble_raw(
         outfile_override: options.outfile_override,
         list_name_override: options.list_name_override,
         hex_name_override: options.hex_name_override,
+        srec_name_override: options.srec_name_override,
         header_title: options.header_title,
         output_sink: options.output_sink,
         source_provider: options.source_provider,
@@ -4257,6 +4304,7 @@ mod tests {
             .outfile_override("custom.out")
             .list_name_override("custom.lst")
             .hex_name_override("custom.hex")
+            .srec_name_override("custom.srec")
             .label_output_format(asm::LabelOutputFormat::Vice)
             .header_title("Shared builder test")
             .default_outputs(false)
@@ -4289,6 +4337,7 @@ mod tests {
             .outfile_override("custom.out")
             .list_name_override("custom.lst")
             .hex_name_override("custom.hex")
+            .srec_name_override("custom.srec")
             .label_output_format(asm::LabelOutputFormat::Vice)
             .header_title("Shared builder test")
             .default_outputs(false)
@@ -4362,6 +4411,10 @@ mod tests {
         assert_eq!(
             borrowed_options.hex_name_override,
             owned_options.hex_name_override
+        );
+        assert_eq!(
+            borrowed_options.srec_name_override,
+            owned_options.srec_name_override
         );
         assert_eq!(borrowed_options.header_title, owned_options.header_title);
         assert_eq!(

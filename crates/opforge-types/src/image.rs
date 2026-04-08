@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-// Image store with hex/bin output helpers.
+// Image store with hex/bin/S-record output helpers.
 
 use std::cell::Cell;
 use std::io::{self, BufReader, Read, Write};
@@ -270,6 +270,84 @@ impl ImageStore {
         Ok(())
     }
 
+    /// Write a Motorola S-record file. Deduplicates by address (last write
+    /// wins) and sorts records by address. Optional `go_addr` selects the
+    /// termination record start address; otherwise the termination address is 0.
+    pub fn write_srec_file<W: Write>(&self, mut out: W, go_addr: Option<&str>) -> io::Result<()> {
+        self.ensure_ready()?;
+        let raw_entries = self.read_entries()?;
+
+        let entries = {
+            let mut seen = std::collections::HashMap::<u32, u8>::new();
+            for entry in &raw_entries {
+                seen.insert(entry.addr, entry.value);
+            }
+            let mut deduped: Vec<ImageStoreEntry> = seen
+                .into_iter()
+                .map(|(addr, value)| ImageStoreEntry { addr, value })
+                .collect();
+            deduped.sort_by_key(|e| e.addr);
+            deduped
+        };
+
+        let start_addr = match go_addr {
+            Some(go) => u32::from_str_radix(go, 16).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidInput, "Invalid start address")
+            })?,
+            None => 0,
+        };
+        let max_addr = entries
+            .iter()
+            .map(|entry| entry.addr)
+            .max()
+            .unwrap_or(0)
+            .max(start_addr);
+        let address_bytes = if max_addr <= 0xffff {
+            2
+        } else if max_addr <= 0x00ff_ffff {
+            3
+        } else {
+            4
+        };
+        let data_record = match address_bytes {
+            2 => '1',
+            3 => '2',
+            _ => '3',
+        };
+        let termination_record = match address_bytes {
+            2 => '9',
+            3 => '8',
+            _ => '7',
+        };
+
+        const LINE_LIMIT: usize = 32;
+        let mut line_addr = 0u32;
+        let mut line_data = Vec::<u8>::with_capacity(LINE_LIMIT);
+
+        for (ix, entry) in entries.iter().enumerate() {
+            if line_data.is_empty() {
+                line_addr = entry.addr;
+            }
+            line_data.push(entry.value);
+
+            let should_flush = if line_data.len() >= LINE_LIMIT {
+                true
+            } else if let Some(next) = entries.get(ix + 1) {
+                entry.addr.checked_add(1) != Some(next.addr)
+            } else {
+                true
+            };
+
+            if should_flush {
+                write_srec_record(&mut out, data_record, address_bytes, line_addr, &line_data)?;
+                line_data.clear();
+            }
+        }
+
+        write_srec_record(&mut out, termination_record, address_bytes, start_addr, &[])?;
+        Ok(())
+    }
+
     /// Write a raw binary file covering `start..=end`, filling gaps with `fill`.
     pub fn write_bin_file<W: Write>(
         &self,
@@ -357,6 +435,38 @@ fn write_extended_linear_address_record<W: Write>(out: &mut W, upper: u16) -> io
     writeln!(out, ":02000004{:04X}{:02X}", upper, csum)
 }
 
+fn write_srec_record<W: Write>(
+    out: &mut W,
+    record_type: char,
+    address_bytes: usize,
+    address: u32,
+    data: &[u8],
+) -> io::Result<()> {
+    debug_assert!((2..=4).contains(&address_bytes));
+    let count = u8::try_from(address_bytes + data.len() + 1)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "S-record line is too long"))?;
+    let mut sum = count;
+    let mut address_text = String::new();
+    for shift in (0..address_bytes).rev().map(|idx| idx * 8) {
+        let byte = ((address >> shift) & 0xff) as u8;
+        sum = sum.wrapping_add(byte);
+        address_text.push(hex_digit(byte >> 4));
+        address_text.push(hex_digit(byte & 0x0f));
+    }
+    let mut data_text = String::new();
+    for byte in data {
+        sum = sum.wrapping_add(*byte);
+        data_text.push(hex_digit(byte >> 4));
+        data_text.push(hex_digit(byte & 0x0f));
+    }
+    let checksum = 0xffu8.wrapping_sub(sum);
+    writeln!(
+        out,
+        "S{}{:02X}{}{}{:02X}",
+        record_type, count, address_text, data_text, checksum
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::run_with_forced_open_failure_for_tests;
@@ -389,6 +499,18 @@ mod tests {
         }
         let expected = (!sum).wrapping_add(1);
         assert_eq!(checksum, expected, "checksum mismatch for {line}");
+    }
+
+    fn verify_srec_checksum(line: &str) {
+        assert!(line.starts_with('S'), "record must start with S");
+        let count = parse_hex_byte(&line[2..4]) as usize;
+        let rest = &line[4..];
+        assert_eq!(rest.len(), count * 2);
+        let mut sum = count as u8;
+        for idx in (0..rest.len()).step_by(2) {
+            sum = sum.wrapping_add(parse_hex_byte(&rest[idx..idx + 2]));
+        }
+        assert_eq!(sum, 0xff, "checksum mismatch for {line}");
     }
 
     #[test]
@@ -446,6 +568,34 @@ mod tests {
             .unwrap();
         assert_eq!(out.len(), 5);
         assert_eq!(out, vec![0xff, 0xaa, 0xff, 0xbb, 0xff]);
+    }
+
+    #[test]
+    fn writes_srec_records_with_valid_checksums() {
+        let mut image = ImageStore::new();
+        image.store_slice(0x1000, &[0xaa, 0xbb, 0xcc]);
+        let mut out = Vec::new();
+        image.write_srec_file(&mut out, None).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines, vec!["S1061000AABBCCB8", "S9030000FC"]);
+        for line in &lines {
+            verify_srec_checksum(line);
+        }
+    }
+
+    #[test]
+    fn writes_srec_wide_records_and_start_address() {
+        let mut image = ImageStore::new();
+        image.store_slice(0x123456, &[0xaa, 0xbb]);
+        let mut out = Vec::new();
+        image.write_srec_file(&mut out, Some("123456")).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines, vec!["S206123456AABBF8", "S8041234565F"]);
+        for line in &lines {
+            verify_srec_checksum(line);
+        }
     }
 
     #[test]

@@ -45,6 +45,7 @@ use vm::vm_opasm::{
     build_hex_output_payload as build_hex_payload_with_vm,
     build_linker_output_payload as build_linker_output_payload_with_vm,
     build_mapfile_text as build_mapfile_text_with_vm,
+    build_srec_output_payload as build_srec_payload_with_vm,
     parse_statement_line_with_model as parse_line_with_vm_model,
     render_dependencies as render_dependencies_with_vm, render_labels as render_labels_with_vm,
     tokenize_statement_line_with_model as tokenize_with_vm_model, HierarchyExecutionModel,
@@ -799,6 +800,7 @@ pub struct PreparedAssemblyExecutionRequest<'a> {
     pub outfile_override: Option<&'a str>,
     pub list_name_override: Option<&'a str>,
     pub hex_name_override: Option<&'a str>,
+    pub srec_name_override: Option<&'a str>,
     pub header_title: &'a str,
     pub output_sink: Option<&'a dyn OutputSink>,
     pub execution_mode: ExecutionMode,
@@ -874,6 +876,7 @@ pub struct OutputPlanningRequest<'a> {
     pub outfile_override: Option<&'a str>,
     pub list_name_override: Option<&'a str>,
     pub hex_name_override: Option<&'a str>,
+    pub srec_name_override: Option<&'a str>,
     pub bin_specs_override: &'a [BinOutputSpec],
     pub fill_byte: u8,
     pub fill_byte_set: bool,
@@ -887,6 +890,7 @@ pub struct ResolvedOutputPlan {
     out_base: String,
     list_path: Option<String>,
     hex_path: Option<String>,
+    srec_path: Option<String>,
     effective_bin_specs: Vec<BinOutputSpec>,
     effective_fill_byte: u8,
 }
@@ -949,6 +953,7 @@ pub struct AssemblyExecutionRequest<'a> {
     pub outfile_override: Option<&'a str>,
     pub list_name_override: Option<&'a str>,
     pub hex_name_override: Option<&'a str>,
+    pub srec_name_override: Option<&'a str>,
     pub header_title: &'a str,
     pub output_sink: Option<&'a dyn OutputSink>,
     pub source_provider: Option<&'a dyn SourceProvider>,
@@ -1061,6 +1066,10 @@ impl ResolvedOutputPlan {
         self.hex_path.as_deref()
     }
 
+    pub fn srec_path(&self) -> Option<&str> {
+        self.srec_path.as_deref()
+    }
+
     pub fn effective_fill_byte(&self) -> u8 {
         self.effective_fill_byte
     }
@@ -1071,6 +1080,9 @@ impl ResolvedOutputPlan {
             targets.push(path.clone());
         }
         if let Some(path) = &self.hex_path {
+            targets.push(path.clone());
+        }
+        if let Some(path) = &self.srec_path {
             targets.push(path.clone());
         }
         targets
@@ -1271,6 +1283,7 @@ pub fn resolve_output_plan(
             out_base: request.input_base.to_string(),
             list_path: None,
             hex_path: None,
+            srec_path: None,
             effective_bin_specs: Vec::new(),
             effective_fill_byte: request.fill_byte,
         });
@@ -1333,11 +1346,27 @@ pub fn resolve_output_plan(
             request.source_lines.to_vec(),
         )
     })?;
-    if request.pass1_errors == 0 && request.go_addr.is_some() && hex_path.is_none() {
+    let srec_path = request
+        .srec_name_override
+        .map(|name| resolve_output_path_checked(&out_base, Some(name.to_string()), "srec"))
+        .transpose()
+        .map_err(|err| {
+            AsmRunError::new(
+                AsmError::new(AsmErrorKind::Cli, &err, None),
+                Vec::new(),
+                request.source_lines.to_vec(),
+            )
+        })?
+        .flatten();
+    if request.pass1_errors == 0
+        && request.go_addr.is_some()
+        && hex_path.is_none()
+        && srec_path.is_none()
+    {
         return Err(AsmRunError::new(
             AsmError::new(
                 AsmErrorKind::Cli,
-                "-g/--go requires hex output (-x/--hex or output metadata)",
+                "-g/--go requires hex or S-record output (-x/--hex, -s/--srec, or output metadata)",
                 None,
             ),
             Vec::new(),
@@ -1371,6 +1400,7 @@ pub fn resolve_output_plan(
         out_base,
         list_path,
         hex_path,
+        srec_path,
         effective_bin_specs,
         effective_fill_byte,
     })
@@ -1461,6 +1491,7 @@ pub fn run_prepared_assembly(
             outfile_override: request.outfile_override,
             list_name_override: request.list_name_override,
             hex_name_override: request.hex_name_override,
+            srec_name_override: request.srec_name_override,
             header_title: request.header_title,
             output_sink: request.output_sink,
             source_provider: None,
@@ -1513,6 +1544,7 @@ fn run_assembly_with_prepared(
         outfile_override: request.outfile_override,
         list_name_override: request.list_name_override,
         hex_name_override: request.hex_name_override,
+        srec_name_override: request.srec_name_override,
         bin_specs_override: request.bin_specs,
         fill_byte: request.fill_byte,
         fill_byte_set: request.fill_byte_set,
@@ -1632,6 +1664,50 @@ fn run_assembly_with_prepared(
                 )
             })?;
         if let Err(err) = hex_file.write_all(&payload) {
+            let traces = assembler.runtime_processing_traces().to_vec();
+            return Err(AsmRunError::new_with_traces(
+                AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
+                remap_diags(assembler.take_diagnostics()),
+                expanded_lines.clone(),
+                traces,
+            ));
+        }
+    }
+
+    if let Some(srec_path) = output_plan.srec_path() {
+        ensure_parent_dir(output_sink, Path::new(srec_path)).map_err(|err| {
+            let traces = assembler.runtime_processing_traces().to_vec();
+            AsmRunError::new_with_traces(
+                err,
+                remap_diags(assembler.take_diagnostics()),
+                expanded_lines.clone(),
+                traces,
+            )
+        })?;
+        let mut srec_file = output_sink.create_file(Path::new(srec_path)).map_err(|_| {
+            let traces = assembler.runtime_processing_traces().to_vec();
+            AsmRunError::new_with_traces(
+                AsmError::new(
+                    AsmErrorKind::Io,
+                    "Error opening file for write",
+                    Some(srec_path),
+                ),
+                remap_diags(assembler.take_diagnostics()),
+                expanded_lines.clone(),
+                traces,
+            )
+        })?;
+        let payload =
+            build_srec_payload_with_vm(assembler.image(), request.go_addr).map_err(|err| {
+                let traces = assembler.runtime_processing_traces().to_vec();
+                AsmRunError::new_with_traces(
+                    AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
+                    remap_diags(assembler.take_diagnostics()),
+                    expanded_lines.clone(),
+                    traces,
+                )
+            })?;
+        if let Err(err) = srec_file.write_all(&payload) {
             let traces = assembler.runtime_processing_traces().to_vec();
             return Err(AsmRunError::new_with_traces(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
@@ -2489,6 +2565,7 @@ mod tests {
             outfile_override: None,
             list_name_override: None,
             hex_name_override: None,
+            srec_name_override: None,
             bin_specs_override: &[],
             fill_byte: 0,
             fill_byte_set: false,
@@ -2524,6 +2601,7 @@ mod tests {
             outfile_override: None,
             list_name_override: None,
             hex_name_override: None,
+            srec_name_override: None,
             bin_specs_override: &[],
             fill_byte: 0,
             fill_byte_set: false,
@@ -2551,6 +2629,7 @@ mod tests {
             outfile_override: None,
             list_name_override: Some("../escape"),
             hex_name_override: None,
+            srec_name_override: None,
             bin_specs_override: &[],
             fill_byte: 0,
             fill_byte_set: false,
@@ -2580,6 +2659,7 @@ mod tests {
             outfile_override: None,
             list_name_override: None,
             hex_name_override: None,
+            srec_name_override: None,
             bin_specs_override: &[BinOutputSpec {
                 name: Some("../escape".to_string()),
                 range: None,
@@ -3283,6 +3363,7 @@ mod tests {
             outfile_override: None,
             list_name_override: None,
             hex_name_override: None,
+            srec_name_override: Some(""),
             header_title: "test",
             output_sink: Some(&output_sink),
             source_provider: Some(&source_provider),
@@ -3320,9 +3401,14 @@ mod tests {
             .text("/virtual/main.hex")
             .expect("utf8 output")
             .expect("hex output should be captured");
+        let srec = output_sink
+            .text("/virtual/main.srec")
+            .expect("utf8 output")
+            .expect("S-record output should be captured");
         assert!(listing.contains("nop"));
         assert!(!hex.trim().is_empty(), "hex:\n{hex}");
         assert!(hex.contains(":00000001FF"), "hex:\n{hex}");
+        assert!(srec.contains("S9"), "srec:\n{srec}");
     }
 
     #[test]
@@ -3385,6 +3471,7 @@ mod tests {
             outfile_override: None,
             list_name_override: None,
             hex_name_override: None,
+            srec_name_override: None,
             header_title: "test",
             output_sink: None,
             execution_mode: ExecutionMode::Rust,

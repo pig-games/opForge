@@ -180,6 +180,14 @@ pub fn build_hex_output_payload(image: &ImageStore, go_addr: Option<&str>) -> io
     Ok(out)
 }
 
+/// Runnable `.opasm` VM stage: emit Motorola S-record payload bytes from the
+/// current assembled image.
+pub fn build_srec_output_payload(image: &ImageStore, go_addr: Option<&str>) -> io::Result<Vec<u8>> {
+    let mut out = Vec::new();
+    image.write_srec_file(&mut out, go_addr)?;
+    Ok(out)
+}
+
 /// Runnable `.opasm` VM stage: emit raw binary payload bytes from the current
 /// assembled image for the requested range.
 pub fn build_bin_output_payload(

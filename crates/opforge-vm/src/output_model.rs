@@ -13,7 +13,7 @@ pub enum SectionKind {
     Bss,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct SectionState {
     pub start_pc: u32,
     pub pc: u32,
@@ -25,6 +25,25 @@ pub struct SectionState {
     pub kind: SectionKind,
     pub default_region: Option<String>,
     pub base_addr: Option<u32>,
+    pub relocation_free_certified: bool,
+}
+
+impl Default for SectionState {
+    fn default() -> Self {
+        Self {
+            start_pc: 0,
+            pc: 0,
+            max_pc: 0,
+            bytes: Vec::new(),
+            emitted: false,
+            layout_placed: false,
+            align: 0,
+            kind: SectionKind::Code,
+            default_region: None,
+            base_addr: None,
+            relocation_free_certified: true,
+        }
+    }
 }
 
 impl SectionState {

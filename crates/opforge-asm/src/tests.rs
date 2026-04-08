@@ -14119,6 +14119,92 @@ fn linker_output_hunk_requires_explicit_relocation_free_proof() {
 }
 
 #[test]
+fn linker_output_hunk_live_path_certifies_literal_only_code_section() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        ".byte $4e, $75",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::ProvenRelocationFree
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert_eq!(
+        payload,
+        vec![
+            0x00, 0x00, 0x03, 0xf3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x03, 0xe9,
+            0x00, 0x00, 0x00, 0x01, 0x4e, 0x75, 0x00, 0x00, 0x00, 0x00, 0x03, 0xf2,
+        ]
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_symbolic_code_without_relocation_proof() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "entry: .word entry",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::Unknown
+    );
+
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("symbolic code should remain unproven");
+    assert!(err.message().contains("explicit relocation-free proof"));
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_unplaced_section() {
+    let lines = vec![
+        ".module main".to_string(),
+        ".region ram, $1000, $10ff".to_string(),
+        ".section code, kind=code".to_string(),
+        ".byte $4e, $75".to_string(),
+        ".endsection".to_string(),
+        ".output \"build/out.hunk\", format=hunk, sections=code".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut assembler = Assembler::new();
+    assembler.root_metadata.root_module_id = Some("main".to_string());
+    assembler.clear_diagnostics();
+    let pass1 = assembler.pass1(&lines);
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Section referenced by .output must be explicitly placed")
+    }));
+}
+
+#[test]
 fn linker_output_hunk_rejects_unassigned_bases() {
     let output = hunk_output_directive(
         "build/out.hunk",

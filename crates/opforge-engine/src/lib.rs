@@ -2752,6 +2752,37 @@ mod tests {
     }
 
     #[test]
+    fn emit_linker_outputs_writes_hunk_payload_when_relocation_is_proven() {
+        let outputs = vec![LinkerOutputDirective {
+            path: "build/out.hunk".to_string(),
+            format_id: LinkerOutputFormat::Hunk.format_id().to_string(),
+            options: BTreeMap::from([(
+                "sections".to_string(),
+                LinkerOutputOptionValue::TextList(vec!["code".to_string()]),
+            )]),
+            relocation_disposition: LinkerOutputRelocationDisposition::ProvenRelocationFree,
+        }];
+        let sink = MemoryOutputSink::new();
+
+        emit_linker_outputs(&outputs, &directive_test_sections(), None, &sink)
+            .expect("proven hunk output should be written");
+
+        let files = sink.files();
+        let (_, payload) = files
+            .iter()
+            .find(|(path, _)| path == Path::new("build/out.hunk"))
+            .expect("written hunk payload");
+        assert_eq!(
+            payload,
+            &vec![
+                0x00, 0x00, 0x03, 0xf3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x03, 0xe9,
+                0x00, 0x00, 0x00, 0x01, 0xaa, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x03, 0xf2,
+            ]
+        );
+    }
+
+    #[test]
     fn export_sections_targets_reject_absolute_directive_path_under_out_dir() {
         let directives = vec![ExportSectionsDirective {
             dir: "/tmp/export".to_string(),

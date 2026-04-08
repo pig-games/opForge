@@ -5,7 +5,7 @@ use crate as asm;
 use crate::line::{repetition, AsmLine, RuntimeLineRouter};
 use asm::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, PassCounts, Severity};
 use asm::listing::{ListingLine, ListingWriter};
-use asm::output::{RegionState, RootMetadata, SectionState};
+use asm::output::{LinkerOutputDirective, RegionState, RootMetadata, SectionState};
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
@@ -786,9 +786,41 @@ impl Assembler {
 
         self.cpu = asm_line.cpu;
         self.sections = sections;
+        self.refresh_hunk_output_relocation_dispositions();
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
         self.dedup_current_diagnostics();
         Ok(counts)
+    }
+
+    fn refresh_hunk_output_relocation_dispositions(&mut self) {
+        for output in &mut self.root_metadata.linker_outputs {
+            if output.format() != Some(vm::output_model::LinkerOutputFormat::Hunk) {
+                continue;
+            }
+            output.relocation_disposition =
+                Self::hunk_output_relocation_disposition(output, &self.sections);
+        }
+    }
+
+    fn hunk_output_relocation_disposition(
+        output: &LinkerOutputDirective,
+        sections: &HashMap<String, SectionState>,
+    ) -> vm::output_model::LinkerOutputRelocationDisposition {
+        let Some(section_names) = output.option_text_list("sections") else {
+            return vm::output_model::LinkerOutputRelocationDisposition::Unknown;
+        };
+        if section_names.is_empty() {
+            return vm::output_model::LinkerOutputRelocationDisposition::Unknown;
+        }
+        if section_names.iter().all(|section_name| {
+            sections
+                .get(section_name)
+                .is_some_and(|section| section.relocation_free_certified)
+        }) {
+            vm::output_model::LinkerOutputRelocationDisposition::ProvenRelocationFree
+        } else {
+            vm::output_model::LinkerOutputRelocationDisposition::Unknown
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

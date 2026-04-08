@@ -120,7 +120,7 @@ Implement the first internal output-component seam for `.output format=...` and 
     - empty non-BSS sections are omitted deterministically in v0.1 and covered by focused tests
     - the first emitted segment must be code and is rejected otherwise
 
-- [ ] Work item 4: wire assembler-facing relocation disposition and end-to-end Hunk diagnostics into the live `.output` path
+- [x] Work item 4: wire assembler-facing relocation disposition and end-to-end Hunk diagnostics into the live `.output` path
   - Source requirement or finding IDs: spec `Goals` relocation explicitness; spec `Behavioral Contract` relocation-capability clauses; spec `Boundary Cases` absolute-relocation rejection and unplaced-section rejection; spec `Acceptance Criteria` bullets for parser acceptance and relocation-required rejection
   - Validation: focused live-path Hunk tests, legacy linker-output regression coverage, and the full repo quality gate before commit
   - Definition of done: Hunk output is reachable through the normal `.output` path and succeeds only for explicitly relocation-free inputs while all other unsafe cases fail deterministically
@@ -186,7 +186,7 @@ Implement the first internal output-component seam for `.output format=...` and 
 ## Milestones
 
 - [x] Milestone 1: the `.output` model and internal component registry are landed without changing `bin` or `prg` behavior (`Work item 1` and `Work item 2`)
-- [ ] Milestone 2: exact v0.1 Hunk byte generation and live-path relocation-safety gating are landed (`Work item 3` and `Work item 4`)
+- [x] Milestone 2: exact v0.1 Hunk byte generation and live-path relocation-safety gating are landed (`Work item 3` and `Work item 4`)
 - [ ] Milestone 3: optional external FS-UAE smoke validation is available without widening the default quality gate (`Work item 5`)
 
 ## Blocking Rules

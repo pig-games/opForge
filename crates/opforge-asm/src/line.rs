@@ -726,6 +726,16 @@ impl<'a> AsmLine<'a> {
         self.layout.current_section.as_deref()
     }
 
+    fn mark_current_section_not_relocation_free(&mut self) {
+        let Some(section_name) = self.layout.current_section.clone() else {
+            return;
+        };
+        let Some(section) = self.layout.sections.get_mut(&section_name) else {
+            return;
+        };
+        section.relocation_free_certified = false;
+    }
+
     #[allow(clippy::result_unit_err)]
     pub fn current_addr(&mut self, main_addr: u32) -> Result<u32, ()> {
         match self.layout.current_section.as_deref() {
@@ -1735,6 +1745,68 @@ impl<'a> AsmLine<'a> {
             .map(|section| section.kind)
     }
 
+    fn expr_is_relocation_free_literal(expr: &Expr) -> bool {
+        match expr {
+            Expr::Number(_, _) | Expr::String(_, _) => true,
+            Expr::Indirect(inner, _)
+            | Expr::IndirectLong(inner, _)
+            | Expr::Immediate(inner, _)
+            | Expr::Unary { expr: inner, .. } => Self::expr_is_relocation_free_literal(inner),
+            Expr::List(items, _) | Expr::Tuple(items, _) => {
+                items.iter().all(Self::expr_is_relocation_free_literal)
+            }
+            Expr::StructLiteral { fields, .. } => fields
+                .iter()
+                .all(|(_, value)| Self::expr_is_relocation_free_literal(value)),
+            Expr::Binary { left, right, .. } => {
+                Self::expr_is_relocation_free_literal(left)
+                    && Self::expr_is_relocation_free_literal(right)
+            }
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                Self::expr_is_relocation_free_literal(cond)
+                    && Self::expr_is_relocation_free_literal(then_expr)
+                    && Self::expr_is_relocation_free_literal(else_expr)
+            }
+            Expr::Range {
+                start, end, step, ..
+            } => {
+                Self::expr_is_relocation_free_literal(start)
+                    && Self::expr_is_relocation_free_literal(end)
+                    && step
+                        .as_ref()
+                        .is_none_or(|step_expr| Self::expr_is_relocation_free_literal(step_expr))
+            }
+            Expr::Error(_, _)
+            | Expr::Placeholder(_)
+            | Expr::Dollar(_)
+            | Expr::Identifier(_, _)
+            | Expr::Register(_, _)
+            | Expr::Index { .. }
+            | Expr::Member { .. }
+            | Expr::Call { .. } => false,
+        }
+    }
+
+    fn operands_are_relocation_free_literals(operands: &[Expr]) -> bool {
+        operands.iter().all(Self::expr_is_relocation_free_literal)
+    }
+
+    fn emit_unit_is_relocation_free_literal(&self, unit: &Expr) -> bool {
+        match unit {
+            Expr::Identifier(name, _) | Expr::Register(name, _) => {
+                name.eq_ignore_ascii_case("byte")
+                    || name.eq_ignore_ascii_case("word")
+                    || name.eq_ignore_ascii_case("long")
+            }
+            _ => Self::expr_is_relocation_free_literal(unit),
+        }
+    }
+
     fn max_program_address(&self) -> u32 {
         self.cpu_mode.program_address_max
     }
@@ -1995,6 +2067,14 @@ impl<'a> AsmLine<'a> {
     }
 
     fn emit_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        let relocation_free = operands.first().is_some_and(|unit| {
+            self.emit_unit_is_relocation_free_literal(unit)
+                && Self::operands_are_relocation_free_literals(&operands[1..])
+        });
+        if !relocation_free {
+            self.mark_current_section_not_relocation_free();
+        }
+
         if operands.len() < 2 {
             return self.failure(
                 LineStatus::Error,
@@ -2091,6 +2171,12 @@ impl<'a> AsmLine<'a> {
     }
 
     fn res_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        if !self.section_kind_requires_bss()
+            && !Self::operands_are_relocation_free_literals(operands)
+        {
+            self.mark_current_section_not_relocation_free();
+        }
+
         if operands.len() != 2 {
             return self.failure(
                 LineStatus::Error,
@@ -2162,6 +2248,13 @@ impl<'a> AsmLine<'a> {
     }
 
     fn fill_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        let relocation_free = operands.len() == 3
+            && self.emit_unit_is_relocation_free_literal(&operands[0])
+            && Self::operands_are_relocation_free_literals(&operands[1..]);
+        if !relocation_free {
+            self.mark_current_section_not_relocation_free();
+        }
+
         if operands.len() != 3 {
             return self.failure(
                 LineStatus::Error,
@@ -2263,6 +2356,10 @@ impl<'a> AsmLine<'a> {
         size: usize,
         directive_name: &str,
     ) -> LineStatus {
+        if !Self::operands_are_relocation_free_literals(operands) {
+            self.mark_current_section_not_relocation_free();
+        }
+
         if !self.section_kind_allows_data() {
             let msg = format!(
                 "Data emit directives are not allowed in kind=bss section (current kind={})",

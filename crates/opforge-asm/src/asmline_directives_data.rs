@@ -27,9 +27,18 @@ impl<'a> AsmLine<'a> {
             "BYTE" | "DB" => Some(self.store_arg_list_ast(operands, 1, ".byte")),
             "WORD" | "DW" => Some(self.store_arg_list_ast(operands, 2, ".word")),
             "LONG" => Some(self.store_arg_list_ast(operands, 4, ".long")),
-            "TEXT" => Some(self.text_directive_ast(operands)),
-            "NULL" => Some(self.null_directive_ast(operands)),
-            "PTEXT" => Some(self.ptext_directive_ast(operands)),
+            "TEXT" => {
+                self.mark_current_section_not_relocation_free();
+                Some(self.text_directive_ast(operands))
+            }
+            "NULL" => {
+                self.mark_current_section_not_relocation_free();
+                Some(self.null_directive_ast(operands))
+            }
+            "PTEXT" => {
+                self.mark_current_section_not_relocation_free();
+                Some(self.ptext_directive_ast(operands))
+            }
             "DS" => Some(self.ds_directive_ast(operands)),
             _ => None,
         }
@@ -294,6 +303,10 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn ds_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        if !Self::operands_are_relocation_free_literals(operands) {
+            self.mark_current_section_not_relocation_free();
+        }
+
         let expr = match operands.first() {
             Some(expr) => expr,
             None => {

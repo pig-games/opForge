@@ -10,6 +10,10 @@ use super::*;
 
 impl<'a> AsmLine<'a> {
     pub fn process_instruction_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
+        if self.in_section() {
+            self.mark_current_section_not_relocation_free();
+        }
+
         #[cfg(feature = "vm-runtime-only")]
         {
             self.try_encode_instruction_vm_only(mnemonic, operands)

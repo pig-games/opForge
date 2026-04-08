@@ -8035,6 +8035,7 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/68080_ammx_addressing_matrix",
         "motorola68000/68080_fpu_surface",
         "motorola68000/68080_full_additional_surface",
+        "motorola68000/amigaos/helloworld",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));
         if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -14149,6 +14150,78 @@ fn linker_output_hunk_live_path_certifies_literal_only_code_section() {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x03, 0xe9,
             0x00, 0x00, 0x00, 0x01, 0x4e, 0x75, 0x00, 0x00, 0x00, 0x00, 0x03, 0xf2,
         ]
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_certifies_m68000_pc_relative_same_section_code() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "hello: .byte \"Hello World!\",10,0",
+        "start: LEA hello(PC),A1",
+        " MOVE.L A1,D1",
+        "SysBase = 4",
+        "PutStr = -948",
+        " MOVEA.L SysBase.W,A6",
+        " JSR PutStr(A6)",
+        " RTS",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::ProvenRelocationFree
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload.starts_with(&[0x00, 0x00, 0x03, 0xf3]),
+        "unexpected Hunk header: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_certifies_forward_m68000_pc_relative_same_section_code() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: LEA hello(PC),A1",
+        " MOVE.L A1,D1",
+        " RTS",
+        "hello: .byte \"Hello World!\",10,0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::ProvenRelocationFree
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload.starts_with(&[0x00, 0x00, 0x03, 0xf3]),
+        "unexpected Hunk header: {payload:02X?}"
     );
 }
 

@@ -1,75 +1,73 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Amiga programming example in assembler, using system calls.
-----                                2  ; "Hello World" using the default output (usually console)
-----                                3  ; Uses dos.library/PutStr() so requires kick 2.0+
-----                                4  ; 14 processor instructions :-)
-----                                5  ; Assembled with "vasm -Fhunkexe -o helloworld helloworld.s"
-----                                6  ; Grzegorz Kraszewski, 2016
-----                                7  ; Public Domain
-----                                8  ; Description in Polish: http://krashan.ppa.pl/articles/amiga_asembler
+----                                1  ; AmigaOS "Hello World" executable for the current relocation-free Hunk subset.
+----                                2  ; Uses dos.library/PutStr() so requires Kickstart 2.0+.
+----                                3  ; The program is CLI-oriented and does not include Workbench startup handling.
+----                                4  
+----                                5          .module main
+----                                6          .cpu 68000
+----                                7  
+----    EQU 0004                    8  SysBase         = 4
 ----                                9  
-----                               10  .cpu 68000
-----                               11  
-----                               12  
-----    EQU 0004                   13  SysBase			= 4
+----                               10  ; LVO offsets in the relevant library jump tables.
+----    EQU FFFFFDD8               11  OpenLibrary     = -552
+----    EQU FFFFFE62               12  CloseLibrary    = -414
+----    EQU FFFFFC4C               13  PutStr          = -948
 ----                               14  
-----                               15  ; Offsets of system functions in respective jumptables of library bases.
-----                               16  ; Loading proper system includes would be more elegant.
-----                               17  
-----    EQU FFFFFDD8               18  OpenLibrary		= -552
-----    EQU FFFFFE62               19  CloseLibrary		= -414
-----    EQU FFFFFC4C               20  PutStr			= -948
-----                               21  
-----                               22  ; Note: the program lacks proper startup code, so it will not run from Workbench
-----                               23  
-0000    43 F9 00 00 00 30          24  			LEA	(DosName).L,A1		;dos.library name string
-0006    70 24                      25  			MOVEQ	#36,D0			;minimum required version (36 = Kick 2.0)
-0008    2C 78 00 04                26  			MOVEA.L	SysBase.W,A6
-000C    4E AE FD D8                27  			JSR	OpenLibrary(A6)
-----                               28  
-0010    4A 80                      29  			TST.L	D0			;zero if OpenLibrary() failed
-0012    67 00 00 18                30  			BEQ	NoDos			;if failed, skip to exit
-----                               31  
-0016    22 3C 00 00 00 3C          32  			MOVE.L	#Hello,D1		;string to print
-001C    2C 40                      33  			MOVEA.L	D0,A6			;moving DOSBase to A6
-001E    4E AE FC 4C                34  			JSR	PutStr(A6)
-----                               35  
-0022    22 4E                      36  			MOVEA.L	A6,A1			;DOSBase, library to close
-0024    2C 78 00 04                37  			MOVEA.L	SysBase.W,A6
-0028    4E AE FE 62                38  			JSR	CloseLibrary(A6)
-----                               39  
-002C    42 80                      40  NoDos			CLR.L	D0			;return 0 to the system
-002E    4E 75                      41  			RTS
-----                               42  
-----                               43  ; Data
-----                               44  
-0030    64 6F 73 2E 6C 69 62 72 61 72 79 00    45  DosName		.byte		"dos.library",0
-003C    48 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00    46  Hello		.byte		"Hello World!",10,0
+----                               15          .region ram, $2000, $20ff
+----                               16          .section code, kind=code  ; [section code]
+----                               17    ; [section code]
+----                               18  start  ; [section code]
+2000    43 FA 00 26                19          LEA dos_name(PC),A1         ; "dos.library" name string  ; [section code]
+2004    70 24                      20          MOVEQ #36,D0                ; minimum required version (Kickstart 2.0)  ; [section code]
+2006    2C 78 00 04                21          MOVEA.L SysBase.W,A6  ; [section code]
+200A    4E AE FD D8                22          JSR OpenLibrary(A6)  ; [section code]
+----                               23    ; [section code]
+200E    43 FA 00 24                24          LEA hello(PC),A1            ; PutStr() expects the string pointer in D1  ; [section code]
+2012    22 09                      25          MOVE.L A1,D1  ; [section code]
+2014    2C 40                      26          MOVEA.L D0,A6               ; DOSBase  ; [section code]
+2016    4E AE FC 4C                27          JSR PutStr(A6)  ; [section code]
+----                               28    ; [section code]
+201A    22 4E                      29          MOVEA.L A6,A1               ; library to close  ; [section code]
+201C    2C 78 00 04                30          MOVEA.L SysBase.W,A6  ; [section code]
+2020    4E AE FE 62                31          JSR CloseLibrary(A6)  ; [section code]
+----                               32    ; [section code]
+2024    42 80                      33          CLR.L D0                    ; return 0 to the system  ; [section code]
+2026    4E 75                      34          RTS  ; [section code]
+----                               35    ; [section code]
+----                               36  dos_name  ; [section code]
+2028    64 6F 73 2E 6C 69 62 72 61 72 79 00    37          .byte "dos.library",0  ; [section code]
+----                               38  hello  ; [section code]
+2034    48 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00    39          .byte "Hello World!",10,0  ; [section code]
+----                               40    ; [section code]
+----                               41          .endsection
+----                               42          .place code in ram
+----                               43          .output "build/out.hunk", format=hunk, sections=code
+----                               44          .endmodule
 
-Lines: 46  Errors: 0  Warnings: 0
+Lines: 44  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-CloseLibrary     FFFFFE62  prv  lbl 
-DosName          0030      prv  lbl 
-Hello            003C      prv  lbl 
-NoDos            002C      prv  lbl 
-OpenLibrary      FFFFFDD8  prv  lbl 
-PutStr           FFFFFC4C  prv  lbl 
-SysBase          0004      prv  lbl 
+main.CloseLibrary  FFFFFE62  prv  lbl 
+main.dos_name    2028      prv  lbl 
+main.hello       2034      prv  lbl 
+main.OpenLibrary  FFFFFDD8  prv  lbl 
+main.PutStr      FFFFFC4C  prv  lbl 
+main.start       2000      prv  lbl 
+main.SysBase     0004      prv  lbl 
 
-Total memory is 74 bytes
+Total memory is 66 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0000    43 F9 00 00 00 30 70 24 2C 78 00 04 4E AE FD D8
-0010    4A 80 67 00 00 18 22 3C 00 00 00 3C 2C 40 4E AE
-0020    FC 4C 22 4E 2C 78 00 04 4E AE FE 62 42 80 4E 75
-0030    64 6F 73 2E 6C 69 62 72 61 72 79 00 48 65 6C 6C
-0040    6F 20 57 6F 72 6C 64 21 0A 00
+2000    43 FA 00 26 70 24 2C 78 00 04 4E AE FD D8 43 FA
+2010    00 24 22 09 2C 40 4E AE FC 4C 22 4E 2C 78 00 04
+2020    4E AE FE 62 42 80 4E 75 64 6F 73 2E 6C 69 62 72
+2030    61 72 79 00 48 65 6C 6C 6F 20 57 6F 72 6C 64 21
+2040    0A 00

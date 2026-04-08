@@ -30,6 +30,10 @@ use families::intel8080::{
     dialect::{canonical_suggestion_for_zilog_mnemonic, map_zilog_to_canonical},
     module::FAMILY_ID as INTEL8080_FAMILY_ID,
 };
+#[cfg(not(feature = "vm-runtime-only"))]
+use families::m68k::module::{M68KFamilyOperands, FAMILY_ID as M68K_FAMILY_ID};
+#[cfg(not(feature = "vm-runtime-only"))]
+use families::m68k::FamilyOperand as M68KFamilyOperand;
 use opcore::conditional::{ConditionalBlockKind, ConditionalSubType};
 use opcore::conditional::{ConditionalContext, ConditionalStack};
 use opcore::expression::{
@@ -41,6 +45,8 @@ use opcore::parser as asm_parser;
 use opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError};
 use opcore::struct_table::StructTable;
 use opcore::tokenizer::{ConditionalKind, Span};
+#[cfg(not(feature = "vm-runtime-only"))]
+use registry::cpu::CpuFamily;
 use registry::cpu::CpuType;
 use registry::family::AssemblerContext;
 #[cfg(not(feature = "vm-runtime-only"))]
@@ -734,6 +740,208 @@ impl<'a> AsmLine<'a> {
             return;
         };
         section.relocation_free_certified = false;
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    pub(crate) fn family_operands_keep_current_section_relocation_free(
+        &self,
+        family_id: CpuFamily,
+        operands: &dyn FamilyOperandSet,
+    ) -> bool {
+        if family_id != M68K_FAMILY_ID {
+            return false;
+        }
+        let Some(m68k_operands) = operands.as_any().downcast_ref::<M68KFamilyOperands>() else {
+            return false;
+        };
+        m68k_operands
+            .0
+            .iter()
+            .all(|operand| self.m68k_operand_keeps_current_section_relocation_free(operand))
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_operand_keeps_current_section_relocation_free(
+        &self,
+        operand: &M68KFamilyOperand,
+    ) -> bool {
+        match operand {
+            M68KFamilyOperand::DataRegister { .. }
+            | M68KFamilyOperand::AddressRegister { .. }
+            | M68KFamilyOperand::SpecialRegister { .. }
+            | M68KFamilyOperand::ControlRegister { .. }
+            | M68KFamilyOperand::FpuDataRegister { .. }
+            | M68KFamilyOperand::FpuControlRegister { .. }
+            | M68KFamilyOperand::AddressIndirect { .. }
+            | M68KFamilyOperand::AddressPostincrement { .. }
+            | M68KFamilyOperand::AddressPredecrement { .. }
+            | M68KFamilyOperand::RegisterPair { .. }
+            | M68KFamilyOperand::RegisterGroup { .. }
+            | M68KFamilyOperand::IndirectRegisterPair { .. }
+            | M68KFamilyOperand::RegisterList { .. } => true,
+            M68KFamilyOperand::AddressDisplacement { displacement, .. }
+            | M68KFamilyOperand::AddressIndexed { displacement, .. }
+            | M68KFamilyOperand::TextureOperand {
+                expr: displacement, ..
+            }
+            | M68KFamilyOperand::Absolute {
+                expr: displacement, ..
+            }
+            | M68KFamilyOperand::Immediate {
+                expr: displacement, ..
+            } => self.expr_is_relocation_free_symbolic_value(displacement, false),
+            M68KFamilyOperand::PcDisplacement { displacement, .. }
+            | M68KFamilyOperand::PcIndexed { displacement, .. }
+            | M68KFamilyOperand::BranchTarget {
+                expr: displacement, ..
+            } => self.expr_is_relocation_free_symbolic_value(displacement, true),
+            M68KFamilyOperand::FullExtension {
+                base_displacement,
+                outer_displacement,
+                ..
+            } => {
+                let base_ok = base_displacement.as_ref().is_none_or(|(expr, _)| {
+                    self.expr_is_relocation_free_symbolic_value(expr, false)
+                });
+                let outer_ok = outer_displacement.as_ref().is_none_or(|(expr, _)| {
+                    self.expr_is_relocation_free_symbolic_value(expr, false)
+                });
+                base_ok && outer_ok
+            }
+            M68KFamilyOperand::BitField {
+                base,
+                offset,
+                width,
+                ..
+            } => {
+                let selector_ok =
+                    |selector: &families::m68k::operand::BitFieldSelector| match selector {
+                        families::m68k::operand::BitFieldSelector::DataRegister { .. } => true,
+                        families::m68k::operand::BitFieldSelector::Immediate { expr, .. } => {
+                            self.expr_is_relocation_free_symbolic_value(expr, false)
+                        }
+                    };
+                self.m68k_operand_keeps_current_section_relocation_free(base)
+                    && selector_ok(offset)
+                    && selector_ok(width)
+            }
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_relocation_free_symbolic_value(
+        &self,
+        expr: &Expr,
+        allow_current_section_symbols: bool,
+    ) -> bool {
+        match expr {
+            Expr::Number(_, _) | Expr::String(_, _) => true,
+            Expr::Indirect(inner, _)
+            | Expr::IndirectLong(inner, _)
+            | Expr::Immediate(inner, _)
+            | Expr::Unary { expr: inner, .. } => {
+                self.expr_is_relocation_free_symbolic_value(inner, allow_current_section_symbols)
+            }
+            Expr::List(items, _) | Expr::Tuple(items, _) => items.iter().all(|item| {
+                self.expr_is_relocation_free_symbolic_value(item, allow_current_section_symbols)
+            }),
+            Expr::StructLiteral { fields, .. } => fields.iter().all(|(_, value)| {
+                self.expr_is_relocation_free_symbolic_value(value, allow_current_section_symbols)
+            }),
+            Expr::Binary { left, right, .. } => {
+                self.expr_is_relocation_free_symbolic_value(left, allow_current_section_symbols)
+                    && self.expr_is_relocation_free_symbolic_value(
+                        right,
+                        allow_current_section_symbols,
+                    )
+            }
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                self.expr_is_relocation_free_symbolic_value(cond, allow_current_section_symbols)
+                    && self.expr_is_relocation_free_symbolic_value(
+                        then_expr,
+                        allow_current_section_symbols,
+                    )
+                    && self.expr_is_relocation_free_symbolic_value(
+                        else_expr,
+                        allow_current_section_symbols,
+                    )
+            }
+            Expr::Range {
+                start, end, step, ..
+            } => {
+                self.expr_is_relocation_free_symbolic_value(start, allow_current_section_symbols)
+                    && self
+                        .expr_is_relocation_free_symbolic_value(end, allow_current_section_symbols)
+                    && step.as_ref().is_none_or(|step_expr| {
+                        self.expr_is_relocation_free_symbolic_value(
+                            step_expr,
+                            allow_current_section_symbols,
+                        )
+                    })
+            }
+            Expr::Identifier(name, _) => {
+                let Some(resolved_name) = self.resolve_symbol_name_for_relocation(name) else {
+                    return false;
+                };
+                match self.resolved_symbol_section_name(&resolved_name) {
+                    Some(section_name) => {
+                        allow_current_section_symbols
+                            && self
+                                .current_section_name()
+                                .is_some_and(|current| current.eq_ignore_ascii_case(&section_name))
+                    }
+                    None => {
+                        self.symbols.entry(&resolved_name).is_some()
+                            || allow_current_section_symbols
+                    }
+                }
+            }
+            Expr::Error(_, _)
+            | Expr::Placeholder(_)
+            | Expr::Dollar(_)
+            | Expr::Register(_, _)
+            | Expr::Index { .. }
+            | Expr::Member { .. }
+            | Expr::Call { .. } => false,
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn resolve_symbol_name_for_relocation(&self, name: &str) -> Option<String> {
+        match self.resolve_scoped_name(name) {
+            Ok(Some(resolved)) => Some(resolved),
+            Ok(None) => self
+                .symbols
+                .entry(name)
+                .map(|entry| entry.name.clone())
+                .or_else(|| Some(name.to_string())),
+            Err(_) => self.symbols.entry(name).map(|entry| entry.name.clone()),
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn resolved_symbol_section_name(&self, resolved_name: &str) -> Option<String> {
+        if let Some(section_name) = self.layout.section_symbol_sections.get(resolved_name) {
+            return Some(section_name.clone());
+        }
+        let entry = self.symbols.entry(resolved_name)?;
+        for (section_name, section) in &self.layout.sections {
+            let Some(base_addr) = section.base_addr else {
+                continue;
+            };
+            let Some(end_addr) = base_addr.checked_add(section.max_pc) else {
+                continue;
+            };
+            if entry.val >= base_addr && entry.val <= end_addr {
+                return Some(section_name.clone());
+            }
+        }
+        None
     }
 
     #[allow(clippy::result_unit_err)]

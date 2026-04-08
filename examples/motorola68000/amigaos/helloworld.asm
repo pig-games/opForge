@@ -1,46 +1,44 @@
-; Amiga programming example in assembler, using system calls.
-; "Hello World" using the default output (usually console)
-; Uses dos.library/PutStr() so requires kick 2.0+
-; 14 processor instructions :-)
-; Assembled with "vasm -Fhunkexe -o helloworld helloworld.s"
-; Grzegorz Kraszewski, 2016
-; Public Domain
-; Description in Polish: http://krashan.ppa.pl/articles/amiga_asembler
+; AmigaOS "Hello World" executable for the current relocation-free Hunk subset.
+; Uses dos.library/PutStr() so requires Kickstart 2.0+.
+; The program is CLI-oriented and does not include Workbench startup handling.
 
-.cpu 68000
+        .module main
+        .cpu 68000
 
+SysBase         = 4
 
-SysBase			= 4
+; LVO offsets in the relevant library jump tables.
+OpenLibrary     = -552
+CloseLibrary    = -414
+PutStr          = -948
 
-; Offsets of system functions in respective jumptables of library bases.
-; Loading proper system includes would be more elegant.
+        .region ram, $2000, $20ff
+        .section code, kind=code
 
-OpenLibrary		= -552
-CloseLibrary		= -414
-PutStr			= -948
+start:
+        LEA dos_name(PC),A1         ; "dos.library" name string
+        MOVEQ #36,D0                ; minimum required version (Kickstart 2.0)
+        MOVEA.L SysBase.W,A6
+        JSR OpenLibrary(A6)
 
-; Note: the program lacks proper startup code, so it will not run from Workbench
+        LEA hello(PC),A1            ; PutStr() expects the string pointer in D1
+        MOVE.L A1,D1
+        MOVEA.L D0,A6               ; DOSBase
+        JSR PutStr(A6)
 
-			LEA	(DosName).L,A1		;dos.library name string
-			MOVEQ	#36,D0			;minimum required version (36 = Kick 2.0)
-			MOVEA.L	SysBase.W,A6
-			JSR	OpenLibrary(A6)
+        MOVEA.L A6,A1               ; library to close
+        MOVEA.L SysBase.W,A6
+        JSR CloseLibrary(A6)
 
-			TST.L	D0			;zero if OpenLibrary() failed
-			BEQ	NoDos			;if failed, skip to exit
+        CLR.L D0                    ; return 0 to the system
+        RTS
 
-			MOVE.L	#Hello,D1		;string to print
-			MOVEA.L	D0,A6			;moving DOSBase to A6
-			JSR	PutStr(A6)
+dos_name:
+        .byte "dos.library",0
+hello:
+        .byte "Hello World!",10,0
 
-			MOVEA.L	A6,A1			;DOSBase, library to close
-			MOVEA.L	SysBase.W,A6
-			JSR	CloseLibrary(A6)
-
-NoDos			CLR.L	D0			;return 0 to the system
-			RTS
-
-; Data
-
-DosName		.byte		"dos.library",0
-Hello		.byte		"Hello World!",10,0
+        .endsection
+        .place code in ram
+        .output "build/out.hunk", format=hunk, sections=code
+        .endmodule

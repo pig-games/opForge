@@ -10,12 +10,11 @@ use super::*;
 
 impl<'a> AsmLine<'a> {
     pub fn process_instruction_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
-        if self.in_section() {
-            self.mark_current_section_not_relocation_free();
-        }
-
         #[cfg(feature = "vm-runtime-only")]
         {
+            if self.in_section() {
+                self.mark_current_section_not_relocation_free();
+            }
             self.try_encode_instruction_vm_only(mnemonic, operands)
                 .unwrap_or_else(|| {
                     self.failure(
@@ -61,6 +60,15 @@ impl<'a> AsmLine<'a> {
                 .dialect
                 .map_mnemonic(mnemonic, family_operands.as_ref())
                 .unwrap_or_else(|| (mnemonic.to_string(), family_operands.clone()));
+
+            if self.in_section()
+                && !self.family_operands_keep_current_section_relocation_free(
+                    pipeline.family_id,
+                    mapped_operands.as_ref(),
+                )
+            {
+                self.mark_current_section_not_relocation_free();
+            }
 
             if let Some(status) = self.try_encode_instruction_via_runtime_expr(
                 &pipeline,

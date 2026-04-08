@@ -16,13 +16,15 @@ PutStr          = -948
         .section code, kind=code
 
 start:
-        LEA dos_name(PC),A1         ; "dos.library" name string
+        LEA dos_name.L,A1           ; "dos.library" name string
         MOVEQ #36,D0                ; minimum required version (Kickstart 2.0)
         MOVEA.L SysBase.W,A6
         JSR OpenLibrary(A6)
 
-        LEA hello(PC),A1            ; PutStr() expects the string pointer in D1
-        MOVE.L A1,D1
+        TST.L D0                    ; zero if OpenLibrary() failed
+        BEQ no_dos
+
+        MOVE.L #hello,D1            ; PutStr() expects the string pointer in D1
         MOVEA.L D0,A6               ; DOSBase
         JSR PutStr(A6)
 
@@ -30,6 +32,7 @@ start:
         MOVEA.L SysBase.W,A6
         JSR CloseLibrary(A6)
 
+no_dos:
         CLR.L D0                    ; return 0 to the system
         RTS
 

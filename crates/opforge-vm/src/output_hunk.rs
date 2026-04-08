@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::output_artifacts::ArtifactBuildError;
 use crate::output_model::{
-    HunkMemoryType, HunkOutputInput, HunkSegmentInput, LinkerOutputDirective,
+    HunkMemoryType, HunkOutputInput, HunkRelocationKind, HunkSegmentInput, LinkerOutputDirective,
     LinkerOutputRelocationDisposition, SectionKind, SectionState,
 };
 
@@ -12,6 +12,7 @@ const HUNK_HEADER: u32 = 0x0000_03f3;
 const HUNK_CODE: u32 = 0x0000_03e9;
 const HUNK_DATA: u32 = 0x0000_03ea;
 const HUNK_BSS: u32 = 0x0000_03eb;
+const HUNK_RELOC32: u32 = 0x0000_03ec;
 const HUNK_END: u32 = 0x0000_03f2;
 
 pub(crate) fn build_hunk_output_payload(
@@ -67,6 +68,7 @@ fn collect_hunk_output_input(
             initialized_bytes: section.bytes.clone(),
             allocation_size_bytes,
             memory_type: HunkMemoryType::Any,
+            relocations: section.hunk_relocations.clone(),
         });
     }
 
@@ -79,12 +81,7 @@ fn collect_hunk_output_input(
 pub(crate) fn build_hunk_payload(input: &HunkOutputInput) -> Result<Vec<u8>, ArtifactBuildError> {
     match input.relocation_disposition {
         LinkerOutputRelocationDisposition::ProvenRelocationFree => {}
-        LinkerOutputRelocationDisposition::RelocationRecordsPresent => {
-            return Err(ArtifactBuildError::new(
-                "format=hunk does not yet emit relocation hunks in v0.1",
-                None::<String>,
-            ));
-        }
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent => {}
         LinkerOutputRelocationDisposition::Unknown => {
             return Err(ArtifactBuildError::new(
                 "format=hunk requires explicit relocation-free proof in v0.1",
@@ -148,10 +145,84 @@ pub(crate) fn build_hunk_payload(input: &HunkOutputInput) -> Result<Vec<u8>, Art
                 0,
             );
         }
+        if input.relocation_disposition
+            == LinkerOutputRelocationDisposition::RelocationRecordsPresent
+        {
+            append_relocation_hunks(&mut bytes, segment, &input.segments)?;
+        }
         push_be_u32(&mut bytes, HUNK_END);
     }
 
     Ok(bytes)
+}
+
+fn append_relocation_hunks(
+    bytes: &mut Vec<u8>,
+    segment: &HunkSegmentInput,
+    all_segments: &[HunkSegmentInput],
+) -> Result<(), ArtifactBuildError> {
+    if segment.relocations.is_empty() {
+        return Ok(());
+    }
+
+    let payload_len = u32::try_from(segment.initialized_bytes.len()).map_err(|_| {
+        ArtifactBuildError::new(
+            "format=hunk payload exceeds supported size",
+            Some(segment.name.clone()),
+        )
+    })?;
+
+    let mut grouped_offsets: HashMap<u32, Vec<u32>> = HashMap::new();
+    for relocation in &segment.relocations {
+        if relocation.kind != HunkRelocationKind::Abs32 {
+            return Err(ArtifactBuildError::new(
+                "format=hunk only supports HUNK_RELOC32 records in v0.2",
+                Some(segment.name.clone()),
+            ));
+        }
+        let Some(target_index) = all_segments
+            .iter()
+            .position(|target| target.name.eq_ignore_ascii_case(&relocation.target_section))
+        else {
+            return Err(ArtifactBuildError::new(
+                "format=hunk relocation references unknown target section",
+                Some(relocation.target_section.clone()),
+            ));
+        };
+        if relocation.offset > payload_len.saturating_sub(4) {
+            return Err(ArtifactBuildError::new(
+                "format=hunk relocation offset exceeds initialized payload",
+                Some(segment.name.clone()),
+            ));
+        }
+        grouped_offsets
+            .entry(u32::try_from(target_index).unwrap_or(u32::MAX))
+            .or_default()
+            .push(relocation.offset);
+    }
+
+    let mut grouped_entries: Vec<(u32, Vec<u32>)> = grouped_offsets.into_iter().collect();
+    grouped_entries.sort_by_key(|(target_index, _)| *target_index);
+
+    push_be_u32(bytes, HUNK_RELOC32);
+    for (target_index, mut offsets) in grouped_entries {
+        offsets.sort_unstable();
+        push_be_u32(
+            bytes,
+            u32::try_from(offsets.len()).map_err(|_| {
+                ArtifactBuildError::new(
+                    "format=hunk relocation count exceeds supported range",
+                    Some(segment.name.clone()),
+                )
+            })?,
+        );
+        push_be_u32(bytes, target_index);
+        for offset in offsets {
+            push_be_u32(bytes, offset);
+        }
+    }
+    push_be_u32(bytes, 0);
+    Ok(())
 }
 
 fn hunk_kind_word(kind: SectionKind) -> u32 {

@@ -26,6 +26,8 @@ pub struct SectionState {
     pub default_region: Option<String>,
     pub base_addr: Option<u32>,
     pub relocation_free_certified: bool,
+    pub hunk_relocation_compatible: bool,
+    pub hunk_relocations: Vec<HunkRelocationRecord>,
 }
 
 impl Default for SectionState {
@@ -42,6 +44,8 @@ impl Default for SectionState {
             default_region: None,
             base_addr: None,
             relocation_free_certified: true,
+            hunk_relocation_compatible: true,
+            hunk_relocations: Vec::new(),
         }
     }
 }
@@ -270,6 +274,18 @@ impl HunkMemoryType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HunkRelocationKind {
+    Abs32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HunkRelocationRecord {
+    pub kind: HunkRelocationKind,
+    pub offset: u32,
+    pub target_section: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct HunkSegmentInput {
     pub name: String,
@@ -277,6 +293,7 @@ pub struct HunkSegmentInput {
     pub initialized_bytes: Vec<u8>,
     pub allocation_size_bytes: u32,
     pub memory_type: HunkMemoryType,
+    pub relocations: Vec<HunkRelocationRecord>,
 }
 
 #[derive(Debug, Clone)]

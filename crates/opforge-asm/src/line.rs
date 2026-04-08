@@ -31,7 +31,7 @@ use families::intel8080::{
     module::FAMILY_ID as INTEL8080_FAMILY_ID,
 };
 #[cfg(not(feature = "vm-runtime-only"))]
-use families::m68k::module::{M68KFamilyOperands, FAMILY_ID as M68K_FAMILY_ID};
+use families::m68k::module::{M68KFamilyOperands, M68KOperands, FAMILY_ID as M68K_FAMILY_ID};
 #[cfg(not(feature = "vm-runtime-only"))]
 use families::m68k::FamilyOperand as M68KFamilyOperand;
 use opcore::conditional::{ConditionalBlockKind, ConditionalSubType};
@@ -43,6 +43,8 @@ use opcore::expression::{
 use opcore::imports::module_import_from_parser;
 use opcore::parser as asm_parser;
 use opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError};
+#[cfg(not(feature = "vm-runtime-only"))]
+use opcore::parser::{BinaryOp, UnaryOp};
 use opcore::struct_table::StructTable;
 use opcore::tokenizer::{ConditionalKind, Span};
 #[cfg(not(feature = "vm-runtime-only"))]
@@ -64,6 +66,7 @@ use types::symbol::{
     ImportResult, SymbolTable, SymbolTableEntry, SymbolTableResult, SymbolVisibility,
 };
 use types::text_encoding::TextEncodingRegistry;
+use vm::output_model::{HunkRelocationKind, HunkRelocationRecord};
 use vm::vm_opasm::HierarchyExecutionModel;
 
 thread_local! {
@@ -163,6 +166,7 @@ pub struct AsmLine<'a> {
     line_end_span: Option<Span>,
     line_end_token: Option<String>,
     pub bytes: Vec<u8>,
+    pending_hunk_relocations: Vec<HunkRelocationRecord>,
     start_addr: u32,
     aux_value: u32,
     pass: u8,
@@ -237,6 +241,7 @@ impl<'a> AsmLine<'a> {
             line_end_span: None,
             line_end_token: None,
             bytes: Vec::with_capacity(256),
+            pending_hunk_relocations: Vec::new(),
             start_addr: 0,
             aux_value: 0,
             pass: 1,
@@ -740,6 +745,17 @@ impl<'a> AsmLine<'a> {
             return;
         };
         section.relocation_free_certified = false;
+        section.hunk_relocation_compatible = false;
+    }
+
+    fn mark_current_section_hunk_relocatable(&mut self) {
+        let Some(section_name) = self.layout.current_section.clone() else {
+            return;
+        };
+        let Some(section) = self.layout.sections.get_mut(&section_name) else {
+            return;
+        };
+        section.relocation_free_certified = false;
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
@@ -944,6 +960,85 @@ impl<'a> AsmLine<'a> {
         None
     }
 
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn hunk_abs32_target_section_for_expr(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Identifier(name, _) => {
+                let resolved_name = self.resolve_symbol_name_for_relocation(name)?;
+                self.resolved_symbol_section_name(&resolved_name)
+            }
+            Expr::Unary {
+                op: UnaryOp::Plus,
+                expr: inner,
+                ..
+            }
+            | Expr::Immediate(inner, _)
+            | Expr::Indirect(inner, _)
+            | Expr::IndirectLong(inner, _) => self.hunk_abs32_target_section_for_expr(inner),
+            Expr::Binary {
+                op: BinaryOp::Add,
+                left,
+                right,
+                ..
+            } => {
+                if Self::expr_is_relocation_free_literal(left) {
+                    self.hunk_abs32_target_section_for_expr(right)
+                } else if Self::expr_is_relocation_free_literal(right) {
+                    self.hunk_abs32_target_section_for_expr(left)
+                } else {
+                    None
+                }
+            }
+            Expr::Binary {
+                op: BinaryOp::Subtract,
+                left,
+                right,
+                ..
+            } => {
+                if Self::expr_is_relocation_free_literal(right) {
+                    self.hunk_abs32_target_section_for_expr(left)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn eval_hunk_abs32_relocation_value(
+        &self,
+        expr: &Expr,
+    ) -> Result<Option<(u32, String)>, AstEvalError> {
+        let Some(target_section) = self.hunk_abs32_target_section_for_expr(expr) else {
+            return Ok(None);
+        };
+        let value = self.eval_expr_for_data_directive(expr)?;
+        let Some(base_addr) = self
+            .layout
+            .sections
+            .get(&target_section)
+            .and_then(|section| section.base_addr)
+        else {
+            return Ok(None);
+        };
+        let adjusted = value.checked_sub(base_addr).ok_or_else(|| {
+            AstEvalError::directive(
+                "section relocation value underflows the target section base",
+                expr_span(expr),
+            )
+        })?;
+        Ok(Some((adjusted, target_section)))
+    }
+
+    #[cfg(feature = "vm-runtime-only")]
+    fn eval_hunk_abs32_relocation_value(
+        &self,
+        _expr: &Expr,
+    ) -> Result<Option<(u32, String)>, AstEvalError> {
+        Ok(None)
+    }
+
     #[allow(clippy::result_unit_err)]
     pub fn current_addr(&mut self, main_addr: u32) -> Result<u32, ()> {
         match self.layout.current_section.as_deref() {
@@ -1020,6 +1115,23 @@ impl<'a> AsmLine<'a> {
                         let pad = self.start_addr - current_abs;
                         section.bytes.extend(std::iter::repeat_n(0, pad as usize));
                     } else if !self.bytes.is_empty() && !section.is_bss() {
+                        let base_offset = u32::try_from(section.bytes.len()).map_err(|_| {
+                            format!(
+                                "section {section_name} relocation base exceeds supported range"
+                            )
+                        })?;
+                        for relocation in &self.pending_hunk_relocations {
+                            let Some(offset) = base_offset.checked_add(relocation.offset) else {
+                                return Err(format!(
+                                    "section {section_name} relocation offset exceeds supported range"
+                                ));
+                            };
+                            section.hunk_relocations.push(HunkRelocationRecord {
+                                kind: relocation.kind,
+                                offset,
+                                target_section: relocation.target_section.clone(),
+                            });
+                        }
                         section.bytes.extend_from_slice(&self.bytes);
                     }
                 }
@@ -1427,6 +1539,7 @@ impl<'a> AsmLine<'a> {
         self.start_addr = addr;
         self.pass = pass;
         self.bytes.clear();
+        self.pending_hunk_relocations.clear();
         self.aux_value = 0;
 
         self.label = None;
@@ -2275,14 +2388,6 @@ impl<'a> AsmLine<'a> {
     }
 
     fn emit_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
-        let relocation_free = operands.first().is_some_and(|unit| {
-            self.emit_unit_is_relocation_free_literal(unit)
-                && Self::operands_are_relocation_free_literals(&operands[1..])
-        });
-        if !relocation_free {
-            self.mark_current_section_not_relocation_free();
-        }
-
         if operands.len() < 2 {
             return self.failure(
                 LineStatus::Error,
@@ -2351,7 +2456,35 @@ impl<'a> AsmLine<'a> {
             );
         }
 
+        let mut saw_supported_relocation = false;
+        let mut unsupported_nonfree = !operands
+            .first()
+            .is_some_and(|unit| self.emit_unit_is_relocation_free_literal(unit));
+        let mut planned_values: Vec<(u32, Option<String>, Span)> = Vec::new();
         for expr in &operands[1..] {
+            let relocation = if unit_bytes == 4 {
+                match self.eval_hunk_abs32_relocation_value(expr) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            ast_eval_error_kind_to_asm(err.error.kind()),
+                            err.error.message(),
+                            None,
+                            err.span,
+                        )
+                    }
+                }
+            } else {
+                None
+            };
+
+            if let Some((value, target_section)) = relocation {
+                saw_supported_relocation = true;
+                planned_values.push((value, Some(target_section), expr_span(expr)));
+                continue;
+            }
+
             let value = match self.eval_expr_for_data_directive(expr) {
                 Ok(value) => value,
                 Err(err) => {
@@ -2364,7 +2497,31 @@ impl<'a> AsmLine<'a> {
                     )
                 }
             };
-            if let Err(err) = self.write_unit_value(unit_bytes as usize, value, expr_span(expr)) {
+            if !Self::expr_is_relocation_free_literal(expr) {
+                unsupported_nonfree = true;
+            }
+            planned_values.push((value, None, expr_span(expr)));
+        }
+
+        if unsupported_nonfree {
+            self.mark_current_section_not_relocation_free();
+        } else if saw_supported_relocation {
+            self.mark_current_section_hunk_relocatable();
+        }
+
+        for (value, target_section, span) in planned_values {
+            let relocation_offset = match u32::try_from(self.bytes.len()) {
+                Ok(offset) => offset,
+                Err(_) => {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        ".emit relocation offset exceeds supported range",
+                        None,
+                    )
+                }
+            };
+            if let Err(err) = self.write_unit_value(unit_bytes as usize, value, span) {
                 return self.failure_at_span(
                     LineStatus::Error,
                     ast_eval_error_kind_to_asm(err.error.kind()),
@@ -2372,6 +2529,13 @@ impl<'a> AsmLine<'a> {
                     None,
                     err.span,
                 );
+            }
+            if let Some(target_section) = target_section {
+                self.pending_hunk_relocations.push(HunkRelocationRecord {
+                    kind: HunkRelocationKind::Abs32,
+                    offset: relocation_offset,
+                    target_section,
+                });
             }
         }
 
@@ -2564,10 +2728,6 @@ impl<'a> AsmLine<'a> {
         size: usize,
         directive_name: &str,
     ) -> LineStatus {
-        if !Self::operands_are_relocation_free_literals(operands) {
-            self.mark_current_section_not_relocation_free();
-        }
-
         if !self.section_kind_allows_data() {
             let msg = format!(
                 "Data emit directives are not allowed in kind=bss section (current kind={})",
@@ -2586,6 +2746,8 @@ impl<'a> AsmLine<'a> {
 
         let unit_size = size as u32;
         let mut projected_total = 0u32;
+        let mut saw_supported_relocation = false;
+        let mut unsupported_nonfree = false;
         for expr in operands {
             if let Expr::String(raw_bytes, span) = expr {
                 let encoded_bytes = match self.encode_text_bytes(
@@ -2682,15 +2844,51 @@ impl<'a> AsmLine<'a> {
                     err.span,
                 );
             }
-            let val = match self.eval_expr_for_data_directive(expr) {
-                Ok(value) => value,
-                Err(err) => {
-                    return self.failure_at_span(
+            let relocation = if size == 4 {
+                match self.eval_hunk_abs32_relocation_value(expr) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            ast_eval_error_kind_to_asm(err.error.kind()),
+                            err.error.message(),
+                            None,
+                            err.span,
+                        )
+                    }
+                }
+            } else {
+                None
+            };
+            let (val, target_section) = if let Some((value, target_section)) = relocation {
+                saw_supported_relocation = true;
+                (value, Some(target_section))
+            } else {
+                let value = match self.eval_expr_for_data_directive(expr) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            ast_eval_error_kind_to_asm(err.error.kind()),
+                            err.error.message(),
+                            None,
+                            err.span,
+                        )
+                    }
+                };
+                if !Self::expr_is_relocation_free_literal(expr) {
+                    unsupported_nonfree = true;
+                }
+                (value, None)
+            };
+            let relocation_offset = match u32::try_from(self.bytes.len()) {
+                Ok(offset) => offset,
+                Err(_) => {
+                    return self.failure(
                         LineStatus::Error,
-                        ast_eval_error_kind_to_asm(err.error.kind()),
-                        err.error.message(),
+                        AsmErrorKind::Directive,
+                        "data relocation offset exceeds supported range",
                         None,
-                        err.span,
                     )
                 }
             };
@@ -2720,6 +2918,19 @@ impl<'a> AsmLine<'a> {
                     None,
                 );
             }
+            if let Some(target_section) = target_section {
+                self.pending_hunk_relocations.push(HunkRelocationRecord {
+                    kind: HunkRelocationKind::Abs32,
+                    offset: relocation_offset,
+                    target_section,
+                });
+            }
+        }
+
+        if unsupported_nonfree {
+            self.mark_current_section_not_relocation_free();
+        } else if saw_supported_relocation {
+            self.mark_current_section_hunk_relocatable();
         }
 
         LineStatus::Ok

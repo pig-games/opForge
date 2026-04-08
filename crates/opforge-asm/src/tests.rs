@@ -72,6 +72,7 @@ use vm::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};
 use vm::execution_model::set_core_expr_parser_failpoint_for_tests;
 use vm::hierarchy::ScopedOwner;
 use vm::intel8080_vm::mode_key_for_instruction_entry;
+use vm::output_model::{HunkRelocationKind, HunkRelocationRecord};
 use vm::portable_contract::{PortableSpan, PortableToken, PortableTokenKind};
 use vm::rollout::{
     family_runtime_mode, family_runtime_rollout_policy, package_runtime_default_enabled_for_family,
@@ -13955,6 +13956,20 @@ fn hunk_section(
     }
 }
 
+fn hunk_section_with_relocations(
+    kind: SectionKind,
+    base_addr: u32,
+    bytes: &[u8],
+    allocation_size: u32,
+    relocations: Vec<HunkRelocationRecord>,
+) -> SectionState {
+    let mut section = hunk_section(kind, base_addr, bytes, allocation_size);
+    section.relocation_free_certified = false;
+    section.hunk_relocation_compatible = true;
+    section.hunk_relocations = relocations;
+    section
+}
+
 #[test]
 fn linker_output_hunk_emits_code_and_data_with_big_endian_header_words() {
     let output = hunk_output_directive(
@@ -13981,6 +13996,41 @@ fn linker_output_hunk_emits_code_and_data_with_big_endian_header_words() {
         0x00, 0x03, 0xea, 0x00, 0x00, 0x00, 0x01, 0xaa, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x03, 0xf2,
     ];
     assert_eq!(payload, expected);
+}
+
+#[test]
+fn linker_output_hunk_emits_reloc32_records_for_relocation_backed_segments() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code"],
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent,
+    );
+    let sections = HashMap::from([(
+        "code".to_string(),
+        hunk_section_with_relocations(
+            SectionKind::Code,
+            0x2000,
+            &[0x00, 0x00, 0x00, 0x00],
+            4,
+            vec![HunkRelocationRecord {
+                kind: HunkRelocationKind::Abs32,
+                offset: 0,
+                target_section: "code".to_string(),
+            }],
+        ),
+    )]);
+
+    let payload = build_linker_output_payload(&output, &sections).expect("hunk payload");
+    assert_eq!(
+        payload,
+        vec![
+            0x00, 0x00, 0x03, 0xf3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x03, 0xe9,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xec, 0x00, 0x00,
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x03, 0xf2,
+        ]
+    );
 }
 
 #[test]
@@ -14251,6 +14301,398 @@ fn linker_output_hunk_live_path_rejects_symbolic_code_without_relocation_proof()
     let err = build_linker_output_payload(output, assembler.sections())
         .expect_err("symbolic code should remain unproven");
     assert!(err.message().contains("explicit relocation-free proof"));
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_emit_long_section_symbol() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .emit long, target",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_long_section_symbol() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .long target",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_lea_absolute_long_symbol() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: LEA target.L,A1",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(&section.bytes[2..6], &[0x00, 0x00, 0x00, 0x08]);
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_immediate_long_symbol() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #target,D1",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_pea_absolute_long_symbol() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: PEA target.L",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_to_absolute_long_symbol() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L D0,target.L",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_immediate_long_symbol_with_extra_extensions()
+{
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #target,8(A0)",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_from_absolute_long_symbol_with_extra_extensions(
+) {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L target.L,8(A0)",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_to_absolute_long_symbol_after_pc_displacement(
+) {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L 8(PC),target.L",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_to_absolute_long_symbol_after_immediate_long(
+) {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #$12345678,target.L",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_to_absolute_long_symbol_after_immediate_word(
+) {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.W #$1234,target.L",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
 }
 
 #[test]

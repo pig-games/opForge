@@ -19,55 +19,59 @@ ADDR    BYTES                    LINE  SOURCE
 ----                               16          .section code, kind=code  ; [section code]
 ----                               17    ; [section code]
 ----                               18  start  ; [section code]
-2000    43 FA 00 26                19          LEA dos_name(PC),A1         ; "dos.library" name string  ; [section code]
-2004    70 24                      20          MOVEQ #36,D0                ; minimum required version (Kickstart 2.0)  ; [section code]
-2006    2C 78 00 04                21          MOVEA.L SysBase.W,A6  ; [section code]
-200A    4E AE FD D8                22          JSR OpenLibrary(A6)  ; [section code]
+2000    43 F9 00 00 00 30          19          LEA dos_name.L,A1           ; "dos.library" name string  ; [section code]
+2006    70 24                      20          MOVEQ #36,D0                ; minimum required version (Kickstart 2.0)  ; [section code]
+2008    2C 78 00 04                21          MOVEA.L SysBase.W,A6  ; [section code]
+200C    4E AE FD D8                22          JSR OpenLibrary(A6)  ; [section code]
 ----                               23    ; [section code]
-200E    43 FA 00 24                24          LEA hello(PC),A1            ; PutStr() expects the string pointer in D1  ; [section code]
-2012    22 09                      25          MOVE.L A1,D1  ; [section code]
-2014    2C 40                      26          MOVEA.L D0,A6               ; DOSBase  ; [section code]
-2016    4E AE FC 4C                27          JSR PutStr(A6)  ; [section code]
-----                               28    ; [section code]
-201A    22 4E                      29          MOVEA.L A6,A1               ; library to close  ; [section code]
-201C    2C 78 00 04                30          MOVEA.L SysBase.W,A6  ; [section code]
-2020    4E AE FE 62                31          JSR CloseLibrary(A6)  ; [section code]
-----                               32    ; [section code]
-2024    42 80                      33          CLR.L D0                    ; return 0 to the system  ; [section code]
-2026    4E 75                      34          RTS  ; [section code]
-----                               35    ; [section code]
-----                               36  dos_name  ; [section code]
-2028    64 6F 73 2E 6C 69 62 72 61 72 79 00    37          .byte "dos.library",0  ; [section code]
-----                               38  hello  ; [section code]
-2034    48 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00    39          .byte "Hello World!",10,0  ; [section code]
-----                               40    ; [section code]
-----                               41          .endsection
-----                               42          .place code in ram
-----                               43          .output "build/out.hunk", format=hunk, sections=code
-----                               44          .endmodule
+2010    4A 80                      24          TST.L D0                    ; zero if OpenLibrary() failed  ; [section code]
+2012    67 00 00 18                25          BEQ no_dos  ; [section code]
+----                               26    ; [section code]
+2016    22 3C 00 00 00 3C          27          MOVE.L #hello,D1            ; PutStr() expects the string pointer in D1  ; [section code]
+201C    2C 40                      28          MOVEA.L D0,A6               ; DOSBase  ; [section code]
+201E    4E AE FC 4C                29          JSR PutStr(A6)  ; [section code]
+----                               30    ; [section code]
+2022    22 4E                      31          MOVEA.L A6,A1               ; library to close  ; [section code]
+2024    2C 78 00 04                32          MOVEA.L SysBase.W,A6  ; [section code]
+2028    4E AE FE 62                33          JSR CloseLibrary(A6)  ; [section code]
+----                               34    ; [section code]
+----                               35  no_dos  ; [section code]
+202C    42 80                      36          CLR.L D0                    ; return 0 to the system  ; [section code]
+202E    4E 75                      37          RTS  ; [section code]
+----                               38    ; [section code]
+----                               39  dos_name  ; [section code]
+2030    64 6F 73 2E 6C 69 62 72 61 72 79 00    40          .byte "dos.library",0  ; [section code]
+----                               41  hello  ; [section code]
+203C    48 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00    42          .byte "Hello World!",10,0  ; [section code]
+----                               43    ; [section code]
+----                               44          .endsection
+----                               45          .place code in ram
+----                               46          .output "build/out.hunk", format=hunk, sections=code
+----                               47          .endmodule
 
-Lines: 44  Errors: 0  Warnings: 0
+Lines: 47  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
 main.CloseLibrary  FFFFFE62  prv  lbl 
-main.dos_name    2028      prv  lbl 
-main.hello       2034      prv  lbl 
+main.dos_name    2030      prv  lbl 
+main.hello       203C      prv  lbl 
+main.no_dos      202C      prv  lbl 
 main.OpenLibrary  FFFFFDD8  prv  lbl 
 main.PutStr      FFFFFC4C  prv  lbl 
 main.start       2000      prv  lbl 
 main.SysBase     0004      prv  lbl 
 
-Total memory is 66 bytes
+Total memory is 74 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-2000    43 FA 00 26 70 24 2C 78 00 04 4E AE FD D8 43 FA
-2010    00 24 22 09 2C 40 4E AE FC 4C 22 4E 2C 78 00 04
-2020    4E AE FE 62 42 80 4E 75 64 6F 73 2E 6C 69 62 72
-2030    61 72 79 00 48 65 6C 6C 6F 20 57 6F 72 6C 64 21
-2040    0A 00
+2000    43 F9 00 00 00 30 70 24 2C 78 00 04 4E AE FD D8
+2010    4A 80 67 00 00 18 22 3C 00 00 00 3C 2C 40 4E AE
+2020    FC 4C 22 4E 2C 78 00 04 4E AE FE 62 42 80 4E 75
+2030    64 6F 73 2E 6C 69 62 72 61 72 79 00 48 65 6C 6C
+2040    6F 20 57 6F 72 6C 64 21 0A 00

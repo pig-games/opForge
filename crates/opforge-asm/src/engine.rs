@@ -227,6 +227,9 @@ impl Assembler {
                 for section in asm_line.layout.sections.values_mut() {
                     section.pc = 0;
                     section.bytes.clear();
+                    section.relocation_free_certified = true;
+                    section.hunk_relocation_compatible = true;
+                    section.hunk_relocations.clear();
                     section.emitted = false;
                 }
             }
@@ -612,6 +615,9 @@ impl Assembler {
         for section in asm_line.layout.sections.values_mut() {
             section.pc = 0;
             section.bytes.clear();
+            section.relocation_free_certified = true;
+            section.hunk_relocation_compatible = true;
+            section.hunk_relocations.clear();
             section.emitted = false;
         }
         self.image = ImageStore::new();
@@ -818,6 +824,13 @@ impl Assembler {
                 .is_some_and(|section| section.relocation_free_certified)
         }) {
             vm::output_model::LinkerOutputRelocationDisposition::ProvenRelocationFree
+        } else if section_names.iter().all(|section_name| {
+            sections.get(section_name).is_some_and(|section| {
+                section.hunk_relocation_compatible
+                    && (section.relocation_free_certified || !section.hunk_relocations.is_empty())
+            })
+        }) {
+            vm::output_model::LinkerOutputRelocationDisposition::RelocationRecordsPresent
         } else {
             vm::output_model::LinkerOutputRelocationDisposition::Unknown
         }

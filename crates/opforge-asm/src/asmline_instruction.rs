@@ -8,6 +8,13 @@
 
 use super::*;
 
+#[cfg(not(feature = "vm-runtime-only"))]
+#[derive(Debug, Clone)]
+struct InstructionHunkRelocationPlan {
+    record: HunkRelocationRecord,
+    encoded_value: u32,
+}
+
 impl<'a> AsmLine<'a> {
     pub fn process_instruction_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
         #[cfg(feature = "vm-runtime-only")]
@@ -61,15 +68,6 @@ impl<'a> AsmLine<'a> {
                 .map_mnemonic(mnemonic, family_operands.as_ref())
                 .unwrap_or_else(|| (mnemonic.to_string(), family_operands.clone()));
 
-            if self.in_section()
-                && !self.family_operands_keep_current_section_relocation_free(
-                    pipeline.family_id,
-                    mapped_operands.as_ref(),
-                )
-            {
-                self.mark_current_section_not_relocation_free();
-            }
-
             if let Some(status) = self.try_encode_instruction_via_runtime_expr(
                 &pipeline,
                 mnemonic,
@@ -98,6 +96,14 @@ impl<'a> AsmLine<'a> {
                             None,
                             err.span,
                         );
+                    }
+                    if self.in_section()
+                        && !self.family_operands_keep_current_section_relocation_free(
+                            pipeline.family_id,
+                            mapped_operands.as_ref(),
+                        )
+                    {
+                        self.mark_current_section_not_relocation_free();
                     }
                     self.bytes.extend_from_slice(&bytes);
                     return LineStatus::Ok;
@@ -168,7 +174,7 @@ impl<'a> AsmLine<'a> {
                 .encode_instruction(&mapped_mnemonic, resolved_operands.as_ref(), self)
                 .into_outcome()
             {
-                Ok(Some(bytes)) => {
+                Ok(Some(mut bytes)) => {
                     if let Err(err) =
                         self.validate_instruction_emit_span(&mapped_mnemonic, operands, bytes.len())
                     {
@@ -179,6 +185,23 @@ impl<'a> AsmLine<'a> {
                             None,
                             err.span,
                         );
+                    }
+                    let supported_hunk_relocations = match self.queue_instruction_hunk_relocations(
+                        pipeline.family_id,
+                        resolved_operands.as_ref(),
+                        &mut bytes,
+                    ) {
+                        Ok(supported) => supported,
+                        Err(status) => return status,
+                    };
+                    if self.in_section()
+                        && !supported_hunk_relocations
+                        && !self.family_operands_keep_current_section_relocation_free(
+                            pipeline.family_id,
+                            mapped_operands.as_ref(),
+                        )
+                    {
+                        self.mark_current_section_not_relocation_free();
                     }
                     self.bytes.extend_from_slice(&bytes);
                     self.apply_cpu_runtime_state_after_encode(
@@ -211,7 +234,7 @@ impl<'a> AsmLine<'a> {
                     .encode_instruction(&mapped_mnemonic, resolved_operands.as_ref(), self)
                     .into_outcome()
                 {
-                    Ok(Some(bytes)) => {
+                    Ok(Some(mut bytes)) => {
                         if let Err(err) = self.validate_instruction_emit_span(
                             &mapped_mnemonic,
                             operands,
@@ -224,6 +247,24 @@ impl<'a> AsmLine<'a> {
                                 None,
                                 err.span,
                             );
+                        }
+                        let supported_hunk_relocations = match self
+                            .queue_instruction_hunk_relocations(
+                                pipeline.family_id,
+                                resolved_operands.as_ref(),
+                                &mut bytes,
+                            ) {
+                            Ok(supported) => supported,
+                            Err(status) => return status,
+                        };
+                        if self.in_section()
+                            && !supported_hunk_relocations
+                            && !self.family_operands_keep_current_section_relocation_free(
+                                pipeline.family_id,
+                                mapped_operands.as_ref(),
+                            )
+                        {
+                            self.mark_current_section_not_relocation_free();
                         }
                         self.bytes.extend_from_slice(&bytes);
                         self.apply_cpu_runtime_state_after_encode(
@@ -260,6 +301,169 @@ impl<'a> AsmLine<'a> {
                 },
             }
         }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn queue_instruction_hunk_relocations(
+        &mut self,
+        family_id: CpuFamily,
+        operands: &dyn OperandSet,
+        bytes: &mut [u8],
+    ) -> Result<bool, LineStatus> {
+        if !self.in_section() || family_id != M68K_FAMILY_ID {
+            return Ok(false);
+        }
+        let Some(m68k_operands) = operands.as_any().downcast_ref::<M68KOperands>() else {
+            return Ok(false);
+        };
+        let relocations =
+            match self.m68k_instruction_hunk_relocations(m68k_operands.0.as_slice(), bytes) {
+                Ok(relocations) => relocations,
+                Err((kind, message, span)) => {
+                    return Err(self.failure_at_span(LineStatus::Error, kind, &message, None, span))
+                }
+            };
+        if relocations.is_empty() {
+            return Ok(false);
+        }
+        let base_offset = match u32::try_from(self.bytes.len()) {
+            Ok(offset) => offset,
+            Err(_) => {
+                return Err(self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    "instruction relocation base exceeds supported range",
+                    None,
+                ))
+            }
+        };
+        self.mark_current_section_hunk_relocatable();
+        for relocation in relocations {
+            let Some(end) = usize::try_from(relocation.record.offset)
+                .ok()
+                .and_then(|start| start.checked_add(4))
+            else {
+                return Err(self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    "instruction relocation offset exceeds supported range",
+                    None,
+                ));
+            };
+            bytes[end - 4..end].copy_from_slice(&relocation.encoded_value.to_be_bytes());
+            let Some(offset) = base_offset.checked_add(relocation.record.offset) else {
+                return Err(self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    "instruction relocation offset exceeds supported range",
+                    None,
+                ));
+            };
+            self.pending_hunk_relocations.push(HunkRelocationRecord {
+                kind: relocation.record.kind,
+                offset,
+                target_section: relocation.record.target_section,
+            });
+        }
+        Ok(true)
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_instruction_hunk_relocations(
+        &self,
+        operands: &[M68KFamilyOperand],
+        bytes: &[u8],
+    ) -> Result<Vec<InstructionHunkRelocationPlan>, (AsmErrorKind, String, Span)> {
+        let mut relocatable_operands = Vec::new();
+        for (index, operand) in operands.iter().enumerate() {
+            let (expr, span) = match operand {
+                M68KFamilyOperand::Absolute { expr, size, span }
+                    if matches!(size, families::m68k::operand::AbsoluteSize::Long) =>
+                {
+                    (expr, *span)
+                }
+                M68KFamilyOperand::Immediate { expr, span } => (expr, *span),
+                _ => continue,
+            };
+            let relocation = self.eval_hunk_abs32_relocation_value(expr).map_err(|err| {
+                (
+                    ast_eval_error_kind_to_asm(err.error.kind()),
+                    err.error.message().to_string(),
+                    err.span,
+                )
+            })?;
+            if relocation.is_some() {
+                relocatable_operands.push((index, expr, span));
+            }
+        }
+
+        let [(index, expr, span)] = relocatable_operands.as_slice() else {
+            return Ok(Vec::new());
+        };
+
+        let Some(offset) = (match index {
+            0 => Some(2),
+            1 => match operands.get(1) {
+                Some(M68KFamilyOperand::Absolute {
+                    size: families::m68k::operand::AbsoluteSize::Long,
+                    ..
+                }) => u32::try_from(bytes.len())
+                    .ok()
+                    .and_then(|length| length.checked_sub(4)),
+                _ => None,
+            },
+            _ => None,
+        }) else {
+            return Ok(Vec::new());
+        };
+
+        self.single_instruction_abs32_relocation(expr, *span, offset, bytes)
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn single_instruction_abs32_relocation(
+        &self,
+        expr: &Expr,
+        span: Span,
+        offset: u32,
+        bytes: &[u8],
+    ) -> Result<Vec<InstructionHunkRelocationPlan>, (AsmErrorKind, String, Span)> {
+        let Some((encoded_value, target_section)) =
+            self.eval_hunk_abs32_relocation_value(expr).map_err(|err| {
+                (
+                    ast_eval_error_kind_to_asm(err.error.kind()),
+                    err.error.message().to_string(),
+                    err.span,
+                )
+            })?
+        else {
+            return Ok(Vec::new());
+        };
+        let Some(end) = usize::try_from(offset)
+            .ok()
+            .and_then(|start| start.checked_add(4))
+        else {
+            return Err((
+                AsmErrorKind::Instruction,
+                "instruction relocation offset exceeds supported range".to_string(),
+                span,
+            ));
+        };
+        if end > bytes.len() {
+            return Err((
+                AsmErrorKind::Instruction,
+                "instruction bytes are too short for a 32-bit relocation".to_string(),
+                span,
+            ));
+        }
+        Ok(vec![InstructionHunkRelocationPlan {
+            record: HunkRelocationRecord {
+                kind: HunkRelocationKind::Abs32,
+                offset,
+                target_section,
+            },
+            encoded_value,
+        }])
     }
 
     #[cfg(feature = "vm-runtime-only")]

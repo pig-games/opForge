@@ -385,7 +385,10 @@ impl Assembler {
             }
 
             for output in &asm_line.output_state.root_metadata.linker_outputs {
-                for section_name in &output.sections {
+                let Some(section_names) = output.option_text_list("sections") else {
+                    continue;
+                };
+                for section_name in section_names {
                     let is_placed = asm_line
                         .layout
                         .sections

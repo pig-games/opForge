@@ -32,7 +32,7 @@ Implement the first internal output-component seam for `.output format=...` and 
 
 ## Work Items
 
-- [ ] Work item 1: refactor `.output` parsing and stored metadata into a format-id plus raw option bag contract
+- [x] Work item 1: refactor `.output` parsing and stored metadata into a format-id plus raw option bag contract
   - Source requirement or finding IDs: spec `Behavioral Contract` parser contract; spec `Acceptance Criteria` bullets for parser acceptance and raw option preservation
   - Validation: focused parser and stored-metadata coverage plus the full repo quality gate before commit
   - Definition of done: `.output` stores a component-ready format id plus raw option bag without regressing existing `bin` or `prg` parsing behavior

@@ -2443,8 +2443,8 @@ mod tests {
     use asm::error::AsmErrorKind;
     use asm::output::{
         BinOutputSpec, ExportSectionsDirective, ExportSectionsFormat, ExportSectionsInclude,
-        LabelOutputFormat, LinkerOutputDirective, LinkerOutputFormat, MapFileDirective,
-        MapSymbolsMode, OutputFormat, RootMetadata, SectionState,
+        LabelOutputFormat, LinkerOutputDirective, LinkerOutputFormat, LinkerOutputOptionValue,
+        MapFileDirective, MapSymbolsMode, OutputFormat, RootMetadata, SectionState,
     };
     use opcore::parser::Expr;
     use registry::cpu::{CpuFamily, CpuType};
@@ -2453,6 +2453,7 @@ mod tests {
         AsmRegistry, CpuHandlerDyn, CpuModule, DialectModule, FamilyHandlerDyn, FamilyModule,
         FamilyOperandSet, OperandSet,
     };
+    use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
     #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2708,13 +2709,11 @@ mod tests {
     fn linker_output_targets_reject_absolute_directive_path_under_out_dir() {
         let outputs = vec![LinkerOutputDirective {
             path: "/tmp/output.bin".to_string(),
-            format: LinkerOutputFormat::Bin,
-            sections: vec!["code".to_string()],
-            contiguous: false,
-            image_start: None,
-            image_end: None,
-            fill: None,
-            loadaddr: None,
+            format_id: LinkerOutputFormat::Bin.format_id().to_string(),
+            options: BTreeMap::from([(
+                "sections".to_string(),
+                LinkerOutputOptionValue::TextList(vec!["code".to_string()]),
+            )]),
         }];
 
         let error = linker_output_targets(&outputs, Some(Path::new("/virtual/out")))
@@ -2728,13 +2727,11 @@ mod tests {
     fn emit_linker_outputs_rejects_parent_escape_under_out_dir() {
         let outputs = vec![LinkerOutputDirective {
             path: "../escape.bin".to_string(),
-            format: LinkerOutputFormat::Bin,
-            sections: vec!["code".to_string()],
-            contiguous: false,
-            image_start: None,
-            image_end: None,
-            fill: None,
-            loadaddr: None,
+            format_id: LinkerOutputFormat::Bin.format_id().to_string(),
+            options: BTreeMap::from([(
+                "sections".to_string(),
+                LinkerOutputOptionValue::TextList(vec!["code".to_string()]),
+            )]),
         }];
         let sink = MemoryOutputSink::new();
 
@@ -2833,13 +2830,11 @@ mod tests {
     fn directive_artifact_targets_anchor_rooted_relative_paths_under_out_dir() {
         let linker_outputs = vec![LinkerOutputDirective {
             path: "nested/output.bin".to_string(),
-            format: LinkerOutputFormat::Bin,
-            sections: vec!["code".to_string()],
-            contiguous: false,
-            image_start: None,
-            image_end: None,
-            fill: None,
-            loadaddr: None,
+            format_id: LinkerOutputFormat::Bin.format_id().to_string(),
+            options: BTreeMap::from([(
+                "sections".to_string(),
+                LinkerOutputOptionValue::TextList(vec!["code".to_string()]),
+            )]),
         }];
         let export_directives = vec![ExportSectionsDirective {
             dir: "nested/export".to_string(),

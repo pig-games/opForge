@@ -5,9 +5,9 @@ use crate::error::{AsmError, AsmErrorKind, Fixit, LineStatus};
 use crate::opasm::{self, StatementRequest};
 use crate::output::{
     format_addr, section_kind_name, BinOutputSpec, ExportSectionsDirective, ExportSectionsFormat,
-    ExportSectionsInclude, LinkerOutputDirective, LinkerOutputFormat, MapFileDirective,
-    MapSymbolsMode, PlacedSectionInfo, PlacementDirective, RegionState, RootMetadata, SectionKind,
-    SectionOptions, SectionState,
+    ExportSectionsInclude, LinkerOutputDirective, MapFileDirective, MapSymbolsMode,
+    PlacedSectionInfo, PlacementDirective, RegionState, RootMetadata, SectionKind, SectionOptions,
+    SectionState,
 };
 use crate::runtime_config::{
     expr_eval_force_host_families_from_env, expr_eval_opt_in_families_from_env,

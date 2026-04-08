@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Component, Path, PathBuf};
 
 use opcore::tokenizer::Span;
@@ -203,16 +203,79 @@ pub enum LinkerOutputFormat {
     Prg,
 }
 
+impl LinkerOutputFormat {
+    #[must_use]
+    pub fn format_id(self) -> &'static str {
+        match self {
+            Self::Bin => "bin",
+            Self::Prg => "prg",
+        }
+    }
+
+    #[must_use]
+    pub fn from_format_id(format_id: &str) -> Option<Self> {
+        if format_id.eq_ignore_ascii_case("bin") {
+            Some(Self::Bin)
+        } else if format_id.eq_ignore_ascii_case("prg") {
+            Some(Self::Prg)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkerOutputOptionValue {
+    Text(String),
+    TextList(Vec<String>),
+}
+
+impl LinkerOutputOptionValue {
+    #[must_use]
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(value) => Some(value.as_str()),
+            Self::TextList(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub fn as_text_list(&self) -> Option<&[String]> {
+        match self {
+            Self::Text(_) => None,
+            Self::TextList(values) => Some(values.as_slice()),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LinkerOutputDirective {
     pub path: String,
-    pub format: LinkerOutputFormat,
-    pub sections: Vec<String>,
-    pub contiguous: bool,
-    pub image_start: Option<u32>,
-    pub image_end: Option<u32>,
-    pub fill: Option<u8>,
-    pub loadaddr: Option<u32>,
+    pub format_id: String,
+    pub options: BTreeMap<String, LinkerOutputOptionValue>,
+}
+
+impl LinkerOutputDirective {
+    #[must_use]
+    pub fn format(&self) -> Option<LinkerOutputFormat> {
+        LinkerOutputFormat::from_format_id(&self.format_id)
+    }
+
+    #[must_use]
+    pub fn option(&self, key: &str) -> Option<&LinkerOutputOptionValue> {
+        self.options.get(&key.to_ascii_lowercase())
+    }
+
+    #[must_use]
+    pub fn option_text(&self, key: &str) -> Option<&str> {
+        self.option(key).and_then(LinkerOutputOptionValue::as_text)
+    }
+
+    #[must_use]
+    pub fn option_text_list(&self, key: &str) -> Option<&[String]> {
+        self.option(key)
+            .and_then(LinkerOutputOptionValue::as_text_list)
+    }
 }
 
 pub fn is_valid_hex_2(s: &str) -> bool {

@@ -875,14 +875,8 @@ impl<'a> AsmLine<'a> {
             }
         };
 
-        let mut format: Option<LinkerOutputFormat> = None;
-        let mut sections: Vec<String> = Vec::new();
-        let mut contiguous = true;
-        let mut saw_contiguous = false;
-        let mut image_start: Option<u32> = None;
-        let mut image_end: Option<u32> = None;
-        let mut fill: Option<u8> = None;
-        let mut loadaddr: Option<u32> = None;
+        let mut format_id: Option<String> = None;
+        let mut options = std::collections::BTreeMap::new();
 
         let mut idx = 1usize;
         while idx < operands.len() {
@@ -891,9 +885,10 @@ impl<'a> AsmLine<'a> {
                 Ok(parts) => parts,
                 Err(status) => return status,
             };
+            let canonical_key = key.to_ascii_lowercase();
 
-            if key.eq_ignore_ascii_case("format") {
-                if format.is_some() {
+            if canonical_key == "format" {
+                if format_id.is_some() {
                     return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Directive,
@@ -914,33 +909,23 @@ impl<'a> AsmLine<'a> {
                         )
                     }
                 };
-                format = if value.eq_ignore_ascii_case("bin") {
-                    Some(LinkerOutputFormat::Bin)
-                } else if value.eq_ignore_ascii_case("prg") {
-                    Some(LinkerOutputFormat::Prg)
-                } else {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Directive,
-                        "Output format must be bin or prg",
-                        None,
-                        option_span,
-                    );
-                };
+                format_id = Some(value);
                 idx += 1;
                 continue;
             }
 
-            if key.eq_ignore_ascii_case("sections") {
-                if !sections.is_empty() {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Directive,
-                        "Duplicate sections option in .output",
-                        None,
-                        option_span,
-                    );
-                }
+            if options.contains_key(&canonical_key) {
+                return self.failure_at_span(
+                    LineStatus::Error,
+                    AsmErrorKind::Directive,
+                    &format!("Duplicate {canonical_key} option in .output"),
+                    None,
+                    option_span,
+                );
+            }
+
+            if canonical_key == "sections" {
+                let mut sections: Vec<String> = Vec::new();
                 let value = match self.expr_text_value(value_expr) {
                     Some(value) => value,
                     None => {
@@ -988,115 +973,44 @@ impl<'a> AsmLine<'a> {
                     }
                     idx += 1;
                 }
+                options.insert(
+                    canonical_key,
+                    vm::output_model::LinkerOutputOptionValue::TextList(sections),
+                );
                 continue;
             }
 
-            if key.eq_ignore_ascii_case("contiguous") {
-                if saw_contiguous {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Directive,
-                        "Duplicate contiguous option in .output",
-                        None,
+            let value = match self.expr_text_value(value_expr) {
+                Some(value) => value,
+                None if canonical_key == "fill" || canonical_key == "loadaddr" => {
+                    match self.parse_u32_expr_value(
+                        ".output",
+                        &canonical_key,
+                        value_expr,
                         option_span,
-                    );
-                }
-                contiguous =
-                    match self.parse_bool_value(".output", "contiguous", value_expr, option_span) {
-                        Ok(value) => value,
+                    ) {
+                        Ok(value) => value.to_string(),
                         Err(status) => return status,
-                    };
-                saw_contiguous = true;
-                idx += 1;
-                continue;
-            }
-
-            if key.eq_ignore_ascii_case("image") {
-                if image_start.is_some() {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Directive,
-                        "Duplicate image option in .output",
-                        None,
-                        option_span,
-                    );
-                }
-                let (start, end) = match self.parse_image_span_text(value_expr, option_span) {
-                    Ok(range) => range,
-                    Err(status) => return status,
-                };
-                image_start = Some(start);
-                image_end = Some(end);
-                idx += 1;
-                continue;
-            }
-
-            if key.eq_ignore_ascii_case("fill") {
-                if fill.is_some() {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Directive,
-                        "Duplicate fill option in .output",
-                        None,
-                        option_span,
-                    );
-                }
-                let value = match self.eval_expr_for_data_directive(value_expr) {
-                    Ok(value) => value,
-                    Err(err) => {
-                        return self.failure_at_span(
-                            LineStatus::Error,
-                            ast_eval_error_kind_to_asm(err.error.kind()),
-                            err.error.message(),
-                            None,
-                            err.span,
-                        )
                     }
-                };
-                if value > u8::MAX as u32 {
+                }
+                None => {
                     return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Directive,
-                        "fill must be in range 0..255 in .output",
+                        &format!("Invalid {canonical_key} value in .output"),
                         None,
                         option_span,
-                    );
+                    )
                 }
-                fill = Some(value as u8);
-                idx += 1;
-                continue;
-            }
-
-            if key.eq_ignore_ascii_case("loadaddr") {
-                if loadaddr.is_some() {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Directive,
-                        "Duplicate loadaddr option in .output",
-                        None,
-                        option_span,
-                    );
-                }
-                loadaddr =
-                    match self.parse_u32_expr_value(".output", "loadaddr", value_expr, option_span)
-                    {
-                        Ok(value) => Some(value),
-                        Err(status) => return status,
-                    };
-                idx += 1;
-                continue;
-            }
-
-            return self.failure_at_span(
-                LineStatus::Error,
-                AsmErrorKind::Directive,
-                "Unknown .output option key",
-                Some(&key),
-                option_span,
+            };
+            options.insert(
+                canonical_key,
+                vm::output_model::LinkerOutputOptionValue::Text(value),
             );
+            idx += 1;
         }
 
-        let Some(format) = format else {
+        let Some(format_id) = format_id else {
             return self.failure(
                 LineStatus::Error,
                 AsmErrorKind::Directive,
@@ -1104,43 +1018,14 @@ impl<'a> AsmLine<'a> {
                 None,
             );
         };
-        if sections.is_empty() {
-            return self.failure(
-                LineStatus::Error,
-                AsmErrorKind::Directive,
-                "Missing sections option in .output",
-                None,
-            );
-        }
-        if image_start.is_some() && fill.is_none() {
-            return self.failure(
-                LineStatus::Error,
-                AsmErrorKind::Directive,
-                "image output requires fill in .output",
-                None,
-            );
-        }
-        if image_start.is_none() && fill.is_some() {
-            return self.failure(
-                LineStatus::Error,
-                AsmErrorKind::Directive,
-                "fill is only allowed with image output in .output",
-                None,
-            );
-        }
 
         self.output_state
             .root_metadata
             .linker_outputs
             .push(LinkerOutputDirective {
                 path,
-                format,
-                sections,
-                contiguous,
-                image_start,
-                image_end,
-                fill,
-                loadaddr,
+                format_id,
+                options,
             });
         LineStatus::Ok
     }

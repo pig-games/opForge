@@ -6,7 +6,8 @@ use crate::normalization::{normalize_opforge_diagnostics, NormalizedErrorClass};
 use crate::output::{
     build_export_sections_payloads, build_linker_output_payload, build_mapfile_text,
     ExportSectionsFormat, ExportSectionsInclude, LinkerOutputDirective, LinkerOutputFormat,
-    MapFileDirective, MapSymbolsMode, RegionState, RootMetadata, SectionState,
+    LinkerOutputOptionValue, MapFileDirective, MapSymbolsMode, RegionState, RootMetadata,
+    SectionState,
 };
 use clap::Parser;
 use cli_core::{
@@ -57,7 +58,7 @@ use registry::family::AssemblerContext;
 use registry::register_checker_none;
 use registry::registry::ModuleRegistry;
 use registry::syntax::RegisterChecker;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self};
 use std::path::{Path, PathBuf};
 use std::process;
@@ -13751,16 +13752,16 @@ fn root_metadata_linker_output_directive_is_stored() {
     assert_eq!(assembler.root_metadata.linker_outputs.len(), 1);
     let output = &assembler.root_metadata.linker_outputs[0];
     assert_eq!(output.path, "build/game.prg");
-    assert_eq!(output.format, LinkerOutputFormat::Prg);
+    assert_eq!(output.format_id, "prg");
+    assert_eq!(output.format(), Some(LinkerOutputFormat::Prg));
     assert_eq!(
-        output.sections,
-        vec!["code".to_string(), "data".to_string()]
+        output.option_text_list("sections"),
+        Some(["code".to_string(), "data".to_string()].as_slice())
     );
-    assert!(output.contiguous);
-    assert_eq!(output.image_start, None);
-    assert_eq!(output.image_end, None);
-    assert_eq!(output.fill, None);
-    assert_eq!(output.loadaddr, None);
+    assert_eq!(output.option_text("contiguous"), None);
+    assert_eq!(output.option_text("image"), None);
+    assert_eq!(output.option_text("fill"), None);
+    assert_eq!(output.option_text("loadaddr"), None);
 }
 
 #[test]
@@ -13777,16 +13778,16 @@ fn root_metadata_linker_output_image_mode_is_stored() {
     assert_eq!(assembler.root_metadata.linker_outputs.len(), 1);
     let output = &assembler.root_metadata.linker_outputs[0];
     assert_eq!(output.path, "build/rom.bin");
-    assert_eq!(output.format, LinkerOutputFormat::Bin);
+    assert_eq!(output.format_id, "bin");
+    assert_eq!(output.format(), Some(LinkerOutputFormat::Bin));
     assert_eq!(
-        output.sections,
-        vec!["code".to_string(), "data".to_string()]
+        output.option_text_list("sections"),
+        Some(["code".to_string(), "data".to_string()].as_slice())
     );
-    assert!(!output.contiguous);
-    assert_eq!(output.image_start, Some(0x8000));
-    assert_eq!(output.image_end, Some(0x80ff));
-    assert_eq!(output.fill, Some(0xff));
-    assert_eq!(output.loadaddr, Some(0x8000));
+    assert_eq!(output.option_text("contiguous"), Some("false"));
+    assert_eq!(output.option_text("image"), Some("$8000..$80ff"));
+    assert_eq!(output.option_text("fill"), Some("$ff"));
+    assert_eq!(output.option_text("loadaddr"), Some("$8000"));
 }
 
 #[test]
@@ -13802,9 +13803,25 @@ fn root_metadata_linker_output_wide_image_mode_is_stored() {
 
     assert_eq!(assembler.root_metadata.linker_outputs.len(), 1);
     let output = &assembler.root_metadata.linker_outputs[0];
-    assert_eq!(output.image_start, Some(0x123400));
-    assert_eq!(output.image_end, Some(0x1234ff));
-    assert_eq!(output.loadaddr, Some(0x123456));
+    assert_eq!(output.option_text("image"), Some("$123400..$1234ff"));
+    assert_eq!(output.option_text("loadaddr"), Some("$123456"));
+}
+
+#[test]
+fn root_metadata_linker_output_unknown_format_id_is_preserved() {
+    let lines = vec![
+        ".module main".to_string(),
+        ".output \"build/game.hunk\", format=hunk, sections=code".to_string(),
+        ".endmodule".to_string(),
+    ];
+    let mut assembler = Assembler::new();
+    assembler.root_metadata.root_module_id = Some("main".to_string());
+    let _ = assembler.pass1(&lines);
+
+    assert_eq!(assembler.root_metadata.linker_outputs.len(), 1);
+    let output = &assembler.root_metadata.linker_outputs[0];
+    assert_eq!(output.format_id, "hunk");
+    assert_eq!(output.format(), None);
 }
 
 #[test]
@@ -13834,7 +13851,7 @@ fn root_metadata_linker_output_rejects_duplicate_section_references() {
 }
 
 #[test]
-fn linker_output_fill_requires_image() {
+fn root_metadata_linker_output_rejects_duplicate_option_keys_case_insensitively() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();
     let mut asm = make_asm_line(&mut symbols, &registry);
@@ -13842,12 +13859,38 @@ fn linker_output_fill_requires_image() {
     assert_eq!(status, LineStatus::Ok);
     let status = process_line(
         &mut asm,
-        ".output \"build/game.bin\", format=bin, fill=$ff, sections=code",
+        ".output \"build/game.bin\", format=bin, Fill=$ff, fill=$00, sections=code",
         0,
         1,
     );
     assert_eq!(status, LineStatus::Error);
     assert_eq!(asm.error().unwrap().kind(), AsmErrorKind::Directive);
+}
+
+#[test]
+fn linker_output_fill_requires_image() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".region ram, $1000, $10ff",
+        ".section code",
+        ".byte $aa",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/game.bin\", format=bin, fill=$ff, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("fill without image should fail");
+
+    assert_eq!(err.kind(), AsmErrorKind::Directive);
+    assert!(err
+        .message()
+        .contains("fill is only allowed with image output"));
 }
 
 #[test]
@@ -14030,13 +14073,25 @@ fn linker_output_prg_rejects_wide_loadaddr() {
 fn linker_output_image_mode_rejects_section_address_overflow() {
     let output = LinkerOutputDirective {
         path: "build/out.bin".to_string(),
-        format: LinkerOutputFormat::Bin,
-        sections: vec!["a".to_string()],
-        contiguous: false,
-        image_start: Some(u32::MAX - 1),
-        image_end: Some(u32::MAX),
-        fill: Some(0xff),
-        loadaddr: None,
+        format_id: LinkerOutputFormat::Bin.format_id().to_string(),
+        options: BTreeMap::from([
+            (
+                "sections".to_string(),
+                LinkerOutputOptionValue::TextList(vec!["a".to_string()]),
+            ),
+            (
+                "contiguous".to_string(),
+                LinkerOutputOptionValue::Text("false".to_string()),
+            ),
+            (
+                "image".to_string(),
+                LinkerOutputOptionValue::Text(format!("{}..{}", u32::MAX - 1, u32::MAX)),
+            ),
+            (
+                "fill".to_string(),
+                LinkerOutputOptionValue::Text("255".to_string()),
+            ),
+        ]),
     };
     let mut sections = HashMap::new();
     let section = SectionState {
@@ -14058,13 +14113,17 @@ fn linker_output_image_mode_rejects_section_address_overflow() {
 fn linker_output_contiguous_mode_rejects_section_address_overflow() {
     let output = LinkerOutputDirective {
         path: "build/out.bin".to_string(),
-        format: LinkerOutputFormat::Bin,
-        sections: vec!["a".to_string()],
-        contiguous: true,
-        image_start: None,
-        image_end: None,
-        fill: None,
-        loadaddr: None,
+        format_id: LinkerOutputFormat::Bin.format_id().to_string(),
+        options: BTreeMap::from([
+            (
+                "sections".to_string(),
+                LinkerOutputOptionValue::TextList(vec!["a".to_string()]),
+            ),
+            (
+                "contiguous".to_string(),
+                LinkerOutputOptionValue::Text("true".to_string()),
+            ),
+        ]),
     };
     let mut sections = HashMap::new();
     let section = SectionState {

@@ -9,6 +9,8 @@ use crate::output_model::{
 use types::artifacts::format_addr;
 use types::symbol::{SymbolTable, SymbolTableEntry, SymbolVisibility};
 
+const LEGACY_LINKER_OUTPUT_FORMATS: &[&str] = &["bin", "prg"];
+
 #[derive(Debug, Clone)]
 pub struct ArtifactBuildError {
     message: String,
@@ -51,8 +53,12 @@ fn collect_linker_sections(
     output: &LinkerOutputDirective,
     sections: &HashMap<String, SectionState>,
 ) -> Result<Vec<ResolvedLinkerSection>, ArtifactBuildError> {
-    let mut resolved = Vec::with_capacity(output.sections.len());
-    for section_name in &output.sections {
+    let section_names = output.option_text_list("sections").ok_or_else(|| {
+        ArtifactBuildError::new("Missing sections option in .output", None::<String>)
+    })?;
+
+    let mut resolved = Vec::with_capacity(section_names.len());
+    for section_name in section_names {
         let Some(section) = sections.get(section_name) else {
             return Err(ArtifactBuildError::new(
                 "Unknown section referenced by .output",
@@ -75,15 +81,128 @@ fn collect_linker_sections(
     Ok(resolved)
 }
 
+fn supported_format_list() -> String {
+    LEGACY_LINKER_OUTPUT_FORMATS.join(", ")
+}
+
+fn parse_format(output: &LinkerOutputDirective) -> Result<LinkerOutputFormat, ArtifactBuildError> {
+    output.format().ok_or_else(|| {
+        ArtifactBuildError::new(
+            format!(
+                "Unknown .output format '{}'; supported formats: {}",
+                output.format_id,
+                supported_format_list()
+            ),
+            Some(output.path.clone()),
+        )
+    })
+}
+
+fn parse_bool_option(
+    output: &LinkerOutputDirective,
+    key: &str,
+    default: bool,
+) -> Result<bool, ArtifactBuildError> {
+    let Some(value) = output.option_text(key) else {
+        return Ok(default);
+    };
+    if value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("yes") || value == "1" {
+        Ok(true)
+    } else if value.eq_ignore_ascii_case("false")
+        || value.eq_ignore_ascii_case("no")
+        || value == "0"
+    {
+        Ok(false)
+    } else {
+        Err(ArtifactBuildError::new(
+            format!("{key} must be true/false"),
+            Some(output.path.clone()),
+        ))
+    }
+}
+
+fn parse_u32_option(
+    output: &LinkerOutputDirective,
+    key: &str,
+) -> Result<Option<u32>, ArtifactBuildError> {
+    let Some(value) = output.option_text(key) else {
+        return Ok(None);
+    };
+    opcore::expression::parse_number_text(
+        value,
+        opcore::tokenizer::Span {
+            line: 0,
+            col_start: 0,
+            col_end: 0,
+        },
+    )
+    .map(Some)
+    .map_err(|_| {
+        ArtifactBuildError::new(
+            format!("Invalid {key} value in .output"),
+            Some(output.path.clone()),
+        )
+    })
+}
+
+fn parse_fill_option(output: &LinkerOutputDirective) -> Result<Option<u8>, ArtifactBuildError> {
+    let Some(value) = parse_u32_option(output, "fill")? else {
+        return Ok(None);
+    };
+    if value > u8::MAX as u32 {
+        return Err(ArtifactBuildError::new(
+            "fill must be in range 0..255 in .output",
+            Some(output.path.clone()),
+        ));
+    }
+    Ok(Some(value as u8))
+}
+
+fn parse_image_span(
+    output: &LinkerOutputDirective,
+) -> Result<Option<(u32, u32)>, ArtifactBuildError> {
+    let Some(value) = output.option_text("image") else {
+        return Ok(None);
+    };
+    let Some((start_text, end_text)) = value.split_once("..") else {
+        return Err(ArtifactBuildError::new(
+            "image must use start..end (quote it for now)",
+            Some(output.path.clone()),
+        ));
+    };
+    let span = opcore::tokenizer::Span {
+        line: 0,
+        col_start: 0,
+        col_end: 0,
+    };
+    let start = opcore::expression::parse_number_text(start_text.trim(), span).map_err(|_| {
+        ArtifactBuildError::new("Invalid image span value", Some(output.path.clone()))
+    })?;
+    let end = opcore::expression::parse_number_text(end_text.trim(), span).map_err(|_| {
+        ArtifactBuildError::new("Invalid image span value", Some(output.path.clone()))
+    })?;
+    if start > end {
+        return Err(ArtifactBuildError::new(
+            "Invalid image span range in .output",
+            Some(output.path.clone()),
+        ));
+    }
+    Ok(Some((start, end)))
+}
+
 pub fn build_linker_output_payload(
     output: &LinkerOutputDirective,
     sections: &HashMap<String, SectionState>,
 ) -> Result<Vec<u8>, ArtifactBuildError> {
+    let format = parse_format(output)?;
     let ordered = collect_linker_sections(output, sections)?;
-    let mut payload = if let (Some(image_start), Some(image_end)) =
-        (output.image_start, output.image_end)
-    {
-        let Some(fill) = output.fill else {
+    let image_span = parse_image_span(output)?;
+    let fill = parse_fill_option(output)?;
+    let contiguous = parse_bool_option(output, "contiguous", true)?;
+    let loadaddr = parse_u32_option(output, "loadaddr")?;
+
+    let mut payload = if let Some((image_start, image_end)) = image_span {
+        let Some(fill) = fill else {
             return Err(ArtifactBuildError::new(
                 "image output requires fill in .output",
                 None::<String>,
@@ -156,7 +275,13 @@ pub fn build_linker_output_payload(
         }
         image
     } else {
-        if output.contiguous {
+        if fill.is_some() {
+            return Err(ArtifactBuildError::new(
+                "fill is only allowed with image output in .output",
+                None::<String>,
+            ));
+        }
+        if contiguous {
             let mut expected_base: Option<u32> = None;
             for section in ordered.iter().filter(|section| !section.bytes.is_empty()) {
                 let base = section.base;
@@ -207,8 +332,8 @@ pub fn build_linker_output_payload(
         data
     };
 
-    if output.format == LinkerOutputFormat::Prg {
-        let loadaddr32 = output.loadaddr.unwrap_or_else(|| {
+    if format == LinkerOutputFormat::Prg {
+        let loadaddr32 = loadaddr.unwrap_or_else(|| {
             ordered
                 .iter()
                 .find(|section| !section.bytes.is_empty())

@@ -1673,6 +1673,24 @@ impl M68KFamilyHandler {
                     span: Self::combined_unary_span(*span, inner),
                 })
             }
+            Expr::Identifier(name, span) => {
+                let (base, size) = if let Some(base) = name.strip_suffix(".W") {
+                    (base, AbsoluteSize::Word)
+                } else if let Some(base) = name.strip_suffix(".L") {
+                    (base, AbsoluteSize::Long)
+                } else {
+                    return Err(FamilyParseError::new(
+                        "unsupported Motorola 68000 operand form",
+                        *span,
+                    ));
+                };
+
+                Ok(FamilyOperand::Absolute {
+                    expr: Expr::Identifier(base.to_string(), *span),
+                    size,
+                    span: *span,
+                })
+            }
             Expr::Member { base, field, span } => {
                 let size = match field.to_ascii_uppercase().as_str() {
                     "W" => AbsoluteSize::Word,
@@ -7851,6 +7869,33 @@ mod tests {
                 expr: Expr::Number(text, _),
                 ..
             } if text == "$123456"
+        ));
+    }
+
+    #[test]
+    fn parses_identifier_absolute_suffix_aliases() {
+        let handler = M68KFamilyHandler::new();
+        let operands = handler
+            .parse_operands(
+                "MOVEA.L",
+                &[
+                    Expr::Identifier("SysBase.W".to_string(), span()),
+                    Expr::Identifier("A6".to_string(), span()),
+                ],
+            )
+            .expect("operands");
+
+        assert!(matches!(
+            &operands[0],
+            FamilyOperand::Absolute {
+                size: AbsoluteSize::Word,
+                expr: Expr::Identifier(name, _),
+                ..
+            } if name == "SysBase"
+        ));
+        assert!(matches!(
+            &operands[1],
+            FamilyOperand::AddressRegister { register, .. } if register == "A6"
         ));
     }
 

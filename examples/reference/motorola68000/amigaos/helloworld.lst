@@ -1,0 +1,75 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Amiga programming example in assembler, using system calls.
+----                                2  ; "Hello World" using the default output (usually console)
+----                                3  ; Uses dos.library/PutStr() so requires kick 2.0+
+----                                4  ; 14 processor instructions :-)
+----                                5  ; Assembled with "vasm -Fhunkexe -o helloworld helloworld.s"
+----                                6  ; Grzegorz Kraszewski, 2016
+----                                7  ; Public Domain
+----                                8  ; Description in Polish: http://krashan.ppa.pl/articles/amiga_asembler
+----                                9  
+----                               10  .cpu 68000
+----                               11  
+----                               12  
+----    EQU 0004                   13  SysBase			= 4
+----                               14  
+----                               15  ; Offsets of system functions in respective jumptables of library bases.
+----                               16  ; Loading proper system includes would be more elegant.
+----                               17  
+----    EQU FFFFFDD8               18  OpenLibrary		= -552
+----    EQU FFFFFE62               19  CloseLibrary		= -414
+----    EQU FFFFFC4C               20  PutStr			= -948
+----                               21  
+----                               22  ; Note: the program lacks proper startup code, so it will not run from Workbench
+----                               23  
+0000    43 F9 00 00 00 30          24  			LEA	(DosName).L,A1		;dos.library name string
+0006    70 24                      25  			MOVEQ	#36,D0			;minimum required version (36 = Kick 2.0)
+0008    2C 78 00 04                26  			MOVEA.L	SysBase.W,A6
+000C    4E AE FD D8                27  			JSR	OpenLibrary(A6)
+----                               28  
+0010    4A 80                      29  			TST.L	D0			;zero if OpenLibrary() failed
+0012    67 00 00 18                30  			BEQ	NoDos			;if failed, skip to exit
+----                               31  
+0016    22 3C 00 00 00 3C          32  			MOVE.L	#Hello,D1		;string to print
+001C    2C 40                      33  			MOVEA.L	D0,A6			;moving DOSBase to A6
+001E    4E AE FC 4C                34  			JSR	PutStr(A6)
+----                               35  
+0022    22 4E                      36  			MOVEA.L	A6,A1			;DOSBase, library to close
+0024    2C 78 00 04                37  			MOVEA.L	SysBase.W,A6
+0028    4E AE FE 62                38  			JSR	CloseLibrary(A6)
+----                               39  
+002C    42 80                      40  NoDos			CLR.L	D0			;return 0 to the system
+002E    4E 75                      41  			RTS
+----                               42  
+----                               43  ; Data
+----                               44  
+0030    64 6F 73 2E 6C 69 62 72 61 72 79 00    45  DosName		.byte		"dos.library",0
+003C    48 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00    46  Hello		.byte		"Hello World!",10,0
+
+Lines: 46  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+CloseLibrary     FFFFFE62  prv  lbl 
+DosName          0030      prv  lbl 
+Hello            003C      prv  lbl 
+NoDos            002C      prv  lbl 
+OpenLibrary      FFFFFDD8  prv  lbl 
+PutStr           FFFFFC4C  prv  lbl 
+SysBase          0004      prv  lbl 
+
+Total memory is 74 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0000    43 F9 00 00 00 30 70 24 2C 78 00 04 4E AE FD D8
+0010    4A 80 67 00 00 18 22 3C 00 00 00 3C 2C 40 4E AE
+0020    FC 4C 22 4E 2C 78 00 04 4E AE FE 62 42 80 4E 75
+0030    64 6F 73 2E 6C 69 62 72 61 72 79 00 48 65 6C 6C
+0040    6F 20 57 6F 72 6C 64 21 0A 00

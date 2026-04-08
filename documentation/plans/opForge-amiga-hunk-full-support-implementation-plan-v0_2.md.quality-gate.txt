@@ -1,0 +1,1 @@
+PASS: v0.2 plan is source-linked to the follow-on Hunk spec, split into commit-sized ordered work items, keeps AGENTS rules binding, and makes generic fixups, unplaced-section support, and notation improvements explicit deliverables rather than implied future work.

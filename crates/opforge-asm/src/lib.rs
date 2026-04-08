@@ -5,6 +5,8 @@
 #[cfg(test)]
 mod external_oracle;
 #[cfg(test)]
+mod fs_uae_smoke;
+#[cfg(test)]
 mod normalization;
 #[cfg(test)]
 mod oracle;

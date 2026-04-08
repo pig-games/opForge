@@ -18285,3 +18285,35 @@ fn external_oracle_vasm_documented_divergence_manifests() {
         }
     }
 }
+
+#[test]
+fn external_fs_uae_hunk_smoke() {
+    match crate::fs_uae_smoke::run_hunk_smoke_from_env(&workspace_root())
+        .expect("FS-UAE smoke helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed {
+            artifact_dir,
+            hunk_path,
+            stdout,
+            stderr,
+            success,
+        } => {
+            assert!(
+                success,
+                "FS-UAE smoke failed for {} under {}\nstdout:\n{}\nstderr:\n{}",
+                hunk_path.display(),
+                artifact_dir.display(),
+                stdout,
+                stderr,
+            );
+            eprintln!(
+                "FS-UAE smoke completed for {} under {}",
+                hunk_path.display(),
+                artifact_dir.display()
+            );
+        }
+    }
+}

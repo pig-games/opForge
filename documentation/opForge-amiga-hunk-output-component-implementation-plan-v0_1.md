@@ -156,7 +156,7 @@ Implement the first internal output-component seam for `.output format=...` and 
     - selected sections without assigned bases fail deterministically for `format=hunk`
     - existing `bin` and `prg` live output behavior remains intact
 
-- [ ] Work item 5: add opt-in FS-UAE smoke validation without coupling it to the default quality gate
+- [x] Work item 5: add opt-in FS-UAE smoke validation without coupling it to the default quality gate
   - Source requirement or finding IDs: spec `Goals` FS-UAE as consumer only; spec `Boundary Cases` FS-UAE-not-installed rule; spec `Acceptance Criteria` bullet for optional external FS-UAE execution
   - Validation: opt-in external smoke validation plus confirmation that the default repo quality gate stays dependency-free before commit
   - Definition of done: an explicit external Hunk smoke path exists, skips cleanly when FS-UAE is absent, and does not widen the default quality gate
@@ -187,7 +187,7 @@ Implement the first internal output-component seam for `.output format=...` and 
 
 - [x] Milestone 1: the `.output` model and internal component registry are landed without changing `bin` or `prg` behavior (`Work item 1` and `Work item 2`)
 - [x] Milestone 2: exact v0.1 Hunk byte generation and live-path relocation-safety gating are landed (`Work item 3` and `Work item 4`)
-- [ ] Milestone 3: optional external FS-UAE smoke validation is available without widening the default quality gate (`Work item 5`)
+- [x] Milestone 3: optional external FS-UAE smoke validation is available without widening the default quality gate (`Work item 5`)
 
 ## Blocking Rules
 

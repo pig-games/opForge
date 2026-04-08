@@ -13894,6 +13894,31 @@ fn linker_output_fill_requires_image() {
 }
 
 #[test]
+fn linker_output_unknown_format_rejects_at_registry_boundary() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".region ram, $1000, $10ff",
+        ".section code",
+        ".byte $aa",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/game.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("unknown format should fail at the registry boundary");
+
+    assert_eq!(err.kind(), AsmErrorKind::Directive);
+    assert!(err.message().contains("Unknown .output format 'hunk'"));
+    assert!(err.message().contains("supported formats: bin, prg"));
+}
+
+#[test]
 fn linker_output_contiguous_bundle_success() {
     let assembler = run_passes(&[
         ".module main",

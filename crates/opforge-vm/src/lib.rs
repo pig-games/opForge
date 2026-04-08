@@ -22,6 +22,7 @@ pub mod listing;
 pub mod native6502;
 pub mod native6502_abi;
 pub mod output_artifacts;
+pub(crate) mod output_components;
 pub mod output_model;
 pub mod portable_contract;
 pub mod rewrite;

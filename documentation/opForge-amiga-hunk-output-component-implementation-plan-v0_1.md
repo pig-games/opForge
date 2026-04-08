@@ -59,7 +59,7 @@ Implement the first internal output-component seam for `.output format=...` and 
     - the raw option bag needed for component-side validation is preserved
     - existing `bin` and `prg` parsing tests still pass
 
-- [ ] Work item 2: introduce the internal output-component registry and migrate `bin` and `prg` behind it without behavior drift
+- [x] Work item 2: introduce the internal output-component registry and migrate `bin` and `prg` behind it without behavior drift
   - Source requirement or finding IDs: spec `Goals` for registry plus preserved `bin`/`prg`; spec `Behavioral Contract` component operations; spec `Acceptance Criteria` bullet for component-based resolution
   - Validation: focused component-resolution and legacy linker-output coverage plus the full repo quality gate before commit
   - Definition of done: `bin` and `prg` resolve through the new internal registry with no intentional behavior drift
@@ -185,7 +185,7 @@ Implement the first internal output-component seam for `.output format=...` and 
 
 ## Milestones
 
-- [ ] Milestone 1: the `.output` model and internal component registry are landed without changing `bin` or `prg` behavior (`Work item 1` and `Work item 2`)
+- [x] Milestone 1: the `.output` model and internal component registry are landed without changing `bin` or `prg` behavior (`Work item 1` and `Work item 2`)
 - [ ] Milestone 2: exact v0.1 Hunk byte generation and live-path relocation-safety gating are landed (`Work item 3` and `Work item 4`)
 - [ ] Milestone 3: optional external FS-UAE smoke validation is available without widening the default quality gate (`Work item 5`)
 

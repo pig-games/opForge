@@ -1,0 +1,1 @@
+PASS: The specification follows the branch-local template, states testable goals and non-goals, separates output-component behavior from implementation planning, and calls out Hunk relocation and FS-UAE execution boundaries explicitly.

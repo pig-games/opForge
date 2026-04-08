@@ -1,0 +1,1 @@
+PASS: The specification follows the branch-local template, keeps implementation out of scope, separates reusable AmigaOS File I/O from tokenizer-specific harness behavior, defines testable report output, and leaves CLI quoting, buffer sizing, and FS-UAE capture policy as explicit open questions.

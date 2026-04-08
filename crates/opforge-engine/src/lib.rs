@@ -2444,7 +2444,8 @@ mod tests {
     use asm::output::{
         BinOutputSpec, ExportSectionsDirective, ExportSectionsFormat, ExportSectionsInclude,
         LabelOutputFormat, LinkerOutputDirective, LinkerOutputFormat, LinkerOutputOptionValue,
-        MapFileDirective, MapSymbolsMode, OutputFormat, RootMetadata, SectionState,
+        LinkerOutputRelocationDisposition, MapFileDirective, MapSymbolsMode, OutputFormat,
+        RootMetadata, SectionState,
     };
     use opcore::parser::Expr;
     use registry::cpu::{CpuFamily, CpuType};
@@ -2714,6 +2715,7 @@ mod tests {
                 "sections".to_string(),
                 LinkerOutputOptionValue::TextList(vec!["code".to_string()]),
             )]),
+            relocation_disposition: LinkerOutputRelocationDisposition::Unknown,
         }];
 
         let error = linker_output_targets(&outputs, Some(Path::new("/virtual/out")))
@@ -2732,6 +2734,7 @@ mod tests {
                 "sections".to_string(),
                 LinkerOutputOptionValue::TextList(vec!["code".to_string()]),
             )]),
+            relocation_disposition: LinkerOutputRelocationDisposition::Unknown,
         }];
         let sink = MemoryOutputSink::new();
 
@@ -2835,6 +2838,7 @@ mod tests {
                 "sections".to_string(),
                 LinkerOutputOptionValue::TextList(vec!["code".to_string()]),
             )]),
+            relocation_disposition: LinkerOutputRelocationDisposition::Unknown,
         }];
         let export_directives = vec![ExportSectionsDirective {
             dir: "nested/export".to_string(),

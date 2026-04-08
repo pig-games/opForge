@@ -201,6 +201,7 @@ pub enum LinkerOutputFormat {
     #[default]
     Bin,
     Prg,
+    Hunk,
 }
 
 impl LinkerOutputFormat {
@@ -209,6 +210,7 @@ impl LinkerOutputFormat {
         match self {
             Self::Bin => "bin",
             Self::Prg => "prg",
+            Self::Hunk => "hunk",
         }
     }
 
@@ -218,10 +220,50 @@ impl LinkerOutputFormat {
             Some(Self::Bin)
         } else if format_id.eq_ignore_ascii_case("prg") {
             Some(Self::Prg)
+        } else if format_id.eq_ignore_ascii_case("hunk") {
+            Some(Self::Hunk)
         } else {
             None
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LinkerOutputRelocationDisposition {
+    #[default]
+    Unknown,
+    ProvenRelocationFree,
+    RelocationRecordsPresent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HunkMemoryType {
+    #[default]
+    Any,
+}
+
+impl HunkMemoryType {
+    #[must_use]
+    pub fn segment_bits(self) -> u32 {
+        match self {
+            Self::Any => 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HunkSegmentInput {
+    pub name: String,
+    pub kind: SectionKind,
+    pub initialized_bytes: Vec<u8>,
+    pub allocation_size_bytes: u32,
+    pub memory_type: HunkMemoryType,
+}
+
+#[derive(Debug, Clone)]
+pub struct HunkOutputInput {
+    pub segments: Vec<HunkSegmentInput>,
+    pub relocation_disposition: LinkerOutputRelocationDisposition,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -253,6 +295,7 @@ pub struct LinkerOutputDirective {
     pub path: String,
     pub format_id: String,
     pub options: BTreeMap<String, LinkerOutputOptionValue>,
+    pub relocation_disposition: LinkerOutputRelocationDisposition,
 }
 
 impl LinkerOutputDirective {

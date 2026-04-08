@@ -6,8 +6,8 @@ use crate::normalization::{normalize_opforge_diagnostics, NormalizedErrorClass};
 use crate::output::{
     build_export_sections_payloads, build_linker_output_payload, build_mapfile_text,
     ExportSectionsFormat, ExportSectionsInclude, LinkerOutputDirective, LinkerOutputFormat,
-    LinkerOutputOptionValue, MapFileDirective, MapSymbolsMode, RegionState, RootMetadata,
-    SectionState,
+    LinkerOutputOptionValue, LinkerOutputRelocationDisposition, MapFileDirective, MapSymbolsMode,
+    RegionState, RootMetadata, SectionKind, SectionState,
 };
 use clap::Parser;
 use cli_core::{
@@ -13811,7 +13811,7 @@ fn root_metadata_linker_output_wide_image_mode_is_stored() {
 fn root_metadata_linker_output_unknown_format_id_is_preserved() {
     let lines = vec![
         ".module main".to_string(),
-        ".output \"build/game.hunk\", format=hunk, sections=code".to_string(),
+        ".output \"build/game.elf\", format=elf, sections=code".to_string(),
         ".endmodule".to_string(),
     ];
     let mut assembler = Assembler::new();
@@ -13820,7 +13820,7 @@ fn root_metadata_linker_output_unknown_format_id_is_preserved() {
 
     assert_eq!(assembler.root_metadata.linker_outputs.len(), 1);
     let output = &assembler.root_metadata.linker_outputs[0];
-    assert_eq!(output.format_id, "hunk");
+    assert_eq!(output.format_id, "elf");
     assert_eq!(output.format(), None);
 }
 
@@ -13902,7 +13902,7 @@ fn linker_output_unknown_format_rejects_at_registry_boundary() {
         ".byte $aa",
         ".endsection",
         ".place code in ram",
-        ".output \"build/game.hunk\", format=hunk, sections=code",
+        ".output \"build/game.elf\", format=elf, sections=code",
         ".endmodule",
     ]);
     let output = assembler
@@ -13914,8 +13914,231 @@ fn linker_output_unknown_format_rejects_at_registry_boundary() {
         .expect_err("unknown format should fail at the registry boundary");
 
     assert_eq!(err.kind(), AsmErrorKind::Directive);
-    assert!(err.message().contains("Unknown .output format 'hunk'"));
-    assert!(err.message().contains("supported formats: bin, prg"));
+    assert!(err.message().contains("Unknown .output format 'elf'"));
+    assert!(err.message().contains("supported formats: bin, prg, hunk"));
+}
+
+fn hunk_output_directive(
+    path: &str,
+    section_names: &[&str],
+    relocation_disposition: LinkerOutputRelocationDisposition,
+) -> LinkerOutputDirective {
+    LinkerOutputDirective {
+        path: path.to_string(),
+        format_id: LinkerOutputFormat::Hunk.format_id().to_string(),
+        options: BTreeMap::from([(
+            "sections".to_string(),
+            LinkerOutputOptionValue::TextList(
+                section_names
+                    .iter()
+                    .map(|name| (*name).to_string())
+                    .collect(),
+            ),
+        )]),
+        relocation_disposition,
+    }
+}
+
+fn hunk_section(
+    kind: SectionKind,
+    base_addr: u32,
+    bytes: &[u8],
+    allocation_size: u32,
+) -> SectionState {
+    SectionState {
+        base_addr: Some(base_addr),
+        bytes: bytes.to_vec(),
+        max_pc: allocation_size,
+        kind,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn linker_output_hunk_emits_code_and_data_with_big_endian_header_words() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code", "data"],
+        LinkerOutputRelocationDisposition::ProvenRelocationFree,
+    );
+    let sections = HashMap::from([
+        (
+            "code".to_string(),
+            hunk_section(SectionKind::Code, 0x2000, &[0x11, 0x22, 0x33, 0x44], 4),
+        ),
+        (
+            "data".to_string(),
+            hunk_section(SectionKind::Data, 0x1000, &[0xaa, 0xbb], 2),
+        ),
+    ]);
+
+    let payload = build_linker_output_payload(&output, &sections).expect("hunk payload");
+    let expected = vec![
+        0x00, 0x00, 0x03, 0xf3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+        0x03, 0xe9, 0x00, 0x00, 0x00, 0x01, 0x11, 0x22, 0x33, 0x44, 0x00, 0x00, 0x03, 0xf2, 0x00,
+        0x00, 0x03, 0xea, 0x00, 0x00, 0x00, 0x01, 0xaa, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x03, 0xf2,
+    ];
+    assert_eq!(payload, expected);
+}
+
+#[test]
+fn linker_output_hunk_emits_bss_and_tracks_allocation_size_separately_from_payload() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code", "data", "bss"],
+        LinkerOutputRelocationDisposition::ProvenRelocationFree,
+    );
+    let sections = HashMap::from([
+        (
+            "code".to_string(),
+            hunk_section(SectionKind::Code, 0x2000, &[0x60], 1),
+        ),
+        (
+            "data".to_string(),
+            hunk_section(SectionKind::Data, 0x2004, &[0xde, 0xad], 8),
+        ),
+        (
+            "bss".to_string(),
+            hunk_section(SectionKind::Bss, 0x3000, &[], 12),
+        ),
+    ]);
+
+    let payload = build_linker_output_payload(&output, &sections).expect("hunk payload");
+    assert_eq!(&payload[20..32], &[0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3]);
+    assert_eq!(
+        &payload[32..payload.len()],
+        &[
+            0x00, 0x00, 0x03, 0xe9, 0x00, 0x00, 0x00, 0x01, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x03, 0xf2, 0x00, 0x00, 0x03, 0xea, 0x00, 0x00, 0x00, 0x01, 0xde, 0xad, 0x00, 0x00,
+            0x00, 0x00, 0x03, 0xf2, 0x00, 0x00, 0x03, 0xeb, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
+            0x03, 0xf2,
+        ]
+    );
+}
+
+#[test]
+fn linker_output_hunk_omits_empty_non_bss_sections_deterministically() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code", "empty", "data"],
+        LinkerOutputRelocationDisposition::ProvenRelocationFree,
+    );
+    let sections = HashMap::from([
+        (
+            "code".to_string(),
+            hunk_section(SectionKind::Code, 0x2000, &[0x4e, 0x75], 2),
+        ),
+        (
+            "empty".to_string(),
+            hunk_section(SectionKind::Data, 0x2002, &[], 0),
+        ),
+        (
+            "data".to_string(),
+            hunk_section(SectionKind::Data, 0x2004, &[0x99], 1),
+        ),
+    ]);
+
+    let payload = build_linker_output_payload(&output, &sections).expect("hunk payload");
+    assert_eq!(&payload[8..20], &[0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1]);
+    assert_eq!(&payload[20..28], &[0, 0, 0, 1, 0, 0, 0, 1]);
+}
+
+#[test]
+fn linker_output_hunk_rejects_non_code_first_emitted_segment() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["data", "code"],
+        LinkerOutputRelocationDisposition::ProvenRelocationFree,
+    );
+    let sections = HashMap::from([
+        (
+            "data".to_string(),
+            hunk_section(SectionKind::Data, 0x1000, &[0xaa], 1),
+        ),
+        (
+            "code".to_string(),
+            hunk_section(SectionKind::Code, 0x2000, &[0x4e, 0x75], 2),
+        ),
+    ]);
+
+    let err = build_linker_output_payload(&output, &sections)
+        .expect_err("first emitted segment must be code");
+    assert!(err.message().contains("first emitted segment to be code"));
+}
+
+#[test]
+fn linker_output_hunk_rejects_flat_image_options() {
+    for (key, value) in [
+        (
+            "image",
+            LinkerOutputOptionValue::Text("$1000..$10ff".to_string()),
+        ),
+        ("fill", LinkerOutputOptionValue::Text("255".to_string())),
+        (
+            "loadaddr",
+            LinkerOutputOptionValue::Text("$1000".to_string()),
+        ),
+        (
+            "contiguous",
+            LinkerOutputOptionValue::Text("false".to_string()),
+        ),
+    ] {
+        let mut output = hunk_output_directive(
+            "build/out.hunk",
+            &["code"],
+            LinkerOutputRelocationDisposition::ProvenRelocationFree,
+        );
+        output.options.insert(key.to_string(), value);
+        let sections = HashMap::from([(
+            "code".to_string(),
+            hunk_section(SectionKind::Code, 0x2000, &[0x4e, 0x75], 2),
+        )]);
+
+        let err = build_linker_output_payload(&output, &sections)
+            .expect_err("flat-image option should be rejected");
+        assert!(err.message().contains(&format!("does not support {key}")));
+    }
+}
+
+#[test]
+fn linker_output_hunk_requires_explicit_relocation_free_proof() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code"],
+        LinkerOutputRelocationDisposition::Unknown,
+    );
+    let sections = HashMap::from([(
+        "code".to_string(),
+        hunk_section(SectionKind::Code, 0x2000, &[0x4e, 0x75], 2),
+    )]);
+
+    let err = build_linker_output_payload(&output, &sections)
+        .expect_err("missing relocation proof should fail");
+    assert!(err.message().contains("explicit relocation-free proof"));
+}
+
+#[test]
+fn linker_output_hunk_rejects_unassigned_bases() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code"],
+        LinkerOutputRelocationDisposition::ProvenRelocationFree,
+    );
+    let sections = HashMap::from([(
+        "code".to_string(),
+        SectionState {
+            base_addr: None,
+            bytes: vec![0x4e, 0x75],
+            max_pc: 2,
+            kind: SectionKind::Code,
+            ..Default::default()
+        },
+    )]);
+
+    let err =
+        build_linker_output_payload(&output, &sections).expect_err("missing base should fail");
+    assert!(err.message().contains("assigned bases"));
 }
 
 #[test]
@@ -14117,6 +14340,7 @@ fn linker_output_image_mode_rejects_section_address_overflow() {
                 LinkerOutputOptionValue::Text("255".to_string()),
             ),
         ]),
+        relocation_disposition: LinkerOutputRelocationDisposition::Unknown,
     };
     let mut sections = HashMap::new();
     let section = SectionState {
@@ -14149,6 +14373,7 @@ fn linker_output_contiguous_mode_rejects_section_address_overflow() {
                 LinkerOutputOptionValue::Text("true".to_string()),
             ),
         ]),
+        relocation_disposition: LinkerOutputRelocationDisposition::Unknown,
     };
     let mut sections = HashMap::new();
     let section = SectionState {

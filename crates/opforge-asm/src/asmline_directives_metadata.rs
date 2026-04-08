@@ -1026,6 +1026,8 @@ impl<'a> AsmLine<'a> {
                 path,
                 format_id,
                 options,
+                relocation_disposition:
+                    vm::output_model::LinkerOutputRelocationDisposition::Unknown,
             });
         LineStatus::Ok
     }

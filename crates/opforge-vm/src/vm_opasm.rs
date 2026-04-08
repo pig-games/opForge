@@ -29,7 +29,8 @@ pub use crate::output_artifacts::{
 pub use crate::output_model::{
     parse_bin_output_arg, parse_bin_range_str, resolve_bin_path, resolve_output_base,
     resolve_output_path, BinOutputSpec, BinRange, ExportSectionsDirective, ExportSectionsFormat,
-    ExportSectionsInclude, LinkerOutputDirective, LinkerOutputFormat, MapFileDirective,
+    ExportSectionsInclude, HunkMemoryType, HunkOutputInput, HunkSegmentInput,
+    LinkerOutputDirective, LinkerOutputFormat, LinkerOutputRelocationDisposition, MapFileDirective,
     MapSymbolsMode, OutputConfig, PlacedSectionInfo, PlacementDirective, RegionState, RootMetadata,
     SectionKind, SectionOptions, SectionState,
 };

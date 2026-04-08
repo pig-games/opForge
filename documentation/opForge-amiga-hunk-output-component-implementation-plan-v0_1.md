@@ -88,7 +88,7 @@ Implement the first internal output-component seam for `.output format=...` and 
     - current `bin` image-span, contiguous-bundle, and `prg` load-address behavior is preserved
     - unknown output formats now fail at the registry boundary with supported-format diagnostics
 
-- [ ] Work item 3: add the first Hunk component input model and exact byte-writer for the relocation-free subset
+- [x] Work item 3: add the first Hunk component input model and exact byte-writer for the relocation-free subset
   - Source requirement or finding IDs: spec `Invariants / Constraints` Hunk executable structure; spec `Behavioral Contract` Hunk mapping, input-model clauses, and deterministic empty non-BSS handling; spec `Boundary Cases` for BSS, payload padding, allocation-size versus payload-size distinction, and non-code-first rejection; spec `Acceptance Criteria` bullets for exact header words, BSS, payload-size distinction, and section-order handling
   - Validation: byte-level Hunk payload tests, negative option-ordering tests, and the full repo quality gate before commit
   - Definition of done: the repository can emit exact regular-executable Hunk bytes for explicitly relocation-free collected segments and reject unsupported Hunk semantics deterministically

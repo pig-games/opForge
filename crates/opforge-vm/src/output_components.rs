@@ -6,12 +6,13 @@ use crate::output_artifacts::ArtifactBuildError;
 use crate::output_model::{LinkerOutputDirective, LinkerOutputFormat, SectionState};
 use types::artifacts::format_addr;
 
-const BUILTIN_OUTPUT_FORMAT_IDS: &[&str] = &["bin", "prg"];
+const BUILTIN_OUTPUT_FORMAT_IDS: &[&str] = &["bin", "prg", "hunk"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BuiltinOutputComponent {
     Bin,
     Prg,
+    Hunk,
 }
 
 impl BuiltinOutputComponent {
@@ -19,6 +20,7 @@ impl BuiltinOutputComponent {
         match self {
             Self::Bin => LinkerOutputFormat::Bin.format_id(),
             Self::Prg => LinkerOutputFormat::Prg.format_id(),
+            Self::Hunk => LinkerOutputFormat::Hunk.format_id(),
         }
     }
 
@@ -27,10 +29,16 @@ impl BuiltinOutputComponent {
         output: &LinkerOutputDirective,
         sections: &HashMap<String, SectionState>,
     ) -> Result<Vec<u8>, ArtifactBuildError> {
-        let ordered = collect_linker_sections(output, sections)?;
         match self {
-            Self::Bin => build_bin_payload(output, &ordered),
-            Self::Prg => build_prg_payload(output, &ordered),
+            Self::Bin => {
+                let ordered = collect_linker_sections(output, sections)?;
+                build_bin_payload(output, &ordered)
+            }
+            Self::Prg => {
+                let ordered = collect_linker_sections(output, sections)?;
+                build_prg_payload(output, &ordered)
+            }
+            Self::Hunk => crate::output_hunk::build_hunk_output_payload(output, sections),
         }
     }
 }
@@ -49,7 +57,11 @@ pub(crate) fn supported_output_format_ids() -> &'static [&'static str] {
 pub(crate) fn resolve_output_component(
     format_id: &str,
 ) -> Result<BuiltinOutputComponent, ArtifactBuildError> {
-    for component in [BuiltinOutputComponent::Bin, BuiltinOutputComponent::Prg] {
+    for component in [
+        BuiltinOutputComponent::Bin,
+        BuiltinOutputComponent::Prg,
+        BuiltinOutputComponent::Hunk,
+    ] {
         if component.format_id().eq_ignore_ascii_case(format_id) {
             return Ok(component);
         }
@@ -382,11 +394,15 @@ mod tests {
             resolve_output_component("prg").expect("prg should resolve"),
             BuiltinOutputComponent::Prg
         );
+        assert_eq!(
+            resolve_output_component("hunk").expect("hunk should resolve"),
+            BuiltinOutputComponent::Hunk
+        );
     }
 
     #[test]
     fn resolve_output_component_rejects_unknown_format() {
-        let err = resolve_output_component("hunk").expect_err("unknown format should fail");
-        assert!(err.message().contains("supported formats: bin, prg"));
+        let err = resolve_output_component("elf").expect_err("unknown format should fail");
+        assert!(err.message().contains("supported formats: bin, prg, hunk"));
     }
 }

@@ -1,0 +1,128 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; AmigaOS file-output smoke executable for the current Hunk path.
+----                                2  ; Writes a fixed text file to T: so it can be checked after running under AmigaOS.
+----                                3  ; The program is CLI-oriented and does not include Workbench startup handling.
+----                                4  
+----                                5          .module main
+----                                6          .cpu 68000
+----                                7  
+----    EQU 0004                    8  SysBase         = 4
+----    EQU 0000                    9  RETURN_OK       = 0
+----    EQU 0014                   10  RETURN_FAIL     = 20
+----    EQU 03EE                   11  MODE_NEWFILE    = 1006
+----                               12  
+----                               13  ; LVO offsets in the relevant library jump tables.
+----    EQU FFFFFDD8               14  OpenLibrary     = -552
+----    EQU FFFFFE62               15  CloseLibrary    = -414
+----    EQU FFFFFFE2               16  Open            = -30
+----    EQU FFFFFFDC               17  Close           = -36
+----    EQU FFFFFFD0               18  Write           = -48
+----                               19  
+----    EQU 0013                   20  message_len     = 19
+----                               21  
+----                               22          .region ram, $2000, $20ff
+----                               23          .section code, kind=code  ; [section code]
+----                               24    ; [section code]
+----                               25  start  ; [section code]
+2000    7E 14                      26          MOVEQ #RETURN_FAIL,D7  ; [section code]
+----                               27    ; [section code]
+2002    43 F9 00 00 00 6C          28          LEA dos_name.L,A1  ; [section code]
+2008    70 24                      29          MOVEQ #36,D0  ; [section code]
+200A    2C 78 00 04                30          MOVEA.L SysBase.W,A6  ; [section code]
+200E    4E AE FD D8                31          JSR OpenLibrary(A6)  ; [section code]
+----                               32    ; [section code]
+2012    4A 80                      33          TST.L D0  ; [section code]
+2014    67 00 00 52                34          BEQ done  ; [section code]
+----                               35    ; [section code]
+2018    2A 40                      36          MOVEA.L D0,A5  ; [section code]
+----                               37    ; [section code]
+201A    41 F9 00 00 00 78          38          LEA output_path.L,A0  ; [section code]
+2020    22 08                      39          MOVE.L A0,D1  ; [section code]
+2022    24 3C 00 00 03 EE          40          MOVE.L #MODE_NEWFILE,D2  ; [section code]
+2028    2C 4D                      41          MOVEA.L A5,A6  ; [section code]
+202A    4E AE FF E2                42          JSR Open(A6)  ; [section code]
+----                               43    ; [section code]
+202E    4A 80                      44          TST.L D0  ; [section code]
+2030    67 00 00 2C                45          BEQ close_dos  ; [section code]
+----                               46    ; [section code]
+2034    2C 00                      47          MOVE.L D0,D6  ; [section code]
+2036    22 06                      48          MOVE.L D6,D1  ; [section code]
+2038    24 3C 00 00 00 90          49          MOVE.L #message,D2  ; [section code]
+203E    26 3C 00 00 00 13          50          MOVE.L #message_len,D3  ; [section code]
+2044    2C 4D                      51          MOVEA.L A5,A6  ; [section code]
+2046    4E AE FF D0                52          JSR Write(A6)  ; [section code]
+----                               53    ; [section code]
+204A    B0 BC 00 00 00 13          54          CMP.L #message_len,D0  ; [section code]
+2050    66 00 00 04                55          BNE close_file  ; [section code]
+----                               56    ; [section code]
+2054    7E 00                      57          MOVEQ #RETURN_OK,D7  ; [section code]
+----                               58    ; [section code]
+----                               59  close_file  ; [section code]
+2056    22 06                      60          MOVE.L D6,D1  ; [section code]
+2058    2C 4D                      61          MOVEA.L A5,A6  ; [section code]
+205A    4E AE FF DC                62          JSR Close(A6)  ; [section code]
+----                               63    ; [section code]
+----                               64  close_dos  ; [section code]
+205E    22 4D                      65          MOVEA.L A5,A1  ; [section code]
+2060    2C 78 00 04                66          MOVEA.L SysBase.W,A6  ; [section code]
+2064    4E AE FE 62                67          JSR CloseLibrary(A6)  ; [section code]
+----                               68    ; [section code]
+----                               69  done  ; [section code]
+2068    20 07                      70          MOVE.L D7,D0  ; [section code]
+206A    4E 75                      71          RTS  ; [section code]
+----                               72    ; [section code]
+----                               73  dos_name  ; [section code]
+206C    64 6F 73 2E 6C 69 62 72 61 72 79 00    74          .byte "dos.library",0  ; [section code]
+----                               75  output_path  ; [section code]
+2078    54 3A 6F 70 66 6F 72 67 65 2D 77 72 69 74 65 66 69 6C 65 2E 74 78 74 00    76          .byte "T:opforge-writefile.txt",0  ; [section code]
+----                               77  message  ; [section code]
+2090    48 65 6C 6C 6F 20 66 72 6F 6D 20 6F 70 46 6F 72 67 65 0A    78          .byte "Hello from opForge",10  ; [section code]
+----                               79    ; [section code]
+----                               80          .endsection
+----                               81          .place code in ram
+----                               82          .output "build/out.hunk", format=hunk, sections=code
+----                               83          .endmodule
+
+Lines: 83  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.Close       FFFFFFDC  prv  lbl 
+main.CloseLibrary  FFFFFE62  prv  lbl 
+main.close_dos   205E      prv  lbl 
+main.close_file  2056      prv  lbl 
+main.done        2068      prv  lbl 
+main.dos_name    206C      prv  lbl 
+main.message     2090      prv  lbl 
+main.message_len  0013      prv  lbl 
+main.MODE_NEWFILE  03EE      prv  lbl 
+main.Open        FFFFFFE2  prv  lbl 
+main.OpenLibrary  FFFFFDD8  prv  lbl 
+main.output_path  2078      prv  lbl 
+main.RETURN_FAIL  0014      prv  lbl 
+main.RETURN_OK   0000      prv  lbl 
+main.start       2000      prv  lbl 
+main.SysBase     0004      prv  lbl 
+main.Write       FFFFFFD0  prv  lbl 
+
+Total memory is 163 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+2000    7E 14 43 F9 00 00 00 6C 70 24 2C 78 00 04 4E AE
+2010    FD D8 4A 80 67 00 00 52 2A 40 41 F9 00 00 00 78
+2020    22 08 24 3C 00 00 03 EE 2C 4D 4E AE FF E2 4A 80
+2030    67 00 00 2C 2C 00 22 06 24 3C 00 00 00 90 26 3C
+2040    00 00 00 13 2C 4D 4E AE FF D0 B0 BC 00 00 00 13
+2050    66 00 00 04 7E 00 22 06 2C 4D 4E AE FF DC 22 4D
+2060    2C 78 00 04 4E AE FE 62 20 07 4E 75 64 6F 73 2E
+2070    6C 69 62 72 61 72 79 00 54 3A 6F 70 66 6F 72 67
+2080    65 2D 77 72 69 74 65 66 69 6C 65 2E 74 78 74 00
+2090    48 65 6C 6C 6F 20 66 72 6F 6D 20 6F 70 46 6F 72
+20A0    67 65 0A

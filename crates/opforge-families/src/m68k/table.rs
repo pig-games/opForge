@@ -825,12 +825,23 @@ pub fn parse_mnemonic(mnemonic: &str) -> Option<ParsedMnemonic> {
     }
 
     let (base, size, has_unknown_size_suffix) = split_size_suffix(mnemonic);
+    let kind = base_kind(base.as_str())?;
+    let is_branch_short_alias = has_unknown_size_suffix
+        && mnemonic.to_ascii_uppercase().ends_with(".S")
+        && matches!(
+            kind,
+            MnemonicKind::Bra | MnemonicKind::Bsr | MnemonicKind::Bcc(_)
+        );
 
     Some(ParsedMnemonic {
-        kind: base_kind(base.as_str())?,
+        kind,
         display_name: base,
-        size,
-        has_unknown_size_suffix,
+        size: if is_branch_short_alias {
+            Some(OperationSize::Byte)
+        } else {
+            size
+        },
+        has_unknown_size_suffix: has_unknown_size_suffix && !is_branch_short_alias,
     })
 }
 
@@ -1033,6 +1044,16 @@ mod tests {
         assert_eq!(branch.kind, MnemonicKind::Bcc(ConditionCode::Cs));
         assert_eq!(branch.size, Some(OperationSize::Word));
         assert_eq!(branch.display_name, "BLO");
+
+        let branch_short = parse_mnemonic("bne.s").expect("bne.s should parse");
+        assert_eq!(branch_short.kind, MnemonicKind::Bcc(ConditionCode::Ne));
+        assert_eq!(branch_short.size, Some(OperationSize::Byte));
+        assert!(!branch_short.has_unknown_size_suffix);
+
+        let non_branch_short = parse_mnemonic("move.s").expect("move.s should parse as MOVE");
+        assert_eq!(non_branch_short.kind, MnemonicKind::Move);
+        assert_eq!(non_branch_short.size, None);
+        assert!(non_branch_short.has_unknown_size_suffix);
     }
 
     #[test]

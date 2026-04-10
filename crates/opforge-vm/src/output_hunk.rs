@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use crate::output_artifacts::ArtifactBuildError;
 use crate::output_model::{
-    HunkMemoryType, HunkOutputInput, HunkRelocationKind, HunkSegmentInput, LinkerOutputDirective,
-    LinkerOutputRelocationDisposition, SectionKind, SectionState,
+    HunkMemoryType, HunkOutputInput, HunkSegmentInput, LinkerOutputDirective,
+    LinkerOutputRelocationDisposition, OutputFixupKind, SectionKind, SectionState,
 };
 
 const HUNK_HEADER: u32 = 0x0000_03f3;
@@ -52,9 +52,9 @@ fn collect_hunk_output_input(
                 Some(section_name.clone()),
             ));
         };
-        if section.base_addr.is_none() {
+        if let Some(message) = section.hunk_fixup_error.as_ref() {
             return Err(ArtifactBuildError::new(
-                "format=hunk requires selected sections to have assigned bases in v0.1",
+                message.clone(),
                 Some(section_name.clone()),
             ));
         }
@@ -68,7 +68,7 @@ fn collect_hunk_output_input(
             initialized_bytes: section.bytes.clone(),
             allocation_size_bytes,
             memory_type: HunkMemoryType::Any,
-            relocations: section.hunk_relocations.clone(),
+            fixups: section.output_fixups.clone(),
         });
     }
 
@@ -161,7 +161,7 @@ fn append_relocation_hunks(
     segment: &HunkSegmentInput,
     all_segments: &[HunkSegmentInput],
 ) -> Result<(), ArtifactBuildError> {
-    if segment.relocations.is_empty() {
+    if segment.fixups.is_empty() {
         return Ok(());
     }
 
@@ -173,23 +173,35 @@ fn append_relocation_hunks(
     })?;
 
     let mut grouped_offsets: HashMap<u32, Vec<u32>> = HashMap::new();
-    for relocation in &segment.relocations {
-        if relocation.kind != HunkRelocationKind::Abs32 {
+    for fixup in &segment.fixups {
+        if !fixup.source_section.eq_ignore_ascii_case(&segment.name) {
+            return Err(ArtifactBuildError::new(
+                "format=hunk fixup source section does not match emitted segment",
+                Some(segment.name.clone()),
+            ));
+        }
+        if fixup.kind != OutputFixupKind::Abs32 || !fixup.supports_hunk_reloc32() {
             return Err(ArtifactBuildError::new(
                 "format=hunk only supports HUNK_RELOC32 records in v0.2",
                 Some(segment.name.clone()),
             ));
         }
+        let Some(target_section) = fixup.target_section_name() else {
+            return Err(ArtifactBuildError::new(
+                "format=hunk fixup target is not a section",
+                Some(segment.name.clone()),
+            ));
+        };
         let Some(target_index) = all_segments
             .iter()
-            .position(|target| target.name.eq_ignore_ascii_case(&relocation.target_section))
+            .position(|target| target.name.eq_ignore_ascii_case(target_section))
         else {
             return Err(ArtifactBuildError::new(
                 "format=hunk relocation references unknown target section",
-                Some(relocation.target_section.clone()),
+                Some(target_section.to_string()),
             ));
         };
-        if relocation.offset > payload_len.saturating_sub(4) {
+        if fixup.offset > payload_len.saturating_sub(4) {
             return Err(ArtifactBuildError::new(
                 "format=hunk relocation offset exceeds initialized payload",
                 Some(segment.name.clone()),
@@ -198,7 +210,7 @@ fn append_relocation_hunks(
         grouped_offsets
             .entry(u32::try_from(target_index).unwrap_or(u32::MAX))
             .or_default()
-            .push(relocation.offset);
+            .push(fixup.offset);
     }
 
     let mut grouped_entries: Vec<(u32, Vec<u32>)> = grouped_offsets.into_iter().collect();

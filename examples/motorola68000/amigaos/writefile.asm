@@ -1,4 +1,6 @@
-; AmigaOS file-output smoke executable for the current Hunk path.
+; AmigaOS file-output smoke executable for the v0.3 executable-complete Hunk subset.
+; Uses unplaced Hunk output plus bare-symbol executable notation where the
+; supported matrix now allows it.
 ; Writes a fixed text file to T: so it can be checked after running under AmigaOS.
 ; The program is CLI-oriented and does not include Workbench startup handling.
 
@@ -19,13 +21,12 @@ Write           = -48
 
 message_len     = 19
 
-        .region ram, $2000, $20ff
         .section code, kind=code
 
 start:
         MOVEQ #RETURN_FAIL,D7
 
-        LEA dos_name.L,A1
+        LEA dos_name,A1
         MOVEQ #36,D0
         MOVEA.L SysBase.W,A6
         JSR OpenLibrary(A6)
@@ -35,7 +36,7 @@ start:
 
         MOVEA.L D0,A5
 
-        LEA output_path.L,A0
+        LEA output_path,A0
         MOVE.L A0,D1
         MOVE.L #MODE_NEWFILE,D2
         MOVEA.L A5,A6
@@ -70,6 +71,9 @@ done:
         MOVE.L D7,D0
         RTS
 
+        .endsection
+        .section data, kind=data
+
 dos_name:
         .byte "dos.library",0
 output_path:
@@ -78,6 +82,5 @@ message:
         .byte "Hello from opForge",10
 
         .endsection
-        .place code in ram
-        .output "build/out.hunk", format=hunk, sections=code
+        .output "build/writefile.hunk", format=hunk, sections=code,data
         .endmodule

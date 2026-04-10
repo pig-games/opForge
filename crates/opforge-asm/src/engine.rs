@@ -14,7 +14,7 @@ use opcore::expression::{expr_span, AstEvalError, AstEvalErrorKind};
 use opcore::scope::ScopeKind;
 use registry::cpu::CpuType;
 use registry::registry::ModuleRegistry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::rc::Rc;
 use types::asm_value::AsmValue;
@@ -52,6 +52,8 @@ pub struct Assembler {
     pub image: ImageStore,
     pub sections: HashMap<String, SectionState>,
     pub regions: HashMap<String, RegionState>,
+    pub section_symbol_sections: HashMap<String, String>,
+    pub absolute_constant_symbols: HashSet<String>,
     pub diagnostics: Vec<Diagnostic>,
     pub cpu: CpuType,
     pub registry: ModuleRegistry,
@@ -221,6 +223,10 @@ impl Assembler {
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
             asm_line.clear_conditionals();
             asm_line.clear_scopes();
+            if pass_num > 1 {
+                asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();
+                asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
+            }
             if let (Some(sections), Some(regions)) = (seeded_sections, seeded_regions) {
                 asm_line.layout.sections = sections;
                 asm_line.layout.regions = regions;
@@ -229,7 +235,8 @@ impl Assembler {
                     section.bytes.clear();
                     section.relocation_free_certified = true;
                     section.hunk_relocation_compatible = true;
-                    section.hunk_relocations.clear();
+                    section.hunk_fixup_error = None;
+                    section.output_fixups.clear();
                     section.emitted = false;
                 }
             }
@@ -376,7 +383,13 @@ impl Assembler {
             }
 
             for (name, section) in &asm_line.layout.sections {
-                if section.default_region.is_some() && !section.layout_placed {
+                if section.default_region.is_some()
+                    && !section.layout_placed
+                    && !Self::section_can_be_unplaced_for_hunk_output(
+                        name,
+                        &asm_line.output_state.root_metadata.linker_outputs,
+                    )
+                {
                     let err = AsmError::new(
                         AsmErrorKind::Directive,
                         "Section with region=... must be explicitly placed",
@@ -391,6 +404,8 @@ impl Assembler {
                 let Some(section_names) = output.option_text_list("sections") else {
                     continue;
                 };
+                let requires_explicit_placement =
+                    output.format() != Some(vm::output_model::LinkerOutputFormat::Hunk);
                 for section_name in section_names {
                     let is_placed = asm_line
                         .layout
@@ -398,7 +413,7 @@ impl Assembler {
                         .get(section_name)
                         .map(|section| section.layout_placed)
                         .unwrap_or(false);
-                    if !is_placed {
+                    if requires_explicit_placement && !is_placed {
                         let err = AsmError::new(
                             AsmErrorKind::Directive,
                             "Section referenced by .output must be explicitly placed",
@@ -411,6 +426,8 @@ impl Assembler {
             }
 
             self.cpu = asm_line.cpu;
+            self.section_symbol_sections = asm_line.layout.section_symbol_sections.clone();
+            self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
@@ -449,6 +466,8 @@ impl Assembler {
             image: ImageStore::new(),
             sections: HashMap::new(),
             regions: HashMap::new(),
+            section_symbol_sections: HashMap::new(),
+            absolute_constant_symbols: HashSet::new(),
             diagnostics: Vec::new(),
             cpu,
             registry,
@@ -607,6 +626,8 @@ impl Assembler {
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
         asm_line.clear_conditionals();
         asm_line.clear_scopes();
+        asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();
+        asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
         // Seed pass2 with pass1 placement/layout state so section-local encoding
         // (especially relative branches) uses rebased absolute addresses even if
         // .place/.pack directives appear later in source order.
@@ -617,7 +638,8 @@ impl Assembler {
             section.bytes.clear();
             section.relocation_free_certified = true;
             section.hunk_relocation_compatible = true;
-            section.hunk_relocations.clear();
+            section.hunk_fixup_error = None;
+            section.output_fixups.clear();
             section.emitted = false;
         }
         self.image = ImageStore::new();
@@ -791,6 +813,7 @@ impl Assembler {
         }
 
         self.cpu = asm_line.cpu;
+        self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
         self.sections = sections;
         self.refresh_hunk_output_relocation_dispositions();
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
@@ -827,13 +850,37 @@ impl Assembler {
         } else if section_names.iter().all(|section_name| {
             sections.get(section_name).is_some_and(|section| {
                 section.hunk_relocation_compatible
-                    && (section.relocation_free_certified || !section.hunk_relocations.is_empty())
+                    && (section.relocation_free_certified || !section.output_fixups.is_empty())
             })
         }) {
             vm::output_model::LinkerOutputRelocationDisposition::RelocationRecordsPresent
         } else {
             vm::output_model::LinkerOutputRelocationDisposition::Unknown
         }
+    }
+
+    fn section_can_be_unplaced_for_hunk_output(
+        section_name: &str,
+        outputs: &[LinkerOutputDirective],
+    ) -> bool {
+        let mut referenced_by_hunk = false;
+        for output in outputs {
+            let Some(section_names) = output.option_text_list("sections") else {
+                continue;
+            };
+            if !section_names
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(section_name))
+            {
+                continue;
+            }
+            if output.format() == Some(vm::output_model::LinkerOutputFormat::Hunk) {
+                referenced_by_hunk = true;
+            } else {
+                return false;
+            }
+        }
+        referenced_by_hunk
     }
 
     #[allow(clippy::too_many_arguments)]

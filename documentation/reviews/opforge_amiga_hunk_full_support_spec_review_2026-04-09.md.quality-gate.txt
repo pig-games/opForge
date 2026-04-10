@@ -1,0 +1,1 @@
+PASS: Findings-first Markdown artifact with stable IDs, evidence-backed Hunk-scope findings, single decisive fix directions, separated testing gaps and residual risks, and no unresolved review-side open questions.

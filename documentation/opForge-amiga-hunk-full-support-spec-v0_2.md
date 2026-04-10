@@ -9,9 +9,9 @@ cases, including the current `helloworld` and `writefile` examples.
 
 The next goal is to move from that selective subset to practical full support
 for regular AmigaDOS executable generation within opForge's current scope:
-generic relocation capture, unplaced-section executable emission, broader m68k
-instruction or data fixups, and more natural Motorola-style notation for common
-symbol-bearing forms.
+generic relocation capture, executable emission for explicitly placed sections
+without fixed final bases, broader m68k instruction or data fixups, and more
+natural Motorola-style notation for common symbol-bearing forms.
 
 This is still an internal output-component and assembler-model specification,
 not a dynamic plugin ABI and not a full Amiga object-file specification.
@@ -27,8 +27,9 @@ Current working limitations include:
 - relocation capture is still specialized rather than generic
 - the live path is centered on `HUNK_RELOC32` and a subset of compatible data
   and instruction forms
-- the Hunk writer still expects selected sections to have assigned bases, which
-  is stricter than a natural relocatable-executable workflow
+- sections referenced by `.output` still have to satisfy the existing pass1
+  placement gate, and the Hunk writer separately still expects assigned bases,
+  which is stricter than a natural relocatable-executable workflow
 - common source notation often still needs explicit absolute-long spelling such
   as `label.L` or `#label` in carefully supported forms
 - notation resolution and relocation capture are not yet unified enough to
@@ -45,17 +46,21 @@ authoring.
   slate.
 - [ ] Replace format-specific relocation hacks with a generic assembler or
   linker fixup model that Hunk output can consume.
-- [ ] Support `format=hunk` for selected sections that are not pre-assigned a
-  final base address, as long as the required relocation information exists.
+- [ ] Support `format=hunk` for explicitly placed selected sections whose final
+  absolute load addresses are not pre-assigned, as long as the required
+  relocation information exists.
 - [ ] Preserve exact user-declared `sections=` order for Hunk executables and
   continue to require the first emitted segment to be code.
+- [ ] Preserve the current deterministic omission of empty selected non-BSS
+  sections before Hunk emission, and define relocation target indices against
+  the emitted segment list.
 - [ ] Broaden data relocation support so ordinary symbol-bearing data works
   naturally for Hunk output.
 - [ ] Broaden m68k instruction relocation support so common AmigaOS executable
   forms no longer depend on a tiny set of hand-recognized instruction layouts.
-- [ ] Define notation improvements for common symbolic absolute-address forms so
-  regular Motorola-style source becomes usable without forcing explicit `.L`
-  spelling everywhere.
+- [ ] Define a tightly enumerated first notation-improvement slice for
+  unambiguous symbolic forms while keeping ambiguous absolute-symbol forms
+  explicit until one canonical rule exists.
 - [ ] Keep diagnostics deterministic when a requested relocation or notation
   form is unsupported, ambiguous, or would silently truncate an address.
 - [ ] Keep the active worktree `AGENTS.md` workflow and execution rules binding
@@ -85,13 +90,20 @@ The current working Hunk subset is a floor, not a disposable prototype.
   and
   [examples/motorola68000/amigaos/writefile.asm](examples/motorola68000/amigaos/writefile.asm)
   must remain buildable throughout the follow-on work
+- sections referenced by `.output` remain subject to the existing pass1
+  placement requirement; this specification only removes the writer-side
+  dependency on assigned final bases for supported relocatable Hunk emission
 - `format=hunk` must continue to preserve the exact `sections=` order declared
   by the user
+- empty selected non-BSS sections must continue to be omitted deterministically
+  before Hunk records are emitted
 - `format=hunk` must continue to reject outputs whose first emitted segment is
   not code
 - the Hunk writer must continue to emit explicit big-endian record words
 - relocation support must be driven by explicit fixup metadata; the writer must
   not infer relocation safety from the mere absence of relocation records
+- `HUNK_RELOC32` target segment indices must be computed against the emitted
+  segment list after deterministic omission of empty selected non-BSS sections
 - notation improvements must live in the assembler or family resolution layer,
   not as Hunk-only parse exceptions inside the final payload writer
 - ambiguous or truncating symbolic forms must fail explicitly unless the
@@ -110,8 +122,12 @@ The follow-on design must separate three concerns cleanly:
 The current shipped behavior remains valid:
 
 - `format=hunk` is a first-class output format
+- sections referenced by `.output` must still be explicitly placed before they
+  are eligible for Hunk emission
 - the writer emits regular AmigaDOS executable segments in declared section
   order
+- empty selected non-BSS sections are omitted deterministically before Hunk
+  records are emitted
 - `HUNK_CODE`, `HUNK_DATA`, `HUNK_BSS`, and `HUNK_RELOC32` are the active
   executable-level record forms in scope
 - existing relocation-free and already-supported `HUNK_RELOC32` cases remain
@@ -139,22 +155,30 @@ collection path.
 
 ### Hunk Executable Contract
 
-For regular executable output, `format=hunk` must accept selected sections that
-are not pre-assigned a final load address when the generic fixup model provides
-enough information to emit the required relocation records.
+For regular executable output, `format=hunk` must accept explicitly placed
+selected sections whose final load addresses are not pre-assigned when the
+generic fixup model provides enough information to emit the required relocation
+records.
 
 The v0.2 executable target remains regular executable output, not object-file
 output. Within that scope:
 
 - selected CODE, DATA, and BSS sections map to executable hunks in the user
   declared order
+- the existing pass1 placement gate remains in scope: any section referenced by
+  `.output` must still satisfy the explicit `.place` requirement before Hunk
+  emission is attempted
 - the writer may no longer require assigned section bases as a prerequisite for
-  otherwise valid relocatable executable emission
+  otherwise valid relocatable executable emission once placement has already
+  succeeded
+- empty selected non-BSS sections continue to be omitted deterministically
+  before Hunk emission; relocation target indices are resolved against that
+  emitted segment list
 - section bytes for relocatable absolute references must contain the section
   relative addend that the loader expects, not the transient assembly-time base
   address
 - supported fixups must render into deterministic `HUNK_RELOC32` groups ordered
-  by target segment index
+  by target segment index in the emitted segment list
 - unsupported fixups must fail with a deterministic diagnostic that names
   `format=hunk`
 
@@ -204,17 +228,25 @@ step, but it must stop depending on a tiny list of special mnemonics.
 Notation improvements are part of the full-support goal, but they must be
 implemented honestly.
 
-For common m68k symbolic address forms used in executable AmigaOS source,
-opForge should accept natural bare-symbol notation where the intended encoding
-is unambiguously a relocatable absolute long. Examples of target forms include:
+The v0.2 notation contract must distinguish the current shipped baseline from
+the first follow-on bare-notation slice.
 
-- `LEA label,A1`
-- `PEA label`
-- `MOVE.L #label,D1`
-- `MOVE.L D0,label`
-- `.long label`
+Baseline forms already proven today include:
 
-For these covered cases:
+- explicit absolute-long spellings such as `LEA label.L,A1`
+- immediate bare-symbol long forms such as `MOVE.L #label,D1`
+- longword data forms such as `.long label`
+
+The first follow-on bare-notation slice must stay tightly enumerated:
+
+- immediate bare-symbol long forms such as `MOVE.L #label,D1` remain covered
+- longword data forms such as `.long label` and `.long label + constant` remain
+  covered
+- ambiguous bare absolute-symbol instruction forms such as `LEA label,A1`,
+  `PEA label`, and `MOVE.L D0,label` remain explicit-only until a later
+  specification defines one canonical family-level disambiguation rule
+
+For the covered cases in scope for v0.2:
 
 - the assembler must choose the canonical relocatable long encoding
 - the choice must not depend on the eventual runtime load address
@@ -240,21 +272,30 @@ Diagnostics must clearly distinguish at least these classes:
 
 ## Boundary Cases
 
-Unplaced sections with supported relocations:
+Explicitly placed sections without assigned final bases:
 
-- `.output "x", format=hunk, sections=code,data` must succeed without assigned
-  final bases when all required fixups are supported by the executable Hunk
-  subset.
+- `.output "x", format=hunk, sections=code,data` must succeed when the
+  referenced sections have already been explicitly `.place`d and all required
+  fixups are supported by the executable Hunk subset, even if final absolute
+  load addresses have not been assigned.
 
 Placed sections with supported relocations:
 
 - explicitly placed sections remain valid input, but the emitted relocation
   addends must still be section-relative rather than fixed load addresses.
 
-Bare symbol that would fit in absolute word:
+Empty selected non-BSS section:
 
-- a covered relocatable symbolic address form such as `LEA label,A1` must not
-  silently choose absolute word just because the provisional value is small.
+- if `sections=` selects `code,zero,data` and `zero` is a non-BSS section with
+  no initialized bytes, `zero` is omitted deterministically before Hunk
+  emission and relocation target indices are computed against the remaining
+  emitted segment list.
+
+Explicit absolute-long symbol that would fit in absolute word:
+
+- an explicitly long relocatable symbolic address form such as `LEA label.L,A1`
+  must not silently choose absolute word just because the provisional value is
+  small.
 
 Ambiguous bare symbol form:
 
@@ -280,26 +321,32 @@ Same-section PC-relative reference:
 Non-code first segment:
 
 - `format=hunk` continues to fail if the first emitted segment would be DATA or
-  BSS, even after unplaced-section support is added.
+  BSS, even after assigned-final-base dependence is removed for supported
+  placed sections.
 
 ## Acceptance Criteria
 
 - [ ] A follow-on implementation derived from this spec can emit runnable
-  `format=hunk` executables for selected CODE, DATA, and BSS sections without
-  requiring pre-assigned final load addresses when the required fixups are in
-  the supported executable subset.
+  `format=hunk` executables for explicitly placed selected CODE, DATA, and BSS
+  sections without requiring pre-assigned final load addresses when the
+  required fixups are in the supported executable subset.
 - [ ] The assembler carries a generic fixup model that the Hunk writer consumes
   without relying on Hunk-specific relocation capture paths as the primary
   contract.
+- [ ] Empty selected non-BSS sections remain omitted deterministically before
+  Hunk emission, and `HUNK_RELOC32` target indices are defined against the
+  resulting emitted segment list.
 - [ ] Ordinary longword symbol-bearing data such as `.long label` and
   `.long label + constant` produce correct executable Hunk relocation output in
   the supported subset.
 - [ ] A broader common subset of m68k absolute-long and immediate-address
   instruction forms produces correct executable Hunk relocation output in the
   supported subset.
-- [ ] Covered bare-symbol notation forms such as `LEA label,A1` and
-  `MOVE.L #label,D1` assemble into the canonical relocatable long encoding
-  without requiring explicit `.L` suffixes.
+- [ ] Covered first-slice notation forms such as `MOVE.L #label,D1`,
+  `.long label`, and `.long label + constant` assemble into the canonical
+  relocatable long encoding without requiring format-specific notation
+  workarounds, while ambiguous bare absolute-symbol forms still require
+  explicit notation.
 - [ ] Ambiguous or unsupported symbolic forms fail with deterministic
   diagnostics rather than with silent truncation or accidental flat-image
   behavior.
@@ -319,18 +366,24 @@ Expected validation categories include:
 
 - focused unit tests for fixup capture and encoded addend rewriting
 - byte-level Hunk payload tests for header, segment, and relocation records
-- focused assembler tests for covered bare-symbol notation forms and their
-  diagnostics
+- byte-level Hunk payload tests that prove deterministic empty-section omission
+  and `HUNK_RELOC32` target-index ordering against the emitted segment list
+- focused assembler tests for covered first-slice notation forms and negative
+  diagnostics for ambiguous bare absolute-symbol forms such as `LEA label,A1`,
+  `PEA label`, and `MOVE.L D0,label`
 - example/reference workflow tests for AmigaOS examples
 - opt-in FS-UAE smoke runs for runnable example programs after meaningful Hunk
   behavior changes
 
-## Open Questions
+## Resolved v0.2 Scope Decisions
 
-- Should the first notation-improvement slice choose canonical relocatable long
-  resolution only for a tightly enumerated set of common m68k forms, or for a
-  wider family-level class of absolute symbolic operands?
-- Which additional Hunk relocation kinds, if any, are worth supporting before
-  object-file output is considered, beyond `HUNK_RELOC32`?
-- Should memory-type customization for executable segments remain deferred until
-  after generic relocation and notation work is complete?
+- The first notation-improvement slice is tightly enumerated in v0.2: already
+  unambiguous immediate bare-symbol long forms and longword data forms are in
+  scope, while ambiguous bare absolute-symbol instruction forms remain
+  explicit-only until a later specification defines one canonical resolution
+  rule.
+- `HUNK_RELOC32` is the only required executable relocation record for v0.2.
+  Additional Hunk relocation kinds remain deferred until after generic fixup
+  capture and first-slice notation work are in place.
+- Memory-type customization for executable segments remains out of scope until
+  after generic fixup capture and first-slice notation work have landed.

@@ -11,16 +11,27 @@ use vm::output_model::BinOutputSpec;
 const FS_UAE_OPT_IN_ENV: &str = "OPFORGE_FS_UAE_SMOKE";
 const FS_UAE_BIN_ENV: &str = "OPFORGE_FS_UAE_BIN";
 const FS_UAE_ARGS_ENV: &str = "OPFORGE_FS_UAE_ARGS";
+const FS_UAE_EXAMPLES: &[(&str, &str)] = &[
+    (
+        "helloworld",
+        "examples/motorola68000/amigaos/helloworld.asm",
+    ),
+    ("writefile", "examples/motorola68000/amigaos/writefile.asm"),
+];
+
+pub(crate) struct FsUaeSmokeRun {
+    pub(crate) example_name: &'static str,
+    pub(crate) source_path: PathBuf,
+    pub(crate) artifact_dir: PathBuf,
+    pub(crate) hunk_path: PathBuf,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
+    pub(crate) success: bool,
+}
 
 pub(crate) enum FsUaeSmokeOutcome {
     Skipped(String),
-    Completed {
-        artifact_dir: PathBuf,
-        hunk_path: PathBuf,
-        stdout: String,
-        stderr: String,
-        success: bool,
-    },
+    Completed { runs: Vec<FsUaeSmokeRun> },
 }
 
 pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmokeOutcome, String> {
@@ -39,18 +50,62 @@ pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmok
         }
     };
 
-    let artifact_dir = create_artifact_dir(workspace_root, "fs-uae-hunk-smoke")?;
-    let source_path = artifact_dir.join("smoke.asm");
-    fs::write(&source_path, smoke_source()).map_err(|err| {
-        format!(
-            "write smoke assembly source {}: {err}",
-            source_path.display()
-        )
-    })?;
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let mut runs = Vec::with_capacity(FS_UAE_EXAMPLES.len());
+    for &(example_name, relative_source_path) in FS_UAE_EXAMPLES {
+        match run_example_smoke(
+            workspace_root,
+            &fs_uae_bin,
+            &args_text,
+            example_name,
+            relative_source_path,
+        )? {
+            ExampleSmokeResult::Run(run) => runs.push(run),
+            ExampleSmokeResult::Skipped(reason) => return Ok(FsUaeSmokeOutcome::Skipped(reason)),
+        }
+    }
 
+    Ok(FsUaeSmokeOutcome::Completed { runs })
+}
+
+fn create_artifact_dir(workspace_root: &Path, label: &str) -> Result<PathBuf, String> {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let dir = workspace_root
+        .join("target")
+        .join(format!("{label}-{nanos}"));
+    fs::create_dir_all(&dir)
+        .map_err(|err| format!("create artifact directory {}: {err}", dir.display()))?;
+    Ok(dir)
+}
+
+enum ExampleSmokeResult {
+    Run(FsUaeSmokeRun),
+    Skipped(String),
+}
+
+fn run_example_smoke(
+    workspace_root: &Path,
+    fs_uae_bin: &str,
+    args_text: &str,
+    example_name: &'static str,
+    relative_source_path: &str,
+) -> Result<ExampleSmokeResult, String> {
+    let source_path = workspace_root.join(relative_source_path);
+    if !source_path.is_file() {
+        return Err(format!(
+            "expected FS-UAE smoke example source at {}",
+            source_path.display()
+        ));
+    }
+
+    let artifact_dir =
+        create_artifact_dir(workspace_root, &format!("fs-uae-hunk-smoke-{example_name}"))?;
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
-        input_base: "fs-uae-hunk-smoke",
+        input_base: example_name,
         defines: &[],
         include_paths: &[],
         module_paths: &[],
@@ -83,9 +138,18 @@ pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmok
         },
         suppress_outputs: false,
     })
-    .map_err(|err| format!("assemble FS-UAE smoke Hunk artifact: {}", err.summary()))?;
+    .map_err(|err| {
+        format!(
+            "assemble FS-UAE smoke example {} from {}: {}",
+            example_name,
+            source_path.display(),
+            err.summary()
+        )
+    })?;
 
-    let hunk_path = artifact_dir.join("build/out.hunk");
+    let hunk_path = artifact_dir
+        .join("build")
+        .join(format!("{example_name}.hunk"));
     if !hunk_path.is_file() {
         return Err(format!(
             "expected generated Hunk artifact at {}",
@@ -93,7 +157,6 @@ pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmok
         ));
     }
 
-    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
     let args = args_text
         .lines()
         .map(str::trim)
@@ -101,50 +164,37 @@ pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmok
         .map(|line| {
             line.replace("{hunk}", &hunk_path.to_string_lossy())
                 .replace("{artifact_dir}", &artifact_dir.to_string_lossy())
+                .replace("{example}", example_name)
         })
         .collect::<Vec<_>>();
 
-    let output = match Command::new(&fs_uae_bin)
+    let output = match Command::new(fs_uae_bin)
         .args(&args)
         .current_dir(&artifact_dir)
         .output()
     {
         Ok(output) => output,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            return Ok(ExampleSmokeResult::Skipped(format!(
                 "FS-UAE binary '{fs_uae_bin}' was not found; install FS-UAE or set {FS_UAE_BIN_ENV}"
             )))
         }
         Err(err) => {
             return Err(format!(
-                "launch FS-UAE binary '{fs_uae_bin}' for {}: {err}",
+                "launch FS-UAE binary '{fs_uae_bin}' for {} example {}: {err}",
+                example_name,
                 hunk_path.display()
             ))
         }
     };
 
-    Ok(FsUaeSmokeOutcome::Completed {
+    Ok(ExampleSmokeResult::Run(FsUaeSmokeRun {
+        example_name,
+        source_path,
         artifact_dir,
         hunk_path,
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         success: output.status.success(),
-    })
-}
-
-fn create_artifact_dir(workspace_root: &Path, label: &str) -> Result<PathBuf, String> {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let dir = workspace_root
-        .join("target")
-        .join(format!("{label}-{nanos}"));
-    fs::create_dir_all(&dir)
-        .map_err(|err| format!("create artifact directory {}: {err}", dir.display()))?;
-    Ok(dir)
-}
-
-fn smoke_source() -> &'static str {
-    ".cpu 68000\n.module main\n.region ram, $2000, $20ff\n.section code, kind=code\n.byte $4e, $75\n.endsection\n.place code in ram\n.output \"build/out.hunk\", format=hunk, sections=code\n.endmodule\n"
+    }))
 }

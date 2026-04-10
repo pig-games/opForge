@@ -10,12 +10,17 @@ use super::*;
 
 #[cfg(not(feature = "vm-runtime-only"))]
 #[derive(Debug, Clone)]
-struct InstructionHunkRelocationPlan {
-    record: HunkRelocationRecord,
+struct InstructionOutputFixupPlan {
+    offset: u32,
+    target_section: String,
     encoded_value: u32,
 }
 
 impl<'a> AsmLine<'a> {
+    #[cfg(not(feature = "vm-runtime-only"))]
+    const M68K_V03_EXPLICIT_LONG_NOTATION_ERROR: &'static str =
+        "symbolic absolute instruction operands require explicit .L notation outside the supported v0.3 bare-symbol subset";
+
     pub fn process_instruction_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
         #[cfg(feature = "vm-runtime-only")]
         {
@@ -50,28 +55,104 @@ impl<'a> AsmLine<'a> {
                 }
             };
 
+            let mut rewritten_operands = None;
             let family_operands = match pipeline.family.parse_operands(mnemonic, operands) {
                 Ok(ops) => ops,
                 Err(err) => {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Instruction,
-                        &err.message,
-                        None,
-                        err.span,
-                    )
+                    if pipeline.family_id == M68K_FAMILY_ID {
+                        rewritten_operands = self
+                            .m68k_canonicalize_supported_bare_symbol_operands(mnemonic, operands);
+                        if let Some(rewritten) = rewritten_operands.as_ref() {
+                            match pipeline
+                                .family
+                                .parse_operands(mnemonic, rewritten.as_slice())
+                            {
+                                Ok(ops) => ops,
+                                Err(retry_err) => {
+                                    if let Some(span) = self
+                                        .m68k_raw_explicit_long_notation_required(
+                                            mnemonic, operands,
+                                        )
+                                    {
+                                        return self.failure_at_span(
+                                            LineStatus::Error,
+                                            AsmErrorKind::Instruction,
+                                            Self::M68K_V03_EXPLICIT_LONG_NOTATION_ERROR,
+                                            None,
+                                            span,
+                                        );
+                                    }
+                                    return self.failure_at_span(
+                                        LineStatus::Error,
+                                        AsmErrorKind::Instruction,
+                                        &retry_err.message,
+                                        None,
+                                        retry_err.span,
+                                    );
+                                }
+                            }
+                        } else if let Some(span) =
+                            self.m68k_raw_explicit_long_notation_required(mnemonic, operands)
+                        {
+                            return self.failure_at_span(
+                                LineStatus::Error,
+                                AsmErrorKind::Instruction,
+                                Self::M68K_V03_EXPLICIT_LONG_NOTATION_ERROR,
+                                None,
+                                span,
+                            );
+                        } else {
+                            return self.failure_at_span(
+                                LineStatus::Error,
+                                AsmErrorKind::Instruction,
+                                &err.message,
+                                None,
+                                err.span,
+                            );
+                        }
+                    } else {
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            &err.message,
+                            None,
+                            err.span,
+                        );
+                    }
                 }
             };
+
+            let effective_operands = rewritten_operands.as_deref().unwrap_or(operands);
 
             let (mapped_mnemonic, mapped_operands) = pipeline
                 .dialect
                 .map_mnemonic(mnemonic, family_operands.as_ref())
                 .unwrap_or_else(|| (mnemonic.to_string(), family_operands.clone()));
 
+            if pipeline.family_id == M68K_FAMILY_ID {
+                if let Some(m68k_mapped_operands) = mapped_operands
+                    .as_any()
+                    .downcast_ref::<M68KFamilyOperands>()
+                {
+                    if let Some(span) = self.m68k_explicit_long_notation_required(
+                        &mapped_mnemonic,
+                        m68k_mapped_operands.0.as_slice(),
+                    ) {
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            AsmErrorKind::Instruction,
+                            Self::M68K_V03_EXPLICIT_LONG_NOTATION_ERROR,
+                            None,
+                            span,
+                        );
+                    }
+                }
+            }
+
             if let Some(status) = self.try_encode_instruction_via_runtime_expr(
                 &pipeline,
                 mnemonic,
-                operands,
+                effective_operands,
                 family_operands.as_ref(),
                 &mapped_mnemonic,
                 mapped_operands.as_ref(),
@@ -86,9 +167,11 @@ impl<'a> AsmLine<'a> {
                 self,
             ) {
                 registry::family::FamilyEncodeResult::Ok(bytes) => {
-                    if let Err(err) =
-                        self.validate_instruction_emit_span(&mapped_mnemonic, operands, bytes.len())
-                    {
+                    if let Err(err) = self.validate_instruction_emit_span(
+                        &mapped_mnemonic,
+                        effective_operands,
+                        bytes.len(),
+                    ) {
                         return self.failure_at_span(
                             LineStatus::Error,
                             AsmErrorKind::Instruction,
@@ -163,7 +246,7 @@ impl<'a> AsmLine<'a> {
             if let Some(status) = self.try_encode_instruction_via_runtime_operands(
                 &pipeline,
                 &mapped_mnemonic,
-                operands,
+                effective_operands,
                 resolved_operands.as_ref(),
             ) {
                 return status;
@@ -175,9 +258,11 @@ impl<'a> AsmLine<'a> {
                 .into_outcome()
             {
                 Ok(Some(mut bytes)) => {
-                    if let Err(err) =
-                        self.validate_instruction_emit_span(&mapped_mnemonic, operands, bytes.len())
-                    {
+                    if let Err(err) = self.validate_instruction_emit_span(
+                        &mapped_mnemonic,
+                        effective_operands,
+                        bytes.len(),
+                    ) {
                         return self.failure_at_span(
                             LineStatus::Error,
                             AsmErrorKind::Instruction,
@@ -186,7 +271,7 @@ impl<'a> AsmLine<'a> {
                             err.span,
                         );
                     }
-                    let supported_hunk_relocations = match self.queue_instruction_hunk_relocations(
+                    let supported_output_fixups = match self.queue_instruction_output_fixups(
                         pipeline.family_id,
                         resolved_operands.as_ref(),
                         &mut bytes,
@@ -195,7 +280,7 @@ impl<'a> AsmLine<'a> {
                         Err(status) => return status,
                     };
                     if self.in_section()
-                        && !supported_hunk_relocations
+                        && !supported_output_fixups
                         && !self.family_operands_keep_current_section_relocation_free(
                             pipeline.family_id,
                             mapped_operands.as_ref(),
@@ -248,17 +333,16 @@ impl<'a> AsmLine<'a> {
                                 err.span,
                             );
                         }
-                        let supported_hunk_relocations = match self
-                            .queue_instruction_hunk_relocations(
-                                pipeline.family_id,
-                                resolved_operands.as_ref(),
-                                &mut bytes,
-                            ) {
+                        let supported_output_fixups = match self.queue_instruction_output_fixups(
+                            pipeline.family_id,
+                            resolved_operands.as_ref(),
+                            &mut bytes,
+                        ) {
                             Ok(supported) => supported,
                             Err(status) => return status,
                         };
                         if self.in_section()
-                            && !supported_hunk_relocations
+                            && !supported_output_fixups
                             && !self.family_operands_keep_current_section_relocation_free(
                                 pipeline.family_id,
                                 mapped_operands.as_ref(),
@@ -304,7 +388,147 @@ impl<'a> AsmLine<'a> {
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
-    fn queue_instruction_hunk_relocations(
+    fn m68k_raw_explicit_long_notation_required(
+        &self,
+        mnemonic: &str,
+        operands: &[Expr],
+    ) -> Option<Span> {
+        let upper = mnemonic.to_ascii_uppercase();
+        match upper.as_str() {
+            "LEA" | "PEA" | "JMP" | "JSR" => operands
+                .first()
+                .filter(|expr| Self::expr_is_bare_symbol_candidate(expr))
+                .map(expr_span),
+            "MOVEA.L" => operands
+                .first()
+                .filter(|expr| Self::expr_is_bare_symbol_candidate(expr))
+                .map(expr_span),
+            "MOVE.L" => operands
+                .iter()
+                .find(|expr| Self::expr_is_bare_symbol_candidate(expr))
+                .map(expr_span),
+            _ => None,
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_canonicalize_supported_bare_symbol_operands(
+        &self,
+        mnemonic: &str,
+        operands: &[Expr],
+    ) -> Option<Vec<Expr>> {
+        let upper = mnemonic.to_ascii_uppercase();
+        match upper.as_str() {
+            "LEA" => match operands {
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_address_register_candidate(dst) =>
+                {
+                    Some(vec![
+                        Self::wrap_expr_with_absolute_long_suffix(src),
+                        dst.clone(),
+                    ])
+                }
+                _ => None,
+            },
+            "PEA" | "JMP" | "JSR" => match operands {
+                [expr] if Self::expr_is_bare_symbol_candidate(expr) => {
+                    Some(vec![Self::wrap_expr_with_absolute_long_suffix(expr)])
+                }
+                _ => None,
+            },
+            "MOVE.L" => match operands {
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_data_register_candidate(dst) =>
+                {
+                    Some(vec![
+                        Self::wrap_expr_with_absolute_long_suffix(src),
+                        dst.clone(),
+                    ])
+                }
+                [src, dst]
+                    if Self::expr_is_data_register_candidate(src)
+                        && Self::expr_is_bare_symbol_candidate(dst) =>
+                {
+                    Some(vec![
+                        src.clone(),
+                        Self::wrap_expr_with_absolute_long_suffix(dst),
+                    ])
+                }
+                _ => None,
+            },
+            "MOVEA.L" => match operands {
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_address_register_candidate(dst) =>
+                {
+                    Some(vec![
+                        Self::wrap_expr_with_absolute_long_suffix(src),
+                        dst.clone(),
+                    ])
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_bare_symbol_candidate(expr: &Expr) -> bool {
+        match expr {
+            Expr::Identifier(_, _) => true,
+            Expr::Unary {
+                op: UnaryOp::Plus,
+                expr: inner,
+                ..
+            } => Self::expr_is_bare_symbol_candidate(inner),
+            _ => false,
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn wrap_expr_with_absolute_long_suffix(expr: &Expr) -> Expr {
+        Expr::Member {
+            base: Box::new(expr.clone()),
+            field: "L".to_string(),
+            span: expr_span(expr),
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_data_register_candidate(expr: &Expr) -> bool {
+        matches!(
+            Self::raw_register_name(expr),
+            Some(name)
+                if name.len() == 2
+                    && name.starts_with('D')
+                    && matches!(name.as_bytes()[1], b'0'..=b'7')
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_address_register_candidate(expr: &Expr) -> bool {
+        matches!(
+            Self::raw_register_name(expr),
+            Some(name)
+                if name == "SP"
+                    || (name.len() == 2
+                        && name.starts_with('A')
+                        && matches!(name.as_bytes()[1], b'0'..=b'7'))
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn raw_register_name(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Identifier(name, _) | Expr::Register(name, _) => Some(name.to_ascii_uppercase()),
+            _ => None,
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn queue_instruction_output_fixups(
         &mut self,
         family_id: CpuFamily,
         operands: &dyn OperandSet,
@@ -316,14 +540,18 @@ impl<'a> AsmLine<'a> {
         let Some(m68k_operands) = operands.as_any().downcast_ref::<M68KOperands>() else {
             return Ok(false);
         };
-        let relocations =
-            match self.m68k_instruction_hunk_relocations(m68k_operands.0.as_slice(), bytes) {
-                Ok(relocations) => relocations,
-                Err((kind, message, span)) => {
-                    return Err(self.failure_at_span(LineStatus::Error, kind, &message, None, span))
-                }
-            };
-        if relocations.is_empty() {
+        let fixups = match self.m68k_instruction_output_fixups(m68k_operands.0.as_slice(), bytes) {
+            Ok(fixups) => fixups,
+            Err((kind, message, span)) => {
+                return Err(self.failure_at_span(LineStatus::Error, kind, &message, None, span))
+            }
+        };
+        if fixups.is_empty() {
+            if let Some(message) =
+                self.m68k_instruction_hunk_fixup_error(m68k_operands.0.as_slice())
+            {
+                self.mark_current_section_hunk_fixup_error(&message);
+            }
             return Ok(false);
         }
         let base_offset = match u32::try_from(self.bytes.len()) {
@@ -338,8 +566,8 @@ impl<'a> AsmLine<'a> {
             }
         };
         self.mark_current_section_hunk_relocatable();
-        for relocation in relocations {
-            let Some(end) = usize::try_from(relocation.record.offset)
+        for fixup in fixups {
+            let Some(end) = usize::try_from(fixup.offset)
                 .ok()
                 .and_then(|start| start.checked_add(4))
             else {
@@ -350,8 +578,8 @@ impl<'a> AsmLine<'a> {
                     None,
                 ));
             };
-            bytes[end - 4..end].copy_from_slice(&relocation.encoded_value.to_be_bytes());
-            let Some(offset) = base_offset.checked_add(relocation.record.offset) else {
+            bytes[end - 4..end].copy_from_slice(&fixup.encoded_value.to_be_bytes());
+            let Some(offset) = base_offset.checked_add(fixup.offset) else {
                 return Err(self.failure(
                     LineStatus::Error,
                     AsmErrorKind::Instruction,
@@ -359,29 +587,118 @@ impl<'a> AsmLine<'a> {
                     None,
                 ));
             };
-            self.pending_hunk_relocations.push(HunkRelocationRecord {
-                kind: relocation.record.kind,
-                offset,
-                target_section: relocation.record.target_section,
-            });
+            let Some(output_fixup) =
+                self.hunk_abs32_output_fixup(offset, fixup.encoded_value, fixup.target_section)
+            else {
+                return Err(self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    "instruction relocation requires an active section",
+                    None,
+                ));
+            };
+            self.pending_output_fixups.push(output_fixup);
         }
         Ok(true)
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
-    fn m68k_instruction_hunk_relocations(
+    fn m68k_explicit_long_notation_required(
+        &self,
+        mnemonic: &str,
+        operands: &[M68KFamilyOperand],
+    ) -> Option<Span> {
+        let upper = mnemonic.to_ascii_uppercase();
+        match upper.as_str() {
+            "LEA" | "PEA" | "JMP" | "JSR" => match operands.first() {
+                Some(M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }) if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                _ => None,
+            },
+            "MOVEA.L" => match operands {
+                [M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }, M68KFamilyOperand::AddressRegister { .. }]
+                    if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
+                {
+                    Some(*span)
+                }
+                _ => None,
+            },
+            "MOVE.L" => match operands {
+                [M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }, M68KFamilyOperand::DataRegister { .. }]
+                    if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
+                {
+                    Some(*span)
+                }
+                [M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_instruction_hunk_fixup_error(&self, operands: &[M68KFamilyOperand]) -> Option<String> {
+        let mut saw_symbolic_fixup_candidate = false;
+        for operand in operands {
+            let (expr, explicit_long_required) = match operand {
+                M68KFamilyOperand::Absolute { expr, size, .. } => (
+                    expr,
+                    matches!(size, families::m68k::operand::AbsoluteSize::Word),
+                ),
+                M68KFamilyOperand::Immediate { expr, .. } => (expr, false),
+                _ => continue,
+            };
+            if self.hunk_abs32_target_section_for_expr(expr).is_some() {
+                saw_symbolic_fixup_candidate = true;
+                if explicit_long_required {
+                    return Some(
+                        "format=hunk requires explicit .L notation for this symbolic instruction form in v0.3"
+                            .to_string(),
+                    );
+                }
+                continue;
+            }
+            if !self.expr_is_relocation_free_symbolic_value(expr, false) {
+                saw_symbolic_fixup_candidate = true;
+            }
+        }
+
+        if saw_symbolic_fixup_candidate {
+            Some("format=hunk does not support this symbolic instruction form in v0.3".to_string())
+        } else {
+            None
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_instruction_output_fixups(
         &self,
         operands: &[M68KFamilyOperand],
         bytes: &[u8],
-    ) -> Result<Vec<InstructionHunkRelocationPlan>, (AsmErrorKind, String, Span)> {
+    ) -> Result<Vec<InstructionOutputFixupPlan>, (AsmErrorKind, String, Span)> {
         let mut relocatable_operands = Vec::new();
         for (index, operand) in operands.iter().enumerate() {
             let (expr, span) = match operand {
-                M68KFamilyOperand::Absolute { expr, size, span }
-                    if matches!(size, families::m68k::operand::AbsoluteSize::Long) =>
-                {
-                    (expr, *span)
-                }
+                M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Long,
+                    span,
+                } => (expr, *span),
                 M68KFamilyOperand::Immediate { expr, span } => (expr, *span),
                 _ => continue,
             };
@@ -417,17 +734,17 @@ impl<'a> AsmLine<'a> {
             return Ok(Vec::new());
         };
 
-        self.single_instruction_abs32_relocation(expr, *span, offset, bytes)
+        self.single_instruction_abs32_fixup(expr, *span, offset, bytes)
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
-    fn single_instruction_abs32_relocation(
+    fn single_instruction_abs32_fixup(
         &self,
         expr: &Expr,
         span: Span,
         offset: u32,
         bytes: &[u8],
-    ) -> Result<Vec<InstructionHunkRelocationPlan>, (AsmErrorKind, String, Span)> {
+    ) -> Result<Vec<InstructionOutputFixupPlan>, (AsmErrorKind, String, Span)> {
         let Some((encoded_value, target_section)) =
             self.eval_hunk_abs32_relocation_value(expr).map_err(|err| {
                 (
@@ -456,12 +773,9 @@ impl<'a> AsmLine<'a> {
                 span,
             ));
         }
-        Ok(vec![InstructionHunkRelocationPlan {
-            record: HunkRelocationRecord {
-                kind: HunkRelocationKind::Abs32,
-                offset,
-                target_section,
-            },
+        Ok(vec![InstructionOutputFixupPlan {
+            offset,
+            target_section,
             encoded_value,
         }])
     }

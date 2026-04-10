@@ -2698,6 +2698,7 @@ mod tests {
             "code".to_string(),
             SectionState {
                 base_addr: Some(0x2000),
+                layout_placed: true,
                 bytes: vec![0xaa, 0xbb],
                 max_pc: 2,
                 ..SectionState::default()

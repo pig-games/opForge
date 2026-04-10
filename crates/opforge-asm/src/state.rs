@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use opcore::scope::ScopeStack;
@@ -48,6 +48,7 @@ pub struct AsmLayoutState {
     pub regions: HashMap<String, RegionState>,
     pub placement_directives: Vec<PlacementDirective>,
     pub section_symbol_sections: HashMap<String, String>,
+    pub absolute_constant_symbols: HashSet<String>,
     pub section_stack: Vec<Option<String>>,
     pub current_section: Option<String>,
 }
@@ -60,6 +61,7 @@ impl AsmLayoutState {
             regions: HashMap::new(),
             placement_directives: Vec::new(),
             section_symbol_sections: HashMap::new(),
+            absolute_constant_symbols: HashSet::new(),
             section_stack: Vec::new(),
             current_section: None,
         }

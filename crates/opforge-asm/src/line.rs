@@ -66,7 +66,7 @@ use types::symbol::{
     ImportResult, SymbolTable, SymbolTableEntry, SymbolTableResult, SymbolVisibility,
 };
 use types::text_encoding::TextEncodingRegistry;
-use vm::output_model::{HunkRelocationKind, HunkRelocationRecord};
+use vm::output_model::OutputFixupRecord;
 use vm::vm_opasm::HierarchyExecutionModel;
 
 thread_local! {
@@ -166,7 +166,7 @@ pub struct AsmLine<'a> {
     line_end_span: Option<Span>,
     line_end_token: Option<String>,
     pub bytes: Vec<u8>,
-    pending_hunk_relocations: Vec<HunkRelocationRecord>,
+    pending_output_fixups: Vec<OutputFixupRecord>,
     start_addr: u32,
     aux_value: u32,
     pass: u8,
@@ -241,7 +241,7 @@ impl<'a> AsmLine<'a> {
             line_end_span: None,
             line_end_token: None,
             bytes: Vec::with_capacity(256),
-            pending_hunk_relocations: Vec::new(),
+            pending_output_fixups: Vec::new(),
             start_addr: 0,
             aux_value: 0,
             pass: 1,
@@ -317,7 +317,7 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn finalize_section_symbol_addresses(&mut self) -> Vec<AsmError> {
-        let section_symbols = std::mem::take(&mut self.layout.section_symbol_sections);
+        let section_symbols = self.layout.section_symbol_sections.clone();
         let mut errors = Vec::new();
         let cpu_name = self.cpu.as_str().to_string();
         for (symbol_name, section_name) in section_symbols {
@@ -418,6 +418,7 @@ impl<'a> AsmLine<'a> {
         self.layout.regions.clear();
         self.layout.placement_directives.clear();
         self.layout.section_symbol_sections.clear();
+        self.layout.absolute_constant_symbols.clear();
         self.layout.section_stack.clear();
         self.layout.current_section = None;
         self.symbol_scope.saw_explicit_module = false;
@@ -758,6 +759,56 @@ impl<'a> AsmLine<'a> {
         section.relocation_free_certified = false;
     }
 
+    fn mark_current_section_hunk_fixup_error(&mut self, message: &str) {
+        let Some(section_name) = self.layout.current_section.clone() else {
+            return;
+        };
+        let Some(section) = self.layout.sections.get_mut(&section_name) else {
+            return;
+        };
+        section.relocation_free_certified = false;
+        section.hunk_relocation_compatible = false;
+        if section.hunk_fixup_error.is_none() {
+            section.hunk_fixup_error = Some(message.to_string());
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn hunk_abs32_output_fixup(
+        &self,
+        offset: u32,
+        encoded_addend: u32,
+        target_section: String,
+    ) -> Option<OutputFixupRecord> {
+        let source_section = self.layout.current_section.clone()?;
+        Some(OutputFixupRecord::hunk_abs32(
+            source_section,
+            offset,
+            encoded_addend,
+            target_section,
+        ))
+    }
+
+    #[cfg(feature = "vm-runtime-only")]
+    fn hunk_abs32_output_fixup(
+        &self,
+        _offset: u32,
+        _encoded_addend: u32,
+        _target_section: String,
+    ) -> Option<OutputFixupRecord> {
+        None
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn hunk_data_expression_requires_unsupported_fixup(&self, expr: &Expr) -> bool {
+        !self.expr_is_relocation_free_symbolic_value(expr, false)
+    }
+
+    #[cfg(feature = "vm-runtime-only")]
+    fn hunk_data_expression_requires_unsupported_fixup(&self, _expr: &Expr) -> bool {
+        false
+    }
+
     #[cfg(not(feature = "vm-runtime-only"))]
     pub(crate) fn family_operands_keep_current_section_relocation_free(
         &self,
@@ -953,7 +1004,7 @@ impl<'a> AsmLine<'a> {
             let Some(end_addr) = base_addr.checked_add(section.max_pc) else {
                 continue;
             };
-            if entry.val >= base_addr && entry.val <= end_addr {
+            if entry.val >= base_addr && entry.val < end_addr {
                 return Some(section_name.clone());
             }
         }
@@ -965,6 +1016,13 @@ impl<'a> AsmLine<'a> {
         match expr {
             Expr::Identifier(name, _) => {
                 let resolved_name = self.resolve_symbol_name_for_relocation(name)?;
+                if self
+                    .layout
+                    .absolute_constant_symbols
+                    .contains(&resolved_name)
+                {
+                    return None;
+                }
                 self.resolved_symbol_section_name(&resolved_name)
             }
             Expr::Unary {
@@ -1014,14 +1072,10 @@ impl<'a> AsmLine<'a> {
             return Ok(None);
         };
         let value = self.eval_expr_for_data_directive(expr)?;
-        let Some(base_addr) = self
-            .layout
-            .sections
-            .get(&target_section)
-            .and_then(|section| section.base_addr)
-        else {
+        let Some(section) = self.layout.sections.get(&target_section) else {
             return Ok(None);
         };
+        let base_addr = section.base_addr.unwrap_or(0);
         let adjusted = value.checked_sub(base_addr).ok_or_else(|| {
             AstEvalError::directive(
                 "section relocation value underflows the target section base",
@@ -1029,6 +1083,76 @@ impl<'a> AsmLine<'a> {
             )
         })?;
         Ok(Some((adjusted, target_section)))
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn hunk_abs32_target_section_for_data_expr(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Identifier(name, _) => {
+                let resolved_name = self.resolve_symbol_name_for_relocation(name)?;
+                if self
+                    .layout
+                    .absolute_constant_symbols
+                    .contains(&resolved_name)
+                {
+                    return None;
+                }
+                self.resolved_symbol_section_name(&resolved_name)
+            }
+            Expr::Unary {
+                op: UnaryOp::Plus,
+                expr: inner,
+                ..
+            }
+            | Expr::Immediate(inner, _)
+            | Expr::Indirect(inner, _)
+            | Expr::IndirectLong(inner, _) => self.hunk_abs32_target_section_for_data_expr(inner),
+            Expr::Binary {
+                op: BinaryOp::Add,
+                left,
+                right,
+                ..
+            } => {
+                if self.expr_is_absolute_constant_symbol_expr(left) {
+                    self.hunk_abs32_target_section_for_data_expr(right)
+                } else if self.expr_is_absolute_constant_symbol_expr(right) {
+                    self.hunk_abs32_target_section_for_data_expr(left)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn eval_hunk_abs32_data_relocation_value(
+        &self,
+        expr: &Expr,
+    ) -> Result<Option<(u32, String)>, AstEvalError> {
+        let Some(target_section) = self.hunk_abs32_target_section_for_data_expr(expr) else {
+            return Ok(None);
+        };
+        let value = self.eval_expr_for_data_directive(expr)?;
+        let Some(section) = self.layout.sections.get(&target_section) else {
+            return Ok(None);
+        };
+        let base_addr = section.base_addr.unwrap_or(0);
+        let adjusted = value.checked_sub(base_addr).ok_or_else(|| {
+            AstEvalError::directive(
+                "section relocation value underflows the target section base",
+                expr_span(expr),
+            )
+        })?;
+        Ok(Some((adjusted, target_section)))
+    }
+
+    #[cfg(feature = "vm-runtime-only")]
+    fn eval_hunk_abs32_data_relocation_value(
+        &self,
+        _expr: &Expr,
+    ) -> Result<Option<(u32, String)>, AstEvalError> {
+        Ok(None)
     }
 
     #[cfg(feature = "vm-runtime-only")]
@@ -1120,17 +1244,15 @@ impl<'a> AsmLine<'a> {
                                 "section {section_name} relocation base exceeds supported range"
                             )
                         })?;
-                        for relocation in &self.pending_hunk_relocations {
-                            let Some(offset) = base_offset.checked_add(relocation.offset) else {
+                        for fixup in &self.pending_output_fixups {
+                            let Some(offset) = base_offset.checked_add(fixup.offset) else {
                                 return Err(format!(
                                     "section {section_name} relocation offset exceeds supported range"
                                 ));
                             };
-                            section.hunk_relocations.push(HunkRelocationRecord {
-                                kind: relocation.kind,
-                                offset,
-                                target_section: relocation.target_section.clone(),
-                            });
+                            let mut fixup = fixup.clone();
+                            fixup.offset = offset;
+                            section.output_fixups.push(fixup);
                         }
                         section.bytes.extend_from_slice(&self.bytes);
                     }
@@ -1539,7 +1661,7 @@ impl<'a> AsmLine<'a> {
         self.start_addr = addr;
         self.pass = pass;
         self.bytes.clear();
-        self.pending_hunk_relocations.clear();
+        self.pending_output_fixups.clear();
         self.aux_value = 0;
 
         self.label = None;
@@ -1951,6 +2073,13 @@ impl<'a> AsmLine<'a> {
                     );
                 }
                 self.sync_value_symbol(&full_name, &value);
+                if op == AssignOp::Const && self.expr_is_absolute_constant_symbol_expr(expr) {
+                    self.layout
+                        .absolute_constant_symbols
+                        .insert(full_name.clone());
+                } else {
+                    self.layout.absolute_constant_symbols.remove(&full_name);
+                }
                 self.aux_value = scalar_val;
                 return LineStatus::DirEqu;
             }
@@ -2111,6 +2240,67 @@ impl<'a> AsmLine<'a> {
             | Expr::Member { .. }
             | Expr::Call { .. } => false,
         }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_absolute_constant_symbol_expr(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Number(_, _) | Expr::String(_, _) => true,
+            Expr::Identifier(name, _) => {
+                let Some(resolved_name) = self.resolve_symbol_name_for_relocation(name) else {
+                    return false;
+                };
+                self.layout
+                    .absolute_constant_symbols
+                    .contains(&resolved_name)
+            }
+            Expr::Indirect(inner, _)
+            | Expr::IndirectLong(inner, _)
+            | Expr::Immediate(inner, _)
+            | Expr::Unary { expr: inner, .. } => self.expr_is_absolute_constant_symbol_expr(inner),
+            Expr::List(items, _) | Expr::Tuple(items, _) => items
+                .iter()
+                .all(|item| self.expr_is_absolute_constant_symbol_expr(item)),
+            Expr::StructLiteral { fields, .. } => fields
+                .iter()
+                .all(|(_, value)| self.expr_is_absolute_constant_symbol_expr(value)),
+            Expr::Binary { left, right, .. } => {
+                self.expr_is_absolute_constant_symbol_expr(left)
+                    && self.expr_is_absolute_constant_symbol_expr(right)
+            }
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                self.expr_is_absolute_constant_symbol_expr(cond)
+                    && self.expr_is_absolute_constant_symbol_expr(then_expr)
+                    && self.expr_is_absolute_constant_symbol_expr(else_expr)
+            }
+            Expr::Range {
+                start, end, step, ..
+            } => {
+                self.expr_is_absolute_constant_symbol_expr(start)
+                    && self.expr_is_absolute_constant_symbol_expr(end)
+                    && step.as_ref().is_none_or(|step_expr| {
+                        self.expr_is_absolute_constant_symbol_expr(step_expr)
+                    })
+            }
+            Expr::Error(_, _)
+            | Expr::Placeholder(_)
+            | Expr::Dollar(_)
+            | Expr::Register(_, _)
+            | Expr::Index { .. }
+            | Expr::Member { .. }
+            | Expr::Call { .. } => false,
+        }
+    }
+
+    #[cfg(feature = "vm-runtime-only")]
+    #[allow(dead_code)]
+    fn expr_is_absolute_constant_symbol_expr(&self, expr: &Expr) -> bool {
+        Self::expr_is_relocation_free_literal(expr)
     }
 
     fn operands_are_relocation_free_literals(operands: &[Expr]) -> bool {
@@ -2460,6 +2650,7 @@ impl<'a> AsmLine<'a> {
         let mut unsupported_nonfree = !operands
             .first()
             .is_some_and(|unit| self.emit_unit_is_relocation_free_literal(unit));
+        let mut unsupported_hunk_fixup = false;
         let mut planned_values: Vec<(u32, Option<String>, Span)> = Vec::new();
         for expr in &operands[1..] {
             let relocation = if unit_bytes == 4 {
@@ -2497,10 +2688,17 @@ impl<'a> AsmLine<'a> {
                     )
                 }
             };
-            if !Self::expr_is_relocation_free_literal(expr) {
+            if self.hunk_data_expression_requires_unsupported_fixup(expr) {
                 unsupported_nonfree = true;
+                unsupported_hunk_fixup = true;
             }
             planned_values.push((value, None, expr_span(expr)));
+        }
+
+        if unsupported_hunk_fixup {
+            self.mark_current_section_hunk_fixup_error(
+                "format=hunk does not support this symbolic .emit long expression in v0.2",
+            );
         }
 
         if unsupported_nonfree {
@@ -2531,11 +2729,11 @@ impl<'a> AsmLine<'a> {
                 );
             }
             if let Some(target_section) = target_section {
-                self.pending_hunk_relocations.push(HunkRelocationRecord {
-                    kind: HunkRelocationKind::Abs32,
-                    offset: relocation_offset,
-                    target_section,
-                });
+                if let Some(fixup) =
+                    self.hunk_abs32_output_fixup(relocation_offset, value, target_section)
+                {
+                    self.pending_output_fixups.push(fixup);
+                }
             }
         }
 
@@ -2748,6 +2946,7 @@ impl<'a> AsmLine<'a> {
         let mut projected_total = 0u32;
         let mut saw_supported_relocation = false;
         let mut unsupported_nonfree = false;
+        let mut unsupported_hunk_fixup = false;
         for expr in operands {
             if let Expr::String(raw_bytes, span) = expr {
                 let encoded_bytes = match self.encode_text_bytes(
@@ -2845,7 +3044,7 @@ impl<'a> AsmLine<'a> {
                 );
             }
             let relocation = if size == 4 {
-                match self.eval_hunk_abs32_relocation_value(expr) {
+                match self.eval_hunk_abs32_data_relocation_value(expr) {
                     Ok(value) => value,
                     Err(err) => {
                         return self.failure_at_span(
@@ -2876,7 +3075,8 @@ impl<'a> AsmLine<'a> {
                         )
                     }
                 };
-                if !Self::expr_is_relocation_free_literal(expr) {
+                if self.hunk_data_expression_requires_unsupported_fixup(expr) {
+                    unsupported_hunk_fixup = true;
                     unsupported_nonfree = true;
                 }
                 (value, None)
@@ -2919,12 +3119,24 @@ impl<'a> AsmLine<'a> {
                 );
             }
             if let Some(target_section) = target_section {
-                self.pending_hunk_relocations.push(HunkRelocationRecord {
-                    kind: HunkRelocationKind::Abs32,
-                    offset: relocation_offset,
-                    target_section,
-                });
+                if let Some(fixup) =
+                    self.hunk_abs32_output_fixup(relocation_offset, val, target_section)
+                {
+                    self.pending_output_fixups.push(fixup);
+                }
             }
+        }
+
+        if unsupported_hunk_fixup {
+            let directive = match size {
+                1 => ".byte",
+                2 => ".word",
+                4 => ".long",
+                _ => ".data",
+            };
+            self.mark_current_section_hunk_fixup_error(&format!(
+                "format=hunk does not support this symbolic {directive} expression in v0.3"
+            ));
         }
 
         if unsupported_nonfree {

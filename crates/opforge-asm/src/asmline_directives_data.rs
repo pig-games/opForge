@@ -257,6 +257,13 @@ impl<'a> AsmLine<'a> {
             );
         }
         self.sync_value_symbol(&full_name, &value);
+        if directive == "CONST" && self.expr_is_absolute_constant_symbol_expr(expr) {
+            self.layout
+                .absolute_constant_symbols
+                .insert(full_name.clone());
+        } else {
+            self.layout.absolute_constant_symbols.remove(&full_name);
+        }
         self.aux_value = scalar_val;
         LineStatus::DirEqu
     }

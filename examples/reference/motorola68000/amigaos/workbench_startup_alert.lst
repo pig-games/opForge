@@ -1,0 +1,134 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; AmigaOS Hunk executable example.
+----                                2  ; Translated from Sakura-IT ASM/MiniStartup/startup.s into opForge's
+----                                3  ; v0.3 sectioned Hunk notation.
+----                                4  
+----                                5          .module main
+----                                6          .cpu 68000
+----                                7  
+----    EQU 0004                    8  SysBase                 = 4
+----                                9  
+----                               10  ; exec.library LVOs
+----    EQU FFFFFDD8               11  OpenLibrary             = -552
+----    EQU FFFFFE62               12  CloseLibrary            = -414
+----    EQU FFFFFEDA               13  FindTask                = -294
+----    EQU FFFFFE80               14  WaitPort                = -384
+----    EQU FFFFFE8C               15  GetMsg                  = -372
+----    EQU FFFFFE86               16  ReplyMsg                = -378
+----    EQU FFFFFF7C               17  Forbid                  = -132
+----                               18  
+----                               19  ; intuition.library LVOs
+----    EQU FFFFFFA6               20  DisplayAlert            = -90
+----                               21  
+----                               22  ; Minimal offsets translated from dos/dosextens.i as used by the source.
+----    EQU 00AC                   23  pr_CLI                  = 172
+----    EQU 005C                   24  pr_MsgPort              = 92
+----                               25  
+----                               26          .section code, kind=code  ; [section code]
+----                               27    ; [section code]
+----                               28  start  ; [section code]
+0000    48 E7 30 22                29          MOVEM.L D2/D3/A2/A6,-(SP)  ; [section code]
+0004    42 82                      30          CLR.L D2  ; [section code]
+----                               31    ; [section code]
+0006    93 C9                      32          SUBA.L A1,A1  ; [section code]
+0008    2C 78 00 04                33          MOVEA.L SysBase.W,A6  ; [section code]
+000C    4E AE FE DA                34          JSR FindTask(A6)  ; [section code]
+----                               35    ; [section code]
+0010    24 40                      36          MOVEA.L D0,A2  ; [section code]
+0012    4A AA 00 AC                37          TST.L pr_CLI(A2)  ; [section code]
+0016    66 12                      38          BNE.S no_workbench  ; [section code]
+----                               39    ; [section code]
+0018    41 EA 00 5C                40          LEA pr_MsgPort(A2),A0  ; [section code]
+001C    4E AE FE 80                41          JSR WaitPort(A6)  ; [section code]
+0020    41 EA 00 5C                42          LEA pr_MsgPort(A2),A0  ; [section code]
+0024    4E AE FE 8C                43          JSR GetMsg(A6)  ; [section code]
+0028    24 00                      44          MOVE.L D0,D2  ; [section code]
+----                               45    ; [section code]
+----                               46  no_workbench  ; [section code]
+002A    61 18                      47          BSR.S main  ; [section code]
+002C    26 00                      48          MOVE.L D0,D3  ; [section code]
+----                               49    ; [section code]
+002E    4A 82                      50          TST.L D2  ; [section code]
+0030    67 0A                      51          BEQ.S no_reply_needed  ; [section code]
+0032    4E AE FF 7C                52          JSR Forbid(A6)  ; [section code]
+0036    22 42                      53          MOVEA.L D2,A1  ; [section code]
+0038    4E AE FE 86                54          JSR ReplyMsg(A6)  ; [section code]
+----                               55    ; [section code]
+----                               56  no_reply_needed  ; [section code]
+003C    20 03                      57          MOVE.L D3,D0  ; [section code]
+003E    4C DF 44 0C                58          MOVEM.L (SP)+,D2/D3/A2/A6  ; [section code]
+0042    4E 75                      59          RTS  ; [section code]
+----                               60    ; [section code]
+----                               61  main  ; [section code]
+0044    2F 0E                      62          MOVE.L A6,-(SP)  ; [section code]
+----                               63    ; [section code]
+0046    43 F9 00 00 00 00          64          LEA intui_name,A1  ; [section code]
+004C    70 24                      65          MOVEQ #36,D0  ; [section code]
+004E    2C 78 00 04                66          MOVEA.L SysBase.W,A6  ; [section code]
+0052    4E AE FD D8                67          JSR OpenLibrary(A6)  ; [section code]
+----                               68    ; [section code]
+0056    4A 80                      69          TST.L D0  ; [section code]
+0058    67 1E                      70          BEQ.S no_intui  ; [section code]
+----                               71    ; [section code]
+005A    2C 40                      72          MOVEA.L D0,A6  ; [section code]
+005C    20 3C 01 23 45 67          73          MOVE.L #$01234567,D0  ; [section code]
+0062    72 1C                      74          MOVEQ #28,D1  ; [section code]
+0064    41 F9 00 00 00 12          75          LEA hello_alert,A0  ; [section code]
+006A    4E AE FF A6                76          JSR DisplayAlert(A6)  ; [section code]
+----                               77    ; [section code]
+006E    22 4E                      78          MOVEA.L A6,A1  ; [section code]
+0070    2C 78 00 04                79          MOVEA.L SysBase.W,A6  ; [section code]
+0074    4E AE FE 62                80          JSR CloseLibrary(A6)  ; [section code]
+----                               81    ; [section code]
+----                               82  no_intui  ; [section code]
+0078    42 80                      83          CLR.L D0  ; [section code]
+007A    2C 5F                      84          MOVEA.L (SP)+,A6  ; [section code]
+007C    4E 75                      85          RTS  ; [section code]
+----                               86    ; [section code]
+----                               87          .endsection
+----                               88          .section data, kind=data  ; [section data]
+----                               89    ; [section data]
+----                               90  intui_name  ; [section data]
+0000    69 6E 74 75 69 74 69 6F 6E 2E 6C 69 62 72 61 72 79 00    91          .byte "intuition.library",0  ; [section data]
+0012    +0000                      92          .align 2  ; [section data]
+----                               93    ; [section data]
+----                               94  hello_alert  ; [section data]
+0012    10 00                      95          .word 16  ; [section data]
+0014    10 48 65 6C 6C 6F 20 57 6F 72 6C 64 21 00 00    96          .byte 16,"Hello World!",0,0  ; [section data]
+----                               97    ; [section data]
+----                               98          .endsection
+----                               99          .output "build/workbench_startup_alert.hunk", format=hunk, sections=code,data
+----                              100          .endmodule
+
+Lines: 100  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.CloseLibrary  FFFFFE62  prv  lbl 
+main.DisplayAlert  FFFFFFA6  prv  lbl 
+main.FindTask    FFFFFEDA  prv  lbl 
+main.Forbid      FFFFFF7C  prv  lbl 
+main.GetMsg      FFFFFE8C  prv  lbl 
+main.hello_alert  0012      prv  lbl 
+main.intui_name  0000      prv  lbl 
+main.main        0044      prv  lbl 
+main.no_intui    0078      prv  lbl 
+main.no_reply_needed  003C      prv  lbl 
+main.no_workbench  002A      prv  lbl 
+main.OpenLibrary  FFFFFDD8  prv  lbl 
+main.pr_CLI      00AC      prv  lbl 
+main.pr_MsgPort  005C      prv  lbl 
+main.ReplyMsg    FFFFFE86  prv  lbl 
+main.start       0000      prv  lbl 
+main.SysBase     0004      prv  lbl 
+main.WaitPort    FFFFFE80  prv  lbl 
+
+Total memory is 0 bytes
+
+GENERATED OUTPUT
+
+(none)

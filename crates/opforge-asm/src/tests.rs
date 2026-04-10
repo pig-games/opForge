@@ -72,7 +72,7 @@ use vm::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};
 use vm::execution_model::set_core_expr_parser_failpoint_for_tests;
 use vm::hierarchy::ScopedOwner;
 use vm::intel8080_vm::mode_key_for_instruction_entry;
-use vm::output_model::{HunkRelocationKind, HunkRelocationRecord};
+use vm::output_model::OutputFixupRecord;
 use vm::portable_contract::{PortableSpan, PortableToken, PortableTokenKind};
 use vm::rollout::{
     family_runtime_mode, family_runtime_rollout_policy, package_runtime_default_enabled_for_family,
@@ -1378,13 +1378,33 @@ fn example_uses_srec_reference(asm_path: &Path) -> bool {
     asm_path
         .components()
         .any(|component| component.as_os_str() == "motorola68000")
+        && !asm_path
+            .components()
+            .any(|component| component.as_os_str() == "amigaos")
 }
 
 fn example_reference_payload_extension(asm_path: &Path) -> &'static str {
-    if example_uses_srec_reference(asm_path) {
+    if asm_path
+        .components()
+        .any(|component| component.as_os_str() == "amigaos")
+    {
+        "hunk"
+    } else if example_uses_srec_reference(asm_path) {
         "srec"
     } else {
         "hex"
+    }
+}
+
+fn example_output_payload_path(
+    fixture_out_dir: &Path,
+    base: &str,
+    payload_extension: &str,
+) -> PathBuf {
+    if payload_extension == "hunk" {
+        fixture_out_dir.join("build").join(format!("{base}.hunk"))
+    } else {
+        fixture_out_dir.join(format!("{base}.{payload_extension}"))
     }
 }
 
@@ -7432,6 +7452,30 @@ fn m68000_alias_spellings_match_canonical_baseline_forms() {
         "unsuffixed BRA should match BRA.W"
     );
     assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BRA.S $0004"),
+        assemble_bytes(m68000_cpu_id, "    BRA.B $0004")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BSR.S $0004"),
+        assemble_bytes(m68000_cpu_id, "    BSR.B $0004")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BNE.S $0004"),
+        assemble_bytes(m68000_cpu_id, "    BNE.B $0004")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    BEQ.S $0004"),
+        assemble_bytes(m68000_cpu_id, "    BEQ.B $0004")
+    );
+    let (status, message) = assemble_line_status(m68000_cpu_id, "    MOVE.S D0,D1");
+    assert_eq!(status, LineStatus::Error);
+    assert!(
+        message
+            .as_deref()
+            .is_some_and(|message| message.contains("unsupported size suffix for MOVE")),
+        "unexpected MOVE.S diagnostic: {message:?}"
+    );
+    assert_eq!(
         assemble_bytes(m68000_cpu_id, "    MOVE.W (A0,D1),D0"),
         assemble_bytes(m68000_cpu_id, "    MOVE.W 0(A0,D1.W),D0")
     );
@@ -8052,6 +8096,8 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/68080_fpu_surface",
         "motorola68000/68080_full_additional_surface",
         "motorola68000/amigaos/helloworld",
+        "motorola68000/amigaos/timer_device_benchmark",
+        "motorola68000/amigaos/workbench_startup_alert",
         "motorola68000/amigaos/writefile",
     ] {
         let asm_path = examples_dir.join(format!("{stem}.asm"));
@@ -8200,7 +8246,8 @@ fn examples_match_reference_outputs() {
                 .join(&relative_stem)
                 .with_extension(payload_extension);
             let ref_lst_path = reference_dir.join(&relative_stem).with_extension("lst");
-            let out_payload_path = fixture_out_dir.join(format!("{base}.{payload_extension}"));
+            let out_payload_path =
+                example_output_payload_path(&fixture_out_dir, base, payload_extension);
             let out_lst_path = fixture_out_dir.join(format!("{base}.lst"));
             let out_payload = fs::read(&out_payload_path).ok();
             let out_lst = fs::read(&out_lst_path).ok();
@@ -8280,8 +8327,12 @@ fn examples_match_reference_outputs() {
                 Err(err) => panic!("Failed to assemble {base}: {err}"),
             };
 
-            let out_payload = fs::read(fixture_out_dir.join(format!("{base}.{payload_extension}")))
-                .unwrap_or_else(|err| panic!("Missing output payload for {base}: {err}"));
+            let out_payload = fs::read(example_output_payload_path(
+                &fixture_out_dir,
+                base,
+                payload_extension,
+            ))
+            .unwrap_or_else(|err| panic!("Missing output payload for {base}: {err}"));
             let out_lst = fs::read(fixture_out_dir.join(format!("{base}.lst")))
                 .unwrap_or_else(|err| panic!("Missing output list for {base}: {err}"));
             let ref_payload_path = reference_dir
@@ -8328,8 +8379,12 @@ fn examples_match_reference_outputs() {
             Err(err) => panic!("Failed to assemble {base}: {err}"),
         };
 
-        let out_payload = fs::read(fixture_out_dir.join(format!("{base}.{payload_extension}")))
-            .unwrap_or_else(|err| panic!("Missing output payload for {base}: {err}"));
+        let out_payload = fs::read(example_output_payload_path(
+            &fixture_out_dir,
+            base,
+            payload_extension,
+        ))
+        .unwrap_or_else(|err| panic!("Missing output payload for {base}: {err}"));
         let out_lst = fs::read(fixture_out_dir.join(format!("{base}.lst")))
             .unwrap_or_else(|err| panic!("Missing output list for {base}: {err}"));
         let ref_payload_path = reference_dir
@@ -13978,6 +14033,18 @@ fn hunk_section(
 ) -> SectionState {
     SectionState {
         base_addr: Some(base_addr),
+        layout_placed: true,
+        bytes: bytes.to_vec(),
+        max_pc: allocation_size,
+        kind,
+        ..Default::default()
+    }
+}
+
+fn unplaced_hunk_section(kind: SectionKind, bytes: &[u8], allocation_size: u32) -> SectionState {
+    SectionState {
+        base_addr: None,
+        layout_placed: false,
         bytes: bytes.to_vec(),
         max_pc: allocation_size,
         kind,
@@ -13990,12 +14057,25 @@ fn hunk_section_with_relocations(
     base_addr: u32,
     bytes: &[u8],
     allocation_size: u32,
-    relocations: Vec<HunkRelocationRecord>,
+    fixups: Vec<OutputFixupRecord>,
 ) -> SectionState {
     let mut section = hunk_section(kind, base_addr, bytes, allocation_size);
     section.relocation_free_certified = false;
     section.hunk_relocation_compatible = true;
-    section.hunk_relocations = relocations;
+    section.output_fixups = fixups;
+    section
+}
+
+fn unplaced_hunk_section_with_relocations(
+    kind: SectionKind,
+    bytes: &[u8],
+    allocation_size: u32,
+    fixups: Vec<OutputFixupRecord>,
+) -> SectionState {
+    let mut section = unplaced_hunk_section(kind, bytes, allocation_size);
+    section.relocation_free_certified = false;
+    section.hunk_relocation_compatible = true;
+    section.output_fixups = fixups;
     section
 }
 
@@ -14041,11 +14121,12 @@ fn linker_output_hunk_emits_reloc32_records_for_relocation_backed_segments() {
             0x2000,
             &[0x00, 0x00, 0x00, 0x00],
             4,
-            vec![HunkRelocationRecord {
-                kind: HunkRelocationKind::Abs32,
-                offset: 0,
-                target_section: "code".to_string(),
-            }],
+            vec![OutputFixupRecord::hunk_abs32(
+                "code".to_string(),
+                0,
+                0,
+                "code".to_string(),
+            )],
         ),
     )]);
 
@@ -14125,6 +14206,51 @@ fn linker_output_hunk_omits_empty_non_bss_sections_deterministically() {
 }
 
 #[test]
+fn linker_output_hunk_reloc32_targets_emitted_segment_indices_after_empty_omission() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code", "empty", "data"],
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent,
+    );
+    let sections = HashMap::from([
+        (
+            "code".to_string(),
+            hunk_section_with_relocations(
+                SectionKind::Code,
+                0x2000,
+                &[0x00, 0x00, 0x00, 0x00],
+                4,
+                vec![OutputFixupRecord::hunk_abs32(
+                    "code".to_string(),
+                    0,
+                    0,
+                    "data".to_string(),
+                )],
+            ),
+        ),
+        (
+            "empty".to_string(),
+            hunk_section(SectionKind::Data, 0x2004, &[], 0),
+        ),
+        (
+            "data".to_string(),
+            hunk_section(SectionKind::Data, 0x2008, &[0x99], 1),
+        ),
+    ]);
+
+    let payload = build_linker_output_payload(&output, &sections).expect("hunk payload");
+    assert!(
+        payload.windows(12).any(|window| {
+            window
+                == [
+                    0x00, 0x00, 0x03, 0xec, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                ]
+        }),
+        "expected reloc32 target index 1 after empty-section omission: {payload:02X?}"
+    );
+}
+
+#[test]
 fn linker_output_hunk_rejects_non_code_first_emitted_segment() {
     let output = hunk_output_directive(
         "build/out.hunk",
@@ -14134,11 +14260,11 @@ fn linker_output_hunk_rejects_non_code_first_emitted_segment() {
     let sections = HashMap::from([
         (
             "data".to_string(),
-            hunk_section(SectionKind::Data, 0x1000, &[0xaa], 1),
+            unplaced_hunk_section(SectionKind::Data, &[0xaa], 1),
         ),
         (
             "code".to_string(),
-            hunk_section(SectionKind::Code, 0x2000, &[0x4e, 0x75], 2),
+            unplaced_hunk_section(SectionKind::Code, &[0x4e, 0x75], 2),
         ),
     ]);
 
@@ -14329,7 +14455,12 @@ fn linker_output_hunk_live_path_rejects_symbolic_code_without_relocation_proof()
 
     let err = build_linker_output_payload(output, assembler.sections())
         .expect_err("symbolic code should remain unproven");
-    assert!(err.message().contains("explicit relocation-free proof"));
+    assert!(
+        err.message()
+            .contains("format=hunk does not support this symbolic .word expression"),
+        "unexpected message: {}",
+        err.message()
+    );
 }
 
 #[test]
@@ -14403,6 +14534,374 @@ fn linker_output_hunk_live_path_emits_reloc32_for_long_section_symbol() {
 }
 
 #[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_long_section_symbol_with_addend() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .long target + 4",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(&section.bytes[0..4], &[0x0a, 0x00, 0x00, 0x00]);
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_does_not_treat_in_range_absolute_constant_long_as_reloc32() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "const_addr .const $2004",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .long const_addr",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_ne!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert!(section.output_fixups.is_empty());
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_long_section_symbol_with_equate_addend() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "offset .const 4",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .long target + offset",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(&section.bytes[0..4], &[0x0a, 0x00, 0x00, 0x00]);
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_long_section_symbol_with_address_like_equate_addend(
+) {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "offset .const $2004",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .long target + offset",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(&section.bytes[0..4], &[0x0a, 0x20, 0x00, 0x00]);
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_long_pointer_table() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "table: .long target1, target2 + 4",
+        " RTS",
+        "target1: .byte 0",
+        "target2: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(section.output_fixups.len(), 2);
+    assert_eq!(
+        &section.bytes[0..8],
+        &[0x0a, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00]
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload.windows(12).any(|window| {
+            window
+                == [
+                    0x00, 0x00, 0x03, 0xec, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+                ]
+        }),
+        "expected a two-entry HUNK_RELOC32 group for the pointer table: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_unsupported_symbolic_long_expression_explicitly() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .long target1 - target2",
+        " RTS",
+        "target1: .byte 0",
+        "target2: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("unsupported symbolic .long expression should fail explicitly");
+    assert!(
+        err.message()
+            .contains("format=hunk does not support this symbolic .long expression in v0.3"),
+        "unexpected message: {}",
+        err.message()
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_long_section_symbol_with_equate_subtract_addend() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "offset .const 4",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .long target - offset",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("subtraction-by-const should remain outside the frozen v0.3 matrix");
+    assert!(
+        err.message()
+            .contains("format=hunk does not support this symbolic .long expression"),
+        "unexpected message: {}",
+        err.message()
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_label_alias_addends_for_long_relocations() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "alias .const target2",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: .long target1 + alias",
+        " RTS",
+        "target1: .byte 0",
+        "target2: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("label-alias addends should remain unsupported");
+    assert!(
+        err.message()
+            .contains("format=hunk does not support this symbolic .long expression"),
+        "unexpected message: {}",
+        err.message()
+    );
+}
+
+fn assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source: &str) {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        source,
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent,
+        "expected reloc32-backed Hunk output for `{source}`"
+    );
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload for `{source}`: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_v03_bare_symbol_instruction_subset() {
+    for source in [
+        "start: LEA target,A1",
+        "start: PEA target",
+        "start: MOVE.L target,D0",
+        "start: MOVE.L D0,target",
+        "start: MOVEA.L target,A0",
+        "start: JMP target",
+        "start: JSR target",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_non_matrix_bare_symbolic_instruction_forms() {
+    for source in ["start: MOVE.L target,8(A0)", "start: MOVE.L 8(A0),target"] {
+        let lines = vec![
+            ".module main".to_string(),
+            ".cpu 68000".to_string(),
+            ".region ram, $2000, $20ff".to_string(),
+            ".section code, kind=code".to_string(),
+            source.to_string(),
+            " RTS".to_string(),
+            "target: .byte 0".to_string(),
+            ".endsection".to_string(),
+            ".place code in ram".to_string(),
+            ".output \"build/out.hunk\", format=hunk, sections=code".to_string(),
+            ".endmodule".to_string(),
+        ];
+
+        let mut assembler = Assembler::new();
+        assembler.root_metadata.root_module_id = Some("main".to_string());
+        assembler.clear_diagnostics();
+        let pass1 = assembler.pass1(&lines);
+        assert!(pass1.errors > 0, "expected pass1 failure for `{source}`");
+        assert!(
+            assembler
+                .diagnostics
+                .iter()
+                .any(|diag| diag.error.message().contains("explicit .L notation")),
+            "expected explicit .L diagnostic for `{source}`"
+        );
+    }
+}
+
+#[test]
 fn linker_output_hunk_live_path_emits_reloc32_for_lea_absolute_long_symbol() {
     let assembler = run_passes(&[
         ".module main",
@@ -14440,13 +14939,63 @@ fn linker_output_hunk_live_path_emits_reloc32_for_lea_absolute_long_symbol() {
 }
 
 #[test]
-fn linker_output_hunk_live_path_emits_reloc32_for_move_immediate_long_symbol() {
+fn linker_output_hunk_live_path_emits_cross_section_reloc32_for_packed_code_to_data_symbol() {
     let assembler = run_passes(&[
         ".module main",
         ".cpu 68000",
         ".region ram, $2000, $20ff",
         ".section code, kind=code",
-        "start: MOVE.L #target,D1",
+        "start: LEA target.L,A1",
+        " RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "target: .byte 0",
+        ".endsection",
+        ".pack in ram : code, data",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let code = assembler.sections().get("code").expect("code section");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(code.output_fixups.len(), 1);
+    assert_eq!(code.output_fixups[0].target_section_name(), Some("data"));
+    assert_eq!(&code.bytes[2..6], &[0x00, 0x00, 0x00, 0x00]);
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xea]),
+        "expected HUNK_DATA in payload: {payload:02X?}"
+    );
+    assert!(
+        payload.windows(12).any(|window| {
+            window
+                == [
+                    0x00, 0x00, 0x03, 0xec, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                ]
+        }),
+        "expected one-entry HUNK_RELOC32 group targeting segment 1: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_from_absolute_long_symbol() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L target.L,D0",
         " RTS",
         "target: .byte 0",
         ".endsection",
@@ -14471,6 +15020,280 @@ fn linker_output_hunk_live_path_emits_reloc32_for_move_immediate_long_symbol() {
             .windows(4)
             .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
         "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_immediate_long_symbol() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #target,D1",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(section.output_fixups.len(), 1);
+    assert_eq!(section.output_fixups[0].offset, 2);
+    assert_eq!(&section.bytes[2..6], &[0x00, 0x00, 0x00, 0x08]);
+
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
+        "expected HUNK_RELOC32 in payload: {payload:02X?}"
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_does_not_treat_in_range_absolute_constant_move_immediate_as_reloc32(
+) {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "const_addr .const $2004",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #const_addr,D1",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let section = assembler.sections().get("code").expect("code section");
+
+    assert_ne!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert!(section.output_fixups.is_empty());
+}
+
+#[test]
+fn linker_output_hunk_live_path_explicit_and_unplaced_payloads_match_for_relocation_matrix_remainder(
+) {
+    let unplaced = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".section code, kind=code",
+        "start: MOVE.L #target,D1",
+        " RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "table: .long target, target + 4",
+        "target: .byte 0",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+    let explicitly_placed = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #target,D1",
+        " RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "table: .long target, target + 4",
+        "target: .byte 0",
+        ".endsection",
+        ".pack in ram : code, data",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+    let unplaced_output = unplaced
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let code = unplaced.sections().get("code").expect("code section");
+    let data = unplaced.sections().get("data").expect("data section");
+
+    assert_eq!(
+        unplaced_output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(code.output_fixups.len(), 1);
+    assert_eq!(code.output_fixups[0].target_section_name(), Some("data"));
+    assert_eq!(code.output_fixups[0].offset, 2);
+    assert_eq!(&code.bytes[2..6], &[0x00, 0x00, 0x00, 0x08]);
+    assert_eq!(data.output_fixups.len(), 2);
+    assert!(data
+        .output_fixups
+        .iter()
+        .all(|fixup| fixup.target_section_name() == Some("data")));
+    assert_eq!(
+        &data.bytes[0..8],
+        &[0x08, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00]
+    );
+
+    let unplaced_payload = build_linker_output_payload(unplaced_output, unplaced.sections())
+        .expect("unplaced payload");
+    let explicitly_placed_payload = build_linker_output_payload(
+        explicitly_placed
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive"),
+        explicitly_placed.sections(),
+    )
+    .expect("placed payload");
+
+    assert_eq!(unplaced_payload, explicitly_placed_payload);
+}
+
+#[test]
+fn linker_output_hunk_live_path_explicit_and_unplaced_payloads_match_for_equate_addend_long_relocations(
+) {
+    let unplaced = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "offset .const 4",
+        ".section code, kind=code",
+        "start: MOVE.L #target,D1",
+        " RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "table: .long target + offset",
+        "target: .byte 0",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+    let explicitly_placed = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "offset .const 4",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #target,D1",
+        " RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "table: .long target + offset",
+        "target: .byte 0",
+        ".endsection",
+        ".pack in ram : code, data",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+    let unplaced_output = unplaced
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let data = unplaced.sections().get("data").expect("data section");
+
+    assert_eq!(
+        unplaced_output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    assert_eq!(data.output_fixups.len(), 1);
+    assert_eq!(data.output_fixups[0].target_section_name(), Some("data"));
+    assert_eq!(&data.bytes[0..4], &[0x08, 0x00, 0x00, 0x00]);
+
+    let unplaced_payload = build_linker_output_payload(unplaced_output, unplaced.sections())
+        .expect("unplaced payload");
+    let explicitly_placed_payload = build_linker_output_payload(
+        explicitly_placed
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive"),
+        explicitly_placed.sections(),
+    )
+    .expect("placed payload");
+
+    assert_eq!(unplaced_payload, explicitly_placed_payload);
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_unsupported_move_immediate_symbolic_expression_explicitly()
+{
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #target1-target2,D1",
+        " RTS",
+        "target1: .byte 0",
+        "target2: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("unsupported symbolic immediate expression should fail explicitly");
+    assert!(
+        err.message()
+            .contains("format=hunk does not support this symbolic instruction form in v0.3"),
+        "unexpected message: {}",
+        err.message()
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_move_immediate_symbol_plus_equate_outside_v03_matrix() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        "offset .const 4",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: MOVE.L #target+offset,D1",
+        " RTS",
+        "target: .byte 0",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("MOVE.L #label+equate should remain outside the frozen v0.3 matrix");
+    assert!(
+        err.message()
+            .contains("format=hunk does not support this symbolic instruction form in v0.3"),
+        "unexpected message: {}",
+        err.message()
     );
 }
 
@@ -14725,31 +15548,92 @@ fn linker_output_hunk_live_path_emits_reloc32_for_move_to_absolute_long_symbol_a
 }
 
 #[test]
-fn linker_output_hunk_live_path_rejects_unplaced_section() {
-    let lines = vec![
-        ".module main".to_string(),
-        ".region ram, $1000, $10ff".to_string(),
-        ".section code, kind=code".to_string(),
-        ".byte $4e, $75".to_string(),
-        ".endsection".to_string(),
-        ".output \"build/out.hunk\", format=hunk, sections=code".to_string(),
-        ".endmodule".to_string(),
-    ];
+fn linker_output_hunk_live_path_accepts_unplaced_code_and_data_sections() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".section code, kind=code",
+        "start: RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "value: .byte $99",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
 
-    let mut assembler = Assembler::new();
-    assembler.root_metadata.root_module_id = Some("main".to_string());
-    assembler.clear_diagnostics();
-    let pass1 = assembler.pass1(&lines);
-    assert!(pass1.errors > 0);
-    assert!(assembler.diagnostics.iter().any(|diag| {
-        diag.error
-            .message()
-            .contains("Section referenced by .output must be explicitly placed")
-    }));
+    let payload = build_linker_output_payload(output, assembler.sections())
+        .expect("unplaced code,data Hunk output should succeed");
+    assert!(
+        payload.starts_with(&[0x00, 0x00, 0x03, 0xf3]),
+        "unexpected Hunk header: {payload:02X?}"
+    );
 }
 
 #[test]
-fn linker_output_hunk_rejects_unassigned_bases() {
+fn linker_output_hunk_accepts_explicitly_placed_sections_without_assigned_bases() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code", "data", "bss"],
+        LinkerOutputRelocationDisposition::ProvenRelocationFree,
+    );
+    let sections = HashMap::from([
+        (
+            "code".to_string(),
+            SectionState {
+                base_addr: None,
+                layout_placed: true,
+                bytes: vec![0x60],
+                max_pc: 1,
+                kind: SectionKind::Code,
+                ..Default::default()
+            },
+        ),
+        (
+            "data".to_string(),
+            SectionState {
+                base_addr: None,
+                layout_placed: true,
+                bytes: vec![0xde, 0xad],
+                max_pc: 8,
+                kind: SectionKind::Data,
+                ..Default::default()
+            },
+        ),
+        (
+            "bss".to_string(),
+            SectionState {
+                base_addr: None,
+                layout_placed: true,
+                bytes: vec![],
+                max_pc: 12,
+                kind: SectionKind::Bss,
+                ..Default::default()
+            },
+        ),
+    ]);
+
+    let payload = build_linker_output_payload(&output, &sections)
+        .expect("explicitly placed sections should not require assigned bases");
+    assert_eq!(&payload[20..32], &[0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3]);
+    assert_eq!(
+        &payload[32..payload.len()],
+        &[
+            0x00, 0x00, 0x03, 0xe9, 0x00, 0x00, 0x00, 0x01, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x03, 0xf2, 0x00, 0x00, 0x03, 0xea, 0x00, 0x00, 0x00, 0x01, 0xde, 0xad, 0x00, 0x00,
+            0x00, 0x00, 0x03, 0xf2, 0x00, 0x00, 0x03, 0xeb, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00,
+            0x03, 0xf2,
+        ]
+    );
+}
+
+#[test]
+fn linker_output_hunk_accepts_unplaced_sections_without_assigned_bases() {
     let output = hunk_output_directive(
         "build/out.hunk",
         &["code"],
@@ -14759,6 +15643,7 @@ fn linker_output_hunk_rejects_unassigned_bases() {
         "code".to_string(),
         SectionState {
             base_addr: None,
+            layout_placed: false,
             bytes: vec![0x4e, 0x75],
             max_pc: 2,
             kind: SectionKind::Code,
@@ -14766,9 +15651,227 @@ fn linker_output_hunk_rejects_unassigned_bases() {
         },
     )]);
 
-    let err =
-        build_linker_output_payload(&output, &sections).expect_err("missing base should fail");
-    assert!(err.message().contains("assigned bases"));
+    let payload = build_linker_output_payload(&output, &sections)
+        .expect("unplaced sections should be allowed for Hunk output");
+    assert!(payload.starts_with(&[0x00, 0x00, 0x03, 0xf3]));
+}
+
+#[test]
+fn linker_output_hunk_live_path_unused_region_declaration_matches_no_region_output() {
+    let without_region = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".section code, kind=code",
+        "start: RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "value: .byte $42",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+    let with_unused_region = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "value: .byte $42",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+
+    let without_region_payload = build_linker_output_payload(
+        without_region
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive"),
+        without_region.sections(),
+    )
+    .expect("payload without region");
+    let with_unused_region_payload = build_linker_output_payload(
+        with_unused_region
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive"),
+        with_unused_region.sections(),
+    )
+    .expect("payload with unused region");
+
+    assert_eq!(without_region_payload, with_unused_region_payload);
+}
+
+#[test]
+fn linker_output_hunk_live_path_explicit_and_unplaced_payloads_match_for_supported_subset() {
+    let unplaced = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".section code, kind=code",
+        "start: LEA value,A0",
+        " RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "value: .byte $99",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+    let explicitly_placed = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".region ram, $2000, $20ff",
+        ".section code, kind=code",
+        "start: LEA value,A0",
+        " RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "value: .byte $99",
+        ".endsection",
+        ".pack in ram : code, data",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
+        ".endmodule",
+    ]);
+
+    let unplaced_payload = build_linker_output_payload(
+        unplaced
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive"),
+        unplaced.sections(),
+    )
+    .expect("unplaced payload");
+    let explicitly_placed_payload = build_linker_output_payload(
+        explicitly_placed
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive"),
+        explicitly_placed.sections(),
+    )
+    .expect("placed payload");
+
+    assert_eq!(unplaced_payload, explicitly_placed_payload);
+}
+
+#[test]
+fn linker_output_hunk_live_path_unplaced_segment_order_follows_sections_exactly() {
+    const HUNK_CODE: u32 = 0x0000_03e9;
+    const HUNK_DATA: u32 = 0x0000_03ea;
+    const HUNK_BSS: u32 = 0x0000_03eb;
+
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".section code, kind=code",
+        "start: RTS",
+        ".endsection",
+        ".section data, kind=data",
+        "value: .byte $99",
+        ".endsection",
+        ".section bss, kind=bss",
+        "scratch: .res byte, 4",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code,bss,data",
+        ".endmodule",
+    ]);
+    let payload = build_linker_output_payload(
+        assembler
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive"),
+        assembler.sections(),
+    )
+    .expect("unplaced Hunk payload should preserve declared section order");
+    let segment_kinds = payload
+        .chunks_exact(4)
+        .map(|chunk| u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .filter(|word| matches!(*word, HUNK_CODE | HUNK_DATA | HUNK_BSS))
+        .collect::<Vec<_>>();
+
+    assert_eq!(segment_kinds, vec![HUNK_CODE, HUNK_BSS, HUNK_DATA]);
+}
+
+#[test]
+fn linker_output_hunk_live_path_rejects_unsupported_fixups_when_unplaced() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".section code, kind=code",
+        "entry: .word entry",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+
+    assert_eq!(
+        output.relocation_disposition,
+        LinkerOutputRelocationDisposition::Unknown
+    );
+
+    let err = build_linker_output_payload(output, assembler.sections())
+        .expect_err("unsupported fixups should still fail for unplaced Hunk output");
+    assert!(
+        err.message()
+            .contains("format=hunk does not support this symbolic .word expression"),
+        "unexpected message: {}",
+        err.message()
+    );
+}
+
+#[test]
+fn linker_output_hunk_unplaced_reloc32_targets_emitted_segment_indices_after_empty_omission() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code", "empty", "data"],
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent,
+    );
+    let sections = HashMap::from([
+        (
+            "code".to_string(),
+            unplaced_hunk_section_with_relocations(
+                SectionKind::Code,
+                &[0x00, 0x00, 0x00, 0x00],
+                4,
+                vec![OutputFixupRecord::hunk_abs32(
+                    "code".to_string(),
+                    0,
+                    0,
+                    "data".to_string(),
+                )],
+            ),
+        ),
+        (
+            "empty".to_string(),
+            unplaced_hunk_section(SectionKind::Data, &[], 0),
+        ),
+        (
+            "data".to_string(),
+            unplaced_hunk_section(SectionKind::Data, &[0x99], 1),
+        ),
+    ]);
+
+    let payload = build_linker_output_payload(&output, &sections)
+        .expect("unplaced Hunk payload with omission-aware reloc32");
+    assert!(
+        payload.windows(12).any(|window| {
+            window
+                == [
+                    0x00, 0x00, 0x03, 0xec, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                ]
+        }),
+        "expected reloc32 target index 1 after empty-section omission: {payload:02X?}"
+    );
 }
 
 #[test]
@@ -18838,26 +19941,25 @@ fn external_fs_uae_hunk_smoke() {
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
             eprintln!("SKIP: {reason}");
         }
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed {
-            artifact_dir,
-            hunk_path,
-            stdout,
-            stderr,
-            success,
-        } => {
-            assert!(
-                success,
-                "FS-UAE smoke failed for {} under {}\nstdout:\n{}\nstderr:\n{}",
-                hunk_path.display(),
-                artifact_dir.display(),
-                stdout,
-                stderr,
-            );
-            eprintln!(
-                "FS-UAE smoke completed for {} under {}",
-                hunk_path.display(),
-                artifact_dir.display()
-            );
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            for run in runs {
+                assert!(
+                    run.success,
+                    "FS-UAE smoke failed for example {} from {} with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                    run.example_name,
+                    run.source_path.display(),
+                    run.hunk_path.display(),
+                    run.artifact_dir.display(),
+                    run.stdout,
+                    run.stderr,
+                );
+                eprintln!(
+                    "FS-UAE smoke completed for example {} with {} under {}",
+                    run.example_name,
+                    run.hunk_path.display(),
+                    run.artifact_dir.display()
+                );
+            }
         }
     }
 }

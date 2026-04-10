@@ -1,0 +1,291 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; AmigaOS Hunk executable example.
+----                                2  ; Translated from Sakura-IT ASM/Benchmark/benchmark.s into opForge's
+----                                3  ; v0.3 sectioned Hunk notation.
+----                                4  
+----                                5          .module main
+----                                6          .cpu 68000
+----                                7  
+----                                8  ; exec.library LVOs
+----    EQU FFFFFF7C                9  Forbid                  = -132
+----    EQU FFFFFF76               10  Permit                  = -138
+----    EQU FFFFFEDA               11  FindTask                = -294
+----    EQU FFFFFE8C               12  GetMsg                  = -372
+----    EQU FFFFFE86               13  ReplyMsg                = -378
+----    EQU FFFFFE80               14  WaitPort                = -384
+----    EQU FFFFFE62               15  CloseLibrary            = -414
+----    EQU FFFFFE44               16  OpenDevice              = -444
+----    EQU FFFFFE3E               17  CloseDevice             = -450
+----    EQU FFFFFDD8               18  OpenLibrary             = -552
+----    EQU FFFFFD72               19  CreateIORequest         = -654
+----    EQU FFFFFD6C               20  DeleteIORequest         = -660
+----    EQU FFFFFD66               21  CreateMsgPort           = -666
+----    EQU FFFFFD60               22  DeleteMsgPort           = -672
+----                               23  
+----                               24  ; dos.library
+----    EQU FFFFFC46               25  VPrintf                 = -954
+----                               26  
+----                               27  ; timer.device
+----    EQU FFFFFFD0               28  SubTime                 = -48
+----    EQU FFFFFFBE               29  GetSysTime              = -66
+----                               30  
+----                               31  ; Minimal offsets translated from includes used by the source.
+----    EQU 0000                   32  SysBaseOff              = 0
+----    EQU 0004                   33  DosBaseOff              = 4
+----    EQU 0008                   34  TimerPortOff            = 8
+----    EQU 000C                   35  TimerRequestOff         = 12
+----    EQU 0010                   36  TimerBaseOff            = 16
+----    EQU 0014                   37  GlobalsSize             = 20
+----                               38  
+----    EQU 00AC                   39  pr_CLI                  = 172
+----    EQU 005C                   40  pr_MsgPort              = 92
+----    EQU 0030                   41  IOTV_SIZE               = 48
+----    EQU 0014                   42  IO_DEVICE               = 20
+----    EQU 0000                   43  UNIT_MICROHZ            = 0
+----                               44  
+----                               45          .section code, kind=code  ; [section code]
+----                               46    ; [section code]
+----                               47  start  ; [section code]
+0000    48 E7 30 2A                48          MOVEM.L D2/D3/A2/A4/A6,-(SP)  ; [section code]
+0004    49 F9 00 00 00 00          49          LEA globals,A4  ; [section code]
+000A    2C 78 00 04                50          MOVEA.L 4.W,A6  ; [section code]
+000E    74 00                      51          MOVEQ #0,D2  ; [section code]
+0010    29 4E 00 00                52          MOVE.L A6,SysBaseOff(A4)  ; [section code]
+----                               53    ; [section code]
+0014    93 C9                      54          SUBA.L A1,A1  ; [section code]
+0016    4E AE FE DA                55          JSR FindTask(A6)  ; [section code]
+----                               56    ; [section code]
+001A    24 40                      57          MOVEA.L D0,A2  ; [section code]
+001C    4A AA 00 AC                58          TST.L pr_CLI(A2)  ; [section code]
+0020    66 12                      59          BNE.S no_workbench  ; [section code]
+----                               60    ; [section code]
+0022    41 EA 00 5C                61          LEA pr_MsgPort(A2),A0  ; [section code]
+0026    4E AE FE 80                62          JSR WaitPort(A6)  ; [section code]
+002A    41 EA 00 5C                63          LEA pr_MsgPort(A2),A0  ; [section code]
+002E    4E AE FE 8C                64          JSR GetMsg(A6)  ; [section code]
+0032    24 00                      65          MOVE.L D0,D2  ; [section code]
+----                               66    ; [section code]
+----                               67  no_workbench  ; [section code]
+0034    61 00 00 1A                68          BSR.W main  ; [section code]
+0038    26 00                      69          MOVE.L D0,D3  ; [section code]
+----                               70    ; [section code]
+003A    4A 82                      71          TST.L D2  ; [section code]
+003C    67 0A                      72          BEQ.S no_reply_needed  ; [section code]
+003E    4E AE FF 7C                73          JSR Forbid(A6)  ; [section code]
+0042    22 42                      74          MOVEA.L D2,A1  ; [section code]
+0044    4E AE FE 86                75          JSR ReplyMsg(A6)  ; [section code]
+----                               76    ; [section code]
+----                               77  no_reply_needed  ; [section code]
+0048    20 03                      78          MOVE.L D3,D0  ; [section code]
+004A    4C DF 54 0C                79          MOVEM.L (SP)+,D2/D3/A2/A4/A6  ; [section code]
+004E    4E 75                      80          RTS  ; [section code]
+----                               81    ; [section code]
+----                               82  main  ; [section code]
+0050    48 E7 00 22                83          MOVEM.L A2/A6,-(SP)  ; [section code]
+----                               84    ; [section code]
+0054    43 F9 00 00 00 10          85          LEA dos_name,A1  ; [section code]
+005A    70 24                      86          MOVEQ #36,D0  ; [section code]
+005C    2C 6C 00 00                87          MOVEA.L SysBaseOff(A4),A6  ; [section code]
+0060    4E AE FD D8                88          JSR OpenLibrary(A6)  ; [section code]
+----                               89    ; [section code]
+0064    29 40 00 04                90          MOVE.L D0,DosBaseOff(A4)  ; [section code]
+0068    24 40                      91          MOVEA.L D0,A2  ; [section code]
+006A    67 08                      92          BEQ.S no_dos  ; [section code]
+----                               93    ; [section code]
+006C    61 0E                      94          BSR.S get_timer_port  ; [section code]
+----                               95    ; [section code]
+006E    22 4A                      96          MOVEA.L A2,A1  ; [section code]
+0070    4E AE FE 62                97          JSR CloseLibrary(A6)  ; [section code]
+----                               98    ; [section code]
+----                               99  no_dos  ; [section code]
+0074    70 00                     100          MOVEQ #0,D0  ; [section code]
+0076    4C DF 44 00               101          MOVEM.L (SP)+,A2/A6  ; [section code]
+007A    4E 75                     102          RTS  ; [section code]
+----                              103    ; [section code]
+----                              104  get_timer_port  ; [section code]
+007C    2C 6C 00 00               105          MOVEA.L SysBaseOff(A4),A6  ; [section code]
+0080    4E AE FD 66               106          JSR CreateMsgPort(A6)  ; [section code]
+----                              107    ; [section code]
+0084    29 40 00 08               108          MOVE.L D0,TimerPortOff(A4)  ; [section code]
+0088    67 0A                     109          BEQ.S no_timer_port  ; [section code]
+008A    61 0A                     110          BSR.S get_timer_request  ; [section code]
+----                              111    ; [section code]
+008C    20 6C 00 08               112          MOVEA.L TimerPortOff(A4),A0  ; [section code]
+0090    4E AE FD 60               113          JSR DeleteMsgPort(A6)  ; [section code]
+----                              114    ; [section code]
+----                              115  no_timer_port  ; [section code]
+0094    4E 75                     116          RTS  ; [section code]
+----                              117    ; [section code]
+----                              118  get_timer_request  ; [section code]
+0096    20 40                     119          MOVEA.L D0,A0  ; [section code]
+0098    70 30                     120          MOVEQ #IOTV_SIZE,D0  ; [section code]
+009A    4E AE FD 72               121          JSR CreateIORequest(A6)  ; [section code]
+----                              122    ; [section code]
+009E    29 40 00 0C               123          MOVE.L D0,TimerRequestOff(A4)  ; [section code]
+00A2    67 0A                     124          BEQ.S no_timer_request  ; [section code]
+00A4    61 0A                     125          BSR.S open_timer_device  ; [section code]
+----                              126    ; [section code]
+00A6    20 6C 00 0C               127          MOVEA.L TimerRequestOff(A4),A0  ; [section code]
+00AA    4E AE FD 6C               128          JSR DeleteIORequest(A6)  ; [section code]
+----                              129    ; [section code]
+----                              130  no_timer_request  ; [section code]
+00AE    4E 75                     131          RTS  ; [section code]
+----                              132    ; [section code]
+----                              133  open_timer_device  ; [section code]
+00B0    2F 0A                     134          MOVE.L A2,-(SP)  ; [section code]
+00B2    22 40                     135          MOVEA.L D0,A1  ; [section code]
+00B4    70 00                     136          MOVEQ #UNIT_MICROHZ,D0  ; [section code]
+00B6    41 F9 00 00 00 1C         137          LEA timer_name,A0  ; [section code]
+00BC    72 00                     138          MOVEQ #0,D1  ; [section code]
+00BE    24 49                     139          MOVEA.L A1,A2  ; [section code]
+00C0    4E AE FE 44               140          JSR OpenDevice(A6)  ; [section code]
+00C4    4A 00                     141          TST.B D0  ; [section code]
+00C6    66 0E                     142          BNE.S device_failed  ; [section code]
+----                              143    ; [section code]
+00C8    29 6A 00 14 00 10         144          MOVE.L IO_DEVICE(A2),TimerBaseOff(A4)  ; [section code]
+00CE    61 0A                     145          BSR.S measure_time  ; [section code]
+----                              146    ; [section code]
+00D0    22 4A                     147          MOVEA.L A2,A1  ; [section code]
+00D2    4E AE FE 3E               148          JSR CloseDevice(A6)  ; [section code]
+----                              149    ; [section code]
+----                              150  device_failed  ; [section code]
+00D6    24 5F                     151          MOVEA.L (SP)+,A2  ; [section code]
+00D8    4E 75                     152          RTS  ; [section code]
+----                              153    ; [section code]
+----                              154  measure_time  ; [section code]
+00DA    2F 0E                     155          MOVE.L A6,-(SP)  ; [section code]
+00DC    41 F9 00 00 00 00         156          LEA start_seconds,A0  ; [section code]
+00E2    2C 6C 00 10               157          MOVEA.L TimerBaseOff(A4),A6  ; [section code]
+00E6    4E AE FF BE               158          JSR GetSysTime(A6)  ; [section code]
+----                              159    ; [section code]
+00EA    2C 6C 00 00               160          MOVEA.L SysBaseOff(A4),A6  ; [section code]
+00EE    4E AE FF 7C               161          JSR Forbid(A6)  ; [section code]
+00F2    4E B9 00 00 01 3E         162          JSR benchmarked_code  ; [section code]
+00F8    4E AE FF 76               163          JSR Permit(A6)  ; [section code]
+----                              164    ; [section code]
+00FC    2C 6C 00 10               165          MOVEA.L TimerBaseOff(A4),A6  ; [section code]
+0100    41 F9 00 00 00 08         166          LEA end_seconds,A0  ; [section code]
+0106    4E AE FF BE               167          JSR GetSysTime(A6)  ; [section code]
+----                              168    ; [section code]
+010A    41 F9 00 00 00 08         169          LEA end_seconds,A0  ; [section code]
+0110    43 F9 00 00 00 00         170          LEA start_seconds,A1  ; [section code]
+0116    4E AE FF D0               171          JSR SubTime(A6)  ; [section code]
+----                              172    ; [section code]
+011A    61 04                     173          BSR.S print_diff  ; [section code]
+----                              174    ; [section code]
+011C    2C 5F                     175          MOVEA.L (SP)+,A6  ; [section code]
+011E    4E 75                     176          RTS  ; [section code]
+----                              177    ; [section code]
+----                              178  print_diff  ; [section code]
+0120    48 E7 20 02               179          MOVEM.L D2/A6,-(SP)  ; [section code]
+----                              180    ; [section code]
+0124    22 3C 00 00 00 2C         181          MOVE.L #pfmt,D1  ; [section code]
+012A    24 3C 00 00 00 08         182          MOVE.L #end_seconds,D2  ; [section code]
+0130    2C 6C 00 04               183          MOVEA.L DosBaseOff(A4),A6  ; [section code]
+0134    4E AE FC 46               184          JSR VPrintf(A6)  ; [section code]
+----                              185    ; [section code]
+0138    4C DF 40 04               186          MOVEM.L (SP)+,D2/A6  ; [section code]
+013C    4E 75                     187          RTS  ; [section code]
+----                              188    ; [section code]
+----                              189  benchmarked_code  ; [section code]
+013E    30 3C 27 0F               190          MOVE.W #9999,D0  ; [section code]
+----                              191  loop  ; [section code]
+0142    51 C8 FF FE               192          DBF D0,loop  ; [section code]
+0146    4E 75                     193          RTS  ; [section code]
+----                              194    ; [section code]
+----                              195          .endsection
+----                              196          .section data, kind=data  ; [section data]
+----                              197    ; [section data]
+----                              198  start_seconds  ; [section data]
+0000    00 00 00 00               199          .long 0  ; [section data]
+----                              200  start_micros  ; [section data]
+0004    00 00 00 00               201          .long 0  ; [section data]
+----                              202  end_seconds  ; [section data]
+0008    00 00 00 00               203          .long 0  ; [section data]
+----                              204  end_micros  ; [section data]
+000C    00 00 00 00               205          .long 0  ; [section data]
+----                              206    ; [section data]
+----                              207  dos_name  ; [section data]
+0010    64 6F 73 2E 6C 69 62 72 61 72 79 00   208          .byte "dos.library",0  ; [section data]
+----                              209  timer_name  ; [section data]
+001C    74 69 6D 65 72 2E 64 65 76 69 63 65 00   210          .byte "timer.device",0  ; [section data]
+0029    +0003                     211          .align 4  ; [section data]
+----                              212    ; [section data]
+----                              213  pfmt  ; [section data]
+002C    54 69 6D 65 3A 20 25 6C 64 2E 25 30 36 6C 64 20 73 65 63 6F 6E 64 73 2E 0A 00   214          .byte "Time: %ld.%06ld seconds.",10,0  ; [section data]
+----                              215    ; [section data]
+----                              216          .endsection
+----                              217          .section bss, kind=bss  ; [section bss]
+----                              218    ; [section bss]
+----                              219  globals  ; [section bss]
+0000    +0014                     220          .res byte, GlobalsSize  ; [section bss]
+----                              221    ; [section bss]
+----                              222          .endsection
+----                              223          .output "build/timer_device_benchmark.hunk", format=hunk, sections=code,data,bss
+----                              224          .endmodule
+
+Lines: 224  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.benchmarked_code  013E      prv  lbl 
+main.CloseDevice  FFFFFE3E  prv  lbl 
+main.CloseLibrary  FFFFFE62  prv  lbl 
+main.CreateIORequest  FFFFFD72  prv  lbl 
+main.CreateMsgPort  FFFFFD66  prv  lbl 
+main.DeleteIORequest  FFFFFD6C  prv  lbl 
+main.DeleteMsgPort  FFFFFD60  prv  lbl 
+main.device_failed  00D6      prv  lbl 
+main.DosBaseOff  0004      prv  lbl 
+main.dos_name    0010      prv  lbl 
+main.end_micros  000C      prv  lbl 
+main.end_seconds  0008      prv  lbl 
+main.FindTask    FFFFFEDA  prv  lbl 
+main.Forbid      FFFFFF7C  prv  lbl 
+main.GetMsg      FFFFFE8C  prv  lbl 
+main.GetSysTime  FFFFFFBE  prv  lbl 
+main.get_timer_port  007C      prv  lbl 
+main.get_timer_request  0096      prv  lbl 
+main.globals     0000      prv  lbl 
+main.GlobalsSize  0014      prv  lbl 
+main.IOTV_SIZE   0030      prv  lbl 
+main.IO_DEVICE   0014      prv  lbl 
+main.loop        0142      prv  lbl 
+main.main        0050      prv  lbl 
+main.measure_time  00DA      prv  lbl 
+main.no_dos      0074      prv  lbl 
+main.no_reply_needed  0048      prv  lbl 
+main.no_timer_port  0094      prv  lbl 
+main.no_timer_request  00AE      prv  lbl 
+main.no_workbench  0034      prv  lbl 
+main.OpenDevice  FFFFFE44  prv  lbl 
+main.OpenLibrary  FFFFFDD8  prv  lbl 
+main.open_timer_device  00B0      prv  lbl 
+main.Permit      FFFFFF76  prv  lbl 
+main.pfmt        002C      prv  lbl 
+main.print_diff  0120      prv  lbl 
+main.pr_CLI      00AC      prv  lbl 
+main.pr_MsgPort  005C      prv  lbl 
+main.ReplyMsg    FFFFFE86  prv  lbl 
+main.start       0000      prv  lbl 
+main.start_micros  0004      prv  lbl 
+main.start_seconds  0000      prv  lbl 
+main.SubTime     FFFFFFD0  prv  lbl 
+main.SysBaseOff  0000      prv  lbl 
+main.TimerBaseOff  0010      prv  lbl 
+main.TimerPortOff  0008      prv  lbl 
+main.TimerRequestOff  000C      prv  lbl 
+main.timer_name  001C      prv  lbl 
+main.UNIT_MICROHZ  0000      prv  lbl 
+main.VPrintf     FFFFFC46  prv  lbl 
+main.WaitPort    FFFFFE80  prv  lbl 
+
+Total memory is 0 bytes
+
+GENERATED OUTPUT
+
+(none)

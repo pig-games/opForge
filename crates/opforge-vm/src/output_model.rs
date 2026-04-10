@@ -27,7 +27,8 @@ pub struct SectionState {
     pub base_addr: Option<u32>,
     pub relocation_free_certified: bool,
     pub hunk_relocation_compatible: bool,
-    pub hunk_relocations: Vec<HunkRelocationRecord>,
+    pub hunk_fixup_error: Option<String>,
+    pub output_fixups: Vec<OutputFixupRecord>,
 }
 
 impl Default for SectionState {
@@ -45,7 +46,8 @@ impl Default for SectionState {
             base_addr: None,
             relocation_free_certified: true,
             hunk_relocation_compatible: true,
-            hunk_relocations: Vec::new(),
+            hunk_fixup_error: None,
+            output_fixups: Vec::new(),
         }
     }
 }
@@ -275,15 +277,73 @@ impl HunkMemoryType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HunkRelocationKind {
+pub enum OutputFixupKind {
     Abs32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HunkRelocationRecord {
-    pub kind: HunkRelocationKind,
+pub enum OutputFixupTarget {
+    Section(String),
+}
+
+impl OutputFixupTarget {
+    #[must_use]
+    pub fn section_name(&self) -> Option<&str> {
+        match self {
+            Self::Section(name) => Some(name.as_str()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct OutputFixupCompatibility {
+    pub hunk_reloc32: bool,
+}
+
+impl OutputFixupCompatibility {
+    #[must_use]
+    pub const fn hunk_reloc32() -> Self {
+        Self { hunk_reloc32: true }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputFixupRecord {
+    pub source_section: String,
     pub offset: u32,
-    pub target_section: String,
+    pub kind: OutputFixupKind,
+    pub target: OutputFixupTarget,
+    pub encoded_addend: u32,
+    pub compatibility: OutputFixupCompatibility,
+}
+
+impl OutputFixupRecord {
+    #[must_use]
+    pub fn hunk_abs32(
+        source_section: String,
+        offset: u32,
+        encoded_addend: u32,
+        target_section: String,
+    ) -> Self {
+        Self {
+            source_section,
+            offset,
+            kind: OutputFixupKind::Abs32,
+            target: OutputFixupTarget::Section(target_section),
+            encoded_addend,
+            compatibility: OutputFixupCompatibility::hunk_reloc32(),
+        }
+    }
+
+    #[must_use]
+    pub fn supports_hunk_reloc32(&self) -> bool {
+        self.compatibility.hunk_reloc32
+    }
+
+    #[must_use]
+    pub fn target_section_name(&self) -> Option<&str> {
+        self.target.section_name()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -293,7 +353,7 @@ pub struct HunkSegmentInput {
     pub initialized_bytes: Vec<u8>,
     pub allocation_size_bytes: u32,
     pub memory_type: HunkMemoryType,
-    pub relocations: Vec<HunkRelocationRecord>,
+    pub fixups: Vec<OutputFixupRecord>,
 }
 
 #[derive(Debug, Clone)]

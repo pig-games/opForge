@@ -22,7 +22,8 @@ use asm::line::RuntimeLineRouter;
 use asm::output::{
     anchor_relative_output_path, format_addr, resolve_bin_path_checked, resolve_output_base,
     resolve_output_path_checked, BinOutputSpec, BinRange, DependencyOutputPolicy,
-    ExportSectionsDirective, MapFileDirective, RegionState, RootMetadata, SectionState,
+    ExportSectionsDirective, LinkerOutputDirective, LinkerOutputFormat, MapFileDirective,
+    RegionState, RootMetadata, SectionState,
 };
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
@@ -216,6 +217,10 @@ impl fmt::Debug for SourceProviderFileLoader<'_> {
 impl PreprocessFileLoader for SourceProviderFileLoader<'_> {
     fn read_to_string(&self, path: &Path) -> std::io::Result<String> {
         self.source_provider.read_string(path)
+    }
+
+    fn read_bytes(&self, path: &Path) -> std::io::Result<Vec<u8>> {
+        self.source_provider.read_bytes(path)
     }
 
     fn is_file(&self, path: &Path) -> bool {
@@ -612,6 +617,17 @@ pub fn emit_linker_outputs(
     Ok(())
 }
 
+fn synthetic_hunk_output(path: &str, assembler: &Assembler) -> LinkerOutputDirective {
+    let mut output = LinkerOutputDirective {
+        path: path.to_string(),
+        format_id: LinkerOutputFormat::Hunk.format_id().to_string(),
+        options: Default::default(),
+        relocation_disposition: Default::default(),
+    };
+    output.relocation_disposition = assembler.hunk_output_relocation_disposition_for(&output);
+    output
+}
+
 pub fn emit_export_sections(
     directives: &[ExportSectionsDirective],
     sections: &HashMap<String, SectionState>,
@@ -801,6 +817,7 @@ pub struct PreparedAssemblyExecutionRequest<'a> {
     pub list_name_override: Option<&'a str>,
     pub hex_name_override: Option<&'a str>,
     pub srec_name_override: Option<&'a str>,
+    pub hunk_name_override: Option<&'a str>,
     pub header_title: &'a str,
     pub output_sink: Option<&'a dyn OutputSink>,
     pub execution_mode: ExecutionMode,
@@ -877,6 +894,7 @@ pub struct OutputPlanningRequest<'a> {
     pub list_name_override: Option<&'a str>,
     pub hex_name_override: Option<&'a str>,
     pub srec_name_override: Option<&'a str>,
+    pub hunk_name_override: Option<&'a str>,
     pub bin_specs_override: &'a [BinOutputSpec],
     pub fill_byte: u8,
     pub fill_byte_set: bool,
@@ -891,6 +909,7 @@ pub struct ResolvedOutputPlan {
     list_path: Option<String>,
     hex_path: Option<String>,
     srec_path: Option<String>,
+    hunk_path: Option<String>,
     effective_bin_specs: Vec<BinOutputSpec>,
     effective_fill_byte: u8,
 }
@@ -954,6 +973,7 @@ pub struct AssemblyExecutionRequest<'a> {
     pub list_name_override: Option<&'a str>,
     pub hex_name_override: Option<&'a str>,
     pub srec_name_override: Option<&'a str>,
+    pub hunk_name_override: Option<&'a str>,
     pub header_title: &'a str,
     pub output_sink: Option<&'a dyn OutputSink>,
     pub source_provider: Option<&'a dyn SourceProvider>,
@@ -1070,6 +1090,10 @@ impl ResolvedOutputPlan {
         self.srec_path.as_deref()
     }
 
+    pub fn hunk_path(&self) -> Option<&str> {
+        self.hunk_path.as_deref()
+    }
+
     pub fn effective_fill_byte(&self) -> u8 {
         self.effective_fill_byte
     }
@@ -1083,6 +1107,9 @@ impl ResolvedOutputPlan {
             targets.push(path.clone());
         }
         if let Some(path) = &self.srec_path {
+            targets.push(path.clone());
+        }
+        if let Some(path) = &self.hunk_path {
             targets.push(path.clone());
         }
         targets
@@ -1284,6 +1311,7 @@ pub fn resolve_output_plan(
             list_path: None,
             hex_path: None,
             srec_path: None,
+            hunk_path: None,
             effective_bin_specs: Vec::new(),
             effective_fill_byte: request.fill_byte,
         });
@@ -1358,6 +1386,18 @@ pub fn resolve_output_plan(
             )
         })?
         .flatten();
+    let hunk_path = request
+        .hunk_name_override
+        .map(|name| resolve_output_path_checked(&out_base, Some(name.to_string()), "hunk"))
+        .transpose()
+        .map_err(|err| {
+            AsmRunError::new(
+                AsmError::new(AsmErrorKind::Cli, &err, None),
+                Vec::new(),
+                request.source_lines.to_vec(),
+            )
+        })?
+        .flatten();
     if request.pass1_errors == 0
         && request.go_addr.is_some()
         && hex_path.is_none()
@@ -1401,6 +1441,7 @@ pub fn resolve_output_plan(
         list_path,
         hex_path,
         srec_path,
+        hunk_path,
         effective_bin_specs,
         effective_fill_byte,
     })
@@ -1492,6 +1533,7 @@ pub fn run_prepared_assembly(
             list_name_override: request.list_name_override,
             hex_name_override: request.hex_name_override,
             srec_name_override: request.srec_name_override,
+            hunk_name_override: request.hunk_name_override,
             header_title: request.header_title,
             output_sink: request.output_sink,
             source_provider: None,
@@ -1528,6 +1570,7 @@ fn run_assembly_with_prepared(
     assembler.opasm_package_path = opasm_package_path;
     assembler.root_metadata.root_module_id = Some(root_module_id);
     assembler.module_macro_names = module_macro_names;
+    assembler.set_implicit_hunk_output_requested(request.hunk_name_override.is_some());
     let remap_diags = |mut diagnostics: Vec<Diagnostic>| {
         remap_diagnostics_with_source_map(&mut diagnostics, &source_map);
         diagnostics
@@ -1545,6 +1588,7 @@ fn run_assembly_with_prepared(
         list_name_override: request.list_name_override,
         hex_name_override: request.hex_name_override,
         srec_name_override: request.srec_name_override,
+        hunk_name_override: request.hunk_name_override,
         bin_specs_override: request.bin_specs,
         fill_byte: request.fill_byte,
         fill_byte_set: request.fill_byte_set,
@@ -1851,6 +1895,23 @@ fn run_assembly_with_prepared(
                 expanded_lines.clone(),
                 traces,
             ));
+        }
+        if let Some(hunk_path) = output_plan.hunk_path() {
+            let output = synthetic_hunk_output(hunk_path, &assembler);
+            if let Err(err) = emit_linker_outputs(
+                std::slice::from_ref(&output),
+                assembler.sections(),
+                None,
+                output_sink,
+            ) {
+                let traces = assembler.runtime_processing_traces().to_vec();
+                return Err(AsmRunError::new_with_traces(
+                    err,
+                    remap_diags(assembler.take_diagnostics()),
+                    expanded_lines.clone(),
+                    traces,
+                ));
+            }
         }
         if let Err(err) = emit_export_sections(
             &assembler.root_metadata.export_sections,
@@ -2568,6 +2629,7 @@ mod tests {
             list_name_override: None,
             hex_name_override: None,
             srec_name_override: None,
+            hunk_name_override: None,
             bin_specs_override: &[],
             fill_byte: 0,
             fill_byte_set: false,
@@ -2604,6 +2666,7 @@ mod tests {
             list_name_override: None,
             hex_name_override: None,
             srec_name_override: None,
+            hunk_name_override: None,
             bin_specs_override: &[],
             fill_byte: 0,
             fill_byte_set: false,
@@ -2632,6 +2695,7 @@ mod tests {
             list_name_override: Some("../escape"),
             hex_name_override: None,
             srec_name_override: None,
+            hunk_name_override: None,
             bin_specs_override: &[],
             fill_byte: 0,
             fill_byte_set: false,
@@ -2662,6 +2726,7 @@ mod tests {
             list_name_override: None,
             hex_name_override: None,
             srec_name_override: None,
+            hunk_name_override: None,
             bin_specs_override: &[BinOutputSpec {
                 name: Some("../escape".to_string()),
                 range: None,
@@ -3395,6 +3460,7 @@ mod tests {
             list_name_override: None,
             hex_name_override: None,
             srec_name_override: Some(""),
+            hunk_name_override: None,
             header_title: "test",
             output_sink: Some(&output_sink),
             source_provider: Some(&source_provider),
@@ -3440,6 +3506,65 @@ mod tests {
         assert!(!hex.trim().is_empty(), "hex:\n{hex}");
         assert!(hex.contains(":00000001FF"), "hex:\n{hex}");
         assert!(srec.contains("S9"), "srec:\n{srec}");
+    }
+
+    #[test]
+    fn run_assembly_supports_cli_hunk_output_for_flat_source() {
+        let source_provider = MemorySourceProvider::default().with_file(
+            "/virtual/main.asm",
+            "start: MOVE.L #target,D1\n RTS\ntarget: RTS\n",
+        );
+        let output_sink = MemoryOutputSink::default();
+
+        let report = run_assembly(AssemblyExecutionRequest {
+            root_path: Path::new("/virtual/main.asm"),
+            execution_mode: ExecutionMode::Vm,
+            input_base: "/virtual/main",
+            defines: &[],
+            include_paths: &[],
+            module_paths: &[],
+            pp_macro_depth: 32,
+            cpu_override: Some("68000"),
+            default_cpu: CpuType::new("8085"),
+            max_loop_iterations: 1000,
+            opasm_package_path: None,
+            out_dir: None,
+            debug_conditionals: false,
+            tab_size: None,
+            output_format: OutputFormat::Text,
+            go_addr: None,
+            bin_specs: &[],
+            fill_byte: 0,
+            fill_byte_set: false,
+            default_outputs: false,
+            labels_file: None,
+            label_output_format: LabelOutputFormat::Vice,
+            dependency_output: None,
+            outfile_override: None,
+            list_name_override: None,
+            hex_name_override: None,
+            srec_name_override: None,
+            hunk_name_override: Some("/virtual/main.hunk"),
+            header_title: "test",
+            output_sink: Some(&output_sink),
+            source_provider: Some(&source_provider),
+            suppress_outputs: false,
+        })
+        .expect("flat hunk assembly should run from memory");
+
+        assert_eq!(
+            report.error_count(),
+            0,
+            "unexpected diagnostics: {:?}",
+            report.diagnostics()
+        );
+        let hunk = output_sink
+            .bytes("/virtual/main.hunk")
+            .expect("hunk output should be captured");
+        assert!(
+            hunk.starts_with(&[0x00, 0x00, 0x03, 0xf3]),
+            "expected HUNK_HEADER payload: {hunk:02X?}"
+        );
     }
 
     #[test]
@@ -3503,6 +3628,7 @@ mod tests {
             list_name_override: None,
             hex_name_override: None,
             srec_name_override: None,
+            hunk_name_override: None,
             header_title: "test",
             output_sink: None,
             execution_mode: ExecutionMode::Rust,

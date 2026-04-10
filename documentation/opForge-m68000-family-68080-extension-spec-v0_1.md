@@ -19,7 +19,9 @@ subset that is intentionally narrower than full AC68080 PRM coverage:
 - CPU identity and aliases: `m68080`, `68080`, `mc68080`
 - Register/model substrate: `E0-E23`, `B0-B7` with non-68080 deterministic
   rejection
-- Apollo gating: `.apollo on|off|1|0` on `m68080` only
+- Apollo directive handling on `m68080`, with `.apollo on` accepted as an
+  explicit no-op in the shipped full-profile build and disabling forms rejected
+  deterministically because strict compatibility mode is not implemented
 - Representative integer slice: `ADDIW.L`, `CMPIW.L`, `MOVIW.L`, `MOV3Q`
 - Representative AMMX slice: `LOAD`, `PADD`, `PACK3216`, `VPERM`
 
@@ -27,7 +29,7 @@ All other AC68080 instruction families remain deferred and out of scope for
 this revision unless explicitly added in a follow-up specification.
 
 ## Problem
-opForge currently ships Motorola 68000-family CPU targets through `m68040`.
+opForge currently ships Motorola 68000-family CPU targets through `m68080`.
 The AC68080 PRM introduces additional surfaces that are not represented in the
 current CPU identity set, register model, runtime directives, or mnemonic
 matrix.
@@ -113,7 +115,8 @@ drift in at least four ways:
   deterministic unsupported-CPU diagnostic.
 
 ### Apollo gating contract
-- Apollo-native forms are disabled by default.
+- In the current shipped full-profile build, Apollo-native forms are enabled by
+  default under `.cpu 68080`.
 - Runtime directive gate is `.apollo <state>` where `<state>` is one of:
   - `on`
   - `off`
@@ -121,10 +124,11 @@ drift in at least four ways:
   - `0` (alias of `off`)
 - Directive behavior is forward-only for subsequent source lines in the current
   assembly context; it does not retroactively re-evaluate prior lines.
-- When Apollo mode is disabled, Apollo-native mnemonics or prefixes fail with
-  deterministic diagnostics that identify Apollo gating.
-- Apollo mode gating affects legality only for the current assembly context;
-  it must not implicitly alter behavior of previously assembled lines.
+- `.apollo on` is accepted as an explicit no-op reaffirmation of the default
+  shipped profile.
+- `.apollo off` and equivalent disabling forms are rejected deterministically
+  because strict compatibility mode is not implemented in the shipped
+  full-profile build.
 
 ### 68080 extension surface for this spec
 This specification defines a bounded first extension surface for implementation.

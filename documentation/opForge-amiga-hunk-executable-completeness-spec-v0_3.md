@@ -145,6 +145,8 @@ For forms that are still genuinely ambiguous after `v0.3` scoping:
 The `v0.3` executable model should allow:
 
 - `.output ..., format=hunk, sections=code,data`
+- `.output ..., format=hunk` for a source with no explicit `.section`
+- CLI `--hunk [FILE]` for a source with no `.output` directive
 
 without requiring `.region`, `.place`, or `.pack`, provided that:
 
@@ -157,10 +159,25 @@ without requiring `.region`, `.place`, or `.pack`, provided that:
 Explicit placement and regions remain legal and useful, but no longer mandatory
 for Hunk executables in the supported subset.
 
+If no explicit `.section` is defined and `sections=` is omitted, the source is
+treated as one implicit `code` section for Hunk output. `.org` is not required
+for that shorthand because executable hunks are relocatable; the implicit code
+hunk is built from the emitted flat source bytes. The shorthand must also work
+for opForge's implicit module form so single-file AmigaOS examples do not need
+`.module`/`.endmodule` wrappers solely for output metadata.
+
+The same implicit code-hunk rule applies when Hunk output is selected via CLI
+`--hunk [FILE]` instead of an in-source `.output` directive. In that form, the
+source may omit `.output`; the CPU can also be supplied by CLI `--cpu <ID>`
+when the source intentionally has no `.cpu` directive.
+
 This matches the executable Hunk file model itself: the HUNK_HEADER describes
 the number of segments and the amount of memory to reserve for each segment,
 not fixed load addresses, and relocation treats hunks on disk as if each hunk
 started at address 0 before the loader adjusts references.
+Section memory attributes are also metadata in this model: `.section ...,
+memory=chip|fast|slow|any` may constrain Hunk allocation flags, but does not
+create a fixed load address.
 
 This does not require changing the meaning of `.place` or `.pack` for other
 formats.
@@ -168,6 +185,8 @@ formats.
 For the unplaced executable path covered by `v0.3`:
 
 - emitted segment order is determined only by user-declared `sections=...`
+  when explicit sections are selected, or by the single implicit code section
+  when no explicit `.section` exists and `sections=` is omitted
 - `.region` declarations that are not used by explicit `.place` or `.pack`
   must not constrain emitted segment order or otherwise change output
   semantics
@@ -288,6 +307,14 @@ Unplaced but selected executable sections:
   section order, kinds, and supported fixups are sufficient for the executable
   subset.
 
+Implicit single-code executable:
+
+- if no explicit `.section` is defined, `format=hunk` may omit `sections=` and
+  must emit the flat source bytes as a single code hunk without requiring
+  `.org`.
+- if no explicit `.output` is defined, CLI `--hunk [FILE]` must select the same
+  implicit single-code Hunk output path.
+
 Explicitly placed executable sections:
 
 - explicitly placed inputs remain valid and must behave consistently with the
@@ -328,6 +355,10 @@ Empty selected non-BSS section:
   order is determined solely by user-declared `sections=...`, subject only to
   the existing requirement that the first emitted segment is code and that
   unsupported fixups still fail explicitly.
+- [ ] For sources with no explicit `.section`, `.output ..., format=hunk`
+  emits one implicit code hunk and does not require `.org`.
+- [ ] For sources with no explicit `.output`, CLI `--hunk [FILE]` emits the
+  same implicit code hunk and may rely on CLI `--cpu <ID>` for CPU selection.
 - [ ] Explicitly placed and unplaced executable Hunk inputs behave consistently
   for the covered subset.
 - [ ] Broader executable symbolic instruction and data forms emit correct
@@ -358,8 +389,9 @@ Expected validation for a derived plan includes:
 These phases are intentionally out of scope for `v0.3`, but should be kept
 explicit so “spec complete” Hunk work remains visible:
 
-- chipset-specific section concepts such as chip/fast memory-oriented section
-  kinds, attributes, or placement policies
+- richer chipset-specific section concepts beyond the basic executable Hunk
+  `memory=chip|fast|slow|any` section attribute now supported, such as
+  hardware-oriented section kinds or placement policies
 - Amiga hardware include and symbol surface needed by custom-chip, CIA,
   copper, blitter, and interrupt-driven examples
 - executable examples that depend on hardware ownership or OS takeover patterns
@@ -369,7 +401,8 @@ explicit so “spec complete” Hunk work remains visible:
 - symbol hunks
 - debug hunks
 - overlay support
-- memory-type customization beyond the current executable default
+- richer memory-policy customization beyond basic executable Hunk CHIP/FAST
+  allocation flags
 - richer linker or loader metadata if later required by real Amiga workflows
 
 ## Open Questions

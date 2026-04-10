@@ -223,7 +223,7 @@ impl<'a> AsmLine<'a> {
                 None,
             );
         }
-        if self.in_section() {
+        if self.in_user_section() {
             return self.failure(
                 LineStatus::Error,
                 AsmErrorKind::Directive,

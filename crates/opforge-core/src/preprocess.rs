@@ -125,6 +125,7 @@ fn parse_include_target_operand(rest: &str) -> Option<String> {
 
 pub trait PreprocessFileLoader: fmt::Debug + Send + Sync {
     fn read_to_string(&self, path: &Path) -> io::Result<String>;
+    fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>>;
     fn is_file(&self, path: &Path) -> bool;
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 }
@@ -135,6 +136,10 @@ pub struct FsPreprocessFileLoader;
 impl PreprocessFileLoader for FsPreprocessFileLoader {
     fn read_to_string(&self, path: &Path) -> io::Result<String> {
         std::fs::read_to_string(path)
+    }
+
+    fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>> {
+        std::fs::read(path)
     }
 
     fn is_file(&self, path: &Path) -> bool {
@@ -727,8 +732,11 @@ impl Preprocessor {
         let column = leading.saturating_add(start).saturating_add(1);
 
         let is_else_directive = token == "ELSE" || token == "ELSEIF" || token == "ENDIF";
-        let is_pp_directive =
-            token == "IFDEF" || token == "IFNDEF" || token == "INCLUDE" || is_else_directive;
+        let is_pp_directive = token == "IFDEF"
+            || token == "IFNDEF"
+            || token == "INCLUDE"
+            || token == "INCBIN"
+            || is_else_directive;
         if is_hash_directive && is_pp_directive {
             let err = PreprocessError::new("Preprocessor directives must use '.'");
             return Err(err.with_context(line_num, Some(column), line, Some(file_path)));
@@ -757,6 +765,12 @@ impl Preprocessor {
             self.in_asm_macro = next_in_asm_macro;
             return Ok(());
         }
+        if let Some((label, rest)) = parse_labelled_incbin_statement(trimmed) {
+            let label = label.to_string();
+            return self
+                .handle_incbin(rest, base_dir, loader, Some(label.as_str()))
+                .map_err(|err| err.with_context(line_num, Some(column), line, Some(file_path)));
+        }
         let expanded = expander
             .expand_line(line, 0)
             .map_err(|err| err.with_context(line_num, None, line, Some(file_path)))?;
@@ -782,6 +796,12 @@ impl Preprocessor {
                     return Ok(());
                 }
                 self.handle_include(rest, base_dir, loader)
+            }
+            "INCBIN" => {
+                if !self.is_active() {
+                    return Ok(());
+                }
+                self.handle_incbin(rest, base_dir, loader, None)
             }
             _ => Ok(()),
         }
@@ -842,6 +862,67 @@ impl Preprocessor {
         Err(PreprocessError::new(format!(
             "INCLUDE file not found: {r} (searched: {searched_text})"
         )))
+    }
+
+    fn handle_incbin(
+        &mut self,
+        rest: &str,
+        base_dir: &str,
+        loader: &dyn PreprocessFileLoader,
+        label: Option<&str>,
+    ) -> Result<(), PreprocessError> {
+        if !self.is_active() {
+            return Ok(());
+        }
+        let Some(r) = parse_include_target_operand(rest) else {
+            return Err(PreprocessError::new("INCBIN missing file"));
+        };
+        let (path, searched) = self.resolve_include_path(base_dir, &r, loader);
+        let Some(path) = path else {
+            let searched_text = searched
+                .iter()
+                .map(|path| path.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(PreprocessError::new(format!(
+                "INCBIN file not found: {r} (searched: {searched_text})"
+            )));
+        };
+
+        let identity = self.include_identity(&path, loader);
+        self.seen_files.insert(identity);
+
+        let bytes = loader.read_bytes(&path).map_err(|_| {
+            PreprocessError::new(format!("Error opening binary file: {}", path.display()))
+        })?;
+        self.push_incbin_bytes(label, &bytes);
+        Ok(())
+    }
+
+    fn push_incbin_bytes(&mut self, label: Option<&str>, bytes: &[u8]) {
+        if bytes.is_empty() {
+            if let Some(label) = label {
+                self.lines.push(label.to_string());
+            }
+            return;
+        }
+
+        let mut first = true;
+        for chunk in bytes.chunks(16) {
+            let operands = chunk
+                .iter()
+                .map(|byte| format!("${byte:02X}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let prefix = if first { label.unwrap_or("") } else { "" };
+            let line = if prefix.is_empty() {
+                format!(".byte {operands}")
+            } else {
+                format!("{prefix} .byte {operands}")
+            };
+            self.lines.push(line);
+            first = false;
+        }
     }
 
     fn resolve_include_path(
@@ -1012,6 +1093,32 @@ fn parse_asm_macro_directive(trimmed: &str) -> Option<AsmMacroDirective> {
     }
 }
 
+fn parse_labelled_incbin_statement(trimmed: &str) -> Option<(&str, &str)> {
+    let mut cursor = Cursor::new(trimmed);
+    cursor.skip_ws();
+    if cursor.peek() == Some(b'.') || cursor.peek() == Some(b'#') {
+        return None;
+    }
+
+    cursor.take_ident()?;
+    if cursor.peek() == Some(b':') {
+        cursor.next();
+    }
+    let label_end = cursor.pos();
+    cursor.skip_ws();
+    if cursor.peek() != Some(b'.') {
+        return None;
+    }
+    cursor.next();
+    cursor.skip_ws();
+    let directive = cursor.take_ident()?.to_ascii_uppercase();
+    if directive != "INCBIN" {
+        return None;
+    }
+
+    Some((&trimmed[..label_end], trim(&trimmed[cursor.pos()..])))
+}
+
 fn dirname(path: &str) -> String {
     Path::new(path)
         .parent()
@@ -1025,7 +1132,10 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn temp_file(name: &str, contents: &str) -> PathBuf {
         let dir = temp_dir();
@@ -1040,7 +1150,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        dir.push(format!("opForge-preproc-{}", nanos));
+        let counter = TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+        dir.push(format!("opForge-preproc-{}-{}", nanos, counter));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -1097,6 +1208,41 @@ mod tests {
         let mut pp = Preprocessor::new();
         let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
         assert_eq!(err.message(), "INCLUDE missing file");
+    }
+
+    #[test]
+    fn incbin_expands_binary_file_to_byte_directives() {
+        let dir = temp_dir();
+        let main = dir.join("main.asm");
+        let data = dir.join("sprite.bin");
+        fs::write(&data, [0xde, 0xad, 0xbe, 0xef]).unwrap();
+        fs::write(&main, "SpriteData .incbin \"sprite.bin\"\n.byte $ff\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        pp.process_file(main.to_str().unwrap()).unwrap();
+
+        assert_eq!(
+            pp.lines(),
+            &[
+                "SpriteData .byte $DE, $AD, $BE, $EF".to_string(),
+                ".byte $ff".to_string()
+            ]
+        );
+        assert!(pp.seen_files().contains(&data.canonicalize().unwrap()));
+    }
+
+    #[test]
+    fn incbin_accepts_colon_label_and_empty_file() {
+        let dir = temp_dir();
+        let main = dir.join("main.asm");
+        let data = dir.join("empty.bin");
+        fs::write(&data, []).unwrap();
+        fs::write(&main, "SpriteData: .incbin \"empty.bin\"\n").unwrap();
+
+        let mut pp = Preprocessor::new();
+        pp.process_file(main.to_str().unwrap()).unwrap();
+
+        assert_eq!(pp.lines(), &["SpriteData:".to_string()]);
     }
 
     #[test]

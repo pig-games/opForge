@@ -351,12 +351,15 @@ impl<'a> AsmLine<'a> {
 
     pub fn validate_metadata_scope(&mut self, directive: &str) -> Option<LineStatus> {
         if !self.in_module() {
-            return Some(self.failure(
-                LineStatus::Error,
-                AsmErrorKind::Directive,
-                &format!("{directive} must appear inside a module"),
-                None,
-            ));
+            if self.symbol_scope.saw_explicit_module || self.symbol_scope.scope_stack.depth() != 0 {
+                return Some(self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Directive,
+                    &format!("{directive} must appear inside a module"),
+                    None,
+                ));
+            }
+            return None;
         }
         if self.symbol_scope.scope_stack.depth() != self.symbol_scope.module_scope_depth {
             return Some(self.failure(

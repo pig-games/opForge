@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use crate::output_artifacts::ArtifactBuildError;
 use crate::output_model::{
-    HunkMemoryType, HunkOutputInput, HunkSegmentInput, LinkerOutputDirective,
-    LinkerOutputRelocationDisposition, OutputFixupKind, SectionKind, SectionState,
+    HunkOutputInput, HunkSegmentInput, LinkerOutputDirective, LinkerOutputRelocationDisposition,
+    OutputFixupKind, SectionKind, SectionState, IMPLICIT_HUNK_CODE_SECTION_NAME,
 };
 
 const HUNK_HEADER: u32 = 0x0000_03f3;
@@ -40,9 +40,18 @@ fn collect_hunk_output_input(
     output: &LinkerOutputDirective,
     sections: &HashMap<String, SectionState>,
 ) -> Result<HunkOutputInput, ArtifactBuildError> {
-    let section_names = output.option_text_list("sections").ok_or_else(|| {
-        ArtifactBuildError::new("Missing sections option in .output", None::<String>)
-    })?;
+    let implicit_section_names;
+    let section_names = if let Some(section_names) = output.option_text_list("sections") {
+        section_names
+    } else if sections.contains_key(IMPLICIT_HUNK_CODE_SECTION_NAME) {
+        implicit_section_names = [IMPLICIT_HUNK_CODE_SECTION_NAME.to_string()];
+        &implicit_section_names
+    } else {
+        return Err(ArtifactBuildError::new(
+            "Missing sections option in .output",
+            None::<String>,
+        ));
+    };
 
     let mut segments = Vec::new();
     for section_name in section_names {
@@ -67,7 +76,7 @@ fn collect_hunk_output_input(
             kind: section.kind,
             initialized_bytes: section.bytes.clone(),
             allocation_size_bytes,
-            memory_type: HunkMemoryType::Any,
+            memory_type: section.hunk_memory_type,
             fixups: section.output_fixups.clone(),
         });
     }

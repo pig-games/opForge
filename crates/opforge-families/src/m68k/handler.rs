@@ -17,6 +17,7 @@ use super::{
     is_68080_address_bank_register, is_68080_data_bank_register, is_address_register,
     is_data_register, is_register, state,
 };
+use opcore::expr::parse_number;
 use opcore::expression::expr_span;
 use opcore::parser::{BinaryOp, Expr, UnaryOp};
 use registry::family::{
@@ -1671,6 +1672,23 @@ impl M68KFamilyHandler {
                 Ok(FamilyOperand::AddressPredecrement {
                     register: name,
                     span: Self::combined_unary_span(*span, inner),
+                })
+            }
+            Expr::Number(text, span) => {
+                let size = match parse_number(text) {
+                    Some(value) if self.encode_absolute_word(value).is_some() => AbsoluteSize::Word,
+                    Some(_) => AbsoluteSize::Long,
+                    None => {
+                        return Err(FamilyParseError::new(
+                            "invalid 68000 absolute numeric operand",
+                            *span,
+                        ))
+                    }
+                };
+                Ok(FamilyOperand::Absolute {
+                    expr: expr.clone(),
+                    size,
+                    span: *span,
                 })
             }
             Expr::Identifier(name, span) => {
@@ -7869,6 +7887,28 @@ mod tests {
                 expr: Expr::Number(text, _),
                 ..
             } if text == "$123456"
+        ));
+    }
+
+    #[test]
+    fn parses_bare_numeric_absolute_operands_with_inferred_size() {
+        let operands = parse_operands_from_source("    MOVE.L $1234,$DFF000");
+
+        assert!(matches!(
+            &operands[0],
+            FamilyOperand::Absolute {
+                size: AbsoluteSize::Word,
+                expr: Expr::Number(text, _),
+                ..
+            } if text == "$1234"
+        ));
+        assert!(matches!(
+            &operands[1],
+            FamilyOperand::Absolute {
+                size: AbsoluteSize::Long,
+                expr: Expr::Number(text, _),
+                ..
+            } if text == "$DFF000"
         ));
     }
 

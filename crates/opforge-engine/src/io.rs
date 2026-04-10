@@ -10,6 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 pub trait SourceProvider: Send + Sync {
     fn read_string(&self, path: &Path) -> io::Result<String>;
+    fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>>;
     fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>>;
     fn is_dir(&self, path: &Path) -> io::Result<bool>;
     fn is_file(&self, path: &Path) -> io::Result<bool>;
@@ -29,6 +30,10 @@ pub struct FsSourceProvider;
 impl SourceProvider for FsSourceProvider {
     fn read_string(&self, path: &Path) -> io::Result<String> {
         fs::read_to_string(path)
+    }
+
+    fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>> {
+        fs::read(path)
     }
 
     fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
@@ -195,6 +200,14 @@ impl SourceProvider for MemoryFsOverlaySourceProvider {
         }
     }
 
+    fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>> {
+        match self.memory.read_bytes(path) {
+            Ok(contents) => Ok(contents),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => self.fallback.read_bytes(path),
+            Err(err) => Err(err),
+        }
+    }
+
     fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
         self.merged_dir_entries(
             path,
@@ -239,6 +252,13 @@ impl SourceProvider for MemorySourceProvider {
         self.files
             .get(&normalize_path(path))
             .cloned()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "missing file"))
+    }
+
+    fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>> {
+        self.files
+            .get(&normalize_path(path))
+            .map(|contents| contents.as_bytes().to_vec())
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "missing file"))
     }
 

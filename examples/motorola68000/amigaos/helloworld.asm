@@ -1,11 +1,10 @@
-; AmigaOS "Hello World" executable for the v0.3 executable-complete Hunk subset.
-; Uses unplaced Hunk output plus bare-symbol executable notation where the
-; supported matrix now allows it.
+; AmigaOS "Hello World" executable for the no-frills Hunk CLI path.
+; Build with:
+;   opforge --cpu 68000 --hunk helloworld.hunk examples/motorola68000/amigaos/helloworld.asm
+; Uses one implicit code hunk plus bare-symbol executable notation where the
+; supported matrix allows it.
 ; Uses dos.library/PutStr() so requires Kickstart 2.0+.
 ; The program is CLI-oriented and does not include Workbench startup handling.
-
-        .module main
-        .cpu 68000
 
 SysBase         = 4
 
@@ -13,8 +12,6 @@ SysBase         = 4
 OpenLibrary     = -552
 CloseLibrary    = -414
 PutStr          = -948
-
-        .section code, kind=code
 
 start:
         LEA dos_name,A1             ; "dos.library" name string
@@ -37,14 +34,7 @@ no_dos:
         CLR.L D0                    ; return 0 to the system
         RTS
 
-        .endsection
-        .section data, kind=data
-
 dos_name:
         .byte "dos.library",0
 hello:
         .byte "Hello World!",10,0
-
-        .endsection
-        .output "build/helloworld.hunk", format=hunk, sections=code,data
-        .endmodule

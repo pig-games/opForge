@@ -187,6 +187,9 @@ fn run_one(
     if let Some(srec_name_override) = config.srec_name.as_deref() {
         builder = builder.srec_name_override(srec_name_override);
     }
+    if let Some(hunk_name_override) = config.hunk_name.as_deref() {
+        builder = builder.hunk_name_override(hunk_name_override);
+    }
     if let Some(tab_size) = config.tab_size {
         builder = builder.tab_size(tab_size);
     }

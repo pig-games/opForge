@@ -1,71 +1,61 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; AmigaOS "Hello World" executable for the v0.3 executable-complete Hunk subset.
-----                                2  ; Uses unplaced Hunk output plus bare-symbol executable notation where the
-----                                3  ; supported matrix now allows it.
-----                                4  ; Uses dos.library/PutStr() so requires Kickstart 2.0+.
-----                                5  ; The program is CLI-oriented and does not include Workbench startup handling.
-----                                6  
-----                                7          .module main
-----                                8          .cpu 68000
-----                                9  
-----    EQU 0004                   10  SysBase         = 4
-----                               11  
-----                               12  ; LVO offsets in the relevant library jump tables.
-----    EQU FFFFFDD8               13  OpenLibrary     = -552
-----    EQU FFFFFE62               14  CloseLibrary    = -414
-----    EQU FFFFFC4C               15  PutStr          = -948
-----                               16  
-----                               17          .section code, kind=code  ; [section code]
-----                               18    ; [section code]
-----                               19  start  ; [section code]
-0000    43 F9 00 00 00 00          20          LEA dos_name,A1             ; "dos.library" name string  ; [section code]
-0006    70 24                      21          MOVEQ #36,D0                ; minimum required version (Kickstart 2.0)  ; [section code]
-0008    2C 78 00 04                22          MOVEA.L SysBase.W,A6  ; [section code]
-000C    4E AE FD D8                23          JSR OpenLibrary(A6)  ; [section code]
-----                               24    ; [section code]
-0010    4A 80                      25          TST.L D0                    ; zero if OpenLibrary() failed  ; [section code]
-0012    67 00 00 18                26          BEQ no_dos  ; [section code]
-----                               27    ; [section code]
-0016    22 3C 00 00 00 0C          28          MOVE.L #hello,D1            ; PutStr() expects the string pointer in D1  ; [section code]
-001C    2C 40                      29          MOVEA.L D0,A6               ; DOSBase  ; [section code]
-001E    4E AE FC 4C                30          JSR PutStr(A6)  ; [section code]
-----                               31    ; [section code]
-0022    22 4E                      32          MOVEA.L A6,A1               ; library to close  ; [section code]
-0024    2C 78 00 04                33          MOVEA.L SysBase.W,A6  ; [section code]
-0028    4E AE FE 62                34          JSR CloseLibrary(A6)  ; [section code]
-----                               35    ; [section code]
-----                               36  no_dos  ; [section code]
-002C    42 80                      37          CLR.L D0                    ; return 0 to the system  ; [section code]
-002E    4E 75                      38          RTS  ; [section code]
-----                               39    ; [section code]
-----                               40          .endsection
-----                               41          .section data, kind=data  ; [section data]
-----                               42    ; [section data]
-----                               43  dos_name  ; [section data]
-0000    64 6F 73 2E 6C 69 62 72 61 72 79 00    44          .byte "dos.library",0  ; [section data]
-----                               45  hello  ; [section data]
-000C    48 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00    46          .byte "Hello World!",10,0  ; [section data]
-----                               47    ; [section data]
-----                               48          .endsection
-----                               49          .output "build/helloworld.hunk", format=hunk, sections=code,data
-----                               50          .endmodule
+----                                1  ; AmigaOS "Hello World" executable for the no-frills Hunk CLI path.  ; [section __opforge_implicit_code]
+----                                2  ; Build with:  ; [section __opforge_implicit_code]
+----                                3  ;   opforge --cpu 68000 --hunk helloworld.hunk examples/motorola68000/amigaos/helloworld.asm  ; [section __opforge_implicit_code]
+----                                4  ; Uses one implicit code hunk plus bare-symbol executable notation where the  ; [section __opforge_implicit_code]
+----                                5  ; supported matrix allows it.  ; [section __opforge_implicit_code]
+----                                6  ; Uses dos.library/PutStr() so requires Kickstart 2.0+.  ; [section __opforge_implicit_code]
+----                                7  ; The program is CLI-oriented and does not include Workbench startup handling.  ; [section __opforge_implicit_code]
+----                                8    ; [section __opforge_implicit_code]
+----    EQU 0004                    9  SysBase         = 4  ; [section __opforge_implicit_code]
+----                               10    ; [section __opforge_implicit_code]
+----                               11  ; LVO offsets in the relevant library jump tables.  ; [section __opforge_implicit_code]
+----    EQU FFFFFDD8               12  OpenLibrary     = -552  ; [section __opforge_implicit_code]
+----    EQU FFFFFE62               13  CloseLibrary    = -414  ; [section __opforge_implicit_code]
+----    EQU FFFFFC4C               14  PutStr          = -948  ; [section __opforge_implicit_code]
+----                               15    ; [section __opforge_implicit_code]
+----                               16  start  ; [section __opforge_implicit_code]
+0000    43 F9 00 00 00 30          17          LEA dos_name,A1             ; "dos.library" name string  ; [section __opforge_implicit_code]
+0006    70 24                      18          MOVEQ #36,D0                ; minimum required version (Kickstart 2.0)  ; [section __opforge_implicit_code]
+0008    2C 78 00 04                19          MOVEA.L SysBase.W,A6  ; [section __opforge_implicit_code]
+000C    4E AE FD D8                20          JSR OpenLibrary(A6)  ; [section __opforge_implicit_code]
+----                               21    ; [section __opforge_implicit_code]
+0010    4A 80                      22          TST.L D0                    ; zero if OpenLibrary() failed  ; [section __opforge_implicit_code]
+0012    67 00 00 18                23          BEQ no_dos  ; [section __opforge_implicit_code]
+----                               24    ; [section __opforge_implicit_code]
+0016    22 3C 00 00 00 3C          25          MOVE.L #hello,D1            ; PutStr() expects the string pointer in D1  ; [section __opforge_implicit_code]
+001C    2C 40                      26          MOVEA.L D0,A6               ; DOSBase  ; [section __opforge_implicit_code]
+001E    4E AE FC 4C                27          JSR PutStr(A6)  ; [section __opforge_implicit_code]
+----                               28    ; [section __opforge_implicit_code]
+0022    22 4E                      29          MOVEA.L A6,A1               ; library to close  ; [section __opforge_implicit_code]
+0024    2C 78 00 04                30          MOVEA.L SysBase.W,A6  ; [section __opforge_implicit_code]
+0028    4E AE FE 62                31          JSR CloseLibrary(A6)  ; [section __opforge_implicit_code]
+----                               32    ; [section __opforge_implicit_code]
+----                               33  no_dos  ; [section __opforge_implicit_code]
+002C    42 80                      34          CLR.L D0                    ; return 0 to the system  ; [section __opforge_implicit_code]
+002E    4E 75                      35          RTS  ; [section __opforge_implicit_code]
+----                               36    ; [section __opforge_implicit_code]
+----                               37  dos_name  ; [section __opforge_implicit_code]
+0030    64 6F 73 2E 6C 69 62 72 61 72 79 00    38          .byte "dos.library",0  ; [section __opforge_implicit_code]
+----                               39  hello  ; [section __opforge_implicit_code]
+003C    48 65 6C 6C 6F 20 57 6F 72 6C 64 21 0A 00    40          .byte "Hello World!",10,0  ; [section __opforge_implicit_code]
 
-Lines: 50  Errors: 0  Warnings: 0
+Lines: 40  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-main.CloseLibrary  FFFFFE62  prv  lbl 
-main.dos_name    0000      prv  lbl 
-main.hello       000C      prv  lbl 
-main.no_dos      002C      prv  lbl 
-main.OpenLibrary  FFFFFDD8  prv  lbl 
-main.PutStr      FFFFFC4C  prv  lbl 
-main.start       0000      prv  lbl 
-main.SysBase     0004      prv  lbl 
+CloseLibrary     FFFFFE62  prv  lbl
+dos_name         0030      prv  lbl
+hello            003C      prv  lbl
+no_dos           002C      prv  lbl
+OpenLibrary      FFFFFDD8  prv  lbl
+PutStr           FFFFFC4C  prv  lbl
+start            0000      prv  lbl
+SysBase          0004      prv  lbl
 
 Total memory is 0 bytes
 

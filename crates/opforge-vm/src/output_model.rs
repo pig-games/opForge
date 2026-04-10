@@ -23,6 +23,7 @@ pub struct SectionState {
     pub layout_placed: bool,
     pub align: u32,
     pub kind: SectionKind,
+    pub hunk_memory_type: HunkMemoryType,
     pub default_region: Option<String>,
     pub base_addr: Option<u32>,
     pub relocation_free_certified: bool,
@@ -42,6 +43,7 @@ impl Default for SectionState {
             layout_placed: false,
             align: 0,
             kind: SectionKind::Code,
+            hunk_memory_type: HunkMemoryType::Any,
             default_region: None,
             base_addr: None,
             relocation_free_certified: true,
@@ -68,6 +70,7 @@ impl SectionState {
 pub struct SectionOptions {
     pub align: Option<u32>,
     pub kind: Option<SectionKind>,
+    pub hunk_memory_type: Option<HunkMemoryType>,
     pub region: Option<String>,
 }
 
@@ -265,6 +268,9 @@ pub enum LinkerOutputRelocationDisposition {
 pub enum HunkMemoryType {
     #[default]
     Any,
+    Chip,
+    Fast,
+    Slow,
 }
 
 impl HunkMemoryType {
@@ -272,6 +278,9 @@ impl HunkMemoryType {
     pub fn segment_bits(self) -> u32 {
         match self {
             Self::Any => 0,
+            Self::Chip => 0x4000_0000,
+            Self::Fast => 0x8000_0000,
+            Self::Slow => 0,
         }
     }
 }
@@ -361,6 +370,8 @@ pub struct HunkOutputInput {
     pub segments: Vec<HunkSegmentInput>,
     pub relocation_disposition: LinkerOutputRelocationDisposition,
 }
+
+pub const IMPLICIT_HUNK_CODE_SECTION_NAME: &str = "__opforge_implicit_code";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkerOutputOptionValue {

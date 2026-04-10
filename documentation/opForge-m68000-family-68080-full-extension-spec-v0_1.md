@@ -124,12 +124,11 @@ optional, or deprioritised.
 ### `.apollo` contract
 
 * `.apollo` remains accepted on `m68080` for backward compatibility.
-* Default mode under `.cpu 68080` is `off` for the Line-A-only subset
-  (`CLR.Q`, `MOV3Q`, and `MOVS` / `MOVZ`).
-* `.apollo on` enables only that Line-A subset; AMMX and the integrated 68080
-  FPU remain available without Apollo mode.
-* `.apollo off` is accepted as a strict-compatibility mode that clears the
-  Line-A gate again.
+* Default mode under `.cpu 68080` is the Apollo-enabled full profile.
+* `.apollo on` is accepted as an explicit no-op reaffirmation of that default
+  shipped profile.
+* `.apollo off` is rejected deterministically because strict compatibility mode
+  is not implemented in the shipped full-profile build.
 * Default `MOVIW.L #<imm16>,<ea>` on `m68080` uses the regular 68080 form and
   does not require `.apollo on`.
 * No deprecated Line-A `MOVIW` compatibility selector is currently exposed.
@@ -1804,8 +1803,9 @@ Additionally, the following existing encoders / code paths require extension
 
 ## Open Questions
 
-- [ ] `Q-68080-FULL-001`: Should `.apollo off` remain a functional strict mode
-  or become a compatibility no-op with diagnostic warning?
+- [x] `Q-68080-FULL-001`: Resolved. `.apollo off` is rejected
+  deterministically because strict compatibility mode is not implemented in the
+  shipped full-profile build.
 - [x] `Q-68080-FULL-002`: Resolved. `.cpu 68080` defaults the runtime FPU
   target to `68080`; `.fpu none` explicitly disables the integrated 68080 FPU.
 - [ ] `Q-68080-FULL-003`: Which 68080 FPU syntax aliases should be canonical

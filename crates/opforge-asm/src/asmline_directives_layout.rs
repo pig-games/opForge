@@ -264,6 +264,16 @@ impl<'a> AsmLine<'a> {
                     );
                 }
             }
+            if let Some(hunk_memory_type) = options.hunk_memory_type {
+                if section.hunk_memory_type != hunk_memory_type {
+                    return self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Directive,
+                        "Section memory conflicts with existing definition",
+                        Some(&name),
+                    );
+                }
+            }
             if let Some(region) = options.region.as_deref() {
                 if section.default_region.as_deref() != Some(region) {
                     return self.failure(
@@ -284,6 +294,9 @@ impl<'a> AsmLine<'a> {
             }
             if let Some(kind) = options.kind {
                 section.kind = kind;
+            }
+            if let Some(hunk_memory_type) = options.hunk_memory_type {
+                section.hunk_memory_type = hunk_memory_type;
             }
             section.default_region = options.region;
             self.layout.sections.insert(name.clone(), section);
@@ -330,6 +343,27 @@ impl<'a> AsmLine<'a> {
             Some(SectionKind::Data)
         } else if text.eq_ignore_ascii_case("bss") {
             Some(SectionKind::Bss)
+        } else {
+            None
+        }
+    }
+
+    pub fn parse_section_hunk_memory_type_expr(&self, expr: &Expr) -> Option<HunkMemoryType> {
+        let text = match expr {
+            Expr::Identifier(text, _) | Expr::Register(text, _) | Expr::Number(text, _) => {
+                text.as_str()
+            }
+            Expr::String(bytes, _) => std::str::from_utf8(bytes).ok()?,
+            _ => return None,
+        };
+        if text.eq_ignore_ascii_case("any") {
+            Some(HunkMemoryType::Any)
+        } else if text.eq_ignore_ascii_case("chip") {
+            Some(HunkMemoryType::Chip)
+        } else if text.eq_ignore_ascii_case("fast") {
+            Some(HunkMemoryType::Fast)
+        } else if text.eq_ignore_ascii_case("slow") {
+            Some(HunkMemoryType::Slow)
         } else {
             None
         }
@@ -409,6 +443,23 @@ impl<'a> AsmLine<'a> {
                     }
                 };
                 options.kind = Some(kind);
+                continue;
+            }
+
+            if key.eq_ignore_ascii_case("memory") {
+                let hunk_memory_type = match self.parse_section_hunk_memory_type_expr(right) {
+                    Some(memory) => memory,
+                    None => {
+                        return Err(self.failure_at_span(
+                            LineStatus::Error,
+                            AsmErrorKind::Directive,
+                            "Section memory must be any, chip, fast, or slow",
+                            None,
+                            *span,
+                        ))
+                    }
+                };
+                options.hunk_memory_type = Some(hunk_memory_type);
                 continue;
             }
 

@@ -44,6 +44,15 @@ infrastructure for curated parity checks against existing assemblers.
   coverage.
 - Contributor documentation for installing `vasm` and the `opforge-vasm68k` /
   `vasm68k` wrappers used by the oracle workflow.
+- AmigaOS Hunk executable output can now be selected from the CLI with
+  `--hunk [FILE]`, including the no-frills flat-source path where `--cpu 68000`
+  and `--hunk` replace in-source `.cpu`, `.module`, `.section`, `.org`, and
+  `.output` boilerplate.
+- `.incbin "file"` now includes raw binary data using the same constrained
+  include-root resolution as `.include`.
+- Hunk section attributes now accept `.section ..., memory=chip|fast|slow|any`
+  so executable segments can request CHIP or FAST allocation flags. `slow`
+  remains a source-level alias for unconstrained Hunk allocation.
 
 ## Changed
 
@@ -56,6 +65,12 @@ infrastructure for curated parity checks against existing assemblers.
 - The external-oracle workflow now distinguishes shared parity, negative
   parity, and documented divergence fixtures instead of treating all
   cross-assembler differences the same way.
+- Hunk executable output now has an implicit single-code-section shorthand for
+  flat source files selected either by `.output ..., format=hunk` or by CLI
+  `--hunk [FILE]`.
+- Added a manual-only RAWImageView AmigaOS example that exercises `.incbin` and
+  CHIP-memory Hunk data sections without enabling it in the automatic reference
+  test sweep yet.
 
 ## Fixed
 

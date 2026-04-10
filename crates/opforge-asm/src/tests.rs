@@ -5,9 +5,9 @@ use crate::listing::ListingWriter;
 use crate::normalization::{normalize_opforge_diagnostics, NormalizedErrorClass};
 use crate::output::{
     build_export_sections_payloads, build_linker_output_payload, build_mapfile_text,
-    ExportSectionsFormat, ExportSectionsInclude, LinkerOutputDirective, LinkerOutputFormat,
-    LinkerOutputOptionValue, LinkerOutputRelocationDisposition, MapFileDirective, MapSymbolsMode,
-    RegionState, RootMetadata, SectionKind, SectionState,
+    ExportSectionsFormat, ExportSectionsInclude, HunkMemoryType, LinkerOutputDirective,
+    LinkerOutputFormat, LinkerOutputOptionValue, LinkerOutputRelocationDisposition,
+    MapFileDirective, MapSymbolsMode, RegionState, RootMetadata, SectionKind, SectionState,
 };
 use clap::Parser;
 use cli_core::{
@@ -72,7 +72,7 @@ use vm::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};
 use vm::execution_model::set_core_expr_parser_failpoint_for_tests;
 use vm::hierarchy::ScopedOwner;
 use vm::intel8080_vm::mode_key_for_instruction_entry;
-use vm::output_model::OutputFixupRecord;
+use vm::output_model::{OutputFixupRecord, IMPLICIT_HUNK_CODE_SECTION_NAME};
 use vm::portable_contract::{PortableSpan, PortableToken, PortableTokenKind};
 use vm::rollout::{
     family_runtime_mode, family_runtime_rollout_policy, package_runtime_default_enabled_for_family,
@@ -1396,6 +1396,13 @@ fn example_reference_payload_extension(asm_path: &Path) -> &'static str {
     }
 }
 
+fn example_uses_cli_hunk_output(asm_path: &Path) -> bool {
+    asm_path
+        .components()
+        .any(|component| component.as_os_str() == "amigaos")
+        && asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("helloworld")
+}
+
 fn example_output_payload_path(
     fixture_out_dir: &Path,
     base: &str,
@@ -1411,7 +1418,7 @@ fn example_output_payload_path(
 fn should_skip_example_dir(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
-        Some("ab" | "reference" | "vm" | "opthread" | "project_root" | "lib")
+        Some("ab" | "reference" | "vm" | "opthread" | "project_root" | "lib" | "manual")
     )
 }
 
@@ -1481,6 +1488,8 @@ fn assemble_example_with_base(
     let out_dir = out_dir.to_path_buf();
     let header_title = format!("opForge Assembler v{VERSION}");
     let use_srec = example_uses_srec_reference(asm_path);
+    let cli_hunk_output = example_uses_cli_hunk_output(asm_path);
+    let hunk_name_override = cli_hunk_output.then(|| format!("build/{base}.hunk"));
     let result = run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
         execution_mode: ExecutionMode::Lockstep {
@@ -1491,7 +1500,7 @@ fn assemble_example_with_base(
         include_paths: &[],
         module_paths: &[],
         pp_macro_depth: 64,
-        cpu_override: None,
+        cpu_override: if cli_hunk_output { Some("68000") } else { None },
         default_cpu: default_cpu(),
         max_loop_iterations: 1000,
         opasm_package_path: None,
@@ -1511,6 +1520,7 @@ fn assemble_example_with_base(
         list_name_override: Some(""),
         hex_name_override: if use_srec { None } else { Some("") },
         srec_name_override: if use_srec { Some("") } else { None },
+        hunk_name_override: hunk_name_override.as_deref(),
         header_title: &header_title,
         output_sink: None,
         source_provider: None,
@@ -1754,6 +1764,7 @@ fn assemble_example_error(asm_path: &Path) -> Option<String> {
         list_name_override: Some(""),
         hex_name_override: Some(""),
         srec_name_override: None,
+        hunk_name_override: None,
         header_title: &header_title,
         output_sink: None,
         source_provider: None,
@@ -2111,6 +2122,43 @@ fn expand_source_file_uses_include_roots_in_cli_order() {
             .any(|line| line.contains("VALUE .const 20")),
         "include resolution should follow command-line order"
     );
+}
+
+#[test]
+fn incbin_expands_and_assembles_binary_data() {
+    let dir = create_temp_dir("incbin-assembles");
+    let root_path = dir.join("main.asm");
+    let asset_path = dir.join("sprite.bin");
+    fs::write(&asset_path, [0xde, 0xad, 0xbe, 0xef]).expect("write binary fixture");
+    write_file(
+        &root_path,
+        ".org $1000\nSpriteData .incbin \"sprite.bin\"\n.byte $ff\n",
+    );
+
+    let lines = expand_source_file(&root_path, &[], &[], 32).expect("expand root");
+    assert_eq!(
+        lines,
+        vec![
+            ".org $1000".to_string(),
+            "SpriteData .byte $DE, $AD, $BE, $EF".to_string(),
+            ".byte $ff".to_string()
+        ]
+    );
+
+    let line_refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+    let assembler = run_passes(&line_refs);
+    let entries = assembler.image().entries().expect("image entries");
+    assert_eq!(
+        entries,
+        vec![
+            (0x1000, 0xde),
+            (0x1001, 0xad),
+            (0x1002, 0xbe),
+            (0x1003, 0xef),
+            (0x1004, 0xff)
+        ]
+    );
+    assert_eq!(assembler.symbols().lookup("SpriteData"), Some(0x1000));
 }
 
 #[test]
@@ -5615,6 +5663,24 @@ fn cpu_68000_emit_word_uses_big_endian_order() {
 }
 
 #[test]
+fn cpu_68000_data_directives_use_big_endian_order() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    let status = process_line(&mut asm, "    .cpu 68000", 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+
+    let status = process_line(&mut asm, "    .word $1234", 0, 2);
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm.bytes(), &[0x12, 0x34]);
+
+    let status = process_line(&mut asm, "    .long $01fc0000", 2, 3);
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm.bytes(), &[0x01, 0xfc, 0x00, 0x00]);
+}
+
+#[test]
 fn m68000_movement_and_addressing_slice_emits_expected_bytes() {
     assert_eq!(
         assemble_bytes(m68000_cpu_id, "    MOVE.W #$1234,D0"),
@@ -6416,8 +6482,8 @@ fn m68000_pc_relative_scalar_symbols_encode_literal_displacements() {
             (0x1009, 0x3A),
             (0x100A, 0x00),
             (0x100B, 0x02),
-            (0x100C, 0x34),
-            (0x100D, 0x12),
+            (0x100C, 0x12),
+            (0x100D, 0x34),
         ]
     );
 }
@@ -7491,6 +7557,48 @@ fn m68000_alias_spellings_match_canonical_baseline_forms() {
         assemble_bytes(m68000_cpu_id, "    MOVE.L $123456.L,D0"),
         assemble_bytes(m68000_cpu_id, "    MOVE.L ($123456).L,D0")
     );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.W $1234,D0"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.W ($1234).W,D0")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.L $DFF000,D0"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.L ($DFF000).L,D0")
+    );
+    assert_eq!(
+        assemble_bytes(m68000_cpu_id, "    MOVE.L #$12345678,$DFF000"),
+        assemble_bytes(m68000_cpu_id, "    MOVE.L #$12345678,($DFF000).L")
+    );
+
+    let (copper_alias_entries, copper_alias_diagnostics) =
+        assemble_source_entries_with_runtime_mode(
+            &[
+                ".cpu 68000",
+                "COPPER = $12345678",
+                "    move.l #COPPER,$dff000",
+            ],
+            false,
+        )
+        .expect("natural absolute operand alias should assemble");
+    let (copper_canonical_entries, copper_canonical_diagnostics) =
+        assemble_source_entries_with_runtime_mode(
+            &[
+                ".cpu 68000",
+                "COPPER = $12345678",
+                "    MOVE.L #COPPER,($DFF000).L",
+            ],
+            false,
+        )
+        .expect("canonical absolute operand should assemble");
+    assert!(
+        copper_alias_diagnostics.is_empty(),
+        "unexpected natural alias diagnostics: {copper_alias_diagnostics:?}"
+    );
+    assert!(
+        copper_canonical_diagnostics.is_empty(),
+        "unexpected canonical diagnostics: {copper_canonical_diagnostics:?}"
+    );
+    assert_eq!(copper_alias_entries, copper_canonical_entries);
 }
 
 fn assert_vm_native_diagnostic_core_parity(native_diag: &Diagnostic, runtime_diag: &Diagnostic) {
@@ -8118,6 +8226,7 @@ fn normalize_listing_for_reference_compare(text: &str) -> String {
                 || trimmed.contains("| vm-only |")
                 || trimmed.contains("| full-runtime |"))
         })
+        .map(str::trim_end)
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -9956,6 +10065,51 @@ fn section_option_rejects_unknown_key() {
     let status = process_line(&mut asm, ".section code, bogus=1", 0, 1);
     assert_eq!(status, LineStatus::Error);
     assert!(asm.error_message().contains("Unknown section option key"));
+}
+
+#[test]
+fn section_option_accepts_hunk_memory_attribute() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    let status = process_line(&mut asm, ".section gfx, kind=data, memory=chip", 0, 1);
+
+    assert_eq!(status, LineStatus::Ok);
+    let section = asm.layout.sections.get("gfx").expect("gfx section");
+    assert_eq!(section.kind, SectionKind::Data);
+    assert_eq!(section.hunk_memory_type, HunkMemoryType::Chip);
+}
+
+#[test]
+fn section_option_accepts_slow_hunk_memory_alias() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    let status = process_line(&mut asm, ".section slowdata, memory=slow", 0, 1);
+
+    assert_eq!(status, LineStatus::Ok);
+    let section = asm
+        .layout
+        .sections
+        .get("slowdata")
+        .expect("slowdata section");
+    assert_eq!(section.hunk_memory_type, HunkMemoryType::Slow);
+}
+
+#[test]
+fn section_option_rejects_unknown_hunk_memory_attribute() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    let status = process_line(&mut asm, ".section gfx, memory=other", 0, 1);
+
+    assert_eq!(status, LineStatus::Error);
+    assert!(asm
+        .error_message()
+        .contains("Section memory must be any, chip, fast, or slow"));
 }
 
 #[test]
@@ -14108,6 +14262,42 @@ fn linker_output_hunk_emits_code_and_data_with_big_endian_header_words() {
 }
 
 #[test]
+fn linker_output_hunk_encodes_section_memory_type_bits() {
+    let output = hunk_output_directive(
+        "build/out.hunk",
+        &["code", "data", "fast", "slow"],
+        LinkerOutputRelocationDisposition::ProvenRelocationFree,
+    );
+    let mut chip_data = hunk_section(SectionKind::Data, 0x1000, &[0xaa], 1);
+    chip_data.hunk_memory_type = HunkMemoryType::Chip;
+    let mut fast_data = hunk_section(SectionKind::Data, 0x1004, &[0xbb], 1);
+    fast_data.hunk_memory_type = HunkMemoryType::Fast;
+    let mut slow_data = hunk_section(SectionKind::Data, 0x1008, &[0xcc], 1);
+    slow_data.hunk_memory_type = HunkMemoryType::Slow;
+    let sections = HashMap::from([
+        (
+            "code".to_string(),
+            hunk_section(SectionKind::Code, 0x2000, &[0x4e, 0x75], 2),
+        ),
+        ("data".to_string(), chip_data),
+        ("fast".to_string(), fast_data),
+        ("slow".to_string(), slow_data),
+    ]);
+
+    let payload = build_linker_output_payload(&output, &sections).expect("hunk payload");
+    let header_words: Vec<u32> = payload
+        .chunks_exact(4)
+        .take(9)
+        .map(|chunk| u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect();
+
+    assert_eq!(header_words[5], 1);
+    assert_eq!(header_words[6], 0x4000_0001);
+    assert_eq!(header_words[7], 0x8000_0001);
+    assert_eq!(header_words[8], 1);
+}
+
+#[test]
 fn linker_output_hunk_emits_reloc32_records_for_relocation_backed_segments() {
     let output = hunk_output_directive(
         "build/out.hunk",
@@ -14359,6 +14549,55 @@ fn linker_output_hunk_live_path_certifies_literal_only_code_section() {
 }
 
 #[test]
+fn linker_output_hunk_live_path_defaults_flat_source_to_single_code_section() {
+    let implicit = run_passes(&[
+        ".cpu 68000",
+        "start: MOVE.L #target,D1",
+        " RTS",
+        "target: RTS",
+        ".output \"build/out.hunk\", format=hunk",
+    ]);
+    let explicit = run_passes(&[
+        ".module main",
+        ".cpu 68000",
+        ".section code, kind=code",
+        "start: MOVE.L #target,D1",
+        " RTS",
+        "target: RTS",
+        ".endsection",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+    let implicit_output = implicit
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("implicit output directive");
+    let explicit_output = explicit
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("explicit output directive");
+
+    assert_eq!(
+        implicit_output.relocation_disposition,
+        LinkerOutputRelocationDisposition::RelocationRecordsPresent
+    );
+    let implicit_section = implicit
+        .sections()
+        .get(IMPLICIT_HUNK_CODE_SECTION_NAME)
+        .expect("implicit code section");
+    assert_eq!(implicit_section.kind, SectionKind::Code);
+    assert_eq!(implicit_section.output_fixups.len(), 1);
+
+    let implicit_payload =
+        build_linker_output_payload(implicit_output, implicit.sections()).expect("implicit hunk");
+    let explicit_payload =
+        build_linker_output_payload(explicit_output, explicit.sections()).expect("explicit hunk");
+    assert_eq!(implicit_payload, explicit_payload);
+}
+
+#[test]
 fn linker_output_hunk_live_path_certifies_m68000_pc_relative_same_section_code() {
     let assembler = run_passes(&[
         ".module main",
@@ -14559,7 +14798,7 @@ fn linker_output_hunk_live_path_emits_reloc32_for_long_section_symbol_with_adden
         output.relocation_disposition,
         LinkerOutputRelocationDisposition::RelocationRecordsPresent
     );
-    assert_eq!(&section.bytes[0..4], &[0x0a, 0x00, 0x00, 0x00]);
+    assert_eq!(&section.bytes[0..4], &[0x00, 0x00, 0x00, 0x0a]);
 
     let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
     assert!(
@@ -14627,7 +14866,7 @@ fn linker_output_hunk_live_path_emits_reloc32_for_long_section_symbol_with_equat
         output.relocation_disposition,
         LinkerOutputRelocationDisposition::RelocationRecordsPresent
     );
-    assert_eq!(&section.bytes[0..4], &[0x0a, 0x00, 0x00, 0x00]);
+    assert_eq!(&section.bytes[0..4], &[0x00, 0x00, 0x00, 0x0a]);
 
     let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
     assert!(
@@ -14666,7 +14905,7 @@ fn linker_output_hunk_live_path_emits_reloc32_for_long_section_symbol_with_addre
         output.relocation_disposition,
         LinkerOutputRelocationDisposition::RelocationRecordsPresent
     );
-    assert_eq!(&section.bytes[0..4], &[0x0a, 0x20, 0x00, 0x00]);
+    assert_eq!(&section.bytes[0..4], &[0x00, 0x00, 0x20, 0x0a]);
 
     let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
     assert!(
@@ -14707,7 +14946,7 @@ fn linker_output_hunk_live_path_emits_reloc32_for_long_pointer_table() {
     assert_eq!(section.output_fixups.len(), 2);
     assert_eq!(
         &section.bytes[0..8],
-        &[0x0a, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00]
+        &[0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x0f]
     );
 
     let payload = build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
@@ -15149,7 +15388,7 @@ fn linker_output_hunk_live_path_explicit_and_unplaced_payloads_match_for_relocat
         .all(|fixup| fixup.target_section_name() == Some("data")));
     assert_eq!(
         &data.bytes[0..8],
-        &[0x08, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x00]
+        &[0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x0c]
     );
 
     let unplaced_payload = build_linker_output_payload(unplaced_output, unplaced.sections())
@@ -15215,7 +15454,7 @@ fn linker_output_hunk_live_path_explicit_and_unplaced_payloads_match_for_equate_
     );
     assert_eq!(data.output_fixups.len(), 1);
     assert_eq!(data.output_fixups[0].target_section_name(), Some("data"));
-    assert_eq!(&data.bytes[0..4], &[0x08, 0x00, 0x00, 0x00]);
+    assert_eq!(&data.bytes[0..4], &[0x00, 0x00, 0x00, 0x08]);
 
     let unplaced_payload = build_linker_output_payload(unplaced_output, unplaced.sections())
         .expect("unplaced payload");

@@ -95,7 +95,7 @@ ADDR    BYTES                    LINE  SOURCE
 0012    +0000                      92          .align 2  ; [section data]
 ----                               93    ; [section data]
 ----                               94  hello_alert  ; [section data]
-0012    10 00                      95          .word 16  ; [section data]
+0012    00 10                      95          .word 16  ; [section data]
 0014    10 48 65 6C 6C 6F 20 57 6F 72 6C 64 21 00 00    96          .byte 16,"Hello World!",0,0  ; [section data]
 ----                               97    ; [section data]
 ----                               98          .endsection

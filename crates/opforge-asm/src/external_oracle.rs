@@ -1044,6 +1044,7 @@ fn run_opforge_fixture(
         list_name_override: None,
         hex_name_override: None,
         srec_name_override: None,
+        hunk_name_override: None,
         header_title: &header_title,
         output_sink: None,
         source_provider: None,

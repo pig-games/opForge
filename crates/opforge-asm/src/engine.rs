@@ -22,6 +22,7 @@ use types::image::ImageStore;
 use types::lockstep::LockstepReport;
 use types::processing::LineProcessingTrace;
 use types::symbol::{SymbolTable, SymbolVisibility};
+use vm::output_model::{LinkerOutputFormat, IMPLICIT_HUNK_CODE_SECTION_NAME};
 
 #[derive(Clone, Copy)]
 enum UnscopedRepeatKind {
@@ -65,6 +66,7 @@ pub struct Assembler {
     pub runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
     pub runtime_processing_traces: Vec<(u8, u32, LineProcessingTrace)>,
     pub runtime_lockstep_report: LockstepReport,
+    implicit_hunk_output_requested: bool,
 }
 
 const MAX_LAYOUT_STABILIZATION_PASSES: usize = 8;
@@ -197,6 +199,8 @@ impl Assembler {
         } else {
             None
         };
+        let uses_implicit_hunk_code_section =
+            Self::uses_implicit_hunk_code_section(lines, self.implicit_hunk_output_requested);
         self.sections.clear();
         self.regions.clear();
         self.diagnostics.clear();
@@ -239,6 +243,9 @@ impl Assembler {
                     section.output_fixups.clear();
                     section.emitted = false;
                 }
+            }
+            if uses_implicit_hunk_code_section {
+                Self::seed_implicit_hunk_code_section(&mut asm_line);
             }
 
             Self::execute_pass1_lines(
@@ -314,7 +321,7 @@ impl Assembler {
                 counts.errors += 1;
             }
 
-            if asm_line.in_section() {
+            if asm_line.in_user_section() {
                 let err = AsmError::new(
                     AsmErrorKind::Directive,
                     "Found .section without .endsection",
@@ -479,6 +486,7 @@ impl Assembler {
             runtime_line_router: None,
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
+            implicit_hunk_output_requested: false,
         }
     }
 
@@ -517,6 +525,10 @@ impl Assembler {
         runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
     ) {
         self.runtime_line_router = runtime_line_router;
+    }
+
+    pub fn set_implicit_hunk_output_requested(&mut self, requested: bool) {
+        self.implicit_hunk_output_requested = requested;
     }
 
     pub fn runtime_processing_traces(&self) -> &[(u8, u32, LineProcessingTrace)] {
@@ -621,6 +633,8 @@ impl Assembler {
         listing: &mut ListingWriter<W>,
     ) -> std::io::Result<PassCounts> {
         let pass1_loop_trace = self.loop_iteration_trace_pass1.clone();
+        let uses_implicit_hunk_code_section =
+            Self::uses_implicit_hunk_code_section(lines, self.implicit_hunk_output_requested);
         let mut asm_line = AsmLine::with_cpu(&mut self.symbols, self.cpu, &self.registry);
         asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
@@ -641,6 +655,9 @@ impl Assembler {
             section.hunk_fixup_error = None;
             section.output_fixups.clear();
             section.emitted = false;
+        }
+        if uses_implicit_hunk_code_section {
+            Self::seed_implicit_hunk_code_section(&mut asm_line);
         }
         self.image = ImageStore::new();
 
@@ -733,7 +750,7 @@ impl Assembler {
             counts.errors += 1;
         }
 
-        if asm_line.in_section() {
+        if asm_line.in_user_section() {
             let err = AsmError::new(
                 AsmErrorKind::Directive,
                 "Found .section without .endsection",
@@ -821,9 +838,47 @@ impl Assembler {
         Ok(counts)
     }
 
+    fn uses_implicit_hunk_code_section(
+        lines: &[String],
+        implicit_hunk_output_requested: bool,
+    ) -> bool {
+        let mut has_explicit_section = false;
+        let mut has_hunk_output_without_sections = false;
+        for line in lines {
+            let source = line.split(';').next().unwrap_or("").to_ascii_lowercase();
+            let trimmed = source.trim_start();
+            let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+            if trimmed.starts_with(".section") {
+                has_explicit_section = true;
+            }
+            if trimmed.starts_with(".output")
+                && (compact.contains("format=hunk") || compact.contains("format=\"hunk\""))
+                && !compact.contains("sections=")
+            {
+                has_hunk_output_without_sections = true;
+            }
+        }
+
+        (implicit_hunk_output_requested || has_hunk_output_without_sections)
+            && !has_explicit_section
+    }
+
+    fn seed_implicit_hunk_code_section(asm_line: &mut AsmLine<'_>) {
+        asm_line
+            .layout
+            .sections
+            .entry(IMPLICIT_HUNK_CODE_SECTION_NAME.to_string())
+            .or_insert_with(|| SectionState {
+                align: 1,
+                kind: vm::output_model::SectionKind::Code,
+                ..Default::default()
+            });
+        asm_line.layout.current_section = Some(IMPLICIT_HUNK_CODE_SECTION_NAME.to_string());
+    }
+
     fn refresh_hunk_output_relocation_dispositions(&mut self) {
         for output in &mut self.root_metadata.linker_outputs {
-            if output.format() != Some(vm::output_model::LinkerOutputFormat::Hunk) {
+            if output.format() != Some(LinkerOutputFormat::Hunk) {
                 continue;
             }
             output.relocation_disposition =
@@ -831,11 +886,24 @@ impl Assembler {
         }
     }
 
+    pub fn hunk_output_relocation_disposition_for(
+        &self,
+        output: &LinkerOutputDirective,
+    ) -> vm::output_model::LinkerOutputRelocationDisposition {
+        Self::hunk_output_relocation_disposition(output, &self.sections)
+    }
+
     fn hunk_output_relocation_disposition(
         output: &LinkerOutputDirective,
         sections: &HashMap<String, SectionState>,
     ) -> vm::output_model::LinkerOutputRelocationDisposition {
-        let Some(section_names) = output.option_text_list("sections") else {
+        let implicit_section_names;
+        let section_names = if let Some(section_names) = output.option_text_list("sections") {
+            section_names
+        } else if sections.contains_key(IMPLICIT_HUNK_CODE_SECTION_NAME) {
+            implicit_section_names = [IMPLICIT_HUNK_CODE_SECTION_NAME.to_string()];
+            &implicit_section_names
+        } else {
             return vm::output_model::LinkerOutputRelocationDisposition::Unknown;
         };
         if section_names.is_empty() {

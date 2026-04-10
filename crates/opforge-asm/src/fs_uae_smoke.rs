@@ -103,6 +103,11 @@ fn run_example_smoke(
 
     let artifact_dir =
         create_artifact_dir(workspace_root, &format!("fs-uae-hunk-smoke-{example_name}"))?;
+    let hunk_name_override = if example_name == "helloworld" {
+        Some(format!("build/{example_name}.hunk"))
+    } else {
+        None
+    };
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
         input_base: example_name,
@@ -130,6 +135,7 @@ fn run_example_smoke(
         list_name_override: None,
         hex_name_override: None,
         srec_name_override: None,
+        hunk_name_override: hunk_name_override.as_deref(),
         header_title: "opForge Assembler FS-UAE smoke",
         output_sink: None,
         source_provider: None,

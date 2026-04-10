@@ -5,7 +5,7 @@ use crate::error::{AsmError, AsmErrorKind, Fixit, LineStatus};
 use crate::opasm::{self, StatementRequest};
 use crate::output::{
     format_addr, section_kind_name, BinOutputSpec, ExportSectionsDirective, ExportSectionsFormat,
-    ExportSectionsInclude, LinkerOutputDirective, MapFileDirective, MapSymbolsMode,
+    ExportSectionsInclude, HunkMemoryType, LinkerOutputDirective, MapFileDirective, MapSymbolsMode,
     PlacedSectionInfo, PlacementDirective, RegionState, RootMetadata, SectionKind, SectionOptions,
     SectionState,
 };
@@ -66,7 +66,7 @@ use types::symbol::{
     ImportResult, SymbolTable, SymbolTableEntry, SymbolTableResult, SymbolVisibility,
 };
 use types::text_encoding::TextEncodingRegistry;
-use vm::output_model::OutputFixupRecord;
+use vm::output_model::{OutputFixupRecord, IMPLICIT_HUNK_CODE_SECTION_NAME};
 use vm::vm_opasm::HierarchyExecutionModel;
 
 thread_local! {
@@ -549,6 +549,13 @@ impl<'a> AsmLine<'a> {
 
     pub fn in_section(&self) -> bool {
         self.layout.current_section.is_some()
+    }
+
+    pub fn in_user_section(&self) -> bool {
+        self.layout
+            .current_section
+            .as_deref()
+            .is_some_and(|name| name != IMPLICIT_HUNK_CODE_SECTION_NAME)
     }
 
     fn in_struct_definition(&self) -> bool {
@@ -3103,13 +3110,25 @@ impl<'a> AsmLine<'a> {
                 }
                 self.bytes.push((val & 0xff) as u8);
             } else if size == 2 {
-                self.bytes.push((val & 0xff) as u8);
-                self.bytes.push((val >> 8) as u8);
+                if self.current_cpu_little_endian() {
+                    self.bytes.push((val & 0xff) as u8);
+                    self.bytes.push((val >> 8) as u8);
+                } else {
+                    self.bytes.push((val >> 8) as u8);
+                    self.bytes.push((val & 0xff) as u8);
+                }
             } else if size == 4 {
-                self.bytes.push((val & 0xff) as u8);
-                self.bytes.push(((val >> 8) & 0xff) as u8);
-                self.bytes.push(((val >> 16) & 0xff) as u8);
-                self.bytes.push(((val >> 24) & 0xff) as u8);
+                if self.current_cpu_little_endian() {
+                    self.bytes.push((val & 0xff) as u8);
+                    self.bytes.push(((val >> 8) & 0xff) as u8);
+                    self.bytes.push(((val >> 16) & 0xff) as u8);
+                    self.bytes.push(((val >> 24) & 0xff) as u8);
+                } else {
+                    self.bytes.push(((val >> 24) & 0xff) as u8);
+                    self.bytes.push(((val >> 16) & 0xff) as u8);
+                    self.bytes.push(((val >> 8) & 0xff) as u8);
+                    self.bytes.push((val & 0xff) as u8);
+                }
             } else {
                 return self.failure(
                     LineStatus::Error,

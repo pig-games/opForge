@@ -221,7 +221,7 @@ fn write_text(path: &Path, text: &str) {
 
 #[cfg(test)]
 fn artifact_emitting_invalid_source() -> &'static str {
-    ".cpu \"6502\"\n.meta.output.name \"artifact\"\n.mapfile \"build/diagnostic.map\", symbols=all\n.org $1000\nbogus\n"
+    ".cpu \"6502\"\n.meta.output.name \"artifact\"\n.mapfile \"build/diagnostic.map\", symbols=all\n.org $1000\n.bogus\n"
 }
 
 #[cfg(test)]

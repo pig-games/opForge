@@ -35,8 +35,14 @@ semantics out of scope.
 The shipped Motorola 68000 example set now includes focused FPU fixtures such as
 `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
 `68020_fpu_registers`, `68030_pflush_external_fpu`, and
-`68040_integrated_fpu` so the current MMU/FPU surface is visible in
-checked-in source and reference outputs.
+`68040_integrated_fpu`, alongside 68080-focused fixtures such as
+`68080_integer_addressing_matrix`, `68080_ammx_addressing_matrix`,
+`68080_fpu_surface`, and `68080_full_additional_surface`, so the current
+680x0 surface is visible in checked-in source and reference outputs.
+
+AmigaOS Hunk executable output is available both through in-source
+`.output ..., format=hunk` directives and through the CLI shorthand
+`--cpu 68000 --hunk ...` for flat 68000-family sources.
 
 It is originally inspired by [64tass](https://tass64.sourceforge.net) in terms of feature scope and notation style.
 
@@ -88,6 +94,12 @@ Generate Motorola S-record output:
 
 ```sh
 opforge -s -i examples/helloworld.asm
+```
+
+Generate AmigaOS Hunk executable output for a flat 68000 source:
+
+```sh
+opforge --cpu 68000 --hunk helloworld.hunk examples/motorola68000/amigaos/helloworld.asm
 ```
 
 Format a source file in place:

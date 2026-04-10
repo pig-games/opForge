@@ -383,7 +383,7 @@ It does not own:
 - operand parsing for instructions
 - instruction encoding
 - section placement for machine images
-- listing/hex/bin/map output
+- listing/hex/srec/hunk/bin/map output
 - assembler-oriented directives like `.org`, `.byte`, `.word`, `.align` when used for machine-code emission
 
 `opcore` is backed by `.opcore` packages.
@@ -400,7 +400,7 @@ It owns:
 - assembler-specific tokenization/parsing overlays
 - sections, regions, placement, packing
 - binary image assembly
-- listing/map/hex/bin generation policy
+- listing/map/hex/srec/hunk/bin generation policy
 - output payload construction
 
 `asm` is backed by `.opasm` packages and assembler-family integration.
@@ -1126,7 +1126,8 @@ Current request/result contract:
 - `opforge_asm_output_options` includes the current Rust output override slice:
   `go_addr`, textual `bin_specs`, `fill_byte` with `fill_byte_set`, and
   `no_outputs`, in addition to the existing default-output and metadata
-  path controls.
+  path controls. On the Rust facade, the corresponding output surface also
+  includes per-artifact filename overrides such as list/hex/srec/hunk naming.
 - grouped FFI `label_output_format = OPFORGE_LABEL_OUTPUT_FORMAT_DEFAULT` now
   means "use the current Rust facade default" rather than the renderer's
   separate `LabelOutputFormat::Default` variant; today that current default is

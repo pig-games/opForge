@@ -93,7 +93,7 @@ define_build_profile_strings!("full-runtime | bundled");
 const LONG_ABOUT: &str =
     "Multi-CPU assembler supporting Intel 8080/8085, Zilog Z80, Motorola 6809/Hitachi 6309, MOS 6502, WDC 65C02, WDC 65816, and CSG 45GS02.
 
-Outputs are opt-in: specify at least one of -l/--list, -x/--hex, -s/--srec, or -b/--bin.
+Outputs are opt-in: specify at least one of -l/--list, -x/--hex, -s/--srec, --hunk, or -b/--bin.
 If no outputs are specified for a single input, the assembler defaults to list+hex
 when a root-module output name (or -o) is available.
 Use -o/--outfile to set the output base name when filenames are omitted.
@@ -283,10 +283,18 @@ pub struct Cli {
     )]
     pub srec_name: Option<String>,
     #[arg(
+        long = "hunk",
+        value_name = "FILE",
+        num_args = 0..=1,
+        default_missing_value = "",
+        long_help = "Emit an AmigaOS Hunk executable file. FILE is optional; when omitted, the output base is used and a .hunk extension is added."
+    )]
+    pub hunk_name: Option<String>,
+    #[arg(
         short = 'o',
         long = "outfile",
         value_name = "BASE",
-        long_help = "Output filename base when -l/-x omit filenames, and for -b when a filename is omitted. Defaults to the input base. With multiple inputs, BASE must be a directory."
+        long_help = "Output filename base when -l/-x/-s/--hunk omit filenames, and for -b when a filename is omitted. Defaults to the input base. With multiple inputs, BASE must be a directory."
     )]
     pub outfile: Option<String>,
     #[arg(
@@ -1130,6 +1138,7 @@ fn validate_cli_inner(cli: &Cli) -> Result<CliConfig, AsmRunError> {
         if cli.list_name.is_some()
             || cli.hex_name.is_some()
             || cli.srec_name.is_some()
+            || cli.hunk_name.is_some()
             || !cli.bin_outputs.is_empty()
             || cli.go_addr.is_some()
             || cli.outfile.is_some()
@@ -1157,6 +1166,7 @@ fn validate_cli_inner(cli: &Cli) -> Result<CliConfig, AsmRunError> {
             go_addr: None,
             bin_specs: Vec::new(),
             srec_name: None,
+            hunk_name: None,
             fill_byte: 0xff,
             fill_byte_set: false,
             out_dir: None,
@@ -1203,14 +1213,16 @@ fn validate_cli_inner(cli: &Cli) -> Result<CliConfig, AsmRunError> {
     let list_requested = cli.list_name.is_some();
     let hex_requested = cli.hex_name.is_some();
     let srec_requested = cli.srec_name.is_some();
+    let hunk_requested = cli.hunk_name.is_some();
     let bin_requested = !cli.bin_outputs.is_empty();
 
-    let default_outputs = !list_requested && !hex_requested && !srec_requested && !bin_requested;
+    let default_outputs =
+        !list_requested && !hex_requested && !srec_requested && !hunk_requested && !bin_requested;
     if default_outputs && input_paths.len() > 1 {
         return Err(AsmRunError::new(
             AsmError::new(
                 AsmErrorKind::Cli,
-                "No outputs selected. Use -l/--list, -x/--hex, -s/--srec, or -b/--bin with multiple inputs",
+                "No outputs selected. Use -l/--list, -x/--hex, -s/--srec, --hunk, or -b/--bin with multiple inputs",
                 None,
             ),
             Vec::new(),
@@ -1251,6 +1263,19 @@ fn validate_cli_inner(cli: &Cli) -> Result<CliConfig, AsmRunError> {
                     AsmError::new(
                         AsmErrorKind::Cli,
                         "Explicit -s/--srec filenames are not allowed with multiple inputs",
+                        None,
+                    ),
+                    Vec::new(),
+                    Vec::new(),
+                ));
+            }
+        }
+        if let Some(hunk_name) = cli.hunk_name.as_deref() {
+            if !hunk_name.is_empty() {
+                return Err(AsmRunError::new(
+                    AsmError::new(
+                        AsmErrorKind::Cli,
+                        "Explicit --hunk filenames are not allowed with multiple inputs",
                         None,
                     ),
                     Vec::new(),
@@ -1419,6 +1444,7 @@ fn validate_cli_inner(cli: &Cli) -> Result<CliConfig, AsmRunError> {
         go_addr,
         bin_specs,
         srec_name: cli.srec_name.clone(),
+        hunk_name: cli.hunk_name.clone(),
         fill_byte,
         fill_byte_set,
         out_dir,
@@ -1477,6 +1503,7 @@ pub struct CliConfig {
     pub go_addr: Option<String>,
     pub bin_specs: Vec<BinOutputSpec>,
     pub srec_name: Option<String>,
+    pub hunk_name: Option<String>,
     pub fill_byte: u8,
     pub fill_byte_set: bool,
     pub out_dir: Option<PathBuf>,
@@ -1595,6 +1622,7 @@ mod tests {
             "-l",
             "-x",
             "-s",
+            "--hunk",
             "-b",
             "0000:ffff",
             "-o",
@@ -1623,6 +1651,7 @@ mod tests {
         assert_eq!(cli.list_name, Some(String::new()));
         assert_eq!(cli.hex_name, Some(String::new()));
         assert_eq!(cli.srec_name, Some(String::new()));
+        assert_eq!(cli.hunk_name, Some(String::new()));
         assert_eq!(cli.outfile, Some("out".to_string()));
         assert_eq!(cli.bin_outputs, vec!["0000:ffff".to_string()]);
         assert_eq!(cli.fill_byte, Some("aa".to_string()));
@@ -2023,6 +2052,14 @@ mod tests {
         let config = validate_cli(&cli).expect("validate cli");
         assert_eq!(config.srec_name.as_deref(), Some("out.srec"));
         assert_eq!(config.go_addr.as_deref(), Some("1234"));
+        assert!(!config.default_outputs);
+    }
+
+    #[test]
+    fn validate_cli_accepts_hunk_output() {
+        let cli = Cli::parse_from(["opForge", "-i", "prog.asm", "--hunk", "out.hunk"]);
+        let config = validate_cli(&cli).expect("validate cli");
+        assert_eq!(config.hunk_name.as_deref(), Some("out.hunk"));
         assert!(!config.default_outputs);
     }
 

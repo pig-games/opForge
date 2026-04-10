@@ -7,19 +7,19 @@ This manual is validated against opForge CLI `0.9.7` (crate `0.9.7`).
 
 ## 1. Introduction
 
-opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), Motorola 6800-family CPUs (6809/HD6309), and Motorola 68000-family CPUs (`68000`/`m68000`/`mc68000`, `68010`/`m68010`/`mc68010`, `68020`/`m68020`/`mc68020`, `68030`/`m68030`/`mc68030`, and `68040`/`m68040`/`mc68040`). It supports:
+opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), Motorola 6800-family CPUs (6809/HD6309), and Motorola 68000-family CPUs (`68000`/`m68000`/`mc68000`, `68010`/`m68010`/`mc68010`, `68020`/`m68020`/`mc68020`, `68030`/`m68030`/`mc68030`, `68040`/`m68040`/`mc68040`, and `68080`/`m68080`/`mc68080`). It supports:
 - Dot-prefixed directives and conditionals.
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
 - Preprocessor directives for includes and conditional compilation.
 - Macro expansion with `.macro` and `.segment`.
-- Optional listing, Intel HEX, Motorola S-record, and binary outputs.
+- Optional listing, Intel HEX, Motorola S-record, AmigaOS Hunk executable, and binary outputs.
 
 The `.cpu` directive currently accepts `8080` (alias for `8085`), `8085`, `z80`,
 `6502`, `m6502`, `65c02`, `65816`, `65c816`, `w65c816`, `45gs02`, `m45gs02`,
 `mega65`, `4510`, `csg4510`, `6809`, `m6809`, `mc6809`, `6309`, `m6309`,
 `h6309`, `hitachi6309`, `hd6309`, `68000`, `m68000`, `mc68000`, `68010`,
 `m68010`, `mc68010`, `68020`, `m68020`, `mc68020`, `68030`, `m68030`,
-`mc68030`, `68040`, `m68040`, and `mc68040`.
+`mc68030`, `68040`, `m68040`, `mc68040`, `68080`, `m68080`, and `mc68080`.
 
 ## 2. Usage tips
 
@@ -132,10 +132,12 @@ tuples, code blocks, and type values.
 
 ```
 .include "file"
+.incbin "file"
 ```
 
 Notes:
 - `.include` is literal text inclusion only; it does not participate in module loading.
+- `.incbin` includes the raw bytes of a binary file at the current program counter.
 - Include resolution is constrained to the including-file directory and explicit `-I/--include-path` roots.
 - Absolute include paths and parent-relative traversals are accepted only when they resolve inside those allowed roots.
 
@@ -151,6 +153,7 @@ Section-local emission and linker-region placement:
 ```
 .region ram, $1000, $10ff, align=16
 .section data, kind=data, align=2, region=ram
+.section chipdata, kind=data, memory=chip
 .endsection
 .place data in ram
 .pack in ram : code, data
@@ -159,11 +162,23 @@ Section-local emission and linker-region placement:
 
 Notes:
 - `.section` selects a named emission target; `.endsection` restores the previous target.
-- `.section` supports `kind=code|data|bss`, `align=<n>`, and `region=<name>`.
+- `.section` supports `kind=code|data|bss`, `align=<n>`, `region=<name>`, and
+  `memory=any|chip|fast|slow`.
 - `.place`/`.pack` assign final section base addresses via regions.
 - `.dsection` is not supported and emits an error.
 - `.org` and `.align` apply to the current emission target.
-- Sections referenced by `.output` must be explicitly placed.
+- Sections referenced by non-Hunk `.output` directives must be explicitly placed.
+- `memory=` is used by AmigaOS Hunk output. `chip` and `fast` set the Hunk
+  allocation flags for the emitted segment; `any` is the default. `slow` is
+  accepted as a source-level alias for unconstrained allocation because the
+  executable Hunk format has explicit CHIP and FAST bits, but no separate SLOW
+  bit.
+- For AmigaOS Hunk output, `.region`, `.place`/`.pack`, and `sections=` are
+  optional for a simple single-code-hunk source. If no explicit `.section` is
+  defined and `.output ..., format=hunk` omits `sections=`, opForge treats the
+  flat emitted program bytes as one implicit `code` section. The same implicit
+  code-hunk shorthand is used when Hunk output is requested with CLI
+  `--hunk [FILE]` and the source has no explicit `.section`.
 - `.mapfile` and `.exportsections` may include unplaced sections.
 
 Linker output directives:
@@ -171,6 +186,7 @@ Linker output directives:
 ```
 .output "build/out.bin", format=bin, sections=code,data
 .output "build/image.bin", format=bin, image="$8000..$80ff", fill=$ff, contiguous=false, sections=code,data
+.output "build/tool.hunk", format=hunk
 .mapfile "build/out.map", symbols=all
 .exportsections dir="build/sections", format=bin, include=bss
 ```
@@ -179,6 +195,15 @@ Output mode rules:
 - Default output mode is contiguous (`contiguous=true`): selected sections must be adjacent.
 - Image output mode (`image=...` + `fill=...`) allows sparse placement within the configured span (wide addresses supported).
 - PRG output prefixes a 2-byte little-endian load address (`loadaddr=` optional, must fit in 16 bits).
+- Hunk output emits AmigaOS executable hunks. With explicit sections,
+  `sections=` preserves the emitted Hunk segment order; without explicit
+  sections, omitted `sections=` defaults to one code hunk from the flat source
+  bytes. The shorthand also works in an implicit module; `.module` and
+  `.endmodule` are not required just to declare the Hunk output. For no-frills
+  CLI builds, `--cpu 68000 --hunk build/tool.hunk source.asm` can provide the
+  target CPU and Hunk output path without requiring `.cpu` or `.output` in the
+  source file. Hunk output also honors `.section ..., memory=chip|fast|slow|any`
+  for selected sections.
 
 ### 4.3 Data directives
 
@@ -608,28 +633,45 @@ Examples in the repo:
 .cpu 68040
 .cpu m68040
 .cpu mc68040
+.cpu 68080
+.cpu m68080
+.cpu mc68080
 ```
 
-Motorola 68000-family support now spans the baseline `68000` aliases plus the
-shipped later-family targets `68010`, `68020`, `68030`, and `68040`.
+Motorola 68000-family support now spans the shipped CPU lineage from `68000`
+through `68080`.
 
 Current shipped scope includes the full assembler-facing CPU lineage from
-`68000` through `68040`, plus the narrow MMU and optional FPU additions below.
+`68000` through `68080`, plus the narrow MMU, selector-driven FPU, and 68080
+Apollo-profile additions below.
 
 `68010` keeps baseline `68000` addressing. `68020`, `68030`, and `68040`
 accept the shipped `68020+` full-extension addressing forms. `68040`
 additionally accepts `MOVE16` and rejects `CALLM`, `RTM`, and `MOVEC CAAR`.
+
+The shipped `68080` surface now includes the full currently documented integer,
+AMMX, and legacy FPU assembler-visible families in scope for this revision,
+including E/B register namespaces and `.fpu 68080`.
 
 ```
 .fpu none
 .fpu 68881
 .fpu 68882
 .fpu 68040
+.fpu 68080
+
+.apollo on
+.apollo off
 ```
 
 On Motorola 68000-family CPUs, `.fpu none` disables optional FPU acceptance,
 `.fpu 68881` and `.fpu 68882` are legal on `68020` and `68030`, and
-`.fpu 68040` is legal on `68040`.
+`.fpu 68040` is legal on `68040`, while `.fpu 68080` is legal on `68080`.
+
+On `68080`, `.cpu 68080` defaults to the Apollo-enabled full profile; `.apollo on`
+is accepted as an explicit no-op, and `.apollo off` is rejected
+deterministically because strict compatibility mode is not implemented in this
+full-profile build.
 
 Current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
 `68030` and `68040`, and the shipped `68040` MMU-related `MOVEC` register
@@ -638,18 +680,20 @@ scope.
 
 Current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
 `.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
-while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`.
-The integrated path intentionally excludes external-coprocessor-only
-`FSIN`-class transcendental and extended-math mnemonics. Assembler acceptance
-follows the documented programmer-visible instruction surface, but opForge does
-not model runtime assist behavior or CPU/FPU execution semantics for those
-operations.
+while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`,
+and `.fpu 68080` is the integrated target on `68080`. The `68040` integrated
+path intentionally excludes external-coprocessor-only `FSIN`-class
+transcendental and extended-math mnemonics. Assembler acceptance follows the
+documented programmer-visible instruction surface, but opForge does not model
+runtime assist behavior or CPU/FPU execution semantics for those operations.
 
 Reference fixtures under `examples/motorola68000/` now include broad FPU surface
 examples such as `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
 `68020_fpu_registers`, `68030_pflush_external_fpu`, and
-`68040_integrated_fpu`, with matching checked-in outputs under
-`examples/reference/motorola68000/`.
+`68040_integrated_fpu`, alongside 68080-focused fixtures such as
+`68080_integer_addressing_matrix`, `68080_ammx_addressing_matrix`,
+`68080_fpu_surface`, and `68080_full_additional_surface`, with matching
+checked-in outputs under `examples/reference/motorola68000/`.
 
 65816 support includes the phase-1 instruction set and phase-2 24-bit addressing work:
 - Implements selected 65816 mnemonics and operand forms.
@@ -914,6 +958,7 @@ Outputs:
 - `-l, --list [FILE]`: listing output (optional filename).
 - `-x, --hex [FILE]`: Intel HEX output (optional filename).
 - `-s, --srec [FILE]`: Motorola S-record output (optional filename).
+- `--hunk [FILE]`: AmigaOS Hunk executable output (optional filename).
 - `-b, --bin [FILE:ssss:eeee|ssss:eeee|FILE]`: binary image with optional range(s), repeatable (`ssss`/`eeee` are 4-8 hex digits).
 - `--dependencies <FILE>`: write Makefile-compatible dependency rules.
 - `--dependencies-append`: append dependency rules to an existing dependency file.
@@ -949,7 +994,7 @@ Other options:
 - `--print-cpusupport`: print deterministic CPU support metadata and exit.
 
 The default capability and CPU-support reports include the shipped Motorola
-68000-family lineage entries through `m68040`.
+68000-family lineage entries through `m68080`.
 - `--pp-macro-depth <N>`: maximum preprocessor macro expansion depth (default `64`, minimum `1`).
 - `--max-loop-iterations <N>`: maximum `.for`/`.while` iterations before emitting an error (default `65536`, minimum `1`).
 - `--input-asm-ext <EXT>`: additional accepted source-file extension for direct file inputs.
@@ -961,7 +1006,7 @@ Notes:
 - If multiple inputs are provided, `-o` must be a directory and explicit output
   filenames are not allowed; each input uses its own base name under the output
   directory.
-- With multiple inputs, at least one output type (`-l`, `-x`, `-s`, `-b`) must be selected.
+- With multiple inputs, at least one output type (`-l`, `-x`, `-s`, `--hunk`, `-b`) must be selected.
 - If no outputs are specified for a single input, opForge defaults to list+hex
   when `.meta.output.name` (or `-o`) is available; otherwise output selection is required.
 - Relative output filenames are anchored to the input file's directory.
@@ -970,6 +1015,9 @@ Notes:
 - `-b` without a range emits a binary that spans the emitted output.
 - For Intel HEX, `-g` writes a Start Segment Address record for 16-bit values and a Start Linear Address record for wider values.
 - For S-record output, `-g` writes the start address into the S7/S8/S9 termination record; without `-g`, the termination address is zero.
+- `--hunk` does not currently consume `-g`; AmigaOS executable hunks remain
+  loader-relocatable and use the Hunk segment/relocation records emitted by
+  the Hunk writer.
 
 Formatter config (`--fmt-config`) currently supports these keys:
 
@@ -1064,7 +1112,7 @@ Instruction mnemonics are selected by `.cpu`:
 .if  .elseif  .else  .endif  .match  .case  .default  .endmatch
 .for  .bfor  .endfor  .while  .bwhile  .endwhile
 .struct  .endstruct
-.ifdef  .ifndef  .include
+.ifdef  .ifndef  .include  .incbin
 .module  .endmodule  .use  .pub  .priv  .block  .endblock  .bend  .namespace  .endn  .endnamespace
 .macro  .endmacro  .endm  .segment  .endsegment  .ends  .statement  .endstatement
 .meta  .endmeta  .name  .version  .output  .endoutput  .list  .hex  .bin  .mapfile  .exportsections
@@ -1091,7 +1139,7 @@ Instruction mnemonics are selected by `.cpu`:
 This appendix describes the modular architecture that allows opForge to support
 multiple CPU targets through a common framework, including Intel 8080-family
 CPUs, MOS 6502-family CPUs, Motorola 6800-family CPUs, and the shipped
-Motorola 68000-family lineage through `m68040`.
+Motorola 68000-family lineage through `m68080`.
 
 ### Overview
 

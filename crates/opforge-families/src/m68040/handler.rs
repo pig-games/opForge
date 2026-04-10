@@ -5,9 +5,9 @@
 
 use crate::families::m68k::operand::{AbsoluteSize, ControlRegisterKind};
 use crate::families::m68k::{
-    has_fpu_mnemonic, parse_fpu_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic,
-    FamilyOperand, FpuMnemonicKind, M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler,
-    Operand,
+    deferred_fpu_message_for_cpu, has_fpu_mnemonic, parse_fpu_mnemonic, parse_m68010_mnemonic,
+    parse_m68020_mnemonic, validate_fpu_target_for_cpu, FamilyOperand, FpuMnemonicKind,
+    M68010MnemonicKind, M68020MnemonicKind, M68KFamilyHandler, Operand,
 };
 use crate::m68020::M68020CpuHandler;
 use crate::m68030::M68030CpuHandler;
@@ -42,45 +42,22 @@ impl M68040CpuHandler {
         }
     }
 
-    fn fpu_target_name(state_value: u32) -> &'static str {
-        match state_value {
-            1 => "68881",
-            2 => "68882",
-            3 => "68040",
-            _ => "none",
-        }
-    }
-
     fn validate_fpu_mnemonic(
         &self,
         display_name: &str,
         ctx: &dyn AssemblerContext,
     ) -> Result<&'static str, EncodeResult<Vec<u8>>> {
-        let target = ctx
-            .cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY)
-            .unwrap_or(0);
-
-        if target == 0 {
-            return Err(EncodeResult::error(format!(
-                "{display_name} requires an active .fpu target on m68040; legal .fpu targets for m68040 FPU instructions: 68040"
-            )));
-        }
-
-        if !Self::LEGAL_FPU_TARGETS.contains(&target) {
-            return Err(EncodeResult::error(format!(
-                "{display_name} is not available with .fpu {} on m68040; legal .fpu targets for m68040 FPU instructions: 68040",
-                Self::fpu_target_name(target),
-            )));
-        }
-
-        Ok(Self::fpu_target_name(target))
+        validate_fpu_target_for_cpu(
+            display_name,
+            ctx,
+            "m68040",
+            &Self::LEGAL_FPU_TARGETS,
+            "68040",
+        )
     }
 
     fn deferred_fpu_message(&self, display_name: &str, target_name: &str) -> EncodeResult<Vec<u8>> {
-        EncodeResult::error(format!(
-            "{display_name} is recognized for .fpu {} on m68040, but FPU encoding is not yet implemented",
-            target_name,
-        ))
+        deferred_fpu_message_for_cpu(display_name, target_name, "m68040")
     }
 
     fn supports_integrated_68040_fpu(kind: FpuMnemonicKind) -> bool {

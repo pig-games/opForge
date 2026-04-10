@@ -4,6 +4,7 @@
 
 pub mod module;
 
+mod fpu_capability;
 mod handler;
 
 pub mod operand;
@@ -11,6 +12,7 @@ pub mod state;
 
 mod table;
 
+pub(crate) use fpu_capability::{deferred_fpu_message_for_cpu, validate_fpu_target_for_cpu};
 pub(crate) use handler::EffectiveAddressKind;
 pub use handler::M68KFamilyHandler;
 pub use operand::{FamilyOperand, Operand};

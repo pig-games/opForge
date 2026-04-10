@@ -4,7 +4,8 @@
 //! Motorola 68030 CPU handler implementation.
 
 use crate::families::m68k::{
-    parse_fpu_mnemonic, parse_m68020_mnemonic, FpuMnemonicKind, M68020MnemonicKind, OperationSize,
+    parse_fpu_mnemonic, parse_m68020_mnemonic, validate_fpu_target_for_cpu, FpuMnemonicKind,
+    M68020MnemonicKind, OperationSize,
 };
 use crate::families::m68k::{FamilyOperand, M68KFamilyHandler, Operand};
 use crate::m68020::M68020CpuHandler;
@@ -30,38 +31,18 @@ impl M68030CpuHandler {
         }
     }
 
-    fn fpu_target_name(state_value: u32) -> &'static str {
-        match state_value {
-            1 => "68881",
-            2 => "68882",
-            3 => "68040",
-            _ => "none",
-        }
-    }
-
     fn handle_fpu_mnemonic(
         &self,
         display_name: &str,
         ctx: &dyn AssemblerContext,
     ) -> Result<&'static str, EncodeResult<Vec<u8>>> {
-        let target = ctx
-            .cpu_state_flag(crate::families::m68k::state::FPU_TARGET_KEY)
-            .unwrap_or(0);
-
-        if target == 0 {
-            return Err(EncodeResult::error(format!(
-                "{display_name} requires an active .fpu target on m68030; legal .fpu targets for m68030 FPU instructions: 68881, 68882"
-            )));
-        }
-
-        if !Self::LEGAL_FPU_TARGETS.contains(&target) {
-            return Err(EncodeResult::error(format!(
-                "{display_name} is not available with .fpu {} on m68030; legal .fpu targets for m68030 FPU instructions: 68881, 68882",
-                Self::fpu_target_name(target),
-            )));
-        }
-
-        Ok(Self::fpu_target_name(target))
+        validate_fpu_target_for_cpu(
+            display_name,
+            ctx,
+            "m68030",
+            &Self::LEGAL_FPU_TARGETS,
+            "68881, 68882",
+        )
     }
 
     fn encode_pflush(

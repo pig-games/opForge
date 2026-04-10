@@ -1,0 +1,1 @@
+PASS: v0.1 remediation plan is source-linked to the April 10 code-reduction review, keeps the active AGENTS rules binding, constrains execution to ordered commit-sized work items, and defines explicit validation, compliance, and closure gates for each finding-driven slice.

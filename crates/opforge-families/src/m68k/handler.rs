@@ -14,8 +14,8 @@ use super::table::{
     M68080MnemonicKind, MnemonicKind, OperationSize, ParsedMnemonic, ShiftMnemonic,
 };
 use super::{
-    is_68080_address_bank_register, is_68080_data_bank_register, is_address_register,
-    is_data_register, is_register, state,
+    is_address_register, is_data_register, is_register, state,
+    validate_68080_register_compatibility as validate_68080_register_compatibility_impl,
 };
 use opcore::expr::parse_number;
 use opcore::expression::expr_span;
@@ -118,156 +118,12 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn collect_68080_only_registers(operand: &FamilyOperand, out: &mut HashSet<String>) {
-        let mut collect_name = |name: &str| {
-            if is_68080_data_bank_register(name) || is_68080_address_bank_register(name) {
-                out.insert(name.to_ascii_uppercase());
-            }
-        };
-
-        fn collect_expr(expr: &Expr, out: &mut HashSet<String>) {
-            match expr {
-                Expr::Register(name, _) | Expr::Identifier(name, _)
-                    if is_68080_data_bank_register(name)
-                        || is_68080_address_bank_register(name) =>
-                {
-                    out.insert(name.to_ascii_uppercase());
-                }
-                Expr::Indirect(inner, _)
-                | Expr::Immediate(inner, _)
-                | Expr::IndirectLong(inner, _)
-                | Expr::Unary { expr: inner, .. } => collect_expr(inner, out),
-                Expr::List(items, _) | Expr::Tuple(items, _) => {
-                    for item in items {
-                        collect_expr(item, out);
-                    }
-                }
-                Expr::Index { base, index, .. }
-                | Expr::Binary {
-                    left: base,
-                    right: index,
-                    ..
-                } => {
-                    collect_expr(base, out);
-                    collect_expr(index, out);
-                }
-                Expr::Member { base, .. } => collect_expr(base, out),
-                Expr::StructLiteral { fields, .. } => {
-                    for (_, value) in fields {
-                        collect_expr(value, out);
-                    }
-                }
-                Expr::Call { args, .. } => {
-                    for arg in args {
-                        collect_expr(arg, out);
-                    }
-                }
-                Expr::Ternary {
-                    cond,
-                    then_expr,
-                    else_expr,
-                    ..
-                } => {
-                    collect_expr(cond, out);
-                    collect_expr(then_expr, out);
-                    collect_expr(else_expr, out);
-                }
-                Expr::Range {
-                    start, end, step, ..
-                } => {
-                    collect_expr(start, out);
-                    collect_expr(end, out);
-                    if let Some(step) = step {
-                        collect_expr(step, out);
-                    }
-                }
-                Expr::Register(_, _)
-                | Expr::Identifier(_, _)
-                | Expr::Dollar(_)
-                | Expr::Number(_, _)
-                | Expr::String(_, _)
-                | Expr::Placeholder(_)
-                | Expr::Error(_, _) => {}
-            }
-        }
-
-        match operand {
-            FamilyOperand::DataRegister { register, .. }
-            | FamilyOperand::AddressRegister { register, .. }
-            | FamilyOperand::AddressIndirect { register, .. }
-            | FamilyOperand::AddressPostincrement { register, .. }
-            | FamilyOperand::AddressPredecrement { register, .. } => {
-                collect_name(register);
-            }
-            FamilyOperand::AddressDisplacement { base, .. } => {
-                collect_name(base);
-            }
-            FamilyOperand::AddressIndexed { base, index, .. } => {
-                collect_name(base);
-                collect_name(index);
-            }
-            FamilyOperand::RegisterPair { left, right, .. }
-            | FamilyOperand::RegisterGroup {
-                start: left,
-                end: right,
-                ..
-            }
-            | FamilyOperand::IndirectRegisterPair { left, right, .. } => {
-                collect_name(left);
-                collect_name(right);
-            }
-            FamilyOperand::PcIndexed { index, .. } => {
-                collect_name(index);
-            }
-            FamilyOperand::FullExtension { base, index, .. } => {
-                if let super::operand::FullExtensionBase::Address(register) = base {
-                    collect_name(register);
-                }
-                if let Some(index) = index {
-                    collect_name(&index.register);
-                }
-            }
-            FamilyOperand::BitField { base, .. } => {
-                Self::collect_68080_only_registers(base, out);
-            }
-            FamilyOperand::TextureOperand { expr, .. } => collect_expr(expr, out),
-            FamilyOperand::SpecialRegister { .. }
-            | FamilyOperand::ControlRegister { .. }
-            | FamilyOperand::FpuDataRegister { .. }
-            | FamilyOperand::FpuControlRegister { .. }
-            | FamilyOperand::PcDisplacement { .. }
-            | FamilyOperand::Absolute { .. }
-            | FamilyOperand::RegisterList { .. }
-            | FamilyOperand::BranchTarget { .. }
-            | FamilyOperand::Immediate { .. } => {}
-        }
-    }
-
     pub fn validate_68080_register_compatibility(
         family_operands: &[FamilyOperand],
         ctx: &dyn AssemblerContext,
         cpu_name: &str,
     ) -> Result<(), String> {
-        let is_68080 = ctx.cpu_state_flag(state::CPU_IS_68080_KEY).unwrap_or(0) != 0;
-        if is_68080 {
-            return Ok(());
-        }
-
-        let mut registers = HashSet::new();
-        for operand in family_operands {
-            Self::collect_68080_only_registers(operand, &mut registers);
-        }
-        if registers.is_empty() {
-            return Ok(());
-        }
-
-        let mut names = registers.into_iter().collect::<Vec<_>>();
-        names.sort();
-        Err(format!(
-            "register {} requires .cpu 68080 and is not supported on {}",
-            names.join(", "),
-            cpu_name
-        ))
+        validate_68080_register_compatibility_impl(family_operands, ctx, cpu_name)
     }
 
     fn parse_special_register(

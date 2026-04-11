@@ -4,6 +4,7 @@
 
 pub mod module;
 
+mod compatibility;
 mod fpu_capability;
 mod handler;
 
@@ -12,6 +13,7 @@ pub mod state;
 
 mod table;
 
+pub(crate) use compatibility::validate_68080_register_compatibility;
 pub(crate) use fpu_capability::{deferred_fpu_message_for_cpu, validate_fpu_target_for_cpu};
 pub(crate) use handler::EffectiveAddressKind;
 pub use handler::M68KFamilyHandler;

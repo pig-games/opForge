@@ -89,7 +89,7 @@ making the affected seams easier to maintain and reduce further later.
     - M68k wrapper-only FPU policy duplication is removed in one small commit,
       and execution can move to the monolithic-family split next
 
-- [ ] Work item 2: extract M68k compatibility validation from the monolithic family handler
+- [x] Work item 2: extract M68k compatibility validation from the monolithic family handler
   - Source requirement or finding IDs: `RVW-2026-04-11-005`
   - Finding closure expectation: partially closes `RVW-2026-04-11-005`
   - Validation: focused `68080` compatibility seam tests plus full quality gates

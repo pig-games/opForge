@@ -245,7 +245,7 @@ making the affected seams easier to maintain and reduce further later.
       control-register, `MOVEM`, bitfield, and later-family paths for the final
       orchestration slice
 
-- [ ] Work item 7: extract M68k control-register, MOVEM, bitfield, and later-family groups and reduce the family handler to orchestration
+- [x] Work item 7: extract M68k control-register, MOVEM, bitfield, and later-family groups and reduce the family handler to orchestration
   - Source requirement or finding IDs: `RVW-2026-04-11-005`
   - Finding closure expectation: fully closes `RVW-2026-04-11-005`
   - Validation: specialized-group characterization plus full quality gates

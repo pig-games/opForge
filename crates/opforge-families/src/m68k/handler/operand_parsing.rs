@@ -1424,6 +1424,52 @@ impl M68KFamilyHandler {
         self.parse_single_operand_with_priority(expr, false)
     }
 
+    pub(super) fn parse_deferred_fpu_operands(
+        &self,
+        mnemonic: &str,
+        exprs: &[Expr],
+    ) -> Option<Result<Vec<FamilyOperand>, FamilyParseError>> {
+        match parse_fpu_mnemonic(mnemonic).map(|parsed| parsed.kind) {
+            Some(FpuMnemonicKind::Fmovem) => Some(self.parse_fmovem_operands(exprs)),
+            Some(FpuMnemonicKind::Fbranch) => {
+                let [expr] = exprs else {
+                    return Some(Err(FamilyParseError::new(
+                        "68000 FPU branches expect one target operand",
+                        exprs.first().map(span_from_expr).unwrap_or_default(),
+                    )));
+                };
+                Some(Ok(vec![FamilyOperand::BranchTarget {
+                    expr: expr.clone(),
+                    span: span_from_expr(expr),
+                }]))
+            }
+            Some(FpuMnemonicKind::Fdbcc) => {
+                let [counter, expr] = exprs else {
+                    return Some(Err(FamilyParseError::new(
+                        "68000 FDBcc instructions expect a data register and target operand",
+                        exprs.first().map(span_from_expr).unwrap_or_default(),
+                    )));
+                };
+                Some(self.parse_single_operand(counter).map(|counter| {
+                    vec![
+                        counter,
+                        FamilyOperand::BranchTarget {
+                            expr: expr.clone(),
+                            span: span_from_expr(expr),
+                        },
+                    ]
+                }))
+            }
+            Some(_) => Some(
+                exprs
+                    .iter()
+                    .map(|expr| self.parse_fpu_operand(expr))
+                    .collect(),
+            ),
+            None => None,
+        }
+    }
+
     pub(super) fn parse_fpu_operand(&self, expr: &Expr) -> Result<FamilyOperand, FamilyParseError> {
         self.parse_single_operand_with_priority(expr, true)
     }

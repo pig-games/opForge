@@ -118,7 +118,7 @@ making the affected seams easier to maintain and reduce further later.
     - the first structural seam is carved out of `M68KFamilyHandler` without
       widening into operand or opcode movement
 
-- [ ] Work item 3: extract M68k operand parsing and normalization helpers
+- [x] Work item 3: extract M68k operand parsing and normalization helpers
   - Source requirement or finding IDs: `RVW-2026-04-11-005`
   - Finding closure expectation: partially closes `RVW-2026-04-11-005`
   - Validation: focused operand-parsing seam tests plus full quality gates

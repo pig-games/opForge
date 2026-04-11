@@ -28,6 +28,7 @@ pub mod output_model;
 pub mod portable_contract;
 pub mod rewrite;
 pub mod rollout;
+pub mod runtime_bootstrap;
 pub mod runtime_bridge;
 pub mod runtime_contract_types;
 pub mod runtime_diagnostics;

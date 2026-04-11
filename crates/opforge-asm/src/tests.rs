@@ -17412,12 +17412,14 @@ fn vm_runtime_model_is_available_for_motorola6800_family_cpus() {
 fn vm_runtime_artifact_path_is_target_relative() {
     let base = create_temp_dir("vm-artifact-path");
     let path = crate::runtime_model::runtime_package_artifact_path_for_dir(base.as_path());
+    let shared_path = vm::runtime_bootstrap::runtime_package_artifact_path_for_dir(base.as_path());
     assert_eq!(
         path,
         base.join("target")
             .join("vm")
             .join("opforge-vm-runtime.opasm")
     );
+    assert_eq!(path, shared_path, "asm and shared bootstrap paths diverged");
 }
 
 #[cfg(feature = "vm-runtime-opasm-artifact")]
@@ -17436,15 +17438,48 @@ fn vm_runtime_artifact_helpers_round_trip_model_load() {
     std::fs::write(path.as_path(), &package_bytes).expect("write artifact bytes");
 
     let model = crate::runtime_model::load_execution_model_from_path(path.as_path());
+    let shared_model = vm::runtime_bootstrap::load_execution_model_from_path(path.as_path());
     assert!(
         model.is_some(),
         "expected runtime model from artifact bytes"
     );
+    assert_eq!(model.is_some(), shared_model.is_some());
 
     let asm = AsmLine::with_cpu(&mut symbols, m6502_cpu_id, &registry);
     assert!(
         asm.opthread_execution_model.is_some(),
         "runtime model should still initialize for authoritative family"
+    );
+}
+
+#[cfg(feature = "vm-runtime-opasm-artifact")]
+#[test]
+fn vm_runtime_artifact_shared_bootstrap_persists_fallback_bytes() {
+    let registry = default_registry();
+    let artifact_path = create_temp_dir("vm-artifact-persist-fallback")
+        .join("target")
+        .join("vm")
+        .join("opforge-vm-runtime.opasm");
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("build hierarchy package");
+
+    assert!(
+        !artifact_path.exists(),
+        "test expects a missing artifact before bootstrap fallback"
+    );
+
+    let model = vm::runtime_bootstrap::bootstrap_execution_model(
+        Some(artifact_path.as_path()),
+        Some(package_bytes.as_slice()),
+        true,
+    );
+    assert!(
+        model.is_some(),
+        "shared bootstrap should load fallback bytes"
+    );
+    assert!(
+        artifact_path.exists(),
+        "shared bootstrap should persist fallback artifact bytes"
     );
 }
 

@@ -40,6 +40,7 @@ pub use types::artifacts::{LabelOutputFormat, OutputFormat};
 use types::source_map::SourceMap;
 use types::symbol::{SymbolTable, SymbolVisibility};
 use vm::builder::build_hierarchy_package_from_registry;
+use vm::runtime_bootstrap;
 use vm::vm_opasm::{
     build_bin_output_payload as build_bin_payload_with_vm,
     build_export_sections_payloads as build_export_sections_payloads_with_vm,
@@ -77,12 +78,10 @@ pub use types::processing::{
 
 pub const DEFAULT_CPU: CpuType = CpuType::new("8085");
 pub const DEFAULT_TOKENIZER_CPU_ID: &str = "m6502";
-#[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
-const VM_RUNTIME_PACKAGE_ARTIFACT_RELATIVE_PATH: &str = "target/vm/opforge-vm-runtime.opasm";
 
 #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
 fn default_runtime_artifact_path_for_dir(base_dir: &Path) -> PathBuf {
-    base_dir.join(VM_RUNTIME_PACKAGE_ARTIFACT_RELATIVE_PATH)
+    runtime_bootstrap::runtime_package_artifact_path_for_dir(base_dir)
 }
 
 struct EngineRuntimeLineRouter {
@@ -401,8 +400,7 @@ fn default_runtime_model_for_artifact_path(
         }
     }
 
-    let package_bytes = std::fs::read(artifact_path).ok()?;
-    let model = vm::vm_opasm::load_model_from_package_bytes(package_bytes.as_slice()).ok()?;
+    let model = runtime_bootstrap::bootstrap_execution_model(Some(artifact_path), None, false)?;
 
     let mut cache = cache.lock().expect("runtime model cache lock");
     if let Some(cached) = cache.get(artifact_path).copied() {
@@ -449,7 +447,7 @@ fn build_default_runtime_model() -> Option<HierarchyExecutionModel> {
     #[cfg(not(feature = "vm-runtime-only"))]
     {
         let package_bytes = build_default_runtime_package_bytes()?;
-        vm::vm_opasm::load_model_from_package_bytes(package_bytes.as_slice()).ok()
+        runtime_bootstrap::bootstrap_execution_model(None, Some(package_bytes.as_slice()), false)
     }
 }
 
@@ -457,8 +455,7 @@ fn build_default_runtime_model() -> Option<HierarchyExecutionModel> {
 #[allow(dead_code)]
 fn build_default_runtime_model_for_dir(base_dir: &Path) -> Option<HierarchyExecutionModel> {
     let path = default_runtime_artifact_path_for_dir(base_dir);
-    let package_bytes = std::fs::read(path).ok()?;
-    vm::vm_opasm::load_model_from_package_bytes(package_bytes.as_slice()).ok()
+    runtime_bootstrap::bootstrap_execution_model(Some(path.as_path()), None, false)
 }
 
 pub fn editor_default_runtime_model() -> Option<&'static HierarchyExecutionModel> {
@@ -2543,6 +2540,17 @@ mod tests {
 
     #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
     #[test]
+    fn runtime_model_artifact_path_matches_shared_bootstrap_helper() {
+        let temp_dir = unique_temp_dir("engine-runtime-path-parity");
+        let engine_path = super::default_runtime_artifact_path_for_dir(temp_dir.as_path());
+        let shared_path =
+            vm::runtime_bootstrap::runtime_package_artifact_path_for_dir(temp_dir.as_path());
+
+        assert_eq!(engine_path, shared_path);
+    }
+
+    #[cfg(all(feature = "vm-runtime-only", feature = "vm-runtime-opasm-artifact"))]
+    #[test]
     fn default_runtime_model_for_dir_returns_none_without_artifact() {
         let temp_dir = unique_temp_dir("engine-runtime-missing-artifact");
         assert!(
@@ -2560,11 +2568,20 @@ mod tests {
             .expect("build default runtime package bytes");
         std::fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
             .expect("create artifact parent");
-        std::fs::write(artifact_path, package_bytes).expect("write runtime artifact");
+        std::fs::write(&artifact_path, package_bytes).expect("write runtime artifact");
 
         assert!(
             super::build_default_runtime_model_for_dir(temp_dir.as_path()).is_some(),
             "expected vm-runtime-only artifact lookup to load the default runtime model"
+        );
+        assert!(
+            vm::runtime_bootstrap::bootstrap_execution_model(
+                Some(artifact_path.as_path()),
+                None,
+                false
+            )
+            .is_some(),
+            "shared bootstrap should load the same runtime artifact"
         );
     }
 

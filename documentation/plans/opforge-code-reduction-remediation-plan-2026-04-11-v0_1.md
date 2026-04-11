@@ -282,7 +282,7 @@ making the affected seams easier to maintain and reduce further later.
     - the M68k family core is split into bounded submodules and the largest
       review-surface hotspot is retired in one closure-ready commit
 
-- [ ] Work item 8: consolidate runtime-model bootstrap policy into one shared module
+- [x] Work item 8: consolidate runtime-model bootstrap policy into one shared module
   - Source requirement or finding IDs: `RVW-2026-04-11-007`
   - Finding closure expectation: fully closes `RVW-2026-04-11-007`
   - Validation: cross-crate runtime-bootstrap parity tests plus full quality gates

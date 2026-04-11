@@ -318,7 +318,7 @@ making the affected seams easier to maintain and reduce further later.
     - editor-side and assembler-side runtime-model bootstrap behavior shares one
       implementation and one parity contract
 
-- [ ] Work item 9: replace duplicated pass-specific repetition walkers with one traversal driver
+- [x] Work item 9: replace duplicated pass-specific repetition walkers with one traversal driver
   - Source requirement or finding IDs: `RVW-2026-04-11-002`
   - Finding closure expectation: fully closes `RVW-2026-04-11-002`
   - Validation: focused repetition-driver parity tests plus full quality gates

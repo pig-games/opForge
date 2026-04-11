@@ -3,6 +3,9 @@
 
 use crate as asm;
 use crate::line::{repetition, AsmLine, RuntimeLineRouter};
+use crate::repetition_driver::{
+    execute_lines as execute_repetition_lines, RepetitionPass, UnscopedRepeatKind,
+};
 use asm::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, PassCounts, Severity};
 use asm::listing::{ListingLine, ListingWriter};
 use asm::output::{LinkerOutputDirective, RegionState, RootMetadata, SectionState};
@@ -10,34 +13,17 @@ use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
-use opcore::expression::{expr_span, AstEvalError, AstEvalErrorKind};
-use opcore::scope::ScopeKind;
 use registry::cpu::CpuType;
 use registry::registry::ModuleRegistry;
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
 use std::io::Write;
 use std::rc::Rc;
-use types::asm_value::AsmValue;
 use types::image::ImageStore;
 use types::lockstep::LockstepReport;
 use types::processing::LineProcessingTrace;
 use types::symbol::{SymbolTable, SymbolVisibility};
 use vm::output_model::{LinkerOutputFormat, IMPLICIT_HUNK_CODE_SECTION_NAME};
-
-#[derive(Clone, Copy)]
-enum UnscopedRepeatKind {
-    For,
-    While,
-}
-
-fn ast_eval_error_kind_to_asm(kind: AstEvalErrorKind) -> AsmErrorKind {
-    match kind {
-        AstEvalErrorKind::Expression => AsmErrorKind::Expression,
-        AstEvalErrorKind::Directive => AsmErrorKind::Directive,
-        AstEvalErrorKind::Symbol => AsmErrorKind::Symbol,
-        AstEvalErrorKind::Instruction => AsmErrorKind::Instruction,
-    }
-}
 
 fn build_default_registry_for_tests() -> ModuleRegistry {
     let mut registry = ModuleRegistry::new();
@@ -965,380 +951,24 @@ impl Assembler {
         max_loop_iterations: u32,
         pass_num: u8,
     ) {
-        let mut idx = start_idx;
-        while idx < end_idx_exclusive {
-            let line_num = u32::try_from(idx)
-                .unwrap_or(u32::MAX.saturating_sub(1))
-                .saturating_add(1);
-            let src = &lines[idx];
-
-            let parsed_ast =
-                repetition::parse_line_ast_for_repetition(asm_line, src, line_num).ok();
-            if let Some(ast) = parsed_ast {
-                let statement_parts = repetition::statement_parts(&ast);
-
-                if let Some((_, ref mnemonic, _)) = statement_parts {
-                    if asm_line.cond_stack.skipping() {
-                        if super::repetition::is_for_like_directive_name(mnemonic) {
-                            let Some(end_idx) = super::repetition::find_matching_endfor(
-                                lines,
-                                asm_line,
-                                idx.saturating_add(1),
-                                end_idx_exclusive,
-                            ) else {
-                                let message =
-                                    format!("unterminated {mnemonic} (opened at line {line_num})");
-                                diagnostics.push(Diagnostic::new(
-                                    line_num,
-                                    Severity::Error,
-                                    AsmError::new(AsmErrorKind::Directive, &message, None),
-                                ));
-                                counts.errors += 1;
-                                return;
-                            };
-                            idx = end_idx.saturating_add(1);
-                            continue;
-                        }
-                        if super::repetition::is_while_like_directive_name(mnemonic) {
-                            let Some(end_idx) = super::repetition::find_matching_endwhile(
-                                lines,
-                                asm_line,
-                                idx.saturating_add(1),
-                                end_idx_exclusive,
-                            ) else {
-                                let message =
-                                    format!("unterminated {mnemonic} (opened at line {line_num})");
-                                diagnostics.push(Diagnostic::new(
-                                    line_num,
-                                    Severity::Error,
-                                    AsmError::new(AsmErrorKind::Directive, &message, None),
-                                ));
-                                counts.errors += 1;
-                                return;
-                            };
-                            idx = end_idx.saturating_add(1);
-                            continue;
-                        }
-                        if super::repetition::is_endfor_directive_name(mnemonic)
-                            || super::repetition::is_endwhile_directive_name(mnemonic)
-                        {
-                            idx = idx.saturating_add(1);
-                            continue;
-                        }
-                    }
-                }
-
-                if !asm_line.cond_stack.skipping() {
-                    if let Some(repeat_kind) = unscoped_repeat_kind {
-                        if let Some(label) = super::repetition::line_label(&ast) {
-                            asm_line.record_default_processing_trace(line_num);
-                            let message = match repeat_kind {
-                            UnscopedRepeatKind::For => format!(
-                                "label '{}' not allowed inside .for (use .bfor for scoped repetition)",
-                                label.name
-                            ),
-                            UnscopedRepeatKind::While => format!(
-                                "label '{}' not allowed inside .while (use .bwhile for scoped repetition)",
-                                label.name
-                            ),
-                        };
-                            diagnostics.push(
-                                Diagnostic::new(
-                                    line_num,
-                                    Severity::Error,
-                                    AsmError::new(AsmErrorKind::Directive, &message, None),
-                                )
-                                .with_column(Some(label.span.col_start)),
-                            );
-                            counts.errors += 1;
-                            idx = idx.saturating_add(1);
-                            continue;
-                        }
-                    }
-                }
-
-                if let Some((label, mnemonic, operands)) = statement_parts {
-                    if super::repetition::is_endfor_directive_name(&mnemonic)
-                        || super::repetition::is_endwhile_directive_name(&mnemonic)
-                    {
-                        asm_line.record_default_processing_trace(line_num);
-                        let (message, column) = if let Some(label) = label {
-                            (
-                                "label not allowed on .endfor / .endwhile".to_string(),
-                                Some(label.span.col_start),
-                            )
-                        } else if super::repetition::is_endwhile_directive_name(&mnemonic) {
-                            (".endwhile without matching .while".to_string(), None)
-                        } else {
-                            (".endfor without matching .for".to_string(), None)
-                        };
-                        diagnostics.push(
-                            Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(AsmErrorKind::Directive, &message, None),
-                            )
-                            .with_column(column),
-                        );
-                        counts.errors += 1;
-                        idx = idx.saturating_add(1);
-                        continue;
-                    }
-
-                    if super::repetition::is_for_like_directive_name(&mnemonic) {
-                        let scoped_repeat =
-                            super::repetition::is_scoped_for_directive_name(&mnemonic);
-                        let Some(end_idx) = super::repetition::find_matching_endfor(
-                            lines,
-                            asm_line,
-                            idx.saturating_add(1),
-                            end_idx_exclusive,
-                        ) else {
-                            let message =
-                                format!("unterminated {mnemonic} (opened at line {line_num})");
-                            diagnostics.push(Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(AsmErrorKind::Directive, &message, None),
-                            ));
-                            counts.errors += 1;
-                            return;
-                        };
-
-                        let plan = match super::repetition::evaluate_for_plan(
-                            asm_line,
-                            &operands,
-                            max_loop_iterations,
-                        ) {
-                            Ok(plan) => plan,
-                            Err(err) => {
-                                diagnostics.push(
-                                    Diagnostic::new(
-                                        line_num,
-                                        Severity::Error,
-                                        AsmError::new(
-                                            ast_eval_error_kind_to_asm(err.error.kind()),
-                                            err.error.message(),
-                                            None,
-                                        ),
-                                    )
-                                    .with_column(Some(err.span.col_start)),
-                                );
-                                counts.errors += 1;
-                                idx = end_idx.saturating_add(1);
-                                continue;
-                            }
-                        };
-
-                        pass1_loop_trace.push((
-                            line_num,
-                            u32::try_from(plan.values.len()).unwrap_or(u32::MAX),
-                        ));
-                        let mut iteration_bases = Vec::with_capacity(plan.values.len());
-                        let mut iteration_scopes = Vec::with_capacity(plan.values.len());
-                        for value in &plan.values {
-                            if scoped_repeat {
-                                asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .push_anonymous_with_kind(ScopeKind::Repeat);
-                                asm_line.push_visibility();
-                            }
-                            if scoped_repeat && label.is_some() {
-                                let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
-                                iteration_bases.push(i64::from(base_addr));
-                                iteration_scopes.push(
-                                    asm_line
-                                        .symbol_scope
-                                        .scope_stack
-                                        .prefix(asm_line.symbol_scope.scope_stack.depth()),
-                                );
-                            }
-                            if let Some(var_name) = plan.var_name.as_deref() {
-                                asm_line.push_loop_var(var_name, *value);
-                            }
-                            Self::execute_pass1_lines(
-                                lines,
-                                idx.saturating_add(1),
-                                end_idx,
-                                asm_line,
-                                addr,
-                                counts,
-                                diagnostics,
-                                pass1_loop_trace,
-                                if scoped_repeat {
-                                    None
-                                } else {
-                                    Some(UnscopedRepeatKind::For)
-                                },
-                                max_loop_iterations,
-                                pass_num,
-                            );
-                            if plan.var_name.is_some() {
-                                asm_line.pop_loop_var();
-                            }
-                            if scoped_repeat {
-                                let _ = asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .pop_expected(ScopeKind::Repeat);
-                                let _ = asm_line.pop_visibility();
-                            }
-                        }
-
-                        if scoped_repeat {
-                            if let Some(loop_label) = label.as_ref() {
-                                let full_name = asm_line.scoped_define_name(&loop_label.name);
-                                asm_line
-                                    .set_value_symbol(&full_name, AsmValue::List(iteration_bases));
-                                asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
-                            }
-                        }
-
-                        idx = end_idx.saturating_add(1);
-                        continue;
-                    }
-
-                    if super::repetition::is_while_like_directive_name(&mnemonic) {
-                        let scoped_repeat =
-                            super::repetition::is_scoped_while_directive_name(&mnemonic);
-                        let Some(end_idx) = super::repetition::find_matching_endwhile(
-                            lines,
-                            asm_line,
-                            idx.saturating_add(1),
-                            end_idx_exclusive,
-                        ) else {
-                            let message =
-                                format!("unterminated {mnemonic} (opened at line {line_num})");
-                            diagnostics.push(Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(AsmErrorKind::Directive, &message, None),
-                            ));
-                            counts.errors += 1;
-                            return;
-                        };
-
-                        let mut while_error: Option<AstEvalError> = None;
-                        let mut pass1_count = 0u32;
-                        let mut iteration_bases = Vec::new();
-                        let mut iteration_scopes = Vec::new();
-
-                        loop {
-                            let should_continue = match super::repetition::evaluate_while_condition(
-                                asm_line, &operands,
-                            ) {
-                                Ok(value) => value,
-                                Err(err) => {
-                                    while_error = Some(err);
-                                    break;
-                                }
-                            };
-                            if !should_continue {
-                                break;
-                            }
-
-                            let next_count = pass1_count.saturating_add(1);
-                            if next_count > max_loop_iterations {
-                                while_error = Some(AstEvalError::directive(
-                                    format!(
-                                        "loop exceeded maximum iteration limit ({max_loop_iterations})"
-                                    ),
-                                    operands.first().map(expr_span).unwrap_or_default(),
-                                ));
-                                break;
-                            }
-                            pass1_count = next_count;
-
-                            if scoped_repeat {
-                                asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .push_anonymous_with_kind(ScopeKind::Repeat);
-                                asm_line.push_visibility();
-                            }
-                            if scoped_repeat && label.is_some() {
-                                let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
-                                iteration_bases.push(i64::from(base_addr));
-                                iteration_scopes.push(
-                                    asm_line
-                                        .symbol_scope
-                                        .scope_stack
-                                        .prefix(asm_line.symbol_scope.scope_stack.depth()),
-                                );
-                            }
-
-                            Self::execute_pass1_lines(
-                                lines,
-                                idx.saturating_add(1),
-                                end_idx,
-                                asm_line,
-                                addr,
-                                counts,
-                                diagnostics,
-                                pass1_loop_trace,
-                                if scoped_repeat {
-                                    None
-                                } else {
-                                    Some(UnscopedRepeatKind::While)
-                                },
-                                max_loop_iterations,
-                                pass_num,
-                            );
-
-                            if scoped_repeat {
-                                let _ = asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .pop_expected(ScopeKind::Repeat);
-                                let _ = asm_line.pop_visibility();
-                            }
-                        }
-
-                        if let Some(err) = while_error {
-                            diagnostics.push(
-                                Diagnostic::new(
-                                    line_num,
-                                    Severity::Error,
-                                    AsmError::new(
-                                        ast_eval_error_kind_to_asm(err.error.kind()),
-                                        err.error.message(),
-                                        None,
-                                    ),
-                                )
-                                .with_column(Some(err.span.col_start)),
-                            );
-                            counts.errors += 1;
-                            idx = end_idx.saturating_add(1);
-                            continue;
-                        }
-
-                        pass1_loop_trace.push((line_num, pass1_count));
-                        if scoped_repeat {
-                            if let Some(loop_label) = label.as_ref() {
-                                let full_name = asm_line.scoped_define_name(&loop_label.name);
-                                asm_line
-                                    .set_value_symbol(&full_name, AsmValue::List(iteration_bases));
-                                asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
-                            }
-                        }
-
-                        idx = end_idx.saturating_add(1);
-                        continue;
-                    }
-                }
-            }
-
-            Self::execute_regular_line_pass1(
-                asm_line,
-                src,
-                line_num,
-                addr,
-                counts,
-                diagnostics,
-                pass_num,
-            );
-            idx = idx.saturating_add(1);
+        let mut traversal = Pass1RepetitionTraversal {
+            counts,
+            diagnostics,
+            pass1_loop_trace,
+            pass_num,
+        };
+        match execute_repetition_lines(
+            &mut traversal,
+            lines,
+            start_idx,
+            end_idx_exclusive,
+            asm_line,
+            addr,
+            unscoped_repeat_kind,
+            max_loop_iterations,
+        ) {
+            Ok(()) => {}
+            Err(err) => match err {},
         }
     }
 
@@ -1399,429 +1029,24 @@ impl Assembler {
         unscoped_repeat_kind: Option<UnscopedRepeatKind>,
         max_loop_iterations: u32,
     ) -> std::io::Result<()> {
-        let mut idx = start_idx;
-        while idx < end_idx_exclusive {
-            let line_num = u32::try_from(idx)
-                .unwrap_or(u32::MAX.saturating_sub(1))
-                .saturating_add(1);
-            let src = &lines[idx];
-
-            let parsed_ast =
-                super::repetition::parse_line_ast_for_repetition(asm_line, src, line_num).ok();
-            if let Some(ast) = parsed_ast {
-                let statement_parts = super::repetition::statement_parts(&ast);
-
-                if let Some((_, ref mnemonic, _)) = statement_parts {
-                    if asm_line.cond_stack.skipping() {
-                        if super::repetition::is_for_like_directive_name(mnemonic) {
-                            let Some(end_idx) = super::repetition::find_matching_endfor(
-                                lines,
-                                asm_line,
-                                idx.saturating_add(1),
-                                end_idx_exclusive,
-                            ) else {
-                                let message =
-                                    format!("unterminated {mnemonic} (opened at line {line_num})");
-                                let diagnostic = Diagnostic::new(
-                                    line_num,
-                                    Severity::Error,
-                                    AsmError::new(AsmErrorKind::Directive, &message, None),
-                                );
-                                diagnostics.push(diagnostic.clone());
-                                listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                                counts.errors += 1;
-                                return Ok(());
-                            };
-                            idx = end_idx.saturating_add(1);
-                            continue;
-                        }
-                        if super::repetition::is_while_like_directive_name(mnemonic) {
-                            let Some(end_idx) = super::repetition::find_matching_endwhile(
-                                lines,
-                                asm_line,
-                                idx.saturating_add(1),
-                                end_idx_exclusive,
-                            ) else {
-                                let message =
-                                    format!("unterminated {mnemonic} (opened at line {line_num})");
-                                let diagnostic = Diagnostic::new(
-                                    line_num,
-                                    Severity::Error,
-                                    AsmError::new(AsmErrorKind::Directive, &message, None),
-                                );
-                                diagnostics.push(diagnostic.clone());
-                                listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                                counts.errors += 1;
-                                return Ok(());
-                            };
-                            idx = end_idx.saturating_add(1);
-                            continue;
-                        }
-                        if super::repetition::is_endfor_directive_name(mnemonic)
-                            || super::repetition::is_endwhile_directive_name(mnemonic)
-                        {
-                            idx = idx.saturating_add(1);
-                            continue;
-                        }
-                    }
-                }
-
-                if !asm_line.cond_stack.skipping() {
-                    if let Some(repeat_kind) = unscoped_repeat_kind {
-                        if let Some(label) = super::repetition::line_label(&ast) {
-                            let message = match repeat_kind {
-                            UnscopedRepeatKind::For => format!(
-                                "label '{}' not allowed inside .for (use .bfor for scoped repetition)",
-                                label.name
-                            ),
-                            UnscopedRepeatKind::While => format!(
-                                "label '{}' not allowed inside .while (use .bwhile for scoped repetition)",
-                                label.name
-                            ),
-                        };
-                            let diagnostic = Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(AsmErrorKind::Directive, &message, None),
-                            )
-                            .with_column(Some(label.span.col_start));
-                            diagnostics.push(diagnostic.clone());
-                            listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                            counts.errors += 1;
-                            idx = idx.saturating_add(1);
-                            continue;
-                        }
-                    }
-                }
-
-                if let Some((label, mnemonic, operands)) = statement_parts {
-                    if super::repetition::is_endfor_directive_name(&mnemonic)
-                        || super::repetition::is_endwhile_directive_name(&mnemonic)
-                    {
-                        let (message, column) = if let Some(label) = label {
-                            (
-                                "label not allowed on .endfor / .endwhile".to_string(),
-                                Some(label.span.col_start),
-                            )
-                        } else if super::repetition::is_endwhile_directive_name(&mnemonic) {
-                            (".endwhile without matching .while".to_string(), None)
-                        } else {
-                            (".endfor without matching .for".to_string(), None)
-                        };
-                        let diagnostic = Diagnostic::new(
-                            line_num,
-                            Severity::Error,
-                            AsmError::new(AsmErrorKind::Directive, &message, None),
-                        )
-                        .with_column(column);
-                        diagnostics.push(diagnostic.clone());
-                        listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                        counts.errors += 1;
-                        idx = idx.saturating_add(1);
-                        continue;
-                    }
-
-                    if super::repetition::is_for_like_directive_name(&mnemonic) {
-                        let scoped_repeat =
-                            super::repetition::is_scoped_for_directive_name(&mnemonic);
-                        let Some(end_idx) = super::repetition::find_matching_endfor(
-                            lines,
-                            asm_line,
-                            idx.saturating_add(1),
-                            end_idx_exclusive,
-                        ) else {
-                            let message =
-                                format!("unterminated {mnemonic} (opened at line {line_num})");
-                            let diagnostic = Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(AsmErrorKind::Directive, &message, None),
-                            );
-                            diagnostics.push(diagnostic.clone());
-                            listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                            counts.errors += 1;
-                            return Ok(());
-                        };
-
-                        let plan = match super::repetition::evaluate_for_plan(
-                            asm_line,
-                            &operands,
-                            max_loop_iterations,
-                        ) {
-                            Ok(plan) => plan,
-                            Err(err) => {
-                                let diagnostic = Diagnostic::new(
-                                    line_num,
-                                    Severity::Error,
-                                    AsmError::new(
-                                        ast_eval_error_kind_to_asm(err.error.kind()),
-                                        err.error.message(),
-                                        None,
-                                    ),
-                                )
-                                .with_column(Some(err.span.col_start));
-                                diagnostics.push(diagnostic.clone());
-                                listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                                counts.errors += 1;
-                                idx = end_idx.saturating_add(1);
-                                continue;
-                            }
-                        };
-
-                        let pass2_count = u32::try_from(plan.values.len()).unwrap_or(u32::MAX);
-                        let (pass1_line, pass1_count) = pass1_loop_trace
-                            .get(*pass2_loop_trace_cursor)
-                            .copied()
-                            .unwrap_or((line_num, 0));
-                        *pass2_loop_trace_cursor = pass2_loop_trace_cursor.saturating_add(1);
-                        if pass1_line != line_num || pass1_count != pass2_count {
-                            let message = format!(
-                                "loop iteration count changed between passes (pass1: {pass1_count}, pass2: {pass2_count})"
-                            );
-                            let diagnostic = Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(AsmErrorKind::Directive, &message, None),
-                            );
-                            diagnostics.push(diagnostic.clone());
-                            listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                            counts.errors += 1;
-                        }
-
-                        let mut iteration_bases = Vec::with_capacity(plan.values.len());
-                        let mut iteration_scopes = Vec::with_capacity(plan.values.len());
-                        for value in &plan.values {
-                            if scoped_repeat {
-                                asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .push_anonymous_with_kind(ScopeKind::Repeat);
-                                asm_line.push_visibility();
-                            }
-                            if scoped_repeat && label.is_some() {
-                                let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
-                                iteration_bases.push(i64::from(base_addr));
-                                iteration_scopes.push(
-                                    asm_line
-                                        .symbol_scope
-                                        .scope_stack
-                                        .prefix(asm_line.symbol_scope.scope_stack.depth()),
-                                );
-                            }
-                            if let Some(var_name) = plan.var_name.as_deref() {
-                                asm_line.push_loop_var(var_name, *value);
-                            }
-                            let recur_result = Self::execute_pass2_lines(
-                                lines,
-                                idx.saturating_add(1),
-                                end_idx,
-                                asm_line,
-                                addr,
-                                counts,
-                                diagnostics,
-                                listing,
-                                image,
-                                pass1_loop_trace,
-                                pass2_loop_trace_cursor,
-                                if scoped_repeat {
-                                    None
-                                } else {
-                                    Some(UnscopedRepeatKind::For)
-                                },
-                                max_loop_iterations,
-                            );
-                            if plan.var_name.is_some() {
-                                asm_line.pop_loop_var();
-                            }
-                            if scoped_repeat {
-                                let _ = asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .pop_expected(ScopeKind::Repeat);
-                                let _ = asm_line.pop_visibility();
-                            }
-                            recur_result?;
-                        }
-
-                        if scoped_repeat {
-                            if let Some(loop_label) = label.as_ref() {
-                                let full_name = asm_line.scoped_define_name(&loop_label.name);
-                                asm_line
-                                    .set_value_symbol(&full_name, AsmValue::List(iteration_bases));
-                                asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
-                            }
-                        }
-
-                        idx = end_idx.saturating_add(1);
-                        continue;
-                    }
-
-                    if super::repetition::is_while_like_directive_name(&mnemonic) {
-                        let scoped_repeat =
-                            super::repetition::is_scoped_while_directive_name(&mnemonic);
-                        let Some(end_idx) = super::repetition::find_matching_endwhile(
-                            lines,
-                            asm_line,
-                            idx.saturating_add(1),
-                            end_idx_exclusive,
-                        ) else {
-                            let message =
-                                format!("unterminated {mnemonic} (opened at line {line_num})");
-                            let diagnostic = Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(AsmErrorKind::Directive, &message, None),
-                            );
-                            diagnostics.push(diagnostic.clone());
-                            listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                            counts.errors += 1;
-                            return Ok(());
-                        };
-
-                        let mut while_error: Option<AstEvalError> = None;
-                        let mut pass2_count = 0u32;
-                        let mut iteration_bases = Vec::new();
-                        let mut iteration_scopes = Vec::new();
-
-                        loop {
-                            let should_continue = match super::repetition::evaluate_while_condition(
-                                asm_line, &operands,
-                            ) {
-                                Ok(value) => value,
-                                Err(err) => {
-                                    while_error = Some(err);
-                                    break;
-                                }
-                            };
-                            if !should_continue {
-                                break;
-                            }
-
-                            let next_count = pass2_count.saturating_add(1);
-                            if next_count > max_loop_iterations {
-                                while_error = Some(AstEvalError::directive(
-                                    format!(
-                                        "loop exceeded maximum iteration limit ({max_loop_iterations})"
-                                    ),
-                                    operands.first().map(expr_span).unwrap_or_default(),
-                                ));
-                                break;
-                            }
-                            pass2_count = next_count;
-
-                            if scoped_repeat {
-                                asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .push_anonymous_with_kind(ScopeKind::Repeat);
-                                asm_line.push_visibility();
-                            }
-                            if scoped_repeat && label.is_some() {
-                                let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
-                                iteration_bases.push(i64::from(base_addr));
-                                iteration_scopes.push(
-                                    asm_line
-                                        .symbol_scope
-                                        .scope_stack
-                                        .prefix(asm_line.symbol_scope.scope_stack.depth()),
-                                );
-                            }
-
-                            let recur_result = Self::execute_pass2_lines(
-                                lines,
-                                idx.saturating_add(1),
-                                end_idx,
-                                asm_line,
-                                addr,
-                                counts,
-                                diagnostics,
-                                listing,
-                                image,
-                                pass1_loop_trace,
-                                pass2_loop_trace_cursor,
-                                if scoped_repeat {
-                                    None
-                                } else {
-                                    Some(UnscopedRepeatKind::While)
-                                },
-                                max_loop_iterations,
-                            );
-                            if scoped_repeat {
-                                let _ = asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .pop_expected(ScopeKind::Repeat);
-                                let _ = asm_line.pop_visibility();
-                            }
-                            recur_result?;
-                        }
-
-                        if let Some(err) = while_error {
-                            let diagnostic = Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(
-                                    ast_eval_error_kind_to_asm(err.error.kind()),
-                                    err.error.message(),
-                                    None,
-                                ),
-                            )
-                            .with_column(Some(err.span.col_start));
-                            diagnostics.push(diagnostic.clone());
-                            listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                            counts.errors += 1;
-                            idx = end_idx.saturating_add(1);
-                            continue;
-                        }
-
-                        let (pass1_line, pass1_count) = pass1_loop_trace
-                            .get(*pass2_loop_trace_cursor)
-                            .copied()
-                            .unwrap_or((line_num, 0));
-                        *pass2_loop_trace_cursor = pass2_loop_trace_cursor.saturating_add(1);
-                        if pass1_line != line_num || pass1_count != pass2_count {
-                            let message = format!(
-                                "loop iteration count changed between passes (pass1: {pass1_count}, pass2: {pass2_count})"
-                            );
-                            let diagnostic = Diagnostic::new(
-                                line_num,
-                                Severity::Error,
-                                AsmError::new(AsmErrorKind::Directive, &message, None),
-                            );
-                            diagnostics.push(diagnostic.clone());
-                            listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
-                            counts.errors += 1;
-                        }
-
-                        if scoped_repeat {
-                            if let Some(loop_label) = label.as_ref() {
-                                let full_name = asm_line.scoped_define_name(&loop_label.name);
-                                asm_line
-                                    .set_value_symbol(&full_name, AsmValue::List(iteration_bases));
-                                asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
-                            }
-                        }
-
-                        idx = end_idx.saturating_add(1);
-                        continue;
-                    }
-                }
-            }
-
-            Self::execute_regular_line_pass2(
-                asm_line,
-                src,
-                line_num,
-                addr,
-                counts,
-                diagnostics,
-                listing,
-                image,
-                lines,
-            )?;
-            idx = idx.saturating_add(1);
-        }
-        Ok(())
+        let mut traversal = Pass2RepetitionTraversal {
+            counts,
+            diagnostics,
+            listing,
+            image,
+            pass1_loop_trace,
+            pass2_loop_trace_cursor,
+        };
+        execute_repetition_lines(
+            &mut traversal,
+            lines,
+            start_idx,
+            end_idx_exclusive,
+            asm_line,
+            addr,
+            unscoped_repeat_kind,
+            max_loop_iterations,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1972,6 +1197,139 @@ impl Assembler {
             diagnostic = diagnostic.with_fixit(fixit.clone());
         }
         diagnostic
+    }
+}
+
+struct Pass1RepetitionTraversal<'a> {
+    counts: &'a mut PassCounts,
+    diagnostics: &'a mut Vec<Diagnostic>,
+    pass1_loop_trace: &'a mut Vec<(u32, u32)>,
+    pass_num: u8,
+}
+
+impl RepetitionPass for Pass1RepetitionTraversal<'_> {
+    type Error = Infallible;
+
+    fn before_label_restriction_error(&mut self, asm_line: &mut AsmLine<'_>, line_num: u32) {
+        asm_line.record_default_processing_trace(line_num);
+    }
+
+    fn before_unmatched_end_error(&mut self, asm_line: &mut AsmLine<'_>, line_num: u32) {
+        asm_line.record_default_processing_trace(line_num);
+    }
+
+    fn emit_error(
+        &mut self,
+        diagnostic: Diagnostic,
+        _all_lines: &[String],
+    ) -> Result<(), Self::Error> {
+        self.diagnostics.push(diagnostic);
+        self.counts.errors += 1;
+        Ok(())
+    }
+
+    fn observe_loop_iterations(
+        &mut self,
+        line_num: u32,
+        iterations: u32,
+        _all_lines: &[String],
+    ) -> Result<(), Self::Error> {
+        self.pass1_loop_trace.push((line_num, iterations));
+        Ok(())
+    }
+
+    fn execute_regular_line(
+        &mut self,
+        asm_line: &mut AsmLine<'_>,
+        src: &str,
+        line_num: u32,
+        addr: &mut u32,
+        _all_lines: &[String],
+    ) -> Result<(), Self::Error> {
+        Assembler::execute_regular_line_pass1(
+            asm_line,
+            src,
+            line_num,
+            addr,
+            self.counts,
+            self.diagnostics,
+            self.pass_num,
+        );
+        Ok(())
+    }
+}
+
+struct Pass2RepetitionTraversal<'a, W: Write> {
+    counts: &'a mut PassCounts,
+    diagnostics: &'a mut Vec<Diagnostic>,
+    listing: &'a mut ListingWriter<W>,
+    image: &'a mut ImageStore,
+    pass1_loop_trace: &'a [(u32, u32)],
+    pass2_loop_trace_cursor: &'a mut usize,
+}
+
+impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
+    type Error = std::io::Error;
+
+    fn emit_error(
+        &mut self,
+        diagnostic: Diagnostic,
+        all_lines: &[String],
+    ) -> Result<(), Self::Error> {
+        self.diagnostics.push(diagnostic.clone());
+        self.listing
+            .write_diagnostic_with_annotations(&diagnostic, all_lines)?;
+        self.counts.errors += 1;
+        Ok(())
+    }
+
+    fn observe_loop_iterations(
+        &mut self,
+        line_num: u32,
+        iterations: u32,
+        all_lines: &[String],
+    ) -> Result<(), Self::Error> {
+        let (pass1_line, pass1_count) = self
+            .pass1_loop_trace
+            .get(*self.pass2_loop_trace_cursor)
+            .copied()
+            .unwrap_or((line_num, 0));
+        *self.pass2_loop_trace_cursor = self.pass2_loop_trace_cursor.saturating_add(1);
+        if pass1_line != line_num || pass1_count != iterations {
+            let message = format!(
+                "loop iteration count changed between passes (pass1: {pass1_count}, pass2: {iterations})"
+            );
+            self.emit_error(
+                Diagnostic::new(
+                    line_num,
+                    Severity::Error,
+                    AsmError::new(AsmErrorKind::Directive, &message, None),
+                ),
+                all_lines,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn execute_regular_line(
+        &mut self,
+        asm_line: &mut AsmLine<'_>,
+        src: &str,
+        line_num: u32,
+        addr: &mut u32,
+        all_lines: &[String],
+    ) -> Result<(), Self::Error> {
+        Assembler::execute_regular_line_pass2(
+            asm_line,
+            src,
+            line_num,
+            addr,
+            self.counts,
+            self.diagnostics,
+            self.listing,
+            self.image,
+            all_lines,
+        )
     }
 }
 

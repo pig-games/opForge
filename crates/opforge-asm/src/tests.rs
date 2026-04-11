@@ -1014,7 +1014,7 @@ fn struct_body_rejects_non_field_directives() {
 }
 
 #[test]
-fn for_counter_loop_emits_expected_bytes() {
+fn repetition_for_counter_loop_emits_expected_bytes() {
     let (entries, diagnostics) =
         assemble_source_entries_with_runtime_mode(&[".for 3", ".byte $7f", ".endfor"], true)
             .expect("assembly should run");
@@ -1026,7 +1026,7 @@ fn for_counter_loop_emits_expected_bytes() {
 }
 
 #[test]
-fn for_iterable_loop_emits_loop_variable_values() {
+fn repetition_for_iterable_loop_emits_loop_variable_values() {
     let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
         &[".for i in {1,2,3}", ".byte i", ".endfor"],
         true,
@@ -1040,7 +1040,7 @@ fn for_iterable_loop_emits_loop_variable_values() {
 }
 
 #[test]
-fn for_loop_rejects_labels_inside_body() {
+fn repetition_for_loop_rejects_labels_inside_body() {
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
 
@@ -1066,7 +1066,7 @@ fn for_loop_rejects_labels_inside_body() {
 }
 
 #[test]
-fn bfor_allows_labels_inside_body() {
+fn repetition_bfor_allows_labels_inside_body() {
     let (entries, diagnostics) =
         assemble_source_entries_with_runtime_mode(&[".bfor 2", "item .byte 1", ".endfor"], true)
             .expect("assembly should run");
@@ -1078,7 +1078,7 @@ fn bfor_allows_labels_inside_body() {
 }
 
 #[test]
-fn bfor_label_exposes_iteration_addresses_via_index() {
+fn repetition_bfor_label_exposes_iteration_addresses_via_index() {
     let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
         &[
             "table .bfor i in {0,1,2,3}",
@@ -1100,7 +1100,7 @@ fn bfor_label_exposes_iteration_addresses_via_index() {
 }
 
 #[test]
-fn bfor_indexed_member_access_resolves_iteration_scoped_fields() {
+fn repetition_bfor_indexed_member_access_resolves_iteration_scoped_fields() {
     let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
         &[
             "Point .struct",
@@ -1139,7 +1139,7 @@ fn bfor_indexed_member_access_resolves_iteration_scoped_fields() {
 }
 
 #[test]
-fn endfor_without_for_reports_error() {
+fn repetition_endfor_without_for_reports_error() {
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
 
@@ -1161,7 +1161,7 @@ fn endfor_without_for_reports_error() {
 }
 
 #[test]
-fn for_loop_reports_pass_stability_mismatch() {
+fn repetition_for_loop_reports_pass_stability_mismatch() {
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
 
@@ -1196,7 +1196,7 @@ fn for_loop_reports_pass_stability_mismatch() {
 }
 
 #[test]
-fn while_loop_emits_expected_bytes() {
+fn repetition_while_loop_emits_expected_bytes() {
     let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
         &[".org 0", ".while $ < 3", ".byte 1", ".endwhile"],
         true,
@@ -1210,7 +1210,7 @@ fn while_loop_emits_expected_bytes() {
 }
 
 #[test]
-fn while_loop_rejects_labels_inside_body() {
+fn repetition_while_loop_rejects_labels_inside_body() {
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
 
@@ -1238,7 +1238,7 @@ fn while_loop_rejects_labels_inside_body() {
 }
 
 #[test]
-fn bwhile_allows_labels_inside_body() {
+fn repetition_bwhile_allows_labels_inside_body() {
     let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
         &[".org 0", ".bwhile $ < 2", "item .byte 1", ".endwhile"],
         true,
@@ -1252,7 +1252,7 @@ fn bwhile_allows_labels_inside_body() {
 }
 
 #[test]
-fn endwhile_without_while_reports_error() {
+fn repetition_endwhile_without_while_reports_error() {
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
 
@@ -1274,7 +1274,7 @@ fn endwhile_without_while_reports_error() {
 }
 
 #[test]
-fn while_loop_reports_pass_stability_mismatch() {
+fn repetition_while_loop_reports_pass_stability_mismatch() {
     let mut assembler = Assembler::new();
     assembler.clear_diagnostics();
 
@@ -1311,7 +1311,7 @@ fn while_loop_reports_pass_stability_mismatch() {
 }
 
 #[test]
-fn while_loop_respects_max_iteration_limit() {
+fn repetition_while_loop_respects_max_iteration_limit() {
     let mut assembler = Assembler::new();
     assembler.max_loop_iterations = 3;
     assembler.clear_diagnostics();
@@ -1338,7 +1338,7 @@ fn while_loop_respects_max_iteration_limit() {
 }
 
 #[test]
-fn conditionals_skip_repetition_blocks_without_loop_diagnostics() {
+fn repetition_conditionals_skip_blocks_without_loop_diagnostics() {
     let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
         &[
             ".if 0",
@@ -1359,6 +1359,50 @@ fn conditionals_skip_repetition_blocks_without_loop_diagnostics() {
         "unexpected diagnostics in skipped repetition blocks: {diagnostics:?}"
     );
     assert_eq!(entries, vec![(0, 7)]);
+}
+
+#[test]
+fn repetition_nested_for_and_while_blocks_preserve_matching() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            ".for i in {1,2}",
+            ".for j in {0,1}",
+            ".byte i + j",
+            ".endfor",
+            ".endfor",
+        ],
+        true,
+    )
+    .expect("assembly should run");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for nested repetition blocks: {diagnostics:?}"
+    );
+    assert_eq!(entries, vec![(0, 1), (1, 2), (2, 2), (3, 3)]);
+}
+
+#[test]
+fn repetition_bwhile_label_exposes_iteration_addresses_via_index() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &[
+            ".org 0",
+            "limit .var 2",
+            "table .bwhile $ < limit",
+            ".byte $aa",
+            ".endwhile",
+            ".word table[1]",
+        ],
+        true,
+    )
+    .expect("assembly should run");
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics for scoped while loop bookkeeping: {diagnostics:?}"
+    );
+    assert_eq!(
+        entries,
+        vec![(0, 0xaa), (1, 0xaa), (2, 0xaa), (3, 1), (4, 0)]
+    );
 }
 
 fn assemble_example(

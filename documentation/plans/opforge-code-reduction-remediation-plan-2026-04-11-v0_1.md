@@ -179,7 +179,7 @@ making the affected seams easier to maintain and reduce further later.
     - the core addressing encoder becomes an isolated reduction seam and the
       remaining monolith can be cut by instruction-group boundaries next
 
-- [ ] Work item 5: extract M68k move, transfer, and control-flow encoder groups
+- [x] Work item 5: extract M68k move, transfer, and control-flow encoder groups
   - Source requirement or finding IDs: `RVW-2026-04-11-005`
   - Finding closure expectation: partially closes `RVW-2026-04-11-005`
   - Validation: focused move/control-flow characterization plus full quality gates

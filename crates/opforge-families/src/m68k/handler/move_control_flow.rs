@@ -1176,6 +1176,23 @@ impl M68KFamilyHandler {
         EncodeResult::ok(bytes)
     }
 
+    pub(super) fn encode_rts(
+        &self,
+        size: Option<OperationSize>,
+        operands: &[Operand],
+    ) -> EncodeResult<Vec<u8>> {
+        if size.is_some() {
+            return EncodeResult::error("RTS does not accept a size suffix");
+        }
+        if !operands.is_empty() {
+            return EncodeResult::error("RTS does not take operands");
+        }
+
+        let mut bytes = Vec::new();
+        Self::emit_word(&mut bytes, 0x4E75);
+        EncodeResult::ok(bytes)
+    }
+
     pub(crate) fn move_allows_source(kind: EffectiveAddressKind, size: OperationSize) -> bool {
         match kind {
             EffectiveAddressKind::DataRegister

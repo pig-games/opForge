@@ -212,7 +212,7 @@ making the affected seams easier to maintain and reduce further later.
     - the first instruction-group seam lands as one bounded commit without
       mixing in arithmetic or later-family work
 
-- [ ] Work item 6: extract M68k arithmetic, unary, quick, and branch encoder groups
+- [x] Work item 6: extract M68k arithmetic, unary, quick, and branch encoder groups
   - Source requirement or finding IDs: `RVW-2026-04-11-005`
   - Finding closure expectation: partially closes `RVW-2026-04-11-005`
   - Validation: focused arithmetic/branch characterization plus full quality gates

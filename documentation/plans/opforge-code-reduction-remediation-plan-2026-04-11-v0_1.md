@@ -149,7 +149,7 @@ making the affected seams easier to maintain and reduce further later.
     - operand parsing is no longer part of the monolithic handler body, and the
       next slice can target effective-address encoding without mixing concerns
 
-- [ ] Work item 4: extract M68k effective-address encoding into a dedicated seam
+- [x] Work item 4: extract M68k effective-address encoding into a dedicated seam
   - Source requirement or finding IDs: `RVW-2026-04-11-005`
   - Finding closure expectation: partially closes `RVW-2026-04-11-005`
   - Validation: representative effective-address characterization plus full quality gates

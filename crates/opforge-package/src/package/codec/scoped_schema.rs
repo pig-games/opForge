@@ -2,6 +2,50 @@ use std::collections::VecDeque;
 
 use super::*;
 
+pub(super) fn encode_simple_schema_chunk<T: SimpleSchemaEntry>(
+    entries: &[T],
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let mut out = Vec::new();
+    write_u32(&mut out, u32_count(entries.len(), T::COUNT_LABEL)?);
+    for entry in entries {
+        encode_schema_fields(&mut out, T::CHUNK, T::FIELD_SPECS, entry.field_values())?;
+    }
+    Ok(out)
+}
+
+pub(super) fn decode_simple_schema_chunk<T: SimpleSchemaEntry>(
+    bytes: &[u8],
+) -> Result<Vec<T>, OpcpuCodecError> {
+    let mut cur = Decoder::new(bytes, T::CHUNK);
+    let count = read_bounded_count(&mut cur, T::MIN_RECORD_BYTES, T::ENTRY_KIND)?;
+    let mut entries = Vec::with_capacity(count);
+    for _ in 0..count {
+        let entry = T::from_decoded(decode_schema_fields(&mut cur, T::CHUNK, T::FIELD_SPECS)?)?;
+        T::validate_decoded(&entry)?;
+        entries.push(entry);
+    }
+    cur.finish()?;
+    Ok(entries)
+}
+
+pub(super) fn encode_simple_schema_record<T: SimpleSchemaRecord>(
+    entry: &T,
+) -> Result<Vec<u8>, OpcpuCodecError> {
+    let mut out = Vec::new();
+    encode_schema_fields(&mut out, T::CHUNK, T::FIELD_SPECS, entry.field_values())?;
+    Ok(out)
+}
+
+pub(super) fn decode_simple_schema_record<T: SimpleSchemaRecord>(
+    bytes: &[u8],
+) -> Result<T, OpcpuCodecError> {
+    let mut cur = Decoder::new(bytes, T::CHUNK);
+    let entry = T::from_decoded(decode_schema_fields(&mut cur, T::CHUNK, T::FIELD_SPECS)?)?;
+    T::validate_decoded(&entry)?;
+    cur.finish()?;
+    Ok(entry)
+}
+
 pub(super) fn encode_scoped_schema_chunk<T: ScopedSchemaEntry>(
     entries: &[T],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
@@ -52,12 +96,47 @@ pub(super) trait ScopedSchemaEntry: Sized {
     }
 }
 
+pub(super) trait SimpleSchemaEntry: Sized {
+    const CHUNK: &'static str;
+    const ENTRY_KIND: &'static str;
+    const COUNT_LABEL: &'static str;
+    const MIN_RECORD_BYTES: usize;
+    const FIELD_SPECS: &'static [FieldSpec];
+
+    fn field_values(&self) -> Vec<FieldValue<'_>>;
+    fn from_decoded(fields: DecodedFields) -> Result<Self, OpcpuCodecError>;
+
+    fn validate_decoded(_entry: &Self) -> Result<(), OpcpuCodecError> {
+        Ok(())
+    }
+}
+
+pub(super) trait SimpleSchemaRecord: Sized {
+    const CHUNK: &'static str;
+    const FIELD_SPECS: &'static [FieldSpec];
+
+    fn field_values(&self) -> Vec<FieldValue<'_>>;
+    fn from_decoded(fields: DecodedFields) -> Result<Self, OpcpuCodecError>;
+
+    fn validate_decoded(_entry: &Self) -> Result<(), OpcpuCodecError> {
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum FieldSpec {
     String,
+    OptionalString {
+        label: &'static str,
+    },
     Bytes {
         len_label: &'static str,
         value_label: &'static str,
+    },
+    OptionalStringList {
+        label: &'static str,
+        count_label: &'static str,
+        entry_label: &'static str,
     },
     U32List {
         count_label: &'static str,
@@ -73,7 +152,9 @@ pub(super) enum FieldSpec {
 
 pub(super) enum FieldValue<'a> {
     String(&'a str),
+    OptionalString(Option<&'a str>),
     Bytes(&'a [u8]),
+    OptionalStringList(Option<&'a [String]>),
     U32List(&'a [u32]),
     U16(u16),
     U32(u32),
@@ -83,7 +164,9 @@ pub(super) enum FieldValue<'a> {
 
 enum DecodedField {
     String(String),
+    OptionalString(Option<String>),
     Bytes(Vec<u8>),
+    OptionalStringList(Option<Vec<String>>),
     U32List(Vec<u32>),
     U16(u16),
     U32(u32),
@@ -109,10 +192,30 @@ impl DecodedFields {
         }
     }
 
+    pub(super) fn next_optional_string(
+        &mut self,
+        chunk: &'static str,
+    ) -> Result<Option<String>, OpcpuCodecError> {
+        match self.fields.pop_front() {
+            Some(DecodedField::OptionalString(value)) => Ok(value),
+            _ => Err(internal_schema_error(chunk, "optional string")),
+        }
+    }
+
     pub(super) fn next_bytes(&mut self, chunk: &'static str) -> Result<Vec<u8>, OpcpuCodecError> {
         match self.fields.pop_front() {
             Some(DecodedField::Bytes(value)) => Ok(value),
             _ => Err(internal_schema_error(chunk, "bytes")),
+        }
+    }
+
+    pub(super) fn next_optional_string_list(
+        &mut self,
+        chunk: &'static str,
+    ) -> Result<Option<Vec<String>>, OpcpuCodecError> {
+        match self.fields.pop_front() {
+            Some(DecodedField::OptionalStringList(value)) => Ok(value),
+            _ => Err(internal_schema_error(chunk, "optional string list")),
         }
     }
 
@@ -152,6 +255,150 @@ impl DecodedFields {
             Some(DecodedField::U8(value)) => Ok(value),
             _ => Err(internal_schema_error(chunk, "u8")),
         }
+    }
+}
+
+impl SimpleSchemaEntry for FamilyDescriptor {
+    const CHUNK: &'static str = "FAMS";
+    const ENTRY_KIND: &'static str = "family entry";
+    const COUNT_LABEL: &'static str = "FAMS count";
+    const MIN_RECORD_BYTES: usize = 8;
+    const FIELD_SPECS: &'static [FieldSpec] = &[FieldSpec::String, FieldSpec::String];
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::String(&self.id),
+            FieldValue::String(&self.canonical_dialect),
+        ]
+    }
+
+    fn from_decoded(mut fields: DecodedFields) -> Result<Self, OpcpuCodecError> {
+        Ok(Self {
+            id: fields.next_string(Self::CHUNK)?,
+            canonical_dialect: fields.next_string(Self::CHUNK)?,
+        })
+    }
+}
+
+impl SimpleSchemaRecord for PackageMetaDescriptor {
+    const CHUNK: &'static str = "META";
+    const FIELD_SPECS: &'static [FieldSpec] =
+        &[FieldSpec::String, FieldSpec::String, FieldSpec::U32];
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::String(&self.package_id),
+            FieldValue::String(&self.package_version),
+            FieldValue::U32(self.capability_flags),
+        ]
+    }
+
+    fn from_decoded(mut fields: DecodedFields) -> Result<Self, OpcpuCodecError> {
+        Ok(Self {
+            package_id: fields.next_string(Self::CHUNK)?,
+            package_version: fields.next_string(Self::CHUNK)?,
+            capability_flags: fields.next_u32(Self::CHUNK)?,
+        })
+    }
+}
+
+impl SimpleSchemaEntry for String {
+    const CHUNK: &'static str = "STRS";
+    const ENTRY_KIND: &'static str = "string entry";
+    const COUNT_LABEL: &'static str = "STRS count";
+    const MIN_RECORD_BYTES: usize = 4;
+    const FIELD_SPECS: &'static [FieldSpec] = &[FieldSpec::String];
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![FieldValue::String(self)]
+    }
+
+    fn from_decoded(mut fields: DecodedFields) -> Result<Self, OpcpuCodecError> {
+        fields.next_string(Self::CHUNK)
+    }
+}
+
+impl SimpleSchemaEntry for DiagnosticDescriptor {
+    const CHUNK: &'static str = "DIAG";
+    const ENTRY_KIND: &'static str = "diagnostic entry";
+    const COUNT_LABEL: &'static str = "DIAG count";
+    const MIN_RECORD_BYTES: usize = 8;
+    const FIELD_SPECS: &'static [FieldSpec] = &[FieldSpec::String, FieldSpec::String];
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::String(&self.code),
+            FieldValue::String(&self.message_template),
+        ]
+    }
+
+    fn from_decoded(mut fields: DecodedFields) -> Result<Self, OpcpuCodecError> {
+        Ok(Self {
+            code: fields.next_string(Self::CHUNK)?,
+            message_template: fields.next_string(Self::CHUNK)?,
+        })
+    }
+}
+
+impl SimpleSchemaEntry for CpuDescriptor {
+    const CHUNK: &'static str = "CPUS";
+    const ENTRY_KIND: &'static str = "cpu entry";
+    const COUNT_LABEL: &'static str = "CPUS count";
+    const MIN_RECORD_BYTES: usize = 1;
+    const FIELD_SPECS: &'static [FieldSpec] = &[
+        FieldSpec::String,
+        FieldSpec::String,
+        FieldSpec::OptionalString {
+            label: "default_dialect",
+        },
+    ];
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::String(&self.id),
+            FieldValue::String(&self.family_id),
+            FieldValue::OptionalString(self.default_dialect.as_deref()),
+        ]
+    }
+
+    fn from_decoded(mut fields: DecodedFields) -> Result<Self, OpcpuCodecError> {
+        Ok(Self {
+            id: fields.next_string(Self::CHUNK)?,
+            family_id: fields.next_string(Self::CHUNK)?,
+            default_dialect: fields.next_optional_string(Self::CHUNK)?,
+        })
+    }
+}
+
+impl SimpleSchemaEntry for DialectDescriptor {
+    const CHUNK: &'static str = "DIAL";
+    const ENTRY_KIND: &'static str = "dialect entry";
+    const COUNT_LABEL: &'static str = "DIAL count";
+    const MIN_RECORD_BYTES: usize = 1;
+    const FIELD_SPECS: &'static [FieldSpec] = &[
+        FieldSpec::String,
+        FieldSpec::String,
+        FieldSpec::OptionalStringList {
+            label: "cpu_allow_list",
+            count_label: "DIAL allow-list count",
+            entry_label: "dialect allow-list entry",
+        },
+    ];
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::String(&self.id),
+            FieldValue::String(&self.family_id),
+            FieldValue::OptionalStringList(self.cpu_allow_list.as_deref()),
+        ]
+    }
+
+    fn from_decoded(mut fields: DecodedFields) -> Result<Self, OpcpuCodecError> {
+        Ok(Self {
+            id: fields.next_string(Self::CHUNK)?,
+            family_id: fields.next_string(Self::CHUNK)?,
+            cpu_allow_list: fields.next_optional_string_list(Self::CHUNK)?,
+        })
     }
 }
 
@@ -563,6 +810,34 @@ impl ScopedSchemaEntry for ExprParserContractDescriptor {
     }
 }
 
+fn encode_schema_fields(
+    out: &mut Vec<u8>,
+    chunk: &'static str,
+    specs: &'static [FieldSpec],
+    values: Vec<FieldValue<'_>>,
+) -> Result<(), OpcpuCodecError> {
+    if specs.len() != values.len() {
+        return Err(internal_schema_error(chunk, "field count mismatch"));
+    }
+
+    for (spec, value) in specs.iter().zip(values.into_iter()) {
+        encode_field(out, chunk, spec, value)?;
+    }
+    Ok(())
+}
+
+fn decode_schema_fields(
+    cur: &mut Decoder<'_>,
+    chunk: &'static str,
+    specs: &'static [FieldSpec],
+) -> Result<DecodedFields, OpcpuCodecError> {
+    let mut fields = Vec::with_capacity(specs.len());
+    for spec in specs {
+        fields.push(decode_field(cur, chunk, spec)?);
+    }
+    Ok(DecodedFields::new(fields))
+}
+
 fn encode_field(
     out: &mut Vec<u8>,
     chunk: &'static str,
@@ -571,6 +846,16 @@ fn encode_field(
 ) -> Result<(), OpcpuCodecError> {
     match (spec, value) {
         (FieldSpec::String, FieldValue::String(value)) => write_string(out, chunk, value),
+        (FieldSpec::OptionalString { .. }, FieldValue::OptionalString(value)) => match value {
+            Some(value) => {
+                out.push(1);
+                write_string(out, chunk, value)
+            }
+            None => {
+                out.push(0);
+                Ok(())
+            }
+        },
         (
             FieldSpec::Bytes {
                 len_label,
@@ -582,6 +867,27 @@ fn encode_field(
             out.extend_from_slice(value);
             Ok(())
         }
+        (
+            FieldSpec::OptionalStringList {
+                count_label,
+                entry_label: _,
+                label: _,
+            },
+            FieldValue::OptionalStringList(value),
+        ) => match value {
+            Some(values) => {
+                out.push(1);
+                write_u32(out, u32_count(values.len(), count_label)?);
+                for value in values {
+                    write_string(out, chunk, value)?;
+                }
+                Ok(())
+            }
+            None => {
+                out.push(0);
+                Ok(())
+            }
+        },
         (
             FieldSpec::U32List {
                 count_label,
@@ -622,12 +928,37 @@ fn decode_field(
 ) -> Result<DecodedField, OpcpuCodecError> {
     match spec {
         FieldSpec::String => Ok(DecodedField::String(cur.read_string()?)),
+        FieldSpec::OptionalString { label } => match cur.read_u8()? {
+            0 => Ok(DecodedField::OptionalString(None)),
+            1 => Ok(DecodedField::OptionalString(Some(cur.read_string()?))),
+            other => Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: chunk.to_string(),
+                detail: format!("invalid bool flag for {}: {}", label, other),
+            }),
+        },
         FieldSpec::Bytes { value_label, .. } => {
             let byte_count = cur.read_u32()? as usize;
             Ok(DecodedField::Bytes(
                 cur.read_exact(byte_count, value_label)?.to_vec(),
             ))
         }
+        FieldSpec::OptionalStringList {
+            label, entry_label, ..
+        } => match cur.read_u8()? {
+            0 => Ok(DecodedField::OptionalStringList(None)),
+            1 => {
+                let count = read_bounded_count(cur, 1, entry_label)?;
+                let mut values = Vec::with_capacity(count);
+                for _ in 0..count {
+                    values.push(cur.read_string()?);
+                }
+                Ok(DecodedField::OptionalStringList(Some(values)))
+            }
+            other => Err(OpcpuCodecError::InvalidChunkFormat {
+                chunk: chunk.to_string(),
+                detail: format!("invalid bool flag for {}: {}", label, other),
+            }),
+        },
         FieldSpec::U32List { entry_label, .. } => {
             let count = read_bounded_count(cur, 4, entry_label)?;
             let mut values = Vec::with_capacity(count);

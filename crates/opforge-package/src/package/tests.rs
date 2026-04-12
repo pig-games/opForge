@@ -152,6 +152,84 @@ fn assert_scoped_schema_round_trip<T>(
     assert_eq!(reencoded, bytes);
 }
 
+fn sample_metadata() -> PackageMetaDescriptor {
+    PackageMetaDescriptor {
+        package_id: "opforge.test".to_string(),
+        package_version: "9.9.9".to_string(),
+        capability_flags: 0xA5A5_5A5A,
+    }
+}
+
+fn sample_strings() -> Vec<String> {
+    vec![
+        "mos6502".to_string(),
+        "".to_string(),
+        "intel8080".to_string(),
+    ]
+}
+
+fn sample_diagnostics() -> Vec<DiagnosticDescriptor> {
+    vec![
+        DiagnosticDescriptor {
+            code: "pkg001".to_string(),
+            message_template: "first diagnostic".to_string(),
+        },
+        DiagnosticDescriptor {
+            code: "pkg002".to_string(),
+            message_template: "second diagnostic with {placeholder}".to_string(),
+        },
+    ]
+}
+
+fn sample_cpus_with_optional_default() -> Vec<CpuDescriptor> {
+    let mut cpus = sample_cpus();
+    cpus.push(CpuDescriptor {
+        id: "6510".to_string(),
+        family_id: "mos6502".to_string(),
+        default_dialect: None,
+    });
+    cpus
+}
+
+#[test]
+fn simple_chunk_schema_round_trip_fams() {
+    assert_scoped_schema_round_trip(&sample_families(), encode_fams_chunk, decode_fams_chunk);
+}
+
+#[test]
+fn simple_chunk_schema_round_trip_meta() {
+    let metadata = sample_metadata();
+    let bytes = encode_meta_chunk(&metadata).expect("encode should succeed");
+    let decoded = decode_meta_chunk(&bytes).expect("decode should succeed");
+    assert_eq!(decoded, metadata);
+    let reencoded = encode_meta_chunk(&decoded).expect("re-encode should succeed");
+    assert_eq!(reencoded, bytes);
+}
+
+#[test]
+fn simple_chunk_schema_round_trip_strs() {
+    assert_scoped_schema_round_trip(&sample_strings(), encode_strs_chunk, decode_strs_chunk);
+}
+
+#[test]
+fn simple_chunk_schema_round_trip_diag() {
+    assert_scoped_schema_round_trip(&sample_diagnostics(), encode_diag_chunk, decode_diag_chunk);
+}
+
+#[test]
+fn simple_chunk_schema_round_trip_cpus() {
+    assert_scoped_schema_round_trip(
+        &sample_cpus_with_optional_default(),
+        encode_cpus_chunk,
+        decode_cpus_chunk,
+    );
+}
+
+#[test]
+fn simple_chunk_schema_round_trip_dial() {
+    assert_scoped_schema_round_trip(&sample_dialects(), encode_dial_chunk, decode_dial_chunk);
+}
+
 fn token_policy_for_test(
     owner: ScopedOwner,
     case_rule: TokenCaseRule,

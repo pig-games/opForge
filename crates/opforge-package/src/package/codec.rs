@@ -2,7 +2,10 @@ use super::*;
 
 mod scoped_schema;
 
-use scoped_schema::{decode_scoped_schema_chunk, encode_scoped_schema_chunk};
+use scoped_schema::{
+    decode_scoped_schema_chunk, decode_simple_schema_chunk, decode_simple_schema_record,
+    encode_scoped_schema_chunk, encode_simple_schema_chunk, encode_simple_schema_record,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct TocEntry {
@@ -575,96 +578,41 @@ pub(super) fn slice_for_chunk_optional<'a>(
 }
 
 pub(super) fn encode_fams_chunk(families: &[FamilyDescriptor]) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(families.len(), "FAMS count")?);
-    for family in families {
-        write_string(&mut out, "FAMS", &family.id)?;
-        write_string(&mut out, "FAMS", &family.canonical_dialect)?;
-    }
-    Ok(out)
+    encode_simple_schema_chunk(families)
 }
 
 pub(super) fn decode_fams_chunk(bytes: &[u8]) -> Result<Vec<FamilyDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "FAMS");
-    let count = read_bounded_count(&mut cur, 8, "family entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        entries.push(FamilyDescriptor {
-            id: cur.read_string()?,
-            canonical_dialect: cur.read_string()?,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_simple_schema_chunk(bytes)
 }
 
 pub(super) fn encode_meta_chunk(
     metadata: &PackageMetaDescriptor,
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_string(&mut out, "META", &metadata.package_id)?;
-    write_string(&mut out, "META", &metadata.package_version)?;
-    write_u32(&mut out, metadata.capability_flags);
-    Ok(out)
+    encode_simple_schema_record(metadata)
 }
 
 pub(super) fn decode_meta_chunk(bytes: &[u8]) -> Result<PackageMetaDescriptor, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "META");
-    let metadata = PackageMetaDescriptor {
-        package_id: cur.read_string()?,
-        package_version: cur.read_string()?,
-        capability_flags: cur.read_u32()?,
-    };
-    cur.finish()?;
-    Ok(metadata)
+    decode_simple_schema_record(bytes)
 }
 
 pub(super) fn encode_strs_chunk(strings: &[String]) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(strings.len(), "STRS count")?);
-    for entry in strings {
-        write_string(&mut out, "STRS", entry)?;
-    }
-    Ok(out)
+    encode_simple_schema_chunk(strings)
 }
 
 pub(super) fn decode_strs_chunk(bytes: &[u8]) -> Result<Vec<String>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "STRS");
-    let count = read_bounded_count(&mut cur, 4, "string entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        entries.push(cur.read_string()?);
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_simple_schema_chunk(bytes)
 }
 
 pub(super) fn encode_diag_chunk(
     diagnostics: &[DiagnosticDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(diagnostics.len(), "DIAG count")?);
-    for entry in diagnostics {
-        write_string(&mut out, "DIAG", &entry.code)?;
-        write_string(&mut out, "DIAG", &entry.message_template)?;
-    }
-    Ok(out)
+    encode_simple_schema_chunk(diagnostics)
 }
 
 pub(super) fn decode_diag_chunk(
     bytes: &[u8],
 ) -> Result<Vec<DiagnosticDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "DIAG");
-    let count = read_bounded_count(&mut cur, 8, "diagnostic entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        entries.push(DiagnosticDescriptor {
-            code: cur.read_string()?,
-            message_template: cur.read_string()?,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_simple_schema_chunk(bytes)
 }
 
 pub(super) fn encode_scoped_owner(
@@ -813,108 +761,21 @@ pub(super) fn decode_toks_chunk(
 }
 
 pub(super) fn encode_cpus_chunk(cpus: &[CpuDescriptor]) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(cpus.len(), "CPUS count")?);
-    for cpu in cpus {
-        write_string(&mut out, "CPUS", &cpu.id)?;
-        write_string(&mut out, "CPUS", &cpu.family_id)?;
-        match cpu.default_dialect.as_deref() {
-            Some(default_dialect) => {
-                out.push(1);
-                write_string(&mut out, "CPUS", default_dialect)?;
-            }
-            None => out.push(0),
-        }
-    }
-    Ok(out)
+    encode_simple_schema_chunk(cpus)
 }
 
 pub(super) fn decode_cpus_chunk(bytes: &[u8]) -> Result<Vec<CpuDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "CPUS");
-    let count = read_bounded_count(&mut cur, 1, "cpu entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let id = cur.read_string()?;
-        let family_id = cur.read_string()?;
-        let has_default = cur.read_u8()?;
-        let default_dialect = match has_default {
-            0 => None,
-            1 => Some(cur.read_string()?),
-            other => {
-                return Err(OpcpuCodecError::InvalidChunkFormat {
-                    chunk: "CPUS".to_string(),
-                    detail: format!("invalid bool flag for default_dialect: {}", other),
-                });
-            }
-        };
-        entries.push(CpuDescriptor {
-            id,
-            family_id,
-            default_dialect,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_simple_schema_chunk(bytes)
 }
 
 pub(super) fn encode_dial_chunk(
     dialects: &[DialectDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(dialects.len(), "DIAL count")?);
-    for dialect in dialects {
-        write_string(&mut out, "DIAL", &dialect.id)?;
-        write_string(&mut out, "DIAL", &dialect.family_id)?;
-        match dialect.cpu_allow_list.as_deref() {
-            Some(allow_list) => {
-                out.push(1);
-                write_u32(
-                    &mut out,
-                    u32_count(allow_list.len(), "DIAL allow-list count")?,
-                );
-                for cpu_id in allow_list {
-                    write_string(&mut out, "DIAL", cpu_id)?;
-                }
-            }
-            None => out.push(0),
-        }
-    }
-    Ok(out)
+    encode_simple_schema_chunk(dialects)
 }
 
 pub(super) fn decode_dial_chunk(bytes: &[u8]) -> Result<Vec<DialectDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "DIAL");
-    let count = read_bounded_count(&mut cur, 1, "dialect entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let id = cur.read_string()?;
-        let family_id = cur.read_string()?;
-        let has_allow_list = cur.read_u8()?;
-        let cpu_allow_list = match has_allow_list {
-            0 => None,
-            1 => {
-                let allow_count = read_bounded_count(&mut cur, 1, "dialect allow-list entry")?;
-                let mut allow = Vec::with_capacity(allow_count);
-                for _ in 0..allow_count {
-                    allow.push(cur.read_string()?);
-                }
-                Some(allow)
-            }
-            other => {
-                return Err(OpcpuCodecError::InvalidChunkFormat {
-                    chunk: "DIAL".to_string(),
-                    detail: format!("invalid bool flag for cpu_allow_list: {}", other),
-                });
-            }
-        };
-        entries.push(DialectDescriptor {
-            id,
-            family_id,
-            cpu_allow_list,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_simple_schema_chunk(bytes)
 }
 
 pub(super) fn encode_regs_chunk(

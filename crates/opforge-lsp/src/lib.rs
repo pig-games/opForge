@@ -12,6 +12,7 @@ pub mod definition;
 pub mod diagnostics;
 pub mod document_state;
 pub mod document_symbols;
+pub mod framing;
 pub mod hover;
 pub mod member_context;
 pub mod protocol;
@@ -33,6 +34,7 @@ pub mod lsp {
     pub use crate::diagnostics;
     pub use crate::document_state;
     pub use crate::document_symbols;
+    pub use crate::framing;
     pub use crate::hover;
     pub use crate::member_context;
     pub use crate::protocol;

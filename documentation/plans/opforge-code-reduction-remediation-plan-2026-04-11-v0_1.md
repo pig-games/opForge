@@ -452,7 +452,7 @@ making the affected seams easier to maintain and reduce further later.
     - the package codec uses one schema-driven reduction path instead of manual
       mirrored encode or decode blocks across many chunk types
 
-- [ ] Work item 13: share one LSP framing implementation between production and the integration client
+- [x] Work item 13: share one LSP framing implementation between production and the integration client
   - Source requirement or finding IDs: `RVW-2026-04-11-004`
   - Finding closure expectation: fully closes `RVW-2026-04-11-004`
   - Validation: shared framing-path tests plus full quality gates
@@ -486,15 +486,15 @@ making the affected seams easier to maintain and reduce further later.
 
 ## Milestones
 
-- [ ] Milestone 1: M68k wrapper-policy duplication is removed and the structural
+- [x] Milestone 1: M68k wrapper-policy duplication is removed and the structural
   split foundation is in place (`Work item 1` through `Work item 4`)
-- [ ] Milestone 2: the `M68KFamilyHandler` monolith is reduced to orchestration
+- [x] Milestone 2: the `M68KFamilyHandler` monolith is reduced to orchestration
   and is closure-ready (`Work item 5` through `Work item 7`)
-- [ ] Milestone 3: runtime bootstrap and repetition traversal duplication are
+- [x] Milestone 3: runtime bootstrap and repetition traversal duplication are
   removed from the assembler and engine path (`Work item 8` and `Work item 9`)
-- [ ] Milestone 4: the FFI portable-schema mirror and package codec boilerplate
+- [x] Milestone 4: the FFI portable-schema mirror and package codec boilerplate
   are centralized behind shared adapters (`Work item 10` through `Work item 12`)
-- [ ] Milestone 5: production and test-client LSP framing share one
+- [x] Milestone 5: production and test-client LSP framing share one
   implementation (`Work item 13`)
 
 ## To Be Planned Later

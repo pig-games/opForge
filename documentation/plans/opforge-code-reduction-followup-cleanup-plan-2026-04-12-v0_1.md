@@ -211,7 +211,7 @@ bootstrap behavior, FFI projection results, and M68k encoder behavior stable.
     - the FFI portable adapter keeps one stable external behavior path while its
       internal variant-projection boilerplate is reduced
 
-- [ ] Work item 5: compress fixed-instruction and unsupported-placeholder boilerplate in the M68k dispatcher
+- [x] Work item 5: compress fixed-instruction and unsupported-placeholder boilerplate in the M68k dispatcher
   - Source requirement or finding IDs: `HS-2026-04-12-005`
   - Validation: focused fixed-routing dispatch characterization plus full quality gates
   - Definition of done:

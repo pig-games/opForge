@@ -113,6 +113,18 @@ impl M68KFamilyHandler {
         )
     }
 
+    fn fixed_instruction_dispatch(kind: &MnemonicKind) -> Option<(&'static str, u16)> {
+        match kind {
+            MnemonicKind::Nop => Some(("NOP", 0x4E71)),
+            MnemonicKind::Reset => Some(("RESET", 0x4E70)),
+            MnemonicKind::Rte => Some(("RTE", 0x4E73)),
+            MnemonicKind::Rtr => Some(("RTR", 0x4E77)),
+            MnemonicKind::Trapv => Some(("TRAPV", 0x4E76)),
+            MnemonicKind::Illegal => Some(("ILLEGAL", 0x4AFC)),
+            _ => None,
+        }
+    }
+
     fn encode_instruction_impl(
         &self,
         mnemonic: &str,
@@ -155,23 +167,15 @@ impl M68KFamilyHandler {
             MnemonicKind::Ext => self.encode_ext(parsed.size, operands),
             MnemonicKind::Trap => self.encode_trap(parsed.size, operands, ctx),
             MnemonicKind::Stop => self.encode_stop(parsed.size, operands, ctx),
-            MnemonicKind::Nop => {
-                self.encode_fixed_instruction("NOP", 0x4E71, parsed.size, operands)
-            }
-            MnemonicKind::Reset => {
-                self.encode_fixed_instruction("RESET", 0x4E70, parsed.size, operands)
-            }
-            MnemonicKind::Rte => {
-                self.encode_fixed_instruction("RTE", 0x4E73, parsed.size, operands)
-            }
-            MnemonicKind::Rtr => {
-                self.encode_fixed_instruction("RTR", 0x4E77, parsed.size, operands)
-            }
-            MnemonicKind::Trapv => {
-                self.encode_fixed_instruction("TRAPV", 0x4E76, parsed.size, operands)
-            }
-            MnemonicKind::Illegal => {
-                self.encode_fixed_instruction("ILLEGAL", 0x4AFC, parsed.size, operands)
+            kind @ (MnemonicKind::Nop
+            | MnemonicKind::Reset
+            | MnemonicKind::Rte
+            | MnemonicKind::Rtr
+            | MnemonicKind::Trapv
+            | MnemonicKind::Illegal) => {
+                let (display_name, opcode) = Self::fixed_instruction_dispatch(&kind)
+                    .expect("fixed-instruction dispatch must cover explicit fixed opcodes");
+                self.encode_fixed_instruction(display_name, opcode, parsed.size, operands)
             }
             MnemonicKind::Add => {
                 self.encode_data_register_binary_op("ADD", 0xD000, parsed.size, operands, ctx, true)
@@ -187,7 +191,6 @@ impl M68KFamilyHandler {
                 ctx,
                 Self::data_alterable,
             ),
-            MnemonicKind::Addiw => EncodeResult::NotFound,
             MnemonicKind::Addx => {
                 self.encode_extend_binary_op("ADDX", 0xD100, parsed.size, operands)
             }
@@ -227,8 +230,47 @@ impl M68KFamilyHandler {
                 ctx,
                 Self::data_addressing,
             ),
-            MnemonicKind::Cmpiw => EncodeResult::NotFound,
             MnemonicKind::Cmpm => self.encode_cmpm(parsed.size, operands),
+            MnemonicKind::Addiw
+            | MnemonicKind::Cmpiw
+            | MnemonicKind::Move2
+            | MnemonicKind::Movex
+            | MnemonicKind::Moveh
+            | MnemonicKind::Moviw
+            | MnemonicKind::Mov3q
+            | MnemonicKind::Movs
+            | MnemonicKind::Movz
+            | MnemonicKind::Movz2
+            | MnemonicKind::Touch
+            | MnemonicKind::Load
+            | MnemonicKind::Loadi
+            | MnemonicKind::Store
+            | MnemonicKind::Storei
+            | MnemonicKind::Storec
+            | MnemonicKind::Storeilm
+            | MnemonicKind::Padd
+            | MnemonicKind::Psub
+            | MnemonicKind::Pmul88
+            | MnemonicKind::Pmulh
+            | MnemonicKind::Pmull
+            | MnemonicKind::Pmula
+            | MnemonicKind::Pand
+            | MnemonicKind::Pandn
+            | MnemonicKind::Por
+            | MnemonicKind::Peor
+            | MnemonicKind::Bsel
+            | MnemonicKind::Pcmpeqb
+            | MnemonicKind::Pcmphib
+            | MnemonicKind::Pcmpgeb
+            | MnemonicKind::Pcmpgtb
+            | MnemonicKind::Pcmpeqw
+            | MnemonicKind::Pcmphiw
+            | MnemonicKind::Pcmpgew
+            | MnemonicKind::Pcmpgtw
+            | MnemonicKind::Pack3216
+            | MnemonicKind::Packuswb
+            | MnemonicKind::Unpack1632
+            | MnemonicKind::Vperm => EncodeResult::NotFound,
             MnemonicKind::And => self.encode_data_register_binary_op(
                 "AND",
                 0xC000,
@@ -283,44 +325,6 @@ impl M68KFamilyHandler {
             }
             MnemonicKind::Rts => self.encode_rts(parsed.size, operands),
             MnemonicKind::Moveq => self.encode_moveq(parsed.size, operands, ctx),
-            MnemonicKind::Move2 => EncodeResult::NotFound,
-            MnemonicKind::Movex => EncodeResult::NotFound,
-            MnemonicKind::Moveh => EncodeResult::NotFound,
-            MnemonicKind::Moviw => EncodeResult::NotFound,
-            MnemonicKind::Mov3q => EncodeResult::NotFound,
-            MnemonicKind::Movs => EncodeResult::NotFound,
-            MnemonicKind::Movz => EncodeResult::NotFound,
-            MnemonicKind::Movz2 => EncodeResult::NotFound,
-            MnemonicKind::Touch => EncodeResult::NotFound,
-            MnemonicKind::Load => EncodeResult::NotFound,
-            MnemonicKind::Loadi => EncodeResult::NotFound,
-            MnemonicKind::Store => EncodeResult::NotFound,
-            MnemonicKind::Storei => EncodeResult::NotFound,
-            MnemonicKind::Storec => EncodeResult::NotFound,
-            MnemonicKind::Storeilm => EncodeResult::NotFound,
-            MnemonicKind::Padd => EncodeResult::NotFound,
-            MnemonicKind::Psub => EncodeResult::NotFound,
-            MnemonicKind::Pmul88 => EncodeResult::NotFound,
-            MnemonicKind::Pmulh => EncodeResult::NotFound,
-            MnemonicKind::Pmull => EncodeResult::NotFound,
-            MnemonicKind::Pmula => EncodeResult::NotFound,
-            MnemonicKind::Pand => EncodeResult::NotFound,
-            MnemonicKind::Pandn => EncodeResult::NotFound,
-            MnemonicKind::Por => EncodeResult::NotFound,
-            MnemonicKind::Peor => EncodeResult::NotFound,
-            MnemonicKind::Bsel => EncodeResult::NotFound,
-            MnemonicKind::Pcmpeqb => EncodeResult::NotFound,
-            MnemonicKind::Pcmphib => EncodeResult::NotFound,
-            MnemonicKind::Pcmpgeb => EncodeResult::NotFound,
-            MnemonicKind::Pcmpgtb => EncodeResult::NotFound,
-            MnemonicKind::Pcmpeqw => EncodeResult::NotFound,
-            MnemonicKind::Pcmphiw => EncodeResult::NotFound,
-            MnemonicKind::Pcmpgew => EncodeResult::NotFound,
-            MnemonicKind::Pcmpgtw => EncodeResult::NotFound,
-            MnemonicKind::Pack3216 => EncodeResult::NotFound,
-            MnemonicKind::Packuswb => EncodeResult::NotFound,
-            MnemonicKind::Unpack1632 => EncodeResult::NotFound,
-            MnemonicKind::Vperm => EncodeResult::NotFound,
             MnemonicKind::Muls if matches!(parsed.size, Some(OperationSize::Long)) => {
                 EncodeResult::NotFound
             }
@@ -3215,6 +3219,42 @@ mod tests {
             ),
             &[0x42, 0xC0],
         );
+    }
+
+    #[test]
+    fn m68k_dispatch_fixed_instructions_encode_expected_opcodes() {
+        let handler = M68KFamilyHandler::new();
+        let ctx = TestContext::default();
+
+        for (mnemonic, expected) in [
+            ("NOP", vec![0x4E, 0x71]),
+            ("RESET", vec![0x4E, 0x70]),
+            ("RTE", vec![0x4E, 0x73]),
+            ("RTR", vec![0x4E, 0x77]),
+            ("TRAPV", vec![0x4E, 0x76]),
+            ("ILLEGAL", vec![0x4A, 0xFC]),
+        ] {
+            expect_encoded(
+                handler.encode_instruction(mnemonic, &[], &ctx),
+                expected.as_slice(),
+            );
+        }
+    }
+
+    #[test]
+    fn m68k_dispatch_fixed_placeholders_stay_not_found() {
+        let handler = M68KFamilyHandler::new();
+        let ctx = TestContext::default();
+
+        for mnemonic in ["ADDIW.L", "CMPIW.L", "MOVE2.W", "LOADI", "VPERM"] {
+            assert!(
+                matches!(
+                    handler.encode_instruction(mnemonic, &[], &ctx),
+                    EncodeResult::NotFound
+                ),
+                "expected {mnemonic} to stay NotFound"
+            );
+        }
     }
 
     #[test]

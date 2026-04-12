@@ -143,7 +143,7 @@ bootstrap behavior, FFI projection results, and M68k encoder behavior stable.
     - the final remaining hand-written package chunk codec joins the declarative
       family without widening into unrelated package canonicalization work
 
-- [ ] Work item 3: collapse the assembler runtime-model wrapper onto the shared bootstrap seam
+- [x] Work item 3: collapse the assembler runtime-model wrapper onto the shared bootstrap seam
   - Source requirement or finding IDs: `HS-2026-04-12-003`
   - Validation: focused bootstrap-path parity tests plus full quality gates
   - Definition of done:

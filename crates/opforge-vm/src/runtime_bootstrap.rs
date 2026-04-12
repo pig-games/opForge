@@ -57,3 +57,24 @@ pub fn bootstrap_execution_model(
 
     load_execution_model_from_package_bytes(fallback_package_bytes?)
 }
+
+pub fn bootstrap_execution_model_for_request(
+    explicit_package_path: Option<&Path>,
+    cwd_artifact_path: Option<&Path>,
+    fallback_package_bytes: Option<&[u8]>,
+    persist_fallback_artifact: bool,
+) -> Option<HierarchyExecutionModel> {
+    if let Some(path) = explicit_package_path {
+        return bootstrap_execution_model(Some(path), None, false);
+    }
+
+    if let Some(path) = cwd_artifact_path {
+        return bootstrap_execution_model(
+            Some(path),
+            fallback_package_bytes,
+            persist_fallback_artifact,
+        );
+    }
+
+    bootstrap_execution_model(None, fallback_package_bytes, false)
+}

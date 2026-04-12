@@ -25,84 +25,60 @@ pub fn build_execution_model_for_request(
     cpu: CpuType,
     opasm_package_path: Option<&Path>,
 ) -> Option<HierarchyExecutionModel> {
-    #[cfg(feature = "vm-runtime-only")]
-    let _ = cpu;
-
-    #[cfg(not(feature = "vm-runtime-only"))]
-    let has_host_pipeline = registry.resolve_pipeline(cpu, None).is_ok();
-
-    if let Some(path) = opasm_package_path {
-        return runtime_bootstrap::bootstrap_execution_model(Some(path), None, false);
-    }
+    #[cfg(feature = "vm-runtime-opasm-artifact")]
+    let cwd_artifact_path = runtime_package_artifact_path();
 
     #[cfg(feature = "vm-runtime-opasm-artifact")]
-    {
-        if let Some(path) = runtime_package_artifact_path() {
-            #[cfg(all(
-                not(feature = "vm-runtime-opasm-unbundled"),
-                not(feature = "vm-runtime-only")
-            ))]
-            let fallback_package_bytes = if has_host_pipeline {
-                build_hierarchy_package_from_registry(registry).ok()
-            } else {
-                None
-            };
+    let cwd_artifact_path = cwd_artifact_path.as_deref();
 
-            #[cfg(not(all(
-                not(feature = "vm-runtime-opasm-unbundled"),
-                not(feature = "vm-runtime-only")
-            )))]
-            let fallback_package_bytes: Option<Vec<u8>> = None;
+    #[cfg(not(feature = "vm-runtime-opasm-artifact"))]
+    let cwd_artifact_path = None;
 
-            return runtime_bootstrap::bootstrap_execution_model(
-                Some(path.as_path()),
-                fallback_package_bytes.as_deref(),
-                fallback_package_bytes.is_some(),
-            );
-        }
-    }
+    build_execution_model_for_request_with_artifact_path(
+        registry,
+        cpu,
+        opasm_package_path,
+        cwd_artifact_path,
+    )
+}
 
-    #[cfg(not(feature = "vm-runtime-opasm-unbundled"))]
-    {
-        #[cfg(not(feature = "vm-runtime-only"))]
-        {
-            if !has_host_pipeline {
-                return None;
-            }
+pub(crate) fn build_execution_model_for_request_with_artifact_path(
+    registry: &ModuleRegistry,
+    cpu: CpuType,
+    opasm_package_path: Option<&Path>,
+    cwd_artifact_path: Option<&Path>,
+) -> Option<HierarchyExecutionModel> {
+    #[cfg(any(feature = "vm-runtime-only", feature = "vm-runtime-opasm-unbundled"))]
+    let _ = cpu;
 
-            let package_bytes = build_hierarchy_package_from_registry(registry).ok()?;
-            runtime_bootstrap::bootstrap_execution_model(
-                None,
-                Some(package_bytes.as_slice()),
-                false,
-            )
-        }
-
-        #[cfg(feature = "vm-runtime-only")]
-        {
-            let package_bytes = build_hierarchy_package_from_registry(registry).ok()?;
-            runtime_bootstrap::bootstrap_execution_model(
-                None,
-                Some(package_bytes.as_slice()),
-                false,
-            )
-        }
-    }
-
-    #[cfg(all(feature = "vm-runtime-opasm-unbundled", feature = "vm-runtime-only"))]
-    {
-        let _ = registry;
-        None
-    }
+    #[cfg(feature = "vm-runtime-opasm-unbundled")]
+    let _ = registry;
 
     #[cfg(all(
-        feature = "vm-runtime-opasm-unbundled",
+        not(feature = "vm-runtime-opasm-unbundled"),
         not(feature = "vm-runtime-only")
     ))]
-    {
-        let _ = (registry, cpu);
+    let fallback_package_bytes = if registry.resolve_pipeline(cpu, None).is_ok() {
+        build_hierarchy_package_from_registry(registry).ok()
+    } else {
         None
-    }
+    };
+
+    #[cfg(all(
+        not(feature = "vm-runtime-opasm-unbundled"),
+        feature = "vm-runtime-only"
+    ))]
+    let fallback_package_bytes = build_hierarchy_package_from_registry(registry).ok();
+
+    #[cfg(feature = "vm-runtime-opasm-unbundled")]
+    let fallback_package_bytes: Option<Vec<u8>> = None;
+
+    runtime_bootstrap::bootstrap_execution_model_for_request(
+        opasm_package_path,
+        cwd_artifact_path,
+        fallback_package_bytes.as_deref(),
+        fallback_package_bytes.is_some(),
+    )
 }
 
 #[cfg(feature = "vm-runtime-opasm-artifact")]

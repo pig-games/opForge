@@ -17412,6 +17412,7 @@ fn vm_runtime_mos6502_base_cpu_path_uses_package_forms() {
         .contains("no instruction found"));
 }
 
+#[cfg(not(feature = "vm-runtime-opasm-unbundled"))]
 #[test]
 fn vm_runtime_model_is_available_for_mos6502_family_cpus() {
     let mut symbols = SymbolTable::new();
@@ -17427,6 +17428,7 @@ fn vm_runtime_model_is_available_for_mos6502_family_cpus() {
     }
 }
 
+#[cfg(not(feature = "vm-runtime-opasm-unbundled"))]
 #[test]
 fn vm_runtime_model_is_available_for_intel8080_family_cpus_for_vm_tokenization() {
     let mut symbols = SymbolTable::new();
@@ -17439,6 +17441,7 @@ fn vm_runtime_model_is_available_for_intel8080_family_cpus_for_vm_tokenization()
     assert!(z80_asm.opthread_execution_model.is_some());
 }
 
+#[cfg(not(feature = "vm-runtime-opasm-unbundled"))]
 #[test]
 fn vm_runtime_model_is_available_for_motorola6800_family_cpus() {
     let mut symbols = SymbolTable::new();
@@ -17449,6 +17452,116 @@ fn vm_runtime_model_is_available_for_motorola6800_family_cpus() {
 
     let hd6309_asm = AsmLine::with_cpu(&mut symbols, hd6309_cpu_id, &registry);
     assert!(hd6309_asm.opthread_execution_model.is_some());
+}
+
+fn assert_runtime_model_supports_cpu(model: &vm::vm_opasm::HierarchyExecutionModel, cpu: CpuType) {
+    assert!(
+        model.resolve_pipeline(cpu.as_str(), None).is_ok(),
+        "expected runtime model to resolve {}",
+        cpu.as_str()
+    );
+}
+
+#[test]
+fn runtime_model_explicit_package_path_branch_matches_shared_bootstrap() {
+    let registry = default_registry();
+    let package_path = create_temp_dir("runtime-model-explicit-path")
+        .join("target")
+        .join("vm")
+        .join("runtime.opasm");
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("build hierarchy package");
+
+    fs::create_dir_all(package_path.parent().expect("package parent"))
+        .expect("create package parent");
+    fs::write(package_path.as_path(), &package_bytes).expect("write package bytes");
+
+    let model = crate::runtime_model::build_execution_model_for_request(
+        &registry,
+        CpuType::new("nope999"),
+        Some(package_path.as_path()),
+    );
+    let shared_model = vm::runtime_bootstrap::bootstrap_execution_model_for_request(
+        Some(package_path.as_path()),
+        None,
+        None,
+        false,
+    );
+
+    assert_eq!(model.is_some(), shared_model.is_some());
+
+    let model = model.expect("explicit runtime package path should load");
+    let shared_model = shared_model.expect("shared bootstrap should load explicit package path");
+
+    assert_runtime_model_supports_cpu(&model, m6502_cpu_id);
+    assert_runtime_model_supports_cpu(&shared_model, m6502_cpu_id);
+}
+
+#[cfg(not(feature = "vm-runtime-opasm-unbundled"))]
+#[test]
+fn runtime_model_fallback_package_branch_loads_known_cpu() {
+    let registry = default_registry();
+    let model = crate::runtime_model::build_execution_model_for_request_with_artifact_path(
+        &registry,
+        m6502_cpu_id,
+        None,
+        None,
+    )
+    .expect("bundled runtime fallback should load");
+
+    assert_runtime_model_supports_cpu(&model, m6502_cpu_id);
+}
+
+#[cfg(not(feature = "vm-runtime-only"))]
+#[test]
+fn runtime_model_no_host_pipeline_returns_none_without_explicit_or_artifact() {
+    let registry = default_registry();
+    let model = crate::runtime_model::build_execution_model_for_request_with_artifact_path(
+        &registry,
+        CpuType::new("nope999"),
+        None,
+        None,
+    );
+
+    assert!(
+        model.is_none(),
+        "unknown cpu should not synthesize a fallback runtime model without runtime-only"
+    );
+}
+
+#[cfg(all(
+    feature = "vm-runtime-only",
+    not(feature = "vm-runtime-opasm-unbundled")
+))]
+#[test]
+fn runtime_model_runtime_only_no_host_pipeline_loads_fallback_package() {
+    let registry = default_registry();
+    let model = crate::runtime_model::build_execution_model_for_request_with_artifact_path(
+        &registry,
+        CpuType::new("nope999"),
+        None,
+        None,
+    )
+    .expect("runtime-only fallback should load without a host pipeline");
+
+    assert_runtime_model_supports_cpu(&model, m6502_cpu_id);
+}
+
+#[cfg(feature = "vm-runtime-opasm-unbundled")]
+#[test]
+fn runtime_model_unbundled_without_explicit_or_artifact_returns_none() {
+    let registry = default_registry();
+    let model = crate::runtime_model::build_execution_model_for_request_with_artifact_path(
+        &registry,
+        m6502_cpu_id,
+        None,
+        None,
+    );
+
+    assert!(
+        model.is_none(),
+        "unbundled runtime model should stay unavailable without explicit or artifact input"
+    );
 }
 
 #[cfg(feature = "vm-runtime-opasm-artifact")]
@@ -17494,6 +17607,42 @@ fn vm_runtime_artifact_helpers_round_trip_model_load() {
         asm.opthread_execution_model.is_some(),
         "runtime model should still initialize for authoritative family"
     );
+}
+
+#[cfg(feature = "vm-runtime-opasm-artifact")]
+#[test]
+fn runtime_model_artifact_path_branch_matches_shared_bootstrap() {
+    let registry = default_registry();
+    let artifact_path = crate::runtime_model::runtime_package_artifact_path_for_dir(
+        create_temp_dir("runtime-model-artifact-branch").as_path(),
+    );
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("build hierarchy package");
+
+    fs::create_dir_all(artifact_path.parent().expect("artifact parent"))
+        .expect("create artifact parent");
+    fs::write(artifact_path.as_path(), &package_bytes).expect("write artifact bytes");
+
+    let model = crate::runtime_model::build_execution_model_for_request_with_artifact_path(
+        &registry,
+        m6502_cpu_id,
+        None,
+        Some(artifact_path.as_path()),
+    );
+    let shared_model = vm::runtime_bootstrap::bootstrap_execution_model_for_request(
+        None,
+        Some(artifact_path.as_path()),
+        None,
+        false,
+    );
+
+    assert_eq!(model.is_some(), shared_model.is_some());
+
+    let model = model.expect("artifact runtime model should load");
+    let shared_model = shared_model.expect("shared bootstrap should load artifact runtime model");
+
+    assert_runtime_model_supports_cpu(&model, m6502_cpu_id);
+    assert_runtime_model_supports_cpu(&shared_model, m6502_cpu_id);
 }
 
 #[cfg(feature = "vm-runtime-opasm-artifact")]

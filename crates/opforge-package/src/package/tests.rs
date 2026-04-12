@@ -944,6 +944,15 @@ fn encode_decode_round_trip_preserves_toks_policy() {
 }
 
 #[test]
+fn encode_decode_round_trip_preserves_toks_policy_chunk_schema() {
+    assert_scoped_schema_round_trip(
+        &sample_token_policies(),
+        encode_toks_chunk,
+        decode_toks_chunk,
+    );
+}
+
+#[test]
 fn encode_decode_round_trip_preserves_parser_contracts() {
     let chunks = HierarchyChunks {
         metadata: PackageMetaDescriptor::default(),

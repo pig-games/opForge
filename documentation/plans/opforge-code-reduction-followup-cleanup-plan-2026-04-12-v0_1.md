@@ -110,7 +110,7 @@ bootstrap behavior, FFI projection results, and M68k encoder behavior stable.
       encode or decode control flow, and the more complex `TOKS` slice can land
       next without mixing concerns
 
-- [ ] Work item 2: migrate the `TOKS` chunk onto the same declarative codec family
+- [x] Work item 2: migrate the `TOKS` chunk onto the same declarative codec family
   - Source requirement or finding IDs: `HS-2026-04-12-002`
   - Validation: focused token-policy compatibility tests plus full quality gates
   - Definition of done:
@@ -274,7 +274,7 @@ bootstrap behavior, FFI projection results, and M68k encoder behavior stable.
 
 ## Milestones
 
-- [ ] Milestone 1: the remaining package codec boilerplate is consolidated onto
+- [x] Milestone 1: the remaining package codec boilerplate is consolidated onto
   declarative helpers (`Work item 1` and `Work item 2`)
 - [ ] Milestone 2: shared utility wrappers are reduced without semantic drift
   (`Work item 3` and `Work item 4`)

@@ -129,6 +129,7 @@ pub(super) enum FieldSpec {
     OptionalString {
         label: &'static str,
     },
+    TokenPolicyLexicalTail,
     Bytes {
         len_label: &'static str,
         value_label: &'static str,
@@ -153,6 +154,7 @@ pub(super) enum FieldSpec {
 pub(super) enum FieldValue<'a> {
     String(&'a str),
     OptionalString(Option<&'a str>),
+    TokenPolicyLexicalTail(TokenPolicyLexicalTailRef<'a>),
     Bytes(&'a [u8]),
     OptionalStringList(Option<&'a [String]>),
     U32List(&'a [u32]),
@@ -165,6 +167,7 @@ pub(super) enum FieldValue<'a> {
 enum DecodedField {
     String(String),
     OptionalString(Option<String>),
+    TokenPolicyLexicalDefaults(TokenPolicyLexicalDefaults),
     Bytes(Vec<u8>),
     OptionalStringList(Option<Vec<String>>),
     U32List(Vec<u32>),
@@ -176,6 +179,36 @@ enum DecodedField {
 
 pub(super) struct DecodedFields {
     fields: VecDeque<DecodedField>,
+}
+
+pub(super) struct TokenPolicyLexicalTailRef<'a> {
+    comment_prefix: &'a str,
+    quote_chars: &'a str,
+    escape_char: Option<char>,
+    number_prefix_chars: &'a str,
+    number_suffix_binary: &'a str,
+    number_suffix_octal: &'a str,
+    number_suffix_decimal: &'a str,
+    number_suffix_hex: &'a str,
+    operator_chars: &'a str,
+    multi_char_operators: &'a [String],
+}
+
+impl<'a> TokenPolicyLexicalTailRef<'a> {
+    fn from_policy(policy: &'a TokenPolicyDescriptor) -> Self {
+        Self {
+            comment_prefix: &policy.comment_prefix,
+            quote_chars: &policy.quote_chars,
+            escape_char: policy.escape_char,
+            number_prefix_chars: &policy.number_prefix_chars,
+            number_suffix_binary: &policy.number_suffix_binary,
+            number_suffix_octal: &policy.number_suffix_octal,
+            number_suffix_decimal: &policy.number_suffix_decimal,
+            number_suffix_hex: &policy.number_suffix_hex,
+            operator_chars: &policy.operator_chars,
+            multi_char_operators: &policy.multi_char_operators,
+        }
+    }
 }
 
 impl DecodedFields {
@@ -216,6 +249,19 @@ impl DecodedFields {
         match self.fields.pop_front() {
             Some(DecodedField::OptionalStringList(value)) => Ok(value),
             _ => Err(internal_schema_error(chunk, "optional string list")),
+        }
+    }
+
+    pub(super) fn next_token_policy_lexical_defaults(
+        &mut self,
+        chunk: &'static str,
+    ) -> Result<TokenPolicyLexicalDefaults, OpcpuCodecError> {
+        match self.fields.pop_front() {
+            Some(DecodedField::TokenPolicyLexicalDefaults(value)) => Ok(value),
+            _ => Err(internal_schema_error(
+                chunk,
+                "token policy lexical defaults",
+            )),
         }
     }
 
@@ -398,6 +444,62 @@ impl SimpleSchemaEntry for DialectDescriptor {
             id: fields.next_string(Self::CHUNK)?,
             family_id: fields.next_string(Self::CHUNK)?,
             cpu_allow_list: fields.next_optional_string_list(Self::CHUNK)?,
+        })
+    }
+}
+
+impl ScopedSchemaEntry for TokenPolicyDescriptor {
+    const CHUNK: &'static str = "TOKS";
+    const ENTRY_KIND: &'static str = "token policy entry";
+    const COUNT_LABEL: &'static str = "TOKS count";
+    const FIELD_SPECS: &'static [FieldSpec] = &[
+        FieldSpec::U8,
+        FieldSpec::U32,
+        FieldSpec::U32,
+        FieldSpec::String,
+        FieldSpec::TokenPolicyLexicalTail,
+    ];
+
+    fn owner(&self) -> &ScopedOwner {
+        &self.owner
+    }
+
+    fn field_values(&self) -> Vec<FieldValue<'_>> {
+        vec![
+            FieldValue::U8(self.case_rule as u8),
+            FieldValue::U32(self.identifier_start_class),
+            FieldValue::U32(self.identifier_continue_class),
+            FieldValue::String(&self.punctuation_chars),
+            FieldValue::TokenPolicyLexicalTail(TokenPolicyLexicalTailRef::from_policy(self)),
+        ]
+    }
+
+    fn from_decoded(
+        owner: ScopedOwner,
+        mut fields: DecodedFields,
+    ) -> Result<Self, OpcpuCodecError> {
+        let case_rule = TokenCaseRule::from_u8(fields.next_u8(Self::CHUNK)?, Self::CHUNK)?;
+        let identifier_start_class = fields.next_u32(Self::CHUNK)?;
+        let identifier_continue_class = fields.next_u32(Self::CHUNK)?;
+        let punctuation_chars = fields.next_string(Self::CHUNK)?;
+        let lexical_defaults = fields.next_token_policy_lexical_defaults(Self::CHUNK)?;
+
+        Ok(Self {
+            owner,
+            case_rule,
+            identifier_start_class,
+            identifier_continue_class,
+            punctuation_chars,
+            comment_prefix: lexical_defaults.comment_prefix,
+            quote_chars: lexical_defaults.quote_chars,
+            escape_char: lexical_defaults.escape_char,
+            number_prefix_chars: lexical_defaults.number_prefix_chars,
+            number_suffix_binary: lexical_defaults.number_suffix_binary,
+            number_suffix_octal: lexical_defaults.number_suffix_octal,
+            number_suffix_decimal: lexical_defaults.number_suffix_decimal,
+            number_suffix_hex: lexical_defaults.number_suffix_hex,
+            operator_chars: lexical_defaults.operator_chars,
+            multi_char_operators: lexical_defaults.multi_char_operators,
         })
     }
 }
@@ -856,6 +958,41 @@ fn encode_field(
                 Ok(())
             }
         },
+        (FieldSpec::TokenPolicyLexicalTail, FieldValue::TokenPolicyLexicalTail(value)) => {
+            out.push(TOKS_EXT_MARKER);
+            write_string(out, chunk, value.comment_prefix)?;
+            write_string(out, chunk, value.quote_chars)?;
+            match value.escape_char {
+                Some(ch) if ch.is_ascii() => {
+                    out.push(1);
+                    out.push(ch as u8);
+                }
+                Some(ch) => {
+                    return Err(OpcpuCodecError::InvalidChunkFormat {
+                        chunk: chunk.to_string(),
+                        detail: format!("escape_char must be ASCII: {:?}", ch),
+                    });
+                }
+                None => out.push(0),
+            }
+            write_string(out, chunk, value.number_prefix_chars)?;
+            write_string(out, chunk, value.number_suffix_binary)?;
+            write_string(out, chunk, value.number_suffix_octal)?;
+            write_string(out, chunk, value.number_suffix_decimal)?;
+            write_string(out, chunk, value.number_suffix_hex)?;
+            write_string(out, chunk, value.operator_chars)?;
+            write_u32(
+                out,
+                u32_count(
+                    value.multi_char_operators.len(),
+                    "TOKS multi-char operator count",
+                )?,
+            );
+            for operator in value.multi_char_operators {
+                write_string(out, chunk, operator)?;
+            }
+            Ok(())
+        }
         (
             FieldSpec::Bytes {
                 len_label,
@@ -936,6 +1073,40 @@ fn decode_field(
                 detail: format!("invalid bool flag for {}: {}", label, other),
             }),
         },
+        FieldSpec::TokenPolicyLexicalTail => {
+            let mut defaults = default_token_policy_lexical_defaults();
+            if cur.has_remaining() {
+                let marker = cur.peek_u8()?;
+                if marker == TOKS_EXT_MARKER {
+                    let _ = cur.read_u8()?;
+                    defaults.comment_prefix = cur.read_string()?;
+                    defaults.quote_chars = cur.read_string()?;
+                    defaults.escape_char = match cur.read_u8()? {
+                        0 => None,
+                        1 => Some(cur.read_u8()? as char),
+                        other => {
+                            return Err(OpcpuCodecError::InvalidChunkFormat {
+                                chunk: chunk.to_string(),
+                                detail: format!("invalid bool flag for escape_char: {}", other),
+                            });
+                        }
+                    };
+                    defaults.number_prefix_chars = cur.read_string()?;
+                    defaults.number_suffix_binary = cur.read_string()?;
+                    defaults.number_suffix_octal = cur.read_string()?;
+                    defaults.number_suffix_decimal = cur.read_string()?;
+                    defaults.number_suffix_hex = cur.read_string()?;
+                    defaults.operator_chars = cur.read_string()?;
+                    let operator_count = read_bounded_count(cur, 1, "multi-char operator")?;
+                    let mut operators = Vec::with_capacity(operator_count);
+                    for _ in 0..operator_count {
+                        operators.push(cur.read_string()?);
+                    }
+                    defaults.multi_char_operators = operators;
+                }
+            }
+            Ok(DecodedField::TokenPolicyLexicalDefaults(defaults))
+        }
         FieldSpec::Bytes { value_label, .. } => {
             let byte_count = cur.read_u32()? as usize;
             Ok(DecodedField::Bytes(

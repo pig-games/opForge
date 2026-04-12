@@ -641,123 +641,13 @@ pub(super) fn decode_scoped_owner(
 pub(super) fn encode_toks_chunk(
     policies: &[TokenPolicyDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(policies.len(), "TOKS count")?);
-    for entry in policies {
-        encode_scoped_owner(&mut out, "TOKS", &entry.owner)?;
-        out.push(entry.case_rule as u8);
-        write_u32(&mut out, entry.identifier_start_class);
-        write_u32(&mut out, entry.identifier_continue_class);
-        write_string(&mut out, "TOKS", &entry.punctuation_chars)?;
-        out.push(TOKS_EXT_MARKER);
-        write_string(&mut out, "TOKS", &entry.comment_prefix)?;
-        write_string(&mut out, "TOKS", &entry.quote_chars)?;
-        match entry.escape_char {
-            Some(ch) if ch.is_ascii() => {
-                out.push(1);
-                out.push(ch as u8);
-            }
-            Some(ch) => {
-                return Err(OpcpuCodecError::InvalidChunkFormat {
-                    chunk: "TOKS".to_string(),
-                    detail: format!("escape_char must be ASCII: {:?}", ch),
-                });
-            }
-            None => out.push(0),
-        }
-        write_string(&mut out, "TOKS", &entry.number_prefix_chars)?;
-        write_string(&mut out, "TOKS", &entry.number_suffix_binary)?;
-        write_string(&mut out, "TOKS", &entry.number_suffix_octal)?;
-        write_string(&mut out, "TOKS", &entry.number_suffix_decimal)?;
-        write_string(&mut out, "TOKS", &entry.number_suffix_hex)?;
-        write_string(&mut out, "TOKS", &entry.operator_chars)?;
-        write_u32(
-            &mut out,
-            u32_count(
-                entry.multi_char_operators.len(),
-                "TOKS multi-char operator count",
-            )?,
-        );
-        for operator in &entry.multi_char_operators {
-            write_string(&mut out, "TOKS", operator)?;
-        }
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(policies)
 }
 
 pub(super) fn decode_toks_chunk(
     bytes: &[u8],
 ) -> Result<Vec<TokenPolicyDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "TOKS");
-    let count = read_bounded_count(&mut cur, 1, "token policy entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "TOKS")?;
-        let case_rule = TokenCaseRule::from_u8(cur.read_u8()?, "TOKS")?;
-        let identifier_start_class = cur.read_u32()?;
-        let identifier_continue_class = cur.read_u32()?;
-        let punctuation_chars = cur.read_string()?;
-        let defaults = default_token_policy_lexical_defaults();
-        let mut comment_prefix = defaults.comment_prefix;
-        let mut quote_chars = defaults.quote_chars;
-        let mut escape_char = defaults.escape_char;
-        let mut number_prefix_chars = defaults.number_prefix_chars;
-        let mut number_suffix_binary = defaults.number_suffix_binary;
-        let mut number_suffix_octal = defaults.number_suffix_octal;
-        let mut number_suffix_decimal = defaults.number_suffix_decimal;
-        let mut number_suffix_hex = defaults.number_suffix_hex;
-        let mut operator_chars = defaults.operator_chars;
-        let mut multi_char_operators = defaults.multi_char_operators;
-        if cur.has_remaining() {
-            let marker = cur.peek_u8()?;
-            if marker == TOKS_EXT_MARKER {
-                let _ = cur.read_u8()?;
-                comment_prefix = cur.read_string()?;
-                quote_chars = cur.read_string()?;
-                escape_char = match cur.read_u8()? {
-                    0 => None,
-                    1 => Some(cur.read_u8()? as char),
-                    other => {
-                        return Err(OpcpuCodecError::InvalidChunkFormat {
-                            chunk: "TOKS".to_string(),
-                            detail: format!("invalid bool flag for escape_char: {}", other),
-                        });
-                    }
-                };
-                number_prefix_chars = cur.read_string()?;
-                number_suffix_binary = cur.read_string()?;
-                number_suffix_octal = cur.read_string()?;
-                number_suffix_decimal = cur.read_string()?;
-                number_suffix_hex = cur.read_string()?;
-                operator_chars = cur.read_string()?;
-                let operator_count = read_bounded_count(&mut cur, 1, "multi-char operator")?;
-                let mut operators = Vec::with_capacity(operator_count);
-                for _ in 0..operator_count {
-                    operators.push(cur.read_string()?);
-                }
-                multi_char_operators = operators;
-            }
-        }
-        entries.push(TokenPolicyDescriptor {
-            owner,
-            case_rule,
-            identifier_start_class,
-            identifier_continue_class,
-            punctuation_chars,
-            comment_prefix,
-            quote_chars,
-            escape_char,
-            number_prefix_chars,
-            number_suffix_binary,
-            number_suffix_octal,
-            number_suffix_decimal,
-            number_suffix_hex,
-            operator_chars,
-            multi_char_operators,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_cpus_chunk(cpus: &[CpuDescriptor]) -> Result<Vec<u8>, OpcpuCodecError> {

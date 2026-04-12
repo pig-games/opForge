@@ -975,21 +975,16 @@ impl OpforgeOpcoreExprReport {
         self.texts.len() - 1
     }
 
-    fn span_parts(expr: &api::opcore::portable::PortableAstExpr) -> (u32, usize, usize) {
-        let span = portable_adapter::expr_span(expr);
-        (span.line, span.col_start, span.col_end)
-    }
-
     fn push_expr(&mut self, expr: &api::opcore::portable::PortableAstExpr) -> usize {
-        let kind = portable_adapter::expr_node_kind(expr);
-        let text_index = portable_adapter::expr_node_text(expr).map(|text| self.intern_text(text));
-        let (line, col_start, col_end) = Self::span_parts(expr);
+        let projection = portable_adapter::expr_projection(expr);
+        let span = projection.span();
+        let text_index = projection.owned_text().map(|text| self.intern_text(text));
         let node_index = self.nodes.len();
         self.nodes.push(OpforgeExprNodeRecord {
-            kind,
-            line,
-            col_start,
-            col_end,
+            kind: projection.kind(),
+            line: span.line,
+            col_start: span.col_start,
+            col_end: span.col_end,
             text_index,
             child_start: self.child_edges.len(),
             child_len: 0,
@@ -4869,14 +4864,15 @@ mod tests {
             nodes: &mut Vec<ExpectedExprNode>,
             child_edges: &mut Vec<ExpectedExprChildEdge>,
         ) -> usize {
-            let span = super::portable_adapter::expr_span(expr);
+            let projection = super::portable_adapter::expr_projection(expr);
+            let span = projection.span();
             let node_index = nodes.len();
             nodes.push(ExpectedExprNode {
-                kind: super::portable_adapter::expr_node_kind(expr),
+                kind: projection.kind(),
                 line: span.line,
                 col_start: span.col_start,
                 col_end: span.col_end,
-                text: super::portable_adapter::expr_node_text(expr),
+                text: projection.owned_text(),
                 child_start: child_edges.len(),
                 child_len: 0,
             });

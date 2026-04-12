@@ -4,124 +4,253 @@ use api::opcore::portable::{
     PortableAstExpr, PortableOperatorKind, PortableSpan, PortableToken, PortableTokenKind,
 };
 
-pub(crate) fn token_kind(kind: &PortableTokenKind) -> OpforgeTokenKind {
-    match kind {
-        PortableTokenKind::Identifier(_) => OpforgeTokenKind::Identifier,
-        PortableTokenKind::Register(_) => OpforgeTokenKind::Register,
-        PortableTokenKind::Number { .. } => OpforgeTokenKind::Number,
-        PortableTokenKind::String { .. } => OpforgeTokenKind::String,
-        PortableTokenKind::Comma => OpforgeTokenKind::Comma,
-        PortableTokenKind::Colon => OpforgeTokenKind::Colon,
-        PortableTokenKind::Dollar => OpforgeTokenKind::Dollar,
-        PortableTokenKind::Dot => OpforgeTokenKind::Dot,
-        PortableTokenKind::Hash => OpforgeTokenKind::Hash,
-        PortableTokenKind::Question => OpforgeTokenKind::Question,
-        PortableTokenKind::OpenBracket => OpforgeTokenKind::OpenBracket,
-        PortableTokenKind::CloseBracket => OpforgeTokenKind::CloseBracket,
-        PortableTokenKind::OpenBrace => OpforgeTokenKind::OpenBrace,
-        PortableTokenKind::CloseBrace => OpforgeTokenKind::CloseBrace,
-        PortableTokenKind::OpenParen => OpforgeTokenKind::OpenParen,
-        PortableTokenKind::CloseParen => OpforgeTokenKind::CloseParen,
-        PortableTokenKind::Operator(_) => OpforgeTokenKind::Operator,
+struct TokenProjection<'a> {
+    kind: OpforgeTokenKind,
+    text: TokenText<'a>,
+}
+
+enum TokenText<'a> {
+    Borrowed(&'a str),
+    Static(&'static str),
+    Operator(PortableOperatorKind),
+}
+
+impl TokenProjection<'_> {
+    fn owned_text(&self) -> String {
+        match &self.text {
+            TokenText::Borrowed(text) => (*text).to_string(),
+            TokenText::Static(text) => (*text).to_string(),
+            TokenText::Operator(op) => operator_text(*op).to_string(),
+        }
     }
+}
+
+pub(crate) struct ExprProjection<'a> {
+    span: PortableSpan,
+    kind: OpforgeExprNodeKind,
+    text: ExprNodeText<'a>,
+}
+
+enum ExprNodeText<'a> {
+    None,
+    Borrowed(&'a str),
+    Utf8Lossy(&'a [u8]),
+    Owned(String),
+}
+
+impl ExprProjection<'_> {
+    pub(crate) fn span(&self) -> PortableSpan {
+        self.span
+    }
+
+    pub(crate) fn kind(&self) -> OpforgeExprNodeKind {
+        self.kind
+    }
+
+    pub(crate) fn owned_text(&self) -> Option<String> {
+        self.text.owned_text()
+    }
+}
+
+impl ExprNodeText<'_> {
+    fn owned_text(&self) -> Option<String> {
+        match self {
+            ExprNodeText::None => None,
+            ExprNodeText::Borrowed(text) => Some((*text).to_string()),
+            ExprNodeText::Utf8Lossy(bytes) => Some(String::from_utf8_lossy(bytes).to_string()),
+            ExprNodeText::Owned(text) => Some(text.clone()),
+        }
+    }
+}
+
+fn project_token(kind: &PortableTokenKind) -> TokenProjection<'_> {
+    match kind {
+        PortableTokenKind::Identifier(name) => TokenProjection {
+            kind: OpforgeTokenKind::Identifier,
+            text: TokenText::Borrowed(name.as_str()),
+        },
+        PortableTokenKind::Register(name) => TokenProjection {
+            kind: OpforgeTokenKind::Register,
+            text: TokenText::Borrowed(name.as_str()),
+        },
+        PortableTokenKind::Number { text, .. } => TokenProjection {
+            kind: OpforgeTokenKind::Number,
+            text: TokenText::Borrowed(text.as_str()),
+        },
+        PortableTokenKind::String { raw, .. } => TokenProjection {
+            kind: OpforgeTokenKind::String,
+            text: TokenText::Borrowed(raw.as_str()),
+        },
+        PortableTokenKind::Comma => TokenProjection {
+            kind: OpforgeTokenKind::Comma,
+            text: TokenText::Static(","),
+        },
+        PortableTokenKind::Colon => TokenProjection {
+            kind: OpforgeTokenKind::Colon,
+            text: TokenText::Static(":"),
+        },
+        PortableTokenKind::Dollar => TokenProjection {
+            kind: OpforgeTokenKind::Dollar,
+            text: TokenText::Static("$"),
+        },
+        PortableTokenKind::Dot => TokenProjection {
+            kind: OpforgeTokenKind::Dot,
+            text: TokenText::Static("."),
+        },
+        PortableTokenKind::Hash => TokenProjection {
+            kind: OpforgeTokenKind::Hash,
+            text: TokenText::Static("#"),
+        },
+        PortableTokenKind::Question => TokenProjection {
+            kind: OpforgeTokenKind::Question,
+            text: TokenText::Static("?"),
+        },
+        PortableTokenKind::OpenBracket => TokenProjection {
+            kind: OpforgeTokenKind::OpenBracket,
+            text: TokenText::Static("["),
+        },
+        PortableTokenKind::CloseBracket => TokenProjection {
+            kind: OpforgeTokenKind::CloseBracket,
+            text: TokenText::Static("]"),
+        },
+        PortableTokenKind::OpenBrace => TokenProjection {
+            kind: OpforgeTokenKind::OpenBrace,
+            text: TokenText::Static("{"),
+        },
+        PortableTokenKind::CloseBrace => TokenProjection {
+            kind: OpforgeTokenKind::CloseBrace,
+            text: TokenText::Static("}"),
+        },
+        PortableTokenKind::OpenParen => TokenProjection {
+            kind: OpforgeTokenKind::OpenParen,
+            text: TokenText::Static("("),
+        },
+        PortableTokenKind::CloseParen => TokenProjection {
+            kind: OpforgeTokenKind::CloseParen,
+            text: TokenText::Static(")"),
+        },
+        PortableTokenKind::Operator(op) => TokenProjection {
+            kind: OpforgeTokenKind::Operator,
+            text: TokenText::Operator(*op),
+        },
+    }
+}
+
+pub(crate) fn expr_projection(expr: &PortableAstExpr) -> ExprProjection<'_> {
+    match expr {
+        PortableAstExpr::Number(text, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Number,
+            text: ExprNodeText::Borrowed(text.as_str()),
+        },
+        PortableAstExpr::Identifier(name, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Identifier,
+            text: ExprNodeText::Borrowed(name.as_str()),
+        },
+        PortableAstExpr::Register(name, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Register,
+            text: ExprNodeText::Borrowed(name.as_str()),
+        },
+        PortableAstExpr::List(_, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::List,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::Index { span, .. } => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Index,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::Member { field, span, .. } => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Member,
+            text: ExprNodeText::Borrowed(field.as_str()),
+        },
+        PortableAstExpr::StructLiteral {
+            type_name, span, ..
+        } => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::StructLiteral,
+            text: ExprNodeText::Borrowed(type_name.as_str()),
+        },
+        PortableAstExpr::Call { name, span, .. } => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Call,
+            text: ExprNodeText::Borrowed(name.as_str()),
+        },
+        PortableAstExpr::Placeholder(span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Placeholder,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::Indirect(_, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Indirect,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::Dollar(span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Dollar,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::String(bytes, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::String,
+            text: ExprNodeText::Utf8Lossy(bytes.as_slice()),
+        },
+        PortableAstExpr::Immediate(_, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Immediate,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::IndirectLong(_, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::IndirectLong,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::Tuple(_, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Tuple,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::Error(message, span) => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Error,
+            text: ExprNodeText::Borrowed(message.as_str()),
+        },
+        PortableAstExpr::Ternary { span, .. } => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Ternary,
+            text: ExprNodeText::None,
+        },
+        PortableAstExpr::Unary { op, span, .. } => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Unary,
+            text: ExprNodeText::Owned(format!("{op:?}")),
+        },
+        PortableAstExpr::Binary { op, span, .. } => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Binary,
+            text: ExprNodeText::Owned(format!("{op:?}")),
+        },
+        PortableAstExpr::Range {
+            inclusive, span, ..
+        } => ExprProjection {
+            span: *span,
+            kind: OpforgeExprNodeKind::Range,
+            text: ExprNodeText::Owned(if *inclusive { "..=" } else { ".." }.to_string()),
+        },
+    }
+}
+
+pub(crate) fn token_kind(kind: &PortableTokenKind) -> OpforgeTokenKind {
+    project_token(kind).kind
 }
 
 pub(crate) fn token_text(token: &PortableToken) -> String {
-    match &token.kind {
-        PortableTokenKind::Identifier(name) | PortableTokenKind::Register(name) => name.clone(),
-        PortableTokenKind::Number { text, .. } => text.clone(),
-        PortableTokenKind::String { raw, .. } => raw.clone(),
-        PortableTokenKind::Comma => ",".to_string(),
-        PortableTokenKind::Colon => ":".to_string(),
-        PortableTokenKind::Dollar => "$".to_string(),
-        PortableTokenKind::Dot => ".".to_string(),
-        PortableTokenKind::Hash => "#".to_string(),
-        PortableTokenKind::Question => "?".to_string(),
-        PortableTokenKind::OpenBracket => "[".to_string(),
-        PortableTokenKind::CloseBracket => "]".to_string(),
-        PortableTokenKind::OpenBrace => "{".to_string(),
-        PortableTokenKind::CloseBrace => "}".to_string(),
-        PortableTokenKind::OpenParen => "(".to_string(),
-        PortableTokenKind::CloseParen => ")".to_string(),
-        PortableTokenKind::Operator(op) => operator_text(*op).to_string(),
-    }
-}
-
-pub(crate) fn expr_span(expr: &PortableAstExpr) -> PortableSpan {
-    match expr {
-        PortableAstExpr::Number(_, span)
-        | PortableAstExpr::Identifier(_, span)
-        | PortableAstExpr::Register(_, span)
-        | PortableAstExpr::List(_, span)
-        | PortableAstExpr::Index { span, .. }
-        | PortableAstExpr::Member { span, .. }
-        | PortableAstExpr::StructLiteral { span, .. }
-        | PortableAstExpr::Call { span, .. }
-        | PortableAstExpr::Placeholder(span)
-        | PortableAstExpr::Indirect(_, span)
-        | PortableAstExpr::Dollar(span)
-        | PortableAstExpr::String(_, span)
-        | PortableAstExpr::Immediate(_, span)
-        | PortableAstExpr::IndirectLong(_, span)
-        | PortableAstExpr::Tuple(_, span)
-        | PortableAstExpr::Error(_, span)
-        | PortableAstExpr::Ternary { span, .. }
-        | PortableAstExpr::Unary { span, .. }
-        | PortableAstExpr::Binary { span, .. }
-        | PortableAstExpr::Range { span, .. } => *span,
-    }
-}
-
-pub(crate) fn expr_node_kind(expr: &PortableAstExpr) -> OpforgeExprNodeKind {
-    match expr {
-        PortableAstExpr::Number(_, _) => OpforgeExprNodeKind::Number,
-        PortableAstExpr::Identifier(_, _) => OpforgeExprNodeKind::Identifier,
-        PortableAstExpr::Register(_, _) => OpforgeExprNodeKind::Register,
-        PortableAstExpr::List(_, _) => OpforgeExprNodeKind::List,
-        PortableAstExpr::Index { .. } => OpforgeExprNodeKind::Index,
-        PortableAstExpr::Member { .. } => OpforgeExprNodeKind::Member,
-        PortableAstExpr::StructLiteral { .. } => OpforgeExprNodeKind::StructLiteral,
-        PortableAstExpr::Call { .. } => OpforgeExprNodeKind::Call,
-        PortableAstExpr::Placeholder(_) => OpforgeExprNodeKind::Placeholder,
-        PortableAstExpr::Indirect(_, _) => OpforgeExprNodeKind::Indirect,
-        PortableAstExpr::Dollar(_) => OpforgeExprNodeKind::Dollar,
-        PortableAstExpr::String(_, _) => OpforgeExprNodeKind::String,
-        PortableAstExpr::Immediate(_, _) => OpforgeExprNodeKind::Immediate,
-        PortableAstExpr::IndirectLong(_, _) => OpforgeExprNodeKind::IndirectLong,
-        PortableAstExpr::Tuple(_, _) => OpforgeExprNodeKind::Tuple,
-        PortableAstExpr::Error(_, _) => OpforgeExprNodeKind::Error,
-        PortableAstExpr::Ternary { .. } => OpforgeExprNodeKind::Ternary,
-        PortableAstExpr::Unary { .. } => OpforgeExprNodeKind::Unary,
-        PortableAstExpr::Binary { .. } => OpforgeExprNodeKind::Binary,
-        PortableAstExpr::Range { .. } => OpforgeExprNodeKind::Range,
-    }
-}
-
-pub(crate) fn expr_node_text(expr: &PortableAstExpr) -> Option<String> {
-    match expr {
-        PortableAstExpr::Number(text, _) => Some(text.clone()),
-        PortableAstExpr::Identifier(name, _) => Some(name.clone()),
-        PortableAstExpr::Register(name, _) => Some(name.clone()),
-        PortableAstExpr::Member { field, .. } => Some(field.clone()),
-        PortableAstExpr::StructLiteral { type_name, .. } => Some(type_name.clone()),
-        PortableAstExpr::Call { name, .. } => Some(name.clone()),
-        PortableAstExpr::String(bytes, _) => Some(String::from_utf8_lossy(bytes).to_string()),
-        PortableAstExpr::Error(message, _) => Some(message.clone()),
-        PortableAstExpr::Unary { op, .. } => Some(format!("{op:?}")),
-        PortableAstExpr::Binary { op, .. } => Some(format!("{op:?}")),
-        PortableAstExpr::Range { inclusive, .. } => {
-            Some(if *inclusive { "..=" } else { ".." }.to_string())
-        }
-        PortableAstExpr::List(_, _)
-        | PortableAstExpr::Index { .. }
-        | PortableAstExpr::Placeholder(_)
-        | PortableAstExpr::Indirect(_, _)
-        | PortableAstExpr::Dollar(_)
-        | PortableAstExpr::Immediate(_, _)
-        | PortableAstExpr::IndirectLong(_, _)
-        | PortableAstExpr::Tuple(_, _)
-        | PortableAstExpr::Ternary { .. } => None,
-    }
+    project_token(&token.kind).owned_text()
 }
 
 pub(crate) fn expr_display_text(expr: &PortableAstExpr) -> String {

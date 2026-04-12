@@ -414,7 +414,7 @@ making the affected seams easier to maintain and reduce further later.
     - package-codec reduction has a live shared seam over the low-risk
       register/form/table/selector chunk families only
 
-- [ ] Work item 12: migrate tokenizer and contract package chunk codecs onto the shared schema layer
+- [x] Work item 12: migrate tokenizer and contract package chunk codecs onto the shared schema layer
   - Source requirement or finding IDs: `RVW-2026-04-11-003`
   - Finding closure expectation: fully closes `RVW-2026-04-11-003`
   - Validation: full codec-schema migration contract tests plus full quality gates

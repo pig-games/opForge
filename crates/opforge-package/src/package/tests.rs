@@ -499,6 +499,36 @@ fn encode_decode_round_trip_scoped_schema_selectors() {
 }
 
 #[test]
+fn encode_decode_round_trip_contract_schema_tokenizer_vm_programs() {
+    let entries = sample_tokenizer_vm_programs();
+    assert_scoped_schema_round_trip(&entries, encode_tkvm_chunk, decode_tkvm_chunk);
+}
+
+#[test]
+fn encode_decode_round_trip_contract_schema_parser_contracts() {
+    let entries = sample_parser_contracts();
+    assert_scoped_schema_round_trip(&entries, encode_pars_chunk, decode_pars_chunk);
+}
+
+#[test]
+fn encode_decode_round_trip_contract_schema_parser_vm_programs() {
+    let entries = sample_parser_vm_programs();
+    assert_scoped_schema_round_trip(&entries, encode_prvm_chunk, decode_prvm_chunk);
+}
+
+#[test]
+fn encode_decode_round_trip_contract_schema_expr_contracts() {
+    let entries = sample_expr_contracts();
+    assert_scoped_schema_round_trip(&entries, encode_expr_chunk, decode_expr_chunk);
+}
+
+#[test]
+fn encode_decode_round_trip_contract_schema_expr_parser_contracts() {
+    let entries = sample_expr_parser_contracts();
+    assert_scoped_schema_round_trip(&entries, encode_expp_chunk, decode_expp_chunk);
+}
+
+#[test]
 fn toc_snapshot_is_stable() {
     let bytes = encode_hierarchy_chunks(
         &sample_families(),

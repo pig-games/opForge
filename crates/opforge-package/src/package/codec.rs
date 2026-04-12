@@ -966,280 +966,61 @@ pub(super) fn decode_msel_chunk(
 pub(super) fn encode_tkvm_chunk(
     programs: &[TokenizerVmProgramDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(programs.len(), "TKVM count")?);
-    for entry in programs {
-        encode_scoped_owner(&mut out, "TKVM", &entry.owner)?;
-        write_u16(&mut out, entry.opcode_version);
-        write_u16(&mut out, entry.start_state);
-        write_u32(
-            &mut out,
-            u32_count(
-                entry.state_entry_offsets.len(),
-                "TKVM state_entry_offsets count",
-            )?,
-        );
-        for offset in &entry.state_entry_offsets {
-            write_u32(&mut out, *offset);
-        }
-        write_u32(&mut out, entry.limits.max_steps_per_line);
-        write_u32(&mut out, entry.limits.max_tokens_per_line);
-        write_u32(&mut out, entry.limits.max_lexeme_bytes);
-        write_u32(&mut out, entry.limits.max_errors_per_line);
-        write_string(&mut out, "TKVM", &entry.diagnostics.invalid_char)?;
-        write_string(&mut out, "TKVM", &entry.diagnostics.unterminated_string)?;
-        write_string(&mut out, "TKVM", &entry.diagnostics.step_limit_exceeded)?;
-        write_string(&mut out, "TKVM", &entry.diagnostics.token_limit_exceeded)?;
-        write_string(&mut out, "TKVM", &entry.diagnostics.lexeme_limit_exceeded)?;
-        write_string(&mut out, "TKVM", &entry.diagnostics.error_limit_exceeded)?;
-        write_u32(
-            &mut out,
-            u32_count(entry.program.len(), "TKVM program byte length")?,
-        );
-        out.extend_from_slice(&entry.program);
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(programs)
 }
 
 pub(super) fn decode_tkvm_chunk(
     bytes: &[u8],
 ) -> Result<Vec<TokenizerVmProgramDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "TKVM");
-    let count = read_bounded_count(&mut cur, 1, "tokenizer VM entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "TKVM")?;
-        let opcode_version = cur.read_u16()?;
-        let start_state = cur.read_u16()?;
-        let state_count = read_bounded_count(&mut cur, 4, "state-entry offset")?;
-        let mut state_entry_offsets = Vec::with_capacity(state_count);
-        for _ in 0..state_count {
-            state_entry_offsets.push(cur.read_u32()?);
-        }
-        let limits = TokenizerVmLimits {
-            max_steps_per_line: cur.read_u32()?,
-            max_tokens_per_line: cur.read_u32()?,
-            max_lexeme_bytes: cur.read_u32()?,
-            max_errors_per_line: cur.read_u32()?,
-        };
-        let diagnostics = TokenizerVmDiagnosticMap {
-            invalid_char: cur.read_string()?,
-            unterminated_string: cur.read_string()?,
-            step_limit_exceeded: cur.read_string()?,
-            token_limit_exceeded: cur.read_string()?,
-            lexeme_limit_exceeded: cur.read_string()?,
-            error_limit_exceeded: cur.read_string()?,
-        };
-        let program_len = cur.read_u32()? as usize;
-        let program = cur
-            .read_exact(program_len, "tokenizer vm program")?
-            .to_vec();
-        entries.push(TokenizerVmProgramDescriptor {
-            owner,
-            opcode_version,
-            start_state,
-            state_entry_offsets,
-            limits,
-            diagnostics,
-            program,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_pars_chunk(
     contracts: &[ParserContractDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(contracts.len(), "PARS count")?);
-    for entry in contracts {
-        encode_scoped_owner(&mut out, "PARS", &entry.owner)?;
-        write_string(&mut out, "PARS", &entry.grammar_id)?;
-        write_string(&mut out, "PARS", &entry.ast_schema_id)?;
-        write_u16(&mut out, entry.opcode_version);
-        write_u32(&mut out, entry.max_ast_nodes_per_line);
-        write_string(&mut out, "PARS", &entry.diagnostics.unexpected_token)?;
-        write_string(&mut out, "PARS", &entry.diagnostics.expected_expression)?;
-        write_string(&mut out, "PARS", &entry.diagnostics.expected_operand)?;
-        write_string(&mut out, "PARS", &entry.diagnostics.invalid_statement)?;
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(contracts)
 }
 
 pub(super) fn decode_pars_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ParserContractDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "PARS");
-    let count = read_bounded_count(&mut cur, 1, "parser contract entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "PARS")?;
-        let grammar_id = cur.read_string()?;
-        let ast_schema_id = cur.read_string()?;
-        let opcode_version = cur.read_u16()?;
-        let max_ast_nodes_per_line = cur.read_u32()?;
-        let diagnostics = ParserDiagnosticMap {
-            unexpected_token: cur.read_string()?,
-            expected_expression: cur.read_string()?,
-            expected_operand: cur.read_string()?,
-            invalid_statement: cur.read_string()?,
-        };
-        entries.push(ParserContractDescriptor {
-            owner,
-            grammar_id,
-            ast_schema_id,
-            opcode_version,
-            max_ast_nodes_per_line,
-            diagnostics,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_prvm_chunk(
     programs: &[ParserVmProgramDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(programs.len(), "PRVM count")?);
-    for entry in programs {
-        encode_scoped_owner(&mut out, "PRVM", &entry.owner)?;
-        write_u16(&mut out, entry.opcode_version);
-        write_u32(
-            &mut out,
-            u32_count(entry.program.len(), "PRVM program byte length")?,
-        );
-        out.extend_from_slice(&entry.program);
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(programs)
 }
 
 pub(super) fn decode_prvm_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ParserVmProgramDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "PRVM");
-    let count = read_bounded_count(&mut cur, 1, "parser VM entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "PRVM")?;
-        let opcode_version = cur.read_u16()?;
-        let program_len = cur.read_u32()? as usize;
-        let program = cur.read_exact(program_len, "parser vm program")?.to_vec();
-        entries.push(ParserVmProgramDescriptor {
-            owner,
-            opcode_version,
-            program,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_expr_chunk(
     contracts: &[ExprContractDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(contracts.len(), "EXPR count")?);
-    for entry in contracts {
-        encode_scoped_owner(&mut out, "EXPR", &entry.owner)?;
-        write_u16(&mut out, entry.opcode_version);
-        write_u32(&mut out, entry.max_program_bytes);
-        write_u32(&mut out, entry.max_stack_depth);
-        write_u32(&mut out, entry.max_symbol_refs);
-        write_u32(&mut out, entry.max_eval_steps);
-        write_string(&mut out, "EXPR", &entry.diagnostics.invalid_opcode)?;
-        write_string(&mut out, "EXPR", &entry.diagnostics.stack_underflow)?;
-        write_string(&mut out, "EXPR", &entry.diagnostics.stack_depth_exceeded)?;
-        write_string(&mut out, "EXPR", &entry.diagnostics.unknown_symbol)?;
-        write_string(&mut out, "EXPR", &entry.diagnostics.eval_failure)?;
-        write_string(&mut out, "EXPR", &entry.diagnostics.unsupported_feature)?;
-        write_string(&mut out, "EXPR", &entry.diagnostics.budget_exceeded)?;
-        write_string(&mut out, "EXPR", &entry.diagnostics.invalid_program)?;
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(contracts)
 }
 
 pub(super) fn decode_expr_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ExprContractDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "EXPR");
-    let count = read_bounded_count(&mut cur, 1, "expression contract entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "EXPR")?;
-        let opcode_version = cur.read_u16()?;
-        let max_program_bytes = cur.read_u32()?;
-        let max_stack_depth = cur.read_u32()?;
-        let max_symbol_refs = cur.read_u32()?;
-        let max_eval_steps = cur.read_u32()?;
-        let diagnostics = ExprDiagnosticMap {
-            invalid_opcode: cur.read_string()?,
-            stack_underflow: cur.read_string()?,
-            stack_depth_exceeded: cur.read_string()?,
-            unknown_symbol: cur.read_string()?,
-            eval_failure: cur.read_string()?,
-            unsupported_feature: cur.read_string()?,
-            budget_exceeded: cur.read_string()?,
-            invalid_program: cur.read_string()?,
-        };
-        entries.push(ExprContractDescriptor {
-            owner,
-            opcode_version,
-            max_program_bytes,
-            max_stack_depth,
-            max_symbol_refs,
-            max_eval_steps,
-            diagnostics,
-        });
-        if let Some(entry) = entries.last() {
-            validate_expr_contract_descriptor(entry)?;
-        }
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_expp_chunk(
     contracts: &[ExprParserContractDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(contracts.len(), "EXPP count")?);
-    for entry in contracts {
-        encode_scoped_owner(&mut out, "EXPP", &entry.owner)?;
-        write_u16(&mut out, entry.opcode_version);
-        write_string(
-            &mut out,
-            "EXPP",
-            &entry.diagnostics.invalid_expression_program,
-        )?;
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(contracts)
 }
 
 pub(super) fn decode_expp_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ExprParserContractDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "EXPP");
-    let count = read_bounded_count(&mut cur, 1, "expression parser contract entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "EXPP")?;
-        let opcode_version = cur.read_u16()?;
-        let diagnostics = ExprParserDiagnosticMap {
-            invalid_expression_program: cur.read_string()?,
-        };
-        entries.push(ExprParserContractDescriptor {
-            owner,
-            opcode_version,
-            diagnostics,
-        });
-        if let Some(entry) = entries.last() {
-            validate_expr_parser_contract_descriptor(entry)?;
-        }
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn validate_expr_contract_descriptor(

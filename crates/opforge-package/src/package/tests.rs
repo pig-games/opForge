@@ -113,6 +113,45 @@ fn sample_tables() -> Vec<VmProgramDescriptor> {
     ]
 }
 
+fn sample_selectors() -> Vec<ModeSelectorDescriptor> {
+    vec![
+        ModeSelectorDescriptor {
+            owner: ScopedOwner::Cpu("m6502".to_string()),
+            mnemonic: "lda".to_string(),
+            shape_key: "imm".to_string(),
+            mode_key: "immediate".to_string(),
+            operand_plan: "expr".to_string(),
+            priority: 1,
+            unstable_widen: false,
+            width_rank: 0,
+        },
+        ModeSelectorDescriptor {
+            owner: ScopedOwner::Dialect("w65c02".to_string()),
+            mnemonic: "lda".to_string(),
+            shape_key: "zp_indexed".to_string(),
+            mode_key: "zero_page_x".to_string(),
+            operand_plan: "expr,indexed_x".to_string(),
+            priority: 7,
+            unstable_widen: true,
+            width_rank: 2,
+        },
+    ]
+}
+
+fn assert_scoped_schema_round_trip<T>(
+    entries: &[T],
+    encode: impl Fn(&[T]) -> Result<Vec<u8>, OpcpuCodecError>,
+    decode: impl Fn(&[u8]) -> Result<Vec<T>, OpcpuCodecError>,
+) where
+    T: Clone + std::fmt::Debug + PartialEq + Eq,
+{
+    let bytes = encode(entries).expect("encode should succeed");
+    let decoded = decode(&bytes).expect("decode should succeed");
+    assert_eq!(decoded, entries);
+    let reencoded = encode(&decoded).expect("re-encode should succeed");
+    assert_eq!(reencoded, bytes);
+}
+
 fn token_policy_for_test(
     owner: ScopedOwner,
     case_rule: TokenCaseRule,
@@ -433,6 +472,30 @@ fn metadata_snapshot_is_stable() {
         dialect_snapshot,
         vec!["intel8080:intel", "intel8080:zilog", "mos6502:mos"]
     );
+}
+
+#[test]
+fn encode_decode_round_trip_scoped_schema_registers() {
+    let entries = sample_registers();
+    assert_scoped_schema_round_trip(&entries, encode_regs_chunk, decode_regs_chunk);
+}
+
+#[test]
+fn encode_decode_round_trip_scoped_schema_forms() {
+    let entries = sample_forms();
+    assert_scoped_schema_round_trip(&entries, encode_form_chunk, decode_form_chunk);
+}
+
+#[test]
+fn encode_decode_round_trip_scoped_schema_tables() {
+    let entries = sample_tables();
+    assert_scoped_schema_round_trip(&entries, encode_tabl_chunk, decode_tabl_chunk);
+}
+
+#[test]
+fn encode_decode_round_trip_scoped_schema_selectors() {
+    let entries = sample_selectors();
+    assert_scoped_schema_round_trip(&entries, encode_msel_chunk, decode_msel_chunk);
 }
 
 #[test]

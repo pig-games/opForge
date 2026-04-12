@@ -377,7 +377,7 @@ making the affected seams easier to maintain and reduce further later.
     - the public FFI boundary keeps the same behavior while collapsing the
       portable-schema mirror logic behind one source of truth
 
-- [ ] Work item 11: introduce shared package-codec schema helpers for register, form, table, and selector chunks
+- [x] Work item 11: introduce shared package-codec schema helpers for register, form, table, and selector chunks
   - Source requirement or finding IDs: `RVW-2026-04-11-003`
   - Finding closure expectation: partially closes `RVW-2026-04-11-003`
   - Validation: first migrated codec-schema contract tests plus full quality gates

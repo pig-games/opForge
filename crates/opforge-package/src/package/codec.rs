@@ -1,5 +1,9 @@
 use super::*;
 
+mod scoped_schema;
+
+use scoped_schema::{decode_scoped_schema_chunk, encode_scoped_schema_chunk};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct TocEntry {
     pub(super) offset: u32,
@@ -916,152 +920,47 @@ pub(super) fn decode_dial_chunk(bytes: &[u8]) -> Result<Vec<DialectDescriptor>, 
 pub(super) fn encode_regs_chunk(
     registers: &[ScopedRegisterDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(registers.len(), "REGS count")?);
-    for register in registers {
-        encode_scoped_owner(&mut out, "REGS", &register.owner)?;
-        write_string(&mut out, "REGS", &register.id)?;
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(registers)
 }
 
 pub(super) fn decode_regs_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ScopedRegisterDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "REGS");
-    let count = read_bounded_count(&mut cur, 1, "register entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "REGS")?;
-        let id = cur.read_string()?;
-        entries.push(ScopedRegisterDescriptor { owner, id });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_form_chunk(
     forms: &[ScopedFormDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(forms.len(), "FORM count")?);
-    for form in forms {
-        encode_scoped_owner(&mut out, "FORM", &form.owner)?;
-        write_string(&mut out, "FORM", &form.mnemonic)?;
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(forms)
 }
 
 pub(super) fn decode_form_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ScopedFormDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "FORM");
-    let count = read_bounded_count(&mut cur, 1, "form entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "FORM")?;
-        let mnemonic = cur.read_string()?;
-        entries.push(ScopedFormDescriptor { owner, mnemonic });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_tabl_chunk(
     tables: &[VmProgramDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(tables.len(), "TABL count")?);
-    for entry in tables {
-        encode_scoped_owner(&mut out, "TABL", &entry.owner)?;
-        write_string(&mut out, "TABL", &entry.mnemonic)?;
-        write_string(&mut out, "TABL", &entry.mode_key)?;
-        write_u32(
-            &mut out,
-            u32_count(entry.program.len(), "TABL program byte length")?,
-        );
-        out.extend_from_slice(&entry.program);
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(tables)
 }
 
 pub(super) fn decode_tabl_chunk(bytes: &[u8]) -> Result<Vec<VmProgramDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "TABL");
-    let count = read_bounded_count(&mut cur, 1, "table entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "TABL")?;
-        let mnemonic = cur.read_string()?;
-        let mode_key = cur.read_string()?;
-        let byte_count = cur.read_u32()? as usize;
-        let program = cur.read_exact(byte_count, "program bytes")?.to_vec();
-        entries.push(VmProgramDescriptor {
-            owner,
-            mnemonic,
-            mode_key,
-            program,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_msel_chunk(
     selectors: &[ModeSelectorDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    let mut out = Vec::new();
-    write_u32(&mut out, u32_count(selectors.len(), "MSEL count")?);
-    for entry in selectors {
-        encode_scoped_owner(&mut out, "MSEL", &entry.owner)?;
-        write_string(&mut out, "MSEL", &entry.mnemonic)?;
-        write_string(&mut out, "MSEL", &entry.shape_key)?;
-        write_string(&mut out, "MSEL", &entry.mode_key)?;
-        write_string(&mut out, "MSEL", &entry.operand_plan)?;
-        out.extend_from_slice(&entry.priority.to_le_bytes());
-        out.push(u8::from(entry.unstable_widen));
-        out.push(entry.width_rank);
-    }
-    Ok(out)
+    encode_scoped_schema_chunk(selectors)
 }
 
 pub(super) fn decode_msel_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ModeSelectorDescriptor>, OpcpuCodecError> {
-    let mut cur = Decoder::new(bytes, "MSEL");
-    let count = read_bounded_count(&mut cur, 1, "mode selector entry")?;
-    let mut entries = Vec::with_capacity(count);
-    for _ in 0..count {
-        let owner = decode_scoped_owner(&mut cur, "MSEL")?;
-        let mnemonic = cur.read_string()?;
-        let shape_key = cur.read_string()?;
-        let mode_key = cur.read_string()?;
-        let operand_plan = cur.read_string()?;
-        let priority_bytes = cur.read_exact(2, "priority")?;
-        let priority = u16::from_le_bytes([priority_bytes[0], priority_bytes[1]]);
-        let unstable_widen = match cur.read_u8()? {
-            0 => false,
-            1 => true,
-            other => {
-                return Err(OpcpuCodecError::InvalidChunkFormat {
-                    chunk: "MSEL".to_string(),
-                    detail: format!("invalid bool flag for unstable_widen: {}", other),
-                });
-            }
-        };
-        let width_rank = cur.read_u8()?;
-        entries.push(ModeSelectorDescriptor {
-            owner,
-            mnemonic,
-            shape_key,
-            mode_key,
-            operand_plan,
-            priority,
-            unstable_widen,
-            width_rank,
-        });
-    }
-    cur.finish()?;
-    Ok(entries)
+    decode_scoped_schema_chunk(bytes)
 }
 
 pub(super) fn encode_tkvm_chunk(

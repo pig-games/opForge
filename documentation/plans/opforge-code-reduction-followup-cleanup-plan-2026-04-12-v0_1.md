@@ -240,7 +240,7 @@ bootstrap behavior, FFI projection results, and M68k encoder behavior stable.
     - the top-level M68k orchestrator loses one bounded class of dispatch
       repetition without touching the extracted encoder seams
 
-- [ ] Work item 6: compress the remaining direct submodule delegation boilerplate in the M68k dispatcher
+- [x] Work item 6: compress the remaining direct submodule delegation boilerplate in the M68k dispatcher
   - Source requirement or finding IDs: `HS-2026-04-12-006`
   - Validation: focused delegation dispatch characterization plus full quality gates
   - Definition of done:
@@ -278,7 +278,7 @@ bootstrap behavior, FFI projection results, and M68k encoder behavior stable.
   declarative helpers (`Work item 1` and `Work item 2`)
 - [x] Milestone 2: shared utility wrappers are reduced without semantic drift
   (`Work item 3` and `Work item 4`)
-- [ ] Milestone 3: the top-level M68k dispatch layer becomes slimmer while the
+- [x] Milestone 3: the top-level M68k dispatch layer becomes slimmer while the
   extracted handler split stays intact (`Work item 5` and `Work item 6`)
 
 ## To Be Planned Later

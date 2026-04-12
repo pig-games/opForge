@@ -125,30 +125,14 @@ impl M68KFamilyHandler {
         }
     }
 
-    fn encode_instruction_impl(
+    fn encode_direct_delegate(
         &self,
-        mnemonic: &str,
+        kind: MnemonicKind,
+        parsed: &ParsedMnemonic,
         operands: &[Operand],
         ctx: &dyn AssemblerContext,
     ) -> EncodeResult<Vec<u8>> {
-        let Some(parsed) = parse_mnemonic(mnemonic) else {
-            return EncodeResult::NotFound;
-        };
-
-        if let Some(result) =
-            self.try_encode_m68080_extended_short_branch(&parsed, mnemonic, operands, ctx)
-        {
-            return result;
-        }
-
-        if parsed.has_unknown_size_suffix {
-            return EncodeResult::error(format!(
-                "unsupported size suffix for {}",
-                parsed.display_name
-            ));
-        }
-
-        match parsed.kind {
+        match kind {
             MnemonicKind::Move => self.encode_move(parsed.size, operands, ctx),
             MnemonicKind::MoveA => self.encode_movea(parsed.size, operands, ctx),
             MnemonicKind::Movem => self.encode_movem(parsed.size, operands, ctx),
@@ -157,9 +141,6 @@ impl M68KFamilyHandler {
             MnemonicKind::Pea => self.encode_pea(parsed.size, operands, ctx),
             MnemonicKind::Jmp => self.encode_jmp(parsed.size, operands, ctx),
             MnemonicKind::Jsr => self.encode_jsr(parsed.size, operands, ctx),
-            MnemonicKind::Link if matches!(parsed.size, Some(OperationSize::Long)) => {
-                EncodeResult::NotFound
-            }
             MnemonicKind::Link => self.encode_link(parsed.size, operands, ctx),
             MnemonicKind::Unlk => self.encode_unlk(parsed.size, operands),
             MnemonicKind::Exg => self.encode_exg(parsed.size, operands),
@@ -167,16 +148,6 @@ impl M68KFamilyHandler {
             MnemonicKind::Ext => self.encode_ext(parsed.size, operands),
             MnemonicKind::Trap => self.encode_trap(parsed.size, operands, ctx),
             MnemonicKind::Stop => self.encode_stop(parsed.size, operands, ctx),
-            kind @ (MnemonicKind::Nop
-            | MnemonicKind::Reset
-            | MnemonicKind::Rte
-            | MnemonicKind::Rtr
-            | MnemonicKind::Trapv
-            | MnemonicKind::Illegal) => {
-                let (display_name, opcode) = Self::fixed_instruction_dispatch(&kind)
-                    .expect("fixed-instruction dispatch must cover explicit fixed opcodes");
-                self.encode_fixed_instruction(display_name, opcode, parsed.size, operands)
-            }
             MnemonicKind::Add => {
                 self.encode_data_register_binary_op("ADD", 0xD000, parsed.size, operands, ctx, true)
             }
@@ -231,6 +202,124 @@ impl M68KFamilyHandler {
                 Self::data_addressing,
             ),
             MnemonicKind::Cmpm => self.encode_cmpm(parsed.size, operands),
+            MnemonicKind::And => self.encode_data_register_binary_op(
+                "AND",
+                0xC000,
+                parsed.size,
+                operands,
+                ctx,
+                false,
+            ),
+            MnemonicKind::Andi => self.encode_immediate_binary_op(
+                "ANDI",
+                0x0200,
+                parsed.size,
+                operands,
+                ctx,
+                Self::data_alterable,
+            ),
+            MnemonicKind::Or => {
+                self.encode_data_register_binary_op("OR", 0x8000, parsed.size, operands, ctx, false)
+            }
+            MnemonicKind::Ori => self.encode_immediate_binary_op(
+                "ORI",
+                0x0000,
+                parsed.size,
+                operands,
+                ctx,
+                Self::data_alterable,
+            ),
+            MnemonicKind::Eor => self.encode_eor(parsed.size, operands, ctx),
+            MnemonicKind::Eori => self.encode_immediate_binary_op(
+                "EORI",
+                0x0A00,
+                parsed.size,
+                operands,
+                ctx,
+                Self::data_alterable,
+            ),
+            MnemonicKind::Divs => {
+                self.encode_word_data_register_math("DIVS", 0x81C0, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Divu => {
+                self.encode_word_data_register_math("DIVU", 0x80C0, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Rts => self.encode_rts(parsed.size, operands),
+            MnemonicKind::Moveq => self.encode_moveq(parsed.size, operands, ctx),
+            MnemonicKind::Muls => {
+                self.encode_word_data_register_math("MULS", 0xC1C0, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Mulu => {
+                self.encode_word_data_register_math("MULU", 0xC0C0, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Addq => self.encode_quick("ADDQ", false, parsed.size, operands, ctx),
+            MnemonicKind::Subq => self.encode_quick("SUBQ", true, parsed.size, operands, ctx),
+            MnemonicKind::Bit(bit_kind) => self.encode_bit_op(bit_kind, parsed.size, operands, ctx),
+            MnemonicKind::Scc(condition) => {
+                self.encode_scc(&parsed.display_name, condition, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Clr => {
+                self.encode_unary_data_instruction("CLR", 0x4200, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Negx => {
+                self.encode_unary_data_instruction("NEGX", 0x4000, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Neg => {
+                self.encode_unary_data_instruction("NEG", 0x4400, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Nbcd => {
+                self.encode_unsized_data_ea_instruction("NBCD", 0x4800, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Not => {
+                self.encode_unary_data_instruction("NOT", 0x4600, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Tas => {
+                self.encode_unsized_data_ea_instruction("TAS", 0x4AC0, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Tst => {
+                self.encode_unary_data_instruction("TST", 0x4A00, parsed.size, operands, ctx)
+            }
+            MnemonicKind::Shift(shift_kind) => {
+                self.encode_shift(shift_kind, parsed.size, operands, ctx)
+            }
+            _ => unreachable!("encode_direct_delegate only accepts direct delegate mnemonics"),
+        }
+    }
+
+    fn encode_instruction_impl(
+        &self,
+        mnemonic: &str,
+        operands: &[Operand],
+        ctx: &dyn AssemblerContext,
+    ) -> EncodeResult<Vec<u8>> {
+        let Some(parsed) = parse_mnemonic(mnemonic) else {
+            return EncodeResult::NotFound;
+        };
+
+        if let Some(result) =
+            self.try_encode_m68080_extended_short_branch(&parsed, mnemonic, operands, ctx)
+        {
+            return result;
+        }
+
+        if parsed.has_unknown_size_suffix {
+            return EncodeResult::error(format!(
+                "unsupported size suffix for {}",
+                parsed.display_name
+            ));
+        }
+
+        match parsed.kind {
+            kind @ (MnemonicKind::Nop
+            | MnemonicKind::Reset
+            | MnemonicKind::Rte
+            | MnemonicKind::Rtr
+            | MnemonicKind::Trapv
+            | MnemonicKind::Illegal) => {
+                let (display_name, opcode) = Self::fixed_instruction_dispatch(&kind)
+                    .expect("fixed-instruction dispatch must cover explicit fixed opcodes");
+                self.encode_fixed_instruction(display_name, opcode, parsed.size, operands)
+            }
             MnemonicKind::Addiw
             | MnemonicKind::Cmpiw
             | MnemonicKind::Move2
@@ -271,100 +360,26 @@ impl M68KFamilyHandler {
             | MnemonicKind::Packuswb
             | MnemonicKind::Unpack1632
             | MnemonicKind::Vperm => EncodeResult::NotFound,
-            MnemonicKind::And => self.encode_data_register_binary_op(
-                "AND",
-                0xC000,
-                parsed.size,
-                operands,
-                ctx,
-                false,
-            ),
-            MnemonicKind::Andi => self.encode_immediate_binary_op(
-                "ANDI",
-                0x0200,
-                parsed.size,
-                operands,
-                ctx,
-                Self::data_alterable,
-            ),
-            MnemonicKind::Or => {
-                self.encode_data_register_binary_op("OR", 0x8000, parsed.size, operands, ctx, false)
-            }
-            MnemonicKind::Ori => self.encode_immediate_binary_op(
-                "ORI",
-                0x0000,
-                parsed.size,
-                operands,
-                ctx,
-                Self::data_alterable,
-            ),
-            MnemonicKind::Eor => self.encode_eor(parsed.size, operands, ctx),
-            MnemonicKind::Eori => self.encode_immediate_binary_op(
-                "EORI",
-                0x0A00,
-                parsed.size,
-                operands,
-                ctx,
-                Self::data_alterable,
-            ),
-            MnemonicKind::Divs if matches!(parsed.size, Some(OperationSize::Long)) => {
+            MnemonicKind::Link if matches!(parsed.size, Some(OperationSize::Long)) => {
                 EncodeResult::NotFound
-            }
-            MnemonicKind::Divs => {
-                self.encode_word_data_register_math("DIVS", 0x81C0, parsed.size, operands, ctx)
             }
             MnemonicKind::Divu if matches!(parsed.size, Some(OperationSize::Long)) => {
                 EncodeResult::NotFound
             }
-            MnemonicKind::Divu => {
-                self.encode_word_data_register_math("DIVU", 0x80C0, parsed.size, operands, ctx)
+            MnemonicKind::Divs if matches!(parsed.size, Some(OperationSize::Long)) => {
+                EncodeResult::NotFound
             }
             MnemonicKind::Bra | MnemonicKind::Bsr | MnemonicKind::Bcc(_) => EncodeResult::NotFound,
             MnemonicKind::Dbcc(condition) => {
                 self.encode_dbcc(&parsed.display_name, condition, parsed.size, operands, ctx)
             }
-            MnemonicKind::Rts => self.encode_rts(parsed.size, operands),
-            MnemonicKind::Moveq => self.encode_moveq(parsed.size, operands, ctx),
             MnemonicKind::Muls if matches!(parsed.size, Some(OperationSize::Long)) => {
                 EncodeResult::NotFound
-            }
-            MnemonicKind::Muls => {
-                self.encode_word_data_register_math("MULS", 0xC1C0, parsed.size, operands, ctx)
             }
             MnemonicKind::Mulu if matches!(parsed.size, Some(OperationSize::Long)) => {
                 EncodeResult::NotFound
             }
-            MnemonicKind::Mulu => {
-                self.encode_word_data_register_math("MULU", 0xC0C0, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Addq => self.encode_quick("ADDQ", false, parsed.size, operands, ctx),
-            MnemonicKind::Subq => self.encode_quick("SUBQ", true, parsed.size, operands, ctx),
-            MnemonicKind::Bit(kind) => self.encode_bit_op(kind, parsed.size, operands, ctx),
-            MnemonicKind::Scc(condition) => {
-                self.encode_scc(&parsed.display_name, condition, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Clr => {
-                self.encode_unary_data_instruction("CLR", 0x4200, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Negx => {
-                self.encode_unary_data_instruction("NEGX", 0x4000, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Neg => {
-                self.encode_unary_data_instruction("NEG", 0x4400, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Nbcd => {
-                self.encode_unsized_data_ea_instruction("NBCD", 0x4800, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Not => {
-                self.encode_unary_data_instruction("NOT", 0x4600, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Tas => {
-                self.encode_unsized_data_ea_instruction("TAS", 0x4AC0, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Tst => {
-                self.encode_unary_data_instruction("TST", 0x4A00, parsed.size, operands, ctx)
-            }
-            MnemonicKind::Shift(kind) => self.encode_shift(kind, parsed.size, operands, ctx),
+            kind => self.encode_direct_delegate(kind, &parsed, operands, ctx),
         }
     }
 
@@ -3255,6 +3270,76 @@ mod tests {
                 "expected {mnemonic} to stay NotFound"
             );
         }
+    }
+
+    #[test]
+    fn m68k_dispatch_delegate_paths_encode_expected_results() {
+        let handler = M68KFamilyHandler::new();
+        let ctx = TestContext::default();
+
+        expect_encoded(
+            handler.encode_instruction(
+                "LINK",
+                &[
+                    Operand::AddressRegister {
+                        register: "A6".to_string(),
+                        span: span(),
+                    },
+                    Operand::Immediate {
+                        expr: Expr::Number("-8".to_string(), span()),
+                        span: span(),
+                    },
+                ],
+                &ctx,
+            ),
+            &[0x4E, 0x56, 0xFF, 0xF8],
+        );
+
+        expect_encoded(
+            handler.encode_instruction(
+                "MOVEQ",
+                &[
+                    Operand::Immediate {
+                        expr: Expr::Number("-1".to_string(), span()),
+                        span: span(),
+                    },
+                    Operand::DataRegister {
+                        register: "D0".to_string(),
+                        span: span(),
+                    },
+                ],
+                &ctx,
+            ),
+            &[0x70, 0xFF],
+        );
+
+        expect_encoded(
+            handler.encode_instruction(
+                "TST.W",
+                &[Operand::AddressDisplacement {
+                    displacement: Expr::Number("4".to_string(), span()),
+                    base: "A3".to_string(),
+                    span: span(),
+                }],
+                &ctx,
+            ),
+            &[0x4A, 0x6B, 0x00, 0x04],
+        );
+    }
+
+    #[test]
+    fn m68k_dispatch_delegate_predicates_detect_special_routes() {
+        assert!(M68KFamilyHandler::is_branch_mnemonic("BRA"));
+        assert!(M68KFamilyHandler::is_branch_mnemonic("BNE.W"));
+        assert!(!M68KFamilyHandler::is_branch_mnemonic("MOVEQ"));
+
+        assert!(M68KFamilyHandler::is_dbcc_mnemonic("DBRA"));
+        assert!(M68KFamilyHandler::is_dbcc_mnemonic("DBNE"));
+        assert!(!M68KFamilyHandler::is_dbcc_mnemonic("SNE"));
+
+        assert!(M68KFamilyHandler::is_long_divide_mnemonic("DIVU.L"));
+        assert!(M68KFamilyHandler::is_long_divide_mnemonic("DIVSL.L"));
+        assert!(!M68KFamilyHandler::is_long_divide_mnemonic("DIVU.W"));
     }
 
     #[test]

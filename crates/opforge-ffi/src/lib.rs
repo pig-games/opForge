@@ -5,6 +5,8 @@
 //! This crate is intentionally thin: it maps a small C ABI onto the same
 //! `libopforge`/`api` boundary used by Rust hosts.
 
+mod portable_adapter;
+
 use std::any::Any;
 use std::ffi::c_void;
 use std::ffi::{CStr, CString};
@@ -974,104 +976,13 @@ impl OpforgeOpcoreExprReport {
     }
 
     fn span_parts(expr: &api::opcore::portable::PortableAstExpr) -> (u32, usize, usize) {
-        match expr {
-            api::opcore::portable::PortableAstExpr::Number(_, span)
-            | api::opcore::portable::PortableAstExpr::Identifier(_, span)
-            | api::opcore::portable::PortableAstExpr::Register(_, span)
-            | api::opcore::portable::PortableAstExpr::List(_, span)
-            | api::opcore::portable::PortableAstExpr::Index { span, .. }
-            | api::opcore::portable::PortableAstExpr::Member { span, .. }
-            | api::opcore::portable::PortableAstExpr::StructLiteral { span, .. }
-            | api::opcore::portable::PortableAstExpr::Call { span, .. }
-            | api::opcore::portable::PortableAstExpr::Placeholder(span)
-            | api::opcore::portable::PortableAstExpr::Indirect(_, span)
-            | api::opcore::portable::PortableAstExpr::Dollar(span)
-            | api::opcore::portable::PortableAstExpr::String(_, span)
-            | api::opcore::portable::PortableAstExpr::Immediate(_, span)
-            | api::opcore::portable::PortableAstExpr::IndirectLong(_, span)
-            | api::opcore::portable::PortableAstExpr::Tuple(_, span)
-            | api::opcore::portable::PortableAstExpr::Error(_, span)
-            | api::opcore::portable::PortableAstExpr::Ternary { span, .. }
-            | api::opcore::portable::PortableAstExpr::Unary { span, .. }
-            | api::opcore::portable::PortableAstExpr::Binary { span, .. }
-            | api::opcore::portable::PortableAstExpr::Range { span, .. } => {
-                (span.line, span.col_start, span.col_end)
-            }
-        }
+        let span = portable_adapter::expr_span(expr);
+        (span.line, span.col_start, span.col_end)
     }
 
     fn push_expr(&mut self, expr: &api::opcore::portable::PortableAstExpr) -> usize {
-        let (kind, text_index) = match expr {
-            api::opcore::portable::PortableAstExpr::Number(text, _) => (
-                OpforgeExprNodeKind::Number,
-                Some(self.intern_text(text.clone())),
-            ),
-            api::opcore::portable::PortableAstExpr::Identifier(name, _) => (
-                OpforgeExprNodeKind::Identifier,
-                Some(self.intern_text(name.clone())),
-            ),
-            api::opcore::portable::PortableAstExpr::Register(name, _) => (
-                OpforgeExprNodeKind::Register,
-                Some(self.intern_text(name.clone())),
-            ),
-            api::opcore::portable::PortableAstExpr::List(_, _) => (OpforgeExprNodeKind::List, None),
-            api::opcore::portable::PortableAstExpr::Index { .. } => {
-                (OpforgeExprNodeKind::Index, None)
-            }
-            api::opcore::portable::PortableAstExpr::Member { field, .. } => (
-                OpforgeExprNodeKind::Member,
-                Some(self.intern_text(field.clone())),
-            ),
-            api::opcore::portable::PortableAstExpr::StructLiteral { type_name, .. } => (
-                OpforgeExprNodeKind::StructLiteral,
-                Some(self.intern_text(type_name.clone())),
-            ),
-            api::opcore::portable::PortableAstExpr::Call { name, .. } => (
-                OpforgeExprNodeKind::Call,
-                Some(self.intern_text(name.clone())),
-            ),
-            api::opcore::portable::PortableAstExpr::Placeholder(_) => {
-                (OpforgeExprNodeKind::Placeholder, None)
-            }
-            api::opcore::portable::PortableAstExpr::Indirect(_, _) => {
-                (OpforgeExprNodeKind::Indirect, None)
-            }
-            api::opcore::portable::PortableAstExpr::Dollar(_) => {
-                (OpforgeExprNodeKind::Dollar, None)
-            }
-            api::opcore::portable::PortableAstExpr::String(bytes, _) => (
-                OpforgeExprNodeKind::String,
-                Some(self.intern_text(String::from_utf8_lossy(bytes).to_string())),
-            ),
-            api::opcore::portable::PortableAstExpr::Immediate(_, _) => {
-                (OpforgeExprNodeKind::Immediate, None)
-            }
-            api::opcore::portable::PortableAstExpr::IndirectLong(_, _) => {
-                (OpforgeExprNodeKind::IndirectLong, None)
-            }
-            api::opcore::portable::PortableAstExpr::Tuple(_, _) => {
-                (OpforgeExprNodeKind::Tuple, None)
-            }
-            api::opcore::portable::PortableAstExpr::Error(message, _) => (
-                OpforgeExprNodeKind::Error,
-                Some(self.intern_text(message.clone())),
-            ),
-            api::opcore::portable::PortableAstExpr::Ternary { .. } => {
-                (OpforgeExprNodeKind::Ternary, None)
-            }
-            api::opcore::portable::PortableAstExpr::Unary { op, .. } => (
-                OpforgeExprNodeKind::Unary,
-                Some(self.intern_text(format!("{op:?}"))),
-            ),
-            api::opcore::portable::PortableAstExpr::Binary { op, .. } => (
-                OpforgeExprNodeKind::Binary,
-                Some(self.intern_text(format!("{op:?}"))),
-            ),
-            api::opcore::portable::PortableAstExpr::Range { inclusive, .. } => (
-                OpforgeExprNodeKind::Range,
-                Some(self.intern_text(if *inclusive { "..=" } else { ".." })),
-            ),
-        };
+        let kind = portable_adapter::expr_node_kind(expr);
+        let text_index = portable_adapter::expr_node_text(expr).map(|text| self.intern_text(text));
         let (line, col_start, col_end) = Self::span_parts(expr);
         let node_index = self.nodes.len();
         self.nodes.push(OpforgeExprNodeRecord {
@@ -1084,101 +995,14 @@ impl OpforgeOpcoreExprReport {
             child_len: 0,
         });
 
-        match expr {
-            api::opcore::portable::PortableAstExpr::List(items, _)
-            | api::opcore::portable::PortableAstExpr::Tuple(items, _) => {
-                for item in items {
-                    let child_index = self.push_expr(item);
-                    self.child_edges.push(OpforgeExprChildEdge {
-                        child_index,
-                        label_text_index: None,
-                    });
-                }
-            }
-            api::opcore::portable::PortableAstExpr::Index { base, index, .. } => {
-                for child in [base.as_ref(), index.as_ref()] {
-                    let child_index = self.push_expr(child);
-                    self.child_edges.push(OpforgeExprChildEdge {
-                        child_index,
-                        label_text_index: None,
-                    });
-                }
-            }
-            api::opcore::portable::PortableAstExpr::Member { base, .. }
-            | api::opcore::portable::PortableAstExpr::Indirect(base, _)
-            | api::opcore::portable::PortableAstExpr::Immediate(base, _)
-            | api::opcore::portable::PortableAstExpr::IndirectLong(base, _)
-            | api::opcore::portable::PortableAstExpr::Unary { expr: base, .. } => {
-                let child_index = self.push_expr(base);
-                self.child_edges.push(OpforgeExprChildEdge {
-                    child_index,
-                    label_text_index: None,
-                });
-            }
-            api::opcore::portable::PortableAstExpr::StructLiteral { fields, .. } => {
-                for (field_name, value) in fields {
-                    let child_index = self.push_expr(value);
-                    let label_text_index = Some(self.intern_text(field_name.clone()));
-                    self.child_edges.push(OpforgeExprChildEdge {
-                        child_index,
-                        label_text_index,
-                    });
-                }
-            }
-            api::opcore::portable::PortableAstExpr::Call { args, .. } => {
-                for arg in args {
-                    let child_index = self.push_expr(arg);
-                    self.child_edges.push(OpforgeExprChildEdge {
-                        child_index,
-                        label_text_index: None,
-                    });
-                }
-            }
-            api::opcore::portable::PortableAstExpr::Ternary {
-                cond,
-                then_expr,
-                else_expr,
-                ..
-            } => {
-                for child in [cond.as_ref(), then_expr.as_ref(), else_expr.as_ref()] {
-                    let child_index = self.push_expr(child);
-                    self.child_edges.push(OpforgeExprChildEdge {
-                        child_index,
-                        label_text_index: None,
-                    });
-                }
-            }
-            api::opcore::portable::PortableAstExpr::Binary { left, right, .. } => {
-                for child in [left.as_ref(), right.as_ref()] {
-                    let child_index = self.push_expr(child);
-                    self.child_edges.push(OpforgeExprChildEdge {
-                        child_index,
-                        label_text_index: None,
-                    });
-                }
-            }
-            api::opcore::portable::PortableAstExpr::Range {
-                start, end, step, ..
-            } => {
-                for child in [Some(start.as_ref()), Some(end.as_ref()), step.as_deref()]
-                    .into_iter()
-                    .flatten()
-                {
-                    let child_index = self.push_expr(child);
-                    self.child_edges.push(OpforgeExprChildEdge {
-                        child_index,
-                        label_text_index: None,
-                    });
-                }
-            }
-            api::opcore::portable::PortableAstExpr::Number(_, _)
-            | api::opcore::portable::PortableAstExpr::Identifier(_, _)
-            | api::opcore::portable::PortableAstExpr::Register(_, _)
-            | api::opcore::portable::PortableAstExpr::Placeholder(_)
-            | api::opcore::portable::PortableAstExpr::Dollar(_)
-            | api::opcore::portable::PortableAstExpr::String(_, _)
-            | api::opcore::portable::PortableAstExpr::Error(_, _) => {}
-        }
+        portable_adapter::visit_expr_children(expr, |label, child| {
+            let child_index = self.push_expr(child);
+            let label_text_index = label.map(|label_text| self.intern_text(label_text.to_string()));
+            self.child_edges.push(OpforgeExprChildEdge {
+                child_index,
+                label_text_index,
+            });
+        });
 
         self.nodes[node_index].child_len =
             self.child_edges.len() - self.nodes[node_index].child_start;
@@ -1302,160 +1126,11 @@ impl OpforgeOpcoreModuleItemReport {
 }
 
 fn portable_token_text(token: &api::opcore::portable::PortableToken) -> String {
-    match &token.kind {
-        api::opcore::portable::PortableTokenKind::Identifier(name)
-        | api::opcore::portable::PortableTokenKind::Register(name) => name.clone(),
-        api::opcore::portable::PortableTokenKind::Number { text, .. } => text.clone(),
-        api::opcore::portable::PortableTokenKind::String { raw, .. } => raw.clone(),
-        api::opcore::portable::PortableTokenKind::Comma => ",".to_string(),
-        api::opcore::portable::PortableTokenKind::Colon => ":".to_string(),
-        api::opcore::portable::PortableTokenKind::Dollar => "$".to_string(),
-        api::opcore::portable::PortableTokenKind::Dot => ".".to_string(),
-        api::opcore::portable::PortableTokenKind::Hash => "#".to_string(),
-        api::opcore::portable::PortableTokenKind::Question => "?".to_string(),
-        api::opcore::portable::PortableTokenKind::OpenBracket => "[".to_string(),
-        api::opcore::portable::PortableTokenKind::CloseBracket => "]".to_string(),
-        api::opcore::portable::PortableTokenKind::OpenBrace => "{".to_string(),
-        api::opcore::portable::PortableTokenKind::CloseBrace => "}".to_string(),
-        api::opcore::portable::PortableTokenKind::OpenParen => "(".to_string(),
-        api::opcore::portable::PortableTokenKind::CloseParen => ")".to_string(),
-        api::opcore::portable::PortableTokenKind::Operator(op) => match op {
-            api::opcore::portable::PortableOperatorKind::Range => "..".to_string(),
-            api::opcore::portable::PortableOperatorKind::RangeInclusive => "..=".to_string(),
-            api::opcore::portable::PortableOperatorKind::Plus => "+".to_string(),
-            api::opcore::portable::PortableOperatorKind::Minus => "-".to_string(),
-            api::opcore::portable::PortableOperatorKind::Multiply => "*".to_string(),
-            api::opcore::portable::PortableOperatorKind::Power => "^".to_string(),
-            api::opcore::portable::PortableOperatorKind::Divide => "/".to_string(),
-            api::opcore::portable::PortableOperatorKind::Mod => "%".to_string(),
-            api::opcore::portable::PortableOperatorKind::Shl => "<<".to_string(),
-            api::opcore::portable::PortableOperatorKind::Shr => ">>".to_string(),
-            api::opcore::portable::PortableOperatorKind::BitNot => "~".to_string(),
-            api::opcore::portable::PortableOperatorKind::LogicNot => "!".to_string(),
-            api::opcore::portable::PortableOperatorKind::BitAnd => "&".to_string(),
-            api::opcore::portable::PortableOperatorKind::BitOr => "|".to_string(),
-            api::opcore::portable::PortableOperatorKind::BitXor => "^".to_string(),
-            api::opcore::portable::PortableOperatorKind::LogicAnd => "&&".to_string(),
-            api::opcore::portable::PortableOperatorKind::LogicOr => "||".to_string(),
-            api::opcore::portable::PortableOperatorKind::LogicXor => "^^".to_string(),
-            api::opcore::portable::PortableOperatorKind::Eq => "==".to_string(),
-            api::opcore::portable::PortableOperatorKind::Ne => "!=".to_string(),
-            api::opcore::portable::PortableOperatorKind::Ge => ">=".to_string(),
-            api::opcore::portable::PortableOperatorKind::Gt => ">".to_string(),
-            api::opcore::portable::PortableOperatorKind::Le => "<=".to_string(),
-            api::opcore::portable::PortableOperatorKind::Lt => "<".to_string(),
-        },
-    }
+    portable_adapter::token_text(token)
 }
 
 fn portable_expr_text(expr: &api::opcore::portable::PortableAstExpr) -> String {
-    match expr {
-        api::opcore::portable::PortableAstExpr::Number(text, _) => text.clone(),
-        api::opcore::portable::PortableAstExpr::Identifier(name, _) => name.clone(),
-        api::opcore::portable::PortableAstExpr::Register(name, _) => name.clone(),
-        api::opcore::portable::PortableAstExpr::List(items, _) => format!(
-            "{{{}}}",
-            items
-                .iter()
-                .map(portable_expr_text)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        api::opcore::portable::PortableAstExpr::Index { base, index, .. } => {
-            format!(
-                "{}[{}]",
-                portable_expr_text(base),
-                portable_expr_text(index)
-            )
-        }
-        api::opcore::portable::PortableAstExpr::Member { base, field, .. } => {
-            format!("{}.{}", portable_expr_text(base), field)
-        }
-        api::opcore::portable::PortableAstExpr::StructLiteral {
-            type_name, fields, ..
-        } => format!(
-            "{}{{{}}}",
-            type_name,
-            fields
-                .iter()
-                .map(|(name, value)| format!("{name}:{}", portable_expr_text(value)))
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-        api::opcore::portable::PortableAstExpr::Call { name, args, .. } => format!(
-            "{}({})",
-            name,
-            args.iter()
-                .map(portable_expr_text)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        api::opcore::portable::PortableAstExpr::Placeholder(_) => "?".to_string(),
-        api::opcore::portable::PortableAstExpr::Indirect(inner, _) => {
-            format!("({})", portable_expr_text(inner))
-        }
-        api::opcore::portable::PortableAstExpr::Dollar(_) => "$".to_string(),
-        api::opcore::portable::PortableAstExpr::String(bytes, _) => {
-            String::from_utf8_lossy(bytes).to_string()
-        }
-        api::opcore::portable::PortableAstExpr::Immediate(inner, _) => {
-            format!("#{}", portable_expr_text(inner))
-        }
-        api::opcore::portable::PortableAstExpr::IndirectLong(inner, _) => {
-            format!("[{}]", portable_expr_text(inner))
-        }
-        api::opcore::portable::PortableAstExpr::Tuple(items, _) => format!(
-            "({})",
-            items
-                .iter()
-                .map(portable_expr_text)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        api::opcore::portable::PortableAstExpr::Error(message, _) => message.clone(),
-        api::opcore::portable::PortableAstExpr::Ternary {
-            cond,
-            then_expr,
-            else_expr,
-            ..
-        } => format!(
-            "{} ? {} : {}",
-            portable_expr_text(cond),
-            portable_expr_text(then_expr),
-            portable_expr_text(else_expr)
-        ),
-        api::opcore::portable::PortableAstExpr::Unary { op, expr, .. } => {
-            format!("{op:?} {}", portable_expr_text(expr))
-        }
-        api::opcore::portable::PortableAstExpr::Binary {
-            left, op, right, ..
-        } => format!(
-            "{} {:?} {}",
-            portable_expr_text(left),
-            op,
-            portable_expr_text(right)
-        ),
-        api::opcore::portable::PortableAstExpr::Range {
-            start,
-            end,
-            step,
-            inclusive,
-            ..
-        } => {
-            let range_op = if *inclusive { "..=" } else { ".." };
-            let mut text = format!(
-                "{}{}{}",
-                portable_expr_text(start),
-                range_op,
-                portable_expr_text(end)
-            );
-            if let Some(step) = step {
-                text.push(':');
-                text.push_str(&portable_expr_text(step));
-            }
-            text
-        }
-    }
+    portable_adapter::expr_display_text(expr)
 }
 
 fn map_line_kind(line_ast: &api::opcore::portable::PortableLineAst) -> OpforgeLineAstKind {
@@ -2104,25 +1779,7 @@ fn map_diagnostic_severity(severity: Severity) -> OpforgeDiagnosticSeverity {
 }
 
 fn map_portable_token_kind(kind: &api::opcore::portable::PortableTokenKind) -> OpforgeTokenKind {
-    match kind {
-        api::opcore::portable::PortableTokenKind::Identifier(_) => OpforgeTokenKind::Identifier,
-        api::opcore::portable::PortableTokenKind::Register(_) => OpforgeTokenKind::Register,
-        api::opcore::portable::PortableTokenKind::Number { .. } => OpforgeTokenKind::Number,
-        api::opcore::portable::PortableTokenKind::String { .. } => OpforgeTokenKind::String,
-        api::opcore::portable::PortableTokenKind::Comma => OpforgeTokenKind::Comma,
-        api::opcore::portable::PortableTokenKind::Colon => OpforgeTokenKind::Colon,
-        api::opcore::portable::PortableTokenKind::Dollar => OpforgeTokenKind::Dollar,
-        api::opcore::portable::PortableTokenKind::Dot => OpforgeTokenKind::Dot,
-        api::opcore::portable::PortableTokenKind::Hash => OpforgeTokenKind::Hash,
-        api::opcore::portable::PortableTokenKind::Question => OpforgeTokenKind::Question,
-        api::opcore::portable::PortableTokenKind::OpenBracket => OpforgeTokenKind::OpenBracket,
-        api::opcore::portable::PortableTokenKind::CloseBracket => OpforgeTokenKind::CloseBracket,
-        api::opcore::portable::PortableTokenKind::OpenBrace => OpforgeTokenKind::OpenBrace,
-        api::opcore::portable::PortableTokenKind::CloseBrace => OpforgeTokenKind::CloseBrace,
-        api::opcore::portable::PortableTokenKind::OpenParen => OpforgeTokenKind::OpenParen,
-        api::opcore::portable::PortableTokenKind::CloseParen => OpforgeTokenKind::CloseParen,
-        api::opcore::portable::PortableTokenKind::Operator(_) => OpforgeTokenKind::Operator,
-    }
+    portable_adapter::token_kind(kind)
 }
 
 fn callbacks_ref<'a>(
@@ -5187,6 +4844,61 @@ mod tests {
         c"\xFF".as_ptr()
     }
 
+    #[derive(Debug, PartialEq, Eq)]
+    struct ExpectedExprChildEdge {
+        child_index: usize,
+        label: Option<String>,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct ExpectedExprNode {
+        kind: OpforgeExprNodeKind,
+        line: u32,
+        col_start: usize,
+        col_end: usize,
+        text: Option<String>,
+        child_start: usize,
+        child_len: usize,
+    }
+
+    fn build_expected_expr_nodes(
+        expr: &api::opcore::portable::PortableAstExpr,
+    ) -> (Vec<ExpectedExprNode>, Vec<ExpectedExprChildEdge>) {
+        fn collect(
+            expr: &api::opcore::portable::PortableAstExpr,
+            nodes: &mut Vec<ExpectedExprNode>,
+            child_edges: &mut Vec<ExpectedExprChildEdge>,
+        ) -> usize {
+            let span = super::portable_adapter::expr_span(expr);
+            let node_index = nodes.len();
+            nodes.push(ExpectedExprNode {
+                kind: super::portable_adapter::expr_node_kind(expr),
+                line: span.line,
+                col_start: span.col_start,
+                col_end: span.col_end,
+                text: super::portable_adapter::expr_node_text(expr),
+                child_start: child_edges.len(),
+                child_len: 0,
+            });
+
+            super::portable_adapter::visit_expr_children(expr, |label, child| {
+                let child_index = collect(child, nodes, child_edges);
+                child_edges.push(ExpectedExprChildEdge {
+                    child_index,
+                    label: label.map(str::to_string),
+                });
+            });
+
+            nodes[node_index].child_len = child_edges.len() - nodes[node_index].child_start;
+            node_index
+        }
+
+        let mut nodes = Vec::new();
+        let mut child_edges = Vec::new();
+        collect(expr, &mut nodes, &mut child_edges);
+        (nodes, child_edges)
+    }
+
     fn empty_string_list() -> OpforgeStringList {
         OpforgeStringList {
             items: std::ptr::null(),
@@ -7219,6 +6931,47 @@ mod tests {
     }
 
     #[test]
+    fn ffi_opforge_opcore_tokenize_group_matches_portable_adapter_projection() {
+        let line_text = "lda #$42, value[1]";
+        let line = CString::new(line_text).expect("line cstr");
+        let report = unsafe { opforge_opcore_tokenize_line(line.as_ptr(), 27) };
+        assert!(!report.is_null());
+
+        let tokenized = api::opcore::portable::tokenize_line(line_text, 27)
+            .expect("portable tokenize should succeed");
+        assert_eq!(
+            unsafe { opforge_opcore_tokenize_report_token_count(report) },
+            tokenized.tokens.len()
+        );
+
+        for (index, token) in tokenized.tokens.iter().enumerate() {
+            assert_eq!(
+                unsafe { opforge_opcore_tokenize_report_token_kind(report, index) },
+                super::portable_adapter::token_kind(&token.kind)
+            );
+            let token_text =
+                unsafe { CStr::from_ptr(opforge_opcore_tokenize_report_token_text(report, index)) }
+                    .to_str()
+                    .expect("ffi token text utf8");
+            assert_eq!(token_text, super::portable_adapter::token_text(token));
+            assert_eq!(
+                unsafe { opforge_opcore_tokenize_report_token_line(report, index) },
+                token.span.line
+            );
+            assert_eq!(
+                unsafe { opforge_opcore_tokenize_report_token_col_start(report, index) },
+                token.span.col_start
+            );
+            assert_eq!(
+                unsafe { opforge_opcore_tokenize_report_token_col_end(report, index) },
+                token.span.col_end
+            );
+        }
+
+        unsafe { opforge_opcore_tokenize_report_free(report) };
+    }
+
+    #[test]
     fn ffi_opforge_opcore_tokenize_group_reports_tokenize_errors() {
         let line = CString::new("\"unterminated").expect("line cstr");
         let report = unsafe { opforge_opcore_tokenize_line(line.as_ptr(), 12) };
@@ -7715,6 +7468,88 @@ mod tests {
             unsafe { opforge_opcore_expr_report_node_line(report, 2) },
             9
         );
+        unsafe { opforge_opcore_expr_report_free(report) };
+    }
+
+    #[test]
+    fn ffi_opforge_opcore_expr_group_matches_portable_adapter_projection() {
+        let line_text = "Sprite{x:1,y:foo(2)}";
+        let line = CString::new(line_text).expect("line cstr");
+        let report = unsafe { opforge_opcore_parse_expression(line.as_ptr(), 33) };
+        assert!(!report.is_null());
+
+        let tokenized = api::opcore::portable::tokenize_line(line_text, 33)
+            .expect("portable tokenize should succeed");
+        let expr = api::opcore::portable::parse_expression(tokenized)
+            .expect("portable expression parse should succeed");
+        let (expected_nodes, expected_child_edges) = build_expected_expr_nodes(&expr);
+
+        assert_eq!(
+            unsafe { opforge_opcore_expr_report_node_count(report) },
+            expected_nodes.len()
+        );
+
+        for (index, expected) in expected_nodes.iter().enumerate() {
+            assert_eq!(
+                unsafe { opforge_opcore_expr_report_node_kind(report, index) },
+                expected.kind
+            );
+            assert_eq!(
+                unsafe { opforge_opcore_expr_report_node_line(report, index) },
+                expected.line
+            );
+            assert_eq!(
+                unsafe { super::opforge_opcore_expr_report_node_col_start(report, index) },
+                expected.col_start
+            );
+            assert_eq!(
+                unsafe { super::opforge_opcore_expr_report_node_col_end(report, index) },
+                expected.col_end
+            );
+
+            match &expected.text {
+                Some(expected_text) => {
+                    let actual_text = unsafe {
+                        CStr::from_ptr(opforge_opcore_expr_report_node_text(report, index))
+                    }
+                    .to_str()
+                    .expect("ffi expr node text utf8");
+                    assert_eq!(actual_text, expected_text);
+                }
+                None => {
+                    assert!(
+                        unsafe { opforge_opcore_expr_report_node_text(report, index) }.is_null()
+                    );
+                }
+            }
+
+            assert_eq!(
+                unsafe { opforge_opcore_expr_report_node_child_count(report, index) },
+                expected.child_len
+            );
+
+            for child_slot in 0..expected.child_len {
+                let expected_edge = &expected_child_edges[expected.child_start + child_slot];
+                assert_eq!(
+                    unsafe { opforge_opcore_expr_report_node_child(report, index, child_slot) },
+                    expected_edge.child_index
+                );
+
+                let actual_label = unsafe {
+                    super::opforge_opcore_expr_report_node_child_label(report, index, child_slot)
+                };
+                match &expected_edge.label {
+                    Some(expected_label_text) => {
+                        let actual_label_text = unsafe { CStr::from_ptr(actual_label) }
+                            .to_str()
+                            .expect("ffi expr child label utf8");
+                        assert_eq!(actual_label_text, expected_label_text);
+                    }
+                    None => assert!(actual_label.is_null()),
+                }
+            }
+        }
+
         unsafe { opforge_opcore_expr_report_free(report) };
     }
 

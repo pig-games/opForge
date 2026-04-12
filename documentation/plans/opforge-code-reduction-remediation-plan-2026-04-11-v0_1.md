@@ -348,7 +348,7 @@ making the affected seams easier to maintain and reduce further later.
     - complex repetition semantics are implemented once and both passes delegate
       through the same traversal contract
 
-- [ ] Work item 10: add a portable-schema adapter layer inside the FFI crate
+- [x] Work item 10: add a portable-schema adapter layer inside the FFI crate
   - Source requirement or finding IDs: `RVW-2026-04-11-006`
   - Finding closure expectation: fully closes `RVW-2026-04-11-006`
   - Validation: FFI portable-schema parity tests plus full quality gates

@@ -16,17 +16,17 @@
 Zab_sys
         move.w  $dff01c,d0
         ori.w   #$8000,d0
-        move.w  d0,Old_INT.L
+        move.w  d0,Old_INT
         move.w  #$7fff,$dff09a
         move.w  $dff002,d0
         ori.w   #$8000,d0
-        move.w  d0,Old_DMA.L
+        move.w  d0,Old_DMA
         move.w  #$7fff,$dff096
         move.w  #$83c0,$dff096
         movea.l $0004,a6
         movea.l 156(a6),a1
-        move.l  38(a1),Old_COPPER.L
-        move.l  a7,Old_STACK.L
+        move.l  38(a1),Old_COPPER
+        move.l  a7,Old_STACK
 
 Wstep
         move.l  #COPPER,$dff080
@@ -63,10 +63,10 @@ Stop
         bne.s   Stop
 
 exitproc
-        movea.l Old_STACK.L,a7
-        move.l  Old_COPPER.L,$dff080
-        move.w  Old_DMA.L,$dff096
-        move.w  Old_INT.L,$dff09a
+        movea.l Old_STACK,a7
+        move.l  Old_COPPER,$dff080
+        move.w  Old_DMA,$dff096
+        move.w  Old_INT,$dff09a
         move.l  #0,d0
         rts
 

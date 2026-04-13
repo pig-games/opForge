@@ -9,7 +9,12 @@ impl<'a> AsmLine<'a> {
         let had_dot = upper.starts_with('.');
         let directive = upper.strip_prefix('.').unwrap_or(&upper);
         if !had_dot {
-            return LineStatus::NothingDone;
+            match directive {
+                "DC.B" => return self.store_arg_list_ast(operands, 1, "dc.b"),
+                "DC.W" => return self.store_arg_list_ast(operands, 2, "dc.w"),
+                "DC.L" => return self.store_arg_list_ast(operands, 4, "dc.l"),
+                _ => return LineStatus::NothingDone,
+            }
         }
         if let Some(status) = self.route_layout_directive_ast(directive, operands) {
             return status;

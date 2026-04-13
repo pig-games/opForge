@@ -9462,6 +9462,25 @@ fn db_and_dw_emit_bytes() {
 }
 
 #[test]
+fn m68k_dc_b_w_l_aliases_emit_bytes() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = AsmLine::with_cpu(&mut symbols, m68000_cpu_id, &registry);
+
+    let status = process_line(&mut asm, "    dc.b 1, 2, 3", 0, 2);
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm.bytes(), &[1, 2, 3]);
+
+    let status = process_line(&mut asm, "    dc.w $1234", 0, 2);
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm.bytes(), &[0x12, 0x34]);
+
+    let status = process_line(&mut asm, "    dc.l $11223344", 0, 2);
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm.bytes(), &[0x11, 0x22, 0x33, 0x44]);
+}
+
+#[test]
 fn byte_strings_use_active_encoding() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();

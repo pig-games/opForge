@@ -292,9 +292,12 @@ encoded text, repeated patterns, and reserved storage.
 ```
 .byte expr[, expr...]
 .db expr[, expr...]          ; alias for .byte
+dc.b expr[, expr...]         ; 68000-style alias for .byte
 .word expr[, expr...]
 .dw expr[, expr...]          ; alias for .word
+dc.w expr[, expr...]         ; 68000-style alias for .word
 .long expr[, expr...]
+dc.l expr[, expr...]         ; 68000-style alias for .long
 .text "string"[, "string"...]
 .null "string"
 .ptext "string"

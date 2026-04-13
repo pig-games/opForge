@@ -57,7 +57,28 @@ impl<'a> AsmLine<'a> {
 
             let mut rewritten_operands = None;
             let family_operands = match pipeline.family.parse_operands(mnemonic, operands) {
-                Ok(ops) => ops,
+                Ok(ops) => {
+                    if pipeline.family_id == M68K_FAMILY_ID {
+                        if let Some(rewritten) = self
+                            .m68k_canonicalize_supported_bare_symbol_operands(mnemonic, operands)
+                        {
+                            match pipeline
+                                .family
+                                .parse_operands(mnemonic, rewritten.as_slice())
+                            {
+                                Ok(rewritten_ops) => {
+                                    rewritten_operands = Some(rewritten);
+                                    rewritten_ops
+                                }
+                                Err(_) => ops,
+                            }
+                        } else {
+                            ops
+                        }
+                    } else {
+                        ops
+                    }
+                }
                 Err(err) => {
                     if pipeline.family_id == M68K_FAMILY_ID {
                         rewritten_operands = self
@@ -399,13 +420,175 @@ impl<'a> AsmLine<'a> {
                 .first()
                 .filter(|expr| Self::expr_is_bare_symbol_candidate(expr))
                 .map(expr_span),
+            _ if Self::m68k_is_supported_special_move_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [src, dst]
+                        if Self::expr_is_sr_or_ccr_candidate(src)
+                            && Self::expr_is_bare_symbol_candidate(dst) =>
+                    {
+                        Some(expr_span(dst))
+                    }
+                    [src, dst]
+                        if Self::expr_is_bare_symbol_candidate(src)
+                            && Self::expr_is_sr_or_ccr_candidate(dst) =>
+                    {
+                        Some(expr_span(src))
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_chk2_cmp2_bare_symbol_mnemonic(&upper) => match operands {
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_general_register_candidate(dst) =>
+                {
+                    Some(expr_span(src))
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_cas_bare_symbol_mnemonic(&upper) => match operands {
+                [compare, update, destination]
+                    if Self::expr_is_data_register_candidate(compare)
+                        && Self::expr_is_data_register_candidate(update)
+                        && Self::expr_is_bare_symbol_candidate(destination) =>
+                {
+                    Some(expr_span(destination))
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_callm_bare_symbol_mnemonic(&upper) => match operands {
+                [count, destination]
+                    if Self::expr_is_immediate_candidate(count)
+                        && Self::expr_is_bare_symbol_candidate(destination) =>
+                {
+                    Some(expr_span(destination))
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_bitfield_bare_symbol_mnemonic(&upper) => match operands {
+                [operand] if Self::expr_is_bitfield_bare_symbol_candidate(operand) => {
+                    Some(expr_span(operand))
+                }
+                [src, dst]
+                    if Self::expr_is_bitfield_bare_symbol_candidate(src)
+                        && Self::expr_is_data_register_candidate(dst) =>
+                {
+                    Some(expr_span(src))
+                }
+                [src, dst]
+                    if Self::expr_is_data_register_candidate(src)
+                        && Self::expr_is_bitfield_bare_symbol_candidate(dst) =>
+                {
+                    Some(expr_span(dst))
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_moves_bare_symbol_mnemonic(&upper) => match operands {
+                [src, dst]
+                    if Self::expr_is_general_register_candidate(src)
+                        && Self::expr_is_bare_symbol_candidate(dst) =>
+                {
+                    Some(expr_span(dst))
+                }
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_general_register_candidate(dst) =>
+                {
+                    Some(expr_span(src))
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_movem_bare_symbol_mnemonic(&upper) => match operands {
+                [src, dst]
+                    if Self::expr_is_integer_register_list_candidate(src)
+                        && Self::expr_is_bare_symbol_candidate(dst) =>
+                {
+                    Some(expr_span(dst))
+                }
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_integer_register_list_candidate(dst) =>
+                {
+                    Some(expr_span(src))
+                }
+                _ => None,
+            },
             "MOVEA.L" => operands
                 .first()
                 .filter(|expr| Self::expr_is_bare_symbol_candidate(expr))
                 .map(expr_span),
-            "MOVE.L" => operands
+            _ if Self::m68k_is_supported_wordmath_src_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [src, dst]
+                        if Self::expr_is_bare_symbol_candidate(src)
+                            && Self::expr_is_data_register_candidate(dst) =>
+                    {
+                        Some(expr_span(src))
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_addrreg_binary_src_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [src, dst]
+                        if Self::expr_is_bare_symbol_candidate(src)
+                            && Self::expr_is_address_register_candidate(dst) =>
+                    {
+                        Some(expr_span(src))
+                    }
+                    _ => None,
+                }
+            }
+            "MOVE.B" | "MOVE.W" | "MOVE.L" => operands
                 .iter()
                 .find(|expr| Self::expr_is_bare_symbol_candidate(expr))
+                .map(expr_span),
+            _ if Self::m68k_is_supported_datareg_binary_src_bare_symbol_mnemonic(&upper)
+                || Self::m68k_is_supported_datareg_binary_dst_bare_symbol_mnemonic(&upper) =>
+            {
+                match operands {
+                    [src, dst]
+                        if Self::expr_is_bare_symbol_candidate(src)
+                            && Self::expr_is_data_register_candidate(dst) =>
+                    {
+                        Some(expr_span(src))
+                    }
+                    [src, dst]
+                        if Self::expr_is_data_register_candidate(src)
+                            && Self::expr_is_bare_symbol_candidate(dst) =>
+                    {
+                        Some(expr_span(dst))
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_immediate_binary_dst_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [_, dst] if Self::expr_is_bare_symbol_candidate(dst) => Some(expr_span(dst)),
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_bitop_dst_bare_symbol_mnemonic(&upper) => match operands {
+                [bitnum, dst]
+                    if (Self::expr_is_immediate_candidate(bitnum)
+                        || Self::expr_is_data_register_candidate(bitnum))
+                        && Self::expr_is_bare_symbol_candidate(dst) =>
+                {
+                    Some(expr_span(dst))
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_scc_bare_symbol_mnemonic(&upper) => operands
+                .first()
+                .filter(|expr| Self::expr_is_bare_symbol_candidate(expr))
+                .map(expr_span),
+            _ if Self::m68k_is_supported_memory_shift_bare_symbol_mnemonic(&upper) => operands
+                .first()
+                .filter(|expr| Self::expr_is_bare_symbol_candidate(expr))
+                .map(expr_span),
+            _ if Self::m68k_is_supported_unary_bare_symbol_mnemonic(&upper) => operands
+                .first()
+                .filter(|expr| Self::expr_is_bare_symbol_candidate(expr))
                 .map(expr_span),
             _ => None,
         }
@@ -431,16 +614,145 @@ impl<'a> AsmLine<'a> {
                 }
                 _ => None,
             },
+            _ if Self::m68k_is_supported_special_move_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [src, dst]
+                        if Self::expr_is_sr_or_ccr_candidate(src)
+                            && Self::expr_is_bare_symbol_candidate(dst) =>
+                    {
+                        Some(vec![
+                            src.clone(),
+                            Self::wrap_expr_with_absolute_long_suffix(dst),
+                        ])
+                    }
+                    [src, dst]
+                        if Self::expr_is_bare_symbol_candidate(src)
+                            && Self::expr_is_sr_or_ccr_candidate(dst) =>
+                    {
+                        Some(vec![
+                            Self::wrap_expr_with_absolute_long_suffix(src),
+                            dst.clone(),
+                        ])
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_chk2_cmp2_bare_symbol_mnemonic(&upper) => match operands {
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_general_register_candidate(dst) =>
+                {
+                    Some(vec![
+                        Self::wrap_expr_with_absolute_long_suffix(src),
+                        dst.clone(),
+                    ])
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_cas_bare_symbol_mnemonic(&upper) => match operands {
+                [compare, update, destination]
+                    if Self::expr_is_data_register_candidate(compare)
+                        && Self::expr_is_data_register_candidate(update)
+                        && Self::expr_is_bare_symbol_candidate(destination) =>
+                {
+                    Some(vec![
+                        compare.clone(),
+                        update.clone(),
+                        Self::wrap_expr_with_absolute_long_suffix(destination),
+                    ])
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_callm_bare_symbol_mnemonic(&upper) => match operands {
+                [count, destination]
+                    if Self::expr_is_immediate_candidate(count)
+                        && Self::expr_is_bare_symbol_candidate(destination) =>
+                {
+                    Some(vec![
+                        count.clone(),
+                        Self::wrap_expr_with_absolute_long_suffix(destination),
+                    ])
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_bitfield_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [operand] if Self::expr_is_bitfield_bare_symbol_candidate(operand) => Some(
+                        vec![Self::wrap_bitfield_base_with_absolute_long_suffix(operand)],
+                    ),
+                    [src, dst]
+                        if Self::expr_is_bitfield_bare_symbol_candidate(src)
+                            && Self::expr_is_data_register_candidate(dst) =>
+                    {
+                        Some(vec![
+                            Self::wrap_bitfield_base_with_absolute_long_suffix(src),
+                            dst.clone(),
+                        ])
+                    }
+                    [src, dst]
+                        if Self::expr_is_data_register_candidate(src)
+                            && Self::expr_is_bitfield_bare_symbol_candidate(dst) =>
+                    {
+                        Some(vec![
+                            src.clone(),
+                            Self::wrap_bitfield_base_with_absolute_long_suffix(dst),
+                        ])
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_moves_bare_symbol_mnemonic(&upper) => match operands {
+                [src, dst]
+                    if Self::expr_is_general_register_candidate(src)
+                        && Self::expr_is_bare_symbol_candidate(dst) =>
+                {
+                    Some(vec![
+                        src.clone(),
+                        Self::wrap_expr_with_absolute_long_suffix(dst),
+                    ])
+                }
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_general_register_candidate(dst) =>
+                {
+                    Some(vec![
+                        Self::wrap_expr_with_absolute_long_suffix(src),
+                        dst.clone(),
+                    ])
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_movem_bare_symbol_mnemonic(&upper) => match operands {
+                [src, dst]
+                    if Self::expr_is_integer_register_list_candidate(src)
+                        && Self::expr_is_bare_symbol_candidate(dst) =>
+                {
+                    Some(vec![
+                        src.clone(),
+                        Self::wrap_expr_with_absolute_long_suffix(dst),
+                    ])
+                }
+                [src, dst]
+                    if Self::expr_is_bare_symbol_candidate(src)
+                        && Self::expr_is_integer_register_list_candidate(dst) =>
+                {
+                    Some(vec![
+                        Self::wrap_expr_with_absolute_long_suffix(src),
+                        dst.clone(),
+                    ])
+                }
+                _ => None,
+            },
             "PEA" | "JMP" | "JSR" => match operands {
                 [expr] if Self::expr_is_bare_symbol_candidate(expr) => {
                     Some(vec![Self::wrap_expr_with_absolute_long_suffix(expr)])
                 }
                 _ => None,
             },
-            "MOVE.L" => match operands {
+            "MOVE.B" | "MOVE.W" | "MOVE.L" => match operands {
                 [src, dst]
                     if Self::expr_is_bare_symbol_candidate(src)
-                        && Self::expr_is_data_register_candidate(dst) =>
+                        && !Self::expr_is_bare_symbol_candidate(dst) =>
                 {
                     Some(vec![
                         Self::wrap_expr_with_absolute_long_suffix(src),
@@ -448,7 +760,7 @@ impl<'a> AsmLine<'a> {
                     ])
                 }
                 [src, dst]
-                    if Self::expr_is_data_register_candidate(src)
+                    if !Self::expr_is_bare_symbol_candidate(src)
                         && Self::expr_is_bare_symbol_candidate(dst) =>
                 {
                     Some(vec![
@@ -470,14 +782,259 @@ impl<'a> AsmLine<'a> {
                 }
                 _ => None,
             },
+            _ if Self::m68k_is_supported_wordmath_src_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [src, dst]
+                        if Self::expr_is_bare_symbol_candidate(src)
+                            && Self::expr_is_data_register_candidate(dst) =>
+                    {
+                        Some(vec![
+                            Self::wrap_expr_with_absolute_long_suffix(src),
+                            dst.clone(),
+                        ])
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_addrreg_binary_src_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [src, dst]
+                        if Self::expr_is_bare_symbol_candidate(src)
+                            && Self::expr_is_address_register_candidate(dst) =>
+                    {
+                        Some(vec![
+                            Self::wrap_expr_with_absolute_long_suffix(src),
+                            dst.clone(),
+                        ])
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_datareg_binary_src_bare_symbol_mnemonic(&upper)
+                || Self::m68k_is_supported_datareg_binary_dst_bare_symbol_mnemonic(&upper) =>
+            {
+                match operands {
+                    [src, dst]
+                        if Self::expr_is_bare_symbol_candidate(src)
+                            && Self::expr_is_data_register_candidate(dst) =>
+                    {
+                        Some(vec![
+                            Self::wrap_expr_with_absolute_long_suffix(src),
+                            dst.clone(),
+                        ])
+                    }
+                    [src, dst]
+                        if Self::expr_is_data_register_candidate(src)
+                            && Self::expr_is_bare_symbol_candidate(dst) =>
+                    {
+                        Some(vec![
+                            src.clone(),
+                            Self::wrap_expr_with_absolute_long_suffix(dst),
+                        ])
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_immediate_binary_dst_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [src, dst] if Self::expr_is_bare_symbol_candidate(dst) => Some(vec![
+                        src.clone(),
+                        Self::wrap_expr_with_absolute_long_suffix(dst),
+                    ]),
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_bitop_dst_bare_symbol_mnemonic(&upper) => match operands {
+                [bitnum, dst]
+                    if (Self::expr_is_immediate_candidate(bitnum)
+                        || Self::expr_is_data_register_candidate(bitnum))
+                        && Self::expr_is_bare_symbol_candidate(dst) =>
+                {
+                    Some(vec![
+                        bitnum.clone(),
+                        Self::wrap_expr_with_absolute_long_suffix(dst),
+                    ])
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_scc_bare_symbol_mnemonic(&upper) => match operands {
+                [expr] if Self::expr_is_bare_symbol_candidate(expr) => {
+                    Some(vec![Self::wrap_expr_with_absolute_long_suffix(expr)])
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_memory_shift_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [expr] if Self::expr_is_bare_symbol_candidate(expr) => {
+                        Some(vec![Self::wrap_expr_with_absolute_long_suffix(expr)])
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_unary_bare_symbol_mnemonic(&upper) => match operands {
+                [expr] if Self::expr_is_bare_symbol_candidate(expr) => {
+                    Some(vec![Self::wrap_expr_with_absolute_long_suffix(expr)])
+                }
+                _ => None,
+            },
             _ => None,
         }
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_unary_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(upper, "NBCD" | "TAS")
+            || matches!(
+                upper.split_once('.'),
+                Some((base, size))
+                    if matches!(base, "CLR" | "NEGX" | "NEG" | "NOT" | "TST")
+                        && matches!(size, "B" | "W" | "L")
+            )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_special_move_bare_symbol_mnemonic(upper: &str) -> bool {
+        upper == "MOVE"
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_chk2_cmp2_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper.split_once('.'),
+            Some((base, size))
+                if (base == "CHK2" && matches!(size, "W" | "L"))
+                    || (base == "CMP2" && matches!(size, "B" | "W" | "L"))
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_cas_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper.split_once('.'),
+            Some((base, size)) if base == "CAS" && matches!(size, "B" | "W" | "L")
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_callm_bare_symbol_mnemonic(upper: &str) -> bool {
+        upper == "CALLM"
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_bitfield_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper,
+            "BFTST" | "BFEXTU" | "BFEXTS" | "BFFFO" | "BFCHG" | "BFCLR" | "BFSET" | "BFINS"
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_movem_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(upper, "MOVEM.W" | "MOVEM.L")
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_moves_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper.split_once('.'),
+            Some((base, size)) if base == "MOVES" && matches!(size, "B" | "W" | "L")
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_datareg_binary_src_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper.split_once('.'),
+            Some((base, size))
+                if matches!(base, "ADD" | "SUB" | "AND" | "OR" | "CMP")
+                    && matches!(size, "B" | "W" | "L")
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_wordmath_src_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(upper, "CHK" | "MULU" | "MULS" | "DIVU" | "DIVS")
+            || matches!(
+                upper.split_once('.'),
+                Some((base, size))
+                    if matches!(base, "CHK" | "MULU" | "MULS" | "DIVU" | "DIVS")
+                        && matches!(size, "W" | "L")
+            )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_addrreg_binary_src_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper.split_once('.'),
+            Some((base, size))
+                if matches!(base, "ADDA" | "SUBA" | "CMPA") && matches!(size, "W" | "L")
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_datareg_binary_dst_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper.split_once('.'),
+            Some((base, size))
+                if matches!(base, "ADD" | "SUB" | "AND" | "OR" | "EOR")
+                    && matches!(size, "B" | "W" | "L")
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_immediate_binary_dst_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper.split_once('.'),
+            Some((base, size))
+                if matches!(base, "ORI" | "ANDI" | "SUBI" | "ADDI" | "EORI" | "CMPI")
+                    && matches!(size, "B" | "W" | "L")
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_bitop_dst_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(upper, "BTST" | "BCHG" | "BCLR" | "BSET")
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_scc_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper,
+            "ST" | "SF"
+                | "SHI"
+                | "SLS"
+                | "SCC"
+                | "SCS"
+                | "SNE"
+                | "SEQ"
+                | "SVC"
+                | "SVS"
+                | "SPL"
+                | "SMI"
+                | "SGE"
+                | "SLT"
+                | "SGT"
+                | "SLE"
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn m68k_is_supported_memory_shift_bare_symbol_mnemonic(upper: &str) -> bool {
+        matches!(
+            upper,
+            "ASL" | "ASR" | "LSL" | "LSR" | "ROL" | "ROR" | "ROXL" | "ROXR"
+        ) || matches!(
+            upper.split_once('.'),
+            Some((base, size))
+                if matches!(base, "ASL" | "ASR" | "LSL" | "LSR" | "ROL" | "ROR" | "ROXL" | "ROXR")
+                    && size == "W"
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
     fn expr_is_bare_symbol_candidate(expr: &Expr) -> bool {
         match expr {
-            Expr::Identifier(_, _) => true,
+            Expr::Identifier(name, _) => !name.contains('.'),
             Expr::Unary {
                 op: UnaryOp::Plus,
                 expr: inner,
@@ -489,22 +1046,45 @@ impl<'a> AsmLine<'a> {
 
     #[cfg(not(feature = "vm-runtime-only"))]
     fn wrap_expr_with_absolute_long_suffix(expr: &Expr) -> Expr {
-        Expr::Member {
-            base: Box::new(expr.clone()),
-            field: "L".to_string(),
-            span: expr_span(expr),
+        match expr {
+            Expr::Identifier(name, span) | Expr::Register(name, span) => {
+                Expr::Identifier(format!("{name}.L"), *span)
+            }
+            _ => Expr::Member {
+                base: Box::new(expr.clone()),
+                field: "L".to_string(),
+                span: expr_span(expr),
+            },
         }
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
-    fn expr_is_data_register_candidate(expr: &Expr) -> bool {
+    fn expr_is_bitfield_bare_symbol_candidate(expr: &Expr) -> bool {
         matches!(
-            Self::raw_register_name(expr),
-            Some(name)
-                if name.len() == 2
-                    && name.starts_with('D')
-                    && matches!(name.as_bytes()[1], b'0'..=b'7')
+            expr,
+            Expr::Call { name, args, .. }
+                if name == ".bitfield"
+                    && args.len() == 3
+                    && Self::expr_is_bare_symbol_candidate(&args[0])
         )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn wrap_bitfield_base_with_absolute_long_suffix(expr: &Expr) -> Expr {
+        match expr {
+            Expr::Call { name, args, span } if name == ".bitfield" && args.len() == 3 => {
+                Expr::Call {
+                    name: name.clone(),
+                    args: vec![
+                        Self::wrap_expr_with_absolute_long_suffix(&args[0]),
+                        args[1].clone(),
+                        args[2].clone(),
+                    ],
+                    span: *span,
+                }
+            }
+            _ => expr.clone(),
+        }
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
@@ -520,11 +1100,58 @@ impl<'a> AsmLine<'a> {
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_data_register_candidate(expr: &Expr) -> bool {
+        matches!(
+            Self::raw_register_name(expr),
+            Some(name)
+                if name.len() == 2
+                    && name.starts_with('D')
+                    && matches!(name.as_bytes()[1], b'0'..=b'7')
+        )
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_general_register_candidate(expr: &Expr) -> bool {
+        Self::expr_is_data_register_candidate(expr)
+            || Self::expr_is_address_register_candidate(expr)
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
     fn raw_register_name(expr: &Expr) -> Option<String> {
         match expr {
             Expr::Identifier(name, _) | Expr::Register(name, _) => Some(name.to_ascii_uppercase()),
             _ => None,
         }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_immediate_candidate(expr: &Expr) -> bool {
+        matches!(expr, Expr::Immediate(_, _))
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_sr_or_ccr_candidate(expr: &Expr) -> bool {
+        matches!(Self::raw_register_name(expr).as_deref(), Some("SR" | "CCR"))
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn expr_is_integer_register_list_candidate(expr: &Expr) -> bool {
+        if Self::expr_is_data_register_candidate(expr)
+            || Self::expr_is_address_register_candidate(expr)
+        {
+            return true;
+        }
+
+        matches!(
+            expr,
+            Expr::Binary {
+                op: BinaryOp::Divide | BinaryOp::Subtract,
+                left,
+                right,
+                ..
+            } if Self::expr_is_integer_register_list_candidate(left)
+                && Self::expr_is_integer_register_list_candidate(right)
+        )
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
@@ -618,6 +1245,124 @@ impl<'a> AsmLine<'a> {
                 }) if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
                 _ => None,
             },
+            _ if Self::m68k_is_supported_special_move_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [M68KFamilyOperand::SpecialRegister {
+                        register:
+                            families::m68k::operand::SpecialRegisterKind::Sr
+                            | families::m68k::operand::SpecialRegisterKind::Ccr,
+                        ..
+                    }, M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                    [M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }, M68KFamilyOperand::SpecialRegister {
+                        register:
+                            families::m68k::operand::SpecialRegisterKind::Sr
+                            | families::m68k::operand::SpecialRegisterKind::Ccr,
+                        ..
+                    }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_chk2_cmp2_bare_symbol_mnemonic(&upper) => match operands {
+                [M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }, M68KFamilyOperand::DataRegister { .. }]
+                | [M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }, M68KFamilyOperand::AddressRegister { .. }]
+                    if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
+                {
+                    Some(*span)
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_cas_bare_symbol_mnemonic(&upper) => match operands {
+                [M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_callm_bare_symbol_mnemonic(&upper) => match operands {
+                [M68KFamilyOperand::Immediate { .. }, M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_bitfield_bare_symbol_mnemonic(&upper) => {
+                match operands.iter().find_map(|operand| match operand {
+                    M68KFamilyOperand::BitField { base, span, .. } => match base.as_ref() {
+                        M68KFamilyOperand::Absolute {
+                            expr,
+                            size: families::m68k::operand::AbsoluteSize::Word,
+                            ..
+                        } if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                        _ => None,
+                    },
+                    _ => None,
+                }) {
+                    some_span @ Some(_) => some_span,
+                    None => None,
+                }
+            }
+            _ if Self::m68k_is_supported_moves_bare_symbol_mnemonic(&upper) => match operands {
+                [M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }]
+                | [M68KFamilyOperand::AddressRegister { .. }, M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }]
+                | [M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }, M68KFamilyOperand::DataRegister { .. }]
+                | [M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }, M68KFamilyOperand::AddressRegister { .. }]
+                    if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
+                {
+                    Some(*span)
+                }
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_movem_bare_symbol_mnemonic(&upper) => match operands {
+                [M68KFamilyOperand::RegisterList { .. }, M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }]
+                | [M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }, M68KFamilyOperand::RegisterList { .. }]
+                    if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
+                {
+                    Some(*span)
+                }
+                _ => None,
+            },
             "MOVEA.L" => match operands {
                 [M68KFamilyOperand::Absolute {
                     expr,
@@ -630,23 +1375,125 @@ impl<'a> AsmLine<'a> {
                 }
                 _ => None,
             },
-            "MOVE.L" => match operands {
+            _ if Self::m68k_is_supported_wordmath_src_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }, M68KFamilyOperand::DataRegister { .. }]
+                        if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
+                    {
+                        Some(*span)
+                    }
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_addrreg_binary_src_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }, M68KFamilyOperand::AddressRegister { .. }]
+                        if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
+                    {
+                        Some(*span)
+                    }
+                    _ => None,
+                }
+            }
+            "MOVE.B" | "MOVE.W" | "MOVE.L" => match operands {
                 [M68KFamilyOperand::Absolute {
                     expr,
                     size: families::m68k::operand::AbsoluteSize::Word,
                     span,
-                }, M68KFamilyOperand::DataRegister { .. }]
+                }, _]
                     if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
                 {
                     Some(*span)
                 }
-                [M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::Absolute {
+                [_, M68KFamilyOperand::Absolute {
                     expr,
                     size: families::m68k::operand::AbsoluteSize::Word,
                     span,
                 }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
                 _ => None,
             },
+            _ if Self::m68k_is_supported_datareg_binary_src_bare_symbol_mnemonic(&upper)
+                || Self::m68k_is_supported_datareg_binary_dst_bare_symbol_mnemonic(&upper) =>
+            {
+                match operands {
+                    [M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }, M68KFamilyOperand::DataRegister { .. }]
+                        if self.hunk_abs32_target_section_for_expr(expr).is_some() =>
+                    {
+                        Some(*span)
+                    }
+                    [M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_immediate_binary_dst_bare_symbol_mnemonic(&upper) => {
+                match operands {
+                    [M68KFamilyOperand::Immediate { .. }, M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_bitop_dst_bare_symbol_mnemonic(&upper) => match operands {
+                [M68KFamilyOperand::Immediate { .. }, M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }]
+                | [M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::Absolute {
+                    expr,
+                    size: families::m68k::operand::AbsoluteSize::Word,
+                    span,
+                }] if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                _ => None,
+            },
+            _ if Self::m68k_is_supported_scc_bare_symbol_mnemonic(&upper) => {
+                match operands.first() {
+                    Some(M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }) if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_memory_shift_bare_symbol_mnemonic(&upper) => {
+                match operands.first() {
+                    Some(M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }) if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                    _ => None,
+                }
+            }
+            _ if Self::m68k_is_supported_unary_bare_symbol_mnemonic(&upper) => {
+                match operands.first() {
+                    Some(M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Word,
+                        span,
+                    }) if self.hunk_abs32_target_section_for_expr(expr).is_some() => Some(*span),
+                    _ => None,
+                }
+            }
             _ => None,
         }
     }
@@ -660,6 +1507,13 @@ impl<'a> AsmLine<'a> {
                     expr,
                     matches!(size, families::m68k::operand::AbsoluteSize::Word),
                 ),
+                M68KFamilyOperand::BitField { base, .. } => match base.as_ref() {
+                    M68KFamilyOperand::Absolute { expr, size, .. } => (
+                        expr,
+                        matches!(size, families::m68k::operand::AbsoluteSize::Word),
+                    ),
+                    _ => continue,
+                },
                 M68KFamilyOperand::Immediate { expr, .. } => (expr, false),
                 _ => continue,
             };
@@ -691,45 +1545,106 @@ impl<'a> AsmLine<'a> {
         operands: &[M68KFamilyOperand],
         bytes: &[u8],
     ) -> Result<Vec<InstructionOutputFixupPlan>, (AsmErrorKind, String, Span)> {
+        enum RelocOperandKind {
+            Plain,
+            BitFieldBase,
+        }
+
         let mut relocatable_operands = Vec::new();
         for (index, operand) in operands.iter().enumerate() {
-            let (expr, span) = match operand {
+            match operand {
                 M68KFamilyOperand::Absolute {
                     expr,
                     size: families::m68k::operand::AbsoluteSize::Long,
                     span,
-                } => (expr, *span),
-                M68KFamilyOperand::Immediate { expr, span } => (expr, *span),
+                } => {
+                    let relocation =
+                        self.eval_hunk_abs32_relocation_value(expr).map_err(|err| {
+                            (
+                                ast_eval_error_kind_to_asm(err.error.kind()),
+                                err.error.message().to_string(),
+                                err.span,
+                            )
+                        })?;
+                    if relocation.is_some() {
+                        relocatable_operands.push((index, RelocOperandKind::Plain, expr, *span));
+                    }
+                    continue;
+                }
+                M68KFamilyOperand::Immediate { expr, span } => {
+                    let relocation =
+                        self.eval_hunk_abs32_relocation_value(expr).map_err(|err| {
+                            (
+                                ast_eval_error_kind_to_asm(err.error.kind()),
+                                err.error.message().to_string(),
+                                err.span,
+                            )
+                        })?;
+                    if relocation.is_some() {
+                        relocatable_operands.push((index, RelocOperandKind::Plain, expr, *span));
+                    }
+                    continue;
+                }
+                M68KFamilyOperand::BitField { base, span, .. } => match base.as_ref() {
+                    M68KFamilyOperand::Absolute {
+                        expr,
+                        size: families::m68k::operand::AbsoluteSize::Long,
+                        ..
+                    } => {
+                        let relocation =
+                            self.eval_hunk_abs32_relocation_value(expr).map_err(|err| {
+                                (
+                                    ast_eval_error_kind_to_asm(err.error.kind()),
+                                    err.error.message().to_string(),
+                                    err.span,
+                                )
+                            })?;
+                        if relocation.is_some() {
+                            relocatable_operands.push((
+                                index,
+                                RelocOperandKind::BitFieldBase,
+                                expr,
+                                *span,
+                            ));
+                        }
+                        continue;
+                    }
+                    _ => continue,
+                },
                 _ => continue,
-            };
-            let relocation = self.eval_hunk_abs32_relocation_value(expr).map_err(|err| {
-                (
-                    ast_eval_error_kind_to_asm(err.error.kind()),
-                    err.error.message().to_string(),
-                    err.span,
-                )
-            })?;
-            if relocation.is_some() {
-                relocatable_operands.push((index, expr, span));
             }
         }
 
-        let [(index, expr, span)] = relocatable_operands.as_slice() else {
+        let [(index, kind, expr, span)] = relocatable_operands.as_slice() else {
             return Ok(Vec::new());
         };
 
-        let Some(offset) = (match index {
-            0 => Some(2),
-            1 => match operands.get(1) {
-                Some(M68KFamilyOperand::Absolute {
-                    size: families::m68k::operand::AbsoluteSize::Long,
-                    ..
-                }) => u32::try_from(bytes.len())
-                    .ok()
-                    .and_then(|length| length.checked_sub(4)),
+        let Some(offset) = (match kind {
+            RelocOperandKind::BitFieldBase => u32::try_from(bytes.len())
+                .ok()
+                .and_then(|length| length.checked_sub(4)),
+            RelocOperandKind::Plain => match index {
+                0 => Some(2),
+                1 => match operands.get(1) {
+                    Some(M68KFamilyOperand::Absolute {
+                        size: families::m68k::operand::AbsoluteSize::Long,
+                        ..
+                    }) => u32::try_from(bytes.len())
+                        .ok()
+                        .and_then(|length| length.checked_sub(4)),
+                    _ => None,
+                },
+                2 => match operands {
+                    [M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::DataRegister { .. }, M68KFamilyOperand::Absolute {
+                        size: families::m68k::operand::AbsoluteSize::Long,
+                        ..
+                    }] => u32::try_from(bytes.len())
+                        .ok()
+                        .and_then(|length| length.checked_sub(4)),
+                    _ => None,
+                },
                 _ => None,
             },
-            _ => None,
         }) else {
             return Ok(Vec::new());
         };
@@ -1318,5 +2233,284 @@ impl<'a> AsmLine<'a> {
         }];
 
         Some(status)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn span() -> Span {
+        Span {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        }
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_datareg_binary_destination_symbol() {
+        let operands = vec![
+            Expr::Identifier("D0".to_string(), span()),
+            Expr::Identifier("target".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("ADD.W", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(name, _), Expr::Identifier(target, _)]
+                if name == "D0" && target == "target.L"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_immediate_binary_destination_symbol() {
+        let operands = vec![
+            Expr::Immediate(Box::new(Expr::Number("1".to_string(), span())), span()),
+            Expr::Identifier("target".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("ADDI.W", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Immediate { .. }, Expr::Identifier(target, _)] if target == "target.L"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_bitop_destination_symbol() {
+        let operands = vec![
+            Expr::Immediate(Box::new(Expr::Number("1".to_string(), span())), span()),
+            Expr::Identifier("target".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("BTST", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Immediate(_, _), Expr::Identifier(target, _)] if target == "target.L"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_addrreg_binary_source_symbol() {
+        let operands = vec![
+            Expr::Identifier("target".to_string(), span()),
+            Expr::Identifier("A0".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("ADDA.L", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(target, _), Expr::Identifier(name, _)]
+                if target == "target.L" && name == "A0"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_scc_destination_symbol() {
+        let operands = vec![Expr::Identifier("target".to_string(), span())];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("SNE", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(target, _)] if target == "target.L"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_wordmath_source_symbol() {
+        let operands = vec![
+            Expr::Identifier("target".to_string(), span()),
+            Expr::Identifier("D1".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("MULU", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(target, _), Expr::Identifier(name, _)]
+                if target == "target.L" && name == "D1"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_memory_shift_destination_symbol() {
+        let operands = vec![Expr::Identifier("target".to_string(), span())];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("ASL", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(target, _)] if target == "target.L"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_special_move_symbol_operand() {
+        let operands = vec![
+            Expr::Identifier("target".to_string(), span()),
+            Expr::Identifier("SR".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("MOVE", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(target, _), Expr::Identifier(name, _)]
+                if target == "target.L" && name == "SR"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_movem_symbol_operand() {
+        let operands = vec![
+            Expr::Binary {
+                op: BinaryOp::Divide,
+                left: Box::new(Expr::Identifier("D0".to_string(), span())),
+                right: Box::new(Expr::Identifier("D1".to_string(), span())),
+                span: span(),
+            },
+            Expr::Identifier("target".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("MOVEM.W", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Binary { .. }, Expr::Identifier(target, _)] if target == "target.L"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_moves_symbol_operand() {
+        let operands = vec![
+            Expr::Identifier("target".to_string(), span()),
+            Expr::Identifier("A2".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("MOVES.L", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(target, _), Expr::Identifier(name, _)]
+                if target == "target.L" && name == "A2"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_chk2_cmp2_symbol_operand() {
+        let operands = vec![
+            Expr::Identifier("target".to_string(), span()),
+            Expr::Identifier("D0".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("CHK2.W", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(target, _), Expr::Identifier(name, _)]
+                if target == "target.L" && name == "D0"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_cas_symbol_operand() {
+        let operands = vec![
+            Expr::Identifier("D0".to_string(), span()),
+            Expr::Identifier("D1".to_string(), span()),
+            Expr::Identifier("target".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("CAS.W", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Identifier(compare, _), Expr::Identifier(update, _), Expr::Identifier(target, _)]
+                if compare == "D0" && update == "D1" && target == "target.L"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_callm_symbol_operand() {
+        let operands = vec![
+            Expr::Immediate(Box::new(Expr::Number("5".to_string(), span())), span()),
+            Expr::Identifier("target".to_string(), span()),
+        ];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("CALLM", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Immediate(_, _), Expr::Identifier(target, _)] if target == "target.L"
+        ));
+    }
+
+    #[test]
+    fn m68k_canonicalize_rewrites_bitfield_symbol_operand() {
+        let operands = vec![Expr::Call {
+            name: ".bitfield".to_string(),
+            args: vec![
+                Expr::Identifier("target".to_string(), span()),
+                Expr::Number("3".to_string(), span()),
+                Expr::Number("5".to_string(), span()),
+            ],
+            span: span(),
+        }];
+        let mut symbols = SymbolTable::new();
+        let registry = ModuleRegistry::new();
+        let asm = AsmLine::new(&mut symbols, &registry);
+        let rewritten = asm
+            .m68k_canonicalize_supported_bare_symbol_operands("BFTST", operands.as_slice())
+            .expect("expected rewrite");
+        assert!(matches!(
+            rewritten.as_slice(),
+            [Expr::Call { name, args, .. }]
+                if name == ".bitfield"
+                    && matches!(&args[0], Expr::Identifier(target, _) if target == "target.L")
+        ));
     }
 }

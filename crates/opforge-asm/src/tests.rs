@@ -15102,10 +15102,10 @@ fn linker_output_hunk_live_path_rejects_label_alias_addends_for_long_relocations
     );
 }
 
-fn assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source: &str) {
-    let assembler = run_passes(&[
+fn assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(cpu: &str, source: &str) {
+    let lines = [
         ".module main",
-        ".cpu 68000",
+        cpu,
         ".region ram, $2000, $20ff",
         ".section code, kind=code",
         source,
@@ -15115,7 +15115,35 @@ fn assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source: &str) {
         ".place code in ram",
         ".output \"build/out.hunk\", format=hunk, sections=code",
         ".endmodule",
-    ]);
+    ];
+    let mut assembler = Assembler::new();
+    let lines: Vec<String> = lines.iter().map(|line| line.to_string()).collect();
+    let pass1 = assembler.pass1(&lines);
+    assert_eq!(
+        pass1.errors,
+        0,
+        "pass1 should succeed for `{source}`: {:?}",
+        assembler
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.severity == Severity::Error)
+            .map(|diag| format!("{}:{}", diag.line, diag.error.message()))
+            .collect::<Vec<_>>()
+    );
+    let mut listing_out = Vec::new();
+    let mut listing = ListingWriter::new(&mut listing_out, false);
+    let pass2 = assembler.pass2(&lines, &mut listing).expect("pass2");
+    assert_eq!(
+        pass2.errors,
+        0,
+        "pass2 should succeed for `{source}`: {:?}",
+        assembler
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.severity == Severity::Error)
+            .map(|diag| format!("{}:{}", diag.line, diag.error.message()))
+            .collect::<Vec<_>>()
+    );
     let output = assembler
         .root_metadata
         .linker_outputs
@@ -15137,6 +15165,10 @@ fn assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source: &str) {
     );
 }
 
+fn assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source: &str) {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(".cpu 68000", source);
+}
+
 #[test]
 fn linker_output_hunk_live_path_emits_reloc32_for_v03_bare_symbol_instruction_subset() {
     for source in [
@@ -15153,8 +15185,316 @@ fn linker_output_hunk_live_path_emits_reloc32_for_v03_bare_symbol_instruction_su
 }
 
 #[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_unary_bare_symbol_subset() {
+    for source in [
+        "start: CLR.W target",
+        "start: NEGX.W target",
+        "start: NEG.L target",
+        "start: NOT.B target",
+        "start: TST.W target",
+        "start: NBCD target",
+        "start: TAS target",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_datareg_binary_bare_symbol_subset() {
+    for source in [
+        "start: ADD.W target,D0",
+        "start: SUB.L target,D1",
+        "start: AND.B target,D2",
+        "start: OR.W target,D3",
+        "start: CMP.W target,D4",
+        "start: ADD.W D0,target",
+        "start: SUB.B D1,target",
+        "start: AND.L D2,target",
+        "start: OR.W D3,target",
+        "start: EOR.B D4,target",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_datareg_binary_absolute_long_destination() {
+    for source in [
+        "start: ADD.W D0,target.L",
+        "start: SUB.B D1,target.L",
+        "start: AND.L D2,target.L",
+        "start: OR.W D3,target.L",
+        "start: EOR.B D4,target.L",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_immediate_binary_bare_symbol_subset() {
+    for source in [
+        "start: ORI.B #$12,target",
+        "start: ANDI.W #$1234,target",
+        "start: ADDI.W #1,target",
+        "start: SUBI.B #1,target",
+        "start: EORI.L #$12345678,target",
+        "start: CMPI.W #$1234,target",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_bitop_bare_symbol_subset() {
+    for source in [
+        "start: BTST #1,target",
+        "start: BTST D1,target",
+        "start: BCHG #5,target",
+        "start: BCHG D3,target",
+        "start: BCLR #1,target",
+        "start: BCLR D4,target",
+        "start: BSET #7,target",
+        "start: BSET D6,target",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_addrreg_binary_bare_symbol_subset() {
+    for source in [
+        "start: ADDA.W target,A0",
+        "start: ADDA.L target,A1",
+        "start: SUBA.W target,A2",
+        "start: SUBA.L target,A3",
+        "start: CMPA.W target,A4",
+        "start: CMPA.L target,A5",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_scc_bare_symbol_subset() {
+    for source in [
+        "start: SNE target",
+        "start: ST target",
+        "start: SF target",
+        "start: SGT target",
+        "start: SLE target",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_wordmath_bare_symbol_subset() {
+    for source in [
+        "start: CHK target,D0",
+        "start: MULU target,D1",
+        "start: MULS target,D2",
+        "start: DIVU target,D3",
+        "start: DIVS target,D4",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_memory_shift_bare_symbol_subset() {
+    for source in [
+        "start: ASL target",
+        "start: ASR.W target",
+        "start: LSL target",
+        "start: LSR.W target",
+        "start: ROL target",
+        "start: ROR.W target",
+        "start: ROXL target",
+        "start: ROXR.W target",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_special_move_bare_symbol_subset() {
+    for source in [
+        "start: MOVE SR,target",
+        "start: MOVE target,SR",
+        "start: MOVE target,CCR",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_movem_bare_symbol_subset() {
+    for source in ["start: MOVEM.W D0/D1,target", "start: MOVEM.L target,D1/D3"] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction(source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_moves_bare_symbol_subset() {
+    for source in ["start: MOVES.W D0,target", "start: MOVES.L target,A2"] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(".cpu 68010", source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_chk2_cmp2_absolute_long_symbol() {
+    for source in ["start: CHK2.W target.L,D0", "start: CMP2.L target.L,A1"] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(".cpu 68020", source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_chk2_cmp2_bare_symbol_subset() {
+    for source in ["start: CHK2.W target,D0", "start: CMP2.L target,A1"] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(".cpu 68020", source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_cas_absolute_long_symbol() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(
+        ".cpu 68020",
+        "start: CAS.W D0,D1,target.L",
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_cas_bare_symbol_subset() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(
+        ".cpu 68020",
+        "start: CAS.W D0,D1,target",
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_callm_absolute_long_symbol() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(
+        ".cpu 68020",
+        "start: CALLM #5,target.L",
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_callm_bare_symbol_subset() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(
+        ".cpu 68020",
+        "start: CALLM #5,target",
+    );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_bitfield_absolute_long_symbol() {
+    for source in [
+        "start: BFTST target.L{3:5}",
+        "start: BFEXTU target.L{D1:8},D2",
+        "start: BFINS D3,target.L{4:D4}",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(".cpu 68020", source);
+    }
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_bitfield_bare_symbol_subset() {
+    for source in [
+        "start: BFTST target{3:5}",
+        "start: BFEXTU target{D1:8},D2",
+        "start: BFINS D3,target{4:D4}",
+    ] {
+        assert_hunk_live_path_emits_reloc32_for_symbolic_instruction_on_cpu(".cpu 68020", source);
+    }
+}
+
+#[test]
+fn m68k_datareg_binary_bare_symbol_destination_parses_as_register_and_identifier() {
+    let parsed = crate::opasm::parse_statement(crate::opasm::StatementRequest::new(
+        "    ADD.W D0,target",
+        1,
+    ))
+    .expect("statement parse");
+    let opcore::parser::LineAst::Statement(statement) = parsed.ast else {
+        panic!("expected statement AST");
+    };
+    assert_eq!(statement.mnemonic.as_deref(), Some("ADD.W"));
+    assert_eq!(statement.operands.len(), 2);
+    assert!(
+        matches!(&statement.operands[0], opcore::parser::Expr::Identifier(name, _) if name == "D0"),
+        "unexpected first operand: {:?}",
+        statement.operands[0]
+    );
+    assert!(
+        matches!(&statement.operands[1], opcore::parser::Expr::Identifier(name, _) if name == "target"),
+        "unexpected second operand: {:?}",
+        statement.operands[1]
+    );
+}
+
+#[test]
+fn m68k_datareg_binary_absolute_long_destination_parses_with_suffix_shape() {
+    let parsed = crate::opasm::parse_statement(crate::opasm::StatementRequest::new(
+        "    ADD.W D0,target.L",
+        1,
+    ))
+    .expect("statement parse");
+    let opcore::parser::LineAst::Statement(statement) = parsed.ast else {
+        panic!("expected statement AST");
+    };
+    assert_eq!(statement.mnemonic.as_deref(), Some("ADD.W"));
+    assert_eq!(statement.operands.len(), 2);
+    assert!(
+        matches!(&statement.operands[1], opcore::parser::Expr::Identifier(name, _) if name == "target.L")
+            || matches!(
+                &statement.operands[1],
+                opcore::parser::Expr::Member { base, field, .. }
+                    if matches!(base.as_ref(), opcore::parser::Expr::Identifier(name, _) if name == "target")
+                        && field == "L"
+            ),
+        "unexpected second operand shape: {:?}",
+        statement.operands[1]
+    );
+}
+
+#[test]
+fn m68k_family_parser_accepts_datareg_binary_absolute_long_destination_ast() {
+    let registry = default_registry();
+    let pipeline = registry
+        .resolve_pipeline(m68000_cpu_id, None)
+        .expect("68000 pipeline");
+    let operands = vec![
+        opcore::parser::Expr::Identifier(
+            "D0".to_string(),
+            opcore::tokenizer::Span {
+                line: 1,
+                col_start: 11,
+                col_end: 13,
+            },
+        ),
+        opcore::parser::Expr::Identifier(
+            "target.L".to_string(),
+            opcore::tokenizer::Span {
+                line: 1,
+                col_start: 14,
+                col_end: 22,
+            },
+        ),
+    ];
+    pipeline
+        .family
+        .parse_operands("ADD.W", operands.as_slice())
+        .expect("family parser should accept rewritten destination form");
+}
+
+#[test]
 fn linker_output_hunk_live_path_rejects_non_matrix_bare_symbolic_instruction_forms() {
-    for source in ["start: MOVE.L target,8(A0)", "start: MOVE.L 8(A0),target"] {
+    for source in [
+        "start: MOVE.B target1,target2",
+        "start: MOVE.W target1,target2",
+        "start: MOVE.L target1,target2",
+    ] {
         let lines = vec![
             ".module main".to_string(),
             ".cpu 68000".to_string(),
@@ -15162,7 +15502,8 @@ fn linker_output_hunk_live_path_rejects_non_matrix_bare_symbolic_instruction_for
             ".section code, kind=code".to_string(),
             source.to_string(),
             " RTS".to_string(),
-            "target: .byte 0".to_string(),
+            "target1: .byte 0".to_string(),
+            "target2: .byte 0".to_string(),
             ".endsection".to_string(),
             ".place code in ram".to_string(),
             ".output \"build/out.hunk\", format=hunk, sections=code".to_string(),
@@ -15307,6 +15648,24 @@ fn linker_output_hunk_live_path_emits_reloc32_for_move_from_absolute_long_symbol
 }
 
 #[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_from_bare_symbol_with_extra_extensions() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.L target,8(A0)");
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.L target,$DFF080");
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_word_bare_symbol_subset() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.W target,D0");
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.W #$1234,target");
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_byte_bare_symbol_subset() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.B target,D0");
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.B D0,target");
+}
+
+#[test]
 fn linker_output_hunk_live_path_emits_reloc32_for_move_immediate_long_symbol() {
     let assembler = run_passes(&[
         ".module main",
@@ -15343,6 +15702,11 @@ fn linker_output_hunk_live_path_emits_reloc32_for_move_immediate_long_symbol() {
             .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
         "expected HUNK_RELOC32 in payload: {payload:02X?}"
     );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_to_bare_symbol_after_immediate_long() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.L #$12345678,target");
 }
 
 #[test]
@@ -15756,6 +16120,11 @@ fn linker_output_hunk_live_path_emits_reloc32_for_move_to_absolute_long_symbol_a
             .any(|window| window == [0x00, 0x00, 0x03, 0xec]),
         "expected HUNK_RELOC32 in payload: {payload:02X?}"
     );
+}
+
+#[test]
+fn linker_output_hunk_live_path_emits_reloc32_for_move_to_bare_symbol_after_pc_displacement() {
+    assert_hunk_live_path_emits_reloc32_for_symbolic_instruction("start: MOVE.L 8(PC),target");
 }
 
 #[test]

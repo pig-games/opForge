@@ -7,19 +7,33 @@ This manual is validated against opForge CLI `0.9.7` (crate `0.9.7`).
 
 ## 1. Introduction
 
-opForge is a two-pass, multi-CPU assembler for Intel 8080/8085 and Z80, MOS 6502-family CPUs (6502/65C02/65816/45GS02), Motorola 6800-family CPUs (6809/HD6309), and Motorola 68000-family CPUs (`68000`/`m68000`/`mc68000`, `68010`/`m68010`/`mc68010`, `68020`/`m68020`/`mc68020`, `68030`/`m68030`/`mc68030`, `68040`/`m68040`/`mc68040`, and `68080`/`m68080`/`mc68080`). It supports:
+opForge is a two-pass, multi-CPU assembler. It currently ships builtin support
+for:
+
+- Intel 8080 family processors: `8080` alias, `8085`, and `z80`
+- MOS 6502 family processors: `6502`, `65c02`, `65816`, and `45gs02`
+- Motorola 6800 family processors: `6809` and `hd6309`
+- Motorola 68000 family processors: `68000`, `68010`, `68020`, `68030`,
+  `68040`, and `68080`, with the corresponding `m68000`/`mc68000` through
+  `m68080`/`mc68080` aliases
+
+It supports:
 - Dot-prefixed directives and conditionals.
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
 - Preprocessor directives for includes and conditional compilation.
 - Macro expansion with `.macro` and `.segment`.
 - Optional listing, Intel HEX, Motorola S-record, AmigaOS Hunk executable, and binary outputs.
 
-The `.cpu` directive currently accepts `8080` (alias for `8085`), `8085`, `z80`,
-`6502`, `m6502`, `65c02`, `65816`, `65c816`, `w65c816`, `45gs02`, `m45gs02`,
-`mega65`, `4510`, `csg4510`, `6809`, `m6809`, `mc6809`, `6309`, `m6309`,
-`h6309`, `hitachi6309`, `hd6309`, `68000`, `m68000`, `mc68000`, `68010`,
-`m68010`, `mc68010`, `68020`, `m68020`, `mc68020`, `68030`, `m68030`,
-`mc68030`, `68040`, `m68040`, `mc68040`, `68080`, `m68080`, and `mc68080`.
+The `.cpu` directive currently accepts:
+
+- Intel 8080 family: `8080` (alias for `8085`), `8085`, `z80`
+- MOS 6502 family: `6502`, `m6502`, `65c02`, `65816`, `65c816`, `w65c816`,
+  `45gs02`, `m45gs02`, `mega65`, `4510`, `csg4510`
+- Motorola 6800 family: `6809`, `m6809`, `mc6809`, `6309`, `m6309`,
+  `h6309`, `hitachi6309`, `hd6309`
+- Motorola 68000 family: `68000`, `m68000`, `mc68000`, `68010`, `m68010`,
+  `mc68010`, `68020`, `m68020`, `mc68020`, `68030`, `m68030`, `mc68030`,
+  `68040`, `m68040`, `mc68040`, `68080`, `m68080`, `mc68080`
 
 ## 2. Usage tips
 

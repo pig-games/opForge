@@ -112,6 +112,10 @@ Safety rules:
 
 Operators listed from highest to lowest precedence:
 
+Use this table when an expression mixes arithmetic, concatenation, shifts, and
+the ternary operator. When in doubt, add parentheses rather than relying on the
+reader to reconstruct precedence from memory.
+
 | Precedence | Operators | Description |
 |------------|-----------|-------------|
 | 1 (highest) | `**` | exponentiation (right-associative) |
@@ -140,6 +144,11 @@ flag ? value_if_true : value_if_false
 ### 2.8 Compound values
 
 opForge supports compile-time compound values in expressions:
+
+These forms let source stay declarative when you want to build small tables,
+walk ranges, or carry typed field data through expressions rather than
+flattening everything into scalar constants.
+
 - Ranges: `start..end`, `start..=end`, optional step `:step`.
 - Lists: `{expr, expr, ...}`.
 - Indexing: `value[n]` for range/list values.
@@ -192,7 +201,12 @@ Notes:
 
 ### 3.3 Sections, regions, and placement
 
-Section-local emission and linker-region placement:
+This is the part of the assembler that separates "where bytes are emitted"
+from "where bytes finally land". In small sources the distinction can be
+invisible, but once you have multiple output sections or Hunk memory classes it
+becomes the main layout tool.
+
+A typical flow looks like this:
 
 ```
 .region ram, $1000, $10ff, align=16
@@ -203,7 +217,7 @@ Section-local emission and linker-region placement:
 .pack in ram : code, data
 ```
 
-Notes:
+The main rules are:
 - `.section` selects a named emission target; `.endsection` restores the previous target.
 - `.section` supports `kind=code|data|bss`, `align=<n>`, `region=<name>`, and
   `memory=any|chip|fast|slow`.
@@ -213,7 +227,7 @@ Notes:
 - `memory=` is used by AmigaOS Hunk output. `chip` and `fast` set the Hunk
   allocation flags for the emitted segment; `any` is the default. `slow` is
   accepted as a source-level alias for unconstrained allocation because the
-is   executable Hunk format has explicit CHIP and FAST bits, but no separate SLOW
+  executable Hunk format has explicit CHIP and FAST bits, but no separate SLOW
   bit.
 - For AmigaOS Hunk output, `.region`, `.place`/`.pack`, and `sections=` are
   optional for a simple single-code-hunk source. If no explicit `.section` is
@@ -225,7 +239,11 @@ is   executable Hunk format has explicit CHIP and FAST bits, but no separate SLO
 
 ### 3.4 Output directives
 
-Linker output directives:
+Once sections have been emitted and placed, `.output` decides how that layout is
+serialized. Most projects only need one or two formats, but the same section
+graph can drive raw binaries, PRGs, S-records, or AmigaOS Hunks.
+
+Common output declarations look like this:
 
 ```
 .output "build/out.bin", format=bin, sections=code,data
@@ -243,6 +261,9 @@ Supported `format=` values:
 - `hunk` — AmigaOS executable Hunk format
 - `srec` — Motorola S-record
 
+The format chooses the container; the options around it control how strictly
+the placed sections must line up and what metadata is emitted alongside them.
+
 Output mode rules:
 - Default output mode is contiguous (`contiguous=true`): selected sections must be adjacent.
 - Image output mode (`image=...` + `fill=...`) allows sparse placement within the configured span (wide addresses supported).
@@ -258,9 +279,12 @@ Output mode rules:
   for selected sections.
 
 The supported bare-symbol Hunk notation matrix is documented in
-§10 (Appendix: AmigaOS Hunk symbolic notation boundary).
+§9 (Appendix: AmigaOS Hunk symbolic notation boundary).
 
 ### 3.5 Data directives
+
+These directives cover the common "put bytes here" cases: scalar values,
+encoded text, repeated patterns, and reserved storage.
 
 ```
 .byte expr[, expr...]
@@ -277,7 +301,7 @@ The supported bare-symbol Hunk notation matrix is documented in
 .fill unit, count, value     ; repeated data fill
 ```
 
-Notes:
+The important constraints are:
 - `.emit` and `.fill` are data-emitting directives and are not allowed in `kind=bss` sections.
 - `.res` is only allowed in `kind=bss` sections.
 - For `word`, unit size follows current CPU word size.
@@ -650,10 +674,23 @@ Examples in the repo:
 
 ### 3.11 Target CPU
 
+The `.cpu` directive selects the active instruction set, operand rules, and any
+family-specific assembler behavior. The accepted identifiers are easiest to
+read when grouped by CPU family.
+
+#### 3.11.1 Intel 8080 family
+
 ```
 .cpu 8080    ; alias for 8085
 .cpu 8085
 .cpu z80
+```
+
+Use these selectors for Intel 8080/8085 syntax and the Z80 dialect surface.
+
+#### 3.11.2 MOS 6502 family
+
+```
 .cpu 6502
 .cpu m6502
 .cpu 65c02
@@ -665,90 +702,12 @@ Examples in the repo:
 .cpu mega65
 .cpu 4510
 .cpu csg4510
-.cpu 6809
-.cpu m6809
-.cpu mc6809
-.cpu 6309
-.cpu m6309
-.cpu h6309
-.cpu hitachi6309
-.cpu hd6309
-.cpu 68000
-.cpu m68000
-.cpu mc68000
-.cpu 68010
-.cpu m68010
-.cpu mc68010
-.cpu 68020
-.cpu m68020
-.cpu mc68020
-.cpu 68030
-.cpu m68030
-.cpu mc68030
-.cpu 68040
-.cpu m68040
-.cpu mc68040
-.cpu 68080
-.cpu m68080
-.cpu mc68080
 ```
 
-Motorola 68000-family support spans the shipped CPU lineage from `68000`
-through `68080`.
+This family spans baseline 6502 syntax through 65C02, 65816, and Mega65/4510
+extensions.
 
-`68010` keeps baseline `68000` addressing. `68020`, `68030`, and `68040`
-accept the shipped `68020+` full-extension addressing forms. `68040`
-additionally accepts `MOVE16` and rejects `CALLM`, `RTM`, and `MOVEC CAAR`.
-
-The shipped `68080` surface includes the full currently documented integer,
-AMMX, and legacy FPU assembler-visible families, including E/B register
-namespaces and `.fpu 68080`.
-
-#### 3.11.1 FPU and coprocessor selection
-
-```
-.fpu none
-.fpu 68881
-.fpu 68882
-.fpu 68040
-.fpu 68080
-
-.apollo on
-.apollo off
-```
-
-On Motorola 68000-family CPUs, `.fpu none` disables optional FPU acceptance,
-`.fpu 68881` and `.fpu 68882` are legal on `68020` and `68030`, and
-`.fpu 68040` is legal on `68040`, while `.fpu 68080` is legal on `68080`.
-
-On `68080`, `.cpu 68080` defaults to the Apollo-enabled full profile; `.apollo on`
-is accepted as an explicit no-op, and `.apollo off` is rejected
-deterministically because strict compatibility mode is not implemented in this
-full-profile build.
-
-Current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
-`68030` and `68040`, and the shipped `68040` MMU-related `MOVEC` register
-surface remains available. Broader PMMU/MMU instruction families stay out of
-scope.
-
-Current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
-`.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
-while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`,
-and `.fpu 68080` is the integrated target on `68080`. The `68040` integrated
-path intentionally excludes external-coprocessor-only `FSIN`-class
-transcendental and extended-math mnemonics. Assembler acceptance follows the
-documented programmer-visible instruction surface, but opForge does not model
-runtime assist behavior or CPU/FPU execution semantics for those operations.
-
-Reference fixtures under `examples/motorola68000/` include broad FPU surface
-examples such as `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
-`68020_fpu_registers`, `68030_pflush_external_fpu`, and
-`68040_integrated_fpu`, alongside 68080-focused fixtures such as
-`68080_integer_addressing_matrix`, `68080_ammx_addressing_matrix`,
-`68080_fpu_surface`, and `68080_full_additional_surface`, with matching
-checked-in outputs under `examples/reference/motorola68000/`.
-
-#### 3.11.2 65816 runtime-state directives
+##### 3.11.2.1 65816 runtime-state directives
 
 65816 support includes the phase-1 instruction set and phase-2 24-bit addressing work:
 - Implements selected 65816 mnemonics and operand forms.
@@ -799,6 +758,100 @@ Current 65816 limits:
 - PRG load-address prefix remains 16-bit.
 - Full automatic banked-state inference is not implemented (`.assume` plus explicit overrides provide control).
 - Uses checked address arithmetic and explicit diagnostics for overflow/underflow paths in placement, linking, and image emission.
+
+#### 3.11.3 Motorola 6800 family
+
+```
+.cpu 6809
+.cpu m6809
+.cpu mc6809
+.cpu 6309
+.cpu m6309
+.cpu h6309
+.cpu hitachi6309
+.cpu hd6309
+```
+
+These selectors cover the Motorola 6809 lineage and the HD6309-compatible
+variants.
+
+#### 3.11.4 Motorola 68000 family
+
+```
+.cpu 68000
+.cpu m68000
+.cpu mc68000
+.cpu 68010
+.cpu m68010
+.cpu mc68010
+.cpu 68020
+.cpu m68020
+.cpu mc68020
+.cpu 68030
+.cpu m68030
+.cpu mc68030
+.cpu 68040
+.cpu m68040
+.cpu mc68040
+.cpu 68080
+.cpu m68080
+.cpu mc68080
+```
+
+Motorola 68000-family support spans the shipped CPU lineage from `68000`
+through `68080`.
+
+`68010` keeps baseline `68000` addressing. `68020`, `68030`, and `68040`
+accept the shipped `68020+` full-extension addressing forms. `68040`
+additionally accepts `MOVE16` and rejects `CALLM`, `RTM`, and `MOVEC CAAR`.
+
+The shipped `68080` surface includes the full currently documented integer,
+AMMX, and legacy FPU assembler-visible families, including E/B register
+namespaces and `.fpu 68080`.
+
+##### 3.11.4.1 FPU and coprocessor selection
+
+```
+.fpu none
+.fpu 68881
+.fpu 68882
+.fpu 68040
+.fpu 68080
+
+.apollo on
+.apollo off
+```
+
+On Motorola 68000-family CPUs, `.fpu none` disables optional FPU acceptance,
+`.fpu 68881` and `.fpu 68882` are legal on `68020` and `68030`, and
+`.fpu 68040` is legal on `68040`, while `.fpu 68080` is legal on `68080`.
+
+On `68080`, `.cpu 68080` defaults to the Apollo-enabled full profile; `.apollo on`
+is accepted as an explicit no-op, and `.apollo off` is rejected
+deterministically because strict compatibility mode is not implemented in this
+full-profile build.
+
+Current MMU scope remains intentionally narrow: `PFLUSH` is accepted on
+`68030` and `68040`, and the shipped `68040` MMU-related `MOVEC` register
+surface remains available. Broader PMMU/MMU instruction families stay out of
+scope.
+
+Current FPU scope is selector-driven and assembler-only. `.fpu 68881` and
+`.fpu 68882` enable the external coprocessor surface on `68020` and `68030`,
+while `.fpu 68040` enables the integrated `68040` core FPU subset on `68040`,
+and `.fpu 68080` is the integrated target on `68080`. The `68040` integrated
+path intentionally excludes external-coprocessor-only `FSIN`-class
+transcendental and extended-math mnemonics. Assembler acceptance follows the
+documented programmer-visible instruction surface, but opForge does not model
+runtime assist behavior or CPU/FPU execution semantics for those operations.
+
+Reference fixtures under `examples/motorola68000/` include broad FPU surface
+examples such as `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
+`68020_fpu_registers`, `68030_pflush_external_fpu`, and
+`68040_integrated_fpu`, alongside 68080-focused fixtures such as
+`68080_integer_addressing_matrix`, `68080_ammx_addressing_matrix`,
+`68080_fpu_surface`, and `68080_full_additional_surface`, with matching
+checked-in outputs under `examples/reference/motorola68000/`.
 
 ### 3.12 End of assembly
 
@@ -973,6 +1026,10 @@ Syntax:
 opForge [OPTIONS] [INPUT]...
 ```
 
+The CLI is easiest to read in four groups: how input is discovered, how output
+is produced, how diagnostics are rendered, and a smaller set of switches that
+adjust assembler behavior.
+
 Inputs:
 - `[INPUT]...`: optional migration-friendly positional input. Exactly one positional input is accepted and treated like `-i INPUT`; multiple positional inputs require explicit `-i/--infile`.
 - `-i, --infile <FILE|FOLDER>`: input `.asm` file or folder (repeatable). Folder inputs must contain exactly one `main.*` root module.
@@ -1031,7 +1088,7 @@ Other options:
 The default capability and CPU-support reports include the shipped Motorola
 68000-family lineage entries through `m68080`.
 
-Notes:
+The following rules are the ones most likely to affect day-to-day invocation:
 - If multiple inputs are provided, `-o` must be a directory and explicit output
   filenames are not allowed; each input uses its own base name under the output
   directory.
@@ -1054,6 +1111,9 @@ The formatter operates in four modes: `--fmt` (in-place, shorthand for
 `--fmt-write`), `--fmt-write` (in-place), `--fmt-check` (dry-run), and
 `--fmt-stdout` (single file to stdout). Formatter mode cannot be combined with
 assembler output flags.
+
+The current formatter surface is intentionally small and conservative. The goal
+is predictable cleanup of layout and casing, not large-scale source rewriting.
 
 Formatter config (`--fmt-config`) currently supports these keys:
 
@@ -1094,12 +1154,15 @@ Listing addresses reflect the current emission context: inside a `.section` the
 address column shows the section-local program counter. Absolute placed output
 is shown in the generated-output footer table.
 
-Common linker-region failures:
+In practice, the most common diagnostics in this area are placement mistakes:
 - `.dsection has been removed; use .place/.pack with .output`
 - `Section referenced by .output must be explicitly placed`
 - `contiguous output requires adjacent sections` (gap diagnostic includes range)
 
 ## 7. Appendix: quick reference
+
+This appendix is meant for scanning, not teaching. Use it when you already know
+the feature you want and just need the exact directive name or operator form.
 
 ### 7.1 Directives
 
@@ -1128,6 +1191,10 @@ Common linker-region failures:
 
 ### 7.3 Scope behavior at a glance
 
+The table below compresses the behavior described in Section 4.5 into a single
+comparison so you can quickly answer "what kind of scope does this definition
+create?" without rereading the full discussion.
+
 | Construct | Definition lookup | Expansion form | Scope impact at call site | Notes |
 |-----------|-------------------|----------------|----------------------------|-------|
 | `.macro` | Namespace-aware (nearest `.namespace` first, then outer, then global) | Implicit `.block` ... `.endblock` wrapper | Body symbols are local to generated block | Invocation label attaches to generated `.block` line |
@@ -1140,6 +1207,9 @@ This appendix describes the modular architecture that allows opForge to support
 multiple CPU targets through a common framework, including Intel 8080-family
 CPUs, MOS 6502-family CPUs, Motorola 6800-family CPUs, and the shipped
 Motorola 68000-family lineage through `m68080`.
+
+It is written for readers who want to understand how CPU support is organized
+internally, not just which directives are available at source level.
 
 ### Overview
 
@@ -1203,6 +1273,10 @@ registered family or CPU:
 
 ### Assembler pipeline (CPU family/dialect)
 
+Read this pipeline from top to bottom: each stage narrows a parsed instruction
+from generic syntax into a family-specific form and finally into a concrete CPU
+encoding.
+
 #### Registry
 
 - Families and CPUs are registered in Rust at startup.
@@ -1260,6 +1334,9 @@ Canonical host/VM boundary and failure/strictness rules:
 
 ### Layer responsibilities
 
+These layers are intentionally separated so that syntax, CPU selection, and
+byte emission can evolve without collapsing into one monolithic encoder.
+
 **Assembler Core**
 - File inclusion and preprocessing
 - Output generation (listing files, hex files)
@@ -1295,6 +1372,10 @@ Canonical host/VM boundary and failure/strictness rules:
 6. Encode with family handler first; CPU handler encodes extensions when family returns `NotFound`.
 
 ### Family extensions
+
+The tables below show the practical shape of family inheritance: a base family
+defines the common forms, and richer CPUs widen the accepted syntax or mnemonic
+set without changing the surrounding assembler model.
 
 **MOS 6502 Family**
 
@@ -1335,7 +1416,7 @@ Currently implemented 65816-specific additions:
 - `PEA`, `PEI`, `PER`, `COP`, `WDM`
 - `MVN`, `MVP`
 - operand forms: `d,S`, `(d,S),Y`, bracketed indirect (`[...]`, `[...,Y]`) for supported instructions
-- runtime-state directives: see §3.11.2
+- runtime-state directives: see §3.11.2.1
 
 **Intel 8080 Family**
 
@@ -1355,6 +1436,10 @@ including `SLL`. Z80-specific registers include `IX`, `IY`, `IXH`, `IXL`, `IYH`,
 and `IYL`.
 
 ### Syntax dialects (8080 vs Z80)
+
+This table is a reminder that opForge treats dialect differences as syntax
+surface over a shared underlying instruction family. The byte encoding is the
+same where the instruction semantics line up.
 
 | Operation | 8080/8085 Dialect | Z80 Dialect | Opcode |
 |-----------|-------------------|-------------|--------|

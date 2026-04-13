@@ -1,7 +1,7 @@
 # opForge Reference Manual
 
 This document describes the opForge assembler language, directives, and tooling.
-It follows a chapter layout similar to 64tass. Sections marked **Planned** describe 
+It follows a chapter layout similar to 64tass. Sections marked **Planned** describe
 features that are not implemented yet.
 This manual is validated against opForge CLI `0.9.7` (crate `0.9.7`).
 
@@ -22,11 +22,13 @@ via the `.fpu` directive (`68881`, `68882`, `68040`, `68080`), and Apollo
 AMMX extensions are available on `68080` via `.apollo`.
 
 It supports:
+
 - Dot-prefixed directives and conditionals.
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
 - Preprocessor directives for includes and conditional compilation.
 - Macro expansion with `.macro` and `.segment`.
-- Optional listing, Intel HEX, Motorola S-record, AmigaOS Hunk executable, and binary outputs.
+- Optional listing, Intel HEX, Motorola S-record, AmigaOS Hunk executable,
+  and binary outputs.
 
 The `.cpu` directive currently accepts:
 
@@ -48,7 +50,7 @@ The `.cpu` directive currently accepts:
 - Labels may end with `:` or omit it.
 - The program counter can be set with `* = expr` or `.org expr`.
 - If no outputs are specified for a single input, the assembler defaults to
-    list+hex when a root-module output name (or `-o`) is available.
+  list+hex when a root-module output name (or `-o`) is available.
 
 ## 2. Expressions and data types
 
@@ -73,7 +75,8 @@ Strings are quoted with `'` or `"` and are usable in data directives:
 ```
 
 String bytes are encoded using the active text encoding (default `ascii`).
-Use `.encoding` or `.enc` to switch encodings, and `.encode`/`.cdef`/`.tdef`/`.edef` to define custom encodings in-source.
+Use `.encoding` or `.enc` to switch encodings, and
+`.encode`/`.cdef`/`.tdef`/`.edef` to define custom encodings in-source.
 
 Strings accept the following escape sequences:
 
@@ -1537,70 +1540,45 @@ pub trait DialectModule: Send + Sync {
 
 ## 9. Appendix: AmigaOS Hunk symbolic notation boundary
 
-The current executable Hunk notation surface is intentionally frozen as a
-documented compatibility matrix. For `format=hunk`, opForge supports the
-natural bare-symbol form only when there is one relocatable symbol and the
-assembler has one canonical absolute-long encoding that maps cleanly onto
-`HUNK_RELOC32`.
+This appendix gives the short reader-facing rule for the current executable
+Hunk notation boundary.
 
-Supported examples:
+For `format=hunk`, opForge accepts natural bare-symbol instruction spelling
+only for the frozen one-symbol subset where:
+
+- there is exactly one relocatable symbol-bearing operand
+- the assembler has one canonical absolute-long encoding for that form
+- that encoding maps directly onto the current executable `HUNK_RELOC32`
+  support
+
+Representative covered forms include:
 
 ```asm
 .long target
-.long target + 4
 LEA target,A1
-PEA target
-MOVE.L #target,D1
-MOVE.L target,D0
-MOVE.W target,D0
 MOVE.L D0,target
-MOVE.W #$1234,target
-MOVE.L target,$DFF080
-CLR.W target
-ADD.W target,D0
-ADD.W D0,target
-ORI.B #$12,target
-BTST #1,target
-ADDA.L target,A0
-SNE target
-ASL target
+ADDI.W #1,target
 MOVEM.L target,D1/D3
-MOVES.L target,A2
-CHK2.W target,D0
 CAS.W D0,D1,target
-CALLM #5,target
 BFTST target{3:5}
-BFEXTU target{D1:8},D2
-BFINS D3,target{4:D4}
 ```
 
-Covered families in the frozen matrix:
-- `.long label` and `.long label + const`
-- `LEA`, `PEA`, `JMP`, `JSR`
-- `MOVE.B`, `MOVE.W`, `MOVE.L`, and `MOVEA.L` for the documented one-symbol forms
-- unary memory forms: `CLR`, `NEGX`, `NEG`, `NOT`, `TST`, `NBCD`, `TAS`
-- data-register arithmetic or logical forms: `ADD`, `SUB`, `AND`, `OR`, `CMP`, `EOR`
-- immediate destination forms: `ORI`, `ANDI`, `SUBI`, `ADDI`, `EORI`, `CMPI`
-- bit operations: `BTST`, `BCHG`, `BCLR`, `BSET`
-- address-register source forms: `ADDA`, `SUBA`, `CMPA`
-- `Scc` destination forms
-- memory shift or rotate forms: `ASL`, `ASR`, `LSL`, `LSR`, `ROL`, `ROR`, `ROXL`, `ROXR`
-- special-register moves involving `SR` or `CCR`
-- `MOVEM`, `MOVES`, `CHK`, `MULU`, `MULS`, `DIVU`, `DIVS`
-- `CHK2`, `CMP2`, `CAS`, `CALLM`
-- 68020 bit-field forms: `BFTST`, `BFEXTU`, `BFEXTS`, `BFFFO`, `BFCHG`, `BFCLR`, `BFSET`, `BFINS`
+Representative explicit-only or unsupported forms include:
 
-Still explicit-only:
-- forms not listed in the frozen matrix above
-- instruction forms with more than one relocatable symbol-bearing operand
-- instruction expressions with addends such as `#label+const`
-- richer indexed or full-extension symbolic cases that would require new
-  relocation semantics
+```asm
+MOVE.L target1,target2
+MOVE.L #target+4,D1
+MOVE.L (target,A0),D0
+```
 
-When a symbolic form is outside that matrix, opForge keeps the failure explicit
-instead of guessing. Depending on the case, the assembler reports either that
-explicit `.L` notation is still required for that instruction form or that the
-symbolic Hunk instruction form is not supported in `v0.3`.
+In practice, if a symbolic instruction form is not part of the frozen
+one-symbol executable subset, opForge does not guess. It fails explicitly with
+either an "explicit `.L` notation required" diagnostic or an "unsupported
+symbolic Hunk instruction form in `v0.3`" diagnostic, depending on whether the
+shape is ambiguous or outside the supported relocation model.
+
+The authoritative full compatibility matrix lives in
+[opForge-amiga-hunk-executable-completeness-spec-v0_3.md](opForge-amiga-hunk-executable-completeness-spec-v0_3.md).
 
 ## 10. Appendix: VM package authoring notes (v0.1 draft)
 

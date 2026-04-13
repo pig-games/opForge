@@ -17,6 +17,10 @@ for:
   `68040`, and `68080`, with the corresponding `m68000`/`mc68000` through
   `m68080`/`mc68080` aliases
 
+Optional FPU/coprocessor support is available for the Motorola 68000 family
+via the `.fpu` directive (`68881`, `68882`, `68040`, `68080`), and Apollo
+AMMX extensions are available on `68080` via `.apollo`.
+
 It supports:
 - Dot-prefixed directives and conditionals.
 - A 64tass-inspired expression syntax (operators, precedence, ternary).
@@ -35,7 +39,7 @@ The `.cpu` directive currently accepts:
   `mc68010`, `68020`, `m68020`, `mc68020`, `68030`, `m68030`, `mc68030`,
   `68040`, `m68040`, `mc68040`, `68080`, `m68080`, `mc68080`
 
-## 2. Usage tips
+### 1.1 Usage tips
 
 - Directives, preprocessor directives, and conditionals are dot-prefixed
   (`.org`, `.if`, `.ifdef`).
@@ -46,9 +50,9 @@ The `.cpu` directive currently accepts:
 - If no outputs are specified for a single input, the assembler defaults to
     list+hex when a root-module output name (or `-o`) is available.
 
-## 3. Expressions and data types
+## 2. Expressions and data types
 
-### 3.1 Integers
+### 2.1 Integers
 
 Integer literals are supported in several formats:
 - Decimal: `123`
@@ -60,7 +64,7 @@ Underscores are allowed for readability (`$12_34`).
 
 `$` evaluates to the current address.
 
-### 3.2 Strings
+### 2.2 Strings and escapes
 
 Strings are quoted with `'` or `"` and are usable in data directives:
 
@@ -71,16 +75,24 @@ Strings are quoted with `'` or `"` and are usable in data directives:
 String bytes are encoded using the active text encoding (default `ascii`).
 Use `.encoding` or `.enc` to switch encodings, and `.encode`/`.cdef`/`.tdef`/`.edef` to define custom encodings in-source.
 
-### 3.3 Booleans
+Strings accept the following escape sequences:
+
+```
+\n  \r  \t  \0  \xHH
+```
+
+Any other escape sequence inserts the escaped character as-is.
+
+### 2.3 Booleans
 
 Logical operators treat non-zero as true. Logical operators return `0` or `1`.
 
-### 3.4 Symbols
+### 2.4 Symbols
 
 Symbols are names bound to values. A symbol can be defined by a label
 (current address) or an assignment.
 
-### 3.5 Expressions
+### 2.5 Expressions
 
 Expressions are used in directives and operands. Unary `<` and `>` select the
 low or high byte of a value:
@@ -96,18 +108,28 @@ Safety rules:
 - String literals in expression context are limited to 1-byte and 2-byte forms.
 - Expression evaluation enforces a maximum recursion depth.
 
-### 3.6 Expression operators
+### 2.6 Expression operators
 
-Operator set (highest level summary):
+Operators listed from highest to lowest precedence:
 
-```
-**  *  /  %  +  -  <<  >>  ==  !=  <>  <  <=  >  >=  &  ^  |  &&  ^^  ||  !  ~
-?:
-```
+| Precedence | Operators | Description |
+|------------|-----------|-------------|
+| 1 (highest) | `**` | exponentiation (right-associative) |
+| 2 | `!` `~` `<` `>` | unary: logical NOT, bitwise NOT, low byte, high byte |
+| 3 | `*` `/` `%` | multiplication, division, modulo |
+| 4 | `+` `-` | addition, subtraction |
+| 5 | `..` | concatenation |
+| 6 | `<<` `>>` | bitwise shift left, shift right |
+| 7 | `<` `<=` `>` `>=` | relational comparison |
+| 8 | `==` `!=` `<>` | equality, inequality |
+| 9 | `&` | bitwise AND |
+| 10 | `^` | bitwise XOR |
+| 11 | `\|` | bitwise OR |
+| 12 | `&&` `^^` | logical AND, logical XOR |
+| 13 | `\|\|` | logical OR |
+| 14 (lowest) | `?:` | ternary conditional |
 
-Concatenation uses `..`.
-
-### 3.7 Conditional operator
+### 2.7 Conditional operator
 
 The ternary operator `?:` is supported with standard precedence rules:
 
@@ -115,7 +137,7 @@ The ternary operator `?:` is supported with standard precedence rules:
 flag ? value_if_true : value_if_false
 ```
 
-### 3.8 Compound values
+### 2.8 Compound values
 
 opForge supports compile-time compound values in expressions:
 - Ranges: `start..end`, `start..=end`, optional step `:step`.
@@ -140,9 +162,9 @@ vals = {1, 2, 3}
 Still planned (not implemented yet): bit strings, floating-point values,
 tuples, code blocks, and type values.
 
-## 4. Compiler directives
+## 3. Compiler directives
 
-### 4.1 Assembling source
+### 3.1 Assembling source
 
 ```
 .include "file"
@@ -155,12 +177,20 @@ Notes:
 - Include resolution is constrained to the including-file directory and explicit `-I/--include-path` roots.
 - Absolute include paths and parent-relative traversals are accepted only when they resolve inside those allowed roots.
 
-### 4.2 Controlling the program counter
+### 3.2 Program counter and alignment
 
 ```
 .org $1000
 * = $2000
+.align 16
 ```
+
+- `.org` and `* =` set the program counter to the given address.
+- `.align` pads the current emission target to a boundary.
+- Both `.org` and `.align` apply to the current emission target (global or
+  section-local).
+
+### 3.3 Sections, regions, and placement
 
 Section-local emission and linker-region placement:
 
@@ -171,7 +201,6 @@ Section-local emission and linker-region placement:
 .endsection
 .place data in ram
 .pack in ram : code, data
-.align 16
 ```
 
 Notes:
@@ -180,12 +209,11 @@ Notes:
   `memory=any|chip|fast|slow`.
 - `.place`/`.pack` assign final section base addresses via regions.
 - `.dsection` is not supported and emits an error.
-- `.org` and `.align` apply to the current emission target.
 - Sections referenced by non-Hunk `.output` directives must be explicitly placed.
 - `memory=` is used by AmigaOS Hunk output. `chip` and `fast` set the Hunk
   allocation flags for the emitted segment; `any` is the default. `slow` is
   accepted as a source-level alias for unconstrained allocation because the
-  executable Hunk format has explicit CHIP and FAST bits, but no separate SLOW
+is   executable Hunk format has explicit CHIP and FAST bits, but no separate SLOW
   bit.
 - For AmigaOS Hunk output, `.region`, `.place`/`.pack`, and `sections=` are
   optional for a simple single-code-hunk source. If no explicit `.section` is
@@ -195,15 +223,25 @@ Notes:
   `--hunk [FILE]` and the source has no explicit `.section`.
 - `.mapfile` and `.exportsections` may include unplaced sections.
 
+### 3.4 Output directives
+
 Linker output directives:
 
 ```
 .output "build/out.bin", format=bin, sections=code,data
 .output "build/image.bin", format=bin, image="$8000..$80ff", fill=$ff, contiguous=false, sections=code,data
+.output "build/out.prg", format=prg, sections=code
+.output "build/out.srec", format=srec, sections=code
 .output "build/tool.hunk", format=hunk
 .mapfile "build/out.map", symbols=all
 .exportsections dir="build/sections", format=bin, include=bss
 ```
+
+Supported `format=` values:
+- `bin` — raw binary image
+- `prg` — Commodore PRG (2-byte little-endian load address prefix)
+- `hunk` — AmigaOS executable Hunk format
+- `srec` — Motorola S-record
 
 Output mode rules:
 - Default output mode is contiguous (`contiguous=true`): selected sections must be adjacent.
@@ -219,74 +257,10 @@ Output mode rules:
   source file. Hunk output also honors `.section ..., memory=chip|fast|slow|any`
   for selected sections.
 
-### 4.2.1 AmigaOS Hunk symbolic notation boundary
+The supported bare-symbol Hunk notation matrix is documented in
+§10 (Appendix: AmigaOS Hunk symbolic notation boundary).
 
-The current executable Hunk notation surface is intentionally frozen as a
-documented compatibility matrix. For `format=hunk`, opForge supports the
-natural bare-symbol form only when there is one relocatable symbol and the
-assembler has one canonical absolute-long encoding that maps cleanly onto
-`HUNK_RELOC32`.
-
-Supported examples:
-
-```asm
-.long target
-.long target + 4
-LEA target,A1
-PEA target
-MOVE.L #target,D1
-MOVE.L target,D0
-MOVE.W target,D0
-MOVE.L D0,target
-MOVE.W #$1234,target
-MOVE.L target,$DFF080
-CLR.W target
-ADD.W target,D0
-ADD.W D0,target
-ORI.B #$12,target
-BTST #1,target
-ADDA.L target,A0
-SNE target
-ASL target
-MOVEM.L target,D1/D3
-MOVES.L target,A2
-CHK2.W target,D0
-CAS.W D0,D1,target
-CALLM #5,target
-BFTST target{3:5}
-BFEXTU target{D1:8},D2
-BFINS D3,target{4:D4}
-```
-
-Covered families in the frozen matrix:
-- `.long label` and `.long label + const`
-- `LEA`, `PEA`, `JMP`, `JSR`
-- `MOVE.B`, `MOVE.W`, `MOVE.L`, and `MOVEA.L` for the documented one-symbol forms
-- unary memory forms: `CLR`, `NEGX`, `NEG`, `NOT`, `TST`, `NBCD`, `TAS`
-- data-register arithmetic or logical forms: `ADD`, `SUB`, `AND`, `OR`, `CMP`, `EOR`
-- immediate destination forms: `ORI`, `ANDI`, `SUBI`, `ADDI`, `EORI`, `CMPI`
-- bit operations: `BTST`, `BCHG`, `BCLR`, `BSET`
-- address-register source forms: `ADDA`, `SUBA`, `CMPA`
-- `Scc` destination forms
-- memory shift or rotate forms: `ASL`, `ASR`, `LSL`, `LSR`, `ROL`, `ROR`, `ROXL`, `ROXR`
-- special-register moves involving `SR` or `CCR`
-- `MOVEM`, `MOVES`, `CHK`, `MULU`, `MULS`, `DIVU`, `DIVS`
-- `CHK2`, `CMP2`, `CAS`, `CALLM`
-- 68020 bit-field forms: `BFTST`, `BFEXTU`, `BFEXTS`, `BFFFO`, `BFCHG`, `BFCLR`, `BFSET`, `BFINS`
-
-Still explicit-only:
-- forms not listed in the frozen matrix above
-- instruction forms with more than one relocatable symbol-bearing operand
-- instruction expressions with addends such as `#label+const`
-- richer indexed or full-extension symbolic cases that would require new
-  relocation semantics
-
-When a symbolic form is outside that matrix, opForge keeps the failure explicit
-instead of guessing. Depending on the case, the assembler reports either that
-explicit `.L` notation is still required for that instruction form or that the
-symbolic Hunk instruction form is not supported in `v0.3`.
-
-### 4.3 Data directives
+### 3.5 Data directives
 
 ```
 .byte expr[, expr...]
@@ -310,7 +284,7 @@ Notes:
 - String operands in `.byte`/`.db` are encoded using the active text encoding.
 - `.null` is strict: it errors if the encoded source text already contains byte `0`.
 
-### 4.3.1 Text encoding directives
+#### 3.5.1 Text encoding directives
 
 ```
 .encoding name
@@ -341,7 +315,7 @@ Compatibility notes:
 - opForge follows 64tass-style encoding-definition directives, but keeps `.byte` string operands encoding-aware (no split behavior between `.byte` and `.text`).
 - `.null` is strict: if encoded input already contains `0`, assembly fails.
 
-### 4.4 Symbols and assignments
+### 3.6 Symbols and assignments
 
 ```
 WIDTH = 40          ; read-only constant
@@ -361,7 +335,7 @@ Compound assignment operators:
 For `=`, `:=`, `:?=`, `.const`, `.var`, and `.set`, symbol values may be scalar, list, or struct-instance values.
 Compound assignment operators (`+=`, `-=`, etc.) are scalar-only and reject non-scalar symbols.
 
-### 4.5 Conditional assembly
+### 3.7 Conditional assembly
 
 ```
 .if expr
@@ -370,7 +344,23 @@ Compound assignment operators (`+=`, `-=`, etc.) are scalar-only and reject non-
 .endif
 ```
 
-### 4.5.1 Structured repetition
+#### 3.7.1 Match expressions
+
+```
+.match expr
+.case expr[, expr...]
+    ; body
+.case expr
+    ; body
+.default
+    ; body
+.endmatch
+```
+
+The match expression is evaluated once; the first matching `.case` wins, and
+`.default` is used if no case matches.
+
+#### 3.7.2 Structured repetition
 
 opForge supports structured loop directives in assembler passes:
 
@@ -406,7 +396,7 @@ Notes:
 - Loop iteration counts must be stable between pass1 and pass2.
 - Loop execution is guarded by `--max-loop-iterations` (default `65536`, env override `OPFORGE_MAX_LOOP_ITERATIONS`).
 
-### 4.5.2 Struct definitions
+### 3.8 Struct definitions
 
 Struct definitions declare field offsets and total size:
 
@@ -458,120 +448,7 @@ Member resolution keeps a unified namespace:
 
 Reference example: [examples/struct_literal_instance_basic.asm](../examples/opcore/struct_literal_instance_basic.asm)
 
-### 4.10 Modules and metadata
-
-Modules define semantic scopes and imports; `.use` loads dependencies by module-id:
-
-```
-.module app.main
-    .use util.math
-    .pub
-sum .const 0
-.endmodule
-```
-
-Root-module metadata controls output naming:
-
-```
-.module main
-    .meta
-        .name "Demo Project"
-        .version "1.0.0"
-        .output
-            .name "demo"
-            .list
-            .hex "demo-hex"
-            .bin "0000:ffff"
-            .fill "ff"
-            .z80
-                .name "demo-z80"
-                .bin "0000:7fff"
-                .fill "00"
-            .endz80
-        .endoutput
-    .endmeta
-    .meta.output.name "demo"
-    .meta.output.z80.name "demo-z80"
-.endmodule
-```
-
-Inside a `.meta` block, `.name` sets the metadata name. Inside an `.output`
-block (or `.meta.output.*` inline), `.name` sets the output base name.
-`.list`/`.hex`/`.bin`/`.fill` are valid only inside `.output` blocks or via
-`.meta.output.*` inline directives.
-
-`.use` forms (module scope only):
-
-```
-.use util.math
-.use util.math as M
-.use util.math (add16, sub16 as sub)
-.use util.math with (FEATURE=1, MODE="fast")
-```
-
-Notes:
-- `.use` must appear **inside a module** and **at module scope**.
-- `.use` affects **runtime symbol resolution only**.
-- `.pub/.priv` visibility is enforced for runtime symbols (labels/constants/vars) only; macro/segment exports are not filtered by `.use`.
-
-#### 4.10.1 Root input
-
-- `-i` accepts a **file** or **folder**.
-- Folder input must contain exactly one `main.*` file (case-insensitive, `.asm` or `.inc`).
-- The folder name becomes the **input base** (used for default output names).
-
-#### 4.10.2 Module identity
-
-- If a file has no explicit `.module`, it defines an **implicit module** whose id is the file basename.
-- If explicit modules exist, all top-level content must be inside `.module` blocks.
-- The **root module** is:
-    - the module matching the entry filename (case-insensitive), or
-    - the first explicit module if no match exists.
-
-#### 4.10.3 Module resolution
-
-- Search root: **entry file directory** only.
-- Extensions: fixed to `.asm` and `.inc`.
-- Module id matching is **case-insensitive**.
-- If a file defines multiple modules, only the requested module is extracted.
-- Missing or ambiguous module ids are **errors**; errors include an import stack.
-
-#### 4.10.4 Visibility rules
-
-- `.pub`/`.priv` control **runtime symbol** visibility (labels/constants/vars).
-- Macro/segment exports are **not** filtered by `.use`.
-
-#### 4.10.5 Root metadata output rules
-
-Output base precedence:
-
-1. `-o/--outfile`
-2. `.meta.output.<target>.name`
-3. `.meta.output.name`
-4. input base (file basename or folder name)
-
-Examples in the repo:
-- [examples/module_use_autoload.asm](../examples/opcore/module_use_autoload.asm)
-- [examples/module_metadata_output.asm](../examples/opcore/module_metadata_output.asm)
-- [examples/project_root/main.asm](../examples/opcore/project_root/main.asm)
-
-Match form:
-
-```
-.match expr
-.case expr[, expr...]
-    ; body
-.case expr
-    ; body
-.default
-    ; body
-.endmatch
-```
-
-The match expression is evaluated once; the first matching `.case` wins, and
-`.default` is used if no case matches.
-
-### 4.6 Scopes
+### 3.9 Scopes
 
 Scopes provide symbol namespacing and are introduced by `.block` or `.namespace`.
 Both create hierarchical namespaces where symbols are qualified by their
@@ -674,7 +551,104 @@ Examples in the repo:
 - [examples/scopes.asm](../examples/opcore/scopes.asm)
 - [examples/scopes_namespace.asm](../examples/opcore/scopes_namespace.asm)
 
-### 4.7 Target CPU
+### 3.10 Modules and metadata
+
+Modules define semantic scopes and imports; `.use` loads dependencies by module-id:
+
+```
+.module app.main
+    .use util.math
+    .pub
+sum .const 0
+.endmodule
+```
+
+Root-module metadata controls output naming:
+
+```
+.module main
+    .meta
+        .name "Demo Project"
+        .version "1.0.0"
+        .output
+            .name "demo"
+            .list
+            .hex "demo-hex"
+            .bin "0000:ffff"
+            .fill "ff"
+            .z80
+                .name "demo-z80"
+                .bin "0000:7fff"
+                .fill "00"
+            .endz80
+        .endoutput
+    .endmeta
+    .meta.output.name "demo"
+    .meta.output.z80.name "demo-z80"
+.endmodule
+```
+
+Inside a `.meta` block, `.name` sets the metadata name. Inside an `.output`
+block (or `.meta.output.*` inline), `.name` sets the output base name.
+`.list`/`.hex`/`.bin`/`.fill` are valid only inside `.output` blocks or via
+`.meta.output.*` inline directives.
+
+`.use` forms (module scope only):
+
+```
+.use util.math
+.use util.math as M
+.use util.math (add16, sub16 as sub)
+.use util.math with (FEATURE=1, MODE="fast")
+```
+
+Notes:
+- `.use` must appear **inside a module** and **at module scope**.
+- `.use` affects **runtime symbol resolution only**.
+- `.pub/.priv` visibility is enforced for runtime symbols (labels/constants/vars) only; macro/segment exports are not filtered by `.use`.
+
+#### 3.10.1 Root input
+
+- `-i` accepts a **file** or **folder**.
+- Folder input must contain exactly one `main.*` file (case-insensitive, `.asm` or `.inc`).
+- The folder name becomes the **input base** (used for default output names).
+
+#### 3.10.2 Module identity
+
+- If a file has no explicit `.module`, it defines an **implicit module** whose id is the file basename.
+- If explicit modules exist, all top-level content must be inside `.module` blocks.
+- The **root module** is:
+    - the module matching the entry filename (case-insensitive), or
+    - the first explicit module if no match exists.
+
+#### 3.10.3 Module resolution
+
+- Search root: **entry file directory** only.
+- Extensions: fixed to `.asm` and `.inc`.
+- Module id matching is **case-insensitive**.
+- If a file defines multiple modules, only the requested module is extracted.
+- Missing or ambiguous module ids are **errors**; errors include an import stack.
+
+#### 3.10.4 Visibility rules
+
+- `.pub`/`.priv` control **runtime symbol** visibility (labels/constants/vars).
+- Macro/segment exports are **not** filtered by `.use`.
+
+#### 3.10.5 Root metadata output rules
+
+Output base precedence:
+
+1. `-o/--outfile`
+2. `.meta.output.<target>.name`
+3. `.meta.output.name`
+4. input base (file basename or folder name)
+
+Examples in the repo:
+- [examples/module_use_autoload.asm](../examples/opcore/module_use_autoload.asm)
+- [examples/module_metadata_output.asm](../examples/opcore/module_metadata_output.asm)
+- [examples/project_root/main.asm](../examples/opcore/project_root/main.asm)
+
+### 3.11 Target CPU
 
 ```
 .cpu 8080    ; alias for 8085
@@ -719,20 +693,18 @@ Examples in the repo:
 .cpu mc68080
 ```
 
-Motorola 68000-family support now spans the shipped CPU lineage from `68000`
+Motorola 68000-family support spans the shipped CPU lineage from `68000`
 through `68080`.
-
-Current shipped scope includes the full assembler-facing CPU lineage from
-`68000` through `68080`, plus the narrow MMU, selector-driven FPU, and 68080
-Apollo-profile additions below.
 
 `68010` keeps baseline `68000` addressing. `68020`, `68030`, and `68040`
 accept the shipped `68020+` full-extension addressing forms. `68040`
 additionally accepts `MOVE16` and rejects `CALLM`, `RTM`, and `MOVEC CAAR`.
 
-The shipped `68080` surface now includes the full currently documented integer,
-AMMX, and legacy FPU assembler-visible families in scope for this revision,
-including E/B register namespaces and `.fpu 68080`.
+The shipped `68080` surface includes the full currently documented integer,
+AMMX, and legacy FPU assembler-visible families, including E/B register
+namespaces and `.fpu 68080`.
+
+#### 3.11.1 FPU and coprocessor selection
 
 ```
 .fpu none
@@ -768,7 +740,7 @@ transcendental and extended-math mnemonics. Assembler acceptance follows the
 documented programmer-visible instruction surface, but opForge does not model
 runtime assist behavior or CPU/FPU execution semantics for those operations.
 
-Reference fixtures under `examples/motorola68000/` now include broad FPU surface
+Reference fixtures under `examples/motorola68000/` include broad FPU surface
 examples such as `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
 `68020_fpu_registers`, `68030_pflush_external_fpu`, and
 `68040_integrated_fpu`, alongside 68080-focused fixtures such as
@@ -776,31 +748,65 @@ examples such as `68020_fpu_allmodes`, `68020_fpu_instruction_catalog`,
 `68080_fpu_surface`, and `68080_full_additional_surface`, with matching
 checked-in outputs under `examples/reference/motorola68000/`.
 
+#### 3.11.2 65816 runtime-state directives
+
 65816 support includes the phase-1 instruction set and phase-2 24-bit addressing work:
 - Implements selected 65816 mnemonics and operand forms.
 - Includes long memory forms for `ORA`, `AND`, `EOR`, `ADC`, `STA`, `LDA`, `CMP`, and `SBC` (`$llhhhh` and `$llhhhh,X`).
 - Includes stack-relative forms (`d,S` and `(d,S),Y`) for `ORA`, `AND`, `EOR`, `ADC`, `STA`, `LDA`, `CMP`, and `SBC`.
 - Includes wide-address output/layout workflows (`.org`, `.region`, `.place`, `.output image=...`, HEX/BIN emission).
 - Includes `REP`/`SEP`-driven M/X width-state tracking for supported width-sensitive immediate mnemonics.
-- Includes explicit 65816 runtime-state assumptions via `.assume` for `E/M/X/DBR/PBR/DP`.
+
+**`.assume` directive:**
+
+```
+.assume e=0, m=8, x=8, dbr=$7e, pbr=$80, dp=$1000
+.assume dbr=auto
+.assume pbr=auto
+```
+
+`.assume` sets explicit 65816 runtime-state assumptions. The assembler uses
+these assumptions to resolve ambiguous addressing modes (for example
+absolute-vs-long and direct-page offset selection).
+
 - Includes explicit per-operand mode overrides for ambiguous bank/page forms:
   `,d`, `,b`, `,k`, and `,l`.
 - Uses current assembly address bank as the default `PBR` assumption for `JMP`/`JSR`
   absolute-bank resolution when `.assume pbr=...` is not set.
-- Uses deterministic mode-selection precedence:
-  explicit override > `.assume` state > automatic fallback.
-- Uses conservative state invalidation:
-  `PLB` invalidates known `DBR`; `PLD` and `TCD` invalidate known `DP`.
-- Uses checked address arithmetic and explicit diagnostics for overflow/underflow paths in placement, linking, and image emission.
-- Does not implement full automatic banked-state inference.
 
-### 4.8 End of assembly
+**Mode-selection precedence:**
+
+For ambiguous bank/page-sensitive operands, opForge resolves in this order:
+
+1. explicit operand override (`,d`, `,b`, `,k`, `,l`)
+2. global `.assume` state (`dbr`, `pbr`, `dp`, plus `e/m/x` for widths)
+3. automatic deterministic fallback
+
+**Conservative state invalidation:**
+
+- `PLB` invalidates known `DBR`.
+- `PLD` and `TCD` invalidate known `DP`.
+- `.assume dbr=auto` / `.assume pbr=auto` clear explicit bank overrides and return
+  to inferred bank behavior.
+
+Migration note:
+- Source that previously relied on stack-sequence inference (`PHK/PLB`,
+  `LDA #imm ... PHA ... PLB`, `PEA ... PLB`, and related `... PLD` patterns)
+  should be updated to use explicit operand overrides and/or local `.assume`
+  updates at the relevant call sites.
+
+Current 65816 limits:
+- PRG load-address prefix remains 16-bit.
+- Full automatic banked-state inference is not implemented (`.assume` plus explicit overrides provide control).
+- Uses checked address arithmetic and explicit diagnostics for overflow/underflow paths in placement, linking, and image emission.
+
+### 3.12 End of assembly
 
 ```
 .end
 ```
 
-### 4.9 Preprocessor directives
+### 3.13 Preprocessor directives
 
 Preprocessor directives are dot-prefixed:
 
@@ -818,9 +824,9 @@ Notes:
 - Preprocessor directives run before macro expansion.
 - Preprocessor symbols are provided via the `-D/--define` command-line option.
 
-## 5. Pseudo instructions
+## 4. Pseudo instructions
 
-### 5.1 Macros
+### 4.1 Macros
 
 ```
 NAME .macro a, b=2
@@ -846,14 +852,14 @@ Parenthesized call form:
 .NAME(1)
 ```
 
-### 5.2 Macro parameters
+### 4.2 Macro parameters
 
 - Positional: `.1` .. `.9`
 - Named: `.name` or `.{name}`
 - Full argument list: `.@`
 - Text form: `@1` .. `@9`
 
-### 5.3 Segment macros
+### 4.3 Segment macros
 
 `.segment` defines a macro that expands inline without an implicit
 `.block/.endblock` wrapper:
@@ -876,13 +882,7 @@ Alternate directive-first form:
 
 `.ends` is an alias for `.endsegment`.
 
-### 5.4 Repetition
-
-Assembler repetition directives are implemented in Section 4.5.1
-(`.for`, `.bfor`, `.while`, `.bwhile` with `.endfor`/`.endwhile`).
-Additional macro-preprocessor repetition forms are not implemented in v0.9.x.
-
-### 5.5 Statement patterns (`.statement`)
+### 4.4 Statement patterns (`.statement`)
 
 `.statement` defines a patterned statement signature that is matched when the
 statement label appears without a leading dot:
@@ -916,7 +916,7 @@ Expansion model:
 - `.statement` definitions are expanded by the macro processor **before parsing**.
 - Statement definitions are **global** (not module-scoped).
 
-### 5.6 Scope and namespace interaction (`.macro`, `.segment`, `.statement`)
+### 4.5 Scope and namespace interaction (`.macro`, `.segment`, `.statement`)
 
 This section describes how compile-time definition lookup and expansion-time
 symbol scopes interact.
@@ -965,63 +965,7 @@ tmp .const 3        ; resolves in caller scope unless body adds explicit .block
 .endn
 ```
 
-### 5.7 Assembler pipeline (CPU family/dialect)
-
-#### Registry
-
-- Families and CPUs are registered in Rust at startup.
-- CPU names are case-insensitive and resolved via the registry.
-
-#### Selection
-
-- `.cpu <name>` selects the active CPU.
-- There is **no `.dialect` directive**.
-- Dialect mapping (when present) is selected by CPU default or family canonical dialect.
-
-#### Encoding pipeline
-
-1. Parse operands with the **family handler**.
-2. Apply **dialect mapping** (mnemonic + operand rewrite).
-3. Attempt **family pre-encode** (optional).
-4. Resolve operands with the **CPU handler**.
-5. Run **CPU validator** (trait exists, currently unused by CPUs).
-6. Encode with **family handler**; fall back to **CPU handler** for extensions.
-
-#### VM hierarchy bridge (v1)
-
-See also:
-- [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md) (host/VM boundary + strictness rules)
-- [VM Ultimate64 ABI Contract (v1)](vm-ultimate64-abi-contract-v1.md) (constrained-runtime ABI for `*.opasm`)
-
-- The VM runtime bridge provides host-facing target selection:
-  - `set_active_cpu(cpu_id)`
-  - `resolve_pipeline(cpu_id, dialect_override?)`
-- Dialect override is host policy only; source still has **no `.dialect` directive**.
-- The bridge validates override compatibility against family ownership + optional CPU allow-list.
-- Dialect modules are rewrite-only surfaces; instruction encoding remains family/CPU owned.
-
-#### VM runtime package source selection
-
-- The CLI supports explicit VM runtime package loading with `--opasm-package <FILE>` (or `OPFORGE_OPASM_PACKAGE`).
-- The high-level assembly/session path accepts the same kind of explicit `.opasm` package override through its request/config surface.
-- Package source precedence for those paths is:
-  1. explicit package path
-  2. default artifact path `target/vm/opforge-vm-runtime.opasm` (when `vm-runtime-opasm-artifact` is enabled)
-  3. bundled/runtime-generated fallback (disabled when `vm-runtime-opasm-unbundled` is enabled)
-- In `vm-runtime-only` + `vm-runtime-opasm-unbundled` builds, runtime package sourcing is mandatory:
-  - either provide `--opasm-package <FILE>`
-  - or enable artifact mode and provide the default artifact file
-- Lower-level engine/editor helpers such as `libopforge::processing`, `editor_parse_line`, and `editor_route_line` do not broaden this into CLI-style fallback behavior.
-- In `vm-runtime-only` mode, those helpers should be called with an explicit runtime model via the `*_with_model` entrypoints, or with the default artifact file present when `vm-runtime-opasm-artifact` is enabled.
-- If neither an explicit model nor the default artifact is available, those helpers report an unavailable runtime model instead of generating or bundling one implicitly.
-
-## 6. Compatibility
-
-- Dot-prefixed directives are required (for `.org`, `.set`, `.if`, etc.).
-- Labels are idiomatically written without a trailing `:`.
-- Trailing-colon labels remain supported for compatibility/migration.
-
-## 7. Command line options
+## 5. Command line options
 
 Syntax:
 
@@ -1048,6 +992,17 @@ Outputs:
 - `--vice-labels`: write `--labels` output in VICE-compatible format.
 - `--ctags-labels`: write `--labels` output in ctags-compatible format.
 
+Diagnostics:
+- `--format <text|json>`: select diagnostic output format (default: `text`).
+- `--diagnostics-style <rustc|classic>`: select diagnostic rendering style (default: `rustc`).
+- `-q, --quiet`: suppress diagnostics for successful assembly runs.
+- `-E, --error <FILE>`: route diagnostics to file instead of stderr.
+- `--error-append`: append diagnostics to `--error` file.
+- `--no-error`: disable diagnostic routing.
+- `-w, --no-warn`: suppress warning diagnostics.
+- `--Wall`: enable all warning classes (reserved for future groups).
+- `--Werror`: treat warnings as errors.
+
 Other options:
 - `-o, --outfile <BASE>`: output base name if output filename omitted.
 - `-f, --fill <hh>`: fill byte for binary output (hex). Requires binary output. Defaults to `FF`.
@@ -1057,13 +1012,6 @@ Other options:
 - `--line-numbers`: listing compatibility flag for line-number column (enabled by default).
 - `--tab-size <N>`: expand tab characters in listing source column.
 - `--verbose-list`: listing compatibility flag (reserved for expanded listing sections).
-- `-q, --quiet`: suppress diagnostics for successful assembly runs.
-- `-E, --error <FILE>`: route diagnostics to file instead of stderr.
-- `--error-append`: append diagnostics to `--error` file.
-- `--no-error`: disable diagnostic routing.
-- `-w, --no-warn`: suppress warning diagnostics.
-- `--Wall`: enable all warning classes (reserved for future groups).
-- `--Werror`: treat warnings as errors.
 - `--fmt`: format input files in place (shorthand for `--fmt-write`). Folder inputs also include linked module files.
 - `--fmt-check`: check formatting for input files without writing changes. Folder inputs include linked module files.
 - `--fmt-write`: apply formatter changes in place for input files. Folder inputs include linked module files.
@@ -1073,15 +1021,15 @@ Other options:
 - `--opasm-package <FILE>`: load runtime `.opasm` package from FILE and prefer it over artifact/bundled package sources.
 - `--print-capabilities`: print deterministic capability metadata and exit.
 - `--print-cpusupport`: print deterministic CPU support metadata and exit.
-
-The default capability and CPU-support reports include the shipped Motorola
-68000-family lineage entries through `m68080`.
 - `--pp-macro-depth <N>`: maximum preprocessor macro expansion depth (default `64`, minimum `1`).
 - `--max-loop-iterations <N>`: maximum `.for`/`.while` iterations before emitting an error (default `65536`, minimum `1`).
 - `--input-asm-ext <EXT>`: additional accepted source-file extension for direct file inputs.
 - `--input-inc-ext <EXT>`: additional accepted root-module extension for folder inputs.
 - `-h, --help`: print help.
 - `-V, --version`: print version.
+
+The default capability and CPU-support reports include the shipped Motorola
+68000-family lineage entries through `m68080`.
 
 Notes:
 - If multiple inputs are provided, `-o` must be a directory and explicit output
@@ -1099,6 +1047,13 @@ Notes:
 - `--hunk` does not currently consume `-g`; AmigaOS executable hunks remain
   loader-relocatable and use the Hunk segment/relocation records emitted by
   the Hunk writer.
+
+### 5.1 Formatter configuration
+
+The formatter operates in four modes: `--fmt` (in-place, shorthand for
+`--fmt-write`), `--fmt-write` (in-place), `--fmt-check` (dry-run), and
+`--fmt-stdout` (single file to stdout). Formatter mode cannot be combined with
+assembler output flags.
 
 Formatter config (`--fmt-config`) currently supports these keys:
 
@@ -1130,7 +1085,7 @@ Validation is strict:
 V2 note: `label_case` is planned to become symbol-aware so label usage tokens
 are case-normalized alongside label definitions.
 
-## 8. Messages
+## 6. Messages
 
 Diagnostics include a line/column and a highlighted span in listings. Terminal
 output may use ANSI colors to highlight the offending region.
@@ -1144,49 +1099,13 @@ Common linker-region failures:
 - `Section referenced by .output must be explicitly placed`
 - `contiguous output requires adjacent sections` (gap diagnostic includes range)
 
-## 9. Credits
+## 7. Appendix: quick reference
 
-opForge is derived from the asm85 assembler by Tom Nisbet and has been extended
-with new expression syntax, directives, and tooling.
-
-## 10. Default translation
-
-Planned (not implemented yet): translation tables for character/byte mappings.
-
-## 11. Escapes
-
-Strings accept the following escapes:
-
-```
-\n  \r  \t  \0  \xHH
-```
-
-Any other escape sequence inserts the escaped character as-is.
-
-## 12. Opcodes
-
-Instruction mnemonics are selected by `.cpu`:
-- Intel dialect for 8080/8085 (`MOV`, `MVI`, `JMP`, ...)
-- 8085-only additions include `RIM` and `SIM`.
-- Zilog dialect for Z80 (`LD`, `JP`, `JR`, ...), including `SLL` and half-index
-  registers (`IXH`, `IXL`, `IYH`, `IYL`).
-- Standard MOS 6502/65C02 mnemonics (`LDA`, `JMP`, `BRA`, ...), including 65C02
-  additions such as `STP`, `WAI`, `DEC A`/`INC A` (`DEA`/`INA` aliases), and
-  extended `BIT` modes.
-- 65816 additions currently implemented include:
-  - control flow/control: `BRL`, `JML`, `JSL`, `RTL`, `REP`, `SEP`, `XCE`, `XBA`
-  - long-indirect jump alias: `JMP [$nnnn]` (same encoding as `JML [$nnnn]`)
-  - stack/register control: `PHB`, `PLB`, `PHD`, `PLD`, `PHK`, `TCD`, `TDC`, `TCS`, `TSC`
-  - memory/control: `PEA`, `PEI`, `PER`, `COP`, `WDM`
-  - block move: `MVN`, `MVP`
-  - stack-relative addressing forms used by implemented opcodes (`d,S`, `(d,S),Y`)
-
-## 13. Appendix: quick reference
-
-### 13.1 Directives
+### 7.1 Directives
 
 ```
 .org  .align  .region  .place  .pack  .section  .endsection  .cpu  .end
+.fpu  .apollo  .assume
 .encoding  .enc  .encode  .endencode  .cdef  .tdef  .edef
 .byte  .db  .word  .dw  .long  .text  .null  .ptext  .ds  .emit  .res  .fill
 .const  .var  .set
@@ -1201,13 +1120,13 @@ Instruction mnemonics are selected by `.cpu`:
 .meta.output.name  .meta.output.<target>.name  .meta.output.list  .meta.output.hex  .meta.output.bin  .meta.output.fill
 ```
 
-### 13.2 Assignment operators
+### 7.2 Assignment operators
 
 ```
 =  :=  :?=  +=  -=  *=  /=  %=  **=  |=  ^=  &=  ||=  &&=  <<=  >>=  ..=  <?=  >?=  x=  .=
 ```
 
-### 13.3 Scope behavior at a glance
+### 7.3 Scope behavior at a glance
 
 | Construct | Definition lookup | Expansion form | Scope impact at call site | Notes |
 |-----------|-------------------|----------------|----------------------------|-------|
@@ -1215,7 +1134,7 @@ Instruction mnemonics are selected by `.cpu`:
 | `.segment` | Namespace-aware (same lookup as `.macro`) | Inline expansion (no implicit wrapper) | Body symbols resolve in caller scope | Use explicit `.block` in body if isolation is needed |
 | `.statement` | Global keyword registry (not namespace-scoped) | Inline expansion (no implicit wrapper) | Body symbols resolve in caller scope | Cannot be defined inside `.macro`/`.segment`; statement definitions are not nested |
 
-## 14. Appendix: multi-CPU architecture
+## 8. Appendix: multi-CPU architecture
 
 This appendix describes the modular architecture that allows opForge to support
 multiple CPU targets through a common framework, including Intel 8080-family
@@ -1281,6 +1200,56 @@ registered family or CPU:
 │ CPU   │  │ CPU   │           │ CPU   │  │ CPU   │  │ CPU   │
 └───────┘  └───────┘           └───────┘  └───────┘  └───────┘
 ```
+
+### Assembler pipeline (CPU family/dialect)
+
+#### Registry
+
+- Families and CPUs are registered in Rust at startup.
+- CPU names are case-insensitive and resolved via the registry.
+
+#### Selection
+
+- `.cpu <name>` selects the active CPU.
+- There is **no `.dialect` directive**.
+- Dialect mapping (when present) is selected by CPU default or family canonical dialect.
+
+#### Encoding pipeline
+
+1. Parse operands with the **family handler**.
+2. Apply **dialect mapping** (mnemonic + operand rewrite).
+3. Attempt **family pre-encode** (optional).
+4. Resolve operands with the **CPU handler**.
+5. Run **CPU validator** (trait exists, currently unused by CPUs).
+6. Encode with **family handler**; fall back to **CPU handler** for extensions.
+
+#### VM hierarchy bridge (v1)
+
+See also:
+- [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md) (host/VM boundary + strictness rules)
+- [VM Ultimate64 ABI Contract (v1)](vm-ultimate64-abi-contract-v1.md) (constrained-runtime ABI for `*.opasm`)
+
+- The VM runtime bridge provides host-facing target selection:
+  - `set_active_cpu(cpu_id)`
+  - `resolve_pipeline(cpu_id, dialect_override?)`
+- Dialect override is host policy only; source still has **no `.dialect` directive**.
+- The bridge validates override compatibility against family ownership + optional CPU allow-list.
+- Dialect modules are rewrite-only surfaces; instruction encoding remains family/CPU owned.
+
+#### VM runtime package source selection
+
+- The CLI supports explicit VM runtime package loading with `--opasm-package <FILE>` (or `OPFORGE_OPASM_PACKAGE`).
+- The high-level assembly/session path accepts the same kind of explicit `.opasm` package override through its request/config surface.
+- Package source precedence for those paths is:
+  1. explicit package path
+  2. default artifact path `target/vm/opforge-vm-runtime.opasm` (when `vm-runtime-opasm-artifact` is enabled)
+  3. bundled/runtime-generated fallback (disabled when `vm-runtime-opasm-unbundled` is enabled)
+- In `vm-runtime-only` + `vm-runtime-opasm-unbundled` builds, runtime package sourcing is mandatory:
+  - either provide `--opasm-package <FILE>`
+  - or enable artifact mode and provide the default artifact file
+- Lower-level engine/editor helpers such as `libopforge::processing`, `editor_parse_line`, and `editor_route_line` do not broaden this into CLI-style fallback behavior.
+- In `vm-runtime-only` mode, those helpers should be called with an explicit runtime model via the `*_with_model` entrypoints, or with the default artifact file present when `vm-runtime-opasm-artifact` is enabled.
+- If neither an explicit model nor the default artifact is available, those helpers report an unavailable runtime model instead of generating or bundling one implicitly.
 
 ### VM boundary (certified families)
 
@@ -1358,7 +1327,7 @@ Instruction extensions:
 
 **MOS 6502 Family (65816 additions)**
 
-Currently implemented 65816-specific additions in this branch:
+Currently implemented 65816-specific additions:
 - `BRL`, `JML`, `JSL`, `RTL`
 - `JMP [$nnnn]` (alias for `JML [$nnnn]`)
 - `REP`, `SEP`, `XCE`, `XBA`
@@ -1366,40 +1335,7 @@ Currently implemented 65816-specific additions in this branch:
 - `PEA`, `PEI`, `PER`, `COP`, `WDM`
 - `MVN`, `MVP`
 - operand forms: `d,S`, `(d,S),Y`, bracketed indirect (`[...]`, `[...,Y]`) for supported instructions
-- runtime-state assumption directive: `.assume e=..., m=..., x=..., dbr=..., pbr=..., dp=...`
-- `.assume` bank/direct-page assumptions influence ambiguous mode resolution for supported forms
-  (for example absolute-vs-long and direct-page offset selection)
-- explicit per-operand overrides for ambiguous forms:
-  - `,d` force direct-page
-  - `,b` force data-bank absolute
-  - `,k` force program-bank absolute (`JMP`/`JSR` forms)
-  - `,l` force long
-- without explicit `.assume pbr=...`, `JMP`/`JSR` bank assumptions default to the
-  current assembly address bank
-- `.assume dbr=auto` / `.assume pbr=auto` clear explicit bank overrides and return
-  to inferred bank behavior
-- conservative state invalidation rules:
-  - `PLB` invalidates known `DBR`
-  - `PLD` invalidates known `DP`
-  - `TCD` invalidates known `DP` unless re-established explicitly
-
-**65816 Mode-Selection Precedence**
-
-For ambiguous bank/page-sensitive operands, opForge resolves in this order:
-
-1. explicit operand override (`,d`, `,b`, `,k`, `,l`)
-2. global `.assume` state (`dbr`, `pbr`, `dp`, plus `e/m/x` for widths)
-3. automatic deterministic fallback
-
-Migration note:
-- Source that previously relied on stack-sequence inference (`PHK/PLB`,
-  `LDA #imm ... PHA ... PLB`, `PEA ... PLB`, and related `... PLD` patterns)
-  should be updated to use explicit operand overrides and/or local `.assume`
-  updates at the relevant call sites.
-
-Current 65816 limits:
-- PRG load-address prefix remains 16-bit
-- full automatic banked-state inference is not implemented (`.assume` plus explicit overrides provide control)
+- runtime-state directives: see §3.11.2
 
 **Intel 8080 Family**
 
@@ -1514,7 +1450,74 @@ pub trait DialectModule: Send + Sync {
 }
 ```
 
-## 15. VM package authoring notes (v0.1 draft)
+## 9. Appendix: AmigaOS Hunk symbolic notation boundary
+
+The current executable Hunk notation surface is intentionally frozen as a
+documented compatibility matrix. For `format=hunk`, opForge supports the
+natural bare-symbol form only when there is one relocatable symbol and the
+assembler has one canonical absolute-long encoding that maps cleanly onto
+`HUNK_RELOC32`.
+
+Supported examples:
+
+```asm
+.long target
+.long target + 4
+LEA target,A1
+PEA target
+MOVE.L #target,D1
+MOVE.L target,D0
+MOVE.W target,D0
+MOVE.L D0,target
+MOVE.W #$1234,target
+MOVE.L target,$DFF080
+CLR.W target
+ADD.W target,D0
+ADD.W D0,target
+ORI.B #$12,target
+BTST #1,target
+ADDA.L target,A0
+SNE target
+ASL target
+MOVEM.L target,D1/D3
+MOVES.L target,A2
+CHK2.W target,D0
+CAS.W D0,D1,target
+CALLM #5,target
+BFTST target{3:5}
+BFEXTU target{D1:8},D2
+BFINS D3,target{4:D4}
+```
+
+Covered families in the frozen matrix:
+- `.long label` and `.long label + const`
+- `LEA`, `PEA`, `JMP`, `JSR`
+- `MOVE.B`, `MOVE.W`, `MOVE.L`, and `MOVEA.L` for the documented one-symbol forms
+- unary memory forms: `CLR`, `NEGX`, `NEG`, `NOT`, `TST`, `NBCD`, `TAS`
+- data-register arithmetic or logical forms: `ADD`, `SUB`, `AND`, `OR`, `CMP`, `EOR`
+- immediate destination forms: `ORI`, `ANDI`, `SUBI`, `ADDI`, `EORI`, `CMPI`
+- bit operations: `BTST`, `BCHG`, `BCLR`, `BSET`
+- address-register source forms: `ADDA`, `SUBA`, `CMPA`
+- `Scc` destination forms
+- memory shift or rotate forms: `ASL`, `ASR`, `LSL`, `LSR`, `ROL`, `ROR`, `ROXL`, `ROXR`
+- special-register moves involving `SR` or `CCR`
+- `MOVEM`, `MOVES`, `CHK`, `MULU`, `MULS`, `DIVU`, `DIVS`
+- `CHK2`, `CMP2`, `CAS`, `CALLM`
+- 68020 bit-field forms: `BFTST`, `BFEXTU`, `BFEXTS`, `BFFFO`, `BFCHG`, `BFCLR`, `BFSET`, `BFINS`
+
+Still explicit-only:
+- forms not listed in the frozen matrix above
+- instruction forms with more than one relocatable symbol-bearing operand
+- instruction expressions with addends such as `#label+const`
+- richer indexed or full-extension symbolic cases that would require new
+  relocation semantics
+
+When a symbolic form is outside that matrix, opForge keeps the failure explicit
+instead of guessing. Depending on the case, the assembler reports either that
+explicit `.L` notation is still required for that instruction form or that the
+symbolic Hunk instruction form is not supported in `v0.3`.
+
+## 10. Appendix: VM package authoring notes (v0.1 draft)
 
 See also:
 - [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md)

@@ -16,7 +16,7 @@ PutStr          = -948
 start:
         LEA dos_name,A1             ; "dos.library" name string
         MOVEQ #36,D0                ; minimum required version (Kickstart 2.0)
-        MOVEA.L SysBase.W,A6
+        MOVEA.L SysBase,A6
         JSR OpenLibrary(A6)
 
         TST.L D0                    ; zero if OpenLibrary() failed
@@ -27,7 +27,7 @@ start:
         JSR PutStr(A6)
 
         MOVEA.L A6,A1               ; library to close
-        MOVEA.L SysBase.W,A6
+        MOVEA.L SysBase,A6
         JSR CloseLibrary(A6)
 
 no_dos:

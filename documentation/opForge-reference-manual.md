@@ -205,6 +205,73 @@ Output mode rules:
   source file. Hunk output also honors `.section ..., memory=chip|fast|slow|any`
   for selected sections.
 
+### 4.2.1 AmigaOS Hunk symbolic notation boundary
+
+The current executable Hunk notation surface is intentionally frozen as a
+documented compatibility matrix. For `format=hunk`, opForge supports the
+natural bare-symbol form only when there is one relocatable symbol and the
+assembler has one canonical absolute-long encoding that maps cleanly onto
+`HUNK_RELOC32`.
+
+Supported examples:
+
+```asm
+.long target
+.long target + 4
+LEA target,A1
+PEA target
+MOVE.L #target,D1
+MOVE.L target,D0
+MOVE.W target,D0
+MOVE.L D0,target
+MOVE.W #$1234,target
+MOVE.L target,$DFF080
+CLR.W target
+ADD.W target,D0
+ADD.W D0,target
+ORI.B #$12,target
+BTST #1,target
+ADDA.L target,A0
+SNE target
+ASL target
+MOVEM.L target,D1/D3
+MOVES.L target,A2
+CHK2.W target,D0
+CAS.W D0,D1,target
+CALLM #5,target
+BFTST target{3:5}
+BFEXTU target{D1:8},D2
+BFINS D3,target{4:D4}
+```
+
+Covered families in the frozen matrix:
+- `.long label` and `.long label + const`
+- `LEA`, `PEA`, `JMP`, `JSR`
+- `MOVE.B`, `MOVE.W`, `MOVE.L`, and `MOVEA.L` for the documented one-symbol forms
+- unary memory forms: `CLR`, `NEGX`, `NEG`, `NOT`, `TST`, `NBCD`, `TAS`
+- data-register arithmetic or logical forms: `ADD`, `SUB`, `AND`, `OR`, `CMP`, `EOR`
+- immediate destination forms: `ORI`, `ANDI`, `SUBI`, `ADDI`, `EORI`, `CMPI`
+- bit operations: `BTST`, `BCHG`, `BCLR`, `BSET`
+- address-register source forms: `ADDA`, `SUBA`, `CMPA`
+- `Scc` destination forms
+- memory shift or rotate forms: `ASL`, `ASR`, `LSL`, `LSR`, `ROL`, `ROR`, `ROXL`, `ROXR`
+- special-register moves involving `SR` or `CCR`
+- `MOVEM`, `MOVES`, `CHK`, `MULU`, `MULS`, `DIVU`, `DIVS`
+- `CHK2`, `CMP2`, `CAS`, `CALLM`
+- 68020 bit-field forms: `BFTST`, `BFEXTU`, `BFEXTS`, `BFFFO`, `BFCHG`, `BFCLR`, `BFSET`, `BFINS`
+
+Still explicit-only:
+- forms not listed in the frozen matrix above
+- instruction forms with more than one relocatable symbol-bearing operand
+- instruction expressions with addends such as `#label+const`
+- richer indexed or full-extension symbolic cases that would require new
+  relocation semantics
+
+When a symbolic form is outside that matrix, opForge keeps the failure explicit
+instead of guessing. Depending on the case, the assembler reports either that
+explicit `.L` notation is still required for that instruction form or that the
+symbolic Hunk instruction form is not supported in `v0.3`.
+
 ### 4.3 Data directives
 
 ```

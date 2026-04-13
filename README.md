@@ -44,6 +44,15 @@ AmigaOS Hunk executable output is available both through in-source
 `.output ..., format=hunk` directives and through the CLI shorthand
 `--cpu 68000 --hunk ...` for flat 68000-family sources.
 
+The current executable Hunk notation surface is now frozen as an explicit
+documented `v0.3` matrix. Natural bare-symbol forms such as `LEA label,A1`,
+`MOVE.L D0,label`, `ADDI.W #1,label`, and `BFTST label{3:5}` are supported for
+the documented one-symbol subset; richer multi-symbol or addended instruction
+forms remain explicit-only or unsupported until a later spec revision. The
+full boundary is described in the
+[reference manual](documentation/opForge-reference-manual.md) and the
+[v0.3 Hunk executable completeness spec](documentation/opForge-amiga-hunk-executable-completeness-spec-v0_3.md).
+
 It is originally inspired by [64tass](https://tass64.sourceforge.net) in terms of feature scope and notation style.
 
 ## Documentation

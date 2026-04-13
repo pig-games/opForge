@@ -249,14 +249,103 @@ Supported in `v0.3`:
 - `JSR label`
   - canonical form: absolute-long symbolic control-transfer target
   - fixup model: `HUNK_RELOC32`
+- `MOVE.B label,Dn`, `MOVE.W label,Dn`
+  - canonical form: absolute-long symbolic source operand
+  - fixup model: `HUNK_RELOC32`
+- `MOVE.B Dn,label`, `MOVE.W Dn,label`
+  - canonical form: absolute-long symbolic destination operand
+  - fixup model: `HUNK_RELOC32`
+- `MOVE.L label,<ea>`, `MOVE.W label,<ea>`
+  - canonical form: one symbolic absolute-long source operand plus one
+    non-symbolic destination effective address
+  - examples: `MOVE.L label,$DFF080`, `MOVE.L label,8(A0)`
+  - fixup model: `HUNK_RELOC32`
+- `MOVE.L <ea>,label`, `MOVE.W #imm,label`, `MOVE.L #imm,label`
+  - canonical form: one symbolic absolute-long destination operand plus one
+    non-symbolic source effective address
+  - examples: `MOVE.L 8(PC),label`, `MOVE.L #$12345678,label`
+  - fixup model: `HUNK_RELOC32`
+- unary memory forms with one symbolic operand
+  - canonical form: one symbolic absolute-long effective address
+  - covered mnemonics: `CLR.[B|W|L]`, `NEGX.[B|W|L]`, `NEG.[B|W|L]`,
+    `NOT.[B|W|L]`, `TST.[B|W|L]`, `NBCD`, `TAS`
+  - fixup model: `HUNK_RELOC32`
+- data-register arithmetic or logical forms with one symbolic operand
+  - canonical form: one symbolic absolute-long effective address
+  - covered source-to-register mnemonics: `ADD.[B|W|L]`, `SUB.[B|W|L]`,
+    `AND.[B|W|L]`, `OR.[B|W|L]`, `CMP.[B|W|L]`
+  - covered register-to-destination mnemonics: `ADD.[B|W|L]`, `SUB.[B|W|L]`,
+    `AND.[B|W|L]`, `OR.[B|W|L]`, `EOR.[B|W|L]`
+  - fixup model: `HUNK_RELOC32`
+- immediate binary destination forms with one symbolic operand
+  - canonical form: one symbolic absolute-long destination operand
+  - covered mnemonics: `ORI.[B|W|L]`, `ANDI.[B|W|L]`, `SUBI.[B|W|L]`,
+    `ADDI.[B|W|L]`, `EORI.[B|W|L]`, `CMPI.[B|W|L]`
+  - fixup model: `HUNK_RELOC32`
+- bit-operation destination forms with one symbolic operand
+  - canonical form: one symbolic absolute-long destination operand
+  - covered mnemonics: `BTST`, `BCHG`, `BCLR`, `BSET` with immediate or
+    data-register bit selectors
+  - fixup model: `HUNK_RELOC32`
+- address-register source forms with one symbolic operand
+  - canonical form: one symbolic absolute-long source operand
+  - covered mnemonics: `ADDA.[W|L]`, `SUBA.[W|L]`, `CMPA.[W|L]`
+  - fixup model: `HUNK_RELOC32`
+- `Scc` destination forms with one symbolic operand
+  - canonical form: one symbolic absolute-long destination operand
+  - covered mnemonics: `ST`, `SF`, `SHI`, `SLS`, `SCC`, `SCS`, `SNE`, `SEQ`,
+    `SVC`, `SVS`, `SPL`, `SMI`, `SGE`, `SLT`, `SGT`, `SLE`
+  - fixup model: `HUNK_RELOC32`
+- memory shift or rotate forms with one symbolic operand
+  - canonical form: one symbolic absolute-long destination operand
+  - covered mnemonics: `ASL`, `ASR`, `LSL`, `LSR`, `ROL`, `ROR`, `ROXL`,
+    `ROXR` in their memory-effective-address forms
+  - fixup model: `HUNK_RELOC32`
+- special-register move forms with one symbolic operand
+  - canonical form: one symbolic absolute-long operand paired with `SR` or
+    `CCR`
+  - covered forms: `MOVE SR,label`, `MOVE label,SR`, `MOVE label,CCR`
+  - fixup model: `HUNK_RELOC32`
+- `MOVEM.[W|L]` with one symbolic operand
+  - canonical form: one symbolic absolute-long effective address plus one
+    integer register list
+  - fixup model: `HUNK_RELOC32`
+- `MOVES.[B|W|L]` with one symbolic operand
+  - canonical form: one symbolic absolute-long effective address plus one data
+    or address register
+  - fixup model: `HUNK_RELOC32`
+- word-math source forms with one symbolic operand
+  - canonical form: one symbolic absolute-long source operand
+  - covered mnemonics: `CHK`, `MULU`, `MULS`, `DIVU`, `DIVS`
+  - fixup model: `HUNK_RELOC32`
+- `CHK2` or `CMP2` source forms with one symbolic operand
+  - canonical form: one symbolic absolute-long source operand
+  - covered mnemonics: `CHK2.[W|L]`, `CMP2.[B|W|L]`
+  - fixup model: `HUNK_RELOC32`
+- `CAS.[B|W|L] Dn,Dn,label`
+  - canonical form: one symbolic absolute-long destination operand
+  - fixup model: `HUNK_RELOC32`
+- `CALLM #imm,label`
+  - canonical form: one symbolic absolute-long target operand
+  - fixup model: `HUNK_RELOC32`
+- 68020 bit-field forms with one symbolic base operand
+  - canonical form: one symbolic absolute-long bit-field base effective address
+  - covered read-only mnemonics: `BFTST`, `BFEXTU`, `BFEXTS`, `BFFFO`
+  - covered read-write mnemonics: `BFCHG`, `BFCLR`, `BFSET`, `BFINS`
+  - examples: `BFTST label{3:5}`, `BFEXTU label{D1:8},D2`,
+    `BFINS D3,label{4:D4}`
+  - fixup model: `HUNK_RELOC32`
 
 Explicit-only in `v0.3`:
 
 - symbolic forms whose size is not fixed to long by the mnemonic or data form
+  and are not explicitly listed in the supported matrix above
 - symbolic instruction forms where both absolute-word and absolute-long remain
   materially legal and no single canonical relocatable rule is declared
+- instruction forms with more than one relocatable symbol-bearing operand
 - symbolic expression forms more complex than `label+const` for executable data
   fixups
+- symbolic instruction expressions with addends such as `#label+const`
 - symbolic indexed or full-extension-addressing cases that would require new
   executable fixup semantics beyond the declared `v0.3` matrix
 
@@ -344,31 +433,31 @@ Empty selected non-BSS section:
 
 ## Acceptance Criteria
 
-- [ ] Covered bare-symbol executable instruction forms assemble without explicit
+- [x] Covered bare-symbol executable instruction forms assemble without explicit
   `.L` notation and produce the canonical relocatable encoding.
-- [ ] The concrete `v0.3` executable compatibility matrix in this specification
+- [x] The concrete `v0.3` executable compatibility matrix in this specification
   is what the implementation lands; the plan may sequence it, but it must not
   redefine it.
-- [ ] `format=hunk` can emit supported executable outputs without requiring
+- [x] `format=hunk` can emit supported executable outputs without requiring
   explicit `.region`, `.place`, or `.pack`.
-- [ ] For the unplaced executable path covered by `v0.3`, emitted segment
+- [x] For the unplaced executable path covered by `v0.3`, emitted segment
   order is determined solely by user-declared `sections=...`, subject only to
   the existing requirement that the first emitted segment is code and that
   unsupported fixups still fail explicitly.
-- [ ] For sources with no explicit `.section`, `.output ..., format=hunk`
+- [x] For sources with no explicit `.section`, `.output ..., format=hunk`
   emits one implicit code hunk and does not require `.org`.
-- [ ] For sources with no explicit `.output`, CLI `--hunk [FILE]` emits the
+- [x] For sources with no explicit `.output`, CLI `--hunk [FILE]` emits the
   same implicit code hunk and may rely on CLI `--cpu <ID>` for CPU selection.
-- [ ] Explicitly placed and unplaced executable Hunk inputs behave consistently
+- [x] Explicitly placed and unplaced executable Hunk inputs behave consistently
   for the covered subset.
-- [ ] Broader executable symbolic instruction and data forms emit correct
+- [x] Broader executable symbolic instruction and data forms emit correct
   section-relative addends and Hunk relocations in the supported subset.
-- [ ] The `v0.3` scope is expressed as an explicit Hunk-executable
+- [x] The `v0.3` scope is expressed as an explicit Hunk-executable
   compatibility matrix anchored to public `vasmm68k_mot` expectations, rather
   than to vague “normal source” wording.
-- [ ] Ambiguous or unsupported symbolic forms continue to fail with
+- [x] Ambiguous or unsupported symbolic forms continue to fail with
   deterministic diagnostics.
-- [ ] Existing AmigaOS examples remain runnable, and can be simplified where
+- [x] Existing AmigaOS examples remain runnable, and can be simplified where
   the new notation or placement support genuinely permits it.
 
 ## Validation Expectations

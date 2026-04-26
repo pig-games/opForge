@@ -1,0 +1,1 @@
+PASS: Findings-first Markdown artifact with stable RVW IDs, evidence-backed plan-scope findings, clear issue-versus-impact separation, one decisive fix direction per finding, distinct testing-gap and residual-risk sections, and no unresolved open questions.

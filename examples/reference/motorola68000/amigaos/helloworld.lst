@@ -48,14 +48,14 @@ SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-CloseLibrary     FFFFFE62  prv  lbl
-dos_name         0030      prv  lbl
-hello            003C      prv  lbl
-no_dos           002C      prv  lbl
-OpenLibrary      FFFFFDD8  prv  lbl
-PutStr           FFFFFC4C  prv  lbl
-start            0000      prv  lbl
-SysBase          0004      prv  lbl
+CloseLibrary     FFFFFE62  prv  lbl 
+dos_name         0030      prv  lbl 
+hello            003C      prv  lbl 
+no_dos           002C      prv  lbl 
+OpenLibrary      FFFFFDD8  prv  lbl 
+PutStr           FFFFFC4C  prv  lbl 
+start            0000      prv  lbl 
+SysBase          0004      prv  lbl 
 
 Total memory is 0 bytes
 

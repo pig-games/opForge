@@ -13,7 +13,7 @@ use crate::lsp::document_state::{
 use crate::lsp::session::{
     configured_workspace_roots, path_to_file_uri, preferred_workspace_root_for_path, uri_to_path,
 };
-use libopforge::registry::AsmRegistry;
+use libopforge::registry::{default_asm_registry, AsmRegistry};
 
 #[derive(Debug, Clone)]
 pub struct IndexedSymbol {
@@ -155,6 +155,20 @@ impl WorkspaceIndex {
 
     pub fn imports_for_uri(&self, uri: &str) -> Vec<UseImportDecl> {
         self.imports_by_uri.get(uri).cloned().unwrap_or_default()
+    }
+
+    pub fn module_document_paths(&self, module_id: &str) -> Vec<PathBuf> {
+        let Some(candidate_uris) = self.module_to_uris.get(&canonical_module_id(module_id)) else {
+            return Vec::new();
+        };
+
+        let mut paths: Vec<PathBuf> = candidate_uris
+            .iter()
+            .filter_map(|uri| uri_to_path(uri))
+            .collect();
+        paths.sort();
+        paths.dedup();
+        paths
     }
 
     pub fn document_uris(&self) -> Vec<String> {
@@ -768,34 +782,10 @@ fn definition_line_rank(def_line: u32, request_line: u32) -> (u8, u32) {
 
 pub fn resolve_module_target(word: &str, config: &LspConfig, current_uri: &str) -> Vec<PathBuf> {
     let mut results = Vec::new();
-    let mut candidates: Vec<PathBuf> = configured_workspace_roots(config);
-    let current_path = uri_to_path(current_uri);
-    let workspace_root = current_path
-        .as_deref()
-        .and_then(|path| preferred_workspace_root_for_path(config, path));
-    if candidates.is_empty() {
-        if let Some(path) = current_path.as_deref() {
-            if let Some(parent) = path.parent() {
-                candidates.push(parent.to_path_buf());
-            }
-        }
-    }
-    for module_path in &config.module_paths {
-        let path = PathBuf::from(module_path);
-        if path.is_absolute() {
-            candidates.push(path);
-            continue;
-        }
-        if let Some(root) = workspace_root.as_ref() {
-            candidates.push(root.join(&path));
-        } else if let Some(current) = current_path.as_deref() {
-            if let Some(parent) = current.parent() {
-                candidates.push(parent.join(&path));
-            }
-        }
-    }
+    let candidates = module_search_roots_for_request(config, current_uri);
+    let registry = default_asm_registry();
 
-    for base in candidates {
+    for base in &candidates {
         let asm = base.join(format!("{word}.asm"));
         let inc = base.join(format!("{word}.inc"));
         if asm.exists() {
@@ -805,9 +795,71 @@ pub fn resolve_module_target(word: &str, config: &LspConfig, current_uri: &str) 
             results.push(inc);
         }
     }
+
+    if results.is_empty() {
+        for base in &candidates {
+            if base.is_file() {
+                continue;
+            }
+            let mut docs = Vec::new();
+            collect_documents_from_dir(&registry, base, &mut docs);
+            for doc in docs {
+                let path = doc.path.clone().unwrap_or_default();
+                let has_module = doc.symbols.iter().any(|symbol| {
+                    matches!(symbol.kind, SymbolKind::Module)
+                        && symbol.name.eq_ignore_ascii_case(word)
+                });
+                if has_module && !path.as_os_str().is_empty() {
+                    results.push(path);
+                }
+            }
+        }
+    }
+
     results.sort();
     results.dedup();
     results
+}
+
+fn module_search_roots_for_request(config: &LspConfig, current_uri: &str) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = configured_workspace_roots(config);
+    let current_path = uri_to_path(current_uri);
+    let workspace_root = current_path
+        .as_deref()
+        .and_then(|path| preferred_workspace_root_for_path(config, path));
+
+    if let Some(path) = current_path.as_deref() {
+        if let Some(parent) = path.parent() {
+            if !candidates.iter().any(|candidate| candidate == parent) {
+                candidates.push(parent.to_path_buf());
+            }
+        }
+    }
+
+    for module_path in &config.module_paths {
+        let path = PathBuf::from(module_path);
+        if path.is_absolute() {
+            if !candidates.iter().any(|candidate| candidate == &path) {
+                candidates.push(path);
+            }
+            continue;
+        }
+        if let Some(root) = workspace_root.as_ref() {
+            let candidate = root.join(&path);
+            if !candidates.iter().any(|existing| existing == &candidate) {
+                candidates.push(candidate);
+            }
+        } else if let Some(current) = current_path.as_deref() {
+            if let Some(parent) = current.parent() {
+                let candidate = parent.join(&path);
+                if !candidates.iter().any(|existing| existing == &candidate) {
+                    candidates.push(candidate);
+                }
+            }
+        }
+    }
+
+    candidates
 }
 
 fn split_qualified_symbol(word: &str) -> (Option<&str>, &str) {

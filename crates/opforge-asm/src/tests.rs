@@ -49,9 +49,11 @@ use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
+use formatter::{FormatterConfig, FormatterEngine};
 use opcore::macro_processor::MacroProcessor;
 use package::{
-    ModeSelectorDescriptor, ParserVmOpcode, TokenizerVmOpcode, EXPR_PARSER_VM_OPCODE_VERSION_V1,
+    encode_hierarchy_chunks_from_chunks, ModeSelectorDescriptor, ParserVmOpcode, TokenizerVmOpcode,
+    EXPR_PARSER_VM_OPCODE_VERSION_V1,
 };
 use registry::cpu::CpuType;
 use registry::family::AssemblerContext;
@@ -73,7 +75,7 @@ use vm::execution_model::set_core_expr_parser_failpoint_for_tests;
 use vm::hierarchy::ScopedOwner;
 use vm::intel8080_vm::mode_key_for_instruction_entry;
 use vm::output_model::{OutputFixupRecord, IMPLICIT_HUNK_CODE_SECTION_NAME};
-use vm::portable_contract::{PortableSpan, PortableToken, PortableTokenKind};
+use vm::portable_contract::{PortableOperatorKind, PortableSpan, PortableToken, PortableTokenKind};
 use vm::rollout::{
     family_runtime_mode, family_runtime_rollout_policy, package_runtime_default_enabled_for_family,
     FamilyRuntimeMode,
@@ -1453,7 +1455,22 @@ fn example_output_payload_path(
     payload_extension: &str,
 ) -> PathBuf {
     if payload_extension == "hunk" {
-        fixture_out_dir.join("build").join(format!("{base}.hunk"))
+        let build_dir = fixture_out_dir.join("build");
+        let expected = build_dir.join(format!("{base}.hunk"));
+        if expected.exists() {
+            return expected;
+        }
+        let stem_only = build_dir.join(base);
+        if stem_only.exists() {
+            return stem_only;
+        }
+        if base == "tokvm_interpreter" {
+            let tokvm = build_dir.join("tokvm");
+            if tokvm.exists() {
+                return tokvm;
+            }
+        }
+        expected
     } else {
         fixture_out_dir.join(format!("{base}.{payload_extension}"))
     }
@@ -1463,6 +1480,25 @@ fn should_skip_example_dir(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
         Some("ab" | "reference" | "vm" | "opthread" | "project_root" | "lib" | "manual")
+    )
+}
+
+fn should_skip_example_asm_file(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some(
+            "tokvm_cli_harness.asm"
+                | "tokvm_test_input.asm"
+                | "tokvm_tokenizer_vm.asm"
+                | "tkpkg_entry.asm"
+                | "tkpkg_abi.asm"
+                | "tkpkg_buffers.asm"
+                | "tkpkg_service.asm"
+                | "tkpkg_package_loader.asm"
+                | "tkpkg_pipeline.asm"
+                | "tkpkg_token_policy.asm"
+                | "tkpkg_tokenizer_vm.asm"
+        )
     )
 }
 
@@ -1481,6 +1517,9 @@ fn collect_example_asm_files(dir: &Path) -> Vec<PathBuf> {
                 continue;
             }
             if path.extension().and_then(|ext| ext.to_str()) == Some("asm") {
+                if should_skip_example_asm_file(&path) {
+                    continue;
+                }
                 files.push(path);
             }
         }
@@ -1503,6 +1542,15 @@ fn example_relative_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
             )
         })
         .with_extension("")
+}
+
+fn example_reference_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
+    let relative_stem = example_relative_stem(examples_dir, asm_path);
+    if relative_stem == Path::new("motorola68000/amigaos/tokvm/tokvm_interpreter") {
+        PathBuf::from("motorola68000/amigaos/tokvm_interpreter")
+    } else {
+        relative_stem
+    }
 }
 
 fn assert_lockstep_reference_report_clean(
@@ -8248,6 +8296,8 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/68080_fpu_surface",
         "motorola68000/68080_full_additional_surface",
         "motorola68000/amigaos/helloworld",
+        "motorola68000/amigaos/tkpkg/tkpkg_entry",
+        "motorola68000/amigaos/tokvm/tokvm_interpreter",
         "motorola68000/amigaos/timer_device_benchmark",
         "motorola68000/amigaos/workbench_startup_alert",
         "motorola68000/amigaos/writefile",
@@ -8259,6 +8309,3374 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
             panic!("{diagnostic}");
         }
     }
+}
+
+const TOKVM_NATIVE_RECORD_SIZE: usize = 20;
+
+fn tokvm_native_kind_name(kind_code: u16) -> Option<&'static str> {
+    match kind_code {
+        0 => Some("identifier"),
+        1 => Some("register"),
+        2 => Some("number"),
+        3 => Some("string"),
+        4 => Some("comma"),
+        5 => Some("colon"),
+        6 => Some("dollar"),
+        7 => Some("dot"),
+        8 => Some("hash"),
+        9 => Some("question"),
+        10 => Some("open_bracket"),
+        11 => Some("close_bracket"),
+        12 => Some("open_brace"),
+        13 => Some("close_brace"),
+        14 => Some("open_paren"),
+        15 => Some("close_paren"),
+        16 => Some("op_range"),
+        17 => Some("op_range_inclusive"),
+        18 => Some("op_plus"),
+        19 => Some("op_minus"),
+        20 => Some("op_multiply"),
+        21 => Some("op_power"),
+        22 => Some("op_divide"),
+        23 => Some("op_mod"),
+        24 => Some("op_shl"),
+        25 => Some("op_shr"),
+        26 => Some("op_bit_not"),
+        27 => Some("op_logic_not"),
+        28 => Some("op_bit_and"),
+        29 => Some("op_bit_or"),
+        30 => Some("op_bit_xor"),
+        31 => Some("op_logic_and"),
+        32 => Some("op_logic_or"),
+        33 => Some("op_logic_xor"),
+        34 => Some("op_eq"),
+        35 => Some("op_ne"),
+        36 => Some("op_ge"),
+        37 => Some("op_gt"),
+        38 => Some("op_le"),
+        39 => Some("op_lt"),
+        _ => None,
+    }
+}
+
+fn read_tokvm_native_u16(bytes: &[u8], offset: usize) -> u16 {
+    u16::from_be_bytes([bytes[offset], bytes[offset + 1]])
+}
+
+fn read_tokvm_native_u32(bytes: &[u8], offset: usize) -> u32 {
+    u32::from_be_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+    ])
+}
+
+fn render_tokvm_native_report(
+    status: i32,
+    token_count: u32,
+    cursor: u32,
+    token_records: &[u8],
+    scratch: &[u8],
+) -> Vec<String> {
+    let mut lines = vec![
+        "OPFORGE-TOKVM 1".to_string(),
+        format!("STATUS {status}"),
+        format!("TOKENS {token_count}"),
+        format!("CURSOR {cursor}"),
+    ];
+    let token_count = usize::try_from(token_count).expect("token count fits usize");
+    assert_eq!(
+        token_records.len(),
+        token_count * TOKVM_NATIVE_RECORD_SIZE,
+        "token record buffer length must match the ABI record count"
+    );
+    for index in 0..token_count {
+        let record = &token_records
+            [index * TOKVM_NATIVE_RECORD_SIZE..(index + 1) * TOKVM_NATIVE_RECORD_SIZE];
+        let kind_code = read_tokvm_native_u16(record, 0);
+        let kind_name = tokvm_native_kind_name(kind_code)
+            .unwrap_or_else(|| panic!("unknown native tokvm kind code {kind_code}"));
+        let col_start = read_tokvm_native_u32(record, 4);
+        let col_end = read_tokvm_native_u32(record, 8);
+        let lexeme_offset =
+            usize::try_from(read_tokvm_native_u32(record, 12)).expect("offset fits usize");
+        let lexeme_len =
+            usize::try_from(read_tokvm_native_u32(record, 16)).expect("length fits usize");
+        let lexeme_end = lexeme_offset + lexeme_len;
+        assert!(
+            lexeme_end <= scratch.len(),
+            "record {index} lexeme range exceeds scratch buffer"
+        );
+        let lexhex = scratch[lexeme_offset..lexeme_end]
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<String>();
+        lines.push(format!(
+            "TOKEN {index} KIND {kind_name} START {col_start} END {col_end} LEN {lexeme_len} LEXHEX {lexhex}"
+        ));
+    }
+    lines.push("END".to_string());
+    lines
+}
+
+fn parse_tokvm_amigaos_cli_args(raw: &str) -> Result<(String, String), &'static str> {
+    let mut parts = Vec::new();
+    for token in raw.split_ascii_whitespace() {
+        if token.contains('"') {
+            return Err("quoted-path");
+        }
+        parts.push(token);
+    }
+    if parts.len() != 2 {
+        return Err("usage");
+    }
+    Ok((parts[0].to_string(), parts[1].to_string()))
+}
+
+fn tokvm_amigaos_cli_write_is_exact(requested: usize, returned: isize) -> bool {
+    returned >= 0 && usize::try_from(returned).ok() == Some(requested)
+}
+
+#[test]
+fn motorola68020_tokvm_native_abi_renders_success_report() {
+    let scratch = b"label==42".to_vec();
+    let mut records = Vec::new();
+    records.extend_from_slice(&0u16.to_be_bytes());
+    records.extend_from_slice(&0u16.to_be_bytes());
+    records.extend_from_slice(&1u32.to_be_bytes());
+    records.extend_from_slice(&6u32.to_be_bytes());
+    records.extend_from_slice(&0u32.to_be_bytes());
+    records.extend_from_slice(&5u32.to_be_bytes());
+    records.extend_from_slice(&34u16.to_be_bytes());
+    records.extend_from_slice(&0u16.to_be_bytes());
+    records.extend_from_slice(&7u32.to_be_bytes());
+    records.extend_from_slice(&8u32.to_be_bytes());
+    records.extend_from_slice(&5u32.to_be_bytes());
+    records.extend_from_slice(&2u32.to_be_bytes());
+    records.extend_from_slice(&2u16.to_be_bytes());
+    records.extend_from_slice(&0u16.to_be_bytes());
+    records.extend_from_slice(&9u32.to_be_bytes());
+    records.extend_from_slice(&11u32.to_be_bytes());
+    records.extend_from_slice(&7u32.to_be_bytes());
+    records.extend_from_slice(&2u32.to_be_bytes());
+
+    let report = render_tokvm_native_report(0, 3, 10, &records, &scratch);
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-TOKVM 1",
+            "STATUS 0",
+            "TOKENS 3",
+            "CURSOR 10",
+            "TOKEN 0 KIND identifier START 1 END 6 LEN 5 LEXHEX 6C6162656C",
+            "TOKEN 1 KIND op_eq START 7 END 8 LEN 2 LEXHEX 3D3D",
+            "TOKEN 2 KIND number START 9 END 11 LEN 2 LEXHEX 3432",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_native_operator_kind_table_matches_rust_operator_surface() {
+    let expected = [
+        (16, "op_range"),
+        (17, "op_range_inclusive"),
+        (18, "op_plus"),
+        (19, "op_minus"),
+        (20, "op_multiply"),
+        (21, "op_power"),
+        (22, "op_divide"),
+        (23, "op_mod"),
+        (24, "op_shl"),
+        (25, "op_shr"),
+        (26, "op_bit_not"),
+        (27, "op_logic_not"),
+        (28, "op_bit_and"),
+        (29, "op_bit_or"),
+        (30, "op_bit_xor"),
+        (31, "op_logic_and"),
+        (32, "op_logic_or"),
+        (33, "op_logic_xor"),
+        (34, "op_eq"),
+        (35, "op_ne"),
+        (36, "op_ge"),
+        (37, "op_gt"),
+        (38, "op_le"),
+        (39, "op_lt"),
+    ];
+
+    for (code, name) in expected {
+        assert_eq!(tokvm_native_kind_name(code), Some(name));
+    }
+}
+
+#[test]
+fn motorola68020_tokvm_native_abi_renders_newline_rejection() {
+    let report = render_tokvm_native_report(1, 0, 5, &[], &[]);
+    assert_eq!(
+        report,
+        vec!["OPFORGE-TOKVM 1", "STATUS 1", "TOKENS 0", "CURSOR 5", "END",]
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_amigaos_failure_report_renders_output_open_failure() {
+    let report = render_tokvm_native_report(-105, 0, 0, &[], &[]);
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-TOKVM 1",
+            "STATUS -105",
+            "TOKENS 0",
+            "CURSOR 0",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_amigaos_failure_report_emits_header_for_nonzero_status() {
+    let report = render_tokvm_native_report(-103, 0, 0, &[], &[]);
+    assert_eq!(report.first().map(String::as_str), Some("OPFORGE-TOKVM 1"));
+    assert_eq!(report.last().map(String::as_str), Some("END"));
+    assert!(report.iter().any(|line| line == "STATUS -103"));
+}
+#[test]
+fn motorola68020_tokvm_amigaos_cli_parser_accepts_two_unquoted_paths() {
+    let parsed = parse_tokvm_amigaos_cli_args("ram:input.asm t:tokvm-report.txt")
+        .expect("parse unquoted tokvm CLI args");
+    assert_eq!(
+        parsed,
+        (
+            "ram:input.asm".to_string(),
+            "t:tokvm-report.txt".to_string()
+        )
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_amigaos_cli_parser_trims_trailing_newline() {
+    let parsed = parse_tokvm_amigaos_cli_args("ram:input.asm t:tokvm-report.txt\n")
+        .expect("parse tokvm CLI args with trailing newline");
+    assert_eq!(
+        parsed,
+        (
+            "ram:input.asm".to_string(),
+            "t:tokvm-report.txt".to_string()
+        )
+    );
+
+    let parsed = parse_tokvm_amigaos_cli_args("ram:input.asm t:tokvm-report.txt\r\n")
+        .expect("parse tokvm CLI args with trailing CRLF");
+    assert_eq!(
+        parsed,
+        (
+            "ram:input.asm".to_string(),
+            "t:tokvm-report.txt".to_string()
+        )
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_amigaos_cli_parser_rejects_missing_arguments() {
+    let parsed = parse_tokvm_amigaos_cli_args("ram:input.asm");
+    assert_eq!(parsed, Err("usage"));
+}
+
+#[test]
+fn motorola68020_tokvm_amigaos_cli_parser_rejects_quoted_paths() {
+    let parsed = parse_tokvm_amigaos_cli_args("\"ram:input.asm\" t:tokvm-report.txt");
+    assert_eq!(parsed, Err("quoted-path"));
+}
+
+#[test]
+fn motorola68020_tokvm_amigaos_cli_fileio_detects_partial_write() {
+    assert!(tokvm_amigaos_cli_write_is_exact(18, 18));
+    assert!(!tokvm_amigaos_cli_write_is_exact(18, 17));
+    assert!(!tokvm_amigaos_cli_write_is_exact(18, -1));
+}
+
+#[test]
+fn motorola68020_tokvm_amigaos_failure_report_renders_input_too_large() {
+    let report = render_tokvm_native_report(-104, 0, 0, &[], &[]);
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-TOKVM 1",
+            "STATUS -104",
+            "TOKENS 0",
+            "CURSOR 0",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/tokvm/tokvm_interpreter.asm");
+    let out_dir = create_temp_dir("m68000-tokvm-interpreter");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble tokvm interpreter example: {detail}");
+    }
+
+    let listing =
+        fs::read_to_string(out_dir.join("tokvm_interpreter.lst")).expect("read tokvm listing");
+    assert!(listing.contains(".cpu 68020"));
+    assert!(listing.contains("tokvm.amigaos.cli_harness.tokvm_amigaos_cli_harness_run"));
+    assert!(listing.contains("tokvm.amigaos.cli_harness.amigaos_cli_fileio_init"));
+    assert!(listing.contains("tokvm.amigaos.tokenizer_vm.tokvm_run_68000"));
+    assert!(listing.contains("tokvm.amigaos.tokenizer_vm.demoProgramLen"));
+
+    let payload_path = example_output_payload_path(&out_dir, "tokvm_interpreter", "hunk");
+    let payload = fs::read(payload_path).expect("read tokvm hunk payload");
+    let segment_count = u32::from_be_bytes(payload[8..12].try_into().expect("segment count"));
+    let first_segment_kind = u32::from_be_bytes(payload[36..40].try_into().expect("segment kind"));
+    let first_code_bytes = &payload[44..48];
+    assert_eq!(
+        segment_count, 4,
+        "expected entry, code, data, and bss Hunk segments"
+    );
+    assert_eq!(
+        first_segment_kind, 0x0000_03e9,
+        "expected first Hunk segment to be code"
+    );
+    assert_eq!(
+        first_code_bytes,
+        &[0x48, 0xE7, 0x3F, 0x3E],
+        "expected the Hunk to start with the AmigaOS entry stub rather than tokvm_run_68000"
+    );
+    assert!(
+        payload
+            .windows("OPFORGE-TOKVM-ABI-V1".len())
+            .any(|window| window == b"OPFORGE-TOKVM-ABI-V1"),
+        "expected ABI marker string in tokvm interpreter Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("Usage: tokvm <input-path> <output-path>".len())
+            .any(|window| window == b"Usage: tokvm <input-path> <output-path>"),
+        "expected CLI usage string in tokvm interpreter Hunk payload"
+    );
+}
+
+fn tokvm_amigaos_source(file_name: &str) -> String {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join(format!("examples/motorola68000/amigaos/tokvm/{file_name}"));
+    let source = fs::read_to_string(&asm_path).expect("read tokvm AmigaOS source");
+    format_tokvm_asm_fragment(&source)
+}
+
+fn tkpkg_amigaos_source(file_name: &str) -> String {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join(format!("examples/motorola68000/amigaos/tkpkg/{file_name}"));
+    let source = fs::read_to_string(&asm_path).expect("read tkpkg AmigaOS source");
+    format_tokvm_asm_fragment(&source)
+}
+
+fn tkpkg_smoke_registry() -> ModuleRegistry {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    registry
+}
+
+fn tkpkg_smoke_package_bytes() -> Vec<u8> {
+    build_hierarchy_package_from_registry(&tkpkg_smoke_registry())
+        .expect("build tkpkg smoke package")
+}
+
+fn tkpkg_mos6502_native_parity_package_bytes() -> Vec<u8> {
+    let mut registry = ModuleRegistry::new();
+    registry.register_family(Box::new(
+        families::families::mos6502::module::MOS6502FamilyModule,
+    ));
+    registry.register_cpu(Box::new(
+        families::families::mos6502::module::M6502CpuModule,
+    ));
+    registry.register_cpu(Box::new(families::m65c02::module::M65C02CpuModule));
+    registry.register_cpu(Box::new(families::m65816::module::M65816CpuModule));
+    registry.register_cpu(Box::new(families::m45gs02::module::M45GS02CpuModule));
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("build mos6502 tkpkg parity chunks");
+    chunks.parser_contracts.clear();
+    chunks.parser_vm_programs.clear();
+    chunks.expr_contracts.clear();
+    chunks.expr_parser_contracts.clear();
+    chunks.registers.clear();
+    chunks.forms.clear();
+    chunks.tables.clear();
+    chunks.selectors.clear();
+    encode_hierarchy_chunks_from_chunks(&chunks).expect("encode mos6502 tkpkg parity package")
+}
+
+fn tkpkg_intel8080_native_parity_package_bytes() -> Vec<u8> {
+    let mut registry = ModuleRegistry::new();
+    register_intel8080_family_stack(&mut registry);
+    let mut chunks = build_hierarchy_chunks_from_registry(&registry)
+        .expect("build intel8080 tkpkg parity chunks");
+    chunks.parser_contracts.clear();
+    chunks.parser_vm_programs.clear();
+    chunks.expr_contracts.clear();
+    chunks.expr_parser_contracts.clear();
+    chunks.registers.clear();
+    chunks.forms.clear();
+    chunks.tables.clear();
+    chunks.selectors.clear();
+    encode_hierarchy_chunks_from_chunks(&chunks).expect("encode intel8080 tkpkg parity package")
+}
+
+fn tkpkg_motorola6800_native_parity_package_bytes() -> Vec<u8> {
+    let mut registry = ModuleRegistry::new();
+    register_motorola6800_family_stack(&mut registry);
+    let mut chunks = build_hierarchy_chunks_from_registry(&registry)
+        .expect("build motorola6800 tkpkg parity chunks");
+    chunks.parser_contracts.clear();
+    chunks.parser_vm_programs.clear();
+    chunks.expr_contracts.clear();
+    chunks.expr_parser_contracts.clear();
+    chunks.registers.clear();
+    chunks.forms.clear();
+    chunks.tables.clear();
+    chunks.selectors.clear();
+    encode_hierarchy_chunks_from_chunks(&chunks).expect("encode motorola6800 tkpkg parity package")
+}
+
+fn tkpkg_smoke_package_bytes_with_family_tokenizer_program(program: Vec<u8>) -> Vec<u8> {
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&tkpkg_smoke_registry()).expect("build tkpkg chunks");
+    let tokenizer_program = chunks
+        .tokenizer_vm_programs
+        .iter_mut()
+        .find(|entry| entry.owner == ScopedOwner::Family("motorola68000".to_string()))
+        .expect("motorola68000 family tokenizer VM program");
+    tokenizer_program.program = program;
+    encode_hierarchy_chunks_from_chunks(&chunks).expect("encode tkpkg smoke package")
+}
+
+fn normalize_tkpkg_fragment(text: &str) -> String {
+    text.lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn format_tokvm_asm_fragment(source: &str) -> String {
+    let output =
+        FormatterEngine::new(FormatterConfig::default()).format_source_with_diagnostics(source);
+    assert!(
+        output.diagnostics.is_empty(),
+        "expected formatter to accept tokvm asm snippet without diagnostics"
+    );
+    output.rendered
+}
+
+fn tokvm_source_contains(source: &str, snippet: &str) -> bool {
+    source.contains(format_tokvm_asm_fragment(snippet).trim_end_matches('\n'))
+}
+
+fn tkpkg_source_contains(source: &str, snippet: &str) -> bool {
+    normalize_tkpkg_fragment(source).contains(
+        normalize_tkpkg_fragment(format_tokvm_asm_fragment(snippet).trim_end_matches('\n'))
+            .as_str(),
+    )
+}
+
+fn tkpkg_source_snippet_index(source: &str, snippet: &str) -> usize {
+    let normalized_source = normalize_tkpkg_fragment(source);
+    let literal_snippet = normalize_tkpkg_fragment(snippet);
+    if let Some(index) = normalized_source.find(literal_snippet.as_str()) {
+        return index;
+    }
+    let formatted_snippet =
+        normalize_tkpkg_fragment(format_tokvm_asm_fragment(snippet).trim_end_matches('\n'));
+    normalized_source
+        .find(formatted_snippet.as_str())
+        .unwrap_or_else(|| panic!("expected tkpkg source to contain snippet:\n{snippet}"))
+}
+
+const TKPKG_SMOKE_SAMPLE_LINE: &str = "move.b d0,d1";
+const TKPKG_SMOKE_SAMPLE_LINE_NUM: u32 = 42;
+const TKPKG_OPERATOR_PARITY_SOURCE: &str =
+    ".cpu 68020\n.const operator_parity = a .. b ..= c + d - e * f ** g / h % i << j >> k ~ l ! m & n | o ^ p && q || r ^^ s = t == u != v <> w >= x > y <= z < aa\n";
+const TKPKG_PERCENT_PREFIX_PARITY_SOURCE: &str =
+    ".cpu 68020\n.const prefix = %1010\n.const modulo = a%101\n.const spaced_prefix = label %101\n";
+const TKPKG_NATIVE_PARITY_FILE_FILTER_ENV: &str = "OPFORGE_FS_UAE_TKPKG_CORPUS_FILE";
+const TKPKG_NATIVE_PARITY_CPU_FILTER_ENV: &str = "OPFORGE_FS_UAE_TKPKG_CORPUS_CPU";
+const TKPKG_NATIVE_PARITY_SCOPE_ENV: &str = "OPFORGE_FS_UAE_TKPKG_CORPUS_SCOPE";
+const TKPKG_NATIVE_PARITY_SCOPE_TOP_LEVEL: &str = "top-level";
+const TKPKG_NATIVE_PARITY_SCOPE_SMALL_NESTED: &str = "small-nested";
+const TKPKG_NATIVE_PARITY_SMALL_NESTED_MAX_BYTES: u64 = 4096;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TkpkgNativeParitySource {
+    relative_path: String,
+    cpu_id: String,
+    source: String,
+}
+
+fn render_tkpkg_smoke_debug_row(token: &PortableToken) -> String {
+    let prefix = match &token.kind {
+        PortableTokenKind::Identifier(name) => format!("Identifier(\"{name}\")"),
+        PortableTokenKind::Number { text, base } => {
+            format!(
+                "Number {{ text: {:?}, base: {base} }}",
+                text.to_ascii_uppercase()
+            )
+        }
+        PortableTokenKind::String { raw, bytes } => format!(
+            "String {{ raw: {:?}, bytes: [{}] }}",
+            raw,
+            bytes
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        PortableTokenKind::Comma => "Comma".to_string(),
+        PortableTokenKind::Colon => "Colon".to_string(),
+        PortableTokenKind::Dollar => "Dollar".to_string(),
+        PortableTokenKind::Dot => "Dot".to_string(),
+        PortableTokenKind::Hash => "Hash".to_string(),
+        PortableTokenKind::Question => "Question".to_string(),
+        PortableTokenKind::OpenBracket => "OpenBracket".to_string(),
+        PortableTokenKind::CloseBracket => "CloseBracket".to_string(),
+        PortableTokenKind::OpenBrace => "OpenBrace".to_string(),
+        PortableTokenKind::CloseBrace => "CloseBrace".to_string(),
+        PortableTokenKind::OpenParen => "OpenParen".to_string(),
+        PortableTokenKind::CloseParen => "CloseParen".to_string(),
+        PortableTokenKind::Operator(op) => {
+            format!("Operator({})", render_tkpkg_smoke_operator_name(*op))
+        }
+        PortableTokenKind::Register(name) => panic!(
+            "tkpkg debug-row helper encountered unexpected register token {:?}",
+            name
+        ),
+    };
+    format!(
+        "{prefix}@{}:{}-{}",
+        token.span.line, token.span.col_start, token.span.col_end
+    )
+}
+
+fn render_tkpkg_smoke_operator_name(op: PortableOperatorKind) -> &'static str {
+    match op {
+        PortableOperatorKind::Range => "Range",
+        PortableOperatorKind::RangeInclusive => "RangeInclusive",
+        PortableOperatorKind::Plus => "Plus",
+        PortableOperatorKind::Minus => "Minus",
+        PortableOperatorKind::Multiply => "Multiply",
+        PortableOperatorKind::Power => "Power",
+        PortableOperatorKind::Divide => "Divide",
+        PortableOperatorKind::Mod => "Mod",
+        PortableOperatorKind::Shl => "Shl",
+        PortableOperatorKind::Shr => "Shr",
+        PortableOperatorKind::BitNot => "BitNot",
+        PortableOperatorKind::LogicNot => "LogicNot",
+        PortableOperatorKind::BitAnd => "BitAnd",
+        PortableOperatorKind::BitOr => "BitOr",
+        PortableOperatorKind::BitXor => "BitXor",
+        PortableOperatorKind::LogicAnd => "LogicAnd",
+        PortableOperatorKind::LogicOr => "LogicOr",
+        PortableOperatorKind::LogicXor => "LogicXor",
+        PortableOperatorKind::Eq => "Eq",
+        PortableOperatorKind::Ne => "Ne",
+        PortableOperatorKind::Ge => "Ge",
+        PortableOperatorKind::Gt => "Gt",
+        PortableOperatorKind::Le => "Le",
+        PortableOperatorKind::Lt => "Lt",
+    }
+}
+
+fn render_tkpkg_smoke_debug_rows(tokens: &[PortableToken]) -> Vec<String> {
+    tokens.iter().map(render_tkpkg_smoke_debug_row).collect()
+}
+
+fn try_motorola68000_cpu_id_for_source(path: &Path, source: &str) -> Option<String> {
+    for line in source.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix(".cpu") else {
+            continue;
+        };
+        let cpu_name = rest.trim();
+        return Some(match cpu_name {
+            "68000" => "m68000".to_string(),
+            "68010" => "m68010".to_string(),
+            "68020" => "m68020".to_string(),
+            "68030" => "m68030".to_string(),
+            "68040" => "m68040".to_string(),
+            "68080" => "m68080".to_string(),
+            _ => panic!(
+                "unsupported motorola68000 example cpu '{}' in {}",
+                cpu_name,
+                path.display()
+            ),
+        });
+    }
+
+    None
+}
+
+fn motorola68000_cpu_id_for_source(path: &Path, source: &str) -> String {
+    if let Some(cpu_id) = try_motorola68000_cpu_id_for_source(path, source) {
+        return cpu_id;
+    }
+    panic!(
+        "missing .cpu directive in motorola68000 example {}",
+        path.display()
+    );
+}
+
+fn tkpkg_native_parity_cpu_directive_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with(".cpu") {
+        return None;
+    }
+
+    let rest = trimmed[4..].trim();
+    let rest = rest.split(';').next().unwrap_or("").trim();
+    let cpu_name = if let Some(quoted) = rest.strip_prefix('"') {
+        quoted.split('"').next().unwrap_or("")
+    } else {
+        rest.split_whitespace().next().unwrap_or("")
+    };
+    Some(cpu_name.trim().to_ascii_lowercase())
+}
+
+fn normalize_mos6502_tkpkg_native_parity_cpu_id(value: &str) -> String {
+    match value.trim().trim_matches('"').to_ascii_lowercase().as_str() {
+        "6502" | "m6502" => m6502_cpu_id.as_str().to_string(),
+        "65c02" | "m65c02" => m65c02_cpu_id.as_str().to_string(),
+        "65816" | "m65816" => m65816_cpu_id.as_str().to_string(),
+        "45gs02" | "m45gs02" | "4510" | "csg4510" | "mega65" => m45gs02_cpu_id.as_str().to_string(),
+        other => format!("m{other}"),
+    }
+}
+
+fn normalize_intel8080_tkpkg_native_parity_cpu_id(value: &str) -> String {
+    match value.trim().trim_matches('"').to_ascii_lowercase().as_str() {
+        "8085" | "i8085" => i8085_cpu_id.as_str().to_string(),
+        "z80" | "zilogz80" => z80_cpu_id.as_str().to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn normalize_motorola6800_tkpkg_native_parity_cpu_id(value: &str) -> String {
+    match value.trim().trim_matches('"').to_ascii_lowercase().as_str() {
+        "6809" | "m6809" | "mc6809" => m6809_cpu_id.as_str().to_string(),
+        "6309" | "m6309" | "h6309" | "hd6309" | "hitachi6309" => hd6309_cpu_id.as_str().to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn try_mos6502_cpu_id_for_source(path: &Path, source: &str) -> Option<String> {
+    let mut selected_cpu_id: Option<String> = None;
+    for line in source.lines() {
+        let Some(cpu_name) = tkpkg_native_parity_cpu_directive_name(line) else {
+            continue;
+        };
+        let cpu_id = match cpu_name.as_str() {
+            "6502" | "m6502" => m6502_cpu_id.as_str().to_string(),
+            "65c02" | "m65c02" => m65c02_cpu_id.as_str().to_string(),
+            "65816" | "m65816" => m65816_cpu_id.as_str().to_string(),
+            "45gs02" | "m45gs02" | "4510" | "csg4510" | "mega65" => {
+                m45gs02_cpu_id.as_str().to_string()
+            }
+            _ => panic!(
+                "unsupported mos6502 example cpu '{}' in {}",
+                cpu_name,
+                path.display()
+            ),
+        };
+        if selected_cpu_id
+            .as_deref()
+            .is_some_and(|selected| selected != cpu_id)
+        {
+            return None;
+        }
+        selected_cpu_id = Some(cpu_id);
+    }
+    selected_cpu_id
+}
+
+fn try_intel8080_cpu_id_for_source(path: &Path, source: &str) -> Option<String> {
+    let mut selected_cpu_id: Option<String> = None;
+    for line in source.lines() {
+        let Some(cpu_name) = tkpkg_native_parity_cpu_directive_name(line) else {
+            continue;
+        };
+        let cpu_id = match cpu_name.as_str() {
+            "8085" | "i8085" => i8085_cpu_id.as_str().to_string(),
+            "z80" | "zilogz80" => z80_cpu_id.as_str().to_string(),
+            _ => panic!(
+                "unsupported intel8080-family example cpu '{}' in {}",
+                cpu_name,
+                path.display()
+            ),
+        };
+        if selected_cpu_id
+            .as_deref()
+            .is_some_and(|selected| selected != cpu_id)
+        {
+            return None;
+        }
+        selected_cpu_id = Some(cpu_id);
+    }
+    selected_cpu_id
+}
+
+fn try_motorola6800_cpu_id_for_source(path: &Path, source: &str) -> Option<String> {
+    let mut selected_cpu_id: Option<String> = None;
+    for line in source.lines() {
+        let Some(cpu_name) = tkpkg_native_parity_cpu_directive_name(line) else {
+            continue;
+        };
+        let cpu_id = match cpu_name.as_str() {
+            "6809" | "m6809" | "mc6809" => m6809_cpu_id.as_str().to_string(),
+            "6309" | "m6309" | "h6309" | "hd6309" | "hitachi6309" => {
+                hd6309_cpu_id.as_str().to_string()
+            }
+            _ => panic!(
+                "unsupported motorola6800-family example cpu '{}' in {}",
+                cpu_name,
+                path.display()
+            ),
+        };
+        if selected_cpu_id
+            .as_deref()
+            .is_some_and(|selected| selected != cpu_id)
+        {
+            return None;
+        }
+        selected_cpu_id = Some(cpu_id);
+    }
+    selected_cpu_id
+}
+
+fn motorola68000_example_paths_for_native_tkpkg_parity(scope: &str) -> Vec<PathBuf> {
+    let examples_dir = workspace_root().join("examples").join("motorola68000");
+    let mut asm_files = match scope {
+        TKPKG_NATIVE_PARITY_SCOPE_TOP_LEVEL => fs::read_dir(&examples_dir)
+            .unwrap_or_else(|err| {
+                panic!("read example directory {}: {err}", examples_dir.display())
+            })
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
+            .collect::<Vec<_>>(),
+        TKPKG_NATIVE_PARITY_SCOPE_SMALL_NESTED => {
+            let mut pending = vec![examples_dir.clone()];
+            let mut paths = Vec::new();
+            while let Some(dir) = pending.pop() {
+                for entry in fs::read_dir(&dir)
+                    .unwrap_or_else(|err| panic!("read example directory {}: {err}", dir.display()))
+                    .filter_map(Result::ok)
+                {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        pending.push(path);
+                    } else if path.extension().and_then(|ext| ext.to_str()) == Some("asm") {
+                        let is_top_level = path.parent() == Some(examples_dir.as_path());
+                        let len = path.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+                        if is_top_level || len <= TKPKG_NATIVE_PARITY_SMALL_NESTED_MAX_BYTES {
+                            paths.push(path);
+                        }
+                    }
+                }
+            }
+            paths
+        }
+        other => panic!(
+            "unsupported native tkpkg parity corpus scope '{}'; expected '{}' or '{}'",
+            other, TKPKG_NATIVE_PARITY_SCOPE_TOP_LEVEL, TKPKG_NATIVE_PARITY_SCOPE_SMALL_NESTED
+        ),
+    };
+    asm_files.sort();
+    asm_files
+}
+
+fn motorola68000_example_sources_for_native_tkpkg_parity(
+    scope: &str,
+) -> Vec<TkpkgNativeParitySource> {
+    let repo_root = workspace_root();
+    let mut files = Vec::new();
+    for path in motorola68000_example_paths_for_native_tkpkg_parity(scope) {
+        let source = fs::read_to_string(&path).expect("read motorola68000 example source");
+        let cpu_id = if scope == TKPKG_NATIVE_PARITY_SCOPE_SMALL_NESTED {
+            let Some(cpu_id) = try_motorola68000_cpu_id_for_source(&path, &source) else {
+                continue;
+            };
+            cpu_id
+        } else {
+            motorola68000_cpu_id_for_source(&path, &source)
+        };
+        files.push(TkpkgNativeParitySource {
+            relative_path: path
+                .strip_prefix(&repo_root)
+                .unwrap_or(&path)
+                .display()
+                .to_string(),
+            cpu_id,
+            source,
+        });
+    }
+    files
+}
+
+fn mos6502_example_paths_for_native_tkpkg_parity() -> Vec<PathBuf> {
+    let examples_dir = workspace_root().join("examples").join("mos6502");
+    let mut asm_files = fs::read_dir(&examples_dir)
+        .unwrap_or_else(|err| panic!("read example directory {}: {err}", examples_dir.display()))
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
+        .collect::<Vec<_>>();
+    asm_files.sort();
+    asm_files
+}
+
+fn mos6502_example_sources_for_native_tkpkg_parity() -> Vec<TkpkgNativeParitySource> {
+    let repo_root = workspace_root();
+    let mut files = Vec::new();
+    for path in mos6502_example_paths_for_native_tkpkg_parity() {
+        let source = fs::read_to_string(&path).expect("read mos6502 example source");
+        let Some(cpu_id) = try_mos6502_cpu_id_for_source(&path, &source) else {
+            continue;
+        };
+        files.push(TkpkgNativeParitySource {
+            relative_path: path
+                .strip_prefix(&repo_root)
+                .unwrap_or(&path)
+                .display()
+                .to_string(),
+            cpu_id,
+            source,
+        });
+    }
+    files
+}
+
+fn intel8080_example_sources_for_native_tkpkg_parity() -> Vec<TkpkgNativeParitySource> {
+    let repo_root = workspace_root();
+    let mut files = vec![TkpkgNativeParitySource {
+        relative_path: "native-tkpkg/intel8080/8085_smoke.asm".to_string(),
+        cpu_id: i8085_cpu_id.as_str().to_string(),
+        source: ".cpu 8085\n        MVI A,55h\n        MOV A,B\n        LXI H,1234h\n".to_string(),
+    }];
+    let examples_dir = repo_root.join("examples").join("z80");
+    let mut asm_files = fs::read_dir(&examples_dir)
+        .unwrap_or_else(|err| panic!("read example directory {}: {err}", examples_dir.display()))
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
+        .collect::<Vec<_>>();
+    asm_files.sort();
+
+    for path in asm_files {
+        let source = fs::read_to_string(&path).expect("read z80 example source");
+        let Some(cpu_id) = try_intel8080_cpu_id_for_source(&path, &source) else {
+            continue;
+        };
+        files.push(TkpkgNativeParitySource {
+            relative_path: path
+                .strip_prefix(&repo_root)
+                .unwrap_or(&path)
+                .display()
+                .to_string(),
+            cpu_id,
+            source,
+        });
+    }
+    files
+}
+
+fn motorola6800_example_sources_for_native_tkpkg_parity() -> Vec<TkpkgNativeParitySource> {
+    let repo_root = workspace_root();
+    let examples_dir = repo_root.join("examples").join("motorola6800");
+    let mut asm_files = fs::read_dir(&examples_dir)
+        .unwrap_or_else(|err| panic!("read example directory {}: {err}", examples_dir.display()))
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
+        .collect::<Vec<_>>();
+    asm_files.sort();
+
+    let mut files = Vec::new();
+    for path in asm_files {
+        let source = fs::read_to_string(&path).expect("read motorola6800 example source");
+        let Some(cpu_id) = try_motorola6800_cpu_id_for_source(&path, &source) else {
+            continue;
+        };
+        files.push(TkpkgNativeParitySource {
+            relative_path: path
+                .strip_prefix(&repo_root)
+                .unwrap_or(&path)
+                .display()
+                .to_string(),
+            cpu_id,
+            source,
+        });
+    }
+    files
+}
+
+fn tkpkg_native_parity_filter_value(env_name: &str) -> Option<String> {
+    std::env::var(env_name)
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalize_tkpkg_native_parity_cpu_filter(value: &str) -> String {
+    let value = value.trim().to_ascii_lowercase();
+    if value.starts_with('m') {
+        value
+    } else {
+        format!("m{value}")
+    }
+}
+
+fn tkpkg_native_parity_file_filter_matches(relative_path: &str, filter: &str) -> bool {
+    let path = Path::new(relative_path);
+    let filter = filter.trim().to_ascii_lowercase();
+    relative_path.eq_ignore_ascii_case(&filter)
+        || path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case(&filter))
+}
+
+fn filter_motorola68000_native_tkpkg_parity_corpus(
+    corpus: Vec<TkpkgNativeParitySource>,
+    file_filter: Option<&str>,
+    cpu_filter: Option<&str>,
+) -> Vec<TkpkgNativeParitySource> {
+    let cpu_filter = cpu_filter.map(normalize_tkpkg_native_parity_cpu_filter);
+    corpus
+        .into_iter()
+        .filter(|entry| {
+            file_filter.is_none_or(|filter| {
+                tkpkg_native_parity_file_filter_matches(entry.relative_path.as_str(), filter)
+            })
+        })
+        .filter(|entry| {
+            cpu_filter
+                .as_deref()
+                .is_none_or(|filter| entry.cpu_id.eq_ignore_ascii_case(filter))
+        })
+        .collect()
+}
+
+fn filter_mos6502_native_tkpkg_parity_corpus(
+    corpus: Vec<TkpkgNativeParitySource>,
+    file_filter: Option<&str>,
+    cpu_filter: Option<&str>,
+) -> Vec<TkpkgNativeParitySource> {
+    let cpu_filter = cpu_filter.map(normalize_mos6502_tkpkg_native_parity_cpu_id);
+    corpus
+        .into_iter()
+        .filter(|entry| {
+            file_filter.is_none_or(|filter| {
+                tkpkg_native_parity_file_filter_matches(entry.relative_path.as_str(), filter)
+            })
+        })
+        .filter(|entry| {
+            cpu_filter
+                .as_deref()
+                .is_none_or(|filter| entry.cpu_id.eq_ignore_ascii_case(filter))
+        })
+        .collect()
+}
+
+fn filter_intel8080_native_tkpkg_parity_corpus(
+    corpus: Vec<TkpkgNativeParitySource>,
+    file_filter: Option<&str>,
+    cpu_filter: Option<&str>,
+) -> Vec<TkpkgNativeParitySource> {
+    let cpu_filter = cpu_filter.map(normalize_intel8080_tkpkg_native_parity_cpu_id);
+    corpus
+        .into_iter()
+        .filter(|entry| {
+            file_filter.is_none_or(|filter| {
+                tkpkg_native_parity_file_filter_matches(entry.relative_path.as_str(), filter)
+            })
+        })
+        .filter(|entry| {
+            cpu_filter
+                .as_deref()
+                .is_none_or(|filter| entry.cpu_id.eq_ignore_ascii_case(filter))
+        })
+        .collect()
+}
+
+fn filter_motorola6800_native_tkpkg_parity_corpus(
+    corpus: Vec<TkpkgNativeParitySource>,
+    file_filter: Option<&str>,
+    cpu_filter: Option<&str>,
+) -> Vec<TkpkgNativeParitySource> {
+    let cpu_filter = cpu_filter.map(normalize_motorola6800_tkpkg_native_parity_cpu_id);
+    corpus
+        .into_iter()
+        .filter(|entry| {
+            file_filter.is_none_or(|filter| {
+                tkpkg_native_parity_file_filter_matches(entry.relative_path.as_str(), filter)
+            })
+        })
+        .filter(|entry| {
+            cpu_filter
+                .as_deref()
+                .is_none_or(|filter| entry.cpu_id.eq_ignore_ascii_case(filter))
+        })
+        .collect()
+}
+
+fn selected_motorola68000_native_tkpkg_parity_corpus() -> Vec<TkpkgNativeParitySource> {
+    let file_filter = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_FILE_FILTER_ENV);
+    let cpu_filter = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_CPU_FILTER_ENV);
+    let scope = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_SCOPE_ENV)
+        .unwrap_or_else(|| TKPKG_NATIVE_PARITY_SCOPE_TOP_LEVEL.to_string());
+    let corpus = filter_motorola68000_native_tkpkg_parity_corpus(
+        motorola68000_example_sources_for_native_tkpkg_parity(scope.as_str()),
+        file_filter.as_deref(),
+        cpu_filter.as_deref(),
+    );
+
+    assert!(
+        !corpus.is_empty(),
+        "motorola68000 native tkpkg parity corpus selection is empty; check {}={:?}, {}={:?}, and {}={:?}",
+        TKPKG_NATIVE_PARITY_FILE_FILTER_ENV,
+        file_filter,
+        TKPKG_NATIVE_PARITY_CPU_FILTER_ENV,
+        cpu_filter,
+        TKPKG_NATIVE_PARITY_SCOPE_ENV,
+        scope
+    );
+    corpus
+}
+
+fn selected_mos6502_native_tkpkg_parity_corpus() -> Vec<TkpkgNativeParitySource> {
+    let file_filter = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_FILE_FILTER_ENV);
+    let cpu_filter = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_CPU_FILTER_ENV);
+    let requested_cpu = match cpu_filter.as_deref() {
+        Some(filter) => {
+            let cpu_id = normalize_mos6502_tkpkg_native_parity_cpu_id(filter);
+            assert!(
+                cpu_id == m6502_cpu_id.as_str()
+                    || cpu_id == m65c02_cpu_id.as_str()
+                    || cpu_id == m65816_cpu_id.as_str()
+                    || cpu_id == m45gs02_cpu_id.as_str(),
+                "current mos6502 native tkpkg parity slice supports only {}, {}, {}, and {}; requested {:?}",
+                m6502_cpu_id.as_str(),
+                m65c02_cpu_id.as_str(),
+                m65816_cpu_id.as_str(),
+                m45gs02_cpu_id.as_str(),
+                cpu_filter
+            );
+            Some(cpu_id)
+        }
+        None => None,
+    };
+    let corpus = filter_mos6502_native_tkpkg_parity_corpus(
+        mos6502_example_sources_for_native_tkpkg_parity(),
+        file_filter.as_deref(),
+        requested_cpu.as_deref(),
+    );
+
+    assert!(
+        !corpus.is_empty(),
+        "mos6502 native tkpkg parity corpus selection is empty; check {}={:?} and {}={:?}",
+        TKPKG_NATIVE_PARITY_FILE_FILTER_ENV,
+        file_filter,
+        TKPKG_NATIVE_PARITY_CPU_FILTER_ENV,
+        cpu_filter
+    );
+    corpus
+}
+
+fn selected_intel8080_native_tkpkg_parity_corpus() -> Vec<TkpkgNativeParitySource> {
+    let file_filter = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_FILE_FILTER_ENV);
+    let cpu_filter = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_CPU_FILTER_ENV);
+    let requested_cpu = match cpu_filter.as_deref() {
+        Some(filter) => {
+            let cpu_id = normalize_intel8080_tkpkg_native_parity_cpu_id(filter);
+            assert!(
+                cpu_id == i8085_cpu_id.as_str() || cpu_id == z80_cpu_id.as_str(),
+                "current intel8080 native tkpkg parity slice supports only {} and {}; requested {:?}",
+                i8085_cpu_id.as_str(),
+                z80_cpu_id.as_str(),
+                cpu_filter
+            );
+            Some(cpu_id)
+        }
+        None => None,
+    };
+    let corpus = filter_intel8080_native_tkpkg_parity_corpus(
+        intel8080_example_sources_for_native_tkpkg_parity(),
+        file_filter.as_deref(),
+        requested_cpu.as_deref(),
+    );
+
+    assert!(
+        !corpus.is_empty(),
+        "intel8080 native tkpkg parity corpus selection is empty; check {}={:?} and {}={:?}",
+        TKPKG_NATIVE_PARITY_FILE_FILTER_ENV,
+        file_filter,
+        TKPKG_NATIVE_PARITY_CPU_FILTER_ENV,
+        cpu_filter
+    );
+    corpus
+}
+
+fn selected_motorola6800_native_tkpkg_parity_corpus() -> Vec<TkpkgNativeParitySource> {
+    let file_filter = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_FILE_FILTER_ENV);
+    let cpu_filter = tkpkg_native_parity_filter_value(TKPKG_NATIVE_PARITY_CPU_FILTER_ENV);
+    let requested_cpu = match cpu_filter.as_deref() {
+        Some(filter) => {
+            let cpu_id = normalize_motorola6800_tkpkg_native_parity_cpu_id(filter);
+            assert!(
+                cpu_id == m6809_cpu_id.as_str() || cpu_id == hd6309_cpu_id.as_str(),
+                "current motorola6800 native tkpkg parity slice supports only {} and {}; requested {:?}",
+                m6809_cpu_id.as_str(),
+                hd6309_cpu_id.as_str(),
+                cpu_filter
+            );
+            Some(cpu_id)
+        }
+        None => None,
+    };
+    let corpus = filter_motorola6800_native_tkpkg_parity_corpus(
+        motorola6800_example_sources_for_native_tkpkg_parity(),
+        file_filter.as_deref(),
+        requested_cpu.as_deref(),
+    );
+
+    assert!(
+        !corpus.is_empty(),
+        "motorola6800 native tkpkg parity corpus selection is empty; check {}={:?} and {}={:?}",
+        TKPKG_NATIVE_PARITY_FILE_FILTER_ENV,
+        file_filter,
+        TKPKG_NATIVE_PARITY_CPU_FILTER_ENV,
+        cpu_filter
+    );
+    corpus
+}
+
+#[test]
+fn motorola68020_tkpkg_native_parity_corpus_file_filter_selects_one_source() {
+    let corpus = vec![
+        TkpkgNativeParitySource {
+            relative_path: "examples/motorola68000/68000_basic_moves.asm".to_string(),
+            cpu_id: "m68000".to_string(),
+            source: ".cpu 68000".to_string(),
+        },
+        TkpkgNativeParitySource {
+            relative_path: "examples/motorola68000/68020_later_families.asm".to_string(),
+            cpu_id: "m68020".to_string(),
+            source: ".cpu 68020".to_string(),
+        },
+    ];
+
+    let selected = filter_motorola68000_native_tkpkg_parity_corpus(
+        corpus.clone(),
+        Some("68020_later_families.asm"),
+        None,
+    );
+    assert_eq!(selected.len(), 1);
+    assert_eq!(
+        selected[0].relative_path,
+        "examples/motorola68000/68020_later_families.asm"
+    );
+
+    let selected = filter_motorola68000_native_tkpkg_parity_corpus(
+        corpus,
+        Some("examples/motorola68000/68000_basic_moves.asm"),
+        None,
+    );
+    assert_eq!(selected.len(), 1);
+    assert_eq!(
+        selected[0].relative_path,
+        "examples/motorola68000/68000_basic_moves.asm"
+    );
+}
+
+#[test]
+fn motorola68020_tkpkg_native_parity_corpus_cpu_filter_selects_bucket() {
+    let corpus = vec![
+        TkpkgNativeParitySource {
+            relative_path: "examples/motorola68000/68000_basic_moves.asm".to_string(),
+            cpu_id: "m68000".to_string(),
+            source: ".cpu 68000".to_string(),
+        },
+        TkpkgNativeParitySource {
+            relative_path: "examples/motorola68000/68020_later_families.asm".to_string(),
+            cpu_id: "m68020".to_string(),
+            source: ".cpu 68020".to_string(),
+        },
+        TkpkgNativeParitySource {
+            relative_path: "examples/motorola68000/68020_full_extension_addressing.asm".to_string(),
+            cpu_id: "m68020".to_string(),
+            source: ".cpu 68020".to_string(),
+        },
+    ];
+
+    let selected =
+        filter_motorola68000_native_tkpkg_parity_corpus(corpus.clone(), None, Some("68020"));
+    assert_eq!(
+        selected
+            .iter()
+            .map(|entry| entry.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "examples/motorola68000/68020_later_families.asm",
+            "examples/motorola68000/68020_full_extension_addressing.asm",
+        ]
+    );
+
+    let selected = filter_motorola68000_native_tkpkg_parity_corpus(corpus, None, Some("m68000"));
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].cpu_id, "m68000");
+}
+
+#[test]
+fn motorola68020_tkpkg_native_parity_corpus_small_nested_scope_adds_fit_sources() {
+    let top_level =
+        motorola68000_example_sources_for_native_tkpkg_parity(TKPKG_NATIVE_PARITY_SCOPE_TOP_LEVEL);
+    let small_nested = motorola68000_example_sources_for_native_tkpkg_parity(
+        TKPKG_NATIVE_PARITY_SCOPE_SMALL_NESTED,
+    );
+    let paths = small_nested
+        .iter()
+        .map(|entry| entry.relative_path.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        small_nested.len() > top_level.len(),
+        "small-nested scope should broaden the top-level corpus"
+    );
+    for expected in [
+        "examples/motorola68000/amigaos/writefile.asm",
+        "examples/motorola68000/amigaos/workbench_startup_alert.asm",
+        "examples/motorola68000/amigaos/tkpkg/tkpkg_abi.asm",
+        "examples/motorola68000/amigaos/tkpkg/tkpkg_entry.asm",
+        "examples/motorola68000/amigaos/tokvm/tokvm_interpreter.asm",
+    ] {
+        assert!(
+            paths.contains(&expected),
+            "small-nested scope should include {expected}"
+        );
+    }
+    for excluded in [
+        "examples/motorola68000/amigaos/helloworld.asm",
+        "examples/motorola68000/amigaos/timer_device_benchmark.asm",
+        "examples/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm",
+        "examples/motorola68000/amigaos/tokvm/tokvm_tokenizer_vm.asm",
+    ] {
+        assert!(
+            !paths.contains(&excluded),
+            "small-nested scope should exclude {excluded}"
+        );
+    }
+}
+
+#[test]
+fn mos6502_tkpkg_native_parity_corpus_discovers_single_cpu_sources() {
+    let corpus = mos6502_example_sources_for_native_tkpkg_parity();
+    let entries = corpus
+        .iter()
+        .map(|entry| (entry.relative_path.as_str(), entry.cpu_id.as_str()))
+        .collect::<BTreeMap<_, _>>();
+
+    assert_eq!(
+        entries.get("examples/mos6502/6502_simple.asm"),
+        Some(&m6502_cpu_id.as_str())
+    );
+    assert_eq!(
+        entries.get("examples/mos6502/65c02_simple.asm"),
+        Some(&m65c02_cpu_id.as_str())
+    );
+    assert_eq!(
+        entries.get("examples/mos6502/65816_simple.asm"),
+        Some(&m65816_cpu_id.as_str())
+    );
+    assert_eq!(
+        entries.get("examples/mos6502/45gs02_prefix_alias.asm"),
+        Some(&m45gs02_cpu_id.as_str())
+    );
+    assert_eq!(
+        entries.get("examples/mos6502/mos6502_modes.asm"),
+        Some(&m6502_cpu_id.as_str())
+    );
+    assert!(
+        !entries.contains_key("examples/mos6502/mos_forward_ref_stability.asm"),
+        "first mos6502 native parity slice should skip multi-CPU examples"
+    );
+}
+
+#[test]
+fn mos6502_tkpkg_native_parity_corpus_filters_file_and_cpu() {
+    let corpus = vec![
+        TkpkgNativeParitySource {
+            relative_path: "examples/mos6502/6502_simple.asm".to_string(),
+            cpu_id: m6502_cpu_id.as_str().to_string(),
+            source: ".cpu 6502".to_string(),
+        },
+        TkpkgNativeParitySource {
+            relative_path: "examples/mos6502/65c02_simple.asm".to_string(),
+            cpu_id: m65c02_cpu_id.as_str().to_string(),
+            source: ".cpu 65c02".to_string(),
+        },
+    ];
+
+    let selected =
+        filter_mos6502_native_tkpkg_parity_corpus(corpus.clone(), Some("6502_simple.asm"), None);
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].cpu_id, m6502_cpu_id.as_str());
+
+    let selected = filter_mos6502_native_tkpkg_parity_corpus(corpus, None, Some("6502"));
+    assert_eq!(selected.len(), 1);
+    assert_eq!(
+        selected[0].relative_path,
+        "examples/mos6502/6502_simple.asm"
+    );
+}
+
+#[test]
+fn mos6502_tkpkg_native_parity_corpus_unfiltered_selects_supported_family() {
+    let selected = filter_mos6502_native_tkpkg_parity_corpus(
+        mos6502_example_sources_for_native_tkpkg_parity(),
+        None,
+        None,
+    );
+    let cpu_ids = selected
+        .iter()
+        .map(|entry| entry.cpu_id.as_str())
+        .collect::<HashSet<_>>();
+
+    for expected in [
+        m6502_cpu_id.as_str(),
+        m65c02_cpu_id.as_str(),
+        m65816_cpu_id.as_str(),
+        m45gs02_cpu_id.as_str(),
+    ] {
+        assert!(
+            cpu_ids.contains(expected),
+            "unfiltered mos6502 family selector should include {expected}"
+        );
+    }
+    assert!(
+        selected.len() > 4,
+        "unfiltered mos6502 family selector should include more than one smoke file per CPU slice"
+    );
+}
+
+#[test]
+fn intel8080_tkpkg_native_parity_corpus_discovers_supported_sources() {
+    let corpus = intel8080_example_sources_for_native_tkpkg_parity();
+    let entries = corpus
+        .iter()
+        .map(|entry| (entry.relative_path.as_str(), entry.cpu_id.as_str()))
+        .collect::<BTreeMap<_, _>>();
+
+    assert_eq!(
+        entries.get("native-tkpkg/intel8080/8085_smoke.asm"),
+        Some(&i8085_cpu_id.as_str())
+    );
+    assert_eq!(
+        entries.get("examples/z80/z80_allmodes.asm"),
+        Some(&z80_cpu_id.as_str())
+    );
+    assert_eq!(
+        entries.get("examples/z80/z80_simple.asm"),
+        Some(&z80_cpu_id.as_str())
+    );
+    assert_eq!(entries.get("native-tkpkg/intel8080/z80_smoke.asm"), None);
+}
+
+#[test]
+fn motorola6800_tkpkg_native_parity_corpus_discovers_supported_sources() {
+    let corpus = motorola6800_example_sources_for_native_tkpkg_parity();
+    let entries = corpus
+        .iter()
+        .map(|entry| (entry.relative_path.as_str(), entry.cpu_id.as_str()))
+        .collect::<BTreeMap<_, _>>();
+
+    assert_eq!(
+        entries.get("examples/motorola6800/6809_simple.asm"),
+        Some(&m6809_cpu_id.as_str())
+    );
+    assert_eq!(
+        entries.get("examples/motorola6800/6809_indexed_modes.asm"),
+        Some(&m6809_cpu_id.as_str())
+    );
+    assert_eq!(
+        entries.get("examples/motorola6800/6309_extensions.asm"),
+        Some(&hd6309_cpu_id.as_str())
+    );
+}
+
+#[test]
+fn native_tkpkg_parity_corpora_cover_package_backed_cpu_slices() {
+    let motorola68000 =
+        motorola68000_example_sources_for_native_tkpkg_parity(TKPKG_NATIVE_PARITY_SCOPE_TOP_LEVEL);
+    let mos6502 = mos6502_example_sources_for_native_tkpkg_parity();
+    let intel8080 = intel8080_example_sources_for_native_tkpkg_parity();
+    let motorola6800 = motorola6800_example_sources_for_native_tkpkg_parity();
+
+    for (label, corpus) in [
+        ("motorola68000", motorola68000.as_slice()),
+        ("mos6502", mos6502.as_slice()),
+        ("intel8080", intel8080.as_slice()),
+        ("motorola6800", motorola6800.as_slice()),
+    ] {
+        assert!(
+            !corpus.is_empty(),
+            "{label} native tkpkg parity corpus should not be empty"
+        );
+    }
+
+    let covered_cpu_ids = motorola68000
+        .iter()
+        .chain(mos6502.iter())
+        .chain(intel8080.iter())
+        .chain(motorola6800.iter())
+        .map(|entry| entry.cpu_id.as_str())
+        .collect::<HashSet<_>>();
+
+    for expected in [
+        m68000_cpu_id.as_str(),
+        m68010_cpu_id.as_str(),
+        m68020_cpu_id.as_str(),
+        m68030_cpu_id.as_str(),
+        m68040_cpu_id.as_str(),
+        m68080_cpu_id.as_str(),
+        m6502_cpu_id.as_str(),
+        m65c02_cpu_id.as_str(),
+        m65816_cpu_id.as_str(),
+        m45gs02_cpu_id.as_str(),
+        i8085_cpu_id.as_str(),
+        z80_cpu_id.as_str(),
+        m6809_cpu_id.as_str(),
+        hd6309_cpu_id.as_str(),
+    ] {
+        assert!(
+            covered_cpu_ids.contains(expected),
+            "native tkpkg parity corpus should cover {expected}"
+        );
+    }
+}
+
+#[test]
+fn intel8080_tkpkg_native_parity_corpus_filters_file_and_cpu() {
+    let corpus = vec![
+        TkpkgNativeParitySource {
+            relative_path: "native-tkpkg/intel8080/8085_smoke.asm".to_string(),
+            cpu_id: i8085_cpu_id.as_str().to_string(),
+            source: ".cpu 8085".to_string(),
+        },
+        TkpkgNativeParitySource {
+            relative_path: "native-tkpkg/intel8080/8085_extra.asm".to_string(),
+            cpu_id: i8085_cpu_id.as_str().to_string(),
+            source: ".cpu 8085".to_string(),
+        },
+    ];
+
+    let selected =
+        filter_intel8080_native_tkpkg_parity_corpus(corpus.clone(), Some("8085_smoke.asm"), None);
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].cpu_id, i8085_cpu_id.as_str());
+
+    let selected = filter_intel8080_native_tkpkg_parity_corpus(corpus, None, Some("8085"));
+    assert_eq!(selected.len(), 2);
+}
+
+#[test]
+fn motorola6800_tkpkg_native_parity_corpus_filters_file_and_cpu() {
+    let corpus = vec![
+        TkpkgNativeParitySource {
+            relative_path: "examples/motorola6800/6809_simple.asm".to_string(),
+            cpu_id: m6809_cpu_id.as_str().to_string(),
+            source: ".cpu m6809".to_string(),
+        },
+        TkpkgNativeParitySource {
+            relative_path: "examples/motorola6800/6309_extensions.asm".to_string(),
+            cpu_id: hd6309_cpu_id.as_str().to_string(),
+            source: ".cpu hd6309".to_string(),
+        },
+    ];
+
+    let selected = filter_motorola6800_native_tkpkg_parity_corpus(
+        corpus.clone(),
+        Some("6809_simple.asm"),
+        None,
+    );
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].cpu_id, m6809_cpu_id.as_str());
+
+    let selected = filter_motorola6800_native_tkpkg_parity_corpus(corpus, None, Some("6309"));
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].cpu_id, hd6309_cpu_id.as_str());
+}
+
+#[test]
+fn intel8080_tkpkg_native_parity_package_fits_current_native_buffer() {
+    let package = tkpkg_intel8080_native_parity_package_bytes();
+    assert!(
+        package.len() <= 4096,
+        "first intel8080 native parity package must fit current tkpkg packageStorage buffer; got {} bytes",
+        package.len()
+    );
+}
+
+#[test]
+fn motorola6800_tkpkg_native_parity_package_fits_current_native_buffer() {
+    let package = tkpkg_motorola6800_native_parity_package_bytes();
+    assert!(
+        package.len() <= 4096,
+        "first motorola6800 native parity package must fit current tkpkg packageStorage buffer; got {} bytes",
+        package.len()
+    );
+}
+
+#[test]
+fn mos6502_tkpkg_native_parity_package_fits_current_native_buffer() {
+    let package = tkpkg_mos6502_native_parity_package_bytes();
+    assert!(
+        package.len() <= 4096,
+        "first mos6502 native parity package must fit current tkpkg packageStorage buffer; got {} bytes",
+        package.len()
+    );
+}
+
+fn collect_tkpkg_debug_source_lines(source: &str) -> Vec<(u32, &str)> {
+    let mut lines = Vec::new();
+    let mut line_num = 1u32;
+    let mut start = 0usize;
+    while start < source.len() {
+        let end = match source[start..].find('\n') {
+            Some(offset) => start + offset,
+            None => source.len(),
+        };
+        let mut line = &source[start..end];
+        if let Some(stripped) = line.strip_suffix('\r') {
+            line = stripped;
+        }
+        lines.push((line_num, line));
+        line_num = line_num.saturating_add(1);
+        if end == source.len() {
+            break;
+        }
+        start = end + 1;
+    }
+    lines
+}
+
+fn render_tkpkg_smoke_debug_rows_for_source(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    cpu_id: &str,
+    dialect: Option<&str>,
+    source: &str,
+) -> Vec<String> {
+    let mut rows = Vec::new();
+    for (line_num, line) in collect_tkpkg_debug_source_lines(source) {
+        let tokens = model
+            .tokenize_portable_statement_vm_authoritative(cpu_id, dialect, line, line_num)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "vm-authoritative tokenization failed for {}:{}: {}\nline: {:?}",
+                    cpu_id, line_num, err, line
+                )
+            });
+        rows.extend(render_tkpkg_smoke_debug_rows(&tokens));
+    }
+    rows
+}
+
+fn is_tkpkg_debug_row(line: &str) -> bool {
+    [
+        "Identifier(",
+        "Number { text: ",
+        "String { raw: ",
+        "Comma@",
+        "Colon@",
+        "Dollar@",
+        "Dot@",
+        "Hash@",
+        "Question@",
+        "OpenBracket@",
+        "CloseBracket@",
+        "OpenBrace@",
+        "CloseBrace@",
+        "OpenParen@",
+        "CloseParen@",
+        "Operator(",
+    ]
+    .iter()
+    .any(|prefix| line.starts_with(prefix))
+}
+
+fn extract_tkpkg_debug_rows(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .map(|line| line.trim_end_matches('\r'))
+        .filter(|line| is_tkpkg_debug_row(line))
+        .map(ToString::to_string)
+        .collect()
+}
+
+#[test]
+fn motorola68020_tkpkg_native_abi_preserves_v1_control_block_layout() {
+    let source = tkpkg_amigaos_source("tkpkg_abi.asm");
+
+    assert_eq!(vm::native6502_abi::NATIVE_6502_ABI_MAGIC_V1, *b"OT65");
+    assert_eq!(vm::native6502_abi::NATIVE_6502_ABI_VERSION_V1, 1);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CONTROL_BLOCK_SIZE_V1, 32);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_MAGIC_OFFSET, 0);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_ABI_VERSION_OFFSET, 4);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_STRUCT_SIZE_OFFSET, 6);
+    assert_eq!(
+        vm::native6502_abi::NATIVE_6502_CB_CAPABILITY_FLAGS_OFFSET,
+        8
+    );
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_STATUS_CODE_OFFSET, 10);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_REQUEST_ID_OFFSET, 12);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_RESERVED0_OFFSET, 14);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_INPUT_PTR_OFFSET, 16);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_INPUT_LEN_OFFSET, 18);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_OUTPUT_PTR_OFFSET, 20);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_OUTPUT_LEN_OFFSET, 22);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_EXTENSION_PTR_OFFSET, 24);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_EXTENSION_LEN_OFFSET, 26);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_LAST_ERROR_PTR_OFFSET, 28);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_CB_LAST_ERROR_LEN_OFFSET, 30);
+
+    assert!(tkpkg_source_contains(&source, "NATIVE_ABI_MAGIC_0 = 'O'"));
+    assert!(tkpkg_source_contains(&source, "NATIVE_ABI_MAGIC_1 = 'T'"));
+    assert!(tkpkg_source_contains(&source, "NATIVE_ABI_MAGIC_2 = '6'"));
+    assert!(tkpkg_source_contains(&source, "NATIVE_ABI_MAGIC_3 = '5'"));
+    assert!(tkpkg_source_contains(&source, "NATIVE_ABI_VERSION_V1 = 1"));
+    assert!(tkpkg_source_contains(
+        &source,
+        "NATIVE_CONTROL_BLOCK_SIZE_V1 = 32"
+    ));
+    assert!(tkpkg_source_contains(&source, "CB_LAST_ERROR_LEN = 30"));
+    assert!(tkpkg_source_contains(&source, "CAPABILITY_FLAGS_V1 = 7"));
+}
+
+#[test]
+fn motorola68020_tkpkg_native_abi_locks_tokenizer_only_entrypoint_subset() {
+    let source = tkpkg_amigaos_source("tkpkg_abi.asm");
+
+    assert_eq!(vm::native6502_abi::NATIVE_6502_ENTRYPOINT_INIT_V1, 0);
+    assert_eq!(
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        1
+    );
+    assert_eq!(
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        2
+    );
+    assert_eq!(
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_TOKENIZE_LINE_V1,
+        3
+    );
+    assert_eq!(vm::native6502_abi::NATIVE_6502_ENTRYPOINT_PARSE_LINE_V1, 4);
+    assert_eq!(
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1,
+        5
+    );
+    assert_eq!(vm::native6502_abi::NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1, 6);
+    assert_eq!(vm::native6502_abi::NATIVE_6502_ENTRYPOINT_COUNT_V1, 7);
+
+    assert!(tkpkg_source_contains(&source, "ENTRY_ORD_INIT = 0"));
+    assert!(tkpkg_source_contains(&source, "ENTRY_ORD_LOAD_PACKAGE = 1"));
+    assert!(tkpkg_source_contains(&source, "ENTRY_ORD_SET_PIPELINE = 2"));
+    assert!(tkpkg_source_contains(
+        &source,
+        "ENTRY_ORD_TOKENIZE_LINE = 3"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "ENTRY_ORD_PARSE_LINE_RESERVED = 4"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED = 5"
+    ));
+    assert!(tkpkg_source_contains(&source, "ENTRY_ORD_LAST_ERROR = 6"));
+    assert!(tkpkg_source_contains(&source, "ENTRY_ORD_COUNT_V1 = 7"));
+}
+
+#[test]
+fn motorola68020_tkpkg_native_abi_payloads_lock_preserved_wire_shapes() {
+    let source = tkpkg_amigaos_source("tkpkg_abi.asm");
+
+    assert_eq!(vm::native6502::NATIVE_6502_STATUS_OK_V1, 0);
+    assert_eq!(vm::native6502::NATIVE_6502_STATUS_BAD_CONTROL_BLOCK_V1, 1);
+    assert_eq!(vm::native6502::NATIVE_6502_STATUS_BAD_REQUEST_V1, 2);
+    assert_eq!(vm::native6502::NATIVE_6502_STATUS_RUNTIME_ERROR_V1, 3);
+
+    assert!(tkpkg_source_contains(
+        &source,
+        "SET_PIPELINE_PAYLOAD_SEPARATOR = 0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "LINE_PAYLOAD_LINE_NUM_SIZE = 4"
+    ));
+    assert!(tkpkg_source_contains(&source, "LAST_ERROR_REQUEST_LEN = 0"));
+    assert!(tkpkg_source_contains(
+        &source,
+        "wireSetPipelineExample:\n        .byte \"68020\",0,\"amigaos\""
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "wireTokenizeLineExample:\n        .byte 42,0,0,0\n        .byte \"move.b d0,d1\""
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
+    let source = tkpkg_amigaos_source("tkpkg_service.asm");
+
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_write_header_v1:\n        MOVE.B #$4f,(A0)\n        MOVE.B #$54,1(A0)\n        MOVE.B #$36,2(A0)\n        MOVE.B #$35,3(A0)\n        MOVE.B #$01,CB_ABI_VERSION(A0)\n        CLR.B 5(A0)\n        MOVE.B #NATIVE_CONTROL_BLOCK_SIZE_V1,CB_STRUCT_SIZE(A0)\n        CLR.B 7(A0)\n        MOVE.B #CAPABILITY_FLAGS_V1,CB_CAPABILITY_FLAGS(A0)\n        CLR.B 9(A0)"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_increment_request_id_v1:\n        MOVE.B nextRequestIdLo,D1\n        ADDQ.B #1,D1\n        MOVE.B D1,nextRequestIdLo"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_validate_header_v1:\n        MOVEQ #0,D1\n        CMPI.B #$4f,(A0)\n        BNE.S tkpkgServiceBadControlBlock\n        CMPI.B #$54,1(A0)"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "CMPI.B #ENTRY_ORD_PARSE_LINE_RESERVED,D0\n        BEQ.S tkpkgServiceDeferredRuntime\n        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED,D0\n        BEQ.S tkpkgServiceDeferredRuntime"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_set_status_runtime_error_v1:\n        MOVE.B #STATUS_RUNTIME_ERROR_V1,CB_STATUS_CODE(A0)\n        CLR.B 11(A0)"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract() {
+    let source = tkpkg_amigaos_source("tkpkg_service.asm");
+    let buffers = tkpkg_amigaos_source("tkpkg_buffers.asm");
+
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_set_bad_request_v1:\n        BSR.W tkpkg_service_set_status_bad_request_v1\n        BSR.W tkpkg_service_write_clear_output_fields_v1\n        LEA badRequestText,A1\n        MOVEQ #BAD_REQUEST_TEXT_LEN,D1\n        BSR.W tkpkg_service_copy_last_error_message_v1\n        BSR.W tkpkg_service_write_last_error_buffer_offset_v1\n        MOVE.B #BAD_REQUEST_TEXT_LEN,CB_LAST_ERROR_LEN(A0)"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_set_bad_control_block_v1:\n        BSR.W tkpkg_service_set_status_bad_control_block_v1\n        BSR.W tkpkg_service_write_clear_output_fields_v1\n        LEA controlBlockErrorText,A1\n        MOVEQ #CONTROL_BLOCK_ERROR_TEXT_LEN,D1\n        BSR.W tkpkg_service_copy_last_error_message_v1\n        BSR.W tkpkg_service_write_last_error_buffer_offset_v1\n        MOVE.B #CONTROL_BLOCK_ERROR_TEXT_LEN,CB_LAST_ERROR_LEN(A0)"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgServiceHandleLastError:\n        TST.B CB_INPUT_LEN(A0)\n        BNE.S tkpkgServiceLastErrorBadRequest\n        TST.B 19(A0)\n        BNE.S tkpkgServiceLastErrorBadRequest\n        BSR.W tkpkg_service_write_clear_input_fields_v1\n        BSR.W tkpkg_service_set_status_ok_v1\n        BSR.W tkpkg_service_write_clear_output_fields_v1\n        MOVE.B storedLastErrorLen,CB_OUTPUT_LEN(A0)\n        MOVE.B storedLastErrorLenHi,23(A0)\n        TST.B storedLastErrorLen\n        BEQ.S tkpkgServiceLastErrorDone\n        BSR.W tkpkg_service_write_output_buffer_offset_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgServiceLastErrorBadRequest:\n        BSR.W tkpkg_service_set_bad_request_v1\n        RTS"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgServiceHandleInitEntry:\n        BSR.W tkpkg_service_prepare_request_v1\n        BSR.W tkpkg_service_write_header_v1\n        BSR.W tkpkg_service_write_clear_input_fields_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_write_last_error_buffer_offset_v1:\n        MOVE.B #LAST_ERROR_BUFFER_PTR_V1,CB_LAST_ERROR_PTR(A0)\n        CLR.B 29(A0)"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_write_output_buffer_offset_v1:\n        MOVE.B #LAST_ERROR_BUFFER_PTR_V1,CB_OUTPUT_PTR(A0)\n        CLR.B 21(A0)"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgServiceLastErrorDone:\n        BSR.W tkpkg_service_clear_stored_last_error_v1\n        BSR.W tkpkg_service_write_clear_last_error_fields_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "badRequestText:\n        .byte \"OTR002: bad request\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "controlBlockErrorText:\n        .byte \"OTR003: bad control\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "controlBlockV1:\n        .res byte,NATIVE_CONTROL_BLOCK_SIZE_V1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "lastErrorBuffer:\n        .res byte,LAST_ERROR_BUFFER_CAPACITY"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "nextRequestIdLo:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "nextRequestIdHi:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "runtimeErrorText:\n        .byte \"OTR901: unimplemented\",0"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_load_package_validates_little_endian_container_header() {
+    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
+
+    assert!(tkpkg_source_contains(
+        &service,
+        "CMPI.B #ENTRY_ORD_LOAD_PACKAGE, D0\n        BEQ.W tkpkgServiceHandleLoadPackage"
+    ));
+    assert!(tkpkg_source_contains(
+        &service,
+        "tkpkgServiceHandleLoadPackage:\n        MOVE.L A0, -(SP)\n        BSR.W tkpkg_package_loader_load_v1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BNE.S tkpkgServiceLoadPackageError"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "tkpkg_package_loader_load_v1:\n        BSR.W tkpkg_package_loader_clear_loaded_state_v1\n        BSR.W tkpkg_package_loader_read_input_len_v1\n        TST.W D0\n        BEQ.W tkpkgPackageLoaderInvalidMagic\n        CMPI.W #PACKAGE_STORAGE_CAPACITY,D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "tkpkg_package_loader_validate_header_v1:\n        MOVEQ #0,D0\n        CMPI.B #'O',(A1)\n        BNE.W tkpkgPackageLoaderInvalidMagic\n        CMPI.B #'P',1(A1)\n        BNE.W tkpkgPackageLoaderInvalidMagic\n        CMPI.B #'C',2(A1)\n        BNE.W tkpkgPackageLoaderInvalidMagic\n        CMPI.B #'P',3(A1)\n        BNE.W tkpkgPackageLoaderInvalidMagic\n        CMPI.B #$01,4(A1)\n        BNE.W tkpkgPackageLoaderUnsupportedVersion\n        TST.B 5(A1)\n        BNE.W tkpkgPackageLoaderUnsupportedVersion\n        CMPI.B #$34,6(A1)\n        BNE.W tkpkgPackageLoaderInvalidEndian\n        CMPI.B #$12,7(A1)\n        BNE.W tkpkgPackageLoaderInvalidEndian"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "MOVE.B 8(A1),D0\n        MOVEQ #0,D1\n        MOVE.B 9(A1),D1\n        LSL.W #8,D1\n        OR.W D1,D0"
+    ));
+    assert!(loader.contains("LEA OPASM_HEADER_SIZE(A1), A2"));
+    assert!(loader.contains("MOVE.W D0, D2"));
+    assert!(loader.contains("SUBQ.W #1, D2"));
+    assert!(loader.contains("DBF D2, tkpkgPackageLoaderTocLoop"));
+}
+
+#[test]
+fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
+    let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
+    let buffers = tkpkg_amigaos_source("tkpkg_buffers.asm");
+
+    assert!(tkpkg_source_contains(
+        &loader,
+        "tkpkg_package_loader_copy_input_bytes_v1:\n        MOVEQ #0,D2\n        MOVE.B packageStorageLen,D2\n        MOVEQ #0,D3\n        MOVE.B packageStorageLenHi,D3\n        LSL.W #8,D3\n        OR.W D3,D2"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "tkpkgPackageLoaderCopyLoop:\n        MOVE.B (A1)+,(A2)+\n        SUBQ.W #1,D2\n        BNE.S tkpkgPackageLoaderCopyLoop"
+    ));
+    assert!(loader.contains("famsChunkOffsetLo"));
+    assert!(loader.contains("PACKAGE_CHUNK_FAMS"));
+    assert!(loader.contains("toksChunkOffsetLo"));
+    assert!(loader.contains("PACKAGE_CHUNK_TOKS"));
+    assert!(loader.contains("tkvmChunkOffsetLo"));
+    assert!(loader.contains("PACKAGE_CHUNK_TKVM"));
+    assert!(loader.contains("PACKAGE_REQUIRED_CHUNK_FLAGS"));
+    assert!(loader.contains("tkpkgPackageLoaderMissingChunk"));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "packageStateFlags:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "packageChunkFlags:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "packageStorageLen:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "famsChunkOffsetLo:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "toksChunkOffsetLo:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "tkvmChunkOffsetLo:\n        .res byte,1"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_error_namespace_preserves_package_failures() {
+    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let loader = tkpkg_amigaos_source("tkpkg_package_loader.asm");
+
+    assert!(tkpkg_source_contains(
+        &service,
+        "tkpkgServiceLoadPackageError:\n        BSR.W tkpkg_service_set_runtime_error_message_v1\n        RTS"
+    ));
+    assert!(tkpkg_source_contains(
+        &service,
+        "tkpkg_service_set_runtime_error_message_v1:\n        BSR.W tkpkg_service_set_status_runtime_error_v1\n        BSR.W tkpkg_service_write_clear_output_fields_v1\n        BSR.W tkpkg_service_copy_last_error_message_v1\n        BSR.W tkpkg_service_write_last_error_buffer_offset_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "invalidMagicText:\n        .byte \"OPC001: invalid package magic\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "unsupportedVersionText:\n        .byte \"OPC002: unsupported package version\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "invalidEndianText:\n        .byte \"OPC003: invalid endianness marker\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "unexpectedEofText:\n        .byte \"OPC004: unexpected end of file\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "duplicateChunkText:\n        .byte \"OPC005: duplicate tokenizer chunk\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "missingChunkText:\n        .byte \"OPC006: missing required chunk\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &loader,
+        "chunkBoundsText:\n        .byte \"OPC007: chunk out of bounds\",0"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
+    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let pipeline = tkpkg_amigaos_source("tkpkg_pipeline.asm");
+    let buffers = tkpkg_amigaos_source("tkpkg_buffers.asm");
+
+    assert!(tkpkg_source_contains(
+        &service,
+        "CMPI.B #ENTRY_ORD_SET_PIPELINE, D0\n        BEQ.W tkpkgServiceHandleSetPipeline"
+    ));
+    assert!(tkpkg_source_contains(
+        &service,
+        "tkpkgServiceHandleSetPipeline:\n        MOVE.L A0, -(SP)\n        BSR.W tkpkg_pipeline_set_active_v1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BEQ.S tkpkgServiceSetPipelineOk\n        CMPI.B #STATUS_BAD_REQUEST_V1, D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_set_active_v1:\n        BTST #0, packageStateFlags\n        BNE.S tkpkgPipelineParseRequest\n        LEA noPackageText, A1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_parse_request_v1:\n        LEA pendingFamilyOffsetLo, A3\n        MOVEQ #29, D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_find_cpu_entry_v1:\n        LEA pendingCpuOffsetLo, A3\n        BSR.W tkpkg_pipeline_read_request_locator_ptr_len_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "TST.B D0\n        BEQ.W tkpkgPipelineSkipCpuEntry\n        LEA pendingCpuOffsetLo, A3\n        LEA 0(A4), A1\n        MOVE.W D6, D0\n        BSR.W tkpkg_pipeline_store_package_string_locator_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_resolve_hierarchy_v1:\n        BSR.W tkpkg_pipeline_find_cpu_entry_v1\n        TST.B D0\n        BNE.W tkpkgPipelineCpuUnresolved\n        BSR.W tkpkg_pipeline_find_family_entry_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_resolve_selected_dialect_v1:\n        LEA pendingDialectOffsetLo, A3\n        BSR.W tkpkg_pipeline_read_locator_ptr_len_v1\n        TST.W D3\n        BEQ.S tkpkgPipelineDefaultDialect\n        LEA pendingDialectOffsetLo, A3\n        BSR.W tkpkg_pipeline_find_requested_dialect_entry_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_find_requested_dialect_entry_v1:\n        BSR.W tkpkg_pipeline_read_request_locator_ptr_len_v1\n        BRA.S tkpkgPipelineFindDialectEntryLoaded"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_find_dialect_entry_v1:\n        BSR.W tkpkg_pipeline_read_locator_ptr_len_v1\n\ntkpkgPipelineFindDialectEntryLoaded:\n        MOVE.W D3, D5"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkgPipelineDialectLoop:\n        BSR.W tkpkg_pipeline_locate_string_v1\n        MOVE.W D0, -(SP)"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkgPipelineDialectAccept:\n        LEA pendingDialectOffsetLo, A3\n        LEA 0(A0), A1\n        MOVE.W (SP)+, D0\n        BSR.W tkpkg_pipeline_store_package_string_locator_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_read_request_locator_ptr_len_v1:\n        MOVEQ #0, D2\n        MOVE.B (A3)+, D2"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_commit_active_selection_v1:\n        LEA pendingCpuOffsetLo, A3\n        LEA activeCpuBuffer.L, A2\n        BSR.W tkpkg_pipeline_copy_locator_to_buffer_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "PACKAGE_STATE_PIPELINE_ACTIVE = 2"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "activeFamilyBuffer:\n        .res byte,PIPELINE_ID_BUFFER_CAPACITY"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "activeTokenPolicyOffsetLo:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "activeTokenizerVmOffsetLo:\n        .res byte,1"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
+    let pipeline = tkpkg_amigaos_source("tkpkg_pipeline.asm");
+    let token_policy = tkpkg_amigaos_source("tkpkg_token_policy.asm");
+    let buffers = tkpkg_amigaos_source("tkpkg_buffers.asm");
+
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "tkpkg_token_policy_resolve_locator_v1:\n        MOVEQ #SCOPED_OWNER_DIALECT, D0\n        LEA pendingDialectOffsetLo, A3\n        BSR.W tkpkg_token_policy_find_owner_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "MOVEQ #SCOPED_OWNER_CPU, D0\n        LEA pendingCpuOffsetLo, A3\n        BSR.W tkpkg_token_policy_find_owner_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "MOVEQ #SCOPED_OWNER_FAMILY, D0\n        LEA pendingFamilyOffsetLo, A3\n        BSR.W tkpkg_token_policy_find_owner_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_resolve_tokenizer_vm_locator_v1:\n        MOVEQ #SCOPED_OWNER_DIALECT, D0\n        LEA pendingDialectOffsetLo, A3\n        BSR.W tkpkg_pipeline_find_tokenizer_vm_owner_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "MOVEQ #SCOPED_OWNER_CPU, D0\n        LEA pendingCpuOffsetLo, A3\n        BSR.W tkpkg_pipeline_find_tokenizer_vm_owner_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "MOVEQ #SCOPED_OWNER_FAMILY, D0\n        LEA pendingFamilyOffsetLo, A3\n        BSR.W tkpkg_pipeline_find_tokenizer_vm_owner_v1"
+    ));
+    assert!(tkpkg_source_contains(&buffers, "SCOPED_OWNER_DIALECT = 2"));
+    assert!(tkpkg_source_contains(&buffers, "SCOPED_OWNER_CPU = 1"));
+    assert!(tkpkg_source_contains(&buffers, "SCOPED_OWNER_FAMILY = 0"));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "unresolvedCpuText:\n        .byte \"OTR004: unresolved package cpu id\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "unresolvedFamilyText:\n        .byte \"OTR004: unresolved package family\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "unresolvedDialectText:\n        .byte \"OTR004: unresolved package dialect\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "missingPolicyText:\n        .byte \"OTR003: missing tokenizer policy\",0"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_native_wire_roundtrip_preserves_subset_examples() {
+    let source = tkpkg_amigaos_source("tkpkg_abi.asm");
+
+    let set_pipeline_payload =
+        vm::native6502::encode_wire_set_pipeline_payload("68020", Some("amigaos"))
+            .expect("encode set_pipeline payload");
+    assert_eq!(set_pipeline_payload, b"68020\0amigaos");
+
+    let tokenize_payload = vm::native6502::encode_wire_line_payload(42, "move.b d0,d1");
+    assert_eq!(
+        tokenize_payload,
+        [42u8, 0, 0, 0, b'm', b'o', b'v', b'e', b'.', b'b', b' ', b'd', b'0', b',', b'd', b'1']
+    );
+
+    let empty_last_error_payload: Vec<u8> = Vec::new();
+    assert!(empty_last_error_payload.is_empty());
+    assert!(tkpkg_source_contains(&source, "wireContractMarker:"));
+}
+
+#[test]
+fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/tkpkg/tkpkg_entry.asm");
+    let out_dir = create_temp_dir("m68000-tkpkg-entry");
+    let entry_source = tkpkg_amigaos_source("tkpkg_entry.asm");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble tkpkg entry example: {detail}");
+    }
+
+    assert!(tkpkg_source_contains(
+        &entry_source,
+        "tkpkg_entry_dispatch_v1:\n        JSR tkpkg_service_dispatch_v1\n        RTS"
+    ));
+    assert!(tkpkg_source_contains(
+        &entry_source,
+        "tkpkg_entry_bootstrap_v1:\n        LEA controlBlockV1,A0\n        MOVEQ #ENTRY_ORD_INIT,D0\n        JSR tkpkg_service_dispatch_v1\n        RTS"
+    ));
+
+    let listing = fs::read_to_string(out_dir.join("tkpkg_entry.lst")).expect("read tkpkg listing");
+    assert!(listing.contains(".cpu 68020"));
+    assert!(listing.contains("main.tkpkg_entry_dispatch_v1"));
+    assert!(listing.contains("main.tkpkg_entry_bootstrap_v1"));
+    assert!(listing.contains("tkpkg.amigaos.service.tkpkg_service_dispatch_v1"));
+    assert!(listing.contains("tkpkg.amigaos.service.tkpkg_service_prepare_request_v1"));
+    assert!(listing.contains("tkpkg.amigaos.service.tkpkg_service_set_runtime_error_v1"));
+    assert!(listing.contains("tkpkg.amigaos.buffers.controlBlockV1"));
+    assert!(listing.contains("tkpkg.amigaos.buffers.lastErrorBuffer"));
+    assert!(listing.contains("tkpkg.amigaos.buffers.storedLastErrorLen"));
+    assert!(listing.contains("tkpkg.amigaos.package_loader.tkpkg_package_loader_load_v1"));
+    assert!(listing.contains("tkpkg.amigaos.package_loader.tkpkg_package_loader_validate_toc_v1"));
+    assert!(listing.contains("tkpkg.amigaos.pipeline.tkpkg_pipeline_set_active_v1"));
+    assert!(
+        listing.contains("tkpkg.amigaos.pipeline.tkpkg_pipeline_resolve_tokenizer_vm_locator_v1")
+    );
+    assert!(listing.contains("tkpkg.amigaos.token_policy.tkpkg_token_policy_resolve_locator_v1"));
+    assert!(listing.contains("tkpkg.amigaos.tokenizer_vm.tkpkg_tokenizer_vm_tokenize_line_v1"));
+    assert!(listing.contains("tokvm.amigaos.tokenizer_vm.tokvm_run_68000"));
+
+    let payload_path = example_output_payload_path(&out_dir, "tkpkg_entry", "hunk");
+    let payload = fs::read(payload_path).expect("read tkpkg hunk payload");
+    assert!(
+        payload
+            .windows("OPFORGE-TKPKG-ABI-V1".len())
+            .any(|window| window == b"OPFORGE-TKPKG-ABI-V1"),
+        "expected ABI marker string in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("TKPKG-WIRE-CONTRACT-V1".len())
+            .any(|window| window == b"TKPKG-WIRE-CONTRACT-V1"),
+        "expected wire contract marker string in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR002: bad request".len())
+            .any(|window| window == b"OTR002: bad request"),
+        "expected bad request error marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR003: bad control".len())
+            .any(|window| window == b"OTR003: bad control"),
+        "expected bad control error marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR901: unimplemented".len())
+            .any(|window| window == b"OTR901: unimplemented"),
+        "expected runtime error marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OPC001: invalid package magic".len())
+            .any(|window| window == b"OPC001: invalid package magic"),
+        "expected invalid package magic marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OPC006: missing required chunk".len())
+            .any(|window| window == b"OPC006: missing required chunk"),
+        "expected missing required chunk marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR001: set_pipeline requires load_package".len())
+            .any(|window| window == b"OTR001: set_pipeline requires load_package"),
+        "expected missing package marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR003: missing tokenizer policy".len())
+            .any(|window| window == b"OTR003: missing tokenizer policy"),
+        "expected missing tokenizer policy marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR004: unresolved package cpu id".len())
+            .any(|window| window == b"OTR004: unresolved package cpu id"),
+        "expected unresolved cpu marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR004: unresolved package family".len())
+            .any(|window| window == b"OTR004: unresolved package family"),
+        "expected unresolved family marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR004: unresolved package dialect".len())
+            .any(|window| window == b"OTR004: unresolved package dialect"),
+        "expected unresolved dialect marker in tkpkg Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OTR001: missing tokenizer VM program".len())
+            .any(|window| window == b"OTR001: missing tokenizer VM program"),
+        "expected missing tokenizer VM marker in tkpkg Hunk payload"
+    );
+}
+
+#[test]
+fn motorola68020_tkpkg_tokenize_line_module_surface_routes_entrypoint_into_package_vm() {
+    let service_source = tkpkg_amigaos_source("tkpkg_service.asm");
+    let tokenizer_source = tkpkg_amigaos_source("tkpkg_tokenizer_vm.asm");
+    let local_tokvm_source = tkpkg_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(tkpkg_source_contains(
+        &service_source,
+        ".use tkpkg.amigaos.tokenizer_vm (tkpkg_tokenizer_vm_tokenize_line_v1)"
+    ));
+    assert!(tkpkg_source_contains(
+        &service_source,
+        "CMPI.B #ENTRY_ORD_TOKENIZE_LINE,D0\n        BEQ.W tkpkgServiceHandleTokenizeLine"
+    ));
+    assert!(tkpkg_source_contains(
+        &service_source,
+        "tkpkgServiceHandleTokenizeLine:\n        MOVE.L A0,-(SP)\n        BSR.W tkpkg_tokenizer_vm_tokenize_line_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        ".use tokvm.amigaos.tokenizer_vm (tokvm_run_68000, tokvm_set_step_budget_68000)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        ".use tokvm.amigaos.tokenizer_vm (tokvm_set_program_state_table_68000)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        ".use tokvm.amigaos.tokenizer_vm (tokvm_read_last_failure_68000)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "JSR tokvm_set_step_budget_68000"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "activeTokenizerVmStateTable"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "activeTokenizerVmStateCountLo"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "activeTokenizerVmInvalidCharDiagCode"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "JSR tokvm_set_program_state_table_68000"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "JSR tokvm_run_68000"
+    ));
+    assert!(tokvm_source_contains(
+        &local_tokvm_source,
+        "tokvm_run_68000:"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime() {
+    let buffers_source = tkpkg_amigaos_source("tkpkg_buffers.asm");
+    let tokenizer_source = tkpkg_amigaos_source("tkpkg_tokenizer_vm.asm");
+    let local_tokvm_source = tkpkg_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(tkpkg_source_contains(
+        &buffers_source,
+        "LAST_ERROR_BUFFER_CAPACITY = 4096"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers_source,
+        "TOKEN_BUFFER_CAPACITY = 64"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        ".use tokvm.amigaos.tokenizer_vm (tokvm_run_68000, tokvm_set_step_budget_68000)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "MOVEQ #0,D1\n        MOVE.W #TOKEN_BUFFER_CAPACITY,D1"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "MOVEQ #0,D2\n        MOVE.W #TOKEN_SCRATCH_CAPACITY,D2"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "activeTokenizerVmStartStateLo"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "activeTokenizerVmStartStateHi"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "activeTokenizerVmStateCountHi"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "activeTokenizerVmMaxErrorsPerLine"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkg_tokenizer_vm_read_string_into_slot_v1:"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkgTokenizerStatusVmFailure:"
+    ));
+    assert!(tokvm_source_contains(
+        &local_tokvm_source,
+        "tokvmOpcodeScanIdentifier:"
+    ));
+    assert!(tokvm_source_contains(
+        &local_tokvm_source,
+        "tokvm_set_program_state_table_68000:"
+    ));
+    assert!(tokvm_source_contains(
+        &local_tokvm_source,
+        "tokvmOpcodeSetState:"
+    ));
+    assert!(tokvm_source_contains(
+        &local_tokvm_source,
+        "CMPI.B #39,0(A4,D2.L)\n        BNE tokvmScanIdentifierCommit"
+    ));
+    assert!(tokvm_source_contains(
+        &local_tokvm_source,
+        "tokvm_read_last_failure_68000:"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_tokenizer_parity_module_surface_locks_number_and_operator_debug_rendering() {
+    let source = tkpkg_amigaos_source("tkpkg_tokenizer_vm.asm");
+
+    assert!(source.contains(
+        "tkpkgTokenizerAppendNumber:\n        LEA numberPrefix, A1\n        MOVEQ #15, D2"
+    ));
+    assert!(source.contains("LEA numberBasePrefix, A1\n        MOVEQ #8, D2"));
+    assert!(source.contains(
+        "tkpkgTokenizerAppendOperator:\n        MOVE.L D0, -(SP)\n        LEA operatorPrefix, A1\n        MOVEQ #9, D2\n        BSR.W tkpkg_tokenizer_vm_append_bytes_v1\n        MOVE.L (SP)+, D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "CMPI.W #TK_KIND_OP_POWER,D0\n        BEQ.W tkpkgTokenizerOpPower"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "CMPI.W #TK_KIND_OP_BIT_XOR,D0\n        BEQ.W tkpkgTokenizerOpBitXor"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "opBitXorText:\n        .byte \"BitXor\""
+    ));
+}
+
+#[test]
+fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let harness_source = tokvm_amigaos_source("tokvm_cli_harness.asm");
+
+    assert!(source.contains("TK_KIND_OP_POWER                = 21"));
+    assert!(source.contains("TK_KIND_OP_DIVIDE               = 22"));
+    assert!(source.contains("TK_KIND_OP_BIT_OR               = 29"));
+    assert!(source.contains("TK_KIND_OP_BIT_XOR              = 30"));
+    assert!(source.contains("TK_KIND_OP_LOGIC_AND            = 31"));
+    assert!(tokvm_source_contains(
+        &source,
+        "tokvmStagePower:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_OP_POWER,LOCAL_PENDING_KIND(A2)\n        LEA lexPower,A0\n        MOVEQ #2,D0"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "tokvmStageBitXor:\n        MOVE.W #TK_KIND_OP_BIT_XOR,LOCAL_PENDING_KIND(A2)\n        LEA lexBitXor,A0\n        MOVEQ #1,D0"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "lexPower:\n        .byte \"**\""
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "lexBitXor:\n        .byte \"^\""
+    ));
+    assert!(tokvm_source_contains(
+        &harness_source,
+        "kindNameOpPower:\n        .byte \"op_power\",0"
+    ));
+    assert!(tokvm_source_contains(
+        &harness_source,
+        "kindNameOpBitXor:\n        .byte \"op_bit_xor\",0"
+    ));
+}
+
+#[test]
+fn motorola68020_tokvm_native_percent_scanner_checks_rust_prefix_context() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(tokvm_source_contains(
+        &source,
+        "tokvmScanPercentAsNumber:\n        JSR tokvmPercentHasPrefixContext\n        TST.L D0\n        BEQ tokvmStagePercent"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "tokvmPercentHasPrefixContext:"
+    ));
+    assert!(source.contains("TST.L D0"));
+    assert!(tokvm_source_contains(
+        &source,
+        "LEA 0(A4, D0.L), A1\n        MOVEQ #0, D0\n        MOVE.B (A1), D0"
+    ));
+    assert!(source.contains("BEQ tokvmPercentPrefixFalse"));
+    assert!(source.contains("JSR tokvmIsIdentifierContinue"));
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let local_tkpkg_source = tkpkg_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(tokvm_source_contains(
+        &source,
+        "CMPI.B #'#',D0\n        BEQ tokvmStageHash"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "tokvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA lexHash,A0\n        MOVEQ #1,D0"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "lexHash:\n        .byte \"#\""
+    ));
+    assert!(tkpkg_source_contains(
+        &local_tkpkg_source,
+        "CMPI.B #'#',D0\n        BEQ tokvmStageHash"
+    ));
+    assert!(tkpkg_source_contains(
+        &local_tkpkg_source,
+        "tokvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA lexHash,A0\n        MOVEQ #1,D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &local_tkpkg_source,
+        "lexHash:\n        .byte \"#\""
+    ));
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_supports_configured_state_table_entrypoints() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "demoStateEntryOffsets:\n        .long DEMO_PC_READ_CHAR\n\ntokvmProgramStateTablePtr:\n        .long demoStateEntryOffsets\n\ntokvmProgramStateCount:\n        .long 1\n\ntokvmProgramStartState:\n        .word 0"
+        ),
+        "expected tokvm to keep a default state-table configuration for the demo interpreter path"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvm_set_program_state_table_68000:\n        TST.L D0\n        BGT.S tokvmSetProgramStateStore\n        LEA demoStateEntryOffsets,A0\n        MOVEQ #1,D0\n        MOVEQ #0,D1"
+        ),
+        "expected tokvm to expose a stable state-table configuration hook without changing tokvm_run_68000"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmNewlineScanDone:\n        MOVEQ #0,D0\n        MOVE.W tokvmProgramStartState,D0\n        CMP.L tokvmProgramStateCount,D0\n        BCC tokvmInvalidProgramAtCursor"
+        ),
+        "expected tokvm_run_68000 to start execution from the configured start state offset"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeSetState:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #2,D0\n        CMP.L D7,D0\n        BHI tokvmInvalidProgramAtCursor"
+        ),
+        "expected the native SetState opcode to decode a little-endian state index and bounds-check it"
+    );
+}
+
+#[test]
+fn motorola68020_tkpkg_vm_authoritative_sample_rows_match_debug_cli_smoke_output() {
+    let package = tkpkg_smoke_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+    let rows = render_tkpkg_smoke_debug_rows(
+        &model
+            .tokenize_portable_statement_vm_authoritative(
+                "m68020",
+                Some("motorola68k"),
+                TKPKG_SMOKE_SAMPLE_LINE,
+                TKPKG_SMOKE_SAMPLE_LINE_NUM,
+            )
+            .expect("vm-authoritative tkpkg smoke tokenization"),
+    );
+
+    assert_eq!(
+        rows,
+        vec![
+            "Identifier(\"move.b\")@42:1-7".to_string(),
+            "Identifier(\"d0\")@42:8-10".to_string(),
+            "Comma@42:10-11".to_string(),
+            "Identifier(\"d1\")@42:11-13".to_string(),
+        ],
+        "tkpkg smoke sample rows should stay stable so debug-cli regressions fail before FS-UAE"
+    );
+}
+
+#[test]
+fn motorola68020_tkpkg_vm_authoritative_operator_rows_cover_rust_operator_surface() {
+    let package = tkpkg_smoke_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+    let rows = render_tkpkg_smoke_debug_rows_for_source(
+        &model,
+        "m68020",
+        Some("motorola68k"),
+        TKPKG_OPERATOR_PARITY_SOURCE,
+    );
+
+    for expected in [
+        "Operator(Range)",
+        "Operator(RangeInclusive)",
+        "Operator(Plus)",
+        "Operator(Minus)",
+        "Operator(Multiply)",
+        "Operator(Power)",
+        "Operator(Divide)",
+        "Operator(Mod)",
+        "Operator(Shl)",
+        "Operator(Shr)",
+        "Operator(BitNot)",
+        "Operator(LogicNot)",
+        "Operator(BitAnd)",
+        "Operator(BitOr)",
+        "Operator(BitXor)",
+        "Operator(LogicAnd)",
+        "Operator(LogicOr)",
+        "Operator(LogicXor)",
+        "Operator(Eq)",
+        "Operator(Ne)",
+        "Operator(Ge)",
+        "Operator(Gt)",
+        "Operator(Le)",
+        "Operator(Lt)",
+    ] {
+        assert!(
+            rows.iter().any(|row| row.starts_with(expected)),
+            "Rust VM-authoritative operator rows should include {expected}; rows: {rows:#?}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_tkpkg_vm_authoritative_percent_prefix_context_rows_match_rust_tokenizer() {
+    let package = tkpkg_smoke_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+    let rows = render_tkpkg_smoke_debug_rows_for_source(
+        &model,
+        "m68020",
+        Some("motorola68k"),
+        TKPKG_PERCENT_PREFIX_PARITY_SOURCE,
+    );
+
+    for expected in [
+        "Number { text: \"%1010\", base: 2 }@2:",
+        "Operator(Mod)@3:",
+        "Number { text: \"101\", base: 10 }@3:",
+        "Number { text: \"%101\", base: 2 }@4:",
+    ] {
+        assert!(
+            rows.iter().any(|row| row.starts_with(expected)),
+            "Rust VM-authoritative percent-prefix rows should include {expected}; rows: {rows:#?}"
+        );
+    }
+    assert!(
+        !rows
+            .iter()
+            .any(|row| row.starts_with("Number { text: \"%101\", base: 2 }@3:")),
+        "infix a%101 must tokenize as modulo plus decimal number, not a binary-prefixed number; rows: {rows:#?}"
+    );
+}
+
+#[test]
+fn motorola68020_tkpkg_native_render_helpers_preserve_live_registers() {
+    let tokenizer_source = tkpkg_amigaos_source("tkpkg_tokenizer_vm.asm");
+
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkg_tokenizer_vm_render_output_v1:\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        SUBA.L #LOCAL_SIZE,SP\n        LEA 0(SP),A4\n        MOVE.L D1,D7"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkg_tokenizer_vm_append_u32_v1:\n        MOVEM.L D1-D5/A1,-(SP)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkgTokenizerAppendDigitEmit:\n        MOVE.L D0,-(SP)\n        MOVEQ #'0',D4\n        ADD.B D3,D4\n        MOVE.L D4,D0\n        BSR.W tkpkg_tokenizer_vm_append_char_v1\n        MOVE.L (SP)+,D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkg_tokenizer_vm_append_quoted_v1:\n        MOVEM.L D0-D1/D5,-(SP)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkgTokenizerAppendString:\n        LEA stringPrefix,A1\n        MOVEQ #14,D2\n        BSR.W tkpkg_tokenizer_vm_append_bytes_v1\n        MOVEA.L A6,A1\n        BSR.W tkpkg_tokenizer_vm_append_string_raw_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "        BSR.W tkpkg_tokenizer_vm_append_byte_list_v1\n        LEA stringSuffix,A1\n        MOVEQ #3,D2\n        BSR.W tkpkg_tokenizer_vm_append_bytes_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkg_tokenizer_vm_append_string_raw_v1:\n        MOVEM.L D0-D1/D5/A1,-(SP)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkg_tokenizer_vm_append_byte_list_v1:\n        MOVEM.L D0-D1/D5/A1,-(SP)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "        MOVE.L A1,-(SP)\n        LEA commaSpaceText,A1\n        MOVEQ #2,D2\n        BSR.W tkpkg_tokenizer_vm_append_bytes_v1\n        MOVEA.L (SP)+,A1"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "tkpkg_tokenizer_vm_append_char_v1:\n        MOVE.L A1,-(SP)"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry() {
+    let expected = tkpkg_smoke_package_bytes();
+    let fixture_path =
+        workspace_root().join("examples/motorola68000/amigaos/tkpkg/tkpkg_debug_cli_package.opasm");
+    let generated_path = workspace_root().join("target/tkpkg_debug_cli_package.expected.opasm");
+
+    assert!(
+        expected.len() <= 4096,
+        "expected the focused m68000 smoke package to fit tkpkg package storage, got {} bytes",
+        expected.len()
+    );
+
+    let package = package::load_hierarchy_package(&expected).expect("load tkpkg smoke package");
+    let resolved = package
+        .resolve_pipeline("m68020", Some("motorola68k"))
+        .expect("m68020 motorola68k pipeline should resolve in smoke package");
+    assert_eq!(resolved.family_id, "motorola68000");
+    assert_eq!(resolved.cpu_id, "m68020");
+    assert_eq!(resolved.dialect_id, "motorola68k");
+
+    let actual = fs::read(&fixture_path).unwrap_or_default();
+    if actual != expected {
+        if let Some(parent) = generated_path.parent() {
+            fs::create_dir_all(parent).expect("create generated fixture directory");
+        }
+        fs::write(&generated_path, &expected).expect("write generated tkpkg smoke fixture");
+        panic!(
+            "tkpkg smoke package fixture mismatch at {}; wrote expected bytes to {}",
+            fixture_path.display(),
+            generated_path.display()
+        );
+    }
+}
+
+#[test]
+fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_path() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm");
+    let out_dir = create_temp_dir("m68000-tkpkg-debug-cli");
+    let source = tkpkg_amigaos_source("tkpkg_debug_cli.asm");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble tkpkg debug cli example: {detail}");
+    }
+
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVEQ #ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkg_debug_cli_dispatch_service_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVEQ #ENTRY_ORD_SET_PIPELINE, D0\n        BSR.W tkpkg_debug_cli_dispatch_service_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".else\n        BSR.W tkpkg_debug_cli_parse_optional_input_path_v1\n        TST.L D0\n        BMI.W tkpkgDebugCliCloseDos\n.endif\n.endif\n        MOVE.L D0, debugCliFileModeEnabled"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".ifdef OPFORGE_FS_UAE_SMOKE\n        LEA defaultSmokeInputPath, A0\n        LEA debugCliInputPathBuffer, A1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".ifdef OPFORGE_FS_UAE_TKPKG_MANIFEST\n        LEA defaultSmokeManifestPath, A0\n        LEA debugCliInputPathBuffer, A1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVEQ #ENTRY_ORD_TOKENIZE_LINE, D0\n        BSR.W tkpkg_debug_cli_dispatch_service_v1\n        BSR.W tkpkg_debug_cli_read_status_v1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure\n        BSR.W tkpkg_debug_cli_read_output_len_v1\n        TST.W D0\n        BEQ.W tkpkgDebugCliReportEmptyTokenizeOutput"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "DEBUG_CLI_SOURCE_BUFFER_CAPACITY = 16384"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "setPipelineRequest:\n.ifdef TKPKG_DEBUG_PIPELINE_M6502\n        .byte \"m6502\", 0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".ifdef TKPKG_DEBUG_PIPELINE_8085\n        .byte \"8085\", 0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".ifdef TKPKG_DEBUG_PIPELINE_Z80\n        .byte \"z80\", 0, \"zilog\""
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".ifdef TKPKG_DEBUG_PIPELINE_M68080\n        .byte \"m68080\", 0, \"motorola68k\"\n.else\n        .byte \"m68020\", 0, \"motorola68k\"\n.endif"
+    ));
+    assert!(tkpkg_source_contains(&source, "setPipelineRequestEnd:"));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tokenizeLineRequest:\n        .byte TOKENIZE_LINE_SAMPLE_LINE_NUM, 0, 0, 0\n        .byte \"move.b d0,d1\""
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "TOKENIZE_LINE_REQUEST_LEN = tokenizeLineRequestEnd - tokenizeLineRequest"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "SET_PIPELINE_REQUEST_LEN = setPipelineRequestEnd - setPipelineRequest"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".align 2\ntkpkgDebugCliPackageData:\n        .incbin \"tkpkg_debug_cli_package.opasm\""
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVEQ #36, D0\n        MOVEA.L SysBase.W, A6\n        JSR OpenLibrary(A6)\n\n        TST.L D0\n        BNE.W tkpkgDebugCliHaveDos\n\n        LEA dosName, A1\n        MOVEQ #0, D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgDebugCliHaveDos:\n        MOVE.L D0, debugCliDosBase\n        MOVE.L #startedText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVEQ #ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkg_debug_cli_dispatch_service_v1\n        BSR.W tkpkg_debug_cli_read_status_v1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure\n        MOVE.L #packageLoadedText, D1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "BEQ.W tkpkgDebugCliPipelineManifestMode\n        TST.L D0\n        BNE.W tkpkgDebugCliPipelineFileMode"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVE.L #pipelineSuccessText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n\n        LEA tokenizeLineRequest, A1\n        LEA lastErrorBuffer, A2"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgDebugCliPipelineFileMode:\n        MOVE.L #pipelineSuccessText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n        BSR.W tkpkg_debug_cli_tokenize_file_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgDebugCliPipelineManifestMode:\n        MOVE.L #pipelineSuccessText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n        BSR.W tkpkg_debug_cli_tokenize_manifest_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgDebugCliManifestOpenOk:\n        MOVE.L D0, D5\n        MOVE.L #manifestOpenOkText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgDebugCliManifestFitsBuffer:\n        MOVE.L #manifestReadOkText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVE.L #manifestPipelineBeginText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n        MOVE.L #lastErrorBuffer, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n        MOVE.L #newlineText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n        MOVEM.L (SP)+, D5-D7/A3-A4\n        MOVE.L D5, D0\n        ADDQ.L #1, D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgDebugCliManifestPipelineOk:\n        MOVEM.L D5-D7/A3-A4, -(SP)\n        MOVE.L #manifestPipelineOkText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVE.L #manifestTokenizeBeginText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n        BSR.W tkpkg_debug_cli_tokenize_file_v1\n        TST.L D0\n        BNE.S tkpkgDebugCliManifestReturn\n        MOVE.L #manifestTokenizeOkText, D1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVE.L #tokenizeSuccessText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n        MOVE.L #lastErrorBuffer, D1\n        BSR.W tkpkg_debug_cli_put_str_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_debug_cli_tokenize_line_slice_v1:\n        MOVEM.L D2-D7/A2-A6, -(SP)\n        TST.L D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "BSR.W tkpkg_debug_cli_read_output_len_v1\n        TST.W D0\n        BEQ.W tkpkgDebugCliSliceOk\n        LEA lastErrorBuffer, A1\n        CLR.B 0(A1,D0.L)\n        MOVE.L #lastErrorBuffer, D1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "usageText:\n        .byte \"Usage: tkpkg_debug_cli [input-path]\", 10, 0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".ifdef OPFORGE_FS_UAE_SMOKE\ndefaultSmokeInputPath:\n        .byte \"Work:opforge_fsuae_smoke_input.asm\", 0\n.endif"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".ifdef OPFORGE_FS_UAE_TKPKG_MANIFEST\ndefaultSmokeManifestPath:\n        .byte \"Work:opforge_fsuae_tkpkg_manifest.txt\", 0\n.endif"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "manifestPipelineBeginText:\n        .byte \"TKPKG manifest set_pipeline begin \", 0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "manifestTokenizeOkText:\n        .byte \"TKPKG manifest tokenize_file OK\", 10, 0"
+    ));
+    let service_source = tkpkg_amigaos_source("tkpkg_service.asm");
+    assert!(tkpkg_source_contains(
+        &service_source,
+        "tkpkgServiceHandleLoadPackage:\n        MOVE.L A0, -(SP)\n        BSR.W tkpkg_package_loader_load_v1\n        MOVEA.L (SP)+, A0"
+    ));
+    assert!(tkpkg_source_contains(
+        &service_source,
+        "tkpkgServiceHandleSetPipeline:\n        MOVE.L A0, -(SP)\n        BSR.W tkpkg_pipeline_set_active_v1\n        MOVEA.L (SP)+, A0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".align 2\n\ndebugCliDosBase:\n        .long 0\n\ndebugCliReturnCode:\n        .long RETURN_FAIL\n\ndebugCliFileModeEnabled:\n        .long 0\n\ntkpkgDebugCliPackageLen:\n        .word TKPKG_DEBUG_CLI_PACKAGE_LEN"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_debug_cli_read_output_len_v1:\n        MOVEQ #0, D0\n        MOVE.B CB_OUTPUT_LEN(A0), D0"
+    ));
+
+    let listing = fs::read_to_string(out_dir.join("tkpkg_debug_cli.lst"))
+        .expect("read tkpkg debug cli listing");
+    assert!(listing.contains(".cpu 68020"));
+    assert!(listing.contains("main.start"));
+    assert!(listing.contains("main.tkpkg_debug_cli_dispatch_service_v1"));
+    assert!(listing.contains("main.tkpkg_debug_cli_put_str_v1"));
+    assert!(listing.contains("main.tkpkg_debug_cli_parse_optional_input_path_v1"));
+    assert!(listing.contains("main.tkpkg_debug_cli_read_output_len_v1"));
+    assert!(listing.contains("main.tkpkg_debug_cli_tokenize_file_v1"));
+    assert!(listing.contains("main.tkpkg_debug_cli_tokenize_line_slice_v1"));
+    assert!(listing.contains("main.tkpkg_debug_cli_run_last_error_v1"));
+    assert!(listing.contains("main.tkpkg_debug_cli_write_input_window_v1"));
+    assert!(listing.contains("main.tkpkgDebugCliReportEmptyTokenizeOutput"));
+    assert!(listing.contains("tkpkg.amigaos.service.tkpkg_service_dispatch_v1"));
+    assert!(listing.contains("tkpkg.amigaos.buffers.controlBlockV1"));
+    assert!(listing.contains("tkpkg.amigaos.buffers.packageStorage"));
+    assert!(listing.contains("tkpkg.amigaos.buffers.lastErrorBuffer"));
+    assert!(listing.contains("main.debugCliDosBase"));
+    assert!(listing.contains("main.debugCliReturnCode"));
+    assert!(listing.contains("main.debugCliFileModeEnabled"));
+    assert!(listing.contains("main.debugCliInputPathBuffer"));
+    assert!(listing.contains("main.debugCliSourceFileBuffer"));
+    assert!(listing.contains("main.tkpkgDebugCliPackageLen"));
+
+    let payload_path = example_output_payload_path(&out_dir, "tkpkg_debug_cli", "hunk");
+    let payload = fs::read(payload_path).expect("read tkpkg debug cli hunk payload");
+    assert!(
+        payload
+            .windows("tkpkg_debug_cli started".len())
+            .any(|window| window == b"tkpkg_debug_cli started"),
+        "expected started marker in tkpkg debug cli Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("tkpkg package loaded".len())
+            .any(|window| window == b"tkpkg package loaded"),
+        "expected package-loaded marker in tkpkg debug cli Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("TKPKG-DEBUG-CLI-V1".len())
+            .any(|window| window == b"TKPKG-DEBUG-CLI-V1"),
+        "expected debug cli marker in tkpkg debug cli Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("TKPKG load_package/set_pipeline OK".len())
+            .any(|window| window == b"TKPKG load_package/set_pipeline OK"),
+        "expected success marker in tkpkg debug cli Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("TKPKG tokenize_line OK".len())
+            .any(|window| window == b"TKPKG tokenize_line OK"),
+        "expected tokenize-line marker in tkpkg debug cli Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("TKPKG last_error clear OK".len())
+            .any(|window| window == b"TKPKG last_error clear OK"),
+        "expected last_error-clear marker in tkpkg debug cli Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("tkpkg_debug_cli requires dos.library v36+".len())
+            .any(|window| window == b"tkpkg_debug_cli requires dos.library v36+"),
+        "expected dos version failure marker in tkpkg debug cli Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("motorola68k".len())
+            .any(|window| window == b"motorola68k"),
+        "expected explicit motorola68k pipeline request in tkpkg debug cli Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("move.b d0,d1".len())
+            .any(|window| window == b"move.b d0,d1"),
+        "expected tokenize-line sample request in tkpkg debug cli Hunk payload"
+    );
+}
+
+#[test]
+fn motorola68020_tkpkg_debug_cli_locks_package_selection_contract() {
+    let source = tkpkg_amigaos_source("tkpkg_debug_cli.asm");
+
+    let init_idx = tkpkg_source_snippet_index(
+        &source,
+        "LEA controlBlockV1, A0\n        MOVEQ #ENTRY_ORD_INIT, D0\n        BSR.W tkpkg_debug_cli_dispatch_service_v1\n        BSR.W tkpkg_debug_cli_read_status_v1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+    );
+    let load_idx = tkpkg_source_snippet_index(
+        &source,
+        "LEA tkpkgDebugCliPackageData, A1\n        LEA packageStorage, A2\n        MOVE.W tkpkgDebugCliPackageLen, D0\n        BSR.W tkpkg_debug_cli_copy_bytes_v1\n\n        LEA controlBlockV1, A0\n        MOVE.W #PACKAGE_INPUT_PTR_V1, D0\n        MOVE.W tkpkgDebugCliPackageLen, D1\n        BSR.W tkpkg_debug_cli_write_input_window_v1\n        MOVEQ #ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkg_debug_cli_dispatch_service_v1\n        BSR.W tkpkg_debug_cli_read_status_v1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+    );
+    let set_pipeline_idx = tkpkg_source_snippet_index(
+        &source,
+        "LEA setPipelineRequest, A1\n        LEA lastErrorBuffer, A2\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D0\n        BSR.W tkpkg_debug_cli_copy_bytes_v1\n\n        LEA controlBlockV1, A0\n        MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D1\n        BSR.W tkpkg_debug_cli_write_input_window_v1\n        MOVEQ #ENTRY_ORD_SET_PIPELINE, D0\n        BSR.W tkpkg_debug_cli_dispatch_service_v1\n        BSR.W tkpkg_debug_cli_read_status_v1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+    );
+    let line_mode_idx = tkpkg_source_snippet_index(
+        &source,
+        "MOVE.L #pipelineSuccessText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n\n        LEA tokenizeLineRequest, A1\n        LEA lastErrorBuffer, A2\n        MOVEQ #TOKENIZE_LINE_REQUEST_LEN, D0\n        BSR.W tkpkg_debug_cli_copy_bytes_v1",
+    );
+    let last_error_idx = tkpkg_source_snippet_index(
+        &source,
+        "tkpkgDebugCliCheckLastErrorClear:\n\n        LEA controlBlockV1, A0\n        BSR.W tkpkg_debug_cli_run_last_error_v1\n        TST.B D0\n        BNE.W tkpkgDebugCliCloseDos\n        BSR.W tkpkg_debug_cli_read_output_len_v1\n        TST.W D0\n        BNE.W tkpkgDebugCliReportLastErrorBuffer",
+    );
+
+    assert!(
+        init_idx < load_idx && load_idx < set_pipeline_idx && set_pipeline_idx < line_mode_idx,
+        "expected debug CLI service order init -> load_package -> set_pipeline -> tokenize_line"
+    );
+    assert!(
+        set_pipeline_idx < last_error_idx,
+        "expected last_error verification to run only after package load, pipeline selection, and tokenization"
+    );
+    assert!(tkpkg_source_contains(
+        &source,
+        "start:\n        MOVE.L #RETURN_FAIL, debugCliReturnCode"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "MOVE.L #lastErrorClearText, D1\n        BSR.W tkpkg_debug_cli_put_str_v1\n        MOVE.L #RETURN_OK, debugCliReturnCode\n        BRA.W tkpkgDebugCliCloseDos"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_debug_cli_locks_cpu_selectable_pipeline_payloads() {
+    let source = tkpkg_amigaos_source("tkpkg_debug_cli.asm");
+
+    for (define, payload, cpu_id) in [
+        ("TKPKG_DEBUG_PIPELINE_M6502", ".byte \"m6502\", 0", "m6502"),
+        ("TKPKG_DEBUG_PIPELINE_65C02", ".byte \"65c02\", 0", "65c02"),
+        ("TKPKG_DEBUG_PIPELINE_65816", ".byte \"65816\", 0", "65816"),
+        (
+            "TKPKG_DEBUG_PIPELINE_45GS02",
+            ".byte \"45gs02\", 0",
+            "45gs02",
+        ),
+        ("TKPKG_DEBUG_PIPELINE_8085", ".byte \"8085\", 0", "8085"),
+        (
+            "TKPKG_DEBUG_PIPELINE_Z80",
+            ".byte \"z80\", 0, \"zilog\"",
+            "z80",
+        ),
+        ("TKPKG_DEBUG_PIPELINE_M6809", ".byte \"m6809\", 0", "m6809"),
+        (
+            "TKPKG_DEBUG_PIPELINE_HD6309",
+            ".byte \"hd6309\", 0",
+            "hd6309",
+        ),
+        (
+            "TKPKG_DEBUG_PIPELINE_M68000",
+            ".byte \"m68000\", 0, \"motorola68k\"",
+            "m68000",
+        ),
+        (
+            "TKPKG_DEBUG_PIPELINE_M68010",
+            ".byte \"m68010\", 0, \"motorola68k\"",
+            "m68010",
+        ),
+        (
+            "TKPKG_DEBUG_PIPELINE_M68030",
+            ".byte \"m68030\", 0, \"motorola68k\"",
+            "m68030",
+        ),
+        (
+            "TKPKG_DEBUG_PIPELINE_M68040",
+            ".byte \"m68040\", 0, \"motorola68k\"",
+            "m68040",
+        ),
+        (
+            "TKPKG_DEBUG_PIPELINE_M68080",
+            ".byte \"m68080\", 0, \"motorola68k\"",
+            "m68080",
+        ),
+    ] {
+        assert!(
+            source.contains(format!(".ifdef {define}\n        {payload}").as_str()),
+            "expected debug CLI set_pipeline request branch for {cpu_id}"
+        );
+    }
+    assert!(source.contains(".else\n        .byte \"m68020\", 0, \"motorola68k\""));
+    assert!(source.contains("setPipelineRequestEnd:"));
+    assert!(tkpkg_source_contains(
+        &source,
+        "SET_PIPELINE_REQUEST_LEN = setPipelineRequestEnd - setPipelineRequest"
+    ));
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_read_char_zero_extends_ascii_bytes() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeReadChar:\n        MOVEQ #0,D0\n        CMP.L D4,D2\n        BCC tokvmStoreEofByte\n        MOVE.B 0(A4,D2.L),D0\n        BRA tokvmStoreCurrentByte\ntokvmStoreEofByte:\n        MOVEQ #-1,D0"
+        ),
+        "expected tokvmOpcodeReadChar to zero-extend live bytes and reserve -1 only for EOF"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_uses_demo_program_length_value() {
+    let source = tokvm_amigaos_source("tokvm_cli_harness.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "        MOVE.L #TOKVM_DEFAULT_MAX_STEPS_PER_LINE,D0\n        JSR tokvm_set_step_budget_68000\n        LEA sourceBuffer,A0"
+        ),
+        "expected tokvm harness to set an explicit native step budget before invoking the interpreter"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "        LEA demoProgram,A3\n        MOVE.L demoProgramLen,D3\n        JSR tokvm_run_68000"
+        ),
+        "expected tokvm harness to pass the stored demo program length value into tokvm_run_68000"
+    );
+    assert!(
+        !tokvm_source_contains(&source, "MOVE.L #demoProgramLen,D3"),
+        "expected tokvm harness to avoid passing the demo program length label address"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_validates_vm_result_before_report_render() {
+    let source = tokvm_amigaos_source("tokvm_cli_harness.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvm_amigaos_cli_harness_write_failure_report:\n        CLR.L D1\n        CLR.L D2\n        CLR.L D3\n        BRA.W tokvm_amigaos_cli_harness_write_report"
+        ),
+        "expected failure reports to clear scratch usage before reusing the report writer"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "        MOVE.L D3,D2\n        BSR.W tokvm_amigaos_cli_harness_validate_vm_result\n        TST.L D0\n        BEQ.S tokvmHarnessReportValidated\n        MOVEQ #TK_STATUS_VM_FAILURE,D4\n        MOVEQ #0,D5\n        MOVEQ #0,D6\n        CLR.L D2"
+        ),
+        "expected tokvm report writer to validate VM outputs before formatting token metadata"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_preserves_output_handle_across_hex_writes() {
+    let source = tokvm_amigaos_source("tokvm_cli_harness.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "amigaos_cli_fileio_write_exact:\n        MOVEM.L D1-D7/A2-A6,-(SP)\n        MOVE.L D0,D3\n        MOVE.L A0,D2\n        MOVEA.L GLOBALS_DOS_BASE(A4),A6\n        JSR Write(A6)"
+        ),
+        "expected amigaos_cli_fileio_write_exact to preserve D1 so repeated hex-pair writes keep a valid output handle"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "amigaosCliFileIoWriteDone:\n        MOVEM.L (SP)+,D1-D7/A2-A6\n        RTS"
+        ),
+        "expected amigaos_cli_fileio_write_exact to restore the saved D1 handle before returning"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_treats_crlf_as_arg_terminators() {
+    let source = tokvm_amigaos_source("tokvm_cli_harness.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmHarnessSkipWhitespace:\n        CMPI.B #' ',(A3)\n        BEQ.S tokvmHarnessSkipOne\n        CMPI.B #9,(A3)\n        BEQ.S tokvmHarnessSkipOne\n        CMPI.B #10,(A3)\n        BEQ.S tokvmHarnessSkipOne\n        CMPI.B #13,(A3)\n        BNE.S tokvmHarnessSkipDone"
+        ),
+        "expected the Amiga CLI parser to treat LF and CR as whitespace around arguments"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "        CMPI.B #9,D0\n        BEQ.S tokvmHarnessCopyFinish\n        CMPI.B #10,D0\n        BEQ.S tokvmHarnessCopyFinish\n        CMPI.B #13,D0\n        BEQ.S tokvmHarnessCopyFinish"
+        ),
+        "expected the Amiga CLI parser to stop copying a path when it reaches LF or CR"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_restores_program_counter_after_scan_opcodes() {
+    let root_source = tokvm_amigaos_source("tokvm_interpreter.asm");
+    let tokenizer_source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &tokenizer_source,
+            "LOCAL_PROGRAM_COUNTER           = 24\nLOCAL_STEP_COUNT                = 28\nLOCAL_STEP_LIMIT                = 32\nLOCAL_SIZE                      = 36"
+        ),
+        "expected tokvm locals to reserve storage for the saved program counter"
+    );
+    assert!(
+        tokvm_source_contains(&root_source, ".use tokvm.amigaos.cli_harness")
+            && tokvm_source_contains(&root_source, ".use tokvm.amigaos.tokenizer_vm"),
+        "expected the tokvm root file to compose the harness and tokenizer modules via .use"
+    );
+    assert!(
+        tokvm_source_contains(
+            &tokenizer_source,
+            "tokvmOpcodeScanIdentifier:\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR tokvmScanIdentifierToken\n        TST.L D0\n        BNE tokvmReturn\n        MOVEA.L LOCAL_PROGRAM_COUNTER(A2),A0\n        BRA tokvmProgramLoop"
+        ),
+        "expected the identifier scan opcode to restore the VM program counter after tokenization"
+    );
+    assert!(
+        tokvm_source_contains(
+            &tokenizer_source,
+            "tokvmOpcodeScanSymbol:\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR tokvmScanSymbolToken\n        TST.L D0\n        BNE tokvmReturn\n        MOVEA.L LOCAL_PROGRAM_COUNTER(A2),A0\n        BRA tokvmProgramLoop"
+        ),
+        "expected the symbol scan opcode to restore the VM program counter after tokenization"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "TK_OPCODE_ADVANCE               = 2\nTK_OPCODE_START_LEXEME          = 3\nTK_OPCODE_PUSH_CHAR             = 4\nTK_OPCODE_EMIT_TOKEN            = 5\nTK_OPCODE_SET_STATE             = 6"
+        ),
+        "expected the tokvm opcode constants to name the manual lexeme-building slots"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeDispatchTable:\n        .long tokvmOpcodeEnd\n        .long tokvmOpcodeReadChar\n        .long tokvmOpcodeAdvance\n        .long tokvmOpcodeStartLexeme\n        .long tokvmOpcodePushChar\n        .long tokvmOpcodeEmitToken\n        .long tokvmOpcodeSetState"
+        ),
+        "expected the native dispatch table to route StartLexeme, PushChar, EmitToken, and SetState"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeStartLexeme:\n        CLR.L LOCAL_PENDING_LEX_LEN(A2)\n        MOVE.L D2,LOCAL_PENDING_START(A2)\n        MOVE.L D2,LOCAL_PENDING_END(A2)\n        BRA tokvmProgramLoop"
+        ),
+        "expected StartLexeme to reset pending lexeme state from the live source cursor"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodePushChar:\n        MOVE.L LOCAL_CURRENT_BYTE(A2),D0\n        TST.L D0\n        BMI tokvmInvalidProgramAtCursor\n        MOVE.L D1,LOCAL_TEMP_U32(A2)\n        MOVE.L D3,D1\n        ADD.L LOCAL_PENDING_LEX_LEN(A2),D1\n        CMP.L D6,D1\n        BCC tokvmPendingLexemeOverflow"
+        ),
+        "expected PushChar to validate ReadChar state and reuse native scratch-budget checks"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeEmitToken:\n        LEA 0(A3,D7.L),A1\n        CMPA.L A1,A0\n        BCC tokvmInvalidProgramAtCursor\n        MOVEQ #0,D0\n        MOVE.B (A0)+,D0\n        MOVE.W D0,LOCAL_PENDING_KIND(A2)\n        JSR tokvmCommitPendingToken"
+        ),
+        "expected EmitToken to read the inline kind operand and commit the pending native token"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_locks_jump_bounds_and_hex_escape_emit() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeJump:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #4,D0\n        CMP.L D7,D0\n        BHI tokvmInvalidProgramAtCursor"
+        ),
+        "expected unconditional JUMP to validate its inline target operand using the current program-counter offset"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeJumpIfEol:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #4,D0\n        CMP.L D7,D0\n        BHI tokvmInvalidProgramAtCursor"
+        ),
+        "expected JUMP_IF_EOL to validate its inline target operand using the current program-counter offset"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeJumpIfByteEq:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #5,D0\n        CMP.L D7,D0\n        BHI tokvmInvalidProgramAtCursor"
+        ),
+        "expected JUMP_IF_BYTE_EQ to validate its inline byte and target operands using the current program-counter offset"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeJumpIfClass:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #5,D0\n        CMP.L D7,D0\n        BHI tokvmInvalidProgramAtCursor"
+        ),
+        "expected JUMP_IF_CLASS to validate its inline class and target operands using the current program-counter offset"
+    );
+    assert!(
+        source.contains(
+            "        MOVE.L LOCAL_TEMP_U32(A2), D1\n        LSL.L #4, D1\n        OR.L D1, D0\n        MOVE.L (SP)+, D1\n\n        BRA tokvmScanStringEmitDecoded"
+        ),
+        "expected \\xHH string escapes to emit the decoded byte through the shared string payload path"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "        MOVEQ #0, D0\n        MOVE.B 0(A4, D2.L), D0\n        CMP.L LOCAL_CURRENT_BYTE(A2), D0\n        BEQ tokvmScanStringClose"
+        ),
+        "expected string close detection to compare against the zero-extended saved quote long"
+    );
+    assert!(
+        source.contains(
+            "        CMP.L D6, D1\n        BCC tokvmScanStringLiteralOverflow\n        MOVE.L (SP)+, D1\n        BRA tokvmScanStringEmitDecoded\n\ntokvmScanStringLiteralOverflow:\n        MOVE.L (SP)+, D1\n        BRA tokvmPendingLexemeOverflowFromScan"
+        ),
+        "expected literal string capacity checks to branch before restoring D1 so MOVE does not clobber CMP condition codes"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "TK_VM_FAILURE_KIND_NONE         = 0\nTK_VM_FAILURE_KIND_FAIL         = 1\nTK_VM_FAILURE_KIND_EMIT_DIAG    = 2"
+        ),
+        "expected tokvm to publish symbolic failure-kind ids for tkpkg-side error formatting"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvm_read_last_failure_68000:\n        MOVEQ #0,D0\n        MOVE.W tokvmLastFailureKind,D0\n        MOVEQ #0,D1\n        MOVE.W tokvmLastFailureOperand,D1"
+        ),
+        "expected tokvm to expose the last VM failure kind and operand without widening tokvm_run_68000"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            ".long tokvmOpcodeJumpIfClass\n        .long tokvmOpcodeFail\n        .long tokvmOpcodeEmitDiag"
+        ),
+        "expected the dispatch table to route Fail and EmitDiag into dedicated native handlers"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeFail:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #1,D0\n        CMP.L D7,D0\n        BHI tokvmInvalidProgramAtCursor"
+        ),
+        "expected Fail to read one inline reason operand and report VM failure"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvmOpcodeEmitDiag:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #1,D0\n        CMP.L D7,D0\n        BHI tokvmInvalidProgramAtCursor"
+        ),
+        "expected EmitDiag to read one inline diagnostic-slot operand and report VM failure"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "tokvm_run_68000:\n        MOVEM.L D4-D7/A4-A6,-(SP)"
+        ),
+        "expected tokvm_run_68000 to remain the stable entrypoint for the failure-recording path"
+    );
+    assert!(
+        source.contains("tokvmLastFailureKind"),
+        "expected tokvm to retain a dedicated last-failure kind slot"
+    );
+    assert!(
+        source.contains("tokvmLastFailureOperand"),
+        "expected tokvm to retain a dedicated last-failure operand slot"
+    );
+    assert!(
+        source.contains("CLR.W tokvmLastFailureKind")
+            && source.contains("CLR.W tokvmLastFailureOperand"),
+        "expected tokvm_run_68000 to clear stale failure metadata before each execution"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_interpreter_demo_program_uses_symbolic_bytecode_labels() {
+    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+
+    assert!(
+        tokvm_source_contains(&source, "TK_CLASS_IDENTIFIER_START       = 2"),
+        "expected the embedded tokvm demo program to name its bytecode classes"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "DEMO_PC_READ_CHAR               = 0\nDEMO_PC_SCAN_SYMBOL             = 36\nDEMO_PC_SKIP_WHITESPACE         = 42"
+        ),
+        "expected the embedded tokvm demo program to name its jump targets"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "demoProgram:\ndemoReadChar:\n        .byte TK_OPCODE_READ_CHAR\n        .emitJumpTarget TK_OPCODE_JUMP_IF_EOL, DEMO_PC_FINISH"
+        ),
+        "expected the embedded tokvm demo program to use symbolic opcode labels and jump targets"
+    );
+    assert!(
+        tokvm_source_contains(
+            &source,
+            "        .emitClassJump TK_CLASS_IDENTIFIER_START, DEMO_PC_SCAN_IDENTIFIER\n        .emitClassJump TK_CLASS_DIGIT, DEMO_PC_SCAN_NUMBER\n        .emitClassJump TK_CLASS_QUOTE, DEMO_PC_SCAN_STRING"
+        ),
+        "expected the embedded tokvm demo program to use symbolic class labels instead of raw decimal values"
+    );
+    assert!(
+        !tokvm_source_contains(&source, "        .byte 1\n        .byte 8,66,0,0,0"),
+        "expected the old unreadable raw bytecode block to be replaced"
+    );
+}
+
+#[test]
+fn motorola68020_tokvm_sample_input_is_single_line_for_cli_harness() {
+    let repo_root = workspace_root();
+    let sample_path = repo_root.join("examples/motorola68000/amigaos/tokvm/tokvm_test_input.asm");
+    let sample = fs::read(&sample_path).expect("read tokvm sample input");
+
+    assert_eq!(sample, b"label==42");
+    assert!(
+        !sample.iter().any(|byte| *byte == b'\n' || *byte == b'\r'),
+        "expected tokvm sample input to remain newline-free for the single-line CLI harness"
+    );
 }
 
 fn normalize_listing_for_reference_compare(text: &str) -> String {
@@ -8340,7 +11758,7 @@ fn examples_match_reference_outputs() {
     );
 
     for asm_path in asm_files {
-        let relative_stem = example_relative_stem(&examples_dir, &asm_path);
+        let relative_stem = example_reference_stem(&examples_dir, &asm_path);
         let base = asm_path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -20798,6 +24216,7 @@ fn external_fs_uae_hunk_smoke() {
         }
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
             for run in runs {
+                let combined_output = format!("{}\n{}", run.stdout, run.stderr);
                 assert!(
                     run.success,
                     "FS-UAE smoke failed for example {} from {} with {} under {}\nstdout:\n{}\nstderr:\n{}",
@@ -20808,6 +24227,50 @@ fn external_fs_uae_hunk_smoke() {
                     run.stdout,
                     run.stderr,
                 );
+                if run.example_name == "tkpkg_debug_cli" {
+                    assert!(
+                        combined_output.contains("TKPKG load_package/set_pipeline OK"),
+                        "FS-UAE smoke for {} did not report the pipeline success marker\nstdout:\n{}\nstderr:\n{}",
+                        run.example_name,
+                        run.stdout,
+                        run.stderr,
+                    );
+                    assert!(
+                        combined_output.contains("Identifier(\"move.b\")@1:1-7"),
+                        "FS-UAE smoke for {} did not report the first file-mode output row\nstdout:\n{}\nstderr:\n{}",
+                        run.example_name,
+                        run.stdout,
+                        run.stderr,
+                    );
+                    assert!(
+                        combined_output.contains("Comma@1:10-11"),
+                        "FS-UAE smoke for {} did not report the first file-mode comma row\nstdout:\n{}\nstderr:\n{}",
+                        run.example_name,
+                        run.stdout,
+                        run.stderr,
+                    );
+                    assert!(
+                        combined_output.contains("Identifier(\"move.w\")@2:1-7"),
+                        "FS-UAE smoke for {} did not report the second file-mode output row\nstdout:\n{}\nstderr:\n{}",
+                        run.example_name,
+                        run.stdout,
+                        run.stderr,
+                    );
+                    assert!(
+                        combined_output.contains("Identifier(\"d3\")@2:8-10"),
+                        "FS-UAE smoke for {} did not report the second file-mode operand row\nstdout:\n{}\nstderr:\n{}",
+                        run.example_name,
+                        run.stdout,
+                        run.stderr,
+                    );
+                    assert!(
+                        combined_output.contains("TKPKG last_error clear OK"),
+                        "FS-UAE smoke for {} did not report the last_error-clear marker\nstdout:\n{}\nstderr:\n{}",
+                        run.example_name,
+                        run.stdout,
+                        run.stderr,
+                    );
+                }
                 eprintln!(
                     "FS-UAE smoke completed for example {} with {} under {}",
                     run.example_name,
@@ -20815,6 +24278,399 @@ fn external_fs_uae_hunk_smoke() {
                     run.artifact_dir.display()
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_motorola68000_family_corpus_matches_vm_authoritative_rows() {
+    let corpus = selected_motorola68000_native_tkpkg_parity_corpus();
+
+    let package = tkpkg_smoke_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+
+    for entry in corpus {
+        let expected_rows = render_tkpkg_smoke_debug_rows_for_source(
+            &model,
+            entry.cpu_id.as_str(),
+            Some("motorola68k"),
+            entry.source.as_str(),
+        );
+
+        match crate::fs_uae_smoke::run_tkpkg_debug_cli_file_mode_from_env(
+            &workspace_root(),
+            entry.source.as_bytes(),
+            entry.cpu_id.as_str(),
+        )
+        .unwrap_or_else(|err| panic!("native tkpkg parity run for {}: {err}", entry.relative_path))
+        {
+            crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+                eprintln!("SKIP: {reason}");
+                return;
+            }
+            crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+                assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+                let run = &runs[0];
+                assert!(
+                    run.success,
+                    "native tkpkg parity failed for {} with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                    entry.relative_path,
+                    run.hunk_path.display(),
+                    run.artifact_dir.display(),
+                    run.stdout,
+                    run.stderr,
+                );
+
+                let actual_rows = extract_tkpkg_debug_rows(run.stdout.as_str());
+                assert_eq!(
+                    actual_rows,
+                    expected_rows,
+                    "native tkpkg parity mismatch for {} with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                    entry.relative_path,
+                    run.hunk_path.display(),
+                    run.artifact_dir.display(),
+                    run.stdout,
+                    run.stderr,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_operator_surface_matches_vm_authoritative_rows() {
+    let package = tkpkg_smoke_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+    let expected_rows = render_tkpkg_smoke_debug_rows_for_source(
+        &model,
+        "m68020",
+        Some("motorola68k"),
+        TKPKG_OPERATOR_PARITY_SOURCE,
+    );
+
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_file_mode_with_package_from_env(
+        &workspace_root(),
+        TKPKG_OPERATOR_PARITY_SOURCE.as_bytes(),
+        "m68020",
+        package.as_slice(),
+    )
+    .unwrap_or_else(|err| panic!("native operator parity run: {err}"))
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native operator parity failed with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+
+            let actual_rows = extract_tkpkg_debug_rows(run.stdout.as_str());
+            assert_eq!(
+                actual_rows,
+                expected_rows,
+                "native operator parity mismatch with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_percent_prefix_context_matches_vm_authoritative_rows() {
+    let package = tkpkg_smoke_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+    let expected_rows = render_tkpkg_smoke_debug_rows_for_source(
+        &model,
+        "m68020",
+        Some("motorola68k"),
+        TKPKG_PERCENT_PREFIX_PARITY_SOURCE,
+    );
+
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_file_mode_with_package_from_env(
+        &workspace_root(),
+        TKPKG_PERCENT_PREFIX_PARITY_SOURCE.as_bytes(),
+        "m68020",
+        package.as_slice(),
+    )
+    .unwrap_or_else(|err| panic!("native percent-prefix parity run: {err}"))
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native percent-prefix parity failed with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+
+            let actual_rows = extract_tkpkg_debug_rows(run.stdout.as_str());
+            assert_eq!(
+                actual_rows,
+                expected_rows,
+                "native percent-prefix parity mismatch with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_mos6502_family_corpus_matches_vm_authoritative_rows() {
+    let corpus = selected_mos6502_native_tkpkg_parity_corpus();
+
+    let package = tkpkg_mos6502_native_parity_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+
+    let expected_rows = corpus
+        .iter()
+        .flat_map(|entry| {
+            render_tkpkg_smoke_debug_rows_for_source(
+                &model,
+                entry.cpu_id.as_str(),
+                None,
+                entry.source.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let manifest_cases = corpus
+        .iter()
+        .map(|entry| crate::fs_uae_smoke::TkpkgDebugCliManifestCase {
+            name: entry.relative_path.as_str(),
+            cpu_id: entry.cpu_id.as_str(),
+            source: entry.source.as_bytes(),
+        })
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_manifest_mode_with_package_from_env(
+        &workspace_root(),
+        manifest_cases.as_slice(),
+        package.as_slice(),
+    )
+    .unwrap_or_else(|err| panic!("native tkpkg parity manifest run: {err}"))
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native tkpkg parity manifest failed for {} cases with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                corpus.len(),
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+
+            let actual_rows = extract_tkpkg_debug_rows(run.stdout.as_str());
+            assert_eq!(
+                actual_rows,
+                expected_rows,
+                "native tkpkg parity manifest mismatch for {} cases with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                corpus.len(),
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_intel8080_family_corpus_matches_vm_authoritative_rows() {
+    let corpus = selected_intel8080_native_tkpkg_parity_corpus();
+
+    let package = tkpkg_intel8080_native_parity_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+
+    let expected_rows = corpus
+        .iter()
+        .flat_map(|entry| {
+            render_tkpkg_smoke_debug_rows_for_source(
+                &model,
+                entry.cpu_id.as_str(),
+                None,
+                entry.source.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let manifest_cases = corpus
+        .iter()
+        .map(|entry| crate::fs_uae_smoke::TkpkgDebugCliManifestCase {
+            name: entry.relative_path.as_str(),
+            cpu_id: entry.cpu_id.as_str(),
+            source: entry.source.as_bytes(),
+        })
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_manifest_mode_with_package_from_env(
+        &workspace_root(),
+        manifest_cases.as_slice(),
+        package.as_slice(),
+    )
+    .unwrap_or_else(|err| panic!("native intel8080 tkpkg parity manifest run: {err}"))
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native intel8080 tkpkg parity manifest failed for {} cases with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                corpus.len(),
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+
+            let actual_rows = extract_tkpkg_debug_rows(run.stdout.as_str());
+            assert_eq!(
+                actual_rows,
+                expected_rows,
+                "native intel8080 tkpkg parity manifest mismatch for {} cases with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                corpus.len(),
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_motorola6800_family_corpus_matches_vm_authoritative_rows() {
+    let corpus = selected_motorola6800_native_tkpkg_parity_corpus();
+
+    let package = tkpkg_motorola6800_native_parity_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package.as_slice());
+
+    let expected_rows = corpus
+        .iter()
+        .flat_map(|entry| {
+            render_tkpkg_smoke_debug_rows_for_source(
+                &model,
+                entry.cpu_id.as_str(),
+                None,
+                entry.source.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let manifest_cases = corpus
+        .iter()
+        .map(|entry| crate::fs_uae_smoke::TkpkgDebugCliManifestCase {
+            name: entry.relative_path.as_str(),
+            cpu_id: entry.cpu_id.as_str(),
+            source: entry.source.as_bytes(),
+        })
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_manifest_mode_with_package_from_env(
+        &workspace_root(),
+        manifest_cases.as_slice(),
+        package.as_slice(),
+    )
+    .unwrap_or_else(|err| panic!("native motorola6800 tkpkg parity manifest run: {err}"))
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native motorola6800 tkpkg parity manifest failed for {} cases with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                corpus.len(),
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+
+            let actual_rows = extract_tkpkg_debug_rows(run.stdout.as_str());
+            assert_eq!(
+                actual_rows,
+                expected_rows,
+                "native motorola6800 tkpkg parity manifest mismatch for {} cases with {} under {}\nstdout:\n{}\nstderr:\n{}",
+                corpus.len(),
+                run.hunk_path.display(),
+                run.artifact_dir.display(),
+                run.stdout,
+                run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_rejects_truncated_conditional_jump_tokenizer_program() {
+    let malformed_package = tkpkg_smoke_package_bytes_with_family_tokenizer_program(vec![
+        TokenizerVmOpcode::ReadChar as u8,
+        TokenizerVmOpcode::JumpIfEol as u8,
+        0,
+        0,
+        0,
+    ]);
+
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_file_mode_with_package_from_env(
+        &workspace_root(),
+        b"move.b d0,d1\n",
+        "m68020",
+        malformed_package.as_slice(),
+    )
+    .expect("native malformed tkpkg run should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+            let run = &runs[0];
+            let combined_output = format!("{}\n{}", run.stdout, run.stderr);
+            assert!(
+                !run.success,
+                "malformed tokenizer package should fail deterministically under native tkpkg\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+            assert!(
+                combined_output.contains("TKPKG load_package/set_pipeline OK"),
+                "malformed tokenizer package should still load and select its pipeline before tokenization fails\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+            assert!(
+                combined_output.contains("tkpkg failure: OTR901: invalid tokenizer VM progra"),
+                "native tkpkg should report deterministic invalid-program status for truncated conditional-jump bytecode\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
         }
     }
 }

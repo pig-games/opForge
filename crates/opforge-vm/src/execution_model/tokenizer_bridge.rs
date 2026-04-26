@@ -1,6 +1,8 @@
 use super::*;
 use package::TokenizerVmLimits;
 
+use crate::runtime_portable_types::PortableTokenizerByteStream;
+
 impl HierarchyExecutionModel {
     pub fn tokenize_portable_statement(
         &self,
@@ -15,6 +17,7 @@ impl HierarchyExecutionModel {
             cpu_id: resolved.cpu_id.as_str(),
             dialect_id: resolved.dialect_id.as_str(),
             source_line,
+            source_stream: PortableTokenizerByteStream::from_source_line(source_line),
             line_num,
             token_policy: self.token_policy_for_resolved(&resolved),
         };
@@ -70,6 +73,7 @@ impl HierarchyExecutionModel {
             cpu_id: resolved.cpu_id.as_str(),
             dialect_id: resolved.dialect_id.as_str(),
             source_line,
+            source_stream: PortableTokenizerByteStream::from_source_line(source_line),
             line_num,
             token_policy: self.token_policy_for_resolved(&resolved),
         };

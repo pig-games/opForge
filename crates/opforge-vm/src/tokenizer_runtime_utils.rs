@@ -2,6 +2,8 @@
 
 //! Shared tokenizer-runtime utility helpers used by host bridge adapters.
 
+use package::TokenizerVmStreamMode;
+
 use crate::portable_contract::{
     PortableOperatorKind, PortableSpan, PortableToken, PortableTokenKind,
 };
@@ -16,6 +18,50 @@ const IDENT_CLASS_UNDERSCORE: u32 = 1 << 2;
 const IDENT_CLASS_DOLLAR: u32 = 1 << 3;
 const IDENT_CLASS_AT_SIGN: u32 = 1 << 4;
 const IDENT_CLASS_DOT: u32 = 1 << 5;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VmTokenizerInputStream<'a> {
+    bytes: &'a [u8],
+    cursor: usize,
+}
+
+impl<'a> VmTokenizerInputStream<'a> {
+    pub fn new(bytes: &'a [u8], mode: TokenizerVmStreamMode) -> Self {
+        match mode {
+            TokenizerVmStreamMode::LineInputBytes => Self { bytes, cursor: 0 },
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.bytes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    pub fn current_byte(&self) -> Option<u8> {
+        self.bytes.get(self.cursor).copied()
+    }
+
+    pub fn is_eol(&self) -> bool {
+        self.cursor >= self.bytes.len()
+    }
+
+    pub fn advance(&mut self) {
+        if self.cursor < self.bytes.len() {
+            self.cursor += 1;
+        }
+    }
+
+    pub fn set_cursor(&mut self, cursor: usize) {
+        self.cursor = cursor.min(self.bytes.len());
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AsciiCaseRule {
@@ -377,6 +423,444 @@ pub fn vm_build_token(
     Ok(PortableToken { kind, span })
 }
 
+fn vm_portable_token(
+    kind: PortableTokenKind,
+    line_num: u32,
+    start: usize,
+    end: usize,
+) -> PortableToken {
+    PortableToken {
+        kind,
+        span: PortableSpan {
+            line: line_num,
+            col_start: start.saturating_add(1),
+            col_end: end.saturating_add(1),
+        },
+    }
+}
+
+fn vm_peek_byte(stream: &VmTokenizerInputStream<'_>, offset: usize) -> u8 {
+    stream
+        .bytes
+        .get(stream.cursor.saturating_add(offset))
+        .copied()
+        .unwrap_or(0)
+}
+
+fn vm_is_number_body_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn vm_suffix_matches(set: &str, ch: char) -> bool {
+    let expected = ch.to_ascii_uppercase() as u8;
+    set.as_bytes()
+        .iter()
+        .any(|candidate| candidate.to_ascii_uppercase() == expected)
+}
+
+fn vm_prev_non_space(bytes: &[u8], start: usize) -> Option<u8> {
+    (0..start)
+        .rev()
+        .map(|index| bytes[index])
+        .find(|byte| !byte.is_ascii_whitespace())
+}
+
+fn vm_is_prefix_context(bytes: &[u8], start: usize, identifier_continue_class: u32) -> bool {
+    let has_leading_space = start > 0 && bytes[start - 1].is_ascii_whitespace();
+    match vm_prev_non_space(bytes, start) {
+        None => true,
+        Some(
+            b'(' | b',' | b'+' | b'-' | b'*' | b'/' | b'%' | b'&' | b'|' | b'^' | b'~' | b'!'
+            | b'<' | b'>' | b'=' | b'?' | b':',
+        ) => true,
+        Some(byte)
+            if has_leading_space
+                && vm_matches_identifier_continue_class(byte, identifier_continue_class) =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
+fn vm_hex_digit(byte: u8) -> u8 {
+    match byte {
+        b'0'..=b'9' => byte - b'0',
+        b'A'..=b'F' => byte - b'A' + 10,
+        b'a'..=b'f' => byte - b'a' + 10,
+        _ => 0,
+    }
+}
+
+fn vm_scan_prefixed_number_token<F>(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    base: u32,
+    is_digit: F,
+) -> Result<PortableToken, String>
+where
+    F: Fn(u8) -> bool,
+{
+    let start = stream.cursor;
+    stream.advance();
+    let mut saw_digit = false;
+    loop {
+        let byte = vm_peek_byte(stream, 0);
+        if byte == 0 || (!is_digit(byte) && byte != b'_') {
+            break;
+        }
+        if byte != b'_' {
+            saw_digit = true;
+        }
+        stream.advance();
+    }
+    if !saw_digit {
+        return Err("Illegal character in constant".to_string());
+    }
+    let end = stream.cursor;
+    let text = String::from_utf8_lossy(&stream.bytes[start..end]).to_string();
+    Ok(vm_portable_token(
+        PortableTokenKind::Number { text, base },
+        line_num,
+        start,
+        end,
+    ))
+}
+
+pub fn vm_scan_identifier_token(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    identifier_continue_class: u32,
+) -> Result<PortableToken, String> {
+    let start = stream.cursor;
+    while let Some(byte) = stream.current_byte() {
+        if !vm_matches_identifier_continue_class(byte, identifier_continue_class) {
+            break;
+        }
+        stream.advance();
+    }
+    if stream.current_byte() == Some(b'\'') {
+        stream.advance();
+    }
+    let end = stream.cursor;
+    Ok(vm_portable_token(
+        PortableTokenKind::Identifier(
+            String::from_utf8_lossy(&stream.bytes[start..end]).to_string(),
+        ),
+        line_num,
+        start,
+        end,
+    ))
+}
+
+pub fn vm_scan_number_token(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    number_suffix_binary: &str,
+    number_suffix_octal: &str,
+    number_suffix_decimal: &str,
+    number_suffix_hex: &str,
+) -> Result<PortableToken, String> {
+    let start = stream.cursor;
+    while vm_is_number_body_byte(vm_peek_byte(stream, 0)) {
+        stream.advance();
+    }
+    let end = stream.cursor;
+    let text = String::from_utf8_lossy(&stream.bytes[start..end]).to_string();
+    let upper = text.to_ascii_uppercase();
+    let (digits, base) = match upper.chars().last() {
+        Some(ch) if vm_suffix_matches(number_suffix_hex, ch) => {
+            (upper[..upper.len() - 1].to_string(), 16)
+        }
+        Some(ch) if vm_suffix_matches(number_suffix_binary, ch) => {
+            (upper[..upper.len() - 1].to_string(), 2)
+        }
+        Some(ch) if vm_suffix_matches(number_suffix_octal, ch) => {
+            (upper[..upper.len() - 1].to_string(), 8)
+        }
+        Some(ch) if vm_suffix_matches(number_suffix_decimal, ch) => {
+            (upper[..upper.len() - 1].to_string(), 10)
+        }
+        _ => (upper, 10),
+    };
+    if digits.is_empty() {
+        return Err("Illegal character in constant".to_string());
+    }
+    Ok(vm_portable_token(
+        PortableTokenKind::Number { text, base },
+        line_num,
+        start,
+        end,
+    ))
+}
+
+pub fn vm_scan_string_token(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    escape_char: Option<char>,
+) -> Result<PortableToken, String> {
+    let start = stream.cursor;
+    let Some(quote) = stream.current_byte() else {
+        return Err("Illegal character".to_string());
+    };
+    let escape_byte = escape_char.map(|value| value as u8);
+    stream.advance();
+    let mut bytes = Vec::new();
+    while let Some(current) = stream.current_byte() {
+        if current == quote {
+            break;
+        }
+        if escape_byte.is_some_and(|escape| current == escape) {
+            stream.advance();
+            let escaped = vm_peek_byte(stream, 0);
+            let value = match escaped {
+                b'n' => b'\n',
+                b'r' => b'\r',
+                b't' => b'\t',
+                b'0' => b'\0',
+                b'x' => {
+                    let hi = vm_peek_byte(stream, 1);
+                    let lo = vm_peek_byte(stream, 2);
+                    if hi == 0 || lo == 0 || !hi.is_ascii_hexdigit() || !lo.is_ascii_hexdigit() {
+                        return Err(format!(
+                            "Bad hex escape in string: {}",
+                            String::from_utf8_lossy(&stream.bytes[stream.cursor..])
+                        ));
+                    }
+                    stream.advance();
+                    stream.advance();
+                    (vm_hex_digit(hi) << 4) | vm_hex_digit(lo)
+                }
+                _ => escaped,
+            };
+            bytes.push(value);
+        } else {
+            bytes.push(current);
+        }
+        stream.advance();
+    }
+    if stream.current_byte() != Some(quote) {
+        return Err(format!(
+            "Unterminated string: {}",
+            String::from_utf8_lossy(&stream.bytes[start..])
+        ));
+    }
+    stream.advance();
+    let end = stream.cursor;
+    Ok(vm_portable_token(
+        PortableTokenKind::String {
+            raw: String::from_utf8_lossy(&stream.bytes[start..end]).to_string(),
+            bytes,
+        },
+        line_num,
+        start,
+        end,
+    ))
+}
+
+pub fn vm_scan_symbol_token(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    comment_prefix: &str,
+    identifier_continue_class: u32,
+) -> Result<Option<PortableToken>, String> {
+    let start = stream.cursor;
+    if !comment_prefix.is_empty() && stream.bytes[start..].starts_with(comment_prefix.as_bytes()) {
+        stream.set_cursor(stream.len());
+        return Ok(None);
+    }
+
+    let Some(current) = stream.current_byte() else {
+        return Err("Illegal character".to_string());
+    };
+    let token_kind = match current {
+        b'.' => {
+            stream.advance();
+            if stream.current_byte() == Some(b'.') {
+                stream.advance();
+                if stream.current_byte() == Some(b'=') {
+                    stream.advance();
+                    PortableTokenKind::Operator(PortableOperatorKind::RangeInclusive)
+                } else {
+                    PortableTokenKind::Operator(PortableOperatorKind::Range)
+                }
+            } else {
+                PortableTokenKind::Dot
+            }
+        }
+        b'?' => {
+            stream.advance();
+            PortableTokenKind::Question
+        }
+        b'[' => {
+            stream.advance();
+            PortableTokenKind::OpenBracket
+        }
+        b']' => {
+            stream.advance();
+            PortableTokenKind::CloseBracket
+        }
+        b'{' => {
+            stream.advance();
+            PortableTokenKind::OpenBrace
+        }
+        b'}' => {
+            stream.advance();
+            PortableTokenKind::CloseBrace
+        }
+        b'$' => {
+            if vm_peek_byte(stream, 1).is_ascii_hexdigit() || vm_peek_byte(stream, 1) == b'_' {
+                return vm_scan_prefixed_number_token(stream, line_num, 16, |byte| {
+                    byte.is_ascii_hexdigit()
+                })
+                .map(Some);
+            }
+            stream.advance();
+            PortableTokenKind::Dollar
+        }
+        b'%' => {
+            let next = vm_peek_byte(stream, 1);
+            if matches!(next, b'0' | b'1')
+                && vm_is_prefix_context(stream.bytes, start, identifier_continue_class)
+            {
+                return vm_scan_prefixed_number_token(stream, line_num, 2, |byte| {
+                    matches!(byte, b'0' | b'1')
+                })
+                .map(Some);
+            }
+            stream.advance();
+            PortableTokenKind::Operator(PortableOperatorKind::Mod)
+        }
+        b'#' => {
+            stream.advance();
+            PortableTokenKind::Hash
+        }
+        b',' => {
+            stream.advance();
+            PortableTokenKind::Comma
+        }
+        b':' => {
+            stream.advance();
+            PortableTokenKind::Colon
+        }
+        b'(' => {
+            stream.advance();
+            PortableTokenKind::OpenParen
+        }
+        b')' => {
+            stream.advance();
+            PortableTokenKind::CloseParen
+        }
+        b'+' => {
+            stream.advance();
+            PortableTokenKind::Operator(PortableOperatorKind::Plus)
+        }
+        b'-' => {
+            stream.advance();
+            PortableTokenKind::Operator(PortableOperatorKind::Minus)
+        }
+        b'*' => {
+            stream.advance();
+            if stream.current_byte() == Some(b'*') {
+                stream.advance();
+                PortableTokenKind::Operator(PortableOperatorKind::Power)
+            } else {
+                PortableTokenKind::Operator(PortableOperatorKind::Multiply)
+            }
+        }
+        b'/' => {
+            stream.advance();
+            PortableTokenKind::Operator(PortableOperatorKind::Divide)
+        }
+        b'~' => {
+            stream.advance();
+            PortableTokenKind::Operator(PortableOperatorKind::BitNot)
+        }
+        b'=' => {
+            stream.advance();
+            if stream.current_byte() == Some(b'=') {
+                stream.advance();
+            }
+            PortableTokenKind::Operator(PortableOperatorKind::Eq)
+        }
+        b'!' => {
+            stream.advance();
+            if stream.current_byte() == Some(b'=') {
+                stream.advance();
+                PortableTokenKind::Operator(PortableOperatorKind::Ne)
+            } else {
+                PortableTokenKind::Operator(PortableOperatorKind::LogicNot)
+            }
+        }
+        b'&' => {
+            stream.advance();
+            if stream.current_byte() == Some(b'&') {
+                stream.advance();
+                PortableTokenKind::Operator(PortableOperatorKind::LogicAnd)
+            } else {
+                PortableTokenKind::Operator(PortableOperatorKind::BitAnd)
+            }
+        }
+        b'|' => {
+            stream.advance();
+            if stream.current_byte() == Some(b'|') {
+                stream.advance();
+                PortableTokenKind::Operator(PortableOperatorKind::LogicOr)
+            } else {
+                PortableTokenKind::Operator(PortableOperatorKind::BitOr)
+            }
+        }
+        b'^' => {
+            stream.advance();
+            if stream.current_byte() == Some(b'^') {
+                stream.advance();
+                PortableTokenKind::Operator(PortableOperatorKind::LogicXor)
+            } else {
+                PortableTokenKind::Operator(PortableOperatorKind::BitXor)
+            }
+        }
+        b'<' => {
+            stream.advance();
+            match stream.current_byte() {
+                Some(b'<') => {
+                    stream.advance();
+                    PortableTokenKind::Operator(PortableOperatorKind::Shl)
+                }
+                Some(b'=') => {
+                    stream.advance();
+                    PortableTokenKind::Operator(PortableOperatorKind::Le)
+                }
+                Some(b'>') => {
+                    stream.advance();
+                    PortableTokenKind::Operator(PortableOperatorKind::Ne)
+                }
+                _ => PortableTokenKind::Operator(PortableOperatorKind::Lt),
+            }
+        }
+        b'>' => {
+            stream.advance();
+            match stream.current_byte() {
+                Some(b'>') => {
+                    stream.advance();
+                    PortableTokenKind::Operator(PortableOperatorKind::Shr)
+                }
+                Some(b'=') => {
+                    stream.advance();
+                    PortableTokenKind::Operator(PortableOperatorKind::Ge)
+                }
+                _ => PortableTokenKind::Operator(PortableOperatorKind::Gt),
+            }
+        }
+        _ => return Err("Illegal character".to_string()),
+    };
+    Ok(Some(vm_portable_token(
+        token_kind,
+        line_num,
+        start,
+        stream.cursor,
+    )))
+}
+
 pub fn vm_scan_next_core_token<'a>(
     source_line: &'a str,
     line_num: u32,
@@ -463,6 +947,23 @@ mod tests {
             vm_read_u32(&[0x78, 0x56, 0x34, 0x12], &mut pc, "diag", "jump").expect("decoded value");
         assert_eq!(value, 0x1234_5678);
         assert_eq!(pc, 4);
+    }
+
+    #[test]
+    fn vm_tokenizer_input_stream_tracks_cursor_and_eol_by_byte() {
+        let mut stream = VmTokenizerInputStream::new(b"abc", TokenizerVmStreamMode::LineInputBytes);
+
+        assert_eq!(stream.cursor(), 0);
+        assert_eq!(stream.current_byte(), Some(b'a'));
+        assert!(!stream.is_eol());
+
+        stream.advance();
+        assert_eq!(stream.cursor(), 1);
+        assert_eq!(stream.current_byte(), Some(b'b'));
+
+        stream.set_cursor(3);
+        assert!(stream.is_eol());
+        assert_eq!(stream.current_byte(), None);
     }
 
     #[test]
@@ -560,6 +1061,42 @@ mod tests {
             PortableTokenKind::Identifier("label".to_string())
         );
         assert_eq!(next_cursor, 5);
+    }
+
+    #[test]
+    fn vm_scan_symbol_token_reads_ranges_and_modulo_variants() {
+        let mut range_stream =
+            VmTokenizerInputStream::new(b"..=", TokenizerVmStreamMode::LineInputBytes);
+        let range = vm_scan_symbol_token(&mut range_stream, 1, ";", IDENT_CLASS_ASCII_ALPHA)
+            .expect("scan range")
+            .expect("range token");
+        assert!(matches!(
+            range.kind,
+            PortableTokenKind::Operator(PortableOperatorKind::RangeInclusive)
+        ));
+
+        let mut modulo_stream =
+            VmTokenizerInputStream::new(b"A%1", TokenizerVmStreamMode::LineInputBytes);
+        modulo_stream.set_cursor(1);
+        let modulo = vm_scan_symbol_token(&mut modulo_stream, 1, ";", IDENT_CLASS_ASCII_ALPHA)
+            .expect("scan modulo")
+            .expect("mod token");
+        assert!(matches!(
+            modulo.kind,
+            PortableTokenKind::Operator(PortableOperatorKind::Mod)
+        ));
+    }
+
+    #[test]
+    fn vm_scan_string_token_decodes_escaped_bytes() {
+        let mut stream =
+            VmTokenizerInputStream::new(b"\"a\\x41\\n\"", TokenizerVmStreamMode::LineInputBytes);
+        let token = vm_scan_string_token(&mut stream, 1, Some('\\')).expect("scan string");
+        assert!(matches!(
+            token.kind,
+            PortableTokenKind::String { ref raw, ref bytes }
+                if raw == "\"a\\x41\\n\"" && bytes == b"aA\n"
+        ));
     }
 
     #[test]

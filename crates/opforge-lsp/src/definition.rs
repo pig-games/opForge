@@ -87,6 +87,16 @@ pub fn definition_locations(
         }));
     }
 
+    for path in workspace.module_document_paths(word) {
+        out.push(json!({
+            "uri": crate::lsp::session::path_to_file_uri(&path),
+            "range": {
+                "start": {"line": 0, "character": 0},
+                "end": {"line": 0, "character": 0},
+            }
+        }));
+    }
+
     for path in resolve_module_target(word, config, current_uri) {
         out.push(json!({
             "uri": crate::lsp::session::path_to_file_uri(&path),

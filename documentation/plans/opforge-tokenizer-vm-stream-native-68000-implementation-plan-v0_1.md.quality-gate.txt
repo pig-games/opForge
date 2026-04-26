@@ -1,0 +1,1 @@
+PASS: The plan is executable under the active worktree rules, keeps tokenizer-only scope discipline, sequences stream plumbing before ScanCoreToken removal and native AmigaOS work, ties each work item to concrete validation evidence, and is ready for plan-driven execution without hidden expansion.

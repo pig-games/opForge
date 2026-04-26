@@ -12,6 +12,7 @@ use crate::hierarchy::{
 use crate::intel8080_vm::{mode_key_for_instruction_entry, mode_key_for_z80_ld_indirect};
 use crate::native6502_abi::*;
 use crate::portable_contract::*;
+use crate::rollout::{family_runtime_mode, FamilyRuntimeMode};
 use crate::runtime_bridge::{HierarchyRuntimeBridge, HierarchyRuntimeBridgeError};
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_model_types::*;
@@ -26,7 +27,7 @@ use families::{
     m65816::state,
     mos6502::{module::MOS6502Operands, Operand},
     register_intel8080_family_stack, register_mos6502_family_stack,
-    register_motorola6800_family_stack,
+    register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
 use opcore::expr_vm::compile_core_expr_to_portable_program;
 use opcore::parser::{
@@ -40,11 +41,12 @@ use package::{
     ExprParserDiagnosticMap, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap,
     ParserVmOpcode, ParserVmProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor,
     TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
-    VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE,
-    DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED,
-    DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE,
-    DIAG_OPTHREAD_MISSING_VM_PROGRAM, EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1,
-    PARSER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1,
+    TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
+    DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
+    DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
+    DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
+    EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1, PARSER_VM_OPCODE_VERSION_V1,
+    TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -212,6 +214,7 @@ fn tokenize_with_vm_program(
         cpu_id: resolved.cpu_id.as_str(),
         dialect_id: resolved.dialect_id.as_str(),
         source_line: line,
+        source_stream: PortableTokenizerByteStream::from_source_line(line),
         line_num,
         token_policy: model.token_policy_for_resolved(&resolved),
     };
@@ -278,6 +281,71 @@ fn tokenizer_example_lines() -> Vec<String> {
     lines
 }
 
+fn motorola68000_example_tokenizer_cases() -> Vec<(String, String, u32, String)> {
+    fn motorola68000_cpu_id_for_source(path: &Path, source: &str) -> String {
+        for line in source.lines() {
+            let trimmed = line.trim();
+            let Some(rest) = trimmed.strip_prefix(".cpu") else {
+                continue;
+            };
+            let cpu_name = rest.trim();
+            return match cpu_name {
+                "68000" => "m68000".to_string(),
+                "68010" => "m68010".to_string(),
+                "68020" => "m68020".to_string(),
+                "68030" => "m68030".to_string(),
+                "68040" => "m68040".to_string(),
+                "68080" => "m68080".to_string(),
+                _ => panic!(
+                    "unsupported motorola68000 example cpu '{}' in {}",
+                    cpu_name,
+                    path.display()
+                ),
+            };
+        }
+
+        panic!(
+            "missing .cpu directive in motorola68000 example {}",
+            path.display()
+        );
+    }
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("workspace root");
+    let examples_dir = repo_root.join("examples").join("motorola68000");
+    let mut asm_files = fs::read_dir(&examples_dir)
+        .unwrap_or_else(|err| panic!("read example directory {}: {err}", examples_dir.display()))
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
+        .collect::<Vec<_>>();
+    asm_files.sort();
+
+    let mut cases = Vec::new();
+    for path in asm_files {
+        let source = fs::read_to_string(&path).expect("read motorola68000 example source");
+        let cpu_id = motorola68000_cpu_id_for_source(&path, &source);
+        let relative_path = path
+            .strip_prefix(&repo_root)
+            .unwrap_or(&path)
+            .display()
+            .to_string();
+        for (index, line) in source.lines().enumerate() {
+            cases.push((
+                relative_path.clone(),
+                cpu_id.clone(),
+                (index + 1) as u32,
+                line.to_string(),
+            ));
+        }
+    }
+
+    cases
+}
+
 fn deterministic_fuzz_lines(seed: u64, count: usize, max_len: usize) -> Vec<String> {
     const ALPHABET: &str =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_,$#:+-*/()[]{}'\";<>|&^%!~.\\ \t";
@@ -331,6 +399,7 @@ fn tokenizer_vm_program_for_test(owner: ScopedOwner) -> TokenizerVmProgramDescri
         opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
         start_state: 0,
         state_entry_offsets: vec![0],
+        stream: TokenizerVmStreamDescriptor::default(),
         limits: TokenizerVmLimits {
             max_steps_per_line: 1024,
             max_tokens_per_line: 64,
@@ -420,6 +489,7 @@ fn runtime_vm_program_for_test(
         opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
         start_state: 0,
         state_entry_offsets: vec![0],
+        stream: TokenizerVmStreamDescriptor::default(),
         limits,
         diagnostics: tokenizer_vm_program_for_test(ScopedOwner::Cpu("m6502".to_string()))
             .diagnostics,
@@ -2350,10 +2420,16 @@ fn execution_model_tokenizer_vm_covers_all_supported_cpu_ids() {
             .expect("tokenizer vm program resolution should succeed");
         let program = program.expect("supported cpu should resolve a tokenizer vm program");
         assert!(
-            program
+            !program
                 .program
                 .contains(&(TokenizerVmOpcode::ScanCoreToken as u8)),
-            "{cpu_id} should resolve a tokenizer VM program containing ScanCoreToken"
+            "{cpu_id} should resolve a tokenizer VM program without ScanCoreToken"
+        );
+        assert!(
+            !program
+                .program
+                .contains(&(TokenizerVmOpcode::DelegateCore as u8)),
+            "{cpu_id} should resolve a tokenizer VM program without DelegateCore"
         );
 
         let tokens = model
@@ -2576,6 +2652,50 @@ fn execution_model_assembler_tokenization_path_uses_vm_for_intel8080_family() {
 }
 
 #[test]
+fn execution_model_tokenizer_vm_rejects_truncated_jump_operand() {
+    let registry = mos6502_family_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+
+    let vm_program = runtime_vm_program_for_test(
+        vec![TokenizerVmOpcode::Jump as u8, 0, 0, 0],
+        TokenizerVmLimits {
+            max_steps_per_line: 4096,
+            max_tokens_per_line: 1024,
+            max_lexeme_bytes: 512,
+            max_errors_per_line: 16,
+        },
+    );
+    let err = tokenize_with_vm_program(&model, "m6502", "LDA #$42", 1, &vm_program)
+        .expect_err("truncated jump operand should fail deterministically");
+    assert!(err.to_string().contains("ott001"));
+    assert!(err
+        .to_string()
+        .contains("tokenizer VM truncated while reading jump target"));
+}
+
+#[test]
+fn execution_model_tokenizer_vm_rejects_out_of_bounds_jump_target() {
+    let registry = mos6502_family_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+
+    let vm_program = runtime_vm_program_for_test(
+        vec![TokenizerVmOpcode::Jump as u8, 42, 0, 0, 0],
+        TokenizerVmLimits {
+            max_steps_per_line: 4096,
+            max_tokens_per_line: 1024,
+            max_lexeme_bytes: 512,
+            max_errors_per_line: 16,
+        },
+    );
+    let err = tokenize_with_vm_program(&model, "m6502", "LDA #$42", 1, &vm_program)
+        .expect_err("out-of-bounds jump target should fail deterministically");
+    assert!(err.to_string().contains("ott001"));
+    assert!(err
+        .to_string()
+        .contains("tokenizer VM jump target 42 exceeds program length 5"));
+}
+
+#[test]
 fn execution_model_tokenizer_vm_retro_profile_enforces_step_budget() {
     let registry = mos6502_family_registry();
     let mut model =
@@ -2731,6 +2851,142 @@ fn execution_model_tokenizer_parity_deterministic_fuzz_core_vs_vm() {
 }
 
 #[test]
+fn motorola68000_tokenizer_vm_staged_baseline_matches_host_for_smoke_line() {
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let mut model =
+        HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let line = "move.b d0,d1";
+    let line_num = 42;
+
+    assert_eq!(
+        family_runtime_mode("motorola68000"),
+        FamilyRuntimeMode::StagedVerification
+    );
+
+    let host =
+        tokenize_host_line_with_policy(&model, "m68020", Some("motorola68k"), line, line_num)
+            .expect("host tokenizer result");
+    let vm = tokenize_with_mode(
+        &mut model,
+        RuntimeTokenizerMode::Vm,
+        "m68020",
+        line,
+        line_num,
+    )
+    .expect("vm tokenizer result");
+
+    assert_eq!(vm, host, "motorola68000 staged baseline should match host");
+}
+
+#[test]
+fn motorola68000_tokenizer_vm_staged_corpus_matches_host_for_example_lines() {
+    let corpus = motorola68000_example_tokenizer_cases();
+    assert!(
+        !corpus.is_empty(),
+        "motorola68000 tokenizer parity corpus should not be empty"
+    );
+
+    let mut registry = ModuleRegistry::new();
+    register_motorola68000_family_stack(&mut registry);
+    let mut model =
+        HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+
+    assert_eq!(
+        family_runtime_mode("motorola68000"),
+        FamilyRuntimeMode::StagedVerification
+    );
+
+    for (path, cpu_id, line_num, line) in corpus {
+        let host = tokenize_host_line_with_policy(
+            &model,
+            cpu_id.as_str(),
+            Some("motorola68k"),
+            line.as_str(),
+            line_num,
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "host tokenizer result for {}:{} on {} failed: {}\nline: {:?}",
+                path, line_num, cpu_id, err, line
+            )
+        });
+        let vm = tokenize_with_mode(
+            &mut model,
+            RuntimeTokenizerMode::Vm,
+            cpu_id.as_str(),
+            line.as_str(),
+            line_num,
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "vm tokenizer result for {}:{} on {} failed: {}\nline: {:?}",
+                path, line_num, cpu_id, err, line
+            )
+        });
+
+        assert_eq!(
+            vm, host,
+            "motorola68000 tokenizer parity mismatch for {}:{} on {} line {:?}",
+            path, line_num, cpu_id, line
+        );
+    }
+}
+
+#[test]
+fn execution_model_tokenizer_vm_explicit_dispatch_matches_host_for_core_shapes() {
+    let registry = parity_registry();
+    let mut model =
+        HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let cases = [
+        "   ; comment only",
+        "label:",
+        "LDA #$42",
+        "%1010 + 3",
+        "value = 10H",
+        r#".byte \"A\\x42\""#,
+        "A && B || C",
+        ".. ..= < <= <> << > >= >>",
+        "[value], {other}",
+    ];
+
+    for (index, line) in cases.iter().enumerate() {
+        let line_num = (index + 1) as u32;
+        let host = tokenize_host_line_with_policy(&model, "m6502", None, line, line_num);
+        let vm = tokenize_with_mode(
+            &mut model,
+            RuntimeTokenizerMode::Vm,
+            "m6502",
+            line,
+            line_num,
+        );
+        assert_eq!(vm, host, "explicit VM mismatch for line {:?}", line);
+    }
+}
+
+#[test]
+fn execution_model_tokenizer_vm_invalid_input_fails_without_host_escape_hatch() {
+    let registry = parity_registry();
+    let mut model =
+        HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let program = model
+        .resolve_tokenizer_vm_program("m6502", None)
+        .expect("resolve tokenizer vm program")
+        .expect("tokenizer vm program");
+
+    assert!(!program
+        .program
+        .contains(&(TokenizerVmOpcode::ScanCoreToken as u8)));
+    assert!(!program
+        .program
+        .contains(&(TokenizerVmOpcode::DelegateCore as u8)));
+
+    let err = tokenize_with_mode(&mut model, RuntimeTokenizerMode::Vm, "m6502", "`", 1)
+        .expect_err("illegal characters should fail deterministically");
+    assert_eq!(err, "Illegal character");
+}
+
+#[test]
 fn execution_model_tokenizer_vm_mode_is_deterministic_for_same_input() {
     let corpus = deterministic_fuzz_lines(0x44_45_54, 256, 40);
     let registry = parity_registry();
@@ -2758,6 +3014,48 @@ fn execution_model_tokenizer_vm_mode_is_deterministic_for_same_input() {
             index, line
         );
     }
+}
+
+#[test]
+fn execution_model_tokenizer_vm_program_exposes_explicit_line_byte_stream_contract() {
+    let registry = parity_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+
+    let vm_program = model
+        .resolve_tokenizer_vm_program("m6502", None)
+        .expect("resolve tokenizer vm program")
+        .expect("tokenizer vm program");
+
+    assert_eq!(vm_program.stream, TokenizerVmStreamDescriptor::default());
+}
+
+#[test]
+fn execution_model_tokenizer_vm_rejects_mismatched_request_stream_contract() {
+    let registry = parity_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let resolved = model
+        .resolve_pipeline("m6502", None)
+        .expect("resolve pipeline");
+    let mut stream = PortableTokenizerByteStream::from_source_line("lda #1");
+    stream.contract.version = 99;
+    let request = PortableTokenizeRequest {
+        family_id: resolved.family_id.as_str(),
+        cpu_id: resolved.cpu_id.as_str(),
+        dialect_id: resolved.dialect_id.as_str(),
+        source_line: "lda #1",
+        source_stream: stream,
+        line_num: 1,
+        token_policy: model.token_policy_for_resolved(&resolved),
+    };
+    let vm_program = model
+        .resolve_tokenizer_vm_program("m6502", None)
+        .expect("resolve tokenizer vm program")
+        .expect("tokenizer vm program");
+
+    let err = model
+        .tokenize_with_vm_core(&request, &vm_program)
+        .expect_err("mismatched contract should fail");
+    assert!(err.to_string().contains("request stream contract"));
 }
 
 #[test]

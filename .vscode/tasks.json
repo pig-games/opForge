@@ -1,0 +1,47 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "OpForge: Focused m68k tokenizer parity test",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"test",
+				"-p",
+				"opforge-vm",
+				"motorola68000_tokenizer_vm_staged_corpus_matches_host_for_example_lines",
+				"--",
+				"--nocapture"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "OpForge: Focused m68k tokenizer parity test",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"test",
+				"-p",
+				"vm",
+				"motorola68000_tokenizer_vm_staged_corpus_matches_host_for_example_lines",
+				"--",
+				"--nocapture"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "OpForge: Focused m68k tokenizer parity test vm crate",
+			"type": "shell",
+			"command": "cargo",
+			"args": [
+				"test",
+				"-p",
+				"vm",
+				"motorola68000_tokenizer_vm_staged_corpus_matches_host_for_example_lines",
+				"--",
+				"--nocapture"
+			],
+			"isBackground": false
+		}
+	]
+}

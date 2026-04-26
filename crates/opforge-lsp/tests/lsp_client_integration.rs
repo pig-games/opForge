@@ -717,6 +717,161 @@ fn overlay_uses_workspace_root_and_rebased_module_paths_for_sibling_files() {
 }
 
 #[test]
+fn overlay_stages_transitive_explicit_modules_by_declared_module_id() {
+    let temp_dir = unique_temp_dir();
+    let nested_dir = temp_dir.join("examples").join("tokvm");
+    fs::create_dir_all(&nested_dir).expect("create nested dir");
+
+    let root_file = nested_dir.join("tokvm_interpreter.asm");
+    let harness_file = nested_dir.join("tokvm_cli_harness.asm");
+    let tokenizer_file = nested_dir.join("tokvm_tokenizer_vm.asm");
+    let root_uri = path_to_file_uri(&root_file);
+    let tokenizer_uri = path_to_file_uri(&tokenizer_file);
+
+    write_text(&root_file, ".use tokvm.amigaos.cli_harness\n");
+    write_text(
+        &harness_file,
+        ".module tokvm.amigaos.cli_harness\n.use tokvm.amigaos.tokenizer_vm\n.endmodule\n",
+    );
+    write_text(
+        &tokenizer_file,
+        ".module tokvm.amigaos.tokenizer_vm\n@\n.endmodule\n",
+    );
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()],
+            "validation": {
+                "debounceMs": 0,
+                "onSave": true
+            }
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use tokvm.amigaos.cli_harness\n"
+            }
+        }),
+    );
+
+    if let Some(root_publish) =
+        client.wait_for_publish_diagnostics(&root_uri, Duration::from_millis(750))
+    {
+        let root_diagnostics = root_publish
+            .get("diagnostics")
+            .and_then(|value| value.as_array())
+            .expect("diagnostics array");
+        assert!(
+            root_diagnostics.iter().all(|diag| {
+                !diag
+                    .get("message")
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|message| message.contains("Missing module:"))
+            }),
+            "root validation should not fail with missing-module diagnostics once transitive explicit modules are staged"
+        );
+    }
+
+    let tokenizer_publish =
+        wait_for_nonempty_publish(&mut client, &tokenizer_uri, Duration::from_secs(6));
+    let tokenizer_diagnostics = tokenizer_publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(
+        !tokenizer_diagnostics.is_empty(),
+        "transitive explicit module should be staged and publish its own diagnostics"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn overlay_stages_transitive_explicit_modules_without_configured_roots() {
+    let temp_dir = unique_temp_dir();
+    let nested_dir = temp_dir.join("examples").join("tokvm");
+    fs::create_dir_all(&nested_dir).expect("create nested dir");
+
+    let root_file = nested_dir.join("tokvm_interpreter.asm");
+    let harness_file = nested_dir.join("tokvm_cli_harness.asm");
+    let tokenizer_file = nested_dir.join("tokvm_tokenizer_vm.asm");
+    let root_uri = path_to_file_uri(&root_file);
+    let tokenizer_uri = path_to_file_uri(&tokenizer_file);
+
+    write_text(&root_file, ".use tokvm.amigaos.cli_harness\n");
+    write_text(
+        &harness_file,
+        ".module tokvm.amigaos.cli_harness\n.use tokvm.amigaos.tokenizer_vm\n.endmodule\n",
+    );
+    write_text(
+        &tokenizer_file,
+        ".module tokvm.amigaos.tokenizer_vm\n@\n.endmodule\n",
+    );
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "validation": {
+                "debounceMs": 0,
+                "onSave": true
+            }
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": root_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".use tokvm.amigaos.cli_harness\n"
+            }
+        }),
+    );
+
+    if let Some(root_publish) =
+        client.wait_for_publish_diagnostics(&root_uri, Duration::from_millis(750))
+    {
+        let root_diagnostics = root_publish
+            .get("diagnostics")
+            .and_then(|value| value.as_array())
+            .expect("diagnostics array");
+        assert!(
+            root_diagnostics.iter().all(|diag| {
+                !diag
+                    .get("message")
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|message| message.contains("Missing module:"))
+            }),
+            "root validation should not fail with missing-module diagnostics when same-directory explicit modules are unresolved only by filename"
+        );
+    }
+
+    let tokenizer_publish =
+        wait_for_nonempty_publish(&mut client, &tokenizer_uri, Duration::from_secs(6));
+    let tokenizer_diagnostics = tokenizer_publish
+        .get("diagnostics")
+        .and_then(|value| value.as_array())
+        .expect("diagnostics array");
+    assert!(
+        !tokenizer_diagnostics.is_empty(),
+        "same-directory transitive explicit module should be staged even without configured roots"
+    );
+
+    client.shutdown();
+}
+
+#[test]
 fn overlay_rebases_relative_include_paths_from_workspace_root() {
     let temp_dir = unique_temp_dir();
     let workspace_dir = temp_dir.join("workspace");

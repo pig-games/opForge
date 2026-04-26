@@ -10,8 +10,9 @@ use opcore::tokenizer::Tokenizer;
 use package::{
     decode_hierarchy_chunks, HierarchyChunks, ModeSelectorDescriptor, OpcpuCodecError,
     TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
-    EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1,
-    PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1,
+    TokenizerVmStreamMode, EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1,
+    PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V1,
+    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -35,7 +36,9 @@ use crate::runtime_model_types::{
     RuntimeParserVmProgram, RuntimeTokenPolicy, RuntimeTokenizerMode, RuntimeTokenizerVmProgram,
 };
 use crate::runtime_portable_types::PortableTokenizeRequest;
-use crate::tokenizer_runtime_utils::{self, AsciiCaseRule, TokenizerDiagCodes};
+use crate::tokenizer_runtime_utils::{
+    self, AsciiCaseRule, TokenizerDiagCodes, VmTokenizerInputStream,
+};
 
 pub type VmProgramKey = (u8, u32, u32, u32);
 pub type ModeSelectorKey = (u8, u32, u32, u32);
@@ -199,6 +202,7 @@ impl RuntimeModelCore {
                     opcode_version: entry.opcode_version,
                     start_state: entry.start_state,
                     state_entry_offsets: entry.state_entry_offsets,
+                    stream: entry.stream,
                     limits: entry.limits,
                     diagnostics: entry.diagnostics,
                     program: entry.program,
@@ -472,6 +476,18 @@ impl RuntimeModelCore {
                 error_code, vm_program.opcode_version
             )));
         }
+        if vm_program.stream.version != TOKENIZER_VM_STREAM_VERSION_V1 {
+            return Err(RuntimeBridgeError::Resolve(format!(
+                "{}: unsupported tokenizer VM stream version {}",
+                error_code, vm_program.stream.version
+            )));
+        }
+        if vm_program.stream.mode != TokenizerVmStreamMode::LineInputBytes {
+            return Err(RuntimeBridgeError::Resolve(format!(
+                "{}: unsupported tokenizer VM stream mode {:?}",
+                error_code, vm_program.stream.mode
+            )));
+        }
         for (field_name, value) in [
             ("invalid_char", vm_program.diagnostics.invalid_char.as_str()),
             (
@@ -610,7 +626,22 @@ impl RuntimeModelCore {
             )));
         };
 
-        let bytes = request.source_line.as_bytes();
+        if request.source_stream.contract != vm_program.stream {
+            return Err(RuntimeBridgeError::Resolve(format!(
+                "{}: tokenizer VM request stream contract {:?} does not match program contract {:?}",
+                vm_program.diagnostics.invalid_char,
+                request.source_stream.contract,
+                vm_program.stream
+            )));
+        }
+        if request.source_stream.bytes != request.source_line.as_bytes() {
+            return Err(RuntimeBridgeError::Resolve(format!(
+                "{}: tokenizer VM request source bytes do not match source line",
+                vm_program.diagnostics.invalid_char
+            )));
+        }
+
+        let bytes = request.source_stream.bytes;
         let max_steps_per_line = vm_program
             .limits
             .max_steps_per_line
@@ -629,15 +660,15 @@ impl RuntimeModelCore {
             .min(self.budget_limits.max_tokenizer_errors_per_line);
         let max_lexeme_bytes_usize = usize::try_from(max_lexeme_bytes).unwrap_or(usize::MAX);
         let max_tokens_per_line_usize = usize::try_from(max_tokens_per_line).unwrap_or(usize::MAX);
-        let lexeme_capacity = max_lexeme_bytes_usize.min(bytes.len());
-        let token_capacity = max_tokens_per_line_usize.min(bytes.len().saturating_add(1));
+        let mut stream = VmTokenizerInputStream::new(bytes, vm_program.stream.mode);
+        let lexeme_capacity = max_lexeme_bytes_usize.min(stream.len());
+        let token_capacity = max_tokens_per_line_usize.min(stream.len().saturating_add(1));
         let mut pc = vm_offset_to_pc(
             vm_program.program.as_slice(),
             start_offset,
             vm_program.diagnostics.invalid_char.as_str(),
             "start state offset",
         )?;
-        let mut cursor = 0usize;
         let mut current_byte: Option<u8> = None;
         let mut lexeme = Vec::with_capacity(lexeme_capacity);
         let mut lexeme_start = 0usize;
@@ -646,6 +677,25 @@ impl RuntimeModelCore {
         let mut emitted_errors = 0u32;
         let mut step_count = 0u32;
         let mut core_tokenizer: Option<Tokenizer<'_>> = None;
+        let mut push_token = |token: PortableToken| -> Result<(), RuntimeBridgeError> {
+            if tokens.len() >= max_tokens_per_line_usize {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "{}: tokenizer VM token budget exceeded ({}/{})",
+                    vm_program.diagnostics.token_limit_exceeded,
+                    tokens.len().saturating_add(1),
+                    max_tokens_per_line
+                )));
+            }
+            let lexeme_len = token.span.col_end.saturating_sub(token.span.col_start);
+            if lexeme_len > max_lexeme_bytes_usize {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "{}: tokenizer VM lexeme budget exceeded ({}/{})",
+                    vm_program.diagnostics.lexeme_limit_exceeded, lexeme_len, max_lexeme_bytes
+                )));
+            }
+            tokens.push(apply_token_policy_to_token(token, &request.token_policy));
+            Ok(())
+        };
 
         loop {
             step_count = step_count.saturating_add(1);
@@ -672,17 +722,15 @@ impl RuntimeModelCore {
             match opcode {
                 TokenizerVmOpcode::End => break,
                 TokenizerVmOpcode::ReadChar => {
-                    current_byte = bytes.get(cursor).copied();
+                    current_byte = stream.current_byte();
                 }
                 TokenizerVmOpcode::Advance => {
-                    if cursor < bytes.len() {
-                        cursor += 1;
-                    }
+                    stream.advance();
                 }
                 TokenizerVmOpcode::StartLexeme => {
                     lexeme.clear();
-                    lexeme_start = cursor;
-                    lexeme_end = cursor;
+                    lexeme_start = stream.cursor();
+                    lexeme_end = stream.cursor();
                 }
                 TokenizerVmOpcode::PushChar => {
                     let Some(byte) = current_byte else {
@@ -700,7 +748,7 @@ impl RuntimeModelCore {
                         )));
                     }
                     lexeme.push(byte);
-                    lexeme_end = cursor.saturating_add(1);
+                    lexeme_end = stream.cursor().saturating_add(1);
                 }
                 TokenizerVmOpcode::EmitToken => {
                     let token_kind = vm_read_u8(
@@ -709,23 +757,15 @@ impl RuntimeModelCore {
                         vm_program.diagnostics.invalid_char.as_str(),
                         "emit token kind",
                     )?;
-                    if tokens.len() >= max_tokens_per_line_usize {
-                        return Err(RuntimeBridgeError::Resolve(format!(
-                            "{}: tokenizer VM token budget exceeded ({}/{})",
-                            vm_program.diagnostics.token_limit_exceeded,
-                            tokens.len().saturating_add(1),
-                            max_tokens_per_line
-                        )));
-                    }
                     let token = vm_build_token(
                         token_kind,
                         lexeme.as_slice(),
                         request.line_num,
                         lexeme_start,
                         lexeme_end,
-                        cursor,
+                        stream.cursor(),
                     )?;
-                    tokens.push(apply_token_policy_to_token(token, &request.token_policy));
+                    push_token(token)?;
                 }
                 TokenizerVmOpcode::SetState => {
                     let state = usize::from(vm_read_u16(
@@ -768,7 +808,7 @@ impl RuntimeModelCore {
                         vm_program.diagnostics.invalid_char.as_str(),
                         "conditional jump target",
                     )?;
-                    if cursor >= bytes.len() {
+                    if stream.is_eol() {
                         pc = vm_offset_to_pc(
                             vm_program.program.as_slice(),
                             target,
@@ -862,35 +902,58 @@ impl RuntimeModelCore {
                     )));
                 }
                 TokenizerVmOpcode::ScanCoreToken => {
-                    match vm_scan_next_core_token(request, cursor, &mut core_tokenizer)? {
+                    match vm_scan_next_core_token(request, stream.cursor(), &mut core_tokenizer)? {
                         Some((portable, next_cursor)) => {
-                            if tokens.len() >= max_tokens_per_line_usize {
-                                return Err(RuntimeBridgeError::Resolve(format!(
-                                    "{}: tokenizer VM token budget exceeded ({}/{})",
-                                    vm_program.diagnostics.token_limit_exceeded,
-                                    tokens.len().saturating_add(1),
-                                    max_tokens_per_line
-                                )));
-                            }
-                            let lexeme_len =
-                                tokenizer_runtime_utils::vm_token_lexeme_len(&portable);
-                            if lexeme_len > max_lexeme_bytes_usize {
-                                return Err(RuntimeBridgeError::Resolve(format!(
-                                    "{}: tokenizer VM lexeme budget exceeded ({}/{})",
-                                    vm_program.diagnostics.lexeme_limit_exceeded,
-                                    lexeme_len,
-                                    max_lexeme_bytes
-                                )));
-                            }
-                            tokens
-                                .push(apply_token_policy_to_token(portable, &request.token_policy));
-                            cursor = next_cursor;
-                            current_byte = bytes.get(cursor).copied();
+                            push_token(portable)?;
+                            stream.set_cursor(next_cursor);
+                            current_byte = stream.current_byte();
                         }
                         None => {
-                            cursor = bytes.len();
+                            stream.set_cursor(stream.len());
                             current_byte = None;
                         }
+                    }
+                }
+                TokenizerVmOpcode::ScanIdentifier => {
+                    let token = vm_scan_identifier_token(
+                        &mut stream,
+                        request.line_num,
+                        request.token_policy.identifier_continue_class,
+                    )?;
+                    current_byte = stream.current_byte();
+                    push_token(token)?;
+                }
+                TokenizerVmOpcode::ScanNumber => {
+                    let token = vm_scan_number_token(
+                        &mut stream,
+                        request.line_num,
+                        request.token_policy.number_suffix_binary.as_str(),
+                        request.token_policy.number_suffix_octal.as_str(),
+                        request.token_policy.number_suffix_decimal.as_str(),
+                        request.token_policy.number_suffix_hex.as_str(),
+                    )?;
+                    current_byte = stream.current_byte();
+                    push_token(token)?;
+                }
+                TokenizerVmOpcode::ScanString => {
+                    let token = vm_scan_string_token(
+                        &mut stream,
+                        request.line_num,
+                        request.token_policy.escape_char,
+                    )?;
+                    current_byte = stream.current_byte();
+                    push_token(token)?;
+                }
+                TokenizerVmOpcode::ScanSymbol => {
+                    let token = vm_scan_symbol_token(
+                        &mut stream,
+                        request.line_num,
+                        request.token_policy.comment_prefix.as_str(),
+                        request.token_policy.identifier_continue_class,
+                    )?;
+                    current_byte = stream.current_byte();
+                    if let Some(token) = token {
+                        push_token(token)?;
                     }
                 }
             }
@@ -1337,9 +1400,9 @@ fn tokenizer_vm_parity_checklist_for_family(family_id: &str) -> Option<&'static 
         "mos6502" => Some("Phase 6 tokenizer VM parity matrix (full corpus)"),
         "intel8080" => Some("Phase 6 tokenizer VM parity matrix (full corpus)"),
         "motorola6800" => Some("Phase 6 tokenizer VM parity matrix (full corpus)"),
-        "motorola68000" => {
-            Some("Phase 6 tokenizer VM parity matrix (staged motorola68000 baseline)")
-        }
+        "motorola68000" => Some(
+            "Phase 6 tokenizer VM parity matrix (staged Rust corpus + opt-in native family corpus)",
+        ),
         _ => None,
     }
 }
@@ -1477,6 +1540,58 @@ fn vm_build_token(
         lexeme_start,
         lexeme_end,
         cursor,
+    )
+    .map_err(RuntimeBridgeError::Resolve)
+}
+
+fn vm_scan_identifier_token(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    identifier_continue_class: u32,
+) -> Result<PortableToken, RuntimeBridgeError> {
+    tokenizer_runtime_utils::vm_scan_identifier_token(stream, line_num, identifier_continue_class)
+        .map_err(RuntimeBridgeError::Resolve)
+}
+
+fn vm_scan_number_token(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    number_suffix_binary: &str,
+    number_suffix_octal: &str,
+    number_suffix_decimal: &str,
+    number_suffix_hex: &str,
+) -> Result<PortableToken, RuntimeBridgeError> {
+    tokenizer_runtime_utils::vm_scan_number_token(
+        stream,
+        line_num,
+        number_suffix_binary,
+        number_suffix_octal,
+        number_suffix_decimal,
+        number_suffix_hex,
+    )
+    .map_err(RuntimeBridgeError::Resolve)
+}
+
+fn vm_scan_string_token(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    escape_char: Option<char>,
+) -> Result<PortableToken, RuntimeBridgeError> {
+    tokenizer_runtime_utils::vm_scan_string_token(stream, line_num, escape_char)
+        .map_err(RuntimeBridgeError::Resolve)
+}
+
+fn vm_scan_symbol_token(
+    stream: &mut VmTokenizerInputStream<'_>,
+    line_num: u32,
+    comment_prefix: &str,
+    identifier_continue_class: u32,
+) -> Result<Option<PortableToken>, RuntimeBridgeError> {
+    tokenizer_runtime_utils::vm_scan_symbol_token(
+        stream,
+        line_num,
+        comment_prefix,
+        identifier_continue_class,
     )
     .map_err(RuntimeBridgeError::Resolve)
 }

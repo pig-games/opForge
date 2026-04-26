@@ -2,7 +2,7 @@
 
 use package::{
     default_token_policy_lexical_defaults, TokenCaseRule, TokenizerVmDiagnosticMap,
-    TokenizerVmLimits,
+    TokenizerVmLimits, TokenizerVmStreamDescriptor,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +61,7 @@ pub struct RuntimeTokenizerVmProgram {
     pub opcode_version: u16,
     pub start_state: u16,
     pub state_entry_offsets: Vec<u32>,
+    pub stream: TokenizerVmStreamDescriptor,
     pub limits: TokenizerVmLimits,
     pub diagnostics: TokenizerVmDiagnosticMap,
     pub program: Vec<u8>,
@@ -121,7 +122,7 @@ impl RuntimeBudgetProfile {
                 max_parser_vm_program_bytes: 256,
                 max_tokenizer_steps_per_line: 4096,
                 max_tokenizer_tokens_per_line: 256,
-                max_tokenizer_lexeme_bytes: 256,
+                max_tokenizer_lexeme_bytes: 1024,
                 max_tokenizer_errors_per_line: 16,
             },
             Self::RetroConstrained => RuntimeBudgetLimits {

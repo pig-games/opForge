@@ -652,6 +652,8 @@ impl ScopedSchemaEntry for TokenizerVmProgramDescriptor {
             count_label: "TKVM state_entry_offsets count",
             entry_label: "state-entry offset",
         },
+        FieldSpec::U16,
+        FieldSpec::U8,
         FieldSpec::U32,
         FieldSpec::U32,
         FieldSpec::U32,
@@ -677,6 +679,8 @@ impl ScopedSchemaEntry for TokenizerVmProgramDescriptor {
             FieldValue::U16(self.opcode_version),
             FieldValue::U16(self.start_state),
             FieldValue::U32List(&self.state_entry_offsets),
+            FieldValue::U16(self.stream.version),
+            FieldValue::U8(self.stream.mode as u8),
             FieldValue::U32(self.limits.max_steps_per_line),
             FieldValue::U32(self.limits.max_tokens_per_line),
             FieldValue::U32(self.limits.max_lexeme_bytes),
@@ -700,6 +704,15 @@ impl ScopedSchemaEntry for TokenizerVmProgramDescriptor {
             opcode_version: fields.next_u16(Self::CHUNK)?,
             start_state: fields.next_u16(Self::CHUNK)?,
             state_entry_offsets: fields.next_u32_list(Self::CHUNK)?,
+            stream: TokenizerVmStreamDescriptor {
+                version: fields.next_u16(Self::CHUNK)?,
+                mode: TokenizerVmStreamMode::from_u8(fields.next_u8(Self::CHUNK)?).ok_or_else(
+                    || OpcpuCodecError::InvalidChunkFormat {
+                        chunk: Self::CHUNK.to_string(),
+                        detail: "unsupported tokenizer VM stream mode".to_string(),
+                    },
+                )?,
+            },
             limits: TokenizerVmLimits {
                 max_steps_per_line: fields.next_u32(Self::CHUNK)?,
                 max_tokens_per_line: fields.next_u32(Self::CHUNK)?,

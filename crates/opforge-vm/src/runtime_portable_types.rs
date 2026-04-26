@@ -2,9 +2,25 @@
 
 //! Portable runtime request and adapter contracts.
 
+use package::TokenizerVmStreamDescriptor;
 use registry::registry::VmEncodeCandidate;
 
 use crate::runtime_model_types::RuntimeTokenPolicy;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PortableTokenizerByteStream<'a> {
+    pub bytes: &'a [u8],
+    pub contract: TokenizerVmStreamDescriptor,
+}
+
+impl<'a> PortableTokenizerByteStream<'a> {
+    pub fn from_source_line(source_line: &'a str) -> Self {
+        Self {
+            bytes: source_line.as_bytes(),
+            contract: TokenizerVmStreamDescriptor::default(),
+        }
+    }
+}
 
 /// Minimal host-to-runtime ABI for portable/native targets.
 ///
@@ -26,6 +42,7 @@ pub struct PortableTokenizeRequest<'a> {
     pub cpu_id: &'a str,
     pub dialect_id: &'a str,
     pub source_line: &'a str,
+    pub source_stream: PortableTokenizerByteStream<'a>,
     pub line_num: u32,
     pub token_policy: RuntimeTokenPolicy,
 }

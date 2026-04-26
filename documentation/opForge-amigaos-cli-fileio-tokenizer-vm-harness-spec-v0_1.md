@@ -3,8 +3,9 @@
 ## Summary
 
 This specification defines a reusable AmigaOS CLI and File I/O support module
-for the draft 68000 tokenizer VM example, plus a tokenizer-specific CLI harness
-contract that can produce readable, parsable results under FS-UAE.
+for the draft AmigaOS-native 68020-baseline tokenizer VM example, plus a
+tokenizer-specific CLI harness contract that can produce readable, parsable
+results under FS-UAE.
 
 The intended outcome is an assembly-side support layer that future Hunk
 executables can reuse for small "assemble, run in AmigaOS, capture output"
@@ -12,8 +13,8 @@ tests. This is a specification only; it does not implement the module.
 
 ## Problem
 
-The current 68000 tokenizer VM draft describes an interpreter ABI, but it does
-not yet define how an AmigaOS executable would:
+The current AmigaOS-native tokenizer VM draft describes an interpreter ABI, but
+it does not yet define how an AmigaOS executable would:
 
 - receive CLI arguments
 - read an input file or source fragment
@@ -39,6 +40,8 @@ and collect deterministic output.
   output-format errors.
 - [ ] Keep Workbench startup, requesters, buffered I/O, and interactive UI out
   of the first harness contract.
+- [ ] Keep the first native AmigaOS tokenizer harness on a `68020` CPU
+  baseline.
 - [ ] Keep the active worktree `AGENTS.md` workflow and execution rules binding
   for any plan derived from this specification.
 
@@ -77,6 +80,13 @@ concerns:
 The first target is a CLI/Shell-launched executable. AmigaOS documentation
 distinguishes Shell/CLI startup from Workbench startup; Workbench launch has a
 different startup message flow and is out of scope for this first contract.
+
+The first native AmigaOS tokenizer harness baseline CPU is `68020`. The
+existing `tokvm_run_68000` symbol name remains the v0.1 ABI entry label, but
+spec-derived native tokenizer harness code must target `.cpu 68020` unless a
+later specification changes that baseline explicitly. Illustrative AmigaOS
+examples outside that native tokenizer implementation slice are not required to
+adopt the same baseline.
 
 The result artifact must be plain ASCII text so host-side tests can parse it
 without an Amiga-specific binary decoder.
@@ -238,6 +248,8 @@ FS-UAE unavailable:
   modifying tokenizer VM interpreter logic.
 - [ ] A spec-derived implementation can add `tokvm_amigaos_cli_harness` that
   imports the low-level File I/O module and calls `tokvm_run_68000`.
+- [ ] A spec-derived implementation targets `.cpu 68020` as the baseline CPU
+  for the first native AmigaOS tokenizer harness slice.
 - [ ] The harness supports the command shape `tokvm <input-path> <output-path>`.
 - [ ] The harness writes the v0.1 `OPFORGE-TOKVM 1` report format for one
   successful tokenizer VM run.

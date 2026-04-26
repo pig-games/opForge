@@ -293,6 +293,7 @@ fn tokenizer_vm_program_for_test(owner: ScopedOwner) -> TokenizerVmProgramDescri
         opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
         start_state: 0,
         state_entry_offsets: vec![0],
+        stream: TokenizerVmStreamDescriptor::default(),
         limits: TokenizerVmLimits {
             max_steps_per_line: 2048,
             max_tokens_per_line: 256,

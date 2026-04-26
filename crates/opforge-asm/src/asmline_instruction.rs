@@ -2236,9 +2236,10 @@ impl<'a> AsmLine<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "vm-runtime-only")))]
 mod tests {
     use super::*;
+    use opcore::parser::BinaryOp;
 
     fn span() -> Span {
         Span {

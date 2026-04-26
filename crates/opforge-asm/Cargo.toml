@@ -23,4 +23,5 @@ serde_json = "1"
 clap = { version = "4", features = ["derive"] }
 cli-core = { path = "../opforge-cli-core" }
 engine = { path = "../opforge-engine" }
+formatter = { path = "../opforge-formatter" }
 package = { path = "../opforge-package" }

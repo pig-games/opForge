@@ -1985,28 +1985,30 @@ mod tests {
     #[test]
     fn parses_identifier_absolute_suffix_aliases() {
         let handler = M68KFamilyHandler::new();
-        let operands = handler
-            .parse_operands(
-                "MOVEA.L",
-                &[
-                    Expr::Identifier("SysBase.W".to_string(), span()),
-                    Expr::Identifier("A6".to_string(), span()),
-                ],
-            )
-            .expect("operands");
+        for source in ["SysBase.W", "SysBase.w"] {
+            let operands = handler
+                .parse_operands(
+                    "MOVEA.L",
+                    &[
+                        Expr::Identifier(source.to_string(), span()),
+                        Expr::Identifier("A6".to_string(), span()),
+                    ],
+                )
+                .expect("operands");
 
-        assert!(matches!(
-            &operands[0],
-            FamilyOperand::Absolute {
-                size: AbsoluteSize::Word,
-                expr: Expr::Identifier(name, _),
-                ..
-            } if name == "SysBase"
-        ));
-        assert!(matches!(
-            &operands[1],
-            FamilyOperand::AddressRegister { register, .. } if register == "A6"
-        ));
+            assert!(matches!(
+                &operands[0],
+                FamilyOperand::Absolute {
+                    size: AbsoluteSize::Word,
+                    expr: Expr::Identifier(name, _),
+                    ..
+                } if name == "SysBase"
+            ));
+            assert!(matches!(
+                &operands[1],
+                FamilyOperand::AddressRegister { register, .. } if register == "A6"
+            ));
+        }
     }
 
     #[test]

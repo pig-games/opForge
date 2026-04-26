@@ -175,7 +175,7 @@ impl Default for TokenizerVmLimits {
         Self {
             max_steps_per_line: 2048,
             max_tokens_per_line: 256,
-            max_lexeme_bytes: 256,
+            max_lexeme_bytes: 1024,
             max_errors_per_line: 16,
         }
     }
@@ -189,6 +189,38 @@ pub struct TokenizerVmDiagnosticMap {
     pub token_limit_exceeded: String,
     pub lexeme_limit_exceeded: String,
     pub error_limit_exceeded: String,
+}
+
+pub const TOKENIZER_VM_STREAM_VERSION_V1: u16 = 1;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TokenizerVmStreamMode {
+    LineInputBytes = 0x01,
+}
+
+impl TokenizerVmStreamMode {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0x01 => Some(Self::LineInputBytes),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TokenizerVmStreamDescriptor {
+    pub version: u16,
+    pub mode: TokenizerVmStreamMode,
+}
+
+impl Default for TokenizerVmStreamDescriptor {
+    fn default() -> Self {
+        Self {
+            version: TOKENIZER_VM_STREAM_VERSION_V1,
+            mode: TokenizerVmStreamMode::LineInputBytes,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -209,6 +241,10 @@ pub enum TokenizerVmOpcode {
     EmitDiag = 0x0C,
     DelegateCore = 0x0D,
     ScanCoreToken = 0x0E,
+    ScanIdentifier = 0x0F,
+    ScanNumber = 0x10,
+    ScanString = 0x11,
+    ScanSymbol = 0x12,
 }
 
 impl TokenizerVmOpcode {
@@ -229,6 +265,10 @@ impl TokenizerVmOpcode {
             0x0C => Some(Self::EmitDiag),
             0x0D => Some(Self::DelegateCore),
             0x0E => Some(Self::ScanCoreToken),
+            0x0F => Some(Self::ScanIdentifier),
+            0x10 => Some(Self::ScanNumber),
+            0x11 => Some(Self::ScanString),
+            0x12 => Some(Self::ScanSymbol),
             _ => None,
         }
     }
@@ -240,6 +280,7 @@ pub struct TokenizerVmProgramDescriptor {
     pub opcode_version: u16,
     pub start_state: u16,
     pub state_entry_offsets: Vec<u32>,
+    pub stream: TokenizerVmStreamDescriptor,
     pub limits: TokenizerVmLimits,
     pub diagnostics: TokenizerVmDiagnosticMap,
     pub program: Vec<u8>,

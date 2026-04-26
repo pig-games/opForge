@@ -951,13 +951,21 @@ impl LspSession {
         let generation = self.issue_validation_generation(uri);
         let config = self.config.clone();
         let documents = self.documents.clone();
+        let workspace_index = self.workspace_index.clone();
         let tx = self.validation_tx.clone();
         let root_uri = uri.to_string();
         let counter = Arc::clone(&self.active_validations);
         counter.fetch_add(1, Ordering::Relaxed);
         thread::spawn(move || {
             let _guard = ValidationWorkerGuard::new(counter);
-            let result = run_validation_task(config, doc, documents, generation, root_uri);
+            let result = run_validation_task(
+                config,
+                doc,
+                documents,
+                workspace_index,
+                generation,
+                root_uri,
+            );
             let _ = tx.send(result);
         });
         true
@@ -1201,10 +1209,11 @@ fn run_validation_task(
     config: LspConfig,
     doc: DocumentState,
     open_docs: HashMap<String, DocumentState>,
+    workspace_index: WorkspaceIndex,
     generation: u64,
     root_uri: String,
 ) -> ValidationTaskResult {
-    let overlay = match create_overlay_workspace(&config, &doc, &open_docs) {
+    let overlay = match create_overlay_workspace(&config, &doc, &open_docs, &workspace_index) {
         Ok(overlay) => overlay,
         Err(message) => {
             return ValidationTaskResult {
@@ -1241,6 +1250,7 @@ fn create_overlay_workspace(
     config: &LspConfig,
     active_doc: &DocumentState,
     open_docs: &HashMap<String, DocumentState>,
+    workspace_index: &WorkspaceIndex,
 ) -> Result<OverlayWorkspace, String> {
     let Some(original_file) = active_doc.path.as_ref() else {
         return Err("active document has no filesystem path".to_string());
@@ -1256,8 +1266,13 @@ fn create_overlay_workspace(
     fs::create_dir_all(&working_dir)
         .map_err(|err| format!("create overlay workspace {}: {err}", working_dir.display()))?;
 
-    for source_path in collect_overlay_source_files(config, active_doc, open_docs, &original_root)?
-    {
+    for source_path in collect_overlay_source_files(
+        config,
+        active_doc,
+        open_docs,
+        workspace_index,
+        &original_root,
+    )? {
         stage_overlay_file(&original_root, &working_dir, &source_path, open_docs)?;
     }
 
@@ -1321,6 +1336,7 @@ fn collect_overlay_source_files(
     config: &LspConfig,
     active_doc: &DocumentState,
     open_docs: &HashMap<String, DocumentState>,
+    workspace_index: &WorkspaceIndex,
     original_root: &Path,
 ) -> Result<Vec<PathBuf>, String> {
     let mut staged = HashSet::new();
@@ -1347,6 +1363,9 @@ fn collect_overlay_source_files(
         let imports = overlay_imports_for_path(&registry, &current_path, open_docs)?;
         let current_uri = path_to_file_uri(&current_path);
         for import in imports {
+            for candidate in workspace_index.module_document_paths(&import.module_id) {
+                enqueue_overlay_path(&candidate, original_root, &mut staged, &mut queued);
+            }
             for candidate in crate::lsp::workspace_index::resolve_module_target(
                 &import.module_id,
                 config,

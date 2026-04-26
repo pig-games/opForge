@@ -66,6 +66,7 @@ dependencies = [
  "cli-core",
  "engine",
  "families",
+ "formatter",
  "opcore",
  "package",
  "registry",
@@ -166,6 +167,7 @@ dependencies = [
  "engine",
  "libopforge",
  "serde_json",
+ "vm",
 ]
 
 [[package]]

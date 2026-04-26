@@ -5,6 +5,16 @@
 use super::*;
 
 impl M68KFamilyHandler {
+    fn strip_absolute_size_suffix(name: &str) -> Option<(&str, AbsoluteSize)> {
+        if name.len() >= 2 && name[name.len() - 2..].eq_ignore_ascii_case(".W") {
+            Some((&name[..name.len() - 2], AbsoluteSize::Word))
+        } else if name.len() >= 2 && name[name.len() - 2..].eq_ignore_ascii_case(".L") {
+            Some((&name[..name.len() - 2], AbsoluteSize::Long))
+        } else {
+            None
+        }
+    }
+
     pub(super) fn parse_register_name(expr: &Expr) -> Option<(String, opcore::tokenizer::Span)> {
         match expr {
             Expr::Register(name, span) | Expr::Identifier(name, span) if is_register(name) => {
@@ -353,11 +363,7 @@ impl M68KFamilyHandler {
                 ((**base).clone(), size)
             }
             Expr::Identifier(name, span) => {
-                let (base, size) = if let Some(base) = name.strip_suffix(".W") {
-                    (base, AbsoluteSize::Word)
-                } else if let Some(base) = name.strip_suffix(".L") {
-                    (base, AbsoluteSize::Long)
-                } else {
+                let Some((base, size)) = Self::strip_absolute_size_suffix(name) else {
                     return Err(FamilyParseError::new(
                         "68020 full-extension base displacement requires explicit .W or .L",
                         *span,
@@ -402,11 +408,7 @@ impl M68KFamilyHandler {
                 ((**base).clone(), size)
             }
             Expr::Identifier(name, span) => {
-                let (base, size) = if let Some(base) = name.strip_suffix(".W") {
-                    (base, AbsoluteSize::Word)
-                } else if let Some(base) = name.strip_suffix(".L") {
-                    (base, AbsoluteSize::Long)
-                } else {
+                let Some((base, size)) = Self::strip_absolute_size_suffix(name) else {
                     return Err(FamilyParseError::new(
                         "68020 full-extension outer displacement requires explicit .W or .L",
                         *span,
@@ -1350,11 +1352,7 @@ impl M68KFamilyHandler {
                 })
             }
             Expr::Identifier(name, span) => {
-                let (base, size) = if let Some(base) = name.strip_suffix(".W") {
-                    (base, AbsoluteSize::Word)
-                } else if let Some(base) = name.strip_suffix(".L") {
-                    (base, AbsoluteSize::Long)
-                } else {
+                let Some((base, size)) = Self::strip_absolute_size_suffix(name) else {
                     return Err(FamilyParseError::new(
                         "unsupported Motorola 68000 operand form",
                         *span,

@@ -50,11 +50,12 @@ use package::{
     ExprParserContractDescriptor, ExprParserDiagnosticMap, HierarchyChunks, ModeSelectorDescriptor,
     OpcpuCodecError, ParserContractDescriptor, ParserDiagnosticMap, ParserVmOpcode,
     ParserVmProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor, TokenizerVmDiagnosticMap,
-    TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor, VmProgramDescriptor,
-    DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
-    DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
-    DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_PARSER_EXPECTED_EXPRESSION,
-    DIAG_PARSER_EXPECTED_OPERAND, DIAG_PARSER_INVALID_STATEMENT, DIAG_PARSER_UNEXPECTED_TOKEN,
+    TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
+    TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
+    DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
+    DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
+    DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_PARSER_EXPECTED_EXPRESSION, DIAG_PARSER_EXPECTED_OPERAND,
+    DIAG_PARSER_INVALID_STATEMENT, DIAG_PARSER_UNEXPECTED_TOKEN,
     DIAG_TOKENIZER_ERROR_LIMIT_EXCEEDED, DIAG_TOKENIZER_INVALID_CHAR,
     DIAG_TOKENIZER_LEXEME_LIMIT_EXCEEDED, DIAG_TOKENIZER_STEP_LIMIT_EXCEEDED,
     DIAG_TOKENIZER_TOKEN_LIMIT_EXCEEDED, DIAG_TOKENIZER_UNTERMINATED_STRING,
@@ -806,10 +807,11 @@ fn default_family_tokenizer_vm_program(family_id: &str) -> TokenizerVmProgramDes
         opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
         start_state: 0,
         state_entry_offsets: vec![0],
+        stream: TokenizerVmStreamDescriptor::default(),
         limits: TokenizerVmLimits {
             max_steps_per_line: 2048,
             max_tokens_per_line: 256,
-            max_lexeme_bytes: 256,
+            max_lexeme_bytes: 1024,
             max_errors_per_line: 16,
         },
         diagnostics: TokenizerVmDiagnosticMap {
@@ -871,18 +873,74 @@ fn default_family_tokenizer_vm_program_bytes() -> Vec<u8> {
     let loop_offset = 0u32;
     let mut program = Vec::new();
 
-    // Scan one token from current cursor (or advance to done at EOL/comment).
-    program.push(TokenizerVmOpcode::ScanCoreToken as u8);
-    // Read current cursor byte after scan; if at EOL, finish.
+    // Dispatch tokenization by the current byte class and keep scanning until EOL.
     program.push(TokenizerVmOpcode::ReadChar as u8);
     program.push(TokenizerVmOpcode::JumpIfEol as u8);
     let eol_target_patch = program.len();
     program.extend_from_slice(&0u32.to_le_bytes());
-    // Continue scanning until EOL.
+
+    program.push(TokenizerVmOpcode::JumpIfClass as u8);
+    program.push(1);
+    let whitespace_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfByteEq as u8);
+    program.push(b'.');
+    let symbol_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfClass as u8);
+    program.push(2);
+    let identifier_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfClass as u8);
+    program.push(4);
+    let number_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfClass as u8);
+    program.push(5);
+    let string_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    let symbol_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::ScanSymbol as u8);
     program.push(TokenizerVmOpcode::Jump as u8);
     program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let whitespace_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::Advance as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let identifier_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::ScanIdentifier as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let number_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::ScanNumber as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let string_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::ScanString as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
     let end_offset = program.len() as u32;
     program[eol_target_patch..eol_target_patch + 4].copy_from_slice(&end_offset.to_le_bytes());
+    program[whitespace_target_patch..whitespace_target_patch + 4]
+        .copy_from_slice(&whitespace_offset.to_le_bytes());
+    program[symbol_target_patch..symbol_target_patch + 4]
+        .copy_from_slice(&symbol_offset.to_le_bytes());
+    program[identifier_target_patch..identifier_target_patch + 4]
+        .copy_from_slice(&identifier_offset.to_le_bytes());
+    program[number_target_patch..number_target_patch + 4]
+        .copy_from_slice(&number_offset.to_le_bytes());
+    program[string_target_patch..string_target_patch + 4]
+        .copy_from_slice(&string_offset.to_le_bytes());
     program.push(TokenizerVmOpcode::End as u8);
 
     program

@@ -1,0 +1,1 @@
+PASS: The specification defines a narrow, implementation-ready single-line native tokenizer ABI with explicit inputs, outputs, status codes, record layout, boundary behavior, acceptance criteria, and validation expectations, without widening into CLI, multi-line streaming, or broader native assembler scope.

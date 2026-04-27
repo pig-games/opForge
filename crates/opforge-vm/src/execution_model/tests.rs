@@ -14,16 +14,13 @@ use families::{
 use opcore::parser::BinaryOp;
 use opcore::parser::{AssignOp, Expr, LineAst, ParseError};
 use opcore::tokenizer::{Span, Token, TokenKind};
-use package::{
-    ParserVmOpcode, ParserVmOpcodeV2, PARSER_VM_OPCODE_VERSION_V1,
-    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-};
+use package::{ParserVmOpcodeV2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT};
 use registry::registry::ModuleRegistry;
 use registry::{
     parse_pack_directive_from_tokens, parse_place_directive_from_tokens_with,
     parser_from_line_with_registers, register_checker_none,
 };
-use std::sync::OnceLock;
+use std::{fs, path::PathBuf, sync::OnceLock};
 use types::line_ast::{ConditionalAst, PackAst, PlaceAst, UseAst};
 
 const DEFAULT_TOKENIZER_CPU_ID: &str = "m6502";
@@ -483,13 +480,12 @@ fn parse_line_with_parser_vm_rejects_retired_parse_core_line_opcode() {
         &register_checker,
     )
     .expect("tokenization should succeed");
-    let mut parser_contract = model
+    let parser_contract = model
         .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
         .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
     let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
-        program: vec![0x01, ParserVmOpcode::End as u8],
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+        program: vec![0x07, ParserVmOpcodeV2::End as u8],
     };
 
     let err = parse_line_with_parser_vm(
@@ -510,7 +506,7 @@ fn parse_line_with_parser_vm_rejects_retired_parse_core_line_opcode() {
         },
     )
     .expect_err("retired opcode should fail");
-    assert!(err.message.contains("invalid parser VM opcode 0x01"));
+    assert!(err.message.contains("cross-contract opcode 0x07"));
 }
 
 #[test]
@@ -533,7 +529,7 @@ fn parse_line_with_parser_vm_rejects_incompatible_contract_opcode_version() {
     parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT.saturating_add(1);
     let parser_vm_program = RuntimeParserVmProgram {
         opcode_version: parser_contract.opcode_version,
-        program: vec![ParserVmOpcode::Fail as u8, ParserVmOpcode::End as u8],
+        program: vec![ParserVmOpcodeV2::Fail as u8, ParserVmOpcodeV2::End as u8],
     };
 
     let err = parse_line_with_parser_vm(
@@ -573,13 +569,12 @@ fn parse_line_with_parser_vm_rejects_contract_program_opcode_version_mismatch() 
         &register_checker,
     )
     .expect("tokenization should succeed");
-    let mut parser_contract = model
+    let parser_contract = model
         .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
         .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
     let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1.saturating_add(1),
-        program: vec![ParserVmOpcode::Fail as u8, ParserVmOpcode::End as u8],
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT.saturating_add(1),
+        program: vec![ParserVmOpcodeV2::Fail as u8, ParserVmOpcodeV2::End as u8],
     };
 
     let err = parse_line_with_parser_vm(
@@ -684,7 +679,7 @@ fn parse_line_with_model_handles_dot_assignment_ops_through_default_v2_program()
 }
 
 #[test]
-fn parse_line_with_parser_vm_emit_diag_if_no_ast_reports_unexpected_token_slot() {
+fn parse_line_with_parser_vm_emit_diag_if_no_result_reports_unexpected_token_slot() {
     let model = default_runtime_model().expect("default runtime model should be available");
     let register_checker = register_checker_none();
     let source = "    ?";
@@ -697,16 +692,15 @@ fn parse_line_with_parser_vm_emit_diag_if_no_ast_reports_unexpected_token_slot()
         &register_checker,
     )
     .expect("tokenization should succeed");
-    let mut parser_contract = model
+    let parser_contract = model
         .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
         .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
     let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
         program: vec![
-            ParserVmOpcode::EmitDiagIfNoAst as u8,
+            ParserVmOpcodeV2::EmitDiagIfNoResult as u8,
             0,
-            ParserVmOpcode::End as u8,
+            ParserVmOpcodeV2::End as u8,
         ],
     };
 
@@ -731,14 +725,14 @@ fn parse_line_with_parser_vm_emit_diag_if_no_ast_reports_unexpected_token_slot()
     assert_eq!(
         err.message,
         format!(
-            "{}: parser VM emitted diagnostic slot 0",
+            "{}: parser VM v2 emitted diagnostic slot 0",
             parser_contract.diagnostics.unexpected_token
         )
     );
 }
 
 #[test]
-fn parse_line_with_parser_vm_emit_diag_if_no_ast_requires_slot_operand() {
+fn parse_line_with_parser_vm_emit_diag_if_no_result_requires_slot_operand() {
     let model = default_runtime_model().expect("default runtime model should be available");
     let register_checker = register_checker_none();
     let source = "    NOP";
@@ -751,13 +745,12 @@ fn parse_line_with_parser_vm_emit_diag_if_no_ast_requires_slot_operand() {
         &register_checker,
     )
     .expect("tokenization should succeed");
-    let mut parser_contract = model
+    let parser_contract = model
         .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
         .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
     let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
-        program: vec![ParserVmOpcode::EmitDiagIfNoAst as u8],
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+        program: vec![ParserVmOpcodeV2::EmitDiagIfNoResult as u8],
     };
 
     let err = parse_line_with_parser_vm(
@@ -777,8 +770,10 @@ fn parse_line_with_parser_vm_emit_diag_if_no_ast_requires_slot_operand() {
             },
         },
     )
-    .expect_err("missing EmitDiagIfNoAst slot must fail");
-    assert!(err.message.contains("EmitDiagIfNoAst missing slot operand"));
+    .expect_err("missing EmitDiagIfNoResult slot must fail");
+    assert!(err
+        .message
+        .contains("parser VM v2 missing EmitDiagIfNoResult slot"));
 }
 
 #[test]
@@ -795,13 +790,12 @@ fn parse_line_with_parser_vm_emit_diag_requires_slot_operand() {
         &register_checker,
     )
     .expect("tokenization should succeed");
-    let mut parser_contract = model
+    let parser_contract = model
         .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
         .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
     let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
-        program: vec![ParserVmOpcode::EmitDiag as u8],
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+        program: vec![ParserVmOpcodeV2::EmitDiag as u8],
     };
 
     let err = parse_line_with_parser_vm(
@@ -822,7 +816,28 @@ fn parse_line_with_parser_vm_emit_diag_requires_slot_operand() {
         },
     )
     .expect_err("missing EmitDiag slot must fail");
-    assert!(err.message.contains("EmitDiag missing slot operand"));
+    assert!(err.message.contains("parser VM v2 missing EmitDiag slot"));
+}
+
+#[test]
+fn opasm_parser_source_has_no_retired_envelope_helpers() {
+    let vm_manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let sources = [
+        vm_manifest.join("src/vm_opasm_parse.rs"),
+        vm_manifest.join("src/execution_model/parser_vm.rs"),
+        vm_manifest.join("src/execution_model/parser_vm_v2.rs"),
+        vm_manifest.join("../opforge-package/src/package.rs"),
+    ];
+    let retired_suffix = ["_envelope", "_from_tokens"].concat();
+
+    for source in sources {
+        let text = fs::read_to_string(&source).expect("parser source should be readable");
+        assert!(
+            !text.contains(&retired_suffix),
+            "retired parser helper suffix found in {}",
+            source.display()
+        );
+    }
 }
 
 #[test]

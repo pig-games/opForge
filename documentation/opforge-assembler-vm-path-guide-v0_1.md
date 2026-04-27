@@ -338,31 +338,30 @@ That means today's tokenizer VM is "VM-authoritative control flow around core to
 
 ### 6.2 Parser VM (`PRVM`)
 
-Definition: [`crates/opforge-package/src/package.rs#L266-L325`](../crates/opforge-package/src/package.rs#L266-L325)  
-Executor: [`crates/opforge-vm/src/execution_model/parser_vm.rs#L17-L205`](../crates/opforge-vm/src/execution_model/parser_vm.rs#L17-L205)
+Definition: [`crates/opforge-package/src/package.rs`](../crates/opforge-package/src/package.rs)
+Dispatcher: [`crates/opforge-vm/src/execution_model/parser_vm.rs`](../crates/opforge-vm/src/execution_model/parser_vm.rs)
+Executor: [`crates/opforge-vm/src/execution_model/parser_vm_v2.rs`](../crates/opforge-vm/src/execution_model/parser_vm_v2.rs)
+
+The active opasm statement parser VM is PRVM v2. The prior v1 envelope opcodes were retired; parser dispatch now accepts only `PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT` for opasm statement parsing.
 
 | Opcode | Name | Meaning |
 |---|---|---|
 | `0x00` | `End` | Finish and return the AST produced so far. |
-| `0x02` | `EmitDiag` | Emit a parser diagnostic slot immediately. |
-| `0x03` | `Fail` | Abort parsing with a generic parser-VM failure. |
-| `0x04` | `ParseStatementEnvelope` | Try the broad statement envelope parser. |
-| `0x05` | `ParseDotDirectiveEnvelope` | Try parsing a dot-directive form. |
-| `0x06` | `ParseAssignmentEnvelope` | Try parsing an assignment form. |
-| `0x07` | `ParseInstructionEnvelope` | Try parsing an instruction form. |
-| `0x08` | `ParseStarOrgEnvelope` | Try parsing the `* = expr` org form. |
-| `0x09` | `EmitDiagIfNoAst` | Emit a diagnostic slot only if no AST has been produced yet. |
+| `0x01` | `Jump` | Unconditional bytecode jump. |
+| `0x02` | `JumpIfTrue` | Jump if the top boolean value is true. |
+| `0x03` | `JumpIfFalse` | Jump if the top boolean value is false. |
+| `0x04` | `Checkpoint` | Save cursor, builder, and value-stack state. |
+| `0x05` | `Rollback` | Restore the last checkpoint. |
+| `0x06` | `Commit` | Drop the last checkpoint. |
+| `0x10`-`0x15` | Peek predicates | Inspect token kind, identifiers, operators, end-of-line, assignments, and `*=`. |
+| `0x20`-`0x22` | Consume operations | Advance or consume expected token/operator shapes. |
+| `0x30`-`0x33` | Load operations | Push identifier/span/token/inline text values. |
+| `0x40`-`0x42` | Parser helpers | Parse optional labels, scan operand boundaries, and enforce no trailing tokens. |
+| `0x50` | `ParseOperandExprRange` | Enter the typed expression-parser sub-contract for an operand range. |
+| `0x60`-`0x66` | AST builders | Build statements, dot mnemonics, operands, and assignments. |
+| `0x70`-`0x72` | Diagnostics | Emit parser diagnostics, emit if no result, or fail deterministically. |
 
-The default parser VM program for families is:
-
-1. try dot-directive,
-2. try star-org,
-3. try assignment,
-4. try instruction,
-5. if nothing matched, emit "unexpected token",
-6. end.
-
-See [`crates/opforge-vm/src/builder.rs#L858-L868`](../crates/opforge-vm/src/builder.rs#L858-L868).
+The default parser VM program handles empty lines, assignments, `*=`/`.org`, dot mnemonics and data directives, and ordinary instruction statements. Some out-of-scope directive families still route through the explicit Rust fallback boundary until later parser work migrates them.
 
 ### 6.3 Expression Parser VM (`EXPP`)
 

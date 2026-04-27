@@ -11,7 +11,7 @@ use opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError};
 use opcore::tokenizer::{NumberLiteral, StringLiteral};
 use opcore::tokenizer::{OperatorKind, Span, Token, TokenKind};
 use package::{
-    ParserVmOpcode, ParserVmOpcodeV2, DIAG_PARSER_OPASM_V2_CHECKPOINT_DEPTH_EXCEEDED,
+    ParserVmOpcodeV2, DIAG_PARSER_OPASM_V2_CHECKPOINT_DEPTH_EXCEEDED,
     DIAG_PARSER_OPASM_V2_ENTRY_BOUNDARY_VIOLATION,
     DIAG_PARSER_OPASM_V2_FORBIDDEN_CROSS_CONTRACT_OPCODE,
     DIAG_PARSER_OPASM_V2_MISROUTED_OPCORE_DIRECTIVE, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
@@ -156,9 +156,7 @@ impl ParserVmV2State<'_, '_> {
             }
             let opcode_byte = self.read_u8("opcode")?;
             let Some(opcode) = ParserVmOpcodeV2::from_u8(opcode_byte) else {
-                if ParserVmOpcode::from_u8(opcode_byte).is_some()
-                    || opcode_byte == RETIRED_V1_PARSE_INSTRUCTION_ENVELOPE
-                {
+                if opcode_byte == RETIRED_V1_PARSE_INSTRUCTION_ENVELOPE {
                     return self.fail_with_code(
                         DIAG_PARSER_OPASM_V2_FORBIDDEN_CROSS_CONTRACT_OPCODE,
                         format!("parser VM v2 rejected cross-contract opcode 0x{opcode_byte:02X}"),

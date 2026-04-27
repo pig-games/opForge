@@ -421,51 +421,51 @@ fn sample_parser_vm_programs() -> Vec<ParserVmProgramDescriptor> {
 }
 
 #[test]
-fn parser_vm_v2_opcode_byte_round_trip_is_stable() {
+fn parser_vm_opcode_byte_round_trip_is_stable() {
     let opcodes = [
-        (0x00, ParserVmOpcodeV2::End),
-        (0x01, ParserVmOpcodeV2::Jump),
-        (0x02, ParserVmOpcodeV2::JumpIfTrue),
-        (0x03, ParserVmOpcodeV2::JumpIfFalse),
-        (0x04, ParserVmOpcodeV2::Checkpoint),
-        (0x05, ParserVmOpcodeV2::Rollback),
-        (0x06, ParserVmOpcodeV2::Commit),
-        (0x10, ParserVmOpcodeV2::PeekKind),
-        (0x11, ParserVmOpcodeV2::PeekIdentifier),
-        (0x12, ParserVmOpcodeV2::PeekOperator),
-        (0x13, ParserVmOpcodeV2::IsEol),
-        (0x14, ParserVmOpcodeV2::PeekAssignmentOperator),
-        (0x15, ParserVmOpcodeV2::PeekStarOrg),
-        (0x20, ParserVmOpcodeV2::Advance),
-        (0x21, ParserVmOpcodeV2::ConsumeKind),
-        (0x22, ParserVmOpcodeV2::ConsumeOperator),
-        (0x30, ParserVmOpcodeV2::LoadIdentifier),
-        (0x31, ParserVmOpcodeV2::LoadSpan),
-        (0x32, ParserVmOpcodeV2::LoadTokenText),
-        (0x33, ParserVmOpcodeV2::LoadInlineText),
-        (0x40, ParserVmOpcodeV2::ParseOptionalLeadingLabel),
-        (0x41, ParserVmOpcodeV2::ScanTopLevelCommaBoundaries),
-        (0x42, ParserVmOpcodeV2::RequireNoTrailingTokens),
-        (0x50, ParserVmOpcodeV2::ParseOperandExprRange),
-        (0x60, ParserVmOpcodeV2::BeginStatement),
-        (0x61, ParserVmOpcodeV2::SetLabel),
-        (0x62, ParserVmOpcodeV2::SetMnemonic),
-        (0x63, ParserVmOpcodeV2::PushOperand),
-        (0x64, ParserVmOpcodeV2::FinishLine),
-        (0x65, ParserVmOpcodeV2::SetDotMnemonic),
-        (0x66, ParserVmOpcodeV2::FinishAssignment),
-        (0x70, ParserVmOpcodeV2::EmitDiag),
-        (0x71, ParserVmOpcodeV2::EmitDiagIfNoResult),
-        (0x72, ParserVmOpcodeV2::Fail),
+        (0x00, ParserVmOpcode::End),
+        (0x01, ParserVmOpcode::Jump),
+        (0x02, ParserVmOpcode::JumpIfTrue),
+        (0x03, ParserVmOpcode::JumpIfFalse),
+        (0x04, ParserVmOpcode::Checkpoint),
+        (0x05, ParserVmOpcode::Rollback),
+        (0x06, ParserVmOpcode::Commit),
+        (0x10, ParserVmOpcode::PeekKind),
+        (0x11, ParserVmOpcode::PeekIdentifier),
+        (0x12, ParserVmOpcode::PeekOperator),
+        (0x13, ParserVmOpcode::IsEol),
+        (0x14, ParserVmOpcode::PeekAssignmentOperator),
+        (0x15, ParserVmOpcode::PeekStarOrg),
+        (0x20, ParserVmOpcode::Advance),
+        (0x21, ParserVmOpcode::ConsumeKind),
+        (0x22, ParserVmOpcode::ConsumeOperator),
+        (0x30, ParserVmOpcode::LoadIdentifier),
+        (0x31, ParserVmOpcode::LoadSpan),
+        (0x32, ParserVmOpcode::LoadTokenText),
+        (0x33, ParserVmOpcode::LoadInlineText),
+        (0x40, ParserVmOpcode::ParseOptionalLeadingLabel),
+        (0x41, ParserVmOpcode::ScanTopLevelCommaBoundaries),
+        (0x42, ParserVmOpcode::RequireNoTrailingTokens),
+        (0x50, ParserVmOpcode::ParseOperandExprRange),
+        (0x60, ParserVmOpcode::BeginStatement),
+        (0x61, ParserVmOpcode::SetLabel),
+        (0x62, ParserVmOpcode::SetMnemonic),
+        (0x63, ParserVmOpcode::PushOperand),
+        (0x64, ParserVmOpcode::FinishLine),
+        (0x65, ParserVmOpcode::SetDotMnemonic),
+        (0x66, ParserVmOpcode::FinishAssignment),
+        (0x70, ParserVmOpcode::EmitDiag),
+        (0x71, ParserVmOpcode::EmitDiagIfNoResult),
+        (0x72, ParserVmOpcode::Fail),
     ];
 
     for (byte, opcode) in opcodes {
-        assert_eq!(ParserVmOpcodeV2::from_u8(byte), Some(opcode));
+        assert_eq!(ParserVmOpcode::from_u8(byte), Some(opcode));
         assert_eq!(opcode as u8, byte);
     }
-    assert_eq!(ParserVmOpcodeV2::from_u8(0x07), None);
-    assert_eq!(ParserVmOpcodeV2::from_u8(0x43), None);
-    assert_eq!(ParserVmOpcodeV2::from_u8(0x80), None);
+    assert_eq!(ParserVmOpcode::from_u8(0x07), None);
+    assert_eq!(ParserVmOpcode::from_u8(0x43), None);
+    assert_eq!(ParserVmOpcode::from_u8(0x80), None);
 }
 
 fn expr_contract_for_test(owner: ScopedOwner) -> ExprContractDescriptor {

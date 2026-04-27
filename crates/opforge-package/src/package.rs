@@ -102,7 +102,6 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// VM opcode-version compatibility matrix for package-scoped contracts/programs.
 ///
 /// - `TOKENIZER_VM_OPCODE_VERSION_V1`: tokenizer VM (`TKVM`) payloads.
-/// - `PARSER_VM_OPCODE_VERSION_V1`: line parser VM (`PRVM`) v1 payloads.
 /// - `PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT`: `.opasm` statement PRVM v2 payloads.
 /// - `EXPR_PARSER_VM_OPCODE_VERSION_V1`: expression parser VM (`EXPP`) payloads.
 /// - `EXPR_VM_OPCODE_VERSION_V1`: expression evaluator VM contracts (`EXPR`),
@@ -112,7 +111,6 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// - exact version match required for the active decoder.
 /// - unknown versions must produce deterministic errors.
 pub const TOKENIZER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
-pub const PARSER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXPR_PARSER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const PARSER_GRAMMAR_ID_LINE_V1: &str = "opforge.line.v1";
@@ -322,27 +320,6 @@ pub struct ParserContractDescriptor {
 #[repr(u8)]
 pub enum ParserVmOpcode {
     End = 0x00,
-    EmitDiag = 0x02,
-    Fail = 0x03,
-    EmitDiagIfNoAst = 0x09,
-}
-
-impl ParserVmOpcode {
-    pub fn from_u8(value: u8) -> Option<Self> {
-        match value {
-            0x00 => Some(Self::End),
-            0x02 => Some(Self::EmitDiag),
-            0x03 => Some(Self::Fail),
-            0x09 => Some(Self::EmitDiagIfNoAst),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum ParserVmOpcodeV2 {
-    End = 0x00,
     Jump = 0x01,
     JumpIfTrue = 0x02,
     JumpIfFalse = 0x03,
@@ -378,7 +355,7 @@ pub enum ParserVmOpcodeV2 {
     Fail = 0x72,
 }
 
-impl ParserVmOpcodeV2 {
+impl ParserVmOpcode {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x00 => Some(Self::End),
@@ -419,6 +396,8 @@ impl ParserVmOpcodeV2 {
         }
     }
 }
+
+pub type ParserVmOpcodeV2 = ParserVmOpcode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]

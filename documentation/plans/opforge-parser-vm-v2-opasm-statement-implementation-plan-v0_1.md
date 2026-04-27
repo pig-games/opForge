@@ -366,7 +366,7 @@ they are mechanically required by the listed deletions.
     - 2026-04-27 rerun `plan-compliance-reviewer` returned `PASS`; residual risk is limited to relying on the recorded validation matrix and the already-waived `asm::tests::examples_match_reference_outputs` baseline failure.
   - Commit outcome: assignments, `*=`/`.org`, and block-scoped directive heads/tails parsed by v2; only the residual v1 housekeeping opcode (`EmitDiagIfNoAst`) and the v1 `End` remain pending WI-5
 
-- [ ] **Work item 5**: remove residual PRVM v1 surface
+- [x] **Work item 5**: remove residual PRVM v1 surface
   - Source requirement or finding IDs: Q7 final cleanup; Q8 boundary enforcement
   - Definition of done:
     - `ParserVmOpcode` v1 enum removed; `PARSER_VM_OPCODE_VERSION_V1` constant removed
@@ -385,8 +385,25 @@ they are mechanically required by the listed deletions.
     - `crates/opforge-package/src/package/tests.rs`
     - `crates/opforge-vm/src/builder.rs`
     - `crates/opforge-vm/src/runtime_tests.rs`
-  - Plan-compliance review evidence: `plan-compliance-reviewer` `PASS`
-  - Commit outcome: PRVM v1 is gone; PRVM v2 is the sole opasm-statement parser-VM contract; engine/processor partition is enforceable by inspection
+  - Implementation notes:
+    - removed the opasm PRVM v1 opcode-version constant and promoted the surviving v2 opcode enum to `ParserVmOpcode`; `ParserVmOpcodeV2` remains only as a compatibility type alias for existing v2 call sites
+    - reduced `parser_vm.rs` to a v2-only dispatcher that enforces contract/program version equality and rejects non-v2 opasm parser contracts before entering `parser_vm_v2.rs`
+    - changed runtime contract validation to accept only `PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT` for opasm statement parsing; expression parser VM v1 remains intentionally untouched as the separate EXPP contract
+    - replaced residual v1 test programs with v2 diagnostic/failure programs and added `opasm_parser_source_has_no_retired_envelope_helpers` as the required grep-style source audit
+    - refreshed the parser VM guide so it documents PRVM v2 instead of the retired v1 envelope opcodes
+  - Validation evidence:
+    - `cargo test -p package parser_vm_opcode_byte_round_trip_is_stable -- --nocapture` passed
+    - `cargo test -p vm parser_vm_v2 -- --nocapture` passed (`13 passed`)
+    - `cargo test -p vm execution_model_ -- --nocapture` passed (`124 passed`)
+    - `cargo test -p vm opasm_parser_source_has_no_retired_envelope_helpers -- --nocapture` passed
+    - source audit grep for `\bPARSER_VM_OPCODE_VERSION_V1\b|\bEmitDiagIfNoAst\b|parse_[A-Za-z0-9_]*_envelope_from_tokens` under `crates/**/*.rs` returned no matches; expression parser VM v1 matches were intentionally excluded from this opasm cleanup, and `ParserVmOpcode` now names the promoted v2 enum
+    - `cargo fmt --all` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit` passed with the two already-known allowed warnings (`registry` unmaintained, `rand` advisory through `proptest`)
+    - `cargo test --workspace` is accepted for this WI with `864 passed; 1 failed`, where the only failure is the previously waived baseline `asm::tests::examples_match_reference_outputs`
+    - expected-file anchors that were not modified in WI-5 were audited as already clean from earlier work items: `vm_opasm_parse.rs` has no retired envelope helpers, `builder.rs` already emits v2 default parser bytecode, `package/tests.rs` now exercises the promoted enum name, and the execution-model module surface remains the existing `execution_model.rs` plus `execution_model/parser_vm.rs`/`parser_vm_v2.rs` split
+  - Plan-compliance review evidence: first WI-5 `plan-compliance-reviewer` run returned `FAIL` because the surviving enum was still named `ParserVmOpcodeV2` and the expected-file anchor audit was not explicit; after promoting the enum to `ParserVmOpcode`, retaining `ParserVmOpcodeV2` only as a compatibility alias, and documenting the anchor audit, the rerun returned `PASS`
+  - Commit outcome: PRVM v1 is gone, PRVM v2 is the sole opasm-statement parser-VM contract, and the engine/processor partition is enforceable by inspection
 
 - [ ] **Work item 6**: Rust v2 parity hardening and authority confirmation
   - Source requirement or finding IDs: Objective ("source-of-truth target"); Q5 expression-error preservation; native-port readiness gate

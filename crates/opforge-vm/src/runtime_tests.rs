@@ -39,12 +39,12 @@ use package::{
     default_token_policy_lexical_defaults, token_identifier_class, DiagnosticDescriptor,
     ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
     ExprParserDiagnosticMap, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap,
-    ParserVmOpcode, ParserVmOpcodeV2, ParserVmProgramDescriptor, TokenCaseRule,
-    TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
-    TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor, VmProgramDescriptor,
-    DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
-    DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
-    DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
+    ParserVmOpcodeV2, ParserVmProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor,
+    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
+    TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
+    DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
+    DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
+    DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
     EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1,
     PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, TOKENIZER_VM_OPCODE_VERSION_V1,
@@ -1592,7 +1592,7 @@ fn execution_model_parser_vm_program_resolution_prefers_dialect_then_cpu_then_fa
         )));
     let mut dialect_program =
         parser_vm_program_for_test(ScopedOwner::Dialect("transparent".to_string()));
-    dialect_program.program = vec![ParserVmOpcode::Fail as u8, ParserVmOpcode::End as u8];
+    dialect_program.program = vec![ParserVmOpcodeV2::Fail as u8, ParserVmOpcodeV2::End as u8];
     chunks.parser_vm_programs.push(dialect_program);
 
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
@@ -1602,7 +1602,7 @@ fn execution_model_parser_vm_program_resolution_prefers_dialect_then_cpu_then_fa
         .expect("parser vm program should resolve");
     assert_eq!(
         program.program,
-        vec![ParserVmOpcode::Fail as u8, ParserVmOpcode::End as u8]
+        vec![ParserVmOpcodeV2::Fail as u8, ParserVmOpcodeV2::End as u8]
     );
 }
 

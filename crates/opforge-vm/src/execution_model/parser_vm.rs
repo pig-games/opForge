@@ -6,7 +6,10 @@ use crate::runtime_model_types::{
 use crate::runtime_parse_utils::{parse_error_at_end, runtime_bridge_error_to_parse_error};
 use opcore::parser::{LineAst, ParseError};
 use opcore::tokenizer::{Span, Token};
-use package::{ParserVmOpcode, PARSER_VM_OPCODE_VERSION_V1};
+use package::{
+    ParserVmOpcode, PARSER_VM_OPCODE_VERSION_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+};
+use types::processing::ProcessingRequestKind;
 
 use crate::vm_opasm_parse::{
     parse_assignment_envelope_from_tokens, parse_dot_directive_envelope_from_tokens,
@@ -33,6 +36,20 @@ pub(crate) fn parse_line_with_parser_vm(
                 parser_vm_program.opcode_version
             ),
         ));
+    }
+    if parser_contract.opcode_version == PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT {
+        return super::parser_vm_v2::parse_line_with_parser_vm_v2(
+            tokens,
+            end_span,
+            end_token_text,
+            parser_contract,
+            parser_vm_program,
+            &ProcessingRequestKind::Processor {
+                processor: "asm".to_string(),
+                kind: "statement".to_string(),
+            },
+            exec_ctx,
+        );
     }
     if parser_contract.opcode_version != PARSER_VM_OPCODE_VERSION_V1 {
         return Err(parse_error_at_end(

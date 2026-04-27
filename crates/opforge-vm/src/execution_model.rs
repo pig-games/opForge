@@ -45,6 +45,7 @@ pub(crate) mod directives;
 mod encoding_bridge;
 mod model_core_helpers;
 pub(crate) mod parser_vm;
+pub(crate) mod parser_vm_v2;
 mod selector_bridge;
 mod selector_encoding;
 #[cfg(test)]
@@ -351,6 +352,15 @@ impl HierarchyExecutionModel {
     ) -> Result<(), RuntimeBridgeError> {
         self.core
             .enforce_parser_vm_program_budget_for_assembler(parser_contract, parser_vm_program)
+    }
+
+    pub(crate) fn ensure_parser_vm_v2_expr_subcall_contract_for_assembler(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+    ) -> Result<(), RuntimeBridgeError> {
+        self.core
+            .ensure_parser_vm_v2_expr_subcall_contract_for_assembler(cpu_id, dialect_override)
     }
 
     pub fn parse_portable_line_for_assembler(

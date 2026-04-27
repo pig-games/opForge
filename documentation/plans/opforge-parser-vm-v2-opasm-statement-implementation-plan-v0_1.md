@@ -253,7 +253,7 @@ commit to keep the tree compiling and the quality gate green. The
 `plan-compliance-reviewer` is expected to allow such follow-on edits when
 they are mechanically required by the listed deletions.
 
-- [ ] **Work item 1**: land the PRVM v2 opcode enum, executor scaffolding, and runtime-mediated cross-contract sub-call mechanism alongside v1
+- [x] **Work item 1**: land the PRVM v2 opcode enum, executor scaffolding, and runtime-mediated cross-contract sub-call mechanism alongside v1
   - Source requirement or finding IDs: Q1, Q2, Q4, Q8 resolutions; entry-boundary precondition from Q8
   - Definition of done:
     - `ParserVmOpcodeV2` enum with the inventory listed in §"opasm v2 Opcode Inventory" and Q1 byte assignments lands in `crates/opforge-package/src/package.rs` next to existing v1 enum
@@ -279,6 +279,7 @@ they are mechanically required by the listed deletions.
     - `crates/opforge-vm/src/runtime_tests.rs`
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for a slice limited to v2 enum + dormant executor + sub-call plumbing; v1 still owns all live parses
+    - 2026-04-27 execution evidence: `cargo fmt --all`, `cargo test -p package parser_vm_v2 -- --nocapture`, `cargo test -p vm execution_model::parser_vm_v2 -- --nocapture`, `cargo test -p vm execution_model_parser_vm_v2_expr_subcall_contract_validation_is_runtime_mediated -- --nocapture`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo audit` passed. `cargo test --workspace` is accepted for this WI with the single reproduced baseline failure `asm::tests::examples_match_reference_outputs` waived by the user on 2026-04-27; the failure was reproduced on `main` and is the existing `motorola68000/amigaos/tkpkg/tkpkg_debug_cli` hunk reference mismatch, not a WI-1 regression.
   - Commit outcome:
     - PRVM v2 opcode set, executor, and cross-contract sub-call mechanism exist in the tree but are not yet selected by the default builder; nothing in the assembler pipeline behaves differently yet
 

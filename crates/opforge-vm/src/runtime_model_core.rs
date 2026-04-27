@@ -10,9 +10,10 @@ use opcore::tokenizer::Tokenizer;
 use package::{
     decode_hierarchy_chunks, HierarchyChunks, ModeSelectorDescriptor, OpcpuCodecError,
     TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
-    TokenizerVmStreamMode, EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1,
-    PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V1,
-    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
+    TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
+    DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_PARSER_VM_OPCODE_VERSION_V1,
+    EXPR_VM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
+    PARSER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -1262,6 +1263,36 @@ impl RuntimeModelCore {
             "expression parser contract diagnostics.invalid_expression_program",
             contract.diagnostics.invalid_expression_program.as_str(),
         )
+    }
+
+    pub fn ensure_parser_vm_v2_expr_subcall_contract_for_assembler(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+    ) -> Result<(), RuntimeBridgeError> {
+        let resolved = self.resolve_pipeline(cpu_id, dialect_override)?;
+        let Some(contract) = self.expr_parser_contract_for_resolved(&resolved) else {
+            return Err(RuntimeBridgeError::Diagnostic(
+                RuntimeBridgeDiagnostic::new(
+                    DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
+                    "opasm v2 could not resolve an opcore expression parser contract",
+                    None,
+                ),
+            ));
+        };
+        if contract.opcode_version != EXPR_PARSER_VM_OPCODE_VERSION_V1 {
+            return Err(RuntimeBridgeError::Diagnostic(
+                RuntimeBridgeDiagnostic::new(
+                    DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
+                    format!(
+                        "opasm v2 expression sub-call opcode version mismatch ({} != {})",
+                        contract.opcode_version, EXPR_PARSER_VM_OPCODE_VERSION_V1
+                    ),
+                    None,
+                ),
+            ));
+        }
+        Ok(())
     }
 
     pub fn ensure_diag_code_declared_in_package_catalog(

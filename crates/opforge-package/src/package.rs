@@ -77,6 +77,18 @@ pub const DIAG_PARSER_UNEXPECTED_TOKEN: &str = "otp001";
 pub const DIAG_PARSER_EXPECTED_EXPRESSION: &str = "otp002";
 pub const DIAG_PARSER_EXPECTED_OPERAND: &str = "otp003";
 pub const DIAG_PARSER_INVALID_STATEMENT: &str = "otp004";
+pub const DIAG_PARSER_OPASM_V2_ENTRY_BOUNDARY_VIOLATION: &str =
+    "parser.opasm_v2.entry_boundary_violation";
+pub const DIAG_PARSER_OPASM_V2_FORBIDDEN_CROSS_CONTRACT_OPCODE: &str =
+    "parser.opasm_v2.forbidden_cross_contract_opcode";
+pub const DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT: &str =
+    "parser.opasm_v2.unknown_subcall_contract";
+pub const DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH: &str =
+    "parser.opasm_v2.subcall_version_mismatch";
+pub const DIAG_PARSER_OPASM_V2_MISROUTED_OPCORE_DIRECTIVE: &str =
+    "parser.opasm_v2.misrouted_opcore_directive";
+pub const DIAG_PARSER_OPASM_V2_CHECKPOINT_DEPTH_EXCEEDED: &str =
+    "parser.opasm_v2.checkpoint_depth_exceeded";
 pub const DIAG_ASM_GENERIC_ERRORS_DETECTED: &str = "asm001";
 pub const DIAG_ASM_PREPROCESS_ERROR: &str = "asm102";
 pub const DIAG_ASM_CLI_ERROR: &str = "asm101";
@@ -90,7 +102,8 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// VM opcode-version compatibility matrix for package-scoped contracts/programs.
 ///
 /// - `TOKENIZER_VM_OPCODE_VERSION_V1`: tokenizer VM (`TKVM`) payloads.
-/// - `PARSER_VM_OPCODE_VERSION_V1`: line parser VM (`PRVM`) payloads.
+/// - `PARSER_VM_OPCODE_VERSION_V1`: line parser VM (`PRVM`) v1 payloads.
+/// - `PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT`: `.opasm` statement PRVM v2 payloads.
 /// - `EXPR_PARSER_VM_OPCODE_VERSION_V1`: expression parser VM (`EXPP`) payloads.
 /// - `EXPR_VM_OPCODE_VERSION_V1`: expression evaluator VM contracts (`EXPR`),
 ///   sourced from `core::expr_vm` to keep runtime/package compatibility strict.
@@ -100,6 +113,7 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// - unknown versions must produce deterministic errors.
 pub const TOKENIZER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const PARSER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXPR_PARSER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const PARSER_GRAMMAR_ID_LINE_V1: &str = "opforge.line.v1";
 pub const PARSER_AST_SCHEMA_ID_LINE_V1: &str = "opforge.ast.line.v1";
@@ -330,6 +344,77 @@ impl ParserVmOpcode {
             0x07 => Some(Self::ParseInstructionEnvelope),
             0x08 => Some(Self::ParseStarOrgEnvelope),
             0x09 => Some(Self::EmitDiagIfNoAst),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ParserVmOpcodeV2 {
+    End = 0x00,
+    Jump = 0x01,
+    JumpIfTrue = 0x02,
+    JumpIfFalse = 0x03,
+    Checkpoint = 0x04,
+    Rollback = 0x05,
+    Commit = 0x06,
+    PeekKind = 0x10,
+    PeekIdentifier = 0x11,
+    PeekOperator = 0x12,
+    IsEol = 0x13,
+    Advance = 0x20,
+    ConsumeKind = 0x21,
+    ConsumeOperator = 0x22,
+    LoadIdentifier = 0x30,
+    LoadSpan = 0x31,
+    LoadTokenText = 0x32,
+    ParseOptionalLeadingLabel = 0x40,
+    ScanTopLevelCommaBoundaries = 0x41,
+    RequireNoTrailingTokens = 0x42,
+    ParseOperandExprRange = 0x50,
+    BeginStatement = 0x60,
+    SetLabel = 0x61,
+    SetMnemonic = 0x62,
+    PushOperand = 0x63,
+    FinishLine = 0x64,
+    EmitDiag = 0x70,
+    EmitDiagIfNoResult = 0x71,
+    Fail = 0x72,
+}
+
+impl ParserVmOpcodeV2 {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0x00 => Some(Self::End),
+            0x01 => Some(Self::Jump),
+            0x02 => Some(Self::JumpIfTrue),
+            0x03 => Some(Self::JumpIfFalse),
+            0x04 => Some(Self::Checkpoint),
+            0x05 => Some(Self::Rollback),
+            0x06 => Some(Self::Commit),
+            0x10 => Some(Self::PeekKind),
+            0x11 => Some(Self::PeekIdentifier),
+            0x12 => Some(Self::PeekOperator),
+            0x13 => Some(Self::IsEol),
+            0x20 => Some(Self::Advance),
+            0x21 => Some(Self::ConsumeKind),
+            0x22 => Some(Self::ConsumeOperator),
+            0x30 => Some(Self::LoadIdentifier),
+            0x31 => Some(Self::LoadSpan),
+            0x32 => Some(Self::LoadTokenText),
+            0x40 => Some(Self::ParseOptionalLeadingLabel),
+            0x41 => Some(Self::ScanTopLevelCommaBoundaries),
+            0x42 => Some(Self::RequireNoTrailingTokens),
+            0x50 => Some(Self::ParseOperandExprRange),
+            0x60 => Some(Self::BeginStatement),
+            0x61 => Some(Self::SetLabel),
+            0x62 => Some(Self::SetMnemonic),
+            0x63 => Some(Self::PushOperand),
+            0x64 => Some(Self::FinishLine),
+            0x70 => Some(Self::EmitDiag),
+            0x71 => Some(Self::EmitDiagIfNoResult),
+            0x72 => Some(Self::Fail),
             _ => None,
         }
     }

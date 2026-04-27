@@ -45,6 +45,7 @@ use package::{
     DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
     DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
     DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
+    DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
     EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1, PARSER_VM_OPCODE_VERSION_V1,
     TOKENIZER_VM_OPCODE_VERSION_V1,
 };
@@ -2073,6 +2074,42 @@ fn execution_model_expr_parser_contract_resolution_prefers_dialect_then_cpu_then
         .expect("expr parser contract should resolve");
     assert_eq!(contract.opcode_version, EXPR_PARSER_VM_OPCODE_VERSION_V1);
     assert_eq!(contract.diagnostics.invalid_expression_program, "otp003");
+}
+
+#[test]
+fn execution_model_parser_vm_v2_expr_subcall_contract_validation_is_runtime_mediated() {
+    let registry = mos6502_family_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    model
+        .ensure_parser_vm_v2_expr_subcall_contract_for_assembler("m6502", None)
+        .expect("default expression parser contract should support opasm v2 subcalls");
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let missing_model =
+        HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+    let err = missing_model
+        .ensure_parser_vm_v2_expr_subcall_contract_for_assembler("m6502", None)
+        .expect_err("missing expression parser contract should reject v2 subcall");
+    assert!(err
+        .to_string()
+        .contains(DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT));
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXPR_PARSER_VM_OPCODE_VERSION_V1.saturating_add(1);
+    chunks.expr_parser_contracts.push(contract);
+    let mismatch_model =
+        HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+    let err = mismatch_model
+        .ensure_parser_vm_v2_expr_subcall_contract_for_assembler("m6502", None)
+        .expect_err("expression parser contract version mismatch should reject v2 subcall");
+    assert!(err
+        .to_string()
+        .contains(DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH));
 }
 
 #[test]

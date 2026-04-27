@@ -606,65 +606,11 @@ fn parse_line_with_parser_vm_rejects_contract_program_opcode_version_mismatch() 
 }
 
 #[test]
-fn parse_line_with_parser_vm_supports_dot_directive_primitive_opcode() {
-    let model = default_runtime_model().expect("default runtime model should be available");
-    let register_checker = register_checker_none();
-    let source = "    .if 1";
-    let (tokens, end_span, end_token_text) = tokenize_parser_tokens_with_model(
-        model,
-        DEFAULT_TOKENIZER_CPU_ID,
-        None,
-        source,
-        1,
-        &register_checker,
-    )
-    .expect("tokenization should succeed");
-    let mut parser_contract = model
-        .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
-        .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
-    let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
-        program: vec![
-            ParserVmOpcode::ParseDotDirectiveEnvelope as u8,
-            ParserVmOpcode::ParseStarOrgEnvelope as u8,
-            ParserVmOpcode::ParseAssignmentEnvelope as u8,
-            ParserVmOpcode::EmitDiagIfNoAst as u8,
-            0,
-            ParserVmOpcode::End as u8,
-        ],
-    };
-
-    let line = parse_line_with_parser_vm(
-        tokens,
-        end_span,
-        end_token_text,
-        &parser_contract,
-        &parser_vm_program,
-        ParserVmExecContext {
-            source_line: source,
-            line_num: 1,
-            expr_parse_ctx: VmExprParseContext {
-                model,
-                cpu_id: DEFAULT_TOKENIZER_CPU_ID,
-                dialect_override: None,
-                expr_handler: None,
-            },
-        },
-    )
-    .expect("parse should succeed");
-    assert!(
-        matches!(line, LineAst::Conditional(..)),
-        "expected conditional line ast from dot-directive primitive, got {line:?}"
-    );
-}
-
-#[test]
-fn parse_line_with_parser_vm_supports_assignment_envelope_opcode() {
+fn parse_line_with_model_handles_assignment_through_default_v2_program() {
     let model = default_runtime_model().expect("default runtime model should be available");
     let register_checker = register_checker_none();
     let source = "var2 += 1";
-    let (tokens, end_span, end_token_text) = tokenize_parser_tokens_with_model(
+    let (line, _, _) = parse_line_with_model(
         model,
         DEFAULT_TOKENIZER_CPU_ID,
         None,
@@ -672,37 +618,7 @@ fn parse_line_with_parser_vm_supports_assignment_envelope_opcode() {
         1,
         &register_checker,
     )
-    .expect("tokenization should succeed");
-    let mut parser_contract = model
-        .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
-        .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
-    let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
-        program: vec![
-            ParserVmOpcode::ParseAssignmentEnvelope as u8,
-            ParserVmOpcode::End as u8,
-        ],
-    };
-
-    let line = parse_line_with_parser_vm(
-        tokens,
-        end_span,
-        end_token_text,
-        &parser_contract,
-        &parser_vm_program,
-        ParserVmExecContext {
-            source_line: source,
-            line_num: 1,
-            expr_parse_ctx: VmExprParseContext {
-                model,
-                cpu_id: DEFAULT_TOKENIZER_CPU_ID,
-                dialect_override: None,
-                expr_handler: None,
-            },
-        },
-    )
-    .expect("parse should succeed");
+    .expect("default v2 parser should parse assignment");
     assert!(
         matches!(
             line,
@@ -716,11 +632,11 @@ fn parse_line_with_parser_vm_supports_assignment_envelope_opcode() {
 }
 
 #[test]
-fn parse_line_with_parser_vm_supports_star_org_envelope_opcode() {
+fn parse_line_with_model_handles_star_org_through_default_v2_program() {
     let model = default_runtime_model().expect("default runtime model should be available");
     let register_checker = register_checker_none();
     let source = "    * = $2000";
-    let (tokens, end_span, end_token_text) = tokenize_parser_tokens_with_model(
+    let (line, _, _) = parse_line_with_model(
         model,
         DEFAULT_TOKENIZER_CPU_ID,
         None,
@@ -728,37 +644,7 @@ fn parse_line_with_parser_vm_supports_star_org_envelope_opcode() {
         1,
         &register_checker,
     )
-    .expect("tokenization should succeed");
-    let mut parser_contract = model
-        .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
-        .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
-    let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
-        program: vec![
-            ParserVmOpcode::ParseStarOrgEnvelope as u8,
-            ParserVmOpcode::End as u8,
-        ],
-    };
-
-    let line = parse_line_with_parser_vm(
-        tokens,
-        end_span,
-        end_token_text,
-        &parser_contract,
-        &parser_vm_program,
-        ParserVmExecContext {
-            source_line: source,
-            line_num: 1,
-            expr_parse_ctx: VmExprParseContext {
-                model,
-                cpu_id: DEFAULT_TOKENIZER_CPU_ID,
-                dialect_override: None,
-                expr_handler: None,
-            },
-        },
-    )
-    .expect("parse should succeed");
+    .expect("default v2 parser should parse star org");
     assert!(
         matches!(
             line,
@@ -772,11 +658,11 @@ fn parse_line_with_parser_vm_supports_star_org_envelope_opcode() {
 }
 
 #[test]
-fn parse_line_with_parser_vm_dot_directive_primitive_skips_dot_assignment_ops() {
+fn parse_line_with_model_handles_dot_assignment_ops_through_default_v2_program() {
     let model = default_runtime_model().expect("default runtime model should be available");
     let register_checker = register_checker_none();
     let source = "cat ..= $3456";
-    let (tokens, end_span, end_token_text) = tokenize_parser_tokens_with_model(
+    let (line, _, _) = parse_line_with_model(
         model,
         DEFAULT_TOKENIZER_CPU_ID,
         None,
@@ -784,41 +670,7 @@ fn parse_line_with_parser_vm_dot_directive_primitive_skips_dot_assignment_ops() 
         1,
         &register_checker,
     )
-    .expect("tokenization should succeed");
-    let mut parser_contract = model
-        .validate_parser_contract_for_assembler(DEFAULT_TOKENIZER_CPU_ID, None, tokens.len())
-        .expect("parser contract should validate");
-    parser_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1;
-    let parser_vm_program = RuntimeParserVmProgram {
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
-        program: vec![
-            ParserVmOpcode::ParseDotDirectiveEnvelope as u8,
-            ParserVmOpcode::ParseStarOrgEnvelope as u8,
-            ParserVmOpcode::ParseAssignmentEnvelope as u8,
-            ParserVmOpcode::EmitDiagIfNoAst as u8,
-            0,
-            ParserVmOpcode::End as u8,
-        ],
-    };
-
-    let line = parse_line_with_parser_vm(
-        tokens,
-        end_span,
-        end_token_text,
-        &parser_contract,
-        &parser_vm_program,
-        ParserVmExecContext {
-            source_line: source,
-            line_num: 1,
-            expr_parse_ctx: VmExprParseContext {
-                model,
-                cpu_id: DEFAULT_TOKENIZER_CPU_ID,
-                dialect_override: None,
-                expr_handler: None,
-            },
-        },
-    )
-    .expect("parse should succeed");
+    .expect("default v2 parser should parse dot assignment operator");
     assert!(
         matches!(
             line,
@@ -852,9 +704,6 @@ fn parse_line_with_parser_vm_emit_diag_if_no_ast_reports_unexpected_token_slot()
     let parser_vm_program = RuntimeParserVmProgram {
         opcode_version: PARSER_VM_OPCODE_VERSION_V1,
         program: vec![
-            ParserVmOpcode::ParseDotDirectiveEnvelope as u8,
-            ParserVmOpcode::ParseStarOrgEnvelope as u8,
-            ParserVmOpcode::ParseAssignmentEnvelope as u8,
             ParserVmOpcode::EmitDiagIfNoAst as u8,
             0,
             ParserVmOpcode::End as u8,

@@ -11,10 +11,7 @@ use package::{
 };
 use types::processing::ProcessingRequestKind;
 
-use crate::vm_opasm_parse::{
-    parse_assignment_envelope_from_tokens, parse_dot_directive_envelope_from_tokens,
-    parse_star_org_envelope_from_tokens, ParserVmExecContext,
-};
+use crate::vm_opasm_parse::ParserVmExecContext;
 
 pub(crate) fn parse_line_with_parser_vm(
     tokens: Vec<Token>,
@@ -62,7 +59,7 @@ pub(crate) fn parse_line_with_parser_vm(
     }
 
     let mut pc = 0usize;
-    let mut parsed_line: Option<LineAst> = if tokens.is_empty() {
+    let parsed_line: Option<LineAst> = if tokens.is_empty() {
         Some(LineAst::Empty)
     } else {
         None
@@ -93,45 +90,6 @@ pub(crate) fn parse_line_with_parser_vm(
                         ),
                     )
                 });
-            }
-            ParserVmOpcode::ParseDotDirectiveEnvelope => {
-                if parsed_line.is_some() {
-                    continue;
-                }
-                if let Some(line) = parse_dot_directive_envelope_from_tokens(
-                    &tokens,
-                    end_span,
-                    end_token_text.clone(),
-                    &exec_ctx.expr_parse_ctx,
-                )? {
-                    parsed_line = Some(line);
-                }
-            }
-            ParserVmOpcode::ParseStarOrgEnvelope => {
-                if parsed_line.is_some() {
-                    continue;
-                }
-                if let Some(line) = parse_star_org_envelope_from_tokens(
-                    &tokens,
-                    end_span,
-                    end_token_text.clone(),
-                    &exec_ctx.expr_parse_ctx,
-                )? {
-                    parsed_line = Some(line);
-                }
-            }
-            ParserVmOpcode::ParseAssignmentEnvelope => {
-                if parsed_line.is_some() {
-                    continue;
-                }
-                if let Some(line) = parse_assignment_envelope_from_tokens(
-                    &tokens,
-                    end_span,
-                    end_token_text.clone(),
-                    &exec_ctx.expr_parse_ctx,
-                )? {
-                    parsed_line = Some(line);
-                }
             }
             ParserVmOpcode::EmitDiag => {
                 let slot = parser_vm_read_diag_slot(

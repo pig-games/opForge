@@ -1,13 +1,14 @@
+use crate::execution_model::directives::parse_dot_directive_line_from_tokens;
 use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_model_types::{RuntimeParserContract, RuntimeParserVmProgram};
 use crate::runtime_parse_utils::{parse_error_at_end, runtime_bridge_error_to_parse_error};
 use crate::vm_opasm::{split_top_level_comma_ranges, OperandExprBoundary, OperandExprParseHints};
-use crate::vm_opasm_parse::{
-    parse_assignment_envelope_from_tokens, parse_dot_directive_envelope_from_tokens,
-    parse_star_org_envelope_from_tokens, ParserVmExecContext,
-};
-use opcore::parser::{Expr, Label, LineAst, ParseError};
+use crate::vm_opasm_parse::ParserVmExecContext;
+use crate::vm_opcore::parse_expr_with_vm_contract;
+use opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError};
+#[cfg(test)]
+use opcore::tokenizer::{NumberLiteral, StringLiteral};
 use opcore::tokenizer::{OperatorKind, Span, Token, TokenKind};
 use package::{
     ParserVmOpcode, ParserVmOpcodeV2, DIAG_PARSER_OPASM_V2_CHECKPOINT_DEPTH_EXCEEDED,
@@ -15,7 +16,7 @@ use package::{
     DIAG_PARSER_OPASM_V2_FORBIDDEN_CROSS_CONTRACT_OPCODE,
     DIAG_PARSER_OPASM_V2_MISROUTED_OPCORE_DIRECTIVE, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
 };
-use types::line_ast::StatementAst;
+use types::line_ast::{AssignmentAst, StatementAst};
 use types::processing::ProcessingRequestKind;
 
 const MAX_STEPS_PER_LINE: usize = 2048;
@@ -93,7 +94,7 @@ pub(crate) fn parse_line_with_parser_vm_v2<'exec>(
         ));
     }
     reject_misrouted_opcore_directive(tokens.as_slice(), end_span)?;
-    if let Some(line) = parse_legacy_deferred_shape(
+    if let Some(line) = parse_rust_routed_deferred_shape(
         tokens.as_slice(),
         end_span,
         end_token_text.clone(),
@@ -214,6 +215,12 @@ impl ParserVmV2State<'_, '_> {
                 ParserVmOpcodeV2::IsEol => {
                     self.push_value(ParserVmV2Value::Bool(self.cursor >= self.tokens.len()))?;
                 }
+                ParserVmOpcodeV2::PeekAssignmentOperator => {
+                    self.push_value(ParserVmV2Value::Bool(self.peek_assignment_operator()))?;
+                }
+                ParserVmOpcodeV2::PeekStarOrg => {
+                    self.push_value(ParserVmV2Value::Bool(self.peek_star_org()))?;
+                }
                 ParserVmOpcodeV2::Advance => {
                     if self.cursor < self.tokens.len() {
                         let step = if self.advance_mnemonic_suffix_plus {
@@ -268,6 +275,10 @@ impl ParserVmV2State<'_, '_> {
                         .get(self.cursor)
                         .map(token_text)
                         .unwrap_or_default();
+                    self.push_value(ParserVmV2Value::Text(text))?;
+                }
+                ParserVmOpcodeV2::LoadInlineText => {
+                    let text = self.read_inline_string("LoadInlineText text")?;
                     self.push_value(ParserVmV2Value::Text(text))?;
                 }
                 ParserVmOpcodeV2::ParseOptionalLeadingLabel => {
@@ -356,6 +367,9 @@ impl ParserVmV2State<'_, '_> {
                         mnemonic: self.builder.mnemonic.clone(),
                         operands: self.builder.operands.clone(),
                     }));
+                }
+                ParserVmOpcodeV2::FinishAssignment => {
+                    self.finish_assignment()?;
                 }
                 ParserVmOpcodeV2::EmitDiag => {
                     let slot = self.read_u8("EmitDiag slot")?;
@@ -550,6 +564,52 @@ impl ParserVmV2State<'_, '_> {
             self.cursor = 1;
         }
         self.push_value(ParserVmV2Value::Label(label))
+    }
+
+    fn peek_assignment_operator(&self) -> bool {
+        self.builder.label.is_some()
+            && match_assignment_op_at(self.tokens.as_slice(), self.cursor).is_some()
+    }
+
+    fn peek_star_org(&self) -> bool {
+        self.builder.label.is_none() && is_star_org_assignment(self.tokens.as_slice(), self.cursor)
+    }
+
+    fn finish_assignment(&mut self) -> Result<(), ParseError> {
+        let Some(label) = self.builder.label.clone() else {
+            return self.fail_with_code(
+                self.parser_contract.diagnostics.invalid_statement.as_str(),
+                "parser VM v2 assignment requires a label",
+            );
+        };
+        let Some((op, span, consumed)) =
+            match_assignment_op_at(self.tokens.as_slice(), self.cursor)
+        else {
+            return self.fail_with_code(
+                self.parser_contract.diagnostics.unexpected_token.as_str(),
+                "parser VM v2 expected assignment operator",
+            );
+        };
+        let expr_start = self.cursor.saturating_add(consumed);
+        let expr = match self.tokens.get(expr_start) {
+            Some(_) => match parse_expr_with_vm_contract(
+                &self.exec_ctx.expr_parse_ctx,
+                &self.tokens[expr_start..],
+                self.end_span,
+                self.end_token_text.clone(),
+            ) {
+                Ok(expr) => expr,
+                Err(err) => Expr::Error(err.message, err.span),
+            },
+            None => Expr::Error("Expected expression".to_string(), self.end_span),
+        };
+        self.parsed_line = Some(LineAst::Assignment(AssignmentAst {
+            label,
+            op,
+            expr,
+            span,
+        }));
+        Ok(())
     }
 
     fn parse_operand_boundaries_into_builder(&mut self) -> Result<(), ParseError> {
@@ -756,58 +816,49 @@ fn reject_misrouted_opcore_directive(tokens: &[Token], end_span: Span) -> Result
     ))
 }
 
-fn parse_legacy_deferred_shape(
+fn parse_rust_routed_deferred_shape(
     tokens: &[Token],
     end_span: Span,
     end_token_text: Option<String>,
     exec_ctx: &ParserVmExecContext<'_>,
 ) -> Result<Option<LineAst>, ParseError> {
-    if !is_v2_data_directive_shape(tokens) {
-        if let Some(line) = parse_dot_directive_envelope_from_tokens(
-            tokens,
-            end_span,
-            end_token_text.clone(),
-            &exec_ctx.expr_parse_ctx,
-        )? {
-            return Ok(Some(line));
-        }
+    let (label, directive_idx) = leading_label_and_cursor(tokens);
+    if !matches!(
+        tokens.get(directive_idx),
+        Some(Token {
+            kind: TokenKind::Dot,
+            ..
+        })
+    ) {
+        return Ok(None);
     }
-    if let Some(line) = parse_star_org_envelope_from_tokens(
-        tokens,
-        end_span,
-        end_token_text.clone(),
-        &exec_ctx.expr_parse_ctx,
-    )? {
-        return Ok(Some(line));
+    if match_assignment_op_at(tokens, directive_idx).is_some() {
+        return Ok(None);
     }
-    parse_assignment_envelope_from_tokens(
+    let Some(Token {
+        kind: TokenKind::Identifier(name),
+        ..
+    }) = tokens.get(directive_idx.saturating_add(1))
+    else {
+        return Ok(None);
+    };
+    if !is_rust_routed_dot_directive_name(name) {
+        return Ok(None);
+    }
+    parse_dot_directive_line_from_tokens(
         tokens,
+        directive_idx,
+        label,
         end_span,
         end_token_text,
         &exec_ctx.expr_parse_ctx,
     )
+    .map(Some)
 }
 
+#[cfg(test)]
 fn is_v2_data_directive_shape(tokens: &[Token]) -> bool {
-    let directive_idx = match tokens.first() {
-        Some(Token {
-            kind: TokenKind::Identifier(_) | TokenKind::Register(_),
-            span,
-        }) if span.col_start == 1 => {
-            if matches!(
-                tokens.get(1),
-                Some(Token {
-                    kind: TokenKind::Colon,
-                    ..
-                })
-            ) {
-                2
-            } else {
-                1
-            }
-        }
-        _ => 0,
-    };
+    let (_, directive_idx) = leading_label_and_cursor(tokens);
     matches!(
         tokens.get(directive_idx),
         Some(Token {
@@ -821,6 +872,48 @@ fn is_v2_data_directive_shape(tokens: &[Token]) -> bool {
     )
 }
 
+fn is_rust_routed_dot_directive_name(name: &str) -> bool {
+    matches!(
+        name.to_ascii_uppercase().as_str(),
+        "IF" | "ELSEIF"
+            | "ELSE"
+            | "ENDIF"
+            | "MATCH"
+            | "CASE"
+            | "DEFAULT"
+            | "ENDMATCH"
+            | "STATEMENT"
+            | "ENDSTATEMENT"
+            | "USE"
+            | "PLACE"
+            | "PACK"
+            | "FOR"
+            | "BFOR"
+            | "WHILE"
+            | "BWHILE"
+            | "STRUCT"
+            | "ENDSTRUCT"
+            | "ENDFOR"
+            | "ENDWHILE"
+            | "MACRO"
+            | "SEGMENT"
+            | "ENDMACRO"
+            | "ENDSEGMENT"
+            | "ENDM"
+            | "ENDS"
+            | "AL"
+            | "AS"
+            | "XL"
+            | "XS"
+            | "ASSUME"
+            | "DATABANK"
+            | "DBANK"
+            | "DPAGE"
+    ) || name.to_ascii_uppercase().starts_with("META.")
+        || name.to_ascii_uppercase().starts_with("OUTPUT.")
+}
+
+#[cfg(test)]
 fn is_v2_data_directive_name(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
@@ -837,6 +930,201 @@ fn is_v2_data_directive_name(name: &str) -> bool {
             | "ds"
             | "align"
     )
+}
+
+fn leading_label_and_cursor(tokens: &[Token]) -> (Option<Label>, usize) {
+    let Some(first) = tokens.first() else {
+        return (None, 0);
+    };
+    let label_name = match &first.kind {
+        TokenKind::Identifier(name) | TokenKind::Register(name) => Some(name.clone()),
+        _ => None,
+    };
+    let Some(name) = label_name else {
+        return (None, 0);
+    };
+    if first.span.col_start != 1 {
+        return (None, 0);
+    }
+    let label = Label {
+        name,
+        span: first.span,
+    };
+    let cursor = if matches!(
+        tokens.get(1),
+        Some(Token {
+            kind: TokenKind::Colon,
+            span,
+        }) if span.col_start == first.span.col_end
+    ) {
+        2
+    } else {
+        1
+    };
+    (Some(label), cursor)
+}
+
+fn is_star_org_assignment(tokens: &[Token], idx: usize) -> bool {
+    matches!(
+        tokens.get(idx),
+        Some(Token {
+            kind: TokenKind::Operator(OperatorKind::Multiply),
+            ..
+        })
+    ) && matches!(
+        tokens.get(idx.saturating_add(1)),
+        Some(Token {
+            kind: TokenKind::Operator(OperatorKind::Eq),
+            ..
+        })
+    )
+}
+
+fn match_assignment_op_at(tokens: &[Token], idx: usize) -> Option<(AssignOp, Span, usize)> {
+    let token = tokens.get(idx)?;
+    let next = tokens.get(idx.saturating_add(1));
+    let next2 = tokens.get(idx.saturating_add(2));
+    match &token.kind {
+        TokenKind::Operator(OperatorKind::Eq) => Some((AssignOp::Const, token.span, 1)),
+        TokenKind::Colon => {
+            if matches!(
+                next,
+                Some(Token {
+                    kind: TokenKind::Question,
+                    ..
+                })
+            ) && matches!(
+                next2,
+                Some(Token {
+                    kind: TokenKind::Operator(OperatorKind::Eq),
+                    ..
+                })
+            ) {
+                Some((AssignOp::VarIfUndef, token.span, 3))
+            } else if matches!(
+                next,
+                Some(Token {
+                    kind: TokenKind::Operator(OperatorKind::Eq),
+                    ..
+                })
+            ) {
+                Some((AssignOp::Var, token.span, 2))
+            } else {
+                None
+            }
+        }
+        TokenKind::Operator(kind) => {
+            if *kind == OperatorKind::RangeInclusive {
+                return Some((AssignOp::Concat, token.span, 1));
+            }
+            let op = match kind {
+                OperatorKind::Plus => AssignOp::Add,
+                OperatorKind::Minus => AssignOp::Sub,
+                OperatorKind::Multiply => AssignOp::Mul,
+                OperatorKind::Divide => AssignOp::Div,
+                OperatorKind::Mod => AssignOp::Mod,
+                OperatorKind::Power => AssignOp::Pow,
+                OperatorKind::BitOr => AssignOp::BitOr,
+                OperatorKind::BitXor => AssignOp::BitXor,
+                OperatorKind::BitAnd => AssignOp::BitAnd,
+                OperatorKind::LogicOr => AssignOp::LogicOr,
+                OperatorKind::LogicAnd => AssignOp::LogicAnd,
+                OperatorKind::Shl => AssignOp::Shl,
+                OperatorKind::Shr => AssignOp::Shr,
+                OperatorKind::Lt => {
+                    if matches!(
+                        next,
+                        Some(Token {
+                            kind: TokenKind::Question,
+                            ..
+                        })
+                    ) && matches!(
+                        next2,
+                        Some(Token {
+                            kind: TokenKind::Operator(OperatorKind::Eq),
+                            ..
+                        })
+                    ) {
+                        return Some((AssignOp::Min, token.span, 3));
+                    }
+                    return None;
+                }
+                OperatorKind::Gt => {
+                    if matches!(
+                        next,
+                        Some(Token {
+                            kind: TokenKind::Question,
+                            ..
+                        })
+                    ) && matches!(
+                        next2,
+                        Some(Token {
+                            kind: TokenKind::Operator(OperatorKind::Eq),
+                            ..
+                        })
+                    ) {
+                        return Some((AssignOp::Max, token.span, 3));
+                    }
+                    return None;
+                }
+                _ => return None,
+            };
+            if matches!(
+                next,
+                Some(Token {
+                    kind: TokenKind::Operator(OperatorKind::Eq),
+                    ..
+                })
+            ) {
+                Some((op, token.span, 2))
+            } else {
+                None
+            }
+        }
+        TokenKind::Dot => {
+            if matches!(
+                next,
+                Some(Token {
+                    kind: TokenKind::Dot,
+                    ..
+                })
+            ) && matches!(
+                next2,
+                Some(Token {
+                    kind: TokenKind::Operator(OperatorKind::Eq),
+                    ..
+                })
+            ) {
+                Some((AssignOp::Concat, token.span, 3))
+            } else if matches!(
+                next,
+                Some(Token {
+                    kind: TokenKind::Operator(OperatorKind::Eq),
+                    ..
+                })
+            ) {
+                Some((AssignOp::Member, token.span, 2))
+            } else {
+                None
+            }
+        }
+        TokenKind::Identifier(name) => {
+            if name.eq_ignore_ascii_case("x")
+                && matches!(
+                    next,
+                    Some(Token {
+                        kind: TokenKind::Operator(OperatorKind::Eq),
+                        ..
+                    })
+                )
+            {
+                Some((AssignOp::Repeat, token.span, 2))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 fn token_text(token: &Token) -> String {
@@ -941,6 +1229,26 @@ mod tests {
         }
     }
 
+    fn number(text: &str, base: u32, col_start: usize, col_end: usize) -> Token {
+        Token {
+            kind: TokenKind::Number(NumberLiteral {
+                text: text.to_string(),
+                base,
+            }),
+            span: span(col_start, col_end),
+        }
+    }
+
+    fn string(raw: &str, col_start: usize, col_end: usize) -> Token {
+        Token {
+            kind: TokenKind::String(StringLiteral {
+                raw: raw.to_string(),
+                bytes: raw.as_bytes().to_vec(),
+            }),
+            span: span(col_start, col_end),
+        }
+    }
+
     fn colon(col: usize) -> Token {
         Token {
             kind: TokenKind::Colon,
@@ -951,6 +1259,13 @@ mod tests {
     fn comma(col: usize) -> Token {
         Token {
             kind: TokenKind::Comma,
+            span: span(col, col + 1),
+        }
+    }
+
+    fn operator(kind: OperatorKind, col: usize) -> Token {
+        Token {
+            kind: TokenKind::Operator(kind),
             span: span(col, col + 1),
         }
     }
@@ -974,17 +1289,45 @@ mod tests {
                 0,
                 ParserVmOpcodeV2::FinishLine as u8,
                 ParserVmOpcodeV2::End as u8,
+                ParserVmOpcodeV2::PeekAssignmentOperator as u8,
+                ParserVmOpcodeV2::JumpIfFalse as u8,
+                14,
+                0,
+                ParserVmOpcodeV2::FinishAssignment as u8,
+                ParserVmOpcodeV2::End as u8,
+                ParserVmOpcodeV2::PeekStarOrg as u8,
+                ParserVmOpcodeV2::JumpIfFalse as u8,
+                36,
+                0,
+                ParserVmOpcodeV2::LoadInlineText as u8,
+                4,
+                b'.',
+                b'o',
+                b'r',
+                b'g',
+                ParserVmOpcodeV2::SetMnemonic as u8,
+                ParserVmOpcodeV2::Advance as u8,
+                ParserVmOpcodeV2::ConsumeOperator as u8,
+                OPERATOR_EQ,
+                ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+                ParserVmOpcodeV2::ParseOperandExprRange as u8,
+                0xFF,
+                0xFF,
+                0xFF,
+                0xFF,
+                ParserVmOpcodeV2::FinishLine as u8,
+                ParserVmOpcodeV2::End as u8,
                 ParserVmOpcodeV2::PeekKind as u8,
                 TOKEN_KIND_DOT,
                 ParserVmOpcodeV2::JumpIfFalse as u8,
-                20,
+                48,
                 0,
                 ParserVmOpcodeV2::Advance as u8,
                 ParserVmOpcodeV2::LoadIdentifier as u8,
                 ParserVmOpcodeV2::SetDotMnemonic as u8,
                 ParserVmOpcodeV2::Advance as u8,
                 ParserVmOpcodeV2::Jump as u8,
-                23,
+                51,
                 0,
                 ParserVmOpcodeV2::LoadIdentifier as u8,
                 ParserVmOpcodeV2::SetMnemonic as u8,
@@ -1163,6 +1506,93 @@ mod tests {
     }
 
     #[test]
+    fn parser_vm_v2_parses_assignment_through_default_program() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let handler: DynExprProcessingHandler<'_> =
+            Rc::new(RefCell::new(Box::new(StubExprHandler)));
+        let program = default_statement_program_for_tests();
+        let line = parse_line_with_parser_vm_v2(
+            vec![
+                ident("value", 1, 6),
+                operator(OperatorKind::Plus, 7),
+                operator(OperatorKind::Eq, 8),
+                ident("one", 10, 13),
+            ],
+            span(13, 13),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, Some(handler)),
+        )
+        .expect("assignment should parse through v2");
+        match line {
+            LineAst::Assignment(assignment) => {
+                assert_eq!(assignment.label.name, "value");
+                assert_eq!(assignment.op, AssignOp::Add);
+            }
+            other => panic!("expected assignment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parser_vm_v2_parses_star_org_through_default_program() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let handler: DynExprProcessingHandler<'_> =
+            Rc::new(RefCell::new(Box::new(StubExprHandler)));
+        let program = default_statement_program_for_tests();
+        let line = parse_line_with_parser_vm_v2(
+            vec![
+                operator(OperatorKind::Multiply, 5),
+                operator(OperatorKind::Eq, 7),
+                ident("addr", 9, 13),
+            ],
+            span(13, 13),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, Some(handler)),
+        )
+        .expect("star org should parse through v2");
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.mnemonic.as_deref(), Some(".org"));
+                assert_eq!(statement.operands.len(), 1);
+            }
+            other => panic!("expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parser_vm_v2_parses_wi4_block_directive_dot_mnemonic() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let handler: DynExprProcessingHandler<'_> =
+            Rc::new(RefCell::new(Box::new(StubExprHandler)));
+        let program = default_statement_program_for_tests();
+        let line = parse_line_with_parser_vm_v2(
+            vec![dot(1), ident("section", 2, 9), ident("code", 10, 14)],
+            span(14, 14),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, Some(handler)),
+        )
+        .expect("block directive should parse through v2");
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.mnemonic.as_deref(), Some(".section"));
+                assert_eq!(statement.operands.len(), 1);
+            }
+            other => panic!("expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn parser_vm_v2_classifies_wi3_data_directive_names() {
         for name in [
             "byte", "db", "word", "dw", "long", "text", "null", "ptext", "fill", "res", "ds",
@@ -1180,29 +1610,108 @@ mod tests {
     }
 
     #[test]
-    fn parser_vm_v2_keeps_non_data_dot_directives_on_legacy_fallback() {
+    fn parser_vm_v2_keeps_out_of_scope_dot_directives_rust_routed() {
+        enum ExpectedFallbackAst<'a> {
+            Statement(&'a str),
+            Place,
+            Pack,
+        }
+
         let model = model_for_tests();
         let contract = parser_contract_for_tests();
         let program = RuntimeParserVmProgram {
             opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
             program: vec![ParserVmOpcodeV2::Fail as u8],
         };
-        let line = parse_line_with_parser_vm_v2(
-            vec![dot(1), ident("struct", 2, 8)],
-            span(8, 8),
-            None,
-            &contract,
-            &program,
-            &request(),
-            exec_context(&model, None),
-        )
-        .expect("non-data dot directive should still use legacy fallback");
-        match line {
-            LineAst::Statement(statement) => {
-                assert_eq!(statement.mnemonic.as_deref(), Some(".struct"));
-                assert!(statement.operands.is_empty());
+        for (tokens, expected) in [
+            (
+                vec![dot(1), ident("struct", 2, 8)],
+                ExpectedFallbackAst::Statement(".struct"),
+            ),
+            (
+                vec![
+                    dot(1),
+                    ident("place", 2, 7),
+                    ident("code", 8, 12),
+                    ident("in", 13, 15),
+                    ident("ram", 16, 19),
+                ],
+                ExpectedFallbackAst::Place,
+            ),
+            (
+                vec![
+                    dot(1),
+                    ident("pack", 2, 6),
+                    ident("in", 7, 9),
+                    ident("ram", 10, 13),
+                    colon(14),
+                    ident("code", 16, 20),
+                    comma(20),
+                    ident("data", 22, 26),
+                ],
+                ExpectedFallbackAst::Pack,
+            ),
+            (
+                vec![dot(1), ident("al", 2, 4)],
+                ExpectedFallbackAst::Statement(".al"),
+            ),
+            (
+                vec![
+                    dot(1),
+                    ident("assume", 2, 8),
+                    ident("dbr", 9, 12),
+                    operator(OperatorKind::Eq, 12),
+                    number("$12", 16, 13, 16),
+                ],
+                ExpectedFallbackAst::Statement(".assume"),
+            ),
+            (
+                vec![
+                    dot(1),
+                    ident("meta.output.name", 2, 18),
+                    string("demo", 19, 25),
+                ],
+                ExpectedFallbackAst::Statement(".meta.output.name"),
+            ),
+            (
+                vec![
+                    dot(1),
+                    ident("output.bin", 2, 12),
+                    string("0000:0003", 13, 24),
+                ],
+                ExpectedFallbackAst::Statement(".output.bin"),
+            ),
+        ] {
+            let line = parse_line_with_parser_vm_v2(
+                tokens,
+                span(24, 24),
+                None,
+                &contract,
+                &program,
+                &request(),
+                exec_context(&model, None),
+            )
+            .expect("out-of-scope dot directive should still use Rust routing");
+            match expected {
+                ExpectedFallbackAst::Statement(expected_mnemonic) => match line {
+                    LineAst::Statement(statement) => {
+                        assert_eq!(statement.mnemonic.as_deref(), Some(expected_mnemonic));
+                    }
+                    other => panic!("expected statement for {expected_mnemonic}, got {other:?}"),
+                },
+                ExpectedFallbackAst::Place => {
+                    assert!(
+                        matches!(line, LineAst::Place(_)),
+                        "expected place AST, got {line:?}"
+                    );
+                }
+                ExpectedFallbackAst::Pack => {
+                    assert!(
+                        matches!(line, LineAst::Pack(_)),
+                        "expected pack AST, got {line:?}"
+                    );
+                }
             }
-            other => panic!("expected statement, got {other:?}"),
         }
     }
 

@@ -740,6 +740,76 @@ fn vm_runtime_parses_wi3_data_directives_through_v2_parser() {
     assert_eq!(asm.aux_value(), 3);
 }
 
+#[test]
+fn vm_runtime_parses_wi4_control_and_block_shapes_through_v2_parser() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+    let execution_mode = runtime_enabled_execution_mode(true);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, "* = $2000", 1, 0, 1);
+    assert_eq!(status, LineStatus::DirEqu);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, ".org $2010", 2, 0, 1);
+    assert_eq!(status, LineStatus::DirEqu);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, "value := $22", 3, 0, 1);
+    assert_eq!(status, LineStatus::DirEqu);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, "value += 1", 4, 0, 1);
+    assert_eq!(status, LineStatus::DirEqu);
+
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        execution_mode,
+        ".region rom, $2000, $20ff",
+        5,
+        0,
+        1,
+    );
+    assert_eq!(status, LineStatus::Ok);
+
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        execution_mode,
+        ".section code, region=rom",
+        6,
+        0,
+        1,
+    );
+    assert_eq!(status, LineStatus::Ok);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, ".endsection", 7, 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, ".encode utf8", 8, 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, ".endencode", 9, 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+
+    let status = process_asmline_with_execution_mode(&mut asm, execution_mode, ".meta", 10, 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+
+    let status = process_asmline_with_execution_mode(&mut asm, execution_mode, ".output", 11, 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, ".endoutput", 12, 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+
+    let status =
+        process_asmline_with_execution_mode(&mut asm, execution_mode, ".endmeta", 13, 0, 1);
+    assert_eq!(status, LineStatus::Ok);
+}
+
 fn assemble_line_with_runtime_mode(
     cpu: CpuType,
     line: &str,

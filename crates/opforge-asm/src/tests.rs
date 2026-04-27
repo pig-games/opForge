@@ -670,6 +670,76 @@ fn range_zero_step_reports_diagnostic() {
     );
 }
 
+#[test]
+fn vm_runtime_parses_wi3_data_directives_through_v2_parser() {
+    let byte_cases = [
+        ("label: .byte $01, $02", vec![0x01, 0x02]),
+        (".db $03", vec![0x03]),
+        (".word $1234", vec![0x34, 0x12]),
+        (".dw $5678", vec![0x78, 0x56]),
+        (".long $01020304", vec![0x04, 0x03, 0x02, 0x01]),
+        (".text \"AZ\"", vec![b'A', b'Z']),
+        (".null \"A\"", vec![b'A', 0]),
+        (".ptext \"A\"", vec![1, b'A']),
+        (".fill byte, 3, $7f", vec![0x7f, 0x7f, 0x7f]),
+    ];
+    for (line, expected_bytes) in byte_cases {
+        let (status, message, bytes) = assemble_line_with_runtime_mode(m6502_cpu_id, line, true);
+        assert_eq!(
+            status,
+            LineStatus::Ok,
+            "unexpected status for {line}: {message:?}"
+        );
+        assert_eq!(message, None, "unexpected message for {line}");
+        assert_eq!(bytes, expected_bytes, "unexpected bytes for {line}");
+    }
+
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        runtime_enabled_execution_mode(true),
+        ".align 4",
+        1,
+        2,
+        2,
+    );
+    assert_eq!(status, LineStatus::DirDs);
+    assert_eq!(asm.aux_value(), 2);
+
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        runtime_enabled_execution_mode(true),
+        ".section vars, kind=bss",
+        2,
+        0,
+        1,
+    );
+    assert_eq!(status, LineStatus::Ok);
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        runtime_enabled_execution_mode(true),
+        ".res byte, 2",
+        3,
+        0,
+        1,
+    );
+    assert_eq!(status, LineStatus::DirDs);
+    assert_eq!(asm.aux_value(), 2);
+
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        runtime_enabled_execution_mode(true),
+        ".ds 3",
+        4,
+        0,
+        1,
+    );
+    assert_eq!(status, LineStatus::DirDs);
+    assert_eq!(asm.aux_value(), 3);
+}
+
 fn assemble_line_with_runtime_mode(
     cpu: CpuType,
     line: &str,

@@ -342,6 +342,10 @@ impl ParserVmV2State<'_, '_> {
                     }
                     self.builder.mnemonic = Some(mnemonic);
                 }
+                ParserVmOpcodeV2::SetDotMnemonic => {
+                    let mnemonic = self.pop_text("SetDotMnemonic")?;
+                    self.builder.mnemonic = Some(format!(".{mnemonic}"));
+                }
                 ParserVmOpcodeV2::PushOperand => {
                     let expr = self.pop_expr("PushOperand")?;
                     self.builder.operands.push(expr);
@@ -758,13 +762,15 @@ fn parse_legacy_deferred_shape(
     end_token_text: Option<String>,
     exec_ctx: &ParserVmExecContext<'_>,
 ) -> Result<Option<LineAst>, ParseError> {
-    if let Some(line) = parse_dot_directive_envelope_from_tokens(
-        tokens,
-        end_span,
-        end_token_text.clone(),
-        &exec_ctx.expr_parse_ctx,
-    )? {
-        return Ok(Some(line));
+    if !is_v2_data_directive_shape(tokens) {
+        if let Some(line) = parse_dot_directive_envelope_from_tokens(
+            tokens,
+            end_span,
+            end_token_text.clone(),
+            &exec_ctx.expr_parse_ctx,
+        )? {
+            return Ok(Some(line));
+        }
     }
     if let Some(line) = parse_star_org_envelope_from_tokens(
         tokens,
@@ -779,6 +785,57 @@ fn parse_legacy_deferred_shape(
         end_span,
         end_token_text,
         &exec_ctx.expr_parse_ctx,
+    )
+}
+
+fn is_v2_data_directive_shape(tokens: &[Token]) -> bool {
+    let directive_idx = match tokens.first() {
+        Some(Token {
+            kind: TokenKind::Identifier(_) | TokenKind::Register(_),
+            span,
+        }) if span.col_start == 1 => {
+            if matches!(
+                tokens.get(1),
+                Some(Token {
+                    kind: TokenKind::Colon,
+                    ..
+                })
+            ) {
+                2
+            } else {
+                1
+            }
+        }
+        _ => 0,
+    };
+    matches!(
+        tokens.get(directive_idx),
+        Some(Token {
+            kind: TokenKind::Dot,
+            ..
+        })
+    ) && matches!(
+        tokens.get(directive_idx.saturating_add(1)),
+        Some(Token { kind: TokenKind::Identifier(name), .. })
+            if is_v2_data_directive_name(name)
+    )
+}
+
+fn is_v2_data_directive_name(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "byte"
+            | "db"
+            | "word"
+            | "dw"
+            | "long"
+            | "text"
+            | "null"
+            | "ptext"
+            | "fill"
+            | "res"
+            | "ds"
+            | "align"
     )
 }
 
@@ -891,10 +948,56 @@ mod tests {
         }
     }
 
+    fn comma(col: usize) -> Token {
+        Token {
+            kind: TokenKind::Comma,
+            span: span(col, col + 1),
+        }
+    }
+
     fn dot(col: usize) -> Token {
         Token {
             kind: TokenKind::Dot,
             span: span(col, col + 1),
+        }
+    }
+
+    fn default_statement_program_for_tests() -> RuntimeParserVmProgram {
+        RuntimeParserVmProgram {
+            opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+            program: vec![
+                ParserVmOpcodeV2::BeginStatement as u8,
+                ParserVmOpcodeV2::ParseOptionalLeadingLabel as u8,
+                ParserVmOpcodeV2::IsEol as u8,
+                ParserVmOpcodeV2::JumpIfFalse as u8,
+                8,
+                0,
+                ParserVmOpcodeV2::FinishLine as u8,
+                ParserVmOpcodeV2::End as u8,
+                ParserVmOpcodeV2::PeekKind as u8,
+                TOKEN_KIND_DOT,
+                ParserVmOpcodeV2::JumpIfFalse as u8,
+                20,
+                0,
+                ParserVmOpcodeV2::Advance as u8,
+                ParserVmOpcodeV2::LoadIdentifier as u8,
+                ParserVmOpcodeV2::SetDotMnemonic as u8,
+                ParserVmOpcodeV2::Advance as u8,
+                ParserVmOpcodeV2::Jump as u8,
+                23,
+                0,
+                ParserVmOpcodeV2::LoadIdentifier as u8,
+                ParserVmOpcodeV2::SetMnemonic as u8,
+                ParserVmOpcodeV2::Advance as u8,
+                ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+                ParserVmOpcodeV2::ParseOperandExprRange as u8,
+                0xFF,
+                0xFF,
+                0xFF,
+                0xFF,
+                ParserVmOpcodeV2::FinishLine as u8,
+                ParserVmOpcodeV2::End as u8,
+            ],
         }
     }
 
@@ -1019,6 +1122,85 @@ mod tests {
                 assert!(
                     matches!(statement.operands[0], Expr::Number(ref value, _) if value == "42")
                 );
+            }
+            other => panic!("expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parser_vm_v2_parses_data_directive_dot_mnemonic() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let handler: DynExprProcessingHandler<'_> =
+            Rc::new(RefCell::new(Box::new(StubExprHandler)));
+        let program = default_statement_program_for_tests();
+        let line = parse_line_with_parser_vm_v2(
+            vec![
+                ident("data", 1, 5),
+                colon(5),
+                dot(7),
+                ident("byte", 8, 12),
+                ident("one", 13, 16),
+                comma(16),
+                ident("two", 18, 21),
+            ],
+            span(21, 21),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, Some(handler)),
+        )
+        .expect("data directive should parse through v2");
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.label.expect("label").name, "data");
+                assert_eq!(statement.mnemonic.as_deref(), Some(".byte"));
+                assert_eq!(statement.operands.len(), 2);
+            }
+            other => panic!("expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parser_vm_v2_classifies_wi3_data_directive_names() {
+        for name in [
+            "byte", "db", "word", "dw", "long", "text", "null", "ptext", "fill", "res", "ds",
+            "align",
+        ] {
+            assert!(
+                is_v2_data_directive_shape(&[dot(1), ident(name, 2, 2 + name.len())]),
+                "expected .{name} to use the v2 data directive path"
+            );
+        }
+        assert!(!is_v2_data_directive_shape(&[
+            dot(1),
+            ident("section", 2, 9)
+        ]));
+    }
+
+    #[test]
+    fn parser_vm_v2_keeps_non_data_dot_directives_on_legacy_fallback() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let program = RuntimeParserVmProgram {
+            opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+            program: vec![ParserVmOpcodeV2::Fail as u8],
+        };
+        let line = parse_line_with_parser_vm_v2(
+            vec![dot(1), ident("struct", 2, 8)],
+            span(8, 8),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, None),
+        )
+        .expect("non-data dot directive should still use legacy fallback");
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.mnemonic.as_deref(), Some(".struct"));
+                assert!(statement.operands.is_empty());
             }
             other => panic!("expected statement, got {other:?}"),
         }

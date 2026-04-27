@@ -325,7 +325,7 @@ fn parser_contract_for_test(owner: ScopedOwner) -> ParserContractDescriptor {
         owner,
         grammar_id: PARSER_GRAMMAR_ID_LINE_V1.to_string(),
         ast_schema_id: PARSER_AST_SCHEMA_ID_LINE_V1.to_string(),
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
         max_ast_nodes_per_line: 256,
         diagnostics: ParserDiagnosticMap {
             unexpected_token: DIAG_PARSER_UNEXPECTED_TOKEN.to_string(),
@@ -347,15 +347,27 @@ fn sample_parser_contracts() -> Vec<ParserContractDescriptor> {
 fn parser_vm_program_for_test(owner: ScopedOwner) -> ParserVmProgramDescriptor {
     ParserVmProgramDescriptor {
         owner,
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
         program: vec![
-            ParserVmOpcode::ParseDotDirectiveEnvelope as u8,
-            ParserVmOpcode::ParseStarOrgEnvelope as u8,
-            ParserVmOpcode::ParseAssignmentEnvelope as u8,
-            ParserVmOpcode::ParseInstructionEnvelope as u8,
-            ParserVmOpcode::EmitDiagIfNoAst as u8,
+            ParserVmOpcodeV2::BeginStatement as u8,
+            ParserVmOpcodeV2::ParseOptionalLeadingLabel as u8,
+            ParserVmOpcodeV2::IsEol as u8,
+            ParserVmOpcodeV2::JumpIfFalse as u8,
+            8,
             0,
-            ParserVmOpcode::End as u8,
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8,
+            ParserVmOpcodeV2::LoadIdentifier as u8,
+            ParserVmOpcodeV2::SetMnemonic as u8,
+            ParserVmOpcodeV2::Advance as u8,
+            ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+            ParserVmOpcodeV2::ParseOperandExprRange as u8,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8,
         ],
     }
 }
@@ -1034,7 +1046,7 @@ fn encode_decode_round_trip_preserves_parser_contracts() {
     );
     assert_eq!(
         decoded.parser_contracts[0].opcode_version,
-        PARSER_VM_OPCODE_VERSION_V1
+        PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT
     );
     assert_eq!(decoded.parser_contracts[0].max_ast_nodes_per_line, 256);
     assert_eq!(
@@ -1078,18 +1090,30 @@ fn encode_decode_round_trip_preserves_parser_vm_programs() {
     ));
     assert_eq!(
         decoded.parser_vm_programs[0].opcode_version,
-        PARSER_VM_OPCODE_VERSION_V1
+        PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT
     );
     assert_eq!(
         decoded.parser_vm_programs[0].program,
         vec![
-            ParserVmOpcode::ParseDotDirectiveEnvelope as u8,
-            ParserVmOpcode::ParseStarOrgEnvelope as u8,
-            ParserVmOpcode::ParseAssignmentEnvelope as u8,
-            ParserVmOpcode::ParseInstructionEnvelope as u8,
-            ParserVmOpcode::EmitDiagIfNoAst as u8,
+            ParserVmOpcodeV2::BeginStatement as u8,
+            ParserVmOpcodeV2::ParseOptionalLeadingLabel as u8,
+            ParserVmOpcodeV2::IsEol as u8,
+            ParserVmOpcodeV2::JumpIfFalse as u8,
+            8,
             0,
-            ParserVmOpcode::End as u8
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8,
+            ParserVmOpcodeV2::LoadIdentifier as u8,
+            ParserVmOpcodeV2::SetMnemonic as u8,
+            ParserVmOpcodeV2::Advance as u8,
+            ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+            ParserVmOpcodeV2::ParseOperandExprRange as u8,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8
         ]
     );
     assert!(matches!(

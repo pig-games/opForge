@@ -11,10 +11,6 @@ use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_parse_utils::{parse_span_at_end, runtime_bridge_error_to_parse_error};
 use crate::tokenizer_runtime_utils;
-use crate::vm_opasm::{
-    parse_operand_expr_range, split_top_level_comma_ranges, OperandExprBoundary,
-    OperandExprParseHints,
-};
 use crate::vm_opcore::parse_expr_with_vm_contract;
 use crate::vm_opcore::HierarchyExecutionModel;
 
@@ -172,77 +168,6 @@ pub fn parse_line_with_model_with_expr_handler<'a>(
     Ok((line_ast, end_span, end_token_text))
 }
 
-pub(super) fn parse_statement_envelope_from_tokens(
-    tokens: &[Token],
-    end_span: Span,
-    end_token_text: Option<String>,
-    expr_parse_ctx: &VmExprParseContext<'_>,
-) -> Result<PortableLineAst, ParseError> {
-    if tokens.is_empty() {
-        return Ok(PortableLineAst::Empty);
-    }
-
-    let (label, idx) = parse_optional_leading_label(tokens);
-
-    if idx >= tokens.len() {
-        return Ok(PortableLineAst::from_core_line_ast(&LineAst::Statement(
-            StatementAst {
-                label,
-                mnemonic: None,
-                operands: Vec::new(),
-            },
-        )));
-    }
-
-    if let Some(line) = parse_star_org_at(
-        tokens,
-        idx,
-        label.clone(),
-        end_span,
-        end_token_text.clone(),
-        expr_parse_ctx,
-    )? {
-        return Ok(PortableLineAst::from_core_line_ast(&line));
-    }
-    if let Some(line) = parse_assignment_at(
-        tokens,
-        idx,
-        label.clone(),
-        end_span,
-        end_token_text.clone(),
-        expr_parse_ctx,
-    )? {
-        return Ok(PortableLineAst::from_core_line_ast(&line));
-    }
-    if matches!(
-        tokens.get(idx),
-        Some(Token {
-            kind: TokenKind::Dot,
-            ..
-        })
-    ) {
-        return parse_dot_directive_line_from_tokens(
-            tokens,
-            idx,
-            label,
-            end_span,
-            end_token_text,
-            expr_parse_ctx,
-        )
-        .map(|line| PortableLineAst::from_core_line_ast(&line));
-    }
-    if let Some(line) =
-        parse_instruction_at(tokens, idx, label, end_span, end_token_text, expr_parse_ctx)?
-    {
-        return Ok(PortableLineAst::from_core_line_ast(&line));
-    }
-    let span = tokens.get(idx).map(|token| token.span).unwrap_or(end_span);
-    Err(ParseError {
-        message: "Expected mnemonic identifier".to_string(),
-        span,
-    })
-}
-
 pub(super) fn parse_dot_directive_envelope_from_tokens(
     tokens: &[Token],
     end_span: Span,
@@ -363,116 +288,6 @@ fn parse_assignment_at(
         op,
         expr,
         span,
-    })))
-}
-
-pub(super) fn parse_instruction_envelope_from_tokens(
-    tokens: &[Token],
-    end_span: Span,
-    end_token_text: Option<String>,
-    expr_parse_ctx: &VmExprParseContext<'_>,
-) -> Result<Option<LineAst>, ParseError> {
-    if tokens.is_empty() {
-        return Ok(None);
-    }
-    let (label, idx) = parse_optional_leading_label(tokens);
-    if label.is_none() && is_star_org_assignment(tokens, idx) {
-        return Ok(None);
-    }
-    if match_assignment_op_at(tokens, idx).is_some() {
-        return Ok(None);
-    }
-    if matches!(
-        tokens.get(idx),
-        Some(Token {
-            kind: TokenKind::Dot,
-            ..
-        })
-    ) {
-        return Ok(None);
-    }
-    parse_instruction_at(tokens, idx, label, end_span, end_token_text, expr_parse_ctx)
-}
-
-fn parse_instruction_at(
-    tokens: &[Token],
-    idx: usize,
-    label: Option<Label>,
-    end_span: Span,
-    end_token_text: Option<String>,
-    expr_parse_ctx: &VmExprParseContext<'_>,
-) -> Result<Option<LineAst>, ParseError> {
-    if idx >= tokens.len() {
-        return Ok(Some(LineAst::Statement(StatementAst {
-            label,
-            mnemonic: None,
-            operands: Vec::new(),
-        })));
-    }
-
-    let (mnemonic, idx) = match tokens.get(idx) {
-        Some(Token {
-            kind: TokenKind::Identifier(name),
-            span,
-        }) => {
-            let mut mnemonic = name.clone();
-            let mut next_idx = idx.saturating_add(1);
-            if mnemonic.to_ascii_uppercase().ends_with(".S")
-                && matches!(
-                    tokens.get(next_idx),
-                    Some(Token {
-                        kind: TokenKind::Operator(OperatorKind::Plus),
-                        span: plus_span,
-                    }) if plus_span.col_start == span.col_end
-                )
-            {
-                next_idx = next_idx.saturating_add(1);
-                mnemonic.push('+');
-            }
-            (mnemonic, next_idx)
-        }
-        _ => return Ok(None),
-    };
-
-    let mut operands: Vec<Expr> = Vec::new();
-    if idx < tokens.len() {
-        for (range_idx, (start, end)) in split_top_level_comma_ranges(tokens, idx, tokens.len())
-            .into_iter()
-            .enumerate()
-        {
-            if range_idx == 0 && start == end {
-                let span = tokens
-                    .get(start)
-                    .map(|token| token.span)
-                    .unwrap_or(end_span);
-                operands.push(Expr::Number("0".to_string(), span));
-                continue;
-            }
-            parse_operand_expr_range(
-                tokens,
-                start,
-                end,
-                OperandExprBoundary {
-                    end_span,
-                    end_token_text: end_token_text.clone(),
-                },
-                OperandExprParseHints {
-                    mnemonic: Some(mnemonic.as_str()),
-                    operand_index: range_idx,
-                },
-                expr_parse_ctx,
-                &mut operands,
-            )?;
-            if matches!(operands.last(), Some(Expr::Error(_, _))) {
-                break;
-            }
-        }
-    }
-
-    Ok(Some(LineAst::Statement(StatementAst {
-        label,
-        mnemonic: Some(mnemonic),
-        operands,
     })))
 }
 

@@ -13,7 +13,8 @@ use package::{
     TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
     DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_PARSER_VM_OPCODE_VERSION_V1,
     EXPR_VM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
-    PARSER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
+    PARSER_VM_OPCODE_VERSION_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -1138,7 +1139,10 @@ impl RuntimeModelCore {
                 ),
             ));
         }
-        if contract.opcode_version != PARSER_VM_OPCODE_VERSION_V1 {
+        if !matches!(
+            contract.opcode_version,
+            PARSER_VM_OPCODE_VERSION_V1 | PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT
+        ) {
             return Err(RuntimeBridgeError::Diagnostic(
                 RuntimeBridgeDiagnostic::new(
                     error_code,

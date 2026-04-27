@@ -52,8 +52,8 @@ use families::{
 use formatter::{FormatterConfig, FormatterEngine};
 use opcore::macro_processor::MacroProcessor;
 use package::{
-    encode_hierarchy_chunks_from_chunks, ModeSelectorDescriptor, ParserVmOpcode, TokenizerVmOpcode,
-    EXPR_PARSER_VM_OPCODE_VERSION_V1,
+    encode_hierarchy_chunks_from_chunks, ModeSelectorDescriptor, ParserVmOpcodeV2,
+    TokenizerVmOpcode, EXPR_PARSER_VM_OPCODE_VERSION_V1,
 };
 use registry::cpu::CpuType;
 use registry::family::AssemblerContext;
@@ -21876,7 +21876,7 @@ fn vm_runtime_mos6502_parser_vm_failure_errors_instead_of_host_parser_fallback()
         .cloned()
         .expect("mos6502 family parser vm program");
     cpu_override.owner = ScopedOwner::Cpu("m6502".to_string());
-    cpu_override.program = vec![ParserVmOpcode::Fail as u8, ParserVmOpcode::End as u8];
+    cpu_override.program = vec![ParserVmOpcodeV2::Fail as u8, ParserVmOpcodeV2::End as u8];
     chunks.parser_vm_programs.push(cpu_override);
 
     asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));
@@ -21890,7 +21890,7 @@ fn vm_runtime_mos6502_parser_vm_failure_errors_instead_of_host_parser_fallback()
     assert!(
         message
             .to_ascii_lowercase()
-            .contains("parser vm requested failure"),
+            .contains("parser vm v2 requested failure"),
         "expected parser VM failure diagnostics, got: {message}"
     );
 }
@@ -21961,7 +21961,7 @@ fn vm_runtime_mos6502_expr_parser_contract_breakage_errors_instead_of_host_fallb
     assert!(
         message
             .to_ascii_lowercase()
-            .contains("unsupported expression parser contract opcode version"),
+            .contains("opasm v2 expression sub-call opcode version mismatch"),
         "expected expression parser contract compatibility failure, got: {message}"
     );
 }
@@ -22204,7 +22204,7 @@ fn vm_runtime_intel8085_expr_parser_contract_breakage_errors_instead_of_host_fal
     assert!(
         message
             .to_ascii_lowercase()
-            .contains("unsupported expression parser contract opcode version"),
+            .contains("opasm v2 expression sub-call opcode version mismatch"),
         "expected expression parser contract compatibility failure, got: {message}"
     );
 }
@@ -22239,7 +22239,7 @@ fn vm_runtime_motorola6800_expr_parser_contract_breakage_errors_instead_of_host_
     assert!(
         message
             .to_ascii_lowercase()
-            .contains("unsupported expression parser contract opcode version"),
+            .contains("opasm v2 expression sub-call opcode version mismatch"),
         "expected expression parser contract compatibility failure, got: {message}"
     );
 }

@@ -13,8 +13,7 @@ use types::processing::ProcessingRequestKind;
 
 use crate::vm_opasm_parse::{
     parse_assignment_envelope_from_tokens, parse_dot_directive_envelope_from_tokens,
-    parse_instruction_envelope_from_tokens, parse_star_org_envelope_from_tokens,
-    parse_statement_envelope_from_tokens, ParserVmExecContext,
+    parse_star_org_envelope_from_tokens, ParserVmExecContext,
 };
 
 pub(crate) fn parse_line_with_parser_vm(
@@ -133,31 +132,6 @@ pub(crate) fn parse_line_with_parser_vm(
                 )? {
                     parsed_line = Some(line);
                 }
-            }
-            ParserVmOpcode::ParseInstructionEnvelope => {
-                if parsed_line.is_some() {
-                    continue;
-                }
-                if let Some(line) = parse_instruction_envelope_from_tokens(
-                    &tokens,
-                    end_span,
-                    end_token_text.clone(),
-                    &exec_ctx.expr_parse_ctx,
-                )? {
-                    parsed_line = Some(line);
-                }
-            }
-            ParserVmOpcode::ParseStatementEnvelope => {
-                if parsed_line.is_some() {
-                    continue;
-                }
-                let envelope = parse_statement_envelope_from_tokens(
-                    &tokens,
-                    end_span,
-                    end_token_text.clone(),
-                    &exec_ctx.expr_parse_ctx,
-                )?;
-                parsed_line = Some(envelope.to_core_line_ast());
             }
             ParserVmOpcode::EmitDiag => {
                 let slot = parser_vm_read_diag_slot(

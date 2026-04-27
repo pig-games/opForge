@@ -39,15 +39,15 @@ use package::{
     default_token_policy_lexical_defaults, token_identifier_class, DiagnosticDescriptor,
     ExprContractDescriptor, ExprDiagnosticMap, ExprParserContractDescriptor,
     ExprParserDiagnosticMap, HierarchyChunks, ParserContractDescriptor, ParserDiagnosticMap,
-    ParserVmOpcode, ParserVmProgramDescriptor, TokenCaseRule, TokenPolicyDescriptor,
-    TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmProgramDescriptor,
-    TokenizerVmStreamDescriptor, VmProgramDescriptor, DIAG_EXPR_BUDGET_EXCEEDED,
-    DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE, DIAG_EXPR_INVALID_PROGRAM,
-    DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
-    DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
+    ParserVmOpcode, ParserVmOpcodeV2, ParserVmProgramDescriptor, TokenCaseRule,
+    TokenPolicyDescriptor, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
+    TokenizerVmProgramDescriptor, TokenizerVmStreamDescriptor, VmProgramDescriptor,
+    DIAG_EXPR_BUDGET_EXCEEDED, DIAG_EXPR_EVAL_FAILURE, DIAG_EXPR_INVALID_OPCODE,
+    DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
+    DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
-    EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1, PARSER_VM_OPCODE_VERSION_V1,
-    TOKENIZER_VM_OPCODE_VERSION_V1,
+    EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1,
+    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -424,7 +424,7 @@ fn parser_contract_for_test(owner: ScopedOwner) -> ParserContractDescriptor {
         owner,
         grammar_id: "opforge.line.v1".to_string(),
         ast_schema_id: "opforge.ast.line.v1".to_string(),
-        opcode_version: 1,
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
         max_ast_nodes_per_line: 512,
         diagnostics: ParserDiagnosticMap {
             unexpected_token: "otp001".to_string(),
@@ -438,15 +438,27 @@ fn parser_contract_for_test(owner: ScopedOwner) -> ParserContractDescriptor {
 fn parser_vm_program_for_test(owner: ScopedOwner) -> ParserVmProgramDescriptor {
     ParserVmProgramDescriptor {
         owner,
-        opcode_version: PARSER_VM_OPCODE_VERSION_V1,
+        opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
         program: vec![
-            ParserVmOpcode::ParseDotDirectiveEnvelope as u8,
-            ParserVmOpcode::ParseStarOrgEnvelope as u8,
-            ParserVmOpcode::ParseAssignmentEnvelope as u8,
-            ParserVmOpcode::ParseInstructionEnvelope as u8,
-            ParserVmOpcode::EmitDiagIfNoAst as u8,
+            ParserVmOpcodeV2::BeginStatement as u8,
+            ParserVmOpcodeV2::ParseOptionalLeadingLabel as u8,
+            ParserVmOpcodeV2::IsEol as u8,
+            ParserVmOpcodeV2::JumpIfFalse as u8,
+            8,
             0,
-            ParserVmOpcode::End as u8,
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8,
+            ParserVmOpcodeV2::LoadIdentifier as u8,
+            ParserVmOpcodeV2::SetMnemonic as u8,
+            ParserVmOpcodeV2::Advance as u8,
+            ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+            ParserVmOpcodeV2::ParseOperandExprRange as u8,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8,
         ],
     }
 }
@@ -1389,7 +1401,10 @@ fn execution_model_from_registry_exposes_default_family_parser_contract() {
         .expect("parser contract should resolve");
     assert_eq!(contract.grammar_id, "opforge.line.v1");
     assert_eq!(contract.ast_schema_id, "opforge.ast.line.v1");
-    assert_eq!(contract.opcode_version, 1);
+    assert_eq!(
+        contract.opcode_version,
+        PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT
+    );
 }
 
 #[test]
@@ -1560,17 +1575,32 @@ fn execution_model_from_registry_exposes_default_family_parser_vm_program() {
         .resolve_parser_vm_program("m6502", None)
         .expect("parser vm program resolution")
         .expect("parser vm program should resolve");
-    assert_eq!(program.opcode_version, PARSER_VM_OPCODE_VERSION_V1);
+    assert_eq!(
+        program.opcode_version,
+        PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT
+    );
     assert_eq!(
         program.program,
         vec![
-            ParserVmOpcode::ParseDotDirectiveEnvelope as u8,
-            ParserVmOpcode::ParseStarOrgEnvelope as u8,
-            ParserVmOpcode::ParseAssignmentEnvelope as u8,
-            ParserVmOpcode::ParseInstructionEnvelope as u8,
-            ParserVmOpcode::EmitDiagIfNoAst as u8,
+            ParserVmOpcodeV2::BeginStatement as u8,
+            ParserVmOpcodeV2::ParseOptionalLeadingLabel as u8,
+            ParserVmOpcodeV2::IsEol as u8,
+            ParserVmOpcodeV2::JumpIfFalse as u8,
+            8,
             0,
-            ParserVmOpcode::End as u8
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8,
+            ParserVmOpcodeV2::LoadIdentifier as u8,
+            ParserVmOpcodeV2::SetMnemonic as u8,
+            ParserVmOpcodeV2::Advance as u8,
+            ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+            ParserVmOpcodeV2::ParseOperandExprRange as u8,
+            0xFF,
+            0xFF,
+            0xFF,
+            0xFF,
+            ParserVmOpcodeV2::FinishLine as u8,
+            ParserVmOpcodeV2::End as u8
         ]
     );
 }
@@ -1713,7 +1743,7 @@ fn execution_model_validate_parser_contract_for_assembler_rejects_incompatible_o
     let mut chunks =
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     let mut cpu_contract = parser_contract_for_test(ScopedOwner::Cpu("m6502".to_string()));
-    cpu_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V1.saturating_add(1);
+    cpu_contract.opcode_version = PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT.saturating_add(1);
     chunks.parser_contracts.push(cpu_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
     let err = model

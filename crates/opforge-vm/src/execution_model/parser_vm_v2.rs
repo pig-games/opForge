@@ -3,7 +3,10 @@ use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_model_types::{RuntimeParserContract, RuntimeParserVmProgram};
 use crate::runtime_parse_utils::{parse_error_at_end, runtime_bridge_error_to_parse_error};
 use crate::vm_opasm::{split_top_level_comma_ranges, OperandExprBoundary, OperandExprParseHints};
-use crate::vm_opasm_parse::ParserVmExecContext;
+use crate::vm_opasm_parse::{
+    parse_assignment_envelope_from_tokens, parse_dot_directive_envelope_from_tokens,
+    parse_star_org_envelope_from_tokens, ParserVmExecContext,
+};
 use opcore::parser::{Expr, Label, LineAst, ParseError};
 use opcore::tokenizer::{OperatorKind, Span, Token, TokenKind};
 use package::{
@@ -30,6 +33,8 @@ const TOKEN_KIND_COMMA: u8 = 0x07;
 const OPERATOR_PLUS: u8 = 0x01;
 const OPERATOR_EQ: u8 = 0x02;
 const OPERATOR_MULTIPLY: u8 = 0x03;
+const DYNAMIC_OPERAND_RANGE: usize = u16::MAX as usize;
+const RETIRED_V1_PARSE_INSTRUCTION_ENVELOPE: u8 = 0x07;
 
 #[derive(Clone, Debug)]
 enum ParserVmV2Value {
@@ -88,6 +93,14 @@ pub(crate) fn parse_line_with_parser_vm_v2<'exec>(
         ));
     }
     reject_misrouted_opcore_directive(tokens.as_slice(), end_span)?;
+    if let Some(line) = parse_legacy_deferred_shape(
+        tokens.as_slice(),
+        end_span,
+        end_token_text.clone(),
+        &exec_ctx,
+    )? {
+        return Ok(line);
+    }
 
     let mut state = ParserVmV2State {
         tokens,
@@ -101,8 +114,10 @@ pub(crate) fn parse_line_with_parser_vm_v2<'exec>(
         steps: 0,
         value_stack: Vec::new(),
         checkpoints: Vec::new(),
+        operand_boundaries: Vec::new(),
         builder: ParserVmV2AstBuilder::default(),
         parsed_line: None,
+        advance_mnemonic_suffix_plus: false,
     };
     state.run()
 }
@@ -119,8 +134,10 @@ struct ParserVmV2State<'contract, 'exec> {
     steps: usize,
     value_stack: Vec<ParserVmV2Value>,
     checkpoints: Vec<ParserVmV2Checkpoint>,
+    operand_boundaries: Vec<(usize, usize)>,
     builder: ParserVmV2AstBuilder,
     parsed_line: Option<LineAst>,
+    advance_mnemonic_suffix_plus: bool,
 }
 
 impl ParserVmV2State<'_, '_> {
@@ -138,7 +155,9 @@ impl ParserVmV2State<'_, '_> {
             }
             let opcode_byte = self.read_u8("opcode")?;
             let Some(opcode) = ParserVmOpcodeV2::from_u8(opcode_byte) else {
-                if ParserVmOpcode::from_u8(opcode_byte).is_some() {
+                if ParserVmOpcode::from_u8(opcode_byte).is_some()
+                    || opcode_byte == RETIRED_V1_PARSE_INSTRUCTION_ENVELOPE
+                {
                     return self.fail_with_code(
                         DIAG_PARSER_OPASM_V2_FORBIDDEN_CROSS_CONTRACT_OPCODE,
                         format!("parser VM v2 rejected cross-contract opcode 0x{opcode_byte:02X}"),
@@ -197,7 +216,13 @@ impl ParserVmV2State<'_, '_> {
                 }
                 ParserVmOpcodeV2::Advance => {
                     if self.cursor < self.tokens.len() {
-                        self.cursor = self.cursor.saturating_add(1);
+                        let step = if self.advance_mnemonic_suffix_plus {
+                            self.advance_mnemonic_suffix_plus = false;
+                            2
+                        } else {
+                            1
+                        };
+                        self.cursor = self.cursor.saturating_add(step).min(self.tokens.len());
                     }
                 }
                 ParserVmOpcodeV2::ConsumeKind => {
@@ -254,6 +279,7 @@ impl ParserVmV2State<'_, '_> {
                         self.cursor,
                         self.tokens.len(),
                     );
+                    self.operand_boundaries = ranges.clone();
                     self.push_value(ParserVmV2Value::Boundaries(ranges))?;
                 }
                 ParserVmOpcodeV2::RequireNoTrailingTokens => {
@@ -267,6 +293,10 @@ impl ParserVmV2State<'_, '_> {
                 ParserVmOpcodeV2::ParseOperandExprRange => {
                     let start = self.read_u16("ParseOperandExprRange start")? as usize;
                     let end = self.read_u16("ParseOperandExprRange end")? as usize;
+                    if start == DYNAMIC_OPERAND_RANGE && end == DYNAMIC_OPERAND_RANGE {
+                        self.parse_operand_boundaries_into_builder()?;
+                        continue;
+                    }
                     self.exec_ctx
                         .expr_parse_ctx
                         .model
@@ -305,7 +335,11 @@ impl ParserVmV2State<'_, '_> {
                     self.builder.label = Some(label);
                 }
                 ParserVmOpcodeV2::SetMnemonic => {
-                    let mnemonic = self.pop_text("SetMnemonic")?;
+                    let mut mnemonic = self.pop_text("SetMnemonic")?;
+                    if self.mnemonic_has_attached_size_plus(&mnemonic) {
+                        mnemonic.push('+');
+                        self.advance_mnemonic_suffix_plus = true;
+                    }
                     self.builder.mnemonic = Some(mnemonic);
                 }
                 ParserVmOpcodeV2::PushOperand => {
@@ -500,6 +534,7 @@ impl ParserVmV2State<'_, '_> {
             name,
             span: first.span,
         };
+        self.builder.label = Some(label.clone());
         if let Some(colon) = self.tokens.get(1) {
             if matches!(colon.kind, TokenKind::Colon) && colon.span.col_start == first.span.col_end
             {
@@ -513,10 +548,73 @@ impl ParserVmV2State<'_, '_> {
         self.push_value(ParserVmV2Value::Label(label))
     }
 
+    fn parse_operand_boundaries_into_builder(&mut self) -> Result<(), ParseError> {
+        if self.operand_boundaries.is_empty() {
+            return Ok(());
+        }
+        self.exec_ctx
+            .expr_parse_ctx
+            .model
+            .ensure_parser_vm_v2_expr_subcall_contract_for_assembler(
+                self.exec_ctx.expr_parse_ctx.cpu_id,
+                self.exec_ctx.expr_parse_ctx.dialect_override,
+            )
+            .map_err(|err| runtime_bridge_error_to_parse_error(err, self.end_span))?;
+        let mnemonic = self.builder.mnemonic.clone();
+        for (range_idx, (start, end)) in self.operand_boundaries.clone().into_iter().enumerate() {
+            if range_idx == 0 && start == end {
+                let span = self
+                    .tokens
+                    .get(start)
+                    .map(|token| token.span)
+                    .unwrap_or(self.end_span);
+                self.builder
+                    .operands
+                    .push(Expr::Number("0".to_string(), span));
+                continue;
+            }
+            crate::vm_opasm::parse_operand_expr_range(
+                self.tokens.as_slice(),
+                start,
+                end,
+                OperandExprBoundary {
+                    end_span: self.end_span,
+                    end_token_text: self.end_token_text.clone(),
+                },
+                OperandExprParseHints {
+                    mnemonic: mnemonic.as_deref(),
+                    operand_index: range_idx,
+                },
+                &self.exec_ctx.expr_parse_ctx,
+                &mut self.builder.operands,
+            )?;
+            if matches!(self.builder.operands.last(), Some(Expr::Error(_, _))) {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn mnemonic_has_attached_size_plus(&self, mnemonic: &str) -> bool {
+        if !mnemonic.to_ascii_uppercase().ends_with(".S") {
+            return false;
+        }
+        matches!(
+            (self.tokens.get(self.cursor), self.tokens.get(self.cursor.saturating_add(1))),
+            (
+                Some(Token { span, .. }),
+                Some(Token {
+                    kind: TokenKind::Operator(OperatorKind::Plus),
+                    span: plus_span,
+                })
+            ) if plus_span.col_start == span.col_end
+        )
+    }
+
     fn identifier_at_cursor(&self) -> Option<(String, Span)> {
         match self.tokens.get(self.cursor) {
             Some(Token {
-                kind: TokenKind::Identifier(name) | TokenKind::Register(name),
+                kind: TokenKind::Identifier(name),
                 span,
             }) => Some((name.clone(), *span)),
             _ => None,
@@ -608,28 +706,40 @@ fn enforce_entry_boundary(
 }
 
 fn reject_misrouted_opcore_directive(tokens: &[Token], end_span: Span) -> Result<(), ParseError> {
-    let [Token {
+    let directive_idx = match tokens.first() {
+        Some(Token {
+            kind: TokenKind::Identifier(_) | TokenKind::Register(_),
+            span,
+        }) if span.col_start == 1 => {
+            if matches!(
+                tokens.get(1),
+                Some(Token {
+                    kind: TokenKind::Colon,
+                    ..
+                })
+            ) {
+                2
+            } else {
+                1
+            }
+        }
+        _ => 0,
+    };
+    let Some(Token {
         kind: TokenKind::Dot,
         ..
-    }, Token {
-        kind: TokenKind::Identifier(name),
-        ..
-    }, ..] = tokens
+    }) = tokens.get(directive_idx)
     else {
         return Ok(());
     };
-    if !matches!(
-        name.to_ascii_lowercase().as_str(),
-        "if" | "elif"
-            | "else"
-            | "endif"
-            | "module"
-            | "endmodule"
-            | "include"
-            | "namespace"
-            | "macro"
-            | "endmacro"
-    ) {
+    let Some(Token {
+        kind: TokenKind::Identifier(name),
+        ..
+    }) = tokens.get(directive_idx.saturating_add(1))
+    else {
+        return Ok(());
+    };
+    if !matches!(name.to_ascii_lowercase().as_str(), "include") {
         return Ok(());
     }
     Err(runtime_bridge_error_to_parse_error(
@@ -640,6 +750,36 @@ fn reject_misrouted_opcore_directive(tokens: &[Token], end_span: Span) -> Result
         )),
         end_span,
     ))
+}
+
+fn parse_legacy_deferred_shape(
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+    exec_ctx: &ParserVmExecContext<'_>,
+) -> Result<Option<LineAst>, ParseError> {
+    if let Some(line) = parse_dot_directive_envelope_from_tokens(
+        tokens,
+        end_span,
+        end_token_text.clone(),
+        &exec_ctx.expr_parse_ctx,
+    )? {
+        return Ok(Some(line));
+    }
+    if let Some(line) = parse_star_org_envelope_from_tokens(
+        tokens,
+        end_span,
+        end_token_text.clone(),
+        &exec_ctx.expr_parse_ctx,
+    )? {
+        return Ok(Some(line));
+    }
+    parse_assignment_envelope_from_tokens(
+        tokens,
+        end_span,
+        end_token_text,
+        &exec_ctx.expr_parse_ctx,
+    )
 }
 
 fn token_text(token: &Token) -> String {
@@ -919,7 +1059,7 @@ mod tests {
         let contract = parser_contract_for_tests();
         let program = RuntimeParserVmProgram {
             opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-            program: vec![ParserVmOpcode::ParseInstructionEnvelope as u8],
+            program: vec![RETIRED_V1_PARSE_INSTRUCTION_ENVELOPE],
         };
         let err = parse_line_with_parser_vm_v2(
             vec![ident("lda", 1, 4)],

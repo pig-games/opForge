@@ -283,7 +283,7 @@ they are mechanically required by the listed deletions.
   - Commit outcome:
     - PRVM v2 opcode set, executor, and cross-contract sub-call mechanism exist in the tree but are not yet selected by the default builder; nothing in the assembler pipeline behaves differently yet
 
-- [ ] **Work item 2**: move plain instruction statements (`LineAst::Statement` mnemonic + operands) from v1 envelope delegation to v2 bytecode
+- [x] **Work item 2**: move plain instruction statements (`LineAst::Statement` mnemonic + operands) from v1 envelope delegation to v2 bytecode
   - Source requirement or finding IDs: Q3 step 1; Q5 (preserve `Expr::Error`); Q7 (delete v1 helper in same commit)
   - Definition of done:
     - default builder in `crates/opforge-vm/src/builder.rs` emits a v2 program for plain instruction statements: optional leading label → mnemonic → operand-comma scan → per-range opcore expression sub-call loop → `FinishLine`
@@ -305,6 +305,7 @@ they are mechanically required by the listed deletions.
     - `crates/opforge-package/src/package/tests.rs`
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returns `PASS` for a slice limited to instruction-statement migration + matched v1 deletion
+    - 2026-04-27 execution evidence: `cargo fmt --all`, `cargo test -p package parser_vm_v2 -- --nocapture`, `cargo test -p vm execution_model -- --nocapture`, `cargo test -p vm vm_opasm -- --nocapture`, `cargo test -p asm asmline_instruction -- --nocapture`, `cargo test -p asm vm_native -- --nocapture`, `cargo test -p asm vm_runtime_ -- --nocapture`, `cargo test -p asm tests::motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry -- --nocapture`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo audit` passed. `cargo test --workspace` is accepted for this WI with `862 passed; 1 failed`, where the only failure is the single reproduced baseline `asm::tests::examples_match_reference_outputs` waived by the user on 2026-04-27. The focused tkpkg smoke package fixture was updated because the intentionally changed default parser package bytes now encode the PRVM v2 instruction-statement program.
   - Commit outcome:
     - instruction statements are parsed by PRVM v2; the two corresponding v1 envelope opcodes and helpers are gone
 

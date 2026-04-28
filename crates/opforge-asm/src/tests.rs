@@ -1449,6 +1449,18 @@ fn example_uses_cli_hunk_output(asm_path: &Path) -> bool {
         && asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("helloworld")
 }
 
+fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opforge_cli") {
+        let amigaos_dir = asm_path
+            .parent()
+            .and_then(Path::parent)
+            .expect("opforge_cli should live under amigaos/opforge");
+        return vec![amigaos_dir.join("tkpkg")];
+    }
+
+    Vec::new()
+}
+
 fn example_output_payload_path(
     fixture_out_dir: &Path,
     base: &str,
@@ -1582,6 +1594,7 @@ fn assemble_example_with_base(
     let use_srec = example_uses_srec_reference(asm_path);
     let cli_hunk_output = example_uses_cli_hunk_output(asm_path);
     let hunk_name_override = cli_hunk_output.then(|| format!("build/{base}.hunk"));
+    let module_paths = example_module_paths(asm_path);
     let result = run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
         execution_mode: ExecutionMode::Lockstep {
@@ -1590,7 +1603,7 @@ fn assemble_example_with_base(
         input_base: base,
         defines: &[],
         include_paths: &[],
-        module_paths: &[],
+        module_paths: &module_paths,
         pp_macro_depth: 64,
         cpu_override: if cli_hunk_output { Some("68000") } else { None },
         default_cpu: default_cpu(),
@@ -1826,6 +1839,7 @@ fn assemble_example_error(asm_path: &Path) -> Option<String> {
         .unwrap_or("example");
     let header_title = format!("opForge Assembler v{VERSION}");
 
+    let module_paths = example_module_paths(asm_path);
     match run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
         execution_mode: ExecutionMode::Lockstep {
@@ -1834,7 +1848,7 @@ fn assemble_example_error(asm_path: &Path) -> Option<String> {
         input_base,
         defines: &[],
         include_paths: &[],
-        module_paths: &[],
+        module_paths: &module_paths,
         pp_macro_depth: 64,
         cpu_override: None,
         default_cpu: default_cpu(),
@@ -8663,10 +8677,98 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
     );
 }
 
+#[test]
+fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
+    let source = opforge_amigaos_source("opforge_cli.asm");
+
+    assert!(source.contains("Usage: opForge [OPTIONS] [INPUT]"));
+
+    for expected in [
+        ".byte \"-i\",0",
+        ".byte \"--infile\",0",
+        ".byte \"--hunk\",0",
+        ".byte \"-o\",0",
+        ".byte \"--outfile\",0",
+        ".byte \"--cpu\",0",
+        ".byte \"--opasm-package\",0",
+        ".byte \"-l\",0",
+        ".byte \"--list\",0",
+        ".byte \"-x\",0",
+        ".byte \"--hex\",0",
+        ".byte \"-s\",0",
+        ".byte \"--srec\",0",
+        ".byte \"-b\",0",
+        ".byte \"--bin\",0",
+        ".byte \"-D\",0",
+        ".byte \"--define\",0",
+        ".byte \"-I\",0",
+        ".byte \"--include-path\",0",
+        ".byte \"-M\",0",
+        ".byte \"--module-path\",0",
+    ] {
+        assert!(
+            tokvm_source_contains(&source, expected),
+            "native CLI surface should contain Rust CLI flag literal {expected}"
+        );
+    }
+    assert!(source.contains("OPC-NCLI007: native AmigaOS CLI subset requires --hunk"));
+    assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
+    assert!(source.contains("OPC-NCLI009: native parser VM not implemented"));
+}
+
+#[test]
+fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/opforge/opforge_cli.asm");
+    let out_dir = create_temp_dir("m68000-opforge-native-cli");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        panic!("assemble opforge native cli example: {err}");
+    }
+
+    let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
+        .expect("read opforge native CLI listing");
+    assert!(listing.contains(".cpu 68020"));
+    assert!(listing.contains("opforge_native_cli_parse_args"));
+    assert!(listing.contains("opforge_native_cli_tokenize_frontend"));
+    assert!(listing.contains("opforge_native_cli_run"));
+    assert!(listing.contains("STATUS tokenizer-ok"));
+    assert!(listing.contains("parser-not-implemented"));
+
+    let payload_path = example_output_payload_path(&out_dir, "opforge_cli", "hunk");
+    let payload = fs::read(payload_path).expect("read opforge native CLI hunk payload");
+    let segment_count = u32::from_be_bytes(payload[8..12].try_into().expect("segment count"));
+    assert_eq!(
+        segment_count, 4,
+        "expected entry, code, data, and bss Hunk segments in native CLI tokenizer slice"
+    );
+    assert!(
+        payload
+            .windows(4)
+            .any(|window| window == [0x48, 0xE7, 0x3F, 0x3E]),
+        "expected the Hunk to start with the AmigaOS entry stub"
+    );
+    assert!(
+        payload
+            .windows("OPFORGE-NATIVE 1".len())
+            .any(|window| window == b"OPFORGE-NATIVE 1"),
+        "expected native CLI report marker in Hunk payload"
+    );
+}
+
 fn tokvm_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
     let asm_path = repo_root.join(format!("examples/motorola68000/amigaos/tokvm/{file_name}"));
     let source = fs::read_to_string(&asm_path).expect("read tokvm AmigaOS source");
+    format_tokvm_asm_fragment(&source)
+}
+
+fn opforge_amigaos_source(file_name: &str) -> String {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join(format!(
+        "examples/motorola68000/amigaos/opforge/{file_name}"
+    ));
+    let source = fs::read_to_string(&asm_path).expect("read opForge AmigaOS source");
     format_tokvm_asm_fragment(&source)
 }
 
@@ -24278,6 +24380,76 @@ fn external_fs_uae_hunk_smoke() {
                     run.artifact_dir.display()
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_reports_parser_stub() {
+    match crate::fs_uae_smoke::run_opforge_native_cli_stub_from_env(&workspace_root())
+        .expect("native opForge CLI FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single native opForge CLI run");
+            let run = &runs[0];
+            assert_eq!(run.example_name, "opforge_cli");
+            assert!(
+                !run.success,
+                "native opForge CLI should still return the deterministic parser-stub status\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("OPFORGE-NATIVE 1"),
+                "native opForge CLI did not report the native marker\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS parser-not-implemented"),
+                "native opForge CLI did not report the parser-stub status\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS tokenizer-ok"),
+                "native opForge CLI did not report the tokenizer stage status\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("Identifier(\"move.b\")@1:1-7"),
+                "native opForge CLI did not emit tokenizer rows for the smoke source\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("INPUT Work:opforge_fsuae_smoke_input.asm"),
+                "native opForge CLI did not parse the default smoke input argument\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("HUNK Work:opforge_native_out.hunk"),
+                "native opForge CLI did not parse the default smoke hunk argument\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout
+                    .contains("ERROR OPC-NCLI009: native parser VM not implemented"),
+                "native opForge CLI did not report the parser-stub diagnostic\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            eprintln!(
+                "FS-UAE native opForge CLI smoke completed with {} under {}",
+                run.hunk_path.display(),
+                run.artifact_dir.display()
+            );
         }
     }
 }

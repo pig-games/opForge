@@ -39,11 +39,15 @@ const FS_UAE_MOUNTED_HUNK_ALIAS: &str = "build/opforge_fsuae_smoke.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
 const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str = "move.b d0,d1\n";
 const FS_UAE_TKPKG_MANIFEST_FILE: &str = "opforge_fsuae_tkpkg_manifest.txt";
 const FS_UAE_TKPKG_MANIFEST_INPUT_DIR: &str = "opforge_fsuae_tkpkg_inputs";
 const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";
 const FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH: &str =
     "examples/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME: &str = "opforge_cli";
+const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str =
+    "examples/motorola68000/amigaos/opforge/opforge_cli.asm";
 const FS_UAE_TKPKG_DEBUG_CLI_PACKAGE_NAME: &str = "tkpkg_debug_cli_package.opasm";
 const FS_UAE_TKPKG_DEBUG_CLI_PACKAGE_OVERRIDE_NAME: &str = "tkpkg_debug_cli_package_override.opasm";
 const FS_UAE_EXAMPLES: &[(&str, &str, &str)] = &[
@@ -118,6 +122,38 @@ pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmok
     }
 
     Ok(FsUaeSmokeOutcome::Completed { runs })
+}
+
+pub(crate) fn run_opforge_native_cli_stub_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
+        return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "set {FS_UAE_OPT_IN_ENV}=1 to enable the opt-in FS-UAE smoke test"
+        )));
+    }
+
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; provide newline-delimited FS-UAE arguments with {{hunk}}, {{artifact_dir}}, {{example}}, {{ready_file}}, {{stdout_file}}, {{stderr_file}}, and {{exit_code_file}} placeholders as needed"
+            )))
+        }
+    };
+
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    match run_example_smoke(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+        FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
+        "68020",
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
 }
 
 pub(crate) fn run_tkpkg_debug_cli_file_mode_from_env(
@@ -234,15 +270,31 @@ fn example_guest_input(example_name: &str) -> Option<(&'static str, &'static [u8
             FS_UAE_TKPKG_SMOKE_INPUT_FILE,
             FS_UAE_TKPKG_SMOKE_INPUT_TEXT.as_bytes(),
         )),
+        "opforge_cli" => Some((
+            FS_UAE_TKPKG_SMOKE_INPUT_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT.as_bytes(),
+        )),
         _ => None,
     }
 }
 
 fn example_assembly_defines(example_name: &str) -> Vec<String> {
     match example_name {
-        "tkpkg_debug_cli" => vec!["OPFORGE_FS_UAE_SMOKE".to_string()],
+        "tkpkg_debug_cli" | "opforge_cli" => vec!["OPFORGE_FS_UAE_SMOKE".to_string()],
         _ => Vec::new(),
     }
+}
+
+fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
+    if example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME {
+        let amigaos_dir = workspace_root
+            .join("examples")
+            .join("motorola68000")
+            .join("amigaos");
+        return vec![amigaos_dir.join("tkpkg")];
+    }
+
+    Vec::new()
 }
 
 fn stage_example_guest_inputs(example_name: &str, mounted_work_dir: &Path) -> Result<(), String> {
@@ -702,12 +754,13 @@ fn run_example_smoke(
         None
     };
     let assembly_defines = example_assembly_defines(example_name);
+    let module_paths = example_module_paths(workspace_root, example_name);
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
         input_base: example_name,
         defines: &assembly_defines,
         include_paths: &[],
-        module_paths: &[],
+        module_paths: &module_paths,
         pp_macro_depth: 64,
         cpu_override: Some(cpu_override),
         default_cpu: default_cpu(),
@@ -747,9 +800,7 @@ fn run_example_smoke(
         )
     })?;
 
-    let hunk_path = artifact_dir
-        .join("build")
-        .join(format!("{example_name}.hunk"));
+    let hunk_path = generated_hunk_artifact_path(&artifact_dir, example_name);
     if !hunk_path.is_file() {
         return Err(format!(
             "expected generated Hunk artifact at {}",
@@ -979,9 +1030,7 @@ fn run_example_smoke_with_guest_input(
         )
     })?;
 
-    let hunk_path = artifact_dir
-        .join("build")
-        .join(format!("{}.hunk", spec.example_name));
+    let hunk_path = generated_hunk_artifact_path(&artifact_dir, spec.example_name);
     if !hunk_path.is_file() {
         return Err(format!(
             "expected generated Hunk artifact at {}",
@@ -1106,6 +1155,21 @@ fn run_example_smoke_with_guest_input(
         ),
         success: determine_smoke_success(guest_exit_code, launcher_status.success()),
     }))
+}
+
+fn generated_hunk_artifact_path(artifact_dir: &Path, example_name: &str) -> PathBuf {
+    let build_dir = artifact_dir.join("build");
+    let extension_path = build_dir.join(format!("{example_name}.hunk"));
+    if extension_path.exists() {
+        return extension_path;
+    }
+
+    let stem_path = build_dir.join(example_name);
+    if stem_path.exists() {
+        return stem_path;
+    }
+
+    extension_path
 }
 
 fn materialize_tkpkg_debug_cli_package_override_source(
@@ -1244,19 +1308,28 @@ mod tests {
     }
 
     #[test]
-    fn example_guest_input_exposes_tkpkg_smoke_source_file() {
+    fn example_guest_input_exposes_smoke_source_files() {
         let (relative_path, bytes) =
             example_guest_input("tkpkg_debug_cli").expect("tkpkg smoke input mapping");
 
         assert_eq!(relative_path, FS_UAE_TKPKG_SMOKE_INPUT_FILE);
         assert_eq!(bytes, FS_UAE_TKPKG_SMOKE_INPUT_TEXT.as_bytes());
+
+        let (relative_path, bytes) =
+            example_guest_input("opforge_cli").expect("opforge native CLI smoke input mapping");
+        assert_eq!(relative_path, FS_UAE_TKPKG_SMOKE_INPUT_FILE);
+        assert_eq!(bytes, FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT.as_bytes());
         assert!(example_guest_input("helloworld").is_none());
     }
 
     #[test]
-    fn example_assembly_defines_enable_tkpkg_fs_uae_mode() {
+    fn example_assembly_defines_enable_fs_uae_mode_for_native_cli_examples() {
         assert_eq!(
             example_assembly_defines("tkpkg_debug_cli"),
+            vec!["OPFORGE_FS_UAE_SMOKE".to_string()]
+        );
+        assert_eq!(
+            example_assembly_defines("opforge_cli"),
             vec!["OPFORGE_FS_UAE_SMOKE".to_string()]
         );
         assert!(example_assembly_defines("helloworld").is_empty());

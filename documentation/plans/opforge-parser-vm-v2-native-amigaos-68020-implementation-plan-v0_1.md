@@ -79,21 +79,37 @@ opcore expression parser, and does not become a whole-file assembler pass.
 
 ## Work Items
 
-- [ ] Work item 1: define the native PRVM single-line ABI and host bridge contract
+- [x] Work item 1: define the native PRVM single-line ABI and host bridge contract
   - Source requirement or finding IDs: WI-7 requirement to reserve `prvm_run_68000`; tokenizer single-line ABI model; Rust PRVM v2 entry-boundary and expression sub-call contracts.
   - Validation: see the focused spec check and full quality gates listed below.
   - Definition of done: see detailed criteria below for this work item.
   - Expected files:
     - `documentation/opForge-m68000-parser-vm-single-line-buffer-abi-spec-v0_1.md` (new)
     - optionally, `documentation/opForge-extended-parser-vm-instruction-set-spec-v0_2.md` if the quality gate requires a spec reissue rather than a native ABI companion spec
+  - Implementation notes:
+    - added `documentation/opForge-m68000-parser-vm-single-line-buffer-abi-spec-v0_1.md` as the native PRVM ABI authority for later host-side decode tests and native assembly slices
+    - the spec reserves `prvm_run_68000` as the only native PRVM entry symbol while keeping `.cpu 68020` as the first native baseline
+    - the ABI uses a caller-owned request frame containing source, token, lexeme, parser-program, result, diagnostic, resume, expression-request, and expression-result buffer pointers and capacities
+    - result/event, diagnostic, expression-request, expression-result, and resume-state records are defined as fixed big-endian records
+    - expression parsing remains Rust/opcore-owned through an explicit expression-request status and half-open token-range pause/resume protocol
+    - no native parser assembly, fixture, Rust parser behavior change, or spec reissue was landed in this work item
   - Validation details:
     - `python3 scripts/workflow/check_spec_artifact.py documentation/opForge-m68000-parser-vm-single-line-buffer-abi-spec-v0_1.md`
     - `cargo fmt --all`
     - `cargo clippy --all-targets --all-features -- -D warnings`
     - `cargo audit`
     - `cargo test --workspace`
+  - Validation evidence:
+    - `python3 scripts/workflow/check_spec_artifact.py documentation/opForge-m68000-parser-vm-single-line-buffer-abi-spec-v0_1.md` passed
+    - first `spec-quality-reviewer` run returned `FAIL` because the ABI did not define `D1`/`D2`/`D3` semantics for every status and left expression-result error payload ownership ambiguous
+    - after adding status-specific return-register semantics and making `host_expr_handle` the sole authoritative expression payload for both ready expressions and ready expression errors, the `spec-quality-reviewer` rerun returned `PASS`
+    - `python3 scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed
+    - `cargo fmt --all` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit` with network fetch failed before scanning because the RustSec advisory database fetch hit an IO error; `cargo audit --no-fetch` passed using the local advisory cache with the two already-known allowed warnings (`registry` unmaintained, `rand` advisory through `proptest`)
+    - `cargo test --workspace` is accepted for this WI with `864 passed; 1 failed`, where the only failure is the previously user-waived baseline `asm::tests::examples_match_reference_outputs`
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for a documentation-only ABI slice that does not land native code or alter Rust parser behavior
+    - `plan-compliance-reviewer` returned `PASS`; the slice is limited to the new ABI spec and plan bookkeeping, with no native parser assembly, fixtures, Rust parser behavior changes, or spec reissue
   - Commit outcome:
     - the native PRVM ABI authority exists and defines `prvm_run_68000`, register usage, input token/source/lexeme buffers, output result records, diagnostic/status returns, pause/resume expression sub-calls, and single-line rejection rules
   - Definition of done:
@@ -243,7 +259,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 
 ## Milestones
 
-- [ ] Milestone 1: native PRVM ABI/spec authority exists and passes quality review (`Work item 1`).
+- [x] Milestone 1: native PRVM ABI/spec authority exists and passes quality review (`Work item 1`).
 - [ ] Milestone 2: host-side ABI decode and parity fixtures exist before native assembly lands (`Work item 2`).
 - [ ] Milestone 3: `prvm_run_68000` can execute one delegated newline-free statement path over caller-owned buffers (`Work item 3`).
 - [ ] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).

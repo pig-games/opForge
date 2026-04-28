@@ -122,7 +122,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - newline-containing source and non-delegated entry requests are explicit failure cases
     - no native parser assembly or fixture is landed in this work item
 
-- [ ] Work item 2: add host-side PRVM native ABI fixtures and decode/report tests
+- [x] Work item 2: add host-side PRVM native ABI fixtures and decode/report tests
   - Source requirement or finding IDs: Work item 1 ABI; WI-6 parity corpus; tokenizer-native host-side ABI decode pattern.
   - Validation: see the focused ABI decode tests and full quality gates listed below.
   - Definition of done: see detailed criteria below for this work item.
@@ -130,6 +130,15 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `crates/opforge-asm/src/tests.rs` or a focused native-parser test module if one exists by implementation time
     - `crates/opforge-vm/tests/parser_vm_v2_parity.rs` only if the parity corpus needs a shared fixture helper
     - native ABI fixture data under the existing examples/reference path only if required for deterministic decode tests
+  - Implementation notes:
+    - added `crates/opforge-vm/tests/parser_vm_native_abi.rs` as the focused host-side native PRVM ABI decode test surface
+    - the tests use synthetic fixed big-endian ABI records from the Work item 1 spec rather than native interpreter output, keeping this slice ahead of assembly as planned
+    - success records decode to a `LineAst::Statement` shape and compare against Rust PRVM v2 output from `parse_statement_line_with_model`
+    - diagnostic records decode stable diagnostic codes, messages, token indexes, and spans
+    - expression-request and expression-result slot tests cover bounded token ranges, resume-slot identity, host-owned expression handles, ready expression-error slots, and reserved-field validation
+    - newline-containing input and non-delegated entry requests are locked as deterministic native status returns
+    - no native interpreter assembly, reference artifact, or Rust parser behavior change was landed in this work item
+    - full-gate clippy surfaced pre-existing toolchain lints outside the ABI test surface; this slice includes only the mechanical behavior-preserving lint fixes needed to unblock `cargo clippy --all-targets --all-features -- -D warnings`
   - Validation details:
     - focused host-side PRVM ABI decode tests for success, diagnostic, entry-boundary failure, expression-request pause, expression-result resume, and newline rejection
     - `cargo test -p vm parser_vm_v2_parity -- --nocapture`
@@ -137,8 +146,16 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `cargo clippy --all-targets --all-features -- -D warnings`
     - `cargo audit`
     - `cargo test --workspace`
+  - Validation evidence:
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed (`5` focused host-side ABI decode tests)
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed (`2` private executor tests plus `7` integration tests)
+    - `cargo fmt --all` passed
+    - initial full clippy run failed on three pre-existing current-toolchain lints: redundant `.into_iter()` calls in `crates/opforge-package/src/package/codec/scoped_schema.rs`, collapsible guarded matches in `crates/opforge-families/src/m45gs02/handler.rs`, and a collapsible guarded match in `crates/opforge-vm/src/builder.rs`; each was fixed mechanically without changing runtime behavior
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed after those gate-unblock fixes
+    - `cargo audit --no-fetch` passed using the local advisory cache with the two already-known allowed warnings (`registry` unmaintained, `rand` advisory through `proptest`)
+    - `cargo test --workspace` is accepted for this WI with `864 passed; 1 failed`, where the only failure is the previously user-waived baseline `asm::tests::examples_match_reference_outputs`
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for a test/fixture slice that validates the ABI without adding native interpreter behavior
+    - `plan-compliance-reviewer` returned `PASS`; the slice is limited to host-side native PRVM ABI decode tests and plan bookkeeping, with only mechanical clippy gate-unblock edits outside the ABI test surface and no native assembly, reference artifact, or Rust parser behavior change
   - Commit outcome:
     - host-side tests can decode native PRVM buffers and compare their normalized AST/diagnostic shape against Rust PRVM v2 expectations before assembly code lands
   - Definition of done:
@@ -260,7 +277,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 ## Milestones
 
 - [x] Milestone 1: native PRVM ABI/spec authority exists and passes quality review (`Work item 1`).
-- [ ] Milestone 2: host-side ABI decode and parity fixtures exist before native assembly lands (`Work item 2`).
+- [x] Milestone 2: host-side ABI decode and parity fixtures exist before native assembly lands (`Work item 2`).
 - [ ] Milestone 3: `prvm_run_68000` can execute one delegated newline-free statement path over caller-owned buffers (`Work item 3`).
 - [ ] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).
 - [ ] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).

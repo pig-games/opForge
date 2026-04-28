@@ -1391,10 +1391,8 @@ fn compile_m65816_force_selectors(
                 emit("k", "force_k_abs16_pbr");
             }
         }
-        AddressMode::Indirect => {
-            if upper_mnemonic == "JMP" {
-                emit("k", "force_k_abs16_pbr");
-            }
+        AddressMode::Indirect if upper_mnemonic == "JMP" => {
+            emit("k", "force_k_abs16_pbr");
         }
         AddressMode::AbsoluteLong | AddressMode::AbsoluteLongX => emit("l", "force_l_u24"),
         _ => {}

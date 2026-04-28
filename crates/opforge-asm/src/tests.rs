@@ -8727,6 +8727,10 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(source.contains("OPC-NCLI009: native parser VM not implemented"));
     assert!(source.contains("--opasm-package Work:opforge_cli_package.opasm"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
     assert!(source.contains("opforge_native_cli_stage_package"));
     assert!(source.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(source.contains("opforge_native_cli_tokenize_file"));
@@ -24478,6 +24482,68 @@ fn external_fs_uae_opforge_native_cli_reports_parser_stub() {
                 run.hunk_path.display(),
                 run.artifact_dir.display()
             );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "missing-input",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT",
+            expected_diagnostic: "OPC-NCLI008: Input source file not found: Work:opforge_missing_input.asm",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "missing-hunk",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK",
+            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --hunk only",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "mixed-input",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT",
+            expected_diagnostic: "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "bad-package",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE",
+            expected_diagnostic: "ERROR OPC-NCLI010: native tokenizer stage failed",
+        },
+    ];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_failure_cases_from_env(
+        &workspace_root(),
+        &cases,
+    )
+    .expect("native opForge CLI failure-path FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                cases.len(),
+                "expected one native opForge CLI run per failure-path case"
+            );
+            for (case, run) in cases.iter().zip(runs.iter()) {
+                assert_eq!(run.example_name, "opforge_cli");
+                assert!(
+                    !run.success,
+                    "native opForge CLI failure case {} should return non-zero\nstdout:\n{}\nstderr:\n{}",
+                    case.name,
+                    run.stdout,
+                    run.stderr,
+                );
+                assert!(
+                    run.stdout.contains(case.expected_diagnostic),
+                    "native opForge CLI failure case {} did not report expected diagnostic '{}'\nstdout:\n{}\nstderr:\n{}",
+                    case.name,
+                    case.expected_diagnostic,
+                    run.stdout,
+                    run.stderr,
+                );
+            }
         }
     }
 }

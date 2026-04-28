@@ -92,6 +92,12 @@ pub(crate) struct TkpkgDebugCliManifestCase<'a> {
     pub(crate) source: &'a [u8],
 }
 
+pub(crate) struct OpforgeNativeCliFailureCase<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) define: &'a str,
+    pub(crate) expected_diagnostic: &'a str,
+}
+
 pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmokeOutcome, String> {
     if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
         return Ok(FsUaeSmokeOutcome::Skipped(format!(
@@ -157,6 +163,49 @@ pub(crate) fn run_opforge_native_cli_stub_from_env(
         ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
+}
+
+pub(crate) fn run_opforge_native_cli_failure_cases_from_env(
+    workspace_root: &Path,
+    cases: &[OpforgeNativeCliFailureCase<'_>],
+) -> Result<FsUaeSmokeOutcome, String> {
+    if cases.is_empty() {
+        return Err("native opForge CLI failure-path mode requires at least one case".to_string());
+    }
+    if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
+        return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "set {FS_UAE_OPT_IN_ENV}=1 to enable the opt-in FS-UAE smoke test"
+        )));
+    }
+
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; provide newline-delimited FS-UAE arguments with {{hunk}}, {{artifact_dir}}, {{example}}, {{ready_file}}, {{stdout_file}}, {{stderr_file}}, and {{exit_code_file}} placeholders as needed"
+            )))
+        }
+    };
+
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let mut runs = Vec::with_capacity(cases.len());
+    for case in cases {
+        let run = run_example_smoke_with_extra_defines(
+            workspace_root,
+            &fs_uae_bin,
+            &args_text,
+            FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+            FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
+            "68020",
+            &[case.define],
+        )?;
+        match run {
+            ExampleSmokeResult::Run(run) => runs.push(run),
+            ExampleSmokeResult::Skipped(reason) => return Ok(FsUaeSmokeOutcome::Skipped(reason)),
+        }
+    }
+
+    Ok(FsUaeSmokeOutcome::Completed { runs })
 }
 
 pub(crate) fn run_tkpkg_debug_cli_file_mode_from_env(
@@ -748,6 +797,26 @@ fn run_example_smoke(
     relative_source_path: &str,
     cpu_override: &str,
 ) -> Result<ExampleSmokeResult, String> {
+    run_example_smoke_with_extra_defines(
+        workspace_root,
+        fs_uae_bin,
+        args_text,
+        example_name,
+        relative_source_path,
+        cpu_override,
+        &[],
+    )
+}
+
+fn run_example_smoke_with_extra_defines(
+    workspace_root: &Path,
+    fs_uae_bin: &str,
+    args_text: &str,
+    example_name: &'static str,
+    relative_source_path: &str,
+    cpu_override: &str,
+    extra_assembly_defines: &[&str],
+) -> Result<ExampleSmokeResult, String> {
     let source_path = workspace_root.join(relative_source_path);
     if !source_path.is_file() {
         return Err(format!(
@@ -771,7 +840,12 @@ fn run_example_smoke(
     } else {
         None
     };
-    let assembly_defines = example_assembly_defines(example_name);
+    let mut assembly_defines = example_assembly_defines(example_name);
+    assembly_defines.extend(
+        extra_assembly_defines
+            .iter()
+            .map(|define| (*define).to_string()),
+    );
     let module_paths = example_module_paths(workspace_root, example_name);
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,

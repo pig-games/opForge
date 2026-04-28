@@ -1043,7 +1043,23 @@ parserStubText:
         .byte "ERROR OPC-NCLI009: native parser VM not implemented",10,0
 .ifdef OPFORGE_FS_UAE_SMOKE
 defaultFsUaeArgTail:
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT
+        .byte "Work:opforge_missing_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK
+        .byte "Work:opforge_fsuae_smoke_input.asm --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT
+        .byte "Work:opforge_fsuae_smoke_input.asm --infile Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE
+        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_missing_package.opasm",0
+.else
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.endif
+.endif
+.endif
+.endif
 .endif
 
 flagHelpLong:

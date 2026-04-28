@@ -21,6 +21,7 @@ pub mod intel8080_vm;
 pub mod listing;
 pub mod native6502;
 pub mod native6502_abi;
+pub mod native_prvm;
 pub mod output_artifacts;
 pub(crate) mod output_components;
 pub(crate) mod output_hunk;

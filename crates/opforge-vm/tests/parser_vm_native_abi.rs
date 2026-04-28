@@ -6,6 +6,9 @@ use opcore::tokenizer::Span;
 use registry::registry::ModuleRegistry;
 use registry::syntax::{register_checker_from_fn, RegisterChecker};
 use types::line_ast::StatementAst;
+use vm::native_prvm::{
+    NativePrvmExprSlotState, NativePrvmHostExpressionBridge, NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE,
+};
 use vm::vm_opasm::{parse_statement_line_with_model, HierarchyExecutionModel};
 
 const RESULT_RECORD_SIZE: usize = 32;
@@ -546,6 +549,157 @@ fn native_prvm_abi_decodes_expression_result_slots_for_resume() {
     let err = decode_expr_result_slot(&malformed)
         .expect_err("reserved expression-result fields should be enforced");
     assert!(err.contains("reserved fields"));
+}
+
+#[test]
+fn native_prvm_abi_host_bridge_fills_expression_slot_from_rust_parser() {
+    let model = model_for_native_abi();
+    let register_checker = register_checker_from_fn(families::mos6502::is_register);
+    let rust_ast = parse_v2_statement(&model, " LDA #42", &register_checker)
+        .expect("Rust PRVM v2 should parse expression-bearing line");
+
+    let mut request_record = Vec::new();
+    append_expr_request_record(
+        &mut request_record,
+        0,
+        0,
+        1,
+        3,
+        Span {
+            line: 1,
+            col_start: 6,
+            col_end: 9,
+        },
+    );
+    let mut result_slot = vec![0; NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE];
+    let mut bridge = NativePrvmHostExpressionBridge::from_source_line(
+        &model,
+        "m6502",
+        None,
+        " LDA #42",
+        1,
+        &register_checker,
+        Some("LDA"),
+    )
+    .expect("bridge should tokenize native source line");
+
+    let bridged = bridge
+        .handle_expression_request_record(&request_record, &mut result_slot)
+        .expect("host bridge should parse requested operand expression");
+    assert_eq!(bridged.slot_state, NativePrvmExprSlotState::ReadyExpression);
+    assert_eq!(bridged.host_expr_handle, 0);
+    assert!(matches!(
+        bridged.expr,
+        Expr::Immediate(ref inner, _) if matches!(inner.as_ref(), Expr::Number(value, _) if value == "42")
+    ));
+
+    let decoded_slot = decode_expr_result_slot(&result_slot).expect("slot should decode");
+    assert_eq!(decoded_slot.state, NativeExprSlotState::ReadyExpression);
+    assert_eq!(decoded_slot.expr_slot_index, 0);
+    assert_eq!(decoded_slot.host_expr_handle, 0);
+    assert!(matches!(
+        bridge.expression_for_handle(decoded_slot.host_expr_handle),
+        Some(Expr::Immediate(inner, _)) if matches!(inner.as_ref(), Expr::Number(value, _) if value == "42")
+    ));
+
+    let mut lexemes = Vec::new();
+    let mnemonic_ref = append_lexeme(&mut lexemes, "LDA");
+    let mut records = Vec::new();
+    append_record(
+        &mut records,
+        RESULT_BEGIN_STATEMENT,
+        Span {
+            line: 1,
+            col_start: 0,
+            col_end: 0,
+        },
+        [0, 0, 0, 0],
+    );
+    append_record(
+        &mut records,
+        RESULT_MNEMONIC_TEXT,
+        Span {
+            line: 1,
+            col_start: 2,
+            col_end: 5,
+        },
+        [mnemonic_ref.0, mnemonic_ref.1, 0, 0],
+    );
+    append_record(
+        &mut records,
+        RESULT_OPERAND_EXPR_SLOT,
+        Span {
+            line: 1,
+            col_start: 6,
+            col_end: 9,
+        },
+        [0, 0, 1, 3],
+    );
+    append_record(
+        &mut records,
+        RESULT_FINISH_LINE,
+        Span {
+            line: 1,
+            col_start: 9,
+            col_end: 9,
+        },
+        [0, 0, 0, 0],
+    );
+
+    let decoded = decode_statement_result(&records, &lexemes, bridge.expression_slots())
+        .expect("native result should decode through host-filled expression slot");
+    assert_eq!(format!("{decoded:?}"), format!("{rust_ast:?}"));
+}
+
+#[test]
+fn native_prvm_abi_host_bridge_preserves_expr_error_slots() {
+    let model = model_for_native_abi();
+    let register_checker = register_checker_from_fn(families::mos6502::is_register);
+    let mut request_record = Vec::new();
+    append_expr_request_record(
+        &mut request_record,
+        0,
+        2,
+        1,
+        1,
+        Span {
+            line: 1,
+            col_start: 6,
+            col_end: 6,
+        },
+    );
+    let mut result_slot = vec![0; NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE];
+    let mut bridge = NativePrvmHostExpressionBridge::from_source_line(
+        &model,
+        "m6502",
+        None,
+        " LDA",
+        1,
+        &register_checker,
+        Some("LDA"),
+    )
+    .expect("bridge should tokenize native source line");
+
+    let bridged = bridge
+        .handle_expression_request_record(&request_record, &mut result_slot)
+        .expect("host bridge should preserve empty expression as Expr::Error");
+    assert_eq!(
+        bridged.slot_state,
+        NativePrvmExprSlotState::ReadyExpressionError
+    );
+    assert!(matches!(
+        bridge.expression_for_native_slot(2),
+        Some(Expr::Error(message, span))
+            if message == "Expected expression" && span.col_start == 6 && span.col_end == 6
+    ));
+
+    let decoded_slot = decode_expr_result_slot(&result_slot).expect("slot should decode");
+    assert_eq!(
+        decoded_slot.state,
+        NativeExprSlotState::ReadyExpressionError
+    );
+    assert_eq!(decoded_slot.expr_slot_index, 2);
+    assert_eq!(decoded_slot.host_expr_handle, 0);
 }
 
 #[test]

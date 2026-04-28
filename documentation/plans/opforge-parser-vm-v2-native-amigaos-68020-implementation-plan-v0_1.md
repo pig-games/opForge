@@ -281,9 +281,27 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `/Users/erik/Code/Retro/opForge/.venv/bin/python scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed
     - `cargo test --workspace` retained the previously accepted broad baseline exception: `866 passed; 1 failed`, with the remaining failure still in `asm::tests::examples_match_reference_outputs`
   - Current sub-slice 4a remaining work before closing Work item 4:
-    - add the host bridge path that turns native expression requests into actual Rust/opcore expression parses and writes the resulting expression slot back to native buffers
+    - drive the host bridge through multi-operand native pause/resume coverage with host-owned expression slots
+    - preserve more `Expr::Error` parity cases through the host bridge, beyond the first empty-range error slot
+  - Current sub-slice 4b progress:
+    - added `vm::native_prvm` as the host-side bridge helper for native PRVM expression requests
+    - the bridge decodes a 32-byte native expression-request record, validates the token range against Rust parser tokens, invokes the existing Rust/opcore operand expression parser, stores the parsed `Expr` by host handle and native slot index, and writes a 32-byte native expression-result slot for resume
+    - expression-result slot state now distinguishes ready expressions from ready `Expr::Error` results so native resume can preserve error slots without parsing expressions locally
+    - focused ABI coverage proves `LDA #42` is parsed through the bridge and decoded back into the same Rust PRVM v2 statement shape through an `OPERAND_EXPR_SLOT` record
+    - focused ABI coverage also proves an empty native expression range is preserved as a ready `Expr::Error` slot
+  - Current sub-slice 4b validation evidence:
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed, including the new host-bridge expression slot and `Expr::Error` slot tests (`8` focused tests total)
+    - `cargo fmt --all -- --check` passed after applying `cargo fmt --all`
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed (`2` unit tests and `7` integration tests)
+    - `cargo test -p vm` passed (`292` unit tests, `8` native ABI integration tests, and `7` parser parity integration tests)
+    - `cargo clippy -p vm --all-targets --all-features -- -D warnings` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the existing allowed `registry` and `rand` warnings
+    - `/Users/erik/Code/Retro/opForge/.venv/bin/python scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed
+    - `cargo test --workspace` retained the previously accepted broad baseline exception: `866 passed; 1 failed`, with the remaining failure still in `asm::tests::examples_match_reference_outputs`
+  - Current sub-slice 4b remaining work before closing Work item 4:
     - add multi-operand native pause/resume coverage driven by host-owned expression slots
-    - preserve `Expr::Error` parity through the host bridge, not only through ABI decode tests
+    - broaden `Expr::Error` parity through the host bridge beyond the empty-range slot covered in this slice
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - host-side bridge/decode tests in the existing native PRVM test surface
@@ -298,6 +316,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `cargo test --workspace`
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returned `PASS` for the boundary 4a slice limited to native expression-request/resume mechanics, caller-filled expression slots, and `LDA #42` FS-UAE smoke validation; Work item 4 remains open for the Rust/opcore host bridge, multi-operand coverage, and `Expr::Error` parity
+    - `plan-compliance-reviewer` returned `PASS` for the boundary 4b slice limited to the host-side `vm::native_prvm` expression bridge helper, focused `LDA #42` host-bridge AST reconstruction, and first empty-range `Expr::Error` slot preservation; Work item 4 remains open for multi-operand pause/resume coverage and broader `Expr::Error` parity
   - Commit outcome:
     - native PRVM can request Rust/opcore expression parsing over explicit operand token ranges and resume with returned expression slots while preserving Rust PRVM v2 AST and `Expr::Error` behavior
   - Definition of done:

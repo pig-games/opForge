@@ -1359,7 +1359,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_vm_v2_rejects_wrong_entry_boundary() {
+    fn parser_vm_v2_parity_rejects_wrong_entry_boundary() {
         let model = model_for_tests();
         let contract = parser_contract_for_tests();
         let program = RuntimeParserVmProgram {
@@ -1714,7 +1714,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_vm_v2_rejects_checkpoint_depth_above_four() {
+    fn parser_vm_v2_parity_rejects_checkpoint_depth_above_four() {
         let model = model_for_tests();
         let contract = parser_contract_for_tests();
         let program = RuntimeParserVmProgram {

@@ -8714,6 +8714,12 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPC-NCLI007: native AmigaOS CLI subset requires --hunk"));
     assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(source.contains("OPC-NCLI009: native parser VM not implemented"));
+    assert!(source.contains("--opasm-package Work:opforge_cli_package.opasm"));
+    assert!(source.contains("opforge_native_cli_stage_package"));
+    assert!(source.contains("opforge_native_cli_prepare_pipeline_request"));
+    assert!(source.contains("opforge_native_cli_tokenize_file"));
+    assert!(source.contains("opforge_native_cli_tokenize_current_line"));
+    assert!(source.contains("PACKAGE_STORAGE_CAPACITY"));
 }
 
 #[test]
@@ -8731,6 +8737,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("opforge_native_cli_parse_args"));
     assert!(listing.contains("opforge_native_cli_tokenize_frontend"));
+    assert!(listing.contains("opforge_native_cli_tokenize_file"));
+    assert!(listing.contains("opforge_native_cli_tokenize_current_line"));
+    assert!(listing.contains("opforge_native_cli_stage_package"));
+    assert!(listing.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(listing.contains("opforge_native_cli_run"));
     assert!(listing.contains("STATUS tokenizer-ok"));
     assert!(listing.contains("parser-not-implemented"));
@@ -24423,6 +24433,12 @@ fn external_fs_uae_opforge_native_cli_reports_parser_stub() {
             assert!(
                 run.stdout.contains("Identifier(\"move.b\")@1:1-7"),
                 "native opForge CLI did not emit tokenizer rows for the smoke source\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("Identifier(\"move.w\")@2:1-7"),
+                "native opForge CLI did not emit tokenizer rows for the second smoke source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );

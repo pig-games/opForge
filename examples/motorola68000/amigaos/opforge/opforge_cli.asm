@@ -10,6 +10,7 @@
         .use tkpkg.amigaos.abi (ENTRY_ORD_SET_PIPELINE, ENTRY_ORD_TOKENIZE_LINE)
         .use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN, CB_OUTPUT_LEN, CB_STATUS_CODE)
         .use tkpkg.amigaos.buffers (controlBlockV1, lastErrorBuffer, packageStorage)
+        .use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY)
         .use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
         .use tkpkg.amigaos.service (tkpkg_service_dispatch_v1)
 
@@ -44,7 +45,6 @@ RETURN_WORKBENCH_UNSUPPORTED    = 31
 PATH_BUFFER_CAPACITY            = 256
 TOKEN_BUFFER_CAPACITY           = 64
 SOURCE_LINE_BUFFER_CAPACITY     = 512
-NATIVE_CLI_SOURCE_LINE_NUM      = 1
 PACKAGE_INPUT_PTR_V1            = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
 
         .section entry, kind=code
@@ -231,6 +231,30 @@ opforgeNativeCliCopyBytesLoop:
 opforgeNativeCliCopyBytesDone:
         RTS
 
+opforge_native_cli_copy_c_string:
+        MOVEQ #0, D0
+
+opforgeNativeCliCopyCStringLoop:
+        MOVE.B (A0)+, D1
+        MOVE.B D1, (A1)+
+        ADDQ.W #1, D0
+        TST.B D1
+        BNE.S opforgeNativeCliCopyCStringLoop
+        RTS
+
+opforge_native_cli_copy_fixed_string:
+        MOVE.W D0, D2
+        TST.W D2
+        BEQ.S opforgeNativeCliCopyFixedStringDone
+
+opforgeNativeCliCopyFixedStringLoop:
+        MOVE.B (A0)+, (A1)+
+        SUBQ.W #1, D2
+        BNE.S opforgeNativeCliCopyFixedStringLoop
+
+opforgeNativeCliCopyFixedStringDone:
+        RTS
+
 opforge_native_cli_write_input_window:
         MOVE.B D0, CB_INPUT_PTR(A0)
         LSR.W #8, D0
@@ -256,27 +280,14 @@ opforge_native_cli_read_output_len:
 
 opforge_native_cli_tokenize_frontend:
         MOVEM.L D2-D7/A2-A6, -(SP)
-        BSR.W opforge_native_cli_read_first_line
-        TST.L D0
-        BNE.W opforgeNativeCliTokenizeReturn
         BSR.W opforge_native_cli_init_package_pipeline
-        TST.L D0
-        BNE.W opforgeNativeCliTokenizeReturn
-        BSR.W opforge_native_cli_tokenize_first_line
         TST.L D0
         BNE.W opforgeNativeCliTokenizeReturn
         MOVE.L #tokenizerOkText, D1
         BSR.W opforge_native_cli_put_str
-        LEA controlBlockV1, A0
-        BSR.W opforge_native_cli_read_output_len
-        TST.W D0
-        BEQ.S opforgeNativeCliTokenizeSuccess
-        LEA lastErrorBuffer, A1
-        CLR.B 0(A1,D0.W)
-        MOVE.L #lastErrorBuffer, D1
-        BSR.W opforge_native_cli_put_str
-        MOVE.L #newlineText, D1
-        BSR.W opforge_native_cli_put_str
+        BSR.W opforge_native_cli_tokenize_file
+        TST.L D0
+        BNE.W opforgeNativeCliTokenizeReturn
 
 opforgeNativeCliTokenizeSuccess:
         MOVEQ #0, D0
@@ -285,47 +296,82 @@ opforgeNativeCliTokenizeReturn:
         MOVEM.L (SP)+, D2-D7/A2-A6
         RTS
 
-opforge_native_cli_read_first_line:
+opforge_native_cli_tokenize_file:
         LEA nativeCliInputPath, A0
         BSR.W opforge_native_cli_open_input
         TST.L D0
-        BNE.S opforgeNativeCliReadFirstLineOpenOk
+        BNE.S opforgeNativeCliTokenizeFileOpenOk
         MOVEQ #1, D0
         RTS
 
-opforgeNativeCliReadFirstLineOpenOk:
+opforgeNativeCliTokenizeFileOpenOk:
         MOVE.L D0, D5
-        LEA nativeCliSourceLine, A0
-        MOVE.L #SOURCE_LINE_BUFFER_CAPACITY, D0
+        MOVE.L #1, nativeCliSourceLineNum
+        CLR.W nativeCliSourceLineLen
+        CLR.W nativeCliSawCr
+
+opforgeNativeCliTokenizeFileReadLoop:
+        LEA nativeCliInputChar, A0
+        MOVEQ #1, D0
         MOVE.L D5, D1
         BSR.W opforge_native_cli_read_input
-        MOVE.L D0, D6
+        CMP.L #-1, D0
+        BEQ.W opforgeNativeCliTokenizeFileFailClose
+        TST.L D0
+        BEQ.W opforgeNativeCliTokenizeFileEof
+
+        MOVE.B nativeCliInputChar, D0
+        TST.W nativeCliSawCr
+        BEQ.S opforgeNativeCliTokenizeFileCheckBreak
+        CLR.W nativeCliSawCr
+        CMPI.B #10, D0
+        BEQ.W opforgeNativeCliTokenizeFileReadLoop
+
+opforgeNativeCliTokenizeFileCheckBreak:
+        CMPI.B #10, D0
+        BEQ.S opforgeNativeCliTokenizeFileLineDone
+        CMPI.B #13, D0
+        BEQ.S opforgeNativeCliTokenizeFileCrDone
+
+        MOVE.W nativeCliSourceLineLen, D1
+        CMPI.W #SOURCE_LINE_BUFFER_CAPACITY, D1
+        BHS.W opforgeNativeCliTokenizeFileFailClose
+        LEA nativeCliSourceLine, A1
+        MOVE.B D0, 0(A1,D1.W)
+        ADDQ.W #1, D1
+        MOVE.W D1, nativeCliSourceLineLen
+        BRA.W opforgeNativeCliTokenizeFileReadLoop
+
+opforgeNativeCliTokenizeFileCrDone:
+        MOVE.W #1, nativeCliSawCr
+
+opforgeNativeCliTokenizeFileLineDone:
+        BSR.W opforge_native_cli_tokenize_current_line
+        TST.L D0
+        BNE.S opforgeNativeCliTokenizeFileFailClose
+        MOVE.L nativeCliSourceLineNum, D0
+        ADDQ.L #1, D0
+        MOVE.L D0, nativeCliSourceLineNum
+        CLR.W nativeCliSourceLineLen
+        BRA.W opforgeNativeCliTokenizeFileReadLoop
+
+opforgeNativeCliTokenizeFileEof:
+        TST.W nativeCliSourceLineLen
+        BEQ.S opforgeNativeCliTokenizeFileSuccessClose
+        BSR.W opforge_native_cli_tokenize_current_line
+        TST.L D0
+        BNE.S opforgeNativeCliTokenizeFileFailClose
+
+opforgeNativeCliTokenizeFileSuccessClose:
         MOVE.L D5, D1
         BSR.W opforge_native_cli_close
-        CMP.L #-1, D6
-        BNE.S opforgeNativeCliReadFirstLineScan
-        MOVEQ #1, D0
+        MOVEQ #0, D0
         RTS
 
-opforgeNativeCliReadFirstLineScan:
-        LEA nativeCliSourceLine, A1
-        MOVEQ #0, D7
-
-opforgeNativeCliReadFirstLineLoop:
-        TST.L D6
-        BEQ.S opforgeNativeCliReadFirstLineDone
-        MOVE.B (A1)+, D0
-        CMPI.B #10, D0
-        BEQ.S opforgeNativeCliReadFirstLineDone
-        CMPI.B #13, D0
-        BEQ.S opforgeNativeCliReadFirstLineDone
-        ADDQ.W #1, D7
-        SUBQ.L #1, D6
-        BRA.S opforgeNativeCliReadFirstLineLoop
-
-opforgeNativeCliReadFirstLineDone:
-        MOVE.W D7, nativeCliSourceLineLen
-        MOVEQ #0, D0
+opforgeNativeCliTokenizeFileFailClose:
+        MOVE.L D5, D1
+        BSR.W opforge_native_cli_close
+        MOVEQ #1, D0
         RTS
 
 opforge_native_cli_init_package_pipeline:
@@ -336,14 +382,13 @@ opforge_native_cli_init_package_pipeline:
         TST.B D0
         BNE.W opforgeNativeCliInitPipelineFail
 
-        LEA opforgeNativeCliPackageData, A1
-        LEA packageStorage, A2
-        MOVE.W opforgeNativeCliPackageLen, D0
-        BSR.W opforge_native_cli_copy_bytes
+        BSR.W opforge_native_cli_stage_package
+        TST.L D0
+        BNE.W opforgeNativeCliInitPipelineFail
 
         LEA controlBlockV1, A0
         MOVE.W #PACKAGE_INPUT_PTR_V1, D0
-        MOVE.W opforgeNativeCliPackageLen, D1
+        MOVE.W nativeCliPackageLenActive, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_LOAD_PACKAGE, D0
         JSR tkpkg_service_dispatch_v1
@@ -351,14 +396,13 @@ opforge_native_cli_init_package_pipeline:
         TST.B D0
         BNE.S opforgeNativeCliInitPipelineFail
 
-        LEA setPipelineRequest, A1
-        LEA lastErrorBuffer, A2
-        MOVEQ #SET_PIPELINE_REQUEST_LEN, D0
-        BSR.W opforge_native_cli_copy_bytes
+        BSR.W opforge_native_cli_prepare_pipeline_request
+        TST.L D0
+        BNE.S opforgeNativeCliInitPipelineFail
 
         LEA controlBlockV1, A0
         MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0
-        MOVEQ #SET_PIPELINE_REQUEST_LEN, D1
+        MOVE.W nativeCliPipelineRequestLen, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_SET_PIPELINE, D0
         JSR tkpkg_service_dispatch_v1
@@ -372,9 +416,66 @@ opforgeNativeCliInitPipelineFail:
         MOVEQ #1, D0
         RTS
 
-opforge_native_cli_tokenize_first_line:
+opforge_native_cli_stage_package:
+        TST.B nativeCliPackagePath
+        BNE.S opforgeNativeCliStageExternalPackage
+
+        LEA opforgeNativeCliPackageData, A1
+        LEA packageStorage, A2
+        MOVE.W opforgeNativeCliPackageLen, D0
+        MOVE.W D0, nativeCliPackageLenActive
+        BSR.W opforge_native_cli_copy_bytes
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliStageExternalPackage:
+        LEA nativeCliPackagePath, A0
+        BSR.W opforge_native_cli_open_input
+        TST.L D0
+        BNE.S opforgeNativeCliStageExternalOpenOk
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliStageExternalOpenOk:
+        MOVE.L D0, D5
+        LEA packageStorage, A0
+        MOVE.L #PACKAGE_STORAGE_CAPACITY, D0
+        MOVE.L D5, D1
+        BSR.W opforge_native_cli_read_input
+        MOVE.L D0, D6
+        MOVE.L D5, D1
+        BSR.W opforge_native_cli_close
+        CMP.L #-1, D6
+        BNE.S opforgeNativeCliStageExternalReadOk
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliStageExternalReadOk:
+        MOVE.W D6, nativeCliPackageLenActive
+        MOVEQ #0, D0
+        RTS
+
+opforge_native_cli_prepare_pipeline_request:
+        LEA nativeCliCpuName, A0
+        TST.B (A0)
+        BNE.S opforgeNativeCliPreparePipelineHaveCpu
+        LEA defaultCpuName, A0
+
+opforgeNativeCliPreparePipelineHaveCpu:
+        LEA lastErrorBuffer, A1
+        BSR.W opforge_native_cli_copy_c_string
+        MOVE.W D0, D7
+        LEA defaultFamilyName, A0
+        MOVEQ #DEFAULT_FAMILY_NAME_LEN, D0
+        BSR.W opforge_native_cli_copy_fixed_string
+        ADD.W #DEFAULT_FAMILY_NAME_LEN, D7
+        MOVE.W D7, nativeCliPipelineRequestLen
+        MOVEQ #0, D0
+        RTS
+
+opforge_native_cli_tokenize_current_line:
         LEA lastErrorBuffer, A2
-        MOVE.L #NATIVE_CLI_SOURCE_LINE_NUM, D2
+        MOVE.L nativeCliSourceLineNum, D2
         MOVE.B D2, (A2)+
         LSR.L #8, D2
         MOVE.B D2, (A2)+
@@ -395,11 +496,23 @@ opforge_native_cli_tokenize_first_line:
         JSR tkpkg_service_dispatch_v1
         BSR.W opforge_native_cli_read_status
         TST.B D0
-        BNE.S opforgeNativeCliTokenizeFirstLineFail
+        BNE.S opforgeNativeCliTokenizeCurrentLineFail
+        LEA controlBlockV1, A0
+        BSR.W opforge_native_cli_read_output_len
+        TST.W D0
+        BEQ.S opforgeNativeCliTokenizeCurrentLineOk
+        LEA lastErrorBuffer, A1
+        CLR.B 0(A1,D0.W)
+        MOVE.L #lastErrorBuffer, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+
+opforgeNativeCliTokenizeCurrentLineOk:
         MOVEQ #0, D0
         RTS
 
-opforgeNativeCliTokenizeFirstLineFail:
+opforgeNativeCliTokenizeCurrentLineFail:
         MOVEQ #1, D0
         RTS
 
@@ -880,7 +993,7 @@ parserStubText:
         .byte "ERROR OPC-NCLI009: native parser VM not implemented",10,0
 .ifdef OPFORGE_FS_UAE_SMOKE
 defaultFsUaeArgTail:
-        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk",0
+        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .endif
 
 flagHelpLong:
@@ -939,16 +1052,18 @@ flagModuleLong:
 opforgeNativeCliPackageLen:
         .word OPFORGE_NATIVE_CLI_PACKAGE_LEN
 
-setPipelineRequest:
-        .byte "m68020",0,"motorola68k"
-setPipelineRequestEnd:
+defaultCpuName:
+        .byte "m68020",0
+defaultFamilyName:
+        .byte "motorola68k"
+defaultFamilyNameEnd:
 
         .align 2
 opforgeNativeCliPackageData:
         .incbin "opforge_cli_package.opasm"
 opforgeNativeCliPackageDataEnd:
 
-SET_PIPELINE_REQUEST_LEN = setPipelineRequestEnd - setPipelineRequest
+DEFAULT_FAMILY_NAME_LEN = defaultFamilyNameEnd - defaultFamilyName
 OPFORGE_NATIVE_CLI_PACKAGE_LEN = opforgeNativeCliPackageDataEnd - opforgeNativeCliPackageData
 
         .endsection
@@ -981,6 +1096,16 @@ nativeCliPackagePath:
         .res byte,PATH_BUFFER_CAPACITY
 nativeCliSourceLineLen:
         .res word,1
+nativeCliPackageLenActive:
+        .res word,1
+nativeCliPipelineRequestLen:
+        .res word,1
+nativeCliSourceLineNum:
+        .res long,1
+nativeCliSawCr:
+        .res word,1
+nativeCliInputChar:
+        .res byte,1
 nativeCliSourceLine:
         .res byte,SOURCE_LINE_BUFFER_CAPACITY
 

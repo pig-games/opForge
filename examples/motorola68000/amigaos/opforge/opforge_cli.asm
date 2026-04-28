@@ -526,6 +526,8 @@ NCLI_PARSE_UNKNOWN_FLAG         = -4
 NCLI_PARSE_MISSING_VALUE        = -5
 NCLI_PARSE_NO_INPUT             = -6
 NCLI_PARSE_HUNK_REQUIRED        = -7
+NCLI_PARSE_MIXED_INPUT          = -8
+NCLI_PARSE_MULTIPLE_POSITIONAL  = -9
 
 opforge_native_cli_parse_args:
         MOVEM.L D2-D7/A2-A6, -(SP)
@@ -615,7 +617,12 @@ opforgeNativeCliParseLoop:
 
 opforgeNativeCliInfile:
         TST.W nativeCliInputStyle
-        BNE.W opforgeNativeCliUsage
+        BEQ.S opforgeNativeCliInfileFirst
+        CMPI.W #1, nativeCliInputStyle
+        BEQ.W opforgeNativeCliMixedInput
+        BRA.W opforgeNativeCliUsage
+
+opforgeNativeCliInfileFirst:
         MOVE.W #2, nativeCliInputStyle
         LEA nativeCliInputPath, A1
         BSR.W opforgeNativeCliCopyRequiredValue
@@ -654,7 +661,12 @@ opforgeNativeCliPackage:
 
 opforgeNativeCliPositionalInput:
         TST.W nativeCliInputStyle
-        BNE.W opforgeNativeCliUsage
+        BEQ.S opforgeNativeCliPositionalInputFirst
+        CMPI.W #2, nativeCliInputStyle
+        BEQ.W opforgeNativeCliMixedInput
+        BRA.W opforgeNativeCliMultiplePositional
+
+opforgeNativeCliPositionalInputFirst:
         MOVE.W #1, nativeCliInputStyle
         LEA nativeCliArgToken, A0
         LEA nativeCliInputPath, A1
@@ -712,6 +724,14 @@ opforgeNativeCliNoInput:
 
 opforgeNativeCliHunkRequired:
         MOVE.W #NCLI_PARSE_HUNK_REQUIRED, nativeCliParseStatus
+        BRA.W opforgeNativeCliParseReturn
+
+opforgeNativeCliMixedInput:
+        MOVE.W #NCLI_PARSE_MIXED_INPUT, nativeCliParseStatus
+        BRA.W opforgeNativeCliParseReturn
+
+opforgeNativeCliMultiplePositional:
+        MOVE.W #NCLI_PARSE_MULTIPLE_POSITIONAL, nativeCliParseStatus
 
 opforgeNativeCliParseReturn:
         MOVE.W nativeCliParseStatus, D0
@@ -918,6 +938,10 @@ opforge_native_cli_report_parse_error:
         BEQ.S opforgeNativeCliReportNoInput
         CMPI.W #NCLI_PARSE_HUNK_REQUIRED, D0
         BEQ.S opforgeNativeCliReportHunkRequired
+        CMPI.W #NCLI_PARSE_MIXED_INPUT, D0
+        BEQ.S opforgeNativeCliReportMixedInput
+        CMPI.W #NCLI_PARSE_MULTIPLE_POSITIONAL, D0
+        BEQ.S opforgeNativeCliReportMultiplePositional
         MOVE.L #usageText, D1
         BRA.S opforgeNativeCliReportText
 
@@ -927,14 +951,26 @@ opforgeNativeCliReportQuoted:
 
 opforgeNativeCliReportUnsupported:
         MOVE.L #unsupportedText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliArgToken, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeSubsetHelpText, D1
         BRA.S opforgeNativeCliReportText
 
 opforgeNativeCliReportUnknown:
         MOVE.L #unknownFlagText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliArgToken, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
         BRA.S opforgeNativeCliReportText
 
 opforgeNativeCliReportMissing:
         MOVE.L #missingValueText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliArgToken, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
         BRA.S opforgeNativeCliReportText
 
 opforgeNativeCliReportNoInput:
@@ -943,6 +979,14 @@ opforgeNativeCliReportNoInput:
 
 opforgeNativeCliReportHunkRequired:
         MOVE.L #hunkRequiredText, D1
+        BRA.S opforgeNativeCliReportText
+
+opforgeNativeCliReportMixedInput:
+        MOVE.L #mixedInputText, D1
+        BRA.S opforgeNativeCliReportText
+
+opforgeNativeCliReportMultiplePositional:
+        MOVE.L #multiplePositionalText, D1
 
 opforgeNativeCliReportText:
         BSR.W opforge_native_cli_put_str
@@ -962,21 +1006,27 @@ helpText:
         .byte "Usage: opForge [OPTIONS] [INPUT]",10
         .byte "Native subset: INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package",10,0
 usageText:
-        .byte "OPC-NCLI001: usage: opForge [OPTIONS] [INPUT]",10,0
+        .byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]",10,0
 quotedText:
         .byte "OPC-NCLI002: quoted arguments are not supported by the native CLI subset",10,0
 unsupportedText:
-        .byte "OPC-NCLI003: recognized Rust CLI flag is not implemented by native AmigaOS CLI yet",10,0
+        .byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ",0
+nativeSubsetHelpText:
+        .byte 10,"Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, and --opasm-package.",10,0
 unknownFlagText:
-        .byte "OPC-NCLI004: unknown CLI flag",10,0
+        .byte "OPC-NCLI004: unknown CLI flag: ",0
 missingValueText:
-        .byte "OPC-NCLI005: option requires a value",10,0
+        .byte "OPC-NCLI005: option requires a value: ",0
 noInputText:
         .byte "OPC-NCLI006: No input files specified. Use -i/--infile",10,0
 hunkRequiredText:
-        .byte "OPC-NCLI007: native AmigaOS CLI subset requires --hunk",10,0
+        .byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --hunk only",10,0
+mixedInputText:
+        .byte "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style",10,0
+multiplePositionalText:
+        .byte "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile",10,0
 inputOpenErrorText:
-        .byte "OPC-NCLI008: input source file not found: ",0
+        .byte "OPC-NCLI008: Input source file not found: ",0
 stubHeaderText:
         .byte "OPFORGE-NATIVE 1",10
         .byte "STATUS parser-not-implemented",10,0

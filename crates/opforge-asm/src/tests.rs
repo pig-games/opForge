@@ -8711,7 +8711,19 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "native CLI surface should contain Rust CLI flag literal {expected}"
         );
     }
-    assert!(source.contains("OPC-NCLI007: native AmigaOS CLI subset requires --hunk"));
+    assert!(source.contains(
+        "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --hunk only"
+    ));
+    assert!(
+        source.contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style")
+    );
+    assert!(source.contains(
+        "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile"
+    ));
+    assert!(source.contains("OPC-NCLI008: Input source file not found"));
+    assert!(source.contains(
+        "Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, and --opasm-package."
+    ));
     assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(source.contains("OPC-NCLI009: native parser VM not implemented"));
     assert!(source.contains("--opasm-package Work:opforge_cli_package.opasm"));

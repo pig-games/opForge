@@ -165,7 +165,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - tests prove newline-containing input and non-delegated entry requests map to deterministic native status values
     - no native interpreter assembly is landed in this work item
 
-- [ ] Work item 3: land the first `prvm_run_68000` native interpreter slice over caller-owned buffers
+- [x] Work item 3: land the first `prvm_run_68000` native interpreter slice over caller-owned buffers
   - Source requirement or finding IDs: Work items 1 and 2; Rust PRVM v2 control-flow/checkpoint behavior; WI-6 parity corpus.
   - Validation: see the focused native assembly/parity tests and full quality gates listed below.
   - Definition of done: see detailed criteria below for this work item.
@@ -181,8 +181,24 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `cargo clippy --all-targets --all-features -- -D warnings`
     - `cargo audit`
     - `cargo test --workspace`
+  - Implementation notes:
+    - added `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm` as the first `.cpu 68020` native PRVM module exporting `prvm_run_68000`
+    - the interpreter validates the v0.1 caller-owned request frame, rejects newline input before execution, preserves callee-owned registers, and returns deterministic ABI statuses for invalid arguments, entry-boundary mismatches, malformed tokens, invalid programs, unsupported opcodes, output overflow, and step-budget exhaustion
+    - the implemented opcode subset is intentionally narrow: `BeginStatement`, `ParseOptionalLeadingLabel` as a first-slice no-op, `LoadIdentifier`, `SetMnemonic`, `Advance`, `FinishLine`, and `End`
+    - result emission writes only caller-owned 32-byte result records for `BEGIN_STATEMENT`, `MNEMONIC_TEXT`, and `FINISH_LINE`; expression sub-calls and operand records remain deferred to Work item 4
+    - generated and committed the reference Hunk/listing artifacts required by the example reference workflow at `examples/reference/motorola68000/amigaos/prvm_interpreter.hunk` and `.lst`
+    - extended the host ABI decode tests with an indented no-expression `NOP` statement so Rust PRVM v2 treats it as a mnemonic rather than a column-1 bare label
+    - no AmigaOS CLI/file-I/O harness and no native expression parser were added in this work item
+  - Validation evidence:
+    - `cargo test -p asm motorola68020_prvm_interpreter_example_assembles_first_native_slice -- --nocapture` passed
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed (`6` focused host-side ABI decode tests)
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed (`2` private executor tests plus `7` integration tests)
+    - `cargo fmt --all` and `cargo fmt --all -- --check` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` passed using the local advisory cache with the two already-known allowed warnings (`registry` unmaintained, `rand` advisory through `proptest`)
+    - `cargo test --workspace` is accepted for this WI with `865 passed; 1 failed`, where the only failure is the previously user-waived baseline `asm::tests::examples_match_reference_outputs`
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for a first native interpreter slice limited to caller-owned buffers and a minimal opcode subset, with no CLI harness and no native expression parser
+    - `plan-compliance-reviewer` returned `PASS`; the slice is limited to the first caller-owned-buffer native interpreter path, focused assembly/reference and host decode tests, and plan bookkeeping, with no expression pause/resume implementation and no AmigaOS CLI/file-I/O harness
   - Commit outcome:
     - `prvm_run_68000` exists as a `.cpu 68020` native PRVM interpreter entrypoint and can produce one decoded statement result through the ABI for a newline-free delegated opasm statement
   - Definition of done:
@@ -278,7 +294,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 
 - [x] Milestone 1: native PRVM ABI/spec authority exists and passes quality review (`Work item 1`).
 - [x] Milestone 2: host-side ABI decode and parity fixtures exist before native assembly lands (`Work item 2`).
-- [ ] Milestone 3: `prvm_run_68000` can execute one delegated newline-free statement path over caller-owned buffers (`Work item 3`).
+- [x] Milestone 3: `prvm_run_68000` can execute one delegated newline-free statement path over caller-owned buffers (`Work item 3`).
 - [ ] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).
 - [ ] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).
 - [ ] Milestone 6: an optional AmigaOS demo/report harness exists only after parity is stable (`Work item 6`).

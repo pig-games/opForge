@@ -1610,6 +1610,12 @@ fn example_output_payload_path(
                 return tokvm;
             }
         }
+        if base == "prvm_interpreter" {
+            let prvm = build_dir.join("prvm_interpreter.hunk");
+            if prvm.exists() {
+                return prvm;
+            }
+        }
         expected
     } else {
         fixture_out_dir.join(format!("{base}.{payload_extension}"))
@@ -1688,6 +1694,8 @@ fn example_reference_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
     let relative_stem = example_relative_stem(examples_dir, asm_path);
     if relative_stem == Path::new("motorola68000/amigaos/tokvm/tokvm_interpreter") {
         PathBuf::from("motorola68000/amigaos/tokvm_interpreter")
+    } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_interpreter") {
+        PathBuf::from("motorola68000/amigaos/prvm_interpreter")
     } else {
         relative_stem
     }
@@ -8800,6 +8808,41 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
             .windows("Usage: tokvm <input-path> <output-path>".len())
             .any(|window| window == b"Usage: tokvm <input-path> <output-path>"),
         "expected CLI usage string in tokvm interpreter Hunk payload"
+    );
+}
+
+#[test]
+fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_interpreter.asm");
+    let out_dir = create_temp_dir("m68000-prvm-interpreter");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble prvm interpreter example: {detail}");
+    }
+
+    let listing =
+        fs::read_to_string(out_dir.join("prvm_interpreter.lst")).expect("read prvm listing");
+    assert!(listing.contains(".cpu 68020"));
+    assert!(listing.contains("prvm.amigaos.interpreter.prvm_run_68000"));
+    assert!(listing.contains("PRVM_OPCODE_LOAD_IDENTIFIER"));
+    assert!(listing.contains("PRVM_STATUS_UNSUPPORTED_OPCODE"));
+
+    let payload_path = example_output_payload_path(&out_dir, "prvm_interpreter", "hunk");
+    let payload = fs::read(payload_path).expect("read prvm hunk payload");
+    let segment_count = u32::from_be_bytes(payload[8..12].try_into().expect("segment count"));
+    let first_segment_kind = u32::from_be_bytes(payload[28..32].try_into().expect("segment kind"));
+    assert_eq!(segment_count, 2, "expected code and data Hunk segments");
+    assert_eq!(
+        first_segment_kind, 0x0000_03e9,
+        "expected first Hunk segment to be code"
+    );
+    assert!(
+        payload
+            .windows("OPFORGE-PRVM-ABI-V1".len())
+            .any(|window| window == b"OPFORGE-PRVM-ABI-V1"),
+        "expected ABI marker string in prvm interpreter Hunk payload"
     );
 }
 

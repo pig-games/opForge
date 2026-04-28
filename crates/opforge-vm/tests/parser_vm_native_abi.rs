@@ -417,6 +417,60 @@ fn native_prvm_abi_decodes_success_result_to_rust_v2_statement_shape() {
 }
 
 #[test]
+fn native_prvm_abi_decodes_no_expression_statement_result_to_rust_v2_shape() {
+    let model = model_for_native_abi();
+    let register_checker = register_checker_from_fn(families::mos6502::is_register);
+    let rust_ast = parse_v2_statement(&model, " NOP", &register_checker)
+        .expect("Rust PRVM v2 should parse no-expression statement");
+    let LineAst::Statement(statement) = &rust_ast else {
+        panic!("expected statement AST: {rust_ast:?}");
+    };
+    assert!(statement.label.is_none());
+    assert!(statement.operands.is_empty());
+    let mnemonic = statement.mnemonic.as_ref().expect("mnemonic should exist");
+
+    let mut lexemes = Vec::new();
+    let mnemonic_ref = append_lexeme(&mut lexemes, mnemonic);
+    let expression_slots = HashMap::new();
+
+    let mut records = Vec::new();
+    append_record(
+        &mut records,
+        RESULT_BEGIN_STATEMENT,
+        Span {
+            line: 1,
+            col_start: 0,
+            col_end: 0,
+        },
+        [0, 0, 0, 0],
+    );
+    append_record(
+        &mut records,
+        RESULT_MNEMONIC_TEXT,
+        Span {
+            line: 1,
+            col_start: 2,
+            col_end: 5,
+        },
+        [mnemonic_ref.0, mnemonic_ref.1, 0, 0],
+    );
+    append_record(
+        &mut records,
+        RESULT_FINISH_LINE,
+        Span {
+            line: 1,
+            col_start: 0,
+            col_end: 0,
+        },
+        [0, 0, 0, 0],
+    );
+
+    let decoded = decode_statement_result(&records, &lexemes, &expression_slots)
+        .expect("native no-expression result should decode");
+    assert_eq!(format!("{decoded:?}"), format!("{rust_ast:?}"));
+}
+
+#[test]
 fn native_prvm_abi_decodes_diagnostic_records_with_span_and_message() {
     let mut lexemes = Vec::new();
     let message_ref = append_lexeme(&mut lexemes, "unexpected trailing token");

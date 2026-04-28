@@ -1,0 +1,551 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Native parser VM module for the first AmigaOS PRVM interpreter slice.
+----                                2  
+----                                3          .module prvm.amigaos.interpreter
+----                                4          .cpu 68020
+----                                5          .pub
+----                                6  
+----    EQU 4F505250                7  PRVM_MAGIC_OPRP                     = $4F505250
+----    EQU 0070                    8  PRVM_REQUEST_FRAME_SIZE             = 112
+----    EQU 0014                    9  PRVM_TOKEN_RECORD_SIZE              = 20
+----    EQU 0020                   10  PRVM_RESULT_RECORD_SIZE             = 32
+----    EQU 0100                   11  PRVM_DEFAULT_STEP_BUDGET            = 256
+----                               12  
+----    EQU 0000                   13  PRVM_FRAME_MAGIC                    = 0
+----    EQU 0004                   14  PRVM_FRAME_ABI_VERSION              = 4
+----    EQU 0006                   15  PRVM_FRAME_FRAME_SIZE               = 6
+----    EQU 0008                   16  PRVM_FRAME_CALL_MODE                = 8
+----    EQU 000A                   17  PRVM_FRAME_ENTRY_KIND               = 10
+----    EQU 000C                   18  PRVM_FRAME_LINE_NUM                 = 12
+----    EQU 0010                   19  PRVM_FRAME_SOURCE_PTR               = 16
+----    EQU 0014                   20  PRVM_FRAME_SOURCE_LEN               = 20
+----    EQU 0018                   21  PRVM_FRAME_TOKEN_PTR                = 24
+----    EQU 001C                   22  PRVM_FRAME_TOKEN_COUNT              = 28
+----    EQU 0020                   23  PRVM_FRAME_TOKEN_RECORD_SIZE        = 32
+----    EQU 0024                   24  PRVM_FRAME_LEXEME_PTR               = 36
+----    EQU 0028                   25  PRVM_FRAME_LEXEME_LEN               = 40
+----    EQU 002C                   26  PRVM_FRAME_PROGRAM_PTR              = 44
+----    EQU 0030                   27  PRVM_FRAME_PROGRAM_LEN              = 48
+----    EQU 0034                   28  PRVM_FRAME_RESULT_PTR               = 52
+----    EQU 0038                   29  PRVM_FRAME_RESULT_CAPACITY          = 56
+----    EQU 003C                   30  PRVM_FRAME_DIAGNOSTIC_PTR           = 60
+----    EQU 0044                   31  PRVM_FRAME_RESUME_PTR               = 68
+----    EQU 004C                   32  PRVM_FRAME_EXPR_REQUEST_PTR         = 76
+----    EQU 005C                   33  PRVM_FRAME_PARSER_CONTRACT_VERSION  = 92
+----    EQU 0060                   34  PRVM_FRAME_STEP_BUDGET              = 96
+----    EQU 0064                   35  PRVM_FRAME_FLAGS                    = 100
+----                               36  
+----    EQU 0000                   37  PRVM_STATUS_OK                      = 0
+----    EQU 0001                   38  PRVM_STATUS_EXPR_REQUEST            = 1
+----    EQU 0002                   39  PRVM_STATUS_NEWLINE_UNSUPPORTED     = 2
+----    EQU 0003                   40  PRVM_STATUS_ENTRY_BOUNDARY          = 3
+----    EQU 0004                   41  PRVM_STATUS_INVALID_ARGUMENT        = 4
+----    EQU 0005                   42  PRVM_STATUS_INVALID_TOKEN           = 5
+----    EQU 0006                   43  PRVM_STATUS_INVALID_PROGRAM         = 6
+----    EQU 0007                   44  PRVM_STATUS_OUTPUT_OVERFLOW         = 7
+----    EQU 0009                   45  PRVM_STATUS_UNSUPPORTED_OPCODE      = 9
+----    EQU 000C                   46  PRVM_STATUS_BUDGET_EXCEEDED         = 12
+----                               47  
+----    EQU 0001                   48  PRVM_ENTRY_KIND_OPASM_STATEMENT     = 1
+----    EQU 0000                   49  PRVM_CALL_MODE_START                = 0
+----    EQU 0001                   50  PRVM_ABI_VERSION_V1                 = 1
+----    EQU 0002                   51  PRVM_PARSER_CONTRACT_VERSION_V2     = 2
+----                               52  
+----    EQU 0000                   53  PRVM_TOKEN_KIND_IDENTIFIER          = 0
+----                               54  
+----    EQU 0001                   55  PRVM_RESULT_BEGIN_STATEMENT         = 1
+----    EQU 0003                   56  PRVM_RESULT_MNEMONIC_TEXT           = 3
+----    EQU 0005                   57  PRVM_RESULT_FINISH_LINE             = 5
+----                               58  
+----    EQU 0000                   59  PRVM_OPCODE_END                     = $00
+----    EQU 0020                   60  PRVM_OPCODE_ADVANCE                 = $20
+----    EQU 0030                   61  PRVM_OPCODE_LOAD_IDENTIFIER         = $30
+----    EQU 0040                   62  PRVM_OPCODE_PARSE_OPTIONAL_LABEL    = $40
+----    EQU 0060                   63  PRVM_OPCODE_BEGIN_STATEMENT         = $60
+----    EQU 0062                   64  PRVM_OPCODE_SET_MNEMONIC            = $62
+----    EQU 0064                   65  PRVM_OPCODE_FINISH_LINE             = $64
+----                               66  
+----    EQU 0000                   67  LOCAL_LOADED_FLAG                   = 0
+----    EQU 0004                   68  LOCAL_LOADED_COL_START              = 4
+----    EQU 0008                   69  LOCAL_LOADED_COL_END                = 8
+----    EQU 000C                   70  LOCAL_LOADED_LEXEME_OFFSET          = 12
+----    EQU 0010                   71  LOCAL_LOADED_LEXEME_LEN             = 16
+----    EQU 0014                   72  LOCAL_FINISHED_FLAG                 = 20
+----    EQU 0018                   73  LOCAL_STEP_COUNT                    = 24
+----    EQU 001C                   74  LOCAL_SIZE                          = 28
+----                               75  
+----                               76          .section data, kind=data  ; [section data]
+----                               77    ; [section data]
+----                               78  abiMarker  ; [section data]
+0000    4F 50 46 4F 52 47 45 2D 50 52 56 4D 2D 41 42 49 2D 56 31 00    79          .byte "OPFORGE-PRVM-ABI-V1",0  ; [section data]
+----                               80    ; [section data]
+----                               81          .endsection
+----                               82  
+----                               83          .section code, kind=code  ; [section code]
+----                               84    ; [section code]
+----                               85  ; ---------------------------------------------------------------------------  ; [section code]
+----                               86  ; Native parser VM entry.  ; [section code]
+----                               87  ;  ; [section code]
+----                               88  ; Call ABI:  ; [section code]
+----                               89  ; - A0: PRVM_REQUEST_FRAME_V1 pointer  ; [section code]
+----                               90  ; - D0: request frame size in bytes  ; [section code]
+----                               91  ;  ; [section code]
+----                               92  ; Return ABI:  ; [section code]
+----                               93  ; - D0: PRVM_STATUS_*  ; [section code]
+----                               94  ; - D1: result record count on success  ; [section code]
+----                               95  ; - D2: final token cursor or status-specific offset  ; [section code]
+----                               96  ; - D3: committed result bytes on success  ; [section code]
+----                               97  ; ---------------------------------------------------------------------------  ; [section code]
+----                               98    ; [section code]
+----                               99  prvm_run_68000  ; [section code]
+0000    48 E7 0F 0E               100          MOVEM.L D4-D7/A4-A6, -(SP)  ; [section code]
+0004    22 08                     101          MOVE.L A0, D1  ; [section code]
+0006    4A 81                     102          TST.L D1  ; [section code]
+0008    67 00 03 C4               103          BEQ prvmInvalidArgument  ; [section code]
+000C    0C 80 00 00 00 70         104          CMPI.L #PRVM_REQUEST_FRAME_SIZE, D0  ; [section code]
+0012    6D 00 03 BA               105          BLT prvmInvalidArgument  ; [section code]
+----                              106    ; [section code]
+0016    28 48                     107          MOVEA.L A0, A4  ; [section code]
+0018    9F FC 00 00 00 1C         108          SUBA.L #LOCAL_SIZE, SP  ; [section code]
+001E    47 EF 00 00               109          LEA 0(SP), A3  ; [section code]
+0022    42 AB 00 00               110          CLR.L LOCAL_LOADED_FLAG(A3)  ; [section code]
+0026    42 AB 00 14               111          CLR.L LOCAL_FINISHED_FLAG(A3)  ; [section code]
+002A    42 AB 00 18               112          CLR.L LOCAL_STEP_COUNT(A3)  ; [section code]
+----                              113    ; [section code]
+002E    0C AC 4F 50 52 50 00 00   114          CMPI.L #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(A4)  ; [section code]
+0036    66 00 03 7E               115          BNE prvmInvalidArgumentWithLocals  ; [section code]
+003A    0C 6C 00 01 00 04         116          CMPI.W #PRVM_ABI_VERSION_V1, PRVM_FRAME_ABI_VERSION(A4)  ; [section code]
+0040    66 00 03 74               117          BNE prvmInvalidArgumentWithLocals  ; [section code]
+0044    70 00                     118          MOVEQ #0, D0  ; [section code]
+0046    30 2C 00 06               119          MOVE.W PRVM_FRAME_FRAME_SIZE(A4), D0  ; [section code]
+004A    0C 80 00 00 00 70         120          CMPI.L #PRVM_REQUEST_FRAME_SIZE, D0  ; [section code]
+0050    6D 00 03 64               121          BLT prvmInvalidArgumentWithLocals  ; [section code]
+0054    0C 6C 00 00 00 08         122          CMPI.W #PRVM_CALL_MODE_START, PRVM_FRAME_CALL_MODE(A4)  ; [section code]
+005A    66 00 03 5A               123          BNE prvmInvalidArgumentWithLocals  ; [section code]
+005E    0C 6C 00 01 00 0A         124          CMPI.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, PRVM_FRAME_ENTRY_KIND(A4)  ; [section code]
+0064    66 00 03 18               125          BNE prvmEntryBoundary  ; [section code]
+0068    0C 6C 00 14 00 20         126          CMPI.W #PRVM_TOKEN_RECORD_SIZE, PRVM_FRAME_TOKEN_RECORD_SIZE(A4)  ; [section code]
+006E    66 00 03 46               127          BNE prvmInvalidArgumentWithLocals  ; [section code]
+0072    0C AC 00 00 00 02 00 5C   128          CMPI.L #PRVM_PARSER_CONTRACT_VERSION_V2, PRVM_FRAME_PARSER_CONTRACT_VERSION(A4)  ; [section code]
+007A    66 00 03 18               129          BNE prvmInvalidProgramAtCursor  ; [section code]
+007E    4A AC 00 64               130          TST.L PRVM_FRAME_FLAGS(A4)  ; [section code]
+0082    66 00 03 32               131          BNE prvmInvalidArgumentWithLocals  ; [section code]
+----                              132    ; [section code]
+0086    2C 2C 00 14               133          MOVE.L PRVM_FRAME_SOURCE_LEN(A4), D6  ; [section code]
+008A    6B 00 03 2A               134          BMI prvmInvalidArgumentWithLocals  ; [section code]
+008E    67 00 00 0C               135          BEQ prvmValidateTokenBuffer  ; [section code]
+0092    20 2C 00 10               136          MOVE.L PRVM_FRAME_SOURCE_PTR(A4), D0  ; [section code]
+0096    4A 80                     137          TST.L D0  ; [section code]
+0098    67 00 03 1C               138          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+----                              139    ; [section code]
+----                              140  prvmValidateTokenBuffer  ; [section code]
+009C    28 2C 00 1C               141          MOVE.L PRVM_FRAME_TOKEN_COUNT(A4), D4  ; [section code]
+00A0    6B 00 03 14               142          BMI prvmInvalidArgumentWithLocals  ; [section code]
+00A4    67 00 00 0C               143          BEQ prvmValidateLexemeBuffer  ; [section code]
+00A8    20 2C 00 18               144          MOVE.L PRVM_FRAME_TOKEN_PTR(A4), D0  ; [section code]
+00AC    4A 80                     145          TST.L D0  ; [section code]
+00AE    67 00 03 06               146          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+----                              147    ; [section code]
+----                              148  prvmValidateLexemeBuffer  ; [section code]
+00B2    20 2C 00 28               149          MOVE.L PRVM_FRAME_LEXEME_LEN(A4), D0  ; [section code]
+00B6    6B 00 02 FE               150          BMI prvmInvalidArgumentWithLocals  ; [section code]
+00BA    67 00 00 0C               151          BEQ prvmValidateProgramBuffer  ; [section code]
+00BE    2E 2C 00 24               152          MOVE.L PRVM_FRAME_LEXEME_PTR(A4), D7  ; [section code]
+00C2    4A 87                     153          TST.L D7  ; [section code]
+00C4    67 00 02 F0               154          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+----                              155    ; [section code]
+----                              156  prvmValidateProgramBuffer  ; [section code]
+00C8    2C 2C 00 30               157          MOVE.L PRVM_FRAME_PROGRAM_LEN(A4), D6  ; [section code]
+00CC    6F 00 02 C6               158          BLE prvmInvalidProgramAtCursor  ; [section code]
+00D0    20 2C 00 2C               159          MOVE.L PRVM_FRAME_PROGRAM_PTR(A4), D0  ; [section code]
+00D4    4A 80                     160          TST.L D0  ; [section code]
+00D6    67 00 02 DE               161          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+00DA    20 2C 00 34               162          MOVE.L PRVM_FRAME_RESULT_PTR(A4), D0  ; [section code]
+00DE    4A 80                     163          TST.L D0  ; [section code]
+00E0    67 00 02 D4               164          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+00E4    20 2C 00 38               165          MOVE.L PRVM_FRAME_RESULT_CAPACITY(A4), D0  ; [section code]
+00E8    6B 00 02 CC               166          BMI prvmInvalidArgumentWithLocals  ; [section code]
+00EC    20 2C 00 3C               167          MOVE.L PRVM_FRAME_DIAGNOSTIC_PTR(A4), D0  ; [section code]
+00F0    4A 80                     168          TST.L D0  ; [section code]
+00F2    67 00 02 C2               169          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+00F6    20 2C 00 44               170          MOVE.L PRVM_FRAME_RESUME_PTR(A4), D0  ; [section code]
+00FA    4A 80                     171          TST.L D0  ; [section code]
+00FC    67 00 02 B8               172          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+0100    20 2C 00 4C               173          MOVE.L PRVM_FRAME_EXPR_REQUEST_PTR(A4), D0  ; [section code]
+0104    4A 80                     174          TST.L D0  ; [section code]
+0106    67 00 02 AE               175          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+----                              176    ; [section code]
+010A    20 6C 00 10               177          MOVEA.L PRVM_FRAME_SOURCE_PTR(A4), A0  ; [section code]
+010E    2C 2C 00 14               178          MOVE.L PRVM_FRAME_SOURCE_LEN(A4), D6  ; [section code]
+0112    42 80                     179          CLR.L D0  ; [section code]
+----                              180  prvmNewlineScanLoop  ; [section code]
+0114    B0 86                     181          CMP.L D6, D0  ; [section code]
+0116    64 00 00 28               182          BCC prvmNewlineScanDone  ; [section code]
+011A    0C 30 00 0A 08 00         183          CMPI.B #10, 0(A0,D0.L)  ; [section code]
+0120    67 00 00 12               184          BEQ prvmNewlineUnsupported  ; [section code]
+0124    0C 30 00 0D 08 00         185          CMPI.B #13, 0(A0,D0.L)  ; [section code]
+012A    67 00 00 08               186          BEQ prvmNewlineUnsupported  ; [section code]
+012E    52 80                     187          ADDQ.L #1, D0  ; [section code]
+0130    60 00 FF E2               188          BRA prvmNewlineScanLoop  ; [section code]
+----                              189    ; [section code]
+----                              190  prvmNewlineUnsupported  ; [section code]
+0134    42 81                     191          CLR.L D1  ; [section code]
+0136    24 00                     192          MOVE.L D0, D2  ; [section code]
+0138    42 83                     193          CLR.L D3  ; [section code]
+013A    70 02                     194          MOVEQ #PRVM_STATUS_NEWLINE_UNSUPPORTED, D0  ; [section code]
+013C    60 00 02 84               195          BRA prvmReturnWithLocals  ; [section code]
+----                              196    ; [section code]
+----                              197  prvmNewlineScanDone  ; [section code]
+0140    2A 6C 00 2C               198          MOVEA.L PRVM_FRAME_PROGRAM_PTR(A4), A5  ; [section code]
+0144    2C 2C 00 30               199          MOVE.L PRVM_FRAME_PROGRAM_LEN(A4), D6  ; [section code]
+0148    4D F5 68 00               200          LEA 0(A5,D6.L), A6  ; [section code]
+014C    2C 2C 00 60               201          MOVE.L PRVM_FRAME_STEP_BUDGET(A4), D6  ; [section code]
+0150    6E 00 00 08               202          BGT prvmStartProgram  ; [section code]
+0154    2C 3C 00 00 01 00         203          MOVE.L #PRVM_DEFAULT_STEP_BUDGET, D6  ; [section code]
+----                              204    ; [section code]
+----                              205  prvmStartProgram  ; [section code]
+015A    42 81                     206          CLR.L D1  ; [section code]
+015C    42 82                     207          CLR.L D2  ; [section code]
+015E    42 83                     208          CLR.L D3  ; [section code]
+----                              209    ; [section code]
+----                              210  prvmProgramLoop  ; [section code]
+0160    20 2B 00 18               211          MOVE.L LOCAL_STEP_COUNT(A3), D0  ; [section code]
+0164    52 80                     212          ADDQ.L #1, D0  ; [section code]
+0166    27 40 00 18               213          MOVE.L D0, LOCAL_STEP_COUNT(A3)  ; [section code]
+016A    B0 86                     214          CMP.L D6, D0  ; [section code]
+016C    62 00 02 3E               215          BHI prvmBudgetExceeded  ; [section code]
+0170    BB CE                     216          CMPA.L A6, A5  ; [section code]
+0172    64 00 02 20               217          BCC prvmInvalidProgramAtCursor  ; [section code]
+----                              218    ; [section code]
+0176    7E 00                     219          MOVEQ #0, D7  ; [section code]
+0178    1E 1D                     220          MOVE.B (A5)+, D7  ; [section code]
+017A    0C 07 00 00               221          CMPI.B #PRVM_OPCODE_END, D7  ; [section code]
+017E    67 00 00 36               222          BEQ prvmOpcodeEnd  ; [section code]
+0182    0C 07 00 20               223          CMPI.B #PRVM_OPCODE_ADVANCE, D7  ; [section code]
+0186    67 00 00 3C               224          BEQ prvmOpcodeAdvance  ; [section code]
+018A    0C 07 00 30               225          CMPI.B #PRVM_OPCODE_LOAD_IDENTIFIER, D7  ; [section code]
+018E    67 00 00 40               226          BEQ prvmOpcodeLoadIdentifier  ; [section code]
+0192    0C 07 00 40               227          CMPI.B #PRVM_OPCODE_PARSE_OPTIONAL_LABEL, D7  ; [section code]
+0196    67 00 FF C8               228          BEQ prvmProgramLoop  ; [section code]
+019A    0C 07 00 60               229          CMPI.B #PRVM_OPCODE_BEGIN_STATEMENT, D7  ; [section code]
+019E    67 00 00 98               230          BEQ prvmOpcodeBeginStatement  ; [section code]
+01A2    0C 07 00 62               231          CMPI.B #PRVM_OPCODE_SET_MNEMONIC, D7  ; [section code]
+01A6    67 00 00 A8               232          BEQ prvmOpcodeSetMnemonic  ; [section code]
+01AA    0C 07 00 64               233          CMPI.B #PRVM_OPCODE_FINISH_LINE, D7  ; [section code]
+01AE    67 00 00 BC               234          BEQ prvmOpcodeFinishLine  ; [section code]
+01B2    60 00 01 EE               235          BRA prvmUnsupportedOpcode  ; [section code]
+----                              236    ; [section code]
+----                              237  prvmOpcodeEnd  ; [section code]
+01B6    4A AB 00 14               238          TST.L LOCAL_FINISHED_FLAG(A3)  ; [section code]
+01BA    67 00 01 D8               239          BEQ prvmInvalidProgramAtCursor  ; [section code]
+01BE    70 00                     240          MOVEQ #PRVM_STATUS_OK, D0  ; [section code]
+01C0    60 00 02 00               241          BRA prvmReturnWithLocals  ; [section code]
+----                              242    ; [section code]
+----                              243  prvmOpcodeAdvance  ; [section code]
+01C4    B4 84                     244          CMP.L D4, D2  ; [section code]
+01C6    64 00 FF 98               245          BCC prvmProgramLoop  ; [section code]
+01CA    52 82                     246          ADDQ.L #1, D2  ; [section code]
+01CC    60 00 FF 92               247          BRA prvmProgramLoop  ; [section code]
+----                              248    ; [section code]
+----                              249  prvmOpcodeLoadIdentifier  ; [section code]
+01D0    4E B9 00 00 02 84         250          JSR prvmCurrentTokenPtr  ; [section code]
+01D6    4A 80                     251          TST.L D0  ; [section code]
+01D8    66 00 01 E8               252          BNE prvmReturnWithLocals  ; [section code]
+01DC    0C 69 00 00 00 00         253          CMPI.W #PRVM_TOKEN_KIND_IDENTIFIER, 0(A1)  ; [section code]
+01E2    66 00 01 A6               254          BNE prvmInvalidTokenAtCursor  ; [section code]
+01E6    20 29 00 04               255          MOVE.L 4(A1), D0  ; [section code]
+01EA    67 00 01 9E               256          BEQ prvmInvalidTokenAtCursor  ; [section code]
+01EE    2E 29 00 08               257          MOVE.L 8(A1), D7  ; [section code]
+01F2    BE 80                     258          CMP.L D0, D7  ; [section code]
+01F4    65 00 01 94               259          BCS prvmInvalidTokenAtCursor  ; [section code]
+01F8    20 29 00 0C               260          MOVE.L 12(A1), D0  ; [section code]
+01FC    2E 29 00 10               261          MOVE.L 16(A1), D7  ; [section code]
+0200    67 00 01 88               262          BEQ prvmInvalidTokenAtCursor  ; [section code]
+0204    2A 00                     263          MOVE.L D0, D5  ; [section code]
+0206    DA 87                     264          ADD.L D7, D5  ; [section code]
+0208    65 00 01 80               265          BCS prvmInvalidTokenAtCursor  ; [section code]
+020C    BA AC 00 28               266          CMP.L PRVM_FRAME_LEXEME_LEN(A4), D5  ; [section code]
+0210    62 00 01 78               267          BHI prvmInvalidTokenAtCursor  ; [section code]
+0214    27 69 00 04 00 04         268          MOVE.L 4(A1), LOCAL_LOADED_COL_START(A3)  ; [section code]
+021A    27 69 00 08 00 08         269          MOVE.L 8(A1), LOCAL_LOADED_COL_END(A3)  ; [section code]
+0220    27 69 00 0C 00 0C         270          MOVE.L 12(A1), LOCAL_LOADED_LEXEME_OFFSET(A3)  ; [section code]
+0226    27 69 00 10 00 10         271          MOVE.L 16(A1), LOCAL_LOADED_LEXEME_LEN(A3)  ; [section code]
+022C    27 7C 00 00 00 01 00 00   272          MOVE.L #1, LOCAL_LOADED_FLAG(A3)  ; [section code]
+0234    60 00 FF 2A               273          BRA prvmProgramLoop  ; [section code]
+----                              274    ; [section code]
+----                              275  prvmOpcodeBeginStatement  ; [section code]
+0238    42 AB 00 00               276          CLR.L LOCAL_LOADED_FLAG(A3)  ; [section code]
+023C    42 AB 00 14               277          CLR.L LOCAL_FINISHED_FLAG(A3)  ; [section code]
+0240    4E B9 00 00 02 CC         278          JSR prvmEmitBeginStatement  ; [section code]
+0246    4A 80                     279          TST.L D0  ; [section code]
+0248    66 00 01 78               280          BNE prvmReturnWithLocals  ; [section code]
+024C    60 00 FF 12               281          BRA prvmProgramLoop  ; [section code]
+----                              282    ; [section code]
+----                              283  prvmOpcodeSetMnemonic  ; [section code]
+0250    4A AB 00 00               284          TST.L LOCAL_LOADED_FLAG(A3)  ; [section code]
+0254    67 00 01 3E               285          BEQ prvmInvalidProgramAtCursor  ; [section code]
+0258    4E B9 00 00 03 04         286          JSR prvmEmitMnemonicText  ; [section code]
+025E    4A 80                     287          TST.L D0  ; [section code]
+0260    66 00 01 60               288          BNE prvmReturnWithLocals  ; [section code]
+0264    42 AB 00 00               289          CLR.L LOCAL_LOADED_FLAG(A3)  ; [section code]
+0268    60 00 FE F6               290          BRA prvmProgramLoop  ; [section code]
+----                              291    ; [section code]
+----                              292  prvmOpcodeFinishLine  ; [section code]
+026C    4E B9 00 00 03 44         293          JSR prvmEmitFinishLine  ; [section code]
+0272    4A 80                     294          TST.L D0  ; [section code]
+0274    66 00 01 4C               295          BNE prvmReturnWithLocals  ; [section code]
+0278    27 7C 00 00 00 01 00 14   296          MOVE.L #1, LOCAL_FINISHED_FLAG(A3)  ; [section code]
+0280    60 00 FE DE               297          BRA prvmProgramLoop  ; [section code]
+----                              298    ; [section code]
+----                              299  prvmCurrentTokenPtr  ; [section code]
+0284    B4 84                     300          CMP.L D4, D2  ; [section code]
+0286    64 00 00 16               301          BCC prvmCurrentTokenInvalid  ; [section code]
+028A    20 02                     302          MOVE.L D2, D0  ; [section code]
+028C    E9 88                     303          LSL.L #4, D0  ; [section code]
+028E    2E 02                     304          MOVE.L D2, D7  ; [section code]
+0290    E5 8F                     305          LSL.L #2, D7  ; [section code]
+0292    D0 87                     306          ADD.L D7, D0  ; [section code]
+0294    22 6C 00 18               307          MOVEA.L PRVM_FRAME_TOKEN_PTR(A4), A1  ; [section code]
+0298    D3 C0                     308          ADDA.L D0, A1  ; [section code]
+029A    42 80                     309          CLR.L D0  ; [section code]
+029C    4E 75                     310          RTS  ; [section code]
+----                              311    ; [section code]
+----                              312  prvmCurrentTokenInvalid  ; [section code]
+029E    42 81                     313          CLR.L D1  ; [section code]
+02A0    42 83                     314          CLR.L D3  ; [section code]
+02A2    70 05                     315          MOVEQ #PRVM_STATUS_INVALID_TOKEN, D0  ; [section code]
+02A4    4E 75                     316          RTS  ; [section code]
+----                              317    ; [section code]
+----                              318  prvmResultRecordPtr  ; [section code]
+02A6    20 01                     319          MOVE.L D1, D0  ; [section code]
+02A8    EB 88                     320          LSL.L #5, D0  ; [section code]
+02AA    2E 00                     321          MOVE.L D0, D7  ; [section code]
+02AC    06 87 00 00 00 20         322          ADDI.L #PRVM_RESULT_RECORD_SIZE, D7  ; [section code]
+02B2    BE AC 00 38               323          CMP.L PRVM_FRAME_RESULT_CAPACITY(A4), D7  ; [section code]
+02B6    62 00 00 E6               324          BHI prvmOutputOverflow  ; [section code]
+02BA    24 6C 00 34               325          MOVEA.L PRVM_FRAME_RESULT_PTR(A4), A2  ; [section code]
+02BE    D5 C0                     326          ADDA.L D0, A2  ; [section code]
+02C0    4E 75                     327          RTS  ; [section code]
+----                              328    ; [section code]
+----                              329  prvmCommitResultRecord  ; [section code]
+02C2    52 81                     330          ADDQ.L #1, D1  ; [section code]
+02C4    26 01                     331          MOVE.L D1, D3  ; [section code]
+02C6    EB 8B                     332          LSL.L #5, D3  ; [section code]
+02C8    42 80                     333          CLR.L D0  ; [section code]
+02CA    4E 75                     334          RTS  ; [section code]
+----                              335    ; [section code]
+----                              336  prvmEmitBeginStatement  ; [section code]
+02CC    4E B9 00 00 02 A6         337          JSR prvmResultRecordPtr  ; [section code]
+02D2    4A 80                     338          TST.L D0  ; [section code]
+02D4    66 00 00 A6               339          BNE prvmEmitRecordReturn  ; [section code]
+02D8    35 7C 00 01 00 00         340          MOVE.W #PRVM_RESULT_BEGIN_STATEMENT, 0(A2)  ; [section code]
+02DE    42 6A 00 02               341          CLR.W 2(A2)  ; [section code]
+02E2    25 6C 00 0C 00 04         342          MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)  ; [section code]
+02E8    42 AA 00 08               343          CLR.L 8(A2)  ; [section code]
+02EC    42 AA 00 0C               344          CLR.L 12(A2)  ; [section code]
+02F0    42 AA 00 10               345          CLR.L 16(A2)  ; [section code]
+02F4    42 AA 00 14               346          CLR.L 20(A2)  ; [section code]
+02F8    42 AA 00 18               347          CLR.L 24(A2)  ; [section code]
+02FC    42 AA 00 1C               348          CLR.L 28(A2)  ; [section code]
+0300    60 00 FF C0               349          BRA prvmCommitResultRecord  ; [section code]
+----                              350    ; [section code]
+----                              351  prvmEmitMnemonicText  ; [section code]
+0304    4E B9 00 00 02 A6         352          JSR prvmResultRecordPtr  ; [section code]
+030A    4A 80                     353          TST.L D0  ; [section code]
+030C    66 00 00 6E               354          BNE prvmEmitRecordReturn  ; [section code]
+0310    35 7C 00 03 00 00         355          MOVE.W #PRVM_RESULT_MNEMONIC_TEXT, 0(A2)  ; [section code]
+0316    42 6A 00 02               356          CLR.W 2(A2)  ; [section code]
+031A    25 6C 00 0C 00 04         357          MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)  ; [section code]
+0320    25 6B 00 04 00 08         358          MOVE.L LOCAL_LOADED_COL_START(A3), 8(A2)  ; [section code]
+0326    25 6B 00 08 00 0C         359          MOVE.L LOCAL_LOADED_COL_END(A3), 12(A2)  ; [section code]
+032C    25 6B 00 0C 00 10         360          MOVE.L LOCAL_LOADED_LEXEME_OFFSET(A3), 16(A2)  ; [section code]
+0332    25 6B 00 10 00 14         361          MOVE.L LOCAL_LOADED_LEXEME_LEN(A3), 20(A2)  ; [section code]
+0338    42 AA 00 18               362          CLR.L 24(A2)  ; [section code]
+033C    42 AA 00 1C               363          CLR.L 28(A2)  ; [section code]
+0340    60 00 FF 80               364          BRA prvmCommitResultRecord  ; [section code]
+----                              365    ; [section code]
+----                              366  prvmEmitFinishLine  ; [section code]
+0344    4E B9 00 00 02 A6         367          JSR prvmResultRecordPtr  ; [section code]
+034A    4A 80                     368          TST.L D0  ; [section code]
+034C    66 00 00 2E               369          BNE prvmEmitRecordReturn  ; [section code]
+0350    35 7C 00 05 00 00         370          MOVE.W #PRVM_RESULT_FINISH_LINE, 0(A2)  ; [section code]
+0356    42 6A 00 02               371          CLR.W 2(A2)  ; [section code]
+035A    25 6C 00 0C 00 04         372          MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)  ; [section code]
+0360    42 AA 00 08               373          CLR.L 8(A2)  ; [section code]
+0364    42 AA 00 0C               374          CLR.L 12(A2)  ; [section code]
+0368    42 AA 00 10               375          CLR.L 16(A2)  ; [section code]
+036C    42 AA 00 14               376          CLR.L 20(A2)  ; [section code]
+0370    42 AA 00 18               377          CLR.L 24(A2)  ; [section code]
+0374    42 AA 00 1C               378          CLR.L 28(A2)  ; [section code]
+0378    60 00 FF 48               379          BRA prvmCommitResultRecord  ; [section code]
+----                              380    ; [section code]
+----                              381  prvmEmitRecordReturn  ; [section code]
+037C    4E 75                     382          RTS  ; [section code]
+----                              383    ; [section code]
+----                              384  prvmEntryBoundary  ; [section code]
+037E    42 81                     385          CLR.L D1  ; [section code]
+0380    42 82                     386          CLR.L D2  ; [section code]
+0382    42 83                     387          CLR.L D3  ; [section code]
+0384    70 03                     388          MOVEQ #PRVM_STATUS_ENTRY_BOUNDARY, D0  ; [section code]
+0386    60 00 00 3A               389          BRA prvmReturnWithLocals  ; [section code]
+----                              390    ; [section code]
+----                              391  prvmInvalidTokenAtCursor  ; [section code]
+038A    42 81                     392          CLR.L D1  ; [section code]
+038C    42 83                     393          CLR.L D3  ; [section code]
+038E    70 05                     394          MOVEQ #PRVM_STATUS_INVALID_TOKEN, D0  ; [section code]
+0390    60 00 00 30               395          BRA prvmReturnWithLocals  ; [section code]
+----                              396    ; [section code]
+----                              397  prvmInvalidProgramAtCursor  ; [section code]
+0394    42 81                     398          CLR.L D1  ; [section code]
+0396    42 83                     399          CLR.L D3  ; [section code]
+0398    70 06                     400          MOVEQ #PRVM_STATUS_INVALID_PROGRAM, D0  ; [section code]
+039A    60 00 00 26               401          BRA prvmReturnWithLocals  ; [section code]
+----                              402    ; [section code]
+----                              403  prvmOutputOverflow  ; [section code]
+039E    70 07                     404          MOVEQ #PRVM_STATUS_OUTPUT_OVERFLOW, D0  ; [section code]
+03A0    4E 75                     405          RTS  ; [section code]
+----                              406    ; [section code]
+----                              407  prvmUnsupportedOpcode  ; [section code]
+03A2    42 81                     408          CLR.L D1  ; [section code]
+03A4    42 83                     409          CLR.L D3  ; [section code]
+03A6    70 09                     410          MOVEQ #PRVM_STATUS_UNSUPPORTED_OPCODE, D0  ; [section code]
+03A8    60 00 00 18               411          BRA prvmReturnWithLocals  ; [section code]
+----                              412    ; [section code]
+----                              413  prvmBudgetExceeded  ; [section code]
+03AC    42 81                     414          CLR.L D1  ; [section code]
+03AE    42 83                     415          CLR.L D3  ; [section code]
+03B0    70 0C                     416          MOVEQ #PRVM_STATUS_BUDGET_EXCEEDED, D0  ; [section code]
+03B2    60 00 00 0E               417          BRA prvmReturnWithLocals  ; [section code]
+----                              418    ; [section code]
+----                              419  prvmInvalidArgumentWithLocals  ; [section code]
+03B6    42 81                     420          CLR.L D1  ; [section code]
+03B8    42 82                     421          CLR.L D2  ; [section code]
+03BA    42 83                     422          CLR.L D3  ; [section code]
+03BC    70 04                     423          MOVEQ #PRVM_STATUS_INVALID_ARGUMENT, D0  ; [section code]
+03BE    60 00 00 02               424          BRA prvmReturnWithLocals  ; [section code]
+----                              425    ; [section code]
+----                              426  prvmReturnWithLocals  ; [section code]
+03C2    DF FC 00 00 00 1C         427          ADDA.L #LOCAL_SIZE, SP  ; [section code]
+03C8    4C DF 70 F0               428          MOVEM.L (SP)+, D4-D7/A4-A6  ; [section code]
+03CC    4E 75                     429          RTS  ; [section code]
+----                              430    ; [section code]
+----                              431  prvmInvalidArgument  ; [section code]
+03CE    42 81                     432          CLR.L D1  ; [section code]
+03D0    42 82                     433          CLR.L D2  ; [section code]
+03D2    42 83                     434          CLR.L D3  ; [section code]
+03D4    70 04                     435          MOVEQ #PRVM_STATUS_INVALID_ARGUMENT, D0  ; [section code]
+03D6    4C DF 70 F0               436          MOVEM.L (SP)+, D4-D7/A4-A6  ; [section code]
+03DA    4E 75                     437          RTS  ; [section code]
+----                              438    ; [section code]
+----                              439          .endsection
+----                              440          .output "build/prvm_interpreter.hunk", format=hunk, sections=code,data
+----                              441          .endmodule
+
+Lines: 441  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+prvm.amigaos.interpreter.abiMarker  0000      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_FINISHED_FLAG  0014      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_COL_END  0008      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_COL_START  0004      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_FLAG  0000      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_LEXEME_LEN  0010      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_LEXEME_OFFSET  000C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_SIZE  001C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_STEP_COUNT  0018      pub  lbl 
+prvm.amigaos.interpreter.prvmBudgetExceeded  03AC      pub  lbl 
+prvm.amigaos.interpreter.prvmCommitResultRecord  02C2      pub  lbl 
+prvm.amigaos.interpreter.prvmCurrentTokenInvalid  029E      pub  lbl 
+prvm.amigaos.interpreter.prvmCurrentTokenPtr  0284      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitBeginStatement  02CC      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitFinishLine  0344      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitMnemonicText  0304      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitRecordReturn  037C      pub  lbl 
+prvm.amigaos.interpreter.prvmEntryBoundary  037E      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidArgument  03CE      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidArgumentWithLocals  03B6      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidProgramAtCursor  0394      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidTokenAtCursor  038A      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineScanDone  0140      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineScanLoop  0114      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineUnsupported  0134      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeAdvance  01C4      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeBeginStatement  0238      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeEnd  01B6      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeFinishLine  026C      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeLoadIdentifier  01D0      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeSetMnemonic  0250      pub  lbl 
+prvm.amigaos.interpreter.prvmOutputOverflow  039E      pub  lbl 
+prvm.amigaos.interpreter.prvmProgramLoop  0160      pub  lbl 
+prvm.amigaos.interpreter.prvmResultRecordPtr  02A6      pub  lbl 
+prvm.amigaos.interpreter.prvmReturnWithLocals  03C2      pub  lbl 
+prvm.amigaos.interpreter.prvmStartProgram  015A      pub  lbl 
+prvm.amigaos.interpreter.prvmUnsupportedOpcode  03A2      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateLexemeBuffer  00B2      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateProgramBuffer  00C8      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateTokenBuffer  009C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_ABI_VERSION_V1  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_CALL_MODE_START  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_DEFAULT_STEP_BUDGET  0100      pub  lbl 
+prvm.amigaos.interpreter.PRVM_ENTRY_KIND_OPASM_STATEMENT  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_ABI_VERSION  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_CALL_MODE  0008      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_DIAGNOSTIC_PTR  003C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_ENTRY_KIND  000A      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_EXPR_REQUEST_PTR  004C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_FLAGS  0064      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_FRAME_SIZE  0006      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LEXEME_LEN  0028      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LEXEME_PTR  0024      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LINE_NUM  000C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_MAGIC  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PARSER_CONTRACT_VERSION  005C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PROGRAM_LEN  0030      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PROGRAM_PTR  002C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESULT_CAPACITY  0038      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESULT_PTR  0034      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESUME_PTR  0044      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_SOURCE_LEN  0014      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_SOURCE_PTR  0010      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_STEP_BUDGET  0060      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_COUNT  001C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_PTR  0018      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_RECORD_SIZE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_MAGIC_OPRP  4F505250  pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_ADVANCE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_BEGIN_STATEMENT  0060      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_END  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_FINISH_LINE  0064      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_LOAD_IDENTIFIER  0030      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_PARSE_OPTIONAL_LABEL  0040      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_SET_MNEMONIC  0062      pub  lbl 
+prvm.amigaos.interpreter.PRVM_PARSER_CONTRACT_VERSION_V2  0002      pub  lbl 
+prvm.amigaos.interpreter.PRVM_REQUEST_FRAME_SIZE  0070      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_BEGIN_STATEMENT  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_FINISH_LINE  0005      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_MNEMONIC_TEXT  0003      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_RECORD_SIZE  0020      pub  lbl 
+prvm.amigaos.interpreter.prvm_run_68000  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_BUDGET_EXCEEDED  000C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_ENTRY_BOUNDARY  0003      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_EXPR_REQUEST  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_ARGUMENT  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_PROGRAM  0006      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_TOKEN  0005      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_NEWLINE_UNSUPPORTED  0002      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_OK  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_OUTPUT_OVERFLOW  0007      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_UNSUPPORTED_OPCODE  0009      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_KIND_IDENTIFIER  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_RECORD_SIZE  0014      pub  lbl 
+
+Total memory is 0 bytes
+
+GENERATED OUTPUT
+
+(none)

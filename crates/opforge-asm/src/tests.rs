@@ -8834,6 +8834,9 @@ fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
     assert!(source.contains(".cpu 68020"));
     assert!(source.contains("prvm_run_68000:"));
     assert!(source.contains("PRVM_OPCODE_LOAD_IDENTIFIER"));
+    assert!(source.contains("PRVM_OPCODE_PARSE_OPERAND_EXPR"));
+    assert!(source.contains("PRVM_STATUS_EXPR_REQUEST"));
+    assert!(source.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
     assert!(source.contains("PRVM_STATUS_UNSUPPORTED_OPCODE"));
     assert!(!source.contains(".output"));
 }
@@ -8853,6 +8856,8 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
         fs::read_to_string(out_dir.join("prvm_smoke.lst")).expect("read prvm smoke listing");
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("prvm.amigaos.interpreter.prvm_run_68000"));
+    assert!(listing.contains("PRVM_OPCODE_PARSE_OPERAND_EXPR"));
+    assert!(listing.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
     assert!(listing.contains("OPFORGE-PRVM smoke OK"));
 
     let payload_path = example_output_payload_path(&out_dir, "prvm_smoke", "hunk");
@@ -8862,6 +8867,12 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
             .windows("OPFORGE-PRVM smoke OK".len())
             .any(|window| window == b"OPFORGE-PRVM smoke OK"),
         "expected PRVM smoke success marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows(" LDA #42".len())
+            .any(|window| window == b" LDA #42"),
+        "expected expression-bearing PRVM smoke input in Hunk payload"
     );
 }
 

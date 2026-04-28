@@ -262,6 +262,28 @@ opcore expression parser, and does not become a whole-file assembler pass.
   - Source requirement or finding IDs: Work item 1 pause/resume ABI; Rust PRVM v2 `ParseOperandExprRange`; WI-6 typed expression sub-call assertions.
   - Validation: see the focused expression pause/resume tests and full quality gates listed below.
   - Definition of done: see detailed criteria below for this work item.
+  - Current sub-slice 4a progress:
+    - implemented the native `ParseOperandExprRange` dynamic operand pause path for explicit expression-request records
+    - added resume-state validation for caller-filled expression-result slots and native `OPERAND_EXPR_SLOT` result emission
+    - expanded the FS-UAE PRVM smoke from ` NOP` to ` LDA #42`; the smoke now validates `PRVM_STATUS_EXPR_REQUEST`, fills expression slot `0`, resumes with `call_mode = 1`, and validates the final begin/mnemonic/operand-slot/finish result sequence
+    - fixed the native operand range scan so token-pointer helper register clobbering cannot widen the requested token range
+    - fixed expression request boundary fields to use the request-frame line number plus token-record columns
+  - Current sub-slice 4a validation evidence:
+    - `cargo test -p asm motorola68020_prvm_interpreter_example_assembles_first_native_slice -- --nocapture` passed
+    - `cargo test -p asm motorola68020_prvm_smoke_example_assembles_with_native_call_surface -- --nocapture` passed
+    - `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_hunk_smoke -- --nocapture` passed for `helloworld`, `writefile`, `tkpkg_debug_cli`, and expression-bearing `prvm_smoke`
+    - `cargo test -p asm motorola68000_family_example_programs_assemble_in_reference_workflow -- --nocapture` passed after regenerating `prvm_smoke` references
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed, 6 tests
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed, 2 unit tests and 7 integration tests
+    - `cargo fmt --all -- --check` passed after applying `cargo fmt --all` for one long focused-test assertion
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the existing allowed `registry` and `rand` warnings
+    - `/Users/erik/Code/Retro/opForge/.venv/bin/python scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed
+    - `cargo test --workspace` retained the previously accepted broad baseline exception: `866 passed; 1 failed`, with the remaining failure still in `asm::tests::examples_match_reference_outputs`
+  - Current sub-slice 4a remaining work before closing Work item 4:
+    - add the host bridge path that turns native expression requests into actual Rust/opcore expression parses and writes the resulting expression slot back to native buffers
+    - add multi-operand native pause/resume coverage driven by host-owned expression slots
+    - preserve `Expr::Error` parity through the host bridge, not only through ABI decode tests
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - host-side bridge/decode tests in the existing native PRVM test surface
@@ -275,7 +297,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `cargo audit`
     - `cargo test --workspace`
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for a slice limited to expression sub-call pause/resume and parity validation, with no native expression parser implementation
+    - `plan-compliance-reviewer` returned `PASS` for the boundary 4a slice limited to native expression-request/resume mechanics, caller-filled expression slots, and `LDA #42` FS-UAE smoke validation; Work item 4 remains open for the Rust/opcore host bridge, multi-operand coverage, and `Expr::Error` parity
   - Commit outcome:
     - native PRVM can request Rust/opcore expression parsing over explicit operand token ranges and resume with returned expression slots while preserving Rust PRVM v2 AST and `Expr::Error` behavior
   - Definition of done:

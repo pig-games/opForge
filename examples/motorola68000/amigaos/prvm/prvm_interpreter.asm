@@ -29,7 +29,11 @@ PRVM_FRAME_RESULT_PTR               = 52
 PRVM_FRAME_RESULT_CAPACITY          = 56
 PRVM_FRAME_DIAGNOSTIC_PTR           = 60
 PRVM_FRAME_RESUME_PTR               = 68
+PRVM_FRAME_RESUME_CAPACITY          = 72
 PRVM_FRAME_EXPR_REQUEST_PTR         = 76
+PRVM_FRAME_EXPR_REQUEST_SIZE        = 80
+PRVM_FRAME_EXPR_RESULT_PTR          = 84
+PRVM_FRAME_EXPR_RESULT_COUNT        = 88
 PRVM_FRAME_PARSER_CONTRACT_VERSION  = 92
 PRVM_FRAME_STEP_BUDGET              = 96
 PRVM_FRAME_FLAGS                    = 100
@@ -43,23 +47,39 @@ PRVM_STATUS_INVALID_TOKEN           = 5
 PRVM_STATUS_INVALID_PROGRAM         = 6
 PRVM_STATUS_OUTPUT_OVERFLOW         = 7
 PRVM_STATUS_UNSUPPORTED_OPCODE      = 9
+PRVM_STATUS_INVALID_RESUME          = 10
+PRVM_STATUS_EXPR_RESULT_INVALID     = 11
 PRVM_STATUS_BUDGET_EXCEEDED         = 12
 
 PRVM_ENTRY_KIND_OPASM_STATEMENT     = 1
 PRVM_CALL_MODE_START                = 0
+PRVM_CALL_MODE_RESUME               = 1
 PRVM_ABI_VERSION_V1                 = 1
 PRVM_PARSER_CONTRACT_VERSION_V2     = 2
 
 PRVM_TOKEN_KIND_IDENTIFIER          = 0
+PRVM_TOKEN_KIND_COMMA               = 7
 
 PRVM_RESULT_BEGIN_STATEMENT         = 1
 PRVM_RESULT_MNEMONIC_TEXT           = 3
+PRVM_RESULT_OPERAND_EXPR_SLOT       = 4
 PRVM_RESULT_FINISH_LINE             = 5
+
+PRVM_EXPR_REQUEST_RECORD_SIZE       = 32
+PRVM_EXPR_RESULT_SLOT_SIZE          = 32
+PRVM_EXPR_SLOT_READY                = 1
+PRVM_EXPR_SLOT_READY_ERROR          = 2
+PRVM_RESUME_MAGIC                   = $50525253
+PRVM_RESUME_VERSION                 = 1
+PRVM_RESUME_STATE_SIZE              = 40
+PRVM_CONTINUATION_PARSE_OPERAND     = 1
 
 PRVM_OPCODE_END                     = $00
 PRVM_OPCODE_ADVANCE                 = $20
 PRVM_OPCODE_LOAD_IDENTIFIER         = $30
 PRVM_OPCODE_PARSE_OPTIONAL_LABEL    = $40
+PRVM_OPCODE_SCAN_COMMA_BOUNDARIES   = $41
+PRVM_OPCODE_PARSE_OPERAND_EXPR      = $50
 PRVM_OPCODE_BEGIN_STATEMENT         = $60
 PRVM_OPCODE_SET_MNEMONIC            = $62
 PRVM_OPCODE_FINISH_LINE             = $64
@@ -71,7 +91,11 @@ LOCAL_LOADED_LEXEME_OFFSET          = 12
 LOCAL_LOADED_LEXEME_LEN             = 16
 LOCAL_FINISHED_FLAG                 = 20
 LOCAL_STEP_COUNT                    = 24
-LOCAL_SIZE                          = 28
+LOCAL_OPERAND_COUNT                 = 28
+LOCAL_EXPR_START_TOKEN              = 32
+LOCAL_EXPR_END_TOKEN                = 36
+LOCAL_EXPR_SLOT_INDEX               = 40
+LOCAL_SIZE                          = 44
 
         .section data, kind=data
 
@@ -110,6 +134,7 @@ prvm_run_68000:
         CLR.L LOCAL_LOADED_FLAG(A3)
         CLR.L LOCAL_FINISHED_FLAG(A3)
         CLR.L LOCAL_STEP_COUNT(A3)
+        CLR.L LOCAL_OPERAND_COUNT(A3)
 
         CMPI.L #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(A4)
         BNE prvmInvalidArgumentWithLocals
@@ -120,7 +145,10 @@ prvm_run_68000:
         CMPI.L #PRVM_REQUEST_FRAME_SIZE, D0
         BLT prvmInvalidArgumentWithLocals
         CMPI.W #PRVM_CALL_MODE_START, PRVM_FRAME_CALL_MODE(A4)
+        BEQ prvmValidateEntryKind
+        CMPI.W #PRVM_CALL_MODE_RESUME, PRVM_FRAME_CALL_MODE(A4)
         BNE prvmInvalidArgumentWithLocals
+prvmValidateEntryKind:
         CMPI.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, PRVM_FRAME_ENTRY_KIND(A4)
         BNE prvmEntryBoundary
         CMPI.W #PRVM_TOKEN_RECORD_SIZE, PRVM_FRAME_TOKEN_RECORD_SIZE(A4)
@@ -170,9 +198,22 @@ prvmValidateProgramBuffer:
         MOVE.L PRVM_FRAME_RESUME_PTR(A4), D0
         TST.L D0
         BEQ prvmInvalidArgumentWithLocals
+        MOVE.L PRVM_FRAME_RESUME_CAPACITY(A4), D0
+        CMPI.L #PRVM_RESUME_STATE_SIZE, D0
+        BLT prvmInvalidArgumentWithLocals
         MOVE.L PRVM_FRAME_EXPR_REQUEST_PTR(A4), D0
         TST.L D0
         BEQ prvmInvalidArgumentWithLocals
+        MOVE.L PRVM_FRAME_EXPR_REQUEST_SIZE(A4), D0
+        CMPI.L #PRVM_EXPR_REQUEST_RECORD_SIZE, D0
+        BLT prvmInvalidArgumentWithLocals
+        MOVE.L PRVM_FRAME_EXPR_RESULT_COUNT(A4), D0
+        BMI prvmInvalidArgumentWithLocals
+        BEQ prvmValidateExpressionResultBufferDone
+        MOVE.L PRVM_FRAME_EXPR_RESULT_PTR(A4), D7
+        TST.L D7
+        BEQ prvmInvalidArgumentWithLocals
+prvmValidateExpressionResultBufferDone:
 
         MOVEA.L PRVM_FRAME_SOURCE_PTR(A4), A0
         MOVE.L PRVM_FRAME_SOURCE_LEN(A4), D6
@@ -203,6 +244,8 @@ prvmNewlineScanDone:
         MOVE.L #PRVM_DEFAULT_STEP_BUDGET, D6
 
 prvmStartProgram:
+        CMPI.W #PRVM_CALL_MODE_RESUME, PRVM_FRAME_CALL_MODE(A4)
+        BEQ prvmResumeFromExpression
         CLR.L D1
         CLR.L D2
         CLR.L D3
@@ -226,6 +269,10 @@ prvmProgramLoop:
         BEQ prvmOpcodeLoadIdentifier
         CMPI.B #PRVM_OPCODE_PARSE_OPTIONAL_LABEL, D7
         BEQ prvmProgramLoop
+        CMPI.B #PRVM_OPCODE_SCAN_COMMA_BOUNDARIES, D7
+        BEQ prvmProgramLoop
+        CMPI.B #PRVM_OPCODE_PARSE_OPERAND_EXPR, D7
+        BEQ prvmOpcodeParseOperandExpr
         CMPI.B #PRVM_OPCODE_BEGIN_STATEMENT, D7
         BEQ prvmOpcodeBeginStatement
         CMPI.B #PRVM_OPCODE_SET_MNEMONIC, D7
@@ -296,12 +343,102 @@ prvmOpcodeFinishLine:
         MOVE.L #1, LOCAL_FINISHED_FLAG(A3)
         BRA prvmProgramLoop
 
-prvmCurrentTokenPtr:
+prvmOpcodeParseOperandExpr:
+        MOVEA.L A5, A0
+        ADDA.L #4, A0
+        CMPA.L A6, A0
+        BHI prvmInvalidProgramAtCursor
+        MOVE.B (A5)+, D0
+        CMPI.B #$FF, D0
+        BNE prvmUnsupportedOpcode
+        MOVE.B (A5)+, D0
+        CMPI.B #$FF, D0
+        BNE prvmUnsupportedOpcode
+        MOVE.B (A5)+, D0
+        CMPI.B #$FF, D0
+        BNE prvmUnsupportedOpcode
+        MOVE.B (A5)+, D0
+        CMPI.B #$FF, D0
+        BNE prvmUnsupportedOpcode
         CMP.L D4, D2
-        BCC prvmCurrentTokenInvalid
+        BCC prvmProgramLoop
+        BRA prvmRequestOperandAtCursor
+
+prvmRequestOperandAtCursor:
+        MOVE.L D2, LOCAL_EXPR_START_TOKEN(A3)
+        MOVE.L D2, D5
+prvmFindOperandEndLoop:
+        CMP.L D4, D5
+        BCC prvmOperandEndFound
+        MOVE.L D5, D0
+        BSR.W prvmTokenPtrByIndex
+        TST.L D0
+        BNE prvmReturnWithLocals
+        CMPI.W #PRVM_TOKEN_KIND_COMMA, 0(A1)
+        BEQ prvmOperandEndFound
+        ADDQ.L #1, D5
+        BRA prvmFindOperandEndLoop
+
+prvmOperandEndFound:
+        MOVE.L D5, LOCAL_EXPR_END_TOKEN(A3)
+        MOVE.L LOCAL_OPERAND_COUNT(A3), D0
+        MOVE.L D0, LOCAL_EXPR_SLOT_INDEX(A3)
+        BSR.W prvmWriteExpressionRequest
+        TST.L D0
+        BNE prvmReturnWithLocals
+        BSR.W prvmWriteResumeState
+        TST.L D0
+        BNE prvmReturnWithLocals
+        MOVE.L LOCAL_EXPR_SLOT_INDEX(A3), D1
+        MOVE.L LOCAL_EXPR_START_TOKEN(A3), D2
+        MOVE.L #PRVM_RESUME_STATE_SIZE, D3
+        MOVEQ #PRVM_STATUS_EXPR_REQUEST, D0
+        BRA prvmReturnWithLocals
+
+prvmResumeFromExpression:
+        MOVEA.L PRVM_FRAME_RESUME_PTR(A4), A2
+        CMPI.L #PRVM_RESUME_MAGIC, 0(A2)
+        BNE prvmInvalidResume
+        CMPI.W #PRVM_RESUME_VERSION, 4(A2)
+        BNE prvmInvalidResume
+        CMPI.W #PRVM_RESUME_STATE_SIZE, 6(A2)
+        BLT prvmInvalidResume
+        CMPI.L #PRVM_CONTINUATION_PARSE_OPERAND, 8(A2)
+        BNE prvmInvalidResume
+        MOVE.L 12(A2), LOCAL_EXPR_SLOT_INDEX(A3)
+        MOVE.L 20(A2), D2
+        MOVE.L 24(A2), D1
+        MOVE.L 28(A2), LOCAL_OPERAND_COUNT(A3)
+        MOVE.L 32(A2), LOCAL_EXPR_START_TOKEN(A3)
+        MOVE.L 36(A2), LOCAL_EXPR_END_TOKEN(A3)
+        MOVE.L PRVM_FRAME_PROGRAM_PTR(A4), D0
+        ADD.L 16(A2), D0
+        MOVEA.L D0, A5
+        CMPA.L A6, A5
+        BHI prvmInvalidResume
+        BSR.W prvmValidateExpressionResultSlot
+        TST.L D0
+        BNE prvmReturnWithLocals
+        BSR.W prvmEmitOperandExprSlot
+        TST.L D0
+        BNE prvmReturnWithLocals
+        MOVE.L LOCAL_OPERAND_COUNT(A3), D0
+        ADDQ.L #1, D0
+        MOVE.L D0, LOCAL_OPERAND_COUNT(A3)
+        CMP.L D4, D2
+        BCS prvmRequestOperandAtCursor
+        BRA prvmProgramLoop
+
+prvmCurrentTokenPtr:
         MOVE.L D2, D0
+        BRA prvmTokenPtrByIndex
+
+prvmTokenPtrByIndex:
+        CMP.L D4, D0
+        BCC prvmCurrentTokenInvalid
         LSL.L #4, D0
-        MOVE.L D2, D7
+        MOVE.L D0, D7
+        LSR.L #4, D7
         LSL.L #2, D7
         ADD.L D7, D0
         MOVEA.L PRVM_FRAME_TOKEN_PTR(A4), A1
@@ -364,6 +501,21 @@ prvmEmitMnemonicText:
         CLR.L 28(A2)
         BRA prvmCommitResultRecord
 
+prvmEmitOperandExprSlot:
+        BSR.W prvmResultRecordPtr
+        TST.L D0
+        BNE prvmEmitRecordReturn
+        MOVE.W #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(A2)
+        CLR.W 2(A2)
+        MOVE.L 8(A1), 4(A2)
+        MOVE.L 12(A1), 8(A2)
+        MOVE.L 16(A1), 12(A2)
+        MOVE.L LOCAL_OPERAND_COUNT(A3), 16(A2)
+        MOVE.L LOCAL_EXPR_SLOT_INDEX(A3), 20(A2)
+        MOVE.L LOCAL_EXPR_START_TOKEN(A3), 24(A2)
+        MOVE.L LOCAL_EXPR_END_TOKEN(A3), 28(A2)
+        BRA prvmCommitResultRecord
+
 prvmEmitFinishLine:
         BSR.W prvmResultRecordPtr
         TST.L D0
@@ -380,6 +532,82 @@ prvmEmitFinishLine:
         BRA prvmCommitResultRecord
 
 prvmEmitRecordReturn:
+        RTS
+
+prvmWriteExpressionRequest:
+        MOVEA.L PRVM_FRAME_EXPR_REQUEST_PTR(A4), A2
+        MOVE.W #1, 0(A2)
+        CLR.W 2(A2)
+        MOVE.L LOCAL_OPERAND_COUNT(A3), 4(A2)
+        MOVE.L LOCAL_EXPR_SLOT_INDEX(A3), 8(A2)
+        MOVE.L LOCAL_EXPR_START_TOKEN(A3), 12(A2)
+        MOVE.L LOCAL_EXPR_END_TOKEN(A3), 16(A2)
+        MOVE.L LOCAL_EXPR_START_TOKEN(A3), D0
+        CMP.L D4, D0
+        BCC prvmWriteExpressionRequestEndSpan
+        BSR.W prvmTokenPtrByIndex
+        TST.L D0
+        BNE prvmWriteExpressionRequestReturn
+        MOVE.L PRVM_FRAME_LINE_NUM(A4), 20(A2)
+        MOVE.L 4(A1), 24(A2)
+        MOVE.L 8(A1), 28(A2)
+        CLR.L D0
+        RTS
+
+prvmWriteExpressionRequestEndSpan:
+        MOVE.L PRVM_FRAME_LINE_NUM(A4), 20(A2)
+        CLR.L 24(A2)
+        CLR.L 28(A2)
+        CLR.L D0
+prvmWriteExpressionRequestReturn:
+        RTS
+
+prvmWriteResumeState:
+        MOVEA.L PRVM_FRAME_RESUME_PTR(A4), A2
+        MOVE.L #PRVM_RESUME_MAGIC, 0(A2)
+        MOVE.W #PRVM_RESUME_VERSION, 4(A2)
+        MOVE.W #PRVM_RESUME_STATE_SIZE, 6(A2)
+        MOVE.L #PRVM_CONTINUATION_PARSE_OPERAND, 8(A2)
+        MOVE.L LOCAL_EXPR_SLOT_INDEX(A3), 12(A2)
+        MOVE.L A5, D0
+        SUB.L PRVM_FRAME_PROGRAM_PTR(A4), D0
+        MOVE.L D0, 16(A2)
+        MOVE.L LOCAL_EXPR_END_TOKEN(A3), D0
+        CMP.L D4, D0
+        BCC prvmWriteResumeCursor
+        ADDQ.L #1, D0
+prvmWriteResumeCursor:
+        MOVE.L D0, 20(A2)
+        MOVE.L D1, 24(A2)
+        MOVE.L LOCAL_OPERAND_COUNT(A3), 28(A2)
+        MOVE.L LOCAL_EXPR_START_TOKEN(A3), 32(A2)
+        MOVE.L LOCAL_EXPR_END_TOKEN(A3), 36(A2)
+        CLR.L D0
+        RTS
+
+prvmValidateExpressionResultSlot:
+        MOVE.L LOCAL_EXPR_SLOT_INDEX(A3), D0
+        CMP.L PRVM_FRAME_EXPR_RESULT_COUNT(A4), D0
+        BCC prvmExpressionResultInvalid
+        LSL.L #5, D0
+        MOVEA.L PRVM_FRAME_EXPR_RESULT_PTR(A4), A1
+        ADDA.L D0, A1
+        MOVE.W 0(A1), D0
+        CMPI.W #PRVM_EXPR_SLOT_READY, D0
+        BEQ prvmValidateExpressionResultReady
+        CMPI.W #PRVM_EXPR_SLOT_READY_ERROR, D0
+        BNE prvmExpressionResultInvalid
+prvmValidateExpressionResultReady:
+        TST.W 2(A1)
+        BNE prvmExpressionResultInvalid
+        MOVE.L 4(A1), D0
+        CMP.L LOCAL_EXPR_SLOT_INDEX(A3), D0
+        BNE prvmExpressionResultInvalid
+        CMPI.L #$FFFFFFFF, 24(A1)
+        BNE prvmExpressionResultInvalid
+        TST.L 28(A1)
+        BNE prvmExpressionResultInvalid
+        CLR.L D0
         RTS
 
 prvmEntryBoundary:
@@ -409,6 +637,18 @@ prvmUnsupportedOpcode:
         CLR.L D1
         CLR.L D3
         MOVEQ #PRVM_STATUS_UNSUPPORTED_OPCODE, D0
+        BRA prvmReturnWithLocals
+
+prvmInvalidResume:
+        CLR.L D1
+        CLR.L D3
+        MOVEQ #PRVM_STATUS_INVALID_RESUME, D0
+        BRA prvmReturnWithLocals
+
+prvmExpressionResultInvalid:
+        MOVE.L LOCAL_EXPR_SLOT_INDEX(A3), D1
+        CLR.L D3
+        MOVEQ #PRVM_STATUS_EXPR_RESULT_INVALID, D0
         BRA prvmReturnWithLocals
 
 prvmBudgetExceeded:

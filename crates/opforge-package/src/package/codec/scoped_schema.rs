@@ -54,7 +54,7 @@ pub(super) fn encode_scoped_schema_chunk<T: ScopedSchemaEntry>(
     for entry in entries {
         encode_scoped_owner(&mut out, T::CHUNK, entry.owner())?;
         let field_values = entry.field_values();
-        for (spec, value) in T::FIELD_SPECS.iter().zip(field_values.into_iter()) {
+        for (spec, value) in T::FIELD_SPECS.iter().zip(field_values) {
             encode_field(&mut out, T::CHUNK, spec, value)?;
         }
     }
@@ -935,7 +935,7 @@ fn encode_schema_fields(
         return Err(internal_schema_error(chunk, "field count mismatch"));
     }
 
-    for (spec, value) in specs.iter().zip(values.into_iter()) {
+    for (spec, value) in specs.iter().zip(values) {
         encode_field(out, chunk, spec, value)?;
     }
     Ok(())

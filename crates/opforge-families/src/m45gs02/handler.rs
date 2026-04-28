@@ -229,29 +229,27 @@ impl CpuHandler for M45GS02CpuHandler {
                         )?]);
                     }
                 }
-                FamilyOperand::DirectX(expr) => {
+                FamilyOperand::DirectX(expr)
                     if Self::has_cpu_mode(&mapped_upper, AddressMode::ZeroPageX)
-                        || Self::has_cpu_mode(&mapped_upper, AddressMode::AbsoluteX)
-                    {
-                        return Ok(vec![operand_resolution::resolve_direct_x(
-                            &mapped_upper,
-                            expr,
-                            ctx,
-                            Self::has_cpu_mode,
-                        )?]);
-                    }
+                        || Self::has_cpu_mode(&mapped_upper, AddressMode::AbsoluteX) =>
+                {
+                    return Ok(vec![operand_resolution::resolve_direct_x(
+                        &mapped_upper,
+                        expr,
+                        ctx,
+                        Self::has_cpu_mode,
+                    )?]);
                 }
-                FamilyOperand::DirectY(expr) => {
+                FamilyOperand::DirectY(expr)
                     if Self::has_cpu_mode(&mapped_upper, AddressMode::ZeroPageY)
-                        || Self::has_cpu_mode(&mapped_upper, AddressMode::AbsoluteY)
-                    {
-                        return Ok(vec![operand_resolution::resolve_direct_y(
-                            &mapped_upper,
-                            expr,
-                            ctx,
-                            Self::has_cpu_mode,
-                        )?]);
-                    }
+                        || Self::has_cpu_mode(&mapped_upper, AddressMode::AbsoluteY) =>
+                {
+                    return Ok(vec![operand_resolution::resolve_direct_y(
+                        &mapped_upper,
+                        expr,
+                        ctx,
+                        Self::has_cpu_mode,
+                    )?]);
                 }
                 FamilyOperand::IndexedIndirectX(expr)
                     if mapped_upper == "JSR"

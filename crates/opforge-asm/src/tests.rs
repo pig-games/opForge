@@ -1589,6 +1589,14 @@ fn example_uses_cli_hunk_output(asm_path: &Path) -> bool {
         && asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("helloworld")
 }
 
+fn example_requests_hunk_output(asm_path: &Path) -> bool {
+    example_uses_cli_hunk_output(asm_path)
+        || asm_path
+            .components()
+            .any(|component| component.as_os_str() == "amigaos")
+            && asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("prvm_interpreter")
+}
+
 fn example_output_payload_path(
     fixture_out_dir: &Path,
     base: &str,
@@ -1644,6 +1652,7 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
                 | "tkpkg_pipeline.asm"
                 | "tkpkg_token_policy.asm"
                 | "tkpkg_tokenizer_vm.asm"
+                | "prvm_interpreter.asm"
         )
     )
 }
@@ -1696,6 +1705,8 @@ fn example_reference_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
         PathBuf::from("motorola68000/amigaos/tokvm_interpreter")
     } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_interpreter") {
         PathBuf::from("motorola68000/amigaos/prvm_interpreter")
+    } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_smoke") {
+        PathBuf::from("motorola68000/amigaos/prvm_smoke")
     } else {
         relative_stem
     }
@@ -1729,7 +1740,8 @@ fn assemble_example_with_base(
     let header_title = format!("opForge Assembler v{VERSION}");
     let use_srec = example_uses_srec_reference(asm_path);
     let cli_hunk_output = example_uses_cli_hunk_output(asm_path);
-    let hunk_name_override = cli_hunk_output.then(|| format!("build/{base}.hunk"));
+    let hunk_name_override =
+        example_requests_hunk_output(asm_path).then(|| format!("build/{base}.hunk"));
     let result = run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
         execution_mode: ExecutionMode::Lockstep {
@@ -8446,6 +8458,7 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/amigaos/helloworld",
         "motorola68000/amigaos/tkpkg/tkpkg_entry",
         "motorola68000/amigaos/tokvm/tokvm_interpreter",
+        "motorola68000/amigaos/prvm/prvm_smoke",
         "motorola68000/amigaos/timer_device_benchmark",
         "motorola68000/amigaos/workbench_startup_alert",
         "motorola68000/amigaos/writefile",
@@ -8815,34 +8828,40 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
 fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_interpreter.asm");
-    let out_dir = create_temp_dir("m68000-prvm-interpreter");
+    let source = fs::read_to_string(asm_path).expect("read prvm interpreter module source");
+
+    assert!(source.contains(".module prvm.amigaos.interpreter"));
+    assert!(source.contains(".cpu 68020"));
+    assert!(source.contains("prvm_run_68000:"));
+    assert!(source.contains("PRVM_OPCODE_LOAD_IDENTIFIER"));
+    assert!(source.contains("PRVM_STATUS_UNSUPPORTED_OPCODE"));
+    assert!(!source.contains(".output"));
+}
+
+#[test]
+fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_smoke.asm");
+    let out_dir = create_temp_dir("m68000-prvm-smoke");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
         let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
-        panic!("assemble prvm interpreter example: {detail}");
+        panic!("assemble prvm smoke example: {detail}");
     }
 
     let listing =
-        fs::read_to_string(out_dir.join("prvm_interpreter.lst")).expect("read prvm listing");
+        fs::read_to_string(out_dir.join("prvm_smoke.lst")).expect("read prvm smoke listing");
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("prvm.amigaos.interpreter.prvm_run_68000"));
-    assert!(listing.contains("PRVM_OPCODE_LOAD_IDENTIFIER"));
-    assert!(listing.contains("PRVM_STATUS_UNSUPPORTED_OPCODE"));
+    assert!(listing.contains("OPFORGE-PRVM smoke OK"));
 
-    let payload_path = example_output_payload_path(&out_dir, "prvm_interpreter", "hunk");
-    let payload = fs::read(payload_path).expect("read prvm hunk payload");
-    let segment_count = u32::from_be_bytes(payload[8..12].try_into().expect("segment count"));
-    let first_segment_kind = u32::from_be_bytes(payload[28..32].try_into().expect("segment kind"));
-    assert_eq!(segment_count, 2, "expected code and data Hunk segments");
-    assert_eq!(
-        first_segment_kind, 0x0000_03e9,
-        "expected first Hunk segment to be code"
-    );
+    let payload_path = example_output_payload_path(&out_dir, "prvm_smoke", "hunk");
+    let payload = fs::read(payload_path).expect("read prvm smoke hunk payload");
     assert!(
         payload
-            .windows("OPFORGE-PRVM-ABI-V1".len())
-            .any(|window| window == b"OPFORGE-PRVM-ABI-V1"),
-        "expected ABI marker string in prvm interpreter Hunk payload"
+            .windows("OPFORGE-PRVM smoke OK".len())
+            .any(|window| window == b"OPFORGE-PRVM smoke OK"),
+        "expected PRVM smoke success marker in Hunk payload"
     );
 }
 
@@ -24440,7 +24459,7 @@ fn external_fs_uae_hunk_smoke() {
                         run.stderr,
                     );
                     assert!(
-                        combined_output.contains("Identifier(\"d3\")@2:8-10"),
+                        combined_output.contains("Identifier(\"d3\")@2:11-13"),
                         "FS-UAE smoke for {} did not report the second file-mode operand row\nstdout:\n{}\nstderr:\n{}",
                         run.example_name,
                         run.stdout,
@@ -24449,6 +24468,15 @@ fn external_fs_uae_hunk_smoke() {
                     assert!(
                         combined_output.contains("TKPKG last_error clear OK"),
                         "FS-UAE smoke for {} did not report the last_error-clear marker\nstdout:\n{}\nstderr:\n{}",
+                        run.example_name,
+                        run.stdout,
+                        run.stderr,
+                    );
+                }
+                if run.example_name == "prvm_smoke" {
+                    assert!(
+                        combined_output.contains("OPFORGE-PRVM smoke OK"),
+                        "FS-UAE smoke for {} did not report the PRVM success marker\nstdout:\n{}\nstderr:\n{}",
                         run.example_name,
                         run.stdout,
                         run.stderr,

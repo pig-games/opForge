@@ -247,7 +247,7 @@ prvmOpcodeAdvance:
         BRA prvmProgramLoop
 
 prvmOpcodeLoadIdentifier:
-        JSR prvmCurrentTokenPtr
+        BSR.W prvmCurrentTokenPtr
         TST.L D0
         BNE prvmReturnWithLocals
         CMPI.W #PRVM_TOKEN_KIND_IDENTIFIER, 0(A1)
@@ -275,7 +275,7 @@ prvmOpcodeLoadIdentifier:
 prvmOpcodeBeginStatement:
         CLR.L LOCAL_LOADED_FLAG(A3)
         CLR.L LOCAL_FINISHED_FLAG(A3)
-        JSR prvmEmitBeginStatement
+        BSR.W prvmEmitBeginStatement
         TST.L D0
         BNE prvmReturnWithLocals
         BRA prvmProgramLoop
@@ -283,14 +283,14 @@ prvmOpcodeBeginStatement:
 prvmOpcodeSetMnemonic:
         TST.L LOCAL_LOADED_FLAG(A3)
         BEQ prvmInvalidProgramAtCursor
-        JSR prvmEmitMnemonicText
+        BSR.W prvmEmitMnemonicText
         TST.L D0
         BNE prvmReturnWithLocals
         CLR.L LOCAL_LOADED_FLAG(A3)
         BRA prvmProgramLoop
 
 prvmOpcodeFinishLine:
-        JSR prvmEmitFinishLine
+        BSR.W prvmEmitFinishLine
         TST.L D0
         BNE prvmReturnWithLocals
         MOVE.L #1, LOCAL_FINISHED_FLAG(A3)
@@ -324,6 +324,7 @@ prvmResultRecordPtr:
         BHI prvmOutputOverflow
         MOVEA.L PRVM_FRAME_RESULT_PTR(A4), A2
         ADDA.L D0, A2
+        CLR.L D0
         RTS
 
 prvmCommitResultRecord:
@@ -334,7 +335,7 @@ prvmCommitResultRecord:
         RTS
 
 prvmEmitBeginStatement:
-        JSR prvmResultRecordPtr
+        BSR.W prvmResultRecordPtr
         TST.L D0
         BNE prvmEmitRecordReturn
         MOVE.W #PRVM_RESULT_BEGIN_STATEMENT, 0(A2)
@@ -349,7 +350,7 @@ prvmEmitBeginStatement:
         BRA prvmCommitResultRecord
 
 prvmEmitMnemonicText:
-        JSR prvmResultRecordPtr
+        BSR.W prvmResultRecordPtr
         TST.L D0
         BNE prvmEmitRecordReturn
         MOVE.W #PRVM_RESULT_MNEMONIC_TEXT, 0(A2)
@@ -364,7 +365,7 @@ prvmEmitMnemonicText:
         BRA prvmCommitResultRecord
 
 prvmEmitFinishLine:
-        JSR prvmResultRecordPtr
+        BSR.W prvmResultRecordPtr
         TST.L D0
         BNE prvmEmitRecordReturn
         MOVE.W #PRVM_RESULT_FINISH_LINE, 0(A2)
@@ -437,5 +438,4 @@ prvmInvalidArgument:
         RTS
 
         .endsection
-        .output "build/prvm_interpreter.hunk", format=hunk, sections=code,data
         .endmodule

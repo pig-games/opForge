@@ -1,0 +1,1053 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1          .module prvm.amigaos.interpreter
+----                                2          .cpu 68020
+----                                3          .pub
+----                                4  
+----    EQU 4F505250                5  PRVM_MAGIC_OPRP                     = $4F505250
+----    EQU 0070                    6  PRVM_REQUEST_FRAME_SIZE             = 112
+----    EQU 0014                    7  PRVM_TOKEN_RECORD_SIZE              = 20
+----    EQU 0020                    8  PRVM_RESULT_RECORD_SIZE             = 32
+----    EQU 0100                    9  PRVM_DEFAULT_STEP_BUDGET            = 256
+----                               10  
+----    EQU 0000                   11  PRVM_FRAME_MAGIC                    = 0
+----    EQU 0004                   12  PRVM_FRAME_ABI_VERSION              = 4
+----    EQU 0006                   13  PRVM_FRAME_FRAME_SIZE               = 6
+----    EQU 0008                   14  PRVM_FRAME_CALL_MODE                = 8
+----    EQU 000A                   15  PRVM_FRAME_ENTRY_KIND               = 10
+----    EQU 000C                   16  PRVM_FRAME_LINE_NUM                 = 12
+----    EQU 0010                   17  PRVM_FRAME_SOURCE_PTR               = 16
+----    EQU 0014                   18  PRVM_FRAME_SOURCE_LEN               = 20
+----    EQU 0018                   19  PRVM_FRAME_TOKEN_PTR                = 24
+----    EQU 001C                   20  PRVM_FRAME_TOKEN_COUNT              = 28
+----    EQU 0020                   21  PRVM_FRAME_TOKEN_RECORD_SIZE        = 32
+----    EQU 0024                   22  PRVM_FRAME_LEXEME_PTR               = 36
+----    EQU 0028                   23  PRVM_FRAME_LEXEME_LEN               = 40
+----    EQU 002C                   24  PRVM_FRAME_PROGRAM_PTR              = 44
+----    EQU 0030                   25  PRVM_FRAME_PROGRAM_LEN              = 48
+----    EQU 0034                   26  PRVM_FRAME_RESULT_PTR               = 52
+----    EQU 0038                   27  PRVM_FRAME_RESULT_CAPACITY          = 56
+----    EQU 003C                   28  PRVM_FRAME_DIAGNOSTIC_PTR           = 60
+----    EQU 0044                   29  PRVM_FRAME_RESUME_PTR               = 68
+----    EQU 004C                   30  PRVM_FRAME_EXPR_REQUEST_PTR         = 76
+----    EQU 005C                   31  PRVM_FRAME_PARSER_CONTRACT_VERSION  = 92
+----    EQU 0060                   32  PRVM_FRAME_STEP_BUDGET              = 96
+----    EQU 0064                   33  PRVM_FRAME_FLAGS                    = 100
+----                               34  
+----    EQU 0000                   35  PRVM_STATUS_OK                      = 0
+----    EQU 0001                   36  PRVM_STATUS_EXPR_REQUEST            = 1
+----    EQU 0002                   37  PRVM_STATUS_NEWLINE_UNSUPPORTED     = 2
+----    EQU 0003                   38  PRVM_STATUS_ENTRY_BOUNDARY          = 3
+----    EQU 0004                   39  PRVM_STATUS_INVALID_ARGUMENT        = 4
+----    EQU 0005                   40  PRVM_STATUS_INVALID_TOKEN           = 5
+----    EQU 0006                   41  PRVM_STATUS_INVALID_PROGRAM         = 6
+----    EQU 0007                   42  PRVM_STATUS_OUTPUT_OVERFLOW         = 7
+----    EQU 0009                   43  PRVM_STATUS_UNSUPPORTED_OPCODE      = 9
+----    EQU 000C                   44  PRVM_STATUS_BUDGET_EXCEEDED         = 12
+----                               45  
+----    EQU 0001                   46  PRVM_ENTRY_KIND_OPASM_STATEMENT     = 1
+----    EQU 0000                   47  PRVM_CALL_MODE_START                = 0
+----    EQU 0001                   48  PRVM_ABI_VERSION_V1                 = 1
+----    EQU 0002                   49  PRVM_PARSER_CONTRACT_VERSION_V2     = 2
+----                               50  
+----    EQU 0000                   51  PRVM_TOKEN_KIND_IDENTIFIER          = 0
+----                               52  
+----    EQU 0001                   53  PRVM_RESULT_BEGIN_STATEMENT         = 1
+----    EQU 0003                   54  PRVM_RESULT_MNEMONIC_TEXT           = 3
+----    EQU 0005                   55  PRVM_RESULT_FINISH_LINE             = 5
+----                               56  
+----    EQU 0000                   57  PRVM_OPCODE_END                     = $00
+----    EQU 0020                   58  PRVM_OPCODE_ADVANCE                 = $20
+----    EQU 0030                   59  PRVM_OPCODE_LOAD_IDENTIFIER         = $30
+----    EQU 0040                   60  PRVM_OPCODE_PARSE_OPTIONAL_LABEL    = $40
+----    EQU 0060                   61  PRVM_OPCODE_BEGIN_STATEMENT         = $60
+----    EQU 0062                   62  PRVM_OPCODE_SET_MNEMONIC            = $62
+----    EQU 0064                   63  PRVM_OPCODE_FINISH_LINE             = $64
+----                               64  
+----    EQU 0000                   65  LOCAL_LOADED_FLAG                   = 0
+----    EQU 0004                   66  LOCAL_LOADED_COL_START              = 4
+----    EQU 0008                   67  LOCAL_LOADED_COL_END                = 8
+----    EQU 000C                   68  LOCAL_LOADED_LEXEME_OFFSET          = 12
+----    EQU 0010                   69  LOCAL_LOADED_LEXEME_LEN             = 16
+----    EQU 0014                   70  LOCAL_FINISHED_FLAG                 = 20
+----    EQU 0018                   71  LOCAL_STEP_COUNT                    = 24
+----    EQU 001C                   72  LOCAL_SIZE                          = 28
+----                               73  
+----                               74          .section data, kind=data  ; [section data]
+----                               75    ; [section data]
+----                               76  abiMarker  ; [section data]
+0000    4F 50 46 4F 52 47 45 2D 50 52 56 4D 2D 41 42 49 2D 56 31 00    77          .byte "OPFORGE-PRVM-ABI-V1",0  ; [section data]
+----                               78    ; [section data]
+----                               79          .endsection
+----                               80  
+----                               81          .section code, kind=code  ; [section code]
+----                               82    ; [section code]
+----                               83  ; ---------------------------------------------------------------------------  ; [section code]
+----                               84  ; Native parser VM entry.  ; [section code]
+----                               85  ;  ; [section code]
+----                               86  ; Call ABI:  ; [section code]
+----                               87  ; - A0: PRVM_REQUEST_FRAME_V1 pointer  ; [section code]
+----                               88  ; - D0: request frame size in bytes  ; [section code]
+----                               89  ;  ; [section code]
+----                               90  ; Return ABI:  ; [section code]
+----                               91  ; - D0: PRVM_STATUS_*  ; [section code]
+----                               92  ; - D1: result record count on success  ; [section code]
+----                               93  ; - D2: final token cursor or status-specific offset  ; [section code]
+----                               94  ; - D3: committed result bytes on success  ; [section code]
+----                               95  ; ---------------------------------------------------------------------------  ; [section code]
+----                               96    ; [section code]
+----                               97  prvm_run_68000  ; [section code]
+0000    48 E7 0F 0E                98          MOVEM.L D4-D7/A4-A6, -(SP)  ; [section code]
+0004    22 08                      99          MOVE.L A0, D1  ; [section code]
+0006    4A 81                     100          TST.L D1  ; [section code]
+0008    67 00 03 B8               101          BEQ prvmInvalidArgument  ; [section code]
+000C    0C 80 00 00 00 70         102          CMPI.L #PRVM_REQUEST_FRAME_SIZE, D0  ; [section code]
+0012    6D 00 03 AE               103          BLT prvmInvalidArgument  ; [section code]
+----                              104    ; [section code]
+0016    28 48                     105          MOVEA.L A0, A4  ; [section code]
+0018    9F FC 00 00 00 1C         106          SUBA.L #LOCAL_SIZE, SP  ; [section code]
+001E    47 EF 00 00               107          LEA 0(SP), A3  ; [section code]
+0022    42 AB 00 00               108          CLR.L LOCAL_LOADED_FLAG(A3)  ; [section code]
+0026    42 AB 00 14               109          CLR.L LOCAL_FINISHED_FLAG(A3)  ; [section code]
+002A    42 AB 00 18               110          CLR.L LOCAL_STEP_COUNT(A3)  ; [section code]
+----                              111    ; [section code]
+002E    0C AC 4F 50 52 50 00 00   112          CMPI.L #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(A4)  ; [section code]
+0036    66 00 03 72               113          BNE prvmInvalidArgumentWithLocals  ; [section code]
+003A    0C 6C 00 01 00 04         114          CMPI.W #PRVM_ABI_VERSION_V1, PRVM_FRAME_ABI_VERSION(A4)  ; [section code]
+0040    66 00 03 68               115          BNE prvmInvalidArgumentWithLocals  ; [section code]
+0044    70 00                     116          MOVEQ #0, D0  ; [section code]
+0046    30 2C 00 06               117          MOVE.W PRVM_FRAME_FRAME_SIZE(A4), D0  ; [section code]
+004A    0C 80 00 00 00 70         118          CMPI.L #PRVM_REQUEST_FRAME_SIZE, D0  ; [section code]
+0050    6D 00 03 58               119          BLT prvmInvalidArgumentWithLocals  ; [section code]
+0054    0C 6C 00 00 00 08         120          CMPI.W #PRVM_CALL_MODE_START, PRVM_FRAME_CALL_MODE(A4)  ; [section code]
+005A    66 00 03 4E               121          BNE prvmInvalidArgumentWithLocals  ; [section code]
+005E    0C 6C 00 01 00 0A         122          CMPI.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, PRVM_FRAME_ENTRY_KIND(A4)  ; [section code]
+0064    66 00 03 0C               123          BNE prvmEntryBoundary  ; [section code]
+0068    0C 6C 00 14 00 20         124          CMPI.W #PRVM_TOKEN_RECORD_SIZE, PRVM_FRAME_TOKEN_RECORD_SIZE(A4)  ; [section code]
+006E    66 00 03 3A               125          BNE prvmInvalidArgumentWithLocals  ; [section code]
+0072    0C AC 00 00 00 02 00 5C   126          CMPI.L #PRVM_PARSER_CONTRACT_VERSION_V2, PRVM_FRAME_PARSER_CONTRACT_VERSION(A4)  ; [section code]
+007A    66 00 03 0C               127          BNE prvmInvalidProgramAtCursor  ; [section code]
+007E    4A AC 00 64               128          TST.L PRVM_FRAME_FLAGS(A4)  ; [section code]
+0082    66 00 03 26               129          BNE prvmInvalidArgumentWithLocals  ; [section code]
+----                              130    ; [section code]
+0086    2C 2C 00 14               131          MOVE.L PRVM_FRAME_SOURCE_LEN(A4), D6  ; [section code]
+008A    6B 00 03 1E               132          BMI prvmInvalidArgumentWithLocals  ; [section code]
+008E    67 00 00 0C               133          BEQ prvmValidateTokenBuffer  ; [section code]
+0092    20 2C 00 10               134          MOVE.L PRVM_FRAME_SOURCE_PTR(A4), D0  ; [section code]
+0096    4A 80                     135          TST.L D0  ; [section code]
+0098    67 00 03 10               136          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+----                              137    ; [section code]
+----                              138  prvmValidateTokenBuffer  ; [section code]
+009C    28 2C 00 1C               139          MOVE.L PRVM_FRAME_TOKEN_COUNT(A4), D4  ; [section code]
+00A0    6B 00 03 08               140          BMI prvmInvalidArgumentWithLocals  ; [section code]
+00A4    67 00 00 0C               141          BEQ prvmValidateLexemeBuffer  ; [section code]
+00A8    20 2C 00 18               142          MOVE.L PRVM_FRAME_TOKEN_PTR(A4), D0  ; [section code]
+00AC    4A 80                     143          TST.L D0  ; [section code]
+00AE    67 00 02 FA               144          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+----                              145    ; [section code]
+----                              146  prvmValidateLexemeBuffer  ; [section code]
+00B2    20 2C 00 28               147          MOVE.L PRVM_FRAME_LEXEME_LEN(A4), D0  ; [section code]
+00B6    6B 00 02 F2               148          BMI prvmInvalidArgumentWithLocals  ; [section code]
+00BA    67 00 00 0C               149          BEQ prvmValidateProgramBuffer  ; [section code]
+00BE    2E 2C 00 24               150          MOVE.L PRVM_FRAME_LEXEME_PTR(A4), D7  ; [section code]
+00C2    4A 87                     151          TST.L D7  ; [section code]
+00C4    67 00 02 E4               152          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+----                              153    ; [section code]
+----                              154  prvmValidateProgramBuffer  ; [section code]
+00C8    2C 2C 00 30               155          MOVE.L PRVM_FRAME_PROGRAM_LEN(A4), D6  ; [section code]
+00CC    6F 00 02 BA               156          BLE prvmInvalidProgramAtCursor  ; [section code]
+00D0    20 2C 00 2C               157          MOVE.L PRVM_FRAME_PROGRAM_PTR(A4), D0  ; [section code]
+00D4    4A 80                     158          TST.L D0  ; [section code]
+00D6    67 00 02 D2               159          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+00DA    20 2C 00 34               160          MOVE.L PRVM_FRAME_RESULT_PTR(A4), D0  ; [section code]
+00DE    4A 80                     161          TST.L D0  ; [section code]
+00E0    67 00 02 C8               162          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+00E4    20 2C 00 38               163          MOVE.L PRVM_FRAME_RESULT_CAPACITY(A4), D0  ; [section code]
+00E8    6B 00 02 C0               164          BMI prvmInvalidArgumentWithLocals  ; [section code]
+00EC    20 2C 00 3C               165          MOVE.L PRVM_FRAME_DIAGNOSTIC_PTR(A4), D0  ; [section code]
+00F0    4A 80                     166          TST.L D0  ; [section code]
+00F2    67 00 02 B6               167          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+00F6    20 2C 00 44               168          MOVE.L PRVM_FRAME_RESUME_PTR(A4), D0  ; [section code]
+00FA    4A 80                     169          TST.L D0  ; [section code]
+00FC    67 00 02 AC               170          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+0100    20 2C 00 4C               171          MOVE.L PRVM_FRAME_EXPR_REQUEST_PTR(A4), D0  ; [section code]
+0104    4A 80                     172          TST.L D0  ; [section code]
+0106    67 00 02 A2               173          BEQ prvmInvalidArgumentWithLocals  ; [section code]
+----                              174    ; [section code]
+010A    20 6C 00 10               175          MOVEA.L PRVM_FRAME_SOURCE_PTR(A4), A0  ; [section code]
+010E    2C 2C 00 14               176          MOVE.L PRVM_FRAME_SOURCE_LEN(A4), D6  ; [section code]
+0112    42 80                     177          CLR.L D0  ; [section code]
+----                              178  prvmNewlineScanLoop  ; [section code]
+0114    B0 86                     179          CMP.L D6, D0  ; [section code]
+0116    64 00 00 28               180          BCC prvmNewlineScanDone  ; [section code]
+011A    0C 30 00 0A 08 00         181          CMPI.B #10, 0(A0,D0.L)  ; [section code]
+0120    67 00 00 12               182          BEQ prvmNewlineUnsupported  ; [section code]
+0124    0C 30 00 0D 08 00         183          CMPI.B #13, 0(A0,D0.L)  ; [section code]
+012A    67 00 00 08               184          BEQ prvmNewlineUnsupported  ; [section code]
+012E    52 80                     185          ADDQ.L #1, D0  ; [section code]
+0130    60 00 FF E2               186          BRA prvmNewlineScanLoop  ; [section code]
+----                              187    ; [section code]
+----                              188  prvmNewlineUnsupported  ; [section code]
+0134    42 81                     189          CLR.L D1  ; [section code]
+0136    24 00                     190          MOVE.L D0, D2  ; [section code]
+0138    42 83                     191          CLR.L D3  ; [section code]
+013A    70 02                     192          MOVEQ #PRVM_STATUS_NEWLINE_UNSUPPORTED, D0  ; [section code]
+013C    60 00 02 78               193          BRA prvmReturnWithLocals  ; [section code]
+----                              194    ; [section code]
+----                              195  prvmNewlineScanDone  ; [section code]
+0140    2A 6C 00 2C               196          MOVEA.L PRVM_FRAME_PROGRAM_PTR(A4), A5  ; [section code]
+0144    2C 2C 00 30               197          MOVE.L PRVM_FRAME_PROGRAM_LEN(A4), D6  ; [section code]
+0148    4D F5 68 00               198          LEA 0(A5,D6.L), A6  ; [section code]
+014C    2C 2C 00 60               199          MOVE.L PRVM_FRAME_STEP_BUDGET(A4), D6  ; [section code]
+0150    6E 00 00 08               200          BGT prvmStartProgram  ; [section code]
+0154    2C 3C 00 00 01 00         201          MOVE.L #PRVM_DEFAULT_STEP_BUDGET, D6  ; [section code]
+----                              202    ; [section code]
+----                              203  prvmStartProgram  ; [section code]
+015A    42 81                     204          CLR.L D1  ; [section code]
+015C    42 82                     205          CLR.L D2  ; [section code]
+015E    42 83                     206          CLR.L D3  ; [section code]
+----                              207    ; [section code]
+----                              208  prvmProgramLoop  ; [section code]
+0160    20 2B 00 18               209          MOVE.L LOCAL_STEP_COUNT(A3), D0  ; [section code]
+0164    52 80                     210          ADDQ.L #1, D0  ; [section code]
+0166    27 40 00 18               211          MOVE.L D0, LOCAL_STEP_COUNT(A3)  ; [section code]
+016A    B0 86                     212          CMP.L D6, D0  ; [section code]
+016C    62 00 02 32               213          BHI prvmBudgetExceeded  ; [section code]
+0170    BB CE                     214          CMPA.L A6, A5  ; [section code]
+0172    64 00 02 14               215          BCC prvmInvalidProgramAtCursor  ; [section code]
+----                              216    ; [section code]
+0176    7E 00                     217          MOVEQ #0, D7  ; [section code]
+0178    1E 1D                     218          MOVE.B (A5)+, D7  ; [section code]
+017A    0C 07 00 00               219          CMPI.B #PRVM_OPCODE_END, D7  ; [section code]
+017E    67 00 00 36               220          BEQ prvmOpcodeEnd  ; [section code]
+0182    0C 07 00 20               221          CMPI.B #PRVM_OPCODE_ADVANCE, D7  ; [section code]
+0186    67 00 00 3C               222          BEQ prvmOpcodeAdvance  ; [section code]
+018A    0C 07 00 30               223          CMPI.B #PRVM_OPCODE_LOAD_IDENTIFIER, D7  ; [section code]
+018E    67 00 00 40               224          BEQ prvmOpcodeLoadIdentifier  ; [section code]
+0192    0C 07 00 40               225          CMPI.B #PRVM_OPCODE_PARSE_OPTIONAL_LABEL, D7  ; [section code]
+0196    67 00 FF C8               226          BEQ prvmProgramLoop  ; [section code]
+019A    0C 07 00 60               227          CMPI.B #PRVM_OPCODE_BEGIN_STATEMENT, D7  ; [section code]
+019E    67 00 00 96               228          BEQ prvmOpcodeBeginStatement  ; [section code]
+01A2    0C 07 00 62               229          CMPI.B #PRVM_OPCODE_SET_MNEMONIC, D7  ; [section code]
+01A6    67 00 00 A4               230          BEQ prvmOpcodeSetMnemonic  ; [section code]
+01AA    0C 07 00 64               231          CMPI.B #PRVM_OPCODE_FINISH_LINE, D7  ; [section code]
+01AE    67 00 00 B6               232          BEQ prvmOpcodeFinishLine  ; [section code]
+01B2    60 00 01 E2               233          BRA prvmUnsupportedOpcode  ; [section code]
+----                              234    ; [section code]
+----                              235  prvmOpcodeEnd  ; [section code]
+01B6    4A AB 00 14               236          TST.L LOCAL_FINISHED_FLAG(A3)  ; [section code]
+01BA    67 00 01 CC               237          BEQ prvmInvalidProgramAtCursor  ; [section code]
+01BE    70 00                     238          MOVEQ #PRVM_STATUS_OK, D0  ; [section code]
+01C0    60 00 01 F4               239          BRA prvmReturnWithLocals  ; [section code]
+----                              240    ; [section code]
+----                              241  prvmOpcodeAdvance  ; [section code]
+01C4    B4 84                     242          CMP.L D4, D2  ; [section code]
+01C6    64 00 FF 98               243          BCC prvmProgramLoop  ; [section code]
+01CA    52 82                     244          ADDQ.L #1, D2  ; [section code]
+01CC    60 00 FF 92               245          BRA prvmProgramLoop  ; [section code]
+----                              246    ; [section code]
+----                              247  prvmOpcodeLoadIdentifier  ; [section code]
+01D0    61 00 00 AA               248          BSR.W prvmCurrentTokenPtr  ; [section code]
+01D4    4A 80                     249          TST.L D0  ; [section code]
+01D6    66 00 01 DE               250          BNE prvmReturnWithLocals  ; [section code]
+01DA    0C 69 00 00 00 00         251          CMPI.W #PRVM_TOKEN_KIND_IDENTIFIER, 0(A1)  ; [section code]
+01E0    66 00 01 9C               252          BNE prvmInvalidTokenAtCursor  ; [section code]
+01E4    20 29 00 04               253          MOVE.L 4(A1), D0  ; [section code]
+01E8    67 00 01 94               254          BEQ prvmInvalidTokenAtCursor  ; [section code]
+01EC    2E 29 00 08               255          MOVE.L 8(A1), D7  ; [section code]
+01F0    BE 80                     256          CMP.L D0, D7  ; [section code]
+01F2    65 00 01 8A               257          BCS prvmInvalidTokenAtCursor  ; [section code]
+01F6    20 29 00 0C               258          MOVE.L 12(A1), D0  ; [section code]
+01FA    2E 29 00 10               259          MOVE.L 16(A1), D7  ; [section code]
+01FE    67 00 01 7E               260          BEQ prvmInvalidTokenAtCursor  ; [section code]
+0202    2A 00                     261          MOVE.L D0, D5  ; [section code]
+0204    DA 87                     262          ADD.L D7, D5  ; [section code]
+0206    65 00 01 76               263          BCS prvmInvalidTokenAtCursor  ; [section code]
+020A    BA AC 00 28               264          CMP.L PRVM_FRAME_LEXEME_LEN(A4), D5  ; [section code]
+020E    62 00 01 6E               265          BHI prvmInvalidTokenAtCursor  ; [section code]
+0212    27 69 00 04 00 04         266          MOVE.L 4(A1), LOCAL_LOADED_COL_START(A3)  ; [section code]
+0218    27 69 00 08 00 08         267          MOVE.L 8(A1), LOCAL_LOADED_COL_END(A3)  ; [section code]
+021E    27 69 00 0C 00 0C         268          MOVE.L 12(A1), LOCAL_LOADED_LEXEME_OFFSET(A3)  ; [section code]
+0224    27 69 00 10 00 10         269          MOVE.L 16(A1), LOCAL_LOADED_LEXEME_LEN(A3)  ; [section code]
+022A    27 7C 00 00 00 01 00 00   270          MOVE.L #1, LOCAL_LOADED_FLAG(A3)  ; [section code]
+0232    60 00 FF 2C               271          BRA prvmProgramLoop  ; [section code]
+----                              272    ; [section code]
+----                              273  prvmOpcodeBeginStatement  ; [section code]
+0236    42 AB 00 00               274          CLR.L LOCAL_LOADED_FLAG(A3)  ; [section code]
+023A    42 AB 00 14               275          CLR.L LOCAL_FINISHED_FLAG(A3)  ; [section code]
+023E    61 00 00 86               276          BSR.W prvmEmitBeginStatement  ; [section code]
+0242    4A 80                     277          TST.L D0  ; [section code]
+0244    66 00 01 70               278          BNE prvmReturnWithLocals  ; [section code]
+0248    60 00 FF 16               279          BRA prvmProgramLoop  ; [section code]
+----                              280    ; [section code]
+----                              281  prvmOpcodeSetMnemonic  ; [section code]
+024C    4A AB 00 00               282          TST.L LOCAL_LOADED_FLAG(A3)  ; [section code]
+0250    67 00 01 36               283          BEQ prvmInvalidProgramAtCursor  ; [section code]
+0254    61 00 00 A6               284          BSR.W prvmEmitMnemonicText  ; [section code]
+0258    4A 80                     285          TST.L D0  ; [section code]
+025A    66 00 01 5A               286          BNE prvmReturnWithLocals  ; [section code]
+025E    42 AB 00 00               287          CLR.L LOCAL_LOADED_FLAG(A3)  ; [section code]
+0262    60 00 FE FC               288          BRA prvmProgramLoop  ; [section code]
+----                              289    ; [section code]
+----                              290  prvmOpcodeFinishLine  ; [section code]
+0266    61 00 00 D2               291          BSR.W prvmEmitFinishLine  ; [section code]
+026A    4A 80                     292          TST.L D0  ; [section code]
+026C    66 00 01 48               293          BNE prvmReturnWithLocals  ; [section code]
+0270    27 7C 00 00 00 01 00 14   294          MOVE.L #1, LOCAL_FINISHED_FLAG(A3)  ; [section code]
+0278    60 00 FE E6               295          BRA prvmProgramLoop  ; [section code]
+----                              296    ; [section code]
+----                              297  prvmCurrentTokenPtr  ; [section code]
+027C    B4 84                     298          CMP.L D4, D2  ; [section code]
+027E    64 00 00 16               299          BCC prvmCurrentTokenInvalid  ; [section code]
+0282    20 02                     300          MOVE.L D2, D0  ; [section code]
+0284    E9 88                     301          LSL.L #4, D0  ; [section code]
+0286    2E 02                     302          MOVE.L D2, D7  ; [section code]
+0288    E5 8F                     303          LSL.L #2, D7  ; [section code]
+028A    D0 87                     304          ADD.L D7, D0  ; [section code]
+028C    22 6C 00 18               305          MOVEA.L PRVM_FRAME_TOKEN_PTR(A4), A1  ; [section code]
+0290    D3 C0                     306          ADDA.L D0, A1  ; [section code]
+0292    42 80                     307          CLR.L D0  ; [section code]
+0294    4E 75                     308          RTS  ; [section code]
+----                              309    ; [section code]
+----                              310  prvmCurrentTokenInvalid  ; [section code]
+0296    42 81                     311          CLR.L D1  ; [section code]
+0298    42 83                     312          CLR.L D3  ; [section code]
+029A    70 05                     313          MOVEQ #PRVM_STATUS_INVALID_TOKEN, D0  ; [section code]
+029C    4E 75                     314          RTS  ; [section code]
+----                              315    ; [section code]
+----                              316  prvmResultRecordPtr  ; [section code]
+029E    20 01                     317          MOVE.L D1, D0  ; [section code]
+02A0    EB 88                     318          LSL.L #5, D0  ; [section code]
+02A2    2E 00                     319          MOVE.L D0, D7  ; [section code]
+02A4    06 87 00 00 00 20         320          ADDI.L #PRVM_RESULT_RECORD_SIZE, D7  ; [section code]
+02AA    BE AC 00 38               321          CMP.L PRVM_FRAME_RESULT_CAPACITY(A4), D7  ; [section code]
+02AE    62 00 00 E2               322          BHI prvmOutputOverflow  ; [section code]
+02B2    24 6C 00 34               323          MOVEA.L PRVM_FRAME_RESULT_PTR(A4), A2  ; [section code]
+02B6    D5 C0                     324          ADDA.L D0, A2  ; [section code]
+02B8    42 80                     325          CLR.L D0  ; [section code]
+02BA    4E 75                     326          RTS  ; [section code]
+----                              327    ; [section code]
+----                              328  prvmCommitResultRecord  ; [section code]
+02BC    52 81                     329          ADDQ.L #1, D1  ; [section code]
+02BE    26 01                     330          MOVE.L D1, D3  ; [section code]
+02C0    EB 8B                     331          LSL.L #5, D3  ; [section code]
+02C2    42 80                     332          CLR.L D0  ; [section code]
+02C4    4E 75                     333          RTS  ; [section code]
+----                              334    ; [section code]
+----                              335  prvmEmitBeginStatement  ; [section code]
+02C6    61 00 FF D6               336          BSR.W prvmResultRecordPtr  ; [section code]
+02CA    4A 80                     337          TST.L D0  ; [section code]
+02CC    66 00 00 A2               338          BNE prvmEmitRecordReturn  ; [section code]
+02D0    35 7C 00 01 00 00         339          MOVE.W #PRVM_RESULT_BEGIN_STATEMENT, 0(A2)  ; [section code]
+02D6    42 6A 00 02               340          CLR.W 2(A2)  ; [section code]
+02DA    25 6C 00 0C 00 04         341          MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)  ; [section code]
+02E0    42 AA 00 08               342          CLR.L 8(A2)  ; [section code]
+02E4    42 AA 00 0C               343          CLR.L 12(A2)  ; [section code]
+02E8    42 AA 00 10               344          CLR.L 16(A2)  ; [section code]
+02EC    42 AA 00 14               345          CLR.L 20(A2)  ; [section code]
+02F0    42 AA 00 18               346          CLR.L 24(A2)  ; [section code]
+02F4    42 AA 00 1C               347          CLR.L 28(A2)  ; [section code]
+02F8    60 00 FF C2               348          BRA prvmCommitResultRecord  ; [section code]
+----                              349    ; [section code]
+----                              350  prvmEmitMnemonicText  ; [section code]
+02FC    61 00 FF A0               351          BSR.W prvmResultRecordPtr  ; [section code]
+0300    4A 80                     352          TST.L D0  ; [section code]
+0302    66 00 00 6C               353          BNE prvmEmitRecordReturn  ; [section code]
+0306    35 7C 00 03 00 00         354          MOVE.W #PRVM_RESULT_MNEMONIC_TEXT, 0(A2)  ; [section code]
+030C    42 6A 00 02               355          CLR.W 2(A2)  ; [section code]
+0310    25 6C 00 0C 00 04         356          MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)  ; [section code]
+0316    25 6B 00 04 00 08         357          MOVE.L LOCAL_LOADED_COL_START(A3), 8(A2)  ; [section code]
+031C    25 6B 00 08 00 0C         358          MOVE.L LOCAL_LOADED_COL_END(A3), 12(A2)  ; [section code]
+0322    25 6B 00 0C 00 10         359          MOVE.L LOCAL_LOADED_LEXEME_OFFSET(A3), 16(A2)  ; [section code]
+0328    25 6B 00 10 00 14         360          MOVE.L LOCAL_LOADED_LEXEME_LEN(A3), 20(A2)  ; [section code]
+032E    42 AA 00 18               361          CLR.L 24(A2)  ; [section code]
+0332    42 AA 00 1C               362          CLR.L 28(A2)  ; [section code]
+0336    60 00 FF 84               363          BRA prvmCommitResultRecord  ; [section code]
+----                              364    ; [section code]
+----                              365  prvmEmitFinishLine  ; [section code]
+033A    61 00 FF 62               366          BSR.W prvmResultRecordPtr  ; [section code]
+033E    4A 80                     367          TST.L D0  ; [section code]
+0340    66 00 00 2E               368          BNE prvmEmitRecordReturn  ; [section code]
+0344    35 7C 00 05 00 00         369          MOVE.W #PRVM_RESULT_FINISH_LINE, 0(A2)  ; [section code]
+034A    42 6A 00 02               370          CLR.W 2(A2)  ; [section code]
+034E    25 6C 00 0C 00 04         371          MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)  ; [section code]
+0354    42 AA 00 08               372          CLR.L 8(A2)  ; [section code]
+0358    42 AA 00 0C               373          CLR.L 12(A2)  ; [section code]
+035C    42 AA 00 10               374          CLR.L 16(A2)  ; [section code]
+0360    42 AA 00 14               375          CLR.L 20(A2)  ; [section code]
+0364    42 AA 00 18               376          CLR.L 24(A2)  ; [section code]
+0368    42 AA 00 1C               377          CLR.L 28(A2)  ; [section code]
+036C    60 00 FF 4E               378          BRA prvmCommitResultRecord  ; [section code]
+----                              379    ; [section code]
+----                              380  prvmEmitRecordReturn  ; [section code]
+0370    4E 75                     381          RTS  ; [section code]
+----                              382    ; [section code]
+----                              383  prvmEntryBoundary  ; [section code]
+0372    42 81                     384          CLR.L D1  ; [section code]
+0374    42 82                     385          CLR.L D2  ; [section code]
+0376    42 83                     386          CLR.L D3  ; [section code]
+0378    70 03                     387          MOVEQ #PRVM_STATUS_ENTRY_BOUNDARY, D0  ; [section code]
+037A    60 00 00 3A               388          BRA prvmReturnWithLocals  ; [section code]
+----                              389    ; [section code]
+----                              390  prvmInvalidTokenAtCursor  ; [section code]
+037E    42 81                     391          CLR.L D1  ; [section code]
+0380    42 83                     392          CLR.L D3  ; [section code]
+0382    70 05                     393          MOVEQ #PRVM_STATUS_INVALID_TOKEN, D0  ; [section code]
+0384    60 00 00 30               394          BRA prvmReturnWithLocals  ; [section code]
+----                              395    ; [section code]
+----                              396  prvmInvalidProgramAtCursor  ; [section code]
+0388    42 81                     397          CLR.L D1  ; [section code]
+038A    42 83                     398          CLR.L D3  ; [section code]
+038C    70 06                     399          MOVEQ #PRVM_STATUS_INVALID_PROGRAM, D0  ; [section code]
+038E    60 00 00 26               400          BRA prvmReturnWithLocals  ; [section code]
+----                              401    ; [section code]
+----                              402  prvmOutputOverflow  ; [section code]
+0392    70 07                     403          MOVEQ #PRVM_STATUS_OUTPUT_OVERFLOW, D0  ; [section code]
+0394    4E 75                     404          RTS  ; [section code]
+----                              405    ; [section code]
+----                              406  prvmUnsupportedOpcode  ; [section code]
+0396    42 81                     407          CLR.L D1  ; [section code]
+0398    42 83                     408          CLR.L D3  ; [section code]
+039A    70 09                     409          MOVEQ #PRVM_STATUS_UNSUPPORTED_OPCODE, D0  ; [section code]
+039C    60 00 00 18               410          BRA prvmReturnWithLocals  ; [section code]
+----                              411    ; [section code]
+----                              412  prvmBudgetExceeded  ; [section code]
+03A0    42 81                     413          CLR.L D1  ; [section code]
+03A2    42 83                     414          CLR.L D3  ; [section code]
+03A4    70 0C                     415          MOVEQ #PRVM_STATUS_BUDGET_EXCEEDED, D0  ; [section code]
+03A6    60 00 00 0E               416          BRA prvmReturnWithLocals  ; [section code]
+----                              417    ; [section code]
+----                              418  prvmInvalidArgumentWithLocals  ; [section code]
+03AA    42 81                     419          CLR.L D1  ; [section code]
+03AC    42 82                     420          CLR.L D2  ; [section code]
+03AE    42 83                     421          CLR.L D3  ; [section code]
+03B0    70 04                     422          MOVEQ #PRVM_STATUS_INVALID_ARGUMENT, D0  ; [section code]
+03B2    60 00 00 02               423          BRA prvmReturnWithLocals  ; [section code]
+----                              424    ; [section code]
+----                              425  prvmReturnWithLocals  ; [section code]
+03B6    DF FC 00 00 00 1C         426          ADDA.L #LOCAL_SIZE, SP  ; [section code]
+03BC    4C DF 70 F0               427          MOVEM.L (SP)+, D4-D7/A4-A6  ; [section code]
+03C0    4E 75                     428          RTS  ; [section code]
+----                              429    ; [section code]
+----                              430  prvmInvalidArgument  ; [section code]
+03C2    42 81                     431          CLR.L D1  ; [section code]
+03C4    42 82                     432          CLR.L D2  ; [section code]
+03C6    42 83                     433          CLR.L D3  ; [section code]
+03C8    70 04                     434          MOVEQ #PRVM_STATUS_INVALID_ARGUMENT, D0  ; [section code]
+03CA    4C DF 70 F0               435          MOVEM.L (SP)+, D4-D7/A4-A6  ; [section code]
+03CE    4E 75                     436          RTS  ; [section code]
+----                              437    ; [section code]
+----                              438          .endsection
+----                              439          .endmodule
+----                              440  ; FS-UAE-friendly native smoke executable for the PRVM interpreter.
+----                              441  
+----                              442          .module main
+----                              443          .cpu 68020
+----                              444          .use prvm.amigaos.interpreter (prvm_run_68000)
+----                              445  
+----    EQU 0004                  446  SysBase                         = 4
+----    EQU 0000                  447  RETURN_OK                       = 0
+----    EQU 0014                  448  RETURN_FAIL                     = 20
+----                              449  
+----    EQU FFFFFDD8              450  OpenLibrary                     = -552
+----    EQU FFFFFE62              451  CloseLibrary                    = -414
+----    EQU FFFFFC4C              452  PutStr                          = -948
+----                              453  
+----    EQU 0070                  454  PRVM_REQUEST_FRAME_SIZE         = 112
+----    EQU 4F505250              455  PRVM_MAGIC_OPRP                 = $4F505250
+----    EQU 0001                  456  PRVM_ABI_VERSION_V1             = 1
+----    EQU 0000                  457  PRVM_CALL_MODE_START            = 0
+----    EQU 0001                  458  PRVM_ENTRY_KIND_OPASM_STATEMENT = 1
+----    EQU 0014                  459  PRVM_TOKEN_RECORD_SIZE          = 20
+----    EQU 0002                  460  PRVM_PARSER_CONTRACT_VERSION_V2 = 2
+----                              461  
+----    EQU 0000                  462  PRVM_STATUS_OK                  = 0
+----    EQU 0001                  463  PRVM_STATUS_EXPR_REQUEST        = 1
+----    EQU 0002                  464  PRVM_STATUS_NEWLINE_UNSUPPORTED = 2
+----    EQU 0003                  465  PRVM_STATUS_ENTRY_BOUNDARY      = 3
+----    EQU 0004                  466  PRVM_STATUS_INVALID_ARGUMENT    = 4
+----    EQU 0005                  467  PRVM_STATUS_INVALID_TOKEN       = 5
+----    EQU 0006                  468  PRVM_STATUS_INVALID_PROGRAM     = 6
+----    EQU 0007                  469  PRVM_STATUS_OUTPUT_OVERFLOW     = 7
+----    EQU 0009                  470  PRVM_STATUS_UNSUPPORTED_OPCODE  = 9
+----    EQU 000C                  471  PRVM_STATUS_BUDGET_EXCEEDED     = 12
+----                              472  
+----    EQU 0001                  473  PRVM_RESULT_BEGIN_STATEMENT     = 1
+----    EQU 0003                  474  PRVM_RESULT_MNEMONIC_TEXT       = 3
+----    EQU 0005                  475  PRVM_RESULT_FINISH_LINE         = 5
+----                              476  
+----    EQU 0000                  477  PRVM_OPCODE_END                 = $00
+----    EQU 0020                  478  PRVM_OPCODE_ADVANCE             = $20
+----    EQU 0030                  479  PRVM_OPCODE_LOAD_IDENTIFIER     = $30
+----    EQU 0060                  480  PRVM_OPCODE_BEGIN_STATEMENT     = $60
+----    EQU 0062                  481  PRVM_OPCODE_SET_MNEMONIC        = $62
+----    EQU 0064                  482  PRVM_OPCODE_FINISH_LINE         = $64
+----    EQU 0006                  483  PRVM_SMOKE_PROGRAM_LEN          = 6
+----                              484  
+----                              485          .section entry, kind=code  ; [section entry]
+----                              486    ; [section entry]
+----                              487  start  ; [section entry]
+0000    7E 14                     488          MOVEQ #RETURN_FAIL, D7  ; [section entry]
+----                              489    ; [section entry]
+0002    43 FA 02 F4               490          LEA dosName(PC), A1  ; [section entry]
+0006    70 24                     491          MOVEQ #36, D0  ; [section entry]
+0008    2C 78 00 04               492          MOVEA.L SysBase.W, A6  ; [section entry]
+000C    4E AE FD D8               493          JSR OpenLibrary(A6)  ; [section entry]
+----                              494    ; [section entry]
+0010    4A 80                     495          TST.L D0  ; [section entry]
+0012    66 14                     496          BNE.S prvmSmokeHaveDos  ; [section entry]
+----                              497    ; [section entry]
+0014    43 FA 02 E2               498          LEA dosName(PC), A1  ; [section entry]
+0018    70 00                     499          MOVEQ #0, D0  ; [section entry]
+001A    2C 78 00 04               500          MOVEA.L SysBase.W, A6  ; [section entry]
+001E    4E AE FD D8               501          JSR OpenLibrary(A6)  ; [section entry]
+0022    4A 80                     502          TST.L D0  ; [section entry]
+0024    67 00 00 5C               503          BEQ.W prvmSmokeDone  ; [section entry]
+----                              504    ; [section entry]
+----                              505  prvmSmokeHaveDos  ; [section entry]
+0028    2A 40                     506          MOVEA.L D0, A5  ; [section entry]
+002A    43 FA 02 D8               507          LEA startedText(PC), A1  ; [section entry]
+002E    22 09                     508          MOVE.L A1, D1  ; [section entry]
+0030    61 00 00 54               509          BSR.W prvmSmokePutStr  ; [section entry]
+----                              510    ; [section entry]
+0034    61 00 00 58               511          BSR.W prvmSmokeBuildRequestFrame  ; [section entry]
+0038    41 FA 06 1E               512          LEA requestFrame(PC), A0  ; [section entry]
+003C    20 3C 00 00 00 70         513          MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0  ; [section entry]
+0042    4E B9 00 00 00 00         514          JSR prvm_run_68000.L  ; [section entry]
+----                              515    ; [section entry]
+0048    41 FA 05 FE               516          LEA smokeStatus(PC), A0  ; [section entry]
+004C    21 40 00 00               517          MOVE.L D0, 0(A0)  ; [section entry]
+0050    21 41 00 04               518          MOVE.L D1, 4(A0)  ; [section entry]
+0054    21 42 00 08               519          MOVE.L D2, 8(A0)  ; [section entry]
+0058    21 43 00 0C               520          MOVE.L D3, 12(A0)  ; [section entry]
+----                              521    ; [section entry]
+005C    61 00 01 0C               522          BSR.W prvmSmokeValidateResult  ; [section entry]
+0060    4A 80                     523          TST.L D0  ; [section entry]
+0062    66 0E                     524          BNE.S prvmSmokeReportFailure  ; [section entry]
+----                              525    ; [section entry]
+0064    43 FA 02 B8               526          LEA successText(PC), A1  ; [section entry]
+0068    22 09                     527          MOVE.L A1, D1  ; [section entry]
+006A    61 00 00 1A               528          BSR.W prvmSmokePutStr  ; [section entry]
+006E    7E 00                     529          MOVEQ #RETURN_OK, D7  ; [section entry]
+0070    60 06                     530          BRA.S prvmSmokeCloseDos  ; [section entry]
+----                              531    ; [section entry]
+----                              532  prvmSmokeReportFailure  ; [section entry]
+0072    22 09                     533          MOVE.L A1, D1  ; [section entry]
+0074    61 00 00 10               534          BSR.W prvmSmokePutStr  ; [section entry]
+----                              535    ; [section entry]
+----                              536  prvmSmokeCloseDos  ; [section entry]
+0078    22 4D                     537          MOVEA.L A5, A1  ; [section entry]
+007A    2C 78 00 04               538          MOVEA.L SysBase.W, A6  ; [section entry]
+007E    4E AE FE 62               539          JSR CloseLibrary(A6)  ; [section entry]
+----                              540    ; [section entry]
+----                              541  prvmSmokeDone  ; [section entry]
+0082    20 07                     542          MOVE.L D7, D0  ; [section entry]
+0084    4E 75                     543          RTS  ; [section entry]
+----                              544    ; [section entry]
+----                              545  prvmSmokePutStr  ; [section entry]
+0086    2C 4D                     546          MOVEA.L A5, A6  ; [section entry]
+0088    4E AE FC 4C               547          JSR PutStr(A6)  ; [section entry]
+008C    4E 75                     548          RTS  ; [section entry]
+----                              549    ; [section entry]
+----                              550  prvmSmokeBuildRequestFrame  ; [section entry]
+008E    41 FA 05 C8               551          LEA requestFrame(PC), A0  ; [section entry]
+0092    21 7C 4F 50 52 50 00 00   552          MOVE.L #PRVM_MAGIC_OPRP, 0(A0)  ; [section entry]
+009A    31 7C 00 01 00 04         553          MOVE.W #PRVM_ABI_VERSION_V1, 4(A0)  ; [section entry]
+00A0    31 7C 00 70 00 06         554          MOVE.W #PRVM_REQUEST_FRAME_SIZE, 6(A0)  ; [section entry]
+00A6    31 7C 00 00 00 08         555          MOVE.W #PRVM_CALL_MODE_START, 8(A0)  ; [section entry]
+00AC    31 7C 00 01 00 0A         556          MOVE.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(A0)  ; [section entry]
+00B2    21 7C 00 00 00 01 00 0C   557          MOVE.L #1, 12(A0)  ; [section entry]
+00BA    43 FA 05 6B               558          LEA sourceLine(PC), A1  ; [section entry]
+00BE    21 49 00 10               559          MOVE.L A1, 16(A0)  ; [section entry]
+00C2    21 7C 00 00 00 04 00 14   560          MOVE.L #4, 20(A0)  ; [section entry]
+00CA    43 FA 05 68               561          LEA tokenRecord(PC), A1  ; [section entry]
+00CE    21 49 00 18               562          MOVE.L A1, 24(A0)  ; [section entry]
+00D2    21 7C 00 00 00 01 00 1C   563          MOVE.L #1, 28(A0)  ; [section entry]
+00DA    31 7C 00 14 00 20         564          MOVE.W #PRVM_TOKEN_RECORD_SIZE, 32(A0)  ; [section entry]
+00E0    42 68 00 22               565          CLR.W 34(A0)  ; [section entry]
+00E4    43 FA 05 45               566          LEA lexemeBytes(PC), A1  ; [section entry]
+00E8    21 49 00 24               567          MOVE.L A1, 36(A0)  ; [section entry]
+00EC    21 7C 00 00 00 03 00 28   568          MOVE.L #3, 40(A0)  ; [section entry]
+00F4    43 FA 05 38               569          LEA parserProgram(PC), A1  ; [section entry]
+00F8    21 49 00 2C               570          MOVE.L A1, 44(A0)  ; [section entry]
+00FC    21 7C 00 00 00 06 00 30   571          MOVE.L #PRVM_SMOKE_PROGRAM_LEN, 48(A0)  ; [section entry]
+0104    43 FA 05 C2               572          LEA resultBuffer(PC), A1  ; [section entry]
+0108    21 49 00 34               573          MOVE.L A1, 52(A0)  ; [section entry]
+010C    21 7C 00 00 00 60 00 38   574          MOVE.L #96, 56(A0)  ; [section entry]
+0114    43 FA 06 12               575          LEA diagnosticBuffer(PC), A1  ; [section entry]
+0118    21 49 00 3C               576          MOVE.L A1, 60(A0)  ; [section entry]
+011C    21 7C 00 00 00 20 00 40   577          MOVE.L #32, 64(A0)  ; [section entry]
+0124    43 FA 06 22               578          LEA resumeBuffer(PC), A1  ; [section entry]
+0128    21 49 00 44               579          MOVE.L A1, 68(A0)  ; [section entry]
+012C    21 7C 00 00 00 10 00 48   580          MOVE.L #16, 72(A0)  ; [section entry]
+0134    43 FA 06 22               581          LEA exprRequestBuffer(PC), A1  ; [section entry]
+0138    21 49 00 4C               582          MOVE.L A1, 76(A0)  ; [section entry]
+013C    21 7C 00 00 00 20 00 50   583          MOVE.L #32, 80(A0)  ; [section entry]
+0144    42 A8 00 54               584          CLR.L 84(A0)  ; [section entry]
+0148    42 A8 00 58               585          CLR.L 88(A0)  ; [section entry]
+014C    21 7C 00 00 00 02 00 5C   586          MOVE.L #PRVM_PARSER_CONTRACT_VERSION_V2, 92(A0)  ; [section entry]
+0154    21 7C 00 00 00 40 00 60   587          MOVE.L #64, 96(A0)  ; [section entry]
+015C    42 A8 00 64               588          CLR.L 100(A0)  ; [section entry]
+0160    42 A8 00 68               589          CLR.L 104(A0)  ; [section entry]
+0164    42 A8 00 6C               590          CLR.L 108(A0)  ; [section entry]
+0168    4E 75                     591          RTS  ; [section entry]
+----                              592    ; [section entry]
+----                              593  prvmSmokeValidateResult  ; [section entry]
+016A    43 FA 04 DC               594          LEA smokeStatus(PC), A1  ; [section entry]
+016E    41 FA 05 58               595          LEA resultBuffer(PC), A0  ; [section entry]
+0172    0C A9 00 00 00 00 00 00   596          CMPI.L #PRVM_STATUS_OK, 0(A1)  ; [section entry]
+017A    66 00 00 7C               597          BNE.W prvmSmokeInvalidStatus  ; [section entry]
+017E    0C A9 00 00 00 03 00 04   598          CMPI.L #3, 4(A1)  ; [section entry]
+0186    66 00 01 0A               599          BNE.W prvmSmokeInvalidCount  ; [section entry]
+018A    0C A9 00 00 00 01 00 08   600          CMPI.L #1, 8(A1)  ; [section entry]
+0192    66 00 01 04               601          BNE.W prvmSmokeInvalidCursor  ; [section entry]
+0196    0C A9 00 00 00 60 00 0C   602          CMPI.L #96, 12(A1)  ; [section entry]
+019E    66 00 00 FE               603          BNE.W prvmSmokeInvalidBytes  ; [section entry]
+01A2    0C 68 00 01 00 00         604          CMPI.W #PRVM_RESULT_BEGIN_STATEMENT, 0(A0)  ; [section entry]
+01A8    66 00 00 FA               605          BNE.W prvmSmokeInvalidBegin  ; [section entry]
+01AC    0C 68 00 03 00 20         606          CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 32(A0)  ; [section entry]
+01B2    66 00 00 F6               607          BNE.W prvmSmokeInvalidMnemonic  ; [section entry]
+01B6    0C A8 00 00 00 02 00 28   608          CMPI.L #2, 40(A0)  ; [section entry]
+01BE    66 00 00 F0               609          BNE.W prvmSmokeInvalidColStart  ; [section entry]
+01C2    0C A8 00 00 00 05 00 2C   610          CMPI.L #5, 44(A0)  ; [section entry]
+01CA    66 00 00 EA               611          BNE.W prvmSmokeInvalidColEnd  ; [section entry]
+01CE    0C A8 00 00 00 00 00 30   612          CMPI.L #0, 48(A0)  ; [section entry]
+01D6    66 00 00 E4               613          BNE.W prvmSmokeInvalidLexemeOffset  ; [section entry]
+01DA    0C A8 00 00 00 03 00 34   614          CMPI.L #3, 52(A0)  ; [section entry]
+01E2    66 00 00 DE               615          BNE.W prvmSmokeInvalidLexemeLen  ; [section entry]
+01E6    0C 68 00 05 00 40         616          CMPI.W #PRVM_RESULT_FINISH_LINE, 64(A0)  ; [section entry]
+01EC    66 00 00 DA               617          BNE.W prvmSmokeInvalidFinish  ; [section entry]
+01F0    43 FA 01 2C               618          LEA successText(PC), A1  ; [section entry]
+01F4    42 80                     619          CLR.L D0  ; [section entry]
+01F6    4E 75                     620          RTS  ; [section entry]
+----                              621    ; [section entry]
+----                              622  prvmSmokeInvalidStatus  ; [section entry]
+01F8    61 00 00 D6               623          BSR.W prvmSmokeFormatStatus  ; [section entry]
+01FC    0C A9 00 00 00 01 00 00   624          CMPI.L #PRVM_STATUS_EXPR_REQUEST, 0(A1)  ; [section entry]
+0204    67 56                     625          BEQ.S prvmSmokeInvalidStatusExpr  ; [section entry]
+0206    0C A9 00 00 00 02 00 00   626          CMPI.L #PRVM_STATUS_NEWLINE_UNSUPPORTED, 0(A1)  ; [section entry]
+020E    67 52                     627          BEQ.S prvmSmokeInvalidStatusNewline  ; [section entry]
+0210    0C A9 00 00 00 03 00 00   628          CMPI.L #PRVM_STATUS_ENTRY_BOUNDARY, 0(A1)  ; [section entry]
+0218    67 4E                     629          BEQ.S prvmSmokeInvalidStatusEntry  ; [section entry]
+021A    0C A9 00 00 00 04 00 00   630          CMPI.L #PRVM_STATUS_INVALID_ARGUMENT, 0(A1)  ; [section entry]
+0222    67 4A                     631          BEQ.S prvmSmokeInvalidStatusArgument  ; [section entry]
+0224    0C A9 00 00 00 05 00 00   632          CMPI.L #PRVM_STATUS_INVALID_TOKEN, 0(A1)  ; [section entry]
+022C    67 46                     633          BEQ.S prvmSmokeInvalidStatusToken  ; [section entry]
+022E    0C A9 00 00 00 06 00 00   634          CMPI.L #PRVM_STATUS_INVALID_PROGRAM, 0(A1)  ; [section entry]
+0236    67 42                     635          BEQ.S prvmSmokeInvalidStatusProgram  ; [section entry]
+0238    0C A9 00 00 00 07 00 00   636          CMPI.L #PRVM_STATUS_OUTPUT_OVERFLOW, 0(A1)  ; [section entry]
+0240    67 3E                     637          BEQ.S prvmSmokeInvalidStatusOverflow  ; [section entry]
+0242    0C A9 00 00 00 09 00 00   638          CMPI.L #PRVM_STATUS_UNSUPPORTED_OPCODE, 0(A1)  ; [section entry]
+024A    67 3A                     639          BEQ.S prvmSmokeInvalidStatusOpcode  ; [section entry]
+024C    0C A9 00 00 00 0C 00 00   640          CMPI.L #PRVM_STATUS_BUDGET_EXCEEDED, 0(A1)  ; [section entry]
+0254    67 36                     641          BEQ.S prvmSmokeInvalidStatusBudget  ; [section entry]
+0256    43 FA 00 F6               642          LEA failureStatusText(PC), A1  ; [section entry]
+025A    60 70                     643          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              644    ; [section entry]
+----                              645  prvmSmokeInvalidStatusExpr  ; [section entry]
+025C    43 FA 01 1A               646          LEA failureStatusExprText(PC), A1  ; [section entry]
+0260    60 6A                     647          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              648    ; [section entry]
+----                              649  prvmSmokeInvalidStatusNewline  ; [section entry]
+0262    43 FA 01 39               650          LEA failureStatusNewlineText(PC), A1  ; [section entry]
+0266    60 64                     651          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              652    ; [section entry]
+----                              653  prvmSmokeInvalidStatusEntry  ; [section entry]
+0268    43 FA 01 5B               654          LEA failureStatusEntryText(PC), A1  ; [section entry]
+026C    60 5E                     655          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              656    ; [section entry]
+----                              657  prvmSmokeInvalidStatusArgument  ; [section entry]
+026E    43 FA 01 7B               658          LEA failureStatusArgumentText(PC), A1  ; [section entry]
+0272    60 58                     659          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              660    ; [section entry]
+----                              661  prvmSmokeInvalidStatusToken  ; [section entry]
+0274    43 FA 01 9E               662          LEA failureStatusTokenText(PC), A1  ; [section entry]
+0278    60 52                     663          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              664    ; [section entry]
+----                              665  prvmSmokeInvalidStatusProgram  ; [section entry]
+027A    43 FA 01 BE               666          LEA failureStatusProgramText(PC), A1  ; [section entry]
+027E    60 4C                     667          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              668    ; [section entry]
+----                              669  prvmSmokeInvalidStatusOverflow  ; [section entry]
+0280    43 FA 01 E0               670          LEA failureStatusOverflowText(PC), A1  ; [section entry]
+0284    60 46                     671          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              672    ; [section entry]
+----                              673  prvmSmokeInvalidStatusOpcode  ; [section entry]
+0286    43 FA 02 03               674          LEA failureStatusOpcodeText(PC), A1  ; [section entry]
+028A    60 40                     675          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              676    ; [section entry]
+----                              677  prvmSmokeInvalidStatusBudget  ; [section entry]
+028C    43 FA 02 24               678          LEA failureStatusBudgetText(PC), A1  ; [section entry]
+0290    60 3A                     679          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              680    ; [section entry]
+----                              681  prvmSmokeInvalidCount  ; [section entry]
+0292    43 FA 02 45               682          LEA failureCountText(PC), A1  ; [section entry]
+0296    60 34                     683          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              684    ; [section entry]
+----                              685  prvmSmokeInvalidCursor  ; [section entry]
+0298    43 FA 02 5E               686          LEA failureCursorText(PC), A1  ; [section entry]
+029C    60 2E                     687          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              688    ; [section entry]
+----                              689  prvmSmokeInvalidBytes  ; [section entry]
+029E    43 FA 02 78               690          LEA failureBytesText(PC), A1  ; [section entry]
+02A2    60 28                     691          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              692    ; [section entry]
+----                              693  prvmSmokeInvalidBegin  ; [section entry]
+02A4    43 FA 02 91               694          LEA failureBeginText(PC), A1  ; [section entry]
+02A8    60 22                     695          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              696    ; [section entry]
+----                              697  prvmSmokeInvalidMnemonic  ; [section entry]
+02AA    43 FA 02 AA               698          LEA failureMnemonicText(PC), A1  ; [section entry]
+02AE    60 1C                     699          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              700    ; [section entry]
+----                              701  prvmSmokeInvalidColStart  ; [section entry]
+02B0    43 FA 02 C6               702          LEA failureColStartText(PC), A1  ; [section entry]
+02B4    60 16                     703          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              704    ; [section entry]
+----                              705  prvmSmokeInvalidColEnd  ; [section entry]
+02B6    43 FA 02 E3               706          LEA failureColEndText(PC), A1  ; [section entry]
+02BA    60 10                     707          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              708    ; [section entry]
+----                              709  prvmSmokeInvalidLexemeOffset  ; [section entry]
+02BC    43 FA 02 FE               710          LEA failureLexemeOffsetText(PC), A1  ; [section entry]
+02C0    60 0A                     711          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              712    ; [section entry]
+----                              713  prvmSmokeInvalidLexemeLen  ; [section entry]
+02C2    43 FA 03 1F               714          LEA failureLexemeLenText(PC), A1  ; [section entry]
+02C6    60 04                     715          BRA.S prvmSmokeInvalid  ; [section entry]
+----                              716    ; [section entry]
+----                              717  prvmSmokeInvalidFinish  ; [section entry]
+02C8    43 FA 03 3D               718          LEA failureFinishText(PC), A1  ; [section entry]
+----                              719    ; [section entry]
+----                              720  prvmSmokeInvalid  ; [section entry]
+02CC    70 01                     721          MOVEQ #1, D0  ; [section entry]
+02CE    4E 75                     722          RTS  ; [section entry]
+----                              723    ; [section entry]
+----                              724  prvmSmokeFormatStatus  ; [section entry]
+02D0    20 29 00 00               725          MOVE.L 0(A1), D0  ; [section entry]
+02D4    41 FA 00 98               726          LEA failureStatusHexDigits(PC), A0  ; [section entry]
+02D8    74 07                     727          MOVEQ #7, D2  ; [section entry]
+----                              728    ; [section entry]
+----                              729  prvmSmokeFormatStatusLoop  ; [section entry]
+02DA    E9 98                     730          ROL.L #4, D0  ; [section entry]
+02DC    26 00                     731          MOVE.L D0, D3  ; [section entry]
+02DE    02 03 00 0F               732          ANDI.B #$0F, D3  ; [section entry]
+02E2    0C 03 00 0A               733          CMPI.B #10, D3  ; [section entry]
+02E6    65 04                     734          BCS.S prvmSmokeFormatStatusDigit  ; [section entry]
+02E8    06 03 00 07               735          ADDI.B #7, D3  ; [section entry]
+----                              736    ; [section entry]
+----                              737  prvmSmokeFormatStatusDigit  ; [section entry]
+02EC    06 03 00 30               738          ADDI.B #"0", D3  ; [section entry]
+02F0    10 C3                     739          MOVE.B D3, (A0)+  ; [section entry]
+02F2    51 CA FF E6               740          DBRA D2, prvmSmokeFormatStatusLoop  ; [section entry]
+02F6    4E 75                     741          RTS  ; [section entry]
+----                              742    ; [section entry]
+----                              743  dosName  ; [section entry]
+02F8    64 6F 73 2E 6C 69 62 72 61 72 79 00   744          .byte "dos.library",0  ; [section entry]
+----                              745  startedText  ; [section entry]
+0304    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 73 74 61 72 74 0A 00   746          .byte "OPFORGE-PRVM smoke start",10,0  ; [section entry]
+----                              747  successText  ; [section entry]
+031E    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 4F 4B 0A 00   748          .byte "OPFORGE-PRVM smoke OK",10,0  ; [section entry]
+----                              749  failureText  ; [section entry]
+0335    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 0A 00   750          .byte "OPFORGE-PRVM smoke FAIL",10,0  ; [section entry]
+----                              751  failureStatusText  ; [section entry]
+034E    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 24   752          .byte "OPFORGE-PRVM smoke FAIL status $"  ; [section entry]
+----                              753  failureStatusHexDigits  ; [section entry]
+036E    30 30 30 30 30 30 30 30 0A 00   754          .byte "00000000",10,0  ; [section entry]
+----                              755  failureStatusExprText  ; [section entry]
+0378    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 65 78 70 72 0A 00   756          .byte "OPFORGE-PRVM smoke FAIL status expr",10,0  ; [section entry]
+----                              757  failureStatusNewlineText  ; [section entry]
+039D    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 6E 65 77 6C 69 6E 65 0A 00   758          .byte "OPFORGE-PRVM smoke FAIL status newline",10,0  ; [section entry]
+----                              759  failureStatusEntryText  ; [section entry]
+03C5    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 65 6E 74 72 79 0A 00   760          .byte "OPFORGE-PRVM smoke FAIL status entry",10,0  ; [section entry]
+----                              761  failureStatusArgumentText  ; [section entry]
+03EB    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 61 72 67 75 6D 65 6E 74 0A 00   762          .byte "OPFORGE-PRVM smoke FAIL status argument",10,0  ; [section entry]
+----                              763  failureStatusTokenText  ; [section entry]
+0414    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 74 6F 6B 65 6E 0A 00   764          .byte "OPFORGE-PRVM smoke FAIL status token",10,0  ; [section entry]
+----                              765  failureStatusProgramText  ; [section entry]
+043A    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 70 72 6F 67 72 61 6D 0A 00   766          .byte "OPFORGE-PRVM smoke FAIL status program",10,0  ; [section entry]
+----                              767  failureStatusOverflowText  ; [section entry]
+0462    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 6F 76 65 72 66 6C 6F 77 0A 00   768          .byte "OPFORGE-PRVM smoke FAIL status overflow",10,0  ; [section entry]
+----                              769  failureStatusOpcodeText  ; [section entry]
+048B    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 6F 70 63 6F 64 65 0A 00   770          .byte "OPFORGE-PRVM smoke FAIL status opcode",10,0  ; [section entry]
+----                              771  failureStatusBudgetText  ; [section entry]
+04B2    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 73 74 61 74 75 73 20 62 75 64 67 65 74 0A 00   772          .byte "OPFORGE-PRVM smoke FAIL status budget",10,0  ; [section entry]
+----                              773  failureCountText  ; [section entry]
+04D9    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 63 6F 75 6E 74 0A 00   774          .byte "OPFORGE-PRVM smoke FAIL count",10,0  ; [section entry]
+----                              775  failureCursorText  ; [section entry]
+04F8    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 63 75 72 73 6F 72 0A 00   776          .byte "OPFORGE-PRVM smoke FAIL cursor",10,0  ; [section entry]
+----                              777  failureBytesText  ; [section entry]
+0518    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 62 79 74 65 73 0A 00   778          .byte "OPFORGE-PRVM smoke FAIL bytes",10,0  ; [section entry]
+----                              779  failureBeginText  ; [section entry]
+0537    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 62 65 67 69 6E 0A 00   780          .byte "OPFORGE-PRVM smoke FAIL begin",10,0  ; [section entry]
+----                              781  failureMnemonicText  ; [section entry]
+0556    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 6D 6E 65 6D 6F 6E 69 63 0A 00   782          .byte "OPFORGE-PRVM smoke FAIL mnemonic",10,0  ; [section entry]
+----                              783  failureColStartText  ; [section entry]
+0578    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 63 6F 6C 2D 73 74 61 72 74 0A 00   784          .byte "OPFORGE-PRVM smoke FAIL col-start",10,0  ; [section entry]
+----                              785  failureColEndText  ; [section entry]
+059B    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 63 6F 6C 2D 65 6E 64 0A 00   786          .byte "OPFORGE-PRVM smoke FAIL col-end",10,0  ; [section entry]
+----                              787  failureLexemeOffsetText  ; [section entry]
+05BC    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 6C 65 78 65 6D 65 2D 6F 66 66 73 65 74 0A 00   788          .byte "OPFORGE-PRVM smoke FAIL lexeme-offset",10,0  ; [section entry]
+----                              789  failureLexemeLenText  ; [section entry]
+05E3    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 6C 65 78 65 6D 65 2D 6C 65 6E 0A 00   790          .byte "OPFORGE-PRVM smoke FAIL lexeme-len",10,0  ; [section entry]
+----                              791  failureFinishText  ; [section entry]
+0607    4F 50 46 4F 52 47 45 2D 50 52 56 4D 20 73 6D 6F 6B 65 20 46 41 49 4C 20 66 69 6E 69 73 68 0A 00   792          .byte "OPFORGE-PRVM smoke FAIL finish",10,0  ; [section entry]
+----                              793    ; [section entry]
+----                              794  sourceLine  ; [section entry]
+0627    20 4E 4F 50               795          .byte " NOP"  ; [section entry]
+----                              796    ; [section entry]
+----                              797  lexemeBytes  ; [section entry]
+062B    4E 4F 50                  798          .byte "NOP"  ; [section entry]
+----                              799    ; [section entry]
+----                              800  parserProgram  ; [section entry]
+062E    60                        801          .byte $60  ; [section entry]
+062F    30                        802          .byte $30  ; [section entry]
+0630    62                        803          .byte $62  ; [section entry]
+0631    20                        804          .byte $20  ; [section entry]
+0632    64                        805          .byte $64  ; [section entry]
+0633    00                        806          .byte $00  ; [section entry]
+----                              807  parserProgramEnd  ; [section entry]
+----                              808    ; [section entry]
+----                              809  tokenRecord  ; [section entry]
+0634    00 00                     810          .word 0  ; [section entry]
+0636    00 00                     811          .word 0  ; [section entry]
+0638    00 00 00 02               812          .long 2  ; [section entry]
+063C    00 00 00 05               813          .long 5  ; [section entry]
+0640    00 00 00 00               814          .long 0  ; [section entry]
+0644    00 00 00 03               815          .long 3  ; [section entry]
+----                              816    ; [section entry]
+----                              817  smokeStatus  ; [section entry]
+0648    00 00 00 00               818          .long 0  ; [section entry]
+----                              819  smokeResultCount  ; [section entry]
+064C    00 00 00 00               820          .long 0  ; [section entry]
+----                              821  smokeCursor  ; [section entry]
+0650    00 00 00 00               822          .long 0  ; [section entry]
+----                              823  smokeResultBytes  ; [section entry]
+0654    00 00 00 00               824          .long 0  ; [section entry]
+----                              825    ; [section entry]
+----                              826  requestFrame  ; [section entry]
+0658    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   827          .fill byte, 112, 0  ; [section entry]
+----                              828  resultBuffer  ; [section entry]
+06C8    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   829          .fill byte, 96, 0  ; [section entry]
+----                              830  diagnosticBuffer  ; [section entry]
+0728    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   831          .fill byte, 32, 0  ; [section entry]
+----                              832  resumeBuffer  ; [section entry]
+0748    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   833          .fill byte, 16, 0  ; [section entry]
+----                              834  exprRequestBuffer  ; [section entry]
+0758    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   835          .fill byte, 32, 0  ; [section entry]
+----                              836    ; [section entry]
+----                              837          .endsection
+----                              838          .output "build/prvm_smoke.hunk", format=hunk, sections=entry,code
+----                              839          .endmodule
+
+Lines: 839  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.CloseLibrary  FFFFFE62  prv  lbl 
+main.diagnosticBuffer  0728      prv  lbl 
+main.dosName     02F8      prv  lbl 
+main.exprRequestBuffer  0758      prv  lbl 
+main.failureBeginText  0537      prv  lbl 
+main.failureBytesText  0518      prv  lbl 
+main.failureColEndText  059B      prv  lbl 
+main.failureColStartText  0578      prv  lbl 
+main.failureCountText  04D9      prv  lbl 
+main.failureCursorText  04F8      prv  lbl 
+main.failureFinishText  0607      prv  lbl 
+main.failureLexemeLenText  05E3      prv  lbl 
+main.failureLexemeOffsetText  05BC      prv  lbl 
+main.failureMnemonicText  0556      prv  lbl 
+main.failureStatusArgumentText  03EB      prv  lbl 
+main.failureStatusBudgetText  04B2      prv  lbl 
+main.failureStatusEntryText  03C5      prv  lbl 
+main.failureStatusExprText  0378      prv  lbl 
+main.failureStatusHexDigits  036E      prv  lbl 
+main.failureStatusNewlineText  039D      prv  lbl 
+main.failureStatusOpcodeText  048B      prv  lbl 
+main.failureStatusOverflowText  0462      prv  lbl 
+main.failureStatusProgramText  043A      prv  lbl 
+main.failureStatusText  034E      prv  lbl 
+main.failureStatusTokenText  0414      prv  lbl 
+main.failureText  0335      prv  lbl 
+main.lexemeBytes  062B      prv  lbl 
+main.OpenLibrary  FFFFFDD8  prv  lbl 
+main.parserProgram  062E      prv  lbl 
+main.parserProgramEnd  0634      prv  lbl 
+main.prvmSmokeBuildRequestFrame  008E      prv  lbl 
+main.prvmSmokeCloseDos  0078      prv  lbl 
+main.prvmSmokeDone  0082      prv  lbl 
+main.prvmSmokeFormatStatus  02D0      prv  lbl 
+main.prvmSmokeFormatStatusDigit  02EC      prv  lbl 
+main.prvmSmokeFormatStatusLoop  02DA      prv  lbl 
+main.prvmSmokeHaveDos  0028      prv  lbl 
+main.prvmSmokeInvalid  02CC      prv  lbl 
+main.prvmSmokeInvalidBegin  02A4      prv  lbl 
+main.prvmSmokeInvalidBytes  029E      prv  lbl 
+main.prvmSmokeInvalidColEnd  02B6      prv  lbl 
+main.prvmSmokeInvalidColStart  02B0      prv  lbl 
+main.prvmSmokeInvalidCount  0292      prv  lbl 
+main.prvmSmokeInvalidCursor  0298      prv  lbl 
+main.prvmSmokeInvalidFinish  02C8      prv  lbl 
+main.prvmSmokeInvalidLexemeLen  02C2      prv  lbl 
+main.prvmSmokeInvalidLexemeOffset  02BC      prv  lbl 
+main.prvmSmokeInvalidMnemonic  02AA      prv  lbl 
+main.prvmSmokeInvalidStatus  01F8      prv  lbl 
+main.prvmSmokeInvalidStatusArgument  026E      prv  lbl 
+main.prvmSmokeInvalidStatusBudget  028C      prv  lbl 
+main.prvmSmokeInvalidStatusEntry  0268      prv  lbl 
+main.prvmSmokeInvalidStatusExpr  025C      prv  lbl 
+main.prvmSmokeInvalidStatusNewline  0262      prv  lbl 
+main.prvmSmokeInvalidStatusOpcode  0286      prv  lbl 
+main.prvmSmokeInvalidStatusOverflow  0280      prv  lbl 
+main.prvmSmokeInvalidStatusProgram  027A      prv  lbl 
+main.prvmSmokeInvalidStatusToken  0274      prv  lbl 
+main.prvmSmokePutStr  0086      prv  lbl 
+main.prvmSmokeReportFailure  0072      prv  lbl 
+main.prvmSmokeValidateResult  016A      prv  lbl 
+main.PRVM_ABI_VERSION_V1  0001      prv  lbl 
+main.PRVM_CALL_MODE_START  0000      prv  lbl 
+main.PRVM_ENTRY_KIND_OPASM_STATEMENT  0001      prv  lbl 
+main.PRVM_MAGIC_OPRP  4F505250  prv  lbl 
+main.PRVM_OPCODE_ADVANCE  0020      prv  lbl 
+main.PRVM_OPCODE_BEGIN_STATEMENT  0060      prv  lbl 
+main.PRVM_OPCODE_END  0000      prv  lbl 
+main.PRVM_OPCODE_FINISH_LINE  0064      prv  lbl 
+main.PRVM_OPCODE_LOAD_IDENTIFIER  0030      prv  lbl 
+main.PRVM_OPCODE_SET_MNEMONIC  0062      prv  lbl 
+main.PRVM_PARSER_CONTRACT_VERSION_V2  0002      prv  lbl 
+main.PRVM_REQUEST_FRAME_SIZE  0070      prv  lbl 
+main.PRVM_RESULT_BEGIN_STATEMENT  0001      prv  lbl 
+main.PRVM_RESULT_FINISH_LINE  0005      prv  lbl 
+main.PRVM_RESULT_MNEMONIC_TEXT  0003      prv  lbl 
+main.PRVM_SMOKE_PROGRAM_LEN  0006      prv  lbl 
+main.PRVM_STATUS_BUDGET_EXCEEDED  000C      prv  lbl 
+main.PRVM_STATUS_ENTRY_BOUNDARY  0003      prv  lbl 
+main.PRVM_STATUS_EXPR_REQUEST  0001      prv  lbl 
+main.PRVM_STATUS_INVALID_ARGUMENT  0004      prv  lbl 
+main.PRVM_STATUS_INVALID_PROGRAM  0006      prv  lbl 
+main.PRVM_STATUS_INVALID_TOKEN  0005      prv  lbl 
+main.PRVM_STATUS_NEWLINE_UNSUPPORTED  0002      prv  lbl 
+main.PRVM_STATUS_OK  0000      prv  lbl 
+main.PRVM_STATUS_OUTPUT_OVERFLOW  0007      prv  lbl 
+main.PRVM_STATUS_UNSUPPORTED_OPCODE  0009      prv  lbl 
+main.PRVM_TOKEN_RECORD_SIZE  0014      prv  lbl 
+main.PutStr      FFFFFC4C  prv  lbl 
+main.requestFrame  0658      prv  lbl 
+main.resultBuffer  06C8      prv  lbl 
+main.resumeBuffer  0748      prv  lbl 
+main.RETURN_FAIL  0014      prv  lbl 
+main.RETURN_OK   0000      prv  lbl 
+main.smokeCursor  0650      prv  lbl 
+main.smokeResultBytes  0654      prv  lbl 
+main.smokeResultCount  064C      prv  lbl 
+main.smokeStatus  0648      prv  lbl 
+main.sourceLine  0627      prv  lbl 
+main.start       0000      prv  lbl 
+main.startedText  0304      prv  lbl 
+main.successText  031E      prv  lbl 
+main.SysBase     0004      prv  lbl 
+main.tokenRecord  0634      prv  lbl 
+prvm.amigaos.interpreter.abiMarker  0000      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_FINISHED_FLAG  0014      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_COL_END  0008      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_COL_START  0004      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_FLAG  0000      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_LEXEME_LEN  0010      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_LEXEME_OFFSET  000C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_SIZE  001C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_STEP_COUNT  0018      pub  lbl 
+prvm.amigaos.interpreter.prvmBudgetExceeded  03A0      pub  lbl 
+prvm.amigaos.interpreter.prvmCommitResultRecord  02BC      pub  lbl 
+prvm.amigaos.interpreter.prvmCurrentTokenInvalid  0296      pub  lbl 
+prvm.amigaos.interpreter.prvmCurrentTokenPtr  027C      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitBeginStatement  02C6      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitFinishLine  033A      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitMnemonicText  02FC      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitRecordReturn  0370      pub  lbl 
+prvm.amigaos.interpreter.prvmEntryBoundary  0372      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidArgument  03C2      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidArgumentWithLocals  03AA      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidProgramAtCursor  0388      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidTokenAtCursor  037E      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineScanDone  0140      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineScanLoop  0114      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineUnsupported  0134      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeAdvance  01C4      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeBeginStatement  0236      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeEnd  01B6      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeFinishLine  0266      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeLoadIdentifier  01D0      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeSetMnemonic  024C      pub  lbl 
+prvm.amigaos.interpreter.prvmOutputOverflow  0392      pub  lbl 
+prvm.amigaos.interpreter.prvmProgramLoop  0160      pub  lbl 
+prvm.amigaos.interpreter.prvmResultRecordPtr  029E      pub  lbl 
+prvm.amigaos.interpreter.prvmReturnWithLocals  03B6      pub  lbl 
+prvm.amigaos.interpreter.prvmStartProgram  015A      pub  lbl 
+prvm.amigaos.interpreter.prvmUnsupportedOpcode  0396      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateLexemeBuffer  00B2      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateProgramBuffer  00C8      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateTokenBuffer  009C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_ABI_VERSION_V1  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_CALL_MODE_START  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_DEFAULT_STEP_BUDGET  0100      pub  lbl 
+prvm.amigaos.interpreter.PRVM_ENTRY_KIND_OPASM_STATEMENT  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_ABI_VERSION  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_CALL_MODE  0008      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_DIAGNOSTIC_PTR  003C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_ENTRY_KIND  000A      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_EXPR_REQUEST_PTR  004C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_FLAGS  0064      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_FRAME_SIZE  0006      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LEXEME_LEN  0028      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LEXEME_PTR  0024      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LINE_NUM  000C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_MAGIC  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PARSER_CONTRACT_VERSION  005C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PROGRAM_LEN  0030      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PROGRAM_PTR  002C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESULT_CAPACITY  0038      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESULT_PTR  0034      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESUME_PTR  0044      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_SOURCE_LEN  0014      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_SOURCE_PTR  0010      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_STEP_BUDGET  0060      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_COUNT  001C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_PTR  0018      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_RECORD_SIZE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_MAGIC_OPRP  4F505250  pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_ADVANCE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_BEGIN_STATEMENT  0060      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_END  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_FINISH_LINE  0064      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_LOAD_IDENTIFIER  0030      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_PARSE_OPTIONAL_LABEL  0040      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_SET_MNEMONIC  0062      pub  lbl 
+prvm.amigaos.interpreter.PRVM_PARSER_CONTRACT_VERSION_V2  0002      pub  lbl 
+prvm.amigaos.interpreter.PRVM_REQUEST_FRAME_SIZE  0070      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_BEGIN_STATEMENT  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_FINISH_LINE  0005      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_MNEMONIC_TEXT  0003      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_RECORD_SIZE  0020      pub  lbl 
+prvm.amigaos.interpreter.prvm_run_68000  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_BUDGET_EXCEEDED  000C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_ENTRY_BOUNDARY  0003      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_EXPR_REQUEST  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_ARGUMENT  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_PROGRAM  0006      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_TOKEN  0005      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_NEWLINE_UNSUPPORTED  0002      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_OK  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_OUTPUT_OVERFLOW  0007      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_UNSUPPORTED_OPCODE  0009      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_KIND_IDENTIFIER  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_RECORD_SIZE  0014      pub  lbl 
+
+Total memory is 0 bytes
+
+GENERATED OUTPUT
+
+(none)

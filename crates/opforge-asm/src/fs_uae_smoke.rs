@@ -62,6 +62,11 @@ const FS_UAE_EXAMPLES: &[(&str, &str, &str)] = &[
         "examples/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm",
         "68020",
     ),
+    (
+        "prvm_smoke",
+        "examples/motorola68000/amigaos/prvm/prvm_smoke.asm",
+        "68020",
+    ),
 ];
 
 pub(crate) struct FsUaeSmokeRun {

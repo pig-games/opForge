@@ -17,3 +17,8 @@ Important pickup list after `v0.3`:
 - screen, interrupt, and OS-takeover examples such as `InterleavedSimpleScreen`,
   `DoubleBufferingScreen`, `KeyboardAndScreen`, `KeyboardTimerAndScreen`, and
   `RAWImageView`
+- broader Hunk relocation support for symbolic code/data references. The v0.3
+  matrix currently supports only a narrow set of reloc32 forms; PRVM native
+  smoke work exposed remaining gaps for forms such as symbolic immediate
+  register loads (`MOVE.L #label,Dn`), some symbolic instruction operands, and
+  symbolic `.long` request-frame pointer fields.

@@ -186,7 +186,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - the interpreter validates the v0.1 caller-owned request frame, rejects newline input before execution, preserves callee-owned registers, and returns deterministic ABI statuses for invalid arguments, entry-boundary mismatches, malformed tokens, invalid programs, unsupported opcodes, output overflow, and step-budget exhaustion
     - the implemented opcode subset is intentionally narrow: `BeginStatement`, `ParseOptionalLeadingLabel` as a first-slice no-op, `LoadIdentifier`, `SetMnemonic`, `Advance`, `FinishLine`, and `End`
     - result emission writes only caller-owned 32-byte result records for `BEGIN_STATEMENT`, `MNEMONIC_TEXT`, and `FINISH_LINE`; expression sub-calls and operand records remain deferred to Work item 4
-    - generated and committed the reference Hunk/listing artifacts required by the example reference workflow at `examples/reference/motorola68000/amigaos/prvm_interpreter.hunk` and `.lst`
+    - generated and committed the initial standalone reference Hunk/listing artifacts required by the example reference workflow at `examples/reference/motorola68000/amigaos/prvm_interpreter.hunk` and `.lst`; these are superseded by Work item 3a, where the interpreter becomes an importable module and the executable smoke wrapper owns the reference artifacts
     - extended the host ABI decode tests with an indented no-expression `NOP` statement so Rust PRVM v2 treats it as a mnemonic rather than a column-1 bare label
     - no AmigaOS CLI/file-I/O harness and no native expression parser were added in this work item
   - Validation evidence:
@@ -208,6 +208,55 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - deterministic failure statuses exist for invalid arguments, invalid program bytes, unsupported opcodes, output-buffer overflow, newline input, and entry-boundary mismatch
     - host-side tests decode the native output and compare it with Rust PRVM v2 for the same line
     - no AmigaOS CLI/file I/O harness is added in this work item
+
+- [x] Work item 3a: add a minimal FS-UAE smoke executable for the first native PRVM slice
+  - Source requirement or finding IDs: user-requested native/UAE smoke coverage before expression work; existing `external_fs_uae_hunk_smoke` infrastructure; Work item 3 `prvm_run_68000` callable module.
+  - Validation: see focused smoke/reference tests below.
+  - Definition of done: see detailed criteria below for this work item.
+  - Expected files:
+    - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
+    - `examples/motorola68000/amigaos/prvm/prvm_smoke.asm`
+    - `examples/reference/motorola68000/amigaos/prvm_smoke.hunk` and `.lst`
+    - `crates/opforge-asm/src/fs_uae_smoke.rs`
+    - `crates/opforge-asm/src/tests.rs`
+    - `documentation/amigaos-hunk-post-v0_3-pickups.md`
+  - Validation details:
+    - focused PRVM smoke assembly/reference test for the `prvm_run_68000` call surface
+    - focused m68k example reference-workflow test
+    - existing opt-in FS-UAE smoke test entry point, with a clean skip when `OPFORGE_FS_UAE_SMOKE` is not set
+    - focused host-side native PRVM ABI decode tests
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture`
+  - Implementation notes:
+    - converted `prvm_interpreter.asm` into an importable module by removing the root-only `.output` directive and keeping the focused test as a source-surface check for the exported native entrypoint
+    - added `prvm_smoke.asm` as a minimal `.cpu 68020` AmigaOS process-entry smoke executable that opens `dos.library`, builds a caller-owned PRVM request frame for the indented `" NOP"` no-expression statement, calls `prvm_run_68000`, validates the three emitted result records, and prints `OPFORGE-PRVM smoke OK` on success
+    - registered `prvm_smoke` with the existing opt-in FS-UAE Hunk smoke runner and added an output-marker assertion for `OPFORGE-PRVM smoke OK`
+    - generated `prvm_smoke` Hunk/listing references and removed the superseded standalone `prvm_interpreter` references
+    - fixed the native result-record helper so successful nonzero result offsets clear `D0` before returning to emit callers; the real FS-UAE run exposed the bug as a native `OPFORGE-PRVM smoke FAIL status $00000020` before the fix
+    - kept this checkpoint narrower than the later Work item 6 demo/report harness: no file I/O, no expression pause/resume, no native expression parser, and no broad report format
+    - recorded a future Hunk post-v0.3 pickup note for symbolic code/data relocation limitations exposed while making the smoke executable Hunk-compatible
+  - Validation evidence:
+    - `cargo test -p asm motorola68020_prvm_smoke_example_assembles_with_native_call_surface -- --nocapture` passed
+    - `cargo test -p asm motorola68020_prvm_interpreter_example_assembles_first_native_slice -- --nocapture` passed
+    - `cargo test -p asm motorola68000_family_example_programs_assemble_in_reference_workflow -- --nocapture` passed
+    - `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_hunk_smoke -- --nocapture` passed; the run completed `helloworld`, `writefile`, `tkpkg_debug_cli`, and `prvm_smoke`, and the PRVM smoke assertion observed `OPFORGE-PRVM smoke OK` from native AmigaOS execution
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed (`6` focused host-side ABI decode tests)
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed (`2` private executor tests plus `7` integration tests)
+    - `cargo fmt --all -- --check` passed after applying `cargo fmt --all`
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the existing allowed warnings for `registry` (`RUSTSEC-2025-0026`) and `rand` (`RUSTSEC-2026-0097`)
+    - `scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed
+    - `cargo test --workspace` remains accepted for this WI with `866 passed; 1 failed`, where the only failure is the previously user-waived baseline `asm::tests::examples_match_reference_outputs` broad reference mismatch
+  - Plan-compliance review evidence:
+    - first `plan-compliance-reviewer` pass returned `FAIL` only because this plan section still contained pending bookkeeping; the reviewer found no separate scope, behavior, or validation blocker for Work item 3a
+    - `plan-compliance-reviewer` rerun returned `PASS`; Work item 3a remains limited to the importable `prvm_run_68000` smoke executable path, replacement `prvm_smoke` reference artifacts, focused FS-UAE/native validation, and bookkeeping only, with the previously accepted `asm::tests::examples_match_reference_outputs` workspace-test mismatch still the sole recorded exception for this work item
+  - Commit outcome:
+    - this boundary commit records the required Work item 3a implementation after the compliance `PASS`
+  - Definition of done:
+    - the smoke executable is a root Hunk example that calls the importable `prvm_run_68000` module through caller-owned buffers
+    - the smoke validates the first no-expression native PRVM result path before printing the success marker
+    - the smoke is wired into the existing opt-in FS-UAE smoke runner without making emulator execution a default dependency
+    - reference artifacts cover the root smoke executable, while the interpreter remains importable and is not treated as a standalone example
+    - the slice does not broaden PRVM semantics beyond Work item 3
 
 - [ ] Work item 4: implement host-mediated opcore expression sub-calls for native PRVM
   - Source requirement or finding IDs: Work item 1 pause/resume ABI; Rust PRVM v2 `ParseOperandExprRange`; WI-6 typed expression sub-call assertions.
@@ -295,6 +344,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 - [x] Milestone 1: native PRVM ABI/spec authority exists and passes quality review (`Work item 1`).
 - [x] Milestone 2: host-side ABI decode and parity fixtures exist before native assembly lands (`Work item 2`).
 - [x] Milestone 3: `prvm_run_68000` can execute one delegated newline-free statement path over caller-owned buffers (`Work item 3`).
+- [x] Milestone 3a: the first native PRVM slice has a minimal opt-in FS-UAE smoke executable before expression work begins (`Work item 3a`).
 - [ ] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).
 - [ ] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).
 - [ ] Milestone 6: an optional AmigaOS demo/report harness exists only after parity is stable (`Work item 6`).

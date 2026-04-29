@@ -344,6 +344,24 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `cargo test --workspace` retained the previously accepted broad baseline exception: `866 passed; 1 failed`, with the remaining failure still in `asm::tests::examples_match_reference_outputs`
   - Current sub-slice 4d remaining work before closing Work item 4:
     - broaden `Expr::Error` parity through the covered host-mediated expression service path beyond the empty-range error slot
+  - Current sub-slice 4e progress:
+    - broadened host-mediated `Expr::Error` parity with focused Rust/test-tooling ABI coverage only; no native production expression parser or FS-UAE smoke shim expansion was added
+    - added malformed non-empty operand coverage for `LDA 1 +` that drives token range `1..3` through `NativePrvmHostExpressionBridge`
+    - verified the bridge writes a ready-error expression-result slot for the host-owned native slot and preserves the non-empty expression parser error through native result decoding
+    - compared the decoded native result back to Rust PRVM v2 so the normalized error message and end-of-line span remain host-authority driven
+  - Current sub-slice 4e validation evidence:
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed, including the new non-empty malformed expression error slot test (`10` focused tests total)
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed (`2` unit tests and `7` integration tests)
+    - `/Users/erik/Code/Retro/opForge/.venv/bin/python scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed before the final evidence update
+    - `cargo fmt --all` applied one assertion formatting change, then `cargo fmt --all -- --check` passed
+    - `cargo test -p vm` passed (`292` unit tests, `10` native ABI integration tests, and `7` parser parity integration tests)
+    - `cargo clippy -p vm --all-targets --all-features -- -D warnings` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the existing allowed `registry` and `rand` warnings
+    - `cargo test --workspace` retained the previously accepted broad baseline exception: `866 passed; 1 failed`, with the remaining failure still in `asm::tests::examples_match_reference_outputs`
+    - Plan Compliance Reviewer passed for this 4e boundary slice and allowed committing only `crates/opforge-vm/tests/parser_vm_native_abi.rs` plus this plan ledger update
+  - Current sub-slice 4e remaining work before closing Work item 4:
+    - commit this compliant boundary slice
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - host-side bridge/decode tests in the existing native PRVM test surface

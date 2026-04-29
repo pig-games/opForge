@@ -849,6 +849,116 @@ fn native_prvm_abi_host_bridge_preserves_expr_error_slots() {
 }
 
 #[test]
+fn native_prvm_abi_host_bridge_preserves_non_empty_expr_error_slot_parity() {
+    let model = model_for_native_abi();
+    let register_checker = register_checker_from_fn(families::mos6502::is_register);
+    let source_line = " LDA 1 +";
+    let rust_ast = parse_v2_statement(&model, source_line, &register_checker)
+        .expect("Rust PRVM v2 should preserve malformed operand expression as AST error");
+    let LineAst::Statement(statement) = &rust_ast else {
+        panic!("expected statement AST: {rust_ast:?}");
+    };
+    assert!(matches!(
+        statement.operands.first(),
+        Some(Expr::Error(_, _))
+    ));
+
+    let mut bridge = NativePrvmHostExpressionBridge::from_source_line(
+        &model,
+        "m6502",
+        None,
+        source_line,
+        1,
+        &register_checker,
+        Some("LDA"),
+    )
+    .expect("bridge should tokenize malformed native source line");
+
+    let mut request_record = Vec::new();
+    append_expr_request_record(
+        &mut request_record,
+        0,
+        3,
+        1,
+        3,
+        Span {
+            line: 1,
+            col_start: 9,
+            col_end: 9,
+        },
+    );
+    let mut result_slot = vec![0; NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE];
+    let bridged = bridge
+        .handle_expression_request_record(&request_record, &mut result_slot)
+        .expect("host bridge should preserve malformed operand expression as Expr::Error");
+    assert_eq!(
+        bridged.slot_state,
+        NativePrvmExprSlotState::ReadyExpressionError
+    );
+    assert_eq!(bridged.host_expr_handle, 0);
+    assert!(matches!(
+        bridge.expression_for_native_slot(3),
+        Some(Expr::Error(message, _)) if !message.is_empty()
+    ));
+
+    let decoded_slot = decode_expr_result_slot(&result_slot).expect("slot should decode");
+    assert_eq!(
+        decoded_slot.state,
+        NativeExprSlotState::ReadyExpressionError
+    );
+    assert_eq!(decoded_slot.expr_slot_index, 3);
+    assert_eq!(decoded_slot.host_expr_handle, 0);
+
+    let mut lexemes = Vec::new();
+    let mnemonic_ref = append_lexeme(&mut lexemes, "LDA");
+    let mut records = Vec::new();
+    append_record(
+        &mut records,
+        RESULT_BEGIN_STATEMENT,
+        Span {
+            line: 1,
+            col_start: 0,
+            col_end: 0,
+        },
+        [0, 0, 0, 0],
+    );
+    append_record(
+        &mut records,
+        RESULT_MNEMONIC_TEXT,
+        Span {
+            line: 1,
+            col_start: 2,
+            col_end: 5,
+        },
+        [mnemonic_ref.0, mnemonic_ref.1, 0, 0],
+    );
+    append_record(
+        &mut records,
+        RESULT_OPERAND_EXPR_SLOT,
+        Span {
+            line: 1,
+            col_start: 6,
+            col_end: 8,
+        },
+        [0, 3, 1, 3],
+    );
+    append_record(
+        &mut records,
+        RESULT_FINISH_LINE,
+        Span {
+            line: 1,
+            col_start: 8,
+            col_end: 8,
+        },
+        [0, 0, 0, 0],
+    );
+
+    let decoded = decode_statement_result(&records, &lexemes, bridge.expression_slots())
+        .expect("native result should decode through host-filled error expression slot");
+    assert_eq!(format!("{decoded:?}"), format!("{rust_ast:?}"));
+}
+
+#[test]
 fn native_prvm_abi_maps_newline_and_entry_boundary_statuses() {
     let newline = decode_status_return(STATUS_NEWLINE_UNSUPPORTED, 0, 6, 0);
     assert_eq!(newline.status, STATUS_NEWLINE_UNSUPPORTED);

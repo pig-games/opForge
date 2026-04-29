@@ -327,6 +327,23 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - return to the plan-proper parity path by extending expression service coverage beyond one immediate decimal token
     - add multi-operand native pause/resume coverage driven by host-owned expression slots
     - broaden `Expr::Error` parity through the covered expression service path
+  - Current sub-slice 4d progress:
+    - returned to the plan-proper host-mediated expression path with focused Rust/test-tooling ABI coverage only; no native production expression parser or FS-UAE smoke shim expansion was added
+    - added m68k `MOVE.B D0,D1` coverage that services two native expression-request records through `NativePrvmHostExpressionBridge`
+    - verified the bridge stores two host-owned expression handles/native slots and writes two ready expression-result slots for resume
+    - decoded a native result containing two `PRVM_RESULT_OPERAND_EXPR_SLOT` records back into the same Rust PRVM v2 statement shape for the m68020 authority parser
+  - Current sub-slice 4d validation evidence:
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed, including the new multi-operand host-bridge slot test (`9` focused tests total)
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed (`2` unit tests and `7` integration tests)
+    - `cargo fmt --all -- --check` passed
+    - `/Users/erik/Code/Retro/opForge/.venv/bin/python scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed
+    - `cargo test -p vm` passed (`292` unit tests, `9` native ABI integration tests, and `7` parser parity integration tests)
+    - `cargo clippy -p vm --all-targets --all-features -- -D warnings` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the existing allowed `registry` and `rand` warnings
+    - `cargo test --workspace` retained the previously accepted broad baseline exception: `866 passed; 1 failed`, with the remaining failure still in `asm::tests::examples_match_reference_outputs`
+  - Current sub-slice 4d remaining work before closing Work item 4:
+    - broaden `Expr::Error` parity through the covered host-mediated expression service path beyond the empty-range error slot
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - host-side bridge/decode tests in the existing native PRVM test surface
@@ -344,6 +361,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `plan-compliance-reviewer` returned `PASS` for the boundary 4b slice limited to the host-side `vm::native_prvm` expression bridge helper, focused `LDA #42` host-bridge AST reconstruction, and first empty-range `Expr::Error` slot preservation; Work item 4 remains open for multi-operand pause/resume coverage and broader `Expr::Error` parity
     - `plan-quality-reviewer` returned `PASS` for the plan-contract clarification that permits only a smoke-only one-token literal pass-back shim while keeping production expression parsing Rust/opcore-owned
     - `plan-compliance-reviewer` returned `PASS` for the boundary 4c slice limited to the native smoke caller-side `#42` pass-back shim, focused assembly/reference checks, FS-UAE smoke validation, and refreshed `prvm_smoke` references; Work item 4 remains open for the plan-proper host-mediated parity path, multi-operand coverage, and broader `Expr::Error` parity
+    - `plan-compliance-reviewer` returned `PASS` for the boundary 4d slice limited to multi-operand host-bridge ABI coverage for m68020 `MOVE.B D0,D1`, focused validation, and plan evidence; Work item 4 remains open for broader host-mediated `Expr::Error` parity
   - Commit outcome:
     - native PRVM can request Rust/opcore expression parsing over explicit operand token ranges and resume with returned expression slots while preserving Rust PRVM v2 AST and `Expr::Error` behavior
   - Definition of done:

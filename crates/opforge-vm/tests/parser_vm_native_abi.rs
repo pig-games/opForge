@@ -81,7 +81,16 @@ fn parse_v2_statement(
     line: &str,
     register_checker: &RegisterChecker,
 ) -> Result<LineAst, ParseError> {
-    parse_statement_line_with_model(model, "m6502", None, line, 1, register_checker)
+    parse_v2_statement_for_cpu(model, "m6502", line, register_checker)
+}
+
+fn parse_v2_statement_for_cpu(
+    model: &HierarchyExecutionModel,
+    cpu_id: &str,
+    line: &str,
+    register_checker: &RegisterChecker,
+) -> Result<LineAst, ParseError> {
+    parse_statement_line_with_model(model, cpu_id, None, line, 1, register_checker)
         .map(|(line_ast, _, _)| line_ast)
 }
 
@@ -648,6 +657,143 @@ fn native_prvm_abi_host_bridge_fills_expression_slot_from_rust_parser() {
 
     let decoded = decode_statement_result(&records, &lexemes, bridge.expression_slots())
         .expect("native result should decode through host-filled expression slot");
+    assert_eq!(format!("{decoded:?}"), format!("{rust_ast:?}"));
+}
+
+#[test]
+fn native_prvm_abi_host_bridge_fills_multiple_expression_slots_from_rust_parser() {
+    let model = model_for_native_abi();
+    let register_checker = register_checker_from_fn(families::m68k::is_register);
+    let source_line = "    MOVE.B D0,D1";
+    let rust_ast = parse_v2_statement_for_cpu(&model, "m68020", source_line, &register_checker)
+        .expect("Rust PRVM v2 should parse m68k multi-operand line");
+    let LineAst::Statement(statement) = &rust_ast else {
+        panic!("expected statement AST: {rust_ast:?}");
+    };
+    assert_eq!(statement.operands.len(), 2);
+
+    let mut bridge = NativePrvmHostExpressionBridge::from_source_line(
+        &model,
+        "m68020",
+        None,
+        source_line,
+        1,
+        &register_checker,
+        Some("MOVE.B"),
+    )
+    .expect("bridge should tokenize native m68k source line");
+
+    let requests = [
+        (
+            0,
+            0,
+            1,
+            2,
+            Span {
+                line: 1,
+                col_start: 14,
+                col_end: 15,
+            },
+        ),
+        (
+            1,
+            1,
+            3,
+            4,
+            Span {
+                line: 1,
+                col_start: 17,
+                col_end: 17,
+            },
+        ),
+    ];
+
+    for (expected_handle, (operand_index, slot_index, start_token, end_token, boundary_span)) in
+        requests.into_iter().enumerate()
+    {
+        let mut request_record = Vec::new();
+        append_expr_request_record(
+            &mut request_record,
+            operand_index,
+            slot_index,
+            start_token,
+            end_token,
+            boundary_span,
+        );
+        let mut result_slot = vec![0; NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE];
+        let bridged = bridge
+            .handle_expression_request_record(&request_record, &mut result_slot)
+            .expect("host bridge should parse requested m68k operand expression");
+        assert_eq!(bridged.slot_state, NativePrvmExprSlotState::ReadyExpression);
+        assert_eq!(bridged.host_expr_handle, expected_handle as u32);
+        assert!(matches!(
+            bridge.expression_for_native_slot(slot_index),
+            Some(Expr::Register(register, _))
+                if register == if operand_index == 0 { "D0" } else { "D1" }
+        ));
+
+        let decoded_slot = decode_expr_result_slot(&result_slot).expect("slot should decode");
+        assert_eq!(decoded_slot.state, NativeExprSlotState::ReadyExpression);
+        assert_eq!(decoded_slot.expr_slot_index, slot_index);
+        assert_eq!(decoded_slot.host_expr_handle, expected_handle as u32);
+    }
+
+    let mut lexemes = Vec::new();
+    let mnemonic_ref = append_lexeme(&mut lexemes, "MOVE.B");
+    let mut records = Vec::new();
+    append_record(
+        &mut records,
+        RESULT_BEGIN_STATEMENT,
+        Span {
+            line: 1,
+            col_start: 0,
+            col_end: 0,
+        },
+        [0, 0, 0, 0],
+    );
+    append_record(
+        &mut records,
+        RESULT_MNEMONIC_TEXT,
+        Span {
+            line: 1,
+            col_start: 5,
+            col_end: 11,
+        },
+        [mnemonic_ref.0, mnemonic_ref.1, 0, 0],
+    );
+    append_record(
+        &mut records,
+        RESULT_OPERAND_EXPR_SLOT,
+        Span {
+            line: 1,
+            col_start: 12,
+            col_end: 14,
+        },
+        [0, 0, 1, 2],
+    );
+    append_record(
+        &mut records,
+        RESULT_OPERAND_EXPR_SLOT,
+        Span {
+            line: 1,
+            col_start: 15,
+            col_end: 17,
+        },
+        [1, 1, 3, 4],
+    );
+    append_record(
+        &mut records,
+        RESULT_FINISH_LINE,
+        Span {
+            line: 1,
+            col_start: 17,
+            col_end: 17,
+        },
+        [0, 0, 0, 0],
+    );
+
+    let decoded = decode_statement_result(&records, &lexemes, bridge.expression_slots())
+        .expect("native result should decode through host-filled m68k expression slots");
     assert_eq!(format!("{decoded:?}"), format!("{rust_ast:?}"));
 }
 

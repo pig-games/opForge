@@ -263,7 +263,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - reference artifacts cover the root smoke executable, while the interpreter remains importable and is not treated as a standalone example
     - the slice does not broaden PRVM semantics beyond Work item 3
 
-- [ ] Work item 4: implement host-mediated opcore expression sub-calls for native PRVM
+- [x] Work item 4: implement host-mediated opcore expression sub-calls for native PRVM
   - Source requirement or finding IDs: Work item 1 pause/resume ABI; Rust PRVM v2 `ParseOperandExprRange`; WI-6 typed expression sub-call assertions.
   - Validation: see the focused expression pause/resume tests and full quality gates listed below.
   - Definition of done: see detailed criteria below for this work item.
@@ -361,7 +361,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `cargo test --workspace` retained the previously accepted broad baseline exception: `866 passed; 1 failed`, with the remaining failure still in `asm::tests::examples_match_reference_outputs`
     - Plan Compliance Reviewer passed for this 4e boundary slice and allowed committing only `crates/opforge-vm/tests/parser_vm_native_abi.rs` plus this plan ledger update
   - Current sub-slice 4e remaining work before closing Work item 4:
-    - commit this compliant boundary slice
+    - complete; committed as `46d8e2f7 Add native PRVM expression error bridge parity`
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - host-side bridge/decode tests in the existing native PRVM test surface
@@ -380,6 +380,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `plan-quality-reviewer` returned `PASS` for the plan-contract clarification that permits only a smoke-only one-token literal pass-back shim while keeping production expression parsing Rust/opcore-owned
     - `plan-compliance-reviewer` returned `PASS` for the boundary 4c slice limited to the native smoke caller-side `#42` pass-back shim, focused assembly/reference checks, FS-UAE smoke validation, and refreshed `prvm_smoke` references; Work item 4 remains open for the plan-proper host-mediated parity path, multi-operand coverage, and broader `Expr::Error` parity
     - `plan-compliance-reviewer` returned `PASS` for the boundary 4d slice limited to multi-operand host-bridge ABI coverage for m68020 `MOVE.B D0,D1`, focused validation, and plan evidence; Work item 4 remains open for broader host-mediated `Expr::Error` parity
+    - `plan-compliance-reviewer` returned `PASS` for the boundary 4e slice limited to non-empty malformed `Expr::Error` host-bridge parity for `LDA 1 +`, focused validation, and plan evidence; Work item 4 is complete after commit `46d8e2f7`
   - Commit outcome:
     - native PRVM can request Rust/opcore expression parsing over explicit operand token ranges and resume with returned expression slots while preserving Rust PRVM v2 AST and `Expr::Error` behavior
   - Definition of done:
@@ -449,7 +450,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 - [x] Milestone 2: host-side ABI decode and parity fixtures exist before native assembly lands (`Work item 2`).
 - [x] Milestone 3: `prvm_run_68000` can execute one delegated newline-free statement path over caller-owned buffers (`Work item 3`).
 - [x] Milestone 3a: the first native PRVM slice has a minimal opt-in FS-UAE smoke executable before expression work begins (`Work item 3a`).
-- [ ] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).
+- [x] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).
 - [ ] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).
 - [ ] Milestone 6: an optional AmigaOS demo/report harness exists only after parity is stable (`Work item 6`).
 

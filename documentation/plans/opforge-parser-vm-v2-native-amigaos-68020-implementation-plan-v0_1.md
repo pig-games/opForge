@@ -45,11 +45,16 @@ opcore expression parser, and does not become a whole-file assembler pass.
 - Tokenization remains outside this plan except for consuming the already
   documented token-buffer/lexeme-buffer shape produced by the tokenizer-native
   path or an equivalent host-side fixture.
-- Expression parsing remains Rust/opcore-owned. Native PRVM requests expression
-  parsing only through a host-mediated sub-call protocol over explicit operand
-  token ranges.
-- No native expression parser, native instruction encoder, macro expander,
-  module graph, or full assembler pass may be introduced by this plan.
+- Expression parsing remains Rust/opcore-owned for production behavior. Native
+  PRVM requests expression parsing only through a host-mediated sub-call protocol
+  over explicit operand token ranges. A smoke-only native caller harness may
+  synthesize a literal expression slot from a fixed one-token fixture to prove
+  the pass-back ABI in FS-UAE, but that shim is not production expression
+  parsing and must not move into interpreter control flow.
+- No production native expression parser, native instruction encoder, macro
+  expander, module graph, or full assembler pass may be introduced by this plan.
+  The only exception is the smoke-only one-token literal pass-back shim described
+  above.
 - FS-UAE or other emulator execution may be opt-in evidence, but it must not
   become a default required dependency for local or CI quality gates.
 - Fixture/reference regeneration is allowed only when a work item intentionally
@@ -284,7 +289,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - drive the host bridge through multi-operand native pause/resume coverage with host-owned expression slots
     - preserve more `Expr::Error` parity cases through the host bridge, beyond the first empty-range error slot
   - Current sub-slice 4b progress:
-    - added `vm::native_prvm` as the host-side bridge helper for native PRVM expression requests
+    - added `vm::native_prvm` as a non-native Rust/test-tooling bridge helper for native PRVM expression request buffers; this helper is not part of the FS-UAE Amiga runtime and does not imply Rust is present inside the native 68020 process
     - the bridge decodes a 32-byte native expression-request record, validates the token range against Rust parser tokens, invokes the existing Rust/opcore operand expression parser, stores the parsed `Expr` by host handle and native slot index, and writes a 32-byte native expression-result slot for resume
     - expression-result slot state now distinguishes ready expressions from ready `Expr::Error` results so native resume can preserve error slots without parsing expressions locally
     - focused ABI coverage proves `LDA #42` is parsed through the bridge and decoded back into the same Rust PRVM v2 statement shape through an `OPERAND_EXPR_SLOT` record
@@ -302,6 +307,26 @@ opcore expression parser, and does not become a whole-file assembler pass.
   - Current sub-slice 4b remaining work before closing Work item 4:
     - add multi-operand native pause/resume coverage driven by host-owned expression slots
     - broaden `Expr::Error` parity through the host bridge beyond the empty-range slot covered in this slice
+  - Current sub-slice 4c progress:
+    - replaced the `prvm_smoke` hardcoded expression-result fill with a smoke-only native 68020 caller-side pass-back shim for the first literal-only fixture case
+    - the native smoke now reads the expression request record, validates that the requested token range contains exactly one token, decodes the fixed immediate decimal fixture lexeme shaped like `#42`, writes a caller-owned native expression slot table record, writes the ABI expression-result slot, and resumes `prvm_run_68000`
+    - the smoke validates that the native expression slot table contains a ready immediate-decimal expression with value `42`, source span `1:6..9`, and the requested native slot index before accepting the resumed parser result
+    - this proves the native Amiga caller can pass a simple literal expression value back to the native PRVM without Rust/opcore participating in the native runtime; it does not replace the production Rust/opcore host-mediated expression service required by the plan-proper path
+  - Current sub-slice 4c validation evidence:
+    - `cargo test -p asm motorola68020_prvm_smoke_example_assembles_with_native_call_surface -- --nocapture` passed after adding source-surface assertions for the native expression service and native expression slot validation
+    - `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_hunk_smoke -- --nocapture` passed for `helloworld`, `writefile`, `tkpkg_debug_cli`, and native literal-passback `prvm_smoke`
+    - regenerated `prvm_smoke` Hunk/listing references from the native literal-passback output
+    - `cargo test -p asm motorola68000_family_example_programs_assemble_in_reference_workflow -- --nocapture` passed
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed (`2` unit tests and `7` integration tests)
+    - `cargo fmt --all -- --check` passed
+    - `/Users/erik/Code/Retro/opForge/.venv/bin/python scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed before this plan-contract clarification
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the existing allowed `registry` and `rand` warnings
+    - `cargo test --workspace` retained the previously accepted broad baseline exception: `866 passed; 1 failed`, with the remaining failure still in `asm::tests::examples_match_reference_outputs`; focused investigation confirmed the refreshed `prvm_smoke.hunk` matches and the broad sweep still includes `tkpkg_debug_cli` reference drift outside this slice
+  - Current sub-slice 4c remaining work before closing Work item 4:
+    - return to the plan-proper parity path by extending expression service coverage beyond one immediate decimal token
+    - add multi-operand native pause/resume coverage driven by host-owned expression slots
+    - broaden `Expr::Error` parity through the covered expression service path
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - host-side bridge/decode tests in the existing native PRVM test surface
@@ -317,6 +342,8 @@ opcore expression parser, and does not become a whole-file assembler pass.
   - Plan-compliance review evidence:
     - `plan-compliance-reviewer` returned `PASS` for the boundary 4a slice limited to native expression-request/resume mechanics, caller-filled expression slots, and `LDA #42` FS-UAE smoke validation; Work item 4 remains open for the Rust/opcore host bridge, multi-operand coverage, and `Expr::Error` parity
     - `plan-compliance-reviewer` returned `PASS` for the boundary 4b slice limited to the host-side `vm::native_prvm` expression bridge helper, focused `LDA #42` host-bridge AST reconstruction, and first empty-range `Expr::Error` slot preservation; Work item 4 remains open for multi-operand pause/resume coverage and broader `Expr::Error` parity
+    - `plan-quality-reviewer` returned `PASS` for the plan-contract clarification that permits only a smoke-only one-token literal pass-back shim while keeping production expression parsing Rust/opcore-owned
+    - `plan-compliance-reviewer` returned `PASS` for the boundary 4c slice limited to the native smoke caller-side `#42` pass-back shim, focused assembly/reference checks, FS-UAE smoke validation, and refreshed `prvm_smoke` references; Work item 4 remains open for the plan-proper host-mediated parity path, multi-operand coverage, and broader `Expr::Error` parity
   - Commit outcome:
     - native PRVM can request Rust/opcore expression parsing over explicit operand token ranges and resume with returned expression slots while preserving Rust PRVM v2 AST and `Expr::Error` behavior
   - Definition of done:
@@ -410,7 +437,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 - no advancing to the next item on failed validation
 - checkbox updates are mandatory bookkeeping
 - do not start native assembly before the native PRVM ABI/spec from Work item 1 passes its validation
-- do not implement or embed native expression parsing; use only the host-mediated Rust/opcore sub-call protocol
+- do not implement or embed production native expression parsing; use only the host-mediated Rust/opcore sub-call protocol, except for the smoke-only one-token literal pass-back shim allowed above
 - do not parse raw whole-file input or newline-containing source in the first native PRVM ABI
 - do not move CPU-family statement semantics into native interpreter branches; keep specialization in packages and PRVM bytecode
 - do not add the AmigaOS CLI/file I/O harness before host-side native PRVM parity is stable

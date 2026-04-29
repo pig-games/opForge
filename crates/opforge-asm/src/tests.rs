@@ -8858,6 +8858,8 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
     assert!(listing.contains("prvm.amigaos.interpreter.prvm_run_68000"));
     assert!(listing.contains("PRVM_OPCODE_PARSE_OPERAND_EXPR"));
     assert!(listing.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
+    assert!(listing.contains("prvmSmokeServiceExprRequest"));
+    assert!(listing.contains("PRVM_NATIVE_EXPR_KIND_IMM_DEC"));
     assert!(listing.contains("OPFORGE-PRVM smoke OK"));
 
     let payload_path = example_output_payload_path(&out_dir, "prvm_smoke", "hunk");
@@ -8873,6 +8875,12 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
             .windows(" LDA #42".len())
             .any(|window| window == b" LDA #42"),
         "expected expression-bearing PRVM smoke input in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OPFORGE-PRVM smoke FAIL native-expr-value".len())
+            .any(|window| window == b"OPFORGE-PRVM smoke FAIL native-expr-value"),
+        "expected native expression slot validation in Hunk payload"
     );
 }
 

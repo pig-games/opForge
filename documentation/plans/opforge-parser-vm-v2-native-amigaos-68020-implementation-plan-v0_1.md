@@ -582,7 +582,7 @@ native parser.
     - expression handling remains Rust/opcore host-mediated through the existing pause/resume protocol
     - no CPU-family statement semantics, native expression parser, macro expansion, symbol resolution, instruction encoder, or full assembler pass is introduced
 
-- [ ] Work item 8: add the first tokenizer/parser whole-file line iterator over the line router
+- [x] Work item 8: add the first tokenizer/parser whole-file line iterator over the line router
   - Source requirement or finding IDs: second recommended post-baseline step after line routing; completed Work item 7 line-router adapter; existing tokenizer-native stream precedent; current blocking rule that the PRVM ABI itself remains newline-free.
   - Validation: see the focused whole-file iterator tests and full quality gates listed below.
   - Definition of done: see detailed criteria below for this work item.
@@ -602,8 +602,26 @@ native parser.
     - `cargo clippy --all-targets --all-features -- -D warnings`
     - `cargo audit`
     - `cargo test --workspace`
+  - Current item-level completion progress:
+    - added `examples/motorola68000/amigaos/prvm/prvm_line_iterator.asm` as an import-only native AmigaOS/Motorola 68020 whole-file iterator wrapper over the committed `prvm_route_line_68000` line router
+    - defined a narrow `prvm_iterate_lines_68000` iterator-frame ABI that accepts caller-owned whole-file source plus the same tokenizer, lexeme, result, diagnostic, resume, expression-request, expression-result, program, contract, budget, and flag fields forwarded into each line route
+    - split input into logical lines at LF, trimmed a preceding CR for CRLF input, skipped space/tab-only blank logical lines while advancing line accounting, and routed only newline-free logical line slices
+    - built an internal PRVM route frame with the active logical line pointer, length, and one-based line number before each `prvm_route_line_68000` call
+    - made aggregate behavior fail-fast: the iterator stops on the first nonzero route status and reports routed-line count, failing line number, and observed total line count through the return registers
+    - added focused host-side iterator report tests for two-line ordering, CRLF/trailing-line handling, blank-line skip with line-number preservation, fail-fast behavior, and expression-request pass-through
+    - added a focused source-surface guard plus an actual module parse/import guard for `prvm_line_iterator.asm`, and excluded it from the broad example reference sweep because it is an import-only module like `prvm_interpreter.asm` and `prvm_line_router.asm`
+  - Current item-level validation evidence:
+    - `cargo fmt --all && cargo test -p asm motorola68020_prvm_line_iterator -- --nocapture` passed: 6 passed, 0 failed, 878 filtered out, including the actual `prvm_line_iterator.asm` parse/import guard
+    - `cargo test -p asm motorola68020_prvm -- --nocapture` passed after the iterator tests: 19 passed, 0 failed, 865 filtered out
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed, including 2 unit tests and 7 parity integration tests
+    - `git diff --check` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the two existing allowed advisories for `registry` and `rand`
+    - `cargo test -p asm examples_match_reference_outputs -- --nocapture` retained the previously accepted broad generated-reference baseline exception: the only filtered test failed as `tests::examples_match_reference_outputs`, with no PRVM line-iterator-specific failure surfaced
+    - `cargo test --workspace` retained the same accepted broad generated-reference baseline exception: 883 passed, 1 failed (`tests::examples_match_reference_outputs`) in the `asm` crate
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for a whole-file-iterator-only slice that wraps the Work item 7 line router while preserving the newline-free PRVM ABI and avoiding full assembler behavior
+    - first `plan-compliance-reviewer` pass returned `FAIL` only for pending completion bookkeeping; it found no implementation, scope, or validation blocker for the Work item 8 whole-file-iterator-only slice
+    - second `plan-compliance-reviewer` pass returned `PASS` for the Work item 8 boundary slice limited to one import-only native whole-file iterator wrapper over the committed line router, focused host-side iterator policy tests, actual module parse/import validation, and plan evidence
   - Commit outcome:
     - a first native tokenizer/parser whole-file iteration path exists that processes input as ordered newline-free logical lines through the line router, without becoming macro expansion, module execution, symbol resolution, or instruction encoding
   - Definition of done:
@@ -625,7 +643,7 @@ native parser.
 - [x] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).
 - [x] Milestone 6: an optional AmigaOS demo/report harness exists only after parity is stable (`Work item 6`).
 - [x] Milestone 7: one native opcore-style logical line routes through tokenizer output into PRVM without broadening parser semantics (`Work item 7`).
-- [ ] Milestone 8: whole-file input is iterated as deterministic newline-free logical lines over the line router (`Work item 8`).
+- [x] Milestone 8: whole-file input is iterated as deterministic newline-free logical lines over the line router (`Work item 8`).
 
 ## To Be Spec'd / Planned Later
 

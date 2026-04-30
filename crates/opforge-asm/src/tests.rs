@@ -1654,6 +1654,7 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
                 | "tkpkg_tokenizer_vm.asm"
                 | "prvm_interpreter.asm"
                 | "prvm_line_router.asm"
+                | "prvm_line_iterator.asm"
         )
     )
 }
@@ -8717,6 +8718,12 @@ struct PrvmLineRouteReportInput<'a> {
     prvm_report: PrvmNativeReportInput<'a>,
 }
 
+struct PrvmIteratorRouteInput<'a> {
+    processor: &'a str,
+    kind: &'a str,
+    prvm_report: PrvmNativeReportInput<'a>,
+}
+
 fn render_prvm_native_report(input: PrvmNativeReportInput<'_>) -> Vec<String> {
     let mut lines = vec![
         "OPFORGE-PRVM 1".to_string(),
@@ -8850,6 +8857,91 @@ fn render_prvm_line_route_report(input: PrvmLineRouteReportInput<'_>) -> Vec<Str
         });
     }
     render_prvm_native_report(input.prvm_report)
+}
+
+fn prvm_iterator_logical_lines(source: &str) -> Vec<(u32, &str)> {
+    let mut lines = Vec::new();
+    let mut offset = 0usize;
+    let mut line_number = 1u32;
+
+    while offset < source.len() {
+        let tail = &source[offset..];
+        let Some(relative_newline) = tail.find('\n') else {
+            let logical = tail.strip_suffix('\r').unwrap_or(tail);
+            if !logical.trim_matches([' ', '\t']).is_empty() {
+                lines.push((line_number, logical));
+            }
+            break;
+        };
+
+        let end = offset + relative_newline;
+        let raw = &source[offset..end];
+        let logical = raw.strip_suffix('\r').unwrap_or(raw);
+        if !logical.trim_matches([' ', '\t']).is_empty() {
+            lines.push((line_number, logical));
+        }
+        offset = end + 1;
+        line_number += 1;
+    }
+
+    lines
+}
+
+fn render_prvm_line_iterator_report(
+    source: &str,
+    routes: &[PrvmIteratorRouteInput<'_>],
+) -> Vec<String> {
+    let logical_lines = prvm_iterator_logical_lines(source);
+    let mut report = vec!["OPFORGE-PRVM-ITER 1".to_string()];
+    let mut routed = 0usize;
+
+    for (route_index, (line_number, line_source)) in logical_lines.iter().enumerate() {
+        let route = routes
+            .get(route_index)
+            .unwrap_or_else(|| panic!("missing route report for logical line {line_number}"));
+        let route_report = render_prvm_line_route_report(PrvmLineRouteReportInput {
+            processor: route.processor,
+            kind: route.kind,
+            source: line_source,
+            prvm_report: PrvmNativeReportInput {
+                status: route.prvm_report.status,
+                result_count: route.prvm_report.result_count,
+                cursor: route.prvm_report.cursor,
+                result_bytes: route.prvm_report.result_bytes,
+                result_records: route.prvm_report.result_records,
+                lexemes: route.prvm_report.lexemes,
+                diagnostic_records: route.prvm_report.diagnostic_records,
+                expr_request: route.prvm_report.expr_request,
+            },
+        });
+        let status = route_report
+            .get(1)
+            .and_then(|line| line.strip_prefix("STATUS "))
+            .expect("route report must include status");
+        report.push(format!("LINE {line_number} STATUS {status}"));
+        for line in route_report
+            .iter()
+            .filter(|line| line.starts_with("EXPR_REQUEST "))
+        {
+            report.push(format!("LINE {line_number} {line}"));
+        }
+
+        if status != "0" {
+            report.push(format!("FAIL_FAST {line_number}"));
+            report.push(format!("ROUTED {routed}"));
+            report.push(format!("TOTAL_LINES {line_number}"));
+            report.push("END".to_string());
+            return report;
+        }
+        routed += 1;
+    }
+
+    let total_lines = source.bytes().filter(|byte| *byte == b'\n').count()
+        + usize::from(!source.is_empty() && !source.ends_with('\n'));
+    report.push(format!("ROUTED {routed}"));
+    report.push(format!("TOTAL_LINES {total_lines}"));
+    report.push("END".to_string());
+    report
 }
 
 #[test]
@@ -9074,6 +9166,175 @@ fn motorola68020_prvm_line_router_preserves_expression_request_report() {
     assert!(report
         .iter()
         .any(|line| line == "EXPR_REQUEST OPERAND 0 SLOT 1 TOKENS 3..4 SPAN 1:12-15"));
+}
+
+#[test]
+fn motorola68020_prvm_line_iterator_routes_two_lines_in_order() {
+    let routes = [
+        PrvmIteratorRouteInput {
+            processor: "asm",
+            kind: "statement",
+            prvm_report: PrvmNativeReportInput {
+                status: 0,
+                result_count: 0,
+                cursor: 0,
+                result_bytes: 0,
+                result_records: &[],
+                lexemes: &[],
+                diagnostic_records: &[],
+                expr_request: None,
+            },
+        },
+        PrvmIteratorRouteInput {
+            processor: "asm",
+            kind: "statement",
+            prvm_report: PrvmNativeReportInput {
+                status: 0,
+                result_count: 0,
+                cursor: 0,
+                result_bytes: 0,
+                result_records: &[],
+                lexemes: &[],
+                diagnostic_records: &[],
+                expr_request: None,
+            },
+        },
+    ];
+    let report = render_prvm_line_iterator_report("start: NOP\nnext: RTS", &routes);
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-PRVM-ITER 1",
+            "LINE 1 STATUS 0",
+            "LINE 2 STATUS 0",
+            "ROUTED 2",
+            "TOTAL_LINES 2",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_prvm_line_iterator_handles_crlf_blank_and_trailing_line() {
+    let routes = [
+        PrvmIteratorRouteInput {
+            processor: "asm",
+            kind: "statement",
+            prvm_report: PrvmNativeReportInput {
+                status: 0,
+                result_count: 0,
+                cursor: 0,
+                result_bytes: 0,
+                result_records: &[],
+                lexemes: &[],
+                diagnostic_records: &[],
+                expr_request: None,
+            },
+        },
+        PrvmIteratorRouteInput {
+            processor: "asm",
+            kind: "statement",
+            prvm_report: PrvmNativeReportInput {
+                status: 0,
+                result_count: 0,
+                cursor: 0,
+                result_bytes: 0,
+                result_records: &[],
+                lexemes: &[],
+                diagnostic_records: &[],
+                expr_request: None,
+            },
+        },
+    ];
+    let report = render_prvm_line_iterator_report("start: NOP\r\n\t \nlast: RTS", &routes);
+    assert_eq!(report[1], "LINE 1 STATUS 0");
+    assert_eq!(report[2], "LINE 3 STATUS 0");
+    assert_eq!(report[3], "ROUTED 2");
+    assert_eq!(report[4], "TOTAL_LINES 3");
+}
+
+#[test]
+fn motorola68020_prvm_line_iterator_fail_fast_stops_after_first_failure() {
+    let routes = [
+        PrvmIteratorRouteInput {
+            processor: "asm",
+            kind: "statement",
+            prvm_report: PrvmNativeReportInput {
+                status: 0,
+                result_count: 0,
+                cursor: 0,
+                result_bytes: 0,
+                result_records: &[],
+                lexemes: &[],
+                diagnostic_records: &[],
+                expr_request: None,
+            },
+        },
+        PrvmIteratorRouteInput {
+            processor: "asm",
+            kind: "statement",
+            prvm_report: PrvmNativeReportInput {
+                status: 5,
+                result_count: 0,
+                cursor: 2,
+                result_bytes: 0,
+                result_records: &[],
+                lexemes: &[],
+                diagnostic_records: &[],
+                expr_request: None,
+            },
+        },
+        PrvmIteratorRouteInput {
+            processor: "asm",
+            kind: "statement",
+            prvm_report: PrvmNativeReportInput {
+                status: 0,
+                result_count: 0,
+                cursor: 0,
+                result_bytes: 0,
+                result_records: &[],
+                lexemes: &[],
+                diagnostic_records: &[],
+                expr_request: None,
+            },
+        },
+    ];
+    let report = render_prvm_line_iterator_report("start: NOP\nbad: ???\nafter: RTS", &routes);
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-PRVM-ITER 1",
+            "LINE 1 STATUS 0",
+            "LINE 2 STATUS 5",
+            "FAIL_FAST 2",
+            "ROUTED 1",
+            "TOTAL_LINES 2",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_prvm_line_iterator_preserves_expression_request_report() {
+    let expr_request = prvm_report_expr_request_record(0, 1, 3, 4, 1, 12, 15);
+    let routes = [PrvmIteratorRouteInput {
+        processor: "asm",
+        kind: "statement",
+        prvm_report: PrvmNativeReportInput {
+            status: 1,
+            result_count: 0,
+            cursor: 3,
+            result_bytes: 40,
+            result_records: &[],
+            lexemes: b"#42",
+            diagnostic_records: &[],
+            expr_request: Some(&expr_request),
+        },
+    }];
+    let report = render_prvm_line_iterator_report("start: LDA #42", &routes);
+    assert!(report
+        .iter()
+        .any(|line| line == "LINE 1 EXPR_REQUEST OPERAND 0 SLOT 1 TOKENS 3..4 SPAN 1:12-15"));
 }
 
 #[test]
@@ -9370,6 +9631,45 @@ fn motorola68020_prvm_line_router_module_parses_with_interpreter_import() {
     assert!(
         diagnostics.is_empty(),
         "unexpected diagnostics while parsing line router: {diagnostics:?}"
+    );
+}
+
+#[test]
+fn motorola68020_prvm_line_iterator_example_exposes_whole_file_iteration_surface() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_iterator.asm");
+    let source = fs::read_to_string(asm_path).expect("read prvm line iterator source");
+
+    assert!(source.contains(".module prvm.amigaos.line_iterator"));
+    assert!(source.contains(".cpu 68020"));
+    assert!(source.contains(".use prvm.amigaos.line_router (prvm_route_line_68000)"));
+    assert!(source.contains("prvm_iterate_lines_68000:"));
+    assert!(source.contains("PRVM_ITER_MAGIC_OPLI"));
+    assert!(source.contains("PRVM_ROUTE_MAGIC_OPLR"));
+    assert!(source.contains("prvmIteratorFindLineEnd"));
+    assert!(source.contains("prvmIteratorTrimCr"));
+    assert!(source.contains("prvmIteratorLineIsBlank"));
+    assert!(source.contains("prvmIteratorBuildRouteFrame"));
+    assert!(source.contains("JSR prvm_route_line_68000.L"));
+    assert!(!source.contains("prvm_run_68000"));
+    assert!(!source.contains("ParseOperandExpr"));
+    assert!(!source.contains(".output"));
+}
+
+#[test]
+fn motorola68020_prvm_line_iterator_module_parses_with_line_router_import() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_iterator.asm");
+
+    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
+        .expect("line iterator module should parse with line router import");
+    assert!(
+        entries.is_empty(),
+        "import-only line iterator should not emit output entries"
+    );
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics while parsing line iterator: {diagnostics:?}"
     );
 }
 

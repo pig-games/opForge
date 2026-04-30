@@ -44,15 +44,25 @@ PRVM_NATIVE_EXPR_STATE_READY    = 1
 PRVM_NATIVE_EXPR_KIND_IMM_DEC   = 1
 
 PRVM_OPCODE_END                 = $00
+PRVM_OPCODE_JUMP                = $01
+PRVM_OPCODE_JUMP_IF_FALSE       = $03
+PRVM_OPCODE_PEEK_KIND           = $10
+PRVM_OPCODE_IS_EOL              = $13
+PRVM_OPCODE_PEEK_ASSIGNMENT     = $14
+PRVM_OPCODE_PEEK_STAR_ORG       = $15
 PRVM_OPCODE_ADVANCE             = $20
+PRVM_OPCODE_CONSUME_OPERATOR    = $22
 PRVM_OPCODE_LOAD_IDENTIFIER     = $30
+PRVM_OPCODE_LOAD_INLINE_TEXT    = $33
 PRVM_OPCODE_PARSE_OPTIONAL_LABEL = $40
 PRVM_OPCODE_SCAN_COMMA_BOUNDARIES = $41
 PRVM_OPCODE_PARSE_OPERAND_EXPR  = $50
 PRVM_OPCODE_BEGIN_STATEMENT     = $60
 PRVM_OPCODE_SET_MNEMONIC        = $62
 PRVM_OPCODE_FINISH_LINE         = $64
-PRVM_SMOKE_PROGRAM_LEN          = 13
+PRVM_OPCODE_SET_DOT_MNEMONIC    = $65
+PRVM_OPCODE_FINISH_ASSIGNMENT   = $66
+PRVM_SMOKE_PROGRAM_LEN          = 59
 
         .section entry, kind=code
 
@@ -667,16 +677,13 @@ lexemeBytes:
         .byte "startLDA#42"
 
 parserProgram:
-        .byte $60
-        .byte $40
-        .byte $30
-        .byte $62
-        .byte $20
-        .byte $41
-        .byte $50
-        .byte $FF,$FF,$FF,$FF
-        .byte $64
-        .byte $00
+        .byte $60,$40,$13,$03,$08,$00,$64,$00
+        .byte $14,$03,$0E,$00,$66,$00
+        .byte $15,$03,$24,$00
+        .byte $33,$04,".","o","r","g",$62,$20,$22,$02,$41,$50
+        .byte $FF,$FF,$FF,$FF,$64,$00
+        .byte $10,$03,$03,$30,$00,$20,$30,$65,$20,$01,$33,$00
+        .byte $30,$62,$20,$41,$50,$FF,$FF,$FF,$FF,$64,$00
 parserProgramEnd:
 
 tokenRecord:

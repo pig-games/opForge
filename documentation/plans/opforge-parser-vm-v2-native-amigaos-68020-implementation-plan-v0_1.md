@@ -390,10 +390,10 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - expression errors are preserved in the same normalized shape as Rust PRVM v2 for the covered cases
     - multiple expression sub-calls in one statement remain deterministic and bounded
 
-- [ ] Work item 5: broaden native PRVM opcode and statement parity to the WI-6 authority corpus
+- [x] Work item 5: broaden native PRVM opcode and statement parity to the WI-6 authority corpus
   - Source requirement or finding IDs: WI-6 `parser_vm_v2_parity` corpus; Rust PRVM v2 source-of-truth requirement; native-port readiness gate.
-  - Validation: see the focused native parity corpus tests and full quality gates listed below.
-  - Definition of done: see detailed criteria below for this work item.
+  - Validation: see current item-level validation evidence below; focused PRVM guards, native ABI tests, Rust PRVM v2 parity tests, scoped reference refresh, fmt, clippy, audit, diff-check, and workspace baseline check were run.
+  - Definition of done: see detailed criteria and current item-level completion progress below for this work item.
   - Current sub-slice 5a progress:
     - started WI-6 parity broadening with native leading-label statement support, the smallest missing statement-shape surface after Work item 4 expression bridging
     - implemented native `ParseOptionalLeadingLabel` handling for tokenizer-ABI identifier/colon tokens and `LABEL_TEXT` result emission in `prvm_run_68000`
@@ -437,7 +437,25 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `git diff --check` passed after trimming trailing whitespace from the regenerated `prvm_smoke.lst` listing
     - `cargo test --workspace` retained the previously accepted broad baseline exception: the `asm` crate reported `866 passed; 1 failed`, with the only failure in `tests::examples_match_reference_outputs` after the intentional `prvm_smoke` reference refresh was retained and unrelated generated references were pruned
   - Current sub-slice 5b remaining work before closing this boundary slice:
-    - run compliance review and commit the scoped smoke-observability slice if approved
+    - complete; committed as `b62e1fad Exercise native PRVM label smoke parity`
+  - Current item-level completion progress:
+    - broadened the native interpreter from the prior straight-line smoke program to the default Rust v2 statement-program control path for covered instruction statements
+    - implemented native `Jump`, `JumpIfFalse`, `IsEol`, `PeekKind`, `PeekAssignmentOperator`, and `PeekStarOrg` handling needed to route the default v2 program to the generic instruction branch without silently parsing deferred assignment/directive shapes as supported
+    - implemented native checkpoint-family state management for `Checkpoint`, `Rollback`, and `Commit`, including cursor, result-count, result-byte, operand-count, finished, label, and predicate state snapshots
+    - switched the AmigaOS `prvm_smoke` parser program to the default v2 statement bytecode while preserving host-mediated expression evaluation for `start: LDA #42`
+    - kept deferred assignment/directive opcode families deterministic by leaving unsupported output opcodes on the existing native invalid/unsupported status paths rather than adding partial AST emission
+    - refreshed only the scoped `prvm_smoke` hunk/listing references and pruned unrelated generated reference churn
+  - Current item-level validation evidence:
+    - `cargo test -p asm motorola68020_prvm -- --nocapture` passed, including the focused native interpreter and smoke assembly guards
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed, including 10 native ABI bridge tests
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed, including 2 unit tests and 7 WI-6 parity integration tests
+    - `opForge_UPDATE_REFERENCE=1 cargo test -p asm examples_match_reference_outputs -- --nocapture` passed and refreshed the intentional `prvm_smoke` reference drift; unrelated `tkpkg_debug_cli` and `tokvm_interpreter` reference drift was pruned
+    - `cargo test -p asm examples_match_reference_outputs -- --nocapture` remains on the accepted broad generated-reference baseline after the scoped refresh; the retained PRVM smoke references are validated by the focused smoke guard and update-mode reference pass
+    - `cargo fmt --all` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the two existing allowed advisories for `registry` and `rand`
+    - `git diff --check` passed after normalizing trailing whitespace in the regenerated `prvm_smoke.lst` reference listing
+    - `cargo test --workspace` retained the previously accepted broad baseline exception: the `asm` crate reported `866 passed; 1 failed`, with the only failure in `tests::examples_match_reference_outputs`
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - focused native PRVM tests and fixtures
@@ -495,7 +513,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 - [x] Milestone 3: `prvm_run_68000` can execute one delegated newline-free statement path over caller-owned buffers (`Work item 3`).
 - [x] Milestone 3a: the first native PRVM slice has a minimal opt-in FS-UAE smoke executable before expression work begins (`Work item 3a`).
 - [x] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).
-- [ ] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).
+- [x] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).
 - [ ] Milestone 6: an optional AmigaOS demo/report harness exists only after parity is stable (`Work item 6`).
 
 ## To Be Spec'd / Planned Later

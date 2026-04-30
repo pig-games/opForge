@@ -58,6 +58,7 @@ PRVM_ABI_VERSION_V1                 = 1
 PRVM_PARSER_CONTRACT_VERSION_V2     = 2
 
 PRVM_TOKEN_KIND_IDENTIFIER          = 0
+PRVM_TOKEN_KIND_DOT                 = 7
 PRVM_TOKEN_KIND_COMMA               = 4
 PRVM_TOKEN_KIND_COLON               = 5
 
@@ -77,6 +78,15 @@ PRVM_RESUME_STATE_SIZE              = 40
 PRVM_CONTINUATION_PARSE_OPERAND     = 1
 
 PRVM_OPCODE_END                     = $00
+PRVM_OPCODE_JUMP                    = $01
+PRVM_OPCODE_JUMP_IF_FALSE           = $03
+PRVM_OPCODE_CHECKPOINT              = $04
+PRVM_OPCODE_ROLLBACK                = $05
+PRVM_OPCODE_COMMIT                  = $06
+PRVM_OPCODE_PEEK_KIND               = $10
+PRVM_OPCODE_IS_EOL                  = $13
+PRVM_OPCODE_PEEK_ASSIGNMENT         = $14
+PRVM_OPCODE_PEEK_STAR_ORG           = $15
 PRVM_OPCODE_ADVANCE                 = $20
 PRVM_OPCODE_LOAD_IDENTIFIER         = $30
 PRVM_OPCODE_PARSE_OPTIONAL_LABEL    = $40
@@ -102,7 +112,12 @@ LOCAL_LABEL_COL_START               = 48
 LOCAL_LABEL_COL_END                 = 52
 LOCAL_LABEL_LEXEME_OFFSET           = 56
 LOCAL_LABEL_LEXEME_LEN              = 60
-LOCAL_SIZE                          = 64
+LOCAL_BOOL_VALUE                    = 64
+LOCAL_CHECKPOINT_DEPTH              = 68
+LOCAL_CHECKPOINT_STACK              = 72
+LOCAL_CHECKPOINT_RECORD_SIZE        = 28
+LOCAL_CHECKPOINT_MAX_DEPTH          = 4
+LOCAL_SIZE                          = 184
 
         .section data, kind=data
 
@@ -143,6 +158,8 @@ prvm_run_68000:
         CLR.L LOCAL_STEP_COUNT(A3)
         CLR.L LOCAL_OPERAND_COUNT(A3)
         CLR.L LOCAL_LABEL_FLAG(A3)
+        CLR.L LOCAL_BOOL_VALUE(A3)
+        CLR.L LOCAL_CHECKPOINT_DEPTH(A3)
 
         CMPI.L #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(A4)
         BNE prvmInvalidArgumentWithLocals
@@ -271,6 +288,24 @@ prvmProgramLoop:
         MOVE.B (A5)+, D7
         CMPI.B #PRVM_OPCODE_END, D7
         BEQ prvmOpcodeEnd
+        CMPI.B #PRVM_OPCODE_JUMP, D7
+        BEQ prvmOpcodeJump
+        CMPI.B #PRVM_OPCODE_JUMP_IF_FALSE, D7
+        BEQ prvmOpcodeJumpIfFalse
+        CMPI.B #PRVM_OPCODE_CHECKPOINT, D7
+        BEQ prvmOpcodeCheckpoint
+        CMPI.B #PRVM_OPCODE_ROLLBACK, D7
+        BEQ prvmOpcodeRollback
+        CMPI.B #PRVM_OPCODE_COMMIT, D7
+        BEQ prvmOpcodeCommit
+        CMPI.B #PRVM_OPCODE_PEEK_KIND, D7
+        BEQ prvmOpcodePeekKind
+        CMPI.B #PRVM_OPCODE_IS_EOL, D7
+        BEQ prvmOpcodeIsEol
+        CMPI.B #PRVM_OPCODE_PEEK_ASSIGNMENT, D7
+        BEQ prvmOpcodePeekAssignment
+        CMPI.B #PRVM_OPCODE_PEEK_STAR_ORG, D7
+        BEQ prvmOpcodePeekStarOrg
         CMPI.B #PRVM_OPCODE_ADVANCE, D7
         BEQ prvmOpcodeAdvance
         CMPI.B #PRVM_OPCODE_LOAD_IDENTIFIER, D7
@@ -294,6 +329,71 @@ prvmOpcodeEnd:
         BEQ prvmInvalidProgramAtCursor
         MOVEQ #PRVM_STATUS_OK, D0
         BRA prvmReturnWithLocals
+
+prvmOpcodeJump:
+        BSR.W prvmReadProgramTarget
+        TST.L D0
+        BNE prvmReturnWithLocals
+        MOVEA.L D5, A5
+        BRA prvmProgramLoop
+
+prvmOpcodeJumpIfFalse:
+        BSR.W prvmReadProgramTarget
+        TST.L D0
+        BNE prvmReturnWithLocals
+        TST.L LOCAL_BOOL_VALUE(A3)
+        BNE prvmProgramLoop
+        MOVEA.L D5, A5
+        BRA prvmProgramLoop
+
+prvmOpcodeCheckpoint:
+        BSR.W prvmPushCheckpoint
+        TST.L D0
+        BNE prvmReturnWithLocals
+        BRA prvmProgramLoop
+
+prvmOpcodeRollback:
+        BSR.W prvmPopCheckpointAddress
+        TST.L D0
+        BNE prvmReturnWithLocals
+        MOVE.L (A0)+, D2
+        MOVE.L (A0)+, D1
+        MOVE.L (A0)+, D3
+        MOVE.L (A0)+, LOCAL_OPERAND_COUNT(A3)
+        MOVE.L (A0)+, LOCAL_FINISHED_FLAG(A3)
+        MOVE.L (A0)+, LOCAL_LABEL_FLAG(A3)
+        MOVE.L (A0)+, LOCAL_BOOL_VALUE(A3)
+        BRA prvmProgramLoop
+
+prvmOpcodeCommit:
+        BSR.W prvmPopCheckpointAddress
+        TST.L D0
+        BNE prvmReturnWithLocals
+        BRA prvmProgramLoop
+
+prvmOpcodePeekKind:
+        CMPA.L A6, A5
+        BCC prvmInvalidProgramAtCursor
+        MOVEQ #0, D0
+        MOVE.B (A5)+, D0
+        BSR.W prvmPeekKind
+        MOVE.L D0, LOCAL_BOOL_VALUE(A3)
+        BRA prvmProgramLoop
+
+prvmOpcodeIsEol:
+        CLR.L LOCAL_BOOL_VALUE(A3)
+        CMP.L D4, D2
+        BCS prvmProgramLoop
+        MOVE.L #1, LOCAL_BOOL_VALUE(A3)
+        BRA prvmProgramLoop
+
+prvmOpcodePeekAssignment:
+        CLR.L LOCAL_BOOL_VALUE(A3)
+        BRA prvmProgramLoop
+
+prvmOpcodePeekStarOrg:
+        CLR.L LOCAL_BOOL_VALUE(A3)
+        BRA prvmProgramLoop
 
 prvmOpcodeAdvance:
         CMP.L D4, D2
@@ -499,6 +599,85 @@ prvmTokenPtrByIndex:
         ADD.L D7, D0
         MOVEA.L PRVM_FRAME_TOKEN_PTR(A4), A1
         ADDA.L D0, A1
+        CLR.L D0
+        RTS
+
+prvmReadProgramTarget:
+        MOVEA.L A5, A0
+        ADDA.L #2, A0
+        CMPA.L A6, A0
+        BHI prvmInvalidProgramAtCursor
+        MOVEQ #0, D5
+        MOVE.B (A5)+, D5
+        MOVEQ #0, D7
+        MOVE.B (A5)+, D7
+        LSL.L #8, D7
+        OR.L D7, D5
+        MOVE.L PRVM_FRAME_PROGRAM_PTR(A4), D0
+        ADD.L D5, D0
+        MOVEA.L D0, A0
+        CMPA.L A6, A0
+        BHI prvmInvalidProgramAtCursor
+        MOVE.L A0, D5
+        CLR.L D0
+        RTS
+
+prvmPushCheckpoint:
+        MOVE.L LOCAL_CHECKPOINT_DEPTH(A3), D0
+        CMPI.L #LOCAL_CHECKPOINT_MAX_DEPTH, D0
+        BCC prvmInvalidProgramAtCursor
+        BSR.W prvmCheckpointAddressForDepth
+        MOVE.L D2, (A0)+
+        MOVE.L D1, (A0)+
+        MOVE.L D3, (A0)+
+        MOVE.L LOCAL_OPERAND_COUNT(A3), (A0)+
+        MOVE.L LOCAL_FINISHED_FLAG(A3), (A0)+
+        MOVE.L LOCAL_LABEL_FLAG(A3), (A0)+
+        MOVE.L LOCAL_BOOL_VALUE(A3), (A0)+
+        ADDQ.L #1, LOCAL_CHECKPOINT_DEPTH(A3)
+        CLR.L D0
+        RTS
+
+prvmPopCheckpointAddress:
+        MOVE.L LOCAL_CHECKPOINT_DEPTH(A3), D0
+        BEQ prvmInvalidProgramAtCursor
+        SUBQ.L #1, D0
+        MOVE.L D0, LOCAL_CHECKPOINT_DEPTH(A3)
+        BSR.W prvmCheckpointAddressForDepth
+        CLR.L D0
+        RTS
+
+prvmCheckpointAddressForDepth:
+        MOVE.L D0, D5
+        LSL.L #5, D5
+        MOVE.L D0, D7
+        LSL.L #2, D7
+        SUB.L D7, D5
+        LEA LOCAL_CHECKPOINT_STACK(A3), A0
+        ADDA.L D5, A0
+        RTS
+
+prvmPeekKind:
+        CMP.L D4, D2
+        BCC prvmPeekKindFalse
+        MOVE.L D2, D5
+        LSL.L #4, D5
+        MOVE.L D2, D7
+        LSL.L #2, D7
+        ADD.L D7, D5
+        MOVEA.L PRVM_FRAME_TOKEN_PTR(A4), A1
+        ADDA.L D5, A1
+        CMPI.B #$03, D0
+        BEQ prvmPeekKindDot
+        BRA prvmPeekKindFalse
+
+prvmPeekKindDot:
+        CMPI.W #PRVM_TOKEN_KIND_DOT, 0(A1)
+        BNE prvmPeekKindFalse
+        MOVEQ #1, D0
+        RTS
+
+prvmPeekKindFalse:
         CLR.L D0
         RTS
 

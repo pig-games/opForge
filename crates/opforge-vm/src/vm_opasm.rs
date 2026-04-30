@@ -255,6 +255,22 @@ pub(crate) fn parse_operand_expr_range(
     let expr_end_span = boundary_token
         .map(|token| token.span)
         .unwrap_or(boundary.end_span);
+    if let Some(expr) = parse_generic_operand_wrapper(
+        &tokens[start..end],
+        expr_end_span,
+        boundary.end_token_text.clone(),
+        |inner_tokens, inner_end_span, inner_end_token_text| {
+            parse_expr_slice(
+                expr_parse_ctx,
+                inner_tokens,
+                inner_end_span,
+                inner_end_token_text,
+            )
+        },
+    ) {
+        operands.push(expr);
+        return Ok(());
+    }
     if let Some(expr) = parse_indexed_register_postfix_operand(&tokens[start..end]) {
         operands.push(expr);
         return Ok(());
@@ -346,6 +362,139 @@ fn build_call_expr(name: &str, args: Vec<Expr>) -> Expr {
             col_end: end_span.col_end,
         },
     }
+}
+
+fn parse_generic_operand_wrapper<F>(
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+    mut parse_inner: F,
+) -> Option<Expr>
+where
+    F: FnMut(&[Token], Span, Option<String>) -> Result<Expr, ParseError>,
+{
+    let first = tokens.first()?;
+    if matches!(first.kind, TokenKind::Hash) {
+        let inner = parse_inner_or_error(&mut parse_inner, &tokens[1..], end_span, end_token_text);
+        let inner_span = opcore::expression::expr_span(&inner);
+        return Some(Expr::Immediate(
+            Box::new(inner),
+            Span {
+                line: first.span.line,
+                col_start: first.span.col_start,
+                col_end: inner_span.col_end,
+            },
+        ));
+    }
+
+    if is_single_wrapped_operand(tokens, TokenKind::OpenParen, TokenKind::CloseParen) {
+        if contains_top_level_comma(&tokens[1..tokens.len() - 1]) {
+            return None;
+        }
+        let close_span = tokens[tokens.len() - 1].span;
+        let inner = parse_inner_or_error(
+            &mut parse_inner,
+            &tokens[1..tokens.len() - 1],
+            close_span,
+            Some(")".to_string()),
+        );
+        return Some(Expr::Indirect(
+            Box::new(inner),
+            Span {
+                line: first.span.line,
+                col_start: first.span.col_start,
+                col_end: close_span.col_end,
+            },
+        ));
+    }
+
+    if is_single_wrapped_operand(tokens, TokenKind::OpenBracket, TokenKind::CloseBracket) {
+        if contains_top_level_comma(&tokens[1..tokens.len() - 1]) {
+            return None;
+        }
+        let close_span = tokens[tokens.len() - 1].span;
+        let inner = parse_inner_or_error(
+            &mut parse_inner,
+            &tokens[1..tokens.len() - 1],
+            close_span,
+            Some("]".to_string()),
+        );
+        return Some(Expr::IndirectLong(
+            Box::new(inner),
+            Span {
+                line: first.span.line,
+                col_start: first.span.col_start,
+                col_end: close_span.col_end,
+            },
+        ));
+    }
+
+    None
+}
+
+fn parse_inner_or_error<F>(
+    parse_inner: &mut F,
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Expr
+where
+    F: FnMut(&[Token], Span, Option<String>) -> Result<Expr, ParseError>,
+{
+    match parse_inner(tokens, end_span, end_token_text) {
+        Ok(expr) => expr,
+        Err(err) => Expr::Error(err.message, err.span),
+    }
+}
+
+fn is_single_wrapped_operand(tokens: &[Token], open: TokenKind, close: TokenKind) -> bool {
+    if tokens.len() < 2 || tokens.first().map(|token| &token.kind) != Some(&open) {
+        return false;
+    }
+    if tokens.last().map(|token| &token.kind) != Some(&close) {
+        return false;
+    }
+
+    let mut depth = 0i32;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == open {
+            depth += 1;
+        } else if token.kind == close {
+            depth -= 1;
+            if depth == 0 && index != tokens.len() - 1 {
+                return false;
+            }
+            if depth < 0 {
+                return false;
+            }
+        }
+    }
+
+    depth == 0
+}
+
+fn contains_top_level_comma(tokens: &[Token]) -> bool {
+    let mut depth_paren = 0i32;
+    let mut depth_bracket = 0i32;
+    let mut depth_brace = 0i32;
+
+    for token in tokens {
+        if matches!(token.kind, TokenKind::Comma)
+            && depth_paren == 0
+            && depth_bracket == 0
+            && depth_brace == 0
+        {
+            return true;
+        }
+        update_group_depths_for_token(
+            &token.kind,
+            &mut depth_paren,
+            &mut depth_bracket,
+            &mut depth_brace,
+        );
+    }
+
+    false
 }
 
 fn parse_register_pair_operand(
@@ -595,6 +744,147 @@ pub(crate) fn split_top_level_comma_ranges(
 
     ranges.push((current_start, end));
     ranges
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opcore::tokenizer::NumberLiteral;
+
+    fn span(col_start: usize, col_end: usize) -> Span {
+        Span {
+            line: 1,
+            col_start,
+            col_end,
+        }
+    }
+
+    fn token(kind: TokenKind, col_start: usize, col_end: usize) -> Token {
+        Token {
+            kind,
+            span: span(col_start, col_end),
+        }
+    }
+
+    fn ident(name: &str, col_start: usize, col_end: usize) -> Token {
+        token(TokenKind::Identifier(name.to_string()), col_start, col_end)
+    }
+
+    fn number(text: &str, col_start: usize, col_end: usize) -> Token {
+        token(
+            TokenKind::Number(NumberLiteral {
+                text: text.to_string(),
+                base: 10,
+            }),
+            col_start,
+            col_end,
+        )
+    }
+
+    fn parse_test_expr(
+        tokens: &[Token],
+        end_span: Span,
+        end_token_text: Option<String>,
+    ) -> Result<Expr, ParseError> {
+        match tokens {
+            [Token {
+                kind: TokenKind::Identifier(name),
+                span,
+            }] => Ok(Expr::Identifier(name.clone(), *span)),
+            [Token {
+                kind: TokenKind::Number(num),
+                span,
+            }] => Ok(Expr::Number(num.text.clone(), *span)),
+            [Token {
+                kind: TokenKind::Register(name),
+                span,
+            }] => Ok(Expr::Register(name.clone(), *span)),
+            [] => Err(ParseError {
+                message: match end_token_text {
+                    Some(token) => format!("Expected label or numeric constant, found: {token}"),
+                    None => "Unexpected end of expression".to_string(),
+                },
+                span: end_span,
+            }),
+            [token, ..] => Err(ParseError {
+                message: "Unexpected token in expression".to_string(),
+                span: token.span,
+            }),
+        }
+    }
+
+    fn parse_wrapper(tokens: &[Token]) -> Option<Expr> {
+        parse_generic_operand_wrapper(tokens, span(99, 99), None, parse_test_expr)
+    }
+
+    #[test]
+    fn vm_opasm_generic_operand_wrapper_parses_immediate() {
+        let tokens = vec![token(TokenKind::Hash, 1, 2), number("42", 2, 4)];
+
+        let Some(Expr::Immediate(inner, wrapper_span)) = parse_wrapper(&tokens) else {
+            panic!("expected immediate wrapper");
+        };
+
+        assert_eq!(wrapper_span, span(1, 4));
+        assert!(matches!(*inner, Expr::Number(ref text, _) if text == "42"));
+    }
+
+    #[test]
+    fn vm_opasm_generic_operand_wrapper_parses_parenthesized_indirect() {
+        let tokens = vec![
+            token(TokenKind::OpenParen, 1, 2),
+            ident("label", 2, 7),
+            token(TokenKind::CloseParen, 7, 8),
+        ];
+
+        let Some(Expr::Indirect(inner, wrapper_span)) = parse_wrapper(&tokens) else {
+            panic!("expected parenthesized indirect wrapper");
+        };
+
+        assert_eq!(wrapper_span, span(1, 8));
+        assert!(matches!(*inner, Expr::Identifier(ref name, _) if name == "label"));
+    }
+
+    #[test]
+    fn vm_opasm_generic_operand_wrapper_parses_bracketed_indirect_long() {
+        let tokens = vec![
+            token(TokenKind::OpenBracket, 1, 2),
+            number("4096", 2, 6),
+            token(TokenKind::CloseBracket, 6, 7),
+        ];
+
+        let Some(Expr::IndirectLong(inner, wrapper_span)) = parse_wrapper(&tokens) else {
+            panic!("expected bracketed indirect wrapper");
+        };
+
+        assert_eq!(wrapper_span, span(1, 7));
+        assert!(matches!(*inner, Expr::Number(ref text, _) if text == "4096"));
+    }
+
+    #[test]
+    fn vm_opasm_generic_operand_wrapper_leaves_comma_forms_for_later_shape_parsing() {
+        let tokens = vec![
+            token(TokenKind::OpenParen, 1, 2),
+            ident("left", 2, 6),
+            token(TokenKind::Comma, 6, 7),
+            ident("right", 7, 12),
+            token(TokenKind::CloseParen, 12, 13),
+        ];
+
+        assert!(parse_wrapper(&tokens).is_none());
+    }
+
+    #[test]
+    fn vm_opasm_generic_operand_wrapper_leaves_postfix_forms_for_later_shape_parsing() {
+        let tokens = vec![
+            token(TokenKind::OpenParen, 1, 2),
+            ident("A0", 2, 4),
+            token(TokenKind::CloseParen, 4, 5),
+            token(TokenKind::Operator(OperatorKind::Plus), 5, 6),
+        ];
+
+        assert!(parse_wrapper(&tokens).is_none());
+    }
 }
 
 pub fn load_model_from_registry(

@@ -223,7 +223,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
     - 680x0-only syntax does not parse as generic opcore expression syntax.
     - existing 680x0 opasm behavior remains covered.
 
-- [ ] Item 4: make opcore VM parentheses generic for standalone expressions
+- [x] Item 4: make opcore VM parentheses generic for standalone expressions
   - Validation: focused opcore expression parser tests plus normal formatting,
     clippy, and diff checks.
   - Definition of done: standalone opcore VM grouping returns the inner generic
@@ -341,7 +341,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
   wrappers.
 - [x] Milestone 2: opasm owns tuple-backed operand shapes.
 - [x] Milestone 3: CPU/family-specific operand shapes are gated in opasm.
-- [ ] Milestone 4: opcore expression VM no longer treats simple parentheses as
+- [x] Milestone 4: opcore expression VM no longer treats simple parentheses as
   indirect operand syntax.
 - [ ] Milestone 5: opcore expression parser and portable expression evaluator
   have an intentional, tested scalar/value boundary.

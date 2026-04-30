@@ -440,21 +440,13 @@ impl RuntimeExpressionParser {
                     };
                     Ok(Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span))
                 } else {
-                    let close_span = self.current_span();
                     if !self.consume_kind(TokenKind::CloseParen) {
                         return Err(ParseError {
                             message: "Missing ')'".to_string(),
                             span: self.current_span(),
                         });
                     }
-                    Ok(Expr::Indirect(
-                        Box::new(expr),
-                        Span {
-                            line: open_span.line,
-                            col_start: open_span.col_start,
-                            col_end: close_span.col_end,
-                        },
-                    ))
+                    Ok(expr)
                 }
             }
             Some(Token {
@@ -834,5 +826,83 @@ fn span_of_expr(expr: &Expr) -> Span {
         | Expr::Error(_, span)
         | Expr::Range { span, .. } => *span,
         Expr::Ternary { span, .. } | Expr::Unary { span, .. } | Expr::Binary { span, .. } => *span,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opcore::tokenizer::NumberLiteral;
+
+    fn span(col_start: usize, col_end: usize) -> Span {
+        Span {
+            line: 1,
+            col_start,
+            col_end,
+        }
+    }
+
+    fn token(kind: TokenKind, col_start: usize, col_end: usize) -> Token {
+        Token {
+            kind,
+            span: span(col_start, col_end),
+        }
+    }
+
+    fn number(text: &str, col_start: usize, col_end: usize) -> Token {
+        token(
+            TokenKind::Number(NumberLiteral {
+                text: text.to_string(),
+                base: 10,
+            }),
+            col_start,
+            col_end,
+        )
+    }
+
+    fn parse(tokens: Vec<Token>) -> Expr {
+        RuntimeExpressionParser::new(tokens, span(99, 99), None)
+            .parse_expr_from_tokens()
+            .expect("expression should parse")
+    }
+
+    #[test]
+    fn runtime_expression_parser_parentheses_group_scalar_expression() {
+        let expr = parse(vec![
+            token(TokenKind::OpenParen, 1, 2),
+            number("1", 2, 3),
+            token(TokenKind::Operator(OperatorKind::Plus), 3, 4),
+            number("2", 4, 5),
+            token(TokenKind::CloseParen, 5, 6),
+        ]);
+
+        let Expr::Binary {
+            op, left, right, ..
+        } = expr
+        else {
+            panic!("expected grouped binary expression");
+        };
+        assert!(matches!(op, BinaryOp::Add));
+        assert!(matches!(*left, Expr::Number(ref text, _) if text == "1"));
+        assert!(matches!(*right, Expr::Number(ref text, _) if text == "2"));
+    }
+
+    #[test]
+    fn runtime_expression_parser_keeps_comma_parentheses_as_operand_tuple_until_migration() {
+        let expr = parse(vec![
+            token(TokenKind::OpenParen, 1, 2),
+            number("1", 2, 3),
+            token(TokenKind::Comma, 3, 4),
+            number("2", 4, 5),
+            token(TokenKind::CloseParen, 5, 6),
+        ]);
+
+        let Expr::Indirect(inner, _) = expr else {
+            panic!("expected existing tuple-backed indirect shape");
+        };
+        let Expr::Tuple(elements, _) = *inner else {
+            panic!("expected tuple inside indirect shape");
+        };
+        assert_eq!(elements.len(), 2);
     }
 }

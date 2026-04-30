@@ -58,9 +58,11 @@ PRVM_ABI_VERSION_V1                 = 1
 PRVM_PARSER_CONTRACT_VERSION_V2     = 2
 
 PRVM_TOKEN_KIND_IDENTIFIER          = 0
-PRVM_TOKEN_KIND_COMMA               = 7
+PRVM_TOKEN_KIND_COMMA               = 4
+PRVM_TOKEN_KIND_COLON               = 5
 
 PRVM_RESULT_BEGIN_STATEMENT         = 1
+PRVM_RESULT_LABEL_TEXT              = 2
 PRVM_RESULT_MNEMONIC_TEXT           = 3
 PRVM_RESULT_OPERAND_EXPR_SLOT       = 4
 PRVM_RESULT_FINISH_LINE             = 5
@@ -95,7 +97,12 @@ LOCAL_OPERAND_COUNT                 = 28
 LOCAL_EXPR_START_TOKEN              = 32
 LOCAL_EXPR_END_TOKEN                = 36
 LOCAL_EXPR_SLOT_INDEX               = 40
-LOCAL_SIZE                          = 44
+LOCAL_LABEL_FLAG                    = 44
+LOCAL_LABEL_COL_START               = 48
+LOCAL_LABEL_COL_END                 = 52
+LOCAL_LABEL_LEXEME_OFFSET           = 56
+LOCAL_LABEL_LEXEME_LEN              = 60
+LOCAL_SIZE                          = 64
 
         .section data, kind=data
 
@@ -135,6 +142,7 @@ prvm_run_68000:
         CLR.L LOCAL_FINISHED_FLAG(A3)
         CLR.L LOCAL_STEP_COUNT(A3)
         CLR.L LOCAL_OPERAND_COUNT(A3)
+        CLR.L LOCAL_LABEL_FLAG(A3)
 
         CMPI.L #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(A4)
         BNE prvmInvalidArgumentWithLocals
@@ -268,7 +276,7 @@ prvmProgramLoop:
         CMPI.B #PRVM_OPCODE_LOAD_IDENTIFIER, D7
         BEQ prvmOpcodeLoadIdentifier
         CMPI.B #PRVM_OPCODE_PARSE_OPTIONAL_LABEL, D7
-        BEQ prvmProgramLoop
+        BEQ prvmOpcodeParseOptionalLabel
         CMPI.B #PRVM_OPCODE_SCAN_COMMA_BOUNDARIES, D7
         BEQ prvmProgramLoop
         CMPI.B #PRVM_OPCODE_PARSE_OPERAND_EXPR, D7
@@ -319,9 +327,57 @@ prvmOpcodeLoadIdentifier:
         MOVE.L #1, LOCAL_LOADED_FLAG(A3)
         BRA prvmProgramLoop
 
+prvmOpcodeParseOptionalLabel:
+        TST.L D2
+        BNE prvmProgramLoop
+        TST.L D4
+        BEQ prvmProgramLoop
+        CLR.L D0
+        BSR.W prvmTokenPtrByIndex
+        TST.L D0
+        BNE prvmReturnWithLocals
+        CMPI.W #PRVM_TOKEN_KIND_IDENTIFIER, 0(A1)
+        BNE prvmProgramLoop
+        CMPI.L #1, 4(A1)
+        BNE prvmProgramLoop
+        MOVE.L 12(A1), D0
+        MOVE.L 16(A1), D7
+        BEQ prvmInvalidTokenAtCursor
+        MOVE.L D0, D5
+        ADD.L D7, D5
+        BCS prvmInvalidTokenAtCursor
+        CMP.L PRVM_FRAME_LEXEME_LEN(A4), D5
+        BHI prvmInvalidTokenAtCursor
+        MOVE.L 4(A1), LOCAL_LABEL_COL_START(A3)
+        MOVE.L 8(A1), LOCAL_LABEL_COL_END(A3)
+        MOVE.L 12(A1), LOCAL_LABEL_LEXEME_OFFSET(A3)
+        MOVE.L 16(A1), LOCAL_LABEL_LEXEME_LEN(A3)
+        MOVE.L #1, LOCAL_LABEL_FLAG(A3)
+        MOVEQ #1, D2
+        CMPI.L #2, D4
+        BCS prvmEmitOptionalLabel
+        MOVEQ #1, D0
+        BSR.W prvmTokenPtrByIndex
+        TST.L D0
+        BNE prvmReturnWithLocals
+        CMPI.W #PRVM_TOKEN_KIND_COLON, 0(A1)
+        BNE prvmEmitOptionalLabel
+        MOVE.L 4(A1), D0
+        CMP.L LOCAL_LABEL_COL_END(A3), D0
+        BNE prvmEmitOptionalLabel
+        MOVEQ #2, D2
+
+prvmEmitOptionalLabel:
+        BSR.W prvmEmitLabelText
+        TST.L D0
+        BNE prvmReturnWithLocals
+        BRA prvmProgramLoop
+
 prvmOpcodeBeginStatement:
         CLR.L LOCAL_LOADED_FLAG(A3)
         CLR.L LOCAL_FINISHED_FLAG(A3)
+        CLR.L LOCAL_OPERAND_COUNT(A3)
+        CLR.L LOCAL_LABEL_FLAG(A3)
         BSR.W prvmEmitBeginStatement
         TST.L D0
         BNE prvmReturnWithLocals
@@ -482,6 +538,23 @@ prvmEmitBeginStatement:
         CLR.L 12(A2)
         CLR.L 16(A2)
         CLR.L 20(A2)
+        CLR.L 24(A2)
+        CLR.L 28(A2)
+        BRA prvmCommitResultRecord
+
+prvmEmitLabelText:
+        TST.L LOCAL_LABEL_FLAG(A3)
+        BEQ prvmEmitRecordReturn
+        BSR.W prvmResultRecordPtr
+        TST.L D0
+        BNE prvmEmitRecordReturn
+        MOVE.W #PRVM_RESULT_LABEL_TEXT, 0(A2)
+        CLR.W 2(A2)
+        MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)
+        MOVE.L LOCAL_LABEL_COL_START(A3), 8(A2)
+        MOVE.L LOCAL_LABEL_COL_END(A3), 12(A2)
+        MOVE.L LOCAL_LABEL_LEXEME_OFFSET(A3), 16(A2)
+        MOVE.L LOCAL_LABEL_LEXEME_LEN(A3), 20(A2)
         CLR.L 24(A2)
         CLR.L 28(A2)
         BRA prvmCommitResultRecord

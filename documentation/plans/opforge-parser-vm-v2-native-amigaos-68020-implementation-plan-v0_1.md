@@ -394,6 +394,29 @@ opcore expression parser, and does not become a whole-file assembler pass.
   - Source requirement or finding IDs: WI-6 `parser_vm_v2_parity` corpus; Rust PRVM v2 source-of-truth requirement; native-port readiness gate.
   - Validation: see the focused native parity corpus tests and full quality gates listed below.
   - Definition of done: see detailed criteria below for this work item.
+  - Current sub-slice 5a progress:
+    - started WI-6 parity broadening with native leading-label statement support, the smallest missing statement-shape surface after Work item 4 expression bridging
+    - implemented native `ParseOptionalLeadingLabel` handling for tokenizer-ABI identifier/colon tokens and `LABEL_TEXT` result emission in `prvm_run_68000`
+    - reset native statement-local label and operand state at `BEGIN_STATEMENT` so label metadata does not leak between parse attempts or resume paths
+    - kept expression parsing host-mediated; this slice does not add native expression parsing or broaden the smoke-only literal pass-back shim
+    - added focused assembly-source guards so the native PRVM module keeps the label opcode/result surface visible while broader executable native parity tests are deferred
+  - Current sub-slice 5a validation evidence:
+    - `cargo test -p asm motorola68020_prvm_interpreter_example_assembles_first_native_slice -- --nocapture` passed
+    - `cargo test -p asm motorola68020_prvm_smoke_example_assembles_with_native_call_surface -- --nocapture` passed
+    - `scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed, including 10 native ABI bridge tests
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed, including 2 unit tests and 7 parity integration tests
+    - `cargo fmt --all -- --check` passed
+    - `opForge_UPDATE_REFERENCE=1 cargo test -p asm tests::examples_match_reference_outputs -- --nocapture` passed and refreshed the intentional `prvm_smoke` hunk/listing drift caused by native interpreter growth; unrelated generated reference refreshes were pruned
+    - `cargo test -p asm tests::examples_match_reference_outputs -- --nocapture` remains on the accepted broad reference baseline after pruning unrelated generated references; the original `prvm_smoke` payload mismatch is resolved by the retained PRVM smoke reference refresh
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the two existing allowed advisories for `registry` and `rand`
+    - `git diff --check` passed after trimming trailing whitespace from the regenerated `prvm_smoke.lst` reference listing
+    - `cargo test --workspace` retained the previously accepted broad baseline exception: the `asm` crate reported `866 passed; 1 failed`, with the only failure in `tests::examples_match_reference_outputs` after the intentional `prvm_smoke` reference refresh was retained and unrelated generated references were pruned
+    - first `plan-compliance-reviewer` pass returned `FAIL` only for missing full `cargo test --workspace` evidence and unfinished ledger bookkeeping; it accepted the 5a slice boundary, changed-file set, native leading-label implementation, guard assertions, and refreshed `prvm_smoke` references
+    - second `plan-compliance-reviewer` pass returned `PASS` and allowed committing only `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`, `crates/opforge-asm/src/tests.rs`, this plan ledger, `examples/reference/motorola68000/amigaos/prvm_smoke.hunk`, and `examples/reference/motorola68000/amigaos/prvm_smoke.lst`
+  - Current sub-slice 5a remaining work before closing this boundary slice:
+    - complete; ready to commit as the approved Work item 5a boundary slice
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - focused native PRVM tests and fixtures

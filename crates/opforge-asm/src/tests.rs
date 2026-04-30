@@ -8834,9 +8834,13 @@ fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
     assert!(source.contains(".cpu 68020"));
     assert!(source.contains("prvm_run_68000:"));
     assert!(source.contains("PRVM_OPCODE_LOAD_IDENTIFIER"));
+    assert!(source.contains("PRVM_OPCODE_PARSE_OPTIONAL_LABEL"));
     assert!(source.contains("PRVM_OPCODE_PARSE_OPERAND_EXPR"));
     assert!(source.contains("PRVM_STATUS_EXPR_REQUEST"));
+    assert!(source.contains("PRVM_RESULT_LABEL_TEXT"));
     assert!(source.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
+    assert!(source.contains("prvmOpcodeParseOptionalLabel"));
+    assert!(source.contains("prvmEmitLabelText"));
     assert!(source.contains("PRVM_STATUS_UNSUPPORTED_OPCODE"));
     assert!(!source.contains(".output"));
 }

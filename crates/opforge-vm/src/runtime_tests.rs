@@ -1915,26 +1915,13 @@ fn runtime_expression_parser_honors_operator_precedence_directly() {
 }
 
 #[test]
-fn runtime_expression_parser_supports_bracket_tuple_indirect_long_forms() {
+fn runtime_expression_parser_rejects_bracket_tuple_indirect_long_forms() {
     let (tokens, end_span) = tokenize_core_expr_tokens("[$20,X]", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
-        .expect("direct runtime parser should parse bracket tuple");
+    let err = parse_expression_tokens(tokens, end_span, None)
+        .expect_err("direct runtime parser should reject bracket operand forms");
 
-    match expr {
-        Expr::IndirectLong(inner, _) => match *inner {
-            Expr::Tuple(elements, _) => {
-                assert_eq!(elements.len(), 2);
-                assert!(matches!(elements[0], Expr::Number(_, _)));
-                assert!(matches!(
-                    elements[1],
-                    Expr::Register(ref reg, _) | Expr::Identifier(ref reg, _)
-                        if reg.eq_ignore_ascii_case("X")
-                ));
-            }
-            other => panic!("expected tuple inside indirect-long, got {other:?}"),
-        },
-        other => panic!("expected indirect-long tuple AST, got {other:?}"),
-    }
+    assert_eq!(err.message, "Unexpected token in expression");
+    assert_eq!(err.span.col_start, 1);
 }
 
 #[test]
@@ -1953,65 +1940,23 @@ fn runtime_expression_parser_parses_index_member_postfix_chain() {
 }
 
 #[test]
-fn runtime_expression_parser_parses_postfix_indirect_tuple_for_68k_addressing() {
+fn runtime_expression_parser_rejects_postfix_indirect_tuple_for_68k_addressing() {
     let (tokens, end_span) = tokenize_core_expr_tokens("4(A0,D1.W)", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
-        .expect("direct runtime parser should parse postfix indirect tuple");
+    let err = parse_expression_tokens(tokens, end_span, None)
+        .expect_err("direct runtime parser should reject m68k postfix operand forms");
 
-    match expr {
-        Expr::Indirect(inner, _) => match *inner {
-            Expr::Tuple(elements, _) => {
-                assert_eq!(elements.len(), 3);
-                assert!(matches!(elements[0], Expr::Number(ref n, _) if n == "4"));
-                assert!(matches!(
-                    elements[1],
-                    Expr::Register(ref reg, _) | Expr::Identifier(ref reg, _)
-                        if reg.eq_ignore_ascii_case("A0")
-                ));
-                match &elements[2] {
-                    Expr::Identifier(name, _) => {
-                        assert_eq!(name.to_ascii_uppercase(), "D1.W");
-                    }
-                    Expr::Member { base, field, .. } => {
-                        assert_eq!(field, "W");
-                        assert!(matches!(
-                            base.as_ref(),
-                            Expr::Register(reg, _) | Expr::Identifier(reg, _)
-                                if reg.eq_ignore_ascii_case("D1")
-                        ));
-                    }
-                    other => panic!("expected index-size member expression, got {other:?}"),
-                }
-            }
-            other => panic!("expected tuple inside indirect, got {other:?}"),
-        },
-        other => panic!("expected indirect tuple AST, got {other:?}"),
-    }
+    assert_eq!(err.message, "Unexpected trailing tokens");
+    assert_eq!(err.span.col_start, 2);
 }
 
 #[test]
-fn runtime_expression_parser_parses_postincrement_indirect_for_68k_addressing() {
+fn runtime_expression_parser_rejects_postincrement_indirect_for_68k_addressing() {
     let (tokens, end_span) = tokenize_core_expr_tokens("(A0)+", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
-        .expect("direct runtime parser should parse postincrement indirect");
+    let err = parse_expression_tokens(tokens, end_span, None)
+        .expect_err("direct runtime parser should reject m68k postincrement operands");
 
-    match expr {
-        Expr::Unary {
-            op: UnaryOp::Plus,
-            expr,
-            ..
-        } => match expr.as_ref() {
-            Expr::Indirect(inner, _) => {
-                assert!(matches!(
-                    inner.as_ref(),
-                    Expr::Register(reg, _) | Expr::Identifier(reg, _)
-                        if reg.eq_ignore_ascii_case("A0")
-                ));
-            }
-            other => panic!("expected indirect operand inside postincrement, got {other:?}"),
-        },
-        other => panic!("expected unary-plus postincrement AST, got {other:?}"),
-    }
+    assert_eq!(err.message, "Unexpected end of expression");
+    assert_eq!(err.span.col_start, 6);
 }
 
 #[test]

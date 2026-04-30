@@ -250,7 +250,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
     - assembler operand behavior remains preserved by opasm-owned parsing from
       the earlier commits.
 
-- [ ] Item 5: narrow remaining opcore VM operand-only expression surface
+- [x] Item 5: narrow remaining opcore VM operand-only expression surface
   - Validation: focused opcore expression parser tests plus normal formatting,
     clippy, and diff checks.
   - Definition of done: standalone opcore expression parsing no longer
@@ -259,8 +259,9 @@ The second path is the safer first slice because `expr_vm.rs` already treats
     family-gated operand syntax, opcore VM should reject or stop producing
     non-expression shapes.
   - Expected files:
+    - `crates/opforge-vm/src/vm_opasm.rs`
     - `crates/opforge-vm/src/runtime_expr_parser.rs`
-    - focused opcore expression parser tests
+    - focused opcore and opasm expression parser tests
   - Full quality gates:
     - `cargo fmt --all --check`
     - focused `cargo test -p vm` opcore expression parser tests
@@ -343,7 +344,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
 - [x] Milestone 3: CPU/family-specific operand shapes are gated in opasm.
 - [x] Milestone 4: opcore expression VM no longer treats simple parentheses as
   indirect operand syntax.
-- [ ] Milestone 5: opcore expression parser and portable expression evaluator
+- [x] Milestone 5: opcore expression parser and portable expression evaluator
   have an intentional, tested scalar/value boundary.
 - [ ] Milestone 6: classic parser and VM parser boundary behavior are aligned
   or intentionally staged.

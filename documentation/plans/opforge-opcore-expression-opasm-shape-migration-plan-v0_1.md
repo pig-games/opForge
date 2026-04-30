@@ -171,7 +171,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
       bracketed-indirect operand wrappers before opcore narrows its standalone
       expression surface.
 
-- [ ] Item 2: move parenthesized/bracketed comma operand tuples into opasm
+- [x] Item 2: move parenthesized/bracketed comma operand tuples into opasm
   - Validation: focused opasm operand tuple tests plus normal formatting,
     clippy, and diff checks.
   - Definition of done: tuple-backed indirect shapes are produced only from
@@ -339,7 +339,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
 
 - [x] Milestone 1: opasm owns generic immediate/indirect/bracketed operand
   wrappers.
-- [ ] Milestone 2: opasm owns tuple-backed operand shapes.
+- [x] Milestone 2: opasm owns tuple-backed operand shapes.
 - [ ] Milestone 3: CPU/family-specific operand shapes are gated in opasm.
 - [ ] Milestone 4: opcore expression VM no longer treats simple parentheses as
   indirect operand syntax.

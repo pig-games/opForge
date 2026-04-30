@@ -389,7 +389,14 @@ where
 
     if is_single_wrapped_operand(tokens, TokenKind::OpenParen, TokenKind::CloseParen) {
         if contains_top_level_comma(&tokens[1..tokens.len() - 1]) {
-            return None;
+            let close_span = tokens[tokens.len() - 1].span;
+            let elements = parse_wrapped_tuple_elements(tokens, close_span, ")", &mut parse_inner);
+            let span = Span {
+                line: first.span.line,
+                col_start: first.span.col_start,
+                col_end: close_span.col_end,
+            };
+            return Some(Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span));
         }
         let close_span = tokens[tokens.len() - 1].span;
         let inner = parse_inner_or_error(
@@ -410,7 +417,17 @@ where
 
     if is_single_wrapped_operand(tokens, TokenKind::OpenBracket, TokenKind::CloseBracket) {
         if contains_top_level_comma(&tokens[1..tokens.len() - 1]) {
-            return None;
+            let close_span = tokens[tokens.len() - 1].span;
+            let elements = parse_wrapped_tuple_elements(tokens, close_span, "]", &mut parse_inner);
+            let span = Span {
+                line: first.span.line,
+                col_start: first.span.col_start,
+                col_end: close_span.col_end,
+            };
+            return Some(Expr::IndirectLong(
+                Box::new(Expr::Tuple(elements, span)),
+                span,
+            ));
         }
         let close_span = tokens[tokens.len() - 1].span;
         let inner = parse_inner_or_error(
@@ -430,6 +447,36 @@ where
     }
 
     None
+}
+
+fn parse_wrapped_tuple_elements<F>(
+    tokens: &[Token],
+    close_span: Span,
+    close_token_text: &str,
+    parse_inner: &mut F,
+) -> Vec<Expr>
+where
+    F: FnMut(&[Token], Span, Option<String>) -> Result<Expr, ParseError>,
+{
+    split_top_level_comma_ranges(tokens, 1, tokens.len().saturating_sub(1))
+        .into_iter()
+        .map(|(start, end)| {
+            let (element_end_span, element_end_token_text) = if let Some(comma) = tokens
+                .get(end)
+                .filter(|token| matches!(token.kind, TokenKind::Comma))
+            {
+                (comma.span, Some(",".to_string()))
+            } else {
+                (close_span, Some(close_token_text.to_string()))
+            };
+            parse_inner_or_error(
+                parse_inner,
+                &tokens[start..end],
+                element_end_span,
+                element_end_token_text,
+            )
+        })
+        .collect()
 }
 
 fn parse_inner_or_error<F>(
@@ -862,7 +909,7 @@ mod tests {
     }
 
     #[test]
-    fn vm_opasm_generic_operand_wrapper_leaves_comma_forms_for_later_shape_parsing() {
+    fn vm_opasm_generic_operand_wrapper_parses_parenthesized_tuple_indirect() {
         let tokens = vec![
             token(TokenKind::OpenParen, 1, 2),
             ident("left", 2, 6),
@@ -871,7 +918,42 @@ mod tests {
             token(TokenKind::CloseParen, 12, 13),
         ];
 
-        assert!(parse_wrapper(&tokens).is_none());
+        let Some(Expr::Indirect(inner, wrapper_span)) = parse_wrapper(&tokens) else {
+            panic!("expected parenthesized tuple indirect wrapper");
+        };
+
+        assert_eq!(wrapper_span, span(1, 13));
+        let Expr::Tuple(elements, tuple_span) = *inner else {
+            panic!("expected tuple inside indirect wrapper");
+        };
+        assert_eq!(tuple_span, span(1, 13));
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(elements[0], Expr::Identifier(ref name, _) if name == "left"));
+        assert!(matches!(elements[1], Expr::Identifier(ref name, _) if name == "right"));
+    }
+
+    #[test]
+    fn vm_opasm_generic_operand_wrapper_parses_bracketed_tuple_indirect_long() {
+        let tokens = vec![
+            token(TokenKind::OpenBracket, 1, 2),
+            ident("base", 2, 6),
+            token(TokenKind::Comma, 6, 7),
+            number("8", 7, 8),
+            token(TokenKind::CloseBracket, 8, 9),
+        ];
+
+        let Some(Expr::IndirectLong(inner, wrapper_span)) = parse_wrapper(&tokens) else {
+            panic!("expected bracketed tuple indirect wrapper");
+        };
+
+        assert_eq!(wrapper_span, span(1, 9));
+        let Expr::Tuple(elements, tuple_span) = *inner else {
+            panic!("expected tuple inside indirect-long wrapper");
+        };
+        assert_eq!(tuple_span, span(1, 9));
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(elements[0], Expr::Identifier(ref name, _) if name == "base"));
+        assert!(matches!(elements[1], Expr::Number(ref text, _) if text == "8"));
     }
 
     #[test]

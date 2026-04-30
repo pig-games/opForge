@@ -197,7 +197,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
     - `(a,b)` and `[a,b]` are not generic opcore expression syntax.
     - opasm still preserves the AST shapes expected by selector/lowering code.
 
-- [ ] Item 3: gate CPU/family-specific operand shapes in opasm
+- [x] Item 3: gate CPU/family-specific operand shapes in opasm
   - Validation: focused family operand parser tests plus normal formatting,
     clippy, and diff checks.
   - Definition of done: family-only operand syntax is guarded by CPU/family/
@@ -340,7 +340,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
 - [x] Milestone 1: opasm owns generic immediate/indirect/bracketed operand
   wrappers.
 - [x] Milestone 2: opasm owns tuple-backed operand shapes.
-- [ ] Milestone 3: CPU/family-specific operand shapes are gated in opasm.
+- [x] Milestone 3: CPU/family-specific operand shapes are gated in opasm.
 - [ ] Milestone 4: opcore expression VM no longer treats simple parentheses as
   indirect operand syntax.
 - [ ] Milestone 5: opcore expression parser and portable expression evaluator

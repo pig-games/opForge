@@ -271,33 +271,38 @@ pub(crate) fn parse_operand_expr_range(
         operands.push(expr);
         return Ok(());
     }
-    if let Some(expr) = parse_indexed_register_postfix_operand(&tokens[start..end]) {
-        operands.push(expr);
-        return Ok(());
+    let family_id = resolve_operand_family_id(expr_parse_ctx, expr_end_span)?;
+    if family_allows_m6800_indexed_register_postfix(family_id.as_str()) {
+        if let Some(expr) = parse_indexed_register_postfix_operand(&tokens[start..end]) {
+            operands.push(expr);
+            return Ok(());
+        }
     }
-    if let Some(expr) = parse_bitfield_suffix_operand(
-        &tokens[start..end],
-        hints.mnemonic,
-        hints.operand_index,
-        expr_parse_ctx,
-        expr_end_span,
-        boundary.end_token_text.clone(),
-        boundary_token,
-    )? {
-        operands.push(expr);
-        return Ok(());
-    }
-    if let Some(expr) = parse_register_pair_operand(
-        &tokens[start..end],
-        hints.mnemonic,
-        hints.operand_index,
-        expr_parse_ctx,
-        expr_end_span,
-        boundary.end_token_text.clone(),
-        boundary_token,
-    )? {
-        operands.push(expr);
-        return Ok(());
+    if family_allows_m68k_operand_shapes(family_id.as_str()) {
+        if let Some(expr) = parse_bitfield_suffix_operand(
+            &tokens[start..end],
+            hints.mnemonic,
+            hints.operand_index,
+            expr_parse_ctx,
+            expr_end_span,
+            boundary.end_token_text.clone(),
+            boundary_token,
+        )? {
+            operands.push(expr);
+            return Ok(());
+        }
+        if let Some(expr) = parse_register_pair_operand(
+            &tokens[start..end],
+            hints.mnemonic,
+            hints.operand_index,
+            expr_parse_ctx,
+            expr_end_span,
+            boundary.end_token_text.clone(),
+            boundary_token,
+        )? {
+            operands.push(expr);
+            return Ok(());
+        }
     }
     match crate::vm_opcore::parse_expr_with_vm_contract_and_boundary(
         expr_parse_ctx,
@@ -310,6 +315,27 @@ pub(crate) fn parse_operand_expr_range(
         Err(err) => operands.push(Expr::Error(err.message, err.span)),
     }
     Ok(())
+}
+
+fn resolve_operand_family_id(
+    expr_parse_ctx: &crate::vm_opasm_parse::VmExprParseContext<'_>,
+    end_span: Span,
+) -> Result<String, ParseError> {
+    expr_parse_ctx
+        .model
+        .resolve_pipeline(expr_parse_ctx.cpu_id, expr_parse_ctx.dialect_override)
+        .map(|resolved| resolved.family_id)
+        .map_err(|err| {
+            crate::runtime_parse_utils::runtime_bridge_error_to_parse_error(err, end_span)
+        })
+}
+
+fn family_allows_m68k_operand_shapes(family_id: &str) -> bool {
+    family_id.eq_ignore_ascii_case("motorola68000")
+}
+
+fn family_allows_m6800_indexed_register_postfix(family_id: &str) -> bool {
+    family_id.eq_ignore_ascii_case("motorola6800")
 }
 
 fn base_mnemonic_name(name: &str) -> &str {
@@ -862,6 +888,24 @@ mod tests {
 
     fn parse_wrapper(tokens: &[Token]) -> Option<Expr> {
         parse_generic_operand_wrapper(tokens, span(99, 99), None, parse_test_expr)
+    }
+
+    #[test]
+    fn vm_opasm_family_gate_allows_m68k_operand_shapes_only_for_motorola68000_family() {
+        assert!(family_allows_m68k_operand_shapes("motorola68000"));
+        assert!(family_allows_m68k_operand_shapes("MOTOROLA68000"));
+        assert!(!family_allows_m68k_operand_shapes("motorola6800"));
+        assert!(!family_allows_m68k_operand_shapes("mos6502"));
+    }
+
+    #[test]
+    fn vm_opasm_family_gate_allows_indexed_register_postfix_only_for_motorola6800_family() {
+        assert!(family_allows_m6800_indexed_register_postfix("motorola6800"));
+        assert!(family_allows_m6800_indexed_register_postfix("MOTOROLA6800"));
+        assert!(!family_allows_m6800_indexed_register_postfix(
+            "motorola68000"
+        ));
+        assert!(!family_allows_m6800_indexed_register_postfix("intel8080"));
     }
 
     #[test]

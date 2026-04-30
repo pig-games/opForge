@@ -280,7 +280,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
     - opcore VM output is aligned with the portable expression VM scalar subset
       except for explicitly deferred generic-value features.
 
-- [ ] Item 6: classify unresolved generic-value nodes and lock diagnostics
+- [x] Item 6: classify unresolved generic-value nodes and lock diagnostics
   - Validation: focused expression compile/evaluation tests plus normal
     formatting, clippy, and diff checks.
   - Definition of done: generic-looking but non-evaluable nodes have an

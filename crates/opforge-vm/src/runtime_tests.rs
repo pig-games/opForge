@@ -1992,6 +1992,42 @@ fn runtime_expression_parser_parses_struct_literal_expression() {
 }
 
 #[test]
+fn runtime_expression_generic_value_nodes_parse_but_reject_scalar_vm_compile() {
+    let cases = [
+        ("{1,2}", "List cannot be evaluated as scalar expression"),
+        (
+            "arr[2]",
+            "Index expression cannot be evaluated as scalar expression",
+        ),
+        (
+            "arr[2].len",
+            "Member expression cannot be evaluated as scalar expression",
+        ),
+        (
+            "Point{x:1}",
+            "Struct literal cannot be evaluated as scalar expression",
+        ),
+        (
+            ".pick({1,2},?)",
+            "Call expression cannot be evaluated as scalar expression",
+        ),
+        ("?", "Placeholder cannot be evaluated as scalar expression"),
+        ("1..4", "Range cannot be evaluated as scalar expression"),
+    ];
+
+    for (source, message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let expr = parse_expression_tokens(tokens, end_span, None)
+            .expect("generic value expression should parse");
+        let err = compile_core_expr_to_portable_program(&expr)
+            .expect_err("generic value expression should reject scalar compilation");
+
+        assert_eq!(err.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
+        assert_eq!(err.message, message);
+    }
+}
+
+#[test]
 fn execution_model_expr_parser_contract_resolution_prefers_dialect_then_cpu_then_family() {
     let registry = mos6502_family_registry();
 

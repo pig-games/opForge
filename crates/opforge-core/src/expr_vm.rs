@@ -657,32 +657,32 @@ impl ExprCompiler {
             }
             Expr::List(_, span) => Err(PortableExprError::with_span(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "list expression is not supported by portable expression VM",
+                "List cannot be evaluated as scalar expression",
                 *span,
             )),
             Expr::Index { span, .. } => Err(PortableExprError::with_span(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "index expression is not supported by portable expression VM",
+                "Index expression cannot be evaluated as scalar expression",
                 *span,
             )),
             Expr::Member { span, .. } => Err(PortableExprError::with_span(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "member expression is not supported by portable expression VM",
+                "Member expression cannot be evaluated as scalar expression",
                 *span,
             )),
             Expr::StructLiteral { span, .. } => Err(PortableExprError::with_span(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "struct literal expression is not supported by portable expression VM",
+                "Struct literal cannot be evaluated as scalar expression",
                 *span,
             )),
             Expr::Call { span, .. } => Err(PortableExprError::with_span(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "call expression is not supported by portable expression VM",
+                "Call expression cannot be evaluated as scalar expression",
                 *span,
             )),
             Expr::Placeholder(span) => Err(PortableExprError::with_span(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "placeholder expression is not supported by portable expression VM",
+                "Placeholder cannot be evaluated as scalar expression",
                 *span,
             )),
             Expr::Dollar(_) => {
@@ -733,7 +733,7 @@ impl ExprCompiler {
             )),
             Expr::Range { span, .. } => Err(PortableExprError::with_span(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "range expression is not supported by portable expression VM",
+                "Range cannot be evaluated as scalar expression",
                 *span,
             )),
             Expr::String(bytes, _) => {
@@ -1061,6 +1061,71 @@ mod tests {
         assert_eq!(indirect_program.symbols, direct_program.symbols);
         assert_eq!(indirect_long_program.code, direct_program.code);
         assert_eq!(indirect_long_program.symbols, direct_program.symbols);
+    }
+
+    #[test]
+    fn generic_value_nodes_report_scalar_eval_boundary() {
+        let one = || Expr::Number("1".to_string(), span());
+        let cases = vec![
+            (
+                Expr::List(vec![one()], span()),
+                "List cannot be evaluated as scalar expression",
+            ),
+            (
+                Expr::Index {
+                    base: Box::new(Expr::Identifier("arr".to_string(), span())),
+                    index: Box::new(one()),
+                    span: span(),
+                },
+                "Index expression cannot be evaluated as scalar expression",
+            ),
+            (
+                Expr::Member {
+                    base: Box::new(Expr::Identifier("value".to_string(), span())),
+                    field: "field".to_string(),
+                    span: span(),
+                },
+                "Member expression cannot be evaluated as scalar expression",
+            ),
+            (
+                Expr::StructLiteral {
+                    type_name: "Point".to_string(),
+                    fields: vec![("x".to_string(), one())],
+                    span: span(),
+                },
+                "Struct literal cannot be evaluated as scalar expression",
+            ),
+            (
+                Expr::Call {
+                    name: ".pick".to_string(),
+                    args: vec![one()],
+                    span: span(),
+                },
+                "Call expression cannot be evaluated as scalar expression",
+            ),
+            (
+                Expr::Placeholder(span()),
+                "Placeholder cannot be evaluated as scalar expression",
+            ),
+            (
+                Expr::Range {
+                    start: Box::new(one()),
+                    end: Box::new(Expr::Number("4".to_string(), span())),
+                    step: None,
+                    inclusive: false,
+                    span: span(),
+                },
+                "Range cannot be evaluated as scalar expression",
+            ),
+        ];
+
+        for (expr, message) in cases {
+            let err = compile_core_expr_to_portable_program(&expr)
+                .expect_err("generic value node should reject scalar compilation");
+            assert_eq!(err.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
+            assert_eq!(err.message, message);
+            assert_eq!(err.span, Some(span()));
+        }
     }
 
     #[test]

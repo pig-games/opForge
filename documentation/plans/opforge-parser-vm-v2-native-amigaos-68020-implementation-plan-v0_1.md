@@ -478,7 +478,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - checkpoint, rollback, and output-buffer overflow paths are covered by focused tests
     - any intentionally deferred directive or statement shape is documented as unsupported with deterministic native status/diagnostic behavior
 
-- [ ] Work item 6: add the first optional AmigaOS PRVM demo harness after parity is stable
+- [x] Work item 6: add the first optional AmigaOS PRVM demo harness after parity is stable
   - Source requirement or finding IDs: tokenizer-native harness sequencing pattern; completed native PRVM parity from Work item 5.
   - Validation: see the focused harness/report tests and full quality gates listed below.
   - Definition of done: see detailed criteria below for this work item.
@@ -495,8 +495,24 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - `cargo audit`
     - `cargo test --workspace`
     - optional FS-UAE smoke only when the environment is configured
+  - Current item-level completion progress:
+    - added `examples/motorola68000/amigaos/prvm/prvm_debug_cli.asm` as the first optional AmigaOS-visible PRVM report harness after Work item 5 parity was committed
+    - kept the harness single-line and delegated-statement scoped with embedded `start: NOP` input, the default PRVM v2 statement bytecode, and no native expression parser or instruction encoder
+    - routed the harness through the existing `prvm_run_68000` native interpreter entry point and caller-owned ABI buffers
+    - emitted deterministic `OPFORGE-PRVM 1` success/failure report text from ABI status, cursor, result-count, result-byte, and result-record data
+    - added host-side PRVM report rendering tests for success, diagnostic, expression-request, and newline-rejection records
+    - added a focused `prvm_debug_cli` assembly/payload guard and wired only the scoped `prvm_debug_cli` hunk/listing references into the example reference workflow
+  - Current item-level validation evidence:
+    - `cargo test -p asm motorola68020_prvm -- --nocapture` passed after the final report-helper refactor, including the new `prvm_debug_cli` assembly/payload guard and the four `OPFORGE-PRVM 1` report rendering tests
+    - `opForge_UPDATE_REFERENCE=1 cargo test -p asm examples_match_reference_outputs -- --nocapture` passed and generated the scoped `prvm_debug_cli` hunk/listing references; unrelated generated reference drift was pruned
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed, including 2 unit tests and 7 parity integration tests
+    - `cargo fmt --all` passed after the final report-helper refactor
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed after replacing the eight-argument report helper with `PrvmNativeReportInput`
+    - `cargo audit --no-fetch` completed with the two existing allowed advisories for `registry` and `rand`
+    - `git diff --check` passed
+    - `cargo test -p asm examples_match_reference_outputs -- --nocapture` and `cargo test --workspace` retained the previously accepted broad generated-reference baseline exception: the only workspace failure is `tests::examples_match_reference_outputs`; the focused PRVM guard and update-mode reference run validate this slice's scoped references
   - Plan-compliance review evidence:
-    - `plan-compliance-reviewer` returns `PASS` for a harness-only slice that does not broaden native parser semantics beyond the parity-locked interpreter
+    - `plan-compliance-reviewer` returned `PASS` for the Work item 6 boundary slice limited to the optional single-line AmigaOS PRVM report harness, host-side `OPFORGE-PRVM 1` report rendering tests, scoped `prvm_debug_cli` references, and plan evidence; the only residual risk is the standing accepted broad `examples_match_reference_outputs` baseline exception
   - Commit outcome:
     - a first AmigaOS-visible native PRVM demo/report path exists for the already-parity-locked interpreter without making emulator execution a default dependency
   - Definition of done:
@@ -514,7 +530,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 - [x] Milestone 3a: the first native PRVM slice has a minimal opt-in FS-UAE smoke executable before expression work begins (`Work item 3a`).
 - [x] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).
 - [x] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).
-- [ ] Milestone 6: an optional AmigaOS demo/report harness exists only after parity is stable (`Work item 6`).
+- [x] Milestone 6: an optional AmigaOS demo/report harness exists only after parity is stable (`Work item 6`).
 
 ## To Be Spec'd / Planned Later
 

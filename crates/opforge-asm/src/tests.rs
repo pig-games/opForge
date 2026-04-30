@@ -1707,6 +1707,8 @@ fn example_reference_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
         PathBuf::from("motorola68000/amigaos/prvm_interpreter")
     } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_smoke") {
         PathBuf::from("motorola68000/amigaos/prvm_smoke")
+    } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_debug_cli") {
+        PathBuf::from("motorola68000/amigaos/prvm_debug_cli")
     } else {
         relative_stem
     }
@@ -8458,6 +8460,7 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/amigaos/helloworld",
         "motorola68000/amigaos/tkpkg/tkpkg_entry",
         "motorola68000/amigaos/tokvm/tokvm_interpreter",
+        "motorola68000/amigaos/prvm/prvm_debug_cli",
         "motorola68000/amigaos/prvm/prvm_smoke",
         "motorola68000/amigaos/timer_device_benchmark",
         "motorola68000/amigaos/workbench_startup_alert",
@@ -8473,6 +8476,9 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
 }
 
 const TOKVM_NATIVE_RECORD_SIZE: usize = 20;
+const PRVM_NATIVE_RESULT_RECORD_SIZE: usize = 32;
+const PRVM_NATIVE_DIAGNOSTIC_RECORD_SIZE: usize = 32;
+const PRVM_NATIVE_EXPR_REQUEST_RECORD_SIZE: usize = 32;
 
 fn tokvm_native_kind_name(kind_code: u16) -> Option<&'static str> {
     match kind_code {
@@ -8597,6 +8603,331 @@ fn parse_tokvm_amigaos_cli_args(raw: &str) -> Result<(String, String), &'static 
 
 fn tokvm_amigaos_cli_write_is_exact(requested: usize, returned: isize) -> bool {
     returned >= 0 && usize::try_from(returned).ok() == Some(requested)
+}
+
+fn prvm_native_result_kind_name(kind_code: u16) -> Option<&'static str> {
+    match kind_code {
+        1 => Some("begin_statement"),
+        2 => Some("label_text"),
+        3 => Some("mnemonic_text"),
+        4 => Some("operand_expr_slot"),
+        5 => Some("finish_line"),
+        _ => None,
+    }
+}
+
+fn prvm_report_hex(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect::<String>()
+}
+
+fn prvm_report_lexhex(lexemes: &[u8], offset: usize, len: usize) -> String {
+    let end = offset + len;
+    assert!(end <= lexemes.len(), "lexeme range exceeds scratch buffer");
+    prvm_report_hex(&lexemes[offset..end])
+}
+
+fn push_prvm_report_u16(bytes: &mut Vec<u8>, value: u16) {
+    bytes.extend_from_slice(&value.to_be_bytes());
+}
+
+fn push_prvm_report_u32(bytes: &mut Vec<u8>, value: u32) {
+    bytes.extend_from_slice(&value.to_be_bytes());
+}
+
+fn push_prvm_report_result_record(
+    bytes: &mut Vec<u8>,
+    kind: u16,
+    line: u32,
+    col_start: u32,
+    col_end: u32,
+    args: [u32; 4],
+) {
+    push_prvm_report_u16(bytes, kind);
+    push_prvm_report_u16(bytes, 0);
+    push_prvm_report_u32(bytes, line);
+    push_prvm_report_u32(bytes, col_start);
+    push_prvm_report_u32(bytes, col_end);
+    for value in args {
+        push_prvm_report_u32(bytes, value);
+    }
+}
+
+fn push_prvm_report_diagnostic_record(
+    bytes: &mut Vec<u8>,
+    code: u16,
+    line: u32,
+    col_start: u32,
+    col_end: u32,
+    token_index: Option<u32>,
+    message: Option<(u32, u32)>,
+) {
+    push_prvm_report_u16(bytes, code);
+    push_prvm_report_u16(bytes, 0);
+    push_prvm_report_u32(bytes, line);
+    push_prvm_report_u32(bytes, col_start);
+    push_prvm_report_u32(bytes, col_end);
+    push_prvm_report_u32(bytes, token_index.unwrap_or(u32::MAX));
+    let (message_offset, message_len) = message.unwrap_or((u32::MAX, 0));
+    push_prvm_report_u32(bytes, message_offset);
+    push_prvm_report_u32(bytes, message_len);
+    push_prvm_report_u32(bytes, 0);
+}
+
+fn prvm_report_expr_request_record(
+    operand_index: u32,
+    expr_slot_index: u32,
+    start_token: u32,
+    end_token: u32,
+    line: u32,
+    col_start: u32,
+    col_end: u32,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    push_prvm_report_u16(&mut bytes, 1);
+    push_prvm_report_u16(&mut bytes, 0);
+    push_prvm_report_u32(&mut bytes, operand_index);
+    push_prvm_report_u32(&mut bytes, expr_slot_index);
+    push_prvm_report_u32(&mut bytes, start_token);
+    push_prvm_report_u32(&mut bytes, end_token);
+    push_prvm_report_u32(&mut bytes, line);
+    push_prvm_report_u32(&mut bytes, col_start);
+    push_prvm_report_u32(&mut bytes, col_end);
+    bytes
+}
+
+struct PrvmNativeReportInput<'a> {
+    status: i32,
+    result_count: u32,
+    cursor: u32,
+    result_bytes: u32,
+    result_records: &'a [u8],
+    lexemes: &'a [u8],
+    diagnostic_records: &'a [u8],
+    expr_request: Option<&'a [u8]>,
+}
+
+fn render_prvm_native_report(input: PrvmNativeReportInput<'_>) -> Vec<String> {
+    let mut lines = vec![
+        "OPFORGE-PRVM 1".to_string(),
+        format!("STATUS {}", input.status),
+        format!("RESULTS {}", input.result_count),
+        format!("CURSOR {}", input.cursor),
+        format!("BYTES {}", input.result_bytes),
+    ];
+
+    let result_count = usize::try_from(input.result_count).expect("result count fits usize");
+    assert_eq!(
+        input.result_records.len(),
+        result_count * PRVM_NATIVE_RESULT_RECORD_SIZE,
+        "result record buffer length must match the ABI record count"
+    );
+    for index in 0..result_count {
+        let record = &input.result_records
+            [index * PRVM_NATIVE_RESULT_RECORD_SIZE..(index + 1) * PRVM_NATIVE_RESULT_RECORD_SIZE];
+        let kind_code = read_tokvm_native_u16(record, 0);
+        let kind_name = prvm_native_result_kind_name(kind_code)
+            .unwrap_or_else(|| panic!("unknown native prvm result kind code {kind_code}"));
+        let col_start = read_tokvm_native_u32(record, 8);
+        let col_end = read_tokvm_native_u32(record, 12);
+        match kind_code {
+            2 | 3 => {
+                let lexeme_offset = usize::try_from(read_tokvm_native_u32(record, 16))
+                    .expect("offset fits usize");
+                let lexeme_len = usize::try_from(read_tokvm_native_u32(record, 20))
+                    .expect("length fits usize");
+                lines.push(format!(
+                    "RESULT {index} KIND {kind_name} START {col_start} END {col_end} LEN {lexeme_len} LEXHEX {}",
+                    prvm_report_lexhex(input.lexemes, lexeme_offset, lexeme_len)
+                ));
+            }
+            4 => lines.push(format!(
+                "RESULT {index} KIND {kind_name} START {col_start} END {col_end} OPERAND {} SLOT {} TOKENS {}..{}",
+                read_tokvm_native_u32(record, 16),
+                read_tokvm_native_u32(record, 20),
+                read_tokvm_native_u32(record, 24),
+                read_tokvm_native_u32(record, 28)
+            )),
+            _ => lines.push(format!("RESULT {index} KIND {kind_name}")),
+        }
+    }
+
+    assert_eq!(
+        input.diagnostic_records.len() % PRVM_NATIVE_DIAGNOSTIC_RECORD_SIZE,
+        0,
+        "diagnostic record buffer must be ABI-record aligned"
+    );
+    for (index, record) in input
+        .diagnostic_records
+        .chunks_exact(PRVM_NATIVE_DIAGNOSTIC_RECORD_SIZE)
+        .enumerate()
+    {
+        let token_index = read_tokvm_native_u32(record, 16);
+        let message_offset = read_tokvm_native_u32(record, 20);
+        let message_len = read_tokvm_native_u32(record, 24);
+        let message_hex = if message_offset == u32::MAX {
+            "none".to_string()
+        } else {
+            prvm_report_lexhex(
+                input.lexemes,
+                usize::try_from(message_offset).expect("message offset fits usize"),
+                usize::try_from(message_len).expect("message length fits usize"),
+            )
+        };
+        let token = if token_index == u32::MAX {
+            "none".to_string()
+        } else {
+            token_index.to_string()
+        };
+        lines.push(format!(
+            "DIAGNOSTIC {index} CODE {} SPAN {}:{}-{} TOKEN {token} MSGHEX {message_hex}",
+            read_tokvm_native_u16(record, 0),
+            read_tokvm_native_u32(record, 4),
+            read_tokvm_native_u32(record, 8),
+            read_tokvm_native_u32(record, 12)
+        ));
+    }
+
+    if let Some(record) = input.expr_request {
+        assert_eq!(
+            record.len(),
+            PRVM_NATIVE_EXPR_REQUEST_RECORD_SIZE,
+            "expression request record must use the ABI record size"
+        );
+        lines.push(format!(
+            "EXPR_REQUEST OPERAND {} SLOT {} TOKENS {}..{} SPAN {}:{}-{}",
+            read_tokvm_native_u32(record, 4),
+            read_tokvm_native_u32(record, 8),
+            read_tokvm_native_u32(record, 12),
+            read_tokvm_native_u32(record, 16),
+            read_tokvm_native_u32(record, 20),
+            read_tokvm_native_u32(record, 24),
+            read_tokvm_native_u32(record, 28)
+        ));
+    }
+
+    lines.push("END".to_string());
+    lines
+}
+
+#[test]
+fn motorola68020_prvm_native_abi_renders_success_report() {
+    let lexemes = b"startNOP".to_vec();
+    let mut records = Vec::new();
+    push_prvm_report_result_record(&mut records, 1, 1, 1, 11, [0, 0, 0, 0]);
+    push_prvm_report_result_record(&mut records, 2, 1, 1, 6, [0, 5, 0, 0]);
+    push_prvm_report_result_record(&mut records, 3, 1, 8, 11, [5, 3, 0, 0]);
+    push_prvm_report_result_record(&mut records, 5, 1, 1, 11, [0, 0, 0, 0]);
+
+    let report = render_prvm_native_report(PrvmNativeReportInput {
+        status: 0,
+        result_count: 4,
+        cursor: 3,
+        result_bytes: 128,
+        result_records: &records,
+        lexemes: &lexemes,
+        diagnostic_records: &[],
+        expr_request: None,
+    });
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-PRVM 1",
+            "STATUS 0",
+            "RESULTS 4",
+            "CURSOR 3",
+            "BYTES 128",
+            "RESULT 0 KIND begin_statement",
+            "RESULT 1 KIND label_text START 1 END 6 LEN 5 LEXHEX 7374617274",
+            "RESULT 2 KIND mnemonic_text START 8 END 11 LEN 3 LEXHEX 4E4F50",
+            "RESULT 3 KIND finish_line",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_prvm_native_abi_renders_diagnostic_report() {
+    let lexemes = b"bad token".to_vec();
+    let mut diagnostics = Vec::new();
+    push_prvm_report_diagnostic_record(&mut diagnostics, 3, 7, 4, 9, Some(2), Some((0, 9)));
+
+    let report = render_prvm_native_report(PrvmNativeReportInput {
+        status: 5,
+        result_count: 0,
+        cursor: 2,
+        result_bytes: 0,
+        result_records: &[],
+        lexemes: &lexemes,
+        diagnostic_records: &diagnostics,
+        expr_request: None,
+    });
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-PRVM 1",
+            "STATUS 5",
+            "RESULTS 0",
+            "CURSOR 2",
+            "BYTES 0",
+            "DIAGNOSTIC 0 CODE 3 SPAN 7:4-9 TOKEN 2 MSGHEX 62616420746F6B656E",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_prvm_native_abi_renders_expression_request_report() {
+    let expr_request = prvm_report_expr_request_record(0, 1, 3, 4, 1, 12, 15);
+    let report = render_prvm_native_report(PrvmNativeReportInput {
+        status: 1,
+        result_count: 0,
+        cursor: 3,
+        result_bytes: 40,
+        result_records: &[],
+        lexemes: b"#42",
+        diagnostic_records: &[],
+        expr_request: Some(&expr_request),
+    });
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-PRVM 1",
+            "STATUS 1",
+            "RESULTS 0",
+            "CURSOR 3",
+            "BYTES 40",
+            "EXPR_REQUEST OPERAND 0 SLOT 1 TOKENS 3..4 SPAN 1:12-15",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_prvm_native_abi_renders_newline_rejection_report() {
+    let report = render_prvm_native_report(PrvmNativeReportInput {
+        status: 2,
+        result_count: 0,
+        cursor: 5,
+        result_bytes: 0,
+        result_records: &[],
+        lexemes: &[],
+        diagnostic_records: &[],
+        expr_request: None,
+    });
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-PRVM 1",
+            "STATUS 2",
+            "RESULTS 0",
+            "CURSOR 5",
+            "BYTES 0",
+            "END",
+        ]
+    );
 }
 
 #[test]
@@ -8909,6 +9240,56 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
             .windows("OPFORGE-PRVM smoke FAIL native-expr-value".len())
             .any(|window| window == b"OPFORGE-PRVM smoke FAIL native-expr-value"),
         "expected native expression slot validation in Hunk payload"
+    );
+}
+
+#[test]
+fn motorola68020_prvm_debug_cli_example_assembles_with_report_surface() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_debug_cli.asm");
+    let out_dir = create_temp_dir("m68000-prvm-debug-cli");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble prvm debug cli example: {detail}");
+    }
+
+    let listing = fs::read_to_string(out_dir.join("prvm_debug_cli.lst"))
+        .expect("read prvm debug cli listing");
+    assert!(listing.contains(".cpu 68020"));
+    assert!(listing.contains("prvm.amigaos.interpreter.prvm_run_68000"));
+    assert!(listing.contains("PRVM_DEBUG_PROGRAM_LEN"));
+    assert!(listing.contains("reportSuccessText"));
+    assert!(listing.contains("OPFORGE-PRVM 1"));
+    assert!(listing.contains("RESULT 1 KIND label_text"));
+    assert!(listing.contains("RESULT 2 KIND mnemonic_text"));
+    assert!(listing.contains("start: NOP"));
+
+    let payload_path = example_output_payload_path(&out_dir, "prvm_debug_cli", "hunk");
+    let payload = fs::read(payload_path).expect("read prvm debug cli hunk payload");
+    assert!(
+        payload
+            .windows("OPFORGE-PRVM 1".len())
+            .any(|window| window == b"OPFORGE-PRVM 1"),
+        "expected PRVM report marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("RESULT 1 KIND label_text START 1 END 6 LEN 5".len())
+            .any(|window| window == b"RESULT 1 KIND label_text START 1 END 6 LEN 5"),
+        "expected label result row in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("RESULT 2 KIND mnemonic_text START 8 END 11 LEN 3".len())
+            .any(|window| window == b"RESULT 2 KIND mnemonic_text START 8 END 11 LEN 3"),
+        "expected mnemonic result row in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("start: NOP".len())
+            .any(|window| window == b"start: NOP"),
+        "expected single-line PRVM debug input in Hunk payload"
     );
 }
 

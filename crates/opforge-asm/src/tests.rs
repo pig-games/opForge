@@ -1653,6 +1653,7 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
                 | "tkpkg_token_policy.asm"
                 | "tkpkg_tokenizer_vm.asm"
                 | "prvm_interpreter.asm"
+                | "prvm_line_router.asm"
         )
     )
 }
@@ -8709,6 +8710,13 @@ struct PrvmNativeReportInput<'a> {
     expr_request: Option<&'a [u8]>,
 }
 
+struct PrvmLineRouteReportInput<'a> {
+    processor: &'a str,
+    kind: &'a str,
+    source: &'a str,
+    prvm_report: PrvmNativeReportInput<'a>,
+}
+
 fn render_prvm_native_report(input: PrvmNativeReportInput<'_>) -> Vec<String> {
     let mut lines = vec![
         "OPFORGE-PRVM 1".to_string(),
@@ -8810,6 +8818,38 @@ fn render_prvm_native_report(input: PrvmNativeReportInput<'_>) -> Vec<String> {
 
     lines.push("END".to_string());
     lines
+}
+
+fn render_prvm_line_route_report(input: PrvmLineRouteReportInput<'_>) -> Vec<String> {
+    if input.processor != "asm" || input.kind != "statement" {
+        return render_prvm_native_report(PrvmNativeReportInput {
+            status: 100,
+            result_count: 0,
+            cursor: 0,
+            result_bytes: 0,
+            result_records: &[],
+            lexemes: &[],
+            diagnostic_records: &[],
+            expr_request: None,
+        });
+    }
+    if input
+        .source
+        .bytes()
+        .any(|byte| byte == b'\n' || byte == b'\r')
+    {
+        return render_prvm_native_report(PrvmNativeReportInput {
+            status: 2,
+            result_count: 0,
+            cursor: 0,
+            result_bytes: 0,
+            result_records: &[],
+            lexemes: &[],
+            diagnostic_records: &[],
+            expr_request: None,
+        });
+    }
+    render_prvm_native_report(input.prvm_report)
 }
 
 #[test]
@@ -8928,6 +8968,112 @@ fn motorola68020_prvm_native_abi_renders_newline_rejection_report() {
             "END",
         ]
     );
+}
+
+#[test]
+fn motorola68020_prvm_line_router_renders_delegated_statement_report() {
+    let lexemes = b"startNOP".to_vec();
+    let mut records = Vec::new();
+    push_prvm_report_result_record(&mut records, 1, 1, 1, 11, [0, 0, 0, 0]);
+    push_prvm_report_result_record(&mut records, 2, 1, 1, 6, [0, 5, 0, 0]);
+    push_prvm_report_result_record(&mut records, 3, 1, 8, 11, [5, 3, 0, 0]);
+    push_prvm_report_result_record(&mut records, 5, 1, 1, 11, [0, 0, 0, 0]);
+
+    let report = render_prvm_line_route_report(PrvmLineRouteReportInput {
+        processor: "asm",
+        kind: "statement",
+        source: "start: NOP",
+        prvm_report: PrvmNativeReportInput {
+            status: 0,
+            result_count: 4,
+            cursor: 3,
+            result_bytes: 128,
+            result_records: &records,
+            lexemes: &lexemes,
+            diagnostic_records: &[],
+            expr_request: None,
+        },
+    });
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-PRVM 1",
+            "STATUS 0",
+            "RESULTS 4",
+            "CURSOR 3",
+            "BYTES 128",
+            "RESULT 0 KIND begin_statement",
+            "RESULT 1 KIND label_text START 1 END 6 LEN 5 LEXHEX 7374617274",
+            "RESULT 2 KIND mnemonic_text START 8 END 11 LEN 3 LEXHEX 4E4F50",
+            "RESULT 3 KIND finish_line",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_prvm_line_router_rejects_unsupported_route() {
+    let report = render_prvm_line_route_report(PrvmLineRouteReportInput {
+        processor: "linker",
+        kind: "statement",
+        source: "start: NOP",
+        prvm_report: PrvmNativeReportInput {
+            status: 0,
+            result_count: 0,
+            cursor: 0,
+            result_bytes: 0,
+            result_records: &[],
+            lexemes: &[],
+            diagnostic_records: &[],
+            expr_request: None,
+        },
+    });
+    assert_eq!(report[1], "STATUS 100");
+    assert_eq!(report.last().map(String::as_str), Some("END"));
+}
+
+#[test]
+fn motorola68020_prvm_line_router_rejects_newline_source() {
+    let report = render_prvm_line_route_report(PrvmLineRouteReportInput {
+        processor: "asm",
+        kind: "statement",
+        source: "start: NOP\nnext: NOP",
+        prvm_report: PrvmNativeReportInput {
+            status: 0,
+            result_count: 0,
+            cursor: 0,
+            result_bytes: 0,
+            result_records: &[],
+            lexemes: &[],
+            diagnostic_records: &[],
+            expr_request: None,
+        },
+    });
+    assert_eq!(report[1], "STATUS 2");
+    assert_eq!(report.last().map(String::as_str), Some("END"));
+}
+
+#[test]
+fn motorola68020_prvm_line_router_preserves_expression_request_report() {
+    let expr_request = prvm_report_expr_request_record(0, 1, 3, 4, 1, 12, 15);
+    let report = render_prvm_line_route_report(PrvmLineRouteReportInput {
+        processor: "asm",
+        kind: "statement",
+        source: "start: LDA #42",
+        prvm_report: PrvmNativeReportInput {
+            status: 1,
+            result_count: 0,
+            cursor: 3,
+            result_bytes: 40,
+            result_records: &[],
+            lexemes: b"#42",
+            diagnostic_records: &[],
+            expr_request: Some(&expr_request),
+        },
+    });
+    assert!(report
+        .iter()
+        .any(|line| line == "EXPR_REQUEST OPERAND 0 SLOT 1 TOKENS 3..4 SPAN 1:12-15"));
 }
 
 #[test]
@@ -9185,6 +9331,46 @@ fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
     assert!(source.contains("prvmEmitLabelText"));
     assert!(source.contains("PRVM_STATUS_UNSUPPORTED_OPCODE"));
     assert!(!source.contains(".output"));
+}
+
+#[test]
+fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_router.asm");
+    let source = fs::read_to_string(asm_path).expect("read prvm line router source");
+
+    assert!(source.contains(".module prvm.amigaos.line_router"));
+    assert!(source.contains(".cpu 68020"));
+    assert!(source.contains(".use prvm.amigaos.interpreter (prvm_run_68000)"));
+    assert!(source.contains("prvm_route_line_68000:"));
+    assert!(source.contains("PRVM_ROUTE_MAGIC_OPLR"));
+    assert!(source.contains("PRVM_STATUS_UNSUPPORTED_ROUTE"));
+    assert!(source.contains("processorAsmText:"));
+    assert!(source.contains(".byte \"asm\""));
+    assert!(source.contains("kindStatementText:"));
+    assert!(source.contains(".byte \"statement\""));
+    assert!(source.contains("prvmRouteRejectNewline"));
+    assert!(source.contains("prvmRouteBuildRequestFrame"));
+    assert!(source.contains("JSR prvm_run_68000.L"));
+    assert!(!source.contains("ParseOperandExpr"));
+    assert!(!source.contains(".output"));
+}
+
+#[test]
+fn motorola68020_prvm_line_router_module_parses_with_interpreter_import() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_router.asm");
+
+    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
+        .expect("line router module should parse with interpreter import");
+    assert!(
+        entries.is_empty(),
+        "import-only line router should not emit output entries"
+    );
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics while parsing line router: {diagnostics:?}"
+    );
 }
 
 #[test]

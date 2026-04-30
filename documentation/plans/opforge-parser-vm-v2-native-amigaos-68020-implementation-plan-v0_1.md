@@ -18,8 +18,13 @@ implementation slices.
 
 The native parser starts after tokenizer output and after opcore has delegated a
 line to `ProcessingRequestKind::Processor { processor: "asm", kind:
-"statement" }`. It does not replace opcore line routing, does not port the
-opcore expression parser, and does not become a whole-file assembler pass.
+"statement" }`. The completed baseline does not replace opcore line routing,
+does not port the opcore expression parser, and does not become a whole-file
+assembler pass. Post-baseline extension items may add a narrow native line
+router and whole-file line iterator around the same single-line tokenizer/PRVM
+contracts, but those wrappers must not move expression parsing, CPU-family
+semantics, macro expansion, symbol resolution, or instruction encoding into the
+native parser.
 
 ## Constraints
 
@@ -81,6 +86,12 @@ opcore expression parser, and does not become a whole-file assembler pass.
   expression sub-call path before broadening to every PRVM v2 opcode.
 - The AmigaOS CLI/file I/O harness is deliberately deferred until the native ABI
   and host-side parity harness are stable.
+- The first post-baseline line-routing slice should connect existing native
+  tokenizer and PRVM statement components for exactly one delegated line before
+  any whole-file input loop is introduced.
+- The first whole-file iteration slice should split input into deterministic
+  newline-free logical lines and call the same line router one line at a time;
+  it is not a macro/module/full-assembler pass.
 
 ## Work Items
 
@@ -522,6 +533,88 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - nonzero failures still produce deterministic reports when an output handle is available
     - no full assembler pass, native expression parser, or native instruction encoder is introduced
 
+- [x] Work item 7: add the first native opcore line-routing adapter over one logical line
+  - Source requirement or finding IDs: first recommended post-baseline step after Work item 6; existing Rust opcore `ProcessingRequestKind::Processor { processor: "asm", kind: "statement" }` delegation contract; tokenizer-native single-line ABI; completed PRVM single-line ABI and report harness.
+  - Validation: see the focused line-router tests and full quality gates listed below.
+  - Definition of done: see detailed criteria below for this work item.
+  - Expected files:
+    - a narrow native line-router adapter or harness source under the existing Motorola 68000/AmigaOS example or native-support tree
+    - focused host-side tests that build a one-line tokenizer output, route it to `prvm_run_68000`, and compare decoded output against Rust PRVM v2 behavior
+    - scoped reference artifacts only if the line-router example enters the reference workflow
+    - this plan ledger
+  - Validation details:
+    - focused line-routing test for one newline-free statement that produces the same decoded statement/report shape as the current PRVM single-line path
+    - focused rejection test for unsupported processor/kind, missing tokenizer output, or newline-containing source at the line-router boundary
+    - focused preservation test showing expression operands still use the existing host-mediated expression request/resume path rather than native expression parsing
+    - `cargo test -p asm motorola68020_prvm -- --nocapture`
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture`
+    - `cargo fmt --all`
+    - `cargo clippy --all-targets --all-features -- -D warnings`
+    - `cargo audit`
+    - `cargo test --workspace`
+  - Current item-level completion progress:
+    - added `examples/motorola68000/amigaos/prvm/prvm_line_router.asm` as an import-only native AmigaOS/Motorola 68020 line-router adapter over the existing `prvm_run_68000` PRVM statement interpreter
+    - defined a narrow `prvm_route_line_68000` route-frame ABI that accepts one caller-owned logical line plus tokenizer, lexeme, PRVM output, diagnostic, resume, and expression-request buffers
+    - validated the route frame magic/version/size, delegated only `processor: "asm", kind: "statement"`, rejected newline-containing source before PRVM entry, and returned deterministic status values for invalid arguments, unsupported routes, and newline rejection
+    - copied the route frame into the existing PRVM request frame shape and called `prvm_run_68000` without changing PRVM bytecode, expression handling, instruction encoding, macro expansion, module execution, or symbol resolution
+    - added host-side report tests for delegated statement output, unsupported-route rejection, newline rejection, and expression-request pass-through
+    - added a focused source-surface guard plus an actual module parse/import guard for `prvm_line_router.asm`, fixed the import-only module terminator, and reserved the internal PRVM request frame with the BSS-valid `.res byte, PRVM_REQUEST_FRAME_SIZE` form
+    - excluded `prvm_line_router.asm` from the broad example reference sweep because it is an import-only module like `prvm_interpreter.asm`
+  - Current item-level validation evidence:
+    - `cargo fmt --all && cargo test -p asm motorola68020_prvm_line_router -- --nocapture` passed after the compliance remediation: 6 passed, 0 failed, 872 filtered out, including the actual `prvm_line_router.asm` parse/import guard
+    - `cargo test -p asm motorola68020_prvm -- --nocapture` passed after the line-router parse/import guard: 13 passed, 0 failed, 865 filtered out
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed, including 2 unit tests and 7 parity integration tests
+    - `git diff --check` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the two existing allowed advisories for `registry` and `rand`
+    - `cargo test -p asm examples_match_reference_outputs -- --nocapture` retained the previously accepted broad generated-reference baseline exception: the only filtered test failed as `tests::examples_match_reference_outputs`, with no PRVM line-router-specific failure surfaced
+    - `cargo test --workspace` retained the same accepted broad generated-reference baseline exception: 877 passed, 1 failed (`tests::examples_match_reference_outputs`) in the `asm` crate
+  - Plan-compliance review evidence:
+    - initial `plan-compliance-reviewer` pass returned `FAIL` because `prvm_line_router.asm` was not yet parse-valid, lacked `.endmodule`, used invalid BSS `.fill` reservation syntax, and had only synthetic/string-scan validation for the native boundary
+    - remediation added the missing `.endmodule`, changed the BSS reservation to `.res byte, PRVM_REQUEST_FRAME_SIZE`, and added an actual module parse/import guard
+    - second `plan-compliance-reviewer` pass returned `PASS` for the Work item 7 boundary slice limited to one newline-free native line-router adapter, focused host-side route/report tests, actual module parse/import validation, and plan evidence; Work item 8 whole-file iteration remains blocked until this Work item 7 slice is committed
+  - Commit outcome:
+    - one native opcore-style delegated line can be routed through tokenizer output into the parity-locked PRVM statement path with deterministic status/report behavior
+  - Definition of done:
+    - the adapter accepts exactly one logical newline-free line or pre-tokenized equivalent and rejects newline-containing whole-file input at this boundary
+    - the adapter delegates only `processor: "asm", kind: "statement"` to PRVM; unsupported processor/kind combinations fail deterministically
+    - tokenizer output and lexeme buffers remain caller-owned and ABI-bounded
+    - expression handling remains Rust/opcore host-mediated through the existing pause/resume protocol
+    - no CPU-family statement semantics, native expression parser, macro expansion, symbol resolution, instruction encoder, or full assembler pass is introduced
+
+- [ ] Work item 8: add the first tokenizer/parser whole-file line iterator over the line router
+  - Source requirement or finding IDs: second recommended post-baseline step after line routing; completed Work item 7 line-router adapter; existing tokenizer-native stream precedent; current blocking rule that the PRVM ABI itself remains newline-free.
+  - Validation: see the focused whole-file iterator tests and full quality gates listed below.
+  - Definition of done: see detailed criteria below for this work item.
+  - Expected files:
+    - a narrow whole-file iterator wrapper or harness source that splits input into logical lines and calls the Work item 7 line router per line
+    - focused host-side tests for deterministic line splitting, per-line routing, error aggregation, and continued expression request/resume delegation
+    - scoped reference artifacts only if the iterator example enters the reference workflow
+    - this plan ledger
+  - Validation details:
+    - focused iterator test for a two-line input where each line is routed independently and output order is deterministic
+    - focused newline handling tests for LF, CRLF, trailing final line without newline, skipped blank lines, and line-number preservation in diagnostics
+    - focused failure test proving one failing line yields a deterministic fail-fast aggregate report and no later lines are routed after the first failure
+    - focused guard proving each PRVM call still receives one newline-free logical line and caller-owned buffers
+    - `cargo test -p asm motorola68020_prvm -- --nocapture`
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture`
+    - `cargo fmt --all`
+    - `cargo clippy --all-targets --all-features -- -D warnings`
+    - `cargo audit`
+    - `cargo test --workspace`
+  - Plan-compliance review evidence:
+    - `plan-compliance-reviewer` returns `PASS` for a whole-file-iterator-only slice that wraps the Work item 7 line router while preserving the newline-free PRVM ABI and avoiding full assembler behavior
+  - Commit outcome:
+    - a first native tokenizer/parser whole-file iteration path exists that processes input as ordered newline-free logical lines through the line router, without becoming macro expansion, module execution, symbol resolution, or instruction encoding
+  - Definition of done:
+    - whole-file input is accepted only by the iterator wrapper; `prvm_run_68000` and the line-router call remain newline-free
+    - line splitting, blank-line handling, line-number accounting, and aggregate status/report policy are deterministic and covered by focused tests
+    - blank logical lines are skipped without calling PRVM while still advancing source line accounting
+    - aggregate failure behavior is fail-fast: the iterator records the first failing line/report and does not route later lines in that input
+    - each line uses the existing tokenizer output and PRVM ABI buffers with explicit bounds checks
+    - expression handling remains Rust/opcore host-mediated through the existing pause/resume protocol
+    - the iterator does not implement macro expansion, module graph execution, symbol resolution, instruction encoding, output-file generation, or a native production expression parser
+
 ## Milestones
 
 - [x] Milestone 1: native PRVM ABI/spec authority exists and passes quality review (`Work item 1`).
@@ -531,12 +624,12 @@ opcore expression parser, and does not become a whole-file assembler pass.
 - [x] Milestone 4: native PRVM expression operand parsing works through host-mediated Rust/opcore sub-calls (`Work item 4`).
 - [x] Milestone 5: native PRVM parity is broadened to the WI-6 Rust v2 authority corpus (`Work item 5`).
 - [x] Milestone 6: an optional AmigaOS demo/report harness exists only after parity is stable (`Work item 6`).
+- [x] Milestone 7: one native opcore-style logical line routes through tokenizer output into PRVM without broadening parser semantics (`Work item 7`).
+- [ ] Milestone 8: whole-file input is iterated as deterministic newline-free logical lines over the line router (`Work item 8`).
 
 ## To Be Spec'd / Planned Later
 
-- native opcore line routing
 - native opcore expression parser
-- native tokenizer/parser whole-file iteration in one call
 - native macro expansion, module graph execution, symbol resolution, or full assembler pass loop
 - native instruction selector/encoder VM execution
 - emulator-required CI gates
@@ -554,5 +647,7 @@ opcore expression parser, and does not become a whole-file assembler pass.
 - do not start native assembly before the native PRVM ABI/spec from Work item 1 passes its validation
 - do not implement or embed production native expression parsing; use only the host-mediated Rust/opcore sub-call protocol, except for the smoke-only one-token literal pass-back shim allowed above
 - do not parse raw whole-file input or newline-containing source in the first native PRVM ABI
+- do not start Work item 8 whole-file iteration until Work item 7 line routing is committed and plan-compliance has passed
+- whole-file iteration may split input into logical lines only in its wrapper; `prvm_run_68000` and the line-router call must remain newline-free and caller-buffer bounded
 - do not move CPU-family statement semantics into native interpreter branches; keep specialization in packages and PRVM bytecode
 - do not add the AmigaOS CLI/file I/O harness before host-side native PRVM parity is stable

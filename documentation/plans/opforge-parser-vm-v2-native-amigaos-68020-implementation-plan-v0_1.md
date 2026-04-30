@@ -417,6 +417,27 @@ opcore expression parser, and does not become a whole-file assembler pass.
     - second `plan-compliance-reviewer` pass returned `PASS` and allowed committing only `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`, `crates/opforge-asm/src/tests.rs`, this plan ledger, `examples/reference/motorola68000/amigaos/prvm_smoke.hunk`, and `examples/reference/motorola68000/amigaos/prvm_smoke.lst`
   - Current sub-slice 5a remaining work before closing this boundary slice:
     - complete; ready to commit as the approved Work item 5a boundary slice
+  - Current sub-slice 5b progress:
+    - made the already-implemented native leading-label opcode observable through the AmigaOS `prvm_smoke` executable path
+    - changed the smoke source from expression-only ` LDA #42` to labeled `start: LDA #42`
+    - inserted `PRVM_OPCODE_PARSE_OPTIONAL_LABEL` into the smoke parser program and expanded the smoke token stream to label identifier, colon, mnemonic, and operand tokens
+    - added smoke validation for the emitted `PRVM_RESULT_LABEL_TEXT` record while preserving the existing smoke-only `#42` host-mediated expression pass-back shim
+    - refreshed only the scoped `prvm_smoke` hunk/listing references after pruning unrelated generated reference drift
+  - Current sub-slice 5b validation evidence:
+    - `cargo test -p asm motorola68020_prvm_smoke_example_assembles_with_native_call_surface -- --nocapture` passed
+    - `cargo test -p asm motorola68020_prvm_interpreter_example_assembles_first_native_slice -- --nocapture` passed
+    - `cargo test -p vm native_prvm_abi -- --nocapture` passed, including 10 native ABI bridge tests
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed, including 2 unit tests and 7 parity integration tests
+    - `cargo fmt --all -- --check` passed
+    - `opForge_UPDATE_REFERENCE=1 cargo test -p asm tests::examples_match_reference_outputs -- --nocapture` passed and refreshed the intentional `prvm_smoke` references; unrelated `tkpkg_debug_cli` and `tokvm_interpreter` reference drift was pruned
+    - `cargo test -p asm tests::examples_match_reference_outputs -- --nocapture` remains on the accepted broad generated-reference baseline after the scoped refresh; this slice's focused smoke guard and reference-refresh command both passed
+    - `scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md` passed
+    - `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the two existing allowed advisories for `registry` and `rand`
+    - `git diff --check` passed after trimming trailing whitespace from the regenerated `prvm_smoke.lst` listing
+    - `cargo test --workspace` retained the previously accepted broad baseline exception: the `asm` crate reported `866 passed; 1 failed`, with the only failure in `tests::examples_match_reference_outputs` after the intentional `prvm_smoke` reference refresh was retained and unrelated generated references were pruned
+  - Current sub-slice 5b remaining work before closing this boundary slice:
+    - run compliance review and commit the scoped smoke-observability slice if approved
   - Expected files:
     - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
     - focused native PRVM tests and fixtures

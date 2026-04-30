@@ -8861,6 +8861,8 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("prvm.amigaos.interpreter.prvm_run_68000"));
     assert!(listing.contains("PRVM_OPCODE_PARSE_OPERAND_EXPR"));
+    assert!(listing.contains("PRVM_OPCODE_PARSE_OPTIONAL_LABEL"));
+    assert!(listing.contains("PRVM_RESULT_LABEL_TEXT"));
     assert!(listing.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
     assert!(listing.contains("prvmSmokeServiceExprRequest"));
     assert!(listing.contains("PRVM_NATIVE_EXPR_KIND_IMM_DEC"));
@@ -8876,9 +8878,15 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
     );
     assert!(
         payload
-            .windows(" LDA #42".len())
-            .any(|window| window == b" LDA #42"),
-        "expected expression-bearing PRVM smoke input in Hunk payload"
+            .windows("start: LDA #42".len())
+            .any(|window| window == b"start: LDA #42"),
+        "expected labeled expression-bearing PRVM smoke input in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OPFORGE-PRVM smoke FAIL label".len())
+            .any(|window| window == b"OPFORGE-PRVM smoke FAIL label"),
+        "expected label result validation in Hunk payload"
     );
     assert!(
         payload

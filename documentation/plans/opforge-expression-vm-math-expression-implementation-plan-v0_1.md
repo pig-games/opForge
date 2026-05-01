@@ -576,13 +576,13 @@ continues.
   - Done when all operator, ternary, range, list, struct, member, and index
     grammar covered by this plan is implemented by `EXVM`.
 
-- [ ] Milestone 5 - Remaining out-of-scope nodes are explicit and PRVM uses `EXVM`
+- [x] Milestone 5 - Remaining out-of-scope nodes are explicit and PRVM uses `EXVM`
   - Includes Work items 9 and 10.
   - Done when PRVM expression token ranges route through `EXVM` while operand
     shape parsing remains in the opasm layer, and remaining value nodes have
     explicit out-of-scope strict-mode behavior.
 
-- [ ] Milestone 6 - Covered grammar no longer delegates to the core parser
+- [x] Milestone 6 - Covered grammar no longer delegates to the core parser
   - Includes Work items 11 and 12.
   - Done when covered grammar passes with core parser failpoints enabled,
     documentation is current, and full validation has been recorded.

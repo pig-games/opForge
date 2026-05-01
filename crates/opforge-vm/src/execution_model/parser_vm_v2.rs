@@ -1261,6 +1261,13 @@ mod tests {
         }
     }
 
+    fn hash(col: usize) -> Token {
+        Token {
+            kind: TokenKind::Hash,
+            span: span(col, col + 1),
+        }
+    }
+
     fn operator(kind: OperatorKind, col: usize) -> Token {
         Token {
             kind: TokenKind::Operator(kind),
@@ -1463,6 +1470,50 @@ mod tests {
                 assert!(
                     matches!(statement.operands[0], Expr::Number(ref value, _) if value == "42")
                 );
+            }
+            other => panic!("expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parser_vm_v2_operand_expr_range_uses_opasm_operand_wrappers() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let program = RuntimeParserVmProgram {
+            opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+            program: vec![
+                ParserVmOpcodeV2::BeginStatement as u8,
+                ParserVmOpcodeV2::LoadIdentifier as u8,
+                ParserVmOpcodeV2::SetMnemonic as u8,
+                ParserVmOpcodeV2::Advance as u8,
+                ParserVmOpcodeV2::ParseOperandExprRange as u8,
+                1,
+                0,
+                3,
+                0,
+                ParserVmOpcodeV2::PushOperand as u8,
+                ParserVmOpcodeV2::FinishLine as u8,
+                ParserVmOpcodeV2::End as u8,
+            ],
+        };
+        let line = parse_line_with_parser_vm_v2(
+            vec![ident("lda", 1, 4), hash(5), number("42", 10, 6, 8)],
+            span(8, 8),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, None),
+        )
+        .expect("operand wrapper should parse through opasm");
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.mnemonic.as_deref(), Some("lda"));
+                assert_eq!(statement.operands.len(), 1);
+                let Expr::Immediate(inner, _) = &statement.operands[0] else {
+                    panic!("expected opasm immediate operand wrapper");
+                };
+                assert!(matches!(inner.as_ref(), Expr::Number(value, _) if value == "42"));
             }
             other => panic!("expected statement, got {other:?}"),
         }

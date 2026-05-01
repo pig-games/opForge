@@ -1,0 +1,11 @@
+PASS
+
+The plan states its source, migration mode, and binding AGENTS.md rules. Work
+items are ordered into commit-sized slices with checkboxes, validation,
+plan-compliance evidence, commit outcomes, and concrete done criteria. The
+execution order now preserves assembler operand behavior in opasm before
+narrowing opcore expression parsing, so the plan does not require a knowingly
+breaking intermediate commit. The scope stays tied to the user request:
+separating non-expression operand shapes from opcore and moving them into
+generic opasm or CPU/family-gated opasm handling based on current
+implementation facts.

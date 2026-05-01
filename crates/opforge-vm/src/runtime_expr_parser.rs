@@ -322,17 +322,11 @@ impl RuntimeExpressionParser {
         let base = match self.next() {
             Some(Token {
                 kind: TokenKind::Hash,
-                span: hash_span,
-            }) => {
-                let expr = self.parse_expr()?;
-                let end_span = self.prev_span();
-                let span = Span {
-                    line: hash_span.line,
-                    col_start: hash_span.col_start,
-                    col_end: end_span.col_end,
-                };
-                Ok(Expr::Immediate(Box::new(expr), span))
-            }
+                span,
+            }) => Err(ParseError {
+                message: "Unexpected token in expression".to_string(),
+                span,
+            }),
             Some(Token {
                 kind: TokenKind::Number(num),
                 span,
@@ -415,94 +409,32 @@ impl RuntimeExpressionParser {
             }
             Some(Token {
                 kind: TokenKind::OpenParen,
-                span: open_span,
+                span: _open_span,
             }) => {
                 let expr = self.parse_expr()?;
 
                 if self.consume_comma() {
-                    let mut elements = vec![expr];
-                    elements.push(self.parse_expr()?);
-                    while self.consume_comma() {
-                        elements.push(self.parse_expr()?);
-                    }
-
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseParen) {
-                        return Err(ParseError {
-                            message: "Missing ')' in tuple".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-                    let span = Span {
-                        line: open_span.line,
-                        col_start: open_span.col_start,
-                        col_end: close_span.col_end,
-                    };
-                    Ok(Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span))
+                    Err(ParseError {
+                        message: "Unexpected token in expression".to_string(),
+                        span: self.prev_span(),
+                    })
                 } else {
-                    let close_span = self.current_span();
                     if !self.consume_kind(TokenKind::CloseParen) {
                         return Err(ParseError {
                             message: "Missing ')'".to_string(),
                             span: self.current_span(),
                         });
                     }
-                    Ok(Expr::Indirect(
-                        Box::new(expr),
-                        Span {
-                            line: open_span.line,
-                            col_start: open_span.col_start,
-                            col_end: close_span.col_end,
-                        },
-                    ))
+                    Ok(expr)
                 }
             }
             Some(Token {
                 kind: TokenKind::OpenBracket,
-                span: open_span,
-            }) => {
-                let expr = self.parse_expr()?;
-                if self.consume_comma() {
-                    let mut elements = vec![expr];
-                    elements.push(self.parse_expr()?);
-                    while self.consume_comma() {
-                        elements.push(self.parse_expr()?);
-                    }
-
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseBracket) {
-                        return Err(ParseError {
-                            message: "Missing ']' in tuple".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-                    let span = Span {
-                        line: open_span.line,
-                        col_start: open_span.col_start,
-                        col_end: close_span.col_end,
-                    };
-                    Ok(Expr::IndirectLong(
-                        Box::new(Expr::Tuple(elements, span)),
-                        span,
-                    ))
-                } else {
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseBracket) {
-                        return Err(ParseError {
-                            message: "Missing ']'".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-                    Ok(Expr::IndirectLong(
-                        Box::new(expr),
-                        Span {
-                            line: open_span.line,
-                            col_start: open_span.col_start,
-                            col_end: close_span.col_end,
-                        },
-                    ))
-                }
-            }
+                span,
+            }) => Err(ParseError {
+                message: "Unexpected token in expression".to_string(),
+                span,
+            }),
             Some(Token {
                 kind: TokenKind::OpenBrace,
                 span: open_span,
@@ -619,45 +551,6 @@ impl RuntimeExpressionParser {
 
     fn parse_postfix_expr(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
         loop {
-            if let Some(Token {
-                kind: TokenKind::OpenParen,
-                span: open_span,
-            }) = self.peek().cloned()
-            {
-                let start_span = span_of_expr(&expr);
-                if open_span.col_start == start_span.col_end {
-                    self.index += 1;
-                    let mut elements = vec![expr];
-                    if self.consume_kind(TokenKind::CloseParen) {
-                        return Err(ParseError {
-                            message: "Expected expression inside postfix tuple".to_string(),
-                            span: open_span,
-                        });
-                    }
-
-                    elements.push(self.parse_expr()?);
-                    while self.consume_comma() {
-                        elements.push(self.parse_expr()?);
-                    }
-
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseParen) {
-                        return Err(ParseError {
-                            message: "Missing ')' in postfix tuple".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-
-                    let span = Span {
-                        line: start_span.line,
-                        col_start: start_span.col_start,
-                        col_end: close_span.col_end,
-                    };
-                    expr = Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span);
-                    continue;
-                }
-            }
-
             if self.consume_kind(TokenKind::OpenBracket) {
                 let index = self.parse_expr()?;
                 let close_span = self.current_span();
@@ -714,28 +607,6 @@ impl RuntimeExpressionParser {
                     },
                 };
                 continue;
-            }
-
-            if let Some(Token {
-                kind: TokenKind::Operator(OperatorKind::Plus),
-                span: plus_span,
-            }) = self.peek().cloned()
-            {
-                let start_span = span_of_expr(&expr);
-                if matches!(expr, Expr::Indirect(_, _)) && plus_span.col_start == start_span.col_end
-                {
-                    self.index += 1;
-                    expr = Expr::Unary {
-                        op: UnaryOp::Plus,
-                        expr: Box::new(expr),
-                        span: Span {
-                            line: start_span.line,
-                            col_start: start_span.col_start,
-                            col_end: plus_span.col_end,
-                        },
-                    };
-                    continue;
-                }
             }
 
             break;
@@ -834,5 +705,119 @@ fn span_of_expr(expr: &Expr) -> Span {
         | Expr::Error(_, span)
         | Expr::Range { span, .. } => *span,
         Expr::Ternary { span, .. } | Expr::Unary { span, .. } | Expr::Binary { span, .. } => *span,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opcore::tokenizer::NumberLiteral;
+
+    fn span(col_start: usize, col_end: usize) -> Span {
+        Span {
+            line: 1,
+            col_start,
+            col_end,
+        }
+    }
+
+    fn token(kind: TokenKind, col_start: usize, col_end: usize) -> Token {
+        Token {
+            kind,
+            span: span(col_start, col_end),
+        }
+    }
+
+    fn number(text: &str, col_start: usize, col_end: usize) -> Token {
+        token(
+            TokenKind::Number(NumberLiteral {
+                text: text.to_string(),
+                base: 10,
+            }),
+            col_start,
+            col_end,
+        )
+    }
+
+    fn parse(tokens: Vec<Token>) -> Expr {
+        RuntimeExpressionParser::new(tokens, span(99, 99), None)
+            .parse_expr_from_tokens()
+            .expect("expression should parse")
+    }
+
+    #[test]
+    fn runtime_expression_parser_parentheses_group_scalar_expression() {
+        let expr = parse(vec![
+            token(TokenKind::OpenParen, 1, 2),
+            number("1", 2, 3),
+            token(TokenKind::Operator(OperatorKind::Plus), 3, 4),
+            number("2", 4, 5),
+            token(TokenKind::CloseParen, 5, 6),
+        ]);
+
+        let Expr::Binary {
+            op, left, right, ..
+        } = expr
+        else {
+            panic!("expected grouped binary expression");
+        };
+        assert!(matches!(op, BinaryOp::Add));
+        assert!(matches!(*left, Expr::Number(ref text, _) if text == "1"));
+        assert!(matches!(*right, Expr::Number(ref text, _) if text == "2"));
+    }
+
+    fn parse_err(tokens: Vec<Token>) -> ParseError {
+        RuntimeExpressionParser::new(tokens, span(99, 99), None)
+            .parse_expr_from_tokens()
+            .expect_err("expression should reject operand-only syntax")
+    }
+
+    #[test]
+    fn runtime_expression_parser_rejects_immediate_operand_prefix() {
+        let err = parse_err(vec![token(TokenKind::Hash, 1, 2), number("1", 2, 3)]);
+
+        assert_eq!(err.message, "Unexpected token in expression");
+        assert_eq!(err.span, span(1, 2));
+    }
+
+    #[test]
+    fn runtime_expression_parser_rejects_leading_indirect_long_brackets() {
+        let err = parse_err(vec![
+            token(TokenKind::OpenBracket, 1, 2),
+            number("1", 2, 3),
+            token(TokenKind::CloseBracket, 3, 4),
+        ]);
+
+        assert_eq!(err.message, "Unexpected token in expression");
+        assert_eq!(err.span, span(1, 2));
+    }
+
+    #[test]
+    fn runtime_expression_parser_rejects_comma_parentheses_operand_tuple() {
+        let err = parse_err(vec![
+            token(TokenKind::OpenParen, 1, 2),
+            number("1", 2, 3),
+            token(TokenKind::Comma, 3, 4),
+            number("2", 4, 5),
+            token(TokenKind::CloseParen, 5, 6),
+        ]);
+
+        assert_eq!(err.message, "Unexpected token in expression");
+        assert_eq!(err.span, span(3, 4));
+    }
+
+    #[test]
+    fn runtime_expression_parser_rejects_m68k_postfix_tuple_operand_shape() {
+        let err = parse_err(vec![
+            number("4", 1, 2),
+            token(TokenKind::OpenParen, 2, 3),
+            token(TokenKind::Register("A0".to_string()), 3, 5),
+            token(TokenKind::Comma, 5, 6),
+            token(TokenKind::Register("D1".to_string()), 6, 8),
+            token(TokenKind::CloseParen, 8, 9),
+        ]);
+
+        assert_eq!(err.message, "Unexpected trailing tokens");
+        assert_eq!(err.span, span(2, 3));
     }
 }

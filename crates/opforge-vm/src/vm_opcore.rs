@@ -502,13 +502,10 @@ impl HierarchyExecutionModel {
 
         let opcode_version = parser_vm_opcode_version
             .or_else(|| contract.as_ref().map(|entry| entry.opcode_version))
-            .unwrap_or(package::EXPR_PARSER_VM_OPCODE_VERSION_V1);
-        if opcode_version != package::EXPR_PARSER_VM_OPCODE_VERSION_V1 {
+            .unwrap_or(package::EXVM_OPCODE_VERSION_V1);
+        if opcode_version != package::EXVM_OPCODE_VERSION_V1 {
             return Err(ParseError {
-                message: format!(
-                    "unsupported VM expression parser VM opcode version {}",
-                    opcode_version
-                ),
+                message: format!("unsupported EXVM opcode version {}", opcode_version),
                 span: end_span,
             });
         }

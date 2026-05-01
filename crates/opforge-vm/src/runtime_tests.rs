@@ -46,8 +46,8 @@ use package::{
     DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
     DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
-    EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1,
-    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, TOKENIZER_VM_OPCODE_VERSION_V1,
+    EXPR_VM_OPCODE_VERSION_V1, EXVM_OPCODE_VERSION_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+    TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -527,7 +527,7 @@ fn expr_contract_for_test(owner: ScopedOwner) -> ExprContractDescriptor {
 fn expr_parser_contract_for_test(owner: ScopedOwner) -> ExprParserContractDescriptor {
     ExprParserContractDescriptor {
         owner,
-        opcode_version: EXPR_PARSER_VM_OPCODE_VERSION_V1,
+        opcode_version: EXVM_OPCODE_VERSION_V1,
         diagnostics: ExprParserDiagnosticMap {
             invalid_expression_program: "otp004".to_string(),
         },
@@ -1905,7 +1905,7 @@ fn execution_model_compile_expression_program_vm_opt_in_bypasses_core_parser_fai
             tokens,
             end_span,
             None,
-            Some(EXPR_PARSER_VM_OPCODE_VERSION_V1),
+            Some(EXVM_OPCODE_VERSION_V1),
         )
         .expect("vm opt-in compile should bypass core parser failpoint");
     assert!(!program.code.is_empty());
@@ -2151,7 +2151,7 @@ fn execution_model_expr_parser_contract_resolution_prefers_dialect_then_cpu_then
             "mos6502".to_string(),
         )));
     let mut cpu_contract = expr_parser_contract_for_test(ScopedOwner::Cpu("m6502".to_string()));
-    cpu_contract.opcode_version = EXPR_PARSER_VM_OPCODE_VERSION_V1;
+    cpu_contract.opcode_version = EXVM_OPCODE_VERSION_V1;
     chunks.expr_parser_contracts.push(cpu_contract);
     let mut dialect_contract =
         expr_parser_contract_for_test(ScopedOwner::Dialect("transparent".to_string()));
@@ -2163,7 +2163,7 @@ fn execution_model_expr_parser_contract_resolution_prefers_dialect_then_cpu_then
         .resolve_expr_parser_contract("m6502", None)
         .expect("expr parser contract resolution")
         .expect("expr parser contract should resolve");
-    assert_eq!(contract.opcode_version, EXPR_PARSER_VM_OPCODE_VERSION_V1);
+    assert_eq!(contract.opcode_version, EXVM_OPCODE_VERSION_V1);
     assert_eq!(contract.diagnostics.invalid_expression_program, "otp003");
 }
 
@@ -2191,7 +2191,7 @@ fn execution_model_parser_vm_v2_expr_subcall_contract_validation_is_runtime_medi
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_parser_contracts.clear();
     let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    contract.opcode_version = EXPR_PARSER_VM_OPCODE_VERSION_V1.saturating_add(1);
+    contract.opcode_version = EXVM_OPCODE_VERSION_V1.saturating_add(1);
     chunks.expr_parser_contracts.push(contract);
     let mismatch_model =
         HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
@@ -2211,7 +2211,7 @@ fn execution_model_parse_expression_program_for_assembler_uses_expr_parser_contr
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_parser_contracts.clear();
     let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    contract.opcode_version = EXPR_PARSER_VM_OPCODE_VERSION_V1.saturating_add(1);
+    contract.opcode_version = EXVM_OPCODE_VERSION_V1.saturating_add(1);
     chunks.expr_parser_contracts.push(contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -2242,7 +2242,7 @@ fn execution_model_compile_expression_program_parser_vm_opt_in_matches_host_sema
             opt_in_tokens,
             opt_in_end_span,
             None,
-            Some(EXPR_PARSER_VM_OPCODE_VERSION_V1),
+            Some(EXVM_OPCODE_VERSION_V1),
         )
         .expect("opt-in compile should succeed");
 
@@ -2312,7 +2312,7 @@ fn execution_model_compile_expression_program_parser_vm_opt_in_matches_host_sema
                 opt_in_tokens,
                 opt_in_end_span,
                 None,
-                Some(EXPR_PARSER_VM_OPCODE_VERSION_V1),
+                Some(EXVM_OPCODE_VERSION_V1),
             )
             .expect("opt-in compile should succeed");
 
@@ -2358,13 +2358,13 @@ fn execution_model_compile_expression_program_parser_vm_opt_in_rejects_unknown_o
             tokens,
             end_span,
             None,
-            Some(EXPR_PARSER_VM_OPCODE_VERSION_V1.saturating_add(1)),
+            Some(EXVM_OPCODE_VERSION_V1.saturating_add(1)),
         )
-        .expect_err("unknown expression parser VM opcode version should fail");
+        .expect_err("unknown EXVM opcode version should fail");
     assert!(err
         .message
         .to_ascii_lowercase()
-        .contains("unsupported vm expression parser vm opcode version"));
+        .contains("unsupported exvm opcode version"));
 }
 
 #[test]

@@ -118,7 +118,7 @@ pub(super) fn encode_hierarchy_chunks_from_chunks(
         chunks.push((CHUNK_EXPR, encode_expr_chunk(&expr_contracts)?));
     }
     if !expr_parser_contracts.is_empty() {
-        chunks.push((CHUNK_EXPP, encode_expp_chunk(&expr_parser_contracts)?));
+        chunks.push((CHUNK_EXVM, encode_exvm_chunk(&expr_parser_contracts)?));
     }
     chunks.extend_from_slice(&[
         (CHUNK_FAMS, encode_fams_chunk(&fams)?),
@@ -273,7 +273,7 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
     let pars_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_PARS)?;
     let prvm_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_PRVM)?;
     let expr_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_EXPR)?;
-    let expp_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_EXPP)?;
+    let exvm_bytes = slice_for_chunk_optional(bytes, &toc, CHUNK_EXVM)?;
     let fams_bytes = slice_for_chunk(bytes, &toc, CHUNK_FAMS)?;
     let cpus_bytes = slice_for_chunk(bytes, &toc, CHUNK_CPUS)?;
     let dial_bytes = slice_for_chunk(bytes, &toc, CHUNK_DIAL)?;
@@ -315,8 +315,8 @@ pub(super) fn decode_hierarchy_chunks(bytes: &[u8]) -> Result<HierarchyChunks, O
             Some(payload) => decode_expr_chunk(payload)?,
             None => Vec::new(),
         },
-        expr_parser_contracts: match expp_bytes {
-            Some(payload) => decode_expp_chunk(payload)?,
+        expr_parser_contracts: match exvm_bytes {
+            Some(payload) => decode_exvm_chunk(payload)?,
             None => Vec::new(),
         },
         families: decode_fams_chunk(fams_bytes)?,
@@ -762,13 +762,13 @@ pub(super) fn decode_expr_chunk(
     decode_scoped_schema_chunk(bytes)
 }
 
-pub(super) fn encode_expp_chunk(
+pub(super) fn encode_exvm_chunk(
     contracts: &[ExprParserContractDescriptor],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
     encode_scoped_schema_chunk(contracts)
 }
 
-pub(super) fn decode_expp_chunk(
+pub(super) fn decode_exvm_chunk(
     bytes: &[u8],
 ) -> Result<Vec<ExprParserContractDescriptor>, OpcpuCodecError> {
     decode_scoped_schema_chunk(bytes)
@@ -859,9 +859,9 @@ pub(super) fn validate_expr_contract_descriptor(
 pub(super) fn validate_expr_parser_contract_descriptor(
     descriptor: &ExprParserContractDescriptor,
 ) -> Result<(), OpcpuCodecError> {
-    if descriptor.opcode_version != EXPR_PARSER_VM_OPCODE_VERSION_V1 {
+    if descriptor.opcode_version != EXVM_OPCODE_VERSION_V1 {
         return Err(OpcpuCodecError::InvalidChunkFormat {
-            chunk: "EXPP".to_string(),
+            chunk: "EXVM".to_string(),
             detail: format!("unsupported opcode_version: {}", descriptor.opcode_version),
         });
     }
@@ -873,7 +873,7 @@ pub(super) fn validate_expr_parser_contract_descriptor(
         .is_empty()
     {
         return Err(OpcpuCodecError::InvalidChunkFormat {
-            chunk: "EXPP".to_string(),
+            chunk: "EXVM".to_string(),
             detail: "missing diagnostics.invalid_expression_program code".to_string(),
         });
     }

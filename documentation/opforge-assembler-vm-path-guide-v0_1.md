@@ -363,7 +363,7 @@ The active opasm statement parser VM is PRVM v2. The prior v1 envelope opcodes w
 
 The default parser VM program handles empty lines, assignments, `*=`/`.org`, dot mnemonics and data directives, and ordinary instruction statements. Some out-of-scope directive families still route through the explicit Rust fallback boundary until later parser work migrates them.
 
-### 6.3 Expression Parser VM (`EXPP`)
+### 6.3 Expression Parser VM (`EXVM`)
 
 Definition: [`crates/opforge-package/src/package.rs#L297-L360`](../crates/opforge-package/src/package.rs#L297-L360)  
 Rollout and use in assembler path: [`crates/opforge-vm/src/vm_opcore.rs#L315-L525`](../crates/opforge-vm/src/vm_opcore.rs#L315-L525)

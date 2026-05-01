@@ -61,7 +61,7 @@ const CHUNK_TKVM: [u8; 4] = *b"TKVM";
 const CHUNK_PARS: [u8; 4] = *b"PARS";
 const CHUNK_PRVM: [u8; 4] = *b"PRVM";
 const CHUNK_EXPR: [u8; 4] = *b"EXPR";
-const CHUNK_EXPP: [u8; 4] = *b"EXPP";
+const CHUNK_EXVM: [u8; 4] = *b"EXVM";
 
 pub const DIAG_OPTHREAD_MISSING_VM_PROGRAM: &str = "OTR001";
 pub const DIAG_OPTHREAD_INVALID_FORCE_OVERRIDE: &str = "OTR002";
@@ -103,7 +103,7 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 ///
 /// - `TOKENIZER_VM_OPCODE_VERSION_V1`: tokenizer VM (`TKVM`) payloads.
 /// - `PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT`: `.opasm` statement PRVM v2 payloads.
-/// - `EXPR_PARSER_VM_OPCODE_VERSION_V1`: expression parser VM (`EXPP`) payloads.
+/// - `EXVM_OPCODE_VERSION_V1`: expression parser VM (`EXVM`) payloads.
 /// - `EXPR_VM_OPCODE_VERSION_V1`: expression evaluator VM contracts (`EXPR`),
 ///   sourced from `core::expr_vm` to keep runtime/package compatibility strict.
 ///
@@ -112,7 +112,7 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// - unknown versions must produce deterministic errors.
 pub const TOKENIZER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
-pub const EXPR_PARSER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const PARSER_GRAMMAR_ID_LINE_V1: &str = "opforge.line.v1";
 pub const PARSER_AST_SCHEMA_ID_LINE_V1: &str = "opforge.ast.line.v1";
 pub const EXPR_VM_OPCODE_VERSION_V1: u16 = super::expr_vm_compat::EXPR_VM_OPCODE_VERSION_V1;
@@ -401,7 +401,7 @@ pub type ParserVmOpcodeV2 = ParserVmOpcode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
-pub enum ExprParserVmOpcode {
+pub enum ExvmOpcode {
     End = 0x00,
     ParseExpression = 0x01,
     EmitDiag = 0x02,
@@ -409,7 +409,7 @@ pub enum ExprParserVmOpcode {
     DelegateCore = 0x04,
 }
 
-impl ExprParserVmOpcode {
+impl ExvmOpcode {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x00 => Some(Self::End),

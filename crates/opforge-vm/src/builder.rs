@@ -59,7 +59,7 @@ use package::{
     DIAG_TOKENIZER_ERROR_LIMIT_EXCEEDED, DIAG_TOKENIZER_INVALID_CHAR,
     DIAG_TOKENIZER_LEXEME_LIMIT_EXCEEDED, DIAG_TOKENIZER_STEP_LIMIT_EXCEEDED,
     DIAG_TOKENIZER_TOKEN_LIMIT_EXCEEDED, DIAG_TOKENIZER_UNTERMINATED_STRING,
-    EXPR_PARSER_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1,
+    EXPR_VM_OPCODE_VERSION_V1, EXVM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1,
     PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
     TOKENIZER_VM_OPCODE_VERSION_V1,
 };
@@ -766,7 +766,7 @@ fn default_family_expr_contract(
 fn default_family_expr_parser_contract(family_id: &str) -> ExprParserContractDescriptor {
     ExprParserContractDescriptor {
         owner: ScopedOwner::Family(family_id.to_string()),
-        opcode_version: EXPR_PARSER_VM_OPCODE_VERSION_V1,
+        opcode_version: EXVM_OPCODE_VERSION_V1,
         diagnostics: ExprParserDiagnosticMap {
             invalid_expression_program: DIAG_PARSER_INVALID_STATEMENT.to_string(),
         },

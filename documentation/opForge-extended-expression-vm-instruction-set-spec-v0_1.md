@@ -231,7 +231,7 @@ For those forms, the VM path must not require constructing a Rust `Expr` merely 
 
 Native Rust may still build `Expr` in fallback mode, but the VM path is authoritative for covered forms once the corresponding runtime contract is enabled.
 
-This specification does not require the current `EXPP v1` expression-parser contract shape to remain intact. Expression parsing and expression bytecode generation may remain separate versioned boundaries or may collapse into one cleaner opcore-owned contract if that proves simpler.
+This specification does not require the current `EXVM v1` expression-parser contract shape to remain intact. Expression parsing and expression bytecode generation may remain separate versioned boundaries or may collapse into one cleaner opcore-owned contract if that proves simpler.
 
 ### 7. Delegated Capability Contract
 
@@ -354,4 +354,4 @@ The implementation derived from this specification is expected to prove behavior
 2. Which member and index operations should be required to execute fully on VM-native structural values in the first `v2` slice?
 3. Should struct-literal and member-access support be included in the first runtime slice, or should `v2` reserve those operations while initially enabling only immediate, indirect, tuple, list, range, and index coverage?
 4. Should `Range` remain shape-preserving only, or does any caller contract need a standardized VM-side expansion rule later?
-5. Should expression parsing remain a distinct `EXPP` contract that emits `EXPR v2` programs, or should parsing and bytecode generation collapse into one versioned opcore-owned boundary?
+5. Should expression parsing remain a distinct `EXVM` contract that emits `EXPR v2` programs, or should parsing and bytecode generation collapse into one versioned opcore-owned boundary?

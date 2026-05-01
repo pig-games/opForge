@@ -11,8 +11,8 @@ use package::{
     decode_hierarchy_chunks, HierarchyChunks, ModeSelectorDescriptor, OpcpuCodecError,
     TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
     TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
-    DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_PARSER_VM_OPCODE_VERSION_V1,
-    EXPR_VM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
+    DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_VM_OPCODE_VERSION_V1,
+    EXVM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
     PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, TOKENIZER_VM_OPCODE_VERSION_V1,
     TOKENIZER_VM_STREAM_VERSION_V1,
 };
@@ -1240,7 +1240,7 @@ impl RuntimeModelCore {
             contract.diagnostics.invalid_expression_program.as_str()
         };
 
-        if contract.opcode_version != EXPR_PARSER_VM_OPCODE_VERSION_V1 {
+        if contract.opcode_version != EXVM_OPCODE_VERSION_V1 {
             return Err(RuntimeBridgeError::Resolve(format!(
                 "{}: unsupported expression parser contract opcode version {}",
                 error_code, contract.opcode_version
@@ -1281,13 +1281,13 @@ impl RuntimeModelCore {
                 ),
             ));
         };
-        if contract.opcode_version != EXPR_PARSER_VM_OPCODE_VERSION_V1 {
+        if contract.opcode_version != EXVM_OPCODE_VERSION_V1 {
             return Err(RuntimeBridgeError::Diagnostic(
                 RuntimeBridgeDiagnostic::new(
                     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
                     format!(
                         "opasm v2 expression sub-call opcode version mismatch ({} != {})",
-                        contract.opcode_version, EXPR_PARSER_VM_OPCODE_VERSION_V1
+                        contract.opcode_version, EXVM_OPCODE_VERSION_V1
                     ),
                     None,
                 ),

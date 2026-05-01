@@ -500,7 +500,7 @@ fn sample_expr_contracts() -> Vec<ExprContractDescriptor> {
 fn expr_parser_contract_for_test(owner: ScopedOwner) -> ExprParserContractDescriptor {
     ExprParserContractDescriptor {
         owner,
-        opcode_version: EXPR_PARSER_VM_OPCODE_VERSION_V1,
+        opcode_version: EXVM_OPCODE_VERSION_V1,
         diagnostics: ExprParserDiagnosticMap {
             invalid_expression_program: DIAG_PARSER_INVALID_STATEMENT.to_string(),
         },
@@ -704,7 +704,7 @@ fn encode_decode_round_trip_contract_schema_expr_contracts() {
 #[test]
 fn encode_decode_round_trip_contract_schema_expr_parser_contracts() {
     let entries = sample_expr_parser_contracts();
-    assert_scoped_schema_round_trip(&entries, encode_expp_chunk, decode_expp_chunk);
+    assert_scoped_schema_round_trip(&entries, encode_exvm_chunk, decode_exvm_chunk);
 }
 
 #[test]
@@ -1280,7 +1280,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
     ));
     assert_eq!(
         decoded.expr_parser_contracts[0].opcode_version,
-        EXPR_PARSER_VM_OPCODE_VERSION_V1
+        EXVM_OPCODE_VERSION_V1
     );
     assert_eq!(
         decoded.expr_parser_contracts[0]
@@ -1579,26 +1579,26 @@ fn decode_rejects_expr_contract_with_missing_diag_mapping() {
 #[test]
 fn expr_parser_vm_opcode_from_u8_round_trip_and_unknown_rejection() {
     assert_eq!(
-        ExprParserVmOpcode::from_u8(ExprParserVmOpcode::End as u8),
-        Some(ExprParserVmOpcode::End)
+        ExvmOpcode::from_u8(ExvmOpcode::End as u8),
+        Some(ExvmOpcode::End)
     );
     assert_eq!(
-        ExprParserVmOpcode::from_u8(ExprParserVmOpcode::ParseExpression as u8),
-        Some(ExprParserVmOpcode::ParseExpression)
+        ExvmOpcode::from_u8(ExvmOpcode::ParseExpression as u8),
+        Some(ExvmOpcode::ParseExpression)
     );
     assert_eq!(
-        ExprParserVmOpcode::from_u8(ExprParserVmOpcode::EmitDiag as u8),
-        Some(ExprParserVmOpcode::EmitDiag)
+        ExvmOpcode::from_u8(ExvmOpcode::EmitDiag as u8),
+        Some(ExvmOpcode::EmitDiag)
     );
     assert_eq!(
-        ExprParserVmOpcode::from_u8(ExprParserVmOpcode::Fail as u8),
-        Some(ExprParserVmOpcode::Fail)
+        ExvmOpcode::from_u8(ExvmOpcode::Fail as u8),
+        Some(ExvmOpcode::Fail)
     );
     assert_eq!(
-        ExprParserVmOpcode::from_u8(ExprParserVmOpcode::DelegateCore as u8),
-        Some(ExprParserVmOpcode::DelegateCore)
+        ExvmOpcode::from_u8(ExvmOpcode::DelegateCore as u8),
+        Some(ExvmOpcode::DelegateCore)
     );
-    assert_eq!(ExprParserVmOpcode::from_u8(0xFF), None);
+    assert_eq!(ExvmOpcode::from_u8(0xFF), None);
 }
 
 #[test]

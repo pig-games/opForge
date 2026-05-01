@@ -891,9 +891,9 @@ impl ScopedSchemaEntry for ExprContractDescriptor {
 }
 
 impl ScopedSchemaEntry for ExprParserContractDescriptor {
-    const CHUNK: &'static str = "EXPP";
+    const CHUNK: &'static str = "EXVM";
     const ENTRY_KIND: &'static str = "expression parser contract entry";
-    const COUNT_LABEL: &'static str = "EXPP count";
+    const COUNT_LABEL: &'static str = "EXVM count";
     const FIELD_SPECS: &'static [FieldSpec] = &[FieldSpec::U16, FieldSpec::String];
 
     fn owner(&self) -> &ScopedOwner {

@@ -1070,7 +1070,7 @@ fn parse_expr_program_ref_with_vm_contract_enforces_vm_contract_for_intel_family
             crate::hierarchy::ScopedOwner::Family(ref family_id)
                 if family_id.eq_ignore_ascii_case("intel8080")
         ) {
-            contract.opcode_version = package::EXPR_PARSER_VM_OPCODE_VERSION_V1.saturating_add(1);
+            contract.opcode_version = package::EXVM_OPCODE_VERSION_V1.saturating_add(1);
         }
     }
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model should build");
@@ -1097,7 +1097,7 @@ fn parse_expr_program_ref_with_vm_contract_enforces_vm_contract_for_intel_family
         None,
         None,
     )
-    .expect_err("intel family should enforce expression parser VM contract compatibility");
+    .expect_err("intel family should enforce EXVM contract compatibility");
     assert!(
         err.message
             .to_ascii_lowercase()
@@ -1118,7 +1118,7 @@ fn parse_expr_program_ref_with_vm_contract_uses_vm_path_for_enabled_family() {
             crate::hierarchy::ScopedOwner::Family(ref family_id)
                 if family_id.eq_ignore_ascii_case("mos6502")
         ) {
-            contract.opcode_version = package::EXPR_PARSER_VM_OPCODE_VERSION_V1.saturating_add(1);
+            contract.opcode_version = package::EXVM_OPCODE_VERSION_V1.saturating_add(1);
         }
     }
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model should build");
@@ -1145,7 +1145,7 @@ fn parse_expr_program_ref_with_vm_contract_uses_vm_path_for_enabled_family() {
         None,
         None,
     )
-    .expect_err("enabled family should enforce expression parser VM contract compatibility");
+    .expect_err("enabled family should enforce EXVM contract compatibility");
     assert!(
         err.message
             .contains("unsupported expression parser contract opcode version"),

@@ -465,7 +465,7 @@ continues.
     - CPU-family operand-shape parsing remains outside `EXVM`.
     - Previously fixed m68k operand-boundary examples stay green.
 
-- [ ] Item 11 - Remove `DelegateCore` for covered `EXVM` grammar and harden strict mode
+- [x] Item 11 - Remove `DelegateCore` for covered `EXVM` grammar and harden strict mode
   - Source requirement or finding IDs: End-state requirement that VM-owned
     expression parsing does not silently fall back to direct core parsing for
     covered grammar.

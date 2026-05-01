@@ -38,8 +38,7 @@ pub(crate) struct ExvmExecutionBudgets {
     pub max_steps: usize,
     pub max_token_count: usize,
     pub max_stack_depth: usize,
-    pub allow_delegate_core: bool,
-    pub allow_legacy_expression_parser: bool,
+    pub allow_out_of_scope_compatibility: bool,
 }
 
 impl ExvmExecutionBudgets {
@@ -48,8 +47,7 @@ impl ExvmExecutionBudgets {
             max_steps: 64,
             max_token_count: token_count,
             max_stack_depth: 1,
-            allow_delegate_core: false,
-            allow_legacy_expression_parser: true,
+            allow_out_of_scope_compatibility: true,
         }
     }
 }
@@ -177,14 +175,17 @@ pub(crate) fn run_exvm_expression_parser_program(
                         end_token_text.clone(),
                     )
                     .or_else(|err| {
-                        if budgets.allow_legacy_expression_parser {
-                            crate::runtime_expr_parser::RuntimeExpressionParser::new(
+                        if budgets.allow_out_of_scope_compatibility {
+                            if let Some(expr) = parse_out_of_scope_compatibility_expr(
                                 tokens.clone(),
                                 end_span,
                                 end_token_text.clone(),
-                            )
-                            .parse_expr_from_tokens()
-                        } else if let Some(parse_error) = strict_out_of_scope_value_node_error(
+                            ) {
+                                return Ok(expr);
+                            }
+                        }
+
+                        if let Some(parse_error) = strict_out_of_scope_value_node_error(
                             tokens.clone(),
                             end_span,
                             end_token_text.clone(),
@@ -205,31 +206,6 @@ pub(crate) fn run_exvm_expression_parser_program(
             package::ExvmOpcode::Fail => {
                 return Err(ParseError {
                     message: "EXVM program failed".to_string(),
-                    span: end_span,
-                });
-            }
-            package::ExvmOpcode::DelegateCore => {
-                if budgets.allow_delegate_core {
-                    if output_stack.len() >= budgets.max_stack_depth {
-                        return Err(ParseError {
-                            message: format!(
-                                "EXVM output stack depth exceeded ({}/{})",
-                                output_stack.len() + 1,
-                                budgets.max_stack_depth
-                            ),
-                            span: end_span,
-                        });
-                    }
-                    let expr = Parser::parse_expr_from_tokens(
-                        tokens.clone(),
-                        end_span,
-                        end_token_text.clone(),
-                    )?;
-                    output_stack.push(expr);
-                    continue;
-                }
-                return Err(ParseError {
-                    message: "EXVM DelegateCore opcode is disabled in strict execution".to_string(),
                     span: end_span,
                 });
             }
@@ -262,15 +238,25 @@ impl StrictOutOfScopeValueNode {
     }
 }
 
+fn parse_out_of_scope_compatibility_expr(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Option<Expr> {
+    let expr =
+        crate::runtime_expr_parser::RuntimeExpressionParser::new(tokens, end_span, end_token_text)
+            .parse_expr_from_tokens()
+            .ok()?;
+    find_strict_out_of_scope_value_node(&expr)?;
+    Some(expr)
+}
+
 fn strict_out_of_scope_value_node_error(
     tokens: Vec<Token>,
     end_span: Span,
     end_token_text: Option<String>,
 ) -> Option<ParseError> {
-    let expr =
-        crate::runtime_expr_parser::RuntimeExpressionParser::new(tokens, end_span, end_token_text)
-            .parse_expr_from_tokens()
-            .ok()?;
+    let expr = parse_out_of_scope_compatibility_expr(tokens, end_span, end_token_text)?;
     let node = find_strict_out_of_scope_value_node(&expr)?;
     Some(ParseError {
         message: node.message().to_string(),

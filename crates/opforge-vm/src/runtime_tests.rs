@@ -2299,7 +2299,7 @@ fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
             package::ExvmOpcode::End as u8,
         ],
         ExvmExecutionBudgets {
-            allow_legacy_expression_parser: false,
+            allow_out_of_scope_compatibility: false,
             ..ExvmExecutionBudgets::for_tokens(token_count)
         },
     )
@@ -2421,7 +2421,7 @@ fn exvm_remaining_value_out_of_scope_compatibility_path_preserves_call_and_place
         let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
         let expr = parse_expression_tokens(tokens, end_span, None).unwrap_or_else(|err| {
             panic!(
-                "parse out-of-scope compatibility expression {source}: {}",
+                "parse explicit out-of-scope compatibility expression {source}: {}",
                 err.message
             )
         });
@@ -2740,8 +2740,7 @@ fn exvm_interpreter_enforces_token_step_and_stack_budgets() {
             max_steps: 64,
             max_token_count: 0,
             max_stack_depth: 1,
-            allow_delegate_core: false,
-            allow_legacy_expression_parser: true,
+            allow_out_of_scope_compatibility: true,
         },
     )
     .expect_err("EXVM token budget should fail");
@@ -2759,8 +2758,7 @@ fn exvm_interpreter_enforces_token_step_and_stack_budgets() {
             max_steps: 1,
             max_token_count: 1,
             max_stack_depth: 1,
-            allow_delegate_core: false,
-            allow_legacy_expression_parser: true,
+            allow_out_of_scope_compatibility: true,
         },
     )
     .expect_err("EXVM step budget should fail");
@@ -2775,8 +2773,7 @@ fn exvm_interpreter_enforces_token_step_and_stack_budgets() {
             max_steps: 64,
             max_token_count: 1,
             max_stack_depth: 0,
-            allow_delegate_core: false,
-            allow_legacy_expression_parser: true,
+            allow_out_of_scope_compatibility: true,
         },
     )
     .expect_err("EXVM output stack budget should fail");
@@ -2786,34 +2783,18 @@ fn exvm_interpreter_enforces_token_step_and_stack_budgets() {
 #[test]
 fn exvm_interpreter_rejects_delegate_core_and_missing_end() {
     let (tokens, end_span) = tokenize_core_expr_tokens("1", 1);
-    let delegate_err = run_exvm_expression_parser_program(
+    let retired_delegate_err = run_exvm_expression_parser_program(
         tokens.clone(),
         end_span,
         None,
-        &[package::ExvmOpcode::DelegateCore as u8],
+        &[0x04],
         ExvmExecutionBudgets::for_tokens(1),
     )
-    .expect_err("EXVM DelegateCore should fail in strict execution");
+    .expect_err("retired EXVM DelegateCore byte should fail deterministically");
     assert_eq!(
-        delegate_err.message,
-        "EXVM DelegateCore opcode is disabled in strict execution"
+        retired_delegate_err.message,
+        "invalid EXVM opcode 0x04 at pc=0"
     );
-
-    let delegated_expr = run_exvm_expression_parser_program(
-        tokens.clone(),
-        end_span,
-        None,
-        &[
-            package::ExvmOpcode::DelegateCore as u8,
-            package::ExvmOpcode::End as u8,
-        ],
-        ExvmExecutionBudgets {
-            allow_delegate_core: true,
-            ..ExvmExecutionBudgets::for_tokens(1)
-        },
-    )
-    .expect("EXVM DelegateCore should work only with compatibility opt-in");
-    assert_eq!(expression_contract_shape(&delegated_expr), "Number");
 
     let missing_end_err = run_exvm_expression_parser_program(
         tokens,

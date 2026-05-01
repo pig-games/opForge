@@ -406,7 +406,6 @@ pub enum ExvmOpcode {
     ParseExpression = 0x01,
     EmitDiag = 0x02,
     Fail = 0x03,
-    DelegateCore = 0x04,
 }
 
 impl ExvmOpcode {
@@ -416,7 +415,6 @@ impl ExvmOpcode {
             0x01 => Some(Self::ParseExpression),
             0x02 => Some(Self::EmitDiag),
             0x03 => Some(Self::Fail),
-            0x04 => Some(Self::DelegateCore),
             _ => None,
         }
     }

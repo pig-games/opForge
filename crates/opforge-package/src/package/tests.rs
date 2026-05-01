@@ -1594,10 +1594,7 @@ fn expr_parser_vm_opcode_from_u8_round_trip_and_unknown_rejection() {
         ExvmOpcode::from_u8(ExvmOpcode::Fail as u8),
         Some(ExvmOpcode::Fail)
     );
-    assert_eq!(
-        ExvmOpcode::from_u8(ExvmOpcode::DelegateCore as u8),
-        Some(ExvmOpcode::DelegateCore)
-    );
+    assert_eq!(ExvmOpcode::from_u8(0x04), None);
     assert_eq!(ExvmOpcode::from_u8(0xFF), None);
 }
 

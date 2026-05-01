@@ -270,7 +270,7 @@ continues.
     - AST shape and diagnostics match the locked corpus.
     - Operand-shape guardrail tests remain green.
 
-- [ ] Item 5 - Add shifts, comparisons, bitwise operators, and logical operators
+- [x] Item 5 - Add shifts, comparisons, bitwise operators, and logical operators
   - Source requirement or finding IDs: Broaden pure mathematical operator
     coverage under `EXVM`.
   - Validation: See Full quality gates for this item.

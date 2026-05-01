@@ -62,7 +62,134 @@ impl ExvmScalarExpressionParser {
             _ => {}
         }
 
-        self.parse_sum()
+        self.parse_logical_or()
+    }
+
+    fn parse_logical_or(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_logical_and()?;
+        loop {
+            let op = match self.peek_operator_kind() {
+                Some(OperatorKind::LogicOr) => BinaryOp::LogicOr,
+                Some(OperatorKind::LogicXor) => BinaryOp::LogicXor,
+                _ => break,
+            };
+            self.index += 1;
+            let op_span = self.prev_span();
+            let right = self.parse_logical_and()?;
+            node = Expr::Binary {
+                op,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_logical_and(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_bit_or()?;
+        while self.match_operator(OperatorKind::LogicAnd) {
+            let op_span = self.prev_span();
+            let right = self.parse_bit_or()?;
+            node = Expr::Binary {
+                op: BinaryOp::LogicAnd,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_bit_or(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_bit_xor()?;
+        while self.match_operator(OperatorKind::BitOr) {
+            let op_span = self.prev_span();
+            let right = self.parse_bit_xor()?;
+            node = Expr::Binary {
+                op: BinaryOp::BitOr,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_bit_xor(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_bit_and()?;
+        while self.match_operator(OperatorKind::BitXor) {
+            let op_span = self.prev_span();
+            let right = self.parse_bit_and()?;
+            node = Expr::Binary {
+                op: BinaryOp::BitXor,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_bit_and(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_compare()?;
+        while self.match_operator(OperatorKind::BitAnd) {
+            let op_span = self.prev_span();
+            let right = self.parse_compare()?;
+            node = Expr::Binary {
+                op: BinaryOp::BitAnd,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_compare(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_shift()?;
+        loop {
+            let op = match self.peek_operator_kind() {
+                Some(OperatorKind::Eq) => BinaryOp::Eq,
+                Some(OperatorKind::Ne) => BinaryOp::Ne,
+                Some(OperatorKind::Ge) => BinaryOp::Ge,
+                Some(OperatorKind::Gt) => BinaryOp::Gt,
+                Some(OperatorKind::Le) => BinaryOp::Le,
+                Some(OperatorKind::Lt) => BinaryOp::Lt,
+                _ => break,
+            };
+            self.index += 1;
+            let op_span = self.prev_span();
+            let right = self.parse_shift()?;
+            node = Expr::Binary {
+                op,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
+    }
+
+    fn parse_shift(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_sum()?;
+        loop {
+            let op = match self.peek_operator_kind() {
+                Some(OperatorKind::Shl) => BinaryOp::Shl,
+                Some(OperatorKind::Shr) => BinaryOp::Shr,
+                _ => break,
+            };
+            self.index += 1;
+            let op_span = self.prev_span();
+            let right = self.parse_sum()?;
+            node = Expr::Binary {
+                op,
+                left: Box::new(node),
+                right: Box::new(right),
+                span: op_span,
+            };
+        }
+        Ok(node)
     }
 
     fn parse_sum(&mut self) -> Result<Expr, ParseError> {

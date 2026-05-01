@@ -2138,6 +2138,33 @@ const EXVM_SCALAR_ARITHMETIC_CONTRACT_CORPUS: &[(&str, &str)] = &[
     ),
 ];
 
+const EXVM_OPERATOR_CONTRACT_CORPUS: &[(&str, &str)] = &[
+    (
+        "1 << 2 == 4 || 0",
+        "Binary(LogicOr,Binary(Eq,Binary(Shl,Number,Number),Number),Number)",
+    ),
+    (
+        "8 >> 1 != 3",
+        "Binary(Ne,Binary(Shr,Number,Number),Number)",
+    ),
+    ("a < b", "Binary(Lt,Identifier,Identifier)"),
+    ("a <= b", "Binary(Le,Identifier,Identifier)"),
+    ("a > b", "Binary(Gt,Identifier,Identifier)"),
+    ("a >= b", "Binary(Ge,Identifier,Identifier)"),
+    (
+        "mask & flag | extra ^ invert",
+        "Binary(BitOr,Binary(BitAnd,Identifier,Identifier),Binary(BitXor,Identifier,Identifier))",
+    ),
+    (
+        "a && b || c ^^ d",
+        "Binary(LogicXor,Binary(LogicOr,Binary(LogicAnd,Identifier,Identifier),Identifier),Identifier)",
+    ),
+    (
+        "1 + 2 << 3 & 4 == 4 && ok",
+        "Binary(LogicAnd,Binary(BitAnd,Binary(Shl,Binary(Add,Number,Number),Number),Binary(Eq,Number,Number)),Identifier)",
+    ),
+];
+
 fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
     let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
     let token_count = tokens.len();
@@ -2332,6 +2359,31 @@ fn exvm_scalar_parser_owns_core_arithmetic_with_core_failpoint() {
             expression_contract_shape(&expr),
             *expected_shape,
             "strict EXVM scalar expression shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_operator_parser_owns_scalar_operator_tiers_with_core_failpoint() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(true));
+
+    for (source, expected_shape) in EXVM_OPERATOR_CONTRACT_CORPUS {
+        let expr = parse_exvm_scalar_strict(source)
+            .unwrap_or_else(|err| panic!("strict EXVM operator parse {source}: {}", err.message));
+
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "strict EXVM operator expression shape changed for {source}"
         );
     }
 }

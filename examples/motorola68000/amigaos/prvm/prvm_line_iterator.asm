@@ -78,13 +78,6 @@ ROUTE_FRAME_PARSER_CONTRACT_VERSION = 104
 ROUTE_FRAME_STEP_BUDGET             = 108
 ROUTE_FRAME_FLAGS                   = 112
 
-        .section bss, kind=bss
-
-prvmIteratorRouteFrame:
-        .res byte, PRVM_ROUTE_FRAME_SIZE
-
-        .endsection
-
         .section code, kind=code
 
 ; ---------------------------------------------------------------------------
@@ -149,7 +142,8 @@ prvmIteratorNextLine:
         BSR.W prvmIteratorBuildRouteFrame
         LEA prvmIteratorRouteFrame(PC), A0
         MOVE.L #PRVM_ROUTE_FRAME_SIZE, D0
-        JSR prvm_route_line_68000.L
+        MOVEA.L prvmIteratorRouteEntryPtr(PC), A1
+        JSR (A1)
         TST.L D0
         BNE.W prvmIteratorFailFast
         ADDQ.L #1, D5
@@ -272,6 +266,11 @@ prvmIteratorBuildRouteFrame:
         MOVE.L ITER_FRAME_STEP_BUDGET(A6), ROUTE_FRAME_STEP_BUDGET(A1)
         MOVE.L ITER_FRAME_FLAGS(A6), ROUTE_FRAME_FLAGS(A1)
         RTS
+
+prvmIteratorRouteFrame:
+        .fill byte, 116, 0
+prvmIteratorRouteEntryPtr:
+        .long prvm_route_line_68000
 
         .endsection
         .endmodule

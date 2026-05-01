@@ -622,6 +622,18 @@ native parser.
   - Plan-compliance review evidence:
     - first `plan-compliance-reviewer` pass returned `FAIL` only for pending completion bookkeeping; it found no implementation, scope, or validation blocker for the Work item 8 whole-file-iterator-only slice
     - second `plan-compliance-reviewer` pass returned `PASS` for the Work item 8 boundary slice limited to one import-only native whole-file iterator wrapper over the committed line router, focused host-side iterator policy tests, actual module parse/import validation, and plan evidence
+  - Follow-up FS-UAE validation-hardening evidence:
+    - added `prvm_line_iterator_smoke.asm` as an entry-first AmigaOS Hunk smoke executable that builds a caller-owned iterator frame, calls the real `prvm_iterate_lines_68000` adapter path, validates status `0`, routed count `2`, failing line `0`, and total logical lines `2`, and prints `OPFORGE-PRVM-ITER smoke OK` on success
+    - wired `prvm_line_iterator_smoke` into the existing opt-in `external_fs_uae_hunk_smoke` runner and added a marker assertion for `OPFORGE-PRVM-ITER smoke OK`; emulator execution remains opt-in through `OPFORGE_FS_UAE_SMOKE`
+    - kept the executable output ordered as `sections=entry,code` so the `entry` section containing `start` remains the first executable Hunk segment, matching the existing smoke-harness pattern
+    - changed the line-router and iterator adapter internal call cells to Hunk-compatible relocated function-pointer calls so the new smoke can execute the real adapter chain without broadening parser semantics
+    - `cargo fmt --all && cargo test -p asm motorola68020_prvm_line_ -- --nocapture` passed: 13 passed, 0 failed, including the new smoke assembly/payload guard
+    - `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_hunk_smoke -- --nocapture` passed: the real FS-UAE run completed `helloworld`, `writefile`, `tkpkg_debug_cli`, `prvm_smoke`, and `prvm_line_iterator_smoke`
+    - `cargo test -p asm motorola68020_prvm -- --nocapture` passed: 20 passed, 0 failed, including the new iterator smoke and existing PRVM smoke/debug harness checks
+    - `cargo test -p vm parser_vm_v2_parity -- --nocapture` passed: 2 unit tests and 7 parity integration tests
+    - `scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-parser-vm-v2-native-amigaos-68020-implementation-plan-v0_1.md`, `git diff --check`, and `cargo clippy --all-targets --all-features -- -D warnings` passed
+    - `cargo audit --no-fetch` completed with the existing allowed advisories for `registry` (`RUSTSEC-2025-0026`) and `rand` (`RUSTSEC-2026-0097`)
+    - `cargo test --workspace` retained the previously accepted broad generated-reference baseline exception: the `asm` crate reported 884 passed and 1 failed, with the only failure in `tests::examples_match_reference_outputs`
   - Commit outcome:
     - a first native tokenizer/parser whole-file iteration path exists that processes input as ordered newline-free logical lines through the line router, without becoming macro expansion, module execution, symbol resolution, or instruction encoding
   - Definition of done:

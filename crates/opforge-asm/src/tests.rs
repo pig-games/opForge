@@ -1655,6 +1655,7 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
                 | "prvm_interpreter.asm"
                 | "prvm_line_router.asm"
                 | "prvm_line_iterator.asm"
+                | "prvm_line_iterator_smoke.asm"
         )
     )
 }
@@ -9612,7 +9613,8 @@ fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() 
     assert!(source.contains(".byte \"statement\""));
     assert!(source.contains("prvmRouteRejectNewline"));
     assert!(source.contains("prvmRouteBuildRequestFrame"));
-    assert!(source.contains("JSR prvm_run_68000.L"));
+    assert!(source.contains("prvmRouteInterpreterEntryPtr"));
+    assert!(source.contains(".long prvm_run_68000"));
     assert!(!source.contains("ParseOperandExpr"));
     assert!(!source.contains(".output"));
 }
@@ -9650,7 +9652,8 @@ fn motorola68020_prvm_line_iterator_example_exposes_whole_file_iteration_surface
     assert!(source.contains("prvmIteratorTrimCr"));
     assert!(source.contains("prvmIteratorLineIsBlank"));
     assert!(source.contains("prvmIteratorBuildRouteFrame"));
-    assert!(source.contains("JSR prvm_route_line_68000.L"));
+    assert!(source.contains("prvmIteratorRouteEntryPtr"));
+    assert!(source.contains(".long prvm_route_line_68000"));
     assert!(!source.contains("prvm_run_68000"));
     assert!(!source.contains("ParseOperandExpr"));
     assert!(!source.contains(".output"));
@@ -9776,6 +9779,52 @@ fn motorola68020_prvm_debug_cli_example_assembles_with_report_surface() {
             .windows("start: NOP".len())
             .any(|window| window == b"start: NOP"),
         "expected single-line PRVM debug input in Hunk payload"
+    );
+}
+
+#[test]
+fn motorola68020_prvm_line_iterator_smoke_example_assembles_with_native_call_surface() {
+    let repo_root = workspace_root();
+    let asm_path =
+        repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_iterator_smoke.asm");
+    let out_dir = create_temp_dir("m68000-prvm-line-iterator-smoke");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble prvm line iterator smoke example: {detail}");
+    }
+
+    let listing = fs::read_to_string(out_dir.join("prvm_line_iterator_smoke.lst"))
+        .expect("read prvm line iterator smoke listing");
+    assert!(listing.contains(".cpu 68020"));
+    assert!(listing.contains(".section entry, kind=code"));
+    assert!(listing.contains("sections=entry,code"));
+    assert!(listing.contains("prvm.amigaos.line_iterator.prvm_iterate_lines_68000"));
+    assert!(listing.contains("PRVM_ITER_MAGIC_OPLI"));
+    assert!(listing.contains("PRVM_ITER_FRAME_SIZE"));
+    assert!(listing.contains("OPFORGE-PRVM-ITER smoke OK"));
+    assert!(listing.contains("OPFORGE-PRVM-ITER smoke FAIL routed"));
+    assert!(listing.contains("start: NOP"));
+
+    let payload_path = example_output_payload_path(&out_dir, "prvm_line_iterator_smoke", "hunk");
+    let payload = fs::read(payload_path).expect("read prvm line iterator smoke hunk payload");
+    assert!(
+        payload
+            .windows("OPFORGE-PRVM-ITER smoke OK".len())
+            .any(|window| window == b"OPFORGE-PRVM-ITER smoke OK"),
+        "expected PRVM iterator smoke success marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OPFORGE-PRVM-ITER smoke FAIL total".len())
+            .any(|window| window == b"OPFORGE-PRVM-ITER smoke FAIL total"),
+        "expected iterator total-line validation in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows(b"start: NOP\nstart: NOP".len())
+            .any(|window| window == b"start: NOP\nstart: NOP"),
+        "expected two-line iterator smoke input in Hunk payload"
     );
 }
 
@@ -25391,6 +25440,15 @@ fn external_fs_uae_hunk_smoke() {
                     assert!(
                         combined_output.contains("OPFORGE-PRVM smoke OK"),
                         "FS-UAE smoke for {} did not report the PRVM success marker\nstdout:\n{}\nstderr:\n{}",
+                        run.example_name,
+                        run.stdout,
+                        run.stderr,
+                    );
+                }
+                if run.example_name == "prvm_line_iterator_smoke" {
+                    assert!(
+                        combined_output.contains("OPFORGE-PRVM-ITER smoke OK"),
+                        "FS-UAE smoke for {} did not report the PRVM iterator success marker\nstdout:\n{}\nstderr:\n{}",
                         run.example_name,
                         run.stdout,
                         run.stderr,

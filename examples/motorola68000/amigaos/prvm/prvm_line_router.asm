@@ -51,13 +51,6 @@ ROUTE_FRAME_PARSER_CONTRACT_VERSION = 104
 ROUTE_FRAME_STEP_BUDGET             = 108
 ROUTE_FRAME_FLAGS                   = 112
 
-        .section bss, kind=bss
-
-prvmRouteRequestFrame:
-        .res byte, PRVM_REQUEST_FRAME_SIZE
-
-        .endsection
-
         .section code, kind=code
 
 ; ---------------------------------------------------------------------------
@@ -110,7 +103,8 @@ prvm_route_line_68000:
         BSR.W prvmRouteBuildRequestFrame
         LEA prvmRouteRequestFrame(PC), A0
         MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0
-        JSR prvm_run_68000.L
+        MOVEA.L prvmRouteInterpreterEntryPtr(PC), A1
+        JSR (A1)
         BRA.S prvmRouteDone
 
 prvmRouteInvalidArgument:
@@ -213,6 +207,11 @@ processorAsmText:
         .byte "asm"
 kindStatementText:
         .byte "statement"
+
+prvmRouteRequestFrame:
+        .fill byte, 112, 0
+prvmRouteInterpreterEntryPtr:
+        .long prvm_run_68000
 
         .endsection
         .endmodule

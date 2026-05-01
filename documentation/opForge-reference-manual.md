@@ -1333,7 +1333,25 @@ See also:
 
 ### VM boundary (certified families)
 
-For certified families, the per-line assembly hot path uses VM contracts for tokenization, parser envelope execution, portable expression services, and authoritative encode tables.
+For certified families, the per-line assembly hot path uses VM contracts for
+tokenization, parser envelope execution, expression parsing/evaluation, and
+authoritative encode tables.
+
+Expression work uses two named VM contracts:
+- `EXVM` is the expression parser VM. It parses covered mathematical expression
+  token ranges such as literals, symbols, grouping, operators, ternaries,
+  ranges, lists, struct literals, member access, and index access.
+- `EXPR` is the portable expression evaluator VM. It evaluates the compact
+  expression program compiled from a parsed expression AST.
+
+The parser VM (`PRVM`) still owns statement shapes and CPU-family operand
+wrappers. When PRVM crosses into `EXVM`, it passes only the pure expression range
+inside an operand. Immediate prefixes, m68k tuple/postincrement/predecrement
+forms, register pairs, bitfield suffixes, long-indirect bracket forms, and other
+operand-shape syntax remain outside `EXVM`. Calls and placeholders are retained
+as explicit compatibility/out-of-scope value nodes; they are not covered `EXVM`
+grammar and strict execution reports deterministic unsupported diagnostics for
+them.
 
 Canonical host/VM boundary and failure/strictness rules:
 - [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md)

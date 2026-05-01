@@ -3,7 +3,7 @@
 # VM Boundary & Protocol Specification (v1)
 
 Status: active canonical spec  
-Last updated: 2026-02-24
+Last updated: 2026-05-01
 
 See also:
 - [opForge Reference Manual](opForge-reference-manual.md) (Appendix: multi-CPU architecture)
@@ -41,7 +41,7 @@ It specifies:
 | Macro expansion | Host | No (engine) | Host `MacroProcessor` performs expansion/injection; VM is not the macro executor. |
 | Per-line tokenization in assembler passes | VM | Yes | Per-line processing requires a runtime model and uses the VM tokenization path. |
 | Per-line parser envelope | VM | Yes | Per-line parsing validates parser contracts and executes the parser VM envelope. |
-| Expression parse/eval on assembly hot path | VM by default | Yes | Certified families default to VM expression parser/eval; strict contract/version checks are errors. |
+| Expression parse/eval on assembly hot path | VM by default | Yes | `EXVM` parses covered mathematical expression token ranges; `EXPR` evaluates compiled portable expression programs. PRVM/opasm retains CPU-family operand-shape ownership. Strict contract/version checks are errors. |
 | Instruction candidate resolution/encode | VM-first with strictness | Yes | VM encode path is authoritative for certified families; contract failures are explicit errors. |
 | Pass orchestration, symbols, image/list/map output | Host | No | Host controls pass loop, symbol lifecycle, listings/map/hex/bin I/O. |
 
@@ -57,8 +57,9 @@ flowchart TD
 
 	subgraph VM_HOT_PATH[VM-Authoritative Line Hot Path]
 	  T[VM Tokenizer] --> P[VM Parser Envelope]
-	  P --> X[VM Expression Parse/Eval]
-	  X --> I[VM Instruction/Directive Encode]
+	  P --> X[EXVM Expression Parser]
+	  X --> E[EXPR Portable Evaluator]
+	  E --> I[VM Instruction/Directive Encode]
 	end
 
 	F --> T
@@ -107,7 +108,7 @@ sequenceDiagram
 	participant H as Host AsmLine
 	participant TB as Token Bridge
 	participant M as Runtime Execution Model
-	participant R as Runtime Contracts (TOKS/TKVM/PARS/PRVM/EXPR/TABL)
+	participant R as Runtime Contracts (TOKS/TKVM/PARS/PRVM/EXVM/EXPR/TABL)
 
 	H->>TB: parse_line_with_model(model, cpu, line)
 	TB->>M: tokenize_portable_statement_for_assembler
@@ -126,6 +127,13 @@ sequenceDiagram
 	M-->>H: emitted bytes / error
 ```
 
+`PRVM` is the statement and operand-shape parser. Its
+`ParseOperandExprRange` opcode crosses into the expression parser contract only
+for the pure mathematical token range inside an operand. `EXVM` owns that covered
+expression grammar; immediate wrappers, m68k tuple/postincrement/predecrement
+forms, register-pair operands, bitfield suffixes, long-indirect brackets, and
+other CPU-family operand shapes remain PRVM/opasm responsibilities.
+
 ## 7. Ownership and Precedence
 
 All runtime-resolved contracts are owner-scoped and resolved with this precedence:
@@ -142,6 +150,10 @@ Normative rules:
 - Missing required VM program/contract for authoritative path is a hard error.
 - Invalid VM output shape (for example empty non-comment token stream where forbidden) is a hard error.
 - VM contract/version failures are never interpreted as soft host fallback signals.
+- Covered `EXVM` grammar must not silently delegate to host expression parsing.
+- Calls and placeholders are explicit compatibility/out-of-scope value nodes,
+  not covered `EXVM` grammar; strict execution reports deterministic unsupported
+  diagnostics for them.
 
 Determinism requirements:
 - Budget ceilings and diagnostics are deterministic for repeated runs over identical inputs.
@@ -152,6 +164,8 @@ Determinism requirements:
 - Runtime/package path: authoritative for `mos6502` and `intel8080` families.
 - Expression eval path: authoritative for `mos6502` and `intel8080` families.
 - Expression parser path: authoritative for `mos6502` and `intel8080` families.
+- Parser-VM expression subcalls route covered expression ranges through `EXVM`
+  even when the surrounding CPU-family operand shape remains staged.
 
 ### 9.2 Host override controls
 

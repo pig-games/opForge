@@ -3,7 +3,7 @@
 # opForge Assembler VM Path Guide (v0.1 Draft)
 
 Status: first draft working guide  
-Last updated: 2026-03-22
+Last updated: 2026-05-01
 
 See also:
 - [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md)
@@ -72,14 +72,16 @@ flowchart TD
     subgraph HOT["Per-line VM-backed hot path"]
         G["Tokenizer VM"]
         H["Parser VM"]
-        I["Expression parser / evaluator VM"]
+        I["EXVM expression parser VM"]
+        X["EXPR portable evaluator VM"]
         J["Selector + encode bytecode VM"]
     end
 
     F --> G
     G --> H
     H --> I
-    I --> J
+    I --> X
+    X --> J
     J --> K["Rust host: symbols, image, listing, hex/bin/map/labels"]
 ```
 
@@ -214,19 +216,39 @@ The default family parser program is generated in [`crates/opforge-vm/src/builde
 
 ### 4.10 Expression parsing and evaluation
 
-Expression work sits in the `.opcore` VM surface:
+Expression work sits in the `.opcore` VM surface, but it is split into two
+separate VM contracts:
+
+- `EXVM` is the expression parser VM. It turns a token slice into an expression
+    AST for the grammar that the expression-VM plan covers.
+- `EXPR` is the portable expression evaluator VM. It evaluates a compact
+    expression program compiled from an already parsed AST.
+
+Key entrypoints:
 
 - parse expression for assembler: [`crates/opforge-vm/src/vm_opcore.rs#L315-L338`](../crates/opforge-vm/src/vm_opcore.rs#L315-L338)
 - decide whether the VM expression parser is active for the family: [`crates/opforge-vm/src/vm_opcore.rs#L370-L393`](../crates/opforge-vm/src/vm_opcore.rs#L370-L393)
 - compile a parsed expression into the portable expression program: [`crates/opforge-vm/src/vm_opcore.rs#L395-L525`](../crates/opforge-vm/src/vm_opcore.rs#L395-L525)
 - evaluate a portable expression program with family-specific budgets/contracts: [`crates/opforge-vm/src/vm_opcore.rs#L527-L569`](../crates/opforge-vm/src/vm_opcore.rs#L527-L569)
 
-The actual expression evaluator VM is implemented in `opcore::expr_vm`:
+`PRVM` owns statement and operand-shape parsing. When a parser VM program uses
+`ParseOperandExprRange`, the subcall boundary is the pure expression token range
+inside that operand. That range is routed to authoritative `EXVM` coverage; CPU
+family operand wrappers remain outside `EXVM`. Examples of operand shapes that
+stay in PRVM/opasm handling include immediate operands, m68k tuple,
+postincrement and predecrement forms, register pairs, bitfield suffixes, and
+long-indirect bracket forms.
+
+The actual portable expression evaluator VM is implemented in `opcore::expr_vm`:
 
 - opcode definitions: [`crates/opforge-core/src/expr_vm.rs#L11-L128`](../crates/opforge-core/src/expr_vm.rs#L11-L128)
 - execution loop: [`crates/opforge-core/src/expr_vm.rs#L321-L442`](../crates/opforge-core/src/expr_vm.rs#L321-L442)
 
-This is an important design point: the line parser may still hand sub-expressions back to the expression layer, but evaluation itself is driven by a compact portable expression program rather than by re-walking the original text every time.
+This is an important design point: the line parser may still hand expression
+slices to the expression layer, but parsing and evaluation are separate VM
+contracts. `EXVM` owns covered mathematical expression syntax, while `EXPR`
+executes a portable expression program rather than re-walking the original text
+every time.
 
 ### 4.11 Instruction candidate selection and byte emission
 
@@ -374,9 +396,15 @@ Rollout and use in assembler path: [`crates/opforge-vm/src/vm_opcore.rs#L315-L52
 | `0x01` | `ParseExpression` | Parse one expression from the provided token slice. |
 | `0x02` | `EmitDiag` | Emit an expression-parser diagnostic. |
 | `0x03` | `Fail` | Abort expression parsing. |
-| `0x04` | `DelegateCore` | Hand expression parsing back to the core parser. |
+| `0x04` | Reserved | Retired. Rejected as an invalid `EXVM` opcode. |
 
-In the current codebase, this VM is a small bytecode-controlled expression-parser entrypoint around strict `EXVM` expression parsing with an explicit compatibility fallback: the default program is `ParseExpression, End`, and the interpreter enforces token, step, and output-stack budgets.
+In the current codebase, this VM is a small bytecode-controlled expression-parser
+entrypoint around strict `EXVM` expression parsing: the default program is
+`ParseExpression, End`, and the interpreter enforces token, step, and
+output-stack budgets. There is no `DelegateCore` parser opcode in the active
+`EXVM` surface. Compatibility behavior is limited to explicit out-of-scope value
+nodes so existing call/placeholder workflows can be identified consistently;
+covered grammar does not silently fall back to host parsing.
 
 The covered `EXVM` grammar is operand-shape-free expression syntax: literals, symbols, grouping, unary and binary operators, ternaries, ranges, lists, struct literals, member access, and index access. CPU-family operand wrappers such as immediates, m68k tuple/postincrement/predecrement forms, register pairs, bitfield suffixes, and long-indirect bracket forms remain owned by PRVM/opasm operand handling. Calls and placeholders are current parser compatibility behavior, but they are not part of the covered `EXVM` grammar for the active expression-VM implementation plan; strict execution reports deterministic unsupported diagnostics for those value nodes instead of classifying them as covered grammar.
 

@@ -1188,6 +1188,24 @@ pub(crate) fn split_top_level_comma_ranges(
     ranges
 }
 
+pub fn load_model_from_registry(
+    registry: &registry::registry::ModuleRegistry,
+) -> Result<HierarchyExecutionModel, crate::vm_core::RuntimeModelLoadError> {
+    crate::vm_core::load_execution_model_from_registry(registry)
+}
+
+pub fn load_model_from_chunks(
+    chunks: package::HierarchyChunks,
+) -> Result<HierarchyExecutionModel, crate::vm_core::RuntimeModelLoadError> {
+    crate::vm_core::load_execution_model_from_chunks(chunks)
+}
+
+pub fn load_model_from_package_bytes(
+    bytes: &[u8],
+) -> Result<HierarchyExecutionModel, crate::vm_core::RuntimeModelLoadError> {
+    crate::vm_core::load_execution_model_from_package_bytes(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1483,22 +1501,4 @@ mod tests {
 
         assert!(parse_predecrement(&tokens).is_none());
     }
-}
-
-pub fn load_model_from_registry(
-    registry: &registry::registry::ModuleRegistry,
-) -> Result<HierarchyExecutionModel, crate::vm_core::RuntimeModelLoadError> {
-    crate::vm_core::load_execution_model_from_registry(registry)
-}
-
-pub fn load_model_from_chunks(
-    chunks: package::HierarchyChunks,
-) -> Result<HierarchyExecutionModel, crate::vm_core::RuntimeModelLoadError> {
-    crate::vm_core::load_execution_model_from_chunks(chunks)
-}
-
-pub fn load_model_from_package_bytes(
-    bytes: &[u8],
-) -> Result<HierarchyExecutionModel, crate::vm_core::RuntimeModelLoadError> {
-    crate::vm_core::load_execution_model_from_package_bytes(bytes)
 }

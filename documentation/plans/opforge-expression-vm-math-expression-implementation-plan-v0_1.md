@@ -501,7 +501,7 @@ continues.
       enabled.
     - Unsupported/out-of-scope cases fail with deterministic diagnostics.
 
-- [ ] Item 12 - Refresh documentation and run full quality gates
+- [x] Item 12 - Refresh documentation and run full quality gates
   - Source requirement or finding IDs: Final documentation and validation for
     the `EXVM` expression grammar implementation plan.
   - Validation: See Full quality gates for this item.
@@ -510,6 +510,8 @@ continues.
     - `documentation/opforge-assembler-vm-path-guide-v0_1.md`
     - `documentation/vm-boundary-protocol-v1.md`
     - `documentation/opForge-reference-manual.md`
+    - `crates/opforge-vm/src/vm_opasm.rs`, validation-only clippy item-order
+      fix with no parser behavior change
     - this plan, for progress evidence only
     - release notes only if a new release tag is being created; otherwise do not
       update release notes
@@ -536,6 +538,20 @@ continues.
     - The plan has final validation evidence.
     - Full quality gates pass or any pre-existing baseline exception is recorded
       precisely with evidence.
+  - Final validation evidence, recorded 2026-05-01:
+    - `cargo fmt --all --check`: PASS.
+    - `cargo clippy --all-targets --all-features -- -D warnings`: PASS after a
+      validation-only move of `vm_opasm.rs` load helper items above the test
+      module; no parser behavior changed.
+    - `cargo test --locked`: PASS.
+    - `cargo test --workspace`: PASS.
+    - `cargo audit --no-fetch`: PASS with existing allowed warnings reported for
+      `RUSTSEC-2025-0026` (`registry` unmaintained) and `RUSTSEC-2026-0097`
+      (`rand` advisory through test dependencies).
+    - Plan checker: PASS.
+    - Changed-file diagnostics: PASS.
+    - Native/FS-UAE evidence: not required; this documentation slice introduces
+      no native `EXVM` execution path.
 
 ## Milestones
 

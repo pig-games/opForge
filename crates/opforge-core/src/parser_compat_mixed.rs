@@ -17,6 +17,13 @@ fn is_m68k_long_divide_pair_mnemonic(name: &str) -> bool {
     )
 }
 
+fn is_m68k_tex_mnemonic(name: &str) -> bool {
+    matches!(
+        base_mnemonic_name(name).to_ascii_uppercase().as_str(),
+        "TEX8" | "TEX16" | "TEX24" | "TEX"
+    )
+}
+
 fn is_m68k_bitfield_mnemonic(name: &str) -> bool {
     matches!(
         base_mnemonic_name(name).to_ascii_uppercase().as_str(),
@@ -385,6 +392,37 @@ fn parse_m68k_statement_operand_tokens(
     mnemonic: Option<&str>,
     operand_index: usize,
 ) -> Expr {
+    if operand_index == 0 && mnemonic.is_some_and(is_m68k_tex_mnemonic) {
+        if let Some(multiply_index) =
+            find_top_level_token(tokens, TokenKind::Operator(OperatorKind::Multiply))
+        {
+            if multiply_index > 0 && multiply_index + 1 < tokens.len() {
+                let left = parse_statement_operand_base(
+                    &tokens[..multiply_index],
+                    tokens[multiply_index].span,
+                    Some("*".to_string()),
+                );
+                let right = parse_expression_slice_or_error(
+                    &tokens[multiply_index + 1..],
+                    end_span,
+                    end_token_text.clone(),
+                );
+                let left_span = span_of_expr(&left);
+                let right_span = span_of_expr(&right);
+                return Expr::Binary {
+                    op: BinaryOp::Multiply,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                    span: Span {
+                        line: left_span.line,
+                        col_start: left_span.col_start,
+                        col_end: right_span.col_end,
+                    },
+                };
+            }
+        }
+    }
+
     if (mnemonic.is_some_and(is_m68k_cas2_mnemonic) && operand_index <= 2)
         || (mnemonic.is_some_and(is_m68k_long_divide_pair_mnemonic) && operand_index == 1)
     {

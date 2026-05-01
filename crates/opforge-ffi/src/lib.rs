@@ -7469,10 +7469,14 @@ mod tests {
 
     #[test]
     fn ffi_opforge_opcore_expr_group_matches_portable_adapter_projection() {
-        let line_text = "Sprite{x:1,y:foo(2)}";
+        let line_text = "Sprite{x:1,y:.foo(2)}";
         let line = CString::new(line_text).expect("line cstr");
         let report = unsafe { opforge_opcore_parse_expression(line.as_ptr(), 33) };
         assert!(!report.is_null());
+        assert_eq!(
+            unsafe { opforge_opcore_expr_report_status(report) },
+            OpforgeProcessorStatus::Ok
+        );
 
         let tokenized = api::opcore::portable::tokenize_line(line_text, 33)
             .expect("portable tokenize should succeed");

@@ -5,7 +5,7 @@
 //! This groups assembler-oriented VM functionality, including statement
 //! parsing, selector/encoding helpers, and CPU-family VM helpers.
 
-use opcore::parser::{Expr, LineAst, ParseError, UnaryOp};
+use opcore::parser::{BinaryOp, Expr, LineAst, ParseError, UnaryOp};
 use opcore::tokenizer::{OperatorKind, Span, Token, TokenKind};
 use registry::family::AssemblerContext;
 use registry::registry::OperandSet;
@@ -234,6 +234,9 @@ pub(crate) struct OperandExprBoundary {
     pub(crate) end_token_text: Option<String>,
 }
 
+type ExprSliceParser<'a> =
+    dyn for<'tokens> FnMut(&'tokens [Token], Span, Option<String>) -> Result<Expr, ParseError> + 'a;
+
 pub(crate) fn parse_operand_expr_range(
     tokens: &[Token],
     start: usize,
@@ -255,18 +258,20 @@ pub(crate) fn parse_operand_expr_range(
     let expr_end_span = boundary_token
         .map(|token| token.span)
         .unwrap_or(boundary.end_span);
-    if let Some(expr) = parse_generic_operand_wrapper(
-        &tokens[start..end],
-        expr_end_span,
-        boundary.end_token_text.clone(),
-        |inner_tokens, inner_end_span, inner_end_token_text| {
+    let mut parse_inner =
+        |inner_tokens: &[Token], inner_end_span: Span, inner_end_token_text: Option<String>| {
             parse_expr_slice(
                 expr_parse_ctx,
                 inner_tokens,
                 inner_end_span,
                 inner_end_token_text,
             )
-        },
+        };
+    if let Some(expr) = parse_generic_operand_wrapper(
+        &tokens[start..end],
+        expr_end_span,
+        boundary.end_token_text.clone(),
+        &mut parse_inner,
     ) {
         operands.push(expr);
         return Ok(());
@@ -279,6 +284,17 @@ pub(crate) fn parse_operand_expr_range(
         }
     }
     if family_allows_m68k_operand_shapes(family_id.as_str()) {
+        if let Some(expr) = parse_m68k_texture_operand(
+            &tokens[start..end],
+            hints.mnemonic,
+            hints.operand_index,
+            expr_parse_ctx,
+            expr_end_span,
+            boundary.end_token_text.clone(),
+        )? {
+            operands.push(expr);
+            return Ok(());
+        }
         if let Some(expr) = parse_m68k_postincrement_operand(
             &tokens[start..end],
             expr_end_span,
@@ -399,6 +415,13 @@ fn is_m68k_long_divide_pair_mnemonic(name: &str) -> bool {
     )
 }
 
+fn is_m68k_tex_mnemonic(name: &str) -> bool {
+    matches!(
+        base_mnemonic_name(name).to_ascii_uppercase().as_str(),
+        "TEX8" | "TEX16" | "TEX24" | "TEX"
+    )
+}
+
 fn is_m68k_bitfield_operand(name: &str, operand_index: usize) -> bool {
     match base_mnemonic_name(name).to_ascii_uppercase().as_str() {
         "BFINS" => operand_index == 1,
@@ -436,18 +459,15 @@ fn build_call_expr(name: &str, args: Vec<Expr>) -> Expr {
     }
 }
 
-fn parse_generic_operand_wrapper<F>(
+fn parse_generic_operand_wrapper(
     tokens: &[Token],
     end_span: Span,
     end_token_text: Option<String>,
-    mut parse_inner: F,
-) -> Option<Expr>
-where
-    F: FnMut(&[Token], Span, Option<String>) -> Result<Expr, ParseError>,
-{
+    parse_inner: &mut ExprSliceParser<'_>,
+) -> Option<Expr> {
     let first = tokens.first()?;
     if matches!(first.kind, TokenKind::Hash) {
-        let inner = parse_inner_or_error(&mut parse_inner, &tokens[1..], end_span, end_token_text);
+        let inner = parse_inner_or_error(parse_inner, &tokens[1..], end_span, end_token_text);
         if matches!(inner, Expr::Error(_, _)) {
             return Some(inner);
         }
@@ -468,7 +488,7 @@ where
     if is_single_wrapped_operand(tokens, TokenKind::OpenParen, TokenKind::CloseParen) {
         if contains_top_level_comma(&tokens[1..tokens.len() - 1]) {
             let close_span = tokens[tokens.len() - 1].span;
-            let elements = parse_wrapped_tuple_elements(tokens, close_span, ")", &mut parse_inner);
+            let elements = parse_wrapped_tuple_elements(tokens, close_span, ")", parse_inner);
             let span = Span {
                 line: first.span.line,
                 col_start: first.span.col_start,
@@ -478,7 +498,7 @@ where
         }
         let close_span = tokens[tokens.len() - 1].span;
         let inner = parse_inner_or_error(
-            &mut parse_inner,
+            parse_inner,
             &tokens[1..tokens.len() - 1],
             close_span,
             Some(")".to_string()),
@@ -496,7 +516,7 @@ where
     if is_single_wrapped_operand(tokens, TokenKind::OpenBracket, TokenKind::CloseBracket) {
         if contains_top_level_comma(&tokens[1..tokens.len() - 1]) {
             let close_span = tokens[tokens.len() - 1].span;
-            let elements = parse_wrapped_tuple_elements(tokens, close_span, "]", &mut parse_inner);
+            let elements = parse_wrapped_tuple_elements(tokens, close_span, "]", parse_inner);
             let span = Span {
                 line: first.span.line,
                 col_start: first.span.col_start,
@@ -509,7 +529,7 @@ where
         }
         let close_span = tokens[tokens.len() - 1].span;
         let inner = parse_inner_or_error(
-            &mut parse_inner,
+            parse_inner,
             &tokens[1..tokens.len() - 1],
             close_span,
             Some("]".to_string()),
@@ -527,15 +547,12 @@ where
     None
 }
 
-fn parse_wrapped_tuple_elements<F>(
+fn parse_wrapped_tuple_elements(
     tokens: &[Token],
     close_span: Span,
     close_token_text: &str,
-    parse_inner: &mut F,
-) -> Vec<Expr>
-where
-    F: FnMut(&[Token], Span, Option<String>) -> Result<Expr, ParseError>,
-{
+    parse_inner: &mut ExprSliceParser<'_>,
+) -> Vec<Expr> {
     parse_tuple_elements(
         tokens,
         1,
@@ -546,17 +563,14 @@ where
     )
 }
 
-fn parse_tuple_elements<F>(
+fn parse_tuple_elements(
     tokens: &[Token],
     start: usize,
     end: usize,
     close_span: Span,
     close_token_text: &str,
-    parse_inner: &mut F,
-) -> Vec<Expr>
-where
-    F: FnMut(&[Token], Span, Option<String>) -> Result<Expr, ParseError>,
-{
+    parse_inner: &mut ExprSliceParser<'_>,
+) -> Vec<Expr> {
     split_top_level_comma_ranges(tokens, start, end)
         .into_iter()
         .map(|(start, end)| {
@@ -568,6 +582,17 @@ where
             } else {
                 (close_span, Some(close_token_text.to_string()))
             };
+            if start == end {
+                return Expr::Placeholder(element_end_span);
+            }
+            if let Some(expr) = parse_generic_operand_wrapper(
+                &tokens[start..end],
+                element_end_span,
+                element_end_token_text.clone(),
+                &mut *parse_inner,
+            ) {
+                return expr;
+            }
             parse_inner_or_error(
                 parse_inner,
                 &tokens[start..end],
@@ -654,6 +679,13 @@ fn parse_m68k_postfix_tuple_operand<F>(tokens: &[Token], mut parse_inner: F) -> 
 where
     F: FnMut(&[Token], Span, Option<String>) -> Result<Expr, ParseError>,
 {
+    if matches!(
+        tokens.first().map(|token| &token.kind),
+        Some(TokenKind::Dot)
+    ) {
+        return None;
+    }
+
     let close = tokens.last()?;
     if !matches!(close.kind, TokenKind::CloseParen) {
         return None;
@@ -742,15 +774,12 @@ fn top_level_group_closes_at_end(tokens: &[Token], open_index: usize) -> bool {
     false
 }
 
-fn parse_inner_or_error<F>(
-    parse_inner: &mut F,
+fn parse_inner_or_error(
+    parse_inner: &mut ExprSliceParser<'_>,
     tokens: &[Token],
     end_span: Span,
     end_token_text: Option<String>,
-) -> Expr
-where
-    F: FnMut(&[Token], Span, Option<String>) -> Result<Expr, ParseError>,
-{
+) -> Expr {
     match parse_inner(tokens, end_span, end_token_text) {
         Ok(expr) => expr,
         Err(err) => Expr::Error(err.message, err.span),
@@ -807,6 +836,100 @@ fn contains_top_level_comma(tokens: &[Token]) -> bool {
     false
 }
 
+fn parse_m68k_wrapped_operand_or_expr(
+    expr_parse_ctx: &crate::vm_opasm_parse::VmExprParseContext<'_>,
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Result<Expr, ParseError> {
+    let mut parse_inner =
+        |inner_tokens: &[Token], inner_end_span: Span, inner_end_token_text: Option<String>| {
+            parse_expr_slice(
+                expr_parse_ctx,
+                inner_tokens,
+                inner_end_span,
+                inner_end_token_text,
+            )
+        };
+    if let Some(expr) =
+        parse_generic_operand_wrapper(tokens, end_span, end_token_text.clone(), &mut parse_inner)
+    {
+        return Ok(expr);
+    }
+
+    parse_expr_slice(expr_parse_ctx, tokens, end_span, end_token_text)
+}
+
+fn find_top_level_multiply(tokens: &[Token]) -> Option<usize> {
+    let mut depth_paren = 0i32;
+    let mut depth_bracket = 0i32;
+    let mut depth_brace = 0i32;
+
+    for (index, token) in tokens.iter().enumerate() {
+        if depth_paren == 0
+            && depth_bracket == 0
+            && depth_brace == 0
+            && matches!(token.kind, TokenKind::Operator(OperatorKind::Multiply))
+        {
+            return Some(index);
+        }
+        update_group_depths_for_token(
+            &token.kind,
+            &mut depth_paren,
+            &mut depth_bracket,
+            &mut depth_brace,
+        );
+    }
+
+    None
+}
+
+fn parse_m68k_texture_operand(
+    tokens: &[Token],
+    mnemonic: Option<&str>,
+    operand_index: usize,
+    expr_parse_ctx: &crate::vm_opasm_parse::VmExprParseContext<'_>,
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Result<Option<Expr>, ParseError> {
+    if operand_index != 0 || !mnemonic.is_some_and(is_m68k_tex_mnemonic) {
+        return Ok(None);
+    }
+
+    let Some(multiply_index) = find_top_level_multiply(tokens) else {
+        return Ok(None);
+    };
+    if multiply_index == 0 || multiply_index + 1 >= tokens.len() {
+        return Ok(None);
+    }
+
+    let left = parse_m68k_wrapped_operand_or_expr(
+        expr_parse_ctx,
+        &tokens[..multiply_index],
+        tokens[multiply_index].span,
+        Some("*".to_string()),
+    )?;
+    let right = parse_expr_slice(
+        expr_parse_ctx,
+        &tokens[multiply_index + 1..],
+        end_span,
+        end_token_text,
+    )?;
+    let left_span = opcore::expression::expr_span(&left);
+    let right_span = opcore::expression::expr_span(&right);
+
+    Ok(Some(Expr::Binary {
+        op: BinaryOp::Multiply,
+        left: Box::new(left),
+        right: Box::new(right),
+        span: Span {
+            line: left_span.line,
+            col_start: left_span.col_start,
+            col_end: right_span.col_end,
+        },
+    }))
+}
+
 fn parse_register_pair_operand(
     tokens: &[Token],
     mnemonic: Option<&str>,
@@ -847,13 +970,13 @@ fn parse_register_pair_operand(
     let Some(colon_index) = colon_index else {
         return Ok(None);
     };
-    let left = parse_expr_slice(
+    let left = parse_m68k_wrapped_operand_or_expr(
         expr_parse_ctx,
         &tokens[..colon_index],
         tokens[colon_index].span,
         Some(":".to_string()),
     )?;
-    let right = parse_expr_slice(
+    let right = parse_m68k_wrapped_operand_or_expr(
         expr_parse_ctx,
         &tokens[colon_index + 1..],
         end_span,
@@ -946,7 +1069,7 @@ fn parse_bitfield_suffix_operand(
         return Ok(None);
     };
 
-    let base = parse_expr_slice(
+    let base = parse_m68k_wrapped_operand_or_expr(
         expr_parse_ctx,
         &tokens[..open_brace_index],
         tokens[open_brace_index].span,
@@ -1124,7 +1247,8 @@ mod tests {
     }
 
     fn parse_wrapper(tokens: &[Token]) -> Option<Expr> {
-        parse_generic_operand_wrapper(tokens, span(99, 99), None, parse_test_expr)
+        let mut parse_inner = parse_test_expr;
+        parse_generic_operand_wrapper(tokens, span(99, 99), None, &mut parse_inner)
     }
 
     fn parse_postincrement(tokens: &[Token]) -> Option<Expr> {

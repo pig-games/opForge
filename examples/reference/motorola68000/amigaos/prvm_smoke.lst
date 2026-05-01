@@ -4,13 +4,13 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                1          .module prvm.amigaos.interpreter
 ----                                2          .cpu 68020
 ----                                3          .pub
-----                                4
+----                                4  
 ----    EQU 4F505250                5  PRVM_MAGIC_OPRP                     = $4F505250
 ----    EQU 0070                    6  PRVM_REQUEST_FRAME_SIZE             = 112
 ----    EQU 0014                    7  PRVM_TOKEN_RECORD_SIZE              = 20
 ----    EQU 0020                    8  PRVM_RESULT_RECORD_SIZE             = 32
 ----    EQU 0100                    9  PRVM_DEFAULT_STEP_BUDGET            = 256
-----                               10
+----                               10  
 ----    EQU 0000                   11  PRVM_FRAME_MAGIC                    = 0
 ----    EQU 0004                   12  PRVM_FRAME_ABI_VERSION              = 4
 ----    EQU 0006                   13  PRVM_FRAME_FRAME_SIZE               = 6
@@ -38,7 +38,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 005C                   35  PRVM_FRAME_PARSER_CONTRACT_VERSION  = 92
 ----    EQU 0060                   36  PRVM_FRAME_STEP_BUDGET              = 96
 ----    EQU 0064                   37  PRVM_FRAME_FLAGS                    = 100
-----                               38
+----                               38  
 ----    EQU 0000                   39  PRVM_STATUS_OK                      = 0
 ----    EQU 0001                   40  PRVM_STATUS_EXPR_REQUEST            = 1
 ----    EQU 0002                   41  PRVM_STATUS_NEWLINE_UNSUPPORTED     = 2
@@ -51,24 +51,24 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 000A                   48  PRVM_STATUS_INVALID_RESUME          = 10
 ----    EQU 000B                   49  PRVM_STATUS_EXPR_RESULT_INVALID     = 11
 ----    EQU 000C                   50  PRVM_STATUS_BUDGET_EXCEEDED         = 12
-----                               51
+----                               51  
 ----    EQU 0001                   52  PRVM_ENTRY_KIND_OPASM_STATEMENT     = 1
 ----    EQU 0000                   53  PRVM_CALL_MODE_START                = 0
 ----    EQU 0001                   54  PRVM_CALL_MODE_RESUME               = 1
 ----    EQU 0001                   55  PRVM_ABI_VERSION_V1                 = 1
 ----    EQU 0002                   56  PRVM_PARSER_CONTRACT_VERSION_V2     = 2
-----                               57
+----                               57  
 ----    EQU 0000                   58  PRVM_TOKEN_KIND_IDENTIFIER          = 0
 ----    EQU 0007                   59  PRVM_TOKEN_KIND_DOT                 = 7
 ----    EQU 0004                   60  PRVM_TOKEN_KIND_COMMA               = 4
 ----    EQU 0005                   61  PRVM_TOKEN_KIND_COLON               = 5
-----                               62
+----                               62  
 ----    EQU 0001                   63  PRVM_RESULT_BEGIN_STATEMENT         = 1
 ----    EQU 0002                   64  PRVM_RESULT_LABEL_TEXT              = 2
 ----    EQU 0003                   65  PRVM_RESULT_MNEMONIC_TEXT           = 3
 ----    EQU 0004                   66  PRVM_RESULT_OPERAND_EXPR_SLOT       = 4
 ----    EQU 0005                   67  PRVM_RESULT_FINISH_LINE             = 5
-----                               68
+----                               68  
 ----    EQU 0020                   69  PRVM_EXPR_REQUEST_RECORD_SIZE       = 32
 ----    EQU 0020                   70  PRVM_EXPR_RESULT_SLOT_SIZE          = 32
 ----    EQU 0001                   71  PRVM_EXPR_SLOT_READY                = 1
@@ -77,7 +77,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 0001                   74  PRVM_RESUME_VERSION                 = 1
 ----    EQU 0028                   75  PRVM_RESUME_STATE_SIZE              = 40
 ----    EQU 0001                   76  PRVM_CONTINUATION_PARSE_OPERAND     = 1
-----                               77
+----                               77  
 ----    EQU 0000                   78  PRVM_OPCODE_END                     = $00
 ----    EQU 0001                   79  PRVM_OPCODE_JUMP                    = $01
 ----    EQU 0003                   80  PRVM_OPCODE_JUMP_IF_FALSE           = $03
@@ -96,7 +96,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 0060                   93  PRVM_OPCODE_BEGIN_STATEMENT         = $60
 ----    EQU 0062                   94  PRVM_OPCODE_SET_MNEMONIC            = $62
 ----    EQU 0064                   95  PRVM_OPCODE_FINISH_LINE             = $64
-----                               96
+----                               96  
 ----    EQU 0000                   97  LOCAL_LOADED_FLAG                   = 0
 ----    EQU 0004                   98  LOCAL_LOADED_COL_START              = 4
 ----    EQU 0008                   99  LOCAL_LOADED_COL_END                = 8
@@ -119,14 +119,14 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 001C                  116  LOCAL_CHECKPOINT_RECORD_SIZE        = 28
 ----    EQU 0004                  117  LOCAL_CHECKPOINT_MAX_DEPTH          = 4
 ----    EQU 00B8                  118  LOCAL_SIZE                          = 184
-----                              119
+----                              119  
 ----                              120          .section data, kind=data  ; [section data]
 ----                              121    ; [section data]
 ----                              122  abiMarker  ; [section data]
 0000    4F 50 46 4F 52 47 45 2D 50 52 56 4D 2D 41 42 49 2D 56 31 00   123          .byte "OPFORGE-PRVM-ABI-V1",0  ; [section data]
 ----                              124    ; [section data]
 ----                              125          .endsection
-----                              126
+----                              126  
 ----                              127          .section code, kind=code  ; [section code]
 ----                              128    ; [section code]
 ----                              129  ; ---------------------------------------------------------------------------  ; [section code]
@@ -933,19 +933,19 @@ ADDR    BYTES                    LINE  SOURCE
 ----                              930          .endsection
 ----                              931          .endmodule
 ----                              932  ; FS-UAE-friendly native smoke executable for the PRVM interpreter.
-----                              933
+----                              933  
 ----                              934          .module main
 ----                              935          .cpu 68020
 ----                              936          .use prvm.amigaos.interpreter (prvm_run_68000)
-----                              937
+----                              937  
 ----    EQU 0004                  938  SysBase                         = 4
 ----    EQU 0000                  939  RETURN_OK                       = 0
 ----    EQU 0014                  940  RETURN_FAIL                     = 20
-----                              941
+----                              941  
 ----    EQU FFFFFDD8              942  OpenLibrary                     = -552
 ----    EQU FFFFFE62              943  CloseLibrary                    = -414
 ----    EQU FFFFFC4C              944  PutStr                          = -948
-----                              945
+----                              945  
 ----    EQU 0070                  946  PRVM_REQUEST_FRAME_SIZE         = 112
 ----    EQU 4F505250              947  PRVM_MAGIC_OPRP                 = $4F505250
 ----    EQU 0001                  948  PRVM_ABI_VERSION_V1             = 1
@@ -954,7 +954,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 0001                  951  PRVM_ENTRY_KIND_OPASM_STATEMENT = 1
 ----    EQU 0014                  952  PRVM_TOKEN_RECORD_SIZE          = 20
 ----    EQU 0002                  953  PRVM_PARSER_CONTRACT_VERSION_V2 = 2
-----                              954
+----                              954  
 ----    EQU 0000                  955  PRVM_STATUS_OK                  = 0
 ----    EQU 0001                  956  PRVM_STATUS_EXPR_REQUEST        = 1
 ----    EQU 0002                  957  PRVM_STATUS_NEWLINE_UNSUPPORTED = 2
@@ -967,7 +967,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 000A                  964  PRVM_STATUS_INVALID_RESUME      = 10
 ----    EQU 000B                  965  PRVM_STATUS_EXPR_RESULT_INVALID = 11
 ----    EQU 000C                  966  PRVM_STATUS_BUDGET_EXCEEDED     = 12
-----                              967
+----                              967  
 ----    EQU 0001                  968  PRVM_RESULT_BEGIN_STATEMENT     = 1
 ----    EQU 0002                  969  PRVM_RESULT_LABEL_TEXT          = 2
 ----    EQU 0003                  970  PRVM_RESULT_MNEMONIC_TEXT       = 3
@@ -976,7 +976,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 50525253              973  PRVM_RESUME_MAGIC               = $50525253
 ----    EQU 0001                  974  PRVM_NATIVE_EXPR_STATE_READY    = 1
 ----    EQU 0001                  975  PRVM_NATIVE_EXPR_KIND_IMM_DEC   = 1
-----                              976
+----                              976  
 ----    EQU 0000                  977  PRVM_OPCODE_END                 = $00
 ----    EQU 0001                  978  PRVM_OPCODE_JUMP                = $01
 ----    EQU 0003                  979  PRVM_OPCODE_JUMP_IF_FALSE       = $03
@@ -997,7 +997,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 0065                  994  PRVM_OPCODE_SET_DOT_MNEMONIC    = $65
 ----    EQU 0066                  995  PRVM_OPCODE_FINISH_ASSIGNMENT   = $66
 ----    EQU 003B                  996  PRVM_SMOKE_PROGRAM_LEN          = 59
-----                              997
+----                              997  
 ----                              998          .section entry, kind=code  ; [section entry]
 ----                              999    ; [section entry]
 ----                             1000  start  ; [section entry]
@@ -1680,352 +1680,352 @@ SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-main.CloseLibrary  FFFFFE62  prv  lbl
-main.diagnosticBuffer  0E0B      prv  lbl
-main.dosName     0694      prv  lbl
-main.exprRequestBuffer  0E53      prv  lbl
-main.exprResultBuffer  0E73      prv  lbl
-main.failureBeginText  0926      prv  lbl
-main.failureBytesText  0907      prv  lbl
-main.failureColEndText  09A9      prv  lbl
-main.failureColStartText  0986      prv  lbl
-main.failureCountText  08C8      prv  lbl
-main.failureCursorText  08E7      prv  lbl
-main.failureExprBoundaryText  0BE0      prv  lbl
-main.failureExprCursorText  0B90      prv  lbl
-main.failureExprEndText  0AC9      prv  lbl
-main.failureExprOperandText  0A5C      prv  lbl
-main.failureExprRequestText  0A36      prv  lbl
-main.failureExprResumeBytesText  0BB5      prv  lbl
-main.failureExprServiceText  0AEB      prv  lbl
-main.failureExprSlotText  0A82      prv  lbl
-main.failureExprStartText  0AA5      prv  lbl
-main.failureFinishText  0C27      prv  lbl
-main.failureLabelText  0967      prv  lbl
-main.failureLexemeLenText  09F1      prv  lbl
-main.failureLexemeOffsetText  09CA      prv  lbl
-main.failureMnemonicText  0945      prv  lbl
-main.failureNativeExprKindText  0B3B      prv  lbl
-main.failureNativeExprSlotText  0B11      prv  lbl
-main.failureNativeExprValueText  0B65      prv  lbl
-main.failureOperandText  0A15      prv  lbl
-main.failureResumeText  0C07      prv  lbl
-main.failureStatusArgumentText  0787      prv  lbl
-main.failureStatusBudgetText  08A1      prv  lbl
-main.failureStatusEntryText  0761      prv  lbl
-main.failureStatusExprResultText  0875      prv  lbl
-main.failureStatusExprText  0714      prv  lbl
-main.failureStatusHexDigits  070A      prv  lbl
-main.failureStatusNewlineText  0739      prv  lbl
-main.failureStatusOpcodeText  0827      prv  lbl
-main.failureStatusOverflowText  07FE      prv  lbl
-main.failureStatusProgramText  07D6      prv  lbl
-main.failureStatusResumeText  084E      prv  lbl
-main.failureStatusText  06EA      prv  lbl
-main.failureStatusTokenText  07B0      prv  lbl
-main.failureText  06D1      prv  lbl
-main.lexemeBytes  0C55      prv  lbl
-main.nativeExprSlotTable  0E93      prv  lbl
-main.OpenLibrary  FFFFFDD8  prv  lbl
-main.parserProgram  0C60      prv  lbl
-main.parserProgramEnd  0C9B      prv  lbl
-main.prvmSmokeBuildRequestFrame  00C8      prv  lbl
-main.prvmSmokeCloseDos  00B2      prv  lbl
-main.prvmSmokeDone  00BC      prv  lbl
-main.prvmSmokeFormatStatus  066C      prv  lbl
-main.prvmSmokeFormatStatusDigit  0688      prv  lbl
-main.prvmSmokeFormatStatusLoop  0676      prv  lbl
-main.prvmSmokeHaveDos  0028      prv  lbl
-main.prvmSmokeInvalid  0668      prv  lbl
-main.prvmSmokeInvalidBegin  05CC      prv  lbl
-main.prvmSmokeInvalidBytes  05C4      prv  lbl
-main.prvmSmokeInvalidColEnd  05EC      prv  lbl
-main.prvmSmokeInvalidColStart  05E4      prv  lbl
-main.prvmSmokeInvalidCount  05B4      prv  lbl
-main.prvmSmokeInvalidCursor  05BC      prv  lbl
-main.prvmSmokeInvalidExprBoundary  0658      prv  lbl
-main.prvmSmokeInvalidExprCursor  064C      prv  lbl
-main.prvmSmokeInvalidExprEnd  062C      prv  lbl
-main.prvmSmokeInvalidExprOperand  0614      prv  lbl
-main.prvmSmokeInvalidExprRequest  060C      prv  lbl
-main.prvmSmokeInvalidExprResumeBytes  0652      prv  lbl
-main.prvmSmokeInvalidExprService  02B2      prv  lbl
-main.prvmSmokeInvalidExprSlot  061C      prv  lbl
-main.prvmSmokeInvalidExprStart  0624      prv  lbl
-main.prvmSmokeInvalidFinish  0664      prv  lbl
-main.prvmSmokeInvalidLabel  05DC      prv  lbl
-main.prvmSmokeInvalidLexemeLen  05FC      prv  lbl
-main.prvmSmokeInvalidLexemeOffset  05F4      prv  lbl
-main.prvmSmokeInvalidMnemonic  05D4      prv  lbl
-main.prvmSmokeInvalidNativeExprKind  063C      prv  lbl
-main.prvmSmokeInvalidNativeExprSlot  0634      prv  lbl
-main.prvmSmokeInvalidNativeExprValue  0644      prv  lbl
-main.prvmSmokeInvalidOperand  0604      prv  lbl
-main.prvmSmokeInvalidResume  065E      prv  lbl
-main.prvmSmokeInvalidStatus  04E2      prv  lbl
-main.prvmSmokeInvalidStatusArgument  0574      prv  lbl
-main.prvmSmokeInvalidStatusBudget  05AC      prv  lbl
-main.prvmSmokeInvalidStatusEntry  056C      prv  lbl
-main.prvmSmokeInvalidStatusExpr  055C      prv  lbl
-main.prvmSmokeInvalidStatusExprResult  05A4      prv  lbl
-main.prvmSmokeInvalidStatusNewline  0564      prv  lbl
-main.prvmSmokeInvalidStatusOpcode  0594      prv  lbl
-main.prvmSmokeInvalidStatusOverflow  058C      prv  lbl
-main.prvmSmokeInvalidStatusProgram  0584      prv  lbl
-main.prvmSmokeInvalidStatusResume  059C      prv  lbl
-main.prvmSmokeInvalidStatusToken  057C      prv  lbl
-main.prvmSmokeParseDecimalLoop  01F4      prv  lbl
-main.prvmSmokeParsedImmediate  021A      prv  lbl
-main.prvmSmokePutStr  00C0      prv  lbl
-main.prvmSmokeReportFailure  00AC      prv  lbl
-main.prvmSmokeServiceExprRequest  01AC      prv  lbl
-main.prvmSmokeTokenPtrByIndex  0258      prv  lbl
-main.prvmSmokeTokenPtrInvalid  0274      prv  lbl
-main.prvmSmokeValidateExprRequest  02BA      prv  lbl
-main.prvmSmokeValidateNativeExprSlot  0476      prv  lbl
-main.prvmSmokeValidateResult  0360      prv  lbl
-main.prvmSmokeValidateResultReturn  0474      prv  lbl
-main.prvmSmokeWriteNativeExprSlot  0278      prv  lbl
-main.PRVM_ABI_VERSION_V1  0001      prv  lbl
-main.PRVM_CALL_MODE_RESUME  0001      prv  lbl
-main.PRVM_CALL_MODE_START  0000      prv  lbl
-main.PRVM_ENTRY_KIND_OPASM_STATEMENT  0001      prv  lbl
-main.PRVM_MAGIC_OPRP  4F505250  prv  lbl
-main.PRVM_NATIVE_EXPR_KIND_IMM_DEC  0001      prv  lbl
-main.PRVM_NATIVE_EXPR_STATE_READY  0001      prv  lbl
-main.PRVM_OPCODE_ADVANCE  0020      prv  lbl
-main.PRVM_OPCODE_BEGIN_STATEMENT  0060      prv  lbl
-main.PRVM_OPCODE_CONSUME_OPERATOR  0022      prv  lbl
-main.PRVM_OPCODE_END  0000      prv  lbl
-main.PRVM_OPCODE_FINISH_ASSIGNMENT  0066      prv  lbl
-main.PRVM_OPCODE_FINISH_LINE  0064      prv  lbl
-main.PRVM_OPCODE_IS_EOL  0013      prv  lbl
-main.PRVM_OPCODE_JUMP  0001      prv  lbl
-main.PRVM_OPCODE_JUMP_IF_FALSE  0003      prv  lbl
-main.PRVM_OPCODE_LOAD_IDENTIFIER  0030      prv  lbl
-main.PRVM_OPCODE_LOAD_INLINE_TEXT  0033      prv  lbl
-main.PRVM_OPCODE_PARSE_OPERAND_EXPR  0050      prv  lbl
-main.PRVM_OPCODE_PARSE_OPTIONAL_LABEL  0040      prv  lbl
-main.PRVM_OPCODE_PEEK_ASSIGNMENT  0014      prv  lbl
-main.PRVM_OPCODE_PEEK_KIND  0010      prv  lbl
-main.PRVM_OPCODE_PEEK_STAR_ORG  0015      prv  lbl
-main.PRVM_OPCODE_SCAN_COMMA_BOUNDARIES  0041      prv  lbl
-main.PRVM_OPCODE_SET_DOT_MNEMONIC  0065      prv  lbl
-main.PRVM_OPCODE_SET_MNEMONIC  0062      prv  lbl
-main.PRVM_PARSER_CONTRACT_VERSION_V2  0002      prv  lbl
-main.PRVM_REQUEST_FRAME_SIZE  0070      prv  lbl
-main.PRVM_RESULT_BEGIN_STATEMENT  0001      prv  lbl
-main.PRVM_RESULT_FINISH_LINE  0005      prv  lbl
-main.PRVM_RESULT_LABEL_TEXT  0002      prv  lbl
-main.PRVM_RESULT_MNEMONIC_TEXT  0003      prv  lbl
-main.PRVM_RESULT_OPERAND_EXPR_SLOT  0004      prv  lbl
-main.PRVM_RESUME_MAGIC  50525253  prv  lbl
-main.PRVM_SMOKE_PROGRAM_LEN  003B      prv  lbl
-main.PRVM_STATUS_BUDGET_EXCEEDED  000C      prv  lbl
-main.PRVM_STATUS_ENTRY_BOUNDARY  0003      prv  lbl
-main.PRVM_STATUS_EXPR_REQUEST  0001      prv  lbl
-main.PRVM_STATUS_EXPR_RESULT_INVALID  000B      prv  lbl
-main.PRVM_STATUS_INVALID_ARGUMENT  0004      prv  lbl
-main.PRVM_STATUS_INVALID_PROGRAM  0006      prv  lbl
-main.PRVM_STATUS_INVALID_RESUME  000A      prv  lbl
-main.PRVM_STATUS_INVALID_TOKEN  0005      prv  lbl
-main.PRVM_STATUS_NEWLINE_UNSUPPORTED  0002      prv  lbl
-main.PRVM_STATUS_OK  0000      prv  lbl
-main.PRVM_STATUS_OUTPUT_OVERFLOW  0007      prv  lbl
-main.PRVM_STATUS_UNSUPPORTED_OPCODE  0009      prv  lbl
-main.PRVM_TOKEN_RECORD_SIZE  0014      prv  lbl
-main.PutStr      FFFFFC4C  prv  lbl
-main.requestFrame  0CFB      prv  lbl
-main.resultBuffer  0D6B      prv  lbl
-main.resumeBuffer  0E2B      prv  lbl
-main.RETURN_FAIL  0014      prv  lbl
-main.RETURN_OK   0000      prv  lbl
-main.smokeCursor  0CF3      prv  lbl
-main.smokeResultBytes  0CF7      prv  lbl
-main.smokeResultCount  0CEF      prv  lbl
-main.smokeStatus  0CEB      prv  lbl
-main.sourceLine  0C47      prv  lbl
-main.start       0000      prv  lbl
-main.startedText  06A0      prv  lbl
-main.successText  06BA      prv  lbl
-main.SysBase     0004      prv  lbl
-main.tokenRecord  0C9B      prv  lbl
-prvm.amigaos.interpreter.abiMarker  0000      pub  lbl
-prvm.amigaos.interpreter.LOCAL_BOOL_VALUE  0040      pub  lbl
-prvm.amigaos.interpreter.LOCAL_CHECKPOINT_DEPTH  0044      pub  lbl
-prvm.amigaos.interpreter.LOCAL_CHECKPOINT_MAX_DEPTH  0004      pub  lbl
-prvm.amigaos.interpreter.LOCAL_CHECKPOINT_RECORD_SIZE  001C      pub  lbl
-prvm.amigaos.interpreter.LOCAL_CHECKPOINT_STACK  0048      pub  lbl
-prvm.amigaos.interpreter.LOCAL_EXPR_END_TOKEN  0024      pub  lbl
-prvm.amigaos.interpreter.LOCAL_EXPR_SLOT_INDEX  0028      pub  lbl
-prvm.amigaos.interpreter.LOCAL_EXPR_START_TOKEN  0020      pub  lbl
-prvm.amigaos.interpreter.LOCAL_FINISHED_FLAG  0014      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LABEL_COL_END  0034      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LABEL_COL_START  0030      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LABEL_FLAG  002C      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LABEL_LEXEME_LEN  003C      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LABEL_LEXEME_OFFSET  0038      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LOADED_COL_END  0008      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LOADED_COL_START  0004      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LOADED_FLAG  0000      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LOADED_LEXEME_LEN  0010      pub  lbl
-prvm.amigaos.interpreter.LOCAL_LOADED_LEXEME_OFFSET  000C      pub  lbl
-prvm.amigaos.interpreter.LOCAL_OPERAND_COUNT  001C      pub  lbl
-prvm.amigaos.interpreter.LOCAL_SIZE  00B8      pub  lbl
-prvm.amigaos.interpreter.LOCAL_STEP_COUNT  0018      pub  lbl
-prvm.amigaos.interpreter.prvmBudgetExceeded  0934      pub  lbl
-prvm.amigaos.interpreter.prvmCheckpointAddressForDepth  0636      pub  lbl
-prvm.amigaos.interpreter.prvmCommitResultRecord  06A2      pub  lbl
-prvm.amigaos.interpreter.prvmCurrentTokenInvalid  067C      pub  lbl
-prvm.amigaos.interpreter.prvmCurrentTokenPtr  05A2      pub  lbl
-prvm.amigaos.interpreter.prvmEmitBeginStatement  06AC      pub  lbl
-prvm.amigaos.interpreter.prvmEmitFinishLine  07A8      pub  lbl
-prvm.amigaos.interpreter.prvmEmitLabelText  06E2      pub  lbl
-prvm.amigaos.interpreter.prvmEmitMnemonicText  0728      pub  lbl
-prvm.amigaos.interpreter.prvmEmitOperandExprSlot  0766      pub  lbl
-prvm.amigaos.interpreter.prvmEmitOptionalLabel  0422      pub  lbl
-prvm.amigaos.interpreter.prvmEmitRecordReturn  07DE      pub  lbl
-prvm.amigaos.interpreter.prvmEntryBoundary  08F0      pub  lbl
-prvm.amigaos.interpreter.prvmExpressionResultInvalid  0928      pub  lbl
-prvm.amigaos.interpreter.prvmFindOperandEndLoop  04C4      pub  lbl
-prvm.amigaos.interpreter.prvmInvalidArgument  0956      pub  lbl
-prvm.amigaos.interpreter.prvmInvalidArgumentWithLocals  093E      pub  lbl
-prvm.amigaos.interpreter.prvmInvalidProgramAtCursor  0906      pub  lbl
-prvm.amigaos.interpreter.prvmInvalidResume  091E      pub  lbl
-prvm.amigaos.interpreter.prvmInvalidTokenAtCursor  08FC      pub  lbl
-prvm.amigaos.interpreter.prvmNewlineScanDone  018C      pub  lbl
-prvm.amigaos.interpreter.prvmNewlineScanLoop  0160      pub  lbl
-prvm.amigaos.interpreter.prvmNewlineUnsupported  0180      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeAdvance  0316      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeBeginStatement  0430      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeCheckpoint  029A      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeCommit  02CC      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeEnd  0264      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeFinishLine  0468      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeIsEol  02F0      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeJump  0272      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeJumpIfFalse  0282      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeLoadIdentifier  0322      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeParseOperandExpr  047E      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeParseOptionalLabel  0388      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodePeekAssignment  0306      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodePeekKind  02DA      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodePeekStarOrg  030E      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeRollback  02A8      pub  lbl
-prvm.amigaos.interpreter.prvmOpcodeSetMnemonic  044E      pub  lbl
-prvm.amigaos.interpreter.prvmOperandEndFound  04E6      pub  lbl
-prvm.amigaos.interpreter.prvmOutputOverflow  0910      pub  lbl
-prvm.amigaos.interpreter.prvmPeekKind  0648      pub  lbl
-prvm.amigaos.interpreter.prvmPeekKindDot  066A      pub  lbl
-prvm.amigaos.interpreter.prvmPeekKindFalse  0678      pub  lbl
-prvm.amigaos.interpreter.prvmPopCheckpointAddress  0620      pub  lbl
-prvm.amigaos.interpreter.prvmProgramLoop  01B6      pub  lbl
-prvm.amigaos.interpreter.prvmPushCheckpoint  05F0      pub  lbl
-prvm.amigaos.interpreter.prvmReadProgramTarget  05C2      pub  lbl
-prvm.amigaos.interpreter.prvmRequestOperandAtCursor  04BE      pub  lbl
-prvm.amigaos.interpreter.prvmResultRecordPtr  0684      pub  lbl
-prvm.amigaos.interpreter.prvmResumeFromExpression  051A      pub  lbl
-prvm.amigaos.interpreter.prvmReturnWithLocals  094A      pub  lbl
-prvm.amigaos.interpreter.prvmStartProgram  01A6      pub  lbl
-prvm.amigaos.interpreter.prvmTokenPtrByIndex  05A8      pub  lbl
-prvm.amigaos.interpreter.prvmUnsupportedOpcode  0914      pub  lbl
-prvm.amigaos.interpreter.prvmValidateEntryKind  0078      pub  lbl
-prvm.amigaos.interpreter.prvmValidateExpressionResultBufferDone  0156      pub  lbl
-prvm.amigaos.interpreter.prvmValidateExpressionResultReady  08C4      pub  lbl
-prvm.amigaos.interpreter.prvmValidateExpressionResultSlot  089C      pub  lbl
-prvm.amigaos.interpreter.prvmValidateLexemeBuffer  00CC      pub  lbl
-prvm.amigaos.interpreter.prvmValidateProgramBuffer  00E2      pub  lbl
-prvm.amigaos.interpreter.prvmValidateTokenBuffer  00B6      pub  lbl
-prvm.amigaos.interpreter.prvmWriteExpressionRequest  07E0      pub  lbl
-prvm.amigaos.interpreter.prvmWriteExpressionRequestEndSpan  0830      pub  lbl
-prvm.amigaos.interpreter.prvmWriteExpressionRequestReturn  0840      pub  lbl
-prvm.amigaos.interpreter.prvmWriteResumeCursor  087E      pub  lbl
-prvm.amigaos.interpreter.prvmWriteResumeState  0842      pub  lbl
-prvm.amigaos.interpreter.PRVM_ABI_VERSION_V1  0001      pub  lbl
-prvm.amigaos.interpreter.PRVM_CALL_MODE_RESUME  0001      pub  lbl
-prvm.amigaos.interpreter.PRVM_CALL_MODE_START  0000      pub  lbl
-prvm.amigaos.interpreter.PRVM_CONTINUATION_PARSE_OPERAND  0001      pub  lbl
-prvm.amigaos.interpreter.PRVM_DEFAULT_STEP_BUDGET  0100      pub  lbl
-prvm.amigaos.interpreter.PRVM_ENTRY_KIND_OPASM_STATEMENT  0001      pub  lbl
-prvm.amigaos.interpreter.PRVM_EXPR_REQUEST_RECORD_SIZE  0020      pub  lbl
-prvm.amigaos.interpreter.PRVM_EXPR_RESULT_SLOT_SIZE  0020      pub  lbl
-prvm.amigaos.interpreter.PRVM_EXPR_SLOT_READY  0001      pub  lbl
-prvm.amigaos.interpreter.PRVM_EXPR_SLOT_READY_ERROR  0002      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_ABI_VERSION  0004      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_CALL_MODE  0008      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_DIAGNOSTIC_PTR  003C      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_ENTRY_KIND  000A      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_EXPR_REQUEST_PTR  004C      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_EXPR_REQUEST_SIZE  0050      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_EXPR_RESULT_COUNT  0058      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_EXPR_RESULT_PTR  0054      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_FLAGS  0064      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_FRAME_SIZE  0006      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_LEXEME_LEN  0028      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_LEXEME_PTR  0024      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_LINE_NUM  000C      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_MAGIC  0000      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_PARSER_CONTRACT_VERSION  005C      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_PROGRAM_LEN  0030      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_PROGRAM_PTR  002C      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_RESULT_CAPACITY  0038      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_RESULT_PTR  0034      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_RESUME_CAPACITY  0048      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_RESUME_PTR  0044      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_SOURCE_LEN  0014      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_SOURCE_PTR  0010      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_STEP_BUDGET  0060      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_COUNT  001C      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_PTR  0018      pub  lbl
-prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_RECORD_SIZE  0020      pub  lbl
-prvm.amigaos.interpreter.PRVM_MAGIC_OPRP  4F505250  pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_ADVANCE  0020      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_BEGIN_STATEMENT  0060      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_CHECKPOINT  0004      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_COMMIT  0006      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_END  0000      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_FINISH_LINE  0064      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_IS_EOL  0013      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_JUMP  0001      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_JUMP_IF_FALSE  0003      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_LOAD_IDENTIFIER  0030      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_PARSE_OPERAND_EXPR  0050      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_PARSE_OPTIONAL_LABEL  0040      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_PEEK_ASSIGNMENT  0014      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_PEEK_KIND  0010      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_PEEK_STAR_ORG  0015      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_ROLLBACK  0005      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_SCAN_COMMA_BOUNDARIES  0041      pub  lbl
-prvm.amigaos.interpreter.PRVM_OPCODE_SET_MNEMONIC  0062      pub  lbl
-prvm.amigaos.interpreter.PRVM_PARSER_CONTRACT_VERSION_V2  0002      pub  lbl
-prvm.amigaos.interpreter.PRVM_REQUEST_FRAME_SIZE  0070      pub  lbl
-prvm.amigaos.interpreter.PRVM_RESULT_BEGIN_STATEMENT  0001      pub  lbl
-prvm.amigaos.interpreter.PRVM_RESULT_FINISH_LINE  0005      pub  lbl
-prvm.amigaos.interpreter.PRVM_RESULT_LABEL_TEXT  0002      pub  lbl
-prvm.amigaos.interpreter.PRVM_RESULT_MNEMONIC_TEXT  0003      pub  lbl
-prvm.amigaos.interpreter.PRVM_RESULT_OPERAND_EXPR_SLOT  0004      pub  lbl
-prvm.amigaos.interpreter.PRVM_RESULT_RECORD_SIZE  0020      pub  lbl
-prvm.amigaos.interpreter.PRVM_RESUME_MAGIC  50525253  pub  lbl
-prvm.amigaos.interpreter.PRVM_RESUME_STATE_SIZE  0028      pub  lbl
-prvm.amigaos.interpreter.PRVM_RESUME_VERSION  0001      pub  lbl
-prvm.amigaos.interpreter.prvm_run_68000  0000      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_BUDGET_EXCEEDED  000C      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_ENTRY_BOUNDARY  0003      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_EXPR_REQUEST  0001      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_EXPR_RESULT_INVALID  000B      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_INVALID_ARGUMENT  0004      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_INVALID_PROGRAM  0006      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_INVALID_RESUME  000A      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_INVALID_TOKEN  0005      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_NEWLINE_UNSUPPORTED  0002      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_OK  0000      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_OUTPUT_OVERFLOW  0007      pub  lbl
-prvm.amigaos.interpreter.PRVM_STATUS_UNSUPPORTED_OPCODE  0009      pub  lbl
-prvm.amigaos.interpreter.PRVM_TOKEN_KIND_COLON  0005      pub  lbl
-prvm.amigaos.interpreter.PRVM_TOKEN_KIND_COMMA  0004      pub  lbl
-prvm.amigaos.interpreter.PRVM_TOKEN_KIND_DOT  0007      pub  lbl
-prvm.amigaos.interpreter.PRVM_TOKEN_KIND_IDENTIFIER  0000      pub  lbl
-prvm.amigaos.interpreter.PRVM_TOKEN_RECORD_SIZE  0014      pub  lbl
+main.CloseLibrary  FFFFFE62  prv  lbl 
+main.diagnosticBuffer  0E0B      prv  lbl 
+main.dosName     0694      prv  lbl 
+main.exprRequestBuffer  0E53      prv  lbl 
+main.exprResultBuffer  0E73      prv  lbl 
+main.failureBeginText  0926      prv  lbl 
+main.failureBytesText  0907      prv  lbl 
+main.failureColEndText  09A9      prv  lbl 
+main.failureColStartText  0986      prv  lbl 
+main.failureCountText  08C8      prv  lbl 
+main.failureCursorText  08E7      prv  lbl 
+main.failureExprBoundaryText  0BE0      prv  lbl 
+main.failureExprCursorText  0B90      prv  lbl 
+main.failureExprEndText  0AC9      prv  lbl 
+main.failureExprOperandText  0A5C      prv  lbl 
+main.failureExprRequestText  0A36      prv  lbl 
+main.failureExprResumeBytesText  0BB5      prv  lbl 
+main.failureExprServiceText  0AEB      prv  lbl 
+main.failureExprSlotText  0A82      prv  lbl 
+main.failureExprStartText  0AA5      prv  lbl 
+main.failureFinishText  0C27      prv  lbl 
+main.failureLabelText  0967      prv  lbl 
+main.failureLexemeLenText  09F1      prv  lbl 
+main.failureLexemeOffsetText  09CA      prv  lbl 
+main.failureMnemonicText  0945      prv  lbl 
+main.failureNativeExprKindText  0B3B      prv  lbl 
+main.failureNativeExprSlotText  0B11      prv  lbl 
+main.failureNativeExprValueText  0B65      prv  lbl 
+main.failureOperandText  0A15      prv  lbl 
+main.failureResumeText  0C07      prv  lbl 
+main.failureStatusArgumentText  0787      prv  lbl 
+main.failureStatusBudgetText  08A1      prv  lbl 
+main.failureStatusEntryText  0761      prv  lbl 
+main.failureStatusExprResultText  0875      prv  lbl 
+main.failureStatusExprText  0714      prv  lbl 
+main.failureStatusHexDigits  070A      prv  lbl 
+main.failureStatusNewlineText  0739      prv  lbl 
+main.failureStatusOpcodeText  0827      prv  lbl 
+main.failureStatusOverflowText  07FE      prv  lbl 
+main.failureStatusProgramText  07D6      prv  lbl 
+main.failureStatusResumeText  084E      prv  lbl 
+main.failureStatusText  06EA      prv  lbl 
+main.failureStatusTokenText  07B0      prv  lbl 
+main.failureText  06D1      prv  lbl 
+main.lexemeBytes  0C55      prv  lbl 
+main.nativeExprSlotTable  0E93      prv  lbl 
+main.OpenLibrary  FFFFFDD8  prv  lbl 
+main.parserProgram  0C60      prv  lbl 
+main.parserProgramEnd  0C9B      prv  lbl 
+main.prvmSmokeBuildRequestFrame  00C8      prv  lbl 
+main.prvmSmokeCloseDos  00B2      prv  lbl 
+main.prvmSmokeDone  00BC      prv  lbl 
+main.prvmSmokeFormatStatus  066C      prv  lbl 
+main.prvmSmokeFormatStatusDigit  0688      prv  lbl 
+main.prvmSmokeFormatStatusLoop  0676      prv  lbl 
+main.prvmSmokeHaveDos  0028      prv  lbl 
+main.prvmSmokeInvalid  0668      prv  lbl 
+main.prvmSmokeInvalidBegin  05CC      prv  lbl 
+main.prvmSmokeInvalidBytes  05C4      prv  lbl 
+main.prvmSmokeInvalidColEnd  05EC      prv  lbl 
+main.prvmSmokeInvalidColStart  05E4      prv  lbl 
+main.prvmSmokeInvalidCount  05B4      prv  lbl 
+main.prvmSmokeInvalidCursor  05BC      prv  lbl 
+main.prvmSmokeInvalidExprBoundary  0658      prv  lbl 
+main.prvmSmokeInvalidExprCursor  064C      prv  lbl 
+main.prvmSmokeInvalidExprEnd  062C      prv  lbl 
+main.prvmSmokeInvalidExprOperand  0614      prv  lbl 
+main.prvmSmokeInvalidExprRequest  060C      prv  lbl 
+main.prvmSmokeInvalidExprResumeBytes  0652      prv  lbl 
+main.prvmSmokeInvalidExprService  02B2      prv  lbl 
+main.prvmSmokeInvalidExprSlot  061C      prv  lbl 
+main.prvmSmokeInvalidExprStart  0624      prv  lbl 
+main.prvmSmokeInvalidFinish  0664      prv  lbl 
+main.prvmSmokeInvalidLabel  05DC      prv  lbl 
+main.prvmSmokeInvalidLexemeLen  05FC      prv  lbl 
+main.prvmSmokeInvalidLexemeOffset  05F4      prv  lbl 
+main.prvmSmokeInvalidMnemonic  05D4      prv  lbl 
+main.prvmSmokeInvalidNativeExprKind  063C      prv  lbl 
+main.prvmSmokeInvalidNativeExprSlot  0634      prv  lbl 
+main.prvmSmokeInvalidNativeExprValue  0644      prv  lbl 
+main.prvmSmokeInvalidOperand  0604      prv  lbl 
+main.prvmSmokeInvalidResume  065E      prv  lbl 
+main.prvmSmokeInvalidStatus  04E2      prv  lbl 
+main.prvmSmokeInvalidStatusArgument  0574      prv  lbl 
+main.prvmSmokeInvalidStatusBudget  05AC      prv  lbl 
+main.prvmSmokeInvalidStatusEntry  056C      prv  lbl 
+main.prvmSmokeInvalidStatusExpr  055C      prv  lbl 
+main.prvmSmokeInvalidStatusExprResult  05A4      prv  lbl 
+main.prvmSmokeInvalidStatusNewline  0564      prv  lbl 
+main.prvmSmokeInvalidStatusOpcode  0594      prv  lbl 
+main.prvmSmokeInvalidStatusOverflow  058C      prv  lbl 
+main.prvmSmokeInvalidStatusProgram  0584      prv  lbl 
+main.prvmSmokeInvalidStatusResume  059C      prv  lbl 
+main.prvmSmokeInvalidStatusToken  057C      prv  lbl 
+main.prvmSmokeParseDecimalLoop  01F4      prv  lbl 
+main.prvmSmokeParsedImmediate  021A      prv  lbl 
+main.prvmSmokePutStr  00C0      prv  lbl 
+main.prvmSmokeReportFailure  00AC      prv  lbl 
+main.prvmSmokeServiceExprRequest  01AC      prv  lbl 
+main.prvmSmokeTokenPtrByIndex  0258      prv  lbl 
+main.prvmSmokeTokenPtrInvalid  0274      prv  lbl 
+main.prvmSmokeValidateExprRequest  02BA      prv  lbl 
+main.prvmSmokeValidateNativeExprSlot  0476      prv  lbl 
+main.prvmSmokeValidateResult  0360      prv  lbl 
+main.prvmSmokeValidateResultReturn  0474      prv  lbl 
+main.prvmSmokeWriteNativeExprSlot  0278      prv  lbl 
+main.PRVM_ABI_VERSION_V1  0001      prv  lbl 
+main.PRVM_CALL_MODE_RESUME  0001      prv  lbl 
+main.PRVM_CALL_MODE_START  0000      prv  lbl 
+main.PRVM_ENTRY_KIND_OPASM_STATEMENT  0001      prv  lbl 
+main.PRVM_MAGIC_OPRP  4F505250  prv  lbl 
+main.PRVM_NATIVE_EXPR_KIND_IMM_DEC  0001      prv  lbl 
+main.PRVM_NATIVE_EXPR_STATE_READY  0001      prv  lbl 
+main.PRVM_OPCODE_ADVANCE  0020      prv  lbl 
+main.PRVM_OPCODE_BEGIN_STATEMENT  0060      prv  lbl 
+main.PRVM_OPCODE_CONSUME_OPERATOR  0022      prv  lbl 
+main.PRVM_OPCODE_END  0000      prv  lbl 
+main.PRVM_OPCODE_FINISH_ASSIGNMENT  0066      prv  lbl 
+main.PRVM_OPCODE_FINISH_LINE  0064      prv  lbl 
+main.PRVM_OPCODE_IS_EOL  0013      prv  lbl 
+main.PRVM_OPCODE_JUMP  0001      prv  lbl 
+main.PRVM_OPCODE_JUMP_IF_FALSE  0003      prv  lbl 
+main.PRVM_OPCODE_LOAD_IDENTIFIER  0030      prv  lbl 
+main.PRVM_OPCODE_LOAD_INLINE_TEXT  0033      prv  lbl 
+main.PRVM_OPCODE_PARSE_OPERAND_EXPR  0050      prv  lbl 
+main.PRVM_OPCODE_PARSE_OPTIONAL_LABEL  0040      prv  lbl 
+main.PRVM_OPCODE_PEEK_ASSIGNMENT  0014      prv  lbl 
+main.PRVM_OPCODE_PEEK_KIND  0010      prv  lbl 
+main.PRVM_OPCODE_PEEK_STAR_ORG  0015      prv  lbl 
+main.PRVM_OPCODE_SCAN_COMMA_BOUNDARIES  0041      prv  lbl 
+main.PRVM_OPCODE_SET_DOT_MNEMONIC  0065      prv  lbl 
+main.PRVM_OPCODE_SET_MNEMONIC  0062      prv  lbl 
+main.PRVM_PARSER_CONTRACT_VERSION_V2  0002      prv  lbl 
+main.PRVM_REQUEST_FRAME_SIZE  0070      prv  lbl 
+main.PRVM_RESULT_BEGIN_STATEMENT  0001      prv  lbl 
+main.PRVM_RESULT_FINISH_LINE  0005      prv  lbl 
+main.PRVM_RESULT_LABEL_TEXT  0002      prv  lbl 
+main.PRVM_RESULT_MNEMONIC_TEXT  0003      prv  lbl 
+main.PRVM_RESULT_OPERAND_EXPR_SLOT  0004      prv  lbl 
+main.PRVM_RESUME_MAGIC  50525253  prv  lbl 
+main.PRVM_SMOKE_PROGRAM_LEN  003B      prv  lbl 
+main.PRVM_STATUS_BUDGET_EXCEEDED  000C      prv  lbl 
+main.PRVM_STATUS_ENTRY_BOUNDARY  0003      prv  lbl 
+main.PRVM_STATUS_EXPR_REQUEST  0001      prv  lbl 
+main.PRVM_STATUS_EXPR_RESULT_INVALID  000B      prv  lbl 
+main.PRVM_STATUS_INVALID_ARGUMENT  0004      prv  lbl 
+main.PRVM_STATUS_INVALID_PROGRAM  0006      prv  lbl 
+main.PRVM_STATUS_INVALID_RESUME  000A      prv  lbl 
+main.PRVM_STATUS_INVALID_TOKEN  0005      prv  lbl 
+main.PRVM_STATUS_NEWLINE_UNSUPPORTED  0002      prv  lbl 
+main.PRVM_STATUS_OK  0000      prv  lbl 
+main.PRVM_STATUS_OUTPUT_OVERFLOW  0007      prv  lbl 
+main.PRVM_STATUS_UNSUPPORTED_OPCODE  0009      prv  lbl 
+main.PRVM_TOKEN_RECORD_SIZE  0014      prv  lbl 
+main.PutStr      FFFFFC4C  prv  lbl 
+main.requestFrame  0CFB      prv  lbl 
+main.resultBuffer  0D6B      prv  lbl 
+main.resumeBuffer  0E2B      prv  lbl 
+main.RETURN_FAIL  0014      prv  lbl 
+main.RETURN_OK   0000      prv  lbl 
+main.smokeCursor  0CF3      prv  lbl 
+main.smokeResultBytes  0CF7      prv  lbl 
+main.smokeResultCount  0CEF      prv  lbl 
+main.smokeStatus  0CEB      prv  lbl 
+main.sourceLine  0C47      prv  lbl 
+main.start       0000      prv  lbl 
+main.startedText  06A0      prv  lbl 
+main.successText  06BA      prv  lbl 
+main.SysBase     0004      prv  lbl 
+main.tokenRecord  0C9B      prv  lbl 
+prvm.amigaos.interpreter.abiMarker  0000      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_BOOL_VALUE  0040      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_CHECKPOINT_DEPTH  0044      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_CHECKPOINT_MAX_DEPTH  0004      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_CHECKPOINT_RECORD_SIZE  001C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_CHECKPOINT_STACK  0048      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_EXPR_END_TOKEN  0024      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_EXPR_SLOT_INDEX  0028      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_EXPR_START_TOKEN  0020      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_FINISHED_FLAG  0014      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LABEL_COL_END  0034      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LABEL_COL_START  0030      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LABEL_FLAG  002C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LABEL_LEXEME_LEN  003C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LABEL_LEXEME_OFFSET  0038      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_COL_END  0008      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_COL_START  0004      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_FLAG  0000      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_LEXEME_LEN  0010      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_LOADED_LEXEME_OFFSET  000C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_OPERAND_COUNT  001C      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_SIZE  00B8      pub  lbl 
+prvm.amigaos.interpreter.LOCAL_STEP_COUNT  0018      pub  lbl 
+prvm.amigaos.interpreter.prvmBudgetExceeded  0934      pub  lbl 
+prvm.amigaos.interpreter.prvmCheckpointAddressForDepth  0636      pub  lbl 
+prvm.amigaos.interpreter.prvmCommitResultRecord  06A2      pub  lbl 
+prvm.amigaos.interpreter.prvmCurrentTokenInvalid  067C      pub  lbl 
+prvm.amigaos.interpreter.prvmCurrentTokenPtr  05A2      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitBeginStatement  06AC      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitFinishLine  07A8      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitLabelText  06E2      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitMnemonicText  0728      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitOperandExprSlot  0766      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitOptionalLabel  0422      pub  lbl 
+prvm.amigaos.interpreter.prvmEmitRecordReturn  07DE      pub  lbl 
+prvm.amigaos.interpreter.prvmEntryBoundary  08F0      pub  lbl 
+prvm.amigaos.interpreter.prvmExpressionResultInvalid  0928      pub  lbl 
+prvm.amigaos.interpreter.prvmFindOperandEndLoop  04C4      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidArgument  0956      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidArgumentWithLocals  093E      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidProgramAtCursor  0906      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidResume  091E      pub  lbl 
+prvm.amigaos.interpreter.prvmInvalidTokenAtCursor  08FC      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineScanDone  018C      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineScanLoop  0160      pub  lbl 
+prvm.amigaos.interpreter.prvmNewlineUnsupported  0180      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeAdvance  0316      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeBeginStatement  0430      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeCheckpoint  029A      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeCommit  02CC      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeEnd  0264      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeFinishLine  0468      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeIsEol  02F0      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeJump  0272      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeJumpIfFalse  0282      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeLoadIdentifier  0322      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeParseOperandExpr  047E      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeParseOptionalLabel  0388      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodePeekAssignment  0306      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodePeekKind  02DA      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodePeekStarOrg  030E      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeRollback  02A8      pub  lbl 
+prvm.amigaos.interpreter.prvmOpcodeSetMnemonic  044E      pub  lbl 
+prvm.amigaos.interpreter.prvmOperandEndFound  04E6      pub  lbl 
+prvm.amigaos.interpreter.prvmOutputOverflow  0910      pub  lbl 
+prvm.amigaos.interpreter.prvmPeekKind  0648      pub  lbl 
+prvm.amigaos.interpreter.prvmPeekKindDot  066A      pub  lbl 
+prvm.amigaos.interpreter.prvmPeekKindFalse  0678      pub  lbl 
+prvm.amigaos.interpreter.prvmPopCheckpointAddress  0620      pub  lbl 
+prvm.amigaos.interpreter.prvmProgramLoop  01B6      pub  lbl 
+prvm.amigaos.interpreter.prvmPushCheckpoint  05F0      pub  lbl 
+prvm.amigaos.interpreter.prvmReadProgramTarget  05C2      pub  lbl 
+prvm.amigaos.interpreter.prvmRequestOperandAtCursor  04BE      pub  lbl 
+prvm.amigaos.interpreter.prvmResultRecordPtr  0684      pub  lbl 
+prvm.amigaos.interpreter.prvmResumeFromExpression  051A      pub  lbl 
+prvm.amigaos.interpreter.prvmReturnWithLocals  094A      pub  lbl 
+prvm.amigaos.interpreter.prvmStartProgram  01A6      pub  lbl 
+prvm.amigaos.interpreter.prvmTokenPtrByIndex  05A8      pub  lbl 
+prvm.amigaos.interpreter.prvmUnsupportedOpcode  0914      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateEntryKind  0078      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateExpressionResultBufferDone  0156      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateExpressionResultReady  08C4      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateExpressionResultSlot  089C      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateLexemeBuffer  00CC      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateProgramBuffer  00E2      pub  lbl 
+prvm.amigaos.interpreter.prvmValidateTokenBuffer  00B6      pub  lbl 
+prvm.amigaos.interpreter.prvmWriteExpressionRequest  07E0      pub  lbl 
+prvm.amigaos.interpreter.prvmWriteExpressionRequestEndSpan  0830      pub  lbl 
+prvm.amigaos.interpreter.prvmWriteExpressionRequestReturn  0840      pub  lbl 
+prvm.amigaos.interpreter.prvmWriteResumeCursor  087E      pub  lbl 
+prvm.amigaos.interpreter.prvmWriteResumeState  0842      pub  lbl 
+prvm.amigaos.interpreter.PRVM_ABI_VERSION_V1  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_CALL_MODE_RESUME  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_CALL_MODE_START  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_CONTINUATION_PARSE_OPERAND  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_DEFAULT_STEP_BUDGET  0100      pub  lbl 
+prvm.amigaos.interpreter.PRVM_ENTRY_KIND_OPASM_STATEMENT  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_EXPR_REQUEST_RECORD_SIZE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_EXPR_RESULT_SLOT_SIZE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_EXPR_SLOT_READY  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_EXPR_SLOT_READY_ERROR  0002      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_ABI_VERSION  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_CALL_MODE  0008      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_DIAGNOSTIC_PTR  003C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_ENTRY_KIND  000A      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_EXPR_REQUEST_PTR  004C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_EXPR_REQUEST_SIZE  0050      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_EXPR_RESULT_COUNT  0058      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_EXPR_RESULT_PTR  0054      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_FLAGS  0064      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_FRAME_SIZE  0006      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LEXEME_LEN  0028      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LEXEME_PTR  0024      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_LINE_NUM  000C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_MAGIC  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PARSER_CONTRACT_VERSION  005C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PROGRAM_LEN  0030      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_PROGRAM_PTR  002C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESULT_CAPACITY  0038      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESULT_PTR  0034      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESUME_CAPACITY  0048      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_RESUME_PTR  0044      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_SOURCE_LEN  0014      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_SOURCE_PTR  0010      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_STEP_BUDGET  0060      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_COUNT  001C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_PTR  0018      pub  lbl 
+prvm.amigaos.interpreter.PRVM_FRAME_TOKEN_RECORD_SIZE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_MAGIC_OPRP  4F505250  pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_ADVANCE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_BEGIN_STATEMENT  0060      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_CHECKPOINT  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_COMMIT  0006      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_END  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_FINISH_LINE  0064      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_IS_EOL  0013      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_JUMP  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_JUMP_IF_FALSE  0003      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_LOAD_IDENTIFIER  0030      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_PARSE_OPERAND_EXPR  0050      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_PARSE_OPTIONAL_LABEL  0040      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_PEEK_ASSIGNMENT  0014      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_PEEK_KIND  0010      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_PEEK_STAR_ORG  0015      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_ROLLBACK  0005      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_SCAN_COMMA_BOUNDARIES  0041      pub  lbl 
+prvm.amigaos.interpreter.PRVM_OPCODE_SET_MNEMONIC  0062      pub  lbl 
+prvm.amigaos.interpreter.PRVM_PARSER_CONTRACT_VERSION_V2  0002      pub  lbl 
+prvm.amigaos.interpreter.PRVM_REQUEST_FRAME_SIZE  0070      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_BEGIN_STATEMENT  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_FINISH_LINE  0005      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_LABEL_TEXT  0002      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_MNEMONIC_TEXT  0003      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_OPERAND_EXPR_SLOT  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESULT_RECORD_SIZE  0020      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESUME_MAGIC  50525253  pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESUME_STATE_SIZE  0028      pub  lbl 
+prvm.amigaos.interpreter.PRVM_RESUME_VERSION  0001      pub  lbl 
+prvm.amigaos.interpreter.prvm_run_68000  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_BUDGET_EXCEEDED  000C      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_ENTRY_BOUNDARY  0003      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_EXPR_REQUEST  0001      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_EXPR_RESULT_INVALID  000B      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_ARGUMENT  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_PROGRAM  0006      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_RESUME  000A      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_INVALID_TOKEN  0005      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_NEWLINE_UNSUPPORTED  0002      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_OK  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_OUTPUT_OVERFLOW  0007      pub  lbl 
+prvm.amigaos.interpreter.PRVM_STATUS_UNSUPPORTED_OPCODE  0009      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_KIND_COLON  0005      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_KIND_COMMA  0004      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_KIND_DOT  0007      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_KIND_IDENTIFIER  0000      pub  lbl 
+prvm.amigaos.interpreter.PRVM_TOKEN_RECORD_SIZE  0014      pub  lbl 
 
 Total memory is 0 bytes
 

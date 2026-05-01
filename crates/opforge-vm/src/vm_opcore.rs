@@ -28,6 +28,30 @@ use crate::runtime_parse_utils::runtime_bridge_error_to_parse_error;
 pub use crate::vm_core::HierarchyExecutionModel;
 use crate::vm_opasm_parse::VmExprParseContext;
 
+const EXVM_DEFAULT_PROGRAM: &[u8] = &[
+    package::ExvmOpcode::ParseExpression as u8,
+    package::ExvmOpcode::End as u8,
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ExvmExecutionBudgets {
+    pub max_steps: usize,
+    pub max_token_count: usize,
+    pub max_stack_depth: usize,
+    pub allow_delegate_core: bool,
+}
+
+impl ExvmExecutionBudgets {
+    pub(crate) fn for_tokens(token_count: usize) -> Self {
+        Self {
+            max_steps: 64,
+            max_token_count: token_count,
+            max_stack_depth: 1,
+            allow_delegate_core: false,
+        }
+    }
+}
+
 struct RuntimePortableExprEvalContext<'a> {
     assembler_ctx: &'a dyn AssemblerContext,
 }
@@ -67,8 +91,135 @@ pub fn parse_expression_tokens(
     end_span: Span,
     end_token_text: Option<String>,
 ) -> Result<Expr, ParseError> {
-    crate::runtime_expr_parser::RuntimeExpressionParser::new(tokens, end_span, end_token_text)
-        .parse_expr_from_tokens()
+    let budgets = ExvmExecutionBudgets::for_tokens(tokens.len());
+    run_exvm_expression_parser_program(
+        tokens,
+        end_span,
+        end_token_text,
+        EXVM_DEFAULT_PROGRAM,
+        budgets,
+    )
+}
+
+pub(crate) fn run_exvm_expression_parser_program(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    program: &[u8],
+    budgets: ExvmExecutionBudgets,
+) -> Result<Expr, ParseError> {
+    if tokens.len() > budgets.max_token_count {
+        return Err(ParseError {
+            message: format!(
+                "EXVM token budget exceeded ({}/{})",
+                tokens.len(),
+                budgets.max_token_count
+            ),
+            span: end_span,
+        });
+    }
+
+    let mut pc = 0usize;
+    let mut steps = 0usize;
+    let mut output_stack = Vec::new();
+
+    while pc < program.len() {
+        if steps >= budgets.max_steps {
+            return Err(ParseError {
+                message: format!(
+                    "EXVM step budget exceeded ({}/{})",
+                    steps, budgets.max_steps
+                ),
+                span: end_span,
+            });
+        }
+        steps += 1;
+
+        let opcode_pc = pc;
+        let opcode_byte = program[pc];
+        pc += 1;
+        let opcode = package::ExvmOpcode::from_u8(opcode_byte).ok_or_else(|| ParseError {
+            message: format!("invalid EXVM opcode 0x{opcode_byte:02X} at pc={opcode_pc}"),
+            span: end_span,
+        })?;
+
+        match opcode {
+            package::ExvmOpcode::End => {
+                return match output_stack.pop() {
+                    Some(expr) if output_stack.is_empty() => Ok(expr),
+                    Some(_) => Err(ParseError {
+                        message: "EXVM program ended with multiple expressions".to_string(),
+                        span: end_span,
+                    }),
+                    None => Err(ParseError {
+                        message: "EXVM program ended without expression".to_string(),
+                        span: end_span,
+                    }),
+                };
+            }
+            package::ExvmOpcode::ParseExpression => {
+                if output_stack.len() >= budgets.max_stack_depth {
+                    return Err(ParseError {
+                        message: format!(
+                            "EXVM output stack depth exceeded ({}/{})",
+                            output_stack.len() + 1,
+                            budgets.max_stack_depth
+                        ),
+                        span: end_span,
+                    });
+                }
+                let expr = crate::runtime_expr_parser::RuntimeExpressionParser::new(
+                    tokens.clone(),
+                    end_span,
+                    end_token_text.clone(),
+                )
+                .parse_expr_from_tokens()?;
+                output_stack.push(expr);
+            }
+            package::ExvmOpcode::EmitDiag => {
+                return Err(ParseError {
+                    message: "EXVM emitted diagnostic".to_string(),
+                    span: end_span,
+                });
+            }
+            package::ExvmOpcode::Fail => {
+                return Err(ParseError {
+                    message: "EXVM program failed".to_string(),
+                    span: end_span,
+                });
+            }
+            package::ExvmOpcode::DelegateCore => {
+                if budgets.allow_delegate_core {
+                    if output_stack.len() >= budgets.max_stack_depth {
+                        return Err(ParseError {
+                            message: format!(
+                                "EXVM output stack depth exceeded ({}/{})",
+                                output_stack.len() + 1,
+                                budgets.max_stack_depth
+                            ),
+                            span: end_span,
+                        });
+                    }
+                    let expr = Parser::parse_expr_from_tokens(
+                        tokens.clone(),
+                        end_span,
+                        end_token_text.clone(),
+                    )?;
+                    output_stack.push(expr);
+                    continue;
+                }
+                return Err(ParseError {
+                    message: "EXVM DelegateCore opcode is disabled in strict execution".to_string(),
+                    span: end_span,
+                });
+            }
+        }
+    }
+
+    Err(ParseError {
+        message: "EXVM program missing End opcode".to_string(),
+        span: end_span,
+    })
 }
 
 /// Runnable `.opcore` VM stage: evaluate an expression for assembler use

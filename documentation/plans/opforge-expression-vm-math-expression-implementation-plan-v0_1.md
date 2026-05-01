@@ -195,7 +195,7 @@ continues.
     - Operand-shape negative tests fail if `EXVM` starts accepting CPU-family
       addressing syntax as mathematical expressions.
 
-- [ ] Item 3 - Add the `EXVM` interpreter skeleton with deterministic budgets
+- [x] Item 3 - Add the `EXVM` interpreter skeleton with deterministic budgets
   - Source requirement or finding IDs: Need VM-owned expression parsing rather
     than direct `RuntimeExpressionParser` delegation.
   - Validation: See Full quality gates for this item.

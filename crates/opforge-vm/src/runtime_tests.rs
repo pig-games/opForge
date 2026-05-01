@@ -20,7 +20,7 @@ use crate::runtime_portable_types::*;
 use crate::vm_opasm::{build_bin_output_payload, build_hex_output_payload};
 use crate::vm_opcore::{
     evaluate_expression_for_assembler, expression_has_unstable_symbols_for_assembler,
-    parse_expression_tokens,
+    parse_expression_tokens, run_exvm_expression_parser_program, ExvmExecutionBudgets,
 };
 use families::{
     intel8080::Operand as IntelOperand,
@@ -2241,6 +2241,152 @@ fn runtime_expression_parser_locks_out_of_scope_call_and_placeholder_compatibili
         assert_eq!(err.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
         assert_eq!(err.message, expected_compile_message);
     }
+}
+
+#[test]
+fn exvm_interpreter_default_program_parses_expression() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("1+2*3", 1);
+    let expr = run_exvm_expression_parser_program(
+        tokens,
+        end_span,
+        None,
+        &[
+            package::ExvmOpcode::ParseExpression as u8,
+            package::ExvmOpcode::End as u8,
+        ],
+        ExvmExecutionBudgets::for_tokens(5),
+    )
+    .expect("EXVM default skeleton should parse expression");
+
+    assert_eq!(
+        expression_contract_shape(&expr),
+        "Binary(Add,Number,Binary(Multiply,Number,Number))"
+    );
+}
+
+#[test]
+fn exvm_interpreter_rejects_reserved_opcode_byte() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("1", 1);
+    let err = run_exvm_expression_parser_program(
+        tokens,
+        end_span,
+        None,
+        &[0x80],
+        ExvmExecutionBudgets::for_tokens(1),
+    )
+    .expect_err("reserved EXVM opcode should fail deterministically");
+
+    assert_eq!(err.message, "invalid EXVM opcode 0x80 at pc=0");
+}
+
+#[test]
+fn exvm_interpreter_rejects_unassigned_active_range_opcode_byte() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("1", 1);
+    let err = run_exvm_expression_parser_program(
+        tokens,
+        end_span,
+        None,
+        &[0x05],
+        ExvmExecutionBudgets::for_tokens(1),
+    )
+    .expect_err("unassigned EXVM opcode should fail deterministically");
+
+    assert_eq!(err.message, "invalid EXVM opcode 0x05 at pc=0");
+}
+
+#[test]
+fn exvm_interpreter_enforces_token_step_and_stack_budgets() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("1", 1);
+    let token_err = run_exvm_expression_parser_program(
+        tokens.clone(),
+        end_span,
+        None,
+        &[package::ExvmOpcode::ParseExpression as u8],
+        ExvmExecutionBudgets {
+            max_steps: 64,
+            max_token_count: 0,
+            max_stack_depth: 1,
+            allow_delegate_core: false,
+        },
+    )
+    .expect_err("EXVM token budget should fail");
+    assert_eq!(token_err.message, "EXVM token budget exceeded (1/0)");
+
+    let step_err = run_exvm_expression_parser_program(
+        tokens.clone(),
+        end_span,
+        None,
+        &[
+            package::ExvmOpcode::ParseExpression as u8,
+            package::ExvmOpcode::End as u8,
+        ],
+        ExvmExecutionBudgets {
+            max_steps: 1,
+            max_token_count: 1,
+            max_stack_depth: 1,
+            allow_delegate_core: false,
+        },
+    )
+    .expect_err("EXVM step budget should fail");
+    assert_eq!(step_err.message, "EXVM step budget exceeded (1/1)");
+
+    let stack_err = run_exvm_expression_parser_program(
+        tokens,
+        end_span,
+        None,
+        &[package::ExvmOpcode::ParseExpression as u8],
+        ExvmExecutionBudgets {
+            max_steps: 64,
+            max_token_count: 1,
+            max_stack_depth: 0,
+            allow_delegate_core: false,
+        },
+    )
+    .expect_err("EXVM output stack budget should fail");
+    assert_eq!(stack_err.message, "EXVM output stack depth exceeded (1/0)");
+}
+
+#[test]
+fn exvm_interpreter_rejects_delegate_core_and_missing_end() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("1", 1);
+    let delegate_err = run_exvm_expression_parser_program(
+        tokens.clone(),
+        end_span,
+        None,
+        &[package::ExvmOpcode::DelegateCore as u8],
+        ExvmExecutionBudgets::for_tokens(1),
+    )
+    .expect_err("EXVM DelegateCore should fail in strict execution");
+    assert_eq!(
+        delegate_err.message,
+        "EXVM DelegateCore opcode is disabled in strict execution"
+    );
+
+    let delegated_expr = run_exvm_expression_parser_program(
+        tokens.clone(),
+        end_span,
+        None,
+        &[
+            package::ExvmOpcode::DelegateCore as u8,
+            package::ExvmOpcode::End as u8,
+        ],
+        ExvmExecutionBudgets {
+            allow_delegate_core: true,
+            ..ExvmExecutionBudgets::for_tokens(1)
+        },
+    )
+    .expect("EXVM DelegateCore should work only with compatibility opt-in");
+    assert_eq!(expression_contract_shape(&delegated_expr), "Number");
+
+    let missing_end_err = run_exvm_expression_parser_program(
+        tokens,
+        end_span,
+        None,
+        &[package::ExvmOpcode::ParseExpression as u8],
+        ExvmExecutionBudgets::for_tokens(1),
+    )
+    .expect_err("EXVM missing End should fail deterministically");
+    assert_eq!(missing_end_err.message, "EXVM program missing End opcode");
 }
 
 #[test]

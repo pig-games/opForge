@@ -302,7 +302,7 @@ continues.
     - Operator precedence, associativity, AST shape, and diagnostics match the
       locked corpus.
 
-- [ ] Item 6 - Add ternary mathematical conditional expressions
+- [x] Item 6 - Add ternary mathematical conditional expressions
   - Source requirement or finding IDs: Complete the in-scope mathematical
     expression operator grammar without adding generic value-expression nodes.
   - Validation: See Full quality gates for this item.

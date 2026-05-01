@@ -2165,6 +2165,22 @@ const EXVM_OPERATOR_CONTRACT_CORPUS: &[(&str, &str)] = &[
     ),
 ];
 
+const EXVM_TERNARY_CONTRACT_CORPUS: &[(&str, &str)] = &[
+    ("a ? b : c", "Ternary(Identifier,Identifier,Identifier)"),
+    (
+        "flag ? 1 + 2 : 3 * 4",
+        "Ternary(Identifier,Binary(Add,Number,Number),Binary(Multiply,Number,Number))",
+    ),
+    (
+        "a && b ? c | d : e ^ f",
+        "Ternary(Binary(LogicAnd,Identifier,Identifier),Binary(BitOr,Identifier,Identifier),Binary(BitXor,Identifier,Identifier))",
+    ),
+    (
+        "a ? b ? c : d : e",
+        "Ternary(Identifier,Ternary(Identifier,Identifier,Identifier),Identifier)",
+    ),
+];
+
 fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
     let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
     let token_count = tokens.len();
@@ -2389,17 +2405,60 @@ fn exvm_operator_parser_owns_scalar_operator_tiers_with_core_failpoint() {
 }
 
 #[test]
-fn exvm_scalar_parser_keeps_not_yet_covered_grammar_on_compatibility_path() {
-    let strict_err = parse_exvm_scalar_strict("a ? b : c")
-        .expect_err("strict EXVM scalar parser should not own ternary grammar yet");
+fn exvm_ternary_parser_owns_mathematical_conditionals_with_core_failpoint() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(true));
+
+    for (source, expected_shape) in EXVM_TERNARY_CONTRACT_CORPUS {
+        let expr = parse_exvm_scalar_strict(source)
+            .unwrap_or_else(|err| panic!("strict EXVM ternary parse {source}: {}", err.message));
+
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "strict EXVM ternary expression shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_ternary_parser_preserves_missing_colon_diagnostic() {
+    let err = parse_exvm_scalar_strict("1 ? 2")
+        .expect_err("strict EXVM ternary parser should reject missing colon");
+    assert_eq!(err.message, "Missing ':' in conditional expression");
+}
+
+#[test]
+fn exvm_ternary_parser_keeps_calls_and_placeholders_out_of_strict_grammar() {
+    let placeholder_err = parse_exvm_scalar_strict("flag ? ? : value")
+        .expect_err("strict EXVM ternary parser should not accept placeholders");
+    assert_eq!(placeholder_err.message, "Unexpected token in expression");
+
+    let call_err = parse_exvm_scalar_strict("flag ? .pick(1,2) : value")
+        .expect_err("strict EXVM ternary parser should not accept calls");
+    assert_eq!(call_err.message, "Unexpected token in expression");
+}
+
+#[test]
+fn exvm_ternary_parser_keeps_range_grammar_on_compatibility_path_until_item7() {
+    let strict_err = parse_exvm_scalar_strict("1..4")
+        .expect_err("strict EXVM ternary parser should not own range grammar yet");
     assert_eq!(strict_err.message, "Unexpected trailing tokens");
 
-    let (tokens, end_span) = tokenize_core_expr_tokens("a ? b : c", 1);
+    let (tokens, end_span) = tokenize_core_expr_tokens("1..4", 1);
     let expr = parse_expression_tokens(tokens, end_span, None)
-        .expect("default EXVM path should retain ternary compatibility");
+        .expect("default EXVM path should retain range compatibility until Item 7");
     assert_eq!(
         expression_contract_shape(&expr),
-        "Ternary(Identifier,Identifier,Identifier)"
+        "Range(exclusive,Number,Number,None)"
     );
 }
 

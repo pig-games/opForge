@@ -62,7 +62,32 @@ impl ExvmScalarExpressionParser {
             _ => {}
         }
 
-        self.parse_logical_or()
+        self.parse_ternary()
+    }
+
+    fn parse_ternary(&mut self) -> Result<Expr, ParseError> {
+        let mut node = self.parse_logical_or()?;
+        if let Some(token) = self.peek() {
+            if token.kind == TokenKind::Question {
+                let span = token.span;
+                self.index += 1;
+                let then_expr = self.parse_expr()?;
+                if !self.consume_kind(TokenKind::Colon) {
+                    return Err(ParseError {
+                        message: "Missing ':' in conditional expression".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                let else_expr = self.parse_expr()?;
+                node = Expr::Ternary {
+                    cond: Box::new(node),
+                    then_expr: Box::new(then_expr),
+                    else_expr: Box::new(else_expr),
+                    span,
+                };
+            }
+        }
+        Ok(node)
     }
 
     fn parse_logical_or(&mut self) -> Result<Expr, ParseError> {

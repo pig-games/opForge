@@ -397,7 +397,7 @@ continues.
     - Scalar `EXPR` compilation still rejects non-scalar struct/access nodes
       with the existing diagnostics.
 
-- [ ] Item 9 - Lock explicit handling for remaining out-of-scope value nodes
+- [x] Item 9 - Lock explicit handling for remaining out-of-scope value nodes
   - Source requirement or finding IDs: Calls and placeholders are not requested
     for this plan and must not drift in during execution.
   - Validation: See Full quality gates for this item.

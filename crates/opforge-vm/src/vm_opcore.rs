@@ -184,6 +184,12 @@ pub(crate) fn run_exvm_expression_parser_program(
                                 end_token_text.clone(),
                             )
                             .parse_expr_from_tokens()
+                        } else if let Some(parse_error) = strict_out_of_scope_value_node_error(
+                            tokens.clone(),
+                            end_span,
+                            end_token_text.clone(),
+                        ) {
+                            Err(parse_error)
                         } else {
                             Err(err)
                         }
@@ -234,6 +240,86 @@ pub(crate) fn run_exvm_expression_parser_program(
         message: "EXVM program missing End opcode".to_string(),
         span: end_span,
     })
+}
+
+enum StrictOutOfScopeValueNode {
+    Call(Span),
+    Placeholder(Span),
+}
+
+impl StrictOutOfScopeValueNode {
+    fn message(&self) -> &'static str {
+        match self {
+            Self::Call(_) => "EXVM strict mode does not cover function/call expressions",
+            Self::Placeholder(_) => "EXVM strict mode does not cover placeholder expressions",
+        }
+    }
+
+    fn span(&self) -> Span {
+        match self {
+            Self::Call(span) | Self::Placeholder(span) => *span,
+        }
+    }
+}
+
+fn strict_out_of_scope_value_node_error(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Option<ParseError> {
+    let expr =
+        crate::runtime_expr_parser::RuntimeExpressionParser::new(tokens, end_span, end_token_text)
+            .parse_expr_from_tokens()
+            .ok()?;
+    let node = find_strict_out_of_scope_value_node(&expr)?;
+    Some(ParseError {
+        message: node.message().to_string(),
+        span: node.span(),
+    })
+}
+
+fn find_strict_out_of_scope_value_node(expr: &Expr) -> Option<StrictOutOfScopeValueNode> {
+    match expr {
+        Expr::Call { span, .. } => Some(StrictOutOfScopeValueNode::Call(*span)),
+        Expr::Placeholder(span) => Some(StrictOutOfScopeValueNode::Placeholder(*span)),
+        Expr::List(elements, _) | Expr::Tuple(elements, _) => elements
+            .iter()
+            .find_map(find_strict_out_of_scope_value_node),
+        Expr::Index { base, index, .. } => find_strict_out_of_scope_value_node(base)
+            .or_else(|| find_strict_out_of_scope_value_node(index)),
+        Expr::Member { base, .. } => find_strict_out_of_scope_value_node(base),
+        Expr::StructLiteral { fields, .. } => fields
+            .iter()
+            .find_map(|(_, field_expr)| find_strict_out_of_scope_value_node(field_expr)),
+        Expr::Indirect(expr, _)
+        | Expr::Immediate(expr, _)
+        | Expr::IndirectLong(expr, _)
+        | Expr::Unary { expr, .. } => find_strict_out_of_scope_value_node(expr),
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+            ..
+        } => find_strict_out_of_scope_value_node(cond)
+            .or_else(|| find_strict_out_of_scope_value_node(then_expr))
+            .or_else(|| find_strict_out_of_scope_value_node(else_expr)),
+        Expr::Binary { left, right, .. } => find_strict_out_of_scope_value_node(left)
+            .or_else(|| find_strict_out_of_scope_value_node(right)),
+        Expr::Range {
+            start, end, step, ..
+        } => find_strict_out_of_scope_value_node(start)
+            .or_else(|| find_strict_out_of_scope_value_node(end))
+            .or_else(|| {
+                step.as_deref()
+                    .and_then(find_strict_out_of_scope_value_node)
+            }),
+        Expr::Number(_, _)
+        | Expr::Identifier(_, _)
+        | Expr::Register(_, _)
+        | Expr::Dollar(_)
+        | Expr::String(_, _)
+        | Expr::Error(_, _) => None,
+    }
 }
 
 /// Runnable `.opcore` VM stage: evaluate an expression for assembler use

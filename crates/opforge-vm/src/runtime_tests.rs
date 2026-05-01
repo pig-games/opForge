@@ -2331,7 +2331,7 @@ fn runtime_expression_parser_locks_predecrement_tokens_as_math_unary_not_operand
 }
 
 #[test]
-fn runtime_expression_parser_locks_out_of_scope_call_and_placeholder_compatibility() {
+fn exvm_remaining_value_out_of_scope_compatibility_path_preserves_call_and_placeholder_nodes() {
     let cases = [
         (
             "?",
@@ -2364,6 +2364,38 @@ fn runtime_expression_parser_locks_out_of_scope_call_and_placeholder_compatibili
             .expect_err("out-of-scope compatibility expression should reject scalar compilation");
         assert_eq!(err.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
         assert_eq!(err.message, expected_compile_message);
+    }
+}
+
+#[test]
+fn exvm_remaining_value_out_of_scope_strict_mode_reports_deterministic_diagnostics() {
+    let cases = [
+        (
+            "?",
+            "EXVM strict mode does not cover placeholder expressions",
+        ),
+        (
+            "flag ? ? : value",
+            "EXVM strict mode does not cover placeholder expressions",
+        ),
+        (
+            ".pick({1,2},?)",
+            "EXVM strict mode does not cover function/call expressions",
+        ),
+        (
+            "value + .pick(1,2)",
+            "EXVM strict mode does not cover function/call expressions",
+        ),
+    ];
+
+    for (source, expected_message) in cases {
+        let err = parse_exvm_scalar_strict(source)
+            .expect_err("strict EXVM should reject out-of-scope expression");
+
+        assert_eq!(
+            err.message, expected_message,
+            "strict EXVM out-of-scope diagnostic changed for {source}"
+        );
     }
 }
 
@@ -2474,11 +2506,17 @@ fn exvm_ternary_parser_preserves_missing_colon_diagnostic() {
 fn exvm_ternary_parser_keeps_calls_and_placeholders_out_of_strict_grammar() {
     let placeholder_err = parse_exvm_scalar_strict("flag ? ? : value")
         .expect_err("strict EXVM ternary parser should not accept placeholders");
-    assert_eq!(placeholder_err.message, "Unexpected token in expression");
+    assert_eq!(
+        placeholder_err.message,
+        "EXVM strict mode does not cover placeholder expressions"
+    );
 
     let call_err = parse_exvm_scalar_strict("flag ? .pick(1,2) : value")
         .expect_err("strict EXVM ternary parser should not accept calls");
-    assert_eq!(call_err.message, "Unexpected token in expression");
+    assert_eq!(
+        call_err.message,
+        "EXVM strict mode does not cover function/call expressions"
+    );
 }
 
 #[test]
@@ -2575,11 +2613,17 @@ fn exvm_struct_access_parser_preserves_malformed_diagnostics() {
 fn exvm_struct_access_parser_keeps_calls_and_placeholders_out_of_strict_grammar() {
     let placeholder_err = parse_exvm_scalar_strict("items[?]")
         .expect_err("strict EXVM index parser should not accept placeholders");
-    assert_eq!(placeholder_err.message, "Unexpected token in expression");
+    assert_eq!(
+        placeholder_err.message,
+        "EXVM strict mode does not cover placeholder expressions"
+    );
 
     let call_err = parse_exvm_scalar_strict("item.value + .pick(1,2)")
         .expect_err("strict EXVM member parser should not accept calls");
-    assert_eq!(call_err.message, "Unexpected token in expression");
+    assert_eq!(
+        call_err.message,
+        "EXVM strict mode does not cover function/call expressions"
+    );
 }
 
 #[test]

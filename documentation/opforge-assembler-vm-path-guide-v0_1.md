@@ -376,9 +376,9 @@ Rollout and use in assembler path: [`crates/opforge-vm/src/vm_opcore.rs#L315-L52
 | `0x03` | `Fail` | Abort expression parsing. |
 | `0x04` | `DelegateCore` | Hand expression parsing back to the core parser. |
 
-In the current codebase, this VM is a small bytecode-controlled expression-parser entrypoint around `RuntimeExpressionParser`: the default program is `ParseExpression, End`, and the interpreter enforces explicit token, step, and output-stack budgets before later slices replace parser internals with richer `EXVM` bytecode.
+In the current codebase, this VM is a small bytecode-controlled expression-parser entrypoint around strict `EXVM` expression parsing with an explicit compatibility fallback: the default program is `ParseExpression, End`, and the interpreter enforces token, step, and output-stack budgets.
 
-The covered `EXVM` grammar is operand-shape-free expression syntax: literals, symbols, grouping, unary and binary operators, ternaries, ranges, lists, struct literals, member access, and index access. CPU-family operand wrappers such as immediates, m68k tuple/postincrement/predecrement forms, register pairs, bitfield suffixes, and long-indirect bracket forms remain owned by PRVM/opasm operand handling. Calls and placeholders are current parser compatibility behavior, but they are not part of the covered `EXVM` grammar for the active expression-VM implementation plan.
+The covered `EXVM` grammar is operand-shape-free expression syntax: literals, symbols, grouping, unary and binary operators, ternaries, ranges, lists, struct literals, member access, and index access. CPU-family operand wrappers such as immediates, m68k tuple/postincrement/predecrement forms, register pairs, bitfield suffixes, and long-indirect bracket forms remain owned by PRVM/opasm operand handling. Calls and placeholders are current parser compatibility behavior, but they are not part of the covered `EXVM` grammar for the active expression-VM implementation plan; strict execution reports deterministic unsupported diagnostics for those value nodes instead of classifying them as covered grammar.
 
 ### 6.4 Portable Expression Evaluator VM (`EXPR`)
 

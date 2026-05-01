@@ -2196,6 +2196,25 @@ const EXVM_RANGE_LIST_CONTRACT_CORPUS: &[(&str, &str)] = &[
     ),
 ];
 
+const EXVM_STRUCT_ACCESS_CONTRACT_CORPUS: &[(&str, &str)] = &[
+    ("Point{x:1,y:2}", "StructLiteral(Point,x:Number,y:Number)"),
+    (
+        "Point{x:1,y:{2,3}}",
+        "StructLiteral(Point,x:Number,y:List(Number,Number))",
+    ),
+    ("arr[2]", "Index(Identifier,Number)"),
+    ("arr[2].len", "Member(Index(Identifier,Number),len)"),
+    (
+        "Point{x:1,y:2}.x",
+        "Member(StructLiteral(Point,x:Number,y:Number),x)",
+    ),
+    ("matrix[1][2]", "Index(Index(Identifier,Number),Number)"),
+    (
+        "items[flag ? 1 : 2].value",
+        "Member(Index(Identifier,Ternary(Identifier,Number,Number)),value)",
+    ),
+];
+
 fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
     let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
     let token_count = tokens.len();
@@ -2499,18 +2518,68 @@ fn exvm_range_list_parser_preserves_malformed_diagnostics() {
 }
 
 #[test]
-fn exvm_range_list_parser_keeps_structs_on_compatibility_path_until_item8() {
-    let strict_err = parse_exvm_scalar_strict("Point{x:1}")
-        .expect_err("strict EXVM range/list parser should not own struct literals yet");
-    assert_eq!(strict_err.message, "Unexpected trailing tokens");
+fn exvm_struct_access_parser_owns_nodes_with_core_failpoint() {
+    struct FailpointReset;
 
-    let (tokens, end_span) = tokenize_core_expr_tokens("Point{x:1}", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
-        .expect("default EXVM path should retain struct compatibility until Item 8");
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(true));
+
+    for (source, expected_shape) in EXVM_STRUCT_ACCESS_CONTRACT_CORPUS {
+        let expr = parse_exvm_scalar_strict(source).unwrap_or_else(|err| {
+            panic!("strict EXVM struct/access parse {source}: {}", err.message)
+        });
+
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "strict EXVM struct/access expression shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_struct_access_parser_preserves_malformed_diagnostics() {
+    let missing_colon = parse_exvm_scalar_strict("Point{x 1}")
+        .expect_err("strict EXVM struct parser should reject missing colon");
     assert_eq!(
-        expression_contract_shape(&expr),
-        "StructLiteral(Point,x:Number)"
+        missing_colon.message,
+        "Expected ':' after field name in struct literal"
     );
+
+    let missing_struct_close = parse_exvm_scalar_strict("Point{x:1")
+        .expect_err("strict EXVM struct parser should reject missing close brace");
+    assert_eq!(
+        missing_struct_close.message,
+        "Missing '}' in struct literal"
+    );
+
+    let missing_index_close = parse_exvm_scalar_strict("arr[2")
+        .expect_err("strict EXVM index parser should reject missing close bracket");
+    assert_eq!(
+        missing_index_close.message,
+        "Missing ']' in index expression"
+    );
+
+    let missing_member = parse_exvm_scalar_strict("arr[2].")
+        .expect_err("strict EXVM member parser should reject missing member name");
+    assert_eq!(missing_member.message, "Expected member name after '.'");
+}
+
+#[test]
+fn exvm_struct_access_parser_keeps_calls_and_placeholders_out_of_strict_grammar() {
+    let placeholder_err = parse_exvm_scalar_strict("items[?]")
+        .expect_err("strict EXVM index parser should not accept placeholders");
+    assert_eq!(placeholder_err.message, "Unexpected token in expression");
+
+    let call_err = parse_exvm_scalar_strict("item.value + .pick(1,2)")
+        .expect_err("strict EXVM member parser should not accept calls");
+    assert_eq!(call_err.message, "Unexpected token in expression");
 }
 
 #[test]

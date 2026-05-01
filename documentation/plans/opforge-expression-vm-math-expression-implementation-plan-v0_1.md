@@ -364,7 +364,7 @@ continues.
     - Scalar `EXPR` compilation still rejects non-scalar range/list nodes with
       the existing diagnostics.
 
-- [ ] Item 8 - Add struct literals, member access, and index access
+- [x] Item 8 - Add struct literals, member access, and index access
   - Source requirement or finding IDs: User follow-up request that structs are
     part of the covered `EXVM` expression grammar; member/index access are the
     expression-level access forms needed for struct and list values.
@@ -555,7 +555,7 @@ continues.
   - Done when `EXVM` owns scalar/core arithmetic parsing without direct core
     parser delegation.
 
-- [ ] Milestone 4 - Scalar, conditional, and aggregate grammar is covered
+- [x] Milestone 4 - Scalar, conditional, and aggregate grammar is covered
   - Includes Work items 5, 6, 7, and 8.
   - Done when all operator, ternary, range, list, struct, member, and index
     grammar covered by this plan is implemented by `EXVM`.

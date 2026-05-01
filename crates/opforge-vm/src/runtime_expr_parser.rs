@@ -327,7 +327,7 @@ impl ExvmScalarExpressionParser {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
-        match self.next() {
+        let base = match self.next() {
             Some(Token {
                 kind: TokenKind::Hash,
                 span,
@@ -426,7 +426,145 @@ impl ExvmScalarExpressionParser {
                 },
                 span: self.end_span,
             }),
+        }?;
+
+        let base = self.parse_struct_literal_if_present(base)?;
+        self.parse_postfix_expr(base)
+    }
+
+    fn parse_struct_literal_if_present(&mut self, expr: Expr) -> Result<Expr, ParseError> {
+        let (type_name, type_span) = match &expr {
+            Expr::Identifier(name, span) | Expr::Register(name, span) => (name.clone(), *span),
+            _ => return Ok(expr),
+        };
+        if !self.peek_kind(TokenKind::OpenBrace) {
+            return Ok(expr);
         }
+        self.index += 1;
+
+        let mut fields = Vec::new();
+        if !self.consume_kind(TokenKind::CloseBrace) {
+            loop {
+                let field_name = match self.next() {
+                    Some(Token {
+                        kind: TokenKind::Identifier(name),
+                        ..
+                    })
+                    | Some(Token {
+                        kind: TokenKind::Register(name),
+                        ..
+                    }) => name,
+                    Some(token) => {
+                        return Err(ParseError {
+                            message: "Expected field name in struct literal".to_string(),
+                            span: token.span,
+                        })
+                    }
+                    None => {
+                        return Err(ParseError {
+                            message: "Expected field name in struct literal".to_string(),
+                            span: self.end_span,
+                        })
+                    }
+                };
+
+                if !self.consume_kind(TokenKind::Colon) {
+                    return Err(ParseError {
+                        message: "Expected ':' after field name in struct literal".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                let field_expr = self.parse_expr()?;
+                fields.push((field_name, field_expr));
+
+                if self.consume_comma() {
+                    continue;
+                }
+                if !self.consume_kind(TokenKind::CloseBrace) {
+                    return Err(ParseError {
+                        message: "Missing '}' in struct literal".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                break;
+            }
+        }
+
+        let close_span = self.prev_span();
+        Ok(Expr::StructLiteral {
+            type_name,
+            fields,
+            span: Span {
+                line: type_span.line,
+                col_start: type_span.col_start,
+                col_end: close_span.col_end,
+            },
+        })
+    }
+
+    fn parse_postfix_expr(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
+        loop {
+            if self.consume_kind(TokenKind::OpenBracket) {
+                let index = self.parse_expr()?;
+                let close_span = self.current_span();
+                if !self.consume_kind(TokenKind::CloseBracket) {
+                    return Err(ParseError {
+                        message: "Missing ']' in index expression".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                let start_span = span_of_expr(&expr);
+                expr = Expr::Index {
+                    base: Box::new(expr),
+                    index: Box::new(index),
+                    span: Span {
+                        line: start_span.line,
+                        col_start: start_span.col_start,
+                        col_end: close_span.col_end,
+                    },
+                };
+                continue;
+            }
+
+            if self.consume_kind(TokenKind::Dot) {
+                let (field, field_span) = match self.next() {
+                    Some(Token {
+                        kind: TokenKind::Identifier(name),
+                        span,
+                    })
+                    | Some(Token {
+                        kind: TokenKind::Register(name),
+                        span,
+                    }) => (name, span),
+                    Some(token) => {
+                        return Err(ParseError {
+                            message: "Expected member name after '.'".to_string(),
+                            span: token.span,
+                        })
+                    }
+                    None => {
+                        return Err(ParseError {
+                            message: "Expected member name after '.'".to_string(),
+                            span: self.end_span,
+                        })
+                    }
+                };
+                let start_span = span_of_expr(&expr);
+                expr = Expr::Member {
+                    base: Box::new(expr),
+                    field,
+                    span: Span {
+                        line: start_span.line,
+                        col_start: start_span.col_start,
+                        col_end: field_span.col_end,
+                    },
+                };
+                continue;
+            }
+
+            break;
+        }
+        Ok(expr)
     }
 
     fn consume_comma(&mut self) -> bool {
@@ -441,6 +579,10 @@ impl ExvmScalarExpressionParser {
             }
         }
         false
+    }
+
+    fn peek_kind(&self, kind: TokenKind) -> bool {
+        self.peek().is_some_and(|token| token.kind == kind)
     }
 
     fn match_operator(&mut self, op: OperatorKind) -> bool {

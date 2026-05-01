@@ -544,6 +544,67 @@ pub(crate) fn parse_expr_with_vm_contract_and_boundary(
     }
 }
 
+pub(crate) fn parse_expr_with_authoritative_exvm_contract(
+    expr_parse_ctx: &VmExprParseContext<'_>,
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Result<Expr, ParseError> {
+    if expr_parse_ctx.expr_handler.is_some() {
+        return parse_expr_with_vm_contract(expr_parse_ctx, tokens, end_span, end_token_text);
+    }
+
+    enforce_expr_token_budget(expr_parse_ctx, tokens, end_span)?;
+    expr_parse_ctx
+        .model
+        .ensure_parser_vm_v2_expr_subcall_contract_for_assembler(
+            expr_parse_ctx.cpu_id,
+            expr_parse_ctx.dialect_override,
+        )
+        .map_err(|err| runtime_bridge_error_to_parse_error(err, end_span))?;
+
+    let mut owned_tokens = Vec::with_capacity(tokens.len());
+    owned_tokens.extend_from_slice(tokens);
+    expr_parse_ctx
+        .model
+        .parse_expression_with_mode_for_assembler(
+            expr_parse_ctx.cpu_id,
+            expr_parse_ctx.dialect_override,
+            owned_tokens,
+            end_span,
+            end_token_text,
+            true,
+        )
+}
+
+pub(crate) fn parse_expr_with_authoritative_exvm_contract_and_boundary(
+    expr_parse_ctx: &VmExprParseContext<'_>,
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+    boundary_token: Option<&Token>,
+) -> Result<Expr, ParseError> {
+    match parse_expr_with_authoritative_exvm_contract(
+        expr_parse_ctx,
+        tokens,
+        end_span,
+        end_token_text,
+    ) {
+        Ok(expr) => Ok(expr),
+        Err(err)
+            if err.message == crate::execution_model::HOST_PARSER_UNEXPECTED_END_OF_EXPRESSION
+                && boundary_token.is_some() =>
+        {
+            let boundary_span = boundary_token.map(|token| token.span).unwrap_or(err.span);
+            Err(ParseError {
+                message: "Unexpected token in expression".to_string(),
+                span: boundary_span,
+            })
+        }
+        Err(err) => Err(err),
+    }
+}
+
 pub fn load_model_from_registry(
     registry: &registry::registry::ModuleRegistry,
 ) -> Result<HierarchyExecutionModel, crate::vm_core::RuntimeModelLoadError> {

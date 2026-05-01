@@ -429,7 +429,7 @@ continues.
     - Later work cannot silently classify calls or placeholders as covered
       expression grammar.
 
-- [ ] Item 10 - Route PRVM expression sub-calls through authoritative `EXVM` coverage
+- [x] Item 10 - Route PRVM expression sub-calls through authoritative `EXVM` coverage
   - Source requirement or finding IDs: Full VM-based parsing path must use the
     typed PRVM to `EXVM` expression boundary.
   - Validation: See Full quality gates for this item.

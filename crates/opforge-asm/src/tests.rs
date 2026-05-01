@@ -23416,6 +23416,38 @@ fn vm_runtime_i8085_instruction_expr_parse_survives_core_parser_failpoint() {
 }
 
 #[test]
+fn motorola68000_vm_runtime_operand_expr_parse_survives_core_parser_failpoint() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            set_core_expr_parser_failpoint_for_tests(false);
+        }
+    }
+
+    let _reset = FailpointReset;
+    set_core_expr_parser_failpoint_for_tests(true);
+
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = AsmLine::with_cpu(&mut symbols, m68000_cpu_id, &registry);
+    asm.clear_conditionals();
+    asm.clear_scopes();
+
+    let status = process_asmline_with_execution_mode(
+        &mut asm,
+        ExecutionMode::Vm,
+        "    MOVE.W 1+2(A0),D0",
+        1,
+        0,
+        2,
+    );
+    let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
+    assert_eq!(status, LineStatus::Ok, "unexpected error: {message}");
+    assert!(!asm.bytes().is_empty());
+}
+
+#[test]
 fn vm_runtime_mos6502_instruction_expr_eval_survives_host_evaluator_failpoint() {
     struct FailpointReset;
 

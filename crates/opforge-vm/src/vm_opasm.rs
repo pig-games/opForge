@@ -254,6 +254,15 @@ pub(crate) fn parse_operand_expr_range(
         operands.push(Expr::Error("Expected expression".to_string(), span));
         return Ok(());
     }
+    expr_parse_ctx
+        .model
+        .ensure_parser_vm_v2_expr_subcall_contract_for_assembler(
+            expr_parse_ctx.cpu_id,
+            expr_parse_ctx.dialect_override,
+        )
+        .map_err(|err| {
+            crate::runtime_parse_utils::runtime_bridge_error_to_parse_error(err, boundary.end_span)
+        })?;
     let boundary_token = tokens.get(end);
     let expr_end_span = boundary_token
         .map(|token| token.span)
@@ -366,7 +375,7 @@ pub(crate) fn parse_operand_expr_range(
             return Ok(());
         }
     }
-    match crate::vm_opcore::parse_expr_with_vm_contract_and_boundary(
+    match crate::vm_opcore::parse_expr_with_authoritative_exvm_contract_and_boundary(
         expr_parse_ctx,
         &tokens[start..end],
         expr_end_span,
@@ -436,7 +445,7 @@ fn parse_expr_slice(
     end_span: Span,
     end_token_text: Option<String>,
 ) -> Result<Expr, ParseError> {
-    crate::vm_opcore::parse_expr_with_vm_contract_and_boundary(
+    crate::vm_opcore::parse_expr_with_authoritative_exvm_contract_and_boundary(
         expr_parse_ctx,
         tokens,
         end_span,

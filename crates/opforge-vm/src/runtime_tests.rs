@@ -51,6 +51,7 @@ use package::{
 };
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
+use registry::syntax::register_checker_none;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -186,6 +187,13 @@ fn parity_registry() -> ModuleRegistry {
 fn mos6502_family_registry() -> ModuleRegistry {
     let mut registry = ModuleRegistry::new();
     register_mos6502_family_stack(&mut registry);
+    registry
+}
+
+fn mos6502_and_motorola68000_registry() -> ModuleRegistry {
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
     registry
 }
 
@@ -1879,6 +1887,70 @@ fn execution_model_parse_expression_for_assembler_certified_path_bypasses_core_p
             ..
         }
     ));
+}
+
+#[test]
+fn parser_vm_v2_parity_exvm_operand_expr_range_preserves_wrappers_with_core_failpoint() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(true));
+
+    let registry = mos6502_and_motorola68000_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let register_checker = register_checker_none();
+
+    let (mos_line, _, _) = crate::vm_opasm::parse_statement_line_with_model(
+        &model,
+        "m6502",
+        None,
+        "    LDA #(1+2)",
+        1,
+        &register_checker,
+    )
+    .expect("mos6502 operand expression should parse through EXVM");
+    match mos_line {
+        LineAst::Statement(statement) => {
+            assert_eq!(statement.mnemonic.as_deref(), Some("LDA"));
+            assert_eq!(statement.operands.len(), 1);
+            assert_eq!(
+                expression_contract_shape(&statement.operands[0]),
+                "Immediate(Binary(Add,Number,Number))"
+            );
+        }
+        other => panic!("expected mos6502 statement, got {other:?}"),
+    }
+
+    let (m68k_line, _, _) = crate::vm_opasm::parse_statement_line_with_model(
+        &model,
+        "m68000",
+        None,
+        "    MOVE.W 1+2(A0),D0",
+        1,
+        &register_checker,
+    )
+    .expect("m68k operand expression should parse through EXVM");
+    match m68k_line {
+        LineAst::Statement(statement) => {
+            assert_eq!(statement.mnemonic.as_deref(), Some("MOVE.W"));
+            assert_eq!(statement.operands.len(), 2);
+            assert_eq!(
+                expression_contract_shape(&statement.operands[0]),
+                "Indirect(Tuple(Binary(Add,Number,Number),Identifier))"
+            );
+            assert_eq!(
+                expression_contract_shape(&statement.operands[1]),
+                "Identifier"
+            );
+        }
+        other => panic!("expected m68k statement, got {other:?}"),
+    }
 }
 
 #[test]

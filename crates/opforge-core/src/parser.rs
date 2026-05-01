@@ -1064,18 +1064,11 @@ impl Parser {
         let base = match self.next() {
             Some(Token {
                 kind: TokenKind::Hash,
-                span: hash_span,
-            }) => {
-                // Immediate mode: #expr
-                let expr = self.parse_expr()?;
-                let end_span = self.prev_span();
-                let span = Span {
-                    line: hash_span.line,
-                    col_start: hash_span.col_start,
-                    col_end: end_span.col_end,
-                };
-                Ok(Expr::Immediate(Box::new(expr), span))
-            }
+                span,
+            }) => Err(ParseError {
+                message: "Unexpected token in expression".to_string(),
+                span,
+            }),
             Some(Token {
                 kind: TokenKind::Number(num),
                 span,
@@ -1158,144 +1151,30 @@ impl Parser {
             }
             Some(Token {
                 kind: TokenKind::OpenParen,
-                span: open_span,
+                span: _open_span,
             }) => {
-                let mut elements = Vec::new();
-                if matches!(
-                    self.peek(),
-                    Some(Token {
-                        kind: TokenKind::Comma,
-                        ..
-                    })
-                ) {
-                    elements.push(Expr::Placeholder(self.current_span()));
-                } else {
-                    elements.push(self.parse_expr()?);
-                }
-
+                let expr = self.parse_expr()?;
                 if self.consume_comma() {
-                    loop {
-                        if matches!(
-                            self.peek(),
-                            Some(Token {
-                                kind: TokenKind::Comma | TokenKind::CloseParen,
-                                ..
-                            })
-                        ) {
-                            elements.push(Expr::Placeholder(self.current_span()));
-                        } else {
-                            elements.push(self.parse_expr()?);
-                        }
-
-                        if !self.consume_comma() {
-                            break;
-                        }
-                    }
-
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseParen) {
-                        return Err(ParseError {
-                            message: "Missing ')' in tuple".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-                    let span = Span {
-                        line: open_span.line,
-                        col_start: open_span.col_start,
-                        col_end: close_span.col_end,
-                    };
-                    // Wrap in Indirect to maintain consistency that (...) is grouping/indirect
-                    // The handler will inspect the inner Expr::Tuple
-                    Ok(Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span))
-                } else {
-                    let expr = elements.pop().expect("single parenthesized expression");
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseParen) {
-                        return Err(ParseError {
-                            message: "Missing ')'".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-                    Ok(Expr::Indirect(
-                        Box::new(expr),
-                        Span {
-                            line: open_span.line,
-                            col_start: open_span.col_start,
-                            col_end: close_span.col_end,
-                        },
-                    ))
+                    return Err(ParseError {
+                        message: "Unexpected token in expression".to_string(),
+                        span: self.prev_span(),
+                    });
                 }
+                if !self.consume_kind(TokenKind::CloseParen) {
+                    return Err(ParseError {
+                        message: "Missing ')'".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                Ok(expr)
             }
             Some(Token {
                 kind: TokenKind::OpenBracket,
-                span: open_span,
-            }) => {
-                let mut elements = Vec::new();
-                if matches!(
-                    self.peek(),
-                    Some(Token {
-                        kind: TokenKind::Comma,
-                        ..
-                    })
-                ) {
-                    elements.push(Expr::Placeholder(self.current_span()));
-                } else {
-                    elements.push(self.parse_expr()?);
-                }
-                if self.consume_comma() {
-                    loop {
-                        if matches!(
-                            self.peek(),
-                            Some(Token {
-                                kind: TokenKind::Comma | TokenKind::CloseBracket,
-                                ..
-                            })
-                        ) {
-                            elements.push(Expr::Placeholder(self.current_span()));
-                        } else {
-                            elements.push(self.parse_expr()?);
-                        }
-
-                        if !self.consume_comma() {
-                            break;
-                        }
-                    }
-
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseBracket) {
-                        return Err(ParseError {
-                            message: "Missing ']' in tuple".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-                    let span = Span {
-                        line: open_span.line,
-                        col_start: open_span.col_start,
-                        col_end: close_span.col_end,
-                    };
-                    Ok(Expr::IndirectLong(
-                        Box::new(Expr::Tuple(elements, span)),
-                        span,
-                    ))
-                } else {
-                    let expr = elements.pop().expect("single bracketed expression");
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseBracket) {
-                        return Err(ParseError {
-                            message: "Missing ']'".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-                    Ok(Expr::IndirectLong(
-                        Box::new(expr),
-                        Span {
-                            line: open_span.line,
-                            col_start: open_span.col_start,
-                            col_end: close_span.col_end,
-                        },
-                    ))
-                }
-            }
+                span,
+            }) => Err(ParseError {
+                message: "Unexpected token in expression".to_string(),
+                span,
+            }),
             Some(Token {
                 kind: TokenKind::OpenBrace,
                 span: open_span,
@@ -1412,45 +1291,6 @@ impl Parser {
 
     fn parse_postfix_expr(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
         loop {
-            if let Some(Token {
-                kind: TokenKind::OpenParen,
-                span: open_span,
-            }) = self.peek().cloned()
-            {
-                let start_span = span_of_expr(&expr);
-                if open_span.col_start == start_span.col_end {
-                    self.index += 1;
-                    let mut elements = vec![expr];
-                    if self.consume_kind(TokenKind::CloseParen) {
-                        return Err(ParseError {
-                            message: "Expected expression inside postfix tuple".to_string(),
-                            span: open_span,
-                        });
-                    }
-
-                    elements.push(self.parse_expr()?);
-                    while self.consume_comma() {
-                        elements.push(self.parse_expr()?);
-                    }
-
-                    let close_span = self.current_span();
-                    if !self.consume_kind(TokenKind::CloseParen) {
-                        return Err(ParseError {
-                            message: "Missing ')' in postfix tuple".to_string(),
-                            span: self.current_span(),
-                        });
-                    }
-
-                    let span = Span {
-                        line: start_span.line,
-                        col_start: start_span.col_start,
-                        col_end: close_span.col_end,
-                    };
-                    expr = Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span);
-                    continue;
-                }
-            }
-
             if self.consume_kind(TokenKind::OpenBracket) {
                 let index = self.parse_expr()?;
                 let close_span = self.current_span();
@@ -2607,6 +2447,99 @@ mod tests {
                 assert_eq!(statement.operands.len(), 1);
             }
             _ => panic!("Expected statement"),
+        }
+    }
+
+    #[test]
+    fn classic_parser_parentheses_group_scalar_expression() {
+        let expr = Parser::parse_expr_from_tokens(
+            tokenize_line("(1+2)"),
+            Span {
+                line: 1,
+                col_start: 6,
+                col_end: 6,
+            },
+            None,
+        )
+        .expect("grouped scalar expression should parse");
+
+        match expr {
+            Expr::Binary {
+                op, left, right, ..
+            } => {
+                assert_eq!(op, BinaryOp::Add);
+                assert!(matches!(*left, Expr::Number(ref text, _) if text == "1"));
+                assert!(matches!(*right, Expr::Number(ref text, _) if text == "2"));
+            }
+            other => panic!("Expected grouped binary expression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classic_parser_rejects_operand_only_expression_prefixes() {
+        let immediate = Parser::parse_expr_from_tokens(
+            tokenize_line("#1"),
+            Span {
+                line: 1,
+                col_start: 3,
+                col_end: 3,
+            },
+            None,
+        )
+        .expect_err("standalone expression should reject immediate prefix");
+        assert_eq!(immediate.message, "Unexpected token in expression");
+        assert_eq!(immediate.span.col_start, 1);
+
+        let bracket = Parser::parse_expr_from_tokens(
+            tokenize_line("[1]"),
+            Span {
+                line: 1,
+                col_start: 4,
+                col_end: 4,
+            },
+            None,
+        )
+        .expect_err("standalone expression should reject indirect-long wrapper");
+        assert_eq!(bracket.message, "Unexpected token in expression");
+        assert_eq!(bracket.span.col_start, 1);
+    }
+
+    #[test]
+    fn dot_statement_operand_parentheses_group_inside_expression() {
+        let mut parser = Parser::from_line("    .byte (1) & $ff", 1).unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Binary {
+                    op, left, right, ..
+                } => {
+                    assert_eq!(*op, BinaryOp::BitAnd);
+                    assert!(matches!(left.as_ref(), Expr::Number(text, _) if text == "1"));
+                    assert!(matches!(right.as_ref(), Expr::Number(text, _) if text == "$ff"));
+                }
+                other => panic!("Expected grouped binary operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn statement_operand_whole_parentheses_remains_indirect() {
+        let mut parser = Parser::from_line_with_registers(
+            "    MOVE (A0),D0",
+            1,
+            register_checker_from_fn(is_m68k_register),
+        )
+        .unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Statement(statement) => match &statement.operands[0] {
+                Expr::Indirect(inner, _) => {
+                    assert!(matches!(inner.as_ref(), Expr::Register(name, _) if name == "A0"));
+                }
+                other => panic!("Expected indirect operand, got {other:?}"),
+            },
+            other => panic!("Expected statement, got {other:?}"),
         }
     }
 

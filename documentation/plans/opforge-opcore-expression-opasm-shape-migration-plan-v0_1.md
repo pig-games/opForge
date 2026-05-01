@@ -308,33 +308,55 @@ The second path is the safer first slice because `expr_vm.rs` already treats
     - opcore has an intentional, tested stance for each generic-looking but
       currently non-evaluable node.
 
-- [ ] Item 7: align classic parser or isolate VM-only migration path
+- [x] Item 7: align classic parser or isolate VM-only migration path
   - Validation: focused opcore parser tests, VM parser tests, relevant assembler
     smoke tests, plus normal formatting, clippy, and diff checks.
   - Definition of done: classic parser and VM parser agree on the new
-    opcore/opasm boundary or intentionally stage the difference.
+    opcore/opasm boundary.
   - Source requirement or finding IDs: `crates/opforge-core/src/parser.rs` has
     the same mixed parsing behavior as the runtime expression parser.
   - Expected files:
     - `crates/opforge-core/src/parser.rs`
+    - `crates/opforge-core/src/parser_compat_mixed.rs`
     - `crates/opforge-vm/src/vm_opasm.rs`
+    - `crates/opforge-asm/src/tests.rs`
     - focused compatibility tests
   - Full quality gates:
     - `cargo fmt --all --check`
     - focused `cargo test -p opcore` parser tests
     - focused `cargo test -p vm` VM parser tests
     - relevant assembler smoke tests for affected CPU families
+    - serial opt-in FS-UAE external emulator tests
     - `cargo clippy -p vm -- -D warnings`
     - `cargo clippy -p opcore -- -D warnings`
     - `git diff --check`
   - Plan-compliance review evidence:
-    - show classic parser behavior and VM parser behavior either match under
-      the new boundary or the divergence is intentionally scoped behind rollout.
-    - integration with the PRVM v2 branch intentionally scopes the known
-      simple-parentheses grouping divergence behind
-      `example_allows_staged_lockstep_divergences(...)` for the native
-      `opforge_cli`, `tkpkg_debug_cli`, `tkpkg_entry`, and `tokvm_interpreter`
-      examples until this item aligns the classic parser boundary.
+    - classic standalone expression parsing now rejects operand-only `#` and
+      leading bracket syntax, treats simple parentheses as grouping, and leaves
+      whole-operand immediate/indirect/bracketed forms to the statement operand
+      path.
+    - `example_allows_staged_lockstep_divergences(...)` was removed, restoring
+      lockstep cleanliness assertions for `opforge_cli`, `tkpkg_debug_cli`,
+      `tkpkg_entry`, and `tokvm_interpreter`.
+    - `crates/opforge-vm/src/vm_opasm.rs` did not require code changes for this
+      slice; existing VM opasm boundary tests were rerun to prove parity.
+    - validation passed:
+      `cargo test -p opcore parser::tests:: -- --nocapture`;
+      `cargo test -p vm runtime_expression -- --nocapture`;
+      `cargo test -p vm vm_opasm -- --nocapture`;
+      `cargo test -p opcore expr_vm -- --nocapture`;
+      `cargo test -p vm --test parser_vm_v2_parity -- --nocapture`;
+      `cargo test -p vm --test parser_vm_native_abi -- --nocapture`;
+      `cargo test -p asm motorola68020_opforge_native_cli -- --nocapture`;
+      `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`;
+      `cargo test -p asm motorola68020_tokvm_ -- --nocapture`;
+      `cargo test -p asm motorola68020_prvm_ -- --nocapture`;
+      `cargo fmt --all --check`;
+      `cargo clippy -p opcore -- -D warnings`;
+      `cargo clippy -p vm -- -D warnings`;
+      `cargo clippy -p asm -- -D warnings`;
+      serial `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm external_fs_uae_ -- --nocapture --test-threads=1`
+      passed 10 external emulator tests.
   - Commit outcome:
     - one commit that prevents long-term parser/VM disagreement.
   - Definition of done:
@@ -351,8 +373,7 @@ The second path is the safer first slice because `expr_vm.rs` already treats
   indirect operand syntax.
 - [x] Milestone 5: opcore expression parser and portable expression evaluator
   have an intentional, tested scalar/value boundary.
-- [ ] Milestone 6: classic parser and VM parser boundary behavior are aligned
-  or intentionally staged.
+- [x] Milestone 6: classic parser and VM parser boundary behavior is aligned.
 
 ## Blocking Rules
 

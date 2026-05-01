@@ -1609,13 +1609,6 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
     Vec::new()
 }
 
-fn example_allows_staged_lockstep_divergences(asm_path: &Path) -> bool {
-    matches!(
-        asm_path.file_stem().and_then(|stem| stem.to_str()),
-        Some("opforge_cli" | "tkpkg_debug_cli" | "tkpkg_entry" | "tokvm_interpreter")
-    )
-}
-
 fn example_output_payload_path(
     fixture_out_dir: &Path,
     base: &str,
@@ -1814,22 +1807,18 @@ fn assemble_example_with_base(
             report.runtime_processing_traces(),
             &format!("successful run report for {base}"),
         );
-        if !example_allows_staged_lockstep_divergences(asm_path) {
-            assert_lockstep_reference_report_clean(
-                report.lockstep_report(),
-                &format!("successful reference run for {base}"),
-                true,
-            );
-        }
+        assert_lockstep_reference_report_clean(
+            report.lockstep_report(),
+            &format!("successful reference run for {base}"),
+            true,
+        );
     }
     if let Err(err) = &result {
-        if !example_allows_staged_lockstep_divergences(asm_path) {
-            assert_lockstep_reference_report_clean(
-                err.lockstep_report(),
-                &format!("failed reference run for {base}"),
-                false,
-            );
-        }
+        assert_lockstep_reference_report_clean(
+            err.lockstep_report(),
+            &format!("failed reference run for {base}"),
+            false,
+        );
     }
 
     let mut map_outputs: Vec<(String, Vec<u8>)> = fs::read_dir(&out_dir)

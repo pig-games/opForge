@@ -52,43 +52,426 @@ fn build_call_expr(name: &str, args: Vec<Expr>) -> Expr {
     }
 }
 
+fn parse_expression_slice(
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Result<Expr, ParseError> {
+    Parser::parse_expr_from_tokens(tokens.to_vec(), end_span, end_token_text)
+}
+
+fn parse_expression_slice_or_error(
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Expr {
+    match parse_expression_slice(tokens, end_span, end_token_text) {
+        Ok(expr) => expr,
+        Err(err) => Expr::Error(err.message, err.span),
+    }
+}
+
+fn token_depths_before(tokens: &[Token], index: usize) -> (usize, usize, usize) {
+    let mut paren = 0usize;
+    let mut bracket = 0usize;
+    let mut brace = 0usize;
+    for token in &tokens[..index] {
+        match token.kind {
+            TokenKind::OpenParen => paren = paren.saturating_add(1),
+            TokenKind::CloseParen => paren = paren.saturating_sub(1),
+            TokenKind::OpenBracket => bracket = bracket.saturating_add(1),
+            TokenKind::CloseBracket => bracket = bracket.saturating_sub(1),
+            TokenKind::OpenBrace => brace = brace.saturating_add(1),
+            TokenKind::CloseBrace => brace = brace.saturating_sub(1),
+            _ => {}
+        }
+    }
+    (paren, bracket, brace)
+}
+
+fn is_top_level_at(tokens: &[Token], index: usize) -> bool {
+    token_depths_before(tokens, index) == (0, 0, 0)
+}
+
+fn find_top_level_token(tokens: &[Token], kind: TokenKind) -> Option<usize> {
+    tokens
+        .iter()
+        .enumerate()
+        .find(|(index, token)| token.kind == kind && is_top_level_at(tokens, *index))
+        .map(|(index, _)| index)
+}
+
+fn contains_top_level_comma(tokens: &[Token]) -> bool {
+    find_top_level_token(tokens, TokenKind::Comma).is_some()
+}
+
+fn is_single_wrapped_operand(tokens: &[Token], open: TokenKind, close: TokenKind) -> bool {
+    if tokens.len() < 2
+        || tokens.first().map(|token| &token.kind) != Some(&open)
+        || tokens.last().map(|token| &token.kind) != Some(&close)
+    {
+        return false;
+    }
+
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == open {
+            depth = depth.saturating_add(1);
+        } else if token.kind == close {
+            depth = depth.saturating_sub(1);
+            if depth == 0 && index != tokens.len() - 1 {
+                return false;
+            }
+        }
+    }
+    depth == 0
+}
+
+fn tuple_elements_from_tokens(
+    tokens: &[Token],
+    close_span: Span,
+    close_token_text: &str,
+) -> Vec<Expr> {
+    let mut elements = Vec::new();
+    let mut start = 0usize;
+    for index in 0..=tokens.len() {
+        let is_boundary = index == tokens.len()
+            || (tokens[index].kind == TokenKind::Comma && is_top_level_at(tokens, index));
+        if !is_boundary {
+            continue;
+        }
+
+        if start == index {
+            let span = tokens
+                .get(index)
+                .map(|token| token.span)
+                .unwrap_or(close_span);
+            elements.push(Expr::Placeholder(span));
+        } else {
+            let end_span = tokens
+                .get(index)
+                .map(|token| token.span)
+                .unwrap_or(close_span);
+            let end_text = tokens
+                .get(index)
+                .and_then(|token| (token.kind == TokenKind::Comma).then(|| ",".to_string()));
+            elements.push(parse_statement_operand_base(
+                &tokens[start..index],
+                end_span,
+                end_text.or_else(|| Some(close_token_text.to_string())),
+            ));
+        }
+        start = index.saturating_add(1);
+    }
+    elements
+}
+
+fn parse_generic_operand_wrapper(
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Option<Expr> {
+    let first = tokens.first()?;
+    if matches!(first.kind, TokenKind::Hash) {
+        let inner = parse_expression_slice_or_error(&tokens[1..], end_span, end_token_text);
+        if matches!(inner, Expr::Error(_, _)) {
+            return Some(inner);
+        }
+        return Some(Expr::Immediate(
+            Box::new(inner),
+            Span {
+                line: first.span.line,
+                col_start: first.span.col_start,
+                col_end: tokens
+                    .last()
+                    .map(|token| token.span.col_end)
+                    .unwrap_or(first.span.col_end),
+            },
+        ));
+    }
+
+    if is_single_wrapped_operand(tokens, TokenKind::OpenParen, TokenKind::CloseParen) {
+        let close_span = tokens[tokens.len() - 1].span;
+        let span = Span {
+            line: first.span.line,
+            col_start: first.span.col_start,
+            col_end: close_span.col_end,
+        };
+        let inner_tokens = &tokens[1..tokens.len() - 1];
+        if contains_top_level_comma(inner_tokens) {
+            let elements = tuple_elements_from_tokens(inner_tokens, close_span, ")");
+            return Some(Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span));
+        }
+        let inner =
+            parse_expression_slice_or_error(inner_tokens, close_span, Some(")".to_string()));
+        return Some(Expr::Indirect(Box::new(inner), span));
+    }
+
+    if is_single_wrapped_operand(tokens, TokenKind::OpenBracket, TokenKind::CloseBracket) {
+        let close_span = tokens[tokens.len() - 1].span;
+        let span = Span {
+            line: first.span.line,
+            col_start: first.span.col_start,
+            col_end: close_span.col_end,
+        };
+        let inner_tokens = &tokens[1..tokens.len() - 1];
+        if contains_top_level_comma(inner_tokens) {
+            let elements = tuple_elements_from_tokens(inner_tokens, close_span, "]");
+            return Some(Expr::IndirectLong(
+                Box::new(Expr::Tuple(elements, span)),
+                span,
+            ));
+        }
+        let inner =
+            parse_expression_slice_or_error(inner_tokens, close_span, Some("]".to_string()));
+        return Some(Expr::IndirectLong(Box::new(inner), span));
+    }
+
+    None
+}
+
+fn top_level_group_closes_at_end(tokens: &[Token], open_index: usize) -> bool {
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(open_index) {
+        match token.kind {
+            TokenKind::OpenParen => depth = depth.saturating_add(1),
+            TokenKind::CloseParen => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return index == tokens.len() - 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn adjacent_top_level_open_paren_index(tokens: &[Token]) -> Option<usize> {
+    tokens.iter().enumerate().find_map(|(index, token)| {
+        if index == 0 || token.kind != TokenKind::OpenParen || !is_top_level_at(tokens, index) {
+            return None;
+        }
+        let prev = &tokens[index - 1];
+        (token.span.col_start == prev.span.col_end).then_some(index)
+    })
+}
+
+fn parse_m68k_postfix_tuple_operand(tokens: &[Token]) -> Option<Expr> {
+    let open_index = adjacent_top_level_open_paren_index(tokens)?;
+    if matches!(tokens[open_index - 1].kind, TokenKind::Colon)
+        || !top_level_group_closes_at_end(tokens, open_index)
+    {
+        return None;
+    }
+
+    let prefix_end_span = tokens[open_index].span;
+    let prefix = parse_expression_slice(
+        &tokens[..open_index],
+        prefix_end_span,
+        Some("(".to_string()),
+    )
+    .ok()?;
+    let close_span = tokens[tokens.len() - 1].span;
+    let mut elements = vec![prefix];
+    elements.extend(tuple_elements_from_tokens(
+        &tokens[open_index + 1..tokens.len() - 1],
+        close_span,
+        ")",
+    ));
+    let span = Span {
+        line: tokens[0].span.line,
+        col_start: tokens[0].span.col_start,
+        col_end: close_span.col_end,
+    };
+    Some(Expr::Indirect(Box::new(Expr::Tuple(elements, span)), span))
+}
+
+fn parse_m68k_postincrement_operand(tokens: &[Token]) -> Option<Expr> {
+    let plus = tokens.last()?;
+    if plus.kind != TokenKind::Operator(OperatorKind::Plus) {
+        return None;
+    }
+    let inner = parse_generic_operand_wrapper(
+        &tokens[..tokens.len() - 1],
+        plus.span,
+        Some("+".to_string()),
+    )?;
+    if !matches!(inner, Expr::Indirect(_, _)) {
+        return None;
+    }
+    let inner_span = span_of_expr(&inner);
+    Some(Expr::Unary {
+        op: UnaryOp::Plus,
+        expr: Box::new(inner),
+        span: Span {
+            line: inner_span.line,
+            col_start: inner_span.col_start,
+            col_end: plus.span.col_end,
+        },
+    })
+}
+
+fn parse_m68k_predecrement_operand(tokens: &[Token]) -> Option<Expr> {
+    let minus = tokens.first()?;
+    if minus.kind != TokenKind::Operator(OperatorKind::Minus) || tokens.len() < 3 {
+        return None;
+    }
+    let inner = parse_generic_operand_wrapper(&tokens[1..], minus.span, None)?;
+    if !matches!(inner, Expr::Indirect(_, _)) {
+        return None;
+    }
+    Some(Expr::Unary {
+        op: UnaryOp::Minus,
+        expr: Box::new(inner),
+        span: minus.span,
+    })
+}
+
+fn parse_statement_operand_base(
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Expr {
+    if tokens.is_empty() {
+        return Expr::Error("Expected expression".to_string(), end_span);
+    }
+    if let Some(expr) = parse_generic_operand_wrapper(tokens, end_span, end_token_text.clone()) {
+        return expr;
+    }
+    if let Some(expr) = parse_m68k_postincrement_operand(tokens) {
+        return expr;
+    }
+    if let Some(expr) = parse_m68k_predecrement_operand(tokens) {
+        return expr;
+    }
+    if let Some(expr) = parse_m68k_postfix_tuple_operand(tokens) {
+        return expr;
+    }
+    parse_expression_slice_or_error(tokens, end_span, end_token_text)
+}
+
+fn matching_top_level_brace_suffix(tokens: &[Token]) -> Option<usize> {
+    let open_index = find_top_level_token(tokens, TokenKind::OpenBrace)?;
+    if !matches!(
+        tokens.last(),
+        Some(Token {
+            kind: TokenKind::CloseBrace,
+            ..
+        })
+    ) {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (index, token) in tokens.iter().enumerate().skip(open_index) {
+        match token.kind {
+            TokenKind::OpenBrace => depth = depth.saturating_add(1),
+            TokenKind::CloseBrace => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return (index == tokens.len() - 1).then_some(open_index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_m68k_statement_operand_tokens(
+    tokens: &[Token],
+    end_span: Span,
+    end_token_text: Option<String>,
+    mnemonic: Option<&str>,
+    operand_index: usize,
+) -> Expr {
+    if (mnemonic.is_some_and(is_m68k_cas2_mnemonic) && operand_index <= 2)
+        || (mnemonic.is_some_and(is_m68k_long_divide_pair_mnemonic) && operand_index == 1)
+    {
+        if let Some(colon_index) = find_top_level_token(tokens, TokenKind::Colon) {
+            let colon_span = tokens[colon_index].span;
+            let left = parse_statement_operand_base(
+                &tokens[..colon_index],
+                colon_span,
+                Some(":".to_string()),
+            );
+            let right =
+                parse_statement_operand_base(&tokens[colon_index + 1..], end_span, end_token_text);
+            return build_call_expr(".pair", vec![left, right]);
+        }
+    }
+
+    if mnemonic.is_some_and(is_m68k_bitfield_mnemonic)
+        && mnemonic.is_some_and(|name| is_m68k_bitfield_operand(name, operand_index))
+    {
+        if let Some(open_index) = matching_top_level_brace_suffix(tokens) {
+            let close_span = tokens[tokens.len() - 1].span;
+            if let Some(colon_index) =
+                find_top_level_token(&tokens[open_index + 1..tokens.len() - 1], TokenKind::Colon)
+            {
+                let colon_index = open_index + 1 + colon_index;
+                let base = parse_statement_operand_base(
+                    &tokens[..open_index],
+                    tokens[open_index].span,
+                    Some("{".to_string()),
+                );
+                let offset = parse_expression_slice_or_error(
+                    &tokens[open_index + 1..colon_index],
+                    tokens[colon_index].span,
+                    Some(":".to_string()),
+                );
+                let width = parse_expression_slice_or_error(
+                    &tokens[colon_index + 1..tokens.len() - 1],
+                    close_span,
+                    Some("}".to_string()),
+                );
+                return build_call_expr(".bitfield", vec![base, offset, width]);
+            }
+            return Expr::Error("Expected ':' in bit-field selector".to_string(), close_span);
+        }
+    }
+
+    parse_statement_operand_base(tokens, end_span, end_token_text)
+}
+
+fn take_statement_operand_tokens(parser: &mut Parser) -> (Vec<Token>, Span, Option<String>) {
+    let start = parser.index;
+    let mut end = parser.tokens.len();
+    for index in start..parser.tokens.len() {
+        if parser.tokens[index].kind == TokenKind::Comma
+            && token_depths_before(&parser.tokens[start..=index], index - start) == (0, 0, 0)
+        {
+            end = index;
+            break;
+        }
+    }
+    let end_span = parser
+        .tokens
+        .get(end)
+        .map(|token| token.span)
+        .unwrap_or(parser.end_span);
+    let end_token_text = parser
+        .tokens
+        .get(end)
+        .and_then(|token| (token.kind == TokenKind::Comma).then(|| ",".to_string()));
+    let tokens = parser.tokens[start..end].to_vec();
+    parser.index = end;
+    (tokens, end_span, end_token_text)
+}
+
 fn parse_m68k_statement_operand(
     parser: &mut Parser,
     mnemonic: Option<&str>,
     operand_index: usize,
 ) -> Result<Expr, ParseError> {
-    let mut expr = parser.parse_expr()?;
-
-    if ((mnemonic.is_some_and(is_m68k_cas2_mnemonic) && operand_index <= 2)
-        || (mnemonic.is_some_and(is_m68k_long_divide_pair_mnemonic) && operand_index == 1))
-        && parser.consume_kind(TokenKind::Colon)
-    {
-        let right = parser.parse_expr()?;
-        expr = build_call_expr(".pair", vec![expr, right]);
-    }
-
-    if mnemonic.is_some_and(is_m68k_bitfield_mnemonic)
-        && mnemonic.is_some_and(|name| is_m68k_bitfield_operand(name, operand_index))
-        && parser.consume_kind(TokenKind::OpenBrace)
-    {
-        let offset = parser.parse_expr()?;
-        if !parser.consume_kind(TokenKind::Colon) {
-            return Err(ParseError {
-                message: "Expected ':' in bit-field selector".to_string(),
-                span: parser.current_span(),
-            });
-        }
-        let width = parser.parse_expr()?;
-        if !parser.consume_kind(TokenKind::CloseBrace) {
-            return Err(ParseError {
-                message: "Missing '}' in bit-field selector".to_string(),
-                span: parser.current_span(),
-            });
-        }
-        expr = build_call_expr(".bitfield", vec![expr, offset, width]);
-    }
-
-    Ok(expr)
+    let (tokens, end_span, end_token_text) = take_statement_operand_tokens(parser);
+    Ok(parse_m68k_statement_operand_tokens(
+        &tokens,
+        end_span,
+        end_token_text,
+        mnemonic,
+        operand_index,
+    ))
 }
 
 pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, ParseError> {
@@ -322,26 +705,32 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
             "ENDMATCH" => (ConditionalKind::EndSwitch, false, false),
             _ => {
                 let mut operands = Vec::new();
+                let mnemonic = Some(format!(".{name}"));
                 if parser.index < parser.tokens.len() {
-                    match parser.parse_expr() {
+                    match parse_m68k_statement_operand(parser, mnemonic.as_deref(), operands.len())
+                    {
                         Ok(expr) => operands.push(expr),
                         Err(err) => {
                             operands.push(Expr::Error(err.message, err.span));
                             return Ok(LineAst::Statement(StatementAst {
                                 label,
-                                mnemonic: Some(format!(".{name}")),
+                                mnemonic,
                                 operands,
                             }));
                         }
                     }
                     while parser.consume_comma() {
-                        match parser.parse_expr() {
+                        match parse_m68k_statement_operand(
+                            parser,
+                            mnemonic.as_deref(),
+                            operands.len(),
+                        ) {
                             Ok(expr) => operands.push(expr),
                             Err(err) => {
                                 operands.push(Expr::Error(err.message, err.span));
                                 return Ok(LineAst::Statement(StatementAst {
                                     label,
-                                    mnemonic: Some(format!(".{name}")),
+                                    mnemonic,
                                     operands,
                                 }));
                             }
@@ -356,7 +745,7 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
                 }
                 return Ok(LineAst::Statement(StatementAst {
                     label,
-                    mnemonic: Some(format!(".{name}")),
+                    mnemonic,
                     operands,
                 }));
             }

@@ -332,7 +332,7 @@ continues.
       parser delegation.
     - Call and placeholder expressions remain out of covered `EXVM` grammar.
 
-- [ ] Item 7 - Add range and list expression nodes
+- [x] Item 7 - Add range and list expression nodes
   - Source requirement or finding IDs: User follow-up request that ranges and
     lists are part of the covered `EXVM` expression grammar.
   - Validation: See Full quality gates for this item.

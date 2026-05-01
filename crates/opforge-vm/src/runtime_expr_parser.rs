@@ -157,10 +157,10 @@ impl ExvmScalarExpressionParser {
     }
 
     fn parse_bit_and(&mut self) -> Result<Expr, ParseError> {
-        let mut node = self.parse_compare()?;
+        let mut node = self.parse_range()?;
         while self.match_operator(OperatorKind::BitAnd) {
             let op_span = self.prev_span();
-            let right = self.parse_compare()?;
+            let right = self.parse_range()?;
             node = Expr::Binary {
                 op: BinaryOp::BitAnd,
                 left: Box::new(node),
@@ -169,6 +169,36 @@ impl ExvmScalarExpressionParser {
             };
         }
         Ok(node)
+    }
+
+    fn parse_range(&mut self) -> Result<Expr, ParseError> {
+        let start = self.parse_compare()?;
+        let (inclusive, op_span) = match self.peek_operator_kind() {
+            Some(OperatorKind::Range) => {
+                self.index += 1;
+                (false, self.prev_span())
+            }
+            Some(OperatorKind::RangeInclusive) => {
+                self.index += 1;
+                (true, self.prev_span())
+            }
+            _ => return Ok(start),
+        };
+
+        let end = self.parse_compare()?;
+        let step = if self.consume_kind(TokenKind::Colon) {
+            Some(Box::new(self.parse_compare()?))
+        } else {
+            None
+        };
+
+        Ok(Expr::Range {
+            start: Box::new(start),
+            end: Box::new(end),
+            step,
+            inclusive,
+            span: op_span,
+        })
     }
 
     fn parse_compare(&mut self) -> Result<Expr, ParseError> {
@@ -307,10 +337,6 @@ impl ExvmScalarExpressionParser {
                 span,
             })
             | Some(Token {
-                kind: TokenKind::OpenBrace,
-                span,
-            })
-            | Some(Token {
                 kind: TokenKind::Question,
                 span,
             })
@@ -361,6 +387,33 @@ impl ExvmScalarExpressionParser {
                     }
                     Ok(expr)
                 }
+            }
+            Some(Token {
+                kind: TokenKind::OpenBrace,
+                span: open_span,
+            }) => {
+                let mut elements = Vec::new();
+                if !self.consume_kind(TokenKind::CloseBrace) {
+                    elements.push(self.parse_expr()?);
+                    while self.consume_comma() {
+                        elements.push(self.parse_expr()?);
+                    }
+                    if !self.consume_kind(TokenKind::CloseBrace) {
+                        return Err(ParseError {
+                            message: "Missing '}' in list literal".to_string(),
+                            span: self.current_span(),
+                        });
+                    }
+                }
+                let close_span = self.prev_span();
+                Ok(Expr::List(
+                    elements,
+                    Span {
+                        line: open_span.line,
+                        col_start: open_span.col_start,
+                        col_end: close_span.col_end,
+                    },
+                ))
             }
             Some(token) => Err(ParseError {
                 message: "Unexpected token in expression".to_string(),

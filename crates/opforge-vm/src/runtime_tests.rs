@@ -2181,6 +2181,21 @@ const EXVM_TERNARY_CONTRACT_CORPUS: &[(&str, &str)] = &[
     ),
 ];
 
+const EXVM_RANGE_LIST_CONTRACT_CORPUS: &[(&str, &str)] = &[
+    ("1..4:2", "Range(exclusive,Number,Number,Number)"),
+    ("1..=4", "Range(inclusive,Number,Number,None)"),
+    (
+        "start + 1..end - 1:step + 1",
+        "Range(exclusive,Binary(Add,Identifier,Number),Binary(Subtract,Identifier,Number),Binary(Add,Identifier,Number))",
+    ),
+    ("{}", "List()"),
+    ("{1,2,label}", "List(Number,Number,Identifier)"),
+    (
+        "{1..4, flag ? 2 : 3, value + 1}",
+        "List(Range(exclusive,Number,Number,None),Ternary(Identifier,Number,Number),Binary(Add,Identifier,Number))",
+    ),
+];
+
 fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
     let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
     let token_count = tokens.len();
@@ -2448,17 +2463,53 @@ fn exvm_ternary_parser_keeps_calls_and_placeholders_out_of_strict_grammar() {
 }
 
 #[test]
-fn exvm_ternary_parser_keeps_range_grammar_on_compatibility_path_until_item7() {
-    let strict_err = parse_exvm_scalar_strict("1..4")
-        .expect_err("strict EXVM ternary parser should not own range grammar yet");
+fn exvm_range_list_parser_owns_nodes_with_core_failpoint() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(true));
+
+    for (source, expected_shape) in EXVM_RANGE_LIST_CONTRACT_CORPUS {
+        let expr = parse_exvm_scalar_strict(source)
+            .unwrap_or_else(|err| panic!("strict EXVM range/list parse {source}: {}", err.message));
+
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "strict EXVM range/list expression shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_range_list_parser_preserves_malformed_diagnostics() {
+    let list_err = parse_exvm_scalar_strict("{1,2")
+        .expect_err("strict EXVM list parser should reject missing close brace");
+    assert_eq!(list_err.message, "Missing '}' in list literal");
+
+    let range_err = parse_exvm_scalar_strict("1..")
+        .expect_err("strict EXVM range parser should reject missing range end");
+    assert_eq!(range_err.message, "Unexpected end of expression");
+}
+
+#[test]
+fn exvm_range_list_parser_keeps_structs_on_compatibility_path_until_item8() {
+    let strict_err = parse_exvm_scalar_strict("Point{x:1}")
+        .expect_err("strict EXVM range/list parser should not own struct literals yet");
     assert_eq!(strict_err.message, "Unexpected trailing tokens");
 
-    let (tokens, end_span) = tokenize_core_expr_tokens("1..4", 1);
+    let (tokens, end_span) = tokenize_core_expr_tokens("Point{x:1}", 1);
     let expr = parse_expression_tokens(tokens, end_span, None)
-        .expect("default EXVM path should retain range compatibility until Item 7");
+        .expect("default EXVM path should retain struct compatibility until Item 8");
     assert_eq!(
         expression_contract_shape(&expr),
-        "Range(exclusive,Number,Number,None)"
+        "StructLiteral(Point,x:Number)"
     );
 }
 

@@ -1974,6 +1974,275 @@ fn execution_model_parse_expression_for_assembler_rejects_trailing_operator() {
     );
 }
 
+fn expression_contract_shape(expr: &Expr) -> String {
+    match expr {
+        Expr::Number(_, _) => "Number".to_string(),
+        Expr::Identifier(_, _) => "Identifier".to_string(),
+        Expr::Register(_, _) => "Register".to_string(),
+        Expr::List(elements, _) => format!(
+            "List({})",
+            elements
+                .iter()
+                .map(expression_contract_shape)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Expr::Index { base, index, .. } => format!(
+            "Index({},{})",
+            expression_contract_shape(base),
+            expression_contract_shape(index)
+        ),
+        Expr::Member { base, field, .. } => {
+            format!("Member({},{})", expression_contract_shape(base), field)
+        }
+        Expr::StructLiteral {
+            type_name, fields, ..
+        } => format!(
+            "StructLiteral({},{})",
+            type_name,
+            fields
+                .iter()
+                .map(|(field_name, field_expr)| {
+                    format!("{}:{}", field_name, expression_contract_shape(field_expr))
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Expr::Call { name, args, .. } => format!(
+            "Call({},{})",
+            name,
+            args.iter()
+                .map(expression_contract_shape)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Expr::Placeholder(_) => "Placeholder".to_string(),
+        Expr::Indirect(inner_expr, _) => {
+            format!("Indirect({})", expression_contract_shape(inner_expr))
+        }
+        Expr::Immediate(inner_expr, _) => {
+            format!("Immediate({})", expression_contract_shape(inner_expr))
+        }
+        Expr::IndirectLong(inner_expr, _) => {
+            format!("IndirectLong({})", expression_contract_shape(inner_expr))
+        }
+        Expr::Tuple(elements, _) => format!(
+            "Tuple({})",
+            elements
+                .iter()
+                .map(expression_contract_shape)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        Expr::Dollar(_) => "Dollar".to_string(),
+        Expr::String(_, _) => "String".to_string(),
+        Expr::Error(_, _) => "Error".to_string(),
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+            ..
+        } => format!(
+            "Ternary({},{},{})",
+            expression_contract_shape(cond),
+            expression_contract_shape(then_expr),
+            expression_contract_shape(else_expr)
+        ),
+        Expr::Unary {
+            op,
+            expr: inner_expr,
+            ..
+        } => format!("Unary({op:?},{})", expression_contract_shape(inner_expr)),
+        Expr::Binary {
+            op, left, right, ..
+        } => format!(
+            "Binary({op:?},{},{})",
+            expression_contract_shape(left),
+            expression_contract_shape(right)
+        ),
+        Expr::Range {
+            start,
+            end,
+            step,
+            inclusive,
+            ..
+        } => format!(
+            "Range({},{},{},{})",
+            if *inclusive { "inclusive" } else { "exclusive" },
+            expression_contract_shape(start),
+            expression_contract_shape(end),
+            step.as_ref()
+                .map(|step_expr| expression_contract_shape(step_expr))
+                .unwrap_or_else(|| "None".to_string())
+        ),
+    }
+}
+
+const EXVM_COVERED_EXPRESSION_CONTRACT_CORPUS: &[(&str, &str)] = &[
+    ("42", "Number"),
+    ("\"ok\"", "String"),
+    ("label", "Identifier"),
+    ("$", "Dollar"),
+    (
+        "(1+2)*3",
+        "Binary(Multiply,Binary(Add,Number,Number),Number)",
+    ),
+    ("<addr", "Unary(Low,Identifier)"),
+    (">addr", "Unary(High,Identifier)"),
+    (
+        "~mask && !flag",
+        "Binary(LogicAnd,Unary(BitNot,Identifier),Unary(LogicNot,Identifier))",
+    ),
+    (
+        "1 + 2 * 3 ** 4",
+        "Binary(Add,Number,Binary(Multiply,Number,Binary(Power,Number,Number)))",
+    ),
+    (
+        "1 << 2 == 4 || 0",
+        "Binary(LogicOr,Binary(Eq,Binary(Shl,Number,Number),Number),Number)",
+    ),
+    ("a ? b : c", "Ternary(Identifier,Identifier,Identifier)"),
+    ("1..4:2", "Range(exclusive,Number,Number,Number)"),
+    ("1..=4", "Range(inclusive,Number,Number,None)"),
+    ("{1,2,label}", "List(Number,Number,Identifier)"),
+    ("Point{x:1,y:2}", "StructLiteral(Point,x:Number,y:Number)"),
+    ("arr[2].len", "Member(Index(Identifier,Number),len)"),
+];
+
+#[test]
+fn runtime_expression_parser_locks_covered_exvm_expression_corpus_directly() {
+    for (source, expected_shape) in EXVM_COVERED_EXPRESSION_CONTRACT_CORPUS {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let expr = parse_expression_tokens(tokens, end_span, None)
+            .unwrap_or_else(|err| panic!("parse covered expression {source}: {}", err.message));
+
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "covered EXVM expression shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn execution_model_parse_expression_for_assembler_locks_exvm_contract_corpus() {
+    let registry = mos6502_family_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+
+    for (source, expected_shape) in EXVM_COVERED_EXPRESSION_CONTRACT_CORPUS {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let expr = model
+            .parse_expression_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!("parse EXVM contract expression {source}: {}", err.message)
+            });
+
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "assembler EXVM contract expression shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn runtime_expression_parser_locks_malformed_covered_expression_diagnostics() {
+    let cases = [
+        ("(1+2", "Missing ')'"),
+        ("1 ? 2", "Missing ':' in conditional expression"),
+        ("{1,2", "Missing '}' in list literal"),
+        (
+            "Point{x 1}",
+            "Expected ':' after field name in struct literal",
+        ),
+        ("Point{x:1", "Missing '}' in struct literal"),
+        ("arr[2", "Missing ']' in index expression"),
+        ("arr[2].", "Expected member name after '.'"),
+        ("1..", "Unexpected end of expression"),
+    ];
+
+    for (source, expected_message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let err = parse_expression_tokens(tokens, end_span, None)
+            .expect_err("malformed covered expression should fail");
+
+        assert_eq!(
+            err.message, expected_message,
+            "malformed covered EXVM diagnostic changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn runtime_expression_parser_locks_operand_shape_guardrail_rejections() {
+    let cases = [
+        ("#1", "Unexpected token in expression"),
+        ("[$20,X]", "Unexpected token in expression"),
+        ("(A0,D0)", "Unexpected token in expression"),
+        ("4(A0,D1.W)", "Unexpected trailing tokens"),
+        ("(A0)+", "Unexpected end of expression"),
+        ("D0:D1", "Unexpected trailing tokens"),
+        ("D0{0:3}", "Expected field name in struct literal"),
+    ];
+
+    for (source, expected_message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let err = parse_expression_tokens(tokens, end_span, None)
+            .expect_err("operand-shape guardrail should reject expression parsing");
+
+        assert_eq!(
+            err.message, expected_message,
+            "operand-shape guardrail changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn runtime_expression_parser_locks_predecrement_tokens_as_math_unary_not_operand_shape() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("-(A0)", 1);
+    let expr = parse_expression_tokens(tokens, end_span, None)
+        .expect("predecrement token sequence should remain math-unary compatible");
+
+    assert_eq!(expression_contract_shape(&expr), "Unary(Minus,Identifier)");
+}
+
+#[test]
+fn runtime_expression_parser_locks_out_of_scope_call_and_placeholder_compatibility() {
+    let cases = [
+        (
+            "?",
+            "Placeholder",
+            "Placeholder cannot be evaluated as scalar expression",
+        ),
+        (
+            ".pick({1,2},?)",
+            "Call(.pick,List(Number,Number),Placeholder)",
+            "Call expression cannot be evaluated as scalar expression",
+        ),
+    ];
+
+    for (source, expected_shape, expected_compile_message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let expr = parse_expression_tokens(tokens, end_span, None).unwrap_or_else(|err| {
+            panic!(
+                "parse out-of-scope compatibility expression {source}: {}",
+                err.message
+            )
+        });
+
+        assert_eq!(
+            expression_contract_shape(&expr),
+            expected_shape,
+            "out-of-scope compatibility shape changed for {source}"
+        );
+
+        let err = compile_core_expr_to_portable_program(&expr)
+            .expect_err("out-of-scope compatibility expression should reject scalar compilation");
+        assert_eq!(err.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
+        assert_eq!(err.message, expected_compile_message);
+    }
+}
+
 #[test]
 fn runtime_expression_parser_rejects_missing_ternary_colon_directly() {
     let (tokens, end_span) = tokenize_core_expr_tokens("1 ? 2", 1);

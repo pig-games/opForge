@@ -378,6 +378,8 @@ Rollout and use in assembler path: [`crates/opforge-vm/src/vm_opcore.rs#L315-L52
 
 In the current codebase, this VM is mostly a contract/versioned control point around expression parsing rollout. The actual token-to-expression parsing still goes through `RuntimeExpressionParser` when the VM parser path is enabled: [`crates/opforge-vm/src/vm_opcore.rs#L63-L72`](../crates/opforge-vm/src/vm_opcore.rs#L63-L72)
 
+The covered `EXVM` grammar is operand-shape-free expression syntax: literals, symbols, grouping, unary and binary operators, ternaries, ranges, lists, struct literals, member access, and index access. CPU-family operand wrappers such as immediates, m68k tuple/postincrement/predecrement forms, register pairs, bitfield suffixes, and long-indirect bracket forms remain owned by PRVM/opasm operand handling. Calls and placeholders are current parser compatibility behavior, but they are not part of the covered `EXVM` grammar for the active expression-VM implementation plan.
+
 ### 6.4 Portable Expression Evaluator VM (`EXPR`)
 
 Definition and opcode table: [`crates/opforge-core/src/expr_vm.rs#L11-L128`](../crates/opforge-core/src/expr_vm.rs#L11-L128)  

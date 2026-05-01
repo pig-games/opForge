@@ -154,7 +154,7 @@ continues.
       allocation map for later `EXVM` behavior work.
     - Expression parsing behavior is unchanged.
 
-- [ ] Item 2 - Lock the `EXVM` expression contract and guardrail corpus
+- [x] Item 2 - Lock the `EXVM` expression contract and guardrail corpus
   - Source requirement or finding IDs: User scope requirement that expression
     handling is VM-owned but excludes asm operand shapes.
   - Validation: See Full quality gates for this item.
@@ -545,7 +545,7 @@ continues.
     round-trip compatibility for the new chunk name, and expression behavior is
     unchanged.
 
-- [ ] Milestone 2 - Contract guardrails locked
+- [x] Milestone 2 - Contract guardrails locked
   - Includes Work item 2.
   - Done when the expression corpus and operand-shape negative corpus are in
     place before parser ownership changes.

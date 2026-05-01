@@ -39,6 +39,7 @@ pub(crate) struct ExvmExecutionBudgets {
     pub max_token_count: usize,
     pub max_stack_depth: usize,
     pub allow_delegate_core: bool,
+    pub allow_legacy_expression_parser: bool,
 }
 
 impl ExvmExecutionBudgets {
@@ -48,6 +49,7 @@ impl ExvmExecutionBudgets {
             max_token_count: token_count,
             max_stack_depth: 1,
             allow_delegate_core: false,
+            allow_legacy_expression_parser: true,
         }
     }
 }
@@ -168,13 +170,25 @@ pub(crate) fn run_exvm_expression_parser_program(
                         span: end_span,
                     });
                 }
-                let expr = crate::runtime_expr_parser::RuntimeExpressionParser::new(
-                    tokens.clone(),
-                    end_span,
-                    end_token_text.clone(),
-                )
-                .parse_expr_from_tokens()?;
-                output_stack.push(expr);
+                let scalar_result =
+                    crate::runtime_expr_parser::parse_exvm_scalar_expression_tokens(
+                        tokens.clone(),
+                        end_span,
+                        end_token_text.clone(),
+                    )
+                    .or_else(|err| {
+                        if budgets.allow_legacy_expression_parser {
+                            crate::runtime_expr_parser::RuntimeExpressionParser::new(
+                                tokens.clone(),
+                                end_span,
+                                end_token_text.clone(),
+                            )
+                            .parse_expr_from_tokens()
+                        } else {
+                            Err(err)
+                        }
+                    })?;
+                output_stack.push(scalar_result);
             }
             package::ExvmOpcode::EmitDiag => {
                 return Err(ParseError {

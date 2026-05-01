@@ -234,7 +234,7 @@ continues.
     - Existing expression parsing still passes through the old behavior unless
       the Item 4 happy path is explicitly selected.
 
-- [ ] Item 4 - Implement scalar literals, identifiers, grouping, unary operators, and core arithmetic
+- [x] Item 4 - Implement scalar literals, identifiers, grouping, unary operators, and core arithmetic
   - Source requirement or finding IDs: First production slice of VM-owned
     mathematical expression parsing.
   - Validation: See Full quality gates for this item.
@@ -550,7 +550,7 @@ continues.
   - Done when the expression corpus and operand-shape negative corpus are in
     place before parser ownership changes.
 
-- [ ] Milestone 3 - Minimal deterministic `EXVM` parser path exists
+- [x] Milestone 3 - Minimal deterministic `EXVM` parser path exists
   - Includes Work items 3 and 4.
   - Done when `EXVM` owns scalar/core arithmetic parsing without direct core
     parser delegation.

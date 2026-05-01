@@ -31,8 +31,8 @@ use families::{
 };
 use opcore::expr_vm::compile_core_expr_to_portable_program;
 use opcore::parser::{
-    AssignOp, BinaryOp, Expr, Label, LineAst, SignatureAtom, StatementSignature, UnaryOp, UseItem,
-    UseParam,
+    AssignOp, BinaryOp, Expr, Label, LineAst, ParseError, SignatureAtom, StatementSignature,
+    UnaryOp, UseItem, UseParam,
 };
 use opcore::tokenizer::{ConditionalKind, Span, Token, TokenKind, Tokenizer};
 use package::{
@@ -2109,6 +2109,53 @@ const EXVM_COVERED_EXPRESSION_CONTRACT_CORPUS: &[(&str, &str)] = &[
     ("arr[2].len", "Member(Index(Identifier,Number),len)"),
 ];
 
+const EXVM_SCALAR_ARITHMETIC_CONTRACT_CORPUS: &[(&str, &str)] = &[
+    ("42", "Number"),
+    ("\"ok\"", "String"),
+    ("label", "Identifier"),
+    ("$", "Dollar"),
+    (
+        "(1+2)*3",
+        "Binary(Multiply,Binary(Add,Number,Number),Number)",
+    ),
+    ("+value", "Unary(Plus,Identifier)"),
+    ("-value", "Unary(Minus,Identifier)"),
+    ("<addr", "Unary(Low,Identifier)"),
+    (">addr", "Unary(High,Identifier)"),
+    ("~mask", "Unary(BitNot,Identifier)"),
+    ("!flag", "Unary(LogicNot,Identifier)"),
+    (
+        "1 + 2 * 3 ** 4",
+        "Binary(Add,Number,Binary(Multiply,Number,Binary(Power,Number,Number)))",
+    ),
+    (
+        "2 ** 3 ** 2",
+        "Binary(Power,Number,Binary(Power,Number,Number))",
+    ),
+    (
+        "9 / 3 + 7 % 4",
+        "Binary(Add,Binary(Divide,Number,Number),Binary(Mod,Number,Number))",
+    ),
+];
+
+fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
+    let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+    let token_count = tokens.len();
+    run_exvm_expression_parser_program(
+        tokens,
+        end_span,
+        None,
+        &[
+            package::ExvmOpcode::ParseExpression as u8,
+            package::ExvmOpcode::End as u8,
+        ],
+        ExvmExecutionBudgets {
+            allow_legacy_expression_parser: false,
+            ..ExvmExecutionBudgets::for_tokens(token_count)
+        },
+    )
+}
+
 #[test]
 fn runtime_expression_parser_locks_covered_exvm_expression_corpus_directly() {
     for (source, expected_shape) in EXVM_COVERED_EXPRESSION_CONTRACT_CORPUS {
@@ -2265,6 +2312,46 @@ fn exvm_interpreter_default_program_parses_expression() {
 }
 
 #[test]
+fn exvm_scalar_parser_owns_core_arithmetic_with_core_failpoint() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(true));
+
+    for (source, expected_shape) in EXVM_SCALAR_ARITHMETIC_CONTRACT_CORPUS {
+        let expr = parse_exvm_scalar_strict(source)
+            .unwrap_or_else(|err| panic!("strict EXVM scalar parse {source}: {}", err.message));
+
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "strict EXVM scalar expression shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_scalar_parser_keeps_not_yet_covered_grammar_on_compatibility_path() {
+    let strict_err = parse_exvm_scalar_strict("a ? b : c")
+        .expect_err("strict EXVM scalar parser should not own ternary grammar yet");
+    assert_eq!(strict_err.message, "Unexpected trailing tokens");
+
+    let (tokens, end_span) = tokenize_core_expr_tokens("a ? b : c", 1);
+    let expr = parse_expression_tokens(tokens, end_span, None)
+        .expect("default EXVM path should retain ternary compatibility");
+    assert_eq!(
+        expression_contract_shape(&expr),
+        "Ternary(Identifier,Identifier,Identifier)"
+    );
+}
+
+#[test]
 fn exvm_interpreter_rejects_reserved_opcode_byte() {
     let (tokens, end_span) = tokenize_core_expr_tokens("1", 1);
     let err = run_exvm_expression_parser_program(
@@ -2307,6 +2394,7 @@ fn exvm_interpreter_enforces_token_step_and_stack_budgets() {
             max_token_count: 0,
             max_stack_depth: 1,
             allow_delegate_core: false,
+            allow_legacy_expression_parser: true,
         },
     )
     .expect_err("EXVM token budget should fail");
@@ -2325,6 +2413,7 @@ fn exvm_interpreter_enforces_token_step_and_stack_budgets() {
             max_token_count: 1,
             max_stack_depth: 1,
             allow_delegate_core: false,
+            allow_legacy_expression_parser: true,
         },
     )
     .expect_err("EXVM step budget should fail");
@@ -2340,6 +2429,7 @@ fn exvm_interpreter_enforces_token_step_and_stack_budgets() {
             max_token_count: 1,
             max_stack_depth: 0,
             allow_delegate_core: false,
+            allow_legacy_expression_parser: true,
         },
     )
     .expect_err("EXVM output stack budget should fail");

@@ -229,7 +229,7 @@ and diagnostics should remain distinct.
     - No native CLI source, tests, or reference artifacts are changed by this
       incorporation item.
 
-- [ ] Work item 2: define native `.include` and preprocessor input-expansion records
+- [x] Work item 2: define native `.include` and preprocessor input-expansion records
   - Source requirement or finding IDs: user request to add `.include` support
     early because it is common in Amiga sources, while structuring the work for
     later preprocessor expansion.

@@ -734,17 +734,39 @@ opforgeNativeCliParseUseLine:
         SUBQ.L #4, D0
         BSR.W opforgeNativeCliSkipLineWhitespace
         LEA nativeCliArgToken, A1
-        BSR.W opforgeNativeCliCopyLineWord
-        TST.L D0
+        BSR.W opforgeNativeCliCopyUseToken
+        TST.L D1
         BNE.W opforgeNativeCliParseLineFail
         TST.B nativeCliArgToken
         BEQ.W opforgeNativeCliParseLineFail
-        MOVE.L #useFoundText, D1
-        BSR.W opforge_native_cli_put_str
-        MOVE.L #nativeCliArgToken, D1
-        BSR.W opforge_native_cli_put_str
-        MOVE.L #newlineText, D1
-        BSR.W opforge_native_cli_put_str
+        CLR.B nativeCliIncludeTarget
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        BSR.W opforgeNativeCliParseUseOptionalAlias
+        TST.L D1
+        BNE.W opforgeNativeCliParseLineFail
+        MOVE.L D0, D5
+        BSR.W opforgeNativeCliRecordImport
+        TST.L D0
+        BNE.W opforgeNativeCliParseLineFail
+        BSR.W opforgeNativeCliEmitImportRecord
+        MOVE.L D5, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.W opforgeNativeCliParseLineDone
+        CMPI.B #';', (A0)
+        BEQ.W opforgeNativeCliParseLineDone
+        CMPI.B #'(', (A0)
+        BNE.W opforgeNativeCliParseLineFail
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        BSR.W opforgeNativeCliParseUseItems
+        TST.L D1
+        BNE.W opforgeNativeCliParseLineFail
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.W opforgeNativeCliParseLineDone
+        CMPI.B #';', (A0)
+        BNE.W opforgeNativeCliParseLineFail
         BRA.W opforgeNativeCliParseLineDone
 
 opforgeNativeCliParseIncludeLine:
@@ -884,6 +906,170 @@ opforgeNativeCliCopyLineWordFail:
         MOVEQ #1, D0
         RTS
 
+opforgeNativeCliCopyUseToken:
+        MOVE.L #TOKEN_BUFFER_CAPACITY - 1, D6
+
+opforgeNativeCliCopyUseTokenLoop:
+        TST.L D0
+        BEQ.S opforgeNativeCliCopyUseTokenDone
+        MOVEQ #0, D2
+        MOVE.B (A0), D2
+        CMPI.B #' ', D2
+        BEQ.S opforgeNativeCliCopyUseTokenDone
+        CMPI.B #9, D2
+        BEQ.S opforgeNativeCliCopyUseTokenDone
+        CMPI.B #';', D2
+        BEQ.S opforgeNativeCliCopyUseTokenDone
+        CMPI.B #'(', D2
+        BEQ.S opforgeNativeCliCopyUseTokenDone
+        CMPI.B #')', D2
+        BEQ.S opforgeNativeCliCopyUseTokenDone
+        CMPI.B #',', D2
+        BEQ.S opforgeNativeCliCopyUseTokenDone
+        TST.L D6
+        BEQ.S opforgeNativeCliCopyUseTokenFail
+        MOVE.B D2, (A1)+
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        SUBQ.L #1, D6
+        BRA.S opforgeNativeCliCopyUseTokenLoop
+
+opforgeNativeCliCopyUseTokenDone:
+        CLR.B (A1)
+        MOVEQ #0, D1
+        RTS
+
+opforgeNativeCliCopyUseTokenFail:
+        CLR.B (A1)
+        MOVEQ #1, D1
+        RTS
+
+opforgeNativeCliParseUseOptionalAlias:
+        MOVEM.L D0/D6/A1, -(SP)
+        MOVE.L D0, D6
+        LEA asKeywordText, A1
+        MOVEQ #2, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BEQ.S opforgeNativeCliParseUseAliasNone
+        MOVE.L D6, D0
+        ADDQ.L #2, A0
+        SUBQ.L #2, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA nativeCliIncludeTarget, A1
+        BSR.W opforgeNativeCliCopyUseToken
+        TST.L D1
+        BNE.S opforgeNativeCliParseUseAliasFail
+        TST.B nativeCliIncludeTarget
+        BEQ.S opforgeNativeCliParseUseAliasFail
+        MOVEQ #0, D1
+        BRA.S opforgeNativeCliParseUseAliasReturn
+
+opforgeNativeCliParseUseAliasNone:
+        MOVE.L D6, D0
+        MOVEQ #0, D1
+        BRA.S opforgeNativeCliParseUseAliasReturn
+
+opforgeNativeCliParseUseAliasFail:
+        MOVEQ #1, D1
+
+opforgeNativeCliParseUseAliasReturn:
+        MOVEM.L (SP)+, D6/A1
+        ADDQ.L #4, SP
+        RTS
+
+opforgeNativeCliParseUseItems:
+        MOVE.W D4, D5
+        CLR.W D7
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.W opforgeNativeCliParseUseItemsFail
+        CMPI.B #')', (A0)
+        BEQ.W opforgeNativeCliParseUseItemsFail
+        CMPI.B #'*', (A0)
+        BEQ.W opforgeNativeCliParseUseWildcard
+
+opforgeNativeCliParseUseItemLoop:
+        LEA nativeCliArgToken, A1
+        BSR.W opforgeNativeCliCopyUseToken
+        TST.L D1
+        BNE.W opforgeNativeCliParseUseItemsFail
+        TST.B nativeCliArgToken
+        BEQ.W opforgeNativeCliParseUseItemsFail
+        CMPI.B #'*', nativeCliArgToken
+        BNE.S opforgeNativeCliParseUseItemNameOk
+        LEA nativeCliArgToken, A1
+        TST.B 1(A1)
+        BEQ.W opforgeNativeCliParseUseItemsFail
+
+opforgeNativeCliParseUseItemNameOk:
+        CLR.B nativeCliIncludeTarget
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        BSR.W opforgeNativeCliParseUseOptionalAlias
+        TST.L D1
+        BNE.W opforgeNativeCliParseUseItemsFail
+        MOVEQ #0, D3
+        TST.B nativeCliIncludeTarget
+        BEQ.S opforgeNativeCliParseUseItemNoAliasFlag
+        MOVEQ #1, D3
+
+opforgeNativeCliParseUseItemNoAliasFlag:
+        MOVE.L D0, -(SP)
+        MOVE.W D5, D4
+        BSR.W opforgeNativeCliRecordImportSelect
+        TST.L D0
+        BNE.W opforgeNativeCliParseUseItemsFailPop
+        BSR.W opforgeNativeCliEmitImportSelectRecord
+        MOVE.L (SP)+, D0
+        ADDQ.W #1, D7
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.W opforgeNativeCliParseUseItemsFail
+        CMPI.B #')', (A0)
+        BEQ.S opforgeNativeCliParseUseItemsClose
+        CMPI.B #',', (A0)
+        BNE.W opforgeNativeCliParseUseItemsFail
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        BRA.W opforgeNativeCliParseUseItemLoop
+
+opforgeNativeCliParseUseItemsClose:
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        MOVEQ #0, D1
+        RTS
+
+opforgeNativeCliParseUseWildcard:
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        MOVE.L D0, D6
+        LEA asKeywordText, A1
+        MOVEQ #2, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.S opforgeNativeCliParseUseItemsFail
+        MOVE.L D6, D0
+        TST.L D0
+        BEQ.S opforgeNativeCliParseUseItemsFail
+        CMPI.B #')', (A0)
+        BNE.S opforgeNativeCliParseUseItemsFail
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        MOVEQ #0, D3
+        MOVE.W D5, D4
+        BSR.W opforgeNativeCliEmitImportWildcardRecord
+        MOVEQ #0, D1
+        RTS
+
+opforgeNativeCliParseUseItemsFailPop:
+        ADDQ.L #4, SP
+
+opforgeNativeCliParseUseItemsFail:
+        MOVEQ #1, D1
+        RTS
+
 opforgeNativeCliRecordModule:
         MOVEM.L D1-D3/A0-A1, -(SP)
         MOVEQ #0, D0
@@ -933,6 +1119,214 @@ opforgeNativeCliRecordModuleFail:
 
 opforgeNativeCliRecordModuleReturn:
         MOVEM.L (SP)+, D1-D3/A0-A1
+        RTS
+
+opforgeNativeCliRecordImport:
+        MOVEM.L D1-D3/A0-A1, -(SP)
+        MOVEQ #0, D0
+        MOVE.W nativeCliImportCount, D0
+        CMPI.W #NATIVE_IMPORT_TABLE_CAPACITY, D0
+        BHS.W opforgeNativeCliRecordImportFail
+        MOVE.W D0, D4
+        MOVEQ #0, D1
+        MOVE.W D4, D1
+        ADD.W D1, D1
+        LEA nativeCliImportOwnerModuleTable, A1
+        MOVE.W nativeCliCurrentModuleId, 0(A1,D1.L)
+        LEA nativeCliImportModuleTable, A1
+        CLR.W 0(A1,D1.L)
+        LEA nativeCliImportFileIdTable, A1
+        MOVE.W #1, 0(A1,D1.L)
+
+        MOVEQ #0, D1
+        MOVE.W D4, D1
+        LSL.L #2, D1
+        LEA nativeCliImportLineTable, A1
+        MOVE.L nativeCliSourceLineNum, 0(A1,D1.L)
+
+        MOVEQ #0, D1
+        MOVE.W D4, D1
+        LSL.L #6, D1
+        LEA nativeCliImportAliasTable, A1
+        ADDA.L D1, A1
+        LEA nativeCliIncludeTarget, A0
+        BSR.W opforgeNativeCliCopyTokenBuffer
+
+        MOVE.W nativeCliImportCount, D0
+        ADDQ.W #1, D0
+        MOVE.W D0, nativeCliImportCount
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliRecordImportReturn
+
+opforgeNativeCliRecordImportFail:
+        MOVEQ #1, D0
+
+opforgeNativeCliRecordImportReturn:
+        MOVEM.L (SP)+, D1-D3/A0-A1
+        RTS
+
+opforgeNativeCliRecordImportSelect:
+        MOVEM.L D1-D3/A0-A1, -(SP)
+        MOVEQ #0, D0
+        MOVE.W nativeCliImportSelectCount, D0
+        CMPI.W #NATIVE_IMPORT_SELECT_CAPACITY, D0
+        BHS.W opforgeNativeCliRecordImportSelectFail
+        MOVE.W D0, D6
+        MOVEQ #0, D1
+        MOVE.W D6, D1
+        ADD.W D1, D1
+        LEA nativeCliImportSelectImportTable, A1
+        MOVE.W D4, 0(A1,D1.L)
+        LEA nativeCliImportSelectFlagsTable, A1
+        MOVE.W D3, 0(A1,D1.L)
+
+        MOVEQ #0, D1
+        MOVE.W D6, D1
+        LSL.L #6, D1
+        LEA nativeCliImportSelectNameTable, A1
+        ADDA.L D1, A1
+        LEA nativeCliArgToken, A0
+        BSR.W opforgeNativeCliCopyTokenBuffer
+
+        MOVEQ #0, D1
+        MOVE.W D6, D1
+        LSL.L #6, D1
+        LEA nativeCliImportSelectAliasTable, A1
+        ADDA.L D1, A1
+        LEA nativeCliIncludeTarget, A0
+        BSR.W opforgeNativeCliCopyTokenBuffer
+
+        MOVE.W nativeCliImportSelectCount, D0
+        ADDQ.W #1, D0
+        MOVE.W D0, nativeCliImportSelectCount
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliRecordImportSelectReturn
+
+opforgeNativeCliRecordImportSelectFail:
+        MOVEQ #1, D0
+
+opforgeNativeCliRecordImportSelectReturn:
+        MOVEM.L (SP)+, D1-D3/A0-A1
+        RTS
+
+opforgeNativeCliEmitImportRecord:
+        MOVEM.L D0-D4/A0-A1, -(SP)
+        MOVE.L #useImportText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        ADD.W D0, D0
+        LEA nativeCliImportOwnerModuleTable, A0
+        MOVE.W 0(A0,D0.L), D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        ADD.W D0, D0
+        LEA nativeCliImportModuleTable, A0
+        MOVE.W 0(A0,D0.L), D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        ADD.W D0, D0
+        LEA nativeCliImportFileIdTable, A0
+        MOVE.W 0(A0,D0.L), D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        LSL.L #2, D0
+        LEA nativeCliImportLineTable, A0
+        MOVE.L 0(A0,D0.L), D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        BSR.W opforgeNativeCliImportAliasPtr
+        BSR.W opforgeNativeCliTokenLen
+        MOVE.W D0, D3
+        BSR.W opforge_native_cli_put_dec_u16
+        TST.W D3
+        BEQ.S opforgeNativeCliEmitImportRecordNewline
+        BSR.W opforgeNativeCliPutSpace
+        BSR.W opforgeNativeCliImportAliasPtr
+        MOVE.L A0, D1
+        BSR.W opforge_native_cli_put_str
+
+opforgeNativeCliEmitImportRecordNewline:
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D0-D4/A0-A1
+        RTS
+
+opforgeNativeCliEmitImportSelectRecord:
+        MOVEM.L D0-D4/D6-D7/A0-A1, -(SP)
+        MOVE.L #useSelectText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        BSR.W opforgeNativeCliImportSelectNamePtr
+        BSR.W opforgeNativeCliTokenLen
+        MOVE.W D0, D3
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        BSR.W opforgeNativeCliImportSelectNamePtr
+        MOVE.L A0, D1
+        BSR.W opforge_native_cli_put_str
+        BSR.W opforgeNativeCliPutSpace
+
+        BSR.W opforgeNativeCliImportSelectAliasPtr
+        BSR.W opforgeNativeCliTokenLen
+        MOVE.W D0, D3
+        BSR.W opforge_native_cli_put_dec_u16
+        TST.W D3
+        BEQ.S opforgeNativeCliEmitImportSelectFlags
+        BSR.W opforgeNativeCliPutSpace
+        BSR.W opforgeNativeCliImportSelectAliasPtr
+        MOVE.L A0, D1
+        BSR.W opforge_native_cli_put_str
+
+opforgeNativeCliEmitImportSelectFlags:
+        BSR.W opforgeNativeCliPutSpace
+        MOVEQ #0, D0
+        MOVE.W D6, D0
+        ADD.W D0, D0
+        LEA nativeCliImportSelectFlagsTable, A0
+        MOVE.W 0(A0,D0.L), D0
+        BSR.W opforge_native_cli_put_dec_u16
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D0-D4/D6-D7/A0-A1
+        RTS
+
+opforgeNativeCliEmitImportWildcardRecord:
+        MOVEM.L D0-D4, -(SP)
+        MOVE.L #useWildcardText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVEQ #0, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D0-D4
         RTS
 
 opforgeNativeCliEmitModuleRecord:
@@ -1095,6 +1489,30 @@ opforgeNativeCliModuleNamePtr:
         MOVE.W D4, D0
         LSL.L #6, D0
         LEA nativeCliModuleNameTable, A0
+        ADDA.L D0, A0
+        RTS
+
+opforgeNativeCliImportAliasPtr:
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        LSL.L #6, D0
+        LEA nativeCliImportAliasTable, A0
+        ADDA.L D0, A0
+        RTS
+
+opforgeNativeCliImportSelectNamePtr:
+        MOVEQ #0, D0
+        MOVE.W D6, D0
+        LSL.L #6, D0
+        LEA nativeCliImportSelectNameTable, A0
+        ADDA.L D0, A0
+        RTS
+
+opforgeNativeCliImportSelectAliasPtr:
+        MOVEQ #0, D0
+        MOVE.W D6, D0
+        LSL.L #6, D0
+        LEA nativeCliImportSelectAliasTable, A0
         ADDA.L D0, A0
         RTS
 
@@ -2157,12 +2575,18 @@ modEndText:
         .byte "MOD-END ",0
 modPathText:
         .byte "MOD-PATH ",0
+useImportText:
+        .byte "USE-IMPORT ",0
+useSelectText:
+        .byte "USE-SELECT ",0
+useWildcardText:
+        .byte "USE-WILDCARD ",0
 moduleFoundText:
         .byte "MODULE ",0
-useFoundText:
-        .byte "USE ",0
 spaceText:
         .byte " ",0
+asKeywordText:
+        .byte "as"
 moduleDirectiveText:
         .byte ".module"
 endmoduleDirectiveText:
@@ -2203,6 +2627,9 @@ defaultFsUaeArgTail:
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE
         .byte "Work:opforge_fsuae_unterminated_module.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE
+        .byte "Work:opforge_fsuae_bad_use.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M",0
 .else
@@ -2210,6 +2637,7 @@ defaultFsUaeArgTail:
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8",0
 .else
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b",0
+.endif
 .endif
 .endif
 .endif

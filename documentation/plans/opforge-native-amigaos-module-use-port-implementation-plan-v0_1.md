@@ -152,7 +152,7 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
   - Detailed definition of done: native CLI records repeatable module roots in command
     order after the implicit input root.
 
-- [ ] Item 5: Replace print-only `.use` recognition with table-backed import
+- [x] Item 5: Replace print-only `.use` recognition with table-backed import
       records
   - Validation: focused native CLI host tests, reference gate, format check, and
     opt-in `.use` success/failure FS-UAE smoke when available.

@@ -9898,7 +9898,6 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPC-NCLI015: native conditional preprocessing not implemented"));
     assert!(source.contains("STATUS include-ok"));
     assert!(tokvm_source_contains(&source, ".byte \"MODULE \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"USE \",0"));
     assert!(tokvm_source_contains(
         &source,
         ".byte \"INCLUDE-ROOT 1 \",0"
@@ -9913,6 +9912,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW"));
     assert!(source.contains("opforge_native_cli_stage_package"));
@@ -9937,6 +9937,14 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliRecordImplicitModulePathRoot"));
     assert!(source.contains("opforgeNativeCliRecordModulePathValue"));
     assert!(source.contains("opforgeNativeCliEmitModulePathRecords"));
+    assert!(source.contains("opforgeNativeCliCopyUseToken"));
+    assert!(source.contains("opforgeNativeCliParseUseOptionalAlias"));
+    assert!(source.contains("opforgeNativeCliParseUseItems"));
+    assert!(source.contains("opforgeNativeCliRecordImport"));
+    assert!(source.contains("opforgeNativeCliRecordImportSelect"));
+    assert!(source.contains("opforgeNativeCliEmitImportRecord"));
+    assert!(source.contains("opforgeNativeCliEmitImportSelectRecord"));
+    assert!(source.contains("opforgeNativeCliEmitImportWildcardRecord"));
     assert!(source.contains("opforgeNativeCliTokenLen"));
     assert!(source_contains_in_order(
         &source,
@@ -10028,6 +10036,9 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(tokvm_source_contains(&source, ".byte \"MOD-DEF \",0"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-END \",0"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-PATH \",0"));
+    assert!(tokvm_source_contains(&source, ".byte \"USE-IMPORT \",0"));
+    assert!(tokvm_source_contains(&source, ".byte \"USE-SELECT \",0"));
+    assert!(tokvm_source_contains(&source, ".byte \"USE-WILDCARD \",0"));
     assert!(tokvm_source_contains(
         &source,
         ".byte \"ERROR OPC-NCLI016: native module depth mismatch\",10,0"
@@ -10068,6 +10079,11 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforgeNativeCliRecordImplicitModulePathRoot"));
     assert!(listing.contains("opforgeNativeCliRecordModulePathValue"));
     assert!(listing.contains("opforgeNativeCliEmitModulePathRecords"));
+    assert!(listing.contains("opforgeNativeCliRecordImport"));
+    assert!(listing.contains("opforgeNativeCliRecordImportSelect"));
+    assert!(listing.contains("opforgeNativeCliEmitImportRecord"));
+    assert!(listing.contains("opforgeNativeCliEmitImportSelectRecord"));
+    assert!(listing.contains("opforgeNativeCliEmitImportWildcardRecord"));
     assert!(listing.contains("opforgeNativeCliTokenLen"));
     assert!(listing.contains("opforgeNativeCliParseModuleLine"));
     assert!(listing.contains("opforgeNativeCliParseUseLine"));
@@ -10091,6 +10107,9 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("MOD-DEF"));
     assert!(listing.contains("MOD-END"));
     assert!(listing.contains("MOD-PATH"));
+    assert!(listing.contains("USE-IMPORT"));
+    assert!(listing.contains("USE-SELECT"));
+    assert!(listing.contains("USE-WILDCARD"));
     assert!(listing.contains("OPC-NCLI014"));
     assert!(listing.contains("OPC-NCLI015"));
     assert!(listing.contains("OPC-NCLI016"));
@@ -10142,9 +10161,21 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     );
     assert!(
         payload
-            .windows("USE ".len())
-            .any(|window| window == b"USE "),
-        "expected hard-coded use parser marker in Hunk payload"
+            .windows("USE-IMPORT ".len())
+            .any(|window| window == b"USE-IMPORT "),
+        "expected table-backed import marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("USE-SELECT ".len())
+            .any(|window| window == b"USE-SELECT "),
+        "expected table-backed import selection marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("USE-WILDCARD ".len())
+            .any(|window| window == b"USE-WILDCARD "),
+        "expected table-backed wildcard import marker in Hunk payload"
     );
     assert!(
         payload
@@ -25898,7 +25929,7 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("MOD-END 0 1 6 0"),
+                run.stdout.contains("MOD-END 0 1 9 0"),
                 "native opForge CLI did not report the table-backed .endmodule record\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -25922,8 +25953,38 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("USE math"),
-                "native opForge CLI did not report the smoke .use directive\nstdout:\n{}\nstderr:\n{}",
+                run.stdout.contains("USE-IMPORT 0 0 0 1 2 0"),
+                "native opForge CLI did not report the bare table-backed .use import\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("USE-IMPORT 1 0 0 1 3 1 m"),
+                "native opForge CLI did not report the aliased table-backed .use import\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("USE-IMPORT 2 0 0 1 4 0"),
+                "native opForge CLI did not report the selected-item import row\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("USE-SELECT 2 0 3 foo 1 f 1"),
+                "native opForge CLI did not report the selected-item alias row\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("USE-IMPORT 3 0 0 1 5 0"),
+                "native opForge CLI did not report the wildcard import row\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("USE-WILDCARD 3 0"),
+                "native opForge CLI did not report the wildcard item row\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
@@ -25964,13 +26025,13 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.b\")@4:1-7"),
+                run.stdout.contains("Identifier(\"move.b\")@7:1-7"),
                 "native opForge CLI did not emit tokenizer rows for the smoke source\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.w\")@5:1-7"),
+                run.stdout.contains("Identifier(\"move.w\")@8:1-7"),
                 "native opForge CLI did not emit tokenizer rows for the second smoke source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -26035,6 +26096,11 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
             name: "unterminated-module",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE",
             expected_diagnostic: "ERROR OPC-NCLI016: native module depth mismatch",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "bad-use",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE",
+            expected_diagnostic: "ERROR OPC-NCLI013: native module/use parser stage failed",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-module-path",

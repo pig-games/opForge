@@ -179,7 +179,7 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
   - Detailed definition of done: import summaries are emitted from table state and
     invalid import forms fail before emitter stage.
 
-- [ ] Item 6: Add first native module resolution slice
+- [x] Item 6: Add first native module resolution slice
   - Validation: focused native CLI host tests, reference gate, format check, and
     opt-in FS-UAE smoke using one `Work:` module dependency when available.
   - Definition of done: native CLI discovers and loads one external module file
@@ -196,7 +196,8 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
     a `Work:` module dependency when available.
   - Full quality gates: one `.use` dependency resolves through the native module
     path subset; missing module reports a deterministic diagnostic; ambiguous
-    module behavior is either implemented or explicitly deferred in the plan.
+    module behavior is explicitly deferred for this first slice, which uses the
+    first matching `<module-id>.asm` found in module path order.
   - Plan-compliance review evidence: run `plan-compliance-reviewer` before
     commit and record PASS.
   - Commit outcome: one commit adding the smallest working native module file

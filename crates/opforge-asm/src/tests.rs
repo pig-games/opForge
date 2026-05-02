@@ -9896,6 +9896,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPC-NCLI013: native module/use parser stage failed"));
     assert!(source.contains("OPC-NCLI014: native include expansion failed"));
     assert!(source.contains("OPC-NCLI015: native conditional preprocessing not implemented"));
+    assert!(source.contains("OPC-NCLI018: native module resolution failed"));
     assert!(source.contains("STATUS include-ok"));
     assert!(tokvm_source_contains(&source, ".byte \"MODULE \",0"));
     assert!(tokvm_source_contains(
@@ -9913,6 +9914,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW"));
     assert!(source.contains("opforge_native_cli_stage_package"));
@@ -9942,6 +9944,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliParseUseItems"));
     assert!(source.contains("opforgeNativeCliRecordImport"));
     assert!(source.contains("opforgeNativeCliRecordImportSelect"));
+    assert!(source.contains("opforgeNativeCliResolveBareUseModule"));
     assert!(source.contains("opforgeNativeCliEmitImportRecord"));
     assert!(source.contains("opforgeNativeCliEmitImportSelectRecord"));
     assert!(source.contains("opforgeNativeCliEmitImportWildcardRecord"));
@@ -10114,6 +10117,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("OPC-NCLI015"));
     assert!(listing.contains("OPC-NCLI016"));
     assert!(listing.contains("OPC-NCLI017"));
+    assert!(listing.contains("OPC-NCLI018"));
     assert!(listing.contains("emitter-not-implemented"));
 
     let payload_path = example_output_payload_path(&out_dir, "opforge_cli", "hunk");
@@ -25953,37 +25957,67 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("USE-IMPORT 0 0 0 1 2 0"),
+                run.stdout.contains("USE-IMPORT 0 0 1 1 2 0"),
                 "native opForge CLI did not report the bare table-backed .use import\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("USE-IMPORT 1 0 0 1 3 1 m"),
+                run.stdout.contains("MODULE math"),
+                "native opForge CLI did not report the resolved module .module directive\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("MOD-DEF 1 1 1 1 4 math"),
+                "native opForge CLI did not report the resolved module table record\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("MOD-END 1 1 4 1"),
+                "native opForge CLI did not report the resolved module end record\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("USE-IMPORT 1 1 0 1 2 0"),
+                "native opForge CLI did not keep nested bare .use resolution deferred\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                !run.stdout.contains("MODULE helper"),
+                "native opForge CLI unexpectedly resolved a nested bare .use during the Item 6 slice\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("USE-IMPORT 2 0 0 1 3 1 m"),
                 "native opForge CLI did not report the aliased table-backed .use import\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("USE-IMPORT 2 0 0 1 4 0"),
+                run.stdout.contains("USE-IMPORT 3 0 0 1 4 0"),
                 "native opForge CLI did not report the selected-item import row\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("USE-SELECT 2 0 3 foo 1 f 1"),
+                run.stdout.contains("USE-SELECT 3 0 3 foo 1 f 1"),
                 "native opForge CLI did not report the selected-item alias row\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("USE-IMPORT 3 0 0 1 5 0"),
+                run.stdout.contains("USE-IMPORT 4 0 0 1 5 0"),
                 "native opForge CLI did not report the wildcard import row\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("USE-WILDCARD 3 0"),
+                run.stdout.contains("USE-WILDCARD 4 0"),
                 "native opForge CLI did not report the wildcard item row\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -26021,6 +26055,12 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
             assert!(
                 run.stdout.contains("Identifier(\"move.l\")@1:1-7"),
                 "native opForge CLI did not tokenize the included source line\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("Identifier(\"move.l\")@3:1-7"),
+                "native opForge CLI did not tokenize the resolved module source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
@@ -26101,6 +26141,11 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
             name: "bad-use",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE",
             expected_diagnostic: "ERROR OPC-NCLI013: native module/use parser stage failed",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "missing-module",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE",
+            expected_diagnostic: "ERROR OPC-NCLI018: native module resolution failed: missing",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-module-path",

@@ -41,6 +41,12 @@ const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
     ".module main\n.use math\n.use math as m\n.use math(foo as f)\n.use math (*)\n.Include \"opforge_fsuae_include.inc\"\nmove.b d0,d1\nmove.w d2,d3\n.endmodule\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_FILE: &str = "math.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT: &str =
+    ".module math\n.use helper\nmove.l d6,d7\n.endmodule\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_FILE: &str = "helper.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT: &str =
+    ".module helper\nmoveq #0,d0\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE: &str = "opforge_fsuae_include.inc";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "move.l d4,d5\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE: &str =
@@ -51,6 +57,9 @@ const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_FILE: &str =
 const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_TEXT: &str = ".module main\nmove.b d0,d1\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_FILE: &str = "opforge_fsuae_bad_use.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_TEXT: &str = ".module main\n.use math ()\n.endmodule\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_FILE: &str = "opforge_fsuae_missing_module.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_TEXT: &str =
+    ".module main\n.use missing\n.endmodule\n";
 const FS_UAE_TKPKG_MANIFEST_FILE: &str = "opforge_fsuae_tkpkg_manifest.txt";
 const FS_UAE_TKPKG_MANIFEST_INPUT_DIR: &str = "opforge_fsuae_tkpkg_inputs";
 const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";
@@ -388,6 +397,16 @@ fn stage_example_guest_inputs(
         )?;
         stage_guest_input_bytes(
             mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_MODULE_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_TEXT.as_bytes(),
         )?;
@@ -400,6 +419,11 @@ fn stage_example_guest_inputs(
             mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_TEXT.as_bytes(),
         )?;
         let package_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH);
         let package_bytes = fs::read(&package_path)

@@ -40,7 +40,9 @@ const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
 const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
-    ".module main\n.use math\nmove.b d0,d1\nmove.w d2,d3\n";
+    ".module main\n.use math\n.Include \"opforge_fsuae_include.inc\"\nmove.b d0,d1\nmove.w d2,d3\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE: &str = "opforge_fsuae_include.inc";
+const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "move.l d4,d5\n";
 const FS_UAE_TKPKG_MANIFEST_FILE: &str = "opforge_fsuae_tkpkg_manifest.txt";
 const FS_UAE_TKPKG_MANIFEST_INPUT_DIR: &str = "opforge_fsuae_tkpkg_inputs";
 const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";
@@ -371,6 +373,11 @@ fn stage_example_guest_inputs(
 
     stage_guest_input_bytes(mounted_work_dir, relative_path, bytes)?;
     if example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME {
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT.as_bytes(),
+        )?;
         let package_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH);
         let package_bytes = fs::read(&package_path)
             .map_err(|err| format!("read package fixture {}: {err}", package_path.display()))?;

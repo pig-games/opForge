@@ -46,6 +46,7 @@ PATH_BUFFER_CAPACITY            = 256
 TOKEN_BUFFER_CAPACITY           = 64
 SOURCE_LINE_BUFFER_CAPACITY     = 512
 PACKAGE_INPUT_PTR_V1            = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
+NATIVE_INCLUDE_DEPTH_LIMIT      = 1
 
         .section entry, kind=code
 
@@ -300,6 +301,19 @@ opforgeNativeCliTokenizeReturn:
 
 opforge_native_cli_tokenize_file:
         LEA nativeCliInputPath, A0
+        LEA nativeCliCurrentPath, A1
+        BSR.W opforgeNativeCliCopyPathBuffer
+        TST.L D0
+        BNE.S opforgeNativeCliTokenizeFilePathFail
+        LEA nativeCliInputPath, A0
+        BSR.W opforge_native_cli_tokenize_file_at_path
+        RTS
+
+opforgeNativeCliTokenizeFilePathFail:
+        MOVEQ #1, D0
+        RTS
+
+opforge_native_cli_tokenize_file_at_path:
         BSR.W opforge_native_cli_open_input
         TST.L D0
         BNE.S opforgeNativeCliTokenizeFileOpenOk
@@ -476,6 +490,11 @@ opforgeNativeCliPreparePipelineHaveCpu:
         RTS
 
 opforge_native_cli_tokenize_current_line:
+        TST.W nativeCliIncludeDepth
+        BEQ.S opforgeNativeCliTokenizeCurrentLineNoIncludeRecord
+        BSR.W opforge_native_cli_emit_include_line_record
+
+opforgeNativeCliTokenizeCurrentLineNoIncludeRecord:
         LEA lastErrorBuffer, A2
         MOVE.L nativeCliSourceLineNum, D2
         MOVE.B D2, (A2)+
@@ -521,6 +540,25 @@ opforgeNativeCliTokenizeCurrentLineFail:
         MOVEQ #1, D0
         RTS
 
+opforge_native_cli_emit_include_line_record:
+        MOVEM.L D0-D1,-(SP)
+        MOVE.L #includeLineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.W nativeCliIncludeDepth, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        MOVE.L #spaceText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L nativeCliSourceLineNum, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        MOVE.L #spaceText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliCurrentPath, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+,D0-D1
+        RTS
+
 opforge_native_cli_parse_current_line:
         MOVEM.L D2-D7/A2-A4, -(SP)
         LEA nativeCliSourceLine, A0
@@ -532,6 +570,54 @@ opforge_native_cli_parse_current_line:
         MOVEA.L A0, A4
         MOVE.L D0, D7
 
+        LEA ifdefDirectiveText, A1
+        MOVEQ #6, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseConditionalLine
+
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
+        LEA ifndefDirectiveText, A1
+        MOVEQ #7, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseConditionalLine
+
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
+        LEA elseifDirectiveText, A1
+        MOVEQ #7, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseConditionalLine
+
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
+        LEA elseDirectiveText, A1
+        MOVEQ #5, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseConditionalLine
+
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
+        LEA endifDirectiveText, A1
+        MOVEQ #6, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseConditionalLine
+
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
+        LEA ifDirectiveText, A1
+        MOVEQ #3, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseConditionalLine
+
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
         LEA moduleDirectiveText, A1
         MOVEQ #7, D1
         BSR.W opforgeNativeCliLineStartsWith
@@ -546,8 +632,22 @@ opforge_native_cli_parse_current_line:
         TST.L D0
         BNE.W opforgeNativeCliParseUseLine
 
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
+        LEA includeDirectiveText, A1
+        MOVEQ #8, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseIncludeLine
+
 opforgeNativeCliParseLineDone:
         MOVEQ #0, D0
+        BRA.W opforgeNativeCliParseLineReturn
+
+opforgeNativeCliParseConditionalLine:
+        MOVE.L #conditionalFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #1, D0
         BRA.W opforgeNativeCliParseLineReturn
 
 opforgeNativeCliParseModuleLine:
@@ -594,6 +694,31 @@ opforgeNativeCliParseUseLine:
         BSR.W opforge_native_cli_put_str
         BRA.W opforgeNativeCliParseLineDone
 
+opforgeNativeCliParseIncludeLine:
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        ADDQ.L #8, A0
+        SUBQ.L #8, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA nativeCliIncludeTarget, A1
+        BSR.W opforgeNativeCliCopyIncludeTarget
+        TST.L D0
+        BNE.W opforgeNativeCliParseIncludeFail
+        TST.B nativeCliIncludeTarget
+        BEQ.W opforgeNativeCliParseIncludeFail
+        BSR.W opforge_native_cli_expand_include_target
+        TST.L D0
+        BNE.W opforgeNativeCliParseLineReturn
+        BRA.W opforgeNativeCliParseLineDone
+
+opforgeNativeCliParseIncludeFail:
+        MOVE.L #includeFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #1, D0
+        BRA.W opforgeNativeCliParseLineReturn
+
 opforgeNativeCliParseLineFail:
         MOVE.L #parserFailureText, D1
         BSR.W opforge_native_cli_put_str
@@ -630,7 +755,15 @@ opforgeNativeCliLineStartsWith:
 
 opforgeNativeCliLineStartsLoop:
         MOVE.B (A2)+, D3
-        CMP.B (A3)+, D3
+        MOVE.B (A3)+, D4
+        CMPI.B #'A', D3
+        BCS.S opforgeNativeCliLineStartsCompare
+        CMPI.B #'Z', D3
+        BHI.S opforgeNativeCliLineStartsCompare
+        ADDI.B #32, D3
+
+opforgeNativeCliLineStartsCompare:
+        CMP.B D4, D3
         BNE.S opforgeNativeCliLineStartsNo
         DBRA D2, opforgeNativeCliLineStartsLoop
 
@@ -690,6 +823,337 @@ opforgeNativeCliCopyLineWordDone:
 
 opforgeNativeCliCopyLineWordFail:
         MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliCopyIncludeTarget:
+        TST.L D0
+        BEQ.W opforgeNativeCliCopyIncludeTargetFail
+        MOVEQ #0, D2
+        MOVE.B (A0), D2
+        CMPI.B #'"', D2
+        BEQ.S opforgeNativeCliCopyIncludeTargetQuoted
+        CMPI.B #39, D2
+        BEQ.S opforgeNativeCliCopyIncludeTargetQuoted
+        MOVE.L #PATH_BUFFER_CAPACITY - 1, D6
+        CLR.L D5
+
+opforgeNativeCliCopyIncludeTargetBareLoop:
+        TST.L D0
+        BEQ.S opforgeNativeCliCopyIncludeTargetDone
+        MOVEQ #0, D2
+        MOVE.B (A0), D2
+        CMPI.B #' ', D2
+        BEQ.S opforgeNativeCliCopyIncludeTargetDone
+        CMPI.B #9, D2
+        BEQ.S opforgeNativeCliCopyIncludeTargetDone
+        CMPI.B #';', D2
+        BEQ.S opforgeNativeCliCopyIncludeTargetDone
+        TST.L D6
+        BEQ.S opforgeNativeCliCopyIncludeTargetFail
+        MOVE.B D2, (A1)+
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        ADDQ.L #1, D5
+        SUBQ.L #1, D6
+        BRA.S opforgeNativeCliCopyIncludeTargetBareLoop
+
+opforgeNativeCliCopyIncludeTargetQuoted:
+        MOVE.B D2, D4
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        MOVE.L #PATH_BUFFER_CAPACITY - 1, D6
+        CLR.L D5
+
+opforgeNativeCliCopyIncludeTargetQuotedLoop:
+        TST.L D0
+        BEQ.S opforgeNativeCliCopyIncludeTargetFail
+        MOVEQ #0, D2
+        MOVE.B (A0), D2
+        CMP.B D4, D2
+        BEQ.S opforgeNativeCliCopyIncludeTargetDone
+        TST.L D6
+        BEQ.S opforgeNativeCliCopyIncludeTargetFail
+        MOVE.B D2, (A1)+
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        ADDQ.L #1, D5
+        SUBQ.L #1, D6
+        BRA.S opforgeNativeCliCopyIncludeTargetQuotedLoop
+
+opforgeNativeCliCopyIncludeTargetDone:
+        TST.L D5
+        BEQ.S opforgeNativeCliCopyIncludeTargetFail
+        CLR.B (A1)
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliCopyIncludeTargetFail:
+        MOVEQ #1, D0
+        RTS
+
+opforge_native_cli_expand_include_target:
+        TST.W nativeCliIncludeDepth
+        BNE.W opforgeNativeCliExpandIncludeFail
+        BSR.W opforgeNativeCliResolveIncludePath
+        TST.L D0
+        BNE.W opforgeNativeCliExpandIncludeFail
+
+        MOVE.W nativeCliSourceLineLen, D0
+        MOVE.W D0, nativeCliSavedLineLen
+        MOVE.W nativeCliSawCr, D0
+        MOVE.W D0, nativeCliSavedSawCr
+        MOVE.L nativeCliSourceLineNum, D0
+        MOVE.L D0, nativeCliSavedLineNum
+        LEA nativeCliCurrentPath, A0
+        LEA nativeCliSavedPath, A1
+        BSR.W opforgeNativeCliCopyPathBuffer
+        TST.L D0
+        BNE.W opforgeNativeCliExpandIncludeFail
+
+        MOVE.L #includeStageText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #includeRootText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliIncludeRootPath, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #includeFileText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliIncludePath, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #includeEnterText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliCurrentPath, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #spaceText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliIncludePath, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+
+        MOVE.W #NATIVE_INCLUDE_DEPTH_LIMIT, nativeCliIncludeDepth
+        LEA nativeCliIncludePath, A0
+        LEA nativeCliCurrentPath, A1
+        BSR.W opforgeNativeCliCopyPathBuffer
+        TST.L D0
+        BNE.S opforgeNativeCliExpandIncludeRestoreFail
+        LEA nativeCliIncludePath, A0
+        BSR.W opforge_native_cli_tokenize_file_at_path
+        TST.L D0
+        BNE.S opforgeNativeCliExpandIncludeRestoreFail
+
+        MOVE.L #includeLeaveText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #includeOkText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliExpandIncludeRestore
+
+opforgeNativeCliExpandIncludeRestoreFail:
+        MOVE.L #includeFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #1, D0
+
+opforgeNativeCliExpandIncludeRestore:
+        MOVE.W nativeCliSavedLineLen, D1
+        MOVE.W D1, nativeCliSourceLineLen
+        MOVE.W nativeCliSavedSawCr, D1
+        MOVE.W D1, nativeCliSawCr
+        MOVE.L nativeCliSavedLineNum, D1
+        MOVE.L D1, nativeCliSourceLineNum
+        LEA nativeCliSavedPath, A0
+        LEA nativeCliCurrentPath, A1
+        BSR.W opforgeNativeCliCopyPathBuffer
+        CLR.W nativeCliIncludeDepth
+        RTS
+
+opforgeNativeCliExpandIncludeFail:
+        MOVE.L #includeFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliResolveIncludePath:
+        LEA nativeCliCurrentPath, A0
+        LEA nativeCliIncludeRootPath, A1
+        BSR.W opforgeNativeCliCopyPathRoot
+        TST.L D0
+        BNE.W opforgeNativeCliResolveIncludeFail
+        LEA nativeCliIncludeTarget, A0
+        BSR.W opforgeNativeCliPathIsAbsolute
+        TST.L D0
+        BEQ.S opforgeNativeCliResolveIncludeRelative
+        LEA nativeCliIncludeTarget, A0
+        LEA nativeCliIncludePath, A1
+        BSR.W opforgeNativeCliCopyPathBuffer
+        RTS
+
+opforgeNativeCliResolveIncludeRelative:
+        LEA nativeCliIncludeRootPath, A0
+        LEA nativeCliIncludePath, A1
+        BSR.W opforgeNativeCliCopyPathBuffer
+        TST.L D0
+        BNE.S opforgeNativeCliResolveIncludeFail
+        LEA nativeCliIncludeTarget, A0
+        LEA nativeCliIncludePath, A1
+        BSR.W opforgeNativeCliAppendPathBuffer
+        RTS
+
+opforgeNativeCliResolveIncludeFail:
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliPathIsAbsolute:
+        MOVEQ #0, D0
+
+opforgeNativeCliPathIsAbsoluteLoop:
+        MOVE.B (A0)+, D1
+        BEQ.S opforgeNativeCliPathIsAbsoluteNo
+        CMPI.B #':', D1
+        BEQ.S opforgeNativeCliPathIsAbsoluteYes
+        BRA.S opforgeNativeCliPathIsAbsoluteLoop
+
+opforgeNativeCliPathIsAbsoluteYes:
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliPathIsAbsoluteNo:
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliCopyPathRoot:
+        MOVEM.L D2-D6/A2, -(SP)
+        MOVEA.L A0, A2
+        CLR.L D5
+        CLR.L D6
+
+opforgeNativeCliCopyPathRootScan:
+        MOVE.B (A2)+, D2
+        BEQ.S opforgeNativeCliCopyPathRootCopy
+        ADDQ.L #1, D5
+        CMPI.B #':', D2
+        BEQ.S opforgeNativeCliCopyPathRootMark
+        CMPI.B #'/', D2
+        BNE.S opforgeNativeCliCopyPathRootScan
+
+opforgeNativeCliCopyPathRootMark:
+        MOVE.L D5, D6
+        BRA.S opforgeNativeCliCopyPathRootScan
+
+opforgeNativeCliCopyPathRootCopy:
+        MOVEA.L A0, A2
+        MOVE.L #PATH_BUFFER_CAPACITY - 1, D4
+        TST.L D6
+        BEQ.S opforgeNativeCliCopyPathRootDone
+
+opforgeNativeCliCopyPathRootCopyLoop:
+        TST.L D4
+        BEQ.S opforgeNativeCliCopyPathRootFail
+        MOVE.B (A2)+, D3
+        MOVE.B D3, (A1)+
+        SUBQ.L #1, D6
+        SUBQ.L #1, D4
+        TST.L D6
+        BNE.S opforgeNativeCliCopyPathRootCopyLoop
+
+opforgeNativeCliCopyPathRootDone:
+        CLR.B (A1)
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliCopyPathRootReturn
+
+opforgeNativeCliCopyPathRootFail:
+        MOVEQ #1, D0
+
+opforgeNativeCliCopyPathRootReturn:
+        MOVEM.L (SP)+, D2-D6/A2
+        RTS
+
+opforgeNativeCliCopyPathBuffer:
+        MOVE.L #PATH_BUFFER_CAPACITY - 1, D6
+
+opforgeNativeCliCopyPathBufferLoop:
+        MOVE.B (A0)+, D2
+        MOVE.B D2, (A1)+
+        BEQ.S opforgeNativeCliCopyPathBufferOk
+        SUBQ.L #1, D6
+        BNE.S opforgeNativeCliCopyPathBufferLoop
+        CLR.B -(A1)
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliCopyPathBufferOk:
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliAppendPathBuffer:
+        MOVE.L #PATH_BUFFER_CAPACITY - 1, D6
+
+opforgeNativeCliAppendPathBufferFindEnd:
+        TST.B (A1)
+        BEQ.S opforgeNativeCliAppendPathBufferCopy
+        ADDQ.L #1, A1
+        SUBQ.L #1, D6
+        BEQ.S opforgeNativeCliAppendPathBufferFail
+        BRA.S opforgeNativeCliAppendPathBufferFindEnd
+
+opforgeNativeCliAppendPathBufferCopy:
+        MOVE.B (A0)+, D2
+        MOVE.B D2, (A1)+
+        BEQ.S opforgeNativeCliAppendPathBufferOk
+        SUBQ.L #1, D6
+        BNE.S opforgeNativeCliAppendPathBufferCopy
+
+opforgeNativeCliAppendPathBufferFail:
+        CLR.B -(A1)
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliAppendPathBufferOk:
+        MOVEQ #0, D0
+        RTS
+
+opforge_native_cli_put_dec_u16:
+        MOVEM.L D1-D6/A0-A1, -(SP)
+        ANDI.L #$0000FFFF, D0
+        LEA decimalPowers, A0
+        MOVEQ #4, D6
+        CLR.W D5
+
+opforgeNativeCliPutDecPowerLoop:
+        MOVEQ #0, D3
+        MOVE.W (A0)+, D2
+
+opforgeNativeCliPutDecDigitLoop:
+        CMP.W D2, D0
+        BCS.S opforgeNativeCliPutDecMaybeEmit
+        SUB.W D2, D0
+        ADDQ.W #1, D3
+        BRA.S opforgeNativeCliPutDecDigitLoop
+
+opforgeNativeCliPutDecMaybeEmit:
+        TST.W D3
+        BNE.S opforgeNativeCliPutDecEmit
+        TST.W D5
+        BNE.S opforgeNativeCliPutDecEmit
+        CMPI.W #1, D2
+        BNE.S opforgeNativeCliPutDecNext
+
+opforgeNativeCliPutDecEmit:
+        MOVE.W #1, D5
+        ADDI.B #'0', D3
+        LEA nativeCliDecimalChar, A1
+        MOVE.B D3, (A1)
+        CLR.B 1(A1)
+        MOVE.L #nativeCliDecimalChar, D1
+        BSR.W opforge_native_cli_put_str
+
+opforgeNativeCliPutDecNext:
+        DBRA D6, opforgeNativeCliPutDecPowerLoop
+        MOVEM.L (SP)+, D1-D6/A0-A1
         RTS
 
 NCLI_PARSE_OK                   = 0
@@ -1222,14 +1686,48 @@ emitterStubText:
         .byte "ERROR OPC-NCLI009: native emitter VM not implemented",10,0
 parserFailureText:
         .byte "ERROR OPC-NCLI013: native module/use parser stage failed",10,0
+includeStageText:
+        .byte "STAGE include",10,0
+includeOkText:
+        .byte "STATUS include-ok",10,0
+includeFailureText:
+        .byte "ERROR OPC-NCLI014: native include expansion failed",10,0
+conditionalFailureText:
+        .byte "ERROR OPC-NCLI015: native conditional preprocessing not implemented",10,0
+includeRootText:
+        .byte "INCLUDE-ROOT 1 ",0
+includeFileText:
+        .byte "INCLUDE-FILE 1 ",0
+includeEnterText:
+        .byte "INCLUDE-ENTER 1 ",0
+includeLineText:
+        .byte "INCLUDE-LINE ",0
+includeLeaveText:
+        .byte "INCLUDE-LEAVE 1",10,0
 moduleFoundText:
         .byte "MODULE ",0
 useFoundText:
         .byte "USE ",0
+spaceText:
+        .byte " ",0
 moduleDirectiveText:
         .byte ".module"
 useDirectiveText:
         .byte ".use"
+includeDirectiveText:
+        .byte ".include"
+ifDirectiveText:
+        .byte ".if"
+ifdefDirectiveText:
+        .byte ".ifdef"
+ifndefDirectiveText:
+        .byte ".ifndef"
+elseDirectiveText:
+        .byte ".else"
+elseifDirectiveText:
+        .byte ".elseif"
+endifDirectiveText:
+        .byte ".endif"
 .ifdef OPFORGE_FS_UAE_SMOKE
 defaultFsUaeArgTail:
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT
@@ -1304,6 +1802,11 @@ flagModuleLong:
 
         .align 2
 
+decimalPowers:
+        .word 10000,1000,100,10,1
+
+        .align 2
+
 opforgeNativeCliPackageLen:
         .word OPFORGE_NATIVE_CLI_PACKAGE_LEN
 
@@ -1359,10 +1862,30 @@ nativeCliSourceLineNum:
         .res long,1
 nativeCliSawCr:
         .res word,1
+nativeCliIncludeDepth:
+        .res word,1
+nativeCliSavedLineLen:
+        .res word,1
+nativeCliSavedSawCr:
+        .res word,1
+nativeCliSavedLineNum:
+        .res long,1
 nativeCliInputChar:
         .res byte,1
+nativeCliDecimalChar:
+        .res byte,2
 nativeCliSourceLine:
         .res byte,SOURCE_LINE_BUFFER_CAPACITY
+nativeCliCurrentPath:
+        .res byte,PATH_BUFFER_CAPACITY
+nativeCliSavedPath:
+        .res byte,PATH_BUFFER_CAPACITY
+nativeCliIncludeTarget:
+        .res byte,PATH_BUFFER_CAPACITY
+nativeCliIncludePath:
+        .res byte,PATH_BUFFER_CAPACITY
+nativeCliIncludeRootPath:
+        .res byte,PATH_BUFFER_CAPACITY
 
         .endsection
 

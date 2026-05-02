@@ -274,7 +274,7 @@ and diagnostics should remain distinct.
     - Later conditional assembly, define substitution, macro-source expansion,
       and include-once behavior have named state-model extension points.
 
-- [ ] Work item 3: land first native `.include` expansion in the CLI input stream
+- [x] Work item 3: land first native `.include` expansion in the CLI input stream
   - Source requirement or finding IDs: Work item 2 include/preprocessor input
     contract; common Amiga source requirement for early include-file support.
   - Validation: See Full quality gates for this work item.
@@ -632,7 +632,7 @@ and diagnostics should remain distinct.
   as the authoritative bootstrap track.
 - [ ] Milestone 1b: table-backed `.module` and `.use` records are available for
   the first VM pipeline smoke.
-- [ ] Milestone 1c: native `.include` input expansion is specified and available
+- [x] Milestone 1c: native `.include` input expansion is specified and available
   before parser VM CLI integration.
 - [ ] Milestone 2: native CLI has a durable front-end report/handoff contract,
   including module/use table summary records and include expansion records.

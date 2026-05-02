@@ -103,17 +103,17 @@ portable and useful:
 - `.include` support has not landed in the native AmigaOS CLI yet. It is needed
   early because many Amiga sources use include files for constants, macros, and
   structure definitions before the first instruction line.
-- In-flight separate-agent work is adding hard-coded `.module` and `.use`
-  parsing to the native AmigaOS `opforge` CLI. This roadmap treats that as the
-  first host-owned bootstrap slice and does not rewrite it.
+- The native AmigaOS `opforge` CLI now has transitional hard-coded `.module`
+  and `.use` visibility scanning. This roadmap treats that as the first
+  host-owned bootstrap slice and does not rewrite it.
 - `documentation/opForge-native-amigaos-module-use-port-spec-v0_1.md` now
   defines the native module/use port contract for `.module`, `.endmodule`,
   `.use`, repeatable `-M` / `--module-path`, fixed-capacity module/import/path
   tables, deterministic diagnostics, and the selected-item alias limitation.
 - `documentation/plans/opforge-native-amigaos-module-use-port-implementation-plan-v0_1.md`
   decomposes that contract into commit-sized native AmigaOS implementation
-  slices. Its next concrete step is adding fixed-capacity native module/use
-  state tables.
+  slices. Its next concrete step after the transitional tokenizer-post
+  visibility scanner is fixed-capacity native module/use state tables.
 
 ## Fastest-Path Strategy
 
@@ -144,16 +144,20 @@ This roadmap consumes that track as a prerequisite for native project/bootstrap
 state. It does not replace that plan's item ordering. The fastest VM-port route
 is now:
 
-1. land the module/use plan's fixed-capacity state tables and table-backed
-  `.module` / `.use` minimum;
+1. land the module/use plan's transitional tokenizer-post visibility scanner,
+  followed by fixed-capacity state tables and table-backed `.module` / `.use`
+  minimum;
 2. keep module resolution and macro export injection deferred until their
   smallest native slices are needed;
 3. wire `PRVM` and `EXVM` around the resulting host-owned bootstrap state.
 
 Before Work item 5 in this roadmap starts, the module/use companion plan must
 have either completed enough work to provide stable table-backed `.module` and
-`.use` records, or this roadmap must be updated with the exact narrower
-bootstrap substitute being used for the first VM pipeline smoke.
+`.use` records, or this roadmap must be updated again with the exact narrower
+bootstrap substitute being used for the first VM pipeline smoke. The
+transitional visibility scanner is only enough to unblock early `.include`
+input-expansion work; it is not enough to satisfy the table-backed bootstrap
+state needed by parser VM CLI integration.
 
 ## Include / Preprocessor Track
 

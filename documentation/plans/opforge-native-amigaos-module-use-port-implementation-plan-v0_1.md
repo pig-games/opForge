@@ -29,6 +29,37 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
 
 ## Work Items
 
+- [x] Item 0: Land transitional tokenizer-post module/use visibility scanner
+  - Validation: focused native CLI host tests, reference gate, smoke fixture
+    staging test, and format check.
+  - Definition of done: native CLI reports `.module <id>` and `.use <id>`
+    visibility after tokenizer success without claiming table-backed module/use
+    parity.
+  - Source requirement or finding IDs: Roadmap current-baseline note for
+    in-flight separate-agent hard-coded `.module` / `.use` parsing and spec
+    problem statement describing the transitional hard-coded scan.
+  - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`,
+    `crates/opforge-asm/src/tests.rs`,
+    `crates/opforge-asm/src/fs_uae_smoke.rs`, reference artifacts when native
+    CLI output changes.
+  - Detailed validation: `cargo fmt --all --check`; `cargo test -p asm
+    motorola68020_opforge_native_cli -- --nocapture`; `cargo test -p asm
+    examples_match_reference_outputs -- --nocapture`; `cargo test -p asm
+    fs_uae_smoke::tests::example_guest_input_exposes_smoke_source_files --
+    --nocapture`.
+  - Full quality gates: scanner runs only after tokenizer success for a line;
+    `.module main` and `.use math` produce deterministic report markers;
+    emitter remains the explicit not-implemented boundary; table-backed
+    records, `.endmodule`, module paths, and module resolution remain deferred
+    to later items.
+  - Plan-compliance review evidence: run `plan-compliance-reviewer` before
+    commit and record PASS.
+  - Commit outcome: one commit landing the transitional module/use visibility
+    scanner and keeping all table-backed companion-plan items unchecked.
+  - Detailed definition of done: the native CLI has a narrow, auditable
+    bootstrap visibility baseline that can be cleanly separated from the later
+    `.include` input-expansion slice.
+
 - [ ] Item 1: Add native module/use state tables
   - Validation: focused native CLI host tests, reference gate, and format check.
   - Definition of done: native CLI initializes fixed-capacity module/import/path

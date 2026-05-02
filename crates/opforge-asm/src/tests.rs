@@ -9890,7 +9890,11 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, and --opasm-package."
     ));
     assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
-    assert!(source.contains("OPC-NCLI009: native parser VM not implemented"));
+    assert!(source.contains("STATUS parser-module-use-ok"));
+    assert!(source.contains("OPC-NCLI009: native emitter VM not implemented"));
+    assert!(source.contains("OPC-NCLI013: native module/use parser stage failed"));
+    assert!(tokvm_source_contains(&source, ".byte \"MODULE \",0"));
+    assert!(tokvm_source_contains(&source, ".byte \"USE \",0"));
     assert!(source.contains("--opasm-package Work:opforge_cli_package.opasm"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
@@ -9900,6 +9904,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(source.contains("opforge_native_cli_tokenize_file"));
     assert!(source.contains("opforge_native_cli_tokenize_current_line"));
+    assert!(source.contains("opforge_native_cli_parse_current_line"));
     assert!(source.contains("PACKAGE_STORAGE_CAPACITY"));
 }
 
@@ -9920,11 +9925,15 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforge_native_cli_tokenize_frontend"));
     assert!(listing.contains("opforge_native_cli_tokenize_file"));
     assert!(listing.contains("opforge_native_cli_tokenize_current_line"));
+    assert!(listing.contains("opforge_native_cli_parse_current_line"));
+    assert!(listing.contains("opforgeNativeCliParseModuleLine"));
+    assert!(listing.contains("opforgeNativeCliParseUseLine"));
     assert!(listing.contains("opforge_native_cli_stage_package"));
     assert!(listing.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(listing.contains("opforge_native_cli_run"));
     assert!(listing.contains("STATUS tokenizer-ok"));
-    assert!(listing.contains("parser-not-implemented"));
+    assert!(listing.contains("STATUS parser-module-use-ok"));
+    assert!(listing.contains("emitter-not-implemented"));
 
     let payload_path = example_output_payload_path(&out_dir, "opforge_cli", "hunk");
     let payload = fs::read(payload_path).expect("read opforge native CLI hunk payload");
@@ -9944,6 +9953,18 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
             .windows("OPFORGE-NATIVE 1".len())
             .any(|window| window == b"OPFORGE-NATIVE 1"),
         "expected native CLI report marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("MODULE ".len())
+            .any(|window| window == b"MODULE "),
+        "expected hard-coded module parser marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("USE ".len())
+            .any(|window| window == b"USE "),
+        "expected hard-coded use parser marker in Hunk payload"
     );
 }
 
@@ -25626,7 +25647,7 @@ fn external_fs_uae_hunk_smoke() {
 }
 
 #[test]
-fn external_fs_uae_opforge_native_cli_reports_parser_stub() {
+fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
     match crate::fs_uae_smoke::run_opforge_native_cli_stub_from_env(&workspace_root())
         .expect("native opForge CLI FS-UAE helper should complete or skip cleanly")
     {
@@ -25639,7 +25660,7 @@ fn external_fs_uae_opforge_native_cli_reports_parser_stub() {
             assert_eq!(run.example_name, "opforge_cli");
             assert!(
                 !run.success,
-                "native opForge CLI should still return the deterministic parser-stub status\nstdout:\n{}\nstderr:\n{}",
+                "native opForge CLI should still return the deterministic emitter-stub status\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
@@ -25650,8 +25671,8 @@ fn external_fs_uae_opforge_native_cli_reports_parser_stub() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("STATUS parser-not-implemented"),
-                "native opForge CLI did not report the parser-stub status\nstdout:\n{}\nstderr:\n{}",
+                run.stdout.contains("STATUS parser-module-use-ok"),
+                "native opForge CLI did not report the module/use parser status\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
@@ -25662,13 +25683,25 @@ fn external_fs_uae_opforge_native_cli_reports_parser_stub() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.b\")@1:1-7"),
+                run.stdout.contains("MODULE main"),
+                "native opForge CLI did not report the smoke .module directive\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("USE math"),
+                "native opForge CLI did not report the smoke .use directive\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("Identifier(\"move.b\")@3:1-7"),
                 "native opForge CLI did not emit tokenizer rows for the smoke source\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.w\")@2:1-7"),
+                run.stdout.contains("Identifier(\"move.w\")@4:1-7"),
                 "native opForge CLI did not emit tokenizer rows for the second smoke source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -25687,8 +25720,8 @@ fn external_fs_uae_opforge_native_cli_reports_parser_stub() {
             );
             assert!(
                 run.stdout
-                    .contains("ERROR OPC-NCLI009: native parser VM not implemented"),
-                "native opForge CLI did not report the parser-stub diagnostic\nstdout:\n{}\nstderr:\n{}",
+                    .contains("ERROR OPC-NCLI009: native emitter VM not implemented"),
+                "native opForge CLI did not report the emitter-stub diagnostic\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );

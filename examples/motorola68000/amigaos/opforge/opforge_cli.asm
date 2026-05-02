@@ -177,7 +177,9 @@ opforgeNativeCliInputOpened:
         BRA.W opforgeNativeCliCloseDos
 
 opforgeNativeCliTokenizerOk:
-        MOVE.L #parserStubText, D1
+        MOVE.L #parserOkText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #emitterStubText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #RETURN_NOT_IMPLEMENTED, nativeCliReturnCode
 
@@ -509,10 +511,184 @@ opforge_native_cli_tokenize_current_line:
         BSR.W opforge_native_cli_put_str
 
 opforgeNativeCliTokenizeCurrentLineOk:
+        BSR.W opforge_native_cli_parse_current_line
+        TST.L D0
+        BNE.S opforgeNativeCliTokenizeCurrentLineFail
         MOVEQ #0, D0
         RTS
 
 opforgeNativeCliTokenizeCurrentLineFail:
+        MOVEQ #1, D0
+        RTS
+
+opforge_native_cli_parse_current_line:
+        MOVEM.L D2-D7/A2-A4, -(SP)
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.W opforgeNativeCliParseLineDone
+        MOVEA.L A0, A4
+        MOVE.L D0, D7
+
+        LEA moduleDirectiveText, A1
+        MOVEQ #7, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseModuleLine
+
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
+        LEA useDirectiveText, A1
+        MOVEQ #4, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseUseLine
+
+opforgeNativeCliParseLineDone:
+        MOVEQ #0, D0
+        BRA.W opforgeNativeCliParseLineReturn
+
+opforgeNativeCliParseModuleLine:
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        ADDQ.L #7, A0
+        SUBQ.L #7, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA nativeCliArgToken, A1
+        BSR.W opforgeNativeCliCopyLineWord
+        TST.L D0
+        BNE.W opforgeNativeCliParseLineFail
+        TST.B nativeCliArgToken
+        BEQ.W opforgeNativeCliParseLineFail
+        MOVE.L #moduleFoundText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliArgToken, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        BRA.W opforgeNativeCliParseLineDone
+
+opforgeNativeCliParseUseLine:
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        ADDQ.L #4, A0
+        SUBQ.L #4, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA nativeCliArgToken, A1
+        BSR.W opforgeNativeCliCopyLineWord
+        TST.L D0
+        BNE.W opforgeNativeCliParseLineFail
+        TST.B nativeCliArgToken
+        BEQ.W opforgeNativeCliParseLineFail
+        MOVE.L #useFoundText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #nativeCliArgToken, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        BRA.W opforgeNativeCliParseLineDone
+
+opforgeNativeCliParseLineFail:
+        MOVE.L #parserFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #1, D0
+
+opforgeNativeCliParseLineReturn:
+        MOVEM.L (SP)+, D2-D7/A2-A4
+        RTS
+
+opforgeNativeCliSkipLineWhitespace:
+        TST.L D0
+        BEQ.S opforgeNativeCliSkipLineWhitespaceDone
+        CMPI.B #' ', (A0)
+        BEQ.S opforgeNativeCliSkipLineWhitespaceOne
+        CMPI.B #9, (A0)
+        BNE.S opforgeNativeCliSkipLineWhitespaceDone
+
+opforgeNativeCliSkipLineWhitespaceOne:
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        BRA.S opforgeNativeCliSkipLineWhitespace
+
+opforgeNativeCliSkipLineWhitespaceDone:
+        RTS
+
+opforgeNativeCliLineStartsWith:
+        CMP.L D1, D0
+        BCS.S opforgeNativeCliLineStartsNo
+        MOVEA.L A0, A2
+        MOVEA.L A1, A3
+        MOVE.L D1, D2
+        BEQ.S opforgeNativeCliLineStartsBoundary
+        SUBQ.L #1, D2
+
+opforgeNativeCliLineStartsLoop:
+        MOVE.B (A2)+, D3
+        CMP.B (A3)+, D3
+        BNE.S opforgeNativeCliLineStartsNo
+        DBRA D2, opforgeNativeCliLineStartsLoop
+
+opforgeNativeCliLineStartsBoundary:
+        CMP.L D1, D0
+        BEQ.S opforgeNativeCliLineStartsYes
+        MOVE.B 0(A0,D1.L), D3
+        CMPI.B #' ', D3
+        BEQ.S opforgeNativeCliLineStartsYes
+        CMPI.B #9, D3
+        BEQ.S opforgeNativeCliLineStartsYes
+        CMPI.B #';', D3
+        BEQ.S opforgeNativeCliLineStartsYes
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliLineStartsYes:
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliLineStartsNo:
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliCopyLineWord:
+        MOVE.L #TOKEN_BUFFER_CAPACITY - 1, D6
+        CLR.L D5
+
+opforgeNativeCliCopyLineWordLoop:
+        TST.L D0
+        BEQ.S opforgeNativeCliCopyLineWordDone
+        MOVEQ #0, D2
+        MOVE.B (A0), D2
+        CMPI.B #' ', D2
+        BEQ.S opforgeNativeCliCopyLineWordDone
+        CMPI.B #9, D2
+        BEQ.S opforgeNativeCliCopyLineWordDone
+        CMPI.B #';', D2
+        BEQ.S opforgeNativeCliCopyLineWordDone
+        CMPI.B #'(', D2
+        BEQ.S opforgeNativeCliCopyLineWordDone
+        CMPI.B #',', D2
+        BEQ.S opforgeNativeCliCopyLineWordDone
+        TST.L D6
+        BEQ.S opforgeNativeCliCopyLineWordFail
+        MOVE.B D2, (A1)+
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        ADDQ.L #1, D5
+        SUBQ.L #1, D6
+        BRA.S opforgeNativeCliCopyLineWordLoop
+
+opforgeNativeCliCopyLineWordDone:
+        CLR.B (A1)
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliCopyLineWordFail:
         MOVEQ #1, D0
         RTS
 
@@ -1029,7 +1205,7 @@ inputOpenErrorText:
         .byte "OPC-NCLI008: Input source file not found: ",0
 stubHeaderText:
         .byte "OPFORGE-NATIVE 1",10
-        .byte "STATUS parser-not-implemented",10,0
+        .byte "STATUS emitter-not-implemented",10,0
 inputLabelText:
         .byte "INPUT ",0
 hunkLabelText:
@@ -1038,9 +1214,22 @@ tokenizerOkText:
         .byte "STATUS tokenizer-ok",10,0
 tokenizerFailureText:
         .byte "ERROR OPC-NCLI010: native tokenizer stage failed",10,0
-parserStubText:
+parserOkText:
         .byte "STAGE parser",10
-        .byte "ERROR OPC-NCLI009: native parser VM not implemented",10,0
+        .byte "STATUS parser-module-use-ok",10,0
+emitterStubText:
+        .byte "STAGE emitter",10
+        .byte "ERROR OPC-NCLI009: native emitter VM not implemented",10,0
+parserFailureText:
+        .byte "ERROR OPC-NCLI013: native module/use parser stage failed",10,0
+moduleFoundText:
+        .byte "MODULE ",0
+useFoundText:
+        .byte "USE ",0
+moduleDirectiveText:
+        .byte ".module"
+useDirectiveText:
+        .byte ".use"
 .ifdef OPFORGE_FS_UAE_SMOKE
 defaultFsUaeArgTail:
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT

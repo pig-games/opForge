@@ -39,7 +39,8 @@ const FS_UAE_MOUNTED_HUNK_ALIAS: &str = "build/opforge_fsuae_smoke.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
 const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
-const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
+    ".module main\n.use math\nmove.b d0,d1\nmove.w d2,d3\n";
 const FS_UAE_TKPKG_MANIFEST_FILE: &str = "opforge_fsuae_tkpkg_manifest.txt";
 const FS_UAE_TKPKG_MANIFEST_INPUT_DIR: &str = "opforge_fsuae_tkpkg_inputs";
 const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";

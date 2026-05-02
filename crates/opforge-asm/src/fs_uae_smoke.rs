@@ -40,9 +40,15 @@ const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
 const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
-    ".module main\n.use math\n.Include \"opforge_fsuae_include.inc\"\nmove.b d0,d1\nmove.w d2,d3\n";
+    ".module main\n.use math\n.Include \"opforge_fsuae_include.inc\"\nmove.b d0,d1\nmove.w d2,d3\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE: &str = "opforge_fsuae_include.inc";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "move.l d4,d5\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE: &str =
+    "opforge_fsuae_unmatched_endmodule.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_TEXT: &str = ".endmodule\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_FILE: &str =
+    "opforge_fsuae_unterminated_module.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_TEXT: &str = ".module main\nmove.b d0,d1\n";
 const FS_UAE_TKPKG_MANIFEST_FILE: &str = "opforge_fsuae_tkpkg_manifest.txt";
 const FS_UAE_TKPKG_MANIFEST_INPUT_DIR: &str = "opforge_fsuae_tkpkg_inputs";
 const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";
@@ -377,6 +383,16 @@ fn stage_example_guest_inputs(
             mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_TEXT.as_bytes(),
         )?;
         let package_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH);
         let package_bytes = fs::read(&package_path)

@@ -9925,7 +9925,33 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliRecordModule"));
     assert!(source.contains("opforgeNativeCliEmitModuleRecord"));
     assert!(source.contains("opforgeNativeCliEmitModuleCompatibility"));
+    assert!(source.contains("opforgeNativeCliParseEndmoduleLine"));
+    assert!(source.contains("opforgeNativeCliCloseModule"));
+    assert!(source.contains("opforgeNativeCliEmitModuleEndRecord"));
+    assert!(source.contains("opforgeNativeCliRestoreParentModule"));
     assert!(source.contains("opforgeNativeCliTokenLen"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliTokenizeFileCheckModuleDepth:",
+            "TST.W nativeCliIncludeDepth",
+            "BNE.S opforgeNativeCliTokenizeFileSuccessClose",
+            "TST.W nativeCliModuleDepth",
+            "BEQ.S opforgeNativeCliTokenizeFileSuccessClose",
+            "MOVE.L #moduleDepthFailureText, D1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "LEA moduleDirectiveText, A1",
+            "BNE.W opforgeNativeCliParseModuleLine",
+            "LEA endmoduleDirectiveText, A1",
+            "MOVEQ #10, D1",
+            "BNE.W opforgeNativeCliParseEndmoduleLine",
+            "LEA useDirectiveText, A1",
+        ]
+    ));
     assert!(source_contains_in_order(
         &source,
         &[
@@ -9940,6 +9966,20 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "BNE.W opforgeNativeCliParseLineFail",
             "opforgeNativeCliParseModuleLineRecord:",
             "BSR.W opforgeNativeCliRecordModule",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliParseEndmoduleLine:",
+            "LEA 10(A0), A0",
+            "SUB.W #10, D0",
+            "BSR.W opforgeNativeCliSkipLineWhitespace",
+            "CMPI.B #';', (A0)",
+            "BNE.W opforgeNativeCliParseLineFail",
+            "opforgeNativeCliParseEndmoduleLineClose:",
+            "BSR.W opforgeNativeCliCloseModule",
+            "BNE.W opforgeNativeCliParseModuleDepthFail",
         ]
     ));
     assert!(source.contains("PACKAGE_STORAGE_CAPACITY"));
@@ -9959,6 +9999,11 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("nativeCliModulePathTable"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-ROOT \",0"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-DEF \",0"));
+    assert!(tokvm_source_contains(&source, ".byte \"MOD-END \",0"));
+    assert!(tokvm_source_contains(
+        &source,
+        ".byte \"ERROR OPC-NCLI016: native module depth mismatch\",10,0"
+    ));
 }
 
 #[test]
@@ -9987,6 +10032,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforgeNativeCliRecordModule"));
     assert!(listing.contains("opforgeNativeCliEmitModuleRecord"));
     assert!(listing.contains("opforgeNativeCliEmitModuleCompatibility"));
+    assert!(listing.contains("opforgeNativeCliParseEndmoduleLine"));
+    assert!(listing.contains("opforgeNativeCliCloseModule"));
+    assert!(listing.contains("opforgeNativeCliEmitModuleEndRecord"));
+    assert!(listing.contains("opforgeNativeCliRestoreParentModule"));
     assert!(listing.contains("opforgeNativeCliTokenLen"));
     assert!(listing.contains("opforgeNativeCliParseModuleLine"));
     assert!(listing.contains("opforgeNativeCliParseUseLine"));
@@ -10008,8 +10057,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("STATUS include-ok"));
     assert!(listing.contains("MOD-ROOT"));
     assert!(listing.contains("MOD-DEF"));
+    assert!(listing.contains("MOD-END"));
     assert!(listing.contains("OPC-NCLI014"));
     assert!(listing.contains("OPC-NCLI015"));
+    assert!(listing.contains("OPC-NCLI016"));
     assert!(listing.contains("emitter-not-implemented"));
 
     let payload_path = example_output_payload_path(&out_dir, "opforge_cli", "hunk");
@@ -10042,6 +10093,12 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
             .windows("MOD-DEF ".len())
             .any(|window| window == b"MOD-DEF "),
         "expected table-backed module definition marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("MOD-END ".len())
+            .any(|window| window == b"MOD-END "),
+        "expected table-backed module end marker in Hunk payload"
     );
     assert!(
         payload
@@ -25801,6 +25858,12 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
+                run.stdout.contains("MOD-END 0 1 6 0"),
+                "native opForge CLI did not report the table-backed .endmodule record\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
                 run.stdout.contains("USE math"),
                 "native opForge CLI did not report the smoke .use directive\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
@@ -25904,6 +25967,16 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
             name: "bad-package",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE",
             expected_diagnostic: "ERROR OPC-NCLI010: native tokenizer stage failed",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "unmatched-endmodule",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE",
+            expected_diagnostic: "ERROR OPC-NCLI016: native module depth mismatch",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "unterminated-module",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE",
+            expected_diagnostic: "ERROR OPC-NCLI016: native module depth mismatch",
         },
     ];
 

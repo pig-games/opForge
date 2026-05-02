@@ -108,7 +108,7 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
   - Detailed definition of done: module summaries are emitted from the native module
     table and malformed module declarations fail before emitter stage.
 
-- [ ] Item 3: Add native `.endmodule` depth tracking
+- [x] Item 3: Add native `.endmodule` depth tracking
   - Validation: focused native CLI host tests, reference gate, format check, and
     opt-in malformed `.endmodule` FS-UAE smoke when available.
   - Definition of done: native CLI tracks open module state across the input

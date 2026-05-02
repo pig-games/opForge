@@ -379,10 +379,19 @@ opforgeNativeCliTokenizeFileLineDone:
 
 opforgeNativeCliTokenizeFileEof:
         TST.W nativeCliSourceLineLen
-        BEQ.S opforgeNativeCliTokenizeFileSuccessClose
+        BEQ.S opforgeNativeCliTokenizeFileCheckModuleDepth
         BSR.W opforge_native_cli_tokenize_current_line
         TST.L D0
         BNE.S opforgeNativeCliTokenizeFileFailClose
+
+opforgeNativeCliTokenizeFileCheckModuleDepth:
+        TST.W nativeCliIncludeDepth
+        BNE.S opforgeNativeCliTokenizeFileSuccessClose
+        TST.W nativeCliModuleDepth
+        BEQ.S opforgeNativeCliTokenizeFileSuccessClose
+        MOVE.L #moduleDepthFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        BRA.S opforgeNativeCliTokenizeFileFailClose
 
 opforgeNativeCliTokenizeFileSuccessClose:
         MOVE.L D5, D1
@@ -632,6 +641,14 @@ opforge_native_cli_parse_current_line:
 
         MOVEA.L A4, A0
         MOVE.L D7, D0
+        LEA endmoduleDirectiveText, A1
+        MOVEQ #10, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseEndmoduleLine
+
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
         LEA useDirectiveText, A1
         MOVEQ #4, D1
         BSR.W opforgeNativeCliLineStartsWith
@@ -688,6 +705,25 @@ opforgeNativeCliParseModuleLineRecord:
         BSR.W opforgeNativeCliEmitModuleCompatibility
         BRA.W opforgeNativeCliParseLineDone
 
+opforgeNativeCliParseEndmoduleLine:
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA 10(A0), A0
+        SUB.W #10, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.S opforgeNativeCliParseEndmoduleLineClose
+        CMPI.B #';', (A0)
+        BNE.W opforgeNativeCliParseLineFail
+
+opforgeNativeCliParseEndmoduleLineClose:
+        BSR.W opforgeNativeCliCloseModule
+        TST.L D0
+        BNE.W opforgeNativeCliParseModuleDepthFail
+        BRA.W opforgeNativeCliParseLineDone
+
 opforgeNativeCliParseUseLine:
         LEA nativeCliSourceLine, A0
         MOVEQ #0, D0
@@ -731,6 +767,12 @@ opforgeNativeCliParseIncludeLine:
 
 opforgeNativeCliParseIncludeFail:
         MOVE.L #includeFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #1, D0
+        BRA.W opforgeNativeCliParseLineReturn
+
+opforgeNativeCliParseModuleDepthFail:
+        MOVE.L #moduleDepthFailureText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #1, D0
         BRA.W opforgeNativeCliParseLineReturn
@@ -846,7 +888,7 @@ opforgeNativeCliRecordModule:
         MOVEQ #0, D0
         MOVE.W nativeCliModuleCount, D0
         CMPI.W #NATIVE_MODULE_TABLE_CAPACITY, D0
-        BHS.S opforgeNativeCliRecordModuleFail
+        BHS.W opforgeNativeCliRecordModuleFail
         MOVE.W D0, D3
         LEA nativeCliArgToken, A0
         LEA nativeCliModuleNameTable, A1
@@ -879,6 +921,9 @@ opforgeNativeCliRecordModuleHaveRoot:
         MOVE.W nativeCliModuleCount, D0
         ADDQ.W #1, D0
         MOVE.W D0, nativeCliModuleCount
+        MOVE.W nativeCliModuleDepth, D0
+        ADDQ.W #1, D0
+        MOVE.W D0, nativeCliModuleDepth
         MOVEQ #0, D0
         BRA.S opforgeNativeCliRecordModuleReturn
 
@@ -957,6 +1002,86 @@ opforgeNativeCliEmitModuleCompatibility:
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
         MOVEM.L (SP)+, D0/D4/A0
+        RTS
+
+opforgeNativeCliCloseModule:
+        MOVEM.L D1-D4/A0-A1, -(SP)
+        TST.W nativeCliModuleDepth
+        BEQ.S opforgeNativeCliCloseModuleFail
+        MOVEQ #0, D0
+        MOVE.W nativeCliModuleDepth, D0
+        SUBQ.W #1, D0
+        MOVE.W D0, nativeCliModuleDepth
+        MOVEQ #0, D0
+        MOVE.W nativeCliCurrentModuleId, D0
+        BSR.W opforgeNativeCliEmitModuleEndRecord
+        BSR.W opforgeNativeCliRestoreParentModule
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliCloseModuleReturn
+
+opforgeNativeCliCloseModuleFail:
+        MOVEQ #1, D0
+
+opforgeNativeCliCloseModuleReturn:
+        MOVEM.L (SP)+, D1-D4/A0-A1
+        RTS
+
+opforgeNativeCliEmitModuleEndRecord:
+        MOVEM.L D0-D4/A0-A1, -(SP)
+        MOVE.W D0, D4
+        MOVE.L #modEndText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVEQ #1, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliSourceLineNum, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVEQ #0, D0
+        MOVE.W nativeCliModuleDepth, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D0-D4/A0-A1
+        RTS
+
+opforgeNativeCliRestoreParentModule:
+        MOVEM.L D1-D3/A0, -(SP)
+        TST.W nativeCliModuleDepth
+        BNE.S opforgeNativeCliRestoreParentModuleFind
+        CLR.W nativeCliCurrentModuleId
+        BRA.S opforgeNativeCliRestoreParentModuleReturn
+
+opforgeNativeCliRestoreParentModuleFind:
+        MOVE.W nativeCliModuleDepth, D0
+        SUBQ.W #1, D0
+        MOVE.W nativeCliModuleCount, D1
+        BEQ.S opforgeNativeCliRestoreParentModuleClear
+        SUBQ.W #1, D1
+
+opforgeNativeCliRestoreParentModuleLoop:
+        MOVEQ #0, D2
+        MOVE.W D1, D2
+        ADD.W D2, D2
+        LEA nativeCliModuleDepthTable, A0
+        MOVE.W 0(A0,D2.L), D3
+        CMP.W D0, D3
+        BEQ.S opforgeNativeCliRestoreParentModuleFound
+        DBRA D1, opforgeNativeCliRestoreParentModuleLoop
+
+opforgeNativeCliRestoreParentModuleClear:
+        CLR.W nativeCliCurrentModuleId
+        BRA.S opforgeNativeCliRestoreParentModuleReturn
+
+opforgeNativeCliRestoreParentModuleFound:
+        MOVE.W D1, nativeCliCurrentModuleId
+
+opforgeNativeCliRestoreParentModuleReturn:
+        MOVEM.L (SP)+, D1-D3/A0
         RTS
 
 opforgeNativeCliPutSpace:
@@ -1869,6 +1994,8 @@ emitterStubText:
         .byte "ERROR OPC-NCLI009: native emitter VM not implemented",10,0
 parserFailureText:
         .byte "ERROR OPC-NCLI013: native module/use parser stage failed",10,0
+moduleDepthFailureText:
+        .byte "ERROR OPC-NCLI016: native module depth mismatch",10,0
 includeStageText:
         .byte "STAGE include",10,0
 includeOkText:
@@ -1891,6 +2018,8 @@ modRootText:
         .byte "MOD-ROOT ",0
 modDefText:
         .byte "MOD-DEF ",0
+modEndText:
+        .byte "MOD-END ",0
 moduleFoundText:
         .byte "MODULE ",0
 useFoundText:
@@ -1899,6 +2028,8 @@ spaceText:
         .byte " ",0
 moduleDirectiveText:
         .byte ".module"
+endmoduleDirectiveText:
+        .byte ".endmodule"
 useDirectiveText:
         .byte ".use"
 includeDirectiveText:
@@ -1929,7 +2060,15 @@ defaultFsUaeArgTail:
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_missing_package.opasm",0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE
+        .byte "Work:opforge_fsuae_unmatched_endmodule.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE
+        .byte "Work:opforge_fsuae_unterminated_module.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.else
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.endif
+.endif
 .endif
 .endif
 .endif

@@ -319,7 +319,7 @@ and diagnostics should remain distinct.
     - The implementation leaves clear state hooks for later preprocessor
       features without adding them prematurely.
 
-- [ ] Work item 4: define the native VM pipeline report and handoff records
+- [x] Work item 4: define the native VM pipeline report and handoff records
   - Source requirement or finding IDs: need a durable intermediate boundary
     before native emission; current tokenizer and parser native report patterns;
     companion module/use spec record and diagnostic requirements; Work item 2
@@ -634,7 +634,7 @@ and diagnostics should remain distinct.
   the first VM pipeline smoke.
 - [x] Milestone 1c: native `.include` input expansion is specified and available
   before parser VM CLI integration.
-- [ ] Milestone 2: native CLI has a durable front-end report/handoff contract,
+- [x] Milestone 2: native CLI has a durable front-end report/handoff contract,
   including module/use table summary records and include expansion records.
 - [ ] Milestone 3: native `TKVM` plus native `PRVM` can parse a no-expression
   opasm statement from the CLI.

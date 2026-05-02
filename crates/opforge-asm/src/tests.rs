@@ -9922,6 +9922,26 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforge_native_cli_parse_current_line"));
     assert!(source.contains("opforge_native_cli_expand_include_target"));
     assert!(source.contains("opforgeNativeCliResolveIncludePath"));
+    assert!(source.contains("opforgeNativeCliRecordModule"));
+    assert!(source.contains("opforgeNativeCliEmitModuleRecord"));
+    assert!(source.contains("opforgeNativeCliEmitModuleCompatibility"));
+    assert!(source.contains("opforgeNativeCliTokenLen"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliParseModuleLine:",
+            "BSR.W opforgeNativeCliCopyLineWord",
+            "TST.B nativeCliArgToken",
+            "BEQ.W opforgeNativeCliParseLineFail",
+            "BSR.W opforgeNativeCliSkipLineWhitespace",
+            "TST.L D0",
+            "BEQ.S opforgeNativeCliParseModuleLineRecord",
+            "CMPI.B #';', (A0)",
+            "BNE.W opforgeNativeCliParseLineFail",
+            "opforgeNativeCliParseModuleLineRecord:",
+            "BSR.W opforgeNativeCliRecordModule",
+        ]
+    ));
     assert!(source.contains("PACKAGE_STORAGE_CAPACITY"));
     assert!(source.contains("NATIVE_MODULE_TABLE_CAPACITY    = 16"));
     assert!(source.contains("NATIVE_IMPORT_TABLE_CAPACITY    = 32"));
@@ -9937,6 +9957,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("nativeCliImportAliasTable"));
     assert!(source.contains("nativeCliImportSelectNameTable"));
     assert!(source.contains("nativeCliModulePathTable"));
+    assert!(tokvm_source_contains(&source, ".byte \"MOD-ROOT \",0"));
+    assert!(tokvm_source_contains(&source, ".byte \"MOD-DEF \",0"));
 }
 
 #[test]
@@ -9962,6 +9984,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforge_native_cli_parse_current_line"));
     assert!(listing.contains("opforge_native_cli_expand_include_target"));
     assert!(listing.contains("opforge_native_cli_emit_include_line_record"));
+    assert!(listing.contains("opforgeNativeCliRecordModule"));
+    assert!(listing.contains("opforgeNativeCliEmitModuleRecord"));
+    assert!(listing.contains("opforgeNativeCliEmitModuleCompatibility"));
+    assert!(listing.contains("opforgeNativeCliTokenLen"));
     assert!(listing.contains("opforgeNativeCliParseModuleLine"));
     assert!(listing.contains("opforgeNativeCliParseUseLine"));
     assert!(listing.contains("opforgeNativeCliParseIncludeLine"));
@@ -9980,6 +10006,8 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("STATUS tokenizer-ok"));
     assert!(listing.contains("STATUS parser-module-use-ok"));
     assert!(listing.contains("STATUS include-ok"));
+    assert!(listing.contains("MOD-ROOT"));
+    assert!(listing.contains("MOD-DEF"));
     assert!(listing.contains("OPC-NCLI014"));
     assert!(listing.contains("OPC-NCLI015"));
     assert!(listing.contains("emitter-not-implemented"));
@@ -10007,7 +10035,13 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
         payload
             .windows("MODULE ".len())
             .any(|window| window == b"MODULE "),
-        "expected hard-coded module parser marker in Hunk payload"
+        "expected module compatibility marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("MOD-DEF ".len())
+            .any(|window| window == b"MOD-DEF "),
+        "expected table-backed module definition marker in Hunk payload"
     );
     assert!(
         payload
@@ -10150,6 +10184,17 @@ fn format_tokvm_asm_fragment(source: &str) -> String {
 
 fn tokvm_source_contains(source: &str, snippet: &str) -> bool {
     source.contains(format_tokvm_asm_fragment(snippet).trim_end_matches('\n'))
+}
+
+fn source_contains_in_order(source: &str, snippets: &[&str]) -> bool {
+    let mut offset = 0;
+    for snippet in snippets {
+        let Some(index) = source[offset..].find(snippet) else {
+            return false;
+        };
+        offset += index + snippet.len();
+    }
+    true
 }
 
 fn tkpkg_source_contains(source: &str, snippet: &str) -> bool {
@@ -25746,6 +25791,12 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
             assert!(
                 run.stdout.contains("MODULE main"),
                 "native opForge CLI did not report the smoke .module directive\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("MOD-DEF 0 1 1 0 4 main"),
+                "native opForge CLI did not report the table-backed .module record\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );

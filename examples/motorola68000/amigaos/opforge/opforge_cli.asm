@@ -670,12 +670,22 @@ opforgeNativeCliParseModuleLine:
         BNE.W opforgeNativeCliParseLineFail
         TST.B nativeCliArgToken
         BEQ.W opforgeNativeCliParseLineFail
-        MOVE.L #moduleFoundText, D1
-        BSR.W opforge_native_cli_put_str
-        MOVE.L #nativeCliArgToken, D1
-        BSR.W opforge_native_cli_put_str
-        MOVE.L #newlineText, D1
-        BSR.W opforge_native_cli_put_str
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.S opforgeNativeCliParseModuleLineRecord
+        CMPI.B #';', (A0)
+        BNE.W opforgeNativeCliParseLineFail
+
+opforgeNativeCliParseModuleLineRecord:
+        BSR.W opforgeNativeCliRecordModule
+        TST.L D0
+        BNE.W opforgeNativeCliParseLineFail
+        MOVEQ #0, D0
+        MOVE.W nativeCliCurrentModuleId, D0
+        BSR.W opforgeNativeCliEmitModuleRecord
+        MOVEQ #0, D0
+        MOVE.W nativeCliCurrentModuleId, D0
+        BSR.W opforgeNativeCliEmitModuleCompatibility
         BRA.W opforgeNativeCliParseLineDone
 
 opforgeNativeCliParseUseLine:
@@ -829,6 +839,152 @@ opforgeNativeCliCopyLineWordDone:
 
 opforgeNativeCliCopyLineWordFail:
         MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliRecordModule:
+        MOVEM.L D1-D3/A0-A1, -(SP)
+        MOVEQ #0, D0
+        MOVE.W nativeCliModuleCount, D0
+        CMPI.W #NATIVE_MODULE_TABLE_CAPACITY, D0
+        BHS.S opforgeNativeCliRecordModuleFail
+        MOVE.W D0, D3
+        LEA nativeCliArgToken, A0
+        LEA nativeCliModuleNameTable, A1
+        MOVEQ #0, D1
+        MOVE.W D3, D1
+        LSL.L #6, D1
+        ADDA.L D1, A1
+        BSR.W opforgeNativeCliCopyTokenBuffer
+
+        MOVEQ #0, D1
+        MOVE.W D3, D1
+        ADD.W D1, D1
+        LEA nativeCliModuleFileIdTable, A1
+        MOVE.W #1, 0(A1,D1.L)
+        LEA nativeCliModuleDepthTable, A1
+        MOVE.W nativeCliModuleDepth, 0(A1,D1.L)
+
+        MOVEQ #0, D1
+        MOVE.W D3, D1
+        LSL.L #2, D1
+        LEA nativeCliModuleLineTable, A1
+        MOVE.L nativeCliSourceLineNum, 0(A1,D1.L)
+
+        TST.W nativeCliModuleCount
+        BNE.S opforgeNativeCliRecordModuleHaveRoot
+        MOVE.W D3, nativeCliRootModuleId
+
+opforgeNativeCliRecordModuleHaveRoot:
+        MOVE.W D3, nativeCliCurrentModuleId
+        MOVE.W nativeCliModuleCount, D0
+        ADDQ.W #1, D0
+        MOVE.W D0, nativeCliModuleCount
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliRecordModuleReturn
+
+opforgeNativeCliRecordModuleFail:
+        MOVEQ #1, D0
+
+opforgeNativeCliRecordModuleReturn:
+        MOVEM.L (SP)+, D1-D3/A0-A1
+        RTS
+
+opforgeNativeCliEmitModuleRecord:
+        MOVEM.L D0-D4/A0-A1, -(SP)
+        MOVE.W D0, D4
+        CMP.W nativeCliRootModuleId, D4
+        BNE.S opforgeNativeCliEmitModuleRecordDef
+        MOVE.L #modRootText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+
+opforgeNativeCliEmitModuleRecordDef:
+        MOVE.L #modDefText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        ADD.W D0, D0
+        LEA nativeCliModuleFileIdTable, A0
+        MOVE.W 0(A0,D0.L), D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        LSL.L #2, D0
+        LEA nativeCliModuleLineTable, A0
+        MOVE.L 0(A0,D0.L), D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        ADD.W D0, D0
+        LEA nativeCliModuleDepthTable, A0
+        MOVE.W 0(A0,D0.L), D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+
+        BSR.W opforgeNativeCliModuleNamePtr
+        BSR.W opforgeNativeCliTokenLen
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        BSR.W opforgeNativeCliModuleNamePtr
+        MOVE.L A0, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D0-D4/A0-A1
+        RTS
+
+opforgeNativeCliEmitModuleCompatibility:
+        MOVEM.L D0/D4/A0, -(SP)
+        MOVE.W D0, D4
+        MOVE.L #moduleFoundText, D1
+        BSR.W opforge_native_cli_put_str
+        BSR.W opforgeNativeCliModuleNamePtr
+        MOVE.L A0, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D0/D4/A0
+        RTS
+
+opforgeNativeCliPutSpace:
+        MOVE.L #spaceText, D1
+        BSR.W opforge_native_cli_put_str
+        RTS
+
+opforgeNativeCliModuleNamePtr:
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        LSL.L #6, D0
+        LEA nativeCliModuleNameTable, A0
+        ADDA.L D0, A0
+        RTS
+
+opforgeNativeCliTokenLen:
+        MOVEM.L D1/A0, -(SP)
+        MOVEQ #0, D0
+        MOVE.L #TOKEN_BUFFER_CAPACITY - 1, D1
+
+opforgeNativeCliTokenLenLoop:
+        TST.B (A0)+
+        BEQ.S opforgeNativeCliTokenLenDone
+        ADDQ.W #1, D0
+        DBRA D1, opforgeNativeCliTokenLenLoop
+
+opforgeNativeCliTokenLenDone:
+        MOVEM.L (SP)+, D1/A0
         RTS
 
 opforgeNativeCliCopyIncludeTarget:
@@ -1731,6 +1887,10 @@ includeLineText:
         .byte "INCLUDE-LINE ",0
 includeLeaveText:
         .byte "INCLUDE-LEAVE 1",10,0
+modRootText:
+        .byte "MOD-ROOT ",0
+modDefText:
+        .byte "MOD-DEF ",0
 moduleFoundText:
         .byte "MODULE ",0
 useFoundText:

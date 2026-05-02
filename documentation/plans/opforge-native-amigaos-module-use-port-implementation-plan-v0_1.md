@@ -83,7 +83,7 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
   - Detailed definition of done: native CLI has zeroed module/import/path state at run
     start and host tests lock table labels/capacities.
 
-- [ ] Item 2: Replace print-only `.module` recognition with table-backed module
+- [x] Item 2: Replace print-only `.module` recognition with table-backed module
       records
   - Validation: focused native CLI host tests, reference gate, format check, and
     opt-in FS-UAE success/failure smoke when available.

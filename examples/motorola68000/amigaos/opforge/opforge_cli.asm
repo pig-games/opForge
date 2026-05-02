@@ -175,6 +175,7 @@ opforgeNativeCliInputOpened:
         BSR.W opforge_native_cli_put_str
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
+        BSR.W opforgeNativeCliEmitModulePathRecords
         BSR.W opforge_native_cli_tokenize_frontend
         TST.L D0
         BEQ.S opforgeNativeCliTokenizerOk
@@ -1476,6 +1477,7 @@ NCLI_PARSE_NO_INPUT             = -6
 NCLI_PARSE_HUNK_REQUIRED        = -7
 NCLI_PARSE_MIXED_INPUT          = -8
 NCLI_PARSE_MULTIPLE_POSITIONAL  = -9
+NCLI_PARSE_MODULE_PATH_CAPACITY = -10
 
 opforge_native_cli_parse_args:
         MOVEM.L D2-D7/A2-A6, -(SP)
@@ -1488,6 +1490,7 @@ opforge_native_cli_parse_args:
         CLR.B nativeCliOutfileBase
         CLR.B nativeCliCpuName
         CLR.B nativeCliPackagePath
+        MOVE.W #1, nativeCliModulePathCount
 
 opforgeNativeCliParseLoop:
         BSR.W opforgeNativeCliSkipWhitespace
@@ -1555,6 +1558,16 @@ opforgeNativeCliParseLoop:
         BSR.W opforgeNativeCliTokenEquals
         TST.L D0
         BNE.W opforgeNativeCliPackage
+        LEA nativeCliArgToken, A0
+        LEA flagModuleShort, A1
+        BSR.W opforgeNativeCliTokenEquals
+        TST.L D0
+        BNE.W opforgeNativeCliModulePath
+        LEA nativeCliArgToken, A0
+        LEA flagModuleLong, A1
+        BSR.W opforgeNativeCliTokenEquals
+        TST.L D0
+        BNE.W opforgeNativeCliModulePath
         BSR.W opforgeNativeCliIsUnsupportedFlag
         TST.L D0
         BNE.W opforgeNativeCliUnsupported
@@ -1607,6 +1620,18 @@ opforgeNativeCliPackage:
         BNE.W opforgeNativeCliMissingValue
         BRA.W opforgeNativeCliParseLoop
 
+opforgeNativeCliModulePath:
+        LEA nativeCliIncludeTarget, A1
+        BSR.W opforgeNativeCliCopyRequiredPathValue
+        CMPI.L #1, D0
+        BEQ.W opforgeNativeCliMissingValue
+        TST.L D0
+        BNE.W opforgeNativeCliModulePathCapacity
+        BSR.W opforgeNativeCliRecordModulePathValue
+        TST.L D0
+        BNE.W opforgeNativeCliModulePathCapacity
+        BRA.W opforgeNativeCliParseLoop
+
 opforgeNativeCliPositionalInput:
         TST.W nativeCliInputStyle
         BEQ.S opforgeNativeCliPositionalInputFirst
@@ -1635,6 +1660,9 @@ opforgeNativeCliParseDone:
         BSR.W opforgeNativeCliCopyTokenBuffer
 
 opforgeNativeCliParseOk:
+        BSR.W opforgeNativeCliRecordImplicitModulePathRoot
+        TST.L D0
+        BNE.W opforgeNativeCliModulePathCapacity
         MOVE.W #NCLI_PARSE_OK, nativeCliParseStatus
         BRA.W opforgeNativeCliParseReturn
 
@@ -1680,6 +1708,10 @@ opforgeNativeCliMixedInput:
 
 opforgeNativeCliMultiplePositional:
         MOVE.W #NCLI_PARSE_MULTIPLE_POSITIONAL, nativeCliParseStatus
+        BRA.W opforgeNativeCliParseReturn
+
+opforgeNativeCliModulePathCapacity:
+        MOVE.W #NCLI_PARSE_MODULE_PATH_CAPACITY, nativeCliParseStatus
 
 opforgeNativeCliParseReturn:
         MOVE.W nativeCliParseStatus, D0
@@ -1748,6 +1780,48 @@ opforgeNativeCliCopyRequiredValue:
 
 opforgeNativeCliRequiredMissing:
         MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliCopyRequiredPathValue:
+        BSR.W opforgeNativeCliSkipWhitespace
+        TST.B (A3)
+        BEQ.S opforgeNativeCliRequiredPathMissing
+        CMPI.B #'"', (A3)
+        BEQ.S opforgeNativeCliRequiredPathMissing
+        MOVE.L #PATH_BUFFER_CAPACITY - 1, D6
+
+opforgeNativeCliCopyRequiredPathLoop:
+        MOVEQ #0, D0
+        MOVE.B (A3), D0
+        BEQ.S opforgeNativeCliCopyRequiredPathDone
+        CMPI.B #' ', D0
+        BEQ.S opforgeNativeCliCopyRequiredPathDone
+        CMPI.B #9, D0
+        BEQ.S opforgeNativeCliCopyRequiredPathDone
+        CMPI.B #10, D0
+        BEQ.S opforgeNativeCliCopyRequiredPathDone
+        CMPI.B #13, D0
+        BEQ.S opforgeNativeCliCopyRequiredPathDone
+        CMPI.B #'"', D0
+        BEQ.S opforgeNativeCliCopyRequiredPathCapacity
+        TST.L D6
+        BEQ.S opforgeNativeCliCopyRequiredPathCapacity
+        MOVE.B D0, (A1)+
+        ADDQ.L #1, A3
+        SUBQ.L #1, D6
+        BRA.S opforgeNativeCliCopyRequiredPathLoop
+
+opforgeNativeCliCopyRequiredPathDone:
+        CLR.B (A1)
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliRequiredPathMissing:
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliCopyRequiredPathCapacity:
+        MOVEQ #2, D0
         RTS
 
 opforgeNativeCliCopyOptionalValue:
@@ -1855,16 +1929,6 @@ opforgeNativeCliIsUnsupportedFlag:
         BSR.W opforgeNativeCliTokenEquals
         TST.L D0
         BNE.W opforgeNativeCliUnsupportedYes
-        LEA nativeCliArgToken, A0
-        LEA flagModuleShort, A1
-        BSR.W opforgeNativeCliTokenEquals
-        TST.L D0
-        BNE.W opforgeNativeCliUnsupportedYes
-        LEA nativeCliArgToken, A0
-        LEA flagModuleLong, A1
-        BSR.W opforgeNativeCliTokenEquals
-        TST.L D0
-        BNE.W opforgeNativeCliUnsupportedYes
         MOVEQ #0, D0
         RTS
 
@@ -1883,19 +1947,21 @@ opforge_native_cli_report_parse_error:
         CMPI.W #NCLI_PARSE_MISSING_VALUE, D0
         BEQ.S opforgeNativeCliReportMissing
         CMPI.W #NCLI_PARSE_NO_INPUT, D0
-        BEQ.S opforgeNativeCliReportNoInput
+        BEQ.W opforgeNativeCliReportNoInput
         CMPI.W #NCLI_PARSE_HUNK_REQUIRED, D0
-        BEQ.S opforgeNativeCliReportHunkRequired
+        BEQ.W opforgeNativeCliReportHunkRequired
         CMPI.W #NCLI_PARSE_MIXED_INPUT, D0
-        BEQ.S opforgeNativeCliReportMixedInput
+        BEQ.W opforgeNativeCliReportMixedInput
         CMPI.W #NCLI_PARSE_MULTIPLE_POSITIONAL, D0
-        BEQ.S opforgeNativeCliReportMultiplePositional
+        BEQ.W opforgeNativeCliReportMultiplePositional
+        CMPI.W #NCLI_PARSE_MODULE_PATH_CAPACITY, D0
+        BEQ.W opforgeNativeCliReportModulePathCapacity
         MOVE.L #usageText, D1
-        BRA.S opforgeNativeCliReportText
+        BRA.W opforgeNativeCliReportText
 
 opforgeNativeCliReportQuoted:
         MOVE.L #quotedText, D1
-        BRA.S opforgeNativeCliReportText
+        BRA.W opforgeNativeCliReportText
 
 opforgeNativeCliReportUnsupported:
         MOVE.L #unsupportedText, D1
@@ -1935,9 +2001,76 @@ opforgeNativeCliReportMixedInput:
 
 opforgeNativeCliReportMultiplePositional:
         MOVE.L #multiplePositionalText, D1
+        BRA.S opforgeNativeCliReportText
+
+opforgeNativeCliReportModulePathCapacity:
+        MOVE.L #modulePathCapacityText, D1
 
 opforgeNativeCliReportText:
         BSR.W opforge_native_cli_put_str
+        RTS
+
+opforgeNativeCliRecordImplicitModulePathRoot:
+        LEA nativeCliInputPath, A0
+        LEA nativeCliModulePathTable, A1
+        BSR.W opforgeNativeCliCopyPathRoot
+        RTS
+
+opforgeNativeCliRecordModulePathValue:
+        MOVEM.L D1/A0-A1, -(SP)
+        MOVEQ #0, D0
+        MOVE.W nativeCliModulePathCount, D0
+        CMPI.W #NATIVE_MODULE_PATH_CAPACITY, D0
+        BHS.S opforgeNativeCliRecordModulePathFail
+        MOVE.L D0, D1
+        LSL.L #8, D1
+        LEA nativeCliModulePathTable, A1
+        ADDA.L D1, A1
+        LEA nativeCliIncludeTarget, A0
+        BSR.W opforgeNativeCliCopyPathBuffer
+        TST.L D0
+        BNE.S opforgeNativeCliRecordModulePathFail
+        MOVE.W nativeCliModulePathCount, D0
+        ADDQ.W #1, D0
+        MOVE.W D0, nativeCliModulePathCount
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliRecordModulePathReturn
+
+opforgeNativeCliRecordModulePathFail:
+        MOVEQ #1, D0
+
+opforgeNativeCliRecordModulePathReturn:
+        MOVEM.L (SP)+, D1/A0-A1
+        RTS
+
+opforgeNativeCliEmitModulePathRecords:
+        MOVEM.L D0-D4/A0, -(SP)
+        CLR.W D4
+
+opforgeNativeCliEmitModulePathLoop:
+        MOVE.W nativeCliModulePathCount, D0
+        CMP.W D0, D4
+        BHS.S opforgeNativeCliEmitModulePathDone
+        MOVE.L #modPathText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVEQ #0, D0
+        MOVE.W D4, D0
+        LSL.L #8, D0
+        LEA nativeCliModulePathTable, A0
+        ADDA.L D0, A0
+        MOVE.L A0, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+        ADDQ.W #1, D4
+        BRA.S opforgeNativeCliEmitModulePathLoop
+
+opforgeNativeCliEmitModulePathDone:
+        MOVEM.L (SP)+, D0-D4/A0
         RTS
 
         .endsection
@@ -1952,7 +2085,7 @@ versionText:
         .byte "opForge native AmigaOS CLI 0.1",10,0
 helpText:
         .byte "Usage: opForge [OPTIONS] [INPUT]",10
-        .byte "Native subset: INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package",10,0
+        .byte "Native subset: INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -M/--module-path",10,0
 usageText:
         .byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]",10,0
 quotedText:
@@ -1960,7 +2093,7 @@ quotedText:
 unsupportedText:
         .byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ",0
 nativeSubsetHelpText:
-        .byte 10,"Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, and --opasm-package.",10,0
+        .byte 10,"Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path.",10,0
 unknownFlagText:
         .byte "OPC-NCLI004: unknown CLI flag: ",0
 missingValueText:
@@ -1973,6 +2106,8 @@ mixedInputText:
         .byte "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style",10,0
 multiplePositionalText:
         .byte "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile",10,0
+modulePathCapacityText:
+        .byte "OPC-NCLI017: native module path capacity exceeded",10,0
 inputOpenErrorText:
         .byte "OPC-NCLI008: Input source file not found: ",0
 stubHeaderText:
@@ -2020,6 +2155,8 @@ modDefText:
         .byte "MOD-DEF ",0
 modEndText:
         .byte "MOD-END ",0
+modPathText:
+        .byte "MOD-PATH ",0
 moduleFoundText:
         .byte "MODULE ",0
 useFoundText:
@@ -2066,7 +2203,15 @@ defaultFsUaeArgTail:
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE
         .byte "Work:opforge_fsuae_unterminated_module.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
-        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH
+        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW
+        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8",0
+.else
+        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b",0
+.endif
+.endif
 .endif
 .endif
 .endif

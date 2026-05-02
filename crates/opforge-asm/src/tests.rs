@@ -9885,9 +9885,10 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains(
         "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile"
     ));
+    assert!(source.contains("OPC-NCLI017: native module path capacity exceeded"));
     assert!(source.contains("OPC-NCLI008: Input source file not found"));
     assert!(source.contains(
-        "Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, and --opasm-package."
+        "Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path."
     ));
     assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(source.contains("STATUS parser-module-use-ok"));
@@ -9912,6 +9913,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW"));
     assert!(source.contains("opforge_native_cli_stage_package"));
     assert!(source.contains("opforge_native_cli_init_module_use_state"));
     assert!(source.contains("opforge_native_cli_clear_bytes"));
@@ -9929,7 +9932,31 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliCloseModule"));
     assert!(source.contains("opforgeNativeCliEmitModuleEndRecord"));
     assert!(source.contains("opforgeNativeCliRestoreParentModule"));
+    assert!(source.contains("opforgeNativeCliModulePath"));
+    assert!(source.contains("opforgeNativeCliCopyRequiredPathValue"));
+    assert!(source.contains("opforgeNativeCliRecordImplicitModulePathRoot"));
+    assert!(source.contains("opforgeNativeCliRecordModulePathValue"));
+    assert!(source.contains("opforgeNativeCliEmitModulePathRecords"));
     assert!(source.contains("opforgeNativeCliTokenLen"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "LEA flagModuleShort, A1",
+            "BNE.W opforgeNativeCliModulePath",
+            "LEA flagModuleLong, A1",
+            "BNE.W opforgeNativeCliModulePath",
+            "BSR.W opforgeNativeCliIsUnsupportedFlag",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliParseOk:",
+            "BSR.W opforgeNativeCliRecordImplicitModulePathRoot",
+            "BNE.W opforgeNativeCliModulePathCapacity",
+            "MOVE.W #NCLI_PARSE_OK, nativeCliParseStatus",
+        ]
+    ));
     assert!(source_contains_in_order(
         &source,
         &[
@@ -10000,6 +10027,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(tokvm_source_contains(&source, ".byte \"MOD-ROOT \",0"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-DEF \",0"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-END \",0"));
+    assert!(tokvm_source_contains(&source, ".byte \"MOD-PATH \",0"));
     assert!(tokvm_source_contains(
         &source,
         ".byte \"ERROR OPC-NCLI016: native module depth mismatch\",10,0"
@@ -10036,6 +10064,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforgeNativeCliCloseModule"));
     assert!(listing.contains("opforgeNativeCliEmitModuleEndRecord"));
     assert!(listing.contains("opforgeNativeCliRestoreParentModule"));
+    assert!(listing.contains("opforgeNativeCliModulePath"));
+    assert!(listing.contains("opforgeNativeCliRecordImplicitModulePathRoot"));
+    assert!(listing.contains("opforgeNativeCliRecordModulePathValue"));
+    assert!(listing.contains("opforgeNativeCliEmitModulePathRecords"));
     assert!(listing.contains("opforgeNativeCliTokenLen"));
     assert!(listing.contains("opforgeNativeCliParseModuleLine"));
     assert!(listing.contains("opforgeNativeCliParseUseLine"));
@@ -10058,9 +10090,11 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("MOD-ROOT"));
     assert!(listing.contains("MOD-DEF"));
     assert!(listing.contains("MOD-END"));
+    assert!(listing.contains("MOD-PATH"));
     assert!(listing.contains("OPC-NCLI014"));
     assert!(listing.contains("OPC-NCLI015"));
     assert!(listing.contains("OPC-NCLI016"));
+    assert!(listing.contains("OPC-NCLI017"));
     assert!(listing.contains("emitter-not-implemented"));
 
     let payload_path = example_output_payload_path(&out_dir, "opforge_cli", "hunk");
@@ -10099,6 +10133,12 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
             .windows("MOD-END ".len())
             .any(|window| window == b"MOD-END "),
         "expected table-backed module end marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("MOD-PATH ".len())
+            .any(|window| window == b"MOD-PATH "),
+        "expected table-backed module path marker in Hunk payload"
     );
     assert!(
         payload
@@ -25864,6 +25904,24 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
+                run.stdout.contains("MOD-PATH 0 Work:"),
+                "native opForge CLI did not report the implicit input module root\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("MOD-PATH 1 Work:opforge_module_a"),
+                "native opForge CLI did not report the short-form module path root\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("MOD-PATH 2 Work:opforge_module_b"),
+                "native opForge CLI did not report the long-form module path root\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
                 run.stdout.contains("USE math"),
                 "native opForge CLI did not report the smoke .use directive\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
@@ -25977,6 +26035,16 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
             name: "unterminated-module",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE",
             expected_diagnostic: "ERROR OPC-NCLI016: native module depth mismatch",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "missing-module-path",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH",
+            expected_diagnostic: "OPC-NCLI005: option requires a value: -M",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "module-path-overflow",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW",
+            expected_diagnostic: "OPC-NCLI017: native module path capacity exceeded",
         },
     ];
 

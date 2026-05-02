@@ -183,6 +183,7 @@ need.
 MOD-ROOT <module-id>
 MOD-DEF <module-id> <file-id> <line> <depth> <name-len> <name>
 MOD-END <module-id> <file-id> <line> <depth>
+MOD-PATH <path-index> <path>
 USE-IMPORT <import-id> <owner-module-id> <import-module-id> <file-id> <line> <alias-len> <alias>
 USE-SELECT <import-id> <item-index> <item-len> <item> <alias-len> <alias> <flags>
 USE-WILDCARD <import-id> <flags>
@@ -190,6 +191,10 @@ USE-WILDCARD <import-id> <flags>
 
 `alias-len` is `0` when no alias is present. The text payload is omitted when
 its length is `0`.
+
+`MOD-PATH` records preserve module root order. Index `0` is the implicit input
+root; later indexes are repeatable `-M` / `--module-path` roots in command-line
+order.
 
 `USE-SELECT` flags are decimal bit flags:
 

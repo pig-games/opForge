@@ -130,7 +130,7 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
   - Detailed definition of done: native CLI tracks open module state across the input
     file and rejects unmatched endings.
 
-- [ ] Item 4: Parse repeatable native `-M` / `--module-path`
+- [x] Item 4: Parse repeatable native `-M` / `--module-path`
   - Validation: focused native CLI host tests, reference gate, format check, and
     opt-in FS-UAE smoke with two module paths when available.
   - Definition of done: native CLI records repeatable module roots in command

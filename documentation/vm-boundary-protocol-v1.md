@@ -37,7 +37,7 @@ It specifies:
 | Stage | Owner | VM Used? | Normative Behavior |
 |---|---|---|---|
 | Preprocessor file expansion | Host | No | Host `Preprocessor` expands source/includes/defines before module graph assembly. |
-| Module graph dependency traversal | Host | Yes (scanner) | Host builds graph/orchestration; line scans (`.module`, `.use`) are parsed using the default VM tokenizer/parser model. |
+| Module graph dependency traversal | Host | No | Host builds graph/orchestration and uses compact hard-coded Rust scanning for bootstrap-only forms such as `.module` and `.use`. |
 | Macro expansion | Host | No (engine) | Host `MacroProcessor` performs expansion/injection; VM is not the macro executor. |
 | Per-line tokenization in assembler passes | VM | Yes | Per-line processing requires a runtime model and uses the VM tokenization path. |
 | Per-line parser envelope | VM | Yes | Per-line parsing validates parser contracts and executes the parser VM envelope. |
@@ -58,29 +58,33 @@ flowchart TD
 	subgraph VM_HOT_PATH[VM-Authoritative Line Hot Path]
 	  T[VM Tokenizer] --> P[VM Parser Envelope]
 	  P --> X[EXVM Expression Parser]
-	  X --> E[EXPR Portable Evaluator]
-	  E --> I[VM Instruction/Directive Encode]
+	  X --> PE[EXPR Portable Evaluator]
+	  PE --> I[VM Instruction/Directive Encode]
 	end
 
 	F --> T
 	I --> G[Host Symbol/Image/LST/HEX/BIN/Map Outputs]
 ```
 
-## 5. Bootstrap Protocol (Host-Orchestrated, VM-Assisted Scanning)
+## 5. Bootstrap Protocol (Host-Orchestrated, Host-Owned Scanning)
 
 Bootstrap entry (`run_one`) performs:
 1. host preprocess,
 2. host module graph load,
 3. pass1/pass2 orchestration.
 
-Within module graph load, host scanners parse lines using the default VM model for `.module` and `.use` extraction.
+Within module graph load, host scanners use compact hard-coded Rust logic for
+`.module` and `.use` extraction. This bootstrap scanner is intentionally not a
+VM contract: project discovery and dependency layout are host policy surfaces
+that can differ across C64-style flat projects, Amiga/Hunk projects, and modern
+workspace-oriented hosts.
 
 ```mermaid
 sequenceDiagram
 	participant CLI as Host CLI
 	participant ASM as Host Assembler(run_one)
 	participant BOOT as Host Bootstrap
-	participant VM as VM tokenizer/parser bridge
+	participant SCAN as Host module scanner
 	participant MP as Host MacroProcessor
 
 	CLI->>ASM: run_one(input)
@@ -88,8 +92,8 @@ sequenceDiagram
 	BOOT-->>ASM: preprocessed root lines
 	ASM->>BOOT: load_module_graph(root_lines)
 	loop scan .module/.use
-		BOOT->>VM: parse_line_with_default_model(line)
-		VM-->>BOOT: LineAst or parse error
+		BOOT->>SCAN: scan bootstrap structural forms(line)
+		SCAN-->>BOOT: module/use metadata or diagnostic
 	end
 	BOOT->>MP: expand deps/root with import visibility
 	MP-->>BOOT: expanded lines
@@ -97,7 +101,10 @@ sequenceDiagram
 ```
 
 Normative note:
-- VM is a scanner/parser service here, not the owner of module graph or macro expansion orchestration.
+- The bootstrap scanner must stay narrow: it may recognize structural forms
+  needed before pass execution, but it must not become a second pass-time
+  statement parser. VM tokenizer/parser contracts remain authoritative for the
+  assembler hot path, not for project discovery orchestration.
 
 ## 6. Assembly Hot Path Protocol (Host ↔ VM)
 

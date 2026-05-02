@@ -9913,6 +9913,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
     assert!(source.contains("opforge_native_cli_stage_package"));
+    assert!(source.contains("opforge_native_cli_init_module_use_state"));
+    assert!(source.contains("opforge_native_cli_clear_bytes"));
     assert!(source.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(source.contains("opforge_native_cli_tokenize_file"));
     assert!(source.contains("opforge_native_cli_tokenize_file_at_path"));
@@ -9921,6 +9923,20 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforge_native_cli_expand_include_target"));
     assert!(source.contains("opforgeNativeCliResolveIncludePath"));
     assert!(source.contains("PACKAGE_STORAGE_CAPACITY"));
+    assert!(source.contains("NATIVE_MODULE_TABLE_CAPACITY    = 16"));
+    assert!(source.contains("NATIVE_IMPORT_TABLE_CAPACITY    = 32"));
+    assert!(source.contains("NATIVE_MODULE_PATH_CAPACITY     = 8"));
+    assert!(source.contains("NATIVE_IMPORT_SELECT_CAPACITY   = 64"));
+    assert!(source.contains("NATIVE_MODULE_USE_STATE_BYTES"));
+    assert!(source.contains("nativeCliModuleUseStateStart"));
+    assert!(source.contains("nativeCliModuleCount"));
+    assert!(source.contains("nativeCliImportCount"));
+    assert!(source.contains("nativeCliModulePathCount"));
+    assert!(source.contains("nativeCliImportSelectCount"));
+    assert!(source.contains("nativeCliModuleNameTable"));
+    assert!(source.contains("nativeCliImportAliasTable"));
+    assert!(source.contains("nativeCliImportSelectNameTable"));
+    assert!(source.contains("nativeCliModulePathTable"));
 }
 
 #[test]
@@ -9937,6 +9953,8 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
         .expect("read opforge native CLI listing");
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("opforge_native_cli_parse_args"));
+    assert!(listing.contains("opforge_native_cli_init_module_use_state"));
+    assert!(listing.contains("opforge_native_cli_clear_bytes"));
     assert!(listing.contains("opforge_native_cli_tokenize_frontend"));
     assert!(listing.contains("opforge_native_cli_tokenize_file"));
     assert!(listing.contains("opforge_native_cli_tokenize_file_at_path"));
@@ -9947,6 +9965,15 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforgeNativeCliParseModuleLine"));
     assert!(listing.contains("opforgeNativeCliParseUseLine"));
     assert!(listing.contains("opforgeNativeCliParseIncludeLine"));
+    assert!(listing.contains("nativeCliModuleUseStateStart"));
+    assert!(listing.contains("nativeCliModuleCount"));
+    assert!(listing.contains("nativeCliImportCount"));
+    assert!(listing.contains("nativeCliModulePathCount"));
+    assert!(listing.contains("nativeCliImportSelectCount"));
+    assert!(listing.contains("nativeCliModuleNameTable"));
+    assert!(listing.contains("nativeCliImportAliasTable"));
+    assert!(listing.contains("nativeCliImportSelectNameTable"));
+    assert!(listing.contains("nativeCliModulePathTable"));
     assert!(listing.contains("opforge_native_cli_stage_package"));
     assert!(listing.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(listing.contains("opforge_native_cli_run"));

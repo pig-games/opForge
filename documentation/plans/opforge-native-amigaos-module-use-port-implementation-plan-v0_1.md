@@ -60,7 +60,7 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
     bootstrap visibility baseline that can be cleanly separated from the later
     `.include` input-expansion slice.
 
-- [ ] Item 1: Add native module/use state tables
+- [x] Item 1: Add native module/use state tables
   - Validation: focused native CLI host tests, reference gate, and format check.
   - Definition of done: native CLI initializes fixed-capacity module/import/path
     state and tests lock the labels/capacities.

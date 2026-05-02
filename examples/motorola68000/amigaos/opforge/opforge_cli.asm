@@ -45,6 +45,11 @@ RETURN_WORKBENCH_UNSUPPORTED    = 31
 PATH_BUFFER_CAPACITY            = 256
 TOKEN_BUFFER_CAPACITY           = 64
 SOURCE_LINE_BUFFER_CAPACITY     = 512
+NATIVE_MODULE_TABLE_CAPACITY    = 16
+NATIVE_IMPORT_TABLE_CAPACITY    = 32
+NATIVE_MODULE_PATH_CAPACITY     = 8
+NATIVE_IMPORT_SELECT_CAPACITY   = 64
+NATIVE_MODULE_USE_STATE_BYTES   = (7 * 2) + (NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_MODULE_TABLE_CAPACITY * 4) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 4) + (NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY)
 PACKAGE_INPUT_PTR_V1            = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
 NATIVE_INCLUDE_DEPTH_LIMIT      = 1
 
@@ -106,6 +111,7 @@ opforge_native_cli_run:
 
 opforgeNativeCliHaveDos:
         MOVE.L D0, nativeCliDosBase
+        BSR.W opforge_native_cli_init_module_use_state
         MOVEA.L D0, A6
         JSR GetArgStr(A6)
 .ifdef OPFORGE_FS_UAE_SMOKE
@@ -1156,6 +1162,27 @@ opforgeNativeCliPutDecNext:
         MOVEM.L (SP)+, D1-D6/A0-A1
         RTS
 
+opforge_native_cli_init_module_use_state:
+        MOVEM.L D0-D1/A0, -(SP)
+        LEA nativeCliModuleUseStateStart, A0
+        MOVE.L #NATIVE_MODULE_USE_STATE_BYTES, D0
+        BSR.W opforge_native_cli_clear_bytes
+        MOVEM.L (SP)+, D0-D1/A0
+        RTS
+
+opforge_native_cli_clear_bytes:
+        TST.L D0
+        BEQ.S opforgeNativeCliClearBytesDone
+        MOVEQ #0, D1
+
+opforgeNativeCliClearBytesLoop:
+        MOVE.B D1, (A0)+
+        SUBQ.L #1, D0
+        BNE.S opforgeNativeCliClearBytesLoop
+
+opforgeNativeCliClearBytesDone:
+        RTS
+
 NCLI_PARSE_OK                   = 0
 NCLI_PARSE_HELP                 = 1
 NCLI_PARSE_VERSION              = 2
@@ -1886,6 +1913,51 @@ nativeCliIncludePath:
         .res byte,PATH_BUFFER_CAPACITY
 nativeCliIncludeRootPath:
         .res byte,PATH_BUFFER_CAPACITY
+
+nativeCliModuleUseStateStart:
+nativeCliModuleCount:
+        .res word,1
+nativeCliImportCount:
+        .res word,1
+nativeCliModulePathCount:
+        .res word,1
+nativeCliImportSelectCount:
+        .res word,1
+nativeCliRootModuleId:
+        .res word,1
+nativeCliCurrentModuleId:
+        .res word,1
+nativeCliModuleDepth:
+        .res word,1
+nativeCliModuleNameTable:
+        .res byte,NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+nativeCliModuleFileIdTable:
+        .res word,NATIVE_MODULE_TABLE_CAPACITY
+nativeCliModuleLineTable:
+        .res long,NATIVE_MODULE_TABLE_CAPACITY
+nativeCliModuleDepthTable:
+        .res word,NATIVE_MODULE_TABLE_CAPACITY
+nativeCliImportOwnerModuleTable:
+        .res word,NATIVE_IMPORT_TABLE_CAPACITY
+nativeCliImportModuleTable:
+        .res word,NATIVE_IMPORT_TABLE_CAPACITY
+nativeCliImportFileIdTable:
+        .res word,NATIVE_IMPORT_TABLE_CAPACITY
+nativeCliImportLineTable:
+        .res long,NATIVE_IMPORT_TABLE_CAPACITY
+nativeCliImportAliasTable:
+        .res byte,NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+nativeCliImportSelectImportTable:
+        .res word,NATIVE_IMPORT_SELECT_CAPACITY
+nativeCliImportSelectNameTable:
+        .res byte,NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY
+nativeCliImportSelectAliasTable:
+        .res byte,NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY
+nativeCliImportSelectFlagsTable:
+        .res word,NATIVE_IMPORT_SELECT_CAPACITY
+nativeCliModulePathTable:
+        .res byte,NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY
+nativeCliModuleUseStateEnd:
 
         .endsection
 

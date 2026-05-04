@@ -11861,7 +11861,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "TST.B D0\n        BEQ.W tkpkgPipelineSkipCpuEntry\n        LEA pendingCpuOffsetLo, A3\n        LEA 0(A4), A1\n        MOVE.W D6, D0\n        BSR.W tkpkg_pipeline_store_package_string_locator_v1"
+        "TST.B D0\n        BEQ.W tkpkgPipelineSkipCpuEntry\n        LEA pendingCpuOffsetLo, A3\n        MOVEA.L A4, A1\n        MOVE.W D6, D0\n        BSR.W tkpkg_pipeline_store_package_string_locator_v1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -11885,7 +11885,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "tkpkgPipelineDialectAccept:\n        LEA pendingDialectOffsetLo, A3\n        LEA 0(A0), A1\n        MOVE.W (SP)+, D0\n        BSR.W tkpkg_pipeline_store_package_string_locator_v1"
+        "tkpkgPipelineDialectAccept:\n        LEA pendingDialectOffsetLo, A3\n        MOVEA.L A0, A1\n        MOVE.W (SP)+, D0\n        BSR.W tkpkg_pipeline_store_package_string_locator_v1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,

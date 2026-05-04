@@ -12,6 +12,7 @@
         .use tkpkg.amigaos.buffers (pendingTokenPolicyOwnerTag)
 
 MISSING_POLICY_TEXT_LEN             = 33
+TOKS_ENTRY_FIXED_PREFIX_SIZE        = 9
 
         .section data, kind=data
 
@@ -57,7 +58,7 @@ tkpkg_token_policy_find_owner_v1:
         CLR.B (A3)
         BSR.W tkpkg_token_policy_read_locator_ptr_len_v1
         MOVE.W D3, D5
-        LEA 0(A1), A5
+        MOVEA.L A1, A5
         LEA toksChunkOffsetLo, A3
         BSR.W tkpkg_token_policy_chunk_ptr_from_locator_v1
         BSR.W tkpkg_token_policy_read_u32_le_low16_v1
@@ -68,18 +69,18 @@ tkpkg_token_policy_find_owner_v1:
         LEA 4(A2), A2
 
 tkpkgTokenPolicyOwnerLoop:
-        LEA 0(A2), A4
+        MOVEA.L A2, A4
         MOVE.B (A2)+, D4
         BSR.W tkpkg_token_policy_locate_string_v1
         CMP.B D6, D4
         BNE.W tkpkgTokenPolicySkipEntry
         MOVE.W D0, D4
-        LEA 0(A1), A0
+        MOVEA.L A1, A0
         MOVE.L A2, -(SP)
         MOVE.W D4, D0
         MOVE.W D5, D1
-        LEA 0(A0), A1
-        LEA 0(A5), A2
+        MOVEA.L A0, A1
+        MOVEA.L A5, A2
         BSR.W tkpkg_token_policy_string_eq_ascii_casefold_v1
         MOVEA.L (SP)+, A2
         TST.B D0
@@ -96,7 +97,7 @@ tkpkgTokenPolicyOwnerMissing:
 tkpkgTokenPolicyFound:
         BSR.W tkpkg_token_policy_skip_toks_entry_v1
         LEA pendingTokenPolicyOffsetLo, A3
-        LEA 0(A4), A1
+        MOVEA.L A4, A1
         MOVE.L A2, D0
         SUB.L A4, D0
         BSR.W tkpkg_token_policy_store_record_locator_v1
@@ -105,9 +106,7 @@ tkpkgTokenPolicyFound:
         RTS
 
 tkpkg_token_policy_skip_toks_entry_v1:
-        ADDQ.W #1, A2
-        ADDQ.W #4, A2
-        ADDQ.W #4, A2
+        LEA TOKS_ENTRY_FIXED_PREFIX_SIZE(A2), A2
         BSR.W tkpkg_token_policy_skip_string_v1
         CMPI.B #$FF, (A2)
         BNE.S tkpkgTokenPolicySkipDone

@@ -28,6 +28,8 @@ UNRESOLVED_CPU_TEXT_LEN              = 33
 UNRESOLVED_FAMILY_TEXT_LEN           = 33
 UNRESOLVED_DIALECT_TEXT_LEN          = 34
 MISSING_PROGRAM_TEXT_LEN             = 36
+TOKENIZER_VM_ENTRY_PREFIX_SIZE      = 4
+TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE  = 19
 
         .section data, kind=data
 
@@ -196,7 +198,7 @@ tkpkg_pipeline_find_cpu_entry_v1:
         LEA pendingCpuOffsetLo, A3
         BSR.W tkpkg_pipeline_read_request_locator_ptr_len_v1
         MOVE.W D3, D5
-        LEA 0(A1), A5
+        MOVEA.L A1, A5
         LEA cpusChunkOffsetLo, A3
         BSR.W tkpkg_pipeline_chunk_ptr_from_locator_v1
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
@@ -209,18 +211,18 @@ tkpkg_pipeline_find_cpu_entry_v1:
 tkpkgPipelineCpuLoop:
         BSR.W tkpkg_pipeline_locate_string_v1
         MOVE.W D0, D6
-        LEA 0(A1), A4
+        MOVEA.L A1, A4
         MOVE.L A2, -(SP)
         MOVE.W D6, D0
         MOVE.W D5, D1
-        LEA 0(A4), A1
-        LEA 0(A5), A2
+        MOVEA.L A4, A1
+        MOVEA.L A5, A2
         BSR.W tkpkg_pipeline_string_eq_ascii_casefold_v1
         MOVEA.L (SP)+, A2
         TST.B D0
         BEQ.W tkpkgPipelineSkipCpuEntry
         LEA pendingCpuOffsetLo, A3
-        LEA 0(A4), A1
+        MOVEA.L A4, A1
         MOVE.W D6, D0
         BSR.W tkpkg_pipeline_store_package_string_locator_v1
         BSR.W tkpkg_pipeline_locate_string_v1
@@ -246,7 +248,7 @@ tkpkg_pipeline_find_family_entry_v1:
         LEA pendingFamilyOffsetLo, A3
         BSR.W tkpkg_pipeline_read_locator_ptr_len_v1
         MOVE.W D3, D5
-        LEA 0(A1), A5
+        MOVEA.L A1, A5
         LEA famsChunkOffsetLo, A3
         BSR.W tkpkg_pipeline_chunk_ptr_from_locator_v1
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
@@ -259,12 +261,12 @@ tkpkg_pipeline_find_family_entry_v1:
 tkpkgPipelineFamilyLoop:
         BSR.W tkpkg_pipeline_locate_string_v1
         MOVE.W D0, D6
-        LEA 0(A1), A4
+        MOVEA.L A1, A4
         MOVE.L A2, -(SP)
         MOVE.W D6, D0
         MOVE.W D5, D1
-        LEA 0(A4), A1
-        LEA 0(A5), A2
+        MOVEA.L A4, A1
+        MOVEA.L A5, A2
         BSR.W tkpkg_pipeline_string_eq_ascii_casefold_v1
         MOVEA.L (SP)+, A2
         TST.B D0
@@ -328,11 +330,11 @@ tkpkg_pipeline_find_dialect_entry_v1:
 
 tkpkgPipelineFindDialectEntryLoaded:
         MOVE.W D3, D5
-        LEA 0(A1), A5
+        MOVEA.L A1, A5
         LEA pendingFamilyOffsetLo, A3
         BSR.W tkpkg_pipeline_read_locator_ptr_len_v1
         MOVE.W D3, D6
-        LEA 0(A1), A4
+        MOVEA.L A1, A4
         LEA dialChunkOffsetLo, A3
         BSR.W tkpkg_pipeline_chunk_ptr_from_locator_v1
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
@@ -345,23 +347,22 @@ tkpkgPipelineFindDialectEntryLoaded:
 tkpkgPipelineDialectLoop:
         BSR.W tkpkg_pipeline_locate_string_v1
         MOVE.W D0, -(SP)
-        LEA 0(A1), A0
+        MOVEA.L A1, A0
         MOVE.L A2, -(SP)
         MOVE.W 4(SP), D0
         MOVE.W D5, D1
-        LEA 0(A0), A1
-        LEA 0(A5), A2
+        MOVEA.L A0, A1
+        MOVEA.L A5, A2
         BSR.W tkpkg_pipeline_string_eq_ascii_casefold_v1
         MOVEA.L (SP)+, A2
         TST.B D0
         BEQ.W tkpkgPipelineSkipDialectEntry
         BSR.W tkpkg_pipeline_locate_string_v1
         MOVE.W D0, D2
-        LEA 0(A1), A1
         MOVE.L A2, -(SP)
         MOVE.W D2, D0
         MOVE.W D6, D1
-        LEA 0(A4), A2
+        MOVEA.L A4, A2
         BSR.W tkpkg_pipeline_string_eq_ascii_casefold_v1
         MOVEA.L (SP)+, A2
         TST.B D0
@@ -394,7 +395,7 @@ tkpkgPipelineDialectNotFound:
 
 tkpkgPipelineDialectAccept:
         LEA pendingDialectOffsetLo, A3
-        LEA 0(A0), A1
+        MOVEA.L A0, A1
         MOVE.W (SP)+, D0
         BSR.W tkpkg_pipeline_store_package_string_locator_v1
         MOVEQ #0, D0
@@ -412,18 +413,18 @@ tkpkg_pipeline_dialect_allows_cpu_v1:
         LEA pendingCpuOffsetLo, A3
         BSR.W tkpkg_pipeline_read_locator_ptr_len_v1
         MOVE.W D3, D5
-        LEA 0(A1), A5
+        MOVEA.L A1, A5
         SUBQ.W #1, D7
 
 tkpkgPipelineAllowLoop:
         BSR.W tkpkg_pipeline_locate_string_v1
         MOVE.W D0, D6
-        LEA 0(A1), A4
+        MOVEA.L A1, A4
         MOVE.L A2, -(SP)
         MOVE.W D6, D0
         MOVE.W D5, D1
-        LEA 0(A4), A1
-        LEA 0(A5), A2
+        MOVEA.L A4, A1
+        MOVEA.L A5, A2
         BSR.W tkpkg_pipeline_string_eq_ascii_casefold_v1
         MOVEA.L (SP)+, A2
         TST.B D0
@@ -468,7 +469,7 @@ tkpkg_pipeline_find_tokenizer_vm_owner_v1:
         LEA packageStorage, A6
         BSR.W tkpkg_pipeline_read_locator_ptr_len_v1
         MOVE.W D3, D5
-        LEA 0(A1), A5
+        MOVEA.L A1, A5
         LEA tkvmChunkOffsetLo, A3
         BSR.W tkpkg_pipeline_chunk_ptr_from_locator_v1
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
@@ -479,17 +480,16 @@ tkpkg_pipeline_find_tokenizer_vm_owner_v1:
         LEA 4(A2), A2
 
 tkpkgPipelineVmLoop:
-        LEA 0(A2), A4
+        MOVEA.L A2, A4
         MOVE.B (A2)+, D4
         BSR.W tkpkg_pipeline_locate_string_v1
         CMP.B D6, D4
         BNE.W tkpkgPipelineVmSkipEntry
         MOVE.W D0, D2
-        LEA 0(A1), A1
         MOVE.L A2, -(SP)
         MOVE.W D2, D0
         MOVE.W D5, D1
-        LEA 0(A5), A2
+        MOVEA.L A5, A2
         BSR.W tkpkg_pipeline_string_eq_ascii_casefold_v1
         MOVEA.L (SP)+, A2
         TST.B D0
@@ -506,7 +506,7 @@ tkpkgPipelineVmOwnerMissing:
 tkpkgPipelineVmFound:
         BSR.W tkpkg_pipeline_skip_tokenizer_vm_entry_v1
         LEA pendingTokenizerVmOffsetLo, A3
-        LEA 0(A4), A1
+        MOVEA.L A4, A1
         MOVE.L A2, D0
         SUB.L A4, D0
         BSR.W tkpkg_pipeline_store_record_locator_v1
@@ -515,8 +515,7 @@ tkpkgPipelineVmFound:
         RTS
 
 tkpkg_pipeline_skip_tokenizer_vm_entry_v1:
-        ADDQ.W #2, A2
-        ADDQ.W #2, A2
+        LEA TOKENIZER_VM_ENTRY_PREFIX_SIZE(A2), A2
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
         MOVE.W D0, D7
         LEA 4(A2), A2
@@ -529,12 +528,7 @@ tkpkgPipelineVmOffsetLoop:
         DBF D7, tkpkgPipelineVmOffsetLoop
 
 tkpkgPipelineVmAfterOffsets:
-        ADDQ.W #2, A2
-        ADDQ.W #1, A2
-        ADDQ.W #4, A2
-        ADDQ.W #4, A2
-        ADDQ.W #4, A2
-        ADDQ.W #4, A2
+        LEA TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE(A2), A2
         BSR.W tkpkg_pipeline_skip_string_v1
         BSR.W tkpkg_pipeline_skip_string_v1
         BSR.W tkpkg_pipeline_skip_string_v1

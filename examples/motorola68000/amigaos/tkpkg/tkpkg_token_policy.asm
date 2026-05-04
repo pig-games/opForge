@@ -59,6 +59,8 @@ tkpkg_token_policy_find_owner_v1:
         LEA toksChunkOffsetLo, A3
         BSR.W tkpkg_token_policy_chunk_ptr_from_locator_v1
         BSR.W tkpkg_token_policy_read_u32_le_low16_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicyOwnerMissing
         TST.W D0
         BEQ.W tkpkgTokenPolicyOwnerMissing
         MOVE.W D0, D7
@@ -67,8 +69,14 @@ tkpkg_token_policy_find_owner_v1:
 
 tkpkgTokenPolicyOwnerLoop:
         MOVEA.L A2, A4
+        MOVEQ #1, D0
+        BSR.W tkpkg_token_policy_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicyOwnerMissing
         MOVE.B (A2)+, D4
         BSR.W tkpkg_token_policy_locate_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicyOwnerMissing
         CMP.B D6, D4
         BNE.W tkpkgTokenPolicySkipEntry
         MOVE.W D0, D4
@@ -85,6 +93,8 @@ tkpkgTokenPolicyOwnerLoop:
 
 tkpkgTokenPolicySkipEntry:
         BSR.W tkpkg_token_policy_skip_toks_entry_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicyOwnerMissing
         DBF D7, tkpkgTokenPolicyOwnerLoop
 
 tkpkgTokenPolicyOwnerMissing:
@@ -93,6 +103,8 @@ tkpkgTokenPolicyOwnerMissing:
 
 tkpkgTokenPolicyFound:
         BSR.W tkpkg_token_policy_skip_toks_entry_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicyOwnerMissing
         LEA pendingTokenPolicyOffsetLo, A3
         MOVEA.L A4, A1
         MOVE.L A2, D0
@@ -103,27 +115,72 @@ tkpkgTokenPolicyFound:
         RTS
 
 tkpkg_token_policy_skip_toks_entry_v1:
+        MOVE.W D7, -(SP)
+        MOVEQ #TOKS_ENTRY_FIXED_PREFIX_SIZE, D0
+        BSR.W tkpkg_token_policy_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         LEA TOKS_ENTRY_FIXED_PREFIX_SIZE(A2), A2
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
+        MOVEQ #1, D0
+        BSR.W tkpkg_token_policy_require_bytes_v1
+        TST.B D1
+        BEQ.S tkpkgTokenPolicyTailMarkerReady
+        BRA.W tkpkgTokenPolicySkipBoundsFail
+
+tkpkgTokenPolicyTailMarkerReady:
         CMPI.B #$FF, (A2)
-        BNE.S tkpkgTokenPolicySkipDone
+        BEQ.S tkpkgTokenPolicySkipTailExt
+        BRA.W tkpkgTokenPolicySkipDone
 
 tkpkgTokenPolicySkipTailExt:
+        MOVEQ #1, D0
+        BSR.W tkpkg_token_policy_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         ADDQ.W #1, A2
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
+        MOVEQ #1, D0
+        BSR.W tkpkg_token_policy_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         TST.B (A2)+
         BEQ.S tkpkgTokenPolicySkipTailStrings
+        MOVEQ #1, D0
+        BSR.W tkpkg_token_policy_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         ADDQ.W #1, A2
 
 tkpkgTokenPolicySkipTailStrings:
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         BSR.W tkpkg_token_policy_read_u32_le_low16_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         MOVE.W D0, D7
         LEA 4(A2), A2
         TST.W D7
@@ -132,12 +189,22 @@ tkpkgTokenPolicySkipTailStrings:
 
 tkpkgTokenPolicySkipOperatorsLoop:
         BSR.W tkpkg_token_policy_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenPolicySkipBoundsFail
         DBF D7, tkpkgTokenPolicySkipOperatorsLoop
 
 tkpkgTokenPolicySkipDone:
+        MOVE.W (SP)+, D7
+        MOVEQ #0, D1
+        RTS
+
+tkpkgTokenPolicySkipBoundsFail:
+        MOVE.W (SP)+, D7
+        MOVEQ #1, D1
         RTS
 
 tkpkg_token_policy_store_record_locator_v1:
+        MOVE.L A6, -(SP)
         MOVE.L A1, D2
         LEA packageStorage, A6
         SUB.L A6, D2
@@ -147,6 +214,7 @@ tkpkg_token_policy_store_record_locator_v1:
         MOVE.B D0, (A3)+
         LSR.W #8, D0
         MOVE.B D0, (A3)+
+        MOVEA.L (SP)+, A6
         RTS
 
 tkpkg_token_policy_read_locator_ptr_len_v1:
@@ -181,23 +249,64 @@ tkpkg_token_policy_chunk_ptr_from_locator_v1:
         OR.W D1, D7
         LEA packageStorage, A6
         LEA 0(A6, D0.W), A2
+        LEA 0(A2, D7.W), A6
         RTS
 
 ; skip_string is an alias for callers that only need the A2 advance.
 tkpkg_token_policy_skip_string_v1:
 tkpkg_token_policy_locate_string_v1:
         BSR.W tkpkg_token_policy_read_u32_le_low16_v1
+        TST.B D1
+        BNE.S tkpkgTokenPolicyLocateStringBoundsFail
+        MOVE.L D0, D2
+        MOVE.L D0, D3
+        ADDQ.L #4, D3
+        MOVE.L D3, D0
+        BSR.W tkpkg_token_policy_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgTokenPolicyLocateStringBoundsFail
+        MOVE.L D2, D0
         LEA 4(A2), A1
-        LEA 4(A2, D0.W), A2
+        LEA 4(A2), A2
+        ADDA.L D0, A2
+        MOVEQ #0, D1
+        RTS
+
+tkpkgTokenPolicyLocateStringBoundsFail:
+        MOVEQ #0, D0
+        MOVEA.L D0, A1
+        MOVEQ #1, D1
         RTS
 
 tkpkg_token_policy_read_u32_le_low16_v1:
+        MOVEQ #4, D0
+        BSR.W tkpkg_token_policy_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgTokenPolicyReadU32BoundsFail
         MOVEQ #0, D0
         MOVE.B (A2), D0
         MOVEQ #0, D1
         MOVE.B 1(A2), D1
         LSL.W #8, D1
         OR.W D1, D0
+        MOVEQ #0, D1
+        RTS
+
+tkpkgTokenPolicyReadU32BoundsFail:
+        MOVEQ #0, D0
+        MOVEQ #1, D1
+        RTS
+
+tkpkg_token_policy_require_bytes_v1:
+        MOVEA.L A2, A1
+        ADDA.L D0, A1
+        CMPA.L A6, A1
+        BHI.S tkpkgTokenPolicyRequireBytesFail
+        MOVEQ #0, D1
+        RTS
+
+tkpkgTokenPolicyRequireBytesFail:
+        MOVEQ #1, D1
         RTS
 
 tkpkg_token_policy_string_eq_ascii_casefold_v1:

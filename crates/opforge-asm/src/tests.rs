@@ -10327,6 +10327,107 @@ fn tkpkg_smoke_package_bytes_with_family_tokenizer_program(program: Vec<u8>) -> 
     encode_hierarchy_chunks_from_chunks(&chunks).expect("encode tkpkg smoke package")
 }
 
+fn tkpkg_m68020_single_pipeline_package_bytes() -> Vec<u8> {
+    let family_owner = ScopedOwner::Family("motorola68000".to_string());
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&tkpkg_smoke_registry()).expect("build tkpkg chunks");
+
+    chunks.cpus.retain(|cpu| cpu.id == m68020_cpu_id.as_str());
+    chunks
+        .dialects
+        .retain(|dialect| dialect.id == "motorola68k" && dialect.family_id == "motorola68000");
+    for dialect in &mut chunks.dialects {
+        dialect.cpu_allow_list = Some(vec![m68020_cpu_id.as_str().to_string()]);
+    }
+    chunks
+        .token_policies
+        .retain(|policy| policy.owner == family_owner);
+    chunks
+        .tokenizer_vm_programs
+        .retain(|program| program.owner == family_owner);
+    chunks.parser_contracts.clear();
+    chunks.parser_vm_programs.clear();
+    chunks.expr_contracts.clear();
+    chunks.expr_parser_contracts.clear();
+
+    assert_eq!(chunks.families.len(), 1, "expected one smoke family");
+    assert_eq!(chunks.cpus.len(), 1, "expected one smoke cpu");
+    assert_eq!(chunks.dialects.len(), 1, "expected one smoke dialect");
+    assert_eq!(
+        chunks.token_policies.len(),
+        1,
+        "expected one smoke token policy"
+    );
+    assert_eq!(
+        chunks.tokenizer_vm_programs.len(),
+        1,
+        "expected one smoke tokenizer VM"
+    );
+
+    encode_hierarchy_chunks_from_chunks(&chunks)
+        .expect("encode single-pipeline tkpkg smoke package")
+}
+
+fn tkpkg_selected_chunk_length_case(tag: &[u8; 4], selected_len: u32) -> Vec<u8> {
+    const OPASM_HEADER_SIZE: usize = 12;
+    const OPASM_TOC_ENTRY_SIZE: usize = 12;
+
+    let mut package = tkpkg_m68020_single_pipeline_package_bytes();
+    assert_eq!(&package[0..4], b"OPCP", "expected OPASM package magic");
+    let toc_count = u16::from_le_bytes([package[8], package[9]]) as usize;
+
+    for idx in 0..toc_count {
+        let toc_offset = OPASM_HEADER_SIZE + idx * OPASM_TOC_ENTRY_SIZE;
+        if &package[toc_offset..toc_offset + 4] == tag {
+            let length_offset = toc_offset + 8;
+            let original_len = u32::from_le_bytes([
+                package[length_offset],
+                package[length_offset + 1],
+                package[length_offset + 2],
+                package[length_offset + 3],
+            ]);
+            assert!(
+                selected_len < original_len,
+                "test case must shorten {} chunk length from {original_len}, got {selected_len}",
+                std::str::from_utf8(tag).unwrap_or("????")
+            );
+            package[length_offset..length_offset + 4].copy_from_slice(&selected_len.to_le_bytes());
+            return package;
+        }
+    }
+
+    panic!(
+        "expected package TOC to contain {} chunk",
+        std::str::from_utf8(tag).unwrap_or("????")
+    );
+}
+
+fn tkpkg_selected_chunk_truncated_by_one_case(tag: &[u8; 4]) -> Vec<u8> {
+    const OPASM_HEADER_SIZE: usize = 12;
+    const OPASM_TOC_ENTRY_SIZE: usize = 12;
+
+    let package = tkpkg_m68020_single_pipeline_package_bytes();
+    let toc_count = u16::from_le_bytes([package[8], package[9]]) as usize;
+    for idx in 0..toc_count {
+        let toc_offset = OPASM_HEADER_SIZE + idx * OPASM_TOC_ENTRY_SIZE;
+        if &package[toc_offset..toc_offset + 4] == tag {
+            let length_offset = toc_offset + 8;
+            let original_len = u32::from_le_bytes([
+                package[length_offset],
+                package[length_offset + 1],
+                package[length_offset + 2],
+                package[length_offset + 3],
+            ]);
+            return tkpkg_selected_chunk_length_case(tag, original_len - 1);
+        }
+    }
+
+    panic!(
+        "expected package TOC to contain {} chunk",
+        std::str::from_utf8(tag).unwrap_or("????")
+    );
+}
+
 fn normalize_tkpkg_fragment(text: &str) -> String {
     text.lines()
         .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
@@ -11881,7 +11982,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "tkpkgPipelineDialectLoop:\n        BSR.W tkpkg_pipeline_locate_string_v1\n        MOVE.W D0, -(SP)"
+        "tkpkgPipelineDialectLoop:\n        BSR.W tkpkg_pipeline_locate_string_v1\n        TST.B D1\n        BNE.W tkpkgPipelineDialectNotFound\n        MOVE.W D0, -(SP)"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -11911,6 +12012,109 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
         &buffers,
         "activeTokenizerVmOffsetLo:\n        .res byte,1"
     ));
+}
+
+#[test]
+fn motorola68020_tkpkg_set_pipeline_bounds_selected_chunks_before_traversal() {
+    let pipeline = tkpkg_amigaos_source("tkpkg_pipeline.asm");
+    let token_policy = tkpkg_amigaos_source("tkpkg_token_policy.asm");
+
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_chunk_ptr_from_locator_v1:\n        MOVEQ #0, D0"
+    ));
+    assert!(pipeline.contains("LEA 0(A2,D7.W),A6") || pipeline.contains("LEA 0(A2, D7.W), A6"));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_read_u32_le_low16_v1:\n        MOVEQ #4, D0\n        BSR.W tkpkg_pipeline_require_bytes_v1\n        TST.B D1\n        BNE.S tkpkgPipelineReadU32BoundsFail"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_locate_string_v1:\n        BSR.W tkpkg_pipeline_read_u32_le_low16_v1\n        TST.B D1\n        BNE.S tkpkgPipelineLocateStringBoundsFail"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_skip_optional_string_list_v1:\n        MOVE.W D7, -(SP)\n        MOVEQ #1, D0\n        BSR.W tkpkg_pipeline_require_bytes_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_skip_tokenizer_vm_entry_v1:\n        MOVE.W D7, -(SP)\n        MOVEQ #TOKENIZER_VM_ENTRY_PREFIX_SIZE, D0\n        BSR.W tkpkg_pipeline_require_bytes_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_dialect_allows_cpu_v1:\n        MOVE.W D7, -(SP)\n        MOVEQ #1, D0\n        BSR.W tkpkg_pipeline_require_bytes_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_require_bytes_v1:\n        MOVEA.L A2, A1\n        ADDA.L D0, A1\n        CMPA.L A6, A1\n        BHI.S tkpkgPipelineRequireBytesFail"
+    ));
+
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "tkpkg_token_policy_chunk_ptr_from_locator_v1:\n        MOVEQ #0, D0"
+    ));
+    assert!(
+        token_policy.contains("LEA 0(A2,D7.W),A6") || token_policy.contains("LEA 0(A2, D7.W), A6")
+    );
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "tkpkg_token_policy_skip_toks_entry_v1:\n        MOVE.W D7, -(SP)\n        MOVEQ #TOKS_ENTRY_FIXED_PREFIX_SIZE, D0\n        BSR.W tkpkg_token_policy_require_bytes_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "tkpkg_token_policy_locate_string_v1:\n        BSR.W tkpkg_token_policy_read_u32_le_low16_v1\n        TST.B D1\n        BNE.S tkpkgTokenPolicyLocateStringBoundsFail"
+    ));
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "tkpkg_token_policy_require_bytes_v1:\n        MOVEA.L A2, A1\n        ADDA.L D0, A1\n        CMPA.L A6, A1\n        BHI.S tkpkgTokenPolicyRequireBytesFail"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_malformed_selected_chunk_lengths_reject_pipeline_model_load() {
+    let valid_package = tkpkg_m68020_single_pipeline_package_bytes();
+    let model = load_opasm_model_from_package_bytes(valid_package.as_slice());
+    let resolved = model
+        .resolve_pipeline("m68020", Some("motorola68k"))
+        .expect("single-pipeline package should resolve m68020 motorola68k");
+    assert_eq!(resolved.family_id, "motorola68000");
+    assert_eq!(resolved.cpu_id, "m68020");
+    assert_eq!(resolved.dialect_id, "motorola68k");
+
+    let cases = vec![
+        (
+            "CPUS string payload crosses selected chunk length",
+            tkpkg_selected_chunk_length_case(b"CPUS", 8),
+        ),
+        (
+            "FAMS string payload crosses selected chunk length",
+            tkpkg_selected_chunk_length_case(b"FAMS", 8),
+        ),
+        (
+            "DIAL optional allow-list crosses selected chunk length",
+            tkpkg_selected_chunk_truncated_by_one_case(b"DIAL"),
+        ),
+        (
+            "TOKS token-policy skip crosses selected chunk length",
+            tkpkg_selected_chunk_truncated_by_one_case(b"TOKS"),
+        ),
+        (
+            "TKVM tokenizer program skip crosses selected chunk length",
+            tkpkg_selected_chunk_truncated_by_one_case(b"TKVM"),
+        ),
+    ];
+
+    for (label, package) in cases {
+        let err = vm::vm_opasm::load_model_from_package_bytes(package.as_slice()).expect_err(label);
+        let message = err.to_string();
+        assert!(
+            message.contains("chunk")
+                || message.contains("payload")
+                || message.contains("EOF")
+                || message.contains("bound"),
+            "{label} should fail with a deterministic package/chunk-bound error, got: {message}"
+        );
+    }
 }
 
 #[test]
@@ -11964,7 +12168,11 @@ fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
     ));
     assert!(tkpkg_source_contains(
         &token_policy,
-        "tkpkgTokenPolicySkipTailStrings:\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_read_u32_le_low16_v1"
+        "tkpkgTokenPolicySkipTailStrings:\n        BSR.W tkpkg_token_policy_skip_string_v1\n        TST.B D1\n        BNE.W tkpkgTokenPolicySkipBoundsFail\n        BSR.W tkpkg_token_policy_skip_string_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "BSR.W tkpkg_token_policy_read_u32_le_low16_v1\n        TST.B D1\n        BNE.W tkpkgTokenPolicySkipBoundsFail\n        MOVE.W D0, D7"
     ));
 }
 
@@ -26619,6 +26827,82 @@ fn external_fs_uae_tkpkg_native_rejects_truncated_conditional_jump_tokenizer_pro
                 run.stdout,
                 run.stderr
             );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_rejects_selected_chunk_bounds_during_set_pipeline() {
+    let cases = vec![
+        (
+            "CPUS string payload crosses selected chunk length",
+            tkpkg_selected_chunk_length_case(b"CPUS", 8),
+        ),
+        (
+            "FAMS string payload crosses selected chunk length",
+            tkpkg_selected_chunk_length_case(b"FAMS", 8),
+        ),
+        (
+            "DIAL optional allow-list crosses selected chunk length",
+            tkpkg_selected_chunk_truncated_by_one_case(b"DIAL"),
+        ),
+        (
+            "TOKS token-policy skip crosses selected chunk length",
+            tkpkg_selected_chunk_truncated_by_one_case(b"TOKS"),
+        ),
+        (
+            "TKVM tokenizer program skip crosses selected chunk length",
+            tkpkg_selected_chunk_truncated_by_one_case(b"TKVM"),
+        ),
+    ];
+
+    for (label, malformed_package) in cases {
+        assert!(
+            vm::vm_opasm::load_model_from_package_bytes(malformed_package.as_slice()).is_err(),
+            "{label} should be rejected by the host package model before native execution"
+        );
+
+        match crate::fs_uae_smoke::run_tkpkg_debug_cli_file_mode_with_package_from_env(
+            &workspace_root(),
+            b"move.b d0,d1\n",
+            "m68020",
+            malformed_package.as_slice(),
+        )
+        .expect("native malformed selected-chunk run should complete or skip cleanly")
+        {
+            crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+                eprintln!("SKIP: {reason}");
+                return;
+            }
+            crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+                assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+                let run = &runs[0];
+                let combined_output = format!("{}\n{}", run.stdout, run.stderr);
+                assert!(
+                    !run.success,
+                    "{label} should fail deterministically under native tkpkg\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr
+                );
+                assert!(
+                    combined_output.contains("tkpkg package loaded"),
+                    "{label} should pass load_package so set_pipeline owns the rejection\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr
+                );
+                assert!(
+                    !combined_output.contains("TKPKG load_package/set_pipeline OK"),
+                    "{label} must not report set_pipeline success after crossing selected chunk bounds\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr
+                );
+                assert!(
+                    combined_output.contains("tkpkg failure:"),
+                    "{label} should report a deterministic tkpkg failure\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr
+                );
+            }
         }
     }
 }

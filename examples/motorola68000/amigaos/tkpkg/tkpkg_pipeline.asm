@@ -199,6 +199,8 @@ tkpkg_pipeline_find_cpu_entry_v1:
         LEA cpusChunkOffsetLo, A3
         BSR.W tkpkg_pipeline_chunk_ptr_from_locator_v1
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
+        TST.B D1
+        BNE.W tkpkgPipelineCpuMissing
         TST.W D0
         BEQ.W tkpkgPipelineCpuMissing
         MOVE.W D0, D7
@@ -207,6 +209,8 @@ tkpkg_pipeline_find_cpu_entry_v1:
 
 tkpkgPipelineCpuLoop:
         BSR.W tkpkg_pipeline_locate_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineCpuMissing
         MOVE.W D0, D6
         MOVEA.L A1, A4
         MOVE.L A2, -(SP)
@@ -223,9 +227,13 @@ tkpkgPipelineCpuLoop:
         MOVE.W D6, D0
         BSR.W tkpkg_pipeline_store_package_string_locator_v1
         BSR.W tkpkg_pipeline_locate_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineCpuMissing
         LEA pendingFamilyOffsetLo, A3
         BSR.W tkpkg_pipeline_store_package_string_locator_v1
         BSR.W tkpkg_pipeline_locate_optional_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineCpuMissing
         LEA pendingDefaultDialectOffsetLo, A3
         BSR.W tkpkg_pipeline_store_optional_package_string_locator_v1
         MOVEQ #0, D0
@@ -233,7 +241,11 @@ tkpkgPipelineCpuLoop:
 
 tkpkgPipelineSkipCpuEntry:
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineCpuMissing
         BSR.W tkpkg_pipeline_skip_optional_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineCpuMissing
         DBF D7, tkpkgPipelineCpuLoop
 
 tkpkgPipelineCpuMissing:
@@ -249,6 +261,8 @@ tkpkg_pipeline_find_family_entry_v1:
         LEA famsChunkOffsetLo, A3
         BSR.W tkpkg_pipeline_chunk_ptr_from_locator_v1
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
+        TST.B D1
+        BNE.W tkpkgPipelineFamilyMissing
         TST.W D0
         BEQ.W tkpkgPipelineFamilyMissing
         MOVE.W D0, D7
@@ -257,6 +271,8 @@ tkpkg_pipeline_find_family_entry_v1:
 
 tkpkgPipelineFamilyLoop:
         BSR.W tkpkg_pipeline_locate_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineFamilyMissing
         MOVE.W D0, D6
         MOVEA.L A1, A4
         MOVE.L A2, -(SP)
@@ -269,6 +285,8 @@ tkpkgPipelineFamilyLoop:
         TST.B D0
         BEQ.W tkpkgPipelineSkipFamilyEntry
         BSR.W tkpkg_pipeline_locate_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineFamilyMissing
         LEA pendingCanonicalDialectOffsetLo, A3
         BSR.W tkpkg_pipeline_store_package_string_locator_v1
         MOVEQ #0, D0
@@ -276,6 +294,8 @@ tkpkgPipelineFamilyLoop:
 
 tkpkgPipelineSkipFamilyEntry:
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineFamilyMissing
         DBF D7, tkpkgPipelineFamilyLoop
 
 tkpkgPipelineFamilyMissing:
@@ -335,6 +355,8 @@ tkpkgPipelineFindDialectEntryLoaded:
         LEA dialChunkOffsetLo, A3
         BSR.W tkpkg_pipeline_chunk_ptr_from_locator_v1
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
+        TST.B D1
+        BNE.W tkpkgPipelineDialectNotFound
         TST.W D0
         BEQ.W tkpkgPipelineDialectNotFound
         MOVE.W D0, D7
@@ -343,6 +365,8 @@ tkpkgPipelineFindDialectEntryLoaded:
 
 tkpkgPipelineDialectLoop:
         BSR.W tkpkg_pipeline_locate_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineDialectNotFound
         MOVE.W D0, -(SP)
         MOVEA.L A1, A0
         MOVE.L A2, -(SP)
@@ -355,6 +379,12 @@ tkpkgPipelineDialectLoop:
         TST.B D0
         BEQ.W tkpkgPipelineSkipDialectEntry
         BSR.W tkpkg_pipeline_locate_string_v1
+        TST.B D1
+        BEQ.S tkpkgPipelineDialectFamilyLoaded
+        ADDQ.W #2, SP
+        BRA.W tkpkgPipelineDialectNotFound
+
+tkpkgPipelineDialectFamilyLoaded:
         MOVE.W D0, D2
         MOVE.L A2, -(SP)
         MOVE.W D2, D0
@@ -382,6 +412,8 @@ tkpkgPipelineSkipDialectAllowList:
 
 tkpkgPipelineSkipDialectAllowListPayload:
         BSR.W tkpkg_pipeline_skip_optional_string_list_v1
+        TST.B D1
+        BNE.W tkpkgPipelineDialectNotFound
 
 tkpkgPipelineDialectNext:
         DBF D7, tkpkgPipelineDialectLoop
@@ -399,22 +431,32 @@ tkpkgPipelineDialectAccept:
         RTS
 
 tkpkg_pipeline_dialect_allows_cpu_v1:
+        MOVE.W D7, -(SP)
+        MOVEQ #1, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgPipelineDialectRejected
         MOVE.B (A2)+, D0
         BEQ.S tkpkgPipelineDialectAllowed
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
+        TST.B D1
+        BNE.S tkpkgPipelineDialectRejected
         MOVE.W D0, D7
         LEA 4(A2), A2
         TST.W D7
         BEQ.S tkpkgPipelineDialectRejected
-        LEA packageStorage, A6
+        MOVE.L A6, -(SP)
         LEA pendingCpuOffsetLo, A3
         BSR.W tkpkg_pipeline_read_locator_ptr_len_v1
+        MOVEA.L (SP)+, A6
         MOVE.W D3, D5
         MOVEA.L A1, A5
         SUBQ.W #1, D7
 
 tkpkgPipelineAllowLoop:
         BSR.W tkpkg_pipeline_locate_string_v1
+        TST.B D1
+        BNE.S tkpkgPipelineDialectRejected
         MOVE.W D0, D6
         MOVEA.L A1, A4
         MOVE.L A2, -(SP)
@@ -429,10 +471,12 @@ tkpkgPipelineAllowLoop:
         DBF D7, tkpkgPipelineAllowLoop
 
 tkpkgPipelineDialectRejected:
+        MOVE.W (SP)+, D7
         MOVEQ #1, D0
         RTS
 
 tkpkgPipelineDialectAllowed:
+        MOVE.W (SP)+, D7
         MOVEQ #0, D0
         RTS
 
@@ -470,6 +514,8 @@ tkpkg_pipeline_find_tokenizer_vm_owner_v1:
         LEA tkvmChunkOffsetLo, A3
         BSR.W tkpkg_pipeline_chunk_ptr_from_locator_v1
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmOwnerMissing
         TST.W D0
         BEQ.W tkpkgPipelineVmOwnerMissing
         MOVE.W D0, D7
@@ -478,8 +524,14 @@ tkpkg_pipeline_find_tokenizer_vm_owner_v1:
 
 tkpkgPipelineVmLoop:
         MOVEA.L A2, A4
+        MOVEQ #1, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmOwnerMissing
         MOVE.B (A2)+, D4
         BSR.W tkpkg_pipeline_locate_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmOwnerMissing
         CMP.B D6, D4
         BNE.W tkpkgPipelineVmSkipEntry
         MOVE.W D0, D2
@@ -494,6 +546,8 @@ tkpkgPipelineVmLoop:
 
 tkpkgPipelineVmSkipEntry:
         BSR.W tkpkg_pipeline_skip_tokenizer_vm_entry_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmOwnerMissing
         DBF D7, tkpkgPipelineVmLoop
 
 tkpkgPipelineVmOwnerMissing:
@@ -502,6 +556,8 @@ tkpkgPipelineVmOwnerMissing:
 
 tkpkgPipelineVmFound:
         BSR.W tkpkg_pipeline_skip_tokenizer_vm_entry_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmOwnerMissing
         LEA pendingTokenizerVmOffsetLo, A3
         MOVEA.L A4, A1
         MOVE.L A2, D0
@@ -512,10 +568,23 @@ tkpkgPipelineVmFound:
         RTS
 
 tkpkg_pipeline_skip_tokenizer_vm_entry_v1:
+        MOVE.W D7, -(SP)
+        MOVEQ #TOKENIZER_VM_ENTRY_PREFIX_SIZE, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         LEA TOKENIZER_VM_ENTRY_PREFIX_SIZE(A2), A2
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         MOVE.W D0, D7
         LEA 4(A2), A2
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        LSL.L #2, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         TST.W D7
         BEQ.S tkpkgPipelineVmAfterOffsets
         SUBQ.W #1, D7
@@ -525,15 +594,48 @@ tkpkgPipelineVmOffsetLoop:
         DBF D7, tkpkgPipelineVmOffsetLoop
 
 tkpkgPipelineVmAfterOffsets:
+        MOVEQ #TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         LEA TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE(A2), A2
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
-        LEA 4(A2, D0.W), A2
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
+        MOVE.L D0, D2
+        MOVE.L D0, D3
+        ADDQ.L #4, D3
+        MOVE.L D3, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgPipelineVmSkipBoundsFail
+        LEA 4(A2), A2
+        ADDA.L D2, A2
+        MOVE.W (SP)+, D7
+        MOVEQ #0, D1
+        RTS
+
+tkpkgPipelineVmSkipBoundsFail:
+        MOVE.W (SP)+, D7
+        MOVEQ #1, D1
         RTS
 
 tkpkg_pipeline_commit_active_selection_v1:
@@ -579,6 +681,7 @@ tkpkg_pipeline_copy_record_locator_v1:
         RTS
 
 tkpkg_pipeline_store_package_string_locator_v1:
+        MOVE.L A6, -(SP)
         MOVE.L A1, D2
         LEA packageStorage, A6
         SUB.L A6, D2
@@ -588,6 +691,7 @@ tkpkg_pipeline_store_package_string_locator_v1:
         MOVE.B D0, (A3)+
         LSR.W #8, D0
         MOVE.B D0, (A3)+
+        MOVEA.L (SP)+, A6
         RTS
 
 tkpkg_pipeline_store_optional_package_string_locator_v1:
@@ -601,6 +705,7 @@ tkpkgPipelineClearOptionalLocator:
         RTS
 
 tkpkg_pipeline_store_record_locator_v1:
+        MOVE.L A6, -(SP)
         MOVE.L A1, D2
         LEA packageStorage, A6
         SUB.L A6, D2
@@ -610,6 +715,7 @@ tkpkg_pipeline_store_record_locator_v1:
         MOVE.B D0, (A3)+
         LSR.W #8, D0
         MOVE.B D0, (A3)+
+        MOVEA.L (SP)+, A6
         RTS
 
 tkpkg_pipeline_read_locator_ptr_len_v1:
@@ -660,12 +766,31 @@ tkpkg_pipeline_chunk_ptr_from_locator_v1:
         OR.W D1, D7
         LEA packageStorage, A6
         LEA 0(A6, D0.W), A2
+        LEA 0(A2, D7.W), A6
         RTS
 
 tkpkg_pipeline_locate_string_v1:
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
+        TST.B D1
+        BNE.S tkpkgPipelineLocateStringBoundsFail
+        MOVE.L D0, D2
+        MOVE.L D0, D3
+        ADDQ.L #4, D3
+        MOVE.L D3, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgPipelineLocateStringBoundsFail
+        MOVE.L D2, D0
         LEA 4(A2), A1
-        LEA 4(A2, D0.W), A2
+        LEA 4(A2), A2
+        ADDA.L D0, A2
+        MOVEQ #0, D1
+        RTS
+
+tkpkgPipelineLocateStringBoundsFail:
+        MOVEQ #0, D0
+        MOVEA.L D0, A1
+        MOVEQ #1, D1
         RTS
 
 tkpkg_pipeline_skip_string_v1:
@@ -673,6 +798,10 @@ tkpkg_pipeline_skip_string_v1:
         RTS
 
 tkpkg_pipeline_locate_optional_string_v1:
+        MOVEQ #1, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgPipelineOptionalBoundsFail
         MOVE.B (A2)+, D1
         BEQ.S tkpkgPipelineOptionalNone
         BSR.W tkpkg_pipeline_locate_string_v1
@@ -681,6 +810,13 @@ tkpkg_pipeline_locate_optional_string_v1:
 tkpkgPipelineOptionalNone:
         MOVEQ #0, D0
         MOVEA.L D0, A1
+        MOVEQ #0, D1
+        RTS
+
+tkpkgPipelineOptionalBoundsFail:
+        MOVEQ #0, D0
+        MOVEA.L D0, A1
+        MOVEQ #1, D1
         RTS
 
 tkpkg_pipeline_skip_optional_string_v1:
@@ -688,9 +824,16 @@ tkpkg_pipeline_skip_optional_string_v1:
         RTS
 
 tkpkg_pipeline_skip_optional_string_list_v1:
+        MOVE.W D7, -(SP)
+        MOVEQ #1, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgPipelineSkipListBoundsFail
         MOVE.B (A2)+, D1
         BEQ.S tkpkgPipelineSkipListDone
         BSR.W tkpkg_pipeline_read_u32_le_low16_v1
+        TST.B D1
+        BNE.S tkpkgPipelineSkipListBoundsFail
         MOVE.W D0, D7
         LEA 4(A2), A2
         TST.W D7
@@ -699,18 +842,49 @@ tkpkg_pipeline_skip_optional_string_list_v1:
 
 tkpkgPipelineSkipListLoop:
         BSR.W tkpkg_pipeline_skip_string_v1
+        TST.B D1
+        BNE.S tkpkgPipelineSkipListBoundsFail
         DBF D7, tkpkgPipelineSkipListLoop
 
 tkpkgPipelineSkipListDone:
+        MOVE.W (SP)+, D7
+        MOVEQ #0, D1
+        RTS
+
+tkpkgPipelineSkipListBoundsFail:
+        MOVE.W (SP)+, D7
+        MOVEQ #1, D1
         RTS
 
 tkpkg_pipeline_read_u32_le_low16_v1:
+        MOVEQ #4, D0
+        BSR.W tkpkg_pipeline_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgPipelineReadU32BoundsFail
         MOVEQ #0, D0
         MOVE.B (A2), D0
         MOVEQ #0, D1
         MOVE.B 1(A2), D1
         LSL.W #8, D1
         OR.W D1, D0
+        MOVEQ #0, D1
+        RTS
+
+tkpkgPipelineReadU32BoundsFail:
+        MOVEQ #0, D0
+        MOVEQ #1, D1
+        RTS
+
+tkpkg_pipeline_require_bytes_v1:
+        MOVEA.L A2, A1
+        ADDA.L D0, A1
+        CMPA.L A6, A1
+        BHI.S tkpkgPipelineRequireBytesFail
+        MOVEQ #0, D1
+        RTS
+
+tkpkgPipelineRequireBytesFail:
+        MOVEQ #1, D1
         RTS
 
 tkpkg_pipeline_string_eq_ascii_casefold_v1:

@@ -152,10 +152,7 @@ tkpkgPipelineSeparatorFound:
 
 tkpkgPipelineNoDialect:
         LEA pendingDialectOffsetLo, A3
-        CLR.B (A3)+
-        CLR.B (A3)+
-        CLR.B (A3)+
-        CLR.B (A3)
+        CLR.L (A3)
         MOVEQ #0, D0
         RTS
 
@@ -578,10 +575,7 @@ tkpkgPipelineCopyBufferDone:
         RTS
 
 tkpkg_pipeline_copy_record_locator_v1:
-        MOVE.B (A3)+, (A2)+
-        MOVE.B (A3)+, (A2)+
-        MOVE.B (A3)+, (A2)+
-        MOVE.B (A3)+, (A2)+
+        MOVE.L (A3), (A2)
         RTS
 
 tkpkg_pipeline_store_package_string_locator_v1:
@@ -603,10 +597,7 @@ tkpkg_pipeline_store_optional_package_string_locator_v1:
         RTS
 
 tkpkgPipelineClearOptionalLocator:
-        CLR.B (A3)+
-        CLR.B (A3)+
-        CLR.B (A3)+
-        CLR.B (A3)
+        CLR.L (A3)
         RTS
 
 tkpkg_pipeline_store_record_locator_v1:

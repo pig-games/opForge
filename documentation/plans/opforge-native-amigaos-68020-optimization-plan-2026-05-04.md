@@ -44,7 +44,7 @@ scan, copy, and clear paths.
   - Commit outcome: the native tkpkg scan paths use single-displacement `LEA` for fixed record skips and `MOVEA.L` for address-register copies where no indexed address calculation is required
   - Definition of done: findings `001`, `002`, and `006` are fully addressed with no behavior changes and no incidental refactors outside the reviewed tkpkg resolver paths
 
-- [ ] Item 2
+- [x] Item 2
   - Source requirement or finding IDs: `RVW-2026-05-03-003`, `RVW-2026-05-03-004`
   - Expected files: `examples/motorola68000/amigaos/tkpkg/tkpkg_token_policy.asm`, `examples/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm`, any shared native buffer-layout file required to guarantee aligned locator storage
   - Full quality gates: `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`; `cargo test -p vm motorola68000_tokenizer_vm_staged_corpus_matches_host_for_example_lines -- --nocapture`; `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test --manifest-path crates/opforge-asm/Cargo.toml external_fs_uae_tkpkg_native_motorola68000_family_corpus_matches_vm_authoritative_rows -- --nocapture`; all three checks must pass after confirming caller post-increment semantics remain unchanged
@@ -63,7 +63,7 @@ scan, copy, and clear paths.
 ## Milestones
 
 - [x] Milestone 1: scan-path skip and address-copy optimizations landed
-- [ ] Milestone 2: aligned locator-record longword clear/copy optimizations landed
+- [x] Milestone 2: aligned locator-record longword clear/copy optimizations landed
 - [ ] Milestone 3: aligned package-state longword clear optimization landed
 
 ## Blocking Rules

@@ -153,6 +153,7 @@ activeDialectBuffer:
 activeFamilyBuffer:
         .res byte, PIPELINE_ID_BUFFER_CAPACITY
 
+        .align 2
 activeTokenPolicyOffsetLo:
         .res byte, 1
 
@@ -168,6 +169,7 @@ activeTokenPolicyLenHi:
 activeTokenPolicyOwnerTag:
         .res byte, 1
 
+        .align 2
 activeTokenizerVmOffsetLo:
         .res byte, 1
 
@@ -237,6 +239,7 @@ activeTokenizerVmErrorLimitDiagLen:
 activeTokenizerVmErrorLimitDiagCode:
         .res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
 
+        .align 2
 pendingFamilyOffsetLo:
         .res byte, 1
 
@@ -312,6 +315,7 @@ pendingTokenPolicyLenHi:
 pendingTokenPolicyOwnerTag:
         .res byte, 1
 
+        .align 2
 pendingTokenizerVmOffsetLo:
         .res byte, 1
 

@@ -79,6 +79,7 @@ pub struct LspSession {
     next_validation_generation: u64,
     pending_validation_uris: HashSet<String>,
     diagnostic_contributions_by_root: HashMap<String, HashMap<String, Vec<ValidationDiagnostic>>>,
+    validation_dependencies_by_root: HashMap<String, HashSet<String>>,
     active_validations: Arc<AtomicUsize>,
     workspace_index_rebuilds: u64,
     shutdown_requested: bool,
@@ -110,6 +111,7 @@ impl LspSession {
             next_validation_generation: 1,
             pending_validation_uris: HashSet::new(),
             diagnostic_contributions_by_root: HashMap::new(),
+            validation_dependencies_by_root: HashMap::new(),
             active_validations: Arc::new(AtomicUsize::new(0)),
             workspace_index_rebuilds: 0,
             shutdown_requested: false,
@@ -283,7 +285,14 @@ impl LspSession {
             return Vec::new();
         }
         self.upsert_open_document_state(uri, version, text);
-        self.maybe_validate_and_publish(uri, false)
+        let stale_targets = self.invalidate_dependent_validation_contributions(uri);
+        let mut out = if stale_targets.is_empty() {
+            Vec::new()
+        } else {
+            self.publish_merged_diagnostics_for_targets(stale_targets)
+        };
+        out.extend(self.maybe_validate_and_publish(uri, false));
+        out
     }
 
     fn handle_did_save(&mut self, params: &Value) -> Vec<OutboundMessage> {
@@ -326,6 +335,8 @@ impl LspSession {
             .unwrap_or_default()
             .into_keys()
             .collect();
+        targets.extend(self.invalidate_dependent_validation_contributions(uri));
+        self.validation_dependencies_by_root.remove(uri);
         targets.insert(uri.to_string());
         self.publish_merged_diagnostics_for_targets(targets)
     }
@@ -1004,6 +1015,7 @@ impl LspSession {
             return Vec::new();
         }
 
+        self.update_validation_dependencies(&result.root_uri, result.dependencies);
         self.publish_validation_diagnostics(&result.root_uri, result.diagnostics)
     }
 
@@ -1025,6 +1037,45 @@ impl LspSession {
         self.diagnostic_contributions_by_root
             .insert(root_uri.to_string(), grouped);
         self.publish_merged_diagnostics_for_targets(affected_targets)
+    }
+
+    fn update_validation_dependencies(&mut self, root_uri: &str, dependencies: HashSet<String>) {
+        self.validation_dependencies_by_root
+            .insert(root_uri.to_string(), dependencies);
+    }
+
+    fn invalidate_dependent_validation_contributions(
+        &mut self,
+        changed_uri: &str,
+    ) -> HashSet<String> {
+        let dependent_roots: Vec<String> = self
+            .validation_dependencies_by_root
+            .iter()
+            .filter_map(|(root_uri, dependencies)| {
+                if root_uri != changed_uri && dependencies.contains(changed_uri) {
+                    Some(root_uri.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut affected_targets = HashSet::new();
+        for root_uri in dependent_roots {
+            self.invalidate_validation_generation(&root_uri);
+            self.last_validation_at.remove(&root_uri);
+            if self.documents.contains_key(&root_uri) {
+                self.pending_validation_uris.insert(root_uri.clone());
+            }
+            self.validation_dependencies_by_root.remove(&root_uri);
+            if let Some(contributions) = self.diagnostic_contributions_by_root.remove(&root_uri) {
+                affected_targets.extend(contributions.into_keys());
+            }
+        }
+        if !affected_targets.is_empty() {
+            affected_targets.insert(changed_uri.to_string());
+        }
+        affected_targets
     }
 
     fn issue_validation_generation(&mut self, uri: &str) -> u64 {
@@ -1197,6 +1248,7 @@ struct OverlayWorkspace {
     working_dir: PathBuf,
     root_file: PathBuf,
     original_root: PathBuf,
+    source_files: Vec<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -1204,6 +1256,7 @@ struct ValidationTaskResult {
     root_uri: String,
     version: i64,
     generation: u64,
+    dependencies: HashSet<String>,
     diagnostics: Vec<ValidationDiagnostic>,
 }
 
@@ -1222,6 +1275,7 @@ fn run_validation_task(
                 root_uri,
                 version: doc.version,
                 generation,
+                dependencies: HashSet::new(),
                 diagnostics: vec![overlay_failure_diagnostic(&doc, message)],
             };
         }
@@ -1242,11 +1296,17 @@ fn run_validation_task(
         &overlay.original_root,
     );
     let _ = fs::remove_dir_all(&overlay.temp_root);
+    let dependencies = overlay
+        .source_files
+        .iter()
+        .map(|path| path_to_file_uri(path))
+        .collect();
 
     ValidationTaskResult {
         root_uri,
         version: doc.version,
         generation,
+        dependencies,
         diagnostics,
     }
 }
@@ -1271,14 +1331,16 @@ fn create_overlay_workspace(
     fs::create_dir_all(&working_dir)
         .map_err(|err| format!("create overlay workspace {}: {err}", working_dir.display()))?;
 
-    for source_path in collect_overlay_source_files(
+    let source_files = collect_overlay_source_files(
         config,
         active_doc,
         open_docs,
         workspace_index,
         &original_root,
-    )? {
-        stage_overlay_file(&original_root, &working_dir, &source_path, open_docs)?;
+    )?;
+
+    for source_path in &source_files {
+        stage_overlay_file(&original_root, &working_dir, source_path, open_docs)?;
     }
 
     let root_file = overlay_target_path(&working_dir, &original_root, original_file)?;
@@ -1288,6 +1350,7 @@ fn create_overlay_workspace(
         working_dir,
         root_file,
         original_root,
+        source_files,
     })
 }
 
@@ -2117,6 +2180,91 @@ mod tests {
             "validation should use workspace-root fallback module paths: {:?}",
             result.diagnostics
         );
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn dependency_change_clears_stale_cross_root_diagnostics() {
+        let temp_dir = unique_temp_dir("lsp-stale-diagnostic-contribution");
+        let main = temp_dir.join("main.asm");
+        let dep = temp_dir.join("dep.asm");
+        fs::write(&main, ".include \"dep.asm\"\n").expect("write main source");
+        fs::write(&dep, ".byte MISSING\n").expect("write dependency source");
+
+        let main_uri = path_to_file_uri(&main);
+        let dep_uri = path_to_file_uri(&dep);
+        let mut session = LspSession::new();
+        session.documents.insert(
+            main_uri.clone(),
+            DocumentState::new(
+                main_uri.clone(),
+                Some(main.clone()),
+                1,
+                fs::read_to_string(&main).expect("read main source"),
+            ),
+        );
+        session.documents.insert(
+            dep_uri.clone(),
+            DocumentState::new(
+                dep_uri.clone(),
+                Some(dep.clone()),
+                1,
+                fs::read_to_string(&dep).expect("read dependency source"),
+            ),
+        );
+        session.active_validations.store(2, Ordering::Relaxed);
+        session
+            .last_validation_at
+            .insert(dep_uri.clone(), Instant::now());
+        session.validation_dependencies_by_root.insert(
+            main_uri.clone(),
+            HashSet::from([main_uri.clone(), dep_uri.clone()]),
+        );
+        session.diagnostic_contributions_by_root.insert(
+            main_uri.clone(),
+            HashMap::from([(
+                dep_uri.clone(),
+                vec![ValidationDiagnostic {
+                    code: "EASM".to_string(),
+                    severity: "error".to_string(),
+                    message: "stale dependency diagnostic".to_string(),
+                    file: Some(dep.to_string_lossy().to_string()),
+                    line: 1,
+                    col_start: Some(7),
+                    col_end: Some(14),
+                    fixits: Vec::new(),
+                }],
+            )]),
+        );
+
+        let out = session.handle_message(&json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": {"uri": dep_uri.clone(), "version": 2},
+                "contentChanges": [{"text": ".byte 1\n"}]
+            }
+        }));
+
+        assert!(session
+            .diagnostic_contributions_by_root
+            .get(&main_uri)
+            .is_none());
+        assert!(session
+            .validation_dependencies_by_root
+            .get(&main_uri)
+            .is_none());
+        assert!(session.pending_validation_uris.contains(&main_uri));
+        assert!(out.iter().any(|message| matches!(
+            message,
+            OutboundMessage::Notification { method, params }
+                if method == "textDocument/publishDiagnostics"
+                    && params.get("uri").and_then(Value::as_str) == Some(dep_uri.as_str())
+                    && params
+                        .get("diagnostics")
+                        .and_then(Value::as_array)
+                        .is_some_and(|diagnostics| diagnostics.is_empty())
+        )));
         let _ = fs::remove_dir_all(temp_dir);
     }
 }

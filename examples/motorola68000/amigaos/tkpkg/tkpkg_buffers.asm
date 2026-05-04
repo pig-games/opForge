@@ -22,6 +22,7 @@ PACKAGE_CHUNK_DIAL                   = 4
 PACKAGE_CHUNK_TOKS                   = 8
 PACKAGE_CHUNK_TKVM                   = 16
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
+PACKAGE_STATE_CLEAR_LONGWORD_COUNT   = 40
 SCOPED_OWNER_FAMILY                  = 0
 SCOPED_OWNER_CPU                     = 1
 SCOPED_OWNER_DIALECT                 = 2
@@ -72,6 +73,7 @@ lastTokenCount:
 lastLexemeLen:
         .res word, 1
 
+        .align 2
 packageStateFlags:
         .res byte, 1
 

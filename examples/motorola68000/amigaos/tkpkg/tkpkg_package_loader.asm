@@ -5,6 +5,7 @@
         .pub
         .use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN)
         .use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY, PACKAGE_STATE_LOADED)
+        .use tkpkg.amigaos.buffers (PACKAGE_STATE_CLEAR_LONGWORD_COUNT)
         .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_FAMS, PACKAGE_CHUNK_CPUS)
         .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_DIAL, PACKAGE_CHUNK_TOKS)
         .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_TKVM, PACKAGE_REQUIRED_CHUNK_FLAGS)
@@ -24,6 +25,7 @@ UNEXPECTED_EOF_TEXT_LEN              = 30
 DUPLICATE_CHUNK_TEXT_LEN             = 33
 MISSING_CHUNK_TEXT_LEN               = 30
 CHUNK_BOUNDS_TEXT_LEN                = 27
+PACKAGE_STATE_CLEAR_LONGWORD_LAST    = PACKAGE_STATE_CLEAR_LONGWORD_COUNT - 1
 
         .section data, kind=data
 
@@ -81,11 +83,11 @@ tkpkgPackageLoaderDone:
 
 tkpkg_package_loader_clear_loaded_state_v1:
         LEA packageStateFlags, A3
-        MOVE.W #159, D0
+        MOVE.W #PACKAGE_STATE_CLEAR_LONGWORD_LAST, D0
 
-tkpkgPackageLoaderClearLocatorLoop:
-        CLR.B (A3)+
-        DBF D0, tkpkgPackageLoaderClearLocatorLoop
+tkpkgPackageLoaderClearStateLoop:
+        CLR.L (A3)+
+        DBF D0, tkpkgPackageLoaderClearStateLoop
         RTS
 
 tkpkg_package_loader_read_input_len_v1:

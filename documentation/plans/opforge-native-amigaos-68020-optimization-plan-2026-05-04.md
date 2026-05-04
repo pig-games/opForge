@@ -52,7 +52,7 @@ scan, copy, and clear paths.
   - Commit outcome: locator records are explicitly aligned and fixed four-byte locator clear/copy helpers use longword operations with preserved semantics
   - Definition of done: findings `003` and `004` are fully addressed, the storage alignment is explicit in code, and the record helpers still feed the same resolver/commit paths correctly
 
-- [ ] Item 3
+- [x] Item 3
   - Source requirement or finding IDs: `RVW-2026-05-03-005`
   - Expected files: `examples/motorola68000/amigaos/tkpkg/tkpkg_package_loader.asm`, any shared native buffer-layout file required to guarantee aligned package-state clearing
   - Full quality gates: `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`; `cargo test -p vm motorola68000_tokenizer_vm_staged_corpus_matches_host_for_example_lines -- --nocapture`; `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test --manifest-path crates/opforge-asm/Cargo.toml external_fs_uae_tkpkg_native_motorola68000_family_corpus_matches_vm_authoritative_rows -- --nocapture`; all three checks must pass after the aligned 160-byte clear-loop replacement
@@ -64,7 +64,7 @@ scan, copy, and clear paths.
 
 - [x] Milestone 1: scan-path skip and address-copy optimizations landed
 - [x] Milestone 2: aligned locator-record longword clear/copy optimizations landed
-- [ ] Milestone 3: aligned package-state longword clear optimization landed
+- [x] Milestone 3: aligned package-state longword clear optimization landed
 
 ## Blocking Rules
 

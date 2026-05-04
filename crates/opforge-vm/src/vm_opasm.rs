@@ -1055,7 +1055,10 @@ fn parse_bitfield_suffix_operand(
     }
 
     let Some(colon_index) = colon_index else {
-        return Ok(None);
+        return Ok(Some(Expr::Error(
+            "Expected ':' in bit-field selector".to_string(),
+            last.span,
+        )));
     };
 
     let base = parse_m68k_wrapped_operand_or_expr(

@@ -59,6 +59,9 @@ struct ParserVmV2Checkpoint {
     cursor: usize,
     builder: ParserVmV2AstBuilder,
     value_stack_len: usize,
+    operand_boundaries: Vec<(usize, usize)>,
+    parsed_line: Option<LineAst>,
+    advance_mnemonic_suffix_plus: bool,
 }
 
 pub(crate) fn parse_line_with_parser_vm_v2<'exec>(
@@ -443,6 +446,9 @@ impl ParserVmV2State<'_, '_> {
             cursor: self.cursor,
             builder: self.builder.clone(),
             value_stack_len: self.value_stack.len(),
+            operand_boundaries: self.operand_boundaries.clone(),
+            parsed_line: self.parsed_line.clone(),
+            advance_mnemonic_suffix_plus: self.advance_mnemonic_suffix_plus,
         });
         Ok(())
     }
@@ -457,6 +463,9 @@ impl ParserVmV2State<'_, '_> {
         self.cursor = checkpoint.cursor;
         self.builder = checkpoint.builder;
         self.value_stack.truncate(checkpoint.value_stack_len);
+        self.operand_boundaries = checkpoint.operand_boundaries;
+        self.parsed_line = checkpoint.parsed_line;
+        self.advance_mnemonic_suffix_plus = checkpoint.advance_mnemonic_suffix_plus;
         Ok(())
     }
 
@@ -1424,6 +1433,136 @@ mod tests {
             LineAst::Statement(statement) => {
                 assert_eq!(statement.label.expect("label").name, "label");
                 assert_eq!(statement.mnemonic.as_deref(), Some("lda"));
+                assert!(statement.operands.is_empty());
+            }
+            other => panic!("expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parser_vm_v2_rolls_back_operand_boundaries() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let handler: DynExprProcessingHandler<'_> =
+            Rc::new(RefCell::new(Box::new(StubExprHandler)));
+        let program = RuntimeParserVmProgram {
+            opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+            program: vec![
+                ParserVmOpcodeV2::BeginStatement as u8,
+                ParserVmOpcodeV2::LoadIdentifier as u8,
+                ParserVmOpcodeV2::SetMnemonic as u8,
+                ParserVmOpcodeV2::Advance as u8,
+                ParserVmOpcodeV2::Checkpoint as u8,
+                ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+                ParserVmOpcodeV2::Rollback as u8,
+                ParserVmOpcodeV2::ParseOperandExprRange as u8,
+                0xFF,
+                0xFF,
+                0xFF,
+                0xFF,
+                ParserVmOpcodeV2::FinishLine as u8,
+                ParserVmOpcodeV2::End as u8,
+            ],
+        };
+        let line = parse_line_with_parser_vm_v2(
+            vec![
+                ident("lda", 1, 4),
+                ident("left", 5, 9),
+                comma(9),
+                ident("right", 11, 16),
+            ],
+            span(16, 16),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, Some(handler)),
+        )
+        .expect("v2 parser should produce statement");
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.mnemonic.as_deref(), Some("lda"));
+                assert!(statement.operands.is_empty());
+            }
+            other => panic!("expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parser_vm_v2_rolls_back_parsed_line() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let program = RuntimeParserVmProgram {
+            opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+            program: vec![
+                ParserVmOpcodeV2::BeginStatement as u8,
+                ParserVmOpcodeV2::Checkpoint as u8,
+                ParserVmOpcodeV2::LoadInlineText as u8,
+                3,
+                b'o',
+                b'l',
+                b'd',
+                ParserVmOpcodeV2::SetMnemonic as u8,
+                ParserVmOpcodeV2::FinishLine as u8,
+                ParserVmOpcodeV2::Rollback as u8,
+                ParserVmOpcodeV2::EmitDiagIfNoResult as u8,
+                0,
+                ParserVmOpcodeV2::End as u8,
+            ],
+        };
+        let err = parse_line_with_parser_vm_v2(
+            vec![ident("dummy", 1, 6)],
+            span(6, 6),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, None),
+        )
+        .expect_err("rolled-back parsed line should not suppress diagnostic");
+        assert!(err
+            .message
+            .contains("parser VM v2 emitted diagnostic slot 0"));
+    }
+
+    #[test]
+    fn parser_vm_v2_rolls_back_mnemonic_suffix_plus_advance() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let program = RuntimeParserVmProgram {
+            opcode_version: PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+            program: vec![
+                ParserVmOpcodeV2::BeginStatement as u8,
+                ParserVmOpcodeV2::Checkpoint as u8,
+                ParserVmOpcodeV2::LoadIdentifier as u8,
+                ParserVmOpcodeV2::SetMnemonic as u8,
+                ParserVmOpcodeV2::Rollback as u8,
+                ParserVmOpcodeV2::Advance as u8,
+                ParserVmOpcodeV2::ConsumeOperator as u8,
+                OPERATOR_PLUS,
+                ParserVmOpcodeV2::LoadIdentifier as u8,
+                ParserVmOpcodeV2::SetMnemonic as u8,
+                ParserVmOpcodeV2::FinishLine as u8,
+                ParserVmOpcodeV2::End as u8,
+            ],
+        };
+        let line = parse_line_with_parser_vm_v2(
+            vec![
+                ident("move.s", 1, 7),
+                operator(OperatorKind::Plus, 7),
+                ident("next", 9, 13),
+            ],
+            span(13, 13),
+            None,
+            &contract,
+            &program,
+            &request(),
+            exec_context(&model, None),
+        )
+        .expect("rolled-back suffix-plus state should not affect later advance");
+        match line {
+            LineAst::Statement(statement) => {
+                assert_eq!(statement.mnemonic.as_deref(), Some("next"));
                 assert!(statement.operands.is_empty());
             }
             other => panic!("expected statement, got {other:?}"),

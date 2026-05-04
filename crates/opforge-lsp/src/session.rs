@@ -1226,11 +1226,14 @@ fn run_validation_task(
             };
         }
     };
+    let module_search_roots =
+        crate::lsp::workspace_index::module_search_roots_for_request(&config, &root_uri);
     let result = run_validation(
         &config,
         &overlay.root_file,
         &overlay.working_dir,
         &overlay.original_root,
+        &module_search_roots,
     );
 
     let diagnostics = remap_overlay_diagnostics(
@@ -2060,6 +2063,60 @@ mod tests {
         assert!(dependencies
             .iter()
             .any(|path| path.ends_with(Path::new("assets/payload.bin"))));
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn validation_overlay_uses_workspace_root_module_fallback() {
+        let temp_dir = unique_temp_dir("lsp-validation-module-root");
+        let app_dir = temp_dir.join("app");
+        let main = app_dir.join("main.asm");
+        let dep = temp_dir.join("dep.asm");
+
+        fs::create_dir_all(&app_dir).expect("create app dir");
+        fs::write(
+            &main,
+            ".module main\n.use dep (VALUE)\nstart:\n    .byte VALUE\n.endmodule\n",
+        )
+        .expect("write main source");
+        fs::write(
+            &dep,
+            ".module dep\n.pub\nVALUE .const 5\n.priv\n.endmodule\n",
+        )
+        .expect("write dep source");
+
+        let registry = default_asm_registry();
+        let main_uri = path_to_file_uri(&main);
+        let mut doc = DocumentState::new(
+            main_uri.clone(),
+            Some(main.clone()),
+            1,
+            fs::read_to_string(&main).expect("read main source"),
+        );
+        doc.refresh_derived_state(&registry);
+
+        let config = LspConfig {
+            roots: vec![temp_dir.to_string_lossy().to_string()],
+            ..LspConfig::default()
+        };
+
+        let result = run_validation_task(
+            config,
+            doc,
+            HashMap::new(),
+            WorkspaceIndex::default(),
+            1,
+            main_uri,
+        );
+
+        assert!(
+            result.diagnostics.iter().all(|diagnostic| !diagnostic
+                .message
+                .to_ascii_lowercase()
+                .contains("missing module")),
+            "validation should use workspace-root fallback module paths: {:?}",
+            result.diagnostics
+        );
         let _ = fs::remove_dir_all(temp_dir);
     }
 }

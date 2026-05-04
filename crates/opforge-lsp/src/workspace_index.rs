@@ -821,7 +821,10 @@ pub fn resolve_module_target(word: &str, config: &LspConfig, current_uri: &str) 
     results
 }
 
-fn module_search_roots_for_request(config: &LspConfig, current_uri: &str) -> Vec<PathBuf> {
+pub(crate) fn module_search_roots_for_request(
+    config: &LspConfig,
+    current_uri: &str,
+) -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = configured_workspace_roots(config);
     let current_path = uri_to_path(current_uri);
     let workspace_root = current_path

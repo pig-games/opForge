@@ -40,17 +40,22 @@ pub fn run_validation(
     root_file: &Path,
     working_dir: &Path,
     source_root: &Path,
+    effective_module_roots: &[PathBuf],
 ) -> ValidationRunResult {
     let include_paths: Vec<PathBuf> = config
         .include_paths
         .iter()
         .map(|include| PathBuf::from(rebase_config_path(include, source_root, working_dir)))
         .collect();
-    let module_paths: Vec<PathBuf> = config
-        .module_paths
-        .iter()
-        .map(|module| PathBuf::from(rebase_config_path(module, source_root, working_dir)))
-        .collect();
+    let module_paths = if effective_module_roots.is_empty() {
+        config
+            .module_paths
+            .iter()
+            .map(|module| PathBuf::from(rebase_config_path(module, source_root, working_dir)))
+            .collect()
+    } else {
+        rebase_effective_module_roots(effective_module_roots, source_root, working_dir)
+    };
 
     let mut builder = Assembler::builder(root_file)
         .defines(&config.defines)
@@ -68,6 +73,35 @@ pub fn run_validation(
             diagnostics: map_workflow_error(root_file, error),
         },
     }
+}
+
+fn rebase_effective_module_roots(
+    roots: &[PathBuf],
+    source_root: &Path,
+    overlay_root: &Path,
+) -> Vec<PathBuf> {
+    let normalized_source_root = normalize_path(source_root);
+    let mut rebased = Vec::new();
+    for root in roots {
+        let candidate = if root.is_absolute() {
+            let normalized_root = normalize_path(root);
+            if let Ok(relative) = normalized_root.strip_prefix(&normalized_source_root) {
+                overlay_root.join(relative)
+            } else {
+                normalized_root
+            }
+        } else {
+            PathBuf::from(rebase_config_path(
+                root.to_string_lossy().as_ref(),
+                source_root,
+                overlay_root,
+            ))
+        };
+        if !rebased.iter().any(|existing| existing == &candidate) {
+            rebased.push(candidate);
+        }
+    }
+    rebased
 }
 
 fn validation_failure_diagnostic(root_file: &Path, detail: String) -> ValidationDiagnostic {
@@ -254,12 +288,34 @@ mod tests {
     }
 
     #[test]
+    fn rebase_effective_module_roots_maps_workspace_roots_into_overlay() {
+        let source_root = Path::new("/workspace/project");
+        let overlay_root = Path::new("/tmp/lsp-overlay/workspace");
+        let roots = vec![
+            PathBuf::from("/workspace/project"),
+            PathBuf::from("/workspace/project/app"),
+            PathBuf::from("/workspace/external/modules"),
+        ];
+
+        let rebased = rebase_effective_module_roots(&roots, source_root, overlay_root);
+
+        assert_eq!(
+            rebased,
+            vec![
+                PathBuf::from("/tmp/lsp-overlay/workspace"),
+                PathBuf::from("/tmp/lsp-overlay/workspace/app"),
+                PathBuf::from("/workspace/external/modules"),
+            ]
+        );
+    }
+
+    #[test]
     fn run_validation_uses_read_only_check_path() {
         let temp_dir = unique_temp_dir("lsp-validation-read-only");
         let root_file = temp_dir.join("main.asm");
         write_text(&root_file, artifact_emitting_invalid_source());
 
-        let result = run_validation(&LspConfig::default(), &root_file, &temp_dir, &temp_dir);
+        let result = run_validation(&LspConfig::default(), &root_file, &temp_dir, &temp_dir, &[]);
 
         assert!(
             !result.diagnostics.is_empty(),

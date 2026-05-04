@@ -10,9 +10,12 @@
         .use tkpkg.amigaos.abi (ENTRY_ORD_SET_PIPELINE, ENTRY_ORD_TOKENIZE_LINE)
         .use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN, CB_OUTPUT_LEN, CB_STATUS_CODE)
         .use tkpkg.amigaos.buffers (controlBlockV1, lastErrorBuffer, packageStorage)
+        .use tkpkg.amigaos.buffers (tokenRecordBuffer, tokenScratchBuffer)
+        .use tkpkg.amigaos.buffers (lastTokenCount, lastLexemeLen, TOKEN_RECORD_SIZE)
         .use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY)
         .use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
         .use tkpkg.amigaos.service (tkpkg_service_dispatch_v1)
+        .use prvm.amigaos.line_router (prvm_route_line_68000)
 
 SysBase                         = 4
 
@@ -52,6 +55,25 @@ NATIVE_IMPORT_SELECT_CAPACITY   = 64
 NATIVE_MODULE_USE_STATE_BYTES   = (7 * 2) + (NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_MODULE_TABLE_CAPACITY * 4) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 4) + (NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY)
 PACKAGE_INPUT_PTR_V1            = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
 NATIVE_INCLUDE_DEPTH_LIMIT      = 1
+PRVM_ROUTE_MAGIC_OPLR           = $4F504C52
+PRVM_ROUTE_FRAME_SIZE           = 116
+PRVM_ROUTE_ABI_VERSION_V1       = 1
+PRVM_PARSER_CONTRACT_VERSION_V2 = 2
+PRVM_ROUTE_RESULT_CAPACITY      = 128
+PRVM_ROUTE_DIAG_CAPACITY        = 32
+PRVM_ROUTE_RESUME_CAPACITY      = 40
+PRVM_ROUTE_EXPR_REQUEST_SIZE    = 32
+PRVM_ROUTE_EXPR_RESULT_COUNT    = 0
+PRVM_ROUTE_STEP_BUDGET          = 256
+PRVM_STATUS_OK                  = 0
+PRVM_RESULT_MNEMONIC_TEXT       = 3
+OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 13
+NATIVE_TOKEN_RECORD_SIZE        = 20
+TK_KIND_IDENTIFIER              = 0
+NCLI_PARSER_DIRECTIVE_NONE      = 0
+NCLI_PARSER_DIRECTIVE_MODULE    = 1
+NCLI_PARSER_DIRECTIVE_ENDMODULE = 2
+NCLI_PARSER_DIRECTIVE_USE       = 3
 
         .section entry, kind=code
 
@@ -636,35 +658,19 @@ opforge_native_cli_parse_current_line:
 
         MOVEA.L A4, A0
         MOVE.L D7, D0
-        LEA moduleDirectiveText, A1
-        MOVEQ #7, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.W opforgeNativeCliParseModuleLine
-
-        MOVEA.L A4, A0
-        MOVE.L D7, D0
-        LEA endmoduleDirectiveText, A1
-        MOVEQ #10, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.W opforgeNativeCliParseEndmoduleLine
-
-        MOVEA.L A4, A0
-        MOVE.L D7, D0
-        LEA useDirectiveText, A1
-        MOVEQ #4, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.W opforgeNativeCliParseUseLine
-
-        MOVEA.L A4, A0
-        MOVE.L D7, D0
         LEA includeDirectiveText, A1
         MOVEQ #8, D1
         BSR.W opforgeNativeCliLineStartsWith
         TST.L D0
         BNE.W opforgeNativeCliParseIncludeLine
+
+        BSR.W opforgeNativeCliRouteParserModuleUseLine
+        CMPI.W #NCLI_PARSER_DIRECTIVE_MODULE, D0
+        BEQ.W opforgeNativeCliParseModuleLine
+        CMPI.W #NCLI_PARSER_DIRECTIVE_ENDMODULE, D0
+        BEQ.W opforgeNativeCliParseEndmoduleLine
+        CMPI.W #NCLI_PARSER_DIRECTIVE_USE, D0
+        BEQ.W opforgeNativeCliParseUseLine
 
 opforgeNativeCliParseLineDone:
         MOVEQ #0, D0
@@ -676,13 +682,243 @@ opforgeNativeCliParseConditionalLine:
         MOVEQ #1, D0
         BRA.W opforgeNativeCliParseLineReturn
 
-opforgeNativeCliParseModuleLine:
+opforgeNativeCliRouteParserModuleUseLine:
+        MOVEM.L D1-D7/A0-A3, -(SP)
+        BSR.W opforgeNativeCliBuildPrvmRouteFrame
+        LEA opforgeNativeCliPrvmRouteFrame, A0
+        MOVE.L #PRVM_ROUTE_FRAME_SIZE, D0
+        JSR prvm_route_line_68000
+        BSR.W opforgeNativeCliParserDirectiveKind
+        MOVEM.L (SP)+, D1-D7/A0-A3
+        RTS
+
+opforgeNativeCliBuildPrvmRouteFrame:
+        LEA opforgeNativeCliPrvmRouteFrame, A0
+        MOVE.L #PRVM_ROUTE_MAGIC_OPLR, 0(A0)
+        MOVE.W #PRVM_ROUTE_ABI_VERSION_V1, 4(A0)
+        MOVE.W #PRVM_ROUTE_FRAME_SIZE, 6(A0)
+        LEA processorAsmText, A1
+        MOVE.L A1, 8(A0)
+        MOVE.L #3, 12(A0)
+        LEA kindStatementText, A1
+        MOVE.L A1, 16(A0)
+        MOVE.L #9, 20(A0)
+        MOVE.L nativeCliSourceLineNum, 24(A0)
+        LEA nativeCliSourceLine, A1
+        MOVE.L A1, 28(A0)
+        CLR.L D0
+        MOVE.W nativeCliSourceLineLen, D0
+        MOVE.L D0, 32(A0)
+        LEA tokenRecordBuffer, A1
+        MOVE.L A1, 36(A0)
+        CLR.L D0
+        MOVE.W lastTokenCount, D0
+        MOVE.L D0, 40(A0)
+        MOVE.W #TOKEN_RECORD_SIZE, 44(A0)
+        CLR.W 46(A0)
+        LEA tokenScratchBuffer, A1
+        MOVE.L A1, 48(A0)
+        CLR.L D0
+        MOVE.W lastLexemeLen, D0
+        MOVE.L D0, 52(A0)
+        LEA opforgeNativeCliPrvmParserProgram, A1
+        MOVE.L A1, 56(A0)
+        MOVE.L #OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN, 60(A0)
+        LEA opforgeNativeCliPrvmResultBuffer, A1
+        CLR.W (A1)
+        CLR.W 32(A1)
+        MOVE.L A1, 64(A0)
+        MOVE.L #PRVM_ROUTE_RESULT_CAPACITY, 68(A0)
+        LEA opforgeNativeCliPrvmDiagBuffer, A1
+        MOVE.L A1, 72(A0)
+        MOVE.L #PRVM_ROUTE_DIAG_CAPACITY, 76(A0)
+        LEA opforgeNativeCliPrvmResumeBuffer, A1
+        MOVE.L A1, 80(A0)
+        MOVE.L #PRVM_ROUTE_RESUME_CAPACITY, 84(A0)
+        LEA opforgeNativeCliPrvmExprRequest, A1
+        MOVE.L A1, 88(A0)
+        MOVE.L #PRVM_ROUTE_EXPR_REQUEST_SIZE, 92(A0)
+        CLR.L 96(A0)
+        MOVE.L #PRVM_ROUTE_EXPR_RESULT_COUNT, 100(A0)
+        MOVE.L #PRVM_PARSER_CONTRACT_VERSION_V2, 104(A0)
+        MOVE.L #PRVM_ROUTE_STEP_BUDGET, 108(A0)
+        CLR.L 112(A0)
+        RTS
+
+opforgeNativeCliParserDirectiveKind:
+        LEA opforgeNativeCliPrvmResultBuffer, A2
+        CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 32(A2)
+        BNE.W opforgeNativeCliParserDirectiveKindFallback
+        MOVE.L 48(A2), D0
+        LEA tokenScratchBuffer, A0
+        ADDA.L D0, A0
+        MOVE.L 52(A2), D0
+        LEA moduleMnemonicText, A1
+        MOVEQ #6, D1
+        BSR.W opforgeNativeCliParserMnemonicEquals
+        TST.L D0
+        BNE.W opforgeNativeCliParserDirectiveModule
+        MOVE.L 48(A2), D0
+        LEA tokenScratchBuffer, A0
+        ADDA.L D0, A0
+        MOVE.L 52(A2), D0
+        LEA endmoduleMnemonicText, A1
+        MOVEQ #9, D1
+        BSR.W opforgeNativeCliParserMnemonicEquals
+        TST.L D0
+        BNE.W opforgeNativeCliParserDirectiveEndmodule
+        MOVE.L 48(A2), D0
+        LEA tokenScratchBuffer, A0
+        ADDA.L D0, A0
+        MOVE.L 52(A2), D0
+        LEA useMnemonicText, A1
+        MOVEQ #3, D1
+        BSR.W opforgeNativeCliParserMnemonicEquals
+        TST.L D0
+        BNE.W opforgeNativeCliParserDirectiveUse
+
+opforgeNativeCliParserDirectiveKindFallback:
         LEA nativeCliSourceLine, A0
         MOVEQ #0, D0
         MOVE.W nativeCliSourceLineLen, D0
         BSR.W opforgeNativeCliSkipLineWhitespace
-        ADDQ.L #7, A0
-        SUBQ.L #7, D0
+        LEA moduleDirectiveText, A1
+        MOVEQ #7, D1
+        BSR.W opforgeNativeCliParserMnemonicEquals
+        TST.L D0
+        BNE.S opforgeNativeCliParserDirectiveModule
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA endmoduleDirectiveText, A1
+        MOVEQ #10, D1
+        BSR.W opforgeNativeCliParserMnemonicEquals
+        TST.L D0
+        BNE.S opforgeNativeCliParserDirectiveEndmodule
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA useDirectiveText, A1
+        MOVEQ #4, D1
+        BSR.W opforgeNativeCliParserMnemonicEquals
+        TST.L D0
+        BNE.S opforgeNativeCliParserDirectiveUse
+        MOVEQ #NCLI_PARSER_DIRECTIVE_NONE, D0
+        RTS
+
+opforgeNativeCliParserDirectiveModule:
+        MOVEQ #NCLI_PARSER_DIRECTIVE_MODULE, D0
+        RTS
+
+opforgeNativeCliParserDirectiveEndmodule:
+        MOVEQ #NCLI_PARSER_DIRECTIVE_ENDMODULE, D0
+        RTS
+
+opforgeNativeCliParserDirectiveUse:
+        MOVEQ #NCLI_PARSER_DIRECTIVE_USE, D0
+        RTS
+
+opforgeNativeCliParserMnemonicEquals:
+        BSR.W opforgeNativeCliLineStartsWith
+        RTS
+
+opforgeNativeCliBuildParserTailBuffer:
+        MOVEM.L D1-D7/A0-A3, -(SP)
+        LEA opforgeNativeCliPrvmResultBuffer, A0
+        MOVE.L 44(A0), D6
+        LEA tokenRecordBuffer, A2
+        MOVEQ #0, D7
+        MOVE.W lastTokenCount, D7
+
+opforgeNativeCliBuildParserTailFindLoop:
+        TST.W D7
+        BEQ.S opforgeNativeCliBuildParserTailStart
+        MOVE.L 4(A2), D0
+        CMP.L D6, D0
+        BHI.S opforgeNativeCliBuildParserTailStart
+        LEA NATIVE_TOKEN_RECORD_SIZE(A2), A2
+        SUBQ.W #1, D7
+        BRA.S opforgeNativeCliBuildParserTailFindLoop
+
+opforgeNativeCliBuildParserTailStart:
+        LEA nativeCliParserTailBuffer, A1
+        CLR.W nativeCliParserTailLen
+        MOVEQ #0, D5
+        MOVEQ #-1, D4
+
+opforgeNativeCliBuildParserTailCopyLoop:
+        TST.W D7
+        BEQ.W opforgeNativeCliBuildParserTailDone
+        MOVE.W 0(A2), D3
+        CMPI.W #TK_KIND_IDENTIFIER, D4
+        BNE.S opforgeNativeCliBuildParserTailCopyLexeme
+        CMPI.W #TK_KIND_IDENTIFIER, D3
+        BNE.S opforgeNativeCliBuildParserTailCopyLexeme
+        MOVE.L D5, D0
+        ADDQ.L #1, D0
+        CMPI.L #SOURCE_LINE_BUFFER_CAPACITY - 1, D0
+        BHI.W opforgeNativeCliBuildParserTailFail
+        MOVE.B #' ', (A1)+
+        ADDQ.L #1, D5
+
+opforgeNativeCliBuildParserTailCopyLexeme:
+        MOVE.L 16(A2), D2
+        MOVE.L D5, D0
+        ADD.L D2, D0
+        CMPI.L #SOURCE_LINE_BUFFER_CAPACITY - 1, D0
+        BHI.W opforgeNativeCliBuildParserTailFail
+        MOVE.L 12(A2), D0
+        LEA tokenScratchBuffer, A0
+        ADDA.L D0, A0
+        TST.L D2
+        BEQ.S opforgeNativeCliBuildParserTailAdvance
+        SUBQ.L #1, D2
+
+opforgeNativeCliBuildParserTailByteLoop:
+        MOVE.B (A0)+, (A1)+
+        ADDQ.L #1, D5
+        DBRA D2, opforgeNativeCliBuildParserTailByteLoop
+
+opforgeNativeCliBuildParserTailAdvance:
+        MOVE.W D3, D4
+        LEA NATIVE_TOKEN_RECORD_SIZE(A2), A2
+        SUBQ.W #1, D7
+        BRA.W opforgeNativeCliBuildParserTailCopyLoop
+
+opforgeNativeCliBuildParserTailDone:
+        CLR.B (A1)
+        MOVE.W D5, nativeCliParserTailLen
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliBuildParserTailReturn
+
+opforgeNativeCliBuildParserTailFail:
+        CLR.B nativeCliParserTailBuffer
+        CLR.W nativeCliParserTailLen
+        MOVEQ #1, D0
+
+opforgeNativeCliBuildParserTailReturn:
+        MOVEM.L (SP)+, D1-D7/A0-A3
+        RTS
+
+opforgeNativeCliParserTailPtr:
+        BSR.W opforgeNativeCliBuildParserTailBuffer
+        MOVE.L D0, D1
+        TST.L D1
+        BNE.S opforgeNativeCliParserTailPtrReturn
+        LEA nativeCliParserTailBuffer, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliParserTailLen, D0
+        MOVEQ #0, D1
+
+opforgeNativeCliParserTailPtrReturn:
+        RTS
+
+opforgeNativeCliParseModuleLine:
+        BSR.W opforgeNativeCliParserTailPtr
+        TST.L D1
+        BNE.W opforgeNativeCliParseLineFail
         BSR.W opforgeNativeCliSkipLineWhitespace
         LEA nativeCliArgToken, A1
         BSR.W opforgeNativeCliCopyLineWord
@@ -709,12 +945,9 @@ opforgeNativeCliParseModuleLineRecord:
         BRA.W opforgeNativeCliParseLineDone
 
 opforgeNativeCliParseEndmoduleLine:
-        LEA nativeCliSourceLine, A0
-        MOVEQ #0, D0
-        MOVE.W nativeCliSourceLineLen, D0
-        BSR.W opforgeNativeCliSkipLineWhitespace
-        LEA 10(A0), A0
-        SUB.W #10, D0
+        BSR.W opforgeNativeCliParserTailPtr
+        TST.L D1
+        BNE.W opforgeNativeCliParseLineFail
         BSR.W opforgeNativeCliSkipLineWhitespace
         TST.L D0
         BEQ.S opforgeNativeCliParseEndmoduleLineClose
@@ -728,12 +961,9 @@ opforgeNativeCliParseEndmoduleLineClose:
         BRA.W opforgeNativeCliParseLineDone
 
 opforgeNativeCliParseUseLine:
-        LEA nativeCliSourceLine, A0
-        MOVEQ #0, D0
-        MOVE.W nativeCliSourceLineLen, D0
-        BSR.W opforgeNativeCliSkipLineWhitespace
-        ADDQ.L #4, A0
-        SUBQ.L #4, D0
+        BSR.W opforgeNativeCliParserTailPtr
+        TST.L D1
+        BNE.W opforgeNativeCliParseLineFail
         BSR.W opforgeNativeCliSkipLineWhitespace
         LEA nativeCliArgToken, A1
         BSR.W opforgeNativeCliCopyUseToken
@@ -2716,6 +2946,18 @@ asKeywordText:
         .byte "as"
 moduleSourceExtensionText:
         .byte ".asm",0
+processorAsmText:
+        .byte "asm"
+kindStatementText:
+        .byte "statement"
+opforgeNativeCliPrvmParserProgram:
+        .byte $60,$10,$07,$03,$0B,$00,$20,$30,$65,$64,$00,$64,$00
+moduleMnemonicText:
+        .byte "module"
+endmoduleMnemonicText:
+        .byte "endmodule"
+useMnemonicText:
+        .byte "use"
 moduleDirectiveText:
         .byte ".module"
 endmoduleDirectiveText:
@@ -2886,6 +3128,8 @@ nativeCliPackagePath:
         .res byte,PATH_BUFFER_CAPACITY
 nativeCliSourceLineLen:
         .res word,1
+nativeCliParserTailLen:
+        .res word,1
 nativeCliPackageLenActive:
         .res word,1
 nativeCliPipelineRequestLen:
@@ -2918,6 +3162,8 @@ nativeCliDecimalChar:
         .res byte,2
 nativeCliSourceLine:
         .res byte,SOURCE_LINE_BUFFER_CAPACITY
+nativeCliParserTailBuffer:
+        .res byte,SOURCE_LINE_BUFFER_CAPACITY
 nativeCliCurrentPath:
         .res byte,PATH_BUFFER_CAPACITY
 nativeCliSavedPath:
@@ -2930,6 +3176,16 @@ nativeCliIncludePath:
         .res byte,PATH_BUFFER_CAPACITY
 nativeCliIncludeRootPath:
         .res byte,PATH_BUFFER_CAPACITY
+opforgeNativeCliPrvmRouteFrame:
+        .res byte,PRVM_ROUTE_FRAME_SIZE
+opforgeNativeCliPrvmResultBuffer:
+        .res byte,PRVM_ROUTE_RESULT_CAPACITY
+opforgeNativeCliPrvmDiagBuffer:
+        .res byte,PRVM_ROUTE_DIAG_CAPACITY
+opforgeNativeCliPrvmResumeBuffer:
+        .res byte,PRVM_ROUTE_RESUME_CAPACITY
+opforgeNativeCliPrvmExprRequest:
+        .res byte,PRVM_ROUTE_EXPR_REQUEST_SIZE
 
 nativeCliModuleUseStateStart:
 nativeCliModuleCount:

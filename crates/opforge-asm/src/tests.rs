@@ -1603,7 +1603,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             .parent()
             .and_then(Path::parent)
             .expect("opforge_cli should live under amigaos/opforge");
-        return vec![amigaos_dir.join("tkpkg")];
+        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("prvm")];
     }
 
     Vec::new()
@@ -9595,6 +9595,7 @@ fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
     assert!(source.contains("PRVM_OPCODE_PEEK_KIND"));
     assert!(source.contains("PRVM_OPCODE_PARSE_OPTIONAL_LABEL"));
     assert!(source.contains("PRVM_OPCODE_PARSE_OPERAND_EXPR"));
+    assert!(source.contains("PRVM_OPCODE_SET_DOT_MNEMONIC"));
     assert!(source.contains("PRVM_STATUS_EXPR_REQUEST"));
     assert!(source.contains("PRVM_RESULT_LABEL_TEXT"));
     assert!(source.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
@@ -9604,6 +9605,7 @@ fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
     assert!(source.contains("prvmOpcodeRollback"));
     assert!(source.contains("prvmOpcodeCommit"));
     assert!(source.contains("prvmOpcodeIsEol"));
+    assert!(source.contains("prvmOpcodeSetDotMnemonic"));
     assert!(source.contains("prvmEmitLabelText"));
     assert!(source.contains("PRVM_STATUS_UNSUPPORTED_OPCODE"));
     assert!(!source.contains(".output"));
@@ -9925,6 +9927,13 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforge_native_cli_tokenize_file_at_path"));
     assert!(source.contains("opforge_native_cli_tokenize_current_line"));
     assert!(source.contains("opforge_native_cli_parse_current_line"));
+    assert!(source.contains(".use prvm.amigaos.line_router (prvm_route_line_68000)"));
+    assert!(source.contains("opforgeNativeCliRouteParserModuleUseLine"));
+    assert!(source.contains("opforgeNativeCliBuildPrvmRouteFrame"));
+    assert!(source.contains("opforgeNativeCliParserDirectiveKind"));
+    assert!(source.contains("opforgeNativeCliParserMnemonicEquals"));
+    assert!(source.contains("lastTokenCount"));
+    assert!(source.contains("lastLexemeLen"));
     assert!(source.contains("opforge_native_cli_expand_include_target"));
     assert!(source.contains("opforgeNativeCliResolveIncludePath"));
     assert!(source.contains("opforgeNativeCliRecordModule"));
@@ -9982,18 +9991,31 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source_contains_in_order(
         &source,
         &[
-            "LEA moduleDirectiveText, A1",
-            "BNE.W opforgeNativeCliParseModuleLine",
-            "LEA endmoduleDirectiveText, A1",
-            "MOVEQ #10, D1",
-            "BNE.W opforgeNativeCliParseEndmoduleLine",
-            "LEA useDirectiveText, A1",
+            "LEA includeDirectiveText, A1",
+            "BNE.W opforgeNativeCliParseIncludeLine",
+            "BSR.W opforgeNativeCliRouteParserModuleUseLine",
+            "BEQ.W opforgeNativeCliParseModuleLine",
+            "BEQ.W opforgeNativeCliParseEndmoduleLine",
+            "BEQ.W opforgeNativeCliParseUseLine",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliBuildPrvmRouteFrame:",
+            "MOVE.L #PRVM_ROUTE_MAGIC_OPLR, 0(A0)",
+            "LEA tokenRecordBuffer, A1",
+            "MOVE.W lastTokenCount, D0",
+            "LEA tokenScratchBuffer, A1",
+            "MOVE.W lastLexemeLen, D0",
+            "MOVE.L #PRVM_PARSER_CONTRACT_VERSION_V2, 104(A0)",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
             "opforgeNativeCliParseModuleLine:",
+            "BSR.W opforgeNativeCliParserTailPtr",
             "BSR.W opforgeNativeCliCopyLineWord",
             "TST.B nativeCliArgToken",
             "BEQ.W opforgeNativeCliParseLineFail",
@@ -10010,8 +10032,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         &source,
         &[
             "opforgeNativeCliParseEndmoduleLine:",
-            "LEA 10(A0), A0",
-            "SUB.W #10, D0",
+            "BSR.W opforgeNativeCliParserTailPtr",
             "BSR.W opforgeNativeCliSkipLineWhitespace",
             "CMPI.B #';', (A0)",
             "BNE.W opforgeNativeCliParseLineFail",
@@ -10020,6 +10041,10 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "BNE.W opforgeNativeCliParseModuleDepthFail",
         ]
     ));
+    assert!(source.contains("opforgeNativeCliBuildParserTailBuffer"));
+    assert!(source.contains("nativeCliParserTailBuffer"));
+    assert!(source.contains("nativeCliParserTailLen"));
+    assert!(source.contains("NATIVE_TOKEN_RECORD_SIZE        = 20"));
     assert!(source.contains("PACKAGE_STORAGE_CAPACITY"));
     assert!(source.contains("NATIVE_MODULE_TABLE_CAPACITY    = 16"));
     assert!(source.contains("NATIVE_IMPORT_TABLE_CAPACITY    = 32"));
@@ -10055,7 +10080,8 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     let out_dir = create_temp_dir("m68000-opforge-native-cli");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
-        panic!("assemble opforge native cli example: {err}");
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble opforge native cli example: {detail}");
     }
 
     let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
@@ -10069,6 +10095,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforge_native_cli_tokenize_file_at_path"));
     assert!(listing.contains("opforge_native_cli_tokenize_current_line"));
     assert!(listing.contains("opforge_native_cli_parse_current_line"));
+    assert!(listing.contains("opforgeNativeCliRouteParserModuleUseLine"));
+    assert!(listing.contains("opforgeNativeCliBuildPrvmRouteFrame"));
+    assert!(listing.contains("opforgeNativeCliParserDirectiveKind"));
+    assert!(listing.contains("opforgeNativeCliParserMnemonicEquals"));
     assert!(listing.contains("opforge_native_cli_expand_include_target"));
     assert!(listing.contains("opforge_native_cli_emit_include_line_record"));
     assert!(listing.contains("opforgeNativeCliRecordModule"));

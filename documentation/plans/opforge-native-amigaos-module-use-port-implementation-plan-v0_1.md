@@ -205,7 +205,7 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
   - Detailed definition of done: native CLI can discover and load one external module
     file for a simple `.use` case.
 
-- [ ] Item 7: Connect module/import tables to PRVM parser output
+- [x] Item 7: Connect module/import tables to PRVM parser output
   - Validation: focused native CLI tests, focused PRVM tests if touched,
     reference gate, format check, and opt-in FS-UAE smoke when available.
   - Definition of done: supported module/use processing is fed by parser VM

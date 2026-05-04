@@ -373,7 +373,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             .join("examples")
             .join("motorola68000")
             .join("amigaos");
-        return vec![amigaos_dir.join("tkpkg")];
+        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("prvm")];
     }
 
     Vec::new()

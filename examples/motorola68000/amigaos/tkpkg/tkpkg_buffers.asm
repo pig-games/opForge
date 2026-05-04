@@ -66,6 +66,12 @@ tokenRecordBuffer:
 tokenScratchBuffer:
         .res byte, TOKEN_SCRATCH_CAPACITY
 
+lastTokenCount:
+        .res word, 1
+
+lastLexemeLen:
+        .res word, 1
+
 packageStateFlags:
         .res byte, 1
 

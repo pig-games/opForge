@@ -21,6 +21,7 @@
         .use tkpkg.amigaos.buffers (activeTokenizerVmLexemeLimitDiagLen, activeTokenizerVmLexemeLimitDiagCode)
         .use tkpkg.amigaos.buffers (activeTokenizerVmErrorLimitDiagLen, activeTokenizerVmErrorLimitDiagCode)
         .use tkpkg.amigaos.buffers (tokenRecordBuffer, tokenScratchBuffer)
+        .use tkpkg.amigaos.buffers (lastTokenCount, lastLexemeLen)
         .use tokvm.amigaos.tokenizer_vm (tokvm_run_68000, tokvm_set_step_budget_68000)
         .use tokvm.amigaos.tokenizer_vm (tokvm_set_program_state_table_68000)
         .use tokvm.amigaos.tokenizer_vm (tokvm_read_last_failure_68000)
@@ -322,6 +323,8 @@ tkpkgTokenizerPipelineReady:
         BRA.W tkpkgTokenizerDone
 
 tkpkgTokenizerRender:
+        MOVE.W D1, lastTokenCount
+        MOVE.W D3, lastLexemeLen
         BSR.W tkpkg_tokenizer_vm_validate_result_v1
         TST.B D0
         BNE.W tkpkgTokenizerInvalidProgram

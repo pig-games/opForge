@@ -95,6 +95,7 @@ PRVM_OPCODE_PARSE_OPERAND_EXPR      = $50
 PRVM_OPCODE_BEGIN_STATEMENT         = $60
 PRVM_OPCODE_SET_MNEMONIC            = $62
 PRVM_OPCODE_FINISH_LINE             = $64
+PRVM_OPCODE_SET_DOT_MNEMONIC        = $65
 
 LOCAL_LOADED_FLAG                   = 0
 LOCAL_LOADED_COL_START              = 4
@@ -322,6 +323,8 @@ prvmProgramLoop:
         BEQ prvmOpcodeSetMnemonic
         CMPI.B #PRVM_OPCODE_FINISH_LINE, D7
         BEQ prvmOpcodeFinishLine
+        CMPI.B #PRVM_OPCODE_SET_DOT_MNEMONIC, D7
+        BEQ prvmOpcodeSetDotMnemonic
         BRA prvmUnsupportedOpcode
 
 prvmOpcodeEnd:
@@ -491,6 +494,9 @@ prvmOpcodeSetMnemonic:
         BNE prvmReturnWithLocals
         CLR.L LOCAL_LOADED_FLAG(A3)
         BRA prvmProgramLoop
+
+prvmOpcodeSetDotMnemonic:
+        BRA prvmOpcodeSetMnemonic
 
 prvmOpcodeFinishLine:
         BSR.W prvmEmitFinishLine

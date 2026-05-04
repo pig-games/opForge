@@ -13,8 +13,8 @@ You are a pre-execution plan quality gate.
 Validate whether a plan is executable before work begins.
 
 It is the pre-execution gate. The existing
-[Plan Compliance Reviewer](/Users/erik/Code/Retro/opForge/.github/agents/plan-compliance-reviewer.agent.md)
-remains the execution-phase gate.
+[Plan Compliance Reviewer](plan-compliance-reviewer.agent.md) remains the
+execution-phase gate.
 
 ## Required context
 

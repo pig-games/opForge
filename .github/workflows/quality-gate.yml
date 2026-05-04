@@ -7,6 +7,80 @@ on:
   workflow_dispatch:
 
 jobs:
+  workflow-artifacts:
+    name: workflow artifact validators
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate changed workflow artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+
+          if [[ -z "${base}" || "${base}" =~ ^0+$ ]] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            if git rev-parse HEAD~1 >/dev/null 2>&1; then
+              base="HEAD~1"
+            else
+              echo "No comparison base found; skipping changed-artifact validation."
+              exit 0
+            fi
+          fi
+
+          mapfile -t changed_files < <(git diff --name-only --diff-filter=ACMR "${base}" HEAD)
+          plan_files=()
+          spec_files=()
+          review_files=()
+          closure_files=()
+
+          for path in "${changed_files[@]}"; do
+            case "${path}" in
+              documentation/plans/*.md|dev-docs/*plan*.md|dev-docs/**/*plan*.md)
+                plan_files+=("${path}")
+                ;;
+            esac
+            case "${path}" in
+              documentation/*spec*.md|dev-docs/*spec*.md|dev-docs/**/*spec*.md)
+                spec_files+=("${path}")
+                ;;
+            esac
+            case "${path}" in
+              documentation/reviews/*.md|dev-docs/reviews/*.md|dev-docs/**/reviews/*.md)
+                review_files+=("${path}")
+                ;;
+            esac
+            case "${path}" in
+              *closure*.md)
+                closure_files+=("${path}")
+                ;;
+            esac
+          done
+
+          if (( ${#plan_files[@]} )); then
+            python3 scripts/workflow/check_plan_checkboxes.py "${plan_files[@]}"
+          fi
+          if (( ${#spec_files[@]} )); then
+            python3 scripts/workflow/check_spec_artifact.py "${spec_files[@]}"
+          fi
+          if (( ${#review_files[@]} )); then
+            python3 scripts/workflow/check_review_report.py "${review_files[@]}"
+          fi
+          if (( ${#closure_files[@]} )); then
+            python3 scripts/workflow/check_closure_report.py "${closure_files[@]}"
+          fi
+
+          echo "Validated changed workflow artifacts."
+
   quality-gate:
     name: fmt + clippy + audit + test
     runs-on: ubuntu-latest
@@ -24,30 +98,8 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Lint
-        run: cargo clippy -- -D warnings
-
-      - name: Security audit
-        run: cargo audit
-
-      - name: Require C compiler for FFI ABI coverage
-        shell: bash
-        run: |
-          set -euo pipefail
-          for compiler in cc clang gcc; do
-            if command -v "${compiler}" >/dev/null 2>&1; then
-              "${compiler}" --version
-              exit 0
-            fi
-          done
-          echo "error: no supported C compiler found for FFI ABI contract coverage" >&2
-          exit 1
-
-      - name: Test suite
-        run: cargo test --locked
+      - name: Rust quality gate
+        run: scripts/workflow/run_rust_quality_gate.sh
 
   vm-opasm-modes:
     name: VM opasm modes + build combos

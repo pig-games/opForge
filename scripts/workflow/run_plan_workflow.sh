@@ -9,7 +9,7 @@ Usage:
 Behavior:
   - Creates the plan artifact from the template if it does not exist.
   - Prints the exact branch-local plan workflow instructions.
-  - Validates plan checkbox discipline.
+  - Validates required plan workflow structure.
   - Requires a companion gate result file with PASS from Plan Quality Orchestrator.
   - Allows at most 3 failed re-check cycles, then halts and asks the user to resolve the blockage.
 

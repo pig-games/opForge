@@ -24,7 +24,9 @@ Done when:
 Done when:
 
 - behavior advanced for the target slice
-- full quality gates for the slice passed
+- full quality gates for the slice passed; for Rust code changes, use
+	`scripts/workflow/run_rust_quality_gate.sh` or `make quality-gate` for the
+	full Rust gate
 - `plan-compliance-reviewer` passed before commit
 - the slice is ready to land as the commit for its active work item or phase
 - progress state was updated

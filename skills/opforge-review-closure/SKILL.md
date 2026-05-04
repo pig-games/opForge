@@ -40,3 +40,7 @@ Use [templates/finding-closure-report-template.md](/Users/erik/Code/Retro/opForg
 - `../../references/workflow/finding-closure-rules.md`
 - `../../templates/finding-closure-report-template.md`
 
+## Helper scripts
+
+- `../../scripts/workflow/check_closure_report.py`
+

@@ -20,6 +20,7 @@
 
 - Status:
 - Residual risk:
+- Closure rationale:
 
 ## Notes
 

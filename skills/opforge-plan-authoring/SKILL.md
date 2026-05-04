@@ -48,6 +48,9 @@ For remediation plans, each work item must also list:
 - Every work item or phase must produce a new commit before the next item
   begins.
 - Full quality gates are mandatory before each commit.
+- Rust code changes should list `scripts/workflow/run_rust_quality_gate.sh` (or
+  `make quality-gate`) as the full Rust gate, plus any focused tests required
+  by the specific slice.
 - `plan-compliance-reviewer` must pass before each commit.
 - Checkbox updates are mandatory bookkeeping.
 - Every generated plan must state that the active worktree `AGENTS.md`
@@ -66,3 +69,4 @@ For remediation plans, each work item must also list:
 
 - `../../scripts/workflow/new_artifact_from_template.sh`
 - `../../scripts/workflow/check_plan_checkboxes.py`
+- `../../scripts/workflow/run_rust_quality_gate.sh`

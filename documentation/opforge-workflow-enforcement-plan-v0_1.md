@@ -96,7 +96,7 @@ common end-to-end artifact flows where agents regularly forget required steps.
 
 ## 3. Scripts to add
 
-### 3.1 `scripts/workflow/check_plan_structure.py`
+### 3.1 `scripts/workflow/check_plan_checkboxes.py`
 
 Purpose:
 
@@ -323,7 +323,7 @@ Responsibilities:
 Suggested commands:
 
 ```sh
-python3 scripts/workflow/check_plan_structure.py documentation/*.md dev-docs/**/*.md
+python3 scripts/workflow/check_plan_checkboxes.py documentation/plans/*.md dev-docs/**/*.md
 python3 scripts/workflow/check_review_report.py dev-docs/reviews/*.md
 python3 scripts/workflow/check_closure_report.py dev-docs/reviews/*closure*.md
 python3 scripts/workflow/check_spec_structure.py documentation/*spec*.md
@@ -357,7 +357,7 @@ Add optional local hooks under a tracked hooks directory, for example:
 
 Recommended `pre-commit` responsibilities:
 
-- run `check_plan_structure.py` on modified plan files
+- run `check_plan_checkboxes.py` on modified plan files
 - run `check_review_report.py` on modified review files
 - run `check_closure_report.py` on modified closure files
 
@@ -367,7 +367,7 @@ This should be optional locally but mandatory in CI.
 
 The following should become hard blockers:
 
-- plan cannot become active if `check_plan_structure.py` fails
+- plan cannot become active if `check_plan_checkboxes.py` fails
 - review cannot be considered complete if `check_review_report.py` fails
 - finding cannot be marked fixed if `check_closure_report.py` fails
 - release-prep cannot proceed if `check_version_impact.py` fails
@@ -382,7 +382,7 @@ The following should become hard blockers:
 
 Implement:
 
-- `check_plan_structure.py`
+- `check_plan_checkboxes.py`
 - `check_review_report.py`
 - `check_closure_report.py`
 

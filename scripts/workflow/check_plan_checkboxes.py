@@ -9,6 +9,38 @@ from pathlib import Path
 
 CHECKBOX_RE = re.compile(r"^\s*-\s\[( |x|X)\]\s+")
 WORK_ITEMS_HEADER = "## Work Items"
+REQUIRED_HEADINGS = [
+    "## Metadata",
+    "## Objective",
+    "## Constraints",
+    "## Work Items",
+    "## Blocking Rules",
+]
+REQUIRED_WORK_ITEM_FIELDS = [
+    "Source requirement or finding IDs:",
+    "Expected files:",
+    "Full quality gates:",
+    "Plan-compliance review evidence:",
+    "Commit outcome:",
+    "Definition of done:",
+]
+BLOCKING_RULE_PATTERNS = [
+    ("AGENTS.md rules remain binding", re.compile(r"AGENTS\.md.+rules", re.IGNORECASE | re.DOTALL)),
+    ("all quality gates pass before commit", re.compile(r"quality gates.+before.+commit", re.IGNORECASE | re.DOTALL)),
+    ("plan-compliance-reviewer passes before commit", re.compile(r"plan-compliance-reviewer.+before.+commit", re.IGNORECASE | re.DOTALL)),
+    ("each work item or phase ends in a new commit", re.compile(r"each.+(?:work item|phase).+commit", re.IGNORECASE | re.DOTALL)),
+]
+
+
+def has_nonempty_field(text: str, field_name: str) -> bool:
+    pattern = re.compile(rf"^\s*-\s*{re.escape(field_name)}\s*(.+?)\s*$", re.MULTILINE)
+    match = pattern.search(text)
+    return bool(match and match.group(1).strip())
+
+
+def block_has_field(block: list[str], field_name: str) -> bool:
+    needle = field_name.lower()
+    return any(needle in line.lower() for line in block)
 
 
 def analyze_plan(path: Path) -> list[str]:
@@ -16,10 +48,18 @@ def analyze_plan(path: Path) -> list[str]:
     lines = text.splitlines()
     errors: list[str] = []
 
-    if "- Source:" not in text:
-        errors.append("missing `- Source:` in metadata")
-    if "- Mode:" not in text:
-        errors.append("missing `- Mode:` in metadata")
+    for heading in REQUIRED_HEADINGS:
+        if heading not in text:
+            errors.append(f"missing required heading `{heading}`")
+
+    if not has_nonempty_field(text, "Source:"):
+        errors.append("missing non-empty `- Source:` in metadata")
+    if not has_nonempty_field(text, "Mode:"):
+        errors.append("missing non-empty `- Mode:` in metadata")
+
+    for description, pattern in BLOCKING_RULE_PATTERNS:
+        if not pattern.search(text):
+            errors.append(f"missing blocking rule: {description}")
 
     in_work_items = False
     checkbox_indices = []
@@ -35,14 +75,24 @@ def analyze_plan(path: Path) -> list[str]:
         errors.append("no checkbox work items found")
         return errors
 
-    for index in checkbox_indices:
-        window = lines[index + 1 : index + 8]
-        if not any("Validation:" in line for line in window):
-            errors.append(f"checkbox at line {index + 1} missing nearby `Validation:`")
-        if not any("Definition of done:" in line for line in window):
-            errors.append(
-                f"checkbox at line {index + 1} missing nearby `Definition of done:`"
-            )
+    for checkbox_number, index in enumerate(checkbox_indices):
+        next_checkbox = (
+            checkbox_indices[checkbox_number + 1]
+            if checkbox_number + 1 < len(checkbox_indices)
+            else len(lines)
+        )
+        block_end = next_checkbox
+        for line_index in range(index + 1, next_checkbox):
+            if lines[line_index].startswith("## "):
+                block_end = line_index
+                break
+        block = lines[index + 1 : block_end]
+
+        for field_name in REQUIRED_WORK_ITEM_FIELDS:
+            if not block_has_field(block, field_name):
+                errors.append(
+                    f"checkbox at line {index + 1} missing `{field_name}` in work item block"
+                )
 
     checked = [i for i in checkbox_indices if "[x]" in lines[i].lower()]
     if checked and "## Milestones" not in text and "## Work Items" not in text:
@@ -53,7 +103,7 @@ def analyze_plan(path: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Check branch-local plan documents for basic checkbox discipline."
+        description="Check branch-local plan documents for required workflow structure."
     )
     parser.add_argument("paths", nargs="+", help="Plan markdown files to inspect")
     args = parser.parse_args()

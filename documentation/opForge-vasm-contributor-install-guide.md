@@ -13,7 +13,7 @@ The first 680x0 external-oracle slice currently:
 
 Relevant code:
 
-- [crates/opforge-asm/src/oracle/vasm.rs](/Users/erik/.codex/worktrees/7175/opForge/crates/opforge-asm/src/oracle/vasm.rs)
+- [crates/opforge-asm/src/oracle/vasm.rs](../crates/opforge-asm/src/oracle/vasm.rs)
 
 ## Recommended install layout
 

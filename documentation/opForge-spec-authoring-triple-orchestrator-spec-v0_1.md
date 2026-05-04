@@ -56,8 +56,7 @@ specification.
 - Leaf agents are read-only contributors. They may return proposed section
   content, conflicts, ambiguities, and missing information, but they must not
   edit files.
-- The final artifact must follow
-  [templates/spec-template.md](/Users/erik/.codex/worktrees/7175/opForge/templates/spec-template.md).
+- The final artifact must follow [templates/spec-template.md](../templates/spec-template.md).
 - The orchestrator must not silently continue with fewer than three leaf agents.
   If the configured three-model set cannot run, it must stop and report the
   blockage unless the user explicitly approves degraded execution.

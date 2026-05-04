@@ -31,13 +31,13 @@ Instead, the repository should provide those expectations directly through:
 
 The current repository already has useful building blocks:
 
-- a strong top-level [AGENTS.md](/Users/erik/.codex/worktrees/7175/opForge/AGENTS.md),
-- a plan execution gate in [agents/plan-compliance-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-compliance-reviewer.agent.md),
+- a strong top-level [AGENTS.md](../AGENTS.md),
+- a plan execution gate in [agents/plan-compliance-reviewer.agent.md](../agents/plan-compliance-reviewer.agent.md),
 - a multi-model code-review stack in
-  - [agents/review-triple-orchestrator.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-triple-orchestrator.agent.md),
-  - [agents/review-correctness.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-correctness.agent.md),
-  - [agents/review-security.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-security.agent.md),
-  - [agents/review-tests-quality.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/review-tests-quality.agent.md).
+  - [agents/review-triple-orchestrator.agent.md](../agents/review-triple-orchestrator.agent.md),
+  - [agents/review-correctness.agent.md](../agents/review-correctness.agent.md),
+  - [agents/review-security.agent.md](../agents/review-security.agent.md),
+  - [agents/review-tests-quality.agent.md](../agents/review-tests-quality.agent.md).
 
 The main missing pieces are:
 
@@ -78,7 +78,7 @@ The recommended system has four layers:
 
 ## Layer 1: AGENTS.md
 
-The top-level [AGENTS.md](/Users/erik/.codex/worktrees/7175/opForge/AGENTS.md) should remain the authority for repository-wide behavior, but it should be extended with explicit workflow sections.
+The top-level [AGENTS.md](../AGENTS.md) should remain the authority for repository-wide behavior, but it should be extended with explicit workflow sections.
 
 Recommended additions:
 
@@ -280,7 +280,7 @@ The repository should expand `agents/` with narrow gates. Each gate should be sh
 
 ### Existing sub-agent to keep
 
-- [agents/plan-compliance-reviewer.agent.md](/Users/erik/.codex/worktrees/7175/opForge/agents/plan-compliance-reviewer.agent.md)
+- [agents/plan-compliance-reviewer.agent.md](../agents/plan-compliance-reviewer.agent.md)
 
 This should remain the execution-phase gate.
 
@@ -541,7 +541,7 @@ To avoid process overload, the first rollout should be small.
 
 Recommended phase 1:
 
-1. update [AGENTS.md](/Users/erik/.codex/worktrees/7175/opForge/AGENTS.md) with artifact routing and gate rules
+1. update [AGENTS.md](../AGENTS.md) with artifact routing and gate rules
 2. add four skills:
    - `opforge-review-reporting`
    - `opforge-plan-authoring`
@@ -621,6 +621,7 @@ references/
 scripts/
   workflow/
     check_plan_checkboxes.py
+    check_closure_report.py
     check_review_report.py
     check_spec_artifact.py
     new_artifact_from_template.sh
@@ -662,6 +663,6 @@ Implement phase 1 first:
 1. add the core workflow skills
 2. add the new review/gate sub-agents
 3. add the templates and references
-4. update [AGENTS.md](/Users/erik/.codex/worktrees/7175/opForge/AGENTS.md) to route tasks into them
+4. update [AGENTS.md](../AGENTS.md) to route tasks into them
 
 That is the highest-value improvement with the lowest process overhead.

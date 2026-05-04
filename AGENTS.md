@@ -16,6 +16,11 @@ When plan-driven work is active in this repository, prefer using the local
 `agents/` definitions and custom agents in this repo rather than relying on external path
 references.
 
+The root `agents/` directory is the canonical source for custom-agent
+definitions. The `.github/agents/` entries exist only as symlinks so VS Code can
+list the same agents in the Agent selector; do not maintain separate copied
+definitions there.
+
 ## Supply-Chain Safety Rule
 
 - Never install, import, add, recommend, vendor, execute, or otherwise touch
@@ -74,9 +79,19 @@ Helper scripts:
 - [scripts/workflow/check_spec_artifact.py](scripts/workflow/check_spec_artifact.py)
 - [scripts/workflow/check_plan_checkboxes.py](scripts/workflow/check_plan_checkboxes.py)
 - [scripts/workflow/check_review_report.py](scripts/workflow/check_review_report.py)
+- [scripts/workflow/check_closure_report.py](scripts/workflow/check_closure_report.py)
+- [scripts/workflow/run_rust_quality_gate.sh](scripts/workflow/run_rust_quality_gate.sh)
 - [scripts/workflow/run_spec_workflow.sh](scripts/workflow/run_spec_workflow.sh)
 - [scripts/workflow/run_plan_workflow.sh](scripts/workflow/run_plan_workflow.sh)
 - [scripts/workflow/run_review_workflow.sh](scripts/workflow/run_review_workflow.sh)
+
+Rust quality-gate rule:
+
+- Before committing Rust code changes, run
+  `scripts/workflow/run_rust_quality_gate.sh` (or `make quality-gate`) and
+  record the result in the plan, closure report, or final status. This is the
+  canonical full Rust quality gate; add focused tests for the specific slice as
+  needed, but do not replace the full gate by listing individual Cargo commands.
 
 ## Workflow routing rules
 

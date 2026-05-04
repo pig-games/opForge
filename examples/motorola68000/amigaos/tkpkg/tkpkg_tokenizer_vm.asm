@@ -398,16 +398,30 @@ tkpkg_tokenizer_vm_read_program_v1:
         BEQ.W tkpkgTokenizerInvalidProgram
         LEA packageStorage, A2
         LEA 0(A2, D0.W), A2
+        MOVEA.L A2, A6
+        ADDA.L D2, A6
+        MOVEQ #1, D0
+        BSR.W tkpkg_tokenizer_vm_require_bytes_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         ADDQ.W #1, A2
         BSR.W tkpkg_tokenizer_vm_skip_string_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         BSR.W tkpkg_tokenizer_vm_read_u16_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         CMPI.W #TKVM_OPCODE_VERSION_V1, D0
         BNE.W tkpkgTokenizerInvalidProgram
         BSR.W tkpkg_tokenizer_vm_read_u16_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         MOVE.B D0, activeTokenizerVmStartStateLo
         LSR.W #8, D0
         MOVE.B D0, activeTokenizerVmStartStateHi
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         TST.L D0
         BEQ.W tkpkgTokenizerInvalidProgram
         CMPI.L #TOKENIZER_VM_STATE_TABLE_CAPACITY, D0
@@ -427,40 +441,70 @@ tkpkg_tokenizer_vm_read_program_v1:
 
 tkpkgTokenizerSkipStateOffsets:
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         MOVE.L D0, (A3)+
         DBF D7, tkpkgTokenizerSkipStateOffsets
         BSR.W tkpkg_tokenizer_vm_read_u16_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         CMPI.W #TKVM_STREAM_VERSION_V1, D0
+        BNE.W tkpkgTokenizerInvalidProgram
+        MOVEQ #1, D0
+        BSR.W tkpkg_tokenizer_vm_require_bytes_v1
+        TST.B D1
         BNE.W tkpkgTokenizerInvalidProgram
         MOVEQ #0, D0
         MOVE.B (A2)+, D0
         CMPI.B #TKVM_STREAM_MODE_LINE, D0
         BNE.W tkpkgTokenizerInvalidProgram
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         MOVE.L D0, D5
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         MOVE.L D0, activeTokenizerVmMaxErrorsPerLine
         LEA activeTokenizerVmInvalidCharDiagCode, A3
         LEA activeTokenizerVmInvalidCharDiagLen, A1
         BSR.W tkpkg_tokenizer_vm_read_string_into_slot_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         LEA activeTokenizerVmUnterminatedStringDiagCode, A3
         LEA activeTokenizerVmUnterminatedStringDiagLen, A1
         BSR.W tkpkg_tokenizer_vm_read_string_into_slot_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         LEA activeTokenizerVmStepLimitDiagCode, A3
         LEA activeTokenizerVmStepLimitDiagLen, A1
         BSR.W tkpkg_tokenizer_vm_read_string_into_slot_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         LEA activeTokenizerVmTokenLimitDiagCode, A3
         LEA activeTokenizerVmTokenLimitDiagLen, A1
         BSR.W tkpkg_tokenizer_vm_read_string_into_slot_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         LEA activeTokenizerVmLexemeLimitDiagCode, A3
         LEA activeTokenizerVmLexemeLimitDiagLen, A1
         BSR.W tkpkg_tokenizer_vm_read_string_into_slot_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         LEA activeTokenizerVmErrorLimitDiagCode, A3
         LEA activeTokenizerVmErrorLimitDiagLen, A1
         BSR.W tkpkg_tokenizer_vm_read_string_into_slot_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         BSR.W tkpkg_tokenizer_vm_read_bytes_field_v1
+        TST.B D1
+        BNE.W tkpkgTokenizerInvalidProgram
         TST.W D3
         BEQ.W tkpkgTokenizerInvalidProgram
         MOVEQ #0, D0
@@ -1390,11 +1434,22 @@ tkpkg_tokenizer_vm_append_literal_close_paren_v1:
 
 tkpkg_tokenizer_vm_skip_string_v1:
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
-        LEA 0(A2, D0.W), A2
+        TST.B D1
+        BNE.S tkpkgTokenizerSkipStringDone
+        BSR.W tkpkg_tokenizer_vm_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgTokenizerSkipStringDone
+        ADDA.L D0, A2
+tkpkgTokenizerSkipStringDone:
         RTS
 
 tkpkg_tokenizer_vm_read_string_into_slot_v1:
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
+        TST.B D1
+        BNE.S tkpkgTokenizerReadStringDone
+        BSR.W tkpkg_tokenizer_vm_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgTokenizerReadStringDone
         MOVE.L D0, D2
         CMPI.L #31, D2
         BLS.S tkpkgTokenizerReadStringLenReady
@@ -1411,26 +1466,45 @@ tkpkgTokenizerReadStringCopyLoop:
         BRA.S tkpkgTokenizerReadStringCopyLoop
 tkpkgTokenizerReadStringCopyDone:
         CLR.B (A3)
-        LEA 0(A2, D0.W), A2
+        ADDA.L D0, A2
+        MOVEQ #0, D1
+tkpkgTokenizerReadStringDone:
         RTS
 
 tkpkg_tokenizer_vm_read_bytes_field_v1:
         BSR.W tkpkg_tokenizer_vm_read_u32_le_v1
+        TST.B D1
+        BNE.S tkpkgTokenizerReadBytesDone
+        BSR.W tkpkg_tokenizer_vm_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgTokenizerReadBytesDone
         MOVEA.L A2, A3
         MOVE.L D0, D3
-        LEA 0(A2, D0.W), A2
+        ADDA.L D0, A2
+        MOVEQ #0, D1
+tkpkgTokenizerReadBytesDone:
         RTS
 
 tkpkg_tokenizer_vm_read_u16_le_v1:
+        MOVEQ #2, D0
+        BSR.W tkpkg_tokenizer_vm_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgTokenizerReadU16Done
         MOVEQ #0, D0
         MOVE.B (A2)+, D0
         MOVEQ #0, D1
         MOVE.B (A2)+, D1
         LSL.W #8, D1
         OR.W D1, D0
+        MOVEQ #0, D1
+tkpkgTokenizerReadU16Done:
         RTS
 
 tkpkg_tokenizer_vm_read_u32_le_v1:
+        MOVEQ #4, D0
+        BSR.W tkpkg_tokenizer_vm_require_bytes_v1
+        TST.B D1
+        BNE.S tkpkgTokenizerReadU32Done
         MOVEQ #0, D0
         MOVE.B (A2)+, D0
         MOVEQ #0, D1
@@ -1448,6 +1522,22 @@ tkpkg_tokenizer_vm_read_u32_le_v1:
         LSL.L #8, D1
         LSL.L #8, D1
         OR.L D1, D0
+        MOVEQ #0, D1
+tkpkgTokenizerReadU32Done:
+        RTS
+
+tkpkg_tokenizer_vm_require_bytes_v1:
+        CMPA.L A6, A2
+        BHI.S tkpkgTokenizerRequireBytesFail
+        MOVE.L A6, D1
+        SUB.L A2, D1
+        CMP.L D1, D0
+        BHI.S tkpkgTokenizerRequireBytesFail
+        MOVEQ #0, D1
+        RTS
+
+tkpkgTokenizerRequireBytesFail:
+        MOVEQ #1, D1
         RTS
 
         .endsection

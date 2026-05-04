@@ -97,11 +97,12 @@ past intended native runtime bounds under malformed input.
     passed with the configured FS-UAE opt-in skip; `scripts/workflow/run_rust_quality_gate.sh`
     passed after the intentional reference refresh; `make workflow-gate` passed.
 
-- [ ] Item 3: Enforce selected TKVM record bounds while decoding programs
+- [x] Item 3: Enforce selected TKVM record bounds while decoding programs
   - Source requirement or finding IDs: RVW-2026-05-04-002; expected to fully
     close the finding.
-  - Expected files: `examples/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm`
-    and the focused native tkpkg tokenizer regression test or fixture for forged
+  - Expected files: `examples/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm`,
+    `examples/motorola68000/amigaos/tkpkg/tkpkg_token_policy.asm`, and the
+    focused native tkpkg tokenizer regression test or fixture for forged
     selected TKVM record-internal lengths.
   - Full quality gates: focused malformed-package tests proving `tokenize_line`
     rejects forged selected TKVM string, state-table, diagnostic-code, and
@@ -119,6 +120,22 @@ past intended native runtime bounds under malformed input.
     `tokenize_line` read unrelated package or BSS bytes, valid tokenization
     remains unchanged, focused regressions pass, and the full quality gates
     pass.
+  - Completion evidence: `cargo test -p asm motorola68020_tkpkg -- --nocapture`
+    passed with 31 tests; `cargo test -p asm
+    external_fs_uae_tkpkg_native_rejects_truncated_conditional_jump_tokenizer_program -- --nocapture`
+    initially passed by taking the opt-in skip path; after configuring the
+    documented FS-UAE binary/template, the real emulator exposed an older native
+    `set_pipeline` token-policy locator bug (`OTR003: missing tokenizer policy`)
+    that also reproduced from a clean detached `HEAD`; preserving the incoming
+    owner locator while clearing `pendingTokenPolicy*` fixed that blocker;
+    `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test --manifest-path
+    crates/opforge-asm/Cargo.toml external_fs_uae_tkpkg_native_rejects_truncated_conditional_jump_tokenizer_program -- --nocapture`
+    passed under real FS-UAE; `opForge_UPDATE_REFERENCE=1 cargo test -p asm
+    examples_match_reference_outputs -- --nocapture` passed for the intentional
+    reference refresh; `scripts/workflow/run_rust_quality_gate.sh` passed;
+    `make workflow-gate` passed.
 
 - [ ] Item 4: Return logical PRVM line counts independently of absolute line numbers
   - Source requirement or finding IDs: RVW-2026-05-04-003; expected to fully

@@ -12342,6 +12342,10 @@ fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
     ));
     assert!(tkpkg_source_contains(
         &token_policy,
+        "tkpkg_token_policy_find_owner_v1:\n        MOVE.B D0, D6\n        MOVE.L A3, -(SP)\n        LEA pendingTokenPolicyOffsetLo, A3\n        CLR.L (A3)+\n        CLR.B (A3)\n        MOVEA.L (SP)+, A3\n        BSR.W tkpkg_token_policy_read_locator_ptr_len_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &token_policy,
         "tkpkgTokenPolicySkipTailStrings:\n        BSR.W tkpkg_token_policy_skip_string_v1\n        TST.B D1\n        BNE.W tkpkgTokenPolicySkipBoundsFail\n        BSR.W tkpkg_token_policy_skip_string_v1"
     ));
     assert!(tkpkg_source_contains(
@@ -12551,6 +12555,31 @@ fn motorola68020_tkpkg_tokenize_line_module_surface_routes_entrypoint_into_packa
         &local_tokvm_source,
         "tokvm_run_68000:"
     ));
+}
+
+#[test]
+fn motorola68020_tkpkg_tokenizer_vm_bounds_selected_tkvm_record_decode() {
+    let tokenizer_source = tkpkg_amigaos_source("tkpkg_tokenizer_vm.asm");
+    let normalized_tokenizer = normalize_tkpkg_fragment(&tokenizer_source);
+
+    for expected in [
+        "LEA packageStorage, A2\n        LEA 0(A2, D0.W), A2\n        MOVEA.L A2, A6\n        ADDA.L D2, A6\n        MOVEQ #1, D0\n        BSR.W tkpkg_tokenizer_vm_require_bytes_v1\n        TST.B D1\n        BNE.W tkpkgTokenizerInvalidProgram\n        ADDQ.W #1, A2",
+        "BSR.W tkpkg_tokenizer_vm_skip_string_v1\n        TST.B D1\n        BNE.W tkpkgTokenizerInvalidProgram\n        BSR.W tkpkg_tokenizer_vm_read_u16_le_v1",
+        "tkpkgTokenizerSkipStateOffsets:\n        BSR.W tkpkg_tokenizer_vm_read_u32_le_v1\n        TST.B D1\n        BNE.W tkpkgTokenizerInvalidProgram\n        MOVE.L D0, (A3)+",
+        "BSR.W tkpkg_tokenizer_vm_read_string_into_slot_v1\n        TST.B D1\n        BNE.W tkpkgTokenizerInvalidProgram\n        LEA activeTokenizerVmUnterminatedStringDiagCode, A3",
+        "BSR.W tkpkg_tokenizer_vm_read_bytes_field_v1\n        TST.B D1\n        BNE.W tkpkgTokenizerInvalidProgram\n        TST.W D3",
+        "tkpkg_tokenizer_vm_skip_string_v1:\n        BSR.W tkpkg_tokenizer_vm_read_u32_le_v1\n        TST.B D1\n        BNE.S tkpkgTokenizerSkipStringDone\n        BSR.W tkpkg_tokenizer_vm_require_bytes_v1",
+        "tkpkg_tokenizer_vm_read_string_into_slot_v1:\n        BSR.W tkpkg_tokenizer_vm_read_u32_le_v1\n        TST.B D1\n        BNE.S tkpkgTokenizerReadStringDone\n        BSR.W tkpkg_tokenizer_vm_require_bytes_v1",
+        "tkpkg_tokenizer_vm_read_bytes_field_v1:\n        BSR.W tkpkg_tokenizer_vm_read_u32_le_v1\n        TST.B D1\n        BNE.S tkpkgTokenizerReadBytesDone\n        BSR.W tkpkg_tokenizer_vm_require_bytes_v1",
+        "tkpkg_tokenizer_vm_read_u16_le_v1:\n        MOVEQ #2, D0\n        BSR.W tkpkg_tokenizer_vm_require_bytes_v1\n        TST.B D1\n        BNE.S tkpkgTokenizerReadU16Done",
+        "tkpkg_tokenizer_vm_read_u32_le_v1:\n        MOVEQ #4, D0\n        BSR.W tkpkg_tokenizer_vm_require_bytes_v1\n        TST.B D1\n        BNE.S tkpkgTokenizerReadU32Done",
+        "tkpkg_tokenizer_vm_require_bytes_v1:\n        CMPA.L A6, A2\n        BHI.S tkpkgTokenizerRequireBytesFail\n        MOVE.L A6, D1\n        SUB.L A2, D1\n        CMP.L D1, D0\n        BHI.S tkpkgTokenizerRequireBytesFail",
+    ] {
+        assert!(
+            normalized_tokenizer.contains(normalize_tkpkg_fragment(expected).as_str()),
+            "expected selected TKVM record bounds sequence:\n{expected}"
+        );
+    }
 }
 
 #[test]

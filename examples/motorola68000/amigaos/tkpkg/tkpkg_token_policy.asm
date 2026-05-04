@@ -50,9 +50,11 @@ tkpkgTokenPolicyResolveDone:
 
 tkpkg_token_policy_find_owner_v1:
         MOVE.B D0, D6
+        MOVE.L A3, -(SP)
         LEA pendingTokenPolicyOffsetLo, A3
         CLR.L (A3)+
         CLR.B (A3)
+        MOVEA.L (SP)+, A3
         BSR.W tkpkg_token_policy_read_locator_ptr_len_v1
         MOVE.W D3, D5
         MOVEA.L A1, A5

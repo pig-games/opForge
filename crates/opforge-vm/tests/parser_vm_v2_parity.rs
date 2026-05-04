@@ -183,6 +183,15 @@ fn parser_vm_v2_parity_m68k_authority_covers_special_addressing_shapes() {
 }
 
 #[test]
+fn parser_vm_v2_parity_m68k_pair_operands_match_host_before_semantics() {
+    let model = model_for_parity();
+    let register_checker = register_checker_from_fn(families::m68k::is_register);
+    let lines = ["    CAS2.W 1:D1,(A0):(A1),D2:D3", "    DIVS.L D0,1:D1"];
+
+    assert_public_v2_matches_host(&model, "m68020", None, register_checker, &lines);
+}
+
+#[test]
 fn parser_vm_v2_parity_preserves_expression_error_shapes() {
     let model = model_for_parity();
     let register_checker = register_checker_from_fn(families::mos6502::is_register);

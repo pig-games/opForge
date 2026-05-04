@@ -992,12 +992,6 @@ fn parse_register_pair_operand(
         end_token_text,
     )?;
 
-    let left_is_register_pair_half = matches!(left, Expr::Register(_, _) | Expr::Indirect(_, _));
-    let right_is_register_pair_half = matches!(right, Expr::Register(_, _) | Expr::Indirect(_, _));
-    if !(left_is_register_pair_half && right_is_register_pair_half) {
-        return Ok(None);
-    }
-
     Ok(Some(build_call_expr(".pair", vec![left, right])))
 }
 

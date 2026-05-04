@@ -7,6 +7,17 @@ on:
   workflow_dispatch:
 
 jobs:
+  workflow-hygiene:
+    name: workflow hygiene
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workflow hygiene
+        run: make workflow-gate
+
   workflow-artifacts:
     name: workflow artifact validators
     runs-on: ubuntu-latest
@@ -42,6 +53,9 @@ jobs:
           spec_files=()
           review_files=()
           closure_files=()
+          gate_files=()
+          reference_scope_files=()
+          release_note_scope_files=()
 
           for path in "${changed_files[@]}"; do
             case "${path}" in
@@ -64,10 +78,27 @@ jobs:
                 closure_files+=("${path}")
                 ;;
             esac
+            case "${path}" in
+              *.quality-gate.txt)
+                gate_files+=("${path}")
+                ;;
+            esac
+            case "${path}" in
+              examples/reference/*|examples/reference/**/*|crates/opforge-asm/tests/goldens/*|crates/opforge-asm/tests/goldens/**/*|documentation/*.md|documentation/**/*.md|dev-docs/*.md|dev-docs/**/*.md)
+                reference_scope_files+=("${path}")
+                ;;
+            esac
+            case "${path}" in
+              RELEASE_NOTES_v*.md|documentation/*.md|documentation/**/*.md|dev-docs/*.md|dev-docs/**/*.md)
+                release_note_scope_files+=("${path}")
+                ;;
+            esac
           done
 
           if (( ${#plan_files[@]} )); then
             python3 scripts/workflow/check_plan_checkboxes.py "${plan_files[@]}"
+            python3 scripts/workflow/check_version_impact.py "${plan_files[@]}"
+            python3 scripts/workflow/check_traceability.py "${plan_files[@]}"
           fi
           if (( ${#spec_files[@]} )); then
             python3 scripts/workflow/check_spec_artifact.py "${spec_files[@]}"
@@ -77,6 +108,18 @@ jobs:
           fi
           if (( ${#closure_files[@]} )); then
             python3 scripts/workflow/check_closure_report.py "${closure_files[@]}"
+            python3 scripts/workflow/check_traceability.py "${closure_files[@]}"
+          fi
+
+          gated_files=("${plan_files[@]}" "${spec_files[@]}" "${review_files[@]}" "${gate_files[@]}")
+          if (( ${#gated_files[@]} )); then
+            python3 scripts/workflow/check_quality_gate_evidence.py "${gated_files[@]}"
+          fi
+          if (( ${#reference_scope_files[@]} )); then
+            python3 scripts/workflow/check_reference_update_scope.py "${reference_scope_files[@]}"
+          fi
+          if (( ${#release_note_scope_files[@]} )); then
+            python3 scripts/workflow/check_release_notes_policy.py "${release_note_scope_files[@]}"
           fi
 
           echo "Validated changed workflow artifacts."

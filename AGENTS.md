@@ -80,10 +80,30 @@ Helper scripts:
 - [scripts/workflow/check_plan_checkboxes.py](scripts/workflow/check_plan_checkboxes.py)
 - [scripts/workflow/check_review_report.py](scripts/workflow/check_review_report.py)
 - [scripts/workflow/check_closure_report.py](scripts/workflow/check_closure_report.py)
+- [scripts/workflow/check_agent_symlinks.py](scripts/workflow/check_agent_symlinks.py)
+- [scripts/workflow/check_supply_chain_ban.py](scripts/workflow/check_supply_chain_ban.py)
+- [scripts/workflow/check_version_impact.py](scripts/workflow/check_version_impact.py)
+- [scripts/workflow/check_quality_gate_evidence.py](scripts/workflow/check_quality_gate_evidence.py)
+- [scripts/workflow/check_traceability.py](scripts/workflow/check_traceability.py)
+- [scripts/workflow/check_reference_update_scope.py](scripts/workflow/check_reference_update_scope.py)
+- [scripts/workflow/check_release_notes_policy.py](scripts/workflow/check_release_notes_policy.py)
 - [scripts/workflow/run_rust_quality_gate.sh](scripts/workflow/run_rust_quality_gate.sh)
 - [scripts/workflow/run_spec_workflow.sh](scripts/workflow/run_spec_workflow.sh)
 - [scripts/workflow/run_plan_workflow.sh](scripts/workflow/run_plan_workflow.sh)
 - [scripts/workflow/run_review_workflow.sh](scripts/workflow/run_review_workflow.sh)
+
+Deterministic workflow-hygiene rule:
+
+- Before committing workflow, agent, skill, plan, spec, review, closure, CI, or
+  template changes, run `make workflow-gate` or the relevant individual
+  `scripts/workflow/check_*.py` validators and record the result in the final
+  status, plan, or closure report.
+
+Release notes policy:
+
+- Create or update `RELEASE_NOTES_v*.md` only as part of release-bearing work
+  with version-impact evidence. Never edit release notes for a version that is
+  already tagged.
 
 Rust quality-gate rule:
 

@@ -13,6 +13,13 @@
 - The active worktree `AGENTS.md` workflow and execution rules remain binding at
   all times during plan execution.
 
+## Version Impact
+
+- Affected component(s):
+- Impact class:
+- Owned contract:
+- Rationale:
+
 ## Work Items
 
 - [ ] Item 1

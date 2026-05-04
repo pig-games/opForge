@@ -2,6 +2,13 @@
 
 ## Scope
 
+## Version Impact
+
+- Affected component(s):
+- Impact class:
+- Owned contract:
+- Rationale:
+
 ## Findings
 
 ### RVW-YYYY-MM-DD-001

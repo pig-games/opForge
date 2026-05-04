@@ -122,6 +122,7 @@ tkpkgTokenPolicySkipTailStrings:
         BSR.W tkpkg_token_policy_skip_string_v1
         BSR.W tkpkg_token_policy_skip_string_v1
         BSR.W tkpkg_token_policy_skip_string_v1
+        BSR.W tkpkg_token_policy_skip_string_v1
         BSR.W tkpkg_token_policy_read_u32_le_low16_v1
         MOVE.W D0, D7
         LEA 4(A2), A2
@@ -182,14 +183,12 @@ tkpkg_token_policy_chunk_ptr_from_locator_v1:
         LEA 0(A6, D0.W), A2
         RTS
 
+; skip_string is an alias for callers that only need the A2 advance.
+tkpkg_token_policy_skip_string_v1:
 tkpkg_token_policy_locate_string_v1:
         BSR.W tkpkg_token_policy_read_u32_le_low16_v1
         LEA 4(A2), A1
         LEA 4(A2, D0.W), A2
-        RTS
-
-tkpkg_token_policy_skip_string_v1:
-        BSR.W tkpkg_token_policy_locate_string_v1
         RTS
 
 tkpkg_token_policy_read_u32_le_low16_v1:

@@ -11962,6 +11962,10 @@ fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
         &token_policy,
         "missingPolicyText:\n        .byte \"OTR003: missing tokenizer policy\",0"
     ));
+    assert!(tkpkg_source_contains(
+        &token_policy,
+        "tkpkgTokenPolicySkipTailStrings:\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_skip_string_v1\n        BSR.W tkpkg_token_policy_read_u32_le_low16_v1"
+    ));
 }
 
 #[test]

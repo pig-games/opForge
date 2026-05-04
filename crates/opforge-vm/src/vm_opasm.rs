@@ -634,13 +634,6 @@ where
     else {
         return None;
     };
-    if !matches!(
-        inner.as_ref(),
-        Expr::Register(_, _) | Expr::Identifier(_, _)
-    ) {
-        return None;
-    }
-
     Some(Expr::Unary {
         op: UnaryOp::Plus,
         expr: Box::new(Expr::Indirect(inner, indirect_span)),
@@ -670,13 +663,6 @@ where
     else {
         return None;
     };
-    if !matches!(
-        inner.as_ref(),
-        Expr::Register(_, _) | Expr::Identifier(_, _)
-    ) {
-        return None;
-    }
-
     Some(Expr::Unary {
         op: UnaryOp::Minus,
         expr: Box::new(Expr::Indirect(inner, indirect_span)),
@@ -1485,7 +1471,7 @@ mod tests {
     }
 
     #[test]
-    fn vm_opasm_m68k_predecrement_leaves_grouped_math_expression() {
+    fn vm_opasm_m68k_predecrement_preserves_syntactic_indirect_number() {
         let tokens = vec![
             token(TokenKind::Operator(OperatorKind::Minus), 1, 2),
             token(TokenKind::OpenParen, 2, 3),
@@ -1493,6 +1479,20 @@ mod tests {
             token(TokenKind::CloseParen, 4, 5),
         ];
 
-        assert!(parse_predecrement(&tokens).is_none());
+        let Some(Expr::Unary {
+            op: UnaryOp::Minus,
+            expr,
+            span: wrapper_span,
+        }) = parse_predecrement(&tokens)
+        else {
+            panic!("expected m68k predecrement operand");
+        };
+
+        assert_eq!(wrapper_span, span(1, 2));
+        let Expr::Indirect(inner, indirect_span) = *expr else {
+            panic!("expected indirect inside predecrement");
+        };
+        assert_eq!(indirect_span, span(2, 5));
+        assert!(matches!(*inner, Expr::Number(ref text, _) if text == "1"));
     }
 }

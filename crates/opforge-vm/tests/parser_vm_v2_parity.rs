@@ -192,6 +192,15 @@ fn parser_vm_v2_parity_m68k_pair_operands_match_host_before_semantics() {
 }
 
 #[test]
+fn parser_vm_v2_parity_m68k_wrapped_operands_match_host_before_semantics() {
+    let model = model_for_parity();
+    let register_checker = register_checker_from_fn(families::m68k::is_register);
+    let lines = ["    MOVE.L (4,A0)+,D0", "    MOVE.L -(4,A0),D0"];
+
+    assert_public_v2_matches_host(&model, "m68020", None, register_checker, &lines);
+}
+
+#[test]
 fn parser_vm_v2_parity_preserves_expression_error_shapes() {
     let model = model_for_parity();
     let register_checker = register_checker_from_fn(families::mos6502::is_register);

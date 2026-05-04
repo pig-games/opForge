@@ -69,7 +69,7 @@ past intended native runtime bounds under malformed input.
     passed with the configured FS-UAE opt-in skip; `scripts/workflow/run_rust_quality_gate.sh`
     passed; `make workflow-gate` passed.
 
-- [ ] Item 2: Reject over-capacity active pipeline identifiers
+- [x] Item 2: Reject over-capacity active pipeline identifiers
   - Source requirement or finding IDs: RVW-2026-05-04-001; expected to fully
     close the finding.
   - Expected files: `examples/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm`,
@@ -91,6 +91,11 @@ past intended native runtime bounds under malformed input.
   - Definition of done: active selection buffer writes cannot overrun the
     fixed 32-byte buffers, valid maximum-length identifiers remain supported,
     focused regressions pass, and the full quality gates pass.
+  - Completion evidence: `cargo test -p asm motorola68020_tkpkg -- --nocapture`
+    passed with 30 tests; `cargo test -p asm
+    external_fs_uae_tkpkg_native_rejects_over_capacity_active_family_identifier -- --nocapture`
+    passed with the configured FS-UAE opt-in skip; `scripts/workflow/run_rust_quality_gate.sh`
+    passed after the intentional reference refresh; `make workflow-gate` passed.
 
 - [ ] Item 3: Enforce selected TKVM record bounds while decoding programs
   - Source requirement or finding IDs: RVW-2026-05-04-002; expected to fully

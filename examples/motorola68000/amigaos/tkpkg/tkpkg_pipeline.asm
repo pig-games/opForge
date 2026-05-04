@@ -28,6 +28,7 @@ UNRESOLVED_CPU_TEXT_LEN              = 33
 UNRESOLVED_FAMILY_TEXT_LEN           = 33
 UNRESOLVED_DIALECT_TEXT_LEN          = 34
 MISSING_PROGRAM_TEXT_LEN             = 36
+IDENTIFIER_TOO_LONG_TEXT_LEN         = 35
 TOKENIZER_VM_ENTRY_PREFIX_SIZE      = 4
 TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE  = 19
 
@@ -47,6 +48,9 @@ unresolvedDialectText:
 
 missingProgramText:
         .byte "OTR001: missing tokenizer VM program", 0
+
+identifierTooLongText:
+        .byte "OTR004: package identifier too long", 0
 
         .endsection
 
@@ -74,6 +78,8 @@ tkpkgPipelineParseRequest:
         TST.B D0
         BNE.W tkpkgPipelineDone
         BSR.W tkpkg_pipeline_commit_active_selection_v1
+        TST.B D0
+        BNE.W tkpkgPipelineDone
         MOVEQ #0, D0
 
 tkpkgPipelineDone:
@@ -642,12 +648,18 @@ tkpkg_pipeline_commit_active_selection_v1:
         LEA pendingCpuOffsetLo, A3
         LEA activeCpuBuffer.L, A2
         BSR.W tkpkg_pipeline_copy_locator_to_buffer_v1
+        TST.B D0
+        BNE.S tkpkgPipelineCommitDone
         LEA pendingDialectOffsetLo, A3
         LEA activeDialectBuffer.L, A2
         BSR.W tkpkg_pipeline_copy_locator_to_buffer_v1
+        TST.B D0
+        BNE.S tkpkgPipelineCommitDone
         LEA pendingFamilyOffsetLo, A3
         LEA activeFamilyBuffer.L, A2
         BSR.W tkpkg_pipeline_copy_locator_to_buffer_v1
+        TST.B D0
+        BNE.S tkpkgPipelineCommitDone
         LEA pendingTokenPolicyOffsetLo, A3
         LEA activeTokenPolicyOffsetLo.L, A2
         BSR.W tkpkg_pipeline_copy_record_locator_v1
@@ -659,10 +671,15 @@ tkpkg_pipeline_commit_active_selection_v1:
         MOVE.B pendingTokenizerVmOwnerTag, D0
         MOVE.B D0, activeTokenizerVmOwnerTag
         ORI.B #PACKAGE_STATE_PIPELINE_ACTIVE, packageStateFlags
+        MOVEQ #0, D0
+
+tkpkgPipelineCommitDone:
         RTS
 
 tkpkg_pipeline_copy_locator_to_buffer_v1:
         BSR.W tkpkg_pipeline_read_locator_ptr_len_v1
+        CMPI.W #PIPELINE_ID_BUFFER_CAPACITY, D3
+        BHS.S tkpkgPipelineCopyBufferTooLong
         MOVE.W D3, D2
         TST.W D2
         BEQ.S tkpkgPipelineCopyBufferDone
@@ -674,6 +691,13 @@ tkpkgPipelineCopyBufferLoop:
 
 tkpkgPipelineCopyBufferDone:
         CLR.B (A2)
+        MOVEQ #0, D0
+        RTS
+
+tkpkgPipelineCopyBufferTooLong:
+        LEA identifierTooLongText, A1
+        MOVEQ #IDENTIFIER_TOO_LONG_TEXT_LEN, D1
+        MOVEQ #STATUS_RUNTIME_ERROR_V1, D0
         RTS
 
 tkpkg_pipeline_copy_record_locator_v1:

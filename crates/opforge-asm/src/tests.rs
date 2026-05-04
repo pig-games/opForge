@@ -10368,6 +10368,66 @@ fn tkpkg_m68020_single_pipeline_package_bytes() -> Vec<u8> {
         .expect("encode single-pipeline tkpkg smoke package")
 }
 
+fn tkpkg_m68020_package_with_pipeline_ids(
+    cpu_id: &str,
+    family_id: &str,
+    dialect_id: &str,
+) -> Vec<u8> {
+    let old_family_owner = ScopedOwner::Family("motorola68000".to_string());
+    let new_family_owner = ScopedOwner::Family(family_id.to_string());
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&tkpkg_smoke_registry()).expect("build tkpkg chunks");
+
+    chunks
+        .families
+        .retain(|family| family.id == "motorola68000");
+    chunks.cpus.retain(|cpu| cpu.id == m68020_cpu_id.as_str());
+    chunks
+        .dialects
+        .retain(|dialect| dialect.id == "motorola68k" && dialect.family_id == "motorola68000");
+    chunks
+        .token_policies
+        .retain(|policy| policy.owner == old_family_owner);
+    chunks
+        .tokenizer_vm_programs
+        .retain(|program| program.owner == old_family_owner);
+    chunks.parser_contracts.clear();
+    chunks.parser_vm_programs.clear();
+    chunks.expr_contracts.clear();
+    chunks.expr_parser_contracts.clear();
+    chunks.registers.clear();
+    chunks.forms.clear();
+    chunks.tables.clear();
+    chunks.selectors.clear();
+
+    assert_eq!(chunks.families.len(), 1, "expected one smoke family");
+    assert_eq!(chunks.cpus.len(), 1, "expected one smoke cpu");
+    assert_eq!(chunks.dialects.len(), 1, "expected one smoke dialect");
+    assert_eq!(
+        chunks.token_policies.len(),
+        1,
+        "expected one smoke token policy"
+    );
+    assert_eq!(
+        chunks.tokenizer_vm_programs.len(),
+        1,
+        "expected one smoke tokenizer VM"
+    );
+
+    chunks.families[0].id = family_id.to_string();
+    chunks.families[0].canonical_dialect = dialect_id.to_string();
+    chunks.cpus[0].id = cpu_id.to_string();
+    chunks.cpus[0].family_id = family_id.to_string();
+    chunks.cpus[0].default_dialect = Some(dialect_id.to_string());
+    chunks.dialects[0].id = dialect_id.to_string();
+    chunks.dialects[0].family_id = family_id.to_string();
+    chunks.dialects[0].cpu_allow_list = Some(vec![cpu_id.to_string()]);
+    chunks.token_policies[0].owner = new_family_owner.clone();
+    chunks.tokenizer_vm_programs[0].owner = new_family_owner;
+
+    encode_hierarchy_chunks_from_chunks(&chunks).expect("encode custom-id tkpkg smoke package")
+}
+
 fn tkpkg_selected_chunk_length_case(tag: &[u8; 4], selected_len: u32) -> Vec<u8> {
     const OPASM_HEADER_SIZE: usize = 12;
     const OPASM_TOC_ENTRY_SIZE: usize = 12;
@@ -12114,6 +12174,120 @@ fn motorola68020_tkpkg_malformed_selected_chunk_lengths_reject_pipeline_model_lo
                 || message.contains("bound"),
             "{label} should fail with a deterministic package/chunk-bound error, got: {message}"
         );
+    }
+}
+
+#[test]
+fn motorola68020_tkpkg_rejects_over_capacity_active_identifiers_before_copying() {
+    let pipeline = tkpkg_amigaos_source("tkpkg_pipeline.asm");
+    let normalized_pipeline = normalize_tkpkg_fragment(&pipeline);
+
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "identifierTooLongText:\n        .byte \"OTR004: package identifier too long\",0"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_set_active_v1:\n        BTST #0, packageStateFlags\n        BNE.S tkpkgPipelineParseRequest\n        LEA noPackageText, A1"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "BSR.W tkpkg_pipeline_commit_active_selection_v1\n        TST.B D0\n        BNE.W tkpkgPipelineDone\n        MOVEQ #0, D0"
+    ));
+    assert!(normalized_pipeline.contains(
+        normalize_tkpkg_fragment(
+            "tkpkg_pipeline_commit_active_selection_v1:\n        LEA pendingCpuOffsetLo, A3\n        LEA activeCpuBuffer.L, A2\n        BSR.W tkpkg_pipeline_copy_locator_to_buffer_v1\n        TST.B D0\n        BNE.S tkpkgPipelineCommitDone"
+        )
+        .as_str()
+    ));
+    assert!(normalized_pipeline.contains(
+        normalize_tkpkg_fragment(
+            "LEA pendingDialectOffsetLo, A3\n        LEA activeDialectBuffer.L, A2\n        BSR.W tkpkg_pipeline_copy_locator_to_buffer_v1\n        TST.B D0\n        BNE.S tkpkgPipelineCommitDone"
+        )
+        .as_str()
+    ));
+    assert!(normalized_pipeline.contains(
+        normalize_tkpkg_fragment(
+            "LEA pendingFamilyOffsetLo, A3\n        LEA activeFamilyBuffer.L, A2\n        BSR.W tkpkg_pipeline_copy_locator_to_buffer_v1\n        TST.B D0\n        BNE.S tkpkgPipelineCommitDone"
+        )
+        .as_str()
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkg_pipeline_copy_locator_to_buffer_v1:\n        BSR.W tkpkg_pipeline_read_locator_ptr_len_v1\n        CMPI.W #PIPELINE_ID_BUFFER_CAPACITY, D3\n        BHS.S tkpkgPipelineCopyBufferTooLong"
+    ));
+    assert!(tkpkg_source_contains(
+        &pipeline,
+        "tkpkgPipelineCopyBufferTooLong:\n        LEA identifierTooLongText, A1\n        MOVEQ #IDENTIFIER_TOO_LONG_TEXT_LEN, D1\n        MOVEQ #STATUS_RUNTIME_ERROR_V1, D0"
+    ));
+}
+
+#[test]
+fn motorola68020_tkpkg_pipeline_identifier_capacity_packages_resolve_in_model() {
+    const PIPELINE_ID_BUFFER_CAPACITY: usize = 32;
+
+    let max_id = "a".repeat(PIPELINE_ID_BUFFER_CAPACITY - 1);
+    let over_capacity_id = "b".repeat(PIPELINE_ID_BUFFER_CAPACITY);
+    let cases = vec![
+        (
+            "31-byte cpu id",
+            max_id.as_str(),
+            "motorola68000",
+            "motorola68k",
+            max_id.as_str(),
+            "motorola68k",
+        ),
+        (
+            "32-byte cpu id",
+            over_capacity_id.as_str(),
+            "motorola68000",
+            "motorola68k",
+            over_capacity_id.as_str(),
+            "motorola68k",
+        ),
+        (
+            "31-byte family id",
+            m68020_cpu_id.as_str(),
+            max_id.as_str(),
+            "motorola68k",
+            m68020_cpu_id.as_str(),
+            "motorola68k",
+        ),
+        (
+            "32-byte family id",
+            m68020_cpu_id.as_str(),
+            over_capacity_id.as_str(),
+            "motorola68k",
+            m68020_cpu_id.as_str(),
+            "motorola68k",
+        ),
+        (
+            "31-byte dialect id",
+            m68020_cpu_id.as_str(),
+            "motorola68000",
+            max_id.as_str(),
+            m68020_cpu_id.as_str(),
+            max_id.as_str(),
+        ),
+        (
+            "32-byte dialect id",
+            m68020_cpu_id.as_str(),
+            "motorola68000",
+            over_capacity_id.as_str(),
+            m68020_cpu_id.as_str(),
+            over_capacity_id.as_str(),
+        ),
+    ];
+
+    for (label, cpu_id, family_id, dialect_id, request_cpu, request_dialect) in cases {
+        let package = tkpkg_m68020_package_with_pipeline_ids(cpu_id, family_id, dialect_id);
+        let model = load_opasm_model_from_package_bytes(package.as_slice());
+        let resolved = model
+            .resolve_pipeline(request_cpu, Some(request_dialect))
+            .unwrap_or_else(|err| panic!("{label} should resolve in package model: {err}"));
+        assert_eq!(resolved.cpu_id, cpu_id, "{label} cpu id");
+        assert_eq!(resolved.family_id, family_id, "{label} family id");
+        assert_eq!(resolved.dialect_id, dialect_id, "{label} dialect id");
     }
 }
 
@@ -26903,6 +27077,109 @@ fn external_fs_uae_tkpkg_native_rejects_selected_chunk_bounds_during_set_pipelin
                     run.stderr
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_tkpkg_native_rejects_over_capacity_active_family_identifier() {
+    const PIPELINE_ID_BUFFER_CAPACITY: usize = 32;
+
+    let max_family_id = "a".repeat(PIPELINE_ID_BUFFER_CAPACITY - 1);
+    let over_capacity_family_id = "b".repeat(PIPELINE_ID_BUFFER_CAPACITY);
+    let valid_package = tkpkg_m68020_package_with_pipeline_ids(
+        m68020_cpu_id.as_str(),
+        max_family_id.as_str(),
+        "motorola68k",
+    );
+    let malformed_package = tkpkg_m68020_package_with_pipeline_ids(
+        m68020_cpu_id.as_str(),
+        over_capacity_family_id.as_str(),
+        "motorola68k",
+    );
+
+    for (label, package) in [
+        ("31-byte resolved family id", valid_package.as_slice()),
+        ("32-byte resolved family id", malformed_package.as_slice()),
+    ] {
+        let model = load_opasm_model_from_package_bytes(package);
+        let resolved = model
+            .resolve_pipeline(m68020_cpu_id.as_str(), Some("motorola68k"))
+            .unwrap_or_else(|err| panic!("{label} should resolve in package model: {err}"));
+        assert_eq!(resolved.cpu_id, m68020_cpu_id.as_str(), "{label} cpu id");
+        assert_eq!(resolved.dialect_id, "motorola68k", "{label} dialect id");
+    }
+
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_file_mode_with_package_from_env(
+        &workspace_root(),
+        b"move.b d0,d1\n",
+        "m68020",
+        valid_package.as_slice(),
+    )
+    .expect("native max-length family-id run should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+            return;
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+            let run = &runs[0];
+            let combined_output = format!("{}\n{}", run.stdout, run.stderr);
+            assert!(
+                run.success,
+                "31-byte resolved family id should remain valid under native tkpkg\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+            assert!(
+                combined_output.contains("TKPKG load_package/set_pipeline OK"),
+                "31-byte resolved family id should complete set_pipeline\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+        }
+    }
+
+    match crate::fs_uae_smoke::run_tkpkg_debug_cli_file_mode_with_package_from_env(
+        &workspace_root(),
+        b"move.b d0,d1\n",
+        "m68020",
+        malformed_package.as_slice(),
+    )
+    .expect("native over-capacity family-id run should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected a single tkpkg debug-cli run");
+            let run = &runs[0];
+            let combined_output = format!("{}\n{}", run.stdout, run.stderr);
+            assert!(
+                !run.success,
+                "32-byte resolved family id should fail deterministically under native tkpkg\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+            assert!(
+                combined_output.contains("tkpkg package loaded"),
+                "32-byte resolved family id should pass load_package so set_pipeline owns the rejection\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+            assert!(
+                !combined_output.contains("TKPKG load_package/set_pipeline OK"),
+                "32-byte resolved family id must not report set_pipeline success\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
+            assert!(
+                combined_output.contains("tkpkg failure: OTR004: package identifier too long"),
+                "32-byte resolved family id should report the deterministic identifier-length failure\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr
+            );
         }
     }
 }

@@ -76,6 +76,14 @@ impl fmt::Display for PreprocessError {
 impl std::error::Error for PreprocessError {}
 
 pub fn parse_include_target_from_source_line(line: &str) -> Option<String> {
+    parse_directive_target_from_source_line(line, "INCLUDE")
+}
+
+pub fn parse_incbin_target_from_source_line(line: &str) -> Option<String> {
+    parse_directive_target_from_source_line(line, "INCBIN")
+}
+
+fn parse_directive_target_from_source_line(line: &str, expected_token: &str) -> Option<String> {
     let (code, _comment) = split_comment(line);
     let trimmed = ltrim(code);
     if trimmed.is_empty() {
@@ -101,7 +109,7 @@ pub fn parse_include_target_from_source_line(line: &str) -> Option<String> {
         pos += 1;
     }
     let token = to_upper(&trimmed[start..pos]);
-    if is_hash_directive || !is_dot_directive || token != "INCLUDE" {
+    if is_hash_directive || !is_dot_directive || token != expected_token {
         return None;
     }
 
@@ -1260,6 +1268,15 @@ mod tests {
                 .expect("quoted include with semicolon should parse");
 
         assert_eq!(target, "dir;name.inc");
+    }
+
+    #[test]
+    fn parse_incbin_target_preserves_semicolons_inside_quotes() {
+        let target =
+            super::parse_incbin_target_from_source_line(".incbin \"dir;name.bin\" ; comment")
+                .expect("quoted incbin with semicolon should parse");
+
+        assert_eq!(target, "dir;name.bin");
     }
 
     #[test]

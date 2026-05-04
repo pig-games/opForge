@@ -24,7 +24,9 @@ use crate::lsp::member_context::{member_completion_context, member_lookup_contex
 use crate::lsp::validation_runner::{run_validation, ValidationDiagnostic};
 use crate::lsp::workspace_index::{IndexedSymbol, WorkspaceIndex};
 use libopforge::io::{MemorySourceProvider, SourceProvider};
-use libopforge::opcore::parse_include_target_from_source_line;
+use libopforge::opcore::{
+    parse_incbin_target_from_source_line, parse_include_target_from_source_line,
+};
 use libopforge::registry::{
     default_asm_registry, default_cpu, resolve_cpu_for_line, AsmRegistry, AsmRegistryContext,
     CpuType,
@@ -1461,22 +1463,36 @@ fn collect_overlay_include_dependencies(
         return;
     };
 
-    for include_target in text
-        .lines()
-        .filter_map(parse_include_target_from_source_line)
-    {
-        let Some(resolved) =
-            resolve_overlay_include_target(path, &include_target, include_paths, source_provider)
-        else {
-            continue;
-        };
-        if dependencies.insert(resolved.clone()) {
-            collect_overlay_include_dependencies(
-                &resolved,
+    for line in text.lines() {
+        if let Some(include_target) = parse_include_target_from_source_line(line) {
+            let Some(resolved) = resolve_overlay_include_target(
+                path,
+                &include_target,
                 include_paths,
                 source_provider,
-                dependencies,
-            );
+            ) else {
+                continue;
+            };
+            if dependencies.insert(resolved.clone()) {
+                collect_overlay_include_dependencies(
+                    &resolved,
+                    include_paths,
+                    source_provider,
+                    dependencies,
+                );
+            }
+        }
+
+        if let Some(incbin_target) = parse_incbin_target_from_source_line(line) {
+            let Some(resolved) = resolve_overlay_include_target(
+                path,
+                &incbin_target,
+                include_paths,
+                source_provider,
+            ) else {
+                continue;
+            };
+            dependencies.insert(resolved);
         }
     }
 }
@@ -2018,6 +2034,32 @@ mod tests {
         assert!(dependencies
             .iter()
             .any(|path| path.ends_with("dir;name.inc")));
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn overlay_dependency_staging_includes_recursive_incbin_payloads() {
+        let temp_dir = unique_temp_dir("lsp-overlay-incbin");
+        let main = temp_dir.join("main.asm");
+        let include = temp_dir.join("shared.inc");
+        let assets = temp_dir.join("assets");
+        let payload = assets.join("payload.bin");
+
+        fs::create_dir_all(&assets).expect("create assets dir");
+        fs::write(&main, ".include \"shared.inc\"\n.byte 0\n").expect("write main source");
+        fs::write(&include, ".incbin \"assets/payload.bin\"\n").expect("write include source");
+        fs::write(&payload, [0xde, 0xad, 0xbe, 0xef]).expect("write binary payload");
+
+        let dependencies = overlay_dependency_files_for_path(
+            &main,
+            &[],
+            Arc::from(MemorySourceProvider::new().with_fs_fallback()),
+        );
+
+        assert!(dependencies.iter().any(|path| path.ends_with("shared.inc")));
+        assert!(dependencies
+            .iter()
+            .any(|path| path.ends_with(Path::new("assets/payload.bin"))));
         let _ = fs::remove_dir_all(temp_dir);
     }
 }

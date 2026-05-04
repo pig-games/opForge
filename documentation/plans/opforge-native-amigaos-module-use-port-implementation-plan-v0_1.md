@@ -230,7 +230,7 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
   - Detailed definition of done: native module/use processing no longer depends on
     ad-hoc source line scanning for supported syntax.
 
-- [ ] Item 8: Lock parity boundaries and update follow-up plan
+- [x] Item 8: Lock parity boundaries and update follow-up plan
   - Validation: branch-local spec and plan artifact checks plus focused tests
     for any final expectation changes.
   - Definition of done: implementation status is auditable and remaining work is
@@ -254,13 +254,34 @@ with deterministic diagnostics and FS-UAE validation for runtime behavior.
 
 ## Milestones
 
-- [ ] Milestone 1: Native CLI owns fixed module/import/path state and diagnostics.
-- [ ] Milestone 2: Native CLI records `.module`, `.endmodule`, and `.use` from
+- [x] Milestone 1: Native CLI owns fixed module/import/path state and diagnostics.
+- [x] Milestone 2: Native CLI records `.module`, `.endmodule`, and `.use` from
       supported input syntax.
-- [ ] Milestone 3: Native CLI accepts module path roots and resolves one external
+- [x] Milestone 3: Native CLI accepts module path roots and resolves one external
       dependency under FS-UAE.
-- [ ] Milestone 4: Supported module/use syntax is fed by PRVM output rather than
+- [x] Milestone 4: Supported module/use syntax is fed by PRVM output rather than
       source-line scanning.
+
+## Parity Boundary and Follow-Up
+
+The completed native AmigaOS slice now covers fixed-capacity module/import/path
+state, deterministic diagnostics for the supported malformed cases,
+table-backed `.module` / `.endmodule` / `.use` records, repeatable module path
+arguments, one external module dependency resolution path, and PRVM-fed
+module/use directive processing for the supported subset.
+
+This plan does not claim full Rust parity. The native CLI still stops at the
+explicit native emitter VM boundary, broad filesystem scanning and ambiguity
+handling remain follow-up work, macro export injection is not implemented,
+conditional filtering is not implemented, `.use ... with(...)` requires later
+EXVM/expression support, and any remaining directive text fallback is only a
+compatibility bridge for unsupported parser-output shapes.
+
+Follow-up planning should keep these next slices separate: broaden native module
+resolution beyond the first explicit dependency path, connect import records to
+macro/export injection, add conditional-state filtering before claiming inactive
+directive parity, route expression-bearing `.use` forms through EXVM, and land
+the native emitter VM path that replaces the current not-implemented boundary.
 
 ## Blocking Rules
 

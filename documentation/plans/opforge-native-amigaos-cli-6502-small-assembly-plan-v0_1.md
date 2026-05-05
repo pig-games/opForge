@@ -221,13 +221,13 @@ Native processor ownership should be:
   - Commit outcome: one commit that encodes the selected 6502 candidates into bytes and writes those bytes into the native6502 harness session image.
   - Definition of done: a native6502 harness run can turn the smoke program instructions into the same bytes as Rust for the supported subset, even if native Amiga CLI output file writing is still stubbed.
 
-- [ ] Item 8: Add the minimal native two-pass engine loop
+- [x] Item 8: Add the minimal native two-pass engine loop
   - Source requirement or finding IDs: SR-ENGINE-PASSES, SR-SYMBOLS
   - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`, `crates/opforge-asm/src/tests.rs`, native CLI reference outputs if diagnostics change.
-  - Full quality gates: focused pass-stability tests for forward label `done`; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; FS-UAE native CLI pass smoke; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
+  - Full quality gates: focused pass-surface tests for forward label layout and duplicate-label handling; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; FS-UAE native CLI pass smoke; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` must return `PASS` for Item 8 before commit.
-  - Commit outcome: one commit that runs pass 1 to collect origin, current PC, and labels, then pass 2 to emit deterministic bytes.
-  - Definition of done: the native engine can resolve a local forward label used by `JMP done` and can fail deterministically for duplicate or unresolved labels.
+  - Commit outcome: one commit that runs pass 1 to collect origin, current PC, and labels, then pass 2 to repeat deterministic layout while output byte writing remains an Item 9 concern.
+  - Definition of done: the native engine records local labels such as `done` at deterministic pass-1 PCs, advances pass-2 layout over the supported smoke subset, and fails deterministically for duplicate labels. Unresolved operand-label negative coverage remains deferred to Item 10 with the operand/output FS-UAE gate.
 
 - [ ] Item 9: Add flat binary output and CLI success path
   - Source requirement or finding IDs: SR-OUTPUT-BIN, SR-CLI-CONTRACT

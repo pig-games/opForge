@@ -10467,6 +10467,69 @@ fn motorola68020_opforge_native_cli_6502_small_assembly_contract_matches_rust_vm
 }
 
 #[test]
+fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label_layout() {
+    let source = opforge_amigaos_source("opforge_cli.asm");
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_run_two_pass_engine:",
+            "BSR.W opforge_native_cli_run_pass_one",
+            "BSR.W opforge_native_cli_run_pass_two",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_run_pass_one:",
+            "MOVE.W #1, nativeCliSessionPass.L",
+            "CLR.W nativeCliLabelCount.L",
+            "MOVE.L #$00000800, nativeCliSessionOrigin.L",
+            "BSR.W opforgeNativeCliPassOneRecordLabel",
+            "BSR.W opforgeNativeCliPassAdvancePc",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_run_pass_two:",
+            "MOVE.W #2, nativeCliSessionPass.L",
+            "MOVE.L nativeCliSessionOrigin.L, D0",
+            "MOVE.L D0, nativeCliSessionCurrentPc.L",
+            "BSR.W opforgeNativeCliPassAdvancePc",
+        ]
+    ));
+    assert!(source.contains("opforgeNativeCliPassOneRecordLabel:"));
+    assert!(source.contains("LEA nativeCliStmtLabelNameTable.L, A1"));
+    assert!(source.contains("opforgeNativeCliPassOneStoreLabel:"));
+    assert!(source.contains("LEA nativeCliLabelValueTable.L, A0"));
+    assert!(source.contains("nativeCliSessionCurrentPc"));
+    assert!(source.contains("LEA nativeCliLabelNameTable.L, A0"));
+    assert!(source.contains("BSR.W opforge_native_cli_copy_fixed_string"));
+    assert!(source.contains("ADDQ.W #1, nativeCliLabelCount.L"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliPassAdvancePc:",
+            "LEA orgMnemonicText, A1",
+            "LEA ldaMnemonicText, A1",
+            "LEA staMnemonicText, A1",
+            "LEA jmpMnemonicText, A1",
+            "opforgeNativeCliPassAdvanceThree:",
+            "ADDQ.L #3, nativeCliSessionCurrentPc.L",
+        ]
+    ));
+    assert!(source.contains("nativeCliStmtLabelNameTable"));
+    assert!(source.contains("nativeCliStmtMnemNameTable"));
+    assert!(source.contains("STAGE pass1"));
+    assert!(source.contains("STATUS pass1-ok"));
+    assert!(source.contains("STAGE pass2"));
+    assert!(source.contains("STATUS pass2-ok"));
+    assert!(source.contains("LABEL"));
+    assert!(source.contains("OPC-NCLI021: duplicate native label"));
+}
+
+#[test]
 fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("examples/motorola68000/amigaos/opforge/opforge_cli.asm");
@@ -10537,6 +10600,8 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("nativeCliEncodeRequestLen"));
     assert!(listing.contains("nativeCliSourceRecordCount"));
     assert!(listing.contains("nativeCliStmtLineTable"));
+    assert!(listing.contains("nativeCliStmtLabelNameTable"));
+    assert!(listing.contains("nativeCliStmtMnemNameTable"));
     assert!(listing.contains("nativeCliLabelNameTable"));
     assert!(listing.contains("nativeCliImageBuffer"));
     assert!(listing.contains("opforge_native_cli_stage_package"));
@@ -10545,6 +10610,11 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforge_native_cli_dispatch_parse_line_envelope"));
     assert!(listing.contains("opforge_native_cli_prepare_encode_instruction_request"));
     assert!(listing.contains("opforge_native_cli_dispatch_encode_instruction_envelope"));
+    assert!(listing.contains("opforge_native_cli_run_two_pass_engine"));
+    assert!(listing.contains("opforge_native_cli_run_pass_one"));
+    assert!(listing.contains("opforge_native_cli_run_pass_two"));
+    assert!(listing.contains("opforgeNativeCliPassOneRecordLabel"));
+    assert!(listing.contains("opforgeNativeCliPassAdvancePc"));
     assert!(listing.contains("opforge_native_cli_run"));
     assert!(listing.contains("STATUS tokenizer-ok"));
     assert!(listing.contains("STATUS parser-module-use-ok"));
@@ -10553,6 +10623,11 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("SESSION-SOURCE-COUNT"));
     assert!(listing.contains("SESSION-STMT-COUNT"));
     assert!(listing.contains("STATUS session-ready"));
+    assert!(listing.contains("STAGE pass1"));
+    assert!(listing.contains("STATUS pass1-ok"));
+    assert!(listing.contains("STAGE pass2"));
+    assert!(listing.contains("STATUS pass2-ok"));
+    assert!(listing.contains("LABEL"));
     assert!(listing.contains("STATUS include-ok"));
     assert!(listing.contains("MOD-ROOT"));
     assert!(listing.contains("MOD-DEF"));
@@ -10570,6 +10645,8 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("OPC-NCLI017"));
     assert!(listing.contains("OPC-NCLI018"));
     assert!(listing.contains("OPC-NCLI019"));
+    assert!(listing.contains("OPC-NCLI020"));
+    assert!(listing.contains("OPC-NCLI021"));
     assert!(listing.contains("emitter-not-implemented"));
 
     let payload_path = example_output_payload_path(&out_dir, "opforge_cli", "hunk");
@@ -10656,6 +10733,18 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
             .windows("STATUS session-ready".len())
             .any(|window| window == b"STATUS session-ready"),
         "expected native assembly-session ready marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("STAGE pass1".len())
+            .any(|window| window == b"STAGE pass1"),
+        "expected native pass-one marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("STATUS pass2-ok".len())
+            .any(|window| window == b"STATUS pass2-ok"),
+        "expected native pass-two success marker in Hunk payload"
     );
     assert!(
         payload
@@ -27095,8 +27184,26 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("STMT "),
-                "native opForge CLI did not report native statement records\nstdout:\n{}\nstderr:\n{}",
+                run.stdout.contains("STAGE pass1"),
+                "native opForge CLI did not run the pass-one stage\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS pass1-ok"),
+                "native opForge CLI did not report pass-one success\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STAGE pass2"),
+                "native opForge CLI did not run the pass-two stage\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS pass2-ok"),
+                "native opForge CLI did not report pass-two success\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );

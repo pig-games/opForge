@@ -9955,11 +9955,17 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliParserMnemonicEquals"));
     assert!(source.contains("opforgeNativeCliRecordPrvmStatementLine"));
     assert!(source.contains("opforgeNativeCliStoreStatementRecord"));
+    assert!(source.contains("opforgeNativeCliRecordPrvmExpressionRequest"));
     assert!(source.contains("opforgeNativeCliRecordSourceLine"));
     assert!(source.contains("opforgeNativeCliEmitStatementRecord"));
+    assert!(source.contains("opforgeNativeCliEmitStatementExprRequest"));
     assert!(source.contains("opforge_native_cli_init_assembly_session"));
     assert!(source.contains("opforgeNativeCliEmitAssemblySessionSummary"));
     assert!(source.contains("nativeCliStmtCount"));
+    assert!(source.contains("nativeCliStmtDirectiveKind"));
+    assert!(source.contains("nativeCliStmtExprFound"));
+    assert!(source.contains("nativeCliStmtExprOperandIndex"));
+    assert!(source.contains("nativeCliStmtExprSpanStart"));
     assert!(source.contains("nativeCliLineRequestLen"));
     assert!(source.contains("nativeCliEncodeRequestLen"));
     assert!(source.contains("nativeCliSourceRecordCount"));
@@ -9976,6 +9982,19 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         ".byte \"STATUS session-ready\",10,0"
     ));
     assert!(tokvm_source_contains(&source, ".byte \"STMT \",0"));
+    assert!(tokvm_source_contains(&source, ".byte \"STMT-EXPR \",0"));
+    assert!(tokvm_source_contains(
+        &source,
+        "PRVM_STATUS_EXPR_REQUEST        = 1"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "PRVM_RESULT_OPERAND_EXPR_SLOT   = 4"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 44"
+    ));
     assert!(source.contains("lastTokenCount"));
     assert!(source.contains("lastLexemeLen"));
     assert!(source.contains("opforge_native_cli_expand_include_target"));
@@ -10055,6 +10074,41 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "BEQ.W opforgeNativeCliParseUseLine",
             "BSR.W opforgeNativeCliRecordPrvmStatementLine",
             "BNE.W opforgeNativeCliParseLineFail",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliRecordPrvmStatementLine:",
+            "TST.L nativeCliPrvmRouteStatus",
+            "CMPI.L #PRVM_STATUS_EXPR_REQUEST, nativeCliPrvmRouteStatus",
+            "CLR.L nativeCliStmtLabelStart",
+            "CLR.L nativeCliStmtMnemStart",
+            "CLR.L nativeCliStmtExprOperandIndex",
+            "CLR.W nativeCliStmtExprFound",
+            "MOVE.W nativeCliPrvmResultCount, D7",
+            "MOVE.W #PRVM_RESULT_RECORD_COUNT, D7",
+            "LEA opforgeNativeCliPrvmResultBuffer, A2",
+            "CMPI.W #PRVM_RESULT_LABEL_TEXT, 0(A2)",
+            "CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 0(A2)",
+            "CMPI.W #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(A2)",
+            "BSR.W opforgeNativeCliRecordPrvmExpressionRequest",
+            "BSR.W opforgeNativeCliStoreStatementRecord",
+            "BSR.W opforgeNativeCliEmitStatementRecord",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliRecordPrvmExpressionRequest:",
+            "LEA opforgeNativeCliPrvmExprRequest, A2",
+            "MOVE.L 4(A2), nativeCliStmtExprOperandIndex",
+            "MOVE.L 8(A2), nativeCliStmtExprSlotIndex",
+            "MOVE.L 12(A2), nativeCliStmtExprStartToken",
+            "MOVE.L 16(A2), nativeCliStmtExprEndToken",
+            "MOVE.L 20(A2), nativeCliStmtExprSpanLine",
+            "MOVE.L 24(A2), nativeCliStmtExprSpanStart",
+            "MOVE.L 28(A2), nativeCliStmtExprSpanEnd",
         ]
     ));
     assert!(source_contains_in_order(
@@ -10440,8 +10494,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforgeNativeCliParserMnemonicEquals"));
     assert!(listing.contains("opforgeNativeCliRecordPrvmStatementLine"));
     assert!(listing.contains("opforgeNativeCliStoreStatementRecord"));
+    assert!(listing.contains("opforgeNativeCliRecordPrvmExpressionRequest"));
     assert!(listing.contains("opforgeNativeCliRecordSourceLine"));
     assert!(listing.contains("opforgeNativeCliEmitStatementRecord"));
+    assert!(listing.contains("opforgeNativeCliEmitStatementExprRequest"));
     assert!(listing.contains("opforge_native_cli_init_assembly_session"));
     assert!(listing.contains("opforgeNativeCliEmitAssemblySessionSummary"));
     assert!(listing.contains("opforge_native_cli_expand_include_target"));
@@ -10506,6 +10562,8 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("USE-SELECT"));
     assert!(listing.contains("USE-WILDCARD"));
     assert!(listing.contains("STMT"));
+    assert!(listing.contains("STMT-EXPR"));
+    assert!(listing.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
     assert!(listing.contains("OPC-NCLI014"));
     assert!(listing.contains("OPC-NCLI015"));
     assert!(listing.contains("OPC-NCLI016"));
@@ -10580,6 +10638,12 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
             .windows("STMT ".len())
             .any(|window| window == b"STMT "),
         "expected native statement marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("STMT-EXPR ".len())
+            .any(|window| window == b"STMT-EXPR "),
+        "expected native statement expression-request marker in Hunk payload"
     );
     assert!(
         payload

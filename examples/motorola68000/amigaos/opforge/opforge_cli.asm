@@ -72,10 +72,13 @@ PRVM_ROUTE_EXPR_REQUEST_SIZE    = 32
 PRVM_ROUTE_EXPR_RESULT_COUNT    = 0
 PRVM_ROUTE_STEP_BUDGET          = 256
 PRVM_STATUS_OK                  = 0
+PRVM_STATUS_EXPR_REQUEST        = 1
 PRVM_RESULT_RECORD_SIZE         = 32
+PRVM_RESULT_RECORD_COUNT        = PRVM_ROUTE_RESULT_CAPACITY / PRVM_RESULT_RECORD_SIZE
 PRVM_RESULT_LABEL_TEXT          = 2
 PRVM_RESULT_MNEMONIC_TEXT       = 3
-OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 22
+PRVM_RESULT_OPERAND_EXPR_SLOT   = 4
+OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 44
 NATIVE_TOKEN_RECORD_SIZE        = 20
 TK_KIND_IDENTIFIER              = 0
 NCLI_PARSER_DIRECTIVE_NONE      = 0
@@ -823,8 +826,11 @@ opforgeNativeCliBuildPrvmRouteFrame:
         MOVE.L A1, 56(A0)
         MOVE.L #OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN, 60(A0)
         LEA opforgeNativeCliPrvmResultBuffer, A1
-        CLR.W (A1)
-        CLR.W 32(A1)
+        MOVEA.L A1, A0
+        MOVE.L #PRVM_ROUTE_RESULT_CAPACITY, D0
+        BSR.W opforge_native_cli_clear_bytes
+        LEA opforgeNativeCliPrvmRouteFrame, A0
+        LEA opforgeNativeCliPrvmResultBuffer, A1
         MOVE.L A1, 64(A0)
         MOVE.L #PRVM_ROUTE_RESULT_CAPACITY, 68(A0)
         LEA opforgeNativeCliPrvmDiagBuffer, A1
@@ -925,7 +931,11 @@ opforgeNativeCliParserMnemonicEquals:
 opforgeNativeCliRecordPrvmStatementLine:
         MOVEM.L D1-D7/A0-A2, -(SP)
         TST.L nativeCliPrvmRouteStatus
+        BEQ.S opforgeNativeCliRecordPrvmStatementRouteOk
+        CMPI.L #PRVM_STATUS_EXPR_REQUEST, nativeCliPrvmRouteStatus
         BNE.W opforgeNativeCliRecordPrvmStatementDone
+
+opforgeNativeCliRecordPrvmStatementRouteOk:
         CLR.L nativeCliStmtLabelStart
         CLR.L nativeCliStmtLabelEnd
         CLR.L nativeCliStmtLabelOff
@@ -934,21 +944,47 @@ opforgeNativeCliRecordPrvmStatementLine:
         CLR.L nativeCliStmtMnemEnd
         CLR.L nativeCliStmtMnemOff
         CLR.L nativeCliStmtMnemLen
+        CLR.L nativeCliStmtExprOperandIndex
+        CLR.L nativeCliStmtExprSlotIndex
+        CLR.L nativeCliStmtExprStartToken
+        CLR.L nativeCliStmtExprEndToken
+        CLR.L nativeCliStmtExprSpanLine
+        CLR.L nativeCliStmtExprSpanStart
+        CLR.L nativeCliStmtExprSpanEnd
         CLR.W nativeCliStmtMnemFound
+        CLR.W nativeCliStmtExprFound
+        MOVEQ #NCLI_PARSER_DIRECTIVE_NONE, D0
+        MOVE.W D0, nativeCliStmtDirectiveKind
         MOVE.W nativeCliPrvmResultCount, D7
+        CMPI.L #PRVM_STATUS_EXPR_REQUEST, nativeCliPrvmRouteStatus
+        BNE.S opforgeNativeCliRecordPrvmStatementHaveCount
+        MOVE.W #PRVM_RESULT_RECORD_COUNT, D7
+
+opforgeNativeCliRecordPrvmStatementHaveCount:
         BEQ.W opforgeNativeCliRecordPrvmStatementDone
         SUBQ.W #1, D7
         LEA opforgeNativeCliPrvmResultBuffer, A2
 
 opforgeNativeCliRecordPrvmStatementScan:
+        TST.W 0(A2)
+        BEQ.W opforgeNativeCliRecordPrvmStatementFinalize
         CMPI.W #PRVM_RESULT_LABEL_TEXT, 0(A2)
         BEQ.W opforgeNativeCliRecordPrvmStatementHaveLabel
         CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 0(A2)
         BEQ.W opforgeNativeCliRecordPrvmStatementHaveMnemonic
+        CMPI.W #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(A2)
+        BEQ.W opforgeNativeCliRecordPrvmStatementHaveOperandExpr
 
 opforgeNativeCliRecordPrvmStatementNext:
         ADDA.L #PRVM_RESULT_RECORD_SIZE, A2
         DBRA D7, opforgeNativeCliRecordPrvmStatementScan
+
+opforgeNativeCliRecordPrvmStatementFinalize:
+        CMPI.L #PRVM_STATUS_EXPR_REQUEST, nativeCliPrvmRouteStatus
+        BNE.S opforgeNativeCliRecordPrvmStatementCheckMnemonic
+        BSR.W opforgeNativeCliRecordPrvmExpressionRequest
+
+opforgeNativeCliRecordPrvmStatementCheckMnemonic:
         TST.W nativeCliStmtMnemFound
         BEQ.W opforgeNativeCliRecordPrvmStatementDone
         MOVE.L nativeCliStmtMnemLen, D0
@@ -963,7 +999,7 @@ opforgeNativeCliRecordPrvmStatementNext:
 
 opforgeNativeCliRecordPrvmStatementDone:
         MOVEQ #0, D0
-        BRA.S opforgeNativeCliRecordPrvmStatementReturn
+        BRA.W opforgeNativeCliRecordPrvmStatementReturn
 
 opforgeNativeCliRecordPrvmStatementHaveLabel:
         MOVE.L 8(A2), nativeCliStmtLabelStart
@@ -979,6 +1015,30 @@ opforgeNativeCliRecordPrvmStatementHaveMnemonic:
         MOVE.L 20(A2), nativeCliStmtMnemLen
         MOVE.W #1, nativeCliStmtMnemFound
         BRA.W opforgeNativeCliRecordPrvmStatementNext
+
+opforgeNativeCliRecordPrvmStatementHaveOperandExpr:
+        MOVE.L 16(A2), nativeCliStmtExprOperandIndex
+        MOVE.L 20(A2), nativeCliStmtExprSlotIndex
+        MOVE.L 24(A2), nativeCliStmtExprStartToken
+        MOVE.L 28(A2), nativeCliStmtExprEndToken
+        MOVE.W #1, nativeCliStmtExprFound
+        BRA.W opforgeNativeCliRecordPrvmStatementNext
+
+opforgeNativeCliRecordPrvmExpressionRequest:
+        LEA opforgeNativeCliPrvmExprRequest, A2
+        CMPI.W #1, 0(A2)
+        BNE.S opforgeNativeCliRecordPrvmExpressionRequestDone
+        MOVE.L 4(A2), nativeCliStmtExprOperandIndex
+        MOVE.L 8(A2), nativeCliStmtExprSlotIndex
+        MOVE.L 12(A2), nativeCliStmtExprStartToken
+        MOVE.L 16(A2), nativeCliStmtExprEndToken
+        MOVE.L 20(A2), nativeCliStmtExprSpanLine
+        MOVE.L 24(A2), nativeCliStmtExprSpanStart
+        MOVE.L 28(A2), nativeCliStmtExprSpanEnd
+        MOVE.W #1, nativeCliStmtExprFound
+
+opforgeNativeCliRecordPrvmExpressionRequestDone:
+        RTS
 
 opforgeNativeCliRecordPrvmStatementFail:
         MOVEQ #1, D0
@@ -1017,6 +1077,21 @@ opforgeNativeCliEmitStatementRecord:
         MOVE.L nativeCliSourceLineNum, D0
         BSR.W opforge_native_cli_put_dec_u16
         BSR.W opforgeNativeCliPutSpace
+        MOVE.W nativeCliStmtDirectiveKind, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtLabelStart, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtLabelEnd, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtMnemStart, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtMnemEnd, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
         MOVE.L nativeCliStmtLabelLen, D0
         BSR.W opforge_native_cli_put_dec_u16
         BSR.W opforgeNativeCliPutSpace
@@ -1034,7 +1109,43 @@ opforgeNativeCliEmitStatementRecord:
         BSR.W opforge_native_cli_put_str
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
+        TST.W nativeCliStmtExprFound
+        BEQ.S opforgeNativeCliEmitStatementRecordDone
+        BSR.W opforgeNativeCliEmitStatementExprRequest
+
+opforgeNativeCliEmitStatementRecordDone:
         MOVEM.L (SP)+, D0-D7/A0-A1
+        RTS
+
+opforgeNativeCliEmitStatementExprRequest:
+        MOVE.L #statementExprText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #0, D0
+        MOVE.W nativeCliStmtCount.L, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtExprOperandIndex, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtExprSlotIndex, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtExprStartToken, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtExprEndToken, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtExprSpanLine, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtExprSpanStart, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        BSR.W opforgeNativeCliPutSpace
+        MOVE.L nativeCliStmtExprSpanEnd, D0
+        BSR.W opforge_native_cli_put_dec_u16
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
         RTS
 
 opforgeNativeCliBuildParserTailBuffer:
@@ -3328,6 +3439,8 @@ useWildcardText:
         .byte "USE-WILDCARD ",0
 statementText:
         .byte "STMT ",0
+statementExprText:
+        .byte "STMT-EXPR ",0
 moduleFoundText:
         .byte "MODULE ",0
 spaceText:
@@ -3344,8 +3457,11 @@ kindStatementText:
         .byte "statement"
 opforgeNativeCliPrvmParserProgram:
         .byte $60,$40,$13,$03,$08,$00,$64,$00
-        .byte $10,$07,$03,$12,$00,$20,$30,$65,$64,$00
-        .byte $30,$62,$64,$00
+        .byte $10,$07,$03,$16,$00,$20,$30,$65
+        .byte $13,$03,$16,$00,$64,$00,$50,$FF
+        .byte $FF,$FF,$FF,$64,$00,$30,$62,$13
+        .byte $03,$25,$00,$64,$00,$50,$FF,$FF
+        .byte $FF,$FF,$64,$00
 moduleMnemonicText:
         .byte "module"
 endmoduleMnemonicText:
@@ -3562,6 +3678,10 @@ nativeCliStmtCount:
         .res word,1
 nativeCliStmtMnemFound:
         .res word,1
+nativeCliStmtExprFound:
+        .res word,1
+nativeCliStmtDirectiveKind:
+        .res word,1
 nativeCliInputChar:
         .res byte,1
 nativeCliDecimalChar:
@@ -3583,6 +3703,20 @@ nativeCliStmtMnemEnd:
 nativeCliStmtMnemOff:
         .res long,1
 nativeCliStmtMnemLen:
+        .res long,1
+nativeCliStmtExprOperandIndex:
+        .res long,1
+nativeCliStmtExprSlotIndex:
+        .res long,1
+nativeCliStmtExprStartToken:
+        .res long,1
+nativeCliStmtExprEndToken:
+        .res long,1
+nativeCliStmtExprSpanLine:
+        .res long,1
+nativeCliStmtExprSpanStart:
+        .res long,1
+nativeCliStmtExprSpanEnd:
         .res long,1
 nativeCliAssemblySessionStart:
 nativeCliSessionPass:

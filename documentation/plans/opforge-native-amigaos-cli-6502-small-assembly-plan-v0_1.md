@@ -189,7 +189,7 @@ Native processor ownership should be:
   - Commit outcome: one commit that documents and tests the native service envelope shared by load-package, set-pipeline, tokenize, parse, encode, and last-error flows.
   - Definition of done: the native CLI has a stable call shape that can carry parser records and encoder requests without inventing a separate CLI-only ABI.
 
-- [ ] Item 4: Promote PRVM statement records into emitter-ready native rows
+- [x] Item 4: Promote PRVM statement records into emitter-ready native rows
   - Source requirement or finding IDs: SR-PRVM-ROWS, SR-NO-EXPR-IN-PARSER
   - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`, `crates/opforge-asm/src/tests.rs`, native CLI reference outputs if the source-surface lock changes.
   - Full quality gates: `cargo test -p vm parser_vm_v2_parity -- --nocapture`; `cargo test -p asm motorola68020_prvm_ -- --nocapture`; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.

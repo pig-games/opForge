@@ -5184,7 +5184,8 @@ fn native6502_abi_entrypoint_ordinals_are_stable() {
     assert_eq!(NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1, 6);
     assert_eq!(NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1, 7);
     assert_eq!(NATIVE_6502_ENTRYPOINT_SELECT_INSTRUCTION_V1, 8);
-    assert_eq!(NATIVE_6502_ENTRYPOINT_COUNT_V1, 9);
+    assert_eq!(NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1, 9);
+    assert_eq!(NATIVE_6502_ENTRYPOINT_COUNT_V1, 10);
 
     let ordinals = [
         NATIVE_6502_ENTRYPOINT_INIT_V1,
@@ -5196,6 +5197,7 @@ fn native6502_abi_entrypoint_ordinals_are_stable() {
         NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1,
         NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1,
         NATIVE_6502_ENTRYPOINT_SELECT_INSTRUCTION_V1,
+        NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1,
     ];
     for (expected, ordinal) in ordinals.into_iter().enumerate() {
         assert_eq!(ordinal as usize, expected);
@@ -5380,6 +5382,95 @@ fn vm_runtime_mos6502_selector_native6502_harness_selects_candidates_via_active_
             other => panic!("unexpected encode output for {source_line}: {other:?}"),
         }
     }
+}
+
+#[test]
+fn vm_runtime_mos6502_native6502_harness_encodes_selected_instructions_into_session_image() {
+    let registry = native6502_m6502_registry();
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("package bytes build");
+    let mut harness = Native6502Harness::new();
+    let mut control_block = Native6502ControlBlockV1::new_v1();
+
+    let init = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_INIT_V1,
+        Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, NATIVE_6502_STATUS_OK_V1);
+    let load = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        Native6502HarnessRequest::LoadPackage {
+            package_bytes: package_bytes.as_slice(),
+        },
+    );
+    assert_eq!(
+        load.status_code, NATIVE_6502_STATUS_OK_V1,
+        "{:?}",
+        load.output
+    );
+    let set_pipeline = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        Native6502HarnessRequest::SetPipeline {
+            cpu_id: "m6502",
+            dialect_override: None,
+        },
+    );
+    assert_eq!(set_pipeline.status_code, NATIVE_6502_STATUS_OK_V1);
+
+    let mut assembler_ctx = TestAssemblerContext::new();
+    assembler_ctx.values.insert("done".to_string(), 0x0805);
+    assembler_ctx.finalized.insert("done".to_string(), true);
+
+    for (source_line, mnemonic, operand_text, address, expected_bytes) in [
+        ("start:  lda #$42", "lda", "#$42", 0x0800, vec![0xA9, 0x42]),
+        (
+            "        sta $0200",
+            "sta",
+            "$0200",
+            0x0802,
+            vec![0x8D, 0x00, 0x02],
+        ),
+        (
+            "done:   jmp done",
+            "jmp",
+            "done",
+            0x0805,
+            vec![0x4C, 0x05, 0x08],
+        ),
+    ] {
+        let start = source_line.find(operand_text).expect("operand text") as u16 + 1;
+        let encode = harness.invoke_v1(
+            &mut control_block,
+            NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1,
+            Native6502HarnessRequest::EncodeSelectedInstruction {
+                mnemonic,
+                source_line,
+                line_num: 1,
+                address,
+                operand_span: Some((start, start + operand_text.len() as u16)),
+                assembler_ctx: &assembler_ctx,
+            },
+        );
+        assert_eq!(
+            encode.status_code, NATIVE_6502_STATUS_OK_V1,
+            "encode output for {source_line}: {:?}",
+            encode.output
+        );
+        assert_eq!(control_block.output_len(), expected_bytes.len() as u16);
+        match encode.output {
+            Native6502HarnessOutput::EncodedBytes(Some(bytes)) => assert_eq!(bytes, expected_bytes),
+            other => panic!("unexpected selected encode output for {source_line}: {other:?}"),
+        }
+    }
+
+    assert_eq!(harness.session_image_origin(), Some(0x0800));
+    assert_eq!(
+        harness.session_image_bytes(),
+        &[0xA9, 0x42, 0x8D, 0x00, 0x02, 0x4C, 0x05, 0x08]
+    );
 }
 
 #[test]

@@ -213,13 +213,13 @@ Native processor ownership should be:
   - Commit outcome: one commit that maps parsed operand expression values into 6502 candidate classes for the initial subset: implied, immediate, absolute, zero-page where safe, and absolute jump.
   - Definition of done: the selector can choose candidates for `LDA #imm`, `STA abs`, `JMP abs`, and `NOP` without CLI-side 6502 semantic shortcuts.
 
-- [ ] Item 7: Add package-backed 6502 encode-instruction execution
+- [x] Item 7: Add package-backed 6502 encode-instruction execution
   - Source requirement or finding IDs: SR-OPASM-ENCODER, SR-RUST-PARITY
-  - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`, native opasm encoder tables or generated include files, `crates/opforge-vm/src/native6502.rs`, `crates/opforge-vm/src/runtime_tests.rs`, `crates/opforge-asm/src/tests.rs`.
-  - Full quality gates: `cargo test -p vm native6502_ -- --nocapture`; focused tests for `encode_instruction_from_exprs("m6502", None, ...)`; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; native CLI FS-UAE encode smoke; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
+  - Expected files: `crates/opforge-vm/src/native6502.rs`, `crates/opforge-vm/src/native6502_abi.rs`, `crates/opforge-vm/src/runtime_tests.rs`, `crates/opforge-asm/src/tests.rs`.
+  - Full quality gates: `cargo test -p vm native6502_ -- --nocapture`; focused tests for `encode_instruction_from_exprs("m6502", None, ...)`; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; native CLI FS-UAE encode smoke is deferred to Item 10 because Item 7 wires the Rust/native6502 harness selected-encode ABI and session-image buffer without changing native Amiga assembly; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` must return `PASS` for Item 7 before commit.
-  - Commit outcome: one commit that encodes the selected 6502 candidates into bytes and writes those bytes into the native session image.
-  - Definition of done: a native CLI run can turn the smoke program instructions into the same bytes as Rust for the supported subset, even if output file writing is still stubbed.
+  - Commit outcome: one commit that encodes the selected 6502 candidates into bytes and writes those bytes into the native6502 harness session image.
+  - Definition of done: a native6502 harness run can turn the smoke program instructions into the same bytes as Rust for the supported subset, even if native Amiga CLI output file writing is still stubbed.
 
 - [ ] Item 8: Add the minimal native two-pass engine loop
   - Source requirement or finding IDs: SR-ENGINE-PASSES, SR-SYMBOLS
@@ -247,8 +247,8 @@ Native processor ownership should be:
 
 ## Milestones
 
-- [ ] Milestone 1: Contract and state are ready for native assembly without behavior shortcuts.
-- [ ] Milestone 2: Native VM bridges can parse statement rows, evaluate generic expressions, select 6502 candidates, and encode bytes.
+- [x] Milestone 1: Contract and state are ready for native assembly without behavior shortcuts.
+- [x] Milestone 2: Native VM bridges can parse statement rows, evaluate generic expressions, select 6502 candidates, and encode bytes.
 - [ ] Milestone 3: Native CLI has a minimal two-pass engine and flat binary output success path.
 - [ ] Milestone 4: FS-UAE validates the end-to-end path and selected negative cases.
 

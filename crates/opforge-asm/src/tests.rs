@@ -12185,7 +12185,11 @@ fn motorola68020_tkpkg_native_abi_locks_v1_entrypoint_ordinals() {
         vm::native6502_abi::NATIVE_6502_ENTRYPOINT_SELECT_INSTRUCTION_V1,
         8
     );
-    assert_eq!(vm::native6502_abi::NATIVE_6502_ENTRYPOINT_COUNT_V1, 9);
+    assert_eq!(
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1,
+        9
+    );
+    assert_eq!(vm::native6502_abi::NATIVE_6502_ENTRYPOINT_COUNT_V1, 10);
 
     assert!(tkpkg_source_contains(&source, "ENTRY_ORD_INIT = 0"));
     assert!(tkpkg_source_contains(&source, "ENTRY_ORD_LOAD_PACKAGE = 1"));

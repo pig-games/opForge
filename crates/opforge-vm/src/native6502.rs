@@ -13,6 +13,7 @@ use crate::native6502_abi::{
     NATIVE_6502_CB_REQUEST_ID_OFFSET, NATIVE_6502_CB_STATUS_CODE_OFFSET,
     NATIVE_6502_CB_STRUCT_SIZE_OFFSET, NATIVE_6502_CONTROL_BLOCK_SIZE_V1,
     NATIVE_6502_ENTRYPOINT_COUNT_V1, NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1,
+    NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1,
     NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1, NATIVE_6502_ENTRYPOINT_INIT_V1,
     NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1, NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
     NATIVE_6502_ENTRYPOINT_PARSE_LINE_V1, NATIVE_6502_ENTRYPOINT_SELECT_INSTRUCTION_V1,
@@ -36,6 +37,7 @@ pub const NATIVE_6502_STATUS_OK_V1: u16 = 0;
 pub const NATIVE_6502_STATUS_BAD_CONTROL_BLOCK_V1: u16 = 1;
 pub const NATIVE_6502_STATUS_BAD_REQUEST_V1: u16 = 2;
 pub const NATIVE_6502_STATUS_RUNTIME_ERROR_V1: u16 = 3;
+pub const NATIVE_6502_SESSION_IMAGE_CAPACITY: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Native6502ControlBlockV1 {
@@ -200,6 +202,14 @@ pub enum Native6502HarnessRequest<'a> {
         operand_span: Option<(u16, u16)>,
         assembler_ctx: &'a dyn AssemblerContext,
     },
+    EncodeSelectedInstruction {
+        mnemonic: &'a str,
+        source_line: &'a str,
+        line_num: u32,
+        address: u32,
+        operand_span: Option<(u16, u16)>,
+        assembler_ctx: &'a dyn AssemblerContext,
+    },
     LastError,
 }
 
@@ -299,6 +309,8 @@ pub struct Native6502Harness {
     model: Option<HierarchyExecutionModel>,
     active_cpu: Option<String>,
     dialect_override: Option<String>,
+    session_image_origin: Option<u32>,
+    session_image_bytes: Vec<u8>,
     last_error: String,
     next_request_id: u16,
 }
@@ -315,6 +327,8 @@ impl Native6502Harness {
             model: None,
             active_cpu: None,
             dialect_override: None,
+            session_image_origin: None,
+            session_image_bytes: Vec::new(),
             last_error: String::new(),
             next_request_id: 1,
         }
@@ -336,6 +350,8 @@ impl Native6502Harness {
             self.model = None;
             self.active_cpu = None;
             self.dialect_override = None;
+            self.session_image_origin = None;
+            self.session_image_bytes.clear();
             self.last_error.clear();
             return self.finish_ok(
                 control_block,
@@ -475,6 +491,32 @@ impl Native6502Harness {
                             Native6502HarnessOutput::InstructionCandidates(candidates),
                         )
                     }),
+                (
+                    NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1,
+                    Native6502HarnessRequest::EncodeSelectedInstruction {
+                        mnemonic,
+                        source_line,
+                        line_num,
+                        address,
+                        operand_span,
+                        assembler_ctx,
+                    },
+                ) => self
+                    .encode_selected_instruction(
+                        mnemonic,
+                        source_line,
+                        line_num,
+                        address,
+                        operand_span,
+                        assembler_ctx,
+                    )
+                    .map(|bytes| {
+                        let output_len = bytes.len();
+                        (
+                            output_len,
+                            Native6502HarnessOutput::EncodedBytes(Some(bytes)),
+                        )
+                    }),
                 (NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1, Native6502HarnessRequest::LastError) => {
                     Ok((
                         self.last_error.len(),
@@ -542,6 +584,14 @@ impl Native6502Harness {
         }
     }
 
+    pub fn session_image_origin(&self) -> Option<u32> {
+        self.session_image_origin
+    }
+
+    pub fn session_image_bytes(&self) -> &[u8] {
+        self.session_image_bytes.as_slice()
+    }
+
     fn load_package(&mut self, package_bytes: &[u8]) -> Result<(), String> {
         let model = crate::vm_opasm::load_model_from_package_bytes(package_bytes)
             .map_err(|err| err.to_string())?;
@@ -606,6 +656,63 @@ impl Native6502Harness {
         model
             .encode_portable_instruction(&request)
             .map_err(runtime_error_to_string)
+    }
+
+    fn encode_selected_instruction(
+        &mut self,
+        mnemonic: &str,
+        source_line: &str,
+        line_num: u32,
+        address: u32,
+        operand_span: Option<(u16, u16)>,
+        assembler_ctx: &dyn AssemblerContext,
+    ) -> Result<Vec<u8>, String> {
+        let candidates = self.select_instruction_candidates(
+            mnemonic,
+            source_line,
+            line_num,
+            operand_span,
+            assembler_ctx,
+        )?;
+        let bytes = self
+            .encode_instruction(mnemonic, candidates.as_slice())?
+            .ok_or_else(|| format!("native encode emitted no bytes for {mnemonic}"))?;
+        self.store_session_image_bytes(address, bytes.as_slice())?;
+        Ok(bytes)
+    }
+
+    fn store_session_image_bytes(&mut self, address: u32, bytes: &[u8]) -> Result<(), String> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let origin = match self.session_image_origin {
+            Some(origin) => origin,
+            None => {
+                self.session_image_origin = Some(address);
+                address
+            }
+        };
+        if address < origin {
+            return Err(format!(
+                "native session image write address ${address:04X} precedes origin ${origin:04X}"
+            ));
+        }
+        let offset = usize::try_from(address - origin)
+            .map_err(|_| "native session image offset exceeds host usize".to_string())?;
+        let end = offset
+            .checked_add(bytes.len())
+            .ok_or_else(|| "native session image write overflows host usize".to_string())?;
+        if end > NATIVE_6502_SESSION_IMAGE_CAPACITY {
+            return Err(format!(
+                "native session image write exceeds capacity {}",
+                NATIVE_6502_SESSION_IMAGE_CAPACITY
+            ));
+        }
+        if self.session_image_bytes.len() < end {
+            self.session_image_bytes.resize(end, 0);
+        }
+        self.session_image_bytes[offset..end].copy_from_slice(bytes);
+        Ok(())
     }
 
     fn evaluate_expression(
@@ -858,6 +965,11 @@ fn request_input_len(request: &Native6502HarnessRequest<'_>) -> Result<u16, Stri
             source_line,
             ..
         } => mnemonic.len() + source_line.len(),
+        Native6502HarnessRequest::EncodeSelectedInstruction {
+            mnemonic,
+            source_line,
+            ..
+        } => mnemonic.len() + source_line.len(),
         Native6502HarnessRequest::LastError => 0usize,
     };
     u16::try_from(len)
@@ -983,6 +1095,10 @@ fn decode_wire_request(
         NATIVE_6502_ENTRYPOINT_SELECT_INSTRUCTION_V1 => {
             Err("native select_instruction wire payload requires assembler context".to_string())
         }
+        NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1 => Err(
+            "native encode_selected_instruction wire payload requires assembler context"
+                .to_string(),
+        ),
         NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1 => {
             if !payload.is_empty() {
                 return Err("native last_error payload must be empty".to_string());

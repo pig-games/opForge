@@ -173,7 +173,7 @@ Native processor ownership should be:
   - Commit outcome: one commit that defines the exact native small-assembly smoke contract and keeps current behavior green.
   - Definition of done: the first supported source form, CLI flags, expected bytes, expected diagnostics, and Rust reference path are locked without adding native assembly behavior yet.
 
-- [ ] Item 2: Add native assembly session state and flat image buffers
+- [x] Item 2: Add native assembly session state and flat image buffers
   - Source requirement or finding IDs: SR-ENGINE-STATE, SR-CLI-6502
   - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`, `crates/opforge-asm/src/tests.rs`, native CLI reference outputs if changed.
   - Full quality gates: `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; native CLI FS-UAE smoke when the assembled binary changes; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.

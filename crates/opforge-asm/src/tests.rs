@@ -9947,6 +9947,27 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliBuildPrvmRouteFrame"));
     assert!(source.contains("opforgeNativeCliParserDirectiveKind"));
     assert!(source.contains("opforgeNativeCliParserMnemonicEquals"));
+    assert!(source.contains("opforgeNativeCliRecordPrvmStatementLine"));
+    assert!(source.contains("opforgeNativeCliStoreStatementRecord"));
+    assert!(source.contains("opforgeNativeCliRecordSourceLine"));
+    assert!(source.contains("opforgeNativeCliEmitStatementRecord"));
+    assert!(source.contains("opforge_native_cli_init_assembly_session"));
+    assert!(source.contains("opforgeNativeCliEmitAssemblySessionSummary"));
+    assert!(source.contains("nativeCliStmtCount"));
+    assert!(source.contains("nativeCliSourceRecordCount"));
+    assert!(source.contains("nativeCliLabelCount"));
+    assert!(source.contains("nativeCliImageByteCount"));
+    assert!(source.contains("nativeCliImageBuffer"));
+    assert!(source.contains("NATIVE_SOURCE_RECORD_CAPACITY   = 512"));
+    assert!(source.contains("NATIVE_LABEL_TABLE_CAPACITY     = 16"));
+    assert!(source.contains("NATIVE_IMAGE_BUFFER_CAPACITY    = 4096"));
+    assert!(source.contains("NATIVE_ASSEMBLY_SESSION_BYTES"));
+    assert!(tokvm_source_contains(&source, ".byte \"SESSION-CPU \",0"));
+    assert!(tokvm_source_contains(
+        &source,
+        ".byte \"STATUS session-ready\",10,0"
+    ));
+    assert!(tokvm_source_contains(&source, ".byte \"STMT \",0"));
     assert!(source.contains("lastTokenCount"));
     assert!(source.contains("lastLexemeLen"));
     assert!(source.contains("opforge_native_cli_expand_include_target"));
@@ -10006,12 +10027,36 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source_contains_in_order(
         &source,
         &[
+            "BSR.W opforge_native_cli_init_assembly_session",
+            "BSR.W opforgeNativeCliEmitModulePathRecords",
+            "BSR.W opforge_native_cli_tokenize_frontend",
+            "MOVE.L #parserOkText, D1",
+            "BSR.W opforge_native_cli_put_str",
+            "BSR.W opforgeNativeCliEmitAssemblySessionSummary",
+            "MOVE.L #emitterStubText, D1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
             "LEA includeDirectiveText, A1",
             "BNE.W opforgeNativeCliParseIncludeLine",
             "BSR.W opforgeNativeCliRouteParserModuleUseLine",
             "BEQ.W opforgeNativeCliParseModuleLine",
             "BEQ.W opforgeNativeCliParseEndmoduleLine",
             "BEQ.W opforgeNativeCliParseUseLine",
+            "BSR.W opforgeNativeCliRecordPrvmStatementLine",
+            "BNE.W opforgeNativeCliParseLineFail",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_tokenize_current_line:",
+            "BSR.W opforge_native_cli_emit_include_line_record",
+            "opforgeNativeCliTokenizeCurrentLineNoIncludeRecord:",
+            "BSR.W opforgeNativeCliRecordSourceLine",
+            "LEA lastErrorBuffer, A2",
         ]
     ));
     assert!(source_contains_in_order(
@@ -10353,6 +10398,12 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforgeNativeCliBuildPrvmRouteFrame"));
     assert!(listing.contains("opforgeNativeCliParserDirectiveKind"));
     assert!(listing.contains("opforgeNativeCliParserMnemonicEquals"));
+    assert!(listing.contains("opforgeNativeCliRecordPrvmStatementLine"));
+    assert!(listing.contains("opforgeNativeCliStoreStatementRecord"));
+    assert!(listing.contains("opforgeNativeCliRecordSourceLine"));
+    assert!(listing.contains("opforgeNativeCliEmitStatementRecord"));
+    assert!(listing.contains("opforge_native_cli_init_assembly_session"));
+    assert!(listing.contains("opforgeNativeCliEmitAssemblySessionSummary"));
     assert!(listing.contains("opforge_native_cli_expand_include_target"));
     assert!(listing.contains("opforge_native_cli_emit_include_line_record"));
     assert!(listing.contains("opforgeNativeCliRecordModule"));
@@ -10384,11 +10435,22 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("nativeCliImportAliasTable"));
     assert!(listing.contains("nativeCliImportSelectNameTable"));
     assert!(listing.contains("nativeCliModulePathTable"));
+    assert!(listing.contains("nativeCliAssemblySessionStart"));
+    assert!(listing.contains("nativeCliSessionCpuName"));
+    assert!(listing.contains("nativeCliSourceRecordCount"));
+    assert!(listing.contains("nativeCliStmtLineTable"));
+    assert!(listing.contains("nativeCliLabelNameTable"));
+    assert!(listing.contains("nativeCliImageBuffer"));
     assert!(listing.contains("opforge_native_cli_stage_package"));
     assert!(listing.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(listing.contains("opforge_native_cli_run"));
     assert!(listing.contains("STATUS tokenizer-ok"));
     assert!(listing.contains("STATUS parser-module-use-ok"));
+    assert!(listing.contains("STAGE session"));
+    assert!(listing.contains("SESSION-CPU"));
+    assert!(listing.contains("SESSION-SOURCE-COUNT"));
+    assert!(listing.contains("SESSION-STMT-COUNT"));
+    assert!(listing.contains("STATUS session-ready"));
     assert!(listing.contains("STATUS include-ok"));
     assert!(listing.contains("MOD-ROOT"));
     assert!(listing.contains("MOD-DEF"));
@@ -10397,6 +10459,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("USE-IMPORT"));
     assert!(listing.contains("USE-SELECT"));
     assert!(listing.contains("USE-WILDCARD"));
+    assert!(listing.contains("STMT"));
     assert!(listing.contains("OPC-NCLI014"));
     assert!(listing.contains("OPC-NCLI015"));
     assert!(listing.contains("OPC-NCLI016"));
@@ -10465,6 +10528,24 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
             .windows("USE-WILDCARD ".len())
             .any(|window| window == b"USE-WILDCARD "),
         "expected table-backed wildcard import marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("STMT ".len())
+            .any(|window| window == b"STMT "),
+        "expected native statement marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("SESSION-CPU ".len())
+            .any(|window| window == b"SESSION-CPU "),
+        "expected native assembly-session CPU marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("STATUS session-ready".len())
+            .any(|window| window == b"STATUS session-ready"),
+        "expected native assembly-session ready marker in Hunk payload"
     );
     assert!(
         payload
@@ -26659,6 +26740,36 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
+                run.stdout.contains("STAGE session"),
+                "native opForge CLI did not report the assembly-session stage\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("SESSION-CPU "),
+                "native opForge CLI did not report the assembly-session CPU\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("SESSION-SOURCE-COUNT "),
+                "native opForge CLI did not report source-line session records\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("SESSION-STMT-COUNT "),
+                "native opForge CLI did not report statement session records\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS session-ready"),
+                "native opForge CLI did not report deterministic assembly-session readiness\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
                 run.stdout.contains("STATUS tokenizer-ok"),
                 "native opForge CLI did not report the tokenizer stage status\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
@@ -26811,6 +26922,12 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
             assert!(
                 run.stdout.contains("Identifier(\"move.b\")@7:1-7"),
                 "native opForge CLI did not emit tokenizer rows for the smoke source\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STMT "),
+                "native opForge CLI did not report native statement records\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );

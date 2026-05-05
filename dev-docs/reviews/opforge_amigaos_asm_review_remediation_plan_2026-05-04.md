@@ -252,6 +252,24 @@ past intended native runtime bounds under malformed input.
 - [x] Milestone 5: all six findings have closure evidence ready for the
   finding-closure workflow.
 
+## Post-Plan Follow-Up
+
+- 2026-05-05 native CLI module/use parser follow-up: the real FS-UAE valid
+  native opForge CLI stub exposed that parser-tail construction could use a
+  route-result boundary that pointed past the directive tail, causing the first
+  `.module main` line to fail before `STATUS parser-module-use-ok`. The fix
+  derives `.module`, `.endmodule`, and `.use` parser tails from the native
+  source line and preserves the leading offset across prefix matching.
+  Validation: `cargo test --manifest-path crates/opforge-asm/Cargo.toml
+  motorola68020_opforge_native_cli -- --nocapture` passed; real FS-UAE
+  `external_fs_uae_opforge_native_cli_reports_module_use_parser_status` passed;
+  real FS-UAE `external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics`
+  passed with `OPFORGE_FS_UAE_TIMEOUT_MS=180000`; `opForge_UPDATE_REFERENCE=1
+  cargo test --manifest-path crates/opforge-asm/Cargo.toml
+  examples_match_reference_outputs -- --nocapture` passed and intentionally
+  refreshed `examples/reference/motorola68000/amigaos/opforge/opforge_cli.hunk`
+  and `examples/reference/motorola68000/amigaos/opforge/opforge_cli.lst`.
+
 ## Blocking Rules
 
 - the active worktree `AGENTS.md` rules must be followed throughout execution

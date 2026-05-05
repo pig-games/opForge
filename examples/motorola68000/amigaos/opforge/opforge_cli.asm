@@ -847,65 +847,30 @@ opforgeNativeCliParserMnemonicEquals:
 
 opforgeNativeCliBuildParserTailBuffer:
         MOVEM.L D1-D7/A0-A3, -(SP)
-        LEA opforgeNativeCliPrvmResultBuffer, A0
-        MOVE.L 44(A0), D6
-        LEA tokenRecordBuffer, A2
-        MOVEQ #0, D7
-        MOVE.W lastTokenCount, D7
+        BSR.W opforgeNativeCliParserTailFallbackEnd
 
-opforgeNativeCliBuildParserTailFindLoop:
-        TST.W D7
-        BEQ.S opforgeNativeCliBuildParserTailStart
-        MOVE.L 4(A2), D0
-        CMP.L D6, D0
-        BHI.S opforgeNativeCliBuildParserTailStart
-        LEA NATIVE_TOKEN_RECORD_SIZE(A2), A2
-        SUBQ.W #1, D7
-        BRA.S opforgeNativeCliBuildParserTailFindLoop
-
-opforgeNativeCliBuildParserTailStart:
+opforgeNativeCliBuildParserTailHaveEnd:
         LEA nativeCliParserTailBuffer, A1
         CLR.W nativeCliParserTailLen
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        CMP.L D0, D6
+        BHI.W opforgeNativeCliBuildParserTailFail
+
+opforgeNativeCliBuildParserTailEndOk:
+        LEA nativeCliSourceLine, A0
+        ADDA.L D6, A0
+        SUB.L D6, D0
         MOVEQ #0, D5
-        MOVEQ #-1, D4
 
 opforgeNativeCliBuildParserTailCopyLoop:
-        TST.W D7
+        TST.L D0
         BEQ.W opforgeNativeCliBuildParserTailDone
-        MOVE.W 0(A2), D3
-        CMPI.W #TK_KIND_IDENTIFIER, D4
-        BNE.S opforgeNativeCliBuildParserTailCopyLexeme
-        CMPI.W #TK_KIND_IDENTIFIER, D3
-        BNE.S opforgeNativeCliBuildParserTailCopyLexeme
-        MOVE.L D5, D0
-        ADDQ.L #1, D0
-        CMPI.L #SOURCE_LINE_BUFFER_CAPACITY - 1, D0
-        BHI.W opforgeNativeCliBuildParserTailFail
-        MOVE.B #' ', (A1)+
-        ADDQ.L #1, D5
-
-opforgeNativeCliBuildParserTailCopyLexeme:
-        MOVE.L 16(A2), D2
-        MOVE.L D5, D0
-        ADD.L D2, D0
-        CMPI.L #SOURCE_LINE_BUFFER_CAPACITY - 1, D0
-        BHI.W opforgeNativeCliBuildParserTailFail
-        MOVE.L 12(A2), D0
-        LEA tokenScratchBuffer, A0
-        ADDA.L D0, A0
-        TST.L D2
-        BEQ.S opforgeNativeCliBuildParserTailAdvance
-        SUBQ.L #1, D2
-
-opforgeNativeCliBuildParserTailByteLoop:
+        CMPI.L #SOURCE_LINE_BUFFER_CAPACITY - 1, D5
+        BHS.W opforgeNativeCliBuildParserTailFail
         MOVE.B (A0)+, (A1)+
         ADDQ.L #1, D5
-        DBRA D2, opforgeNativeCliBuildParserTailByteLoop
-
-opforgeNativeCliBuildParserTailAdvance:
-        MOVE.W D3, D4
-        LEA NATIVE_TOKEN_RECORD_SIZE(A2), A2
-        SUBQ.W #1, D7
+        SUBQ.L #1, D0
         BRA.W opforgeNativeCliBuildParserTailCopyLoop
 
 opforgeNativeCliBuildParserTailDone:
@@ -921,6 +886,55 @@ opforgeNativeCliBuildParserTailFail:
 
 opforgeNativeCliBuildParserTailReturn:
         MOVEM.L (SP)+, D1-D7/A0-A3
+        RTS
+
+opforgeNativeCliParserTailFallbackEnd:
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        MOVEQ #0, D5
+        MOVE.W nativeCliSourceLineLen, D5
+        SUB.L D0, D5
+        LEA moduleDirectiveText, A1
+        MOVEQ #7, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.S opforgeNativeCliParserTailFallbackModule
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA endmoduleDirectiveText, A1
+        MOVEQ #10, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.S opforgeNativeCliParserTailFallbackEndmodule
+        LEA nativeCliSourceLine, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliSourceLineLen, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        LEA useDirectiveText, A1
+        MOVEQ #4, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.S opforgeNativeCliParserTailFallbackUse
+        MOVEQ #0, D6
+        RTS
+
+opforgeNativeCliParserTailFallbackModule:
+        MOVE.L D5, D6
+        ADDQ.L #7, D6
+        RTS
+
+opforgeNativeCliParserTailFallbackEndmodule:
+        MOVE.L D5, D6
+        ADDI.L #10, D6
+        RTS
+
+opforgeNativeCliParserTailFallbackUse:
+        MOVE.L D5, D6
+        ADDQ.L #4, D6
         RTS
 
 opforgeNativeCliParserTailPtr:

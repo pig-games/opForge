@@ -10056,6 +10056,46 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         ]
     ));
     assert!(source.contains("opforgeNativeCliBuildParserTailBuffer"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliBuildParserTailBuffer:",
+            "BSR.W opforgeNativeCliParserTailFallbackEnd",
+            "opforgeNativeCliBuildParserTailHaveEnd:",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliBuildParserTailHaveEnd:",
+            "LEA nativeCliParserTailBuffer, A1",
+            "MOVE.W nativeCliSourceLineLen, D0",
+            "CMP.L D0, D6",
+            "BHI.W opforgeNativeCliBuildParserTailFail",
+            "opforgeNativeCliBuildParserTailEndOk:",
+            "LEA nativeCliSourceLine, A0",
+            "ADDA.L D6, A0",
+            "SUB.L D6, D0",
+            "opforgeNativeCliBuildParserTailCopyLoop:",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliParserTailFallbackEnd:",
+            "MOVE.W nativeCliSourceLineLen, D5",
+            "SUB.L D0, D5",
+            "LEA moduleDirectiveText, A1",
+            "BNE.S opforgeNativeCliParserTailFallbackModule",
+            "LEA endmoduleDirectiveText, A1",
+            "BNE.S opforgeNativeCliParserTailFallbackEndmodule",
+            "LEA useDirectiveText, A1",
+            "BNE.S opforgeNativeCliParserTailFallbackUse",
+            "opforgeNativeCliParserTailFallbackModule:",
+            "MOVE.L D5, D6",
+            "ADDQ.L #7, D6",
+        ]
+    ));
     assert!(source.contains("nativeCliParserTailBuffer"));
     assert!(source.contains("nativeCliParserTailLen"));
     assert!(source.contains("NATIVE_TOKEN_RECORD_SIZE        = 20"));
@@ -26651,7 +26691,7 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "unmatched-endmodule",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE",
-            expected_diagnostic: "ERROR OPC-NCLI013: native module/use parser stage failed",
+            expected_diagnostic: "ERROR OPC-NCLI016: native module depth mismatch",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "unterminated-module",
@@ -26666,7 +26706,7 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-module",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE",
-            expected_diagnostic: "ERROR OPC-NCLI013: native module/use parser stage failed",
+            expected_diagnostic: "ERROR OPC-NCLI018: native module resolution failed: missing",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-module-path",

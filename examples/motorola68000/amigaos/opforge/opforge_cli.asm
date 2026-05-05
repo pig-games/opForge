@@ -499,16 +499,37 @@ opforgeNativeCliStageExternalOpenOk:
         MOVE.L D5, D1
         BSR.W opforge_native_cli_read_input
         MOVE.L D0, D6
+        CMP.L #-1, D6
+        BEQ.W opforgeNativeCliStageExternalReadFail
+        CMPI.L #PACKAGE_STORAGE_CAPACITY, D6
+        BNE.S opforgeNativeCliStageExternalReadOk
+        LEA nativeCliInputChar, A0
+        MOVEQ #1, D0
+        MOVE.L D5, D1
+        BSR.W opforge_native_cli_read_input
+        MOVE.L D0, D7
+        CMP.L #-1, D7
+        BEQ.W opforgeNativeCliStageExternalReadFail
+        TST.L D7
+        BEQ.S opforgeNativeCliStageExternalReadOk
         MOVE.L D5, D1
         BSR.W opforge_native_cli_close
-        CMP.L #-1, D6
-        BNE.S opforgeNativeCliStageExternalReadOk
+        MOVE.L #packageTooLargeText, D1
+        BSR.W opforge_native_cli_put_str
         MOVEQ #1, D0
         RTS
 
 opforgeNativeCliStageExternalReadOk:
+        MOVE.L D5, D1
+        BSR.W opforge_native_cli_close
         MOVE.W D6, nativeCliPackageLenActive
         MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliStageExternalReadFail:
+        MOVE.L D5, D1
+        BSR.W opforge_native_cli_close
+        MOVEQ #1, D0
         RTS
 
 opforge_native_cli_prepare_pipeline_request:
@@ -2881,6 +2902,8 @@ multiplePositionalText:
         .byte "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile",10,0
 modulePathCapacityText:
         .byte "OPC-NCLI017: native module path capacity exceeded",10,0
+packageTooLargeText:
+        .byte "ERROR OPC-NCLI019: opasm package exceeds native package storage capacity",10,0
 inputOpenErrorText:
         .byte "OPC-NCLI008: Input source file not found: ",0
 stubHeaderText:
@@ -2992,6 +3015,9 @@ defaultFsUaeArgTail:
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_missing_package.opasm",0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE
+        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package_oversized.opasm",0
+.else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE
         .byte "Work:opforge_fsuae_unmatched_endmodule.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
@@ -3011,6 +3037,7 @@ defaultFsUaeArgTail:
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8",0
 .else
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b",0
+.endif
 .endif
 .endif
 .endif

@@ -71,6 +71,8 @@ const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str =
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH: &str =
     "examples/motorola68000/amigaos/opforge/opforge_cli_package.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "opforge_cli_package.opasm";
+const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE: &str =
+    "opforge_cli_package_oversized.opasm";
 const FS_UAE_TKPKG_DEBUG_CLI_PACKAGE_NAME: &str = "tkpkg_debug_cli_package.opasm";
 const FS_UAE_TKPKG_DEBUG_CLI_PACKAGE_OVERRIDE_NAME: &str = "tkpkg_debug_cli_package_override.opasm";
 const FS_UAE_EXAMPLES: &[(&str, &str, &str)] = &[
@@ -432,6 +434,12 @@ fn stage_example_guest_inputs(
             mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE,
             &package_bytes,
+        )?;
+        let oversized_package = vec![0u8; 4097];
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE,
+            &oversized_package,
         )?;
     }
     Ok(())

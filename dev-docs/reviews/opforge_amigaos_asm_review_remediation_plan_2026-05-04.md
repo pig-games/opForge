@@ -168,7 +168,7 @@ past intended native runtime bounds under malformed input.
     examples_match_reference_outputs -- --nocapture` passed with no checked-in
     reference changes for this slice.
 
-- [ ] Item 5: Reject oversized external package files before `load_package`
+- [x] Item 5: Reject oversized external package files before `load_package`
   - Source requirement or finding IDs: RVW-2026-05-04-004; expected to fully
     close the finding.
   - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`
@@ -189,6 +189,22 @@ past intended native runtime bounds under malformed input.
   - Definition of done: oversized external packages are rejected early with a
     clear CLI error, non-oversized external packages keep the previous behavior,
     focused regressions pass, and the full quality gates pass.
+  - Completion evidence: `cargo test --manifest-path crates/opforge-asm/Cargo.toml
+    motorola68020_opforge_native_cli -- --nocapture` passed with 2 tests;
+    `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test --manifest-path
+    crates/opforge-asm/Cargo.toml
+    external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics --
+    --nocapture` passed under real FS-UAE with the
+    `OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE` case expecting
+    `ERROR OPC-NCLI019: opasm package exceeds native package storage capacity`;
+    `opForge_UPDATE_REFERENCE=1 cargo test --manifest-path crates/opforge-asm/Cargo.toml
+    examples_match_reference_outputs -- --nocapture` passed and refreshed the
+    native CLI reference outputs. A separate real-FS-UAE valid native CLI stub
+    run reached `STATUS tokenizer-ok` with the normal 3973-byte package, then
+    failed in the existing module/use parser success assertion; that parser
+    follow-on remains outside RVW-2026-05-04-004.
 
 - [ ] Item 6: Preserve signed status values in tokvm harness reports
   - Source requirement or finding IDs: RVW-2026-05-04-005; expected to fully

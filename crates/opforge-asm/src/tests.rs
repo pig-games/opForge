@@ -9898,6 +9898,9 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile"
     ));
     assert!(source.contains("OPC-NCLI017: native module path capacity exceeded"));
+    assert!(
+        source.contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity")
+    );
     assert!(source.contains("OPC-NCLI008: Input source file not found"));
     assert!(source.contains(
         "Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path."
@@ -9925,6 +9928,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"));
@@ -10056,6 +10060,18 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("nativeCliParserTailLen"));
     assert!(source.contains("NATIVE_TOKEN_RECORD_SIZE        = 20"));
     assert!(source.contains("PACKAGE_STORAGE_CAPACITY"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "MOVE.L #PACKAGE_STORAGE_CAPACITY, D0",
+            "BSR.W opforge_native_cli_read_input",
+            "CMPI.L #PACKAGE_STORAGE_CAPACITY, D6",
+            "LEA nativeCliInputChar, A0",
+            "MOVEQ #1, D0",
+            "BSR.W opforge_native_cli_read_input",
+            "MOVE.L #packageTooLargeText, D1",
+        ]
+    ));
     assert!(source.contains("NATIVE_MODULE_TABLE_CAPACITY    = 16"));
     assert!(source.contains("NATIVE_IMPORT_TABLE_CAPACITY    = 32"));
     assert!(source.contains("NATIVE_MODULE_PATH_CAPACITY     = 8"));
@@ -10158,6 +10174,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("OPC-NCLI016"));
     assert!(listing.contains("OPC-NCLI017"));
     assert!(listing.contains("OPC-NCLI018"));
+    assert!(listing.contains("OPC-NCLI019"));
     assert!(listing.contains("emitter-not-implemented"));
 
     let payload_path = example_output_payload_path(&out_dir, "opforge_cli", "hunk");
@@ -26583,9 +26600,14 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
             expected_diagnostic: "ERROR OPC-NCLI010: native tokenizer stage failed",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "package-too-large",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE",
+            expected_diagnostic: "ERROR OPC-NCLI019: opasm package exceeds native package storage capacity",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "unmatched-endmodule",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE",
-            expected_diagnostic: "ERROR OPC-NCLI016: native module depth mismatch",
+            expected_diagnostic: "ERROR OPC-NCLI013: native module/use parser stage failed",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "unterminated-module",
@@ -26600,7 +26622,7 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-module",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE",
-            expected_diagnostic: "ERROR OPC-NCLI018: native module resolution failed: missing",
+            expected_diagnostic: "ERROR OPC-NCLI013: native module/use parser stage failed",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-module-path",

@@ -11,7 +11,7 @@
         .use tkpkg.amigaos.abi (STATUS_OK_V1, STATUS_RUNTIME_ERROR_V1)
         .use tkpkg.amigaos.abi (ENTRY_ORD_INIT, ENTRY_ORD_LOAD_PACKAGE)
         .use tkpkg.amigaos.abi (ENTRY_ORD_SET_PIPELINE, ENTRY_ORD_TOKENIZE_LINE)
-        .use tkpkg.amigaos.abi (ENTRY_ORD_PARSE_LINE_RESERVED, ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED)
+        .use tkpkg.amigaos.abi (ENTRY_ORD_PARSE_LINE, ENTRY_ORD_ENCODE_INSTRUCTION)
         .use tkpkg.amigaos.abi (ENTRY_ORD_LAST_ERROR)
         .use tkpkg.amigaos.abi (CB_MAGIC, CB_ABI_VERSION, CB_STRUCT_SIZE)
         .use tkpkg.amigaos.abi (CB_CAPABILITY_FLAGS, CB_STATUS_CODE, CB_REQUEST_ID)
@@ -55,9 +55,9 @@ tkpkg_service_dispatch_v1:
         BEQ.W tkpkgServiceHandleSetPipeline
         CMPI.B #ENTRY_ORD_TOKENIZE_LINE, D0
         BEQ.W tkpkgServiceHandleTokenizeLine
-        CMPI.B #ENTRY_ORD_PARSE_LINE_RESERVED, D0
+        CMPI.B #ENTRY_ORD_PARSE_LINE, D0
         BEQ.S tkpkgServiceDeferredRuntime
-        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED, D0
+        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION, D0
         BEQ.S tkpkgServiceDeferredRuntime
         BSR.W tkpkg_service_set_bad_request_v1
         RTS

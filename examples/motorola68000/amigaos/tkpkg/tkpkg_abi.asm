@@ -36,8 +36,8 @@ ENTRY_ORD_INIT                       = 0
 ENTRY_ORD_LOAD_PACKAGE               = 1
 ENTRY_ORD_SET_PIPELINE               = 2
 ENTRY_ORD_TOKENIZE_LINE              = 3
-ENTRY_ORD_PARSE_LINE_RESERVED        = 4
-ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED = 5
+ENTRY_ORD_PARSE_LINE                 = 4
+ENTRY_ORD_ENCODE_INSTRUCTION         = 5
 ENTRY_ORD_LAST_ERROR                 = 6
 ENTRY_ORD_COUNT_V1                   = 7
 

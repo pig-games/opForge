@@ -37,8 +37,8 @@ ADDR    BYTES                    LINE  SOURCE
 ----    EQU 0001                   34  ENTRY_ORD_LOAD_PACKAGE               = 1
 ----    EQU 0002                   35  ENTRY_ORD_SET_PIPELINE               = 2
 ----    EQU 0003                   36  ENTRY_ORD_TOKENIZE_LINE              = 3
-----    EQU 0004                   37  ENTRY_ORD_PARSE_LINE_RESERVED        = 4
-----    EQU 0005                   38  ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED = 5
+----    EQU 0004                   37  ENTRY_ORD_PARSE_LINE                 = 4
+----    EQU 0005                   38  ENTRY_ORD_ENCODE_INSTRUCTION         = 5
 ----    EQU 0006                   39  ENTRY_ORD_LAST_ERROR                 = 6
 ----    EQU 0007                   40  ENTRY_ORD_COUNT_V1                   = 7
 ----                               41  
@@ -5585,7 +5585,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                             5582          .use tkpkg.amigaos.abi (STATUS_OK_V1, STATUS_RUNTIME_ERROR_V1)
 ----                             5583          .use tkpkg.amigaos.abi (ENTRY_ORD_INIT, ENTRY_ORD_LOAD_PACKAGE)
 ----                             5584          .use tkpkg.amigaos.abi (ENTRY_ORD_SET_PIPELINE, ENTRY_ORD_TOKENIZE_LINE)
-----                             5585          .use tkpkg.amigaos.abi (ENTRY_ORD_PARSE_LINE_RESERVED, ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED)
+----                             5585          .use tkpkg.amigaos.abi (ENTRY_ORD_PARSE_LINE, ENTRY_ORD_ENCODE_INSTRUCTION)
 ----                             5586          .use tkpkg.amigaos.abi (ENTRY_ORD_LAST_ERROR)
 ----                             5587          .use tkpkg.amigaos.abi (CB_MAGIC, CB_ABI_VERSION, CB_STRUCT_SIZE)
 ----                             5588          .use tkpkg.amigaos.abi (CB_CAPABILITY_FLAGS, CB_STATUS_CODE, CB_REQUEST_ID)
@@ -5629,9 +5629,9 @@ ADDR    BYTES                    LINE  SOURCE
 2A9A    67 00 00 B0              5626          BEQ.W tkpkgServiceHandleSetPipeline  ; [section code]
 2A9E    0C 00 00 03              5627          CMPI.B #ENTRY_ORD_TOKENIZE_LINE, D0  ; [section code]
 2AA2    67 00 00 DC              5628          BEQ.W tkpkgServiceHandleTokenizeLine  ; [section code]
-2AA6    0C 00 00 04              5629          CMPI.B #ENTRY_ORD_PARSE_LINE_RESERVED, D0  ; [section code]
+2AA6    0C 00 00 04              5629          CMPI.B #ENTRY_ORD_PARSE_LINE, D0  ; [section code]
 2AAA    67 0C                    5630          BEQ.S tkpkgServiceDeferredRuntime  ; [section code]
-2AAC    0C 00 00 05              5631          CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED, D0  ; [section code]
+2AAC    0C 00 00 05              5631          CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION, D0  ; [section code]
 2AB0    67 06                    5632          BEQ.S tkpkgServiceDeferredRuntime  ; [section code]
 2AB2    61 00 01 D8              5633          BSR.W tkpkg_service_set_bad_request_v1  ; [section code]
 2AB6    4E 75                    5634          RTS  ; [section code]
@@ -7344,11 +7344,11 @@ tkpkg.amigaos.abi.CB_RESERVED0  000E      pub  lbl
 tkpkg.amigaos.abi.CB_STATUS_CODE  000A      pub  lbl 
 tkpkg.amigaos.abi.CB_STRUCT_SIZE  0006      pub  lbl 
 tkpkg.amigaos.abi.ENTRY_ORD_COUNT_V1  0007      pub  lbl 
-tkpkg.amigaos.abi.ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED  0005      pub  lbl 
+tkpkg.amigaos.abi.ENTRY_ORD_ENCODE_INSTRUCTION  0005      pub  lbl 
 tkpkg.amigaos.abi.ENTRY_ORD_INIT  0000      pub  lbl 
 tkpkg.amigaos.abi.ENTRY_ORD_LAST_ERROR  0006      pub  lbl 
 tkpkg.amigaos.abi.ENTRY_ORD_LOAD_PACKAGE  0001      pub  lbl 
-tkpkg.amigaos.abi.ENTRY_ORD_PARSE_LINE_RESERVED  0004      pub  lbl 
+tkpkg.amigaos.abi.ENTRY_ORD_PARSE_LINE  0004      pub  lbl 
 tkpkg.amigaos.abi.ENTRY_ORD_SET_PIPELINE  0002      pub  lbl 
 tkpkg.amigaos.abi.ENTRY_ORD_TOKENIZE_LINE  0003      pub  lbl 
 tkpkg.amigaos.abi.LAST_ERROR_REQUEST_LEN  0000      pub  lbl 

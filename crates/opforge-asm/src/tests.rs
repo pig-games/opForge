@@ -12045,7 +12045,7 @@ fn motorola68020_tkpkg_native_abi_preserves_v1_control_block_layout() {
 }
 
 #[test]
-fn motorola68020_tkpkg_native_abi_locks_tokenizer_only_entrypoint_subset() {
+fn motorola68020_tkpkg_native_abi_locks_v1_entrypoint_ordinals() {
     let source = tkpkg_amigaos_source("tkpkg_abi.asm");
 
     assert_eq!(vm::native6502_abi::NATIVE_6502_ENTRYPOINT_INIT_V1, 0);
@@ -12076,13 +12076,10 @@ fn motorola68020_tkpkg_native_abi_locks_tokenizer_only_entrypoint_subset() {
         &source,
         "ENTRY_ORD_TOKENIZE_LINE = 3"
     ));
+    assert!(tkpkg_source_contains(&source, "ENTRY_ORD_PARSE_LINE = 4"));
     assert!(tkpkg_source_contains(
         &source,
-        "ENTRY_ORD_PARSE_LINE_RESERVED = 4"
-    ));
-    assert!(tkpkg_source_contains(
-        &source,
-        "ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED = 5"
+        "ENTRY_ORD_ENCODE_INSTRUCTION = 5"
     ));
     assert!(tkpkg_source_contains(&source, "ENTRY_ORD_LAST_ERROR = 6"));
     assert!(tkpkg_source_contains(&source, "ENTRY_ORD_COUNT_V1 = 7"));
@@ -12134,7 +12131,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "CMPI.B #ENTRY_ORD_PARSE_LINE_RESERVED,D0\n        BEQ.S tkpkgServiceDeferredRuntime\n        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION_RESERVED,D0\n        BEQ.S tkpkgServiceDeferredRuntime"
+        "CMPI.B #ENTRY_ORD_PARSE_LINE,D0\n        BEQ.S tkpkgServiceDeferredRuntime\n        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION,D0\n        BEQ.S tkpkgServiceDeferredRuntime"
     ));
     assert!(tkpkg_source_contains(
         &source,

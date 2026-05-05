@@ -1,0 +1,28 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Native AmigaOS CLI 6502 small-assembly contract.
+----                                2  ; This is the first flat-binary target for the package-backed native path.
+----                                3  
+----                                4          .cpu 6502
+----    EQU 0800                    5          .org $0800
+0800    A9 42                       6  start  lda #$42
+0802    8D 00 02                    7          sta $0200
+0805    4C 05 08                    8  done   jmp done
+
+Lines: 8  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+done             0805      prv  lbl 
+start            0800      prv  lbl 
+
+Total memory is 8 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0800    A9 42 8D 00 02 4C 05 08

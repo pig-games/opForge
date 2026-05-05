@@ -66,6 +66,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use types::image::ImageStore;
 use types::lockstep::{ContinuationHead, LockstepReport};
 use types::processing::{LineProcessingTrace, OpcoreRequestKind, ProcessingRequestKind};
 use types::symbol::{SymbolTable, SymbolTableResult, SymbolVisibility};
@@ -10137,6 +10138,193 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         &source,
         ".byte \"ERROR OPC-NCLI016: native module depth mismatch\",10,0"
     ));
+}
+
+struct NativeCli6502ContractContext {
+    values: HashMap<String, i64>,
+    symbols: SymbolTable,
+    addr: u32,
+}
+
+impl NativeCli6502ContractContext {
+    fn new(addr: u32, values: &[(&str, i64)]) -> Self {
+        Self {
+            values: values
+                .iter()
+                .map(|(name, value)| ((*name).to_string(), *value))
+                .collect(),
+            symbols: SymbolTable::new(),
+            addr,
+        }
+    }
+
+    fn parse_number(text: &str) -> Result<i64, String> {
+        let trimmed = text.trim();
+        if let Some(hex) = trimmed.strip_prefix('$') {
+            i64::from_str_radix(hex, 16).map_err(|_| format!("invalid test number '{text}'"))
+        } else if let Some(hex) = trimmed.strip_prefix("0x") {
+            i64::from_str_radix(hex, 16).map_err(|_| format!("invalid test number '{text}'"))
+        } else {
+            trimmed
+                .parse::<i64>()
+                .map_err(|_| format!("invalid test number '{text}'"))
+        }
+    }
+}
+
+impl AssemblerContext for NativeCli6502ContractContext {
+    fn eval_expr(&self, expr: &opcore::parser::Expr) -> Result<i64, String> {
+        match expr {
+            opcore::parser::Expr::Number(text, _) => Self::parse_number(text),
+            opcore::parser::Expr::Identifier(name, _) | opcore::parser::Expr::Register(name, _) => {
+                self.values
+                    .get(name)
+                    .copied()
+                    .ok_or_else(|| format!("Label not found: {name}"))
+            }
+            opcore::parser::Expr::Immediate(inner, _) => self.eval_expr(inner),
+            other => Err(format!("unsupported test expression: {other:?}")),
+        }
+    }
+
+    fn symbols(&self) -> &SymbolTable {
+        &self.symbols
+    }
+
+    fn has_symbol(&self, name: &str) -> bool {
+        self.values.contains_key(name)
+    }
+
+    fn symbol_is_finalized(&self, name: &str) -> Option<bool> {
+        self.values.contains_key(name).then_some(true)
+    }
+
+    fn current_address(&self) -> u32 {
+        self.addr
+    }
+
+    fn pass(&self) -> u8 {
+        2
+    }
+
+    fn scalar_value_symbol(&self, name: &str) -> Option<i64> {
+        self.values.get(name).copied()
+    }
+}
+
+fn native_cli_6502_contract_expr_number(text: &str) -> opcore::parser::Expr {
+    opcore::parser::Expr::Number(text.to_string(), opcore::tokenizer::Span::default())
+}
+
+fn native_cli_6502_contract_expr_identifier(name: &str) -> opcore::parser::Expr {
+    opcore::parser::Expr::Identifier(name.to_string(), opcore::tokenizer::Span::default())
+}
+
+fn native_cli_6502_contract_expr_immediate(text: &str) -> opcore::parser::Expr {
+    let span = opcore::tokenizer::Span::default();
+    opcore::parser::Expr::Immediate(Box::new(native_cli_6502_contract_expr_number(text)), span)
+}
+
+fn native_cli_6502_contract_encode(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    addr: u32,
+    mnemonic: &str,
+    operands: Vec<opcore::parser::Expr>,
+    values: &[(&str, i64)],
+) -> Vec<u8> {
+    let ctx = NativeCli6502ContractContext::new(addr, values);
+    vm::vm_opasm::encode_instruction_from_exprs(
+        model,
+        m6502_cpu_id.as_str(),
+        None,
+        mnemonic,
+        operands.as_slice(),
+        &ctx,
+    )
+    .unwrap_or_else(|err| panic!("encode {mnemonic} at ${addr:04X}: {err}"))
+    .unwrap_or_else(|| panic!("encode {mnemonic} at ${addr:04X} emitted no bytes"))
+}
+
+#[test]
+fn motorola68020_opforge_native_cli_6502_small_assembly_contract_matches_rust_vm_bytes() {
+    let repo_root = workspace_root();
+    let source_path = repo_root.join("examples/mos6502/6502_native_cli_smoke.asm");
+    let source = fs::read_to_string(&source_path).expect("read native CLI 6502 smoke fixture");
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            ".cpu 6502",
+            ".org $0800",
+            "start:  lda #$42",
+            "sta $0200",
+            "done:   jmp done",
+        ]
+    ));
+
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("build mos6502 package");
+    let model = load_opasm_model_from_package_bytes(package_bytes.as_slice());
+
+    for (line_num, line, expected_mnemonic) in [
+        (5, "start:  lda #$42", "lda"),
+        (6, "        sta $0200", "sta"),
+        (7, "done:   jmp done", "jmp"),
+    ] {
+        let ast = vm::vm_opasm::parse_portable_line_for_assembler(
+            &model,
+            m6502_cpu_id.as_str(),
+            None,
+            line,
+            line_num,
+        )
+        .unwrap_or_else(|err| panic!("parse smoke line {line_num}: {}", err.message));
+        match ast {
+            vm::portable_contract::PortableLineAst::Statement {
+                mnemonic: Some(mnemonic),
+                ..
+            } => assert_eq!(mnemonic.to_ascii_lowercase(), expected_mnemonic),
+            other => panic!("expected statement for smoke line {line_num}, got {other:?}"),
+        }
+    }
+
+    let symbols = [("done", 0x0805)];
+    let lda = native_cli_6502_contract_encode(
+        &model,
+        0x0800,
+        "LDA",
+        vec![native_cli_6502_contract_expr_immediate("$42")],
+        &symbols,
+    );
+    let sta = native_cli_6502_contract_encode(
+        &model,
+        0x0802,
+        "STA",
+        vec![native_cli_6502_contract_expr_number("$0200")],
+        &symbols,
+    );
+    let jmp = native_cli_6502_contract_encode(
+        &model,
+        0x0805,
+        "JMP",
+        vec![native_cli_6502_contract_expr_identifier("done")],
+        &symbols,
+    );
+
+    assert_eq!(lda, vec![0xA9, 0x42]);
+    assert_eq!(sta, vec![0x8D, 0x00, 0x02]);
+    assert_eq!(jmp, vec![0x4C, 0x05, 0x08]);
+
+    let mut image = ImageStore::new();
+    image.store_slice(0x0800, lda.as_slice());
+    image.store_slice(0x0802, sta.as_slice());
+    image.store_slice(0x0805, jmp.as_slice());
+    let bin = vm::vm_opasm::build_bin_output_payload(&image, 0x0800, 0x0807, 0xff)
+        .expect("build native CLI 6502 smoke bin payload");
+
+    assert_eq!(bin, vec![0xA9, 0x42, 0x8D, 0x00, 0x02, 0x4C, 0x05, 0x08]);
 }
 
 #[test]

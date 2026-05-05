@@ -206,7 +206,7 @@ past intended native runtime bounds under malformed input.
     failed in the existing module/use parser success assertion; that parser
     follow-on remains outside RVW-2026-05-04-004.
 
-- [ ] Item 6: Preserve signed status values in tokvm harness reports
+- [x] Item 6: Preserve signed status values in tokvm harness reports
   - Source requirement or finding IDs: RVW-2026-05-04-005; expected to fully
     close the finding.
   - Expected files: `examples/motorola68000/amigaos/tokvm/tokvm_cli_harness.asm`
@@ -226,6 +226,18 @@ past intended native runtime bounds under malformed input.
   - Definition of done: negative harness statuses render with their true
     numeric value, nonnegative statuses remain unchanged, focused regressions
     pass, and the full quality gates pass.
+  - Completion evidence: `cargo test --manifest-path crates/opforge-asm/Cargo.toml
+    motorola68020_tokvm -- --nocapture` passed with 28 tests, including
+    `motorola68020_tokvm_interpreter_preserves_signed_status_before_minus_write`;
+    `opForge_UPDATE_REFERENCE=1 cargo test --manifest-path crates/opforge-asm/Cargo.toml
+    examples_match_reference_outputs -- --nocapture` passed and refreshed the
+    tokvm interpreter reference outputs; `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test --manifest-path
+    crates/opforge-asm/Cargo.toml external_fs_uae_hunk_smoke -- --nocapture`
+    passed under real FS-UAE and completed `helloworld`, `writefile`,
+    `tkpkg_debug_cli`, `prvm_smoke`, and `prvm_line_iterator_smoke`.
 
 ## Milestones
 

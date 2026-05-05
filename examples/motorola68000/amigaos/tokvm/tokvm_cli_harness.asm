@@ -622,13 +622,20 @@ tokvmHarnessValidateInvalid:
 tokvm_amigaos_cli_harness_write_i32:
         TST.L D0
         BPL.S tokvmHarnessWriteI32Unsigned
+        MOVE.L D2, -(SP)
+        MOVE.L D0, D2
         MOVE.L D1, -(SP)
         LEA minusString, A0
         BSR.W amigaos_cli_fileio_write_cstr
         MOVE.L (SP)+, D1
         TST.L D0
-        BNE.S tokvmHarnessWriteI32Done
+        BNE.S tokvmHarnessWriteI32NegativeDone
+        MOVE.L D2, D0
         NEG.L D0
+        BSR.W tokvm_amigaos_cli_harness_write_u32
+tokvmHarnessWriteI32NegativeDone:
+        MOVE.L (SP)+, D2
+        RTS
 tokvmHarnessWriteI32Unsigned:
         BSR.W tokvm_amigaos_cli_harness_write_u32
 tokvmHarnessWriteI32Done:

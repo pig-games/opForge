@@ -13428,6 +13428,50 @@ fn motorola68020_tokvm_interpreter_validates_vm_result_before_report_render() {
 }
 
 #[test]
+fn motorola68020_tokvm_interpreter_preserves_signed_status_before_minus_write() {
+    let source = tokvm_amigaos_source("tokvm_cli_harness.asm");
+
+    assert!(source.contains("HARNESS_STATUS_INPUT_TOO_LARGE  = -104"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "tokvm_amigaos_cli_harness_write_i32:",
+            "TST.L D0",
+            "BPL.S tokvmHarnessWriteI32Unsigned",
+            "MOVE.L D2, -(SP)",
+            "MOVE.L D0, D2",
+            "MOVE.L D1, -(SP)",
+            "LEA minusString, A0",
+            "BSR.W amigaos_cli_fileio_write_cstr",
+            "MOVE.L (SP)+, D1",
+            "TST.L D0",
+            "BNE.S tokvmHarnessWriteI32NegativeDone",
+            "MOVE.L D2, D0",
+            "NEG.L D0",
+            "BSR.W tokvm_amigaos_cli_harness_write_u32",
+            "tokvmHarnessWriteI32NegativeDone:",
+            "MOVE.L (SP)+, D2",
+            "RTS",
+            "tokvmHarnessWriteI32Unsigned:",
+            "BSR.W tokvm_amigaos_cli_harness_write_u32",
+        ]
+    ));
+    assert!(
+        !source_contains_in_order(
+            &source,
+            &[
+                "BSR.W amigaos_cli_fileio_write_cstr",
+                "MOVE.L (SP)+, D1",
+                "TST.L D0",
+                "BNE.S tokvmHarnessWriteI32Done",
+                "NEG.L D0",
+            ]
+        ),
+        "expected signed status writer to negate the original status, not the minus-sign write result"
+    );
+}
+
+#[test]
 fn motorola68020_tokvm_interpreter_preserves_output_handle_across_hex_writes() {
     let source = tokvm_amigaos_source("tokvm_cli_harness.asm");
 

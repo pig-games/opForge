@@ -5183,7 +5183,8 @@ fn native6502_abi_entrypoint_ordinals_are_stable() {
     assert_eq!(NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1, 5);
     assert_eq!(NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1, 6);
     assert_eq!(NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1, 7);
-    assert_eq!(NATIVE_6502_ENTRYPOINT_COUNT_V1, 8);
+    assert_eq!(NATIVE_6502_ENTRYPOINT_SELECT_INSTRUCTION_V1, 8);
+    assert_eq!(NATIVE_6502_ENTRYPOINT_COUNT_V1, 9);
 
     let ordinals = [
         NATIVE_6502_ENTRYPOINT_INIT_V1,
@@ -5194,6 +5195,7 @@ fn native6502_abi_entrypoint_ordinals_are_stable() {
         NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1,
         NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1,
         NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1,
+        NATIVE_6502_ENTRYPOINT_SELECT_INSTRUCTION_V1,
     ];
     for (expected, ordinal) in ordinals.into_iter().enumerate() {
         assert_eq!(ordinal as usize, expected);
@@ -5267,6 +5269,116 @@ fn vm_runtime_mos6502_native6502_harness_evaluates_expression_via_active_abi() {
             NativePrvmHostExpressionEvaluation::Concrete { value },
         ) => assert_eq!(value, 0x42),
         other => panic!("unexpected expression evaluation output: {other:?}"),
+    }
+}
+
+#[test]
+fn vm_runtime_mos6502_selector_native6502_harness_selects_candidates_via_active_abi() {
+    let registry = native6502_m6502_registry();
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("package bytes build");
+    let mut harness = Native6502Harness::new();
+    let mut control_block = Native6502ControlBlockV1::new_v1();
+
+    let init = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_INIT_V1,
+        Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, NATIVE_6502_STATUS_OK_V1);
+    let load = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        Native6502HarnessRequest::LoadPackage {
+            package_bytes: package_bytes.as_slice(),
+        },
+    );
+    assert_eq!(
+        load.status_code, NATIVE_6502_STATUS_OK_V1,
+        "{:?}",
+        load.output
+    );
+    let set_pipeline = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        Native6502HarnessRequest::SetPipeline {
+            cpu_id: "m6502",
+            dialect_override: None,
+        },
+    );
+    assert_eq!(set_pipeline.status_code, NATIVE_6502_STATUS_OK_V1);
+
+    let assembler_ctx = TestAssemblerContext::new();
+    for (source_line, mnemonic, operand_text, expected_mode, expected_bytes) in [
+        ("    nop", "nop", "", "implied", vec![0xEA]),
+        ("    lda #$42", "lda", "#$42", "immediate", vec![0xA9, 0x42]),
+        ("    sta $20", "sta", "$20", "zeropage", vec![0x85, 0x20]),
+        (
+            "    sta $0200",
+            "sta",
+            "$0200",
+            "absolute",
+            vec![0x8D, 0x00, 0x02],
+        ),
+        (
+            "    jmp $0200",
+            "jmp",
+            "$0200",
+            "absolute",
+            vec![0x4C, 0x00, 0x02],
+        ),
+    ] {
+        let operand_span = if operand_text.is_empty() {
+            None
+        } else {
+            let start = source_line.find(operand_text).expect("operand text") as u16 + 1;
+            Some((start, start + operand_text.len() as u16))
+        };
+        let select = harness.invoke_v1(
+            &mut control_block,
+            NATIVE_6502_ENTRYPOINT_SELECT_INSTRUCTION_V1,
+            Native6502HarnessRequest::SelectInstruction {
+                mnemonic,
+                source_line,
+                line_num: 1,
+                operand_span,
+                assembler_ctx: &assembler_ctx,
+            },
+        );
+        assert_eq!(
+            select.status_code, NATIVE_6502_STATUS_OK_V1,
+            "selector output for {source_line}: {:?}",
+            select.output
+        );
+        let candidates = match select.output {
+            Native6502HarnessOutput::InstructionCandidates(candidates) => candidates,
+            other => panic!("unexpected selector output: {other:?}"),
+        };
+        assert_eq!(control_block.output_len(), candidates.len() as u16);
+        assert_eq!(
+            candidates
+                .first()
+                .map(|candidate| candidate.mode_key.as_str()),
+            Some(expected_mode)
+        );
+
+        let encode = harness.invoke_v1(
+            &mut control_block,
+            NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1,
+            Native6502HarnessRequest::EncodeInstruction {
+                mnemonic,
+                candidates: candidates.as_slice(),
+            },
+        );
+        assert_eq!(
+            encode.status_code, NATIVE_6502_STATUS_OK_V1,
+            "{:?}",
+            encode.output
+        );
+        match encode.output {
+            Native6502HarnessOutput::EncodedBytes(Some(bytes)) => assert_eq!(bytes, expected_bytes),
+            other => panic!("unexpected encode output for {source_line}: {other:?}"),
+        }
     }
 }
 

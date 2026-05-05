@@ -205,10 +205,10 @@ Native processor ownership should be:
   - Commit outcome: one commit that lets native code submit expression spans to opcore and receive concrete values or deterministic unresolved diagnostics.
   - Definition of done: `.org $0800`, `#$42`, `$0200`, and `done` can be represented as expression requests, with concrete literals evaluated by opcore and unresolved symbols deferred or diagnosed by pass mode.
 
-- [ ] Item 6: Add the native 6502 selector bridge in opasm VM
+- [x] Item 6: Add the native 6502 selector bridge in opasm VM
   - Source requirement or finding IDs: SR-OPASM-SELECTOR, SR-6502-FIRST
   - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`, native opasm selector tables or generated include files, `crates/opforge-vm/src/execution_model/selector_bridge.rs`, `crates/opforge-vm/src/runtime_tests.rs`, `crates/opforge-asm/src/tests.rs`.
-  - Full quality gates: `cargo test -p vm vm_runtime_mos6502_selector_ -- --nocapture`; `cargo test -p vm native6502_ -- --nocapture`; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; FS-UAE smoke for selector status; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
+  - Full quality gates: `cargo test -p vm vm_runtime_mos6502_selector_ -- --nocapture`; `cargo test -p vm native6502_ -- --nocapture`; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; native selector-status FS-UAE smoke is deferred to Item 10 because Item 6 wires the Rust/native6502 harness selector ABI without changing native Amiga assembly; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` must return `PASS` for Item 6 before commit.
   - Commit outcome: one commit that maps parsed operand expression values into 6502 candidate classes for the initial subset: implied, immediate, absolute, zero-page where safe, and absolute jump.
   - Definition of done: the selector can choose candidates for `LDA #imm`, `STA abs`, `JMP abs`, and `NOP` without CLI-side 6502 semantic shortcuts.
@@ -240,7 +240,7 @@ Native processor ownership should be:
 - [ ] Item 10: Add FS-UAE end-to-end gate and negative-path coverage
   - Source requirement or finding IDs: SR-FS-UAE-GATE, SR-DETERMINISTIC-DIAGNOSTICS
   - Expected files: `crates/opforge-asm/src/fs_uae_smoke.rs`, `crates/opforge-asm/src/tests.rs`, FS-UAE fixture sources, native CLI reference outputs if changed.
-  - Full quality gates: FS-UAE native CLI small 6502 assembly gate; negative FS-UAE cases for unknown mnemonic, unsupported addressing mode, unresolved label, bad `.org`, and unsupported output; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
+  - Full quality gates: FS-UAE native CLI small 6502 assembly gate including selector-status evidence; negative FS-UAE cases for unknown mnemonic, unsupported addressing mode, unresolved label, bad `.org`, and unsupported output; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: `plan-compliance-reviewer` must return `PASS` for Item 10 before commit.
   - Commit outcome: one commit that makes the 6502 native small-assembly path part of the repeatable FS-UAE quality gates.
   - Definition of done: FS-UAE proves native AmigaOS execution can assemble the smoke source and produce matching bytes, and invalid inputs produce deterministic CLI diagnostics and non-zero status.

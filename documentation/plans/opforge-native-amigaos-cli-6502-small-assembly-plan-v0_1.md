@@ -197,7 +197,7 @@ Native processor ownership should be:
   - Commit outcome: one commit that converts PRVM output into native rows for label, directive kind, mnemonic span, operand spans, and expression-request spans.
   - Definition of done: the native CLI can enumerate parsed rows for the 6502 smoke source in pass order, while expression contents remain spans/requests rather than host-parsed math.
 
-- [ ] Item 5: Add the native opcore expression request and evaluation bridge
+- [x] Item 5: Add the native opcore expression request and evaluation bridge
   - Source requirement or finding IDs: SR-EXVM-OPCORE, SR-NO-CPU-IN-OPCORE
   - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`, native opcore/EXVM AmigaOS runtime files if present or newly introduced, `crates/opforge-vm/src/vm_opcore.rs`, `crates/opforge-vm/src/runtime_tests.rs`, `crates/opforge-asm/src/tests.rs`.
   - Full quality gates: focused opcore expression VM tests for `$0800`, `$0200`, decimal, unary, and symbol/current-PC callbacks; `cargo test -p vm vm_runtime_mos6502_ -- --nocapture`; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; FS-UAE smoke for expression evaluation once native code is touched; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.

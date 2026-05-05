@@ -5,11 +5,15 @@ use std::collections::HashMap;
 use opcore::expression::expr_span;
 use opcore::parser::{Expr, ParseError};
 use opcore::tokenizer::Span;
+use registry::family::AssemblerContext;
 use registry::syntax::RegisterChecker;
 
 use crate::execution_model::HierarchyExecutionModel;
 use crate::vm_opasm::{parse_operand_expr_range, OperandExprBoundary, OperandExprParseHints};
 use crate::vm_opasm_parse::{tokenize_parser_tokens_with_model, VmExprParseContext};
+use crate::vm_opcore::{
+    evaluate_expression_for_assembler, expression_has_unstable_symbols_for_assembler,
+};
 
 pub const NATIVE_PRVM_EXPR_REQUEST_RECORD_SIZE: usize = 32;
 pub const NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE: usize = 32;
@@ -55,6 +59,18 @@ pub struct NativePrvmHostExpressionResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NativePrvmHostExpressionEvaluation {
+    Concrete { value: i64 },
+    DeferredUnresolved { message: String },
+}
+
+#[derive(Clone, Debug)]
+pub struct NativePrvmHostExpressionEvaluationResult {
+    pub parsed: NativePrvmHostExpressionResult,
+    pub evaluation: NativePrvmHostExpressionEvaluation,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NativePrvmBridgeError {
     InvalidExpressionRequestSize {
         actual: usize,
@@ -69,6 +85,10 @@ pub enum NativePrvmBridgeError {
         token_count: usize,
     },
     ExpressionParser {
+        message: String,
+        span: Span,
+    },
+    ExpressionEvaluation {
         message: String,
         span: Span,
     },
@@ -126,6 +146,27 @@ impl<'a> NativePrvmHostExpressionBridge<'a> {
     ) -> Result<NativePrvmHostExpressionResult, NativePrvmBridgeError> {
         let request = decode_expr_request_record(request_record)?;
         self.handle_expression_request(request, result_slot)
+    }
+
+    pub fn handle_and_evaluate_expression_request_record(
+        &mut self,
+        request_record: &[u8],
+        result_slot: &mut [u8],
+        assembler_ctx: &dyn AssemblerContext,
+    ) -> Result<NativePrvmHostExpressionEvaluationResult, NativePrvmBridgeError> {
+        let request = decode_expr_request_record(request_record)?;
+        self.handle_and_evaluate_expression_request(request, result_slot, assembler_ctx)
+    }
+
+    pub fn handle_and_evaluate_expression_request(
+        &mut self,
+        request: NativePrvmExprRequest,
+        result_slot: &mut [u8],
+        assembler_ctx: &dyn AssemblerContext,
+    ) -> Result<NativePrvmHostExpressionEvaluationResult, NativePrvmBridgeError> {
+        let parsed = self.handle_expression_request(request, result_slot)?;
+        let evaluation = self.evaluate_expression(&parsed.expr, assembler_ctx)?;
+        Ok(NativePrvmHostExpressionEvaluationResult { parsed, evaluation })
     }
 
     pub fn handle_expression_request(
@@ -223,6 +264,34 @@ impl<'a> NativePrvmHostExpressionBridge<'a> {
         self.expressions_by_native_slot.get(&slot_index)
     }
 
+    pub fn evaluate_expression_for_handle(
+        &self,
+        handle: u32,
+        assembler_ctx: &dyn AssemblerContext,
+    ) -> Result<NativePrvmHostExpressionEvaluation, NativePrvmBridgeError> {
+        let expr = self.expression_for_handle(handle).ok_or_else(|| {
+            NativePrvmBridgeError::ExpressionEvaluation {
+                message: format!("native PRVM expression handle {handle} does not exist"),
+                span: self.end_span,
+            }
+        })?;
+        self.evaluate_expression(expr, assembler_ctx)
+    }
+
+    pub fn evaluate_expression_for_native_slot(
+        &self,
+        slot_index: u32,
+        assembler_ctx: &dyn AssemblerContext,
+    ) -> Result<NativePrvmHostExpressionEvaluation, NativePrvmBridgeError> {
+        let expr = self.expression_for_native_slot(slot_index).ok_or_else(|| {
+            NativePrvmBridgeError::ExpressionEvaluation {
+                message: format!("native PRVM expression slot {slot_index} does not exist"),
+                span: self.end_span,
+            }
+        })?;
+        self.evaluate_expression(expr, assembler_ctx)
+    }
+
     pub fn expression_slots(&self) -> &HashMap<u32, Expr> {
         &self.expressions_by_native_slot
     }
@@ -232,6 +301,41 @@ impl<'a> NativePrvmHostExpressionBridge<'a> {
             .get(end)
             .map(|token| token.to_source_text())
             .or_else(|| self.end_token_text.clone())
+    }
+
+    fn evaluate_expression(
+        &self,
+        expr: &Expr,
+        assembler_ctx: &dyn AssemblerContext,
+    ) -> Result<NativePrvmHostExpressionEvaluation, NativePrvmBridgeError> {
+        let eval_expr = match expr {
+            Expr::Immediate(inner, _) => inner.as_ref(),
+            _ => expr,
+        };
+        let span = expr_span(eval_expr);
+        let has_unstable_symbols = expression_has_unstable_symbols_for_assembler(
+            self.model,
+            self.cpu_id,
+            self.dialect_override,
+            eval_expr,
+            assembler_ctx,
+        )
+        .map_err(|message| NativePrvmBridgeError::ExpressionEvaluation { message, span })?;
+        if has_unstable_symbols && assembler_ctx.pass() == 1 {
+            return Ok(NativePrvmHostExpressionEvaluation::DeferredUnresolved {
+                message: "expression depends on unresolved symbols".to_string(),
+            });
+        }
+
+        evaluate_expression_for_assembler(
+            self.model,
+            self.cpu_id,
+            self.dialect_override,
+            eval_expr,
+            assembler_ctx,
+        )
+        .map(|value| NativePrvmHostExpressionEvaluation::Concrete { value })
+        .map_err(|message| NativePrvmBridgeError::ExpressionEvaluation { message, span })
     }
 
     #[allow(dead_code)]

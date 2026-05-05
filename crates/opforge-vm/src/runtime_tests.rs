@@ -10,7 +10,16 @@ use crate::hierarchy::{
     ResolvedHierarchy, ScopedOwner,
 };
 use crate::intel8080_vm::{mode_key_for_instruction_entry, mode_key_for_z80_ld_indirect};
+use crate::native6502::{
+    Native6502ControlBlockV1, Native6502Harness, Native6502HarnessOutput, Native6502HarnessRequest,
+    NATIVE_6502_STATUS_OK_V1,
+};
 use crate::native6502_abi::*;
+use crate::native_prvm::{
+    NativePrvmBridgeError, NativePrvmExprRequest, NativePrvmHostExpressionBridge,
+    NativePrvmHostExpressionEvaluation, NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE,
+    NATIVE_PRVM_EXPR_SLOT_READY,
+};
 use crate::portable_contract::*;
 use crate::rollout::{family_runtime_mode, FamilyRuntimeMode};
 use crate::runtime_bridge::{HierarchyRuntimeBridge, HierarchyRuntimeBridgeError};
@@ -18,6 +27,7 @@ use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_model_types::*;
 use crate::runtime_portable_types::*;
 use crate::vm_opasm::{build_bin_output_payload, build_hex_output_payload};
+use crate::vm_opasm_parse::tokenize_parser_tokens_with_model;
 use crate::vm_opcore::{
     evaluate_expression_for_assembler, expression_has_unstable_symbols_for_assembler,
     parse_expression_tokens, run_exvm_expression_parser_program, ExvmExecutionBudgets,
@@ -25,7 +35,10 @@ use crate::vm_opcore::{
 use families::{
     intel8080::Operand as IntelOperand,
     m65816::state,
-    mos6502::{module::MOS6502Operands, Operand},
+    mos6502::{
+        module::{M6502CpuModule, MOS6502FamilyModule, MOS6502Operands},
+        Operand,
+    },
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
@@ -160,6 +173,66 @@ fn tokenize_core_expr_tokens(expr: &str, line_num: u32) -> (Vec<Token>, Span) {
     (tokens, end_span)
 }
 
+fn evaluate_native_prvm_expression_for_test(
+    source: &str,
+    operand_text: &str,
+    mnemonic: Option<&str>,
+    assembler_ctx: &dyn AssemblerContext,
+) -> Result<NativePrvmHostExpressionEvaluation, NativePrvmBridgeError> {
+    let registry = mos6502_family_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let register_checker = register_checker_none();
+    let operand_start = source
+        .find(operand_text)
+        .unwrap_or_else(|| panic!("source does not contain operand text {operand_text}"));
+    let operand_col_start = operand_start + 1;
+    let operand_col_end = operand_col_start + operand_text.len();
+    let (tokens, _, _) =
+        tokenize_parser_tokens_with_model(&model, "m6502", None, source, 1, &register_checker)
+            .expect("native PRVM expression bridge should tokenize source");
+    let start_token = tokens
+        .iter()
+        .position(|token| token.span.col_start >= operand_col_start)
+        .expect("operand start token should exist");
+    let end_token = tokens
+        .iter()
+        .position(|token| token.span.col_start >= operand_col_end)
+        .unwrap_or(tokens.len());
+    let mut bridge = NativePrvmHostExpressionBridge::from_source_line(
+        &model,
+        "m6502",
+        None,
+        source,
+        1,
+        &register_checker,
+        mnemonic,
+    )
+    .expect("native PRVM expression bridge should tokenize source");
+    let request = NativePrvmExprRequest {
+        operand_index: 0,
+        expr_slot_index: 0,
+        start_token: start_token as u32,
+        end_token: end_token as u32,
+        boundary_span: Span {
+            line: 1,
+            col_start: operand_col_start,
+            col_end: operand_col_end,
+        },
+    };
+    let mut result_slot = [0u8; NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE];
+    let result =
+        bridge.handle_and_evaluate_expression_request(request, &mut result_slot, assembler_ctx)?;
+    assert_eq!(
+        u16::from_be_bytes([result_slot[0], result_slot[1]]),
+        NATIVE_PRVM_EXPR_SLOT_READY
+    );
+    assert_eq!(
+        u32::from_be_bytes(result_slot[4..8].try_into().expect("slot index")),
+        0
+    );
+    Ok(result.evaluation)
+}
+
 fn tokenize_host_line_with_policy(
     model: &HierarchyExecutionModel,
     cpu_id: &str,
@@ -187,6 +260,13 @@ fn parity_registry() -> ModuleRegistry {
 fn mos6502_family_registry() -> ModuleRegistry {
     let mut registry = ModuleRegistry::new();
     register_mos6502_family_stack(&mut registry);
+    registry
+}
+
+fn native6502_m6502_registry() -> ModuleRegistry {
+    let mut registry = ModuleRegistry::new();
+    registry.register_family(Box::new(MOS6502FamilyModule));
+    registry.register_cpu(Box::new(M6502CpuModule));
     registry
 }
 
@@ -982,6 +1062,81 @@ fn vm_opasm_encode_instruction_from_exprs_stage_runs() {
     .expect("vm_opasm expr encode should succeed")
     .expect("vm_opasm expr encode should emit bytes");
     assert_eq!(bytes, vec![0xA9, 0x42]);
+}
+
+#[test]
+fn vm_runtime_mos6502_native_prvm_bridge_evaluates_literal_expressions() {
+    let ctx = TestAssemblerContext::new();
+
+    for (source, operand_text, mnemonic, expected) in [
+        ("    .org $0800", "$0800", Some(".org"), 0x0800),
+        ("    sta $0200", "$0200", Some("sta"), 0x0200),
+        ("    .byte 42", "42", Some(".byte"), 42),
+        ("    .byte -1", "-1", Some(".byte"), -1),
+        ("    lda #$42", "#$42", Some("lda"), 0x42),
+    ] {
+        let evaluation =
+            evaluate_native_prvm_expression_for_test(source, operand_text, mnemonic, &ctx)
+                .expect("native PRVM expression should evaluate");
+        assert_eq!(
+            evaluation,
+            NativePrvmHostExpressionEvaluation::Concrete { value: expected },
+            "unexpected native PRVM expression evaluation for {operand_text}"
+        );
+    }
+}
+
+#[test]
+fn vm_runtime_mos6502_native_prvm_bridge_uses_symbol_and_current_pc_callbacks() {
+    let mut ctx = TestAssemblerContext::new();
+    ctx.addr = 0x0800;
+    ctx.values.insert("done".to_string(), 0x0805);
+    ctx.finalized.insert("done".to_string(), true);
+
+    for (source, operand_text, mnemonic, expected) in [
+        ("    jmp done", "done", Some("jmp"), 0x0805),
+        ("    .word $", "$", Some(".word"), 0x0800),
+    ] {
+        let evaluation =
+            evaluate_native_prvm_expression_for_test(source, operand_text, mnemonic, &ctx)
+                .expect("native PRVM expression should evaluate through callbacks");
+        assert_eq!(
+            evaluation,
+            NativePrvmHostExpressionEvaluation::Concrete { value: expected },
+            "unexpected native PRVM callback evaluation for {operand_text}"
+        );
+    }
+}
+
+#[test]
+fn vm_runtime_mos6502_native_prvm_bridge_defers_then_diagnoses_unresolved_symbols() {
+    let mut pass1_ctx = TestAssemblerContext::new();
+    pass1_ctx.pass = 1;
+    let pass1 =
+        evaluate_native_prvm_expression_for_test("    jmp done", "done", Some("jmp"), &pass1_ctx)
+            .expect("pass 1 unresolved symbol should defer");
+    assert_eq!(
+        pass1,
+        NativePrvmHostExpressionEvaluation::DeferredUnresolved {
+            message: "expression depends on unresolved symbols".to_string(),
+        }
+    );
+
+    let mut pass2_ctx = TestAssemblerContext::new();
+    pass2_ctx.pass = 2;
+    let pass2 =
+        evaluate_native_prvm_expression_for_test("    jmp done", "done", Some("jmp"), &pass2_ctx)
+            .expect_err("pass 2 unresolved symbol should diagnose");
+    match pass2 {
+        NativePrvmBridgeError::ExpressionEvaluation { message, .. } => {
+            assert!(
+                message.to_ascii_lowercase().contains("symbol")
+                    || message.to_ascii_lowercase().contains("label"),
+                "unexpected unresolved-symbol diagnostic: {message}"
+            );
+        }
+        other => panic!("unexpected native PRVM bridge error: {other:?}"),
+    }
 }
 
 #[test]
@@ -5027,7 +5182,8 @@ fn native6502_abi_entrypoint_ordinals_are_stable() {
     assert_eq!(NATIVE_6502_ENTRYPOINT_PARSE_LINE_V1, 4);
     assert_eq!(NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1, 5);
     assert_eq!(NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1, 6);
-    assert_eq!(NATIVE_6502_ENTRYPOINT_COUNT_V1, 7);
+    assert_eq!(NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1, 7);
+    assert_eq!(NATIVE_6502_ENTRYPOINT_COUNT_V1, 8);
 
     let ordinals = [
         NATIVE_6502_ENTRYPOINT_INIT_V1,
@@ -5037,9 +5193,80 @@ fn native6502_abi_entrypoint_ordinals_are_stable() {
         NATIVE_6502_ENTRYPOINT_PARSE_LINE_V1,
         NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1,
         NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1,
+        NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1,
     ];
     for (expected, ordinal) in ordinals.into_iter().enumerate() {
         assert_eq!(ordinal as usize, expected);
+    }
+}
+
+#[test]
+fn vm_runtime_mos6502_native6502_harness_evaluates_expression_via_active_abi() {
+    let registry = native6502_m6502_registry();
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("package bytes build");
+    let mut harness = Native6502Harness::new();
+    let mut control_block = Native6502ControlBlockV1::new_v1();
+
+    let init = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_INIT_V1,
+        Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, NATIVE_6502_STATUS_OK_V1);
+
+    let load = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        Native6502HarnessRequest::LoadPackage {
+            package_bytes: package_bytes.as_slice(),
+        },
+    );
+    assert_eq!(
+        load.status_code, NATIVE_6502_STATUS_OK_V1,
+        "{:?}",
+        load.output
+    );
+
+    let set_pipeline = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        Native6502HarnessRequest::SetPipeline {
+            cpu_id: "m6502",
+            dialect_override: None,
+        },
+    );
+    assert_eq!(set_pipeline.status_code, NATIVE_6502_STATUS_OK_V1);
+
+    let source_line = "    lda #$42";
+    let operand_text = "#$42";
+    let operand_start_col = source_line.find(operand_text).expect("operand text") as u16 + 1;
+    let operand_end_col = operand_start_col + operand_text.len() as u16;
+    let assembler_ctx = TestAssemblerContext::new();
+    let eval = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1,
+        Native6502HarnessRequest::EvaluateExpression {
+            source_line,
+            line_num: 1,
+            operand_start_col,
+            operand_end_col,
+            mnemonic: Some("lda"),
+            assembler_ctx: &assembler_ctx,
+        },
+    );
+
+    assert_eq!(
+        eval.status_code, NATIVE_6502_STATUS_OK_V1,
+        "{:?}",
+        eval.output
+    );
+    assert_eq!(control_block.output_len(), "VALUE 66".len() as u16);
+    match eval.output {
+        Native6502HarnessOutput::ExpressionEvaluation(
+            NativePrvmHostExpressionEvaluation::Concrete { value },
+        ) => assert_eq!(value, 0x42),
+        other => panic!("unexpected expression evaluation output: {other:?}"),
     }
 }
 

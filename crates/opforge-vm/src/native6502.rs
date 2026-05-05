@@ -13,14 +13,23 @@ use crate::native6502_abi::{
     NATIVE_6502_CB_REQUEST_ID_OFFSET, NATIVE_6502_CB_STATUS_CODE_OFFSET,
     NATIVE_6502_CB_STRUCT_SIZE_OFFSET, NATIVE_6502_CONTROL_BLOCK_SIZE_V1,
     NATIVE_6502_ENTRYPOINT_COUNT_V1, NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1,
-    NATIVE_6502_ENTRYPOINT_INIT_V1, NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1,
-    NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1, NATIVE_6502_ENTRYPOINT_PARSE_LINE_V1,
-    NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1, NATIVE_6502_ENTRYPOINT_TOKENIZE_LINE_V1,
+    NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1, NATIVE_6502_ENTRYPOINT_INIT_V1,
+    NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1, NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+    NATIVE_6502_ENTRYPOINT_PARSE_LINE_V1, NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+    NATIVE_6502_ENTRYPOINT_TOKENIZE_LINE_V1,
+};
+use crate::native_prvm::{
+    NativePrvmExprRequest, NativePrvmHostExpressionBridge, NativePrvmHostExpressionEvaluation,
+    NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE,
 };
 use crate::portable_contract::{PortableLineAst, PortableToken};
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_portable_types::PortableInstructionRequest;
+use crate::vm_opasm_parse::tokenize_parser_tokens_with_model;
+use opcore::tokenizer::Span;
+use registry::family::AssemblerContext;
 use registry::registry::VmEncodeCandidate;
+use registry::syntax::register_checker_none;
 
 pub const NATIVE_6502_STATUS_OK_V1: u16 = 0;
 pub const NATIVE_6502_STATUS_BAD_CONTROL_BLOCK_V1: u16 = 1;
@@ -175,6 +184,14 @@ pub enum Native6502HarnessRequest<'a> {
         mnemonic: &'a str,
         candidates: &'a [VmEncodeCandidate],
     },
+    EvaluateExpression {
+        source_line: &'a str,
+        line_num: u32,
+        operand_start_col: u16,
+        operand_end_col: u16,
+        mnemonic: Option<&'a str>,
+        assembler_ctx: &'a dyn AssemblerContext,
+    },
     LastError,
 }
 
@@ -184,6 +201,7 @@ pub enum Native6502HarnessOutput {
     Tokens(Vec<PortableToken>),
     LineAst(PortableLineAst),
     EncodedBytes(Option<Vec<u8>>),
+    ExpressionEvaluation(NativePrvmHostExpressionEvaluation),
     ErrorMessage(String),
 }
 
@@ -399,6 +417,32 @@ impl Native6502Harness {
                     let output_len = bytes.as_ref().map(|value| value.len()).unwrap_or(0usize);
                     (output_len, Native6502HarnessOutput::EncodedBytes(bytes))
                 }),
+                (
+                    NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1,
+                    Native6502HarnessRequest::EvaluateExpression {
+                        source_line,
+                        line_num,
+                        operand_start_col,
+                        operand_end_col,
+                        mnemonic,
+                        assembler_ctx,
+                    },
+                ) => self
+                    .evaluate_expression(
+                        source_line,
+                        line_num,
+                        operand_start_col,
+                        operand_end_col,
+                        mnemonic,
+                        assembler_ctx,
+                    )
+                    .map(|evaluation| {
+                        let output_len = encode_expression_evaluation_output(&evaluation).len();
+                        (
+                            output_len,
+                            Native6502HarnessOutput::ExpressionEvaluation(evaluation),
+                        )
+                    }),
                 (NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1, Native6502HarnessRequest::LastError) => {
                     Ok((
                         self.last_error.len(),
@@ -532,6 +576,67 @@ impl Native6502Harness {
             .map_err(runtime_error_to_string)
     }
 
+    fn evaluate_expression(
+        &self,
+        source_line: &str,
+        line_num: u32,
+        operand_start_col: u16,
+        operand_end_col: u16,
+        mnemonic: Option<&str>,
+        assembler_ctx: &dyn AssemblerContext,
+    ) -> Result<NativePrvmHostExpressionEvaluation, String> {
+        if operand_start_col == 0 || operand_end_col < operand_start_col {
+            return Err("native expression request has invalid operand span".to_string());
+        }
+        let (model, active_cpu, dialect_override) = self.require_active_model()?;
+        let register_checker = register_checker_none();
+        let (tokens, _, _) = tokenize_parser_tokens_with_model(
+            model,
+            active_cpu,
+            dialect_override,
+            source_line,
+            line_num,
+            &register_checker,
+        )
+        .map_err(|err| err.message)?;
+        let operand_start_col = operand_start_col as usize;
+        let operand_end_col = operand_end_col as usize;
+        let start_token = tokens
+            .iter()
+            .position(|token| token.span.col_start >= operand_start_col)
+            .ok_or_else(|| "native expression request operand start token not found".to_string())?;
+        let end_token = tokens
+            .iter()
+            .position(|token| token.span.col_start >= operand_end_col)
+            .unwrap_or(tokens.len());
+        let mut bridge = NativePrvmHostExpressionBridge::from_source_line(
+            model,
+            active_cpu,
+            dialect_override,
+            source_line,
+            line_num,
+            &register_checker,
+            mnemonic,
+        )
+        .map_err(|err| err.message)?;
+        let request = NativePrvmExprRequest {
+            operand_index: 0,
+            expr_slot_index: 0,
+            start_token: start_token as u32,
+            end_token: end_token as u32,
+            boundary_span: Span {
+                line: line_num,
+                col_start: operand_start_col,
+                col_end: operand_end_col,
+            },
+        };
+        let mut result_slot = [0u8; NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE];
+        bridge
+            .handle_and_evaluate_expression_request(request, &mut result_slot, assembler_ctx)
+            .map(|result| result.evaluation)
+            .map_err(|err| format!("native expression evaluation failed: {err:?}"))
+    }
+
     fn require_active_model(
         &self,
     ) -> Result<(&HierarchyExecutionModel, &str, Option<&str>), String> {
@@ -608,6 +713,11 @@ fn request_input_len(request: &Native6502HarnessRequest<'_>) -> Result<u16, Stri
             mnemonic,
             candidates,
         } => mnemonic.len() + candidates.len(),
+        Native6502HarnessRequest::EvaluateExpression {
+            source_line,
+            mnemonic,
+            ..
+        } => source_line.len() + mnemonic.map(|value| value.len()).unwrap_or_default(),
         Native6502HarnessRequest::LastError => 0usize,
     };
     u16::try_from(len)
@@ -726,6 +836,9 @@ fn decode_wire_request(
                 mnemonic,
                 candidates,
             })
+        }
+        NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1 => {
+            Err("native evaluate_expression wire payload requires assembler context".to_string())
         }
         NATIVE_6502_ENTRYPOINT_LAST_ERROR_V1 => {
             if !payload.is_empty() {
@@ -867,7 +980,21 @@ fn encode_wire_output_payload(output: &Native6502HarnessOutput) -> Vec<u8> {
         Native6502HarnessOutput::LineAst(ast) => format!("{ast:?}").into_bytes(),
         Native6502HarnessOutput::EncodedBytes(Some(bytes)) => bytes.clone(),
         Native6502HarnessOutput::EncodedBytes(None) => Vec::new(),
+        Native6502HarnessOutput::ExpressionEvaluation(evaluation) => {
+            encode_expression_evaluation_output(evaluation)
+        }
         Native6502HarnessOutput::ErrorMessage(message) => message.as_bytes().to_vec(),
+    }
+}
+
+fn encode_expression_evaluation_output(evaluation: &NativePrvmHostExpressionEvaluation) -> Vec<u8> {
+    match evaluation {
+        NativePrvmHostExpressionEvaluation::Concrete { value } => {
+            format!("VALUE {value}").into_bytes()
+        }
+        NativePrvmHostExpressionEvaluation::DeferredUnresolved { message } => {
+            format!("DEFERRED {message}").into_bytes()
+        }
     }
 }
 

@@ -9669,6 +9669,8 @@ fn motorola68020_prvm_line_iterator_example_exposes_whole_file_iteration_surface
     assert!(source.contains("prvmIteratorLineIsBlank"));
     assert!(source.contains("prvmIteratorBuildRouteFrame"));
     assert!(source.contains("prvmIteratorRouteEntryPtr"));
+    assert!(source.contains("ADDQ.L #1, D7"));
+    assert!(source.contains("MOVE.L D7, D3"));
     assert!(source.contains(".long prvm_route_line_68000"));
     assert!(!source.contains("prvm_run_68000"));
     assert!(!source.contains("ParseOperandExpr"));
@@ -9820,6 +9822,8 @@ fn motorola68020_prvm_line_iterator_smoke_example_assembles_with_native_call_sur
     assert!(listing.contains("PRVM_ITER_FRAME_SIZE"));
     assert!(listing.contains("OPFORGE-PRVM-ITER smoke OK"));
     assert!(listing.contains("OPFORGE-PRVM-ITER smoke FAIL routed"));
+    assert!(listing.contains("OPFORGE-PRVM-ITER smoke FAIL fail-fast total"));
+    assert!(listing.contains("unsupportedProcessorText"));
     assert!(listing.contains("start: NOP"));
 
     let payload_path = example_output_payload_path(&out_dir, "prvm_line_iterator_smoke", "hunk");
@@ -9835,6 +9839,12 @@ fn motorola68020_prvm_line_iterator_smoke_example_assembles_with_native_call_sur
             .windows("OPFORGE-PRVM-ITER smoke FAIL total".len())
             .any(|window| window == b"OPFORGE-PRVM-ITER smoke FAIL total"),
         "expected iterator total-line validation in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("OPFORGE-PRVM-ITER smoke FAIL fail-fast total".len())
+            .any(|window| window == b"OPFORGE-PRVM-ITER smoke FAIL fail-fast total"),
+        "expected iterator fail-fast logical total validation in Hunk payload"
     );
     assert!(
         payload

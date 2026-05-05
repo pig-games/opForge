@@ -17,6 +17,7 @@ PRVM_ITER_ABI_VERSION_V1        = 1
 PRVM_TOKEN_RECORD_SIZE          = 20
 PRVM_PARSER_CONTRACT_VERSION_V2 = 2
 PRVM_ITER_STATUS_OK             = 0
+PRVM_STATUS_UNSUPPORTED_ROUTE   = 100
 PRVM_DEBUG_PROGRAM_LEN          = 59
 
         .section entry, kind=code
@@ -57,6 +58,27 @@ prvmIterSmokeHaveDos:
         TST.L D0
         BNE.S prvmIterSmokeReportFailure
 
+        BSR.W prvmIterSmokeBuildFrame
+        LEA iteratorFrame(PC), A0
+        MOVE.L #40, 24(A0)
+        LEA unsupportedProcessorText(PC), A1
+        MOVE.L A1, 8(A0)
+        MOVE.L #3, 12(A0)
+        LEA iteratorFrame(PC), A0
+        MOVE.L #PRVM_ITER_FRAME_SIZE, D0
+        MOVEA.L prvmIteratorEntryPtr(PC), A1
+        JSR (A1)
+
+        LEA iteratorStatus(PC), A0
+        MOVE.L D0, 0(A0)
+        MOVE.L D1, 4(A0)
+        MOVE.L D2, 8(A0)
+        MOVE.L D3, 12(A0)
+
+        BSR.W prvmIterSmokeValidateFailFastResult
+        TST.L D0
+        BNE.S prvmIterSmokeReportFailure
+
         LEA successText(PC), A1
         MOVE.L A1, D1
         BSR.W prvmIterSmokePutStr
@@ -92,7 +114,7 @@ prvmIterSmokeBuildFrame:
         LEA kindStatementText(PC), A1
         MOVE.L A1, 16(A0)
         MOVE.L #9, 20(A0)
-        MOVE.L #1, 24(A0)
+        MOVE.L #7, 24(A0)
         LEA sourceText(PC), A1
         MOVE.L A1, 28(A0)
         MOVE.L #21, 32(A0)
@@ -140,6 +162,19 @@ prvmIterSmokeValidateResult:
         CLR.L D0
         RTS
 
+prvmIterSmokeValidateFailFastResult:
+        LEA iteratorStatus(PC), A0
+        CMPI.L #PRVM_STATUS_UNSUPPORTED_ROUTE, 0(A0)
+        BNE.S prvmIterSmokeInvalidFailFastStatus
+        TST.L 4(A0)
+        BNE.S prvmIterSmokeInvalidFailFastRouted
+        CMPI.L #40, 8(A0)
+        BNE.S prvmIterSmokeInvalidFailFastFailLine
+        CMPI.L #1, 12(A0)
+        BNE.S prvmIterSmokeInvalidFailFastTotal
+        CLR.L D0
+        RTS
+
 prvmIterSmokeInvalidStatus:
         LEA failureStatusText(PC), A1
         MOVEQ #1, D0
@@ -160,12 +195,34 @@ prvmIterSmokeInvalidTotal:
         MOVEQ #1, D0
         RTS
 
+prvmIterSmokeInvalidFailFastStatus:
+        LEA failureFailFastStatusText(PC), A1
+        MOVEQ #1, D0
+        RTS
+
+prvmIterSmokeInvalidFailFastRouted:
+        LEA failureFailFastRoutedText(PC), A1
+        MOVEQ #1, D0
+        RTS
+
+prvmIterSmokeInvalidFailFastFailLine:
+        LEA failureFailFastFailLineText(PC), A1
+        MOVEQ #1, D0
+        RTS
+
+prvmIterSmokeInvalidFailFastTotal:
+        LEA failureFailFastTotalText(PC), A1
+        MOVEQ #1, D0
+        RTS
+
 dosName:
         .byte "dos.library",0
 processorAsmText:
         .byte "asm"
 kindStatementText:
         .byte "statement"
+unsupportedProcessorText:
+        .byte "bad"
 successText:
         .byte "OPFORGE-PRVM-ITER smoke OK",10,0
 failureStatusText:
@@ -176,6 +233,14 @@ failureFailLineText:
         .byte "OPFORGE-PRVM-ITER smoke FAIL fail-line",10,0
 failureTotalText:
         .byte "OPFORGE-PRVM-ITER smoke FAIL total",10,0
+failureFailFastStatusText:
+        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast status",10,0
+failureFailFastRoutedText:
+        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast routed",10,0
+failureFailFastFailLineText:
+        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast line",10,0
+failureFailFastTotalText:
+        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast total",10,0
 
 sourceText:
         .byte "start: NOP",10,"start: NOP"

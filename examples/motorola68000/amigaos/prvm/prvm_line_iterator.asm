@@ -131,6 +131,7 @@ prvmIteratorNextLine:
         MOVE.L D3, D0
         BSR.W prvmIteratorTrimCr
         MOVE.L D0, D3
+        ADDQ.L #1, D7
         MOVEA.L A2, A0
         MOVE.L D3, D0
         BSR.W prvmIteratorLineIsBlank
@@ -157,14 +158,13 @@ prvmIteratorSuccess:
         MOVE.L #PRVM_ITER_STATUS_OK, D0
         MOVE.L D5, D1
         CLR.L D2
-        MOVE.L D6, D3
-        SUBQ.L #1, D3
+        MOVE.L D7, D3
         BRA.S prvmIteratorDone
 
 prvmIteratorFailFast:
         MOVE.L D5, D1
         MOVE.L D6, D2
-        MOVE.L D6, D3
+        MOVE.L D7, D3
         BRA.S prvmIteratorDone
 
 prvmIteratorInvalidArgument:

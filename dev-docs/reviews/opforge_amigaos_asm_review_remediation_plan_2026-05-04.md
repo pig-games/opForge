@@ -137,7 +137,7 @@ past intended native runtime bounds under malformed input.
     reference refresh; `scripts/workflow/run_rust_quality_gate.sh` passed;
     `make workflow-gate` passed.
 
-- [ ] Item 4: Return logical PRVM line counts independently of absolute line numbers
+- [x] Item 4: Return logical PRVM line counts independently of absolute line numbers
   - Source requirement or finding IDs: RVW-2026-05-04-003; expected to fully
     close the finding.
   - Expected files: `examples/motorola68000/amigaos/prvm/prvm_line_iterator.asm`,
@@ -157,6 +157,16 @@ past intended native runtime bounds under malformed input.
   - Definition of done: non-1 start-line iteration returns correct logical line
     totals without changing routed line numbers, focused regressions pass, and
     the full quality gates pass.
+  - Completion evidence: `cargo test --manifest-path crates/opforge-asm/Cargo.toml
+    motorola68020_prvm_line_iterator -- --nocapture` passed with 7 tests;
+    `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test --manifest-path
+    crates/opforge-asm/Cargo.toml external_fs_uae_hunk_smoke -- --nocapture`
+    passed under real FS-UAE and completed `prvm_line_iterator_smoke`;
+    `opForge_UPDATE_REFERENCE=1 cargo test --manifest-path crates/opforge-asm/Cargo.toml
+    examples_match_reference_outputs -- --nocapture` passed with no checked-in
+    reference changes for this slice.
 
 - [ ] Item 5: Reject oversized external package files before `load_package`
   - Source requirement or finding IDs: RVW-2026-05-04-004; expected to fully

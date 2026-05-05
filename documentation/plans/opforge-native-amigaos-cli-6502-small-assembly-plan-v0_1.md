@@ -181,7 +181,7 @@ Native processor ownership should be:
   - Commit outcome: one commit that gives the native CLI pass-local state for CPU id, origin/current PC, source line records, statement records, label table seed, and flat image bytes.
   - Definition of done: the native CLI can initialize, clear, and report an assembly session without changing tokenizer/parser results or pretending to encode instructions.
 
-- [ ] Item 3: Stabilize the native VM service envelope for parse and encode
+- [x] Item 3: Stabilize the native VM service envelope for parse and encode
   - Source requirement or finding IDs: SR-VM-ENVELOPE, SR-RUST-PARITY
   - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`, `examples/motorola68000/amigaos/tkpkg/*` or shared native ABI includes if needed, `crates/opforge-vm/src/native6502_abi.rs`, `crates/opforge-vm/src/native6502.rs`, `crates/opforge-asm/src/tests.rs`.
   - Full quality gates: `cargo test -p vm native6502_ -- --nocapture`; `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.

@@ -1657,6 +1657,8 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
             "tokvm_cli_harness.asm"
                 | "tokvm_test_input.asm"
                 | "tokvm_tokenizer_vm.asm"
+                | "opforge_cli.asm"
+                | "tkpkg_debug_cli.asm"
                 | "tkpkg_entry.asm"
                 | "tkpkg_abi.asm"
                 | "tkpkg_buffers.asm"
@@ -9938,6 +9940,10 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforge_native_cli_init_module_use_state"));
     assert!(source.contains("opforge_native_cli_clear_bytes"));
     assert!(source.contains("opforge_native_cli_prepare_pipeline_request"));
+    assert!(source.contains("opforge_native_cli_prepare_line_service_request"));
+    assert!(source.contains("opforge_native_cli_dispatch_parse_line_envelope"));
+    assert!(source.contains("opforge_native_cli_prepare_encode_instruction_request"));
+    assert!(source.contains("opforge_native_cli_dispatch_encode_instruction_envelope"));
     assert!(source.contains("opforge_native_cli_tokenize_file"));
     assert!(source.contains("opforge_native_cli_tokenize_file_at_path"));
     assert!(source.contains("opforge_native_cli_tokenize_current_line"));
@@ -9954,6 +9960,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforge_native_cli_init_assembly_session"));
     assert!(source.contains("opforgeNativeCliEmitAssemblySessionSummary"));
     assert!(source.contains("nativeCliStmtCount"));
+    assert!(source.contains("nativeCliLineRequestLen"));
+    assert!(source.contains("nativeCliEncodeRequestLen"));
     assert!(source.contains("nativeCliSourceRecordCount"));
     assert!(source.contains("nativeCliLabelCount"));
     assert!(source.contains("nativeCliImageByteCount"));
@@ -10056,7 +10064,39 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "BSR.W opforge_native_cli_emit_include_line_record",
             "opforgeNativeCliTokenizeCurrentLineNoIncludeRecord:",
             "BSR.W opforgeNativeCliRecordSourceLine",
-            "LEA lastErrorBuffer, A2",
+            "BSR.W opforge_native_cli_prepare_line_service_request",
+            "MOVE.W nativeCliLineRequestLen, D1",
+            "MOVEQ #ENTRY_ORD_TOKENIZE_LINE, D0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_dispatch_parse_line_envelope:",
+            "BSR.W opforge_native_cli_prepare_line_service_request",
+            "MOVE.W nativeCliLineRequestLen, D1",
+            "MOVEQ #ENTRY_ORD_PARSE_LINE, D0",
+            "JSR tkpkg_service_dispatch_v1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_prepare_encode_instruction_request:",
+            "MOVE.L nativeCliStmtMnemLen, D0",
+            "MOVEA.L nativeCliStmtMnemStart, A1",
+            "BSR.W opforge_native_cli_copy_bytes",
+            "MOVE.W D0, nativeCliEncodeRequestLen",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_dispatch_encode_instruction_envelope:",
+            "BSR.W opforge_native_cli_prepare_encode_instruction_request",
+            "MOVE.W nativeCliEncodeRequestLen, D1",
+            "MOVEQ #ENTRY_ORD_ENCODE_INSTRUCTION, D0",
+            "JSR tkpkg_service_dispatch_v1",
         ]
     ));
     assert!(source_contains_in_order(
@@ -10437,12 +10477,18 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("nativeCliModulePathTable"));
     assert!(listing.contains("nativeCliAssemblySessionStart"));
     assert!(listing.contains("nativeCliSessionCpuName"));
+    assert!(listing.contains("nativeCliLineRequestLen"));
+    assert!(listing.contains("nativeCliEncodeRequestLen"));
     assert!(listing.contains("nativeCliSourceRecordCount"));
     assert!(listing.contains("nativeCliStmtLineTable"));
     assert!(listing.contains("nativeCliLabelNameTable"));
     assert!(listing.contains("nativeCliImageBuffer"));
     assert!(listing.contains("opforge_native_cli_stage_package"));
     assert!(listing.contains("opforge_native_cli_prepare_pipeline_request"));
+    assert!(listing.contains("opforge_native_cli_prepare_line_service_request"));
+    assert!(listing.contains("opforge_native_cli_dispatch_parse_line_envelope"));
+    assert!(listing.contains("opforge_native_cli_prepare_encode_instruction_request"));
+    assert!(listing.contains("opforge_native_cli_dispatch_encode_instruction_envelope"));
     assert!(listing.contains("opforge_native_cli_run"));
     assert!(listing.contains("STATUS tokenizer-ok"));
     assert!(listing.contains("STATUS parser-module-use-ok"));
@@ -12105,11 +12151,31 @@ fn motorola68020_tkpkg_native_abi_payloads_lock_preserved_wire_shapes() {
     assert!(tkpkg_source_contains(&source, "LAST_ERROR_REQUEST_LEN = 0"));
     assert!(tkpkg_source_contains(
         &source,
+        "PARSE_LINE_SAMPLE_LINE_NUM = 5"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "ENCODE_INSTRUCTION_SAMPLE_MNEM_LEN = 3"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "ENCODE_INSTRUCTION_SAMPLE_CAND_COUNT = 1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
         "wireSetPipelineExample:\n        .byte \"68020\",0,\"amigaos\""
     ));
     assert!(tkpkg_source_contains(
         &source,
         "wireTokenizeLineExample:\n        .byte 42,0,0,0\n        .byte \"move.b d0,d1\""
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "wireParseLineExample:\n        .byte 5,0,0,0\n        .byte \"start:  lda #$42\""
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "wireEncodeInstructionExample:\n        .byte 3,\"LDA\"\n        .byte 1\n        .byte 9,\"immediate\"\n        .byte 1\n        .byte 1,$42"
     ));
 }
 
@@ -12702,9 +12768,39 @@ fn motorola68020_tkpkg_native_wire_roundtrip_preserves_subset_examples() {
         [42u8, 0, 0, 0, b'm', b'o', b'v', b'e', b'.', b'b', b' ', b'd', b'0', b',', b'd', b'1']
     );
 
+    let parse_payload = vm::native6502::encode_wire_line_payload(5, "start:  lda #$42");
+    assert_eq!(
+        parse_payload,
+        [
+            5u8, 0, 0, 0, b's', b't', b'a', b'r', b't', b':', b' ', b' ', b'l', b'd', b'a', b' ',
+            b'#', b'$', b'4', b'2',
+        ]
+    );
+
+    let encode_payload = vm::native6502::encode_wire_encode_instruction_payload(
+        "LDA",
+        &[registry::registry::VmEncodeCandidate {
+            mode_key: "immediate".to_string(),
+            operand_bytes: vec![vec![0x42]],
+        }],
+    )
+    .expect("encode instruction payload");
+    assert_eq!(
+        encode_payload,
+        [
+            3u8, b'L', b'D', b'A', 1, 9, b'i', b'm', b'm', b'e', b'd', b'i', b'a', b't', b'e', 1,
+            1, 0x42,
+        ]
+    );
+
     let empty_last_error_payload: Vec<u8> = Vec::new();
     assert!(empty_last_error_payload.is_empty());
     assert!(tkpkg_source_contains(&source, "wireContractMarker:"));
+    assert!(tkpkg_source_contains(&source, "wireParseLineExample:"));
+    assert!(tkpkg_source_contains(
+        &source,
+        "wireEncodeInstructionExample:"
+    ));
 }
 
 #[test]

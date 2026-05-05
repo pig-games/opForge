@@ -1,4 +1,4 @@
-; Shared tokenizer-only native ABI constants for the AmigaOS tkpkg scaffold.
+; Shared native VM service ABI constants for the AmigaOS tkpkg scaffold.
 
         .module tkpkg.amigaos.abi
         .cpu 68020
@@ -52,6 +52,12 @@ LAST_ERROR_REQUEST_LEN               = 0
 SET_PIPELINE_SAMPLE_CPU_LEN          = 5
 SET_PIPELINE_SAMPLE_DIALECT_LEN      = 7
 TOKENIZE_LINE_SAMPLE_LINE_NUM        = 42
+PARSE_LINE_SAMPLE_LINE_NUM           = 5
+ENCODE_INSTRUCTION_SAMPLE_MNEM_LEN   = 3
+ENCODE_INSTRUCTION_SAMPLE_CAND_COUNT = 1
+ENCODE_INSTRUCTION_SAMPLE_MODE_LEN   = 9
+ENCODE_INSTRUCTION_SAMPLE_OPER_COUNT = 1
+ENCODE_INSTRUCTION_SAMPLE_OPER_LEN   = 1
 
         .section data, kind=data
 
@@ -67,6 +73,17 @@ wireSetPipelineExample:
 wireTokenizeLineExample:
         .byte 42, 0, 0, 0
         .byte "move.b d0,d1"
+
+wireParseLineExample:
+        .byte 5, 0, 0, 0
+        .byte "start:  lda #$42"
+
+wireEncodeInstructionExample:
+        .byte 3, "LDA"
+        .byte 1
+        .byte 9, "immediate"
+        .byte 1
+        .byte 1, $42
 
         .endsection
         .endmodule

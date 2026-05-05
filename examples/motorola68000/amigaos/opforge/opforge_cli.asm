@@ -8,6 +8,7 @@
         .cpu 68020
         .use tkpkg.amigaos.abi (ENTRY_ORD_INIT, ENTRY_ORD_LOAD_PACKAGE)
         .use tkpkg.amigaos.abi (ENTRY_ORD_SET_PIPELINE, ENTRY_ORD_TOKENIZE_LINE)
+        .use tkpkg.amigaos.abi (ENTRY_ORD_PARSE_LINE, ENTRY_ORD_ENCODE_INSTRUCTION)
         .use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN, CB_OUTPUT_LEN, CB_STATUS_CODE)
         .use tkpkg.amigaos.buffers (controlBlockV1, lastErrorBuffer, packageStorage)
         .use tkpkg.amigaos.buffers (tokenRecordBuffer, tokenScratchBuffer)
@@ -559,13 +560,7 @@ opforgeNativeCliPreparePipelineHaveCpu:
         MOVEQ #0, D0
         RTS
 
-opforge_native_cli_tokenize_current_line:
-        TST.W nativeCliIncludeDepth
-        BEQ.S opforgeNativeCliTokenizeCurrentLineNoIncludeRecord
-        BSR.W opforge_native_cli_emit_include_line_record
-
-opforgeNativeCliTokenizeCurrentLineNoIncludeRecord:
-        BSR.W opforgeNativeCliRecordSourceLine
+opforge_native_cli_prepare_line_service_request:
         LEA lastErrorBuffer, A2
         MOVE.L nativeCliSourceLineNum, D2
         MOVE.B D2, (A2)+
@@ -578,11 +573,78 @@ opforgeNativeCliTokenizeCurrentLineNoIncludeRecord:
         LEA nativeCliSourceLine, A1
         MOVE.W nativeCliSourceLineLen, D0
         BSR.W opforge_native_cli_copy_bytes
+        MOVE.W nativeCliSourceLineLen, D1
+        ADDQ.W #4, D1
+        MOVE.W D1, nativeCliLineRequestLen
+        MOVEQ #0, D0
+        RTS
+
+opforge_native_cli_dispatch_parse_line_envelope:
+        BSR.W opforge_native_cli_prepare_line_service_request
+        TST.L D0
+        BNE.S opforgeNativeCliDispatchParseLineDone
+        LEA controlBlockV1, A0
+        MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0
+        MOVE.W nativeCliLineRequestLen, D1
+        BSR.W opforge_native_cli_write_input_window
+        MOVEQ #ENTRY_ORD_PARSE_LINE, D0
+        JSR tkpkg_service_dispatch_v1
+        BSR.W opforge_native_cli_read_status
+
+opforgeNativeCliDispatchParseLineDone:
+        RTS
+
+opforge_native_cli_prepare_encode_instruction_request:
+        LEA lastErrorBuffer, A2
+        MOVE.L nativeCliStmtMnemLen, D0
+        CMPI.L #255, D0
+        BHI.S opforgeNativeCliPrepareEncodeFail
+        MOVE.B D0, (A2)+
+        TST.L D0
+        BEQ.S opforgeNativeCliPrepareEncodeCandidateCount
+        MOVEA.L nativeCliStmtMnemStart, A1
+        BSR.W opforge_native_cli_copy_bytes
+
+opforgeNativeCliPrepareEncodeCandidateCount:
+        CLR.B (A2)+
+        ADDQ.W #2, D0
+        MOVE.W D0, nativeCliEncodeRequestLen
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliPrepareEncodeFail:
+        MOVEQ #1, D0
+        RTS
+
+opforge_native_cli_dispatch_encode_instruction_envelope:
+        BSR.W opforge_native_cli_prepare_encode_instruction_request
+        TST.L D0
+        BNE.S opforgeNativeCliDispatchEncodeDone
+        LEA controlBlockV1, A0
+        MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0
+        MOVE.W nativeCliEncodeRequestLen, D1
+        BSR.W opforge_native_cli_write_input_window
+        MOVEQ #ENTRY_ORD_ENCODE_INSTRUCTION, D0
+        JSR tkpkg_service_dispatch_v1
+        BSR.W opforge_native_cli_read_status
+
+opforgeNativeCliDispatchEncodeDone:
+        RTS
+
+opforge_native_cli_tokenize_current_line:
+        TST.W nativeCliIncludeDepth
+        BEQ.S opforgeNativeCliTokenizeCurrentLineNoIncludeRecord
+        BSR.W opforge_native_cli_emit_include_line_record
+
+opforgeNativeCliTokenizeCurrentLineNoIncludeRecord:
+        BSR.W opforgeNativeCliRecordSourceLine
+        BSR.W opforge_native_cli_prepare_line_service_request
+        TST.L D0
+        BNE.S opforgeNativeCliTokenizeCurrentLineFail
 
         LEA controlBlockV1, A0
         MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0
-        MOVE.W nativeCliSourceLineLen, D1
-        ADDQ.W #4, D1
+        MOVE.W nativeCliLineRequestLen, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_TOKENIZE_LINE, D0
         JSR tkpkg_service_dispatch_v1
@@ -3469,6 +3531,10 @@ nativeCliParserTailLen:
 nativeCliPackageLenActive:
         .res word,1
 nativeCliPipelineRequestLen:
+        .res word,1
+nativeCliLineRequestLen:
+        .res word,1
+nativeCliEncodeRequestLen:
         .res word,1
 nativeCliSourceLineNum:
         .res long,1

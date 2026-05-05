@@ -241,15 +241,15 @@ past intended native runtime bounds under malformed input.
 
 ## Milestones
 
-- [ ] Milestone 1: tkpkg package-boundary remediations complete and committed
+- [x] Milestone 1: tkpkg package-boundary remediations complete and committed
   for RVW-2026-05-04-006, RVW-2026-05-04-001, and RVW-2026-05-04-002.
-- [ ] Milestone 2: PRVM line-iterator accounting remediation complete and
+- [x] Milestone 2: PRVM line-iterator accounting remediation complete and
   committed for RVW-2026-05-04-003.
-- [ ] Milestone 3: native CLI external-package overflow remediation complete
+- [x] Milestone 3: native CLI external-package overflow remediation complete
   and committed for RVW-2026-05-04-004.
-- [ ] Milestone 4: tokvm harness signed-status remediation complete and
+- [x] Milestone 4: tokvm harness signed-status remediation complete and
   committed for RVW-2026-05-04-005.
-- [ ] Milestone 5: all six findings have closure evidence ready for the
+- [x] Milestone 5: all six findings have closure evidence ready for the
   finding-closure workflow.
 
 ## Blocking Rules

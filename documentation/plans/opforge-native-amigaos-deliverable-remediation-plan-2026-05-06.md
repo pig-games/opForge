@@ -76,15 +76,17 @@ behavior align with the intended Rust VM architecture.
     private PRVM shortcut, and focused tests prove the service dispatcher owns
     the live parse entrypoint.
 
-- [ ] Item 2: Introduce a native opasm runtime stage for selector request construction
+- [x] Item 2: Introduce a native opasm runtime stage for selector request construction
   - Source requirement or finding IDs: `RVW-2026-05-06-002`; expected to
     partially close the finding by moving selector request construction and
-    supported-subset policy out of the CLI.
+    supported-subset policy for the initial fixed native subset out of the CLI;
+    package-metadata-driven generalization remains deferred to Item 3.
   - Expected files: a new native runtime module subtree under
     `native/motorola68000/amigaos/` for opasm-owned selector staging,
     `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm` only for the
-    narrow integration hook that calls the new runtime stage, and focused
-    coverage in `crates/opforge-asm/src/tests.rs`.
+    narrow integration hook that calls the new runtime stage and pre-resolves
+    known label operands to fixed hex text before staging, and focused coverage
+    in `crates/opforge-asm/src/tests.rs` and `crates/opforge-asm/src/fs_uae_smoke.rs`.
   - Full quality gates: focused `cargo test -p asm motorola68020_opforge_native_cli_
     -- --nocapture`, focused `cargo test -p asm motorola68020_prvm_ --
     --nocapture`, focused `cargo test -p asm motorola68000_family_example_programs_assemble_in_reference_workflow -- --nocapture`, plus
@@ -93,12 +95,13 @@ behavior align with the intended Rust VM architecture.
     Reviewer` with `AGENTS.md`, this plan, the Item 2 slice summary, changed
     files, and validation output; require `PASS`.
   - Commit outcome: exactly one commit that adds a native opasm runtime stage
-    consuming PRVM statement and operand results plus package metadata to build
-    selector and encode requests outside the CLI.
+    consuming CLI-staged statement and operand text for the initial supported
+    subset to build selector and encode requests outside the CLI; package
+    metadata consumption remains part of the later full cutover.
   - Definition of done: selector request construction, mnemonic acceptance
-    policy, and local PC-size advancement policy move into an opasm-owned native
-    runtime surface, and the CLI no longer contains the logic that decides the
-    supported instruction subset.
+    policy, and local PC-size advancement policy for the fixed initial subset
+    move into an opasm-owned native runtime surface, while the CLI retains only
+    boundary duties needed for this slice such as known-label pre-resolution.
 
 - [ ] Item 3: Cut the CLI over to the native runtime stage and delete CLI-owned selector logic
   - Source requirement or finding IDs: `RVW-2026-05-06-002`; expected to fully

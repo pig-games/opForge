@@ -17,6 +17,13 @@
         .use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
         .use tkpkg.amigaos.service (tkpkg_service_dispatch_v1)
         .use opcore.amigaos.expr_bridge (opcore_expr_eval_operand_v1)
+        .use opasm.amigaos.selector_stage (opasm_selector_stage_build_encode_request_v1)
+        .use opasm.amigaos.selector_stage (opasm_selector_stage_instruction_size_v1)
+        .use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_OK)
+        .use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_NO_OUTPUT)
+        .use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC)
+        .use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS)
+        .use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_OPERAND_ERROR)
 
 SysBase                         = 4
 
@@ -1169,7 +1176,11 @@ opforgeNativeCliStoreStatementOperandText:
         LEA nativeCliStmtOperandNameTable.L, A1
         ADDA.L D3, A1
         CLR.B (A1)
-        MOVE.L nativeCliStmtMnemEnd, D0
+        MOVE.L nativeCliStmtMnemStart, D0
+        BEQ.S opforgeNativeCliStoreStatementDone
+        MOVE.L nativeCliStmtMnemLen, D2
+        BEQ.S opforgeNativeCliStoreStatementDone
+        ADD.L D2, D0
         BEQ.S opforgeNativeCliStoreStatementDone
         SUBQ.L #1, D0
         MOVEQ #0, D1
@@ -2913,11 +2924,15 @@ opforgeNativeCliPassTwoLoop:
         MOVE.W nativeCliStmtCount.L, D0
         CMP.W D0, D7
         BHS.S opforgeNativeCliPassTwoOk
+        TST.W nativeCliBinRequested.L
+        BEQ.S opforgeNativeCliPassTwoAdvanceOnly
         MOVEQ #0, D0
         MOVE.W D7, D0
         BSR.W opforgeNativeCliPassTwoEmitImageBytes
         TST.L D0
         BNE.S opforgeNativeCliPassTwoReturn
+
+opforgeNativeCliPassTwoAdvanceOnly:
         MOVEQ #0, D0
         MOVE.W D7, D0
         BSR.W opforgeNativeCliPassAdvancePc
@@ -3092,7 +3107,7 @@ opforgeNativeCliPassTwoEmitReturn:
         RTS
 
 opforgeNativeCliBuildEncodeRequestForStatement:
-        MOVEM.L D1-D7/A0-A4, -(SP)
+        MOVEM.L D1-D7/A0-A5, -(SP)
         CLR.W nativeCliEncodeRequestLen.L
         MOVE.W D6, D7
         MOVEQ #0, D0
@@ -3114,96 +3129,127 @@ opforgeNativeCliBuildEncodeRequestForStatement:
 
 opforgeNativeCliBuildEncodeHaveMlen:
         BEQ.W opforgeNativeCliBuildEncodeNoOutput
+        MOVEQ #0, D1
+        MOVE.W D7, D1
+        ADD.W D1, D1
+        LEA nativeCliStmtOperandLenTable.L, A1
+        MOVE.W 0(A1,D1.L), D1
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        LSL.L #6, D0
+        LEA nativeCliStmtOperandNameTable.L, A1
+        ADDA.L D0, A1
+        MOVEA.L A1, A5
+        MOVE.W D1, D5
+        BSR.W opforgeNativeCliMaybeResolveLabelOperand
         MOVEA.L A4, A0
-        MOVE.L D6, D0
-        LEA ldaMnemonicText, A1
-        MOVEQ #3, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.S opforgeNativeCliBuildEncodeImmediate
-        MOVEA.L A4, A0
-        MOVE.L D6, D0
-        LEA staMnemonicText, A1
-        MOVEQ #3, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.S opforgeNativeCliBuildEncodeAbsolute
-        MOVEA.L A4, A0
-        MOVE.L D6, D0
-        LEA jmpMnemonicText, A1
-        MOVEQ #3, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.S opforgeNativeCliBuildEncodeAbsolute
+        MOVE.W D6, D0
+        LEA nativeCliLabelNameTable.L, A2
+        LEA nativeCliLabelValueTable.L, A3
+        MOVE.L #nativeCliLabelNameTable, D3
+        MOVE.L #nativeCliLabelValueTable, D4
+        MOVEQ #0, D2
+        MOVE.W nativeCliLabelCount.L, D2
+        LEA lastErrorBuffer, A4
+        JSR opasm_selector_stage_build_encode_request_v1
+        CMPI.L #OPASM_SELECTOR_STATUS_OK, D0
+        BEQ.S opforgeNativeCliBuildEncodeStageOk
+        CMPI.L #OPASM_SELECTOR_STATUS_NO_OUTPUT, D0
+        BEQ.S opforgeNativeCliBuildEncodeNoOutput
+        CMPI.L #OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC, D0
+        BEQ.W opforgeNativeCliBuildEncodeUnknownMnemonic
+        CMPI.L #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, D0
+        BEQ.W opforgeNativeCliBuildEncodeUnsupportedAddressing
+        CMPI.L #OPASM_SELECTOR_STATUS_OPERAND_ERROR, D0
+        BEQ.W opforgeNativeCliBuildEncodeOperandError
+        BRA.W opforgeNativeCliBuildEncodeFail
+
+opforgeNativeCliBuildEncodeStageOk:
+        MOVE.W D1, nativeCliEncodeRequestLen.L
+        MOVEQ #0, D0
+        BRA.W opforgeNativeCliBuildEncodeReturn
+
+opforgeNativeCliBuildEncodeNoOutput:
+        MOVEQ #0, D0
+        BRA.W opforgeNativeCliBuildEncodeReturn
+
+opforgeNativeCliBuildEncodeUnknownMnemonic:
         MOVE.L #nativeUnknownMnemonicText, D1
         BSR.W opforge_native_cli_put_str
         BRA.W opforgeNativeCliBuildEncodeFail
 
-opforgeNativeCliBuildEncodeImmediate:
-        BSR.W opforgeNativeCliStatementOperandHasImmediatePrefix
-        TST.L D0
-        BNE.S opforgeNativeCliBuildEncodeImmediateOk
+opforgeNativeCliBuildEncodeUnsupportedAddressing:
         MOVE.L #nativeUnsupportedAddressingText, D1
         BSR.W opforge_native_cli_put_str
         BRA.W opforgeNativeCliBuildEncodeFail
 
-opforgeNativeCliBuildEncodeImmediateOk:
-        MOVEQ #1, D5
-        LEA immediateModeText, A3
-        MOVEQ #9, D4
-        BSR.W opforgeNativeCliReadOperandValueForStatement
-        TST.L D0
-        BNE.W opforgeNativeCliBuildEncodeFail
-        BRA.S opforgeNativeCliBuildEncodePayload
-
-opforgeNativeCliBuildEncodeAbsolute:
-        MOVEQ #2, D5
-        LEA absoluteModeText, A3
-        MOVEQ #8, D4
-        BSR.W opforgeNativeCliReadOperandValueForStatement
-        TST.L D0
-        BNE.W opforgeNativeCliBuildEncodeFail
-
-opforgeNativeCliBuildEncodePayload:
-        LEA lastErrorBuffer, A2
-        MOVE.B D6, (A2)+
-        MOVEA.L A4, A0
-        MOVEA.L A2, A1
-        MOVE.W D6, D0
-        BSR.W opforge_native_cli_copy_fixed_string
-        MOVEA.L A1, A2
-        MOVE.B #1, (A2)+
-        MOVE.B D4, (A2)+
-        MOVEA.L A3, A0
-        MOVEA.L A2, A1
-        MOVE.W D4, D0
-        BSR.W opforge_native_cli_copy_fixed_string
-        MOVEA.L A1, A2
-        MOVE.B #1, (A2)+
-        MOVE.B D5, (A2)+
-        MOVE.B D3, (A2)+
-        CMPI.B #2, D5
-        BNE.S opforgeNativeCliBuildEncodeLenDone
-        MOVE.L D3, D0
-        LSR.L #8, D0
-        MOVE.B D0, (A2)+
-
-opforgeNativeCliBuildEncodeLenDone:
-        MOVE.L A2, D0
-        SUB.L #lastErrorBuffer, D0
-        MOVE.W D0, nativeCliEncodeRequestLen.L
-        MOVEQ #0, D0
-        BRA.S opforgeNativeCliBuildEncodeReturn
-
-opforgeNativeCliBuildEncodeNoOutput:
-        MOVEQ #0, D0
-        BRA.S opforgeNativeCliBuildEncodeReturn
+opforgeNativeCliBuildEncodeOperandError:
+        MOVE.L #nativeUnresolvedLabelText, D1
+        BSR.W opforge_native_cli_put_str
 
 opforgeNativeCliBuildEncodeFail:
         MOVEQ #1, D0
 
 opforgeNativeCliBuildEncodeReturn:
-        MOVEM.L (SP)+, D1-D7/A0-A4
+        MOVEM.L (SP)+, D1-D7/A0-A5
+        RTS
+
+opforgeNativeCliMaybeResolveLabelOperand:
+        MOVEM.L D0/D2-D7/A0/A2, -(SP)
+        MOVEA.L A5, A0
+        MOVE.L D5, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.S opforgeNativeCliMaybeResolveLabelDone
+        CMPI.B #'#', (A0)
+        BEQ.S opforgeNativeCliMaybeResolveLabelDone
+        CMPI.B #'$', (A0)
+        BEQ.S opforgeNativeCliMaybeResolveLabelDone
+        MOVEQ #0, D2
+        MOVE.B (A0), D2
+        CMPI.B #'0', D2
+        BCS.S opforgeNativeCliMaybeResolveLabelLookup
+        CMPI.B #'9', D2
+        BLS.S opforgeNativeCliMaybeResolveLabelDone
+
+opforgeNativeCliMaybeResolveLabelLookup:
+        LEA nativeCliLabelNameTable.L, A1
+        LEA nativeCliLabelValueTable.L, A2
+        MOVEQ #0, D1
+        MOVE.W nativeCliLabelCount.L, D1
+        JSR opcore_expr_eval_operand_v1
+        TST.L D0
+        BNE.S opforgeNativeCliMaybeResolveLabelDone
+        BSR.W opforgeNativeCliWriteResolvedOperandHex
+        LEA nativeCliArgToken, A1
+        MOVEQ #5, D1
+
+opforgeNativeCliMaybeResolveLabelDone:
+        MOVEM.L (SP)+, D0/D2-D7/A0/A2
+        RTS
+
+opforgeNativeCliWriteResolvedOperandHex:
+        MOVEM.L D0-D4/A0-A2, -(SP)
+        MOVE.L D3, -(SP)
+        LEA nativeCliArgToken, A1
+        MOVE.B #'$', (A1)+
+        LEA hexDigitsText, A0
+        MOVEA.L SP, A2
+        ADDQ.L #2, A2
+        MOVEQ #1, D4
+
+opforgeNativeCliWriteResolvedOperandHexLoop:
+        MOVEQ #0, D1
+        MOVE.B (A2)+, D1
+        MOVE.L D1, D2
+        LSR.B #4, D2
+        MOVE.B 0(A0,D2.L), (A1)+
+        ANDI.B #$0F, D1
+        MOVE.B 0(A0,D1.L), (A1)+
+        DBRA D4, opforgeNativeCliWriteResolvedOperandHexLoop
+        CLR.B (A1)
+        ADDQ.L #4, SP
+        MOVEM.L (SP)+, D0-D4/A0-A2
         RTS
 
 opforgeNativeCliReadOperandValueForStatement:
@@ -3292,32 +3338,13 @@ opforgeNativeCliPassAdvanceHaveMlen:
         BNE.W opforgeNativeCliPassAdvanceDone
         MOVEA.L D5, A0
         MOVE.W D6, D0
-        LEA ldaMnemonicText, A1
-        MOVEQ #3, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.W opforgeNativeCliPassAdvanceTwo
-        MOVEA.L D5, A0
-        MOVE.W D6, D0
-        LEA nopMnemonicText, A1
-        MOVEQ #3, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.W opforgeNativeCliPassAdvanceOne
-        MOVEA.L D5, A0
-        MOVE.W D6, D0
-        LEA staMnemonicText, A1
-        MOVEQ #3, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.W opforgeNativeCliPassAdvanceThree
-        MOVEA.L D5, A0
-        MOVE.W D6, D0
-        LEA jmpMnemonicText, A1
-        MOVEQ #3, D1
-        BSR.W opforgeNativeCliLineStartsWith
-        TST.L D0
-        BNE.W opforgeNativeCliPassAdvanceThree
+        JSR opasm_selector_stage_instruction_size_v1
+        CMPI.W #1, D1
+        BEQ.W opforgeNativeCliPassAdvanceOne
+        CMPI.W #2, D1
+        BEQ.W opforgeNativeCliPassAdvanceTwo
+        CMPI.W #3, D1
+        BEQ.W opforgeNativeCliPassAdvanceThree
         BRA.W opforgeNativeCliPassAdvanceDone
 
 opforgeNativeCliPassAdvanceOrg:
@@ -3337,36 +3364,6 @@ opforgeNativeCliPassAdvanceOrgOk:
         MOVE.L nativeCliSessionOrigin.L, D0
         MOVE.L D0, nativeCliSessionCurrentPc.L
         BRA.W opforgeNativeCliPassAdvanceDone
-
-opforgeNativeCliStatementOperandHasImmediatePrefix:
-        MOVEM.L D1/A0, -(SP)
-        MOVEQ #0, D0
-        MOVE.W D7, D0
-        ADD.W D0, D0
-        LEA nativeCliStmtOperandLenTable.L, A0
-        MOVEQ #0, D1
-        MOVE.W 0(A0,D0.L), D1
-        BEQ.S opforgeNativeCliStatementOperandImmediateNo
-        MOVEQ #0, D0
-        MOVE.W D7, D0
-        LSL.L #6, D0
-        LEA nativeCliStmtOperandNameTable.L, A0
-        ADDA.L D0, A0
-        MOVE.L D1, D0
-        BSR.W opforgeNativeCliSkipLineWhitespace
-        TST.L D0
-        BEQ.S opforgeNativeCliStatementOperandImmediateNo
-        CMPI.B #'#', (A0)
-        BNE.S opforgeNativeCliStatementOperandImmediateNo
-        MOVEQ #1, D0
-        BRA.S opforgeNativeCliStatementOperandImmediateReturn
-
-opforgeNativeCliStatementOperandImmediateNo:
-        MOVEQ #0, D0
-
-opforgeNativeCliStatementOperandImmediateReturn:
-        MOVEM.L (SP)+, D1/A0
-        RTS
 
 opforgeNativeCliPassAdvanceOne:
         ADDQ.L #1, nativeCliSessionCurrentPc.L

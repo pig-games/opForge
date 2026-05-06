@@ -447,6 +447,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("prvm"),
             amigaos_dir.join("opcore"),
+            amigaos_dir.join("opasm"),
         ];
     }
 

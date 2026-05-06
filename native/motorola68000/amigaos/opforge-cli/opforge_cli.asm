@@ -97,29 +97,44 @@ NCLI_PARSER_DIRECTIVE_USE       = 3
 
         .section entry, kind=code
 
+; ---------------------------------------------------------------------------
+; AmigaOS process entry for the native opForge CLI.
+;
+; Workbench launches are rejected for this deliverable slice because the native
+; host contract is currently Shell/file based. Shell launches hand off to
+; opforge_native_cli_run, which mirrors the Rust CLI orchestration surface for
+; the supported native subset.
+;
+; Inputs:
+; - AmigaOS process context; no explicit arguments.
+;
+; Outputs:
+; - D0: AmigaDOS return code.
+; ---------------------------------------------------------------------------
+
 start:
         MOVEM.L D2-D7/A2-A6, -(SP)
-        CLR.L D2
+        CLR.L D2                        ; no Workbench startup message is pending until GetMsg succeeds
 
-        SUBA.L A1, A1
-        MOVEA.L SysBase.W, A6
+        SUBA.L A1, A1                   ; Exec FindTask(NULL) => current process
+        MOVEA.L SysBase.W, A6           ; Exec base for process and Workbench-message calls
         JSR FindTask(A6)
 
         MOVEA.L D0, A2
-        TST.L pr_CLI(A2)
+        TST.L pr_CLI(A2)                ; nonzero means Shell launch; zero means Workbench activation
         BNE.W opforgeStartCli
 
         LEA pr_MsgPort(A2), A0
         JSR WaitPort(A6)
         LEA pr_MsgPort(A2), A0
         JSR GetMsg(A6)
-        MOVE.L D0, D2
+        MOVE.L D0, D2                   ; preserve startup message so ReplyMsg can be sent before exit
         MOVEQ #RETURN_WORKBENCH_UNSUPPORTED, D7
         BRA.W opforgeStartReply
 
 opforgeStartCli:
-        BSR.W opforge_native_cli_run
-        MOVE.L D0, D7
+        BSR.W opforge_native_cli_run     ; run the Shell-native CLI host path
+        MOVE.L D0, D7                   ; keep return code stable across optional Workbench reply path
 
 opforgeStartReply:
         TST.L D2
@@ -133,26 +148,44 @@ opforgeStartDone:
         MOVEM.L (SP)+, D2-D7/A2-A6
         RTS
 
+; ---------------------------------------------------------------------------
+; Run one native opForge CLI invocation.
+;
+; This host entry owns AmigaDOS setup, argument parsing, package staging, source
+; processing, report emission, and output-file writes. It should not grow new
+; assembler semantics; future implementation work should move semantic ownership
+; into native opasm/tkpkg/opcore stages.
+;
+; Inputs:
+; - Shell argument tail is read from dos.library/GetArgStr, unless an FS-UAE
+;   smoke define supplies a deterministic test argument tail.
+;
+; Outputs:
+; - D0: AmigaDOS return code.
+; - textual OPFORGE-NATIVE report is written to stdout.
+; - flat `.bin` output is written when selected and image bytes exist.
+; ---------------------------------------------------------------------------
+
 opforge_native_cli_run:
         MOVEM.L D2-D7/A2-A6, -(SP)
         MOVE.L #RETURN_USAGE, nativeCliReturnCode
 
         LEA dosName, A1
         MOVEQ #36, D0
-        MOVEA.L SysBase.W, A6
+        MOVEA.L SysBase.W, A6           ; first try the AmigaOS 2.x+ dos.library version expected by tests
         JSR OpenLibrary(A6)
         TST.L D0
         BNE.S opforgeNativeCliHaveDos
 
         LEA dosName, A1
         MOVEQ #0, D0
-        MOVEA.L SysBase.W, A6
+        MOVEA.L SysBase.W, A6           ; fallback keeps older emulator images usable for smoke runs
         JSR OpenLibrary(A6)
         TST.L D0
         BEQ.W opforgeNativeCliDone
 
 opforgeNativeCliHaveDos:
-        MOVE.L D0, nativeCliDosBase
+        MOVE.L D0, nativeCliDosBase     ; all file/console calls below dispatch through dos.library base
         BSR.W opforge_native_cli_init_module_use_state
         MOVEA.L D0, A6
         JSR GetArgStr(A6)
@@ -282,11 +315,13 @@ opforgeNativeCliDone:
         MOVEM.L (SP)+, D2-D7/A2-A6
         RTS
 
+; Write a zero-terminated string through dos.library/PutStr.
 opforge_native_cli_put_str:
         MOVEA.L nativeCliDosBase, A6
         JSR PutStr(A6)
         RTS
 
+; Open an existing AmigaDOS input file.
 opforge_native_cli_open_input:
         MOVE.L A0, D1
         MOVE.L #MODE_OLDFILE, D2
@@ -294,11 +329,13 @@ opforge_native_cli_open_input:
         JSR Open(A6)
         RTS
 
+; Close an AmigaDOS file handle in D1.
 opforge_native_cli_close:
         MOVEA.L nativeCliDosBase, A6
         JSR Close(A6)
         RTS
 
+; Read D0 bytes from file handle D1 into buffer A0.
 opforge_native_cli_read_input:
         MOVE.L A0, D2
         MOVE.L D0, D3
@@ -306,6 +343,7 @@ opforge_native_cli_read_input:
         JSR Read(A6)
         RTS
 
+; Open or create an AmigaDOS output file.
 opforge_native_cli_open_output:
         MOVE.L A0, D1
         MOVE.L #MODE_NEWFILE, D2
@@ -313,6 +351,7 @@ opforge_native_cli_open_output:
         JSR Open(A6)
         RTS
 
+; Write D0 bytes from buffer A0 to file handle D1.
 opforge_native_cli_write_output:
         MOVE.L A0, D2
         MOVE.L D0, D3
@@ -320,6 +359,7 @@ opforge_native_cli_write_output:
         JSR Write(A6)
         RTS
 
+; Copy D0 bytes from A1 to A2.
 opforge_native_cli_copy_bytes:
         MOVE.W D0, D2
         TST.W D2
@@ -333,6 +373,7 @@ opforgeNativeCliCopyBytesLoop:
 opforgeNativeCliCopyBytesDone:
         RTS
 
+; Copy a C string from A0 to A1 and return copied byte count, including NUL.
 opforge_native_cli_copy_c_string:
         MOVEQ #0, D0
 
@@ -344,6 +385,7 @@ opforgeNativeCliCopyCStringLoop:
         BNE.S opforgeNativeCliCopyCStringLoop
         RTS
 
+; Copy exactly D0 bytes from A0 to A1.
 opforge_native_cli_copy_fixed_string:
         MOVE.W D0, D2
         TST.W D2
@@ -357,6 +399,7 @@ opforgeNativeCliCopyFixedStringLoop:
 opforgeNativeCliCopyFixedStringDone:
         RTS
 
+; Write a CB-relative input window offset/length pair into control block A0.
 opforge_native_cli_write_input_window:
         MOVE.B D0, CB_INPUT_PTR(A0)
         LSR.W #8, D0
@@ -366,11 +409,13 @@ opforge_native_cli_write_input_window:
         MOVE.B D1, 19(A0)
         RTS
 
+; Read the tkpkg service status byte from control block A0.
 opforge_native_cli_read_status:
         MOVEQ #0, D0
         MOVE.B CB_STATUS_CODE(A0), D0
         RTS
 
+; Read the tkpkg service output length from control block A0.
 opforge_native_cli_read_output_len:
         MOVEQ #0, D0
         MOVE.B CB_OUTPUT_LEN(A0), D0
@@ -380,6 +425,7 @@ opforge_native_cli_read_output_len:
         OR.W D1, D0
         RTS
 
+; Initialize package state, tokenize every source line, and run parser routing.
 opforge_native_cli_tokenize_frontend:
         MOVEM.L D2-D7/A2-A6, -(SP)
         BSR.W opforge_native_cli_init_package_pipeline
@@ -398,6 +444,7 @@ opforgeNativeCliTokenizeReturn:
         MOVEM.L (SP)+, D2-D7/A2-A6
         RTS
 
+; Tokenize the primary input file path recorded by argument parsing.
 opforge_native_cli_tokenize_file:
         LEA nativeCliInputPath, A0
         LEA nativeCliCurrentPath, A1
@@ -412,6 +459,7 @@ opforgeNativeCliTokenizeFilePathFail:
         MOVEQ #1, D0
         RTS
 
+; Read and tokenize one AmigaDOS text file at A0, preserving logical line state.
 opforge_native_cli_tokenize_file_at_path:
         BSR.W opforge_native_cli_open_input
         TST.L D0
@@ -500,6 +548,7 @@ opforgeNativeCliTokenizeFileFailClose:
         MOVEQ #1, D0
         RTS
 
+; Initialize tkpkg, stage/load package bytes, and select the requested pipeline.
 opforge_native_cli_init_package_pipeline:
         LEA controlBlockV1, A0
         MOVEQ #ENTRY_ORD_INIT, D0
@@ -542,6 +591,7 @@ opforgeNativeCliInitPipelineFail:
         MOVEQ #1, D0
         RTS
 
+; Stage either the embedded package or an external --opasm-package file.
 opforge_native_cli_stage_package:
         TST.B nativeCliPackagePath
         BNE.S opforgeNativeCliStageExternalPackage
@@ -602,6 +652,7 @@ opforgeNativeCliStageExternalReadFail:
         MOVEQ #1, D0
         RTS
 
+; Build the tkpkg set-pipeline request payload from --cpu or the default CPU.
 opforge_native_cli_prepare_pipeline_request:
         LEA nativeCliCpuName, A0
         TST.B (A0)
@@ -615,9 +666,10 @@ opforgeNativeCliPreparePipelineHaveCpu:
         MOVEQ #0, D0
         RTS
 
+; Build the tokenizer request payload: u32 line number plus source bytes.
 opforge_native_cli_prepare_line_service_request:
         LEA lastErrorBuffer, A2
-        MOVE.L nativeCliSourceLineNum, D2
+        MOVE.L nativeCliSourceLineNum, D2 ; line number is little-endian to match package fixtures
         MOVE.B D2, (A2)+
         LSR.L #8, D2
         MOVE.B D2, (A2)+
@@ -634,6 +686,7 @@ opforge_native_cli_prepare_line_service_request:
         MOVEQ #0, D0
         RTS
 
+; Dispatch the current line through tkpkg ENTRY_ORD_PARSE_LINE.
 opforge_native_cli_dispatch_parse_line_envelope:
         BSR.W opforge_native_cli_prepare_parse_line_service_request
         TST.L D0
@@ -652,6 +705,7 @@ opforge_native_cli_dispatch_parse_line_envelope:
 opforgeNativeCliDispatchParseLineDone:
         RTS
 
+; Copy the PRVM route frame into the tkpkg control-block input window.
 opforge_native_cli_prepare_parse_line_service_request:
         BSR.W opforgeNativeCliBuildPrvmRouteFrame
         LEA opforgeNativeCliPrvmRouteFrame, A1
@@ -662,6 +716,7 @@ opforge_native_cli_prepare_parse_line_service_request:
         MOVEQ #0, D0
         RTS
 
+; Build the minimal encode request envelope used by the early tkpkg encoder.
 opforge_native_cli_prepare_encode_instruction_request:
         LEA lastErrorBuffer, A2
         MOVE.L nativeCliStmtMnemLen, D0
@@ -684,6 +739,7 @@ opforgeNativeCliPrepareEncodeFail:
         MOVEQ #1, D0
         RTS
 
+; Dispatch the current encode envelope through tkpkg ENTRY_ORD_ENCODE_INSTRUCTION.
 opforge_native_cli_dispatch_encode_instruction_envelope:
         BSR.W opforge_native_cli_prepare_encode_instruction_request
         TST.L D0
@@ -2466,6 +2522,7 @@ opforgeNativeCliCopyIncludeTargetFail:
         MOVEQ #1, D0
         RTS
 
+; Expand the one-level native `.include` target and emit include report records.
 opforge_native_cli_expand_include_target:
         TST.W nativeCliIncludeDepth
         BNE.W opforgeNativeCliExpandIncludeFail
@@ -2691,6 +2748,7 @@ opforgeNativeCliAppendPathBufferOk:
         MOVEQ #0, D0
         RTS
 
+; Print unsigned 16-bit D0 as decimal through the CLI stdout path.
 opforge_native_cli_put_dec_u16:
         MOVEM.L D1-D6/A0-A1, -(SP)
         ANDI.L #$0000FFFF, D0
@@ -2731,6 +2789,7 @@ opforgeNativeCliPutDecNext:
         MOVEM.L (SP)+, D1-D6/A0-A1
         RTS
 
+; Print unsigned 32-bit D0 as `$XXXXXXXX`.
 opforge_native_cli_put_hex_u32:
         MOVEM.L D0-D4/A0-A2, -(SP)
         MOVE.L D0, -(SP)
@@ -2756,6 +2815,7 @@ opforgeNativeCliPutHexLoop:
         MOVEM.L (SP)+, D0-D4/A0-A2
         RTS
 
+; Initialize transitional native assembly-session state for the current CLI run.
 opforge_native_cli_init_assembly_session:
         MOVEM.L D0-D1/A0-A1, -(SP)
         LEA nativeCliAssemblySessionStart.L, A0
@@ -2787,6 +2847,7 @@ opforgeNativeCliCopySessionCpuNameLoop:
 opforgeNativeCliCopySessionCpuNameDone:
         RTS
 
+; Record the current logical source line in the session tables.
 opforgeNativeCliRecordSourceLine:
         MOVEM.L D0/A0, -(SP)
         MOVEQ #0, D0
@@ -2807,6 +2868,7 @@ opforgeNativeCliRecordSourceLineDone:
         MOVEM.L (SP)+, D0/A0
         RTS
 
+; Emit the current session summary records into the OPFORGE-NATIVE report.
 opforgeNativeCliEmitAssemblySessionSummary:
         MOVEM.L D0-D2/A0-A1, -(SP)
         MOVE.L #sessionStageText, D1
@@ -2869,6 +2931,7 @@ opforgeNativeCliEmitAssemblySessionSummary:
         MOVEM.L (SP)+, D0-D2/A0-A1
         RTS
 
+; Run the current transitional two-pass native assembler path.
 opforge_native_cli_run_two_pass_engine:
         BSR.W opforge_native_cli_run_pass_one
         TST.L D0
@@ -2878,6 +2941,7 @@ opforge_native_cli_run_two_pass_engine:
 opforgeNativeCliRunTwoPassDone:
         RTS
 
+; Pass 1 records labels and advances PC using the current selector size table.
 opforge_native_cli_run_pass_one:
         MOVEM.L D1-D7/A0-A2, -(SP)
         MOVE.L #nativePassOneText, D1
@@ -2918,6 +2982,7 @@ opforgeNativeCliPassOneReturn:
         MOVEM.L (SP)+, D1-D7/A0-A2
         RTS
 
+; Pass 2 encodes package-backed bytes into the native image buffer.
 opforge_native_cli_run_pass_two:
         MOVEM.L D1-D7/A0-A2, -(SP)
         MOVE.L #nativePassTwoText, D1
@@ -2956,6 +3021,7 @@ opforgeNativeCliPassTwoReturn:
         MOVEM.L (SP)+, D1-D7/A0-A2
         RTS
 
+; Record a statement label at the current PC, rejecting duplicates.
 opforgeNativeCliPassOneRecordLabel:
         MOVEM.L D1-D7/A0-A2, -(SP)
         MOVE.L D0, D7
@@ -3059,6 +3125,7 @@ opforgeNativeCliPassOneRecordLabelReturn:
         MOVEM.L (SP)+, D1-D7/A0-A2
         RTS
 
+; Encode one statement through tkpkg and append resulting bytes to image buffer.
 opforgeNativeCliPassTwoEmitImageBytes:
         MOVEM.L D1-D6/A0-A4, -(SP)
         MOVE.W D0, D6
@@ -3114,6 +3181,7 @@ opforgeNativeCliPassTwoEmitReturn:
         MOVEM.L (SP)+, D1-D6/A0-A4
         RTS
 
+; Build a package encode request for statement index D6 via opasm selector stage.
 opforgeNativeCliBuildEncodeRequestForStatement:
         MOVEM.L D1-D7/A0-A5, -(SP)
         CLR.W nativeCliEncodeRequestLen.L
@@ -3155,10 +3223,10 @@ opforgeNativeCliBuildEncodeHaveMlen:
         MOVE.W nativeCliLabelCount.L, D2
         LEA nativeCliSelectorStageContext.L, A4
         LEA lastErrorBuffer, A5
-        MOVE.L A5, (A4)+
-        MOVE.L A2, (A4)+
-        MOVE.L A3, (A4)+
-        MOVE.L D2, (A4)
+        MOVE.L A5, (A4)+                ; selector context[0]: output request buffer
+        MOVE.L A2, (A4)+                ; selector context[1]: label-name table
+        MOVE.L A3, (A4)+                ; selector context[2]: label-value table
+        MOVE.L D2, (A4)                 ; selector context[3]: active label count
         LEA nativeCliSelectorStageContext.L, A4
         JSR opasm_selector_stage_build_encode_request_v1
         CMPI.L #OPASM_SELECTOR_STATUS_OK, D0
@@ -3203,6 +3271,7 @@ opforgeNativeCliBuildEncodeReturn:
         MOVEM.L (SP)+, D1-D7/A0-A5
         RTS
 
+; Resolve one statement operand through the current scalar opcore bridge.
 opforgeNativeCliReadOperandValueForStatement:
         MOVEM.L D1-D2/D4-D7/A0-A2, -(SP)
         CLR.L D3
@@ -3257,6 +3326,7 @@ opforgeNativeCliReadOperandReturn:
         MOVEM.L (SP)+, D1-D2/D4-D7/A0-A2
         RTS
 
+; Advance current PC for statement index D0, handling `.org` specially.
 opforgeNativeCliPassAdvancePc:
         MOVEM.L D0-D6/A0-A3, -(SP)
         LSL.L #6, D0
@@ -3332,6 +3402,7 @@ opforgeNativeCliPassAdvanceDone:
         MOVEQ #0, D0
         RTS
 
+; Compare a fixed-length statement label to a stored zero-terminated label.
 opforgeNativeCliLabelEquals:
         MOVEM.L D1-D3/A0-A1, -(SP)
         MOVE.L D0, D3
@@ -3356,6 +3427,7 @@ opforgeNativeCliLabelEqualsReturn:
         MOVEM.L (SP)+, D1-D3/A0-A1
         RTS
 
+; Write the current native image buffer as flat `.bin` output.
 opforge_native_cli_write_flat_output:
         MOVEM.L D1-D4/A0-A1, -(SP)
         LEA nativeCliBinPath, A0
@@ -3387,6 +3459,7 @@ opforgeNativeCliWriteFlatReturn:
         MOVEM.L (SP)+, D1-D4/A0-A1
         RTS
 
+; Clear module/use and statement collection state before parsing input.
 opforge_native_cli_init_module_use_state:
         MOVEM.L D0-D1/A0, -(SP)
         LEA nativeCliModuleUseStateStart, A0
@@ -3396,6 +3469,7 @@ opforge_native_cli_init_module_use_state:
         MOVEM.L (SP)+, D0-D1/A0
         RTS
 
+; Clear D0 bytes at A0.
 opforge_native_cli_clear_bytes:
         TST.L D0
         BEQ.S opforgeNativeCliClearBytesDone
@@ -3427,9 +3501,10 @@ NATIVE_OUTPUT_FORMAT_NONE       = 0
 NATIVE_OUTPUT_FORMAT_BIN        = 1
 NATIVE_OUTPUT_FORMAT_HUNK       = 2
 
+; Parse the native CLI argument tail into fixed buffers and request flags.
 opforge_native_cli_parse_args:
         MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVEA.L A0, A3
+        MOVEA.L A0, A3                  ; A3 walks the AmigaDOS argument tail in-place
         CLR.W nativeCliInputStyle
         CLR.W nativeCliHunkRequested
         CLR.W nativeCliBinRequested
@@ -3914,6 +3989,7 @@ opforgeNativeCliUnsupportedYes:
         MOVEQ #1, D0
         RTS
 
+; Print the deterministic diagnostic for the current argument-parse status.
 opforge_native_cli_report_parse_error:
         MOVE.W nativeCliParseStatus, D0
         CMPI.W #NCLI_PARSE_QUOTED, D0

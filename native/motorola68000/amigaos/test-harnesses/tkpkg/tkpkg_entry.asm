@@ -13,6 +13,7 @@
 
         .section entry, kind=code
 
+; Minimal executable entry used to keep the tkpkg runtime linkable as a hunk.
 start:
         LEA abiMarker, A0
         TST.B (A0)
@@ -21,10 +22,12 @@ start:
         CLR.L D0
         RTS
 
+; Forward an already prepared request to the shared tkpkg service dispatcher.
 tkpkg_entry_dispatch_v1:
         JSR tkpkg_service_dispatch_v1
         RTS
 
+; Initialize the shared control block through the public service ordinal.
 tkpkg_entry_bootstrap_v1:
         LEA controlBlockV1, A0
         MOVEQ #ENTRY_ORD_INIT, D0

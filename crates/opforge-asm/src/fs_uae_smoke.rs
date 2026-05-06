@@ -445,6 +445,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             .join("amigaos");
         return vec![
             amigaos_dir.join("tkpkg"),
+            amigaos_dir.join("tokvm"),
             amigaos_dir.join("prvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
@@ -456,7 +457,11 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             .join("native")
             .join("motorola68000")
             .join("amigaos");
-        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("prvm")];
+        return vec![
+            amigaos_dir.join("tkpkg"),
+            amigaos_dir.join("tokvm"),
+            amigaos_dir.join("prvm"),
+        ];
     }
 
     if matches!(example_name, "prvm_smoke" | "prvm_line_iterator_smoke") {
@@ -476,7 +481,7 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
             .join("native")
             .join("motorola68000")
             .join("amigaos");
-        return vec![amigaos_dir.join("tkpkg")];
+        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("tokvm")];
     }
 
     Vec::new()
@@ -1277,20 +1282,13 @@ fn run_example_smoke_with_guest_input(
             stage_tkpkg_manifest_inputs(&mounted_work_dir, cases)?;
         }
     }
-    let mut module_paths = Vec::new();
+    let module_paths = example_module_paths(workspace_root, spec.example_name);
     if let Some(package_bytes) = spec.package_bytes {
         source_path = materialize_tkpkg_debug_cli_package_override_source(
             &source_path,
             &artifact_dir,
             package_bytes,
         )?;
-        module_paths.push(
-            workspace_root
-                .join("examples")
-                .join("motorola68000")
-                .join("amigaos")
-                .join("tkpkg"),
-        );
     }
 
     let mut assembly_defines = example_assembly_defines(spec.example_name);

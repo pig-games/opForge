@@ -56,6 +56,23 @@ chunkBoundsText:
 
         .section code, kind=code
 
+; ---------------------------------------------------------------------------
+; Load and validate an encoded `.opasm` hierarchy package from the service CB.
+;
+; This is the package equivalent of the Rust VM model-loader path: copy the
+; package bytes into native-owned storage, validate the container header/TOC,
+; and record locators for the chunks needed by pipeline/tokenizer/encoder work.
+;
+; Inputs:
+; - A0: validated tkpkg control block with CB_INPUT_PTR/LEN pointing at package
+;   bytes inside the control block window.
+;
+; Outputs:
+; - D0: 0 on success, nonzero STATUS/runtime code on failure.
+; - A1/D1: failure message pointer/length on runtime failure paths.
+; - packageStorage/package chunk locators are updated on success.
+; ---------------------------------------------------------------------------
+
 tkpkg_package_loader_load_v1:
         BSR.W tkpkg_package_loader_clear_loaded_state_v1
         BSR.W tkpkg_package_loader_read_input_len_v1
@@ -63,12 +80,12 @@ tkpkg_package_loader_load_v1:
         BEQ.W tkpkgPackageLoaderInvalidMagic
         CMPI.W #PACKAGE_STORAGE_CAPACITY, D0
         BHI.W tkpkgPackageLoaderChunkBounds
-        MOVE.B D0, packageStorageLen
+        MOVE.B D0, packageStorageLen    ; store low byte of package length for later bounded TOC walks
         LSR.W #8, D0
-        MOVE.B D0, packageStorageLenHi
+        MOVE.B D0, packageStorageLenHi  ; high byte keeps package length portable in byte-addressed state
         BSR.W tkpkg_package_loader_read_input_offset_v1
-        LEA 0(A0,D1.W), A1
-        LEA packageStorage, A2
+        LEA 0(A0,D1.W), A1              ; A1: caller package bytes inside the control-block window
+        LEA packageStorage, A2          ; A2: native package storage used by later locator reads
         BSR.W tkpkg_package_loader_copy_input_bytes_v1
         LEA packageStorage, A1
         BSR.W tkpkg_package_loader_validate_header_v1
@@ -83,6 +100,17 @@ tkpkg_package_loader_load_v1:
 tkpkgPackageLoaderDone:
         RTS
 
+; ---------------------------------------------------------------------------
+; Clear all package-derived state before loading a new package.
+;
+; Inputs:
+; - none.
+;
+; Outputs:
+; - package state, chunk flags, chunk locators, and active pipeline buffers are
+;   zeroed as one contiguous longword range.
+; ---------------------------------------------------------------------------
+
 tkpkg_package_loader_clear_loaded_state_v1:
         LEA packageStateFlags, A3
         MOVE.W #PACKAGE_STATE_CLEAR_LONGWORD_LAST, D0
@@ -92,6 +120,7 @@ tkpkgPackageLoaderClearStateLoop:
         DBF D0, tkpkgPackageLoaderClearStateLoop
         RTS
 
+; Read CB_INPUT_LEN as a native 16-bit little-endian service length.
 tkpkg_package_loader_read_input_len_v1:
         MOVEQ #0, D0
         MOVE.B CB_INPUT_LEN(A0), D0
@@ -101,6 +130,7 @@ tkpkg_package_loader_read_input_len_v1:
         OR.W D1, D0
         RTS
 
+; Read CB_INPUT_PTR as a native 16-bit control-block-relative offset.
 tkpkg_package_loader_read_input_offset_v1:
         MOVEQ #0, D1
         MOVE.B CB_INPUT_PTR(A0), D1
@@ -110,6 +140,7 @@ tkpkg_package_loader_read_input_offset_v1:
         OR.W D2, D1
         RTS
 
+; Copy the currently recorded package length from A1 to package storage at A2.
 tkpkg_package_loader_copy_input_bytes_v1:
         MOVEQ #0, D2
         MOVE.B packageStorageLen, D2
@@ -128,6 +159,7 @@ tkpkgPackageLoaderCopyLoop:
 tkpkgPackageLoaderCopyDone:
         RTS
 
+; Validate the fixed package header before any TOC offsets are trusted.
 tkpkg_package_loader_validate_header_v1:
         MOVEQ #0, D0
         CMPI.B #'O', (A1)
@@ -148,6 +180,7 @@ tkpkg_package_loader_validate_header_v1:
         BNE.W tkpkgPackageLoaderInvalidEndian
         RTS
 
+; Walk the package TOC, reject duplicates/bounds failures, and store locators.
 tkpkg_package_loader_validate_toc_v1:
         MOVEQ #0, D7
         MOVE.B packageStorageLen, D7

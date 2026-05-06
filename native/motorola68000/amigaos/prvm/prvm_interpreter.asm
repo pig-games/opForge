@@ -145,15 +145,15 @@ abiMarker:
 
 prvm_run_68000:
         MOVEM.L D4-D7/A4-A6, -(SP)
-        MOVE.L A0, D1
+        MOVE.L A0, D1                   ; null-check the frame before touching any offset fields
         TST.L D1
         BEQ prvmInvalidArgument
         CMPI.L #PRVM_REQUEST_FRAME_SIZE, D0
         BLT prvmInvalidArgument
 
-        MOVEA.L A0, A4
-        SUBA.L #LOCAL_SIZE, SP
-        LEA 0(SP), A3
+        MOVEA.L A0, A4                  ; A4 is the stable request-frame base for the interpreter run
+        SUBA.L #LOCAL_SIZE, SP          ; fixed native frame mirrors Rust parser VM execution state
+        LEA 0(SP), A3                   ; A3 addresses LOCAL_* slots while opcodes consume A0-A2/D0-D3
         CLR.L LOCAL_LOADED_FLAG(A3)
         CLR.L LOCAL_FINISHED_FLAG(A3)
         CLR.L LOCAL_STEP_COUNT(A3)
@@ -162,7 +162,7 @@ prvm_run_68000:
         CLR.L LOCAL_BOOL_VALUE(A3)
         CLR.L LOCAL_CHECKPOINT_DEPTH(A3)
 
-        CMPI.L #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(A4)
+        CMPI.L #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(A4) ; reject frames from another native ABI surface
         BNE prvmInvalidArgumentWithLocals
         CMPI.W #PRVM_ABI_VERSION_V1, PRVM_FRAME_ABI_VERSION(A4)
         BNE prvmInvalidArgumentWithLocals
@@ -175,11 +175,11 @@ prvm_run_68000:
         CMPI.W #PRVM_CALL_MODE_RESUME, PRVM_FRAME_CALL_MODE(A4)
         BNE prvmInvalidArgumentWithLocals
 prvmValidateEntryKind:
-        CMPI.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, PRVM_FRAME_ENTRY_KIND(A4)
+        CMPI.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, PRVM_FRAME_ENTRY_KIND(A4) ; current PRVM slice routes opasm statements only
         BNE prvmEntryBoundary
         CMPI.W #PRVM_TOKEN_RECORD_SIZE, PRVM_FRAME_TOKEN_RECORD_SIZE(A4)
         BNE prvmInvalidArgumentWithLocals
-        CMPI.L #PRVM_PARSER_CONTRACT_VERSION_V2, PRVM_FRAME_PARSER_CONTRACT_VERSION(A4)
+        CMPI.L #PRVM_PARSER_CONTRACT_VERSION_V2, PRVM_FRAME_PARSER_CONTRACT_VERSION(A4) ; keep parser bytecode/result contract explicit
         BNE prvmInvalidProgramAtCursor
         TST.L PRVM_FRAME_FLAGS(A4)
         BNE prvmInvalidArgumentWithLocals
@@ -241,7 +241,7 @@ prvmValidateProgramBuffer:
         BEQ prvmInvalidArgumentWithLocals
 prvmValidateExpressionResultBufferDone:
 
-        MOVEA.L PRVM_FRAME_SOURCE_PTR(A4), A0
+        MOVEA.L PRVM_FRAME_SOURCE_PTR(A4), A0 ; PRVM consumes one logical line; iterator/router split newlines first
         MOVE.L PRVM_FRAME_SOURCE_LEN(A4), D6
         CLR.L D0
 prvmNewlineScanLoop:

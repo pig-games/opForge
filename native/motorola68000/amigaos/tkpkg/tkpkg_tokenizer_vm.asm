@@ -266,9 +266,29 @@ opLtText:
 
         .section code, kind=code
 
+; ---------------------------------------------------------------------------
+; Tokenize one source line through the active package-backed tokenizer VM.
+;
+; This entry bridges a selected tkpkg runtime pipeline to the lower-level tokvm
+; interpreter. It reads the line payload from the control block, decodes the
+; active TKVM package record, executes tokvm, then renders compact token records
+; into the service output buffer.
+;
+; Inputs:
+; - A0: validated tkpkg control block whose input window contains
+;   `<u32 line-number-le><source-bytes>`.
+; - activeTokenizerVm* fields identify the selected package TKVM program.
+;
+; Outputs:
+; - D0: 0 on success, STATUS_BAD_REQUEST_V1 or STATUS_RUNTIME_ERROR_V1 on
+;   failure.
+; - D1: rendered output byte length on success.
+; - lastTokenCount/lastLexemeLen and token buffers are updated on success.
+; ---------------------------------------------------------------------------
+
 tkpkg_tokenizer_vm_tokenize_line_v1:
         MOVEM.L D2-D7/A2-A6, -(SP)
-        BTST #1, packageStateFlags
+        BTST #1, packageStateFlags       ; require set_pipeline before executing any package VM program
         BNE.S tkpkgTokenizerPipelineReady
         LEA noPipelineText, A1
         MOVEQ #NO_PIPELINE_TEXT_LEN, D1
@@ -283,9 +303,9 @@ tkpkgTokenizerPipelineReady:
         TST.B D0
         BNE.W tkpkgTokenizerDone
         MOVE.L #TOKVM_DEFAULT_MAX_STEPS_PER_LINE, D0
-        JSR tokvm_set_step_budget_68000
-        MOVEA.L A3, A5
-        MOVE.L D3, D7
+        JSR tokvm_set_step_budget_68000 ; keep tkpkg-driven tokenizer runs under the bounded VM budget
+        MOVEA.L A3, A5                  ; A5 keeps program bytes while A3 is reused for tokvm call ABI
+        MOVE.L D3, D7                   ; D7 keeps program length while record metadata is decoded
         CMPI.B #1, (A5)
         BNE.W tkpkgTokenizerDebugBadProgramHeader
         CMPI.B #8, 1(A5)
@@ -304,17 +324,17 @@ tkpkgTokenizerPipelineReady:
         MOVE.B activeTokenizerVmStartStateHi, D2
         LSL.W #8, D2
         OR.W D2, D1
-        JSR tokvm_set_program_state_table_68000
-        MOVEA.L A4, A0
-        MOVE.L D4, D0
-        LEA tokenRecordBuffer, A1
+        JSR tokvm_set_program_state_table_68000 ; install package state table into shared tokvm core
+        MOVEA.L A4, A0                  ; tokvm input pointer: source bytes after line-number prefix
+        MOVE.L D4, D0                   ; tokvm input length: source byte count
+        LEA tokenRecordBuffer, A1       ; tokvm output token records
         MOVEQ #0, D1
         MOVE.W #TOKEN_BUFFER_CAPACITY, D1
-        LEA tokenScratchBuffer, A2
+        LEA tokenScratchBuffer, A2      ; lexeme scratch mirrors Rust portable-token lexeme storage
         MOVEQ #0, D2
         MOVE.W #TOKEN_SCRATCH_CAPACITY, D2
-        MOVEA.L A5, A3
-        MOVE.L D7, D3
+        MOVEA.L A5, A3                  ; tokvm program pointer
+        MOVE.L D7, D3                   ; tokvm program length
         JSR tokvm_run_68000
         MOVE.L (SP)+, D6
         CMPI.B #TK_STATUS_SUCCESS, D0
@@ -334,6 +354,7 @@ tkpkgTokenizerDone:
         MOVEM.L (SP)+, D2-D7/A2-A6
         RTS
 
+; Read the line-number-prefixed tokenizer service payload.
 tkpkg_tokenizer_vm_read_line_payload_v1:
         MOVEQ #0, D0
         MOVE.B CB_INPUT_LEN(A0), D0
@@ -380,6 +401,7 @@ tkpkgTokenizerBadPayload:
         MOVEQ #STATUS_BAD_REQUEST_V1, D0
         RTS
 
+; Decode the active TKVM package record and expose program bytes/state table.
 tkpkg_tokenizer_vm_read_program_v1:
         LEA activeTokenizerVmOffsetLo, A1
         MOVEQ #0, D0
@@ -536,6 +558,7 @@ tkpkgTokenizerDebugBadProgramHeader:
         MOVEQ #STATUS_RUNTIME_ERROR_V1, D0
         RTS
 
+; Convert a tokvm status/failure code into the tkpkg runtime diagnostic string.
 tkpkg_tokenizer_vm_status_message_v1:
         CMPI.B #TK_STATUS_NEWLINE_UNSUPPORTED, D0
         BEQ.S tkpkgTokenizerStatusNewline
@@ -721,6 +744,7 @@ tkpkgTokenizerDiagErrorLimit:
         MOVE.B activeTokenizerVmErrorLimitDiagLen, D2
         RTS
 
+; Validate tokvm output counts and spans before rendering report bytes.
 tkpkg_tokenizer_vm_validate_result_v1:
         MOVEM.L D1-D7/A0, -(SP)
         CMP.L #TOKEN_BUFFER_CAPACITY, D1
@@ -774,6 +798,7 @@ tkpkgTokenizerValidateInvalid:
         MOVEM.L (SP)+, D1-D7/A0
         RTS
 
+; Render token records into the line-oriented tkpkg tokenizer service output.
 tkpkg_tokenizer_vm_render_output_v1:
         MOVEM.L D2-D7/A2-A6, -(SP)
         SUBA.L #LOCAL_SIZE, SP

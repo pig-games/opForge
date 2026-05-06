@@ -8,19 +8,44 @@ TOKEN_BUFFER_CAPACITY           = 64
 
         .section code, kind=code
 
+; ---------------------------------------------------------------------------
+; Evaluate one scalar operand expression for the current native smoke path.
+;
+; This bridge is intentionally smaller than Rust opcore/EXVM. It exists so the
+; native selector/pass code can resolve the scalar forms needed by the current
+; 6502 CLI smoke tests while the full expression VM parity work is still
+; pending.
+;
+; Supported input forms:
+; - optional immediate prefix '#'
+; - '$' prefixed hexadecimal numbers
+; - decimal numbers
+; - labels resolved through the caller-supplied label tables
+;
+; Inputs:
+; - A0/D0: operand text pointer and byte length.
+; - A1: fixed-width label-name table pointer.
+; - A2: label-value table pointer parallel to A1.
+; - D1: number of label entries.
+;
+; Outputs:
+; - D0: 0 on success, 1 on parse/lookup failure.
+; - D3: resolved scalar value on success.
+; ---------------------------------------------------------------------------
+
 opcore_expr_eval_operand_v1:
         MOVEM.L D1-D2/D4-D7/A0-A4, -(SP)
-        MOVEA.L A1, A3
-        MOVEA.L A2, A4
-        MOVE.W D1, D7
+        MOVEA.L A1, A3                  ; label-name table base kept stable across parse helpers
+        MOVEA.L A2, A4                  ; label-value table base kept stable across parse helpers
+        MOVE.W D1, D7                   ; D7 is the label count consumed by the resolver loop
         CLR.L D3
         BSR.W opcoreExprBridgeSkipWhitespace
         TST.L D0
         BEQ.W opcoreExprBridgeFail
         CMPI.B #'#', (A0)
         BNE.S opcoreExprBridgeNoImmediatePrefix
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
+        ADDQ.L #1, A0                   ; strip immediate marker; addressing mode was selected elsewhere
+        SUBQ.L #1, D0                   ; keep remaining text length aligned with A0
         BSR.W opcoreExprBridgeSkipWhitespace
 
 opcoreExprBridgeNoImmediatePrefix:
@@ -29,7 +54,7 @@ opcoreExprBridgeNoImmediatePrefix:
         CMPI.B #'$', (A0)
         BEQ.S opcoreExprBridgeHex
         MOVEQ #0, D1
-        MOVE.B (A0), D1
+        MOVE.B (A0), D1                 ; first non-space byte decides decimal versus label lookup
         CMPI.B #'0', D1
         BCS.S opcoreExprBridgeLabel
         CMPI.B #'9', D1

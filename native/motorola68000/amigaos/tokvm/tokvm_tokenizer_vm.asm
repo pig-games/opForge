@@ -176,6 +176,7 @@ tokvmLastFailureOperand:
 ; - emit compact native token records into the caller-provided token buffer
 ; ---------------------------------------------------------------------------
 
+; Override the tokenizer VM step budget for the next runs; nonpositive restores default.
 tokvm_set_step_budget_68000:
         TST.L D0
         BGT.S tokvmSetStepBudgetStore
@@ -184,6 +185,7 @@ tokvmSetStepBudgetStore:
         MOVE.L D0, tokvmStepBudget
         RTS
 
+; Install a package-provided state table; invalid counts fall back to demo state 0.
 tokvm_set_program_state_table_68000:
         TST.L D0
         BGT.S tokvmSetProgramStateStore
@@ -196,6 +198,7 @@ tokvmSetProgramStateStore:
         MOVE.W D1, tokvmProgramStartState
         RTS
 
+; Return the last explicit VM failure kind/operand captured by tokvm_run_68000.
 tokvm_read_last_failure_68000:
         MOVEQ #0, D0
         MOVE.W tokvmLastFailureKind, D0

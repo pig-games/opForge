@@ -23,18 +23,34 @@ missingPolicyText:
 
         .section code, kind=code
 
+; ---------------------------------------------------------------------------
+; Resolve the active tokenizer token-policy locator.
+;
+; Token policy owner precedence matches the runtime model fallback order:
+; dialect-specific policy first, then CPU, then family. The resolved record is
+; staged in pendingTokenPolicy* fields for tkpkg_pipeline_commit_active_selection_v1.
+;
+; Inputs:
+; - pendingDialectOffsetLo, pendingCpuOffsetLo, pendingFamilyOffsetLo contain
+;   package string locators selected by the pipeline resolver.
+;
+; Outputs:
+; - D0: 0 on success, STATUS_RUNTIME_ERROR_V1 when no policy can be found.
+; - A1/D1: failure message pointer/length on missing-policy error.
+; ---------------------------------------------------------------------------
+
 tkpkg_token_policy_resolve_locator_v1:
-        MOVEQ #SCOPED_OWNER_DIALECT, D0
+        MOVEQ #SCOPED_OWNER_DIALECT, D0 ; prefer dialect-specific tokenization rules when present
         LEA pendingDialectOffsetLo, A3
         BSR.W tkpkg_token_policy_find_owner_v1
         TST.B D0
         BEQ.S tkpkgTokenPolicyResolveDone
-        MOVEQ #SCOPED_OWNER_CPU, D0
+        MOVEQ #SCOPED_OWNER_CPU, D0     ; fall back to CPU-local policy
         LEA pendingCpuOffsetLo, A3
         BSR.W tkpkg_token_policy_find_owner_v1
         TST.B D0
         BEQ.S tkpkgTokenPolicyResolveDone
-        MOVEQ #SCOPED_OWNER_FAMILY, D0
+        MOVEQ #SCOPED_OWNER_FAMILY, D0  ; final fallback is family-wide policy
         LEA pendingFamilyOffsetLo, A3
         BSR.W tkpkg_token_policy_find_owner_v1
         TST.B D0
@@ -48,8 +64,9 @@ tkpkgTokenPolicyResolveDone:
         MOVEQ #0, D0
         RTS
 
+; Find a TOKS record matching the scoped owner type in D0 and owner locator A3.
 tkpkg_token_policy_find_owner_v1:
-        MOVE.B D0, D6
+        MOVE.B D0, D6                   ; D6 keeps the scoped-owner tag while D0 is reused by helpers
         MOVE.L A3, -(SP)
         LEA pendingTokenPolicyOffsetLo, A3
         CLR.L (A3)+
@@ -116,6 +133,7 @@ tkpkgTokenPolicyFound:
         MOVEQ #0, D0
         RTS
 
+; Skip one TOKS entry, including optional tail extension fields.
 tkpkg_token_policy_skip_toks_entry_v1:
         MOVE.W D7, -(SP)
         MOVEQ #TOKS_ENTRY_FIXED_PREFIX_SIZE, D0

@@ -97,7 +97,7 @@ slice extracts it without collapsing the fixture/runtime split.
 
 ## Planned Module Structure
 
-- `examples/motorola68000/amigaos/tkpkg/tkpkg_entry.asm`: AmigaOS entry path and
+- `native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_entry.asm`: AmigaOS entry path and
   executable glue only.
 - `examples/motorola68000/amigaos/tkpkg/tkpkg_abi.asm`: control-block layout,
   entry ordinals, capability flags, status codes, and shared offsets/constants.
@@ -141,7 +141,7 @@ slice extracts it without collapsing the fixture/runtime split.
     - `crates/opforge-vm/src/native6502.rs` request lifecycle, `status_code`, and `last_error` authority
     - `crates/opforge-vm/src/native6502.rs` wire payload helpers and response round-trip authority
   - Expected files:
-    - `examples/motorola68000/amigaos/tkpkg/tkpkg_entry.asm`
+    - `native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_entry.asm`
     - `examples/motorola68000/amigaos/tkpkg/tkpkg_abi.asm`
     - `examples/motorola68000/amigaos/tkpkg/tkpkg_service.asm`
     - `examples/motorola68000/amigaos/tkpkg/tkpkg_buffers.asm`

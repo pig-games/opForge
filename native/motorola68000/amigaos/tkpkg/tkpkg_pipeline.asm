@@ -56,8 +56,25 @@ identifierTooLongText:
 
         .section code, kind=code
 
+; ---------------------------------------------------------------------------
+; Select the active package pipeline for a CPU/dialect request.
+;
+; Mirrors the Rust hierarchy execution-model selection step: resolve CPU,
+; family, dialect, token policy, and tokenizer VM program from package chunks,
+; then commit only a complete selection into active state.
+;
+; Inputs:
+; - A0: validated tkpkg control block whose input window contains
+;   `<cpu-id>\0<dialect-id?>`.
+;
+; Outputs:
+; - D0: 0 on success, STATUS_BAD_REQUEST_V1 or STATUS_RUNTIME_ERROR_V1 on
+;   failure.
+; - A1/D1: runtime failure text pointer/length when D0 is runtime error.
+; ---------------------------------------------------------------------------
+
 tkpkg_pipeline_set_active_v1:
-        BTST #0, packageStateFlags
+        BTST #0, packageStateFlags       ; require load_package before selecting any runtime pipeline
         BNE.S tkpkgPipelineParseRequest
         LEA noPackageText, A1
         MOVEQ #NO_PACKAGE_TEXT_LEN, D1
@@ -85,6 +102,7 @@ tkpkgPipelineParseRequest:
 tkpkgPipelineDone:
         RTS
 
+; Parse `<cpu-id>\0<dialect-id?>` into pending request locators.
 tkpkg_pipeline_parse_request_v1:
         LEA pendingFamilyOffsetLo, A3
         MOVEQ #29, D0
@@ -166,6 +184,7 @@ tkpkgPipelineBadRequest:
         MOVEQ #STATUS_BAD_REQUEST_V1, D0
         RTS
 
+; Resolve the pending CPU/family/dialect hierarchy before runtime locators.
 tkpkg_pipeline_resolve_hierarchy_v1:
         BSR.W tkpkg_pipeline_find_cpu_entry_v1
         TST.B D0
@@ -197,6 +216,7 @@ tkpkgPipelineDialectUnresolved:
         MOVEQ #STATUS_RUNTIME_ERROR_V1, D0
         RTS
 
+; Find the CPUS record matching the requested CPU id and stage its family.
 tkpkg_pipeline_find_cpu_entry_v1:
         LEA pendingCpuOffsetLo, A3
         BSR.W tkpkg_pipeline_read_request_locator_ptr_len_v1
@@ -258,6 +278,7 @@ tkpkgPipelineCpuMissing:
         MOVEQ #1, D0
         RTS
 
+; Find the FAMS record matching the family referenced by the selected CPU.
 tkpkg_pipeline_find_family_entry_v1:
         LEA packageStorage, A6
         LEA pendingFamilyOffsetLo, A3
@@ -308,6 +329,7 @@ tkpkgPipelineFamilyMissing:
         MOVEQ #1, D0
         RTS
 
+; Choose requested dialect when present, otherwise CPU default, then family canonical.
 tkpkg_pipeline_resolve_selected_dialect_v1:
         LEA pendingDialectOffsetLo, A3
         BSR.W tkpkg_pipeline_read_locator_ptr_len_v1
@@ -344,10 +366,12 @@ tkpkgPipelineDialectMissing:
         MOVEQ #1, D0
         RTS
 
+; Resolve the caller-requested dialect id through the DIAL chunk.
 tkpkg_pipeline_find_requested_dialect_entry_v1:
         BSR.W tkpkg_pipeline_read_request_locator_ptr_len_v1
         BRA.S tkpkgPipelineFindDialectEntryLoaded
 
+; Resolve a package-owned dialect locator through the DIAL chunk.
 tkpkg_pipeline_find_dialect_entry_v1:
         BSR.W tkpkg_pipeline_read_locator_ptr_len_v1
 
@@ -486,6 +510,7 @@ tkpkgPipelineDialectAllowed:
         MOVEQ #0, D0
         RTS
 
+; Resolve tokenizer VM program with dialect -> CPU -> family owner precedence.
 tkpkg_pipeline_resolve_tokenizer_vm_locator_v1:
         MOVEQ #SCOPED_OWNER_DIALECT, D0
         LEA pendingDialectOffsetLo, A3
@@ -511,6 +536,7 @@ tkpkgPipelineVmResolved:
         MOVEQ #0, D0
         RTS
 
+; Find a TKVM record matching the scoped owner locator in A3/D0.
 tkpkg_pipeline_find_tokenizer_vm_owner_v1:
         MOVE.B D0, D6
         LEA packageStorage, A6
@@ -573,6 +599,7 @@ tkpkgPipelineVmFound:
         MOVEQ #0, D0
         RTS
 
+; Skip one TKVM chunk entry while preserving the package cursor invariants.
 tkpkg_pipeline_skip_tokenizer_vm_entry_v1:
         MOVE.W D7, -(SP)
         MOVEQ #TOKENIZER_VM_ENTRY_PREFIX_SIZE, D0
@@ -644,6 +671,7 @@ tkpkgPipelineVmSkipBoundsFail:
         MOVEQ #1, D1
         RTS
 
+; Commit fully resolved pending locators into active service state.
 tkpkg_pipeline_commit_active_selection_v1:
         LEA pendingCpuOffsetLo, A3
         LEA activeCpuBuffer.L, A2

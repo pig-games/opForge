@@ -85,7 +85,7 @@ const FS_UAE_TKPKG_MANIFEST_FILE: &str = "opforge_fsuae_tkpkg_manifest.txt";
 const FS_UAE_TKPKG_MANIFEST_INPUT_DIR: &str = "opforge_fsuae_tkpkg_inputs";
 const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";
 const FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH: &str =
-    "native/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm";
+    "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME: &str = "opforge_cli";
 const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str =
     "native/motorola68000/amigaos/opforge-cli/opforge_cli.asm";
@@ -109,17 +109,17 @@ const FS_UAE_EXAMPLES: &[(&str, &str, &str)] = &[
     ),
     (
         "tkpkg_debug_cli",
-        "native/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm",
+        "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm",
         "68020",
     ),
     (
         "prvm_smoke",
-        "native/motorola68000/amigaos/prvm/prvm_smoke.asm",
+        "native/motorola68000/amigaos/test-harnesses/prvm/prvm_smoke.asm",
         "68020",
     ),
     (
         "prvm_line_iterator_smoke",
-        "native/motorola68000/amigaos/prvm/prvm_line_iterator_smoke.asm",
+        "native/motorola68000/amigaos/test-harnesses/prvm/prvm_line_iterator_smoke.asm",
         "68020",
     ),
 ];
@@ -456,7 +456,27 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             .join("native")
             .join("motorola68000")
             .join("amigaos");
+        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("prvm")];
+    }
+
+    if matches!(example_name, "prvm_smoke" | "prvm_line_iterator_smoke") {
+        let amigaos_dir = workspace_root
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos");
         return vec![amigaos_dir.join("prvm")];
+    }
+
+    Vec::new()
+}
+
+fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
+    if example_name == "tkpkg_debug_cli" {
+        let amigaos_dir = workspace_root
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos");
+        return vec![amigaos_dir.join("tkpkg")];
     }
 
     Vec::new()
@@ -1045,12 +1065,13 @@ fn run_example_smoke_with_extra_defines(
             .iter()
             .map(|define| (*define).to_string()),
     );
+    let include_paths = example_include_paths(workspace_root, example_name);
     let module_paths = example_module_paths(workspace_root, example_name);
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
         input_base: example_name,
         defines: &assembly_defines,
-        include_paths: &[],
+        include_paths: &include_paths,
         module_paths: &module_paths,
         pp_macro_depth: 64,
         cpu_override: Some(cpu_override),
@@ -1276,11 +1297,12 @@ fn run_example_smoke_with_guest_input(
         assembly_defines.push("OPFORGE_FS_UAE_TKPKG_MANIFEST".to_string());
     }
     assembly_defines.push(spec.pipeline_define.to_string());
+    let include_paths = example_include_paths(workspace_root, spec.example_name);
     run_assembly(AssemblyExecutionRequest {
         root_path: &source_path,
         input_base: spec.example_name,
         defines: &assembly_defines,
-        include_paths: &[],
+        include_paths: &include_paths,
         module_paths: &module_paths,
         pp_macro_depth: 64,
         cpu_override: Some(spec.cpu_override),

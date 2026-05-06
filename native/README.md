@@ -12,7 +12,9 @@ Current layout:
 - `motorola68000/amigaos/opforge-cli/`: native AmigaOS opForge CLI entry point
   and package fixture.
 - `motorola68000/amigaos/opcore/`: native opCore support modules.
-- `motorola68000/amigaos/prvm/`: native parser VM modules and smoke harnesses.
+- `motorola68000/amigaos/prvm/`: native parser VM runtime modules.
 - `motorola68000/amigaos/tkpkg/`: native package-backed tokenizer/runtime
-  modules and debug harness.
-- `motorola68000/amigaos/tokvm/`: native tokenizer VM modules and sample input.
+  modules and package fixtures.
+- `motorola68000/amigaos/tokvm/`: native tokenizer VM runtime modules.
+- `motorola68000/amigaos/test-harnesses/`: non-deliverable AmigaOS debug,
+  smoke, and sample entrypoints used by tests and FS-UAE validation.

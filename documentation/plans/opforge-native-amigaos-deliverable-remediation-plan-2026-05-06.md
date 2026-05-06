@@ -127,7 +127,7 @@ behavior align with the intended Rust VM architecture.
     the native runtime stage, and focused coverage shows the CLI no longer acts
     as a second selector implementation.
 
-- [ ] Item 4: Move non-deliverable harnesses into a clearly named native test-harness subtree
+- [x] Item 4: Move non-deliverable harnesses into a clearly named native test-harness subtree
   - Source requirement or finding IDs: `RVW-2026-05-06-003`; expected to fully
     close the finding.
   - Expected files: the named non-deliverable native entrypoints from the

@@ -17,7 +17,6 @@
         .use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
         .use tkpkg.amigaos.service (tkpkg_service_dispatch_v1)
         .use opcore.amigaos.expr_bridge (opcore_expr_eval_operand_v1)
-        .use prvm.amigaos.line_router (prvm_route_line_68000)
 
 SysBase                         = 4
 
@@ -621,7 +620,7 @@ opforge_native_cli_prepare_line_service_request:
         RTS
 
 opforge_native_cli_dispatch_parse_line_envelope:
-        BSR.W opforge_native_cli_prepare_line_service_request
+        BSR.W opforge_native_cli_prepare_parse_line_service_request
         TST.L D0
         BNE.S opforgeNativeCliDispatchParseLineDone
         LEA controlBlockV1, A0
@@ -630,9 +629,22 @@ opforge_native_cli_dispatch_parse_line_envelope:
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_PARSE_LINE, D0
         JSR tkpkg_service_dispatch_v1
+        MOVE.L D0, nativeCliPrvmRouteStatus
+        MOVE.W D1, nativeCliPrvmResultCount
+        LEA controlBlockV1, A0
         BSR.W opforge_native_cli_read_status
 
 opforgeNativeCliDispatchParseLineDone:
+        RTS
+
+opforge_native_cli_prepare_parse_line_service_request:
+        BSR.W opforgeNativeCliBuildPrvmRouteFrame
+        LEA opforgeNativeCliPrvmRouteFrame, A1
+        LEA lastErrorBuffer, A2
+        MOVE.W #PRVM_ROUTE_FRAME_SIZE, D0
+        BSR.W opforge_native_cli_copy_bytes
+        MOVE.W #PRVM_ROUTE_FRAME_SIZE, nativeCliLineRequestLen
+        MOVEQ #0, D0
         RTS
 
 opforge_native_cli_prepare_encode_instruction_request:
@@ -847,12 +859,9 @@ opforgeNativeCliParseBadOrgLine:
 
 opforgeNativeCliRouteParserModuleUseLine:
         MOVEM.L D1-D7/A0-A3, -(SP)
-        BSR.W opforgeNativeCliBuildPrvmRouteFrame
-        LEA opforgeNativeCliPrvmRouteFrame, A0
-        MOVE.L #PRVM_ROUTE_FRAME_SIZE, D0
-        JSR prvm_route_line_68000
-        MOVE.L D0, nativeCliPrvmRouteStatus
-        MOVE.W D1, nativeCliPrvmResultCount
+        CLR.L nativeCliPrvmRouteStatus
+        CLR.W nativeCliPrvmResultCount
+        BSR.W opforge_native_cli_dispatch_parse_line_envelope
         BSR.W opforgeNativeCliParserDirectiveKind
         MOVEM.L (SP)+, D1-D7/A0-A3
         RTS

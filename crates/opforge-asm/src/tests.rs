@@ -1611,6 +1611,17 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
         ];
     }
 
+    if matches!(
+        asm_path.file_stem().and_then(|stem| stem.to_str()),
+        Some("tkpkg_entry" | "tkpkg_debug_cli")
+    ) {
+        let amigaos_dir = asm_path
+            .parent()
+            .and_then(Path::parent)
+            .expect("tkpkg examples should live under amigaos/tkpkg");
+        return vec![amigaos_dir.join("prvm")];
+    }
+
     Vec::new()
 }
 
@@ -9953,6 +9964,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforge_native_cli_clear_bytes"));
     assert!(source.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(source.contains("opforge_native_cli_prepare_line_service_request"));
+    assert!(source.contains("opforge_native_cli_prepare_parse_line_service_request"));
     assert!(source.contains("opforge_native_cli_dispatch_parse_line_envelope"));
     assert!(source.contains("opforge_native_cli_prepare_encode_instruction_request"));
     assert!(source.contains("opforge_native_cli_dispatch_encode_instruction_envelope"));
@@ -9960,7 +9972,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforge_native_cli_tokenize_file_at_path"));
     assert!(source.contains("opforge_native_cli_tokenize_current_line"));
     assert!(source.contains("opforge_native_cli_parse_current_line"));
-    assert!(source.contains(".use prvm.amigaos.line_router (prvm_route_line_68000)"));
+    assert!(!source.contains(".use prvm.amigaos.line_router (prvm_route_line_68000)"));
+    assert!(!source.contains("JSR prvm_route_line_68000"));
     assert!(source.contains("opforgeNativeCliRouteParserModuleUseLine"));
     assert!(source.contains("opforgeNativeCliBuildPrvmRouteFrame"));
     assert!(source.contains("opforgeNativeCliParserDirectiveKind"));
@@ -10148,10 +10161,25 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         &source,
         &[
             "opforge_native_cli_dispatch_parse_line_envelope:",
-            "BSR.W opforge_native_cli_prepare_line_service_request",
+            "BSR.W opforge_native_cli_prepare_parse_line_service_request",
             "MOVE.W nativeCliLineRequestLen, D1",
             "MOVEQ #ENTRY_ORD_PARSE_LINE, D0",
             "JSR tkpkg_service_dispatch_v1",
+            "MOVE.L D0, nativeCliPrvmRouteStatus",
+            "MOVE.W D1, nativeCliPrvmResultCount",
+            "BSR.W opforge_native_cli_read_status",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_prepare_parse_line_service_request:",
+            "BSR.W opforgeNativeCliBuildPrvmRouteFrame",
+            "LEA opforgeNativeCliPrvmRouteFrame, A1",
+            "LEA lastErrorBuffer, A2",
+            "MOVE.W #PRVM_ROUTE_FRAME_SIZE, D0",
+            "BSR.W opforge_native_cli_copy_bytes",
+            "MOVE.W #PRVM_ROUTE_FRAME_SIZE, nativeCliLineRequestLen",
         ]
     ));
     assert!(source_contains_in_order(
@@ -12401,7 +12429,23 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "CMPI.B #ENTRY_ORD_PARSE_LINE,D0\n        BEQ.S tkpkgServiceDeferredRuntime\n        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION,D0\n        BEQ.W tkpkgServiceHandleEncodeInstruction"
+        "CMPI.B #ENTRY_ORD_PARSE_LINE,D0\n        BEQ.W tkpkgServiceHandleParseLine\n        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION,D0\n        BEQ.W tkpkgServiceHandleEncodeInstruction"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        ".use prvm.amigaos.line_router (prvm_route_line_68000)"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkgServiceHandleParseLine:\n        MOVE.L A0,-(SP)\n        BSR.W tkpkg_service_parse_line_v1"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_parse_line_v1:\n        MOVEQ #0,D0\n        MOVE.B CB_INPUT_PTR(A0),D0"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "CMPI.W #TKPKG_PARSE_ROUTE_FRAME_SIZE,D0\n        BNE.S tkpkgParseLineBadRequest\n        MOVEA.L A1,A0\n        JSR prvm_route_line_68000"
     ));
     assert!(tkpkg_source_contains(
         &source,

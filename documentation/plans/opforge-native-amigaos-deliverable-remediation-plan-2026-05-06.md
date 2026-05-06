@@ -54,7 +54,7 @@ behavior align with the intended Rust VM architecture.
 
 ## Work Items
 
-- [ ] Item 1: Route native parse through tkpkg service and remove the direct CLI shortcut
+- [x] Item 1: Route native parse through tkpkg service and remove the direct CLI shortcut
   - Source requirement or finding IDs: `RVW-2026-05-06-001`; expected to fully
     close the finding.
   - Expected files: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`,
@@ -169,7 +169,7 @@ behavior align with the intended Rust VM architecture.
 
 ## Milestones
 
-- [ ] Milestone 1: The native tkpkg service boundary consistently owns
+- [x] Milestone 1: The native tkpkg service boundary consistently owns
   tokenize, parse, and encode entrypoints.
 - [ ] Milestone 2: CLI-owned selector behavior has been moved into a native
   opasm runtime stage and the CLI no longer duplicates selector policy.

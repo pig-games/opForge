@@ -32,6 +32,9 @@
         .use tkpkg.amigaos.package_loader (tkpkg_package_loader_load_v1)
         .use tkpkg.amigaos.pipeline (tkpkg_pipeline_set_active_v1)
         .use tkpkg.amigaos.tokenizer_vm (tkpkg_tokenizer_vm_tokenize_line_v1)
+        .use prvm.amigaos.line_router (prvm_route_line_68000)
+
+TKPKG_PARSE_ROUTE_FRAME_SIZE         = 116
 
         .section code, kind=code
 
@@ -57,14 +60,10 @@ tkpkg_service_dispatch_v1:
         CMPI.B #ENTRY_ORD_TOKENIZE_LINE, D0
         BEQ.W tkpkgServiceHandleTokenizeLine
         CMPI.B #ENTRY_ORD_PARSE_LINE, D0
-        BEQ.S tkpkgServiceDeferredRuntime
+        BEQ.W tkpkgServiceHandleParseLine
         CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION, D0
         BEQ.W tkpkgServiceHandleEncodeInstruction
         BSR.W tkpkg_service_set_bad_request_v1
-        RTS
-
-tkpkgServiceDeferredRuntime:
-        BSR.W tkpkg_service_set_runtime_error_v1
         RTS
 
 tkpkgServiceHandleInitEntry:
@@ -177,6 +176,25 @@ tkpkgServiceTokenizeLineOk:
 tkpkgServiceTokenizeLineDone:
         RTS
 
+tkpkgServiceHandleParseLine:
+        MOVE.L A0, -(SP)
+        BSR.W tkpkg_service_parse_line_v1
+        MOVEA.L (SP)+, A0
+        TST.B D2
+        BEQ.S tkpkgServiceParseLineOk
+        BSR.W tkpkg_service_set_bad_request_v1
+        RTS
+
+tkpkgServiceParseLineOk:
+        MOVEM.L D0-D1, -(SP)
+        BSR.W tkpkg_service_write_clear_input_fields_v1
+        BSR.W tkpkg_service_clear_stored_last_error_v1
+        BSR.W tkpkg_service_write_clear_last_error_fields_v1
+        BSR.W tkpkg_service_set_status_ok_v1
+        BSR.W tkpkg_service_write_clear_output_fields_v1
+        MOVEM.L (SP)+, D0-D1
+        RTS
+
 tkpkgServiceHandleEncodeInstruction:
         MOVE.L A0, -(SP)
         BSR.W tkpkg_service_encode_instruction_v1
@@ -200,6 +218,33 @@ tkpkgServiceEncodeInstructionOk:
         MOVE.B D1, 23(A0)
 
 tkpkgServiceEncodeInstructionDone:
+        RTS
+
+tkpkg_service_parse_line_v1:
+        MOVEQ #0, D0
+        MOVE.B CB_INPUT_PTR(A0), D0
+        MOVEQ #0, D1
+        MOVE.B 17(A0), D1
+        LSL.W #8, D1
+        OR.W D1, D0
+        LEA 0(A0,D0.W), A1
+        MOVEQ #0, D0
+        MOVE.B CB_INPUT_LEN(A0), D0
+        MOVEQ #0, D1
+        MOVE.B 19(A0), D1
+        LSL.W #8, D1
+        OR.W D1, D0
+        CMPI.W #TKPKG_PARSE_ROUTE_FRAME_SIZE, D0
+        BNE.S tkpkgParseLineBadRequest
+        MOVEA.L A1, A0
+        JSR prvm_route_line_68000
+        MOVEQ #0, D2
+        RTS
+
+tkpkgParseLineBadRequest:
+        MOVEQ #1, D2
+        MOVEQ #0, D0
+        MOVEQ #0, D1
         RTS
 
 tkpkg_service_encode_instruction_v1:

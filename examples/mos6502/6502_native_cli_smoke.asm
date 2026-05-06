@@ -3,6 +3,6 @@
 
         .cpu 6502
         .org $0800
-start:  lda #$42
+start   lda #$42
         sta $0200
-done:   jmp done
+done    jmp done

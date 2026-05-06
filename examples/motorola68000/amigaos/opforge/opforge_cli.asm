@@ -16,6 +16,7 @@
         .use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY)
         .use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
         .use tkpkg.amigaos.service (tkpkg_service_dispatch_v1)
+        .use opcore.amigaos.expr_bridge (opcore_expr_eval_operand_v1)
         .use prvm.amigaos.line_router (prvm_route_line_68000)
 
 SysBase                         = 4
@@ -34,10 +35,12 @@ Forbid                          = -132
 Open                            = -30
 Close                           = -36
 Read                            = -42
+Write                           = -48
 PutStr                          = -948
 GetArgStr                       = -534
 
 MODE_OLDFILE                    = 1005
+MODE_NEWFILE                    = 1006
 
 RETURN_OK                       = 0
 RETURN_USAGE                    = 20
@@ -58,7 +61,7 @@ NATIVE_STATEMENT_TABLE_CAPACITY = 16
 NATIVE_LABEL_TABLE_CAPACITY     = 16
 NATIVE_IMAGE_BUFFER_CAPACITY    = 4096
 NATIVE_MODULE_USE_STATE_BYTES   = (7 * 2) + (NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_MODULE_TABLE_CAPACITY * 4) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 4) + (NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY)
-NATIVE_ASSEMBLY_SESSION_BYTES   = (4 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_IMAGE_BUFFER_CAPACITY
+NATIVE_ASSEMBLY_SESSION_BYTES   = (4 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_IMAGE_BUFFER_CAPACITY
 PACKAGE_INPUT_PTR_V1            = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
 NATIVE_INCLUDE_DEPTH_LIMIT      = 1
 PRVM_ROUTE_MAGIC_OPLR           = $4F504C52
@@ -78,7 +81,7 @@ PRVM_RESULT_RECORD_COUNT        = PRVM_ROUTE_RESULT_CAPACITY / PRVM_RESULT_RECOR
 PRVM_RESULT_LABEL_TEXT          = 2
 PRVM_RESULT_MNEMONIC_TEXT       = 3
 PRVM_RESULT_OPERAND_EXPR_SLOT   = 4
-OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 44
+OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 46
 NATIVE_TOKEN_RECORD_SIZE        = 20
 TK_KIND_IDENTIFIER              = 0
 NCLI_PARSER_DIRECTIVE_NONE      = 0
@@ -231,6 +234,23 @@ opforgeNativeCliTokenizerOk:
 
 opforgeNativeCliPassesOk:
         BSR.W opforgeNativeCliEmitAssemblySessionSummary
+        TST.W nativeCliImageByteCount.L
+        BEQ.S opforgeNativeCliEmitStub
+        BSR.W opforge_native_cli_write_flat_output
+        TST.L D0
+        BEQ.S opforgeNativeCliOutputOk
+        MOVE.L #nativeOutputFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #RETURN_FILE_FAILURE, nativeCliReturnCode
+        BRA.W opforgeNativeCliCloseDos
+
+opforgeNativeCliOutputOk:
+        MOVE.L #nativeOutputOkText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #RETURN_OK, nativeCliReturnCode
+        BRA.W opforgeNativeCliCloseDos
+
+opforgeNativeCliEmitStub:
         MOVE.L #emitterStubText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #RETURN_NOT_IMPLEMENTED, nativeCliReturnCode
@@ -270,6 +290,20 @@ opforge_native_cli_read_input:
         MOVE.L D0, D3
         MOVEA.L nativeCliDosBase, A6
         JSR Read(A6)
+        RTS
+
+opforge_native_cli_open_output:
+        MOVE.L A0, D1
+        MOVE.L #MODE_NEWFILE, D2
+        MOVEA.L nativeCliDosBase, A6
+        JSR Open(A6)
+        RTS
+
+opforge_native_cli_write_output:
+        MOVE.L A0, D2
+        MOVE.L D0, D3
+        MOVEA.L nativeCliDosBase, A6
+        JSR Write(A6)
         RTS
 
 opforge_native_cli_copy_bytes:
@@ -563,12 +597,7 @@ opforge_native_cli_prepare_pipeline_request:
 opforgeNativeCliPreparePipelineHaveCpu:
         LEA lastErrorBuffer, A1
         BSR.W opforge_native_cli_copy_c_string
-        MOVE.W D0, D7
-        LEA defaultFamilyName, A0
-        MOVEQ #DEFAULT_FAMILY_NAME_LEN, D0
-        BSR.W opforge_native_cli_copy_fixed_string
-        ADD.W #DEFAULT_FAMILY_NAME_LEN, D7
-        MOVE.W D7, nativeCliPipelineRequestLen
+        MOVE.W D0, nativeCliPipelineRequestLen
         MOVEQ #0, D0
         RTS
 
@@ -682,6 +711,18 @@ opforgeNativeCliTokenizeCurrentLineOk:
         RTS
 
 opforgeNativeCliTokenizeCurrentLineFail:
+        LEA controlBlockV1, A0
+        BSR.W opforge_native_cli_read_output_len
+        TST.W D0
+        BEQ.S opforgeNativeCliTokenizeCurrentLineFailReturn
+        LEA lastErrorBuffer, A1
+        CLR.B 0(A1,D0.W)
+        MOVE.L #lastErrorBuffer, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #newlineText, D1
+        BSR.W opforge_native_cli_put_str
+
+opforgeNativeCliTokenizeCurrentLineFailReturn:
         MOVEQ #1, D0
         RTS
 
@@ -1072,6 +1113,8 @@ opforgeNativeCliStoreStatementRecord:
         MOVE.W nativeCliStmtLabelLen, 0(A0,D2.L)
         LEA nativeCliStmtMnemLenTable.L, A0
         MOVE.W nativeCliStmtMnemLen, 0(A0,D2.L)
+        LEA nativeCliStmtOperandLenTable.L, A0
+        CLR.W 0(A0,D2.L)
         MOVEQ #0, D3
         MOVE.W nativeCliStmtCount.L, D3
         LSL.L #6, D3
@@ -1080,8 +1123,11 @@ opforgeNativeCliStoreStatementRecord:
         CLR.B (A1)
         MOVE.L nativeCliStmtLabelLen, D0
         BEQ.S opforgeNativeCliStoreStatementMnemText
-        LEA tokenScratchBuffer, A0
-        ADDA.L nativeCliStmtLabelOff, A0
+        MOVE.L nativeCliStmtLabelStart, D1
+        BEQ.S opforgeNativeCliStoreStatementMnemText
+        SUBQ.L #1, D1
+        LEA nativeCliSourceLine, A0
+        ADDA.L D1, A0
         BSR.W opforge_native_cli_copy_fixed_string
         CLR.B (A1)
 
@@ -1096,8 +1142,62 @@ opforgeNativeCliStoreStatementMnemText:
         BSR.W opforge_native_cli_copy_fixed_string
         CLR.B (A1)
 
+opforgeNativeCliStoreStatementOperandText:
+        LEA nativeCliStmtOperandNameTable.L, A1
+        ADDA.L D3, A1
+        CLR.B (A1)
+        MOVE.L nativeCliStmtMnemEnd, D0
+        BEQ.S opforgeNativeCliStoreStatementDone
+        SUBQ.L #1, D0
+        MOVEQ #0, D1
+        MOVE.W nativeCliSourceLineLen, D1
+        CMP.L D1, D0
+        BHS.S opforgeNativeCliStoreStatementDone
+        LEA nativeCliSourceLine, A0
+        ADDA.L D0, A0
+        SUB.L D0, D1
+        MOVE.L D1, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        BSR.W opforgeNativeCliCopyOperandText
+        MOVEQ #0, D0
+        MOVE.W nativeCliStmtCount.L, D0
+        ADD.W D0, D0
+        LEA nativeCliStmtOperandLenTable.L, A0
+        MOVE.W D5, 0(A0,D0.L)
+
 opforgeNativeCliStoreStatementDone:
         MOVEM.L (SP)+, D1-D4/A0-A1
+        RTS
+
+opforgeNativeCliCopyOperandText:
+        MOVEM.L D0-D4/A0-A1, -(SP)
+        CLR.W D5
+        MOVE.L #TOKEN_BUFFER_CAPACITY - 1, D4
+
+opforgeNativeCliCopyOperandTextLoop:
+        TST.L D0
+        BEQ.S opforgeNativeCliCopyOperandTextDone
+        MOVEQ #0, D2
+        MOVE.B (A0), D2
+        BEQ.S opforgeNativeCliCopyOperandTextDone
+        CMPI.B #';', D2
+        BEQ.S opforgeNativeCliCopyOperandTextDone
+        CMPI.B #10, D2
+        BEQ.S opforgeNativeCliCopyOperandTextDone
+        CMPI.B #13, D2
+        BEQ.S opforgeNativeCliCopyOperandTextDone
+        TST.L D4
+        BEQ.S opforgeNativeCliCopyOperandTextDone
+        MOVE.B D2, (A1)+
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        ADDQ.W #1, D5
+        SUBQ.L #1, D4
+        BRA.S opforgeNativeCliCopyOperandTextLoop
+
+opforgeNativeCliCopyOperandTextDone:
+        CLR.B (A1)
+        MOVEM.L (SP)+, D0-D4/A0-A1
         RTS
 
 opforgeNativeCliEmitStatementRecord:
@@ -2781,6 +2881,7 @@ opforge_native_cli_run_pass_two:
         MOVE.L #nativePassTwoText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.W #2, nativeCliSessionPass.L
+        CLR.W nativeCliImageByteCount.L
         MOVE.L nativeCliSessionOrigin.L, D0
         MOVE.L D0, nativeCliSessionCurrentPc.L
         CLR.W D7
@@ -2789,6 +2890,11 @@ opforgeNativeCliPassTwoLoop:
         MOVE.W nativeCliStmtCount.L, D0
         CMP.W D0, D7
         BHS.S opforgeNativeCliPassTwoOk
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        BSR.W opforgeNativeCliPassTwoEmitImageBytes
+        TST.L D0
+        BNE.S opforgeNativeCliPassTwoReturn
         MOVEQ #0, D0
         MOVE.W D7, D0
         BSR.W opforgeNativeCliPassAdvancePc
@@ -2833,9 +2939,16 @@ opforgeNativeCliPassOneDuplicateLoop:
         ADD.W D5, D5
         LEA nativeCliStmtLabelLenTable.L, A2
         MOVE.W 0(A2,D5.L), D0
+        BNE.S opforgeNativeCliPassOneDuplicateHaveLabelLen
+        MOVE.L A0, D3
+        MOVEA.L A1, A0
+        BSR.W opforgeNativeCliTokenLen
+        MOVEA.L D3, A0
+
+opforgeNativeCliPassOneDuplicateHaveLabelLen:
         BSR.W opforgeNativeCliLabelEquals
         TST.L D0
-        BNE.S opforgeNativeCliPassOneDuplicate
+        BNE.W opforgeNativeCliPassOneDuplicate
         ADDQ.W #1, D6
         BRA.S opforgeNativeCliPassOneDuplicateLoop
 
@@ -2851,6 +2964,8 @@ opforgeNativeCliPassOneStoreLabel:
         LEA nativeCliLabelNameTable.L, A0
         ADDA.L D5, A0
         MOVE.L A0, D2
+        MOVE.L A0, D4
+        MOVE.L A1, D3
         MOVEA.L A1, A2
         MOVEA.L A0, A1
         MOVEA.L A2, A0
@@ -2860,12 +2975,17 @@ opforgeNativeCliPassOneStoreLabel:
         ADD.W D5, D5
         LEA nativeCliStmtLabelLenTable.L, A2
         MOVE.W 0(A2,D5.L), D0
+        BNE.S opforgeNativeCliPassOneStoreHaveLabelLen
+        MOVEA.L D3, A0
+        BSR.W opforgeNativeCliTokenLen
+
+opforgeNativeCliPassOneStoreHaveLabelLen:
         BSR.W opforge_native_cli_copy_fixed_string
         CLR.B (A1)
         ADDQ.W #1, nativeCliLabelCount.L
         MOVE.L #nativeLabelText, D1
         BSR.W opforge_native_cli_put_str
-        MOVE.L D2, D1
+        MOVE.L D4, D1
         BSR.W opforge_native_cli_put_str
         BSR.W opforgeNativeCliPutSpace
         MOVE.L nativeCliSessionCurrentPc.L, D0
@@ -2893,63 +3013,269 @@ opforgeNativeCliPassOneRecordLabelReturn:
         MOVEM.L (SP)+, D1-D7/A0-A2
         RTS
 
-opforgeNativeCliPassAdvancePc:
-        MOVEM.L D0-D4/A0-A1, -(SP)
+opforgeNativeCliPassTwoEmitImageBytes:
+        MOVEM.L D1-D6/A0-A4, -(SP)
+        MOVE.W D0, D6
+        BSR.W opforgeNativeCliBuildEncodeRequestForStatement
+        TST.L D0
+        BNE.W opforgeNativeCliPassTwoEmitReturn
+        TST.W nativeCliEncodeRequestLen.L
+        BEQ.W opforgeNativeCliPassTwoEmitOk
+        LEA controlBlockV1, A0
+        MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0
+        MOVE.W nativeCliEncodeRequestLen.L, D1
+        BSR.W opforge_native_cli_write_input_window
+        MOVEQ #ENTRY_ORD_ENCODE_INSTRUCTION, D0
+        JSR tkpkg_service_dispatch_v1
+        BSR.W opforge_native_cli_read_status
+        TST.B D0
+        BNE.W opforgeNativeCliPassTwoEmitFail
+        LEA controlBlockV1, A0
+        BSR.W opforge_native_cli_read_output_len
+        TST.W D0
+        BEQ.S opforgeNativeCliPassTwoEmitOk
+        MOVE.W D0, D6
+        MOVEQ #0, D0
+        MOVE.W nativeCliImageByteCount.L, D0
+        ADD.W D6, D0
+        CMPI.W #NATIVE_IMAGE_BUFFER_CAPACITY, D0
+        BHI.W opforgeNativeCliPassTwoEmitFail
+        MOVEQ #0, D0
+        MOVE.W nativeCliImageByteCount.L, D0
+        LEA nativeCliImageBuffer.L, A0
+        ADDA.L D0, A0
+        LEA lastErrorBuffer, A1
+        MOVE.W D6, D1
+
+opforgeNativeCliPassTwoCopyEncodedLoop:
+        MOVE.B (A1)+, (A0)+
+        SUBQ.W #1, D1
+        BNE.S opforgeNativeCliPassTwoCopyEncodedLoop
+        ADD.W D6, nativeCliImageByteCount.L
+
+opforgeNativeCliPassTwoEmitOk:
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliPassTwoEmitReturn
+
+opforgeNativeCliPassTwoEmitFail:
+        MOVE.L #nativeImageCapacityText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #1, D0
+
+opforgeNativeCliPassTwoEmitReturn:
+        MOVEM.L (SP)+, D1-D6/A0-A4
+        RTS
+
+opforgeNativeCliBuildEncodeRequestForStatement:
+        MOVEM.L D1-D7/A0-A4, -(SP)
+        CLR.W nativeCliEncodeRequestLen.L
+        MOVE.W D6, D7
+        MOVEQ #0, D0
+        MOVE.W D7, D0
         LSL.L #6, D0
         LEA nativeCliStmtMnemNameTable.L, A0
         ADDA.L D0, A0
-        MOVE.L A0, D3
+        MOVEA.L A0, A4
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        ADD.W D0, D0
+        LEA nativeCliStmtMnemLenTable.L, A1
+        MOVEQ #0, D6
+        MOVE.W 0(A1,D0.L), D6
+        BNE.S opforgeNativeCliBuildEncodeHaveMlen
+        MOVEA.L A4, A0
+        BSR.W opforgeNativeCliTokenLen
+        MOVE.W D0, D6
+
+opforgeNativeCliBuildEncodeHaveMlen:
+        BEQ.W opforgeNativeCliBuildEncodeNoOutput
+        MOVEA.L A4, A0
+        MOVE.L D6, D0
+        LEA ldaMnemonicText, A1
+        MOVEQ #3, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.S opforgeNativeCliBuildEncodeImmediate
+        MOVEA.L A4, A0
+        MOVE.L D6, D0
+        LEA staMnemonicText, A1
+        MOVEQ #3, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.S opforgeNativeCliBuildEncodeAbsolute
+        MOVEA.L A4, A0
+        MOVE.L D6, D0
+        LEA jmpMnemonicText, A1
+        MOVEQ #3, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.S opforgeNativeCliBuildEncodeAbsolute
+        BRA.W opforgeNativeCliBuildEncodeNoOutput
+
+opforgeNativeCliBuildEncodeImmediate:
+        MOVEQ #1, D5
+        LEA immediateModeText, A3
+        MOVEQ #9, D4
+        BSR.W opforgeNativeCliReadOperandValueForStatement
+        TST.L D0
+        BNE.W opforgeNativeCliBuildEncodeFail
+        BRA.S opforgeNativeCliBuildEncodePayload
+
+opforgeNativeCliBuildEncodeAbsolute:
+        MOVEQ #2, D5
+        LEA absoluteModeText, A3
+        MOVEQ #8, D4
+        BSR.W opforgeNativeCliReadOperandValueForStatement
+        TST.L D0
+        BNE.W opforgeNativeCliBuildEncodeFail
+
+opforgeNativeCliBuildEncodePayload:
+        LEA lastErrorBuffer, A2
+        MOVE.B D6, (A2)+
+        MOVEA.L A4, A0
+        MOVEA.L A2, A1
+        MOVE.W D6, D0
+        BSR.W opforge_native_cli_copy_fixed_string
+        MOVEA.L A1, A2
+        MOVE.B #1, (A2)+
+        MOVE.B D4, (A2)+
+        MOVEA.L A3, A0
+        MOVEA.L A2, A1
+        MOVE.W D4, D0
+        BSR.W opforge_native_cli_copy_fixed_string
+        MOVEA.L A1, A2
+        MOVE.B #1, (A2)+
+        MOVE.B D5, (A2)+
+        MOVE.B D3, (A2)+
+        CMPI.B #2, D5
+        BNE.S opforgeNativeCliBuildEncodeLenDone
+        MOVE.L D3, D0
+        LSR.L #8, D0
+        MOVE.B D0, (A2)+
+
+opforgeNativeCliBuildEncodeLenDone:
+        MOVE.L A2, D0
+        SUB.L #lastErrorBuffer, D0
+        MOVE.W D0, nativeCliEncodeRequestLen.L
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliBuildEncodeReturn
+
+opforgeNativeCliBuildEncodeNoOutput:
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliBuildEncodeReturn
+
+opforgeNativeCliBuildEncodeFail:
+        MOVEQ #1, D0
+
+opforgeNativeCliBuildEncodeReturn:
+        MOVEM.L (SP)+, D1-D7/A0-A4
+        RTS
+
+opforgeNativeCliReadOperandValueForStatement:
+        MOVEM.L D1-D2/D4-D7/A0-A2, -(SP)
+        CLR.L D3
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        ADD.W D0, D0
+        LEA nativeCliStmtOperandLenTable.L, A0
+        MOVEQ #0, D1
+        MOVE.W 0(A0,D0.L), D1
+        BEQ.S opforgeNativeCliReadOperandFail
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        LSL.L #6, D0
+        LEA nativeCliStmtOperandNameTable.L, A0
+        ADDA.L D0, A0
+        MOVE.L D1, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.S opforgeNativeCliReadOperandFail
+        CMPI.B #'#', (A0)
+        BNE.S opforgeNativeCliReadOperandNoImmediatePrefix
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+
+opforgeNativeCliReadOperandNoImmediatePrefix:
+        TST.L D0
+        BEQ.S opforgeNativeCliReadOperandFail
+        LEA nativeCliLabelNameTable.L, A1
+        LEA nativeCliLabelValueTable.L, A2
+        MOVEQ #0, D1
+        MOVE.W nativeCliLabelCount.L, D1
+        JSR opcore_expr_eval_operand_v1
+        TST.L D0
+        BNE.S opforgeNativeCliReadOperandFail
+        CMPI.B #1, D5
+        BNE.S opforgeNativeCliReadOperandOk
+        CMPI.L #$000000FF, D3
+        BHI.S opforgeNativeCliReadOperandFail
+        BRA.S opforgeNativeCliReadOperandOk
+
+opforgeNativeCliReadOperandFail:
+        MOVEQ #1, D0
+        BRA.S opforgeNativeCliReadOperandReturn
+
+opforgeNativeCliReadOperandOk:
+        MOVEQ #0, D0
+
+opforgeNativeCliReadOperandReturn:
+        MOVEM.L (SP)+, D1-D2/D4-D7/A0-A2
+        RTS
+
+opforgeNativeCliPassAdvancePc:
+        MOVEM.L D0-D6/A0-A3, -(SP)
+        LSL.L #6, D0
+        LEA nativeCliStmtMnemNameTable.L, A0
+        ADDA.L D0, A0
+        MOVE.L A0, D5
         MOVE.L D0, D4
         LSR.L #6, D4
         ADD.W D4, D4
         LEA nativeCliStmtMnemLenTable.L, A1
         MOVEQ #0, D0
         MOVE.W 0(A1,D4.L), D0
+        BNE.S opforgeNativeCliPassAdvanceHaveMlen
+        MOVEA.L D5, A0
+        BSR.W opforgeNativeCliTokenLen
+
+opforgeNativeCliPassAdvanceHaveMlen:
+        MOVE.W D0, D6
         LEA orgMnemonicText, A1
         MOVEQ #4, D1
         BSR.W opforgeNativeCliLineStartsWith
         TST.L D0
         BNE.W opforgeNativeCliPassAdvanceOrg
-        MOVEA.L D3, A0
-        MOVEQ #0, D0
-        LEA nativeCliStmtMnemLenTable.L, A1
-        MOVE.W 0(A1,D4.L), D0
+        MOVEA.L D5, A0
+        MOVE.W D6, D0
         LEA cpuMnemonicText, A1
         MOVEQ #4, D1
         BSR.W opforgeNativeCliLineStartsWith
         TST.L D0
         BNE.W opforgeNativeCliPassAdvanceDone
-        MOVEA.L D3, A0
-        MOVEQ #0, D0
-        LEA nativeCliStmtMnemLenTable.L, A1
-        MOVE.W 0(A1,D4.L), D0
+        MOVEA.L D5, A0
+        MOVE.W D6, D0
         LEA ldaMnemonicText, A1
         MOVEQ #3, D1
         BSR.W opforgeNativeCliLineStartsWith
         TST.L D0
         BNE.W opforgeNativeCliPassAdvanceTwo
-        MOVEA.L D3, A0
-        MOVEQ #0, D0
-        LEA nativeCliStmtMnemLenTable.L, A1
-        MOVE.W 0(A1,D4.L), D0
+        MOVEA.L D5, A0
+        MOVE.W D6, D0
         LEA nopMnemonicText, A1
         MOVEQ #3, D1
         BSR.W opforgeNativeCliLineStartsWith
         TST.L D0
         BNE.W opforgeNativeCliPassAdvanceOne
-        MOVEA.L D3, A0
-        MOVEQ #0, D0
-        LEA nativeCliStmtMnemLenTable.L, A1
-        MOVE.W 0(A1,D4.L), D0
+        MOVEA.L D5, A0
+        MOVE.W D6, D0
         LEA staMnemonicText, A1
         MOVEQ #3, D1
         BSR.W opforgeNativeCliLineStartsWith
         TST.L D0
         BNE.W opforgeNativeCliPassAdvanceThree
-        MOVEA.L D3, A0
-        MOVEQ #0, D0
-        LEA nativeCliStmtMnemLenTable.L, A1
-        MOVE.W 0(A1,D4.L), D0
+        MOVEA.L D5, A0
+        MOVE.W D6, D0
         LEA jmpMnemonicText, A1
         MOVEQ #3, D1
         BSR.W opforgeNativeCliLineStartsWith
@@ -2975,7 +3301,7 @@ opforgeNativeCliPassAdvanceThree:
         ADDQ.L #3, nativeCliSessionCurrentPc.L
 
 opforgeNativeCliPassAdvanceDone:
-        MOVEM.L (SP)+, D0-D4/A0-A1
+        MOVEM.L (SP)+, D0-D6/A0-A3
         MOVEQ #0, D0
         RTS
 
@@ -3001,6 +3327,37 @@ opforgeNativeCliLabelEqualsNo:
 
 opforgeNativeCliLabelEqualsReturn:
         MOVEM.L (SP)+, D1-D3/A0-A1
+        RTS
+
+opforge_native_cli_write_flat_output:
+        MOVEM.L D1-D4/A0-A1, -(SP)
+        LEA nativeCliHunkPath, A0
+        BSR.W opforge_native_cli_open_output
+        TST.L D0
+        BEQ.S opforgeNativeCliWriteFlatFail
+        MOVE.L D0, D4
+        LEA nativeCliImageBuffer.L, A0
+        MOVEQ #0, D0
+        MOVE.W nativeCliImageByteCount.L, D0
+        MOVE.L D0, D3
+        MOVE.L D4, D1
+        BSR.W opforge_native_cli_write_output
+        CMP.L D3, D0
+        BNE.S opforgeNativeCliWriteFlatCloseFail
+        MOVE.L D4, D1
+        BSR.W opforge_native_cli_close
+        MOVEQ #0, D0
+        BRA.S opforgeNativeCliWriteFlatReturn
+
+opforgeNativeCliWriteFlatCloseFail:
+        MOVE.L D4, D1
+        BSR.W opforge_native_cli_close
+
+opforgeNativeCliWriteFlatFail:
+        MOVEQ #1, D0
+
+opforgeNativeCliWriteFlatReturn:
+        MOVEM.L (SP)+, D1-D4/A0-A1
         RTS
 
 opforge_native_cli_init_module_use_state:
@@ -3044,6 +3401,7 @@ opforge_native_cli_parse_args:
         MOVEA.L A0, A3
         CLR.W nativeCliInputStyle
         CLR.W nativeCliHunkRequested
+        CLR.W nativeCliBinRequested
         CLR.W nativeCliParseStatus
         CLR.B nativeCliInputPath
         CLR.B nativeCliHunkPath
@@ -3099,6 +3457,16 @@ opforgeNativeCliParseLoop:
         TST.L D0
         BNE.W opforgeNativeCliHunk
         LEA nativeCliArgToken, A0
+        LEA flagBinShort, A1
+        BSR.W opforgeNativeCliTokenEquals
+        TST.L D0
+        BNE.W opforgeNativeCliBin
+        LEA nativeCliArgToken, A0
+        LEA flagBinLong, A1
+        BSR.W opforgeNativeCliTokenEquals
+        TST.L D0
+        BNE.W opforgeNativeCliBin
+        LEA nativeCliArgToken, A0
         LEA flagOutfileShort, A1
         BSR.W opforgeNativeCliTokenEquals
         TST.L D0
@@ -3153,6 +3521,15 @@ opforgeNativeCliInfileFirst:
 
 opforgeNativeCliHunk:
         MOVE.W #1, nativeCliHunkRequested
+        LEA nativeCliHunkPath, A1
+        BSR.W opforgeNativeCliCopyOptionalValue
+        TST.L D0
+        BMI.W opforgeNativeCliQuoted
+        BRA.W opforgeNativeCliParseLoop
+
+opforgeNativeCliBin:
+        MOVE.W #1, nativeCliHunkRequested
+        MOVE.W #1, nativeCliBinRequested
         LEA nativeCliHunkPath, A1
         BSR.W opforgeNativeCliCopyOptionalValue
         TST.L D0
@@ -3460,16 +3837,6 @@ opforgeNativeCliIsUnsupportedFlag:
         TST.L D0
         BNE.W opforgeNativeCliUnsupportedYes
         LEA nativeCliArgToken, A0
-        LEA flagBinShort, A1
-        BSR.W opforgeNativeCliTokenEquals
-        TST.L D0
-        BNE.W opforgeNativeCliUnsupportedYes
-        LEA nativeCliArgToken, A0
-        LEA flagBinLong, A1
-        BSR.W opforgeNativeCliTokenEquals
-        TST.L D0
-        BNE.W opforgeNativeCliUnsupportedYes
-        LEA nativeCliArgToken, A0
         LEA flagDefineShort, A1
         BSR.W opforgeNativeCliTokenEquals
         TST.L D0
@@ -3645,7 +4012,7 @@ versionText:
         .byte "opForge native AmigaOS CLI 0.1",10,0
 helpText:
         .byte "Usage: opForge [OPTIONS] [INPUT]",10
-        .byte "Native subset: INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -M/--module-path",10,0
+        .byte "Native subset: INPUT, -i/--infile, --bin/--hunk [FILE], -o/--outfile, --cpu, --opasm-package, -M/--module-path",10,0
 usageText:
         .byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]",10,0
 quotedText:
@@ -3653,7 +4020,7 @@ quotedText:
 unsupportedText:
         .byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ",0
 nativeSubsetHelpText:
-        .byte 10,"Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path.",10,0
+        .byte 10,"Native subset supports INPUT, -i/--infile, --bin/--hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path.",10,0
 unknownFlagText:
         .byte "OPC-NCLI004: unknown CLI flag: ",0
 missingValueText:
@@ -3661,7 +4028,7 @@ missingValueText:
 noInputText:
         .byte "OPC-NCLI006: No input files specified. Use -i/--infile",10,0
 hunkRequiredText:
-        .byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --hunk only",10,0
+        .byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --bin or --hunk",10,0
 mixedInputText:
         .byte "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style",10,0
 multiplePositionalText:
@@ -3720,6 +4087,12 @@ nativeDuplicateLabelText:
         .byte "ERROR OPC-NCLI021: duplicate native label: ",0
 nativeUnresolvedLabelText:
         .byte "ERROR OPC-NCLI022: unresolved native label",10,0
+nativeOutputOkText:
+        .byte "STATUS output-ok",10,0
+nativeOutputFailureText:
+        .byte "ERROR OPC-NCLI023: native flat output write failed",10,0
+nativeImageCapacityText:
+        .byte "ERROR OPC-NCLI024: native image buffer capacity exceeded",10,0
 nativeLabelText:
         .byte "LABEL ",0
 emitterStubText:
@@ -3783,7 +4156,7 @@ kindStatementText:
         .byte "statement"
 opforgeNativeCliPrvmParserProgram:
         .byte $60,$40,$13,$03,$08,$00,$64,$00
-        .byte $10,$07,$03,$16,$00,$20,$30,$65
+        .byte $10,$07,$03,$1D,$00,$20,$30,$65
         .byte $13,$03,$16,$00,$64,$00,$50,$FF
         .byte $FF,$FF,$FF,$64,$00,$30,$62,$13
         .byte $03,$25,$00,$64,$00,$50,$FF,$FF
@@ -3806,6 +4179,10 @@ jmpMnemonicText:
         .byte "jmp"
 nopMnemonicText:
         .byte "nop"
+immediateModeText:
+        .byte "immediate"
+absoluteModeText:
+        .byte "absolute"
 moduleDirectiveText:
         .byte ".module"
 endmoduleDirectiveText:
@@ -3828,6 +4205,9 @@ endifDirectiveText:
         .byte ".endif"
 .ifdef OPFORGE_FS_UAE_SMOKE
 defaultFsUaeArgTail:
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT
+        .byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm",0
+.else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT
         .byte "Work:opforge_missing_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
@@ -3862,6 +4242,7 @@ defaultFsUaeArgTail:
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8",0
 .else
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b",0
+.endif
 .endif
 .endif
 .endif
@@ -3941,6 +4322,11 @@ defaultCpuName:
 defaultFamilyName:
         .byte "motorola68k"
 defaultFamilyNameEnd:
+m6502CpuNameText:
+        .byte "m6502",0
+mos6502FamilyName:
+        .byte "mos6502"
+mos6502FamilyNameEnd:
 
         .align 2
 opforgeNativeCliPackageData:
@@ -3948,6 +4334,7 @@ opforgeNativeCliPackageData:
 opforgeNativeCliPackageDataEnd:
 
 DEFAULT_FAMILY_NAME_LEN = defaultFamilyNameEnd - defaultFamilyName
+MOS6502_FAMILY_NAME_LEN = mos6502FamilyNameEnd - mos6502FamilyName
 OPFORGE_NATIVE_CLI_PACKAGE_LEN = opforgeNativeCliPackageDataEnd - opforgeNativeCliPackageData
 
         .endsection
@@ -3962,6 +4349,8 @@ nativeCliReturnCode:
 nativeCliInputStyle:
         .res word,1
 nativeCliHunkRequested:
+        .res word,1
+nativeCliBinRequested:
         .res word,1
 nativeCliParseStatus:
         .res word,1
@@ -4081,11 +4470,15 @@ nativeCliStmtLabelLenTable:
         .res word,NATIVE_STATEMENT_TABLE_CAPACITY
 nativeCliStmtMnemLenTable:
         .res word,NATIVE_STATEMENT_TABLE_CAPACITY
+nativeCliStmtOperandLenTable:
+        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
 nativeCliStmtMnemOffTable:
         .res long,NATIVE_STATEMENT_TABLE_CAPACITY
 nativeCliStmtLabelNameTable:
         .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
 nativeCliStmtMnemNameTable:
+        .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+nativeCliStmtOperandNameTable:
         .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
 nativeCliLabelValueTable:
         .res long,NATIVE_LABEL_TABLE_CAPACITY

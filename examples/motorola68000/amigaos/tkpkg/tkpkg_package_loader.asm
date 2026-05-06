@@ -8,12 +8,14 @@
         .use tkpkg.amigaos.buffers (PACKAGE_STATE_CLEAR_LONGWORD_COUNT)
         .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_FAMS, PACKAGE_CHUNK_CPUS)
         .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_DIAL, PACKAGE_CHUNK_TOKS)
-        .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_TKVM, PACKAGE_REQUIRED_CHUNK_FLAGS)
+        .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_TKVM, PACKAGE_CHUNK_TABL)
+        .use tkpkg.amigaos.buffers (PACKAGE_REQUIRED_CHUNK_FLAGS)
         .use tkpkg.amigaos.buffers (packageStorage, packageStateFlags)
         .use tkpkg.amigaos.buffers (packageChunkFlags, packageStorageLen)
         .use tkpkg.amigaos.buffers (packageStorageLenHi, famsChunkOffsetLo)
         .use tkpkg.amigaos.buffers (cpusChunkOffsetLo, dialChunkOffsetLo)
         .use tkpkg.amigaos.buffers (toksChunkOffsetLo, tkvmChunkOffsetLo)
+        .use tkpkg.amigaos.buffers (tablChunkOffsetLo)
         .use tkpkg.amigaos.buffers (activeCpuBuffer, activeDialectBuffer)
 
 OPASM_HEADER_SIZE                    = 12
@@ -255,23 +257,40 @@ tkpkgPackageLoaderCheckToks:
 
 tkpkgPackageLoaderCheckTkvm:
         CMPI.B #'T', (A2)
-        BNE.S tkpkgPackageLoaderNextTocEntry
+        BNE.S tkpkgPackageLoaderCheckTabl
         CMPI.B #'K', 1(A2)
-        BNE.S tkpkgPackageLoaderNextTocEntry
+        BNE.S tkpkgPackageLoaderCheckTabl
         CMPI.B #'V', 2(A2)
-        BNE.S tkpkgPackageLoaderNextTocEntry
+        BNE.S tkpkgPackageLoaderCheckTabl
         CMPI.B #'M', 3(A2)
-        BNE.S tkpkgPackageLoaderNextTocEntry
+        BNE.S tkpkgPackageLoaderCheckTabl
         BTST #4, packageChunkFlags
         BNE.W tkpkgPackageLoaderDuplicateChunk
         LEA tkvmChunkOffsetLo, A3
         BSR.W tkpkg_package_loader_store_locator_v1
         ORI.B #PACKAGE_CHUNK_TKVM, packageChunkFlags
+        BRA.S tkpkgPackageLoaderNextTocEntry
+
+tkpkgPackageLoaderCheckTabl:
+        CMPI.B #'T', (A2)
+        BNE.S tkpkgPackageLoaderNextTocEntry
+        CMPI.B #'A', 1(A2)
+        BNE.S tkpkgPackageLoaderNextTocEntry
+        CMPI.B #'B', 2(A2)
+        BNE.S tkpkgPackageLoaderNextTocEntry
+        CMPI.B #'L', 3(A2)
+        BNE.S tkpkgPackageLoaderNextTocEntry
+        BTST #5, packageChunkFlags
+        BNE.W tkpkgPackageLoaderDuplicateChunk
+        LEA tablChunkOffsetLo, A3
+        BSR.W tkpkg_package_loader_store_locator_v1
+        ORI.B #PACKAGE_CHUNK_TABL, packageChunkFlags
 
 tkpkgPackageLoaderNextTocEntry:
         LEA OPASM_TOC_ENTRY_SIZE(A2), A2
         DBF D2, tkpkgPackageLoaderTocLoop
         MOVE.B packageChunkFlags, D0
+        ANDI.B #PACKAGE_REQUIRED_CHUNK_FLAGS, D0
         CMPI.B #PACKAGE_REQUIRED_CHUNK_FLAGS, D0
         BNE.W tkpkgPackageLoaderMissingChunk
         MOVEQ #0, D0

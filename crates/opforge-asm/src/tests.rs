@@ -1604,7 +1604,11 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             .parent()
             .and_then(Path::parent)
             .expect("opforge_cli should live under amigaos/opforge");
-        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("prvm")];
+        return vec![
+            amigaos_dir.join("tkpkg"),
+            amigaos_dir.join("prvm"),
+            amigaos_dir.join("opcore"),
+        ];
     }
 
     Vec::new()
@@ -1667,6 +1671,7 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
                 | "tkpkg_pipeline.asm"
                 | "tkpkg_token_policy.asm"
                 | "tkpkg_tokenizer_vm.asm"
+                | "opcore_expr_bridge.asm"
                 | "prvm_interpreter.asm"
                 | "prvm_line_router.asm"
                 | "prvm_line_iterator.asm"
@@ -9892,7 +9897,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         );
     }
     assert!(source.contains(
-        "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --hunk only"
+        "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --bin or --hunk"
     ));
     assert!(
         source.contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style")
@@ -9906,11 +9911,14 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     );
     assert!(source.contains("OPC-NCLI008: Input source file not found"));
     assert!(source.contains(
-        "Native subset supports INPUT, -i/--infile, --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path."
+        "Native subset supports INPUT, -i/--infile, --bin/--hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path."
     ));
     assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(source.contains("STATUS parser-module-use-ok"));
     assert!(source.contains("OPC-NCLI009: native emitter VM not implemented"));
+    assert!(source.contains("STATUS output-ok"));
+    assert!(source.contains("OPC-NCLI023: native flat output write failed"));
+    assert!(source.contains("OPC-NCLI024: native image buffer capacity exceeded"));
     assert!(source.contains("OPC-NCLI013: native module/use parser stage failed"));
     assert!(source.contains("OPC-NCLI014: native include expansion failed"));
     assert!(source.contains("OPC-NCLI015: native conditional preprocessing not implemented"));
@@ -9972,6 +9980,13 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("nativeCliLabelCount"));
     assert!(source.contains("nativeCliImageByteCount"));
     assert!(source.contains("nativeCliImageBuffer"));
+    assert!(source.contains("nativeCliBinRequested"));
+    assert!(source.contains("opforge_native_cli_write_flat_output"));
+    assert!(source.contains("opforgeNativeCliPassTwoEmitImageBytes"));
+    assert!(source.contains("opforgeNativeCliBuildEncodeRequestForStatement"));
+    assert!(!source.contains("opforgeNativeCliPassTwoEmitBinSmokeFallback"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT"));
+    assert!(source.contains("Work:opforge_native_out.bin"));
     assert!(source.contains("NATIVE_SOURCE_RECORD_CAPACITY   = 512"));
     assert!(source.contains("NATIVE_LABEL_TABLE_CAPACITY     = 16"));
     assert!(source.contains("NATIVE_IMAGE_BUFFER_CAPACITY    = 4096"));
@@ -9993,7 +10008,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     ));
     assert!(tokvm_source_contains(
         &source,
-        "OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 44"
+        "OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 46"
     ));
     assert!(source.contains("lastTokenCount"));
     assert!(source.contains("lastLexemeLen"));
@@ -10060,6 +10075,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "MOVE.L #parserOkText, D1",
             "BSR.W opforge_native_cli_put_str",
             "BSR.W opforgeNativeCliEmitAssemblySessionSummary",
+            "BSR.W opforge_native_cli_write_flat_output",
+            "MOVE.L #nativeOutputOkText, D1",
             "MOVE.L #emitterStubText, D1",
         ]
     ));
@@ -10384,50 +10401,12 @@ fn native_cli_6502_contract_encode(
     .unwrap_or_else(|| panic!("encode {mnemonic} at ${addr:04X} emitted no bytes"))
 }
 
-#[test]
-fn motorola68020_opforge_native_cli_6502_small_assembly_contract_matches_rust_vm_bytes() {
-    let repo_root = workspace_root();
-    let source_path = repo_root.join("examples/mos6502/6502_native_cli_smoke.asm");
-    let source = fs::read_to_string(&source_path).expect("read native CLI 6502 smoke fixture");
-
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            ".cpu 6502",
-            ".org $0800",
-            "start:  lda #$42",
-            "sta $0200",
-            "done:   jmp done",
-        ]
-    ));
-
+fn native_cli_6502_contract_expected_bin() -> Vec<u8> {
     let mut registry = ModuleRegistry::new();
     register_mos6502_family_stack(&mut registry);
     let package_bytes =
         build_hierarchy_package_from_registry(&registry).expect("build mos6502 package");
     let model = load_opasm_model_from_package_bytes(package_bytes.as_slice());
-
-    for (line_num, line, expected_mnemonic) in [
-        (5, "start:  lda #$42", "lda"),
-        (6, "        sta $0200", "sta"),
-        (7, "done:   jmp done", "jmp"),
-    ] {
-        let ast = vm::vm_opasm::parse_portable_line_for_assembler(
-            &model,
-            m6502_cpu_id.as_str(),
-            None,
-            line,
-            line_num,
-        )
-        .unwrap_or_else(|err| panic!("parse smoke line {line_num}: {}", err.message));
-        match ast {
-            vm::portable_contract::PortableLineAst::Statement {
-                mnemonic: Some(mnemonic),
-                ..
-            } => assert_eq!(mnemonic.to_ascii_lowercase(), expected_mnemonic),
-            other => panic!("expected statement for smoke line {line_num}, got {other:?}"),
-        }
-    }
 
     let symbols = [("done", 0x0805)];
     let lda = native_cli_6502_contract_encode(
@@ -10460,10 +10439,59 @@ fn motorola68020_opforge_native_cli_6502_small_assembly_contract_matches_rust_vm
     image.store_slice(0x0800, lda.as_slice());
     image.store_slice(0x0802, sta.as_slice());
     image.store_slice(0x0805, jmp.as_slice());
-    let bin = vm::vm_opasm::build_bin_output_payload(&image, 0x0800, 0x0807, 0xff)
-        .expect("build native CLI 6502 smoke bin payload");
+    vm::vm_opasm::build_bin_output_payload(&image, 0x0800, 0x0807, 0xff)
+        .expect("build native CLI 6502 smoke bin payload")
+}
 
-    assert_eq!(bin, vec![0xA9, 0x42, 0x8D, 0x00, 0x02, 0x4C, 0x05, 0x08]);
+#[test]
+fn motorola68020_opforge_native_cli_6502_small_assembly_contract_matches_rust_vm_bytes() {
+    let repo_root = workspace_root();
+    let source_path = repo_root.join("examples/mos6502/6502_native_cli_smoke.asm");
+    let source = fs::read_to_string(&source_path).expect("read native CLI 6502 smoke fixture");
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            ".cpu 6502",
+            ".org $0800",
+            "start   lda #$42",
+            "sta $0200",
+            "done    jmp done",
+        ]
+    ));
+
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("build mos6502 package");
+    let model = load_opasm_model_from_package_bytes(package_bytes.as_slice());
+
+    for (line_num, line, expected_mnemonic) in [
+        (5, "start   lda #$42", "lda"),
+        (6, "        sta $0200", "sta"),
+        (7, "done    jmp done", "jmp"),
+    ] {
+        let ast = vm::vm_opasm::parse_portable_line_for_assembler(
+            &model,
+            m6502_cpu_id.as_str(),
+            None,
+            line,
+            line_num,
+        )
+        .unwrap_or_else(|err| panic!("parse smoke line {line_num}: {}", err.message));
+        match ast {
+            vm::portable_contract::PortableLineAst::Statement {
+                mnemonic: Some(mnemonic),
+                ..
+            } => assert_eq!(mnemonic.to_ascii_lowercase(), expected_mnemonic),
+            other => panic!("expected statement for smoke line {line_num}, got {other:?}"),
+        }
+    }
+
+    assert_eq!(
+        native_cli_6502_contract_expected_bin(),
+        vec![0xA9, 0x42, 0x8D, 0x00, 0x02, 0x4C, 0x05, 0x08]
+    );
 }
 
 #[test]
@@ -10745,6 +10773,12 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
             .windows("STATUS pass2-ok".len())
             .any(|window| window == b"STATUS pass2-ok"),
         "expected native pass-two success marker in Hunk payload"
+    );
+    assert!(
+        payload
+            .windows("STATUS output-ok".len())
+            .any(|window| window == b"STATUS output-ok"),
+        "expected native flat-output success marker in Hunk payload"
     );
     assert!(
         payload
@@ -12362,7 +12396,11 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "CMPI.B #ENTRY_ORD_PARSE_LINE,D0\n        BEQ.S tkpkgServiceDeferredRuntime\n        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION,D0\n        BEQ.S tkpkgServiceDeferredRuntime"
+        "CMPI.B #ENTRY_ORD_PARSE_LINE,D0\n        BEQ.S tkpkgServiceDeferredRuntime\n        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION,D0\n        BEQ.W tkpkgServiceHandleEncodeInstruction"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "tkpkg_service_encode_instruction_v1:"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -27166,19 +27204,19 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.l\")@1:1-7"),
+                run.stdout.contains("Identifier(\"move.l\")@1:9-15"),
                 "native opForge CLI did not tokenize the included source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.l\")@3:1-7"),
+                run.stdout.contains("Identifier(\"move.l\")@3:9-15"),
                 "native opForge CLI did not tokenize the resolved module source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.b\")@7:1-7"),
+                run.stdout.contains("Identifier(\"move.b\")@7:9-15"),
                 "native opForge CLI did not emit tokenizer rows for the smoke source\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -27208,7 +27246,7 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.w\")@8:1-7"),
+                run.stdout.contains("Identifier(\"move.w\")@8:9-15"),
                 "native opForge CLI did not emit tokenizer rows for the second smoke source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -27242,6 +27280,54 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
 }
 
 #[test]
+fn external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin() {
+    match crate::fs_uae_smoke::run_opforge_native_cli_6502_output_from_env(&workspace_root())
+        .expect("native opForge CLI 6502 output FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                1,
+                "expected a single native opForge CLI output run"
+            );
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "native opForge CLI 6502 output smoke failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS output-ok"),
+                "native opForge CLI did not report flat-output success\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("OUTPUT-BYTES 8") || run.stdout.contains("IMAGE-BYTES 8"),
+                "native opForge CLI did not report an eight-byte image summary\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let actual = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!("read native CLI output {}: {err}", output_path.display())
+            });
+            assert_eq!(actual, native_cli_6502_contract_expected_bin());
+            eprintln!(
+                "FS-UAE native opForge CLI 6502 output smoke wrote {} under {}",
+                output_path.display(),
+                run.artifact_dir.display()
+            );
+        }
+    }
+}
+
+#[test]
 fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
@@ -27252,7 +27338,7 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-hunk",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK",
-            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --hunk only",
+            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --bin or --hunk",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "mixed-input",

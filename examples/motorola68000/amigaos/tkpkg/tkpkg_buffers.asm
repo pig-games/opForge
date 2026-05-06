@@ -7,7 +7,7 @@
 
 LAST_ERROR_BUFFER_CAPACITY           = 4096
 LAST_ERROR_BUFFER_PTR_V1             = NATIVE_CONTROL_BLOCK_SIZE_V1
-PACKAGE_STORAGE_CAPACITY             = 4096
+PACKAGE_STORAGE_CAPACITY             = 32768
 PIPELINE_ID_BUFFER_CAPACITY          = 32
 TOKEN_RECORD_SIZE                    = 20
 TOKEN_BUFFER_CAPACITY                = 64
@@ -21,6 +21,7 @@ PACKAGE_CHUNK_CPUS                   = 2
 PACKAGE_CHUNK_DIAL                   = 4
 PACKAGE_CHUNK_TOKS                   = 8
 PACKAGE_CHUNK_TKVM                   = 16
+PACKAGE_CHUNK_TABL                   = 32
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
 PACKAGE_STATE_CLEAR_LONGWORD_COUNT   = 40
 SCOPED_OWNER_FAMILY                  = 0
@@ -144,6 +145,18 @@ tkvmChunkLenLo:
         .res byte, 1
 
 tkvmChunkLenHi:
+        .res byte, 1
+
+tablChunkOffsetLo:
+        .res byte, 1
+
+tablChunkOffsetHi:
+        .res byte, 1
+
+tablChunkLenLo:
+        .res byte, 1
+
+tablChunkLenHi:
         .res byte, 1
 
 activeCpuBuffer:

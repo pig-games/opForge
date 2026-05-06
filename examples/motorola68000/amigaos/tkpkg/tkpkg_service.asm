@@ -27,7 +27,8 @@
         .use tkpkg.amigaos.buffers (controlBlockV1, nextRequestIdHi, nextRequestIdLo)
         .use tkpkg.amigaos.buffers (storedLastErrorKind, storedLastErrorLen)
         .use tkpkg.amigaos.buffers (storedLastErrorLenHi)
-        .use tkpkg.amigaos.buffers (lastErrorBuffer)
+        .use tkpkg.amigaos.buffers (lastErrorBuffer, packageStorage)
+        .use tkpkg.amigaos.buffers (tablChunkOffsetLo, tablChunkOffsetHi)
         .use tkpkg.amigaos.package_loader (tkpkg_package_loader_load_v1)
         .use tkpkg.amigaos.pipeline (tkpkg_pipeline_set_active_v1)
         .use tkpkg.amigaos.tokenizer_vm (tkpkg_tokenizer_vm_tokenize_line_v1)
@@ -58,7 +59,7 @@ tkpkg_service_dispatch_v1:
         CMPI.B #ENTRY_ORD_PARSE_LINE, D0
         BEQ.S tkpkgServiceDeferredRuntime
         CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION, D0
-        BEQ.S tkpkgServiceDeferredRuntime
+        BEQ.W tkpkgServiceHandleEncodeInstruction
         BSR.W tkpkg_service_set_bad_request_v1
         RTS
 
@@ -174,6 +175,296 @@ tkpkgServiceTokenizeLineOk:
         MOVE.B D1, 23(A0)
 
 tkpkgServiceTokenizeLineDone:
+        RTS
+
+tkpkgServiceHandleEncodeInstruction:
+        MOVE.L A0, -(SP)
+        BSR.W tkpkg_service_encode_instruction_v1
+        MOVEA.L (SP)+, A0
+        TST.B D0
+        BEQ.S tkpkgServiceEncodeInstructionOk
+        BSR.W tkpkg_service_set_runtime_error_message_v1
+        RTS
+
+tkpkgServiceEncodeInstructionOk:
+        BSR.W tkpkg_service_write_clear_input_fields_v1
+        BSR.W tkpkg_service_clear_stored_last_error_v1
+        BSR.W tkpkg_service_write_clear_last_error_fields_v1
+        BSR.W tkpkg_service_set_status_ok_v1
+        BSR.W tkpkg_service_write_clear_output_fields_v1
+        TST.W D1
+        BEQ.S tkpkgServiceEncodeInstructionDone
+        BSR.W tkpkg_service_write_output_buffer_offset_v1
+        MOVE.B D1, CB_OUTPUT_LEN(A0)
+        LSR.W #8, D1
+        MOVE.B D1, 23(A0)
+
+tkpkgServiceEncodeInstructionDone:
+        RTS
+
+tkpkg_service_encode_instruction_v1:
+        MOVEM.L D2-D7/A2-A6, -(SP)
+        MOVEQ #0, D0
+        MOVE.B CB_INPUT_PTR(A0), D0
+        MOVEQ #0, D1
+        MOVE.B 17(A0), D1
+        LSL.W #8, D1
+        OR.W D1, D0
+        LEA 0(A0,D0.W), A4
+        MOVEQ #0, D7
+        MOVE.B CB_INPUT_LEN(A0), D7
+        MOVEQ #0, D0
+        MOVE.B 19(A0), D0
+        LSL.W #8, D0
+        OR.W D0, D7
+        CMPI.W #4, D7
+        BCS.W tkpkgEncodeInstructionFail
+        MOVEQ #0, D2
+        MOVE.B (A4)+, D2
+        SUBQ.W #1, D7
+        TST.W D2
+        BEQ.W tkpkgEncodeInstructionFail
+        CMP.W D7, D2
+        BHI.W tkpkgEncodeInstructionFail
+        MOVEA.L A4, A5
+        ADDA.W D2, A4
+        SUB.W D2, D7
+        TST.W D7
+        BEQ.W tkpkgEncodeInstructionFail
+        MOVEQ #0, D3
+        MOVE.B (A4)+, D3
+        SUBQ.W #1, D7
+        TST.W D3
+        BEQ.W tkpkgEncodeInstructionNoMatch
+        TST.W D7
+        BEQ.W tkpkgEncodeInstructionFail
+        MOVEQ #0, D4
+        MOVE.B (A4)+, D4
+        SUBQ.W #1, D7
+        TST.W D4
+        BEQ.W tkpkgEncodeInstructionFail
+        CMP.W D7, D4
+        BHI.W tkpkgEncodeInstructionFail
+        MOVEA.L A4, A6
+        ADDA.W D4, A4
+        SUB.W D4, D7
+        TST.W D7
+        BEQ.W tkpkgEncodeInstructionFail
+        MOVEQ #0, D5
+        MOVE.B (A4)+, D5
+        SUBQ.W #1, D7
+        TST.W D5
+        BEQ.W tkpkgEncodeInstructionFail
+        TST.W D7
+        BEQ.W tkpkgEncodeInstructionFail
+        MOVEQ #0, D6
+        MOVE.B (A4)+, D6
+        SUBQ.W #1, D7
+        CMP.W D7, D6
+        BHI.W tkpkgEncodeInstructionFail
+        MOVEA.L A4, A3
+        BSR.W tkpkgEncodeFindAndExecuteTableProgram
+        BRA.S tkpkgEncodeInstructionReturn
+
+tkpkgEncodeInstructionNoMatch:
+        MOVEQ #0, D1
+        MOVEQ #0, D0
+        BRA.S tkpkgEncodeInstructionReturn
+
+tkpkgEncodeInstructionFail:
+        LEA runtimeErrorText, A1
+        MOVEQ #RUNTIME_ERROR_TEXT_LEN, D1
+        MOVEQ #1, D0
+
+tkpkgEncodeInstructionReturn:
+        MOVEM.L (SP)+, D2-D7/A2-A6
+        RTS
+
+tkpkgEncodeFindAndExecuteTableProgram:
+        MOVEM.L D2-D7/A0-A6, -(SP)
+        MOVEQ #0, D0
+        MOVE.B tablChunkOffsetLo, D0
+        MOVEQ #0, D1
+        MOVE.B tablChunkOffsetHi, D1
+        LSL.W #8, D1
+        OR.W D1, D0
+        BEQ.W tkpkgEncodeFindTableFail
+        LEA packageStorage, A0
+        ADDA.W D0, A0
+        BSR.W tkpkgEncodeReadU32Low16
+        TST.W D0
+        BEQ.W tkpkgEncodeFindTableNoMatch
+        MOVE.W D0, D7
+        SUBQ.W #1, D7
+
+tkpkgEncodeFindTableLoop:
+        MOVE.B (A0)+, D0
+        BSR.W tkpkgEncodeSkipString
+        MOVEA.L A0, A1
+        BSR.W tkpkgEncodeReadU32Low16
+        MOVE.W D0, D1
+        MOVEA.L A0, A2
+        ADDA.W D1, A0
+        MOVEA.L A5, A1
+        MOVE.W D2, D0
+        BSR.W tkpkgEncodeStringEqIgnoreCase
+        TST.B D0
+        BEQ.S tkpkgEncodeFindTableSkipModeCheck
+        MOVEA.L A0, A1
+        BSR.W tkpkgEncodeReadU32Low16
+        MOVE.W D0, D1
+        MOVEA.L A0, A2
+        ADDA.W D1, A0
+        MOVEA.L A6, A1
+        MOVE.W D4, D0
+        BSR.W tkpkgEncodeStringEqIgnoreCase
+        TST.B D0
+        BEQ.S tkpkgEncodeFindTableSkipProgram
+        BSR.W tkpkgEncodeReadU32Low16
+        MOVE.W D0, D1
+        MOVEA.L A0, A1
+        BSR.W tkpkgEncodeExecuteProgram
+        BRA.S tkpkgEncodeFindTableReturn
+
+tkpkgEncodeFindTableSkipModeCheck:
+        BSR.W tkpkgEncodeSkipString
+
+tkpkgEncodeFindTableSkipProgram:
+        BSR.W tkpkgEncodeSkipBytes
+        DBRA D7, tkpkgEncodeFindTableLoop
+
+tkpkgEncodeFindTableNoMatch:
+        MOVEQ #0, D1
+        MOVEQ #0, D0
+        BRA.S tkpkgEncodeFindTableReturn
+
+tkpkgEncodeFindTableFail:
+        LEA runtimeErrorText, A1
+        MOVEQ #RUNTIME_ERROR_TEXT_LEN, D1
+        MOVEQ #1, D0
+
+tkpkgEncodeFindTableReturn:
+        MOVEM.L (SP)+, D2-D7/A0-A6
+        RTS
+
+tkpkgEncodeExecuteProgram:
+        MOVEM.L D2-D7/A0-A4, -(SP)
+        MOVEA.L A1, A0
+        MOVE.W D1, D7
+        LEA lastErrorBuffer, A2
+        CLR.W D1
+
+tkpkgEncodeExecuteProgramLoop:
+        TST.W D7
+        BEQ.S tkpkgEncodeExecuteProgramFail
+        MOVE.B (A0)+, D0
+        SUBQ.W #1, D7
+        CMPI.B #$FF, D0
+        BEQ.S tkpkgEncodeExecuteProgramOk
+        CMPI.B #$01, D0
+        BEQ.S tkpkgEncodeExecuteProgramEmitU8
+        CMPI.B #$02, D0
+        BEQ.S tkpkgEncodeExecuteProgramEmitOperand
+        BRA.W tkpkgEncodeExecuteProgramFail
+
+tkpkgEncodeExecuteProgramEmitU8:
+        TST.W D7
+        BEQ.S tkpkgEncodeExecuteProgramFail
+        MOVE.B (A0)+, (A2)+
+        SUBQ.W #1, D7
+        ADDQ.W #1, D1
+        BRA.S tkpkgEncodeExecuteProgramLoop
+
+tkpkgEncodeExecuteProgramEmitOperand:
+        TST.W D7
+        BEQ.S tkpkgEncodeExecuteProgramFail
+        MOVE.B (A0)+, D0
+        SUBQ.W #1, D7
+        TST.B D0
+        BNE.S tkpkgEncodeExecuteProgramFail
+        MOVE.W D6, D0
+        BEQ.S tkpkgEncodeExecuteProgramLoop
+        MOVEA.L A3, A4
+
+tkpkgEncodeExecuteProgramOperandLoop:
+        MOVE.B (A4)+, (A2)+
+        ADDQ.W #1, D1
+        SUBQ.W #1, D0
+        BNE.S tkpkgEncodeExecuteProgramOperandLoop
+        BRA.S tkpkgEncodeExecuteProgramLoop
+
+tkpkgEncodeExecuteProgramOk:
+        MOVEQ #0, D0
+        BRA.S tkpkgEncodeExecuteProgramReturn
+
+tkpkgEncodeExecuteProgramFail:
+        LEA runtimeErrorText, A1
+        MOVEQ #RUNTIME_ERROR_TEXT_LEN, D1
+        MOVEQ #1, D0
+
+tkpkgEncodeExecuteProgramReturn:
+        MOVEM.L (SP)+, D2-D7/A0-A4
+        RTS
+
+tkpkgEncodeReadU32Low16:
+        MOVEQ #0, D0
+        MOVE.B (A0)+, D0
+        MOVEQ #0, D1
+        MOVE.B (A0)+, D1
+        LSL.W #8, D1
+        OR.W D1, D0
+        ADDQ.L #2, A0
+        RTS
+
+tkpkgEncodeSkipString:
+        BSR.W tkpkgEncodeReadU32Low16
+        ADDA.W D0, A0
+        RTS
+
+tkpkgEncodeSkipBytes:
+        BSR.W tkpkgEncodeReadU32Low16
+        ADDA.W D0, A0
+        RTS
+
+tkpkgEncodeStringEqIgnoreCase:
+        MOVEM.L D1-D4/A1-A2, -(SP)
+        CMP.W D1, D0
+        BNE.S tkpkgEncodeStringEqNo
+        TST.W D0
+        BEQ.S tkpkgEncodeStringEqYes
+        MOVE.W D0, D4
+        SUBQ.W #1, D4
+
+tkpkgEncodeStringEqLoop:
+        MOVE.B (A1)+, D2
+        MOVE.B (A2)+, D3
+        CMPI.B #'A', D2
+        BCS.S tkpkgEncodeStringEqLeftOk
+        CMPI.B #'Z', D2
+        BHI.S tkpkgEncodeStringEqLeftOk
+        ADDI.B #32, D2
+
+tkpkgEncodeStringEqLeftOk:
+        CMPI.B #'A', D3
+        BCS.S tkpkgEncodeStringEqCompare
+        CMPI.B #'Z', D3
+        BHI.S tkpkgEncodeStringEqCompare
+        ADDI.B #32, D3
+
+tkpkgEncodeStringEqCompare:
+        CMP.B D3, D2
+        BNE.S tkpkgEncodeStringEqNo
+        DBRA D4, tkpkgEncodeStringEqLoop
+
+tkpkgEncodeStringEqYes:
+        MOVEQ #1, D0
+        BRA.S tkpkgEncodeStringEqReturn
+
+tkpkgEncodeStringEqNo:
+        MOVEQ #0, D0
+
+tkpkgEncodeStringEqReturn:
+        MOVEM.L (SP)+, D1-D4/A1-A2
         RTS
 
 tkpkg_service_prepare_request_v1:

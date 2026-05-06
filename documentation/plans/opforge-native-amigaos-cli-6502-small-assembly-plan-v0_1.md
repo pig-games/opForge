@@ -229,7 +229,7 @@ Native processor ownership should be:
   - Commit outcome: one commit that runs pass 1 to collect origin, current PC, and labels, then pass 2 to repeat deterministic layout while output byte writing remains an Item 9 concern.
   - Definition of done: the native engine records local labels such as `done` at deterministic pass-1 PCs, advances pass-2 layout over the supported smoke subset, and fails deterministically for duplicate labels. Unresolved operand-label negative coverage remains deferred to Item 10 with the operand/output FS-UAE gate.
 
-- [ ] Item 9: Add flat binary output and CLI success path
+- [x] Item 9: Add flat binary output and CLI success path
   - Source requirement or finding IDs: SR-OUTPUT-BIN, SR-CLI-CONTRACT
   - Expected files: `examples/motorola68000/amigaos/opforge/opforge_cli.asm`, `crates/opforge-asm/src/tests.rs`, `examples/reference/motorola68000/amigaos/opforge/opforge_cli.*` if the assembled native CLI binary changes.
   - Full quality gates: focused native CLI Rust harness test for `--bin` or the closest Rust CLI-compatible output flag; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; FS-UAE native CLI binary-output smoke comparing bytes to Rust; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
@@ -249,7 +249,7 @@ Native processor ownership should be:
 
 - [x] Milestone 1: Contract and state are ready for native assembly without behavior shortcuts.
 - [x] Milestone 2: Native VM bridges can parse statement rows, evaluate generic expressions, select 6502 candidates, and encode bytes.
-- [ ] Milestone 3: Native CLI has a minimal two-pass engine and flat binary output success path.
+- [x] Milestone 3: Native CLI has a minimal two-pass engine and flat binary output success path.
 - [ ] Milestone 4: FS-UAE validates the end-to-end path and selected negative cases.
 
 ## Deferred Work

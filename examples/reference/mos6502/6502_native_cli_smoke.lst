@@ -6,9 +6,9 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                3  
 ----                                4          .cpu 6502
 ----    EQU 0800                    5          .org $0800
-0800    A9 42                       6  start  lda #$42
+0800    A9 42                       6  start   lda #$42
 0802    8D 00 02                    7          sta $0200
-0805    4C 05 08                    8  done   jmp done
+0805    4C 05 08                    8  done    jmp done
 
 Lines: 8  Errors: 0  Warnings: 0
 

@@ -1,6 +1,8 @@
 use cli_core::LabelOutputFormat as CliLabelOutputFormat;
 use engine::OutputFormat as EngineOutputFormat;
 use engine::{default_cpu, run_assembly, AssemblyExecutionRequest, ExecutionMode};
+use package::encode_hierarchy_chunks_from_chunks;
+use registry::registry::ModuleRegistry;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,6 +11,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use types::lockstep::ContinuationHead;
+use vm::builder::build_hierarchy_chunks_from_registry;
 use vm::output_model::BinOutputSpec;
 
 const FS_UAE_OPT_IN_ENV: &str = "OPFORGE_FS_UAE_SMOKE";
@@ -40,21 +43,27 @@ const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
 const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
-    ".module main\n.use math\n.use math as m\n.use math(foo as f)\n.use math (*)\n.Include \"opforge_fsuae_include.inc\"\nmove.b d0,d1\nmove.w d2,d3\n.endmodule\n";
+    ".module main\n.use math\n.use math as m\n.use math(foo as f)\n.use math (*)\n.Include \"opforge_fsuae_include.inc\"\n        move.b d0,d1\n        move.w d2,d3\n.endmodule\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE: &str = "OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE: &str = "opforge_6502_native_cli_smoke.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT: &str =
+    "start   lda #$42\n        sta $0200\ndone    jmp done\n";
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE: &str = "opforge_native_out.bin";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_FILE: &str = "math.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT: &str =
-    ".module math\n.use helper\nmove.l d6,d7\n.endmodule\n";
+    ".module math\n.use helper\n        move.l d6,d7\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_FILE: &str = "helper.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT: &str =
-    ".module helper\nmoveq #0,d0\n.endmodule\n";
+    ".module helper\n        moveq #0,d0\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE: &str = "opforge_fsuae_include.inc";
-const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "move.l d4,d5\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "        move.l d4,d5\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE: &str =
     "opforge_fsuae_unmatched_endmodule.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_TEXT: &str = ".endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_FILE: &str =
     "opforge_fsuae_unterminated_module.asm";
-const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_TEXT: &str = ".module main\nmove.b d0,d1\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_UNTERMINATED_MODULE_TEXT: &str =
+    ".module main\n        move.b d0,d1\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_FILE: &str = "opforge_fsuae_bad_use.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_BAD_USE_TEXT: &str = ".module main\n.use math ()\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_FILE: &str = "opforge_fsuae_missing_module.asm";
@@ -195,6 +204,53 @@ pub(crate) fn run_opforge_native_cli_stub_from_env(
         ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
+}
+
+pub(crate) fn run_opforge_native_cli_6502_output_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
+        return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "set {FS_UAE_OPT_IN_ENV}=1 to enable the opt-in FS-UAE smoke test"
+        )));
+    }
+
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; provide newline-delimited FS-UAE arguments with {{hunk}}, {{artifact_dir}}, {{example}}, {{ready_file}}, {{stdout_file}}, {{stderr_file}}, and {{exit_code_file}} placeholders as needed"
+            )))
+        }
+    };
+
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    match run_example_smoke_with_extra_defines(
+        workspace_root,
+        &fs_uae_bin,
+        &args_text,
+        FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+        FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
+        "68020",
+        &[FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE],
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
+}
+
+fn mos6502_native_cli_single_cpu_package_bytes() -> Result<Vec<u8>, String> {
+    let mut registry = ModuleRegistry::new();
+    registry.register_family(Box::new(
+        families::families::mos6502::module::MOS6502FamilyModule,
+    ));
+    registry.register_cpu(Box::new(
+        families::families::mos6502::module::M6502CpuModule,
+    ));
+    let chunks = build_hierarchy_chunks_from_registry(&registry)
+        .map_err(|err| format!("build MOS 6502 native CLI chunks: {err}"))?;
+    encode_hierarchy_chunks_from_chunks(&chunks)
+        .map_err(|err| format!("encode MOS 6502 native CLI package: {err}"))
 }
 
 pub(crate) fn run_opforge_native_cli_failure_cases_from_env(
@@ -375,7 +431,11 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             .join("examples")
             .join("motorola68000")
             .join("amigaos");
-        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("prvm")];
+        return vec![
+            amigaos_dir.join("tkpkg"),
+            amigaos_dir.join("prvm"),
+            amigaos_dir.join("opcore"),
+        ];
     }
 
     Vec::new()
@@ -385,6 +445,7 @@ fn stage_example_guest_inputs(
     workspace_root: &Path,
     example_name: &str,
     mounted_work_dir: &Path,
+    _extra_assembly_defines: &[&str],
 ) -> Result<(), String> {
     let Some((relative_path, bytes)) = example_guest_input(example_name) else {
         return Ok(());
@@ -392,6 +453,11 @@ fn stage_example_guest_inputs(
 
     stage_guest_input_bytes(mounted_work_dir, relative_path, bytes)?;
     if example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME {
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT.as_bytes(),
+        )?;
         stage_guest_input_bytes(
             mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE,
@@ -427,13 +493,20 @@ fn stage_example_guest_inputs(
             FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_TEXT.as_bytes(),
         )?;
-        let package_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH);
-        let package_bytes = fs::read(&package_path)
-            .map_err(|err| format!("read package fixture {}: {err}", package_path.display()))?;
+        let package_bytes = if _extra_assembly_defines
+            .iter()
+            .any(|define| *define == FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE)
+        {
+            mos6502_native_cli_single_cpu_package_bytes()?
+        } else {
+            let package_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH);
+            fs::read(&package_path)
+                .map_err(|err| format!("read package fixture {}: {err}", package_path.display()))?
+        };
         stage_guest_input_bytes(
             mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE,
-            &package_bytes,
+            package_bytes.as_slice(),
         )?;
         let oversized_package = vec![0u8; 4097];
         stage_guest_input_bytes(
@@ -907,7 +980,12 @@ fn run_example_smoke_with_extra_defines(
             mounted_work_dir.display(),
         )
     })?;
-    stage_example_guest_inputs(workspace_root, example_name, &mounted_work_dir)?;
+    stage_example_guest_inputs(
+        workspace_root,
+        example_name,
+        &mounted_work_dir,
+        extra_assembly_defines,
+    )?;
     let hunk_name_override = if example_name == "helloworld" {
         Some(format!("build/{example_name}.hunk"))
     } else {

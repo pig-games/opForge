@@ -103,7 +103,7 @@ behavior align with the intended Rust VM architecture.
     move into an opasm-owned native runtime surface, while the CLI retains only
     boundary duties needed for this slice such as known-label pre-resolution.
 
-- [ ] Item 3: Cut the CLI over to the native runtime stage and delete CLI-owned selector logic
+- [x] Item 3: Cut the CLI over to the native runtime stage and delete CLI-owned selector logic
   - Source requirement or finding IDs: `RVW-2026-05-06-002`; expected to fully
     close the finding.
   - Expected files: `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm`,
@@ -174,7 +174,7 @@ behavior align with the intended Rust VM architecture.
 
 - [x] Milestone 1: The native tkpkg service boundary consistently owns
   tokenize, parse, and encode entrypoints.
-- [ ] Milestone 2: CLI-owned selector behavior has been moved into a native
+- [x] Milestone 2: CLI-owned selector behavior has been moved into a native
   opasm runtime stage and the CLI no longer duplicates selector policy.
 - [ ] Milestone 3: The native tree clearly separates deliverable runtime
   modules from harnesses, and the output-mode contract is truthful for `--bin`

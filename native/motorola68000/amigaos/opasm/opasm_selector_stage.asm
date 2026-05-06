@@ -3,6 +3,7 @@
         .module opasm.amigaos.selector_stage
         .cpu 68020
         .pub
+        .use opcore.amigaos.expr_bridge (opcore_expr_eval_operand_v1)
 
 OPASM_SELECTOR_STATUS_OK                  = 0
 OPASM_SELECTOR_STATUS_NO_OUTPUT           = 1
@@ -15,9 +16,16 @@ OPASM_SELECTOR_STATUS_OPERAND_ERROR       = 4
 opasm_selector_stage_build_encode_request_v1:
         MOVEM.L D3-D7/A2-A6, -(SP)
         MOVEA.L A0, A5
+        MOVEQ #0, D6
         MOVE.W D0, D6
         MOVEA.L A1, A6
+        MOVEQ #0, D7
         MOVE.W D1, D7
+        MOVEA.L A4, A0
+        MOVEA.L (A0)+, A4
+        MOVEA.L (A0)+, A2
+        MOVEA.L (A0)+, A3
+        MOVE.L (A0), D2
         MOVEA.L A4, A0
         TST.W D6
         BEQ.W opasmSelectorNoOutput
@@ -115,6 +123,7 @@ opasmSelectorReturn:
 
 opasm_selector_stage_instruction_size_v1:
         MOVEM.L D2/A0-A2, -(SP)
+        MOVEQ #0, D2
         MOVE.W D0, D2
         MOVEA.L A0, A2
         MOVEQ #0, D1
@@ -226,6 +235,14 @@ opasmSelectorResolveHex:
         BRA.S opasmSelectorResolveLabelReturn
 
 opasmSelectorResolveLabelText:
+        MOVEM.L D1/A1-A3, -(SP)
+        MOVEA.L A2, A1
+        MOVEA.L A3, A2
+        MOVE.L D2, D1
+        JSR opcore_expr_eval_operand_v1
+        MOVEM.L (SP)+, D1/A1-A3
+        BRA.S opasmSelectorResolveLabelReturn
+
 opasmSelectorResolveLabelFail:
         MOVEQ #1, D0
 

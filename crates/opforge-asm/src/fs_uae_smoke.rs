@@ -451,6 +451,14 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
         ];
     }
 
+    if example_name == "tkpkg_debug_cli" {
+        let amigaos_dir = workspace_root
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos");
+        return vec![amigaos_dir.join("prvm")];
+    }
+
     Vec::new()
 }
 

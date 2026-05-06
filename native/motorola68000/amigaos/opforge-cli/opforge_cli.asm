@@ -3139,18 +3139,19 @@ opforgeNativeCliBuildEncodeHaveMlen:
         LSL.L #6, D0
         LEA nativeCliStmtOperandNameTable.L, A1
         ADDA.L D0, A1
-        MOVEA.L A1, A5
-        MOVE.W D1, D5
-        BSR.W opforgeNativeCliMaybeResolveLabelOperand
         MOVEA.L A4, A0
         MOVE.W D6, D0
         LEA nativeCliLabelNameTable.L, A2
         LEA nativeCliLabelValueTable.L, A3
-        MOVE.L #nativeCliLabelNameTable, D3
-        MOVE.L #nativeCliLabelValueTable, D4
         MOVEQ #0, D2
         MOVE.W nativeCliLabelCount.L, D2
-        LEA lastErrorBuffer, A4
+        LEA nativeCliSelectorStageContext.L, A4
+        LEA lastErrorBuffer, A5
+        MOVE.L A5, (A4)+
+        MOVE.L A2, (A4)+
+        MOVE.L A3, (A4)+
+        MOVE.L D2, (A4)
+        LEA nativeCliSelectorStageContext.L, A4
         JSR opasm_selector_stage_build_encode_request_v1
         CMPI.L #OPASM_SELECTOR_STATUS_OK, D0
         BEQ.S opforgeNativeCliBuildEncodeStageOk
@@ -3192,64 +3193,6 @@ opforgeNativeCliBuildEncodeFail:
 
 opforgeNativeCliBuildEncodeReturn:
         MOVEM.L (SP)+, D1-D7/A0-A5
-        RTS
-
-opforgeNativeCliMaybeResolveLabelOperand:
-        MOVEM.L D0/D2-D7/A0/A2, -(SP)
-        MOVEA.L A5, A0
-        MOVE.L D5, D0
-        BSR.W opforgeNativeCliSkipLineWhitespace
-        TST.L D0
-        BEQ.S opforgeNativeCliMaybeResolveLabelDone
-        CMPI.B #'#', (A0)
-        BEQ.S opforgeNativeCliMaybeResolveLabelDone
-        CMPI.B #'$', (A0)
-        BEQ.S opforgeNativeCliMaybeResolveLabelDone
-        MOVEQ #0, D2
-        MOVE.B (A0), D2
-        CMPI.B #'0', D2
-        BCS.S opforgeNativeCliMaybeResolveLabelLookup
-        CMPI.B #'9', D2
-        BLS.S opforgeNativeCliMaybeResolveLabelDone
-
-opforgeNativeCliMaybeResolveLabelLookup:
-        LEA nativeCliLabelNameTable.L, A1
-        LEA nativeCliLabelValueTable.L, A2
-        MOVEQ #0, D1
-        MOVE.W nativeCliLabelCount.L, D1
-        JSR opcore_expr_eval_operand_v1
-        TST.L D0
-        BNE.S opforgeNativeCliMaybeResolveLabelDone
-        BSR.W opforgeNativeCliWriteResolvedOperandHex
-        LEA nativeCliArgToken, A1
-        MOVEQ #5, D1
-
-opforgeNativeCliMaybeResolveLabelDone:
-        MOVEM.L (SP)+, D0/D2-D7/A0/A2
-        RTS
-
-opforgeNativeCliWriteResolvedOperandHex:
-        MOVEM.L D0-D4/A0-A2, -(SP)
-        MOVE.L D3, -(SP)
-        LEA nativeCliArgToken, A1
-        MOVE.B #'$', (A1)+
-        LEA hexDigitsText, A0
-        MOVEA.L SP, A2
-        ADDQ.L #2, A2
-        MOVEQ #1, D4
-
-opforgeNativeCliWriteResolvedOperandHexLoop:
-        MOVEQ #0, D1
-        MOVE.B (A2)+, D1
-        MOVE.L D1, D2
-        LSR.B #4, D2
-        MOVE.B 0(A0,D2.L), (A1)+
-        ANDI.B #$0F, D1
-        MOVE.B 0(A0,D1.L), (A1)+
-        DBRA D4, opforgeNativeCliWriteResolvedOperandHexLoop
-        CLR.B (A1)
-        ADDQ.L #4, SP
-        MOVEM.L (SP)+, D0-D4/A0-A2
         RTS
 
 opforgeNativeCliReadOperandValueForStatement:
@@ -4483,6 +4426,9 @@ nativeCliLineRequestLen:
         .res word,1
 nativeCliEncodeRequestLen:
         .res word,1
+        .align 4
+nativeCliSelectorStageContext:
+        .res long,4
 nativeCliSourceLineNum:
         .res long,1
 nativeCliSawCr:

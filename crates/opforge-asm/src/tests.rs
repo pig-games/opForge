@@ -1599,6 +1599,14 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
 }
 
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opasm_selector_stage") {
+        let amigaos_dir = asm_path
+            .parent()
+            .and_then(Path::parent)
+            .expect("opasm_selector_stage should live under amigaos/opasm");
+        return vec![amigaos_dir.join("opcore")];
+    }
+
     if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opforge_cli") {
         let amigaos_dir = asm_path
             .parent()
@@ -10012,6 +10020,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("JSR opasm_selector_stage_build_encode_request_v1"));
     assert!(source.contains("JSR opasm_selector_stage_instruction_size_v1"));
     assert!(!source.contains("opforgeNativeCliStatementOperandHasImmediatePrefix"));
+    assert!(!source.contains("opforgeNativeCliMaybeResolveLabelOperand"));
+    assert!(!source.contains("opforgeNativeCliWriteResolvedOperandHex"));
     assert!(!source.contains("opforgeNativeCliPassTwoEmitBinSmokeFallback"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT"));
     assert!(source.contains("Work:opforge_native_out.bin"));
@@ -10201,7 +10211,12 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "LEA nativeCliStmtOperandNameTable.L, A1",
             "LEA nativeCliLabelNameTable.L, A2",
             "LEA nativeCliLabelValueTable.L, A3",
-            "LEA lastErrorBuffer, A4",
+            "LEA nativeCliSelectorStageContext.L, A4",
+            "LEA lastErrorBuffer, A5",
+            "MOVE.L A2, (A4)+",
+            "MOVE.L A3, (A4)+",
+            "MOVE.L D2, (A4)",
+            "LEA nativeCliSelectorStageContext.L, A4",
             "JSR opasm_selector_stage_build_encode_request_v1",
             "MOVE.W D1, nativeCliEncodeRequestLen.L",
         ]
@@ -10622,6 +10637,7 @@ fn motorola68020_opasm_selector_stage_module_owns_native_subset_policy() {
     assert!(source.contains(".module opasm.amigaos.selector_stage"));
     assert!(source.contains("opasm_selector_stage_build_encode_request_v1:"));
     assert!(source.contains("opasm_selector_stage_instruction_size_v1:"));
+    assert!(source.contains("JSR opcore_expr_eval_operand_v1"));
     assert!(source.contains("OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC"));
     assert!(source.contains("OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS"));
     assert!(source.contains("OPASM_SELECTOR_STATUS_OPERAND_ERROR"));

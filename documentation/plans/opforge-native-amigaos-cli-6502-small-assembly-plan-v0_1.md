@@ -237,7 +237,7 @@ Native processor ownership should be:
   - Commit outcome: one commit that replaces the emitter-not-implemented path for the 6502 smoke subset with a real success path and output file.
   - Definition of done: running the native CLI against the tiny 6502 source creates a flat output file whose bytes match the Rust CLI reference for the same package, CPU, and input.
 
-- [ ] Item 10: Add FS-UAE end-to-end gate and negative-path coverage
+- [x] Item 10: Add FS-UAE end-to-end gate and negative-path coverage
   - Source requirement or finding IDs: SR-FS-UAE-GATE, SR-DETERMINISTIC-DIAGNOSTICS
   - Expected files: `crates/opforge-asm/src/fs_uae_smoke.rs`, `crates/opforge-asm/src/tests.rs`, FS-UAE fixture sources, native CLI reference outputs if changed.
   - Full quality gates: FS-UAE native CLI small 6502 assembly gate including selector-status evidence; negative FS-UAE cases for unknown mnemonic, unsupported addressing mode, unresolved label, bad `.org`, and unsupported output; `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm examples_match_reference_outputs -- --nocapture`; `cargo fmt --all --check`; `scripts/workflow/run_rust_quality_gate.sh`.
@@ -250,7 +250,7 @@ Native processor ownership should be:
 - [x] Milestone 1: Contract and state are ready for native assembly without behavior shortcuts.
 - [x] Milestone 2: Native VM bridges can parse statement rows, evaluate generic expressions, select 6502 candidates, and encode bytes.
 - [x] Milestone 3: Native CLI has a minimal two-pass engine and flat binary output success path.
-- [ ] Milestone 4: FS-UAE validates the end-to-end path and selected negative cases.
+- [x] Milestone 4: FS-UAE validates the end-to-end path and selected negative cases.
 
 ## Deferred Work
 

@@ -810,6 +810,14 @@ opforge_native_cli_parse_current_line:
         TST.L D0
         BNE.W opforgeNativeCliParseIncludeLine
 
+        MOVEA.L A4, A0
+        MOVE.L D7, D0
+        LEA orgMnemonicText, A1
+        MOVEQ #4, D1
+        BSR.W opforgeNativeCliLineStartsWith
+        TST.L D0
+        BNE.W opforgeNativeCliParseBadOrgLine
+
         BSR.W opforgeNativeCliRouteParserModuleUseLine
         CMPI.W #NCLI_PARSER_DIRECTIVE_MODULE, D0
         BEQ.W opforgeNativeCliParseModuleLine
@@ -827,6 +835,12 @@ opforgeNativeCliParseLineDone:
 
 opforgeNativeCliParseConditionalLine:
         MOVE.L #conditionalFailureText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEQ #1, D0
+        BRA.W opforgeNativeCliParseLineReturn
+
+opforgeNativeCliParseBadOrgLine:
+        MOVE.L #nativeBadOrgText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #1, D0
         BRA.W opforgeNativeCliParseLineReturn
@@ -3030,6 +3044,8 @@ opforgeNativeCliPassTwoEmitImageBytes:
         BSR.W opforge_native_cli_read_status
         TST.B D0
         BNE.W opforgeNativeCliPassTwoEmitFail
+        MOVE.L #nativeSelectorStatusOkText, D1
+        BSR.W opforge_native_cli_put_str
         LEA controlBlockV1, A0
         BSR.W opforge_native_cli_read_output_len
         TST.W D0
@@ -3110,9 +3126,19 @@ opforgeNativeCliBuildEncodeHaveMlen:
         BSR.W opforgeNativeCliLineStartsWith
         TST.L D0
         BNE.S opforgeNativeCliBuildEncodeAbsolute
-        BRA.W opforgeNativeCliBuildEncodeNoOutput
+        MOVE.L #nativeUnknownMnemonicText, D1
+        BSR.W opforge_native_cli_put_str
+        BRA.W opforgeNativeCliBuildEncodeFail
 
 opforgeNativeCliBuildEncodeImmediate:
+        BSR.W opforgeNativeCliStatementOperandHasImmediatePrefix
+        TST.L D0
+        BNE.S opforgeNativeCliBuildEncodeImmediateOk
+        MOVE.L #nativeUnsupportedAddressingText, D1
+        BSR.W opforge_native_cli_put_str
+        BRA.W opforgeNativeCliBuildEncodeFail
+
+opforgeNativeCliBuildEncodeImmediateOk:
         MOVEQ #1, D5
         LEA immediateModeText, A3
         MOVEQ #9, D4
@@ -3213,6 +3239,8 @@ opforgeNativeCliReadOperandNoImmediatePrefix:
         BRA.S opforgeNativeCliReadOperandOk
 
 opforgeNativeCliReadOperandFail:
+        MOVE.L #nativeUnresolvedLabelText, D1
+        BSR.W opforge_native_cli_put_str
         MOVEQ #1, D0
         BRA.S opforgeNativeCliReadOperandReturn
 
@@ -3284,10 +3312,52 @@ opforgeNativeCliPassAdvanceHaveMlen:
         BRA.W opforgeNativeCliPassAdvanceDone
 
 opforgeNativeCliPassAdvanceOrg:
-        MOVE.L #$00000800, nativeCliSessionOrigin.L
+        MOVE.W D4, D7
+        MOVEQ #2, D5
+        BSR.W opforgeNativeCliReadOperandValueForStatement
+        TST.L D0
+        BEQ.S opforgeNativeCliPassAdvanceOrgOk
+        MOVE.L #nativeBadOrgText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D0-D6/A0-A3
+        MOVEQ #1, D0
+        RTS
+
+opforgeNativeCliPassAdvanceOrgOk:
+        MOVE.L D3, nativeCliSessionOrigin.L
         MOVE.L nativeCliSessionOrigin.L, D0
         MOVE.L D0, nativeCliSessionCurrentPc.L
         BRA.W opforgeNativeCliPassAdvanceDone
+
+opforgeNativeCliStatementOperandHasImmediatePrefix:
+        MOVEM.L D1/A0, -(SP)
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        ADD.W D0, D0
+        LEA nativeCliStmtOperandLenTable.L, A0
+        MOVEQ #0, D1
+        MOVE.W 0(A0,D0.L), D1
+        BEQ.S opforgeNativeCliStatementOperandImmediateNo
+        MOVEQ #0, D0
+        MOVE.W D7, D0
+        LSL.L #6, D0
+        LEA nativeCliStmtOperandNameTable.L, A0
+        ADDA.L D0, A0
+        MOVE.L D1, D0
+        BSR.W opforgeNativeCliSkipLineWhitespace
+        TST.L D0
+        BEQ.S opforgeNativeCliStatementOperandImmediateNo
+        CMPI.B #'#', (A0)
+        BNE.S opforgeNativeCliStatementOperandImmediateNo
+        MOVEQ #1, D0
+        BRA.S opforgeNativeCliStatementOperandImmediateReturn
+
+opforgeNativeCliStatementOperandImmediateNo:
+        MOVEQ #0, D0
+
+opforgeNativeCliStatementOperandImmediateReturn:
+        MOVEM.L (SP)+, D1/A0
+        RTS
 
 opforgeNativeCliPassAdvanceOne:
         ADDQ.L #1, nativeCliSessionCurrentPc.L
@@ -4081,6 +4151,8 @@ nativePassTwoText:
         .byte "STAGE pass2",10,0
 nativePassTwoOkText:
         .byte "STATUS pass2-ok",10,0
+nativeSelectorStatusOkText:
+        .byte "STATUS selector-status-ok",10,0
 nativePassFailureText:
         .byte "ERROR OPC-NCLI020: native pass engine failed",10,0
 nativeDuplicateLabelText:
@@ -4093,6 +4165,12 @@ nativeOutputFailureText:
         .byte "ERROR OPC-NCLI023: native flat output write failed",10,0
 nativeImageCapacityText:
         .byte "ERROR OPC-NCLI024: native image buffer capacity exceeded",10,0
+nativeUnknownMnemonicText:
+        .byte "ERROR OPC-NCLI025: unknown native mnemonic",10,0
+nativeUnsupportedAddressingText:
+        .byte "ERROR OPC-NCLI026: unsupported native addressing mode",10,0
+nativeBadOrgText:
+        .byte "ERROR OPC-NCLI027: invalid native .org expression",10,0
 nativeLabelText:
         .byte "LABEL ",0
 emitterStubText:
@@ -4208,6 +4286,21 @@ defaultFsUaeArgTail:
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT
         .byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm",0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC
+        .byte "Work:opforge_6502_unknown_mnemonic.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING
+        .byte "Work:opforge_6502_unsupported_addressing.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL
+        .byte "Work:opforge_6502_unresolved_label.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG
+        .byte "Work:opforge_6502_bad_org.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm",0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT
+        .byte "Work:opforge_6502_native_cli_smoke.asm --srec Work:opforge_native_out.srec --cpu m6502 --opasm-package Work:opforge_cli_package.opasm",0
+.else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT
         .byte "Work:opforge_missing_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
@@ -4242,6 +4335,11 @@ defaultFsUaeArgTail:
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8",0
 .else
         .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b",0
+.endif
+.endif
+.endif
+.endif
+.endif
 .endif
 .endif
 .endif

@@ -9917,8 +9917,12 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("STATUS parser-module-use-ok"));
     assert!(source.contains("OPC-NCLI009: native emitter VM not implemented"));
     assert!(source.contains("STATUS output-ok"));
+    assert!(source.contains("STATUS selector-status-ok"));
     assert!(source.contains("OPC-NCLI023: native flat output write failed"));
     assert!(source.contains("OPC-NCLI024: native image buffer capacity exceeded"));
+    assert!(source.contains("OPC-NCLI025: unknown native mnemonic"));
+    assert!(source.contains("OPC-NCLI026: unsupported native addressing mode"));
+    assert!(source.contains("OPC-NCLI027: invalid native .org expression"));
     assert!(source.contains("OPC-NCLI013: native module/use parser stage failed"));
     assert!(source.contains("OPC-NCLI014: native include expansion failed"));
     assert!(source.contains("OPC-NCLI015: native conditional preprocessing not implemented"));
@@ -9936,6 +9940,11 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(tokvm_source_contains(&source, ".byte \"INCLUDE-LINE \",0"));
     assert!(source.contains("--opasm-package Work:opforge_cli_package.opasm"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
@@ -27306,6 +27315,12 @@ fn external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin() {
                 run.stderr,
             );
             assert!(
+                run.stdout.contains("STATUS selector-status-ok"),
+                "native opForge CLI did not report selector-status evidence\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
                 run.stdout.contains("OUTPUT-BYTES 8") || run.stdout.contains("IMAGE-BYTES 8"),
                 "native opForge CLI did not report an eight-byte image summary\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
@@ -27330,6 +27345,31 @@ fn external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin() {
 #[test]
 fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
     let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "unknown-mnemonic",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC",
+            expected_diagnostic: "ERROR OPC-NCLI025: unknown native mnemonic",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "unsupported-addressing",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING",
+            expected_diagnostic: "ERROR OPC-NCLI026: unsupported native addressing mode",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "unresolved-label",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL",
+            expected_diagnostic: "ERROR OPC-NCLI022: unresolved native label",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "bad-org",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG",
+            expected_diagnostic: "ERROR OPC-NCLI027: invalid native .org expression",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "unsupported-output",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT",
+            expected_diagnostic: "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: --srec",
+        },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-input",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT",

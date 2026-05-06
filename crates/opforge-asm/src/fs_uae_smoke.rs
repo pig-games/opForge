@@ -49,6 +49,18 @@ const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE: &str = "opforge_6502_native_cli
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT: &str =
     "start   lda #$42\n        sta $0200\ndone    jmp done\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE: &str = "opforge_native_out.bin";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC_FILE: &str =
+    "opforge_6502_unknown_mnemonic.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC_TEXT: &str = "start   wat #$42\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING_FILE: &str =
+    "opforge_6502_unsupported_addressing.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING_TEXT: &str = "start   lda $0200\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNRESOLVED_LABEL_FILE: &str =
+    "opforge_6502_unresolved_label.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNRESOLVED_LABEL_TEXT: &str = "start   jmp missing\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_BAD_ORG_FILE: &str = "opforge_6502_bad_org.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_BAD_ORG_TEXT: &str =
+    "        .org missing\n        lda #$42\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_FILE: &str = "math.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT: &str =
     ".module math\n.use helper\n        move.l d6,d7\n.endmodule\n";
@@ -475,6 +487,26 @@ fn stage_example_guest_inputs(
         )?;
         stage_guest_input_bytes(
             mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_UNRESOLVED_LABEL_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_UNRESOLVED_LABEL_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_BAD_ORG_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_6502_BAD_ORG_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_TEXT.as_bytes(),
         )?;
@@ -493,10 +525,17 @@ fn stage_example_guest_inputs(
             FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_TEXT.as_bytes(),
         )?;
-        let package_bytes = if _extra_assembly_defines
-            .iter()
-            .any(|define| *define == FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE)
-        {
+        let package_bytes = if _extra_assembly_defines.iter().any(|define| {
+            matches!(
+                *define,
+                FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE
+                    | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"
+                    | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"
+                    | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"
+                    | "OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"
+                    | "OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"
+            )
+        }) {
             mos6502_native_cli_single_cpu_package_bytes()?
         } else {
             let package_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH);
@@ -508,7 +547,7 @@ fn stage_example_guest_inputs(
             FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE,
             package_bytes.as_slice(),
         )?;
-        let oversized_package = vec![0u8; 4097];
+        let oversized_package = vec![0u8; 32_769];
         stage_guest_input_bytes(
             mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE,

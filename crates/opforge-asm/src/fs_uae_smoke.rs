@@ -43,7 +43,7 @@ const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
 const FS_UAE_TKPKG_SMOKE_INPUT_FILE: &str = "opforge_fsuae_smoke_input.asm";
 const FS_UAE_TKPKG_SMOKE_INPUT_TEXT: &str = "move.b d0,d1\nmove.w d2,d3\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
-    ".module main\n.use math\n.use math as m\n.use math(foo as f)\n.use math (*)\n.Include \"opforge_fsuae_include.inc\"\n        move.b d0,d1\n        move.w d2,d3\n.endmodule\n";
+    ".module main\n.use math\n.use math as m\n.use math(foo as f)\n.use math (*)\n.Include \"opforge_fsuae_include.inc\"\n        lda #$42\n        sta $0200\ndone    jmp done\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE: &str = "OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE: &str = "opforge_6502_native_cli_smoke.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT: &str =
@@ -63,12 +63,12 @@ const FS_UAE_OPFORGE_NATIVE_CLI_6502_BAD_ORG_TEXT: &str =
     "        .org missing\n        lda #$42\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_FILE: &str = "math.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_MODULE_TEXT: &str =
-    ".module math\n.use helper\n        move.l d6,d7\n.endmodule\n";
+    ".module math\n.use helper\nfoo     sta $0200\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_FILE: &str = "helper.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT: &str =
-    ".module helper\n        moveq #0,d0\n.endmodule\n";
+    ".module helper\n        lda #$00\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE: &str = "opforge_fsuae_include.inc";
-const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "        move.l d4,d5\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "        lda #$01\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE: &str =
     "opforge_fsuae_unmatched_endmodule.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_TEXT: &str = ".endmodule\n";
@@ -554,17 +554,18 @@ fn stage_example_guest_inputs(
             FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_MISSING_MODULE_TEXT.as_bytes(),
         )?;
-        let package_bytes = if _extra_assembly_defines.iter().any(|define| {
-            matches!(
-                *define,
-                FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE
-                    | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"
-                    | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"
-                    | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"
-                    | "OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"
-                    | "OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"
-            )
-        }) {
+        let package_bytes = if _extra_assembly_defines.is_empty()
+            || _extra_assembly_defines.iter().any(|define| {
+                matches!(
+                    *define,
+                    FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE
+                        | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"
+                        | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"
+                        | "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"
+                        | "OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"
+                        | "OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"
+                )
+            }) {
             mos6502_native_cli_single_cpu_package_bytes()?
         } else {
             let package_path = workspace_root.join(FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH);

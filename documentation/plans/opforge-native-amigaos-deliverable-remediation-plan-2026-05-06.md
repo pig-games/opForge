@@ -151,7 +151,7 @@ behavior align with the intended Rust VM architecture.
     modules from debug and smoke tooling, and all tests, docs, and FS-UAE smoke
     wiring resolve the new harness paths without stale references.
 
-- [ ] Item 5: Split native output format state and make `--hunk` deterministic and honest
+- [x] Item 5: Split native output format state and make `--hunk` deterministic and honest
   - Source requirement or finding IDs: `RVW-2026-05-06-004`; expected to fully
     close the finding.
   - Expected files: `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm`,
@@ -176,10 +176,10 @@ behavior align with the intended Rust VM architecture.
   tokenize, parse, and encode entrypoints.
 - [x] Milestone 2: CLI-owned selector behavior has been moved into a native
   opasm runtime stage and the CLI no longer duplicates selector policy.
-- [ ] Milestone 3: The native tree clearly separates deliverable runtime
+- [x] Milestone 3: The native tree clearly separates deliverable runtime
   modules from harnesses, and the output-mode contract is truthful for `--bin`
   and `--hunk`.
-- [ ] Milestone 4: All four review findings have commit-ready remediation and
+- [x] Milestone 4: All four review findings have commit-ready remediation and
   closure evidence.
 
 ## Blocking Rules

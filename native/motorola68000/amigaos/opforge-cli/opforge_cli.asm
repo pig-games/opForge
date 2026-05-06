@@ -203,6 +203,14 @@ opforgeNativeCliParsed:
 opforgeNativeCliInputOpened:
         MOVE.L D0, D1
         BSR.W opforge_native_cli_close
+        CMPI.W #NATIVE_OUTPUT_FORMAT_HUNK, nativeCliOutputFormat
+        BNE.S opforgeNativeCliOutputFormatReady
+        MOVE.L #nativeHunkNotImplementedText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVE.L #RETURN_NOT_IMPLEMENTED, nativeCliReturnCode
+        BRA.W opforgeNativeCliCloseDos
+
+opforgeNativeCliOutputFormatReady:
         MOVE.L #stubHeaderText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #inputLabelText, D1
@@ -211,9 +219,9 @@ opforgeNativeCliInputOpened:
         BSR.W opforge_native_cli_put_str
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
-        MOVE.L #hunkLabelText, D1
+        MOVE.L #binLabelText, D1
         BSR.W opforge_native_cli_put_str
-        MOVE.L #nativeCliHunkPath, D1
+        MOVE.L #nativeCliBinPath, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
@@ -3350,7 +3358,7 @@ opforgeNativeCliLabelEqualsReturn:
 
 opforge_native_cli_write_flat_output:
         MOVEM.L D1-D4/A0-A1, -(SP)
-        LEA nativeCliHunkPath, A0
+        LEA nativeCliBinPath, A0
         BSR.W opforge_native_cli_open_output
         TST.L D0
         BEQ.S opforgeNativeCliWriteFlatFail
@@ -3415,15 +3423,21 @@ NCLI_PARSE_MIXED_INPUT          = -8
 NCLI_PARSE_MULTIPLE_POSITIONAL  = -9
 NCLI_PARSE_MODULE_PATH_CAPACITY = -10
 
+NATIVE_OUTPUT_FORMAT_NONE       = 0
+NATIVE_OUTPUT_FORMAT_BIN        = 1
+NATIVE_OUTPUT_FORMAT_HUNK       = 2
+
 opforge_native_cli_parse_args:
         MOVEM.L D2-D7/A2-A6, -(SP)
         MOVEA.L A0, A3
         CLR.W nativeCliInputStyle
         CLR.W nativeCliHunkRequested
         CLR.W nativeCliBinRequested
+        CLR.W nativeCliOutputFormat
         CLR.W nativeCliParseStatus
         CLR.B nativeCliInputPath
         CLR.B nativeCliHunkPath
+        CLR.B nativeCliBinPath
         CLR.B nativeCliOutfileBase
         CLR.B nativeCliCpuName
         CLR.B nativeCliPackagePath
@@ -3540,6 +3554,7 @@ opforgeNativeCliInfileFirst:
 
 opforgeNativeCliHunk:
         MOVE.W #1, nativeCliHunkRequested
+        MOVE.W #NATIVE_OUTPUT_FORMAT_HUNK, nativeCliOutputFormat
         LEA nativeCliHunkPath, A1
         BSR.W opforgeNativeCliCopyOptionalValue
         TST.L D0
@@ -3547,9 +3562,9 @@ opforgeNativeCliHunk:
         BRA.W opforgeNativeCliParseLoop
 
 opforgeNativeCliBin:
-        MOVE.W #1, nativeCliHunkRequested
         MOVE.W #1, nativeCliBinRequested
-        LEA nativeCliHunkPath, A1
+        MOVE.W #NATIVE_OUTPUT_FORMAT_BIN, nativeCliOutputFormat
+        LEA nativeCliBinPath, A1
         BSR.W opforgeNativeCliCopyOptionalValue
         TST.L D0
         BMI.W opforgeNativeCliQuoted
@@ -3605,8 +3620,25 @@ opforgeNativeCliPositionalInputFirst:
 opforgeNativeCliParseDone:
         TST.W nativeCliInputStyle
         BEQ.W opforgeNativeCliNoInput
-        TST.W nativeCliHunkRequested
+        TST.W nativeCliOutputFormat
         BEQ.W opforgeNativeCliHunkRequired
+        CMPI.W #NATIVE_OUTPUT_FORMAT_BIN, nativeCliOutputFormat
+        BEQ.S opforgeNativeCliDefaultBinPath
+        CMPI.W #NATIVE_OUTPUT_FORMAT_HUNK, nativeCliOutputFormat
+        BEQ.S opforgeNativeCliDefaultHunkPath
+        BRA.W opforgeNativeCliUsage
+
+opforgeNativeCliDefaultBinPath:
+        TST.B nativeCliBinPath
+        BNE.S opforgeNativeCliParseOk
+        TST.B nativeCliOutfileBase
+        BEQ.S opforgeNativeCliParseOk
+        LEA nativeCliOutfileBase, A0
+        LEA nativeCliBinPath, A1
+        BSR.W opforgeNativeCliCopyTokenBuffer
+        BRA.S opforgeNativeCliParseOk
+
+opforgeNativeCliDefaultHunkPath:
         TST.B nativeCliHunkPath
         BNE.S opforgeNativeCliParseOk
         TST.B nativeCliOutfileBase
@@ -4031,7 +4063,7 @@ versionText:
         .byte "opForge native AmigaOS CLI 0.1",10,0
 helpText:
         .byte "Usage: opForge [OPTIONS] [INPUT]",10
-        .byte "Native subset: INPUT, -i/--infile, --bin/--hunk [FILE], -o/--outfile, --cpu, --opasm-package, -M/--module-path",10,0
+        .byte "Native subset: INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -M/--module-path",10,0
 usageText:
         .byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]",10,0
 quotedText:
@@ -4039,7 +4071,7 @@ quotedText:
 unsupportedText:
         .byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ",0
 nativeSubsetHelpText:
-        .byte 10,"Native subset supports INPUT, -i/--infile, --bin/--hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path.",10,0
+        .byte 10,"Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path; --hunk is not implemented yet.",10,0
 unknownFlagText:
         .byte "OPC-NCLI004: unknown CLI flag: ",0
 missingValueText:
@@ -4047,7 +4079,7 @@ missingValueText:
 noInputText:
         .byte "OPC-NCLI006: No input files specified. Use -i/--infile",10,0
 hunkRequiredText:
-        .byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --bin or --hunk",10,0
+        .byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin",10,0
 mixedInputText:
         .byte "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style",10,0
 multiplePositionalText:
@@ -4065,6 +4097,8 @@ inputLabelText:
         .byte "INPUT ",0
 hunkLabelText:
         .byte "HUNK ",0
+binLabelText:
+        .byte "BIN ",0
 tokenizerOkText:
         .byte "STATUS tokenizer-ok",10,0
 tokenizerFailureText:
@@ -4120,6 +4154,8 @@ nativeUnsupportedAddressingText:
         .byte "ERROR OPC-NCLI026: unsupported native addressing mode",10,0
 nativeBadOrgText:
         .byte "ERROR OPC-NCLI027: invalid native .org expression",10,0
+nativeHunkNotImplementedText:
+        .byte "ERROR OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output",10,0
 nativeLabelText:
         .byte "LABEL ",0
 emitterStubText:
@@ -4251,39 +4287,43 @@ defaultFsUaeArgTail:
         .byte "Work:opforge_6502_native_cli_smoke.asm --srec Work:opforge_native_out.srec --cpu m6502 --opasm-package Work:opforge_cli_package.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT
-        .byte "Work:opforge_missing_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+        .byte "Work:opforge_missing_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK
         .byte "Work:opforge_fsuae_smoke_input.asm --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT
+        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+.else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT
-        .byte "Work:opforge_fsuae_smoke_input.asm --infile Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+        .byte "Work:opforge_fsuae_smoke_input.asm --infile Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE
-        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_missing_package.opasm",0
+        .byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_missing_package.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE
-        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package_oversized.opasm",0
+        .byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package_oversized.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE
-        .byte "Work:opforge_fsuae_unmatched_endmodule.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+        .byte "Work:opforge_fsuae_unmatched_endmodule.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE
-        .byte "Work:opforge_fsuae_unterminated_module.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+        .byte "Work:opforge_fsuae_unterminated_module.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE
-        .byte "Work:opforge_fsuae_bad_use.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+        .byte "Work:opforge_fsuae_bad_use.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE
-        .byte "Work:opforge_fsuae_missing_module.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
+        .byte "Work:opforge_fsuae_missing_module.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH
-        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M",0
+        .byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M",0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW
-        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8",0
+        .byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8",0
 .else
-        .byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b",0
+        .byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b",0
+.endif
 .endif
 .endif
 .endif
@@ -4399,6 +4439,8 @@ nativeCliHunkRequested:
         .res word,1
 nativeCliBinRequested:
         .res word,1
+nativeCliOutputFormat:
+        .res word,1
 nativeCliParseStatus:
         .res word,1
 
@@ -4407,6 +4449,8 @@ nativeCliArgToken:
 nativeCliInputPath:
         .res byte,PATH_BUFFER_CAPACITY
 nativeCliHunkPath:
+        .res byte,PATH_BUFFER_CAPACITY
+nativeCliBinPath:
         .res byte,PATH_BUFFER_CAPACITY
 nativeCliOutfileBase:
         .res byte,PATH_BUFFER_CAPACITY

@@ -9946,9 +9946,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "native CLI surface should contain Rust CLI flag literal {expected}"
         );
     }
-    assert!(source.contains(
-        "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --bin or --hunk"
-    ));
+    assert!(source
+        .contains("OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin"));
     assert!(
         source.contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style")
     );
@@ -9961,7 +9960,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     );
     assert!(source.contains("OPC-NCLI008: Input source file not found"));
     assert!(source.contains(
-        "Native subset supports INPUT, -i/--infile, --bin/--hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path."
+        "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path; --hunk is not implemented yet."
     ));
     assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(source.contains("STATUS parser-module-use-ok"));
@@ -9973,6 +9972,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPC-NCLI025: unknown native mnemonic"));
     assert!(source.contains("OPC-NCLI026: unsupported native addressing mode"));
     assert!(source.contains("OPC-NCLI027: invalid native .org expression"));
+    assert!(source
+        .contains("OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output"));
     assert!(source.contains("OPC-NCLI013: native module/use parser stage failed"));
     assert!(source.contains("OPC-NCLI014: native include expansion failed"));
     assert!(source.contains("OPC-NCLI015: native conditional preprocessing not implemented"));
@@ -9996,6 +9997,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE"));
@@ -10047,6 +10049,10 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("nativeCliImageByteCount"));
     assert!(source.contains("nativeCliImageBuffer"));
     assert!(source.contains("nativeCliBinRequested"));
+    assert!(source.contains("nativeCliOutputFormat"));
+    assert!(source.contains("nativeCliBinPath"));
+    assert!(source.contains("NATIVE_OUTPUT_FORMAT_BIN"));
+    assert!(source.contains("NATIVE_OUTPUT_FORMAT_HUNK"));
     assert!(source.contains("opforge_native_cli_write_flat_output"));
     assert!(source.contains("opforgeNativeCliPassTwoEmitImageBytes"));
     assert!(source.contains("opforgeNativeCliBuildEncodeRequestForStatement"));
@@ -10149,6 +10155,25 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "BSR.W opforge_native_cli_write_flat_output",
             "MOVE.L #nativeOutputOkText, D1",
             "MOVE.L #emitterStubText, D1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliHunk:",
+            "MOVE.W #NATIVE_OUTPUT_FORMAT_HUNK, nativeCliOutputFormat",
+            "LEA nativeCliHunkPath, A1",
+            "opforgeNativeCliBin:",
+            "MOVE.W #NATIVE_OUTPUT_FORMAT_BIN, nativeCliOutputFormat",
+            "LEA nativeCliBinPath, A1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforge_native_cli_write_flat_output:",
+            "LEA nativeCliBinPath, A0",
+            "BSR.W opforge_native_cli_open_output",
         ]
     ));
     assert!(source_contains_in_order(
@@ -27208,8 +27233,8 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
             let run = &runs[0];
             assert_eq!(run.example_name, "opforge_cli");
             assert!(
-                !run.success,
-                "native opForge CLI should still return the deterministic emitter-stub status\nstdout:\n{}\nstderr:\n{}",
+                run.success,
+                "native opForge CLI module/use smoke should complete through --bin output\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
@@ -27274,7 +27299,7 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("MOD-END 0 1 9 0"),
+                run.stdout.contains("MOD-END 0 1 10 0"),
                 "native opForge CLI did not report the table-backed .endmodule record\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -27394,19 +27419,19 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.l\")@1:9-15"),
+                run.stdout.contains("Identifier(\"lda\")@1:9-12"),
                 "native opForge CLI did not tokenize the included source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.l\")@3:9-15"),
+                run.stdout.contains("Identifier(\"sta\")@3:9-12"),
                 "native opForge CLI did not tokenize the resolved module source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.b\")@7:9-15"),
+                run.stdout.contains("Identifier(\"lda\")@7:9-12"),
                 "native opForge CLI did not emit tokenizer rows for the smoke source\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -27436,7 +27461,7 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"move.w\")@8:9-15"),
+                run.stdout.contains("Identifier(\"jmp\")@9:9-12"),
                 "native opForge CLI did not emit tokenizer rows for the second smoke source line\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -27448,15 +27473,14 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("HUNK Work:opforge_native_out.hunk"),
-                "native opForge CLI did not parse the default smoke hunk argument\nstdout:\n{}\nstderr:\n{}",
+                run.stdout.contains("BIN Work:opforge_native_out.bin"),
+                "native opForge CLI did not parse the default smoke bin argument\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout
-                    .contains("ERROR OPC-NCLI009: native emitter VM not implemented"),
-                "native opForge CLI did not report the emitter-stub diagnostic\nstdout:\n{}\nstderr:\n{}",
+                run.stdout.contains("STATUS output-ok"),
+                "native opForge CLI did not report successful bin output\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
@@ -27567,7 +27591,12 @@ fn external_fs_uae_opforge_native_cli_failure_paths_report_diagnostics() {
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "missing-hunk",
             define: "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK",
-            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently supports --bin or --hunk",
+            expected_diagnostic: "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin",
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
+            name: "hunk-output",
+            define: "OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT",
+            expected_diagnostic: "ERROR OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output",
         },
         crate::fs_uae_smoke::OpforgeNativeCliFailureCase {
             name: "mixed-input",

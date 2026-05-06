@@ -21,6 +21,16 @@ definitions. The `.github/agents/` entries exist only as symlinks so VS Code can
 list the same agents in the Agent selector; do not maintain separate copied
 definitions there.
 
+## Git Push Safety Rule
+
+- Never run `git push`, `git push --force`, or any other command that updates a
+  remote branch unless the user has explicitly requested that exact push in the
+  current conversation.
+- Treat every push as opt-in and one-time scoped: prior approval for a previous
+  push does not authorize later pushes.
+- If a push seems like the natural next step, stop after preparing the local
+  work and ask the user whether they want the push performed.
+
 ## Supply-Chain Safety Rule
 
 - Never install, import, add, recommend, vendor, execute, or otherwise touch

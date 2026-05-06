@@ -22,7 +22,7 @@ parser output directly.
 
 ## Problem
 
-`examples/motorola68000/amigaos/opforge/opforge_cli.asm` currently tokenizes
+`native/motorola68000/amigaos/opforge-cli/opforge_cli.asm` currently tokenizes
 input lines through the native package-backed tokenizer and then performs a
 hard-coded source-line scan for `.module` and `.use`. The scan proves the CLI
 can see these directives, but it does not yet implement Rust-equivalent

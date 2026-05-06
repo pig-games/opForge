@@ -1603,7 +1603,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
         let amigaos_dir = asm_path
             .parent()
             .and_then(Path::parent)
-            .expect("opforge_cli should live under amigaos/opforge");
+            .expect("opforge_cli should live under amigaos/opforge-cli");
         return vec![
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("prvm"),
@@ -8483,10 +8483,6 @@ fn motorola68000_family_example_programs_assemble_in_reference_workflow() {
         "motorola68000/68080_fpu_surface",
         "motorola68000/68080_full_additional_surface",
         "motorola68000/amigaos/helloworld",
-        "motorola68000/amigaos/tkpkg/tkpkg_entry",
-        "motorola68000/amigaos/tokvm/tokvm_interpreter",
-        "motorola68000/amigaos/prvm/prvm_debug_cli",
-        "motorola68000/amigaos/prvm/prvm_smoke",
         "motorola68000/amigaos/timer_device_benchmark",
         "motorola68000/amigaos/workbench_startup_alert",
         "motorola68000/amigaos/writefile",
@@ -9537,7 +9533,7 @@ fn motorola68020_tokvm_amigaos_failure_report_renders_input_too_large() {
 #[test]
 fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/tokvm/tokvm_interpreter.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tokvm/tokvm_interpreter.asm");
     let out_dir = create_temp_dir("m68000-tokvm-interpreter");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -9588,7 +9584,7 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
 #[test]
 fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_interpreter.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_interpreter.asm");
     let source = fs::read_to_string(asm_path).expect("read prvm interpreter module source");
 
     assert!(source.contains(".module prvm.amigaos.interpreter"));
@@ -9622,7 +9618,7 @@ fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
 #[test]
 fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_router.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_line_router.asm");
     let source = fs::read_to_string(asm_path).expect("read prvm line router source");
 
     assert!(source.contains(".module prvm.amigaos.line_router"));
@@ -9646,7 +9642,7 @@ fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() 
 #[test]
 fn motorola68020_prvm_line_router_module_parses_with_interpreter_import() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_router.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_line_router.asm");
 
     let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
         .expect("line router module should parse with interpreter import");
@@ -9663,7 +9659,7 @@ fn motorola68020_prvm_line_router_module_parses_with_interpreter_import() {
 #[test]
 fn motorola68020_prvm_line_iterator_example_exposes_whole_file_iteration_surface() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_iterator.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_line_iterator.asm");
     let source = fs::read_to_string(asm_path).expect("read prvm line iterator source");
 
     assert!(source.contains(".module prvm.amigaos.line_iterator"));
@@ -9688,7 +9684,7 @@ fn motorola68020_prvm_line_iterator_example_exposes_whole_file_iteration_surface
 #[test]
 fn motorola68020_prvm_line_iterator_module_parses_with_line_router_import() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_iterator.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_line_iterator.asm");
 
     let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
         .expect("line iterator module should parse with line router import");
@@ -9705,7 +9701,7 @@ fn motorola68020_prvm_line_iterator_module_parses_with_line_router_import() {
 #[test]
 fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_smoke.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_smoke.asm");
     let out_dir = create_temp_dir("m68000-prvm-smoke");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -9761,7 +9757,7 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
 #[test]
 fn motorola68020_prvm_debug_cli_example_assembles_with_report_surface() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/prvm/prvm_debug_cli.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_debug_cli.asm");
     let out_dir = create_temp_dir("m68000-prvm-debug-cli");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -9811,8 +9807,7 @@ fn motorola68020_prvm_debug_cli_example_assembles_with_report_surface() {
 #[test]
 fn motorola68020_prvm_line_iterator_smoke_example_assembles_with_native_call_surface() {
     let repo_root = workspace_root();
-    let asm_path =
-        repo_root.join("examples/motorola68000/amigaos/prvm/prvm_line_iterator_smoke.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_line_iterator_smoke.asm");
     let out_dir = create_temp_dir("m68000-prvm-line-iterator-smoke");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -10569,7 +10564,7 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
 #[test]
 fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/opforge/opforge_cli.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
     let out_dir = create_temp_dir("m68000-opforge-native-cli");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -10805,7 +10800,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
 
 fn tokvm_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join(format!("examples/motorola68000/amigaos/tokvm/{file_name}"));
+    let asm_path = repo_root.join(format!("native/motorola68000/amigaos/tokvm/{file_name}"));
     let source = fs::read_to_string(&asm_path).expect("read tokvm AmigaOS source");
     format_tokvm_asm_fragment(&source)
 }
@@ -10813,7 +10808,7 @@ fn tokvm_amigaos_source(file_name: &str) -> String {
 fn opforge_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
     let asm_path = repo_root.join(format!(
-        "examples/motorola68000/amigaos/opforge/{file_name}"
+        "native/motorola68000/amigaos/opforge-cli/{file_name}"
     ));
     let source = fs::read_to_string(&asm_path).expect("read opForge AmigaOS source");
     format_tokvm_asm_fragment(&source)
@@ -10821,7 +10816,7 @@ fn opforge_amigaos_source(file_name: &str) -> String {
 
 fn tkpkg_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join(format!("examples/motorola68000/amigaos/tkpkg/{file_name}"));
+    let asm_path = repo_root.join(format!("native/motorola68000/amigaos/tkpkg/{file_name}"));
     let source = fs::read_to_string(&asm_path).expect("read tkpkg AmigaOS source");
     format_tokvm_asm_fragment(&source)
 }
@@ -11379,6 +11374,7 @@ fn try_motorola6800_cpu_id_for_source(path: &Path, source: &str) -> Option<Strin
 
 fn motorola68000_example_paths_for_native_tkpkg_parity(scope: &str) -> Vec<PathBuf> {
     let examples_dir = workspace_root().join("examples").join("motorola68000");
+    let native_dir = workspace_root().join("native").join("motorola68000");
     let mut asm_files = match scope {
         TKPKG_NATIVE_PARITY_SCOPE_TOP_LEVEL => fs::read_dir(&examples_dir)
             .unwrap_or_else(|err| {
@@ -11389,11 +11385,11 @@ fn motorola68000_example_paths_for_native_tkpkg_parity(scope: &str) -> Vec<PathB
             .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("asm"))
             .collect::<Vec<_>>(),
         TKPKG_NATIVE_PARITY_SCOPE_SMALL_NESTED => {
-            let mut pending = vec![examples_dir.clone()];
+            let mut pending = vec![examples_dir.clone(), native_dir.clone()];
             let mut paths = Vec::new();
             while let Some(dir) = pending.pop() {
                 for entry in fs::read_dir(&dir)
-                    .unwrap_or_else(|err| panic!("read example directory {}: {err}", dir.display()))
+                    .unwrap_or_else(|err| panic!("read source directory {}: {err}", dir.display()))
                     .filter_map(Result::ok)
                 {
                     let path = entry.path();
@@ -11880,9 +11876,9 @@ fn motorola68020_tkpkg_native_parity_corpus_small_nested_scope_adds_fit_sources(
     for expected in [
         "examples/motorola68000/amigaos/writefile.asm",
         "examples/motorola68000/amigaos/workbench_startup_alert.asm",
-        "examples/motorola68000/amigaos/tkpkg/tkpkg_abi.asm",
-        "examples/motorola68000/amigaos/tkpkg/tkpkg_entry.asm",
-        "examples/motorola68000/amigaos/tokvm/tokvm_interpreter.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_entry.asm",
+        "native/motorola68000/amigaos/tokvm/tokvm_interpreter.asm",
     ] {
         assert!(
             paths.contains(&expected),
@@ -11892,8 +11888,8 @@ fn motorola68020_tkpkg_native_parity_corpus_small_nested_scope_adds_fit_sources(
     for excluded in [
         "examples/motorola68000/amigaos/helloworld.asm",
         "examples/motorola68000/amigaos/timer_device_benchmark.asm",
-        "examples/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm",
-        "examples/motorola68000/amigaos/tokvm/tokvm_tokenizer_vm.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm",
+        "native/motorola68000/amigaos/tokvm/tokvm_tokenizer_vm.asm",
     ] {
         assert!(
             !paths.contains(&excluded),
@@ -13018,7 +13014,7 @@ fn motorola68020_tkpkg_native_wire_roundtrip_preserves_subset_examples() {
 #[test]
 fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/tkpkg/tkpkg_entry.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_entry.asm");
     let out_dir = create_temp_dir("m68000-tkpkg-entry");
     let entry_source = tkpkg_amigaos_source("tkpkg_entry.asm");
 
@@ -13593,7 +13589,7 @@ fn motorola68020_tkpkg_native_render_helpers_preserve_live_registers() {
 fn motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry() {
     let expected = tkpkg_smoke_package_bytes();
     let fixture_path =
-        workspace_root().join("examples/motorola68000/amigaos/tkpkg/tkpkg_debug_cli_package.opasm");
+        workspace_root().join("native/motorola68000/amigaos/tkpkg/tkpkg_debug_cli_package.opasm");
     let generated_path = workspace_root().join("target/tkpkg_debug_cli_package.expected.opasm");
 
     assert!(
@@ -13627,7 +13623,7 @@ fn motorola68020_tkpkg_smoke_package_fixture_matches_authoritative_registry() {
 #[test]
 fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_path() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("examples/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm");
     let out_dir = create_temp_dir("m68000-tkpkg-debug-cli");
     let source = tkpkg_amigaos_source("tkpkg_debug_cli.asm");
 
@@ -14351,7 +14347,7 @@ fn motorola68020_tokvm_interpreter_demo_program_uses_symbolic_bytecode_labels() 
 #[test]
 fn motorola68020_tokvm_sample_input_is_single_line_for_cli_harness() {
     let repo_root = workspace_root();
-    let sample_path = repo_root.join("examples/motorola68000/amigaos/tokvm/tokvm_test_input.asm");
+    let sample_path = repo_root.join("native/motorola68000/amigaos/tokvm/tokvm_test_input.asm");
     let sample = fs::read(&sample_path).expect("read tokvm sample input");
 
     assert_eq!(sample, b"label==42");

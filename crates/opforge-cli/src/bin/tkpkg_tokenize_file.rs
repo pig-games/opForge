@@ -183,7 +183,7 @@ fn collect_source_lines(source: &str) -> Vec<(u32, String)> {
 
 fn default_package_path() -> PathBuf {
     workspace_root()
-        .join("examples")
+        .join("native")
         .join("motorola68000")
         .join("amigaos")
         .join("tkpkg")

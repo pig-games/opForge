@@ -35,7 +35,7 @@ The source contracts this report composes are:
 - `documentation/vm-boundary-protocol-v1.md`
 - `documentation/opForge-native-amigaos-module-use-port-spec-v0_1.md`
 - `documentation/opForge-native-include-preprocessor-input-spec-v0_1.md`
-- `examples/motorola68000/amigaos/opforge/opforge_cli.asm`
+- `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm`
 
 ## Goals
 

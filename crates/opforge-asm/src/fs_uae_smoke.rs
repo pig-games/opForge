@@ -85,12 +85,12 @@ const FS_UAE_TKPKG_MANIFEST_FILE: &str = "opforge_fsuae_tkpkg_manifest.txt";
 const FS_UAE_TKPKG_MANIFEST_INPUT_DIR: &str = "opforge_fsuae_tkpkg_inputs";
 const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";
 const FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH: &str =
-    "examples/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm";
+    "native/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME: &str = "opforge_cli";
 const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str =
-    "examples/motorola68000/amigaos/opforge/opforge_cli.asm";
+    "native/motorola68000/amigaos/opforge-cli/opforge_cli.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH: &str =
-    "examples/motorola68000/amigaos/opforge/opforge_cli_package.opasm";
+    "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "opforge_cli_package.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_OVERSIZED_PACKAGE_GUEST_FILE: &str =
     "opforge_cli_package_oversized.opasm";
@@ -109,17 +109,17 @@ const FS_UAE_EXAMPLES: &[(&str, &str, &str)] = &[
     ),
     (
         "tkpkg_debug_cli",
-        "examples/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm",
+        "native/motorola68000/amigaos/tkpkg/tkpkg_debug_cli.asm",
         "68020",
     ),
     (
         "prvm_smoke",
-        "examples/motorola68000/amigaos/prvm/prvm_smoke.asm",
+        "native/motorola68000/amigaos/prvm/prvm_smoke.asm",
         "68020",
     ),
     (
         "prvm_line_iterator_smoke",
-        "examples/motorola68000/amigaos/prvm/prvm_line_iterator_smoke.asm",
+        "native/motorola68000/amigaos/prvm/prvm_line_iterator_smoke.asm",
         "68020",
     ),
 ];
@@ -440,7 +440,7 @@ fn example_assembly_defines(example_name: &str) -> Vec<String> {
 fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
     if example_name == FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME {
         let amigaos_dir = workspace_root
-            .join("examples")
+            .join("native")
             .join("motorola68000")
             .join("amigaos");
         return vec![

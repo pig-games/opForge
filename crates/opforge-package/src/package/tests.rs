@@ -1653,10 +1653,17 @@ fn expr_parser_vm_opcode_from_u8_round_trip_and_unknown_rejection() {
 fn expr_parser_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
     let opcodes = [
         (0x00, ExvmOpcodeV2::End),
+        (0x01, ExvmOpcodeV2::Jump),
         (0x02, ExvmOpcodeV2::JumpIfTrue),
+        (0x03, ExvmOpcodeV2::Call),
+        (0x04, ExvmOpcodeV2::Return),
         (0x10, ExvmOpcodeV2::PeekKind),
+        (0x11, ExvmOpcodeV2::PeekOperator),
         (0x20, ExvmOpcodeV2::Advance),
+        (0x21, ExvmOpcodeV2::ConsumeOperator),
         (0x32, ExvmOpcodeV2::LoadTokenText),
+        (0x40, ExvmOpcodeV2::BuildUnary),
+        (0x41, ExvmOpcodeV2::BuildBinary),
         (0x60, ExvmOpcodeV2::BuildIdentifier),
         (0x61, ExvmOpcodeV2::BuildNumber),
         (0x62, ExvmOpcodeV2::BuildCurrentAddress),
@@ -1669,8 +1676,30 @@ fn expr_parser_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
         assert_eq!(ExvmOpcodeV2::from_u8(byte), Some(opcode));
         assert_eq!(opcode as u8, byte);
     }
-    assert_eq!(ExvmOpcodeV2::from_u8(0x01), None);
     assert_eq!(ExvmOpcodeV2::from_u8(0xFF), None);
+}
+
+#[test]
+fn expr_parser_vm_v2_operator_kind_from_u8_round_trip_and_unknown_rejection() {
+    let kinds = [
+        (0x01, ExvmOperatorKindV2::Plus),
+        (0x02, ExvmOperatorKindV2::Minus),
+        (0x03, ExvmOperatorKindV2::Multiply),
+        (0x04, ExvmOperatorKindV2::Divide),
+        (0x05, ExvmOperatorKindV2::Mod),
+        (0x06, ExvmOperatorKindV2::Power),
+        (0x07, ExvmOperatorKindV2::BitNot),
+        (0x08, ExvmOperatorKindV2::LogicNot),
+        (0x09, ExvmOperatorKindV2::Lt),
+        (0x0A, ExvmOperatorKindV2::Gt),
+    ];
+
+    for (byte, kind) in kinds {
+        assert_eq!(ExvmOperatorKindV2::from_u8(byte), Some(kind));
+        assert_eq!(kind as u8, byte);
+    }
+    assert_eq!(ExvmOperatorKindV2::from_u8(0x00), None);
+    assert_eq!(ExvmOperatorKindV2::from_u8(0xFF), None);
 }
 
 #[test]

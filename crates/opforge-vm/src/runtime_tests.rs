@@ -2461,7 +2461,7 @@ fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
     )
 }
 
-fn parse_exvm_scalar_leaf_v2(source: &str) -> Result<Expr, ParseError> {
+fn parse_exvm_scalar_v2(source: &str) -> Result<Expr, ParseError> {
     let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
     parse_expression_tokens_with_opcode_version(tokens, end_span, None, EXVM_OPCODE_VERSION_V2)
 }
@@ -3372,7 +3372,7 @@ fn exvm_scalar_leaf_v2_runtime_parses_leaf_and_grouping_contract_corpus() {
     ];
 
     for (source, expected_shape) in cases {
-        let expr = parse_exvm_scalar_leaf_v2(source)
+        let expr = parse_exvm_scalar_v2(source)
             .unwrap_or_else(|err| panic!("EXVM v2 leaf parse {source}: {}", err.message));
         assert_eq!(
             expression_contract_shape(&expr),
@@ -3383,7 +3383,41 @@ fn exvm_scalar_leaf_v2_runtime_parses_leaf_and_grouping_contract_corpus() {
 }
 
 #[test]
-fn exvm_scalar_leaf_v2_contract_compiles_and_evaluates_end_to_end() {
+fn exvm_scalar_v2_runtime_parses_unary_and_arithmetic_contract_corpus() {
+    let cases = [
+        ("+value", "Unary(Plus,Identifier)"),
+        ("-value", "Unary(Minus,Identifier)"),
+        ("<addr", "Unary(Low,Identifier)"),
+        (">addr", "Unary(High,Identifier)"),
+        ("~mask", "Unary(BitNot,Identifier)"),
+        ("!flag", "Unary(LogicNot,Identifier)"),
+        (
+            "1 + 2 * 3 ** 4",
+            "Binary(Add,Number,Binary(Multiply,Number,Binary(Power,Number,Number)))",
+        ),
+        (
+            "2 ** 3 ** 2",
+            "Binary(Power,Number,Binary(Power,Number,Number))",
+        ),
+        (
+            "9 / 3 + 7 % 4",
+            "Binary(Add,Binary(Divide,Number,Number),Binary(Mod,Number,Number))",
+        ),
+    ];
+
+    for (source, expected_shape) in cases {
+        let expr = parse_exvm_scalar_v2(source)
+            .unwrap_or_else(|err| panic!("EXVM v2 arithmetic parse {source}: {}", err.message));
+        assert_eq!(
+            expression_contract_shape(&expr),
+            expected_shape,
+            "EXVM v2 unary/arithmetic shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_scalar_v2_contract_compiles_and_evaluates_arithmetic_end_to_end() {
     let registry = mos6502_family_registry();
 
     let mut chunks =
@@ -3398,7 +3432,11 @@ fn exvm_scalar_leaf_v2_contract_compiles_and_evaluates_end_to_end() {
     ctx.values.insert("value".to_string(), 99);
     ctx.addr = 0x2345;
 
-    let cases = [("1", 1), ("value", 99), ("$", 0x2345), ("((value))", 99)];
+    let cases = [
+        ("1 + 2 * 3 ** 2", 19),
+        ("-value + 5", -94),
+        ("$ + 1", 0x2346),
+    ];
 
     for (source, expected_value) in cases {
         let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
@@ -3418,7 +3456,7 @@ fn exvm_scalar_leaf_v2_contract_compiles_and_evaluates_end_to_end() {
 }
 
 #[test]
-fn exvm_scalar_leaf_v2_contract_rejects_uncovered_arithmetic_without_fallback() {
+fn exvm_scalar_v2_contract_rejects_uncovered_shift_without_fallback() {
     let registry = mos6502_family_registry();
 
     let mut chunks =
@@ -3429,10 +3467,10 @@ fn exvm_scalar_leaf_v2_contract_rejects_uncovered_arithmetic_without_fallback() 
     chunks.expr_parser_contracts.push(contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
-    let (tokens, end_span) = tokenize_core_expr_tokens("1+2", 1);
+    let (tokens, end_span) = tokenize_core_expr_tokens("1 << 2", 1);
     let err = model
         .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
-        .expect_err("EXVM v2 leaf slice should reject uncovered arithmetic");
+        .expect_err("EXVM v2 arithmetic slice should reject uncovered shift operators");
     assert_eq!(err.message, "Unexpected trailing tokens");
 }
 

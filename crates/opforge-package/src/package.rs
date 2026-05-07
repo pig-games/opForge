@@ -431,10 +431,17 @@ impl ExvmOpcode {
 #[repr(u8)]
 pub enum ExvmOpcodeV2 {
     End = 0x00,
+    Jump = 0x01,
     JumpIfTrue = 0x02,
+    Call = 0x03,
+    Return = 0x04,
     PeekKind = 0x10,
+    PeekOperator = 0x11,
     Advance = 0x20,
+    ConsumeOperator = 0x21,
     LoadTokenText = 0x32,
+    BuildUnary = 0x40,
+    BuildBinary = 0x41,
     BuildIdentifier = 0x60,
     BuildNumber = 0x61,
     BuildCurrentAddress = 0x62,
@@ -447,16 +454,56 @@ impl ExvmOpcodeV2 {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x00 => Some(Self::End),
+            0x01 => Some(Self::Jump),
             0x02 => Some(Self::JumpIfTrue),
+            0x03 => Some(Self::Call),
+            0x04 => Some(Self::Return),
             0x10 => Some(Self::PeekKind),
+            0x11 => Some(Self::PeekOperator),
             0x20 => Some(Self::Advance),
+            0x21 => Some(Self::ConsumeOperator),
             0x32 => Some(Self::LoadTokenText),
+            0x40 => Some(Self::BuildUnary),
+            0x41 => Some(Self::BuildBinary),
             0x60 => Some(Self::BuildIdentifier),
             0x61 => Some(Self::BuildNumber),
             0x62 => Some(Self::BuildCurrentAddress),
             0x63 => Some(Self::ParseGrouping),
             0x70 => Some(Self::EmitDiag),
             0x72 => Some(Self::Fail),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ExvmOperatorKindV2 {
+    Plus = 0x01,
+    Minus = 0x02,
+    Multiply = 0x03,
+    Divide = 0x04,
+    Mod = 0x05,
+    Power = 0x06,
+    BitNot = 0x07,
+    LogicNot = 0x08,
+    Lt = 0x09,
+    Gt = 0x0A,
+}
+
+impl ExvmOperatorKindV2 {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0x01 => Some(Self::Plus),
+            0x02 => Some(Self::Minus),
+            0x03 => Some(Self::Multiply),
+            0x04 => Some(Self::Divide),
+            0x05 => Some(Self::Mod),
+            0x06 => Some(Self::Power),
+            0x07 => Some(Self::BitNot),
+            0x08 => Some(Self::LogicNot),
+            0x09 => Some(Self::Lt),
+            0x0A => Some(Self::Gt),
             _ => None,
         }
     }

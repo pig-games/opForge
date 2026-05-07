@@ -194,7 +194,7 @@ this migration lands and proves parity.
       delegation seam.
     - One narrow authoritative `EXVM v2` path is working end to end.
 
-- [ ] Item 3 - Add unary and arithmetic parsing to `EXVM v2`
+- [x] Item 3 - Add unary and arithmetic parsing to `EXVM v2`
   - Source requirement or finding IDs: `SR-EXPR-VM-AUTHORITY`,
     `SR-EXVM-BYTECODE`, `SR-NO-AST-AUTHORITY`, `SR-DETERMINISM`.
   - Expected files:

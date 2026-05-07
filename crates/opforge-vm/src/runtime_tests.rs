@@ -59,8 +59,8 @@ use package::{
     DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
     DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
-    EXPR_VM_OPCODE_VERSION_V1, EXVM_OPCODE_VERSION_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
-    TOKENIZER_VM_OPCODE_VERSION_V1,
+    EXPR_VM_OPCODE_VERSION_V1, EXVM_OPCODE_VERSION_V1, EXVM_OPCODE_VERSION_V2,
+    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -3353,6 +3353,28 @@ fn execution_model_compile_expression_program_parser_vm_opt_in_rejects_unknown_o
         .message
         .to_ascii_lowercase()
         .contains("unsupported exvm opcode version"));
+}
+
+#[test]
+fn exvm_v2_parser_contract_is_rejected_until_runtime_support_lands() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let (tokens, end_span) = tokenize_core_expr_tokens("1+2", 1);
+    let err = model
+        .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+        .expect_err("staged EXVM v2 should not execute yet");
+    assert!(err
+        .message
+        .to_ascii_lowercase()
+        .contains("unsupported expression parser contract opcode version"));
 }
 
 #[test]

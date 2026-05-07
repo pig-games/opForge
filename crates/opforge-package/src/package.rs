@@ -104,8 +104,11 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// - `TOKENIZER_VM_OPCODE_VERSION_V1`: tokenizer VM (`TKVM`) payloads.
 /// - `PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT`: `.opasm` statement PRVM v2 payloads.
 /// - `EXVM_OPCODE_VERSION_V1`: expression parser VM (`EXVM`) payloads.
+/// - `EXVM_OPCODE_VERSION_V2`: staged expression parser VM v2 contract payloads.
 /// - `EXPR_VM_OPCODE_VERSION_V1`: expression evaluator VM contracts (`EXPR`),
 ///   sourced from `core::expr_vm` to keep runtime/package compatibility strict.
+/// - `EXPR_VM_OPCODE_VERSION_V2`: staged expression evaluator VM v2 contract
+///   payloads.
 ///
 /// Decode/validation policy for all versioned VM payloads:
 /// - exact version match required for the active decoder.
@@ -113,9 +116,11 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 pub const TOKENIZER_VM_OPCODE_VERSION_V1: u16 = 0x0001;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
 pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const EXVM_OPCODE_VERSION_V2: u16 = 0x0002;
 pub const PARSER_GRAMMAR_ID_LINE_V1: &str = "opforge.line.v1";
 pub const PARSER_AST_SCHEMA_ID_LINE_V1: &str = "opforge.ast.line.v1";
 pub const EXPR_VM_OPCODE_VERSION_V1: u16 = super::expr_vm_compat::EXPR_VM_OPCODE_VERSION_V1;
+pub const EXPR_VM_OPCODE_VERSION_V2: u16 = super::expr_vm_compat::EXPR_VM_OPCODE_VERSION_V2;
 pub const DIAG_EXPR_INVALID_OPCODE: &str = super::expr_vm_compat::DIAG_EXPR_INVALID_OPCODE;
 pub const DIAG_EXPR_STACK_UNDERFLOW: &str = super::expr_vm_compat::DIAG_EXPR_STACK_UNDERFLOW;
 pub const DIAG_EXPR_STACK_DEPTH_EXCEEDED: &str =
@@ -408,6 +413,8 @@ pub enum ExvmOpcode {
     Fail = 0x03,
 }
 
+pub type ExvmOpcodeV1 = ExvmOpcode;
+
 impl ExvmOpcode {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
@@ -415,6 +422,33 @@ impl ExvmOpcode {
             0x01 => Some(Self::ParseExpression),
             0x02 => Some(Self::EmitDiag),
             0x03 => Some(Self::Fail),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ExvmOpcodeV2 {
+    End = 0x00,
+    PeekKind = 0x10,
+    Advance = 0x20,
+    LoadTokenText = 0x32,
+    BuildIdentifier = 0x60,
+    EmitDiag = 0x70,
+    Fail = 0x72,
+}
+
+impl ExvmOpcodeV2 {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0x00 => Some(Self::End),
+            0x10 => Some(Self::PeekKind),
+            0x20 => Some(Self::Advance),
+            0x32 => Some(Self::LoadTokenText),
+            0x60 => Some(Self::BuildIdentifier),
+            0x70 => Some(Self::EmitDiag),
+            0x72 => Some(Self::Fail),
             _ => None,
         }
     }

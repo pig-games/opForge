@@ -777,7 +777,9 @@ pub(super) fn decode_exvm_chunk(
 pub(super) fn validate_expr_contract_descriptor(
     descriptor: &ExprContractDescriptor,
 ) -> Result<(), OpcpuCodecError> {
-    if descriptor.opcode_version != EXPR_VM_OPCODE_VERSION_V1 {
+    if descriptor.opcode_version != EXPR_VM_OPCODE_VERSION_V1
+        && descriptor.opcode_version != EXPR_VM_OPCODE_VERSION_V2
+    {
         return Err(OpcpuCodecError::InvalidChunkFormat {
             chunk: "EXPR".to_string(),
             detail: format!("unsupported opcode_version: {}", descriptor.opcode_version),
@@ -859,7 +861,9 @@ pub(super) fn validate_expr_contract_descriptor(
 pub(super) fn validate_expr_parser_contract_descriptor(
     descriptor: &ExprParserContractDescriptor,
 ) -> Result<(), OpcpuCodecError> {
-    if descriptor.opcode_version != EXVM_OPCODE_VERSION_V1 {
+    if descriptor.opcode_version != EXVM_OPCODE_VERSION_V1
+        && descriptor.opcode_version != EXVM_OPCODE_VERSION_V2
+    {
         return Err(OpcpuCodecError::InvalidChunkFormat {
             chunk: "EXVM".to_string(),
             detail: format!("unsupported opcode_version: {}", descriptor.opcode_version),

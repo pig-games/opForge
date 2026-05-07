@@ -9,6 +9,7 @@ use crate::tokenizer::Span;
 use types::symbol_stability::is_symbol_unstable;
 
 pub const EXPR_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const EXPR_VM_OPCODE_VERSION_V2: u16 = 0x0002;
 
 /// Expression VM opcode table and compatibility notes.
 ///
@@ -39,6 +40,8 @@ pub enum ExprVmOpcode {
     PushStringLiteral = 0x07,
 }
 
+pub type ExprVmOpcodeV1 = ExprVmOpcode;
+
 impl ExprVmOpcode {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
@@ -50,6 +53,65 @@ impl ExprVmOpcode {
             0x05 => Some(Self::ApplyBinary),
             0x06 => Some(Self::SelectTernary),
             0x07 => Some(Self::PushStringLiteral),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ExprVmOpcodeV2 {
+    End = 0x00,
+    EmitDiag = 0x01,
+    Fail = 0x02,
+    PushLiteral = 0x10,
+    PushCurrentAddress = 0x11,
+    PushSymbol = 0x12,
+    PushStringLiteral = 0x13,
+    ApplyUnary = 0x20,
+    ApplyBinary = 0x21,
+    SelectTernary = 0x22,
+    PushRegisterRef = 0x30,
+    PushPlaceholder = 0x31,
+    WrapImmediate = 0x40,
+    WrapIndirect = 0x41,
+    WrapIndirectLong = 0x42,
+    BuildTuple = 0x50,
+    BuildList = 0x51,
+    BuildRange = 0x52,
+    BuildStructLiteral = 0x53,
+    GetMember = 0x60,
+    IndexValue = 0x61,
+    CallBuiltin = 0x62,
+    RequireScalar = 0x70,
+}
+
+impl ExprVmOpcodeV2 {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0x00 => Some(Self::End),
+            0x01 => Some(Self::EmitDiag),
+            0x02 => Some(Self::Fail),
+            0x10 => Some(Self::PushLiteral),
+            0x11 => Some(Self::PushCurrentAddress),
+            0x12 => Some(Self::PushSymbol),
+            0x13 => Some(Self::PushStringLiteral),
+            0x20 => Some(Self::ApplyUnary),
+            0x21 => Some(Self::ApplyBinary),
+            0x22 => Some(Self::SelectTernary),
+            0x30 => Some(Self::PushRegisterRef),
+            0x31 => Some(Self::PushPlaceholder),
+            0x40 => Some(Self::WrapImmediate),
+            0x41 => Some(Self::WrapIndirect),
+            0x42 => Some(Self::WrapIndirectLong),
+            0x50 => Some(Self::BuildTuple),
+            0x51 => Some(Self::BuildList),
+            0x52 => Some(Self::BuildRange),
+            0x53 => Some(Self::BuildStructLiteral),
+            0x60 => Some(Self::GetMember),
+            0x61 => Some(Self::IndexValue),
+            0x62 => Some(Self::CallBuiltin),
+            0x70 => Some(Self::RequireScalar),
             _ => None,
         }
     }
@@ -211,6 +273,85 @@ pub struct PortableExprRef {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortableExprProgramV2 {
+    pub opcode_version: u16,
+    pub code: Vec<u8>,
+    pub symbols: Vec<String>,
+    pub declared_stack_depth: u16,
+    pub result_mode: PortableExprResultModeV2,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PortableExprResultModeV2 {
+    Scalar,
+    ShapePreserving,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PortableExprValueV2 {
+    Int(i64),
+    String(Vec<u8>),
+    SymbolRef(u32),
+    RegisterRef(u32),
+    Immediate(Box<PortableExprValueV2>),
+    Indirect(Box<PortableExprValueV2>),
+    IndirectLong(Box<PortableExprValueV2>),
+    Tuple(Vec<PortableExprValueV2>),
+    List(Vec<PortableExprValueV2>),
+    Range(PortableExprRangeValueV2),
+    StructLiteral(PortableExprStructLiteralValueV2),
+    Placeholder,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortableExprRangeValueV2 {
+    pub start: Box<PortableExprValueV2>,
+    pub end: Box<PortableExprValueV2>,
+    pub step: Option<Box<PortableExprValueV2>>,
+    pub inclusive: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortableExprStructFieldValueV2 {
+    pub field_name_id: u32,
+    pub value: PortableExprValueV2,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortableExprStructLiteralValueV2 {
+    pub type_name_id: u32,
+    pub fields: Vec<PortableExprStructFieldValueV2>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PortableExprBudgetsV2 {
+    pub max_program_bytes: usize,
+    pub max_stack_depth: usize,
+    pub max_symbol_refs: usize,
+    pub max_eval_steps: usize,
+    pub max_shape_items: usize,
+}
+
+impl Default for PortableExprBudgetsV2 {
+    fn default() -> Self {
+        Self {
+            max_program_bytes: 2048,
+            max_stack_depth: 64,
+            max_symbol_refs: 128,
+            max_eval_steps: 2048,
+            max_shape_items: 256,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortableExprEvaluationV2 {
+    pub value: PortableExprValueV2,
+    pub has_symbol_refs: bool,
+    pub has_unstable_symbols: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PortableExprProgram {
     pub opcode_version: u16,
     pub code: Vec<u8>,
@@ -287,6 +428,19 @@ impl std::fmt::Display for PortableExprError {
 }
 
 impl std::error::Error for PortableExprError {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PortableExprDiagnosticMapV2 {
+    pub invalid_opcode: String,
+    pub stack_underflow: String,
+    pub stack_depth_exceeded: String,
+    pub unknown_symbol: String,
+    pub eval_failure: String,
+    pub unsupported_feature: String,
+    pub budget_exceeded: String,
+    pub invalid_program: String,
+    pub invalid_scalar_conversion: String,
+}
 
 pub const DIAG_EXPR_INVALID_OPCODE: &str = "ope001";
 pub const DIAG_EXPR_STACK_UNDERFLOW: &str = "ope002";
@@ -534,6 +688,52 @@ fn enforce_program_budgets(
             ),
         ));
     }
+    Ok(())
+}
+
+pub fn validate_portable_expr_program_v2_skeleton(
+    program: &PortableExprProgramV2,
+    budgets: PortableExprBudgetsV2,
+) -> Result<(), PortableExprError> {
+    if program.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
+        return Err(PortableExprError::new(
+            DIAG_EXPR_INVALID_PROGRAM,
+            format!(
+                "unsupported expression VM opcode version {}",
+                program.opcode_version
+            ),
+        ));
+    }
+    if program.code.len() > budgets.max_program_bytes {
+        return Err(PortableExprError::new(
+            DIAG_EXPR_BUDGET_EXCEEDED,
+            format!(
+                "expression VM program byte budget exceeded ({} > {})",
+                program.code.len(),
+                budgets.max_program_bytes
+            ),
+        ));
+    }
+    if program.symbols.len() > budgets.max_symbol_refs {
+        return Err(PortableExprError::new(
+            DIAG_EXPR_BUDGET_EXCEEDED,
+            format!(
+                "expression VM symbol reference budget exceeded ({} > {})",
+                program.symbols.len(),
+                budgets.max_symbol_refs
+            ),
+        ));
+    }
+    if (program.declared_stack_depth as usize) > budgets.max_stack_depth {
+        return Err(PortableExprError::new(
+            DIAG_EXPR_BUDGET_EXCEEDED,
+            format!(
+                "expression VM stack depth budget exceeded ({} > {})",
+                program.declared_stack_depth, budgets.max_stack_depth
+            ),
+        ));
+    }
+
     Ok(())
 }
 
@@ -953,6 +1153,82 @@ mod tests {
         let err = eval_portable_expr_program(&program, &TestCtx::default(), Default::default())
             .expect_err("invalid opcode should fail");
         assert_eq!(err.code, DIAG_EXPR_INVALID_OPCODE);
+    }
+
+    #[test]
+    fn expr_vm_v2_skeleton_types_are_constructible() {
+        let program = PortableExprProgramV2 {
+            opcode_version: EXPR_VM_OPCODE_VERSION_V2,
+            code: vec![ExprVmOpcodeV2::End as u8],
+            symbols: vec!["label".to_string()],
+            declared_stack_depth: 1,
+            result_mode: PortableExprResultModeV2::ShapePreserving,
+        };
+        let budgets = PortableExprBudgetsV2::default();
+        validate_portable_expr_program_v2_skeleton(&program, budgets)
+            .expect("v2 skeleton validation should accept matching version");
+
+        let value = PortableExprValueV2::StructLiteral(PortableExprStructLiteralValueV2 {
+            type_name_id: 7,
+            fields: vec![PortableExprStructFieldValueV2 {
+                field_name_id: 11,
+                value: PortableExprValueV2::Range(PortableExprRangeValueV2 {
+                    start: Box::new(PortableExprValueV2::Int(1)),
+                    end: Box::new(PortableExprValueV2::Int(4)),
+                    step: Some(Box::new(PortableExprValueV2::Int(2))),
+                    inclusive: true,
+                }),
+            }],
+        });
+
+        let evaluation = PortableExprEvaluationV2 {
+            value,
+            has_symbol_refs: true,
+            has_unstable_symbols: false,
+        };
+
+        match evaluation.value {
+            PortableExprValueV2::StructLiteral(struct_value) => {
+                assert_eq!(struct_value.type_name_id, 7);
+                assert_eq!(struct_value.fields.len(), 1);
+            }
+            other => panic!("unexpected v2 value scaffold: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expr_vm_v2_programs_are_not_executable_through_v1_runtime() {
+        let program = PortableExprProgram {
+            opcode_version: EXPR_VM_OPCODE_VERSION_V2,
+            code: vec![ExprVmOpcode::End as u8],
+            symbols: Vec::new(),
+            declared_stack_depth: 0,
+        };
+
+        let err = eval_portable_expr_program(&program, &TestCtx::default(), Default::default())
+            .expect_err("v2 programs should stay non-executable until runtime support lands");
+        assert_eq!(err.code, DIAG_EXPR_INVALID_PROGRAM);
+        assert!(err
+            .message
+            .contains("unsupported expression VM opcode version 2"));
+    }
+
+    #[test]
+    fn expr_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
+        let opcodes = [
+            (0x00, ExprVmOpcodeV2::End),
+            (0x01, ExprVmOpcodeV2::EmitDiag),
+            (0x02, ExprVmOpcodeV2::Fail),
+            (0x10, ExprVmOpcodeV2::PushLiteral),
+            (0x70, ExprVmOpcodeV2::RequireScalar),
+        ];
+
+        for (byte, opcode) in opcodes {
+            assert_eq!(ExprVmOpcodeV2::from_u8(byte), Some(opcode));
+            assert_eq!(opcode as u8, byte);
+        }
+        assert_eq!(ExprVmOpcodeV2::from_u8(0x03), None);
+        assert_eq!(ExprVmOpcodeV2::from_u8(0xFF), None);
     }
 
     #[test]

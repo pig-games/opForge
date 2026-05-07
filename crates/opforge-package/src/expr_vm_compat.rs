@@ -3,6 +3,7 @@
 //! Temporary bridge for expression-VM constants during package extraction.
 
 pub const EXPR_VM_OPCODE_VERSION_V1: u16 = 0x0001;
+pub const EXPR_VM_OPCODE_VERSION_V2: u16 = 0x0002;
 pub const DIAG_EXPR_INVALID_OPCODE: &str = "ope001";
 pub const DIAG_EXPR_STACK_UNDERFLOW: &str = "ope002";
 pub const DIAG_EXPR_STACK_DEPTH_EXCEEDED: &str = "ope003";

@@ -1527,7 +1527,7 @@ fn base_required_chunks_with_expr(expr_chunk: Vec<u8>) -> Vec<([u8; 4], Vec<u8>)
 #[test]
 fn decode_rejects_expr_contract_with_unsupported_opcode_version() {
     let mut contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1 + 1;
+    contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2 + 1;
 
     let bytes = encode_container(&base_required_chunks_with_expr(
         expr_chunk_with_single_contract(&contract),
@@ -1539,6 +1539,57 @@ fn decode_rejects_expr_contract_with_unsupported_opcode_version() {
     assert!(matches!(err, OpcpuCodecError::InvalidChunkFormat { .. }));
     assert_eq!(err.code(), "OPC009");
     assert!(err.to_string().contains("unsupported opcode_version"));
+}
+
+#[test]
+fn decode_accepts_expr_contract_with_v2_opcode_version() {
+    let mut contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+
+    let bytes = encode_container(&base_required_chunks_with_expr(
+        expr_chunk_with_single_contract(&contract),
+    ))
+    .expect("container");
+
+    let decoded = decode_hierarchy_chunks(&bytes).expect("v2 EXPR contract should decode");
+    assert_eq!(decoded.expr_contracts.len(), 1);
+    assert_eq!(
+        decoded.expr_contracts[0].opcode_version,
+        EXPR_VM_OPCODE_VERSION_V2
+    );
+}
+
+#[test]
+fn decode_accepts_expr_parser_contract_with_v2_opcode_version() {
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+
+    let bytes = encode_container(&[
+        (
+            CHUNK_EXVM,
+            encode_exvm_chunk(std::slice::from_ref(&contract)).expect("EXVM chunk encode"),
+        ),
+        (
+            CHUNK_FAMS,
+            encode_fams_chunk(&sample_families()).expect("fams"),
+        ),
+        (CHUNK_CPUS, encode_cpus_chunk(&sample_cpus()).expect("cpus")),
+        (
+            CHUNK_DIAL,
+            encode_dial_chunk(&sample_dialects()).expect("dial"),
+        ),
+        (CHUNK_REGS, encode_regs_chunk(&[]).expect("regs")),
+        (CHUNK_FORM, encode_form_chunk(&[]).expect("form")),
+        (CHUNK_TABL, encode_tabl_chunk(&[]).expect("tabl")),
+    ])
+    .expect("container");
+
+    let decoded = decode_hierarchy_chunks(&bytes).expect("v2 EXVM contract should decode");
+    assert_eq!(decoded.expr_parser_contracts.len(), 1);
+    assert_eq!(
+        decoded.expr_parser_contracts[0].opcode_version,
+        EXVM_OPCODE_VERSION_V2
+    );
 }
 
 #[test]
@@ -1596,6 +1647,26 @@ fn expr_parser_vm_opcode_from_u8_round_trip_and_unknown_rejection() {
     );
     assert_eq!(ExvmOpcode::from_u8(0x04), None);
     assert_eq!(ExvmOpcode::from_u8(0xFF), None);
+}
+
+#[test]
+fn expr_parser_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
+    let opcodes = [
+        (0x00, ExvmOpcodeV2::End),
+        (0x10, ExvmOpcodeV2::PeekKind),
+        (0x20, ExvmOpcodeV2::Advance),
+        (0x32, ExvmOpcodeV2::LoadTokenText),
+        (0x60, ExvmOpcodeV2::BuildIdentifier),
+        (0x70, ExvmOpcodeV2::EmitDiag),
+        (0x72, ExvmOpcodeV2::Fail),
+    ];
+
+    for (byte, opcode) in opcodes {
+        assert_eq!(ExvmOpcodeV2::from_u8(byte), Some(opcode));
+        assert_eq!(opcode as u8, byte);
+    }
+    assert_eq!(ExvmOpcodeV2::from_u8(0x01), None);
+    assert_eq!(ExvmOpcodeV2::from_u8(0xFF), None);
 }
 
 #[test]

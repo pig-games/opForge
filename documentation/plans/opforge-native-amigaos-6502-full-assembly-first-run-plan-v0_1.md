@@ -304,6 +304,10 @@ The intended native shape mirrors the Rust path:
   - Commit outcome: exactly one commit that lets native opasm evaluate first-run
     6502 expressions through opcore/EXVM callbacks rather than local ad hoc
     parsing.
+  - In-progress slice completed: selector scalar operand evaluation now routes through
+    `opcore_expr_eval_operand_v1`, the shared opcore bridge evaluates simple
+    additive/subtractive literal and label terms for first-run operands, and
+    focused native source/assembly tests lock the ownership boundary.
   - Definition of done: `.org`, operands, constants, labels, current-PC
     references, and forward-reference resolution behave like the Rust VM path
     for the first-run matrix.

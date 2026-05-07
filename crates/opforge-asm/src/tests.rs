@@ -10934,6 +10934,50 @@ fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
 }
 
 #[test]
+fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm");
+    let source = opcore_amigaos_source("opcore_expr_bridge.asm");
+
+    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
+        .expect("opcore expression bridge module should parse");
+    assert!(
+        entries.is_empty(),
+        "opcore expression bridge should not emit output entries"
+    );
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics while parsing opcore expression bridge: {diagnostics:?}"
+    );
+
+    assert!(source.contains(".module opcore.amigaos.expr_bridge"));
+    assert!(source.contains("opcore_expr_eval_operand_v1:"));
+    assert!(source.contains("opcoreExprBridgeFindBinaryOperator:"));
+    assert!(source.contains("opcoreExprBridgeEvalSingleTerm:"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opcoreExprBridgeNoImmediatePrefix:",
+            "BSR.W opcoreExprBridgeFindBinaryOperator",
+            "BNE.W opcoreExprBridgeBinary",
+            "BSR.W opcoreExprBridgeEvalSingleTerm",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opcoreExprBridgeBinary:",
+            "BSR.W opcoreExprBridgeEvalSingleTerm",
+            "MOVE.L D3, D4",
+            "BSR.W opcoreExprBridgeEvalSingleTerm",
+            "CMPI.B #'+', D6",
+            "SUB.L D3, D2",
+            "ADD.L D4, D3",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opasm_selector_stage_module_owns_native_subset_policy() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_selector_stage.asm");
@@ -10954,6 +10998,8 @@ fn motorola68020_opasm_selector_stage_module_owns_native_subset_policy() {
     assert!(source.contains("opasm_selector_stage_build_encode_request_v1:"));
     assert!(source.contains("opasm_selector_stage_instruction_size_v1:"));
     assert!(source.contains("JSR opcore_expr_eval_operand_v1"));
+    assert!(!source.contains("opasmSelectorParseHex:"));
+    assert!(!source.contains("opasmSelectorParseDecimal:"));
     assert!(source.contains("OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC"));
     assert!(source.contains("OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS"));
     assert!(source.contains("OPASM_SELECTOR_STATUS_OPERAND_ERROR"));
@@ -11248,6 +11294,13 @@ fn opasm_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
     let asm_path = repo_root.join(format!("native/motorola68000/amigaos/opasm/{file_name}"));
     let source = fs::read_to_string(&asm_path).expect("read opasm AmigaOS source");
+    format_tokvm_asm_fragment(&source)
+}
+
+fn opcore_amigaos_source(file_name: &str) -> String {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join(format!("native/motorola68000/amigaos/opcore/{file_name}"));
+    let source = fs::read_to_string(&asm_path).expect("read opcore AmigaOS source");
     format_tokvm_asm_fragment(&source)
 }
 

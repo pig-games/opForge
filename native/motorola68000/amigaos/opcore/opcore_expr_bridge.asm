@@ -51,6 +51,49 @@ opcore_expr_eval_operand_v1:
 opcoreExprBridgeNoImmediatePrefix:
         TST.L D0
         BEQ.W opcoreExprBridgeFail
+        BSR.W opcoreExprBridgeFindBinaryOperator
+        TST.L D6
+        BNE.W opcoreExprBridgeBinary
+        BSR.W opcoreExprBridgeEvalSingleTerm
+        BRA.W opcoreExprBridgeReturn
+
+opcoreExprBridgeBinary:
+        MOVEM.L A0/D0/D5-D6, -(SP)
+        MOVE.L D5, D0
+        BSR.W opcoreExprBridgeEvalSingleTerm
+        TST.L D0
+        BNE.S opcoreExprBridgeBinaryRestoreFail
+        MOVE.L D3, D4
+        MOVEM.L (SP)+, A0/D0/D5-D6
+        LEA 1(A0,D5.L), A0
+        SUBQ.L #1, D0
+        SUB.L D5, D0
+        BSR.W opcoreExprBridgeEvalSingleTerm
+        TST.L D0
+        BNE.W opcoreExprBridgeReturn
+        CMPI.B #'+', D6
+        BEQ.S opcoreExprBridgeBinaryAdd
+        MOVE.L D4, D2
+        SUB.L D3, D2
+        MOVE.L D2, D3
+        BRA.S opcoreExprBridgeBinaryOk
+
+opcoreExprBridgeBinaryAdd:
+        ADD.L D4, D3
+
+opcoreExprBridgeBinaryOk:
+        MOVEQ #0, D0
+        BRA.S opcoreExprBridgeReturn
+
+opcoreExprBridgeBinaryRestoreFail:
+        MOVEM.L (SP)+, A0/D0/D5-D6
+        MOVEQ #1, D0
+        BRA.S opcoreExprBridgeReturn
+
+opcoreExprBridgeEvalSingleTerm:
+        BSR.W opcoreExprBridgeSkipWhitespace
+        TST.L D0
+        BEQ.S opcoreExprBridgeEvalSingleFail
         CMPI.B #'$', (A0)
         BEQ.S opcoreExprBridgeHex
         MOVEQ #0, D1
@@ -65,15 +108,45 @@ opcoreExprBridgeHex:
         ADDQ.L #1, A0
         SUBQ.L #1, D0
         BSR.W opcoreExprBridgeParseHex
-        BRA.S opcoreExprBridgeReturn
+        RTS
 
 opcoreExprBridgeDecimal:
         BSR.W opcoreExprBridgeParseDecimal
-        BRA.S opcoreExprBridgeReturn
+        RTS
 
 opcoreExprBridgeLabel:
         BSR.W opcoreExprBridgeResolveLabel
-        BRA.S opcoreExprBridgeReturn
+        RTS
+
+opcoreExprBridgeEvalSingleFail:
+        MOVEQ #1, D0
+        RTS
+
+opcoreExprBridgeFindBinaryOperator:
+        MOVEM.L D0-D2/A0, -(SP)
+        CLR.L D5
+        CLR.L D6
+        MOVE.L D0, D2
+
+opcoreExprBridgeFindBinaryLoop:
+        TST.L D2
+        BEQ.S opcoreExprBridgeFindBinaryDone
+        MOVEQ #0, D1
+        MOVE.B (A0)+, D1
+        CMPI.B #'+', D1
+        BEQ.S opcoreExprBridgeFindBinaryFound
+        CMPI.B #'-', D1
+        BEQ.S opcoreExprBridgeFindBinaryFound
+        ADDQ.L #1, D5
+        SUBQ.L #1, D2
+        BRA.S opcoreExprBridgeFindBinaryLoop
+
+opcoreExprBridgeFindBinaryFound:
+        MOVE.L D1, D6
+
+opcoreExprBridgeFindBinaryDone:
+        MOVEM.L (SP)+, D0-D2/A0
+        RTS
 
 opcoreExprBridgeFail:
         MOVEQ #1, D0

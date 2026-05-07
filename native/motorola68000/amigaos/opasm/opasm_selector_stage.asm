@@ -255,24 +255,6 @@ opasmSelectorResolveLabelOperand:
         BEQ.S opasmSelectorResolveLabelFail
 
 opasmSelectorResolveNoImmediatePrefix:
-        CMPI.B #'$', (A0)
-        BEQ.S opasmSelectorResolveHex
-        MOVEQ #0, D1
-        MOVE.B (A0), D1
-        CMPI.B #'0', D1
-        BCS.S opasmSelectorResolveLabelText
-        CMPI.B #'9', D1
-        BHI.S opasmSelectorResolveLabelText
-        BSR.W opasmSelectorParseDecimal
-        BRA.S opasmSelectorResolveLabelReturn
-
-opasmSelectorResolveHex:
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        BSR.W opasmSelectorParseHex
-        BRA.S opasmSelectorResolveLabelReturn
-
-opasmSelectorResolveLabelText:
         MOVEM.L D1/A1-A3, -(SP)
         MOVEA.L A2, A1
         MOVEA.L A3, A2
@@ -286,100 +268,6 @@ opasmSelectorResolveLabelFail:
 
 opasmSelectorResolveLabelReturn:
         MOVEM.L (SP)+, D1/A0
-        RTS
-
-opasmSelectorParseHex:
-        MOVEM.L D1-D2/A0, -(SP)
-        CLR.L D3
-
-opasmSelectorParseHexLoop:
-        TST.L D0
-        BEQ.S opasmSelectorParseHexOk
-        MOVEQ #0, D1
-        MOVE.B (A0)+, D1
-        SUBQ.L #1, D0
-        TST.B D1
-        BEQ.S opasmSelectorParseHexOk
-        CMPI.B #' ', D1
-        BEQ.S opasmSelectorParseHexOk
-        CMPI.B #9, D1
-        BEQ.S opasmSelectorParseHexOk
-        CMPI.B #'0', D1
-        BCS.S opasmSelectorParseHexFail
-        CMPI.B #'9', D1
-        BLS.S opasmSelectorParseHexDigit
-        CMPI.B #'A', D1
-        BCS.S opasmSelectorParseHexLower
-        CMPI.B #'F', D1
-        BHI.S opasmSelectorParseHexLower
-        SUBI.B #'A' - 10, D1
-        BRA.S opasmSelectorParseHexHaveDigit
-
-opasmSelectorParseHexLower:
-        CMPI.B #'a', D1
-        BCS.S opasmSelectorParseHexFail
-        CMPI.B #'f', D1
-        BHI.S opasmSelectorParseHexFail
-        SUBI.B #'a' - 10, D1
-        BRA.S opasmSelectorParseHexHaveDigit
-
-opasmSelectorParseHexDigit:
-        SUBI.B #'0', D1
-
-opasmSelectorParseHexHaveDigit:
-        MOVE.L D3, D2
-        LSL.L #4, D3
-        OR.L D1, D3
-        BRA.S opasmSelectorParseHexLoop
-
-opasmSelectorParseHexOk:
-        MOVEQ #0, D0
-        BRA.S opasmSelectorParseHexReturn
-
-opasmSelectorParseHexFail:
-        MOVEQ #1, D0
-
-opasmSelectorParseHexReturn:
-        MOVEM.L (SP)+, D1-D2/A0
-        RTS
-
-opasmSelectorParseDecimal:
-        MOVEM.L D1-D2/A0, -(SP)
-        CLR.L D3
-
-opasmSelectorParseDecimalLoop:
-        TST.L D0
-        BEQ.S opasmSelectorParseDecimalOk
-        MOVEQ #0, D1
-        MOVE.B (A0)+, D1
-        SUBQ.L #1, D0
-        TST.B D1
-        BEQ.S opasmSelectorParseDecimalOk
-        CMPI.B #' ', D1
-        BEQ.S opasmSelectorParseDecimalOk
-        CMPI.B #9, D1
-        BEQ.S opasmSelectorParseDecimalOk
-        CMPI.B #'0', D1
-        BCS.S opasmSelectorParseDecimalFail
-        CMPI.B #'9', D1
-        BHI.S opasmSelectorParseDecimalFail
-        SUBI.B #'0', D1
-        MOVE.L D3, D2
-        LSL.L #3, D3
-        ADD.L D2, D3
-        ADD.L D2, D3
-        ADD.L D1, D3
-        BRA.S opasmSelectorParseDecimalLoop
-
-opasmSelectorParseDecimalOk:
-        MOVEQ #0, D0
-        BRA.S opasmSelectorParseDecimalReturn
-
-opasmSelectorParseDecimalFail:
-        MOVEQ #1, D0
-
-opasmSelectorParseDecimalReturn:
-        MOVEM.L (SP)+, D1-D2/A0
         RTS
 
 opasmSelectorOperandHasImmediatePrefix:

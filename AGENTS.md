@@ -123,6 +123,32 @@ Rust quality-gate rule:
   canonical full Rust quality gate; add focused tests for the specific slice as
   needed, but do not replace the full gate by listing individual Cargo commands.
 
+FS-UAE testing rule:
+
+- FS-UAE tests launch the macOS FS-UAE application and must be run with
+  GUI/process access. In sandboxed agent environments, request the required
+  escalation or approval before treating a FS-UAE `SIGABRT` at
+  `UAE: Initializing core derived from WinUAE` as a project failure.
+- Prefer the known-good one-shot invocation form when running these tests from
+  an agent shell, because it keeps the FS-UAE environment attached to the exact
+  `cargo test` process that needs it:
+
+  ```sh
+  OPFORGE_FS_UAE_SMOKE=1 \
+  OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' \
+  OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' \
+  OPFORGE_FS_UAE_ARGS='{fsuae_config}' \
+  cargo test -p asm external_fs_uae_ -- --nocapture --test-threads=1
+  ```
+
+- For a faster focused check, replace `external_fs_uae_` with
+  `external_fs_uae_hunk_smoke` or another specific FS-UAE test filter.
+- If a FS-UAE run fails, first distinguish host launch failures from Amiga-side
+  payload failures. Host launch failures usually stop before guest output is
+  captured. Amiga-side payload failures normally leave `Work/opforge_fsuae_*`
+  files under the generated `target/fs-uae-*` directory; inspect those files
+  before changing production code.
+
 ## Workflow routing rules
 
 Use the following routing rules by default:

@@ -184,6 +184,87 @@ The output architecture should become a native artifact subsystem owned below
 the CLI. The CLI should request artifacts and write files, while artifact
 renderers consume assembled session/image state.
 
+## Build And Run
+
+Run these commands from the repository root.
+
+The direct Rust CLI path is useful as a fast host-side assembly/listing check:
+
+```sh
+mkdir -p target/native-amigaos
+cargo run -p cli --bin opforge -- \
+  --cpu 68020 \
+  -l target/native-amigaos/opforge_cli.lst \
+  -M native/motorola68000/amigaos/tkpkg \
+  -M native/motorola68000/amigaos/tokvm \
+  -M native/motorola68000/amigaos/prvm \
+  -M native/motorola68000/amigaos/opcore \
+  -M native/motorola68000/amigaos/opasm \
+  native/motorola68000/amigaos/opforge-cli/opforge_cli.asm
+```
+
+The current canonical Hunk build path is the same assembly helper used by the
+native contract tests. It emits a listing and AmigaOS Hunk executable under a
+fresh `crates/opforge-asm/target/test-m68000-opforge-native-cli-*` directory:
+
+```sh
+cargo test -p asm motorola68020_opforge_native_cli_shell_assembles_with_stage_stub -- --nocapture
+mkdir -p target/native-amigaos
+NATIVE_OPFORGE_HUNK="$(
+  find crates/opforge-asm/target -path '*/test-m68000-opforge-native-cli-*/build/opforge_cli' -type f -exec ls -t {} + \
+    | head -n 1
+)"
+cp "$NATIVE_OPFORGE_HUNK" target/native-amigaos/opforge_cli
+```
+
+Prepare a minimal AmigaOS `Work:` volume for a manual native CLI smoke run:
+
+```sh
+mkdir -p target/native-amigaos/Work
+cp target/native-amigaos/opforge_cli target/native-amigaos/Work/opforge_cli
+cp native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm \
+  target/native-amigaos/Work/opforge_cli_package.opasm
+cat > target/native-amigaos/Work/opforge_6502_native_cli_smoke.asm <<'EOF'
+start   lda #$42
+        sta $0200
+done    jmp done
+EOF
+```
+
+Boot an AmigaOS environment with `target/native-amigaos/Work` mounted as
+`Work:`. From an AmigaShell, run:
+
+```text
+Work:
+opforge_cli opforge_6502_native_cli_smoke.asm --bin opforge_native_out.bin --cpu m6502 --opasm-package opforge_cli_package.opasm
+```
+
+Expected result for the current smoke slice:
+
+- stdout starts with `OPFORGE-NATIVE 1`.
+- the run reports `STATUS output-ok`.
+- `Work:opforge_native_out.bin` is written with the same bytes as the Rust VM
+  reference for the smoke program.
+
+To launch the same prepared `Work:` volume with the local FS-UAE template used
+by the test harness:
+
+```sh
+awk -v work="$(pwd)/target/native-amigaos/Work" '
+  BEGIN { replaced = 0 }
+  /^hard_drive_1[[:space:]]*=/ { print "hard_drive_1 = " work; replaced = 1; next }
+  { print }
+  END { if (!replaced) print "hard_drive_1 = " work }
+' "$HOME/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae" > target/native-amigaos/opforge-native.fs-uae
+'/Applications/FS-UAE.app/Contents/MacOS/fs-uae' target/native-amigaos/opforge-native.fs-uae
+```
+
+The native CLI Hunk is currently built by the test/helper assembly path because
+the production native CLI itself is still a first-run target deliverable. Keep
+the build/run commands above in sync with `crates/opforge-asm/src/tests.rs` and
+`crates/opforge-asm/src/fs_uae_smoke.rs` until a dedicated native build command
+or script exists.
+
 ## Validation
 
 Rust tests provide static contract coverage for the native assembly sources and
@@ -193,12 +274,48 @@ Common focused checks:
 
 ```sh
 cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture
-cargo test -p asm external_fs_uae_opforge_native_cli_ -- --nocapture
 ```
 
 FS-UAE tests are opt-in. They require `OPFORGE_FS_UAE_SMOKE=1` and
 environment/configuration for the local FS-UAE executable and launcher
 arguments. The helper code lives in `crates/opforge-asm/src/fs_uae_smoke.rs`.
+When running from a sandboxed agent, make sure the command has GUI/process
+access before interpreting a FS-UAE `SIGABRT` during `UAE: Initializing core
+derived from WinUAE` as an opForge failure.
+
+Full local FS-UAE validation uses the same configuration template rewrite as
+the manual launch above and runs the emulator-backed tests serially. Prefer the
+one-shot environment form in agent shells:
+
+```sh
+OPFORGE_FS_UAE_SMOKE=1 \
+OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' \
+OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' \
+OPFORGE_FS_UAE_ARGS='{fsuae_config}' \
+cargo test -p asm external_fs_uae_ -- --nocapture --test-threads=1
+```
+
+Focused FS-UAE checks:
+
+```sh
+OPFORGE_FS_UAE_SMOKE=1 \
+OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' \
+OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' \
+OPFORGE_FS_UAE_ARGS='{fsuae_config}' \
+cargo test -p asm external_fs_uae_hunk_smoke -- --nocapture --test-threads=1
+
+OPFORGE_FS_UAE_SMOKE=1 \
+OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' \
+OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' \
+OPFORGE_FS_UAE_ARGS='{fsuae_config}' \
+cargo test -p asm external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin -- --nocapture --test-threads=1
+
+OPFORGE_FS_UAE_SMOKE=1 \
+OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae' \
+OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae' \
+OPFORGE_FS_UAE_ARGS='{fsuae_config}' \
+cargo test -p asm external_fs_uae_tkpkg_native_mos6502_family_corpus_matches_vm_authoritative_rows -- --nocapture --test-threads=1
+```
 
 The current FS-UAE native CLI coverage includes:
 

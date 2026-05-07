@@ -3430,6 +3430,19 @@ fn exvm_operator_v2_runtime_parses_scalar_operator_contract_corpus() {
 }
 
 #[test]
+fn exvm_ternary_v2_runtime_parses_contract_corpus() {
+    for (source, expected_shape) in EXVM_TERNARY_CONTRACT_CORPUS {
+        let expr = parse_exvm_scalar_v2(source)
+            .unwrap_or_else(|err| panic!("EXVM v2 ternary parse {source}: {}", err.message));
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "EXVM v2 ternary shape changed for {source}"
+        );
+    }
+}
+
+#[test]
 fn exvm_scalar_v2_contract_compiles_and_evaluates_arithmetic_end_to_end() {
     let registry = mos6502_family_registry();
 
@@ -3510,7 +3523,7 @@ fn exvm_operator_v2_contract_compiles_and_evaluates_end_to_end() {
 }
 
 #[test]
-fn exvm_operator_v2_contract_rejects_uncovered_ternary_without_fallback() {
+fn exvm_ternary_v2_contract_compiles_and_evaluates_end_to_end() {
     let registry = mos6502_family_registry();
 
     let mut chunks =
@@ -3521,11 +3534,85 @@ fn exvm_operator_v2_contract_rejects_uncovered_ternary_without_fallback() {
     chunks.expr_parser_contracts.push(contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
-    let (tokens, end_span) = tokenize_core_expr_tokens("1 ? 2 : 3", 1);
+    let mut ctx = TestAssemblerContext::new();
+    ctx.values.insert("flag".to_string(), 1);
+    ctx.values.insert("zero".to_string(), 0);
+
+    let cases = [
+        ("flag ? 1 + 2 : 3 * 4", 3),
+        ("zero ? 1 + 2 : 3 * 4", 12),
+        ("flag ? zero ? 8 : 9 : 10", 9),
+    ];
+
+    for (source, expected_value) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| panic!("EXVM v2 ternary compile {source}: {}", err.message));
+        let evaluation = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .unwrap_or_else(|err| panic!("EXVM v2 ternary eval {source}: {err}"));
+        assert_eq!(
+            evaluation.value, expected_value,
+            "EXVM v2 ternary evaluation changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_ternary_v2_contract_preserves_missing_colon_diagnostic() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let (tokens, end_span) = tokenize_core_expr_tokens("1 ? 2", 1);
     let err = model
         .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
-        .expect_err("EXVM v2 operator slice should reject uncovered ternary operators");
-    assert_eq!(err.message, "Unexpected trailing tokens");
+        .expect_err("EXVM v2 ternary parser should reject missing colon");
+    assert_eq!(err.message, "Missing ':' in conditional expression");
+}
+
+#[test]
+fn exvm_ternary_v2_contract_keeps_calls_and_placeholders_out_of_scope() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let cases = [
+        (
+            "flag ? ? : value",
+            "EXVM strict mode does not cover placeholder expressions",
+        ),
+        (
+            "flag ? .pick(1,2) : value",
+            "EXVM strict mode does not cover function/call expressions",
+        ),
+    ];
+
+    for (source, expected_message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let err = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .expect_err("EXVM v2 ternary strict mode should reject out-of-scope values");
+        assert_eq!(
+            err.message, expected_message,
+            "EXVM v2 ternary out-of-scope diagnostic changed for {source}"
+        );
+    }
 }
 
 #[test]

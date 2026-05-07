@@ -1661,9 +1661,11 @@ fn expr_parser_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
         (0x11, ExvmOpcodeV2::PeekOperator),
         (0x20, ExvmOpcodeV2::Advance),
         (0x21, ExvmOpcodeV2::ConsumeOperator),
+        (0x22, ExvmOpcodeV2::ConsumeKind),
         (0x32, ExvmOpcodeV2::LoadTokenText),
         (0x40, ExvmOpcodeV2::BuildUnary),
         (0x41, ExvmOpcodeV2::BuildBinary),
+        (0x42, ExvmOpcodeV2::BuildTernary),
         (0x60, ExvmOpcodeV2::BuildIdentifier),
         (0x61, ExvmOpcodeV2::BuildNumber),
         (0x62, ExvmOpcodeV2::BuildCurrentAddress),
@@ -1722,6 +1724,8 @@ fn expr_parser_vm_v2_token_kind_from_u8_round_trip_and_unknown_rejection() {
         (0x03, ExvmTokenKindV2::Dollar),
         (0x04, ExvmTokenKindV2::OpenParen),
         (0x05, ExvmTokenKindV2::CloseParen),
+        (0x06, ExvmTokenKindV2::Question),
+        (0x07, ExvmTokenKindV2::Colon),
     ];
 
     for (byte, kind) in kinds {

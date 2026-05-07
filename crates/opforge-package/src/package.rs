@@ -439,9 +439,11 @@ pub enum ExvmOpcodeV2 {
     PeekOperator = 0x11,
     Advance = 0x20,
     ConsumeOperator = 0x21,
+    ConsumeKind = 0x22,
     LoadTokenText = 0x32,
     BuildUnary = 0x40,
     BuildBinary = 0x41,
+    BuildTernary = 0x42,
     BuildIdentifier = 0x60,
     BuildNumber = 0x61,
     BuildCurrentAddress = 0x62,
@@ -462,9 +464,11 @@ impl ExvmOpcodeV2 {
             0x11 => Some(Self::PeekOperator),
             0x20 => Some(Self::Advance),
             0x21 => Some(Self::ConsumeOperator),
+            0x22 => Some(Self::ConsumeKind),
             0x32 => Some(Self::LoadTokenText),
             0x40 => Some(Self::BuildUnary),
             0x41 => Some(Self::BuildBinary),
+            0x42 => Some(Self::BuildTernary),
             0x60 => Some(Self::BuildIdentifier),
             0x61 => Some(Self::BuildNumber),
             0x62 => Some(Self::BuildCurrentAddress),
@@ -541,6 +545,8 @@ pub enum ExvmTokenKindV2 {
     Dollar = 0x03,
     OpenParen = 0x04,
     CloseParen = 0x05,
+    Question = 0x06,
+    Colon = 0x07,
 }
 
 impl ExvmTokenKindV2 {
@@ -551,6 +557,8 @@ impl ExvmTokenKindV2 {
             0x03 => Some(Self::Dollar),
             0x04 => Some(Self::OpenParen),
             0x05 => Some(Self::CloseParen),
+            0x06 => Some(Self::Question),
+            0x07 => Some(Self::Colon),
             _ => None,
         }
     }

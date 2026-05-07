@@ -30,7 +30,7 @@ pub(crate) fn run_exvm_expression_parser_program(
         steps: 0,
         loaded_token_text: None,
         last_peek_result: false,
-        operator_spans: Vec::new(),
+        build_spans: Vec::new(),
         budgets,
     };
     let expr = runtime.execute_expression(program)?;
@@ -51,7 +51,7 @@ struct ExvmV2Runtime {
     steps: usize,
     loaded_token_text: Option<String>,
     last_peek_result: bool,
-    operator_spans: Vec<Span>,
+    build_spans: Vec<Span>,
     budgets: ExvmExecutionBudgets,
 }
 
@@ -125,6 +125,10 @@ impl ExvmV2Runtime {
                     let operator = self.read_operator_kind(program, &mut pc, opcode_pc)?;
                     self.consume_operator(operator)?;
                 }
+                ExvmOpcodeV2::ConsumeKind => {
+                    let kind = self.read_token_kind(program, &mut pc, opcode_pc)?;
+                    self.consume_kind(kind)?;
+                }
                 ExvmOpcodeV2::LoadTokenText => {
                     let token = self
                         .current_token()
@@ -168,7 +172,7 @@ impl ExvmV2Runtime {
                 }
                 ExvmOpcodeV2::BuildUnary => {
                     let operator = self.read_operator_kind(program, &mut pc, opcode_pc)?;
-                    let span = self.operator_spans.pop().ok_or_else(|| ParseError {
+                    let span = self.build_spans.pop().ok_or_else(|| ParseError {
                         message: "EXVM operator stack underflow".to_string(),
                         span: self.current_span(),
                     })?;
@@ -180,7 +184,7 @@ impl ExvmV2Runtime {
                 }
                 ExvmOpcodeV2::BuildBinary => {
                     let operator = self.read_operator_kind(program, &mut pc, opcode_pc)?;
-                    let span = self.operator_spans.pop().ok_or_else(|| ParseError {
+                    let span = self.build_spans.pop().ok_or_else(|| ParseError {
                         message: "EXVM operator stack underflow".to_string(),
                         span: self.current_span(),
                     })?;
@@ -193,6 +197,25 @@ impl ExvmV2Runtime {
                         span: self.current_span(),
                     })?;
                     output_stack.push(self.build_binary_expr(operator, left, right, span)?);
+                }
+                ExvmOpcodeV2::BuildTernary => {
+                    let span = self.build_spans.pop().ok_or_else(|| ParseError {
+                        message: "EXVM operator stack underflow".to_string(),
+                        span: self.current_span(),
+                    })?;
+                    let else_expr = output_stack.pop().ok_or_else(|| ParseError {
+                        message: "EXVM output stack underflow".to_string(),
+                        span: self.current_span(),
+                    })?;
+                    let then_expr = output_stack.pop().ok_or_else(|| ParseError {
+                        message: "EXVM output stack underflow".to_string(),
+                        span: self.current_span(),
+                    })?;
+                    let cond = output_stack.pop().ok_or_else(|| ParseError {
+                        message: "EXVM output stack underflow".to_string(),
+                        span: self.current_span(),
+                    })?;
+                    output_stack.push(self.build_ternary_expr(cond, then_expr, else_expr, span));
                 }
                 ExvmOpcodeV2::ParseGrouping => {
                     output_stack.push(self.parse_grouping(program)?);
@@ -315,6 +338,19 @@ impl ExvmV2Runtime {
         })
     }
 
+    fn read_token_kind(
+        &self,
+        program: &[u8],
+        pc: &mut usize,
+        opcode_pc: usize,
+    ) -> Result<ExvmTokenKindV2, ParseError> {
+        let kind_byte = self.read_u8(program, pc, opcode_pc)?;
+        ExvmTokenKindV2::from_u8(kind_byte).ok_or_else(|| ParseError {
+            message: format!("invalid EXVM token kind 0x{kind_byte:02X} at pc={opcode_pc}"),
+            span: self.current_span(),
+        })
+    }
+
     fn read_u8(&self, program: &[u8], pc: &mut usize, opcode_pc: usize) -> Result<u8, ParseError> {
         if *pc >= program.len() {
             return Err(ParseError {
@@ -328,14 +364,8 @@ impl ExvmV2Runtime {
     }
 
     fn peek_matches(&self, kind: ExvmTokenKindV2) -> bool {
-        match self.current_token().map(|token| &token.kind) {
-            Some(TokenKind::Number(_)) => kind == ExvmTokenKindV2::Number,
-            Some(TokenKind::Identifier(_)) => kind == ExvmTokenKindV2::Identifier,
-            Some(TokenKind::Dollar) => kind == ExvmTokenKindV2::Dollar,
-            Some(TokenKind::OpenParen) => kind == ExvmTokenKindV2::OpenParen,
-            Some(TokenKind::CloseParen) => kind == ExvmTokenKindV2::CloseParen,
-            _ => false,
-        }
+        self.current_token()
+            .is_some_and(|token| Self::token_matches_kind(&token.kind, kind))
     }
 
     fn peek_operator_matches(&self, operator: ExvmOperatorKindV2) -> bool {
@@ -352,7 +382,26 @@ impl ExvmV2Runtime {
         if token.kind != TokenKind::Operator(Self::operator_kind(operator)) {
             return Err(self.unexpected_token_error(token.span));
         }
-        self.operator_spans.push(token.span);
+        self.build_spans.push(token.span);
+        self.index += 1;
+        self.loaded_token_text = None;
+        Ok(())
+    }
+
+    fn consume_kind(&mut self, kind: ExvmTokenKindV2) -> Result<(), ParseError> {
+        let token = self.current_token().ok_or_else(|| match kind {
+            ExvmTokenKindV2::Colon => self.missing_colon_error(),
+            _ => self.expected_leaf_error(),
+        })?;
+        if !Self::token_matches_kind(&token.kind, kind) {
+            return Err(match kind {
+                ExvmTokenKindV2::Colon => self.missing_colon_error(),
+                _ => self.unexpected_token_error(token.span),
+            });
+        }
+        if kind == ExvmTokenKindV2::Question {
+            self.build_spans.push(token.span);
+        }
         self.index += 1;
         self.loaded_token_text = None;
         Ok(())
@@ -428,6 +477,15 @@ impl ExvmV2Runtime {
         })
     }
 
+    fn build_ternary_expr(&self, cond: Expr, then_expr: Expr, else_expr: Expr, span: Span) -> Expr {
+        Expr::Ternary {
+            cond: Box::new(cond),
+            then_expr: Box::new(then_expr),
+            else_expr: Box::new(else_expr),
+            span,
+        }
+    }
+
     fn operator_kind(operator: ExvmOperatorKindV2) -> OperatorKind {
         match operator {
             ExvmOperatorKindV2::Plus => OperatorKind::Plus,
@@ -455,6 +513,19 @@ impl ExvmV2Runtime {
         }
     }
 
+    fn token_matches_kind(token_kind: &TokenKind, kind: ExvmTokenKindV2) -> bool {
+        match token_kind {
+            TokenKind::Number(_) => kind == ExvmTokenKindV2::Number,
+            TokenKind::Identifier(_) => kind == ExvmTokenKindV2::Identifier,
+            TokenKind::Dollar => kind == ExvmTokenKindV2::Dollar,
+            TokenKind::OpenParen => kind == ExvmTokenKindV2::OpenParen,
+            TokenKind::CloseParen => kind == ExvmTokenKindV2::CloseParen,
+            TokenKind::Question => kind == ExvmTokenKindV2::Question,
+            TokenKind::Colon => kind == ExvmTokenKindV2::Colon,
+            _ => false,
+        }
+    }
+
     fn advance(&mut self) -> Result<(), ParseError> {
         if self.current_token().is_none() {
             return Err(self.expected_leaf_error());
@@ -478,6 +549,13 @@ impl ExvmV2Runtime {
         ParseError {
             message: "Unexpected token in expression".to_string(),
             span,
+        }
+    }
+
+    fn missing_colon_error(&self) -> ParseError {
+        ParseError {
+            message: "Missing ':' in conditional expression".to_string(),
+            span: self.current_span(),
         }
     }
 

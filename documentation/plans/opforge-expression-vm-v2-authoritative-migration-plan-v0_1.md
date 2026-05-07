@@ -250,10 +250,12 @@ this migration lands and proves parity.
       `EXVM v2` bytecode.
     - This item does not widen into aggregate grammar.
 
-- [ ] Item 5 - Add ternary parsing to `EXVM v2`
+- [x] Item 5 - Add ternary parsing to `EXVM v2`
   - Source requirement or finding IDs: `SR-EXPR-VM-AUTHORITY`,
     `SR-EXVM-BYTECODE`, `SR-DETERMINISM`.
   - Expected files:
+    - `crates/opforge-package/src/package.rs`
+    - `crates/opforge-package/src/package/tests.rs`
     - `crates/opforge-vm/src/vm_opcore.rs`
     - `crates/opforge-vm/src/runtime_expr_parser.rs` or the focused `EXVM v2`
       runtime module introduced earlier
@@ -492,7 +494,7 @@ this migration lands and proves parity.
   - Evidence: package/runtime can represent v2 surfaces without changing legacy
     authority yet.
 
-- [ ] Milestone 2 - Scalar parsing is executed by real `EXVM v2` bytecode
+- [x] Milestone 2 - Scalar parsing is executed by real `EXVM v2` bytecode
   - Items required: 2-5.
   - Evidence: scalar leaf, operator, and ternary parsing no longer use opaque
     `ParseExpression` delegation.

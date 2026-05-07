@@ -115,6 +115,11 @@ impl ExvmV2DefaultProgramBuilder {
         self.operator(operator);
     }
 
+    fn consume_kind(&mut self, kind: package::ExvmTokenKindV2) {
+        self.opcode(package::ExvmOpcodeV2::ConsumeKind);
+        self.token_kind(kind);
+    }
+
     fn build_unary(&mut self, operator: package::ExvmOperatorKindV2) {
         self.opcode(package::ExvmOpcodeV2::BuildUnary);
         self.operator(operator);
@@ -123,6 +128,10 @@ impl ExvmV2DefaultProgramBuilder {
     fn build_binary(&mut self, operator: package::ExvmOperatorKindV2) {
         self.opcode(package::ExvmOpcodeV2::BuildBinary);
         self.operator(operator);
+    }
+
+    fn build_ternary(&mut self) {
+        self.opcode(package::ExvmOpcodeV2::BuildTernary);
     }
 
     fn finish(mut self) -> Vec<u8> {
@@ -141,8 +150,20 @@ impl ExvmV2DefaultProgramBuilder {
 fn build_default_exvm_program_v2() -> Vec<u8> {
     let mut builder = ExvmV2DefaultProgramBuilder::new();
 
-    builder.call("logical_or");
+    builder.call("ternary");
     builder.opcode(package::ExvmOpcodeV2::End);
+
+    builder.mark("ternary");
+    builder.call("logical_or");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Question, "ternary_build");
+    builder.ret();
+    builder.mark("ternary_build");
+    builder.consume_kind(package::ExvmTokenKindV2::Question);
+    builder.call("ternary");
+    builder.consume_kind(package::ExvmTokenKindV2::Colon);
+    builder.call("ternary");
+    builder.build_ternary();
+    builder.ret();
 
     builder.mark("logical_or");
     builder.call("logical_and");
@@ -512,6 +533,8 @@ pub(crate) fn run_exvm_expression_parser_program_with_opcode_version(
             budgets,
         ),
         package::EXVM_OPCODE_VERSION_V2 => {
+            let strict_tokens = tokens.clone();
+            let strict_end_token_text = end_token_text.clone();
             crate::exvm_v2_runtime::run_exvm_expression_parser_program(
                 tokens,
                 end_span,
@@ -519,6 +542,17 @@ pub(crate) fn run_exvm_expression_parser_program_with_opcode_version(
                 program,
                 budgets,
             )
+            .map_err(|err| {
+                if let Some(parse_error) = strict_out_of_scope_value_node_error(
+                    strict_tokens,
+                    end_span,
+                    strict_end_token_text,
+                ) {
+                    parse_error
+                } else {
+                    err
+                }
+            })
         }
         _ => Err(ParseError {
             message: format!("unsupported EXVM opcode version {}", opcode_version),

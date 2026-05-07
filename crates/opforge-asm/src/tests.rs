@@ -10355,7 +10355,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "LEA lastErrorBuffer, A5",
             "MOVE.L A2, (A4)+",
             "MOVE.L A3, (A4)+",
-            "MOVE.L D2, (A4)",
+            "MOVE.L D2, (A4)+",
+            "MOVE.L opasmEngineSessionCurrentPc.L, (A4)",
             "LEA nativeCliSelectorStageContext.L, A4",
             "JSR opasm_selector_stage_build_encode_request_v1",
             "MOVE.W D1, nativeCliEncodeRequestLen.L",
@@ -10952,23 +10953,27 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
 
     assert!(source.contains(".module opcore.amigaos.expr_bridge"));
     assert!(source.contains("opcore_expr_eval_operand_v1:"));
-    assert!(source.contains("opcoreExprBridgeFindBinaryOperator:"));
+    assert!(source.contains("D2: current assembly PC for '*' current-address terms."));
+    assert!(source.contains("opcoreExprBridgeEvalAdditive:"));
     assert!(source.contains("opcoreExprBridgeEvalSingleTerm:"));
+    assert!(source.contains("opcoreExprBridgeCurrentPc:"));
+    assert!(source.contains("opcoreExprBridgeParseBinary:"));
+    assert!(source.contains("opcoreExprBridgeHex0x:"));
+    assert!(source.contains("opcoreExprBridgeEvalSingleUnaryMinus:"));
     assert!(source_contains_in_order(
         &source,
         &[
             "opcoreExprBridgeNoImmediatePrefix:",
-            "BSR.W opcoreExprBridgeFindBinaryOperator",
-            "BNE.W opcoreExprBridgeBinary",
-            "BSR.W opcoreExprBridgeEvalSingleTerm",
+            "BSR.W opcoreExprBridgeEvalAdditive",
+            "BRA.W opcoreExprBridgeReturn",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opcoreExprBridgeBinary:",
+            "opcoreExprBridgeEvalAdditive:",
             "BSR.W opcoreExprBridgeEvalSingleTerm",
-            "MOVE.L D3, D4",
+            "opcoreExprBridgeEvalAdditiveLoop:",
             "BSR.W opcoreExprBridgeEvalSingleTerm",
             "CMPI.B #'+', D6",
             "SUB.L D3, D2",
@@ -10998,6 +11003,9 @@ fn motorola68020_opasm_selector_stage_module_owns_native_subset_policy() {
     assert!(source.contains("opasm_selector_stage_build_encode_request_v1:"));
     assert!(source.contains("opasm_selector_stage_instruction_size_v1:"));
     assert!(source.contains("JSR opcore_expr_eval_operand_v1"));
+    assert!(source.contains("long 4: current assembly PC for opcore expression evaluation."));
+    assert!(source.contains("MOVE.L (A0), D3"));
+    assert!(source.contains("MOVE.L D3, D2"));
     assert!(!source.contains("opasmSelectorParseHex:"));
     assert!(!source.contains("opasmSelectorParseDecimal:"));
     assert!(source.contains("OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC"));

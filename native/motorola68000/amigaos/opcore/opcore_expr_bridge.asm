@@ -18,8 +18,12 @@ TOKEN_BUFFER_CAPACITY           = 64
 ;
 ; Supported input forms:
 ; - optional immediate prefix '#'
-; - '$' prefixed hexadecimal numbers
+; - '$' and '0x' prefixed hexadecimal numbers
+; - '%' prefixed binary numbers
 ; - decimal numbers
+; - unary '+' and '-'
+; - additive/subtractive expressions over scalar terms
+; - '*' current address terms supplied by the caller
 ; - labels resolved through the caller-supplied label tables
 ;
 ; Inputs:
@@ -27,6 +31,7 @@ TOKEN_BUFFER_CAPACITY           = 64
 ; - A1: fixed-width label-name table pointer.
 ; - A2: label-value table pointer parallel to A1.
 ; - D1: number of label entries.
+; - D2: current assembly PC for '*' current-address terms.
 ;
 ; Outputs:
 ; - D0: 0 on success, 1 on parse/lookup failure.
@@ -34,9 +39,10 @@ TOKEN_BUFFER_CAPACITY           = 64
 ; ---------------------------------------------------------------------------
 
 opcore_expr_eval_operand_v1:
-        MOVEM.L D1-D2/D4-D7/A0-A4, -(SP)
+        MOVEM.L D1-D2/D4-D7/A0-A5, -(SP)
         MOVEA.L A1, A3                  ; label-name table base kept stable across parse helpers
         MOVEA.L A2, A4                  ; label-value table base kept stable across parse helpers
+        MOVEA.L D2, A5                  ; A5 carries the current PC for '*' terms
         MOVE.W D1, D7                   ; D7 is the label count consumed by the resolver loop
         CLR.L D3
         BSR.W opcoreExprBridgeSkipWhitespace
@@ -51,51 +57,84 @@ opcore_expr_eval_operand_v1:
 opcoreExprBridgeNoImmediatePrefix:
         TST.L D0
         BEQ.W opcoreExprBridgeFail
-        BSR.W opcoreExprBridgeFindBinaryOperator
-        TST.L D6
-        BNE.W opcoreExprBridgeBinary
-        BSR.W opcoreExprBridgeEvalSingleTerm
+        BSR.W opcoreExprBridgeEvalAdditive
         BRA.W opcoreExprBridgeReturn
 
-opcoreExprBridgeBinary:
-        MOVEM.L A0/D0/D5-D6, -(SP)
-        MOVE.L D5, D0
+opcoreExprBridgeEvalAdditive:
         BSR.W opcoreExprBridgeEvalSingleTerm
+        TST.L D5
+        BNE.S opcoreExprBridgeEvalAdditiveReturn
+
+opcoreExprBridgeEvalAdditiveLoop:
+        BSR.W opcoreExprBridgeSkipWhitespace
         TST.L D0
-        BNE.S opcoreExprBridgeBinaryRestoreFail
-        MOVE.L D3, D4
-        MOVEM.L (SP)+, A0/D0/D5-D6
-        LEA 1(A0,D5.L), A0
-        SUBQ.L #1, D0
-        SUB.L D5, D0
-        BSR.W opcoreExprBridgeEvalSingleTerm
-        TST.L D0
-        BNE.W opcoreExprBridgeReturn
+        BEQ.S opcoreExprBridgeEvalAdditiveOk
+        MOVEQ #0, D6
+        MOVE.B (A0), D6
         CMPI.B #'+', D6
-        BEQ.S opcoreExprBridgeBinaryAdd
+        BEQ.S opcoreExprBridgeEvalAdditiveOperator
+        CMPI.B #'-', D6
+        BNE.S opcoreExprBridgeEvalAdditiveFail
+
+opcoreExprBridgeEvalAdditiveOperator:
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        MOVE.L D3, D4
+        BSR.W opcoreExprBridgeEvalSingleTerm
+        TST.L D5
+        BNE.S opcoreExprBridgeEvalAdditiveReturn
+        CMPI.B #'+', D6
+        BEQ.S opcoreExprBridgeEvalAdditiveAdd
         MOVE.L D4, D2
         SUB.L D3, D2
         MOVE.L D2, D3
-        BRA.S opcoreExprBridgeBinaryOk
+        BRA.S opcoreExprBridgeEvalAdditiveLoop
 
-opcoreExprBridgeBinaryAdd:
+opcoreExprBridgeEvalAdditiveAdd:
         ADD.L D4, D3
+        BRA.S opcoreExprBridgeEvalAdditiveLoop
 
-opcoreExprBridgeBinaryOk:
+opcoreExprBridgeEvalAdditiveOk:
         MOVEQ #0, D0
-        BRA.S opcoreExprBridgeReturn
+        RTS
 
-opcoreExprBridgeBinaryRestoreFail:
-        MOVEM.L (SP)+, A0/D0/D5-D6
+opcoreExprBridgeEvalAdditiveFail:
         MOVEQ #1, D0
-        BRA.S opcoreExprBridgeReturn
+
+opcoreExprBridgeEvalAdditiveReturn:
+        RTS
 
 opcoreExprBridgeEvalSingleTerm:
+        MOVEM.L D4, -(SP)
+        MOVEQ #0, D4
+        MOVEQ #0, D5
         BSR.W opcoreExprBridgeSkipWhitespace
         TST.L D0
-        BEQ.S opcoreExprBridgeEvalSingleFail
+        BEQ.W opcoreExprBridgeEvalSingleFail
+        CMPI.B #'+', (A0)
+        BEQ.S opcoreExprBridgeEvalSingleUnaryPlus
+        CMPI.B #'-', (A0)
+        BEQ.S opcoreExprBridgeEvalSingleUnaryMinus
+
+opcoreExprBridgeEvalSingleBody:
+        TST.L D0
+        BEQ.W opcoreExprBridgeEvalSingleFail
+        CMPI.B #'*', (A0)
+        BEQ.S opcoreExprBridgeCurrentPc
         CMPI.B #'$', (A0)
-        BEQ.S opcoreExprBridgeHex
+        BEQ.W opcoreExprBridgeHex
+        CMPI.B #'%', (A0)
+        BEQ.W opcoreExprBridgeBinaryLiteral
+        CMPI.B #'0', (A0)
+        BNE.S opcoreExprBridgeEvalSingleNumberOrLabel
+        CMPI.L #2, D0
+        BCS.S opcoreExprBridgeEvalSingleNumberOrLabel
+        CMPI.B #'x', 1(A0)
+        BEQ.S opcoreExprBridgeHex0x
+        CMPI.B #'X', 1(A0)
+        BEQ.S opcoreExprBridgeHex0x
+
+opcoreExprBridgeEvalSingleNumberOrLabel:
         MOVEQ #0, D1
         MOVE.B (A0), D1                 ; first non-space byte decides decimal versus label lookup
         CMPI.B #'0', D1
@@ -104,55 +143,82 @@ opcoreExprBridgeEvalSingleTerm:
         BHI.S opcoreExprBridgeLabel
         BRA.S opcoreExprBridgeDecimal
 
+opcoreExprBridgeEvalSingleUnaryPlus:
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        BRA.S opcoreExprBridgeEvalSingleBody
+
+opcoreExprBridgeEvalSingleUnaryMinus:
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        MOVEQ #1, D4
+        BRA.S opcoreExprBridgeEvalSingleBody
+
+opcoreExprBridgeCurrentPc:
+        MOVE.L A5, D3
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        BRA.S opcoreExprBridgeEvalSingleApplyUnary
+
 opcoreExprBridgeHex:
         ADDQ.L #1, A0
         SUBQ.L #1, D0
         BSR.W opcoreExprBridgeParseHex
-        RTS
+        BRA.S opcoreExprBridgeEvalSingleMaybeApplyUnary
+
+opcoreExprBridgeHex0x:
+        ADDQ.L #2, A0
+        SUBQ.L #2, D0
+        BSR.W opcoreExprBridgeParseHex
+        BRA.S opcoreExprBridgeEvalSingleMaybeApplyUnary
+
+opcoreExprBridgeBinaryLiteral:
+        ADDQ.L #1, A0
+        SUBQ.L #1, D0
+        BSR.W opcoreExprBridgeParseBinary
+        BRA.S opcoreExprBridgeEvalSingleMaybeApplyUnary
 
 opcoreExprBridgeDecimal:
         BSR.W opcoreExprBridgeParseDecimal
-        RTS
+        BRA.S opcoreExprBridgeEvalSingleMaybeApplyUnary
 
 opcoreExprBridgeLabel:
+        MOVE.L D0, D6
+        BSR.W opcoreExprBridgeTermLength
+        MOVE.L D0, D2
         BSR.W opcoreExprBridgeResolveLabel
-        RTS
+        MOVE.L D0, D5
+        TST.L D5
+        BNE.S opcoreExprBridgeEvalSingleMaybeApplyUnary
+        ADDA.L D2, A0
+        MOVE.L D6, D0
+        SUB.L D2, D0
+
+opcoreExprBridgeEvalSingleMaybeApplyUnary:
+        TST.L D5
+        BNE.S opcoreExprBridgeEvalSingleReturn
+
+opcoreExprBridgeEvalSingleApplyUnary:
+        TST.L D4
+        BEQ.S opcoreExprBridgeEvalSingleOk
+        NEG.L D3
+
+opcoreExprBridgeEvalSingleOk:
+        MOVEQ #0, D5
+        BRA.S opcoreExprBridgeEvalSingleReturn
 
 opcoreExprBridgeEvalSingleFail:
-        MOVEQ #1, D0
-        RTS
+        MOVEQ #1, D5
 
-opcoreExprBridgeFindBinaryOperator:
-        MOVEM.L D0-D2/A0, -(SP)
-        CLR.L D5
-        CLR.L D6
-        MOVE.L D0, D2
-
-opcoreExprBridgeFindBinaryLoop:
-        TST.L D2
-        BEQ.S opcoreExprBridgeFindBinaryDone
-        MOVEQ #0, D1
-        MOVE.B (A0)+, D1
-        CMPI.B #'+', D1
-        BEQ.S opcoreExprBridgeFindBinaryFound
-        CMPI.B #'-', D1
-        BEQ.S opcoreExprBridgeFindBinaryFound
-        ADDQ.L #1, D5
-        SUBQ.L #1, D2
-        BRA.S opcoreExprBridgeFindBinaryLoop
-
-opcoreExprBridgeFindBinaryFound:
-        MOVE.L D1, D6
-
-opcoreExprBridgeFindBinaryDone:
-        MOVEM.L (SP)+, D0-D2/A0
+opcoreExprBridgeEvalSingleReturn:
+        MOVEM.L (SP)+, D4
         RTS
 
 opcoreExprBridgeFail:
         MOVEQ #1, D0
 
 opcoreExprBridgeReturn:
-        MOVEM.L (SP)+, D1-D2/D4-D7/A0-A4
+        MOVEM.L (SP)+, D1-D2/D4-D7/A0-A5
         RTS
 
 opcoreExprBridgeSkipWhitespace:
@@ -173,8 +239,33 @@ opcoreExprBridgeSkipWhitespaceOne:
 opcoreExprBridgeSkipWhitespaceDone:
         RTS
 
-opcoreExprBridgeParseHex:
+opcoreExprBridgeTermLength:
         MOVEM.L D1-D2/A0, -(SP)
+        CLR.L D2
+
+opcoreExprBridgeTermLengthLoop:
+        CMP.L D0, D2
+        BHS.S opcoreExprBridgeTermLengthDone
+        MOVEQ #0, D1
+        MOVE.B 0(A0,D2.L), D1
+        CMPI.B #' ', D1
+        BEQ.S opcoreExprBridgeTermLengthDone
+        CMPI.B #9, D1
+        BEQ.S opcoreExprBridgeTermLengthDone
+        CMPI.B #'+', D1
+        BEQ.S opcoreExprBridgeTermLengthDone
+        CMPI.B #'-', D1
+        BEQ.S opcoreExprBridgeTermLengthDone
+        ADDQ.L #1, D2
+        BRA.S opcoreExprBridgeTermLengthLoop
+
+opcoreExprBridgeTermLengthDone:
+        MOVE.L D2, D0
+        MOVEM.L (SP)+, D1-D2/A0
+        RTS
+
+opcoreExprBridgeParseHex:
+        MOVEM.L D1-D2, -(SP)
         CLR.L D3
 
 opcoreExprBridgeParseHexLoop:
@@ -183,6 +274,10 @@ opcoreExprBridgeParseHexLoop:
         MOVEQ #0, D1
         MOVE.B (A0)+, D1
         SUBQ.L #1, D0
+        CMPI.B #'+', D1
+        BEQ.S opcoreExprBridgeParseHexEndBeforeOperator
+        CMPI.B #'-', D1
+        BEQ.S opcoreExprBridgeParseHexEndBeforeOperator
         CMPI.B #' ', D1
         BEQ.S opcoreExprBridgeParseHexOk
         CMPI.B #9, D1
@@ -215,18 +310,70 @@ opcoreExprBridgeParseHexHaveDigit:
         BRA.S opcoreExprBridgeParseHexLoop
 
 opcoreExprBridgeParseHexOk:
-        MOVEQ #0, D0
+        MOVEQ #0, D5
+        BRA.S opcoreExprBridgeParseHexReturn
+
+opcoreExprBridgeParseHexEndBeforeOperator:
+        SUBQ.L #1, A0
+        ADDQ.L #1, D0
+        MOVEQ #0, D5
         BRA.S opcoreExprBridgeParseHexReturn
 
 opcoreExprBridgeParseHexFail:
-        MOVEQ #1, D0
+        MOVEQ #1, D5
 
 opcoreExprBridgeParseHexReturn:
-        MOVEM.L (SP)+, D1-D2/A0
+        MOVEM.L (SP)+, D1-D2
+        RTS
+
+opcoreExprBridgeParseBinary:
+        MOVEM.L D1, -(SP)
+        CLR.L D3
+
+opcoreExprBridgeParseBinaryLoop:
+        TST.L D0
+        BEQ.S opcoreExprBridgeParseBinaryOk
+        MOVEQ #0, D1
+        MOVE.B (A0)+, D1
+        SUBQ.L #1, D0
+        CMPI.B #'+', D1
+        BEQ.S opcoreExprBridgeParseBinaryEndBeforeOperator
+        CMPI.B #'-', D1
+        BEQ.S opcoreExprBridgeParseBinaryEndBeforeOperator
+        CMPI.B #' ', D1
+        BEQ.S opcoreExprBridgeParseBinaryOk
+        CMPI.B #9, D1
+        BEQ.S opcoreExprBridgeParseBinaryOk
+        CMPI.B #'0', D1
+        BEQ.S opcoreExprBridgeParseBinaryDigit
+        CMPI.B #'1', D1
+        BNE.S opcoreExprBridgeParseBinaryFail
+
+opcoreExprBridgeParseBinaryDigit:
+        SUBI.B #'0', D1
+        LSL.L #1, D3
+        OR.B D1, D3
+        BRA.S opcoreExprBridgeParseBinaryLoop
+
+opcoreExprBridgeParseBinaryOk:
+        MOVEQ #0, D5
+        BRA.S opcoreExprBridgeParseBinaryReturn
+
+opcoreExprBridgeParseBinaryEndBeforeOperator:
+        SUBQ.L #1, A0
+        ADDQ.L #1, D0
+        MOVEQ #0, D5
+        BRA.S opcoreExprBridgeParseBinaryReturn
+
+opcoreExprBridgeParseBinaryFail:
+        MOVEQ #1, D5
+
+opcoreExprBridgeParseBinaryReturn:
+        MOVEM.L (SP)+, D1
         RTS
 
 opcoreExprBridgeParseDecimal:
-        MOVEM.L D1-D2/A0, -(SP)
+        MOVEM.L D1-D2, -(SP)
         CLR.L D3
 
 opcoreExprBridgeParseDecimalLoop:
@@ -235,6 +382,10 @@ opcoreExprBridgeParseDecimalLoop:
         MOVEQ #0, D1
         MOVE.B (A0)+, D1
         SUBQ.L #1, D0
+        CMPI.B #'+', D1
+        BEQ.S opcoreExprBridgeParseDecimalEndBeforeOperator
+        CMPI.B #'-', D1
+        BEQ.S opcoreExprBridgeParseDecimalEndBeforeOperator
         CMPI.B #' ', D1
         BEQ.S opcoreExprBridgeParseDecimalOk
         CMPI.B #9, D1
@@ -252,14 +403,20 @@ opcoreExprBridgeParseDecimalLoop:
         BRA.S opcoreExprBridgeParseDecimalLoop
 
 opcoreExprBridgeParseDecimalOk:
-        MOVEQ #0, D0
+        MOVEQ #0, D5
+        BRA.S opcoreExprBridgeParseDecimalReturn
+
+opcoreExprBridgeParseDecimalEndBeforeOperator:
+        SUBQ.L #1, A0
+        ADDQ.L #1, D0
+        MOVEQ #0, D5
         BRA.S opcoreExprBridgeParseDecimalReturn
 
 opcoreExprBridgeParseDecimalFail:
-        MOVEQ #1, D0
+        MOVEQ #1, D5
 
 opcoreExprBridgeParseDecimalReturn:
-        MOVEM.L (SP)+, D1-D2/A0
+        MOVEM.L (SP)+, D1-D2
         RTS
 
 opcoreExprBridgeResolveLabel:

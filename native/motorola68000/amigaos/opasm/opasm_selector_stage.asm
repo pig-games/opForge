@@ -29,6 +29,7 @@ OPASM_SELECTOR_STATUS_OPERAND_ERROR       = 4
 ;   - long 1: label-name table pointer.
 ;   - long 2: label-value table pointer.
 ;   - long 3: label count.
+;   - long 4: current assembly PC for opcore expression evaluation.
 ;
 ; Outputs:
 ; - D0: OPASM_SELECTOR_STATUS_*.
@@ -48,7 +49,8 @@ opasm_selector_stage_build_encode_request_v1:
         MOVEA.L (A0)+, A4               ; A4 becomes the output request buffer
         MOVEA.L (A0)+, A2               ; A2 points at fixed-width label names
         MOVEA.L (A0)+, A3               ; A3 points at label values parallel to A2
-        MOVE.L (A0), D2                 ; D2 is the number of live label entries
+        MOVE.L (A0)+, D2                ; D2 is the number of live label entries
+        MOVE.L (A0), D3                 ; D3 carries current PC until opcore returns an operand value
         MOVEA.L A4, A0                  ; restore output-buffer base for later payload construction
         TST.W D6
         BEQ.W opasmSelectorNoOutput
@@ -259,6 +261,7 @@ opasmSelectorResolveNoImmediatePrefix:
         MOVEA.L A2, A1
         MOVEA.L A3, A2
         MOVE.L D2, D1
+        MOVE.L D3, D2
         JSR opcore_expr_eval_operand_v1
         MOVEM.L (SP)+, D1/A1-A3
         BRA.S opasmSelectorResolveLabelReturn

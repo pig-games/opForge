@@ -308,6 +308,16 @@ The intended native shape mirrors the Rust path:
     `opcore_expr_eval_operand_v1`, the shared opcore bridge evaluates simple
     additive/subtractive literal and label terms for first-run operands, and
     focused native source/assembly tests lock the ownership boundary.
+  - In-progress EXVM-parity slice completed: native opasm now passes current-PC
+    evaluation context into opcore, and the bridge supports the 6502 first-run
+    scalar subset for `*`, unary `+`/`-`, chained additive/subtractive terms,
+    `$`/`0x` hex literals, `%` binary literals, decimal literals, and
+    label/constant-table symbols.
+  - Remaining actual EXVM parity: replace the temporary native text-expression
+    subset with the real opcore/EXVM expression contract for the 6502 focus,
+    including the token/bytecode expression parser/evaluator surface, pass-aware
+    unresolved-symbol handling, branch-offset expression cases, and the focused
+    error matrix. Do not treat bridge-subset growth as completion of Item 4.
   - Definition of done: `.org`, operands, constants, labels, current-PC
     references, and forward-reference resolution behave like the Rust VM path
     for the first-run matrix.

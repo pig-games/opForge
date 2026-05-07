@@ -3254,7 +3254,8 @@ opforgeNativeCliBuildEncodeHaveMlen:
         MOVE.L A5, (A4)+                ; selector context[0]: output request buffer
         MOVE.L A2, (A4)+                ; selector context[1]: label-name table
         MOVE.L A3, (A4)+                ; selector context[2]: label-value table
-        MOVE.L D2, (A4)                 ; selector context[3]: active label count
+        MOVE.L D2, (A4)+                ; selector context[3]: active label count
+        MOVE.L opasmEngineSessionCurrentPc.L, (A4) ; selector context[4]: current PC for opcore
         LEA nativeCliSelectorStageContext.L, A4
         JSR opasm_selector_stage_build_encode_request_v1
         CMPI.L #OPASM_SELECTOR_STATUS_OK, D0
@@ -3332,6 +3333,7 @@ opforgeNativeCliReadOperandNoImmediatePrefix:
         LEA opasmEngineLabelValueTable.L, A2
         MOVEQ #0, D1
         MOVE.W opasmEngineLabelCount.L, D1
+        MOVE.L opasmEngineSessionCurrentPc.L, D2
         JSR opcore_expr_eval_operand_v1
         TST.L D0
         BNE.S opforgeNativeCliReadOperandFail
@@ -4576,7 +4578,7 @@ nativeCliEncodeRequestLen:
         .res word,1
         .align 4
 nativeCliSelectorStageContext:
-        .res long,4
+        .res long,5
 nativeCliOpasmEngineContext:
         .res long,NATIVE_OPASM_ENGINE_CONTEXT_LONGS
 nativeCliSourceLineNum:

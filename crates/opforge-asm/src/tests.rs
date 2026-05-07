@@ -10030,6 +10030,12 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     ));
     assert!(source
         .contains(".use opasm.amigaos.selector_stage (opasm_selector_stage_instruction_size_v1)"));
+    assert!(source.contains(".use opasm.amigaos.engine (opasm_engine_run_two_pass_v1)"));
+    assert!(source.contains(
+        ".use opasm.amigaos.engine (opasmEngineAssemblySessionStart, opasmEngineStmtCount)"
+    ));
+    assert!(source
+        .contains(".use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineImageBuffer)"));
     assert!(source.contains("opforge_native_cli_tokenize_file"));
     assert!(source.contains("opforge_native_cli_tokenize_file_at_path"));
     assert!(source.contains("opforge_native_cli_tokenize_current_line"));
@@ -10048,17 +10054,17 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliEmitStatementExprRequest"));
     assert!(source.contains("opforge_native_cli_init_assembly_session"));
     assert!(source.contains("opforgeNativeCliEmitAssemblySessionSummary"));
-    assert!(source.contains("nativeCliStmtCount"));
+    assert!(source.contains("opasmEngineStmtCount"));
     assert!(source.contains("nativeCliStmtDirectiveKind"));
     assert!(source.contains("nativeCliStmtExprFound"));
     assert!(source.contains("nativeCliStmtExprOperandIndex"));
     assert!(source.contains("nativeCliStmtExprSpanStart"));
     assert!(source.contains("nativeCliLineRequestLen"));
     assert!(source.contains("nativeCliEncodeRequestLen"));
-    assert!(source.contains("nativeCliSourceRecordCount"));
-    assert!(source.contains("nativeCliLabelCount"));
-    assert!(source.contains("nativeCliImageByteCount"));
-    assert!(source.contains("nativeCliImageBuffer"));
+    assert!(source.contains("opasmEngineSourceRecordCount"));
+    assert!(source.contains("opasmEngineLabelCount"));
+    assert!(source.contains("opasmEngineImageByteCount"));
+    assert!(source.contains("opasmEngineImageBuffer"));
     assert!(source.contains("nativeCliBinRequested"));
     assert!(source.contains("nativeCliOutputFormat"));
     assert!(source.contains("nativeCliBinPath"));
@@ -10069,6 +10075,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliBuildEncodeRequestForStatement"));
     assert!(source.contains("JSR opasm_selector_stage_build_encode_request_v1"));
     assert!(source.contains("JSR opasm_selector_stage_instruction_size_v1"));
+    assert!(source.contains("JSR opasm_engine_run_two_pass_v1"));
+    assert!(source.contains("nativeCliOpasmEngineContext"));
     assert!(!source.contains("opforgeNativeCliStatementOperandHasImmediatePrefix"));
     assert!(!source.contains("opforgeNativeCliMaybeResolveLabelOperand"));
     assert!(!source.contains("opforgeNativeCliWriteResolvedOperandHex"));
@@ -10162,6 +10170,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "BSR.W opforge_native_cli_tokenize_frontend",
             "MOVE.L #parserOkText, D1",
             "BSR.W opforge_native_cli_put_str",
+            "BSR.W opforge_native_cli_run_two_pass_engine",
             "BSR.W opforgeNativeCliEmitAssemblySessionSummary",
             "BSR.W opforge_native_cli_write_flat_output",
             "MOVE.L #nativeOutputOkText, D1",
@@ -10276,10 +10285,10 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         &source,
         &[
             "opforgeNativeCliBuildEncodeRequestForStatement:",
-            "LEA nativeCliStmtMnemNameTable.L, A0",
-            "LEA nativeCliStmtOperandNameTable.L, A1",
-            "LEA nativeCliLabelNameTable.L, A2",
-            "LEA nativeCliLabelValueTable.L, A3",
+            "LEA opasmEngineStmtMnemNameTable.L, A0",
+            "LEA opasmEngineStmtOperandNameTable.L, A1",
+            "LEA opasmEngineLabelNameTable.L, A2",
+            "LEA opasmEngineLabelValueTable.L, A3",
             "LEA nativeCliSelectorStageContext.L, A4",
             "LEA lastErrorBuffer, A5",
             "MOVE.L A2, (A4)+",
@@ -10733,39 +10742,56 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
         &source,
         &[
             "opforge_native_cli_run_two_pass_engine:",
-            "BSR.W opforge_native_cli_run_pass_one",
-            "BSR.W opforge_native_cli_run_pass_two",
+            "BSR.W opforgeNativeCliBuildOpasmEngineContext",
+            "JSR opasm_engine_run_two_pass_v1",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforge_native_cli_run_pass_one:",
-            "MOVE.W #1, nativeCliSessionPass.L",
-            "CLR.W nativeCliLabelCount.L",
-            "MOVE.L #$00000800, nativeCliSessionOrigin.L",
-            "BSR.W opforgeNativeCliPassOneRecordLabel",
-            "BSR.W opforgeNativeCliPassAdvancePc",
+            "opforgeNativeCliOpasmPassOneBegin:",
+            "CLR.W opasmEngineLabelCount.L",
+            "MOVE.L #$00000800, opasmEngineSessionOrigin.L",
+            "opforgeNativeCliOpasmPassOneOk:",
+            "MOVE.L #nativePassOneOkText, D1",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforge_native_cli_run_pass_two:",
-            "MOVE.W #2, nativeCliSessionPass.L",
-            "MOVE.L nativeCliSessionOrigin.L, D0",
-            "MOVE.L D0, nativeCliSessionCurrentPc.L",
-            "BSR.W opforgeNativeCliPassAdvancePc",
+            "opforgeNativeCliOpasmPassTwoBegin:",
+            "MOVE.L opasmEngineSessionOrigin.L, D0",
+            "MOVE.L D0, opasmEngineSessionCurrentPc.L",
+            "opforgeNativeCliOpasmPassTwoOk:",
+            "MOVE.L #nativePassTwoOkText, D1",
         ]
     ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliBuildOpasmEngineContext:",
+            "MOVE.L #opasmEngineSessionPass, (A4)+",
+            "MOVE.L #opasmEngineStmtCount, (A4)+",
+            "MOVE.L #nativeCliBinRequested, (A4)+",
+            "MOVE.L #opforgeNativeCliOpasmPassOneBegin, (A4)+",
+            "MOVE.L #opforgeNativeCliOpasmPassTwoBegin, (A4)+",
+            "MOVE.L #opforgeNativeCliOpasmPassOneOk, (A4)+",
+            "MOVE.L #opforgeNativeCliOpasmPassTwoOk, (A4)+",
+            "MOVE.L #opforgeNativeCliPassOneRecordLabel, (A4)+",
+            "MOVE.L #opforgeNativeCliPassAdvancePc, (A4)+",
+            "MOVE.L #opforgeNativeCliPassTwoEmitImageBytes, (A4)+",
+        ]
+    ));
+    assert!(!source.contains("opforge_native_cli_run_pass_one:"));
+    assert!(!source.contains("opforge_native_cli_run_pass_two:"));
     assert!(source.contains("opforgeNativeCliPassOneRecordLabel:"));
-    assert!(source.contains("LEA nativeCliStmtLabelNameTable.L, A1"));
+    assert!(source.contains("LEA opasmEngineStmtLabelNameTable.L, A1"));
     assert!(source.contains("opforgeNativeCliPassOneStoreLabel:"));
-    assert!(source.contains("LEA nativeCliLabelValueTable.L, A0"));
-    assert!(source.contains("nativeCliSessionCurrentPc"));
-    assert!(source.contains("LEA nativeCliLabelNameTable.L, A0"));
+    assert!(source.contains("LEA opasmEngineLabelValueTable.L, A0"));
+    assert!(source.contains("opasmEngineSessionCurrentPc"));
+    assert!(source.contains("LEA opasmEngineLabelNameTable.L, A0"));
     assert!(source.contains("BSR.W opforge_native_cli_copy_fixed_string"));
-    assert!(source.contains("ADDQ.W #1, nativeCliLabelCount.L"));
+    assert!(source.contains("ADDQ.W #1, opasmEngineLabelCount.L"));
     assert!(source_contains_in_order(
         &source,
         &[
@@ -10774,17 +10800,74 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
             "LEA cpuMnemonicText, A1",
             "JSR opasm_selector_stage_instruction_size_v1",
             "opforgeNativeCliPassAdvanceThree:",
-            "ADDQ.L #3, nativeCliSessionCurrentPc.L",
+            "ADDQ.L #3, opasmEngineSessionCurrentPc.L",
         ]
     ));
-    assert!(source.contains("nativeCliStmtLabelNameTable"));
-    assert!(source.contains("nativeCliStmtMnemNameTable"));
+    assert!(source.contains("opasmEngineStmtLabelNameTable"));
+    assert!(source.contains("opasmEngineStmtMnemNameTable"));
     assert!(source.contains("STAGE pass1"));
     assert!(source.contains("STATUS pass1-ok"));
     assert!(source.contains("STAGE pass2"));
     assert!(source.contains("STATUS pass2-ok"));
     assert!(source.contains("LABEL"));
     assert!(source.contains("OPC-NCLI021: duplicate native label"));
+}
+
+#[test]
+fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
+    let source = fs::read_to_string(&asm_path).expect("read opasm engine source");
+
+    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
+        .expect("opasm engine module should parse");
+    assert!(
+        entries.is_empty(),
+        "opasm engine module should not emit output entries"
+    );
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics while parsing opasm engine: {diagnostics:?}"
+    );
+
+    assert!(source.contains(".module opasm.amigaos.engine"));
+    assert!(source.contains("opasm_engine_run_two_pass_v1:"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opasm_engine_run_two_pass_v1:",
+            "BSR.W opasmEngineRunPassOne",
+            "BSR.W opasmEngineRunPassTwo",
+        ]
+    ));
+    assert!(source.contains("opasmEnginePassOneLoop:"));
+    assert!(source.contains("MOVEA.L OPASM_ENGINE_CTX_STMT_COUNT_PTR(A5),A0"));
+    assert!(source.contains("MOVEA.L OPASM_ENGINE_CTX_RECORD_LABEL_CB(A5),A0"));
+    assert!(source.contains("MOVEA.L OPASM_ENGINE_CTX_ADVANCE_PC_CB(A5),A0"));
+    assert!(source.contains("opasmEnginePassTwoLoop:"));
+    assert!(source.contains("MOVEA.L OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(A5),A0"));
+    assert!(source.contains("MOVEA.L OPASM_ENGINE_CTX_EMIT_IMAGE_CB(A5),A0"));
+    assert!(source.contains("JSR (A0)"));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            ".section bss, kind=bss",
+            "opasmEngineAssemblySessionStart:",
+            "opasmEngineStmtCount:",
+            "opasmEngineSessionPass:",
+            "opasmEngineSourceRecordCount:",
+            "opasmEngineLabelCount:",
+            "opasmEngineImageByteCount:",
+            "opasmEngineSessionCpuName:",
+            "opasmEngineSessionOrigin:",
+            "opasmEngineSessionCurrentPc:",
+            "opasmEngineSourceLineNumTable:",
+            "opasmEngineStmtLineTable:",
+            "opasmEngineLabelValueTable:",
+            "opasmEngineImageBuffer:",
+            "opasmEngineAssemblySessionEnd:",
+        ]
+    ));
 }
 
 #[test]
@@ -10903,16 +10986,16 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("nativeCliImportAliasTable"));
     assert!(listing.contains("nativeCliImportSelectNameTable"));
     assert!(listing.contains("nativeCliModulePathTable"));
-    assert!(listing.contains("nativeCliAssemblySessionStart"));
-    assert!(listing.contains("nativeCliSessionCpuName"));
+    assert!(listing.contains("opasmEngineAssemblySessionStart"));
+    assert!(listing.contains("opasmEngineSessionCpuName"));
     assert!(listing.contains("nativeCliLineRequestLen"));
     assert!(listing.contains("nativeCliEncodeRequestLen"));
-    assert!(listing.contains("nativeCliSourceRecordCount"));
-    assert!(listing.contains("nativeCliStmtLineTable"));
-    assert!(listing.contains("nativeCliStmtLabelNameTable"));
-    assert!(listing.contains("nativeCliStmtMnemNameTable"));
-    assert!(listing.contains("nativeCliLabelNameTable"));
-    assert!(listing.contains("nativeCliImageBuffer"));
+    assert!(listing.contains("opasmEngineSourceRecordCount"));
+    assert!(listing.contains("opasmEngineStmtLineTable"));
+    assert!(listing.contains("opasmEngineStmtLabelNameTable"));
+    assert!(listing.contains("opasmEngineStmtMnemNameTable"));
+    assert!(listing.contains("opasmEngineLabelNameTable"));
+    assert!(listing.contains("opasmEngineImageBuffer"));
     assert!(listing.contains("opforge_native_cli_stage_package"));
     assert!(listing.contains("opforge_native_cli_prepare_pipeline_request"));
     assert!(listing.contains("opforge_native_cli_prepare_line_service_request"));
@@ -10925,8 +11008,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     );
     assert!(listing.contains("opforge_native_cli_dispatch_encode_instruction_envelope"));
     assert!(listing.contains("opforge_native_cli_run_two_pass_engine"));
-    assert!(listing.contains("opforge_native_cli_run_pass_one"));
-    assert!(listing.contains("opforge_native_cli_run_pass_two"));
+    assert!(listing.contains("opasm.amigaos.engine.opasm_engine_run_two_pass_v1"));
+    assert!(listing.contains("opasmEngineRunPassOne"));
+    assert!(listing.contains("opasmEngineRunPassTwo"));
+    assert!(listing.contains("opforgeNativeCliBuildOpasmEngineContext"));
     assert!(listing.contains("opforgeNativeCliPassOneRecordLabel"));
     assert!(listing.contains("opforgeNativeCliPassAdvancePc"));
     assert!(listing.contains("opforge_native_cli_run"));

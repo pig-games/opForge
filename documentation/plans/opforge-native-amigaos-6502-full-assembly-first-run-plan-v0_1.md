@@ -236,7 +236,7 @@ The intended native shape mirrors the Rust path:
     outputs, with no production behavior changes beyond test/fixture contract
     setup.
 
-- [ ] Item 2: Move remaining assembly-engine ownership out of the CLI
+- [x] Item 2: Move remaining assembly-engine ownership out of the CLI
   - Source requirement or finding IDs: `SR-CLI-BOUNDARY`,
     `SR-OPASM-ENGINE`, `SR-RUST-VM-ARCH`; expected to make the native engine
     boundary real.
@@ -255,6 +255,12 @@ The intended native shape mirrors the Rust path:
     PC/origin state while the CLI remains only the host/orchestrator.
   - Definition of done: the CLI calls a native opasm engine entrypoint instead
     of directly owning pass/session/image semantics.
+  - Completion note, 2026-05-07: native `opasm.amigaos.engine` now owns the
+    transitional two-pass loop and assembly-session storage for statement rows,
+    labels, image bytes, source records, current PC, origin, and session pass.
+    The CLI imports that state and supplies host callbacks for the existing
+    smoke path until Item 3 moves broader parse records through the package
+    boundary.
 
 - [ ] Item 3: Complete package-backed parse records for directives and operands
   - Source requirement or finding IDs: `SR-TKPKG-SERVICE`,
@@ -561,7 +567,7 @@ The intended native shape mirrors the Rust path:
 ## Milestones
 
 - [x] Milestone 1: first-run 6502 acceptance matrix is locked.
-- [ ] Milestone 2: CLI no longer owns assembly semantics; native opasm owns
+- [x] Milestone 2: CLI no longer owns assembly semantics; native opasm owns
   engine/pass/session behavior.
 - [ ] Milestone 3: native `m6502` selector and encoder parity lands in two
   commit-sized slices covering baseline and edge addressing modes.

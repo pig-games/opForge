@@ -24,6 +24,18 @@
         .use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC)
         .use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS)
         .use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_OPERAND_ERROR)
+        .use opasm.amigaos.engine (opasm_engine_run_two_pass_v1)
+        .use opasm.amigaos.engine (opasmEngineAssemblySessionStart, opasmEngineStmtCount)
+        .use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineSourceRecordCount)
+        .use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineImageByteCount)
+        .use opasm.amigaos.engine (opasmEngineSessionCpuName, opasmEngineSessionOrigin)
+        .use opasm.amigaos.engine (opasmEngineSessionCurrentPc, opasmEngineSourceLineNumTable)
+        .use opasm.amigaos.engine (opasmEngineSourceLineLenTable, opasmEngineStmtLineTable)
+        .use opasm.amigaos.engine (opasmEngineStmtLabelLenTable, opasmEngineStmtMnemLenTable)
+        .use opasm.amigaos.engine (opasmEngineStmtOperandLenTable, opasmEngineStmtMnemOffTable)
+        .use opasm.amigaos.engine (opasmEngineStmtLabelNameTable, opasmEngineStmtMnemNameTable)
+        .use opasm.amigaos.engine (opasmEngineStmtOperandNameTable, opasmEngineLabelValueTable)
+        .use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineImageBuffer)
 
 SysBase                         = 4
 
@@ -66,8 +78,9 @@ NATIVE_IMPORT_SELECT_CAPACITY   = 64
 NATIVE_STATEMENT_TABLE_CAPACITY = 16
 NATIVE_LABEL_TABLE_CAPACITY     = 16
 NATIVE_IMAGE_BUFFER_CAPACITY    = 4096
+NATIVE_OPASM_ENGINE_CONTEXT_LONGS = 10
 NATIVE_MODULE_USE_STATE_BYTES   = (7 * 2) + (NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_MODULE_TABLE_CAPACITY * 4) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 4) + (NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY)
-NATIVE_ASSEMBLY_SESSION_BYTES   = (4 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_IMAGE_BUFFER_CAPACITY
+NATIVE_ASSEMBLY_SESSION_BYTES   = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_IMAGE_BUFFER_CAPACITY
 PACKAGE_INPUT_PTR_V1            = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
 NATIVE_INCLUDE_DEPTH_LIMIT      = 1
 PRVM_ROUTE_MAGIC_OPLR           = $4F504C52
@@ -281,7 +294,7 @@ opforgeNativeCliTokenizerOk:
 
 opforgeNativeCliPassesOk:
         BSR.W opforgeNativeCliEmitAssemblySessionSummary
-        TST.W nativeCliImageByteCount.L
+        TST.W opasmEngineImageByteCount.L
         BEQ.S opforgeNativeCliEmitStub
         BSR.W opforge_native_cli_write_flat_output
         TST.L D0
@@ -1134,12 +1147,12 @@ opforgeNativeCliRecordPrvmStatementCheckMnemonic:
         MOVE.L nativeCliStmtMnemLen, D0
         CMP.L #TOKEN_BUFFER_CAPACITY - 1, D0
         BHI.W opforgeNativeCliRecordPrvmStatementFail
-        MOVE.W nativeCliStmtCount.L, D0
+        MOVE.W opasmEngineStmtCount.L, D0
         CMPI.W #NATIVE_STATEMENT_TABLE_CAPACITY, D0
         BHS.W opforgeNativeCliRecordPrvmStatementFail
         BSR.W opforgeNativeCliStoreStatementRecord
         BSR.W opforgeNativeCliEmitStatementRecord
-        ADDQ.W #1, nativeCliStmtCount.L
+        ADDQ.W #1, opasmEngineStmtCount.L
 
 opforgeNativeCliRecordPrvmStatementDone:
         MOVEQ #0, D0
@@ -1194,25 +1207,25 @@ opforgeNativeCliRecordPrvmStatementReturn:
 opforgeNativeCliStoreStatementRecord:
         MOVEM.L D1-D4/A0-A1, -(SP)
         MOVEQ #0, D1
-        MOVE.W nativeCliStmtCount.L, D1
+        MOVE.W opasmEngineStmtCount.L, D1
         LSL.L #2, D1
-        LEA nativeCliStmtLineTable.L, A0
+        LEA opasmEngineStmtLineTable.L, A0
         MOVE.L nativeCliSourceLineNum, 0(A0,D1.L)
-        LEA nativeCliStmtMnemOffTable.L, A0
+        LEA opasmEngineStmtMnemOffTable.L, A0
         MOVE.L nativeCliStmtMnemOff, 0(A0,D1.L)
         MOVEQ #0, D2
-        MOVE.W nativeCliStmtCount.L, D2
+        MOVE.W opasmEngineStmtCount.L, D2
         ADD.W D2, D2
-        LEA nativeCliStmtLabelLenTable.L, A0
+        LEA opasmEngineStmtLabelLenTable.L, A0
         MOVE.W nativeCliStmtLabelLen, 0(A0,D2.L)
-        LEA nativeCliStmtMnemLenTable.L, A0
+        LEA opasmEngineStmtMnemLenTable.L, A0
         MOVE.W nativeCliStmtMnemLen, 0(A0,D2.L)
-        LEA nativeCliStmtOperandLenTable.L, A0
+        LEA opasmEngineStmtOperandLenTable.L, A0
         CLR.W 0(A0,D2.L)
         MOVEQ #0, D3
-        MOVE.W nativeCliStmtCount.L, D3
+        MOVE.W opasmEngineStmtCount.L, D3
         LSL.L #6, D3
-        LEA nativeCliStmtLabelNameTable.L, A1
+        LEA opasmEngineStmtLabelNameTable.L, A1
         ADDA.L D3, A1
         CLR.B (A1)
         MOVE.L nativeCliStmtLabelLen, D0
@@ -1226,7 +1239,7 @@ opforgeNativeCliStoreStatementRecord:
         CLR.B (A1)
 
 opforgeNativeCliStoreStatementMnemText:
-        LEA nativeCliStmtMnemNameTable.L, A1
+        LEA opasmEngineStmtMnemNameTable.L, A1
         ADDA.L D3, A1
         CLR.B (A1)
         MOVE.L nativeCliStmtMnemLen, D0
@@ -1237,7 +1250,7 @@ opforgeNativeCliStoreStatementMnemText:
         CLR.B (A1)
 
 opforgeNativeCliStoreStatementOperandText:
-        LEA nativeCliStmtOperandNameTable.L, A1
+        LEA opasmEngineStmtOperandNameTable.L, A1
         ADDA.L D3, A1
         CLR.B (A1)
         MOVE.L nativeCliStmtMnemStart, D0
@@ -1258,9 +1271,9 @@ opforgeNativeCliStoreStatementOperandText:
         BSR.W opforgeNativeCliSkipLineWhitespace
         BSR.W opforgeNativeCliCopyOperandText
         MOVEQ #0, D0
-        MOVE.W nativeCliStmtCount.L, D0
+        MOVE.W opasmEngineStmtCount.L, D0
         ADD.W D0, D0
-        LEA nativeCliStmtOperandLenTable.L, A0
+        LEA opasmEngineStmtOperandLenTable.L, A0
         MOVE.W D5, 0(A0,D0.L)
 
 opforgeNativeCliStoreStatementDone:
@@ -1303,7 +1316,7 @@ opforgeNativeCliEmitStatementRecord:
         MOVE.L #statementText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #0, D0
-        MOVE.W nativeCliStmtCount.L, D0
+        MOVE.W opasmEngineStmtCount.L, D0
         BSR.W opforge_native_cli_put_dec_u16
         BSR.W opforgeNativeCliPutSpace
         MOVE.L nativeCliSourceLineNum, D0
@@ -1353,7 +1366,7 @@ opforgeNativeCliEmitStatementExprRequest:
         MOVE.L #statementExprText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #0, D0
-        MOVE.W nativeCliStmtCount.L, D0
+        MOVE.W opasmEngineStmtCount.L, D0
         BSR.W opforge_native_cli_put_dec_u16
         BSR.W opforgeNativeCliPutSpace
         MOVE.L nativeCliStmtExprOperandIndex, D0
@@ -2818,7 +2831,7 @@ opforgeNativeCliPutHexLoop:
 ; Initialize transitional native assembly-session state for the current CLI run.
 opforge_native_cli_init_assembly_session:
         MOVEM.L D0-D1/A0-A1, -(SP)
-        LEA nativeCliAssemblySessionStart.L, A0
+        LEA opasmEngineAssemblySessionStart.L, A0
         MOVE.L #NATIVE_ASSEMBLY_SESSION_BYTES, D0
         BSR.W opforge_native_cli_clear_bytes
         LEA nativeCliCpuName, A0
@@ -2827,7 +2840,7 @@ opforge_native_cli_init_assembly_session:
         LEA defaultCpuName, A0
 
 opforgeNativeCliInitAssemblySessionHaveCpu:
-        LEA nativeCliSessionCpuName, A1
+        LEA opasmEngineSessionCpuName, A1
         BSR.W opforgeNativeCliCopySessionCpuName
         MOVEM.L (SP)+, D0-D1/A0-A1
         MOVEQ #0, D0
@@ -2851,18 +2864,18 @@ opforgeNativeCliCopySessionCpuNameDone:
 opforgeNativeCliRecordSourceLine:
         MOVEM.L D0/A0, -(SP)
         MOVEQ #0, D0
-        MOVE.W nativeCliSourceRecordCount.L, D0
+        MOVE.W opasmEngineSourceRecordCount.L, D0
         CMPI.W #NATIVE_SOURCE_RECORD_CAPACITY, D0
         BHS.S opforgeNativeCliRecordSourceLineDone
         LSL.L #2, D0
-        LEA nativeCliSourceLineNumTable.L, A0
+        LEA opasmEngineSourceLineNumTable.L, A0
         MOVE.L nativeCliSourceLineNum, 0(A0,D0.L)
         MOVEQ #0, D0
-        MOVE.W nativeCliSourceRecordCount.L, D0
+        MOVE.W opasmEngineSourceRecordCount.L, D0
         ADD.W D0, D0
-        LEA nativeCliSourceLineLenTable.L, A0
+        LEA opasmEngineSourceLineLenTable.L, A0
         MOVE.W nativeCliSourceLineLen, 0(A0,D0.L)
-        ADDQ.W #1, nativeCliSourceRecordCount.L
+        ADDQ.W #1, opasmEngineSourceRecordCount.L
 
 opforgeNativeCliRecordSourceLineDone:
         MOVEM.L (SP)+, D0/A0
@@ -2875,54 +2888,54 @@ opforgeNativeCliEmitAssemblySessionSummary:
         BSR.W opforge_native_cli_put_str
         MOVE.L #sessionCpuText, D1
         BSR.W opforge_native_cli_put_str
-        MOVE.L #nativeCliSessionCpuName, D1
+        MOVE.L #opasmEngineSessionCpuName, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #sessionPassText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #0, D0
-        MOVE.W nativeCliSessionPass.L, D0
+        MOVE.W opasmEngineSessionPass.L, D0
         BSR.W opforge_native_cli_put_dec_u16
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #sessionOriginText, D1
         BSR.W opforge_native_cli_put_str
-        MOVE.L nativeCliSessionOrigin.L, D0
+        MOVE.L opasmEngineSessionOrigin.L, D0
         BSR.W opforge_native_cli_put_hex_u32
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #sessionPcText, D1
         BSR.W opforge_native_cli_put_str
-        MOVE.L nativeCliSessionCurrentPc.L, D0
+        MOVE.L opasmEngineSessionCurrentPc.L, D0
         BSR.W opforge_native_cli_put_hex_u32
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #sessionSourceCountText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #0, D0
-        MOVE.W nativeCliSourceRecordCount.L, D0
+        MOVE.W opasmEngineSourceRecordCount.L, D0
         BSR.W opforge_native_cli_put_dec_u16
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #sessionStmtCountText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #0, D0
-        MOVE.W nativeCliStmtCount, D0
+        MOVE.W opasmEngineStmtCount, D0
         BSR.W opforge_native_cli_put_dec_u16
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #sessionLabelCountText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #0, D0
-        MOVE.W nativeCliLabelCount.L, D0
+        MOVE.W opasmEngineLabelCount.L, D0
         BSR.W opforge_native_cli_put_dec_u16
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L #sessionImageBytesText, D1
         BSR.W opforge_native_cli_put_str
         MOVEQ #0, D0
-        MOVE.W nativeCliImageByteCount.L, D0
+        MOVE.W opasmEngineImageByteCount.L, D0
         BSR.W opforge_native_cli_put_dec_u16
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
@@ -2931,94 +2944,65 @@ opforgeNativeCliEmitAssemblySessionSummary:
         MOVEM.L (SP)+, D0-D2/A0-A1
         RTS
 
-; Run the current transitional two-pass native assembler path.
+; Run the current transitional two-pass native assembler path through opasm.
 opforge_native_cli_run_two_pass_engine:
-        BSR.W opforge_native_cli_run_pass_one
-        TST.L D0
-        BNE.S opforgeNativeCliRunTwoPassDone
-        BSR.W opforge_native_cli_run_pass_two
-
-opforgeNativeCliRunTwoPassDone:
+        BSR.W opforgeNativeCliBuildOpasmEngineContext
+        JSR opasm_engine_run_two_pass_v1
         RTS
 
-; Pass 1 records labels and advances PC using the current selector size table.
-opforge_native_cli_run_pass_one:
-        MOVEM.L D1-D7/A0-A2, -(SP)
+opforgeNativeCliBuildOpasmEngineContext:
+        LEA nativeCliOpasmEngineContext.L, A4
+        MOVE.L #opasmEngineSessionPass, (A4)+
+        MOVE.L #opasmEngineStmtCount, (A4)+
+        MOVE.L #nativeCliBinRequested, (A4)+
+        MOVE.L #opforgeNativeCliOpasmPassOneBegin, (A4)+
+        MOVE.L #opforgeNativeCliOpasmPassTwoBegin, (A4)+
+        MOVE.L #opforgeNativeCliOpasmPassOneOk, (A4)+
+        MOVE.L #opforgeNativeCliOpasmPassTwoOk, (A4)+
+        MOVE.L #opforgeNativeCliPassOneRecordLabel, (A4)+
+        MOVE.L #opforgeNativeCliPassAdvancePc, (A4)+
+        MOVE.L #opforgeNativeCliPassTwoEmitImageBytes, (A4)+
+        LEA nativeCliOpasmEngineContext.L, A4
+        RTS
+
+opforgeNativeCliOpasmPassOneBegin:
+        MOVEM.L D0-D1, -(SP)
         MOVE.L #nativePassOneText, D1
         BSR.W opforge_native_cli_put_str
-        MOVE.W #1, nativeCliSessionPass.L
-        CLR.W nativeCliLabelCount.L
-        CLR.W nativeCliImageByteCount.L
-        MOVE.L #$00000800, nativeCliSessionOrigin.L
-        MOVE.L nativeCliSessionOrigin.L, D0
-        MOVE.L D0, nativeCliSessionCurrentPc.L
-        CLR.W D7
-
-opforgeNativeCliPassOneLoop:
-        MOVE.W nativeCliStmtCount.L, D0
-        CMP.W D0, D7
-        BHS.S opforgeNativeCliPassOneOk
+        CLR.W opasmEngineLabelCount.L
+        CLR.W opasmEngineImageByteCount.L
+        MOVE.L #$00000800, opasmEngineSessionOrigin.L
+        MOVE.L opasmEngineSessionOrigin.L, D0
+        MOVE.L D0, opasmEngineSessionCurrentPc.L
+        MOVEM.L (SP)+, D0-D1
         MOVEQ #0, D0
-        MOVE.W D7, D0
-        BSR.W opforgeNativeCliPassOneRecordLabel
-        TST.L D0
-        BNE.S opforgeNativeCliPassOneFail
-        MOVEQ #0, D0
-        MOVE.W D7, D0
-        BSR.W opforgeNativeCliPassAdvancePc
-        ADDQ.W #1, D7
-        BRA.S opforgeNativeCliPassOneLoop
-
-opforgeNativeCliPassOneOk:
-        MOVE.L #nativePassOneOkText, D1
-        BSR.W opforge_native_cli_put_str
-        MOVEQ #0, D0
-        BRA.S opforgeNativeCliPassOneReturn
-
-opforgeNativeCliPassOneFail:
-        MOVEQ #1, D0
-
-opforgeNativeCliPassOneReturn:
-        MOVEM.L (SP)+, D1-D7/A0-A2
         RTS
 
-; Pass 2 encodes package-backed bytes into the native image buffer.
-opforge_native_cli_run_pass_two:
-        MOVEM.L D1-D7/A0-A2, -(SP)
+opforgeNativeCliOpasmPassOneOk:
+        MOVEM.L D1, -(SP)
+        MOVE.L #nativePassOneOkText, D1
+        BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D1
+        MOVEQ #0, D0
+        RTS
+
+opforgeNativeCliOpasmPassTwoBegin:
+        MOVEM.L D0-D1, -(SP)
         MOVE.L #nativePassTwoText, D1
         BSR.W opforge_native_cli_put_str
-        MOVE.W #2, nativeCliSessionPass.L
-        CLR.W nativeCliImageByteCount.L
-        MOVE.L nativeCliSessionOrigin.L, D0
-        MOVE.L D0, nativeCliSessionCurrentPc.L
-        CLR.W D7
-
-opforgeNativeCliPassTwoLoop:
-        MOVE.W nativeCliStmtCount.L, D0
-        CMP.W D0, D7
-        BHS.S opforgeNativeCliPassTwoOk
-        TST.W nativeCliBinRequested.L
-        BEQ.S opforgeNativeCliPassTwoAdvanceOnly
+        CLR.W opasmEngineImageByteCount.L
+        MOVE.L opasmEngineSessionOrigin.L, D0
+        MOVE.L D0, opasmEngineSessionCurrentPc.L
+        MOVEM.L (SP)+, D0-D1
         MOVEQ #0, D0
-        MOVE.W D7, D0
-        BSR.W opforgeNativeCliPassTwoEmitImageBytes
-        TST.L D0
-        BNE.S opforgeNativeCliPassTwoReturn
+        RTS
 
-opforgeNativeCliPassTwoAdvanceOnly:
-        MOVEQ #0, D0
-        MOVE.W D7, D0
-        BSR.W opforgeNativeCliPassAdvancePc
-        ADDQ.W #1, D7
-        BRA.S opforgeNativeCliPassTwoLoop
-
-opforgeNativeCliPassTwoOk:
+opforgeNativeCliOpasmPassTwoOk:
+        MOVEM.L D1, -(SP)
         MOVE.L #nativePassTwoOkText, D1
         BSR.W opforge_native_cli_put_str
+        MOVEM.L (SP)+, D1
         MOVEQ #0, D0
-
-opforgeNativeCliPassTwoReturn:
-        MOVEM.L (SP)+, D1-D7/A0-A2
         RTS
 
 ; Record a statement label at the current PC, rejecting duplicates.
@@ -3026,30 +3010,30 @@ opforgeNativeCliPassOneRecordLabel:
         MOVEM.L D1-D7/A0-A2, -(SP)
         MOVE.L D0, D7
         LSL.L #6, D7
-        LEA nativeCliStmtLabelNameTable.L, A1
+        LEA opasmEngineStmtLabelNameTable.L, A1
         ADDA.L D7, A1
         TST.B (A1)
         BEQ.W opforgeNativeCliPassOneRecordLabelOk
         MOVEQ #0, D0
-        MOVE.W nativeCliLabelCount.L, D0
+        MOVE.W opasmEngineLabelCount.L, D0
         CMPI.W #NATIVE_LABEL_TABLE_CAPACITY, D0
         BHS.W opforgeNativeCliPassOneRecordLabelFail
         MOVEQ #0, D6
 
 opforgeNativeCliPassOneDuplicateLoop:
-        MOVE.W nativeCliLabelCount.L, D0
+        MOVE.W opasmEngineLabelCount.L, D0
         CMP.W D0, D6
         BHS.S opforgeNativeCliPassOneStoreLabel
         MOVEQ #0, D5
         MOVE.W D6, D5
         LSL.L #6, D5
-        LEA nativeCliLabelNameTable.L, A0
+        LEA opasmEngineLabelNameTable.L, A0
         ADDA.L D5, A0
         MOVEQ #0, D0
         MOVE.L D7, D5
         LSR.L #6, D5
         ADD.W D5, D5
-        LEA nativeCliStmtLabelLenTable.L, A2
+        LEA opasmEngineStmtLabelLenTable.L, A2
         MOVE.W 0(A2,D5.L), D0
         BNE.S opforgeNativeCliPassOneDuplicateHaveLabelLen
         MOVE.L A0, D3
@@ -3066,14 +3050,14 @@ opforgeNativeCliPassOneDuplicateHaveLabelLen:
 
 opforgeNativeCliPassOneStoreLabel:
         MOVEQ #0, D6
-        MOVE.W nativeCliLabelCount.L, D6
+        MOVE.W opasmEngineLabelCount.L, D6
         MOVE.L D6, D5
         LSL.L #2, D5
-        LEA nativeCliLabelValueTable.L, A0
-        MOVE.L nativeCliSessionCurrentPc.L, 0(A0,D5.L)
+        LEA opasmEngineLabelValueTable.L, A0
+        MOVE.L opasmEngineSessionCurrentPc.L, 0(A0,D5.L)
         MOVE.L D6, D5
         LSL.L #6, D5
-        LEA nativeCliLabelNameTable.L, A0
+        LEA opasmEngineLabelNameTable.L, A0
         ADDA.L D5, A0
         MOVE.L A0, D2
         MOVE.L A0, D4
@@ -3085,7 +3069,7 @@ opforgeNativeCliPassOneStoreLabel:
         MOVE.L D7, D5
         LSR.L #6, D5
         ADD.W D5, D5
-        LEA nativeCliStmtLabelLenTable.L, A2
+        LEA opasmEngineStmtLabelLenTable.L, A2
         MOVE.W 0(A2,D5.L), D0
         BNE.S opforgeNativeCliPassOneStoreHaveLabelLen
         MOVEA.L D3, A0
@@ -3094,13 +3078,13 @@ opforgeNativeCliPassOneStoreLabel:
 opforgeNativeCliPassOneStoreHaveLabelLen:
         BSR.W opforge_native_cli_copy_fixed_string
         CLR.B (A1)
-        ADDQ.W #1, nativeCliLabelCount.L
+        ADDQ.W #1, opasmEngineLabelCount.L
         MOVE.L #nativeLabelText, D1
         BSR.W opforge_native_cli_put_str
         MOVE.L D4, D1
         BSR.W opforge_native_cli_put_str
         BSR.W opforgeNativeCliPutSpace
-        MOVE.L nativeCliSessionCurrentPc.L, D0
+        MOVE.L opasmEngineSessionCurrentPc.L, D0
         BSR.W opforge_native_cli_put_hex_u32
         MOVE.L #newlineText, D1
         BSR.W opforge_native_cli_put_str
@@ -3151,13 +3135,13 @@ opforgeNativeCliPassTwoEmitImageBytes:
         BEQ.S opforgeNativeCliPassTwoEmitOk
         MOVE.W D0, D6
         MOVEQ #0, D0
-        MOVE.W nativeCliImageByteCount.L, D0
+        MOVE.W opasmEngineImageByteCount.L, D0
         ADD.W D6, D0
         CMPI.W #NATIVE_IMAGE_BUFFER_CAPACITY, D0
         BHI.W opforgeNativeCliPassTwoEmitFail
         MOVEQ #0, D0
-        MOVE.W nativeCliImageByteCount.L, D0
-        LEA nativeCliImageBuffer.L, A0
+        MOVE.W opasmEngineImageByteCount.L, D0
+        LEA opasmEngineImageBuffer.L, A0
         ADDA.L D0, A0
         LEA lastErrorBuffer, A1
         MOVE.W D6, D1
@@ -3166,7 +3150,7 @@ opforgeNativeCliPassTwoCopyEncodedLoop:
         MOVE.B (A1)+, (A0)+
         SUBQ.W #1, D1
         BNE.S opforgeNativeCliPassTwoCopyEncodedLoop
-        ADD.W D6, nativeCliImageByteCount.L
+        ADD.W D6, opasmEngineImageByteCount.L
 
 opforgeNativeCliPassTwoEmitOk:
         MOVEQ #0, D0
@@ -3189,13 +3173,13 @@ opforgeNativeCliBuildEncodeRequestForStatement:
         MOVEQ #0, D0
         MOVE.W D7, D0
         LSL.L #6, D0
-        LEA nativeCliStmtMnemNameTable.L, A0
+        LEA opasmEngineStmtMnemNameTable.L, A0
         ADDA.L D0, A0
         MOVEA.L A0, A4
         MOVEQ #0, D0
         MOVE.W D7, D0
         ADD.W D0, D0
-        LEA nativeCliStmtMnemLenTable.L, A1
+        LEA opasmEngineStmtMnemLenTable.L, A1
         MOVEQ #0, D6
         MOVE.W 0(A1,D0.L), D6
         BNE.S opforgeNativeCliBuildEncodeHaveMlen
@@ -3208,19 +3192,19 @@ opforgeNativeCliBuildEncodeHaveMlen:
         MOVEQ #0, D1
         MOVE.W D7, D1
         ADD.W D1, D1
-        LEA nativeCliStmtOperandLenTable.L, A1
+        LEA opasmEngineStmtOperandLenTable.L, A1
         MOVE.W 0(A1,D1.L), D1
         MOVEQ #0, D0
         MOVE.W D7, D0
         LSL.L #6, D0
-        LEA nativeCliStmtOperandNameTable.L, A1
+        LEA opasmEngineStmtOperandNameTable.L, A1
         ADDA.L D0, A1
         MOVEA.L A4, A0
         MOVE.W D6, D0
-        LEA nativeCliLabelNameTable.L, A2
-        LEA nativeCliLabelValueTable.L, A3
+        LEA opasmEngineLabelNameTable.L, A2
+        LEA opasmEngineLabelValueTable.L, A3
         MOVEQ #0, D2
-        MOVE.W nativeCliLabelCount.L, D2
+        MOVE.W opasmEngineLabelCount.L, D2
         LEA nativeCliSelectorStageContext.L, A4
         LEA lastErrorBuffer, A5
         MOVE.L A5, (A4)+                ; selector context[0]: output request buffer
@@ -3278,14 +3262,14 @@ opforgeNativeCliReadOperandValueForStatement:
         MOVEQ #0, D0
         MOVE.W D7, D0
         ADD.W D0, D0
-        LEA nativeCliStmtOperandLenTable.L, A0
+        LEA opasmEngineStmtOperandLenTable.L, A0
         MOVEQ #0, D1
         MOVE.W 0(A0,D0.L), D1
         BEQ.S opforgeNativeCliReadOperandFail
         MOVEQ #0, D0
         MOVE.W D7, D0
         LSL.L #6, D0
-        LEA nativeCliStmtOperandNameTable.L, A0
+        LEA opasmEngineStmtOperandNameTable.L, A0
         ADDA.L D0, A0
         MOVE.L D1, D0
         BSR.W opforgeNativeCliSkipLineWhitespace
@@ -3300,10 +3284,10 @@ opforgeNativeCliReadOperandValueForStatement:
 opforgeNativeCliReadOperandNoImmediatePrefix:
         TST.L D0
         BEQ.S opforgeNativeCliReadOperandFail
-        LEA nativeCliLabelNameTable.L, A1
-        LEA nativeCliLabelValueTable.L, A2
+        LEA opasmEngineLabelNameTable.L, A1
+        LEA opasmEngineLabelValueTable.L, A2
         MOVEQ #0, D1
-        MOVE.W nativeCliLabelCount.L, D1
+        MOVE.W opasmEngineLabelCount.L, D1
         JSR opcore_expr_eval_operand_v1
         TST.L D0
         BNE.S opforgeNativeCliReadOperandFail
@@ -3330,13 +3314,13 @@ opforgeNativeCliReadOperandReturn:
 opforgeNativeCliPassAdvancePc:
         MOVEM.L D0-D6/A0-A3, -(SP)
         LSL.L #6, D0
-        LEA nativeCliStmtMnemNameTable.L, A0
+        LEA opasmEngineStmtMnemNameTable.L, A0
         ADDA.L D0, A0
         MOVE.L A0, D5
         MOVE.L D0, D4
         LSR.L #6, D4
         ADD.W D4, D4
-        LEA nativeCliStmtMnemLenTable.L, A1
+        LEA opasmEngineStmtMnemLenTable.L, A1
         MOVEQ #0, D0
         MOVE.W 0(A1,D4.L), D0
         BNE.S opforgeNativeCliPassAdvanceHaveMlen
@@ -3381,21 +3365,21 @@ opforgeNativeCliPassAdvanceOrg:
         RTS
 
 opforgeNativeCliPassAdvanceOrgOk:
-        MOVE.L D3, nativeCliSessionOrigin.L
-        MOVE.L nativeCliSessionOrigin.L, D0
-        MOVE.L D0, nativeCliSessionCurrentPc.L
+        MOVE.L D3, opasmEngineSessionOrigin.L
+        MOVE.L opasmEngineSessionOrigin.L, D0
+        MOVE.L D0, opasmEngineSessionCurrentPc.L
         BRA.W opforgeNativeCliPassAdvanceDone
 
 opforgeNativeCliPassAdvanceOne:
-        ADDQ.L #1, nativeCliSessionCurrentPc.L
+        ADDQ.L #1, opasmEngineSessionCurrentPc.L
         BRA.W opforgeNativeCliPassAdvanceDone
 
 opforgeNativeCliPassAdvanceTwo:
-        ADDQ.L #2, nativeCliSessionCurrentPc.L
+        ADDQ.L #2, opasmEngineSessionCurrentPc.L
         BRA.W opforgeNativeCliPassAdvanceDone
 
 opforgeNativeCliPassAdvanceThree:
-        ADDQ.L #3, nativeCliSessionCurrentPc.L
+        ADDQ.L #3, opasmEngineSessionCurrentPc.L
 
 opforgeNativeCliPassAdvanceDone:
         MOVEM.L (SP)+, D0-D6/A0-A3
@@ -3435,9 +3419,9 @@ opforge_native_cli_write_flat_output:
         TST.L D0
         BEQ.S opforgeNativeCliWriteFlatFail
         MOVE.L D0, D4
-        LEA nativeCliImageBuffer.L, A0
+        LEA opasmEngineImageBuffer.L, A0
         MOVEQ #0, D0
-        MOVE.W nativeCliImageByteCount.L, D0
+        MOVE.W opasmEngineImageByteCount.L, D0
         MOVE.L D0, D3
         MOVE.L D4, D1
         BSR.W opforge_native_cli_write_output
@@ -3465,7 +3449,7 @@ opforge_native_cli_init_module_use_state:
         LEA nativeCliModuleUseStateStart, A0
         MOVE.L #NATIVE_MODULE_USE_STATE_BYTES, D0
         BSR.W opforge_native_cli_clear_bytes
-        CLR.W nativeCliStmtCount.L
+        CLR.W opasmEngineStmtCount.L
         MOVEM.L (SP)+, D0-D1/A0
         RTS
 
@@ -4549,6 +4533,8 @@ nativeCliEncodeRequestLen:
         .align 4
 nativeCliSelectorStageContext:
         .res long,4
+nativeCliOpasmEngineContext:
+        .res long,NATIVE_OPASM_ENGINE_CONTEXT_LONGS
 nativeCliSourceLineNum:
         .res long,1
 nativeCliSawCr:
@@ -4571,8 +4557,6 @@ nativeCliModuleSavedSawCr:
         .res word,1
 nativeCliModuleSavedLineNum:
         .res long,1
-nativeCliStmtCount:
-        .res word,1
 nativeCliStmtMnemFound:
         .res word,1
 nativeCliStmtExprFound:
@@ -4615,48 +4599,6 @@ nativeCliStmtExprSpanStart:
         .res long,1
 nativeCliStmtExprSpanEnd:
         .res long,1
-nativeCliAssemblySessionStart:
-nativeCliSessionPass:
-        .res word,1
-nativeCliSourceRecordCount:
-        .res word,1
-nativeCliLabelCount:
-        .res word,1
-nativeCliImageByteCount:
-        .res word,1
-nativeCliSessionCpuName:
-        .res byte,TOKEN_BUFFER_CAPACITY
-nativeCliSessionOrigin:
-        .res long,1
-nativeCliSessionCurrentPc:
-        .res long,1
-nativeCliSourceLineNumTable:
-        .res long,NATIVE_SOURCE_RECORD_CAPACITY
-nativeCliSourceLineLenTable:
-        .res word,NATIVE_SOURCE_RECORD_CAPACITY
-nativeCliStmtLineTable:
-        .res long,NATIVE_STATEMENT_TABLE_CAPACITY
-nativeCliStmtLabelLenTable:
-        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
-nativeCliStmtMnemLenTable:
-        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
-nativeCliStmtOperandLenTable:
-        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
-nativeCliStmtMnemOffTable:
-        .res long,NATIVE_STATEMENT_TABLE_CAPACITY
-nativeCliStmtLabelNameTable:
-        .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-nativeCliStmtMnemNameTable:
-        .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-nativeCliStmtOperandNameTable:
-        .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-nativeCliLabelValueTable:
-        .res long,NATIVE_LABEL_TABLE_CAPACITY
-nativeCliLabelNameTable:
-        .res byte,NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-nativeCliImageBuffer:
-        .res byte,NATIVE_IMAGE_BUFFER_CAPACITY
-nativeCliAssemblySessionEnd:
 nativeCliSourceLine:
         .res byte,SOURCE_LINE_BUFFER_CAPACITY
 nativeCliParserTailBuffer:

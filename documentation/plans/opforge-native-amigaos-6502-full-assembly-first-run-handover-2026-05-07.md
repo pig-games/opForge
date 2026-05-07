@@ -4,10 +4,11 @@
 
 - Active plan:
   `documentation/plans/opforge-native-amigaos-6502-full-assembly-first-run-plan-v0_1.md`.
-- Completed slice: Item 1, first-run 6502 parity matrix and artifact contract.
-- Not completed: Items 2-18 remain open. The next implementation step is Item 2,
-  moving remaining assembly-engine ownership out of the native CLI and into
-  native `opasm`.
+- Completed slices:
+  - Item 1, first-run 6502 parity matrix and artifact contract.
+  - Item 2, native `opasm` two-pass engine and assembly-session ownership.
+- Not completed: Items 3-18 remain open. The next implementation step is Item
+  3, completing package-backed parse records for directives and operands.
 - The active worktree `AGENTS.md` workflow and execution rules remain binding at
   all times.
 
@@ -21,6 +22,15 @@
   `motorola68020_opforge_native_cli_first_run_artifact_contract_locks_rust_outputs`.
 - Updated the active plan with the first-run acceptance matrix and marked Item 1
   and Milestone 1 complete.
+- Added `native/motorola68000/amigaos/opasm/opasm_engine.asm`.
+- Moved the transitional two-pass loop and assembly-session storage into native
+  `opasm.amigaos.engine`.
+- Updated the native CLI to call `opasm_engine_run_two_pass_v1` and import
+  opasm-owned statement, label, image, source-record, PC/origin, and pass state.
+- Left the CLI callback adapter in place for the existing smoke semantics; this
+  is the bridge that Item 3 should replace with richer package-backed parse
+  records.
+- Updated the active plan to mark Item 2 and Milestone 2 complete.
 
 ## Locked Artifact Contract
 
@@ -39,6 +49,11 @@
 - `cargo test -p asm motorola68020_opforge_native_cli_first_run_artifact_contract_locks_rust_outputs -- --nocapture`
 - `cargo test -p asm examples_match_reference_outputs -- --nocapture`
 - `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`
+- `cargo test -p asm motorola68020_opasm_engine_module_owns_two_pass_loop -- --nocapture`
+- `cargo test -p asm motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label_layout -- --nocapture`
+- `cargo test -p asm motorola68020_opforge_native_cli_shell_assembles_with_stage_stub -- --nocapture`
+- `cargo test -p asm motorola68020_prvm_ -- --nocapture`
+- `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`
 - `scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-native-amigaos-6502-full-assembly-first-run-plan-v0_1.md`
 - `make workflow-gate`
 - `scripts/workflow/run_rust_quality_gate.sh`
@@ -49,13 +64,14 @@ warnings for `registry` and `rand`, then the Rust quality gate completed with
 
 ## Next Slice
 
-- Target Item 2 only.
-- Expected files for Item 2 remain:
-  `native/motorola68000/amigaos/opasm/*`,
-  `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm`, and focused
-  coverage in `crates/opforge-asm/src/tests.rs`.
-- First concrete code change should be to introduce or wire a native `opasm`
-  engine entrypoint that owns pass/session/image state, then call it from the
-  CLI without expanding selector or directive coverage in the same slice.
-- Before committing Item 2, rerun the item-specific focused tests, the full
+- Target Item 3 only.
+- Expected files for Item 3 remain:
+  `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`,
+  `native/motorola68000/amigaos/prvm/*`,
+  `native/motorola68000/amigaos/opasm/*`, and focused parser parity coverage in
+  `crates/opforge-asm/src/tests.rs`.
+- First concrete code change should expand the package-backed parse record shape
+  enough for native `opasm` to receive directive-ready and operand-ready rows
+  without adding CLI-side re-parsing.
+- Before committing Item 3, rerun the item-specific focused tests, the full
   Rust quality gate, and the plan-compliance gate.

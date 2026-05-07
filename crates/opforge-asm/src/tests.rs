@@ -10953,6 +10953,11 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
 
     assert!(source.contains(".module opcore.amigaos.expr_bridge"));
     assert!(source.contains("opcore_expr_eval_operand_v1:"));
+    assert!(source.contains("opcore_exvm_eval_operand_v1:"));
+    assert!(source.contains("EXVM_OPCODE_PARSE_EXPRESSION"));
+    assert!(source.contains("EXVM_OPCODE_END"));
+    assert!(source.contains("opcoreExvmRunEvalProgram:"));
+    assert!(source.contains("opcoreExvmDefaultProgram:"));
     assert!(source.contains("D2: current assembly PC for '*' current-address terms."));
     assert!(source.contains("opcoreExprBridgeEvalAdditive:"));
     assert!(source.contains("opcoreExprBridgeEvalSingleTerm:"));
@@ -10964,8 +10969,20 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
         &source,
         &[
             "opcoreExprBridgeNoImmediatePrefix:",
-            "BSR.W opcoreExprBridgeEvalAdditive",
+            "LEA opcoreExvmDefaultProgram(PC), A1",
+            "BSR.W opcoreExvmRunEvalProgram",
             "BRA.W opcoreExprBridgeReturn",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opcoreExvmRunEvalProgram:",
+            "CMPI.B #EXVM_OPCODE_PARSE_EXPRESSION, D6",
+            "opcoreExvmOpcodeParseExpression:",
+            "BSR.W opcoreExprBridgeEvalAdditive",
+            "opcoreExvmOpcodeEnd:",
+            "CMPI.L #1, D4",
         ]
     ));
     assert!(source_contains_in_order(

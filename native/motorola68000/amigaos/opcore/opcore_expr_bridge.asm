@@ -5,16 +5,37 @@
         .pub
 
 TOKEN_BUFFER_CAPACITY           = 64
+EXVM_OPCODE_END                 = $00
+EXVM_OPCODE_PARSE_EXPRESSION    = $01
+EXVM_OPCODE_EMIT_DIAG           = $02
+EXVM_OPCODE_FAIL                = $03
+EXPRVM_OPCODE_END               = $00
+EXPRVM_OPCODE_PUSH_LITERAL      = $01
+EXPRVM_OPCODE_PUSH_CURRENT_ADDR = $02
+EXPRVM_OPCODE_PUSH_SYMBOL       = $03
+EXPRVM_OPCODE_APPLY_UNARY       = $04
+EXPRVM_OPCODE_APPLY_BINARY      = $05
+EXPRVM_UNARY_PLUS               = 0
+EXPRVM_UNARY_MINUS              = 1
+EXPRVM_UNARY_BIT_NOT            = 2
+EXPRVM_UNARY_LOGIC_NOT          = 3
+EXPRVM_UNARY_HIGH               = 4
+EXPRVM_UNARY_LOW                = 5
+EXPRVM_BINARY_ADD               = 6
+EXPRVM_BINARY_SUBTRACT          = 7
+OPCORE_EXPRVM_STACK_CAPACITY    = 8
 
         .section code, kind=code
 
 ; ---------------------------------------------------------------------------
-; Evaluate one scalar operand expression for the current native smoke path.
+; Evaluate one scalar operand expression through the native EXVM default path.
 ;
-; This bridge is intentionally smaller than Rust opcore/EXVM. It exists so the
-; native selector/pass code can resolve the scalar forms needed by the current
-; 6502 CLI smoke tests while the full expression VM parity work is still
-; pending.
+; opcore_expr_eval_operand_v1 is the compatibility entry used by the current
+; native selector/pass code. It now runs the same EXVM default program shape as
+; the Rust path (`ParseExpression`, `End`) before evaluating the 6502 first-run
+; scalar subset. The ParseExpression opcode still delegates to the temporary
+; native text parser below until the full token/bytecode expression contract is
+; implemented natively.
 ;
 ; Supported input forms:
 ; - optional immediate prefix '#'
@@ -38,7 +59,286 @@ TOKEN_BUFFER_CAPACITY           = 64
 ; - D3: resolved scalar value on success.
 ; ---------------------------------------------------------------------------
 
+; ---------------------------------------------------------------------------
+; Evaluate one portable ExprVM bytecode program for the native 6502 scalar
+; first-run subset.
+;
+; Inputs:
+; - A0/D0: ExprVM bytecode pointer and byte length.
+; - A1: fixed-width symbol-name table pointer.
+; - A2: symbol-value table pointer parallel to A1.
+; - D1: number of symbol entries.
+; - D2: current assembly PC for PushCurrentAddress.
+; - D6: assembler pass number.
+;
+; Outputs:
+; - D0: 0 on success, 1 on invalid program/evaluation failure.
+; - D3: resolved scalar value on success.
+; - D4: nonzero when the program referenced at least one symbol.
+; - D5: nonzero when the program referenced a symbol during pass 1.
+; ---------------------------------------------------------------------------
+
+opcore_exprvm_eval_program_v1:
+        MOVEM.L D1-D2/D6-D7/A0-A6, -(SP)
+        MOVEA.L A1, A3
+        MOVEA.L A2, A4
+        MOVEA.L D2, A5
+        MOVEA.L D6, A6
+        CLR.L D3
+        CLR.L D4
+        CLR.L D5
+        CLR.L D7
+
+opcoreExprVmEvalLoop:
+        TST.L D0
+        BEQ.W opcoreExprVmEvalFail
+        MOVEQ #0, D6
+        MOVE.B (A0)+, D6
+        SUBQ.L #1, D0
+        CMPI.B #EXPRVM_OPCODE_END, D6
+        BEQ.W opcoreExprVmOpcodeEnd
+        CMPI.B #EXPRVM_OPCODE_PUSH_LITERAL, D6
+        BEQ.W opcoreExprVmOpcodePushLiteral
+        CMPI.B #EXPRVM_OPCODE_PUSH_CURRENT_ADDR, D6
+        BEQ.W opcoreExprVmOpcodePushCurrent
+        CMPI.B #EXPRVM_OPCODE_PUSH_SYMBOL, D6
+        BEQ.W opcoreExprVmOpcodePushSymbol
+        CMPI.B #EXPRVM_OPCODE_APPLY_UNARY, D6
+        BEQ.W opcoreExprVmOpcodeApplyUnary
+        CMPI.B #EXPRVM_OPCODE_APPLY_BINARY, D6
+        BEQ.W opcoreExprVmOpcodeApplyBinary
+        BRA.W opcoreExprVmEvalFail
+
+opcoreExprVmOpcodePushLiteral:
+        BSR.W opcoreExprVmReadI64Low32
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        BSR.W opcoreExprVmPushD3
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        BRA.W opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodePushCurrent:
+        MOVE.L A5, D3
+        BSR.W opcoreExprVmPushD3
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        BRA.W opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodePushSymbol:
+        BSR.W opcoreExprVmReadU16
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        CMP.W D1, D3
+        BHS.W opcoreExprVmEvalFail
+        MOVEQ #1, D4
+        MOVE.L A6, D6
+        CMPI.L #1, D6
+        BNE.S opcoreExprVmPushSymbolStable
+        MOVEQ #1, D5
+
+opcoreExprVmPushSymbolStable:
+        MOVEQ #0, D6
+        MOVE.W D3, D6
+        LSL.L #2, D6
+        MOVEA.L A4, A2
+        MOVE.L 0(A2,D6.L), D3
+        BSR.W opcoreExprVmPushD3
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        BRA.W opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodeApplyUnary:
+        BSR.W opcoreExprVmReadU8
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        MOVE.L D3, D6
+        BSR.W opcoreExprVmPopD3
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        CMPI.B #EXPRVM_UNARY_PLUS, D6
+        BEQ.S opcoreExprVmApplyUnaryDone
+        CMPI.B #EXPRVM_UNARY_MINUS, D6
+        BEQ.S opcoreExprVmApplyUnaryMinus
+        CMPI.B #EXPRVM_UNARY_BIT_NOT, D6
+        BEQ.S opcoreExprVmApplyUnaryBitNot
+        CMPI.B #EXPRVM_UNARY_LOGIC_NOT, D6
+        BEQ.S opcoreExprVmApplyUnaryLogicNot
+        CMPI.B #EXPRVM_UNARY_HIGH, D6
+        BEQ.S opcoreExprVmApplyUnaryHigh
+        CMPI.B #EXPRVM_UNARY_LOW, D6
+        BEQ.S opcoreExprVmApplyUnaryLow
+        BRA.W opcoreExprVmEvalFail
+
+opcoreExprVmApplyUnaryMinus:
+        NEG.L D3
+        BRA.S opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryBitNot:
+        NOT.L D3
+        BRA.S opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryLogicNot:
+        TST.L D3
+        BEQ.S opcoreExprVmApplyUnaryLogicNotTrue
+        CLR.L D3
+        BRA.S opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryLogicNotTrue:
+        MOVEQ #1, D3
+        BRA.S opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryHigh:
+        LSR.L #8, D3
+        ANDI.L #$000000FF, D3
+        BRA.S opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryLow:
+        ANDI.L #$000000FF, D3
+
+opcoreExprVmApplyUnaryDone:
+        BSR.W opcoreExprVmPushD3
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        BRA.W opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodeApplyBinary:
+        BSR.W opcoreExprVmReadU8
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        MOVE.L D3, D6
+        BSR.W opcoreExprVmPopD3
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        MOVE.L D3, -(SP)
+        BSR.W opcoreExprVmPopD3
+        TST.L D0
+        BMI.S opcoreExprVmApplyBinaryRestoreFail
+        MOVE.L (SP)+, D2
+        CMPI.B #EXPRVM_BINARY_ADD, D6
+        BEQ.S opcoreExprVmApplyBinaryAdd
+        CMPI.B #EXPRVM_BINARY_SUBTRACT, D6
+        BEQ.S opcoreExprVmApplyBinarySubtract
+        BRA.W opcoreExprVmEvalFail
+
+opcoreExprVmApplyBinaryRestoreFail:
+        ADDQ.L #4, SP
+        BRA.W opcoreExprVmEvalFail
+
+opcoreExprVmApplyBinaryAdd:
+        ADD.L D2, D3
+        BRA.S opcoreExprVmApplyBinaryDone
+
+opcoreExprVmApplyBinarySubtract:
+        SUB.L D2, D3
+
+opcoreExprVmApplyBinaryDone:
+        BSR.W opcoreExprVmPushD3
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        BRA.W opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodeEnd:
+        CMPI.L #1, D7
+        BNE.W opcoreExprVmEvalFail
+        BSR.W opcoreExprVmPopD3
+        TST.L D0
+        BMI.W opcoreExprVmEvalFail
+        MOVEQ #0, D0
+        BRA.S opcoreExprVmEvalReturn
+
+opcoreExprVmEvalFail:
+        MOVEQ #1, D0
+
+opcoreExprVmEvalReturn:
+        MOVEM.L (SP)+, D1-D2/D6-D7/A0-A6
+        RTS
+
+opcoreExprVmPushD3:
+        CMPI.L #OPCORE_EXPRVM_STACK_CAPACITY, D7
+        BHS.S opcoreExprVmPushFail
+        MOVE.L D7, D2
+        LSL.L #2, D2
+        LEA opcoreExprVmStack, A2
+        MOVE.L D3, 0(A2,D2.L)
+        ADDQ.L #1, D7
+        MOVEQ #0, D0
+        RTS
+
+opcoreExprVmPushFail:
+        MOVEQ #-1, D0
+        RTS
+
+opcoreExprVmPopD3:
+        TST.L D7
+        BEQ.S opcoreExprVmPopFail
+        SUBQ.L #1, D7
+        MOVE.L D7, D2
+        LSL.L #2, D2
+        LEA opcoreExprVmStack, A2
+        MOVE.L 0(A2,D2.L), D3
+        MOVEQ #0, D0
+        RTS
+
+opcoreExprVmPopFail:
+        MOVEQ #-1, D0
+        RTS
+
+opcoreExprVmReadU8:
+        TST.L D0
+        BEQ.S opcoreExprVmReadU8Fail
+        MOVEQ #0, D3
+        MOVE.B (A0)+, D3
+        SUBQ.L #1, D0
+        RTS
+
+opcoreExprVmReadU8Fail:
+        MOVEQ #-1, D0
+        RTS
+
+opcoreExprVmReadU16:
+        CMPI.L #2, D0
+        BCS.S opcoreExprVmReadU16Fail
+        MOVEQ #0, D3
+        MOVE.B (A0)+, D3
+        MOVEQ #0, D2
+        MOVE.B (A0)+, D2
+        LSL.W #8, D2
+        OR.W D2, D3
+        SUBQ.L #2, D0
+        RTS
+
+opcoreExprVmReadU16Fail:
+        MOVEQ #-1, D0
+        RTS
+
+opcoreExprVmReadI64Low32:
+        CMPI.L #8, D0
+        BCS.S opcoreExprVmReadI64Fail
+        MOVEQ #0, D3
+        MOVE.B (A0)+, D3
+        MOVEQ #0, D2
+        MOVE.B (A0)+, D2
+        LSL.L #8, D2
+        OR.L D2, D3
+        MOVEQ #0, D2
+        MOVE.B (A0)+, D2
+        LSL.L #16, D2
+        OR.L D2, D3
+        MOVEQ #0, D2
+        MOVE.B (A0)+, D2
+        LSL.L #24, D2
+        OR.L D2, D3
+        ADDQ.L #4, A0
+        SUBQ.L #8, D0
+        RTS
+
+opcoreExprVmReadI64Fail:
+        MOVEQ #-1, D0
+        RTS
+
 opcore_expr_eval_operand_v1:
+opcore_exvm_eval_operand_v1:
         MOVEM.L D1-D2/D4-D7/A0-A5, -(SP)
         MOVEA.L A1, A3                  ; label-name table base kept stable across parse helpers
         MOVEA.L A2, A4                  ; label-value table base kept stable across parse helpers
@@ -57,8 +357,52 @@ opcore_expr_eval_operand_v1:
 opcoreExprBridgeNoImmediatePrefix:
         TST.L D0
         BEQ.W opcoreExprBridgeFail
-        BSR.W opcoreExprBridgeEvalAdditive
+        LEA opcoreExvmDefaultProgram(PC), A1
+        MOVEQ #opcoreExvmDefaultProgramEnd - opcoreExvmDefaultProgram, D1
+        BSR.W opcoreExvmRunEvalProgram
         BRA.W opcoreExprBridgeReturn
+
+opcoreExvmRunEvalProgram:
+        MOVEQ #0, D4                    ; output expression count, matching Rust's stack-depth 1 contract
+
+opcoreExvmRunLoop:
+        TST.L D1
+        BEQ.S opcoreExvmMissingEnd
+        MOVEQ #0, D6
+        MOVE.B (A1)+, D6
+        SUBQ.L #1, D1
+        CMPI.B #EXVM_OPCODE_END, D6
+        BEQ.S opcoreExvmOpcodeEnd
+        CMPI.B #EXVM_OPCODE_PARSE_EXPRESSION, D6
+        BEQ.S opcoreExvmOpcodeParseExpression
+        CMPI.B #EXVM_OPCODE_EMIT_DIAG, D6
+        BEQ.S opcoreExvmProgramFail
+        CMPI.B #EXVM_OPCODE_FAIL, D6
+        BEQ.S opcoreExvmProgramFail
+        BRA.S opcoreExvmProgramFail
+
+opcoreExvmOpcodeParseExpression:
+        TST.L D4
+        BNE.S opcoreExvmProgramFail
+        MOVEM.L D1/D4/A1, -(SP)
+        BSR.W opcoreExprBridgeEvalAdditive
+        MOVE.L D0, D2
+        MOVEM.L (SP)+, D1/D4/A1
+        TST.L D2
+        BNE.S opcoreExvmProgramFail
+        ADDQ.L #1, D4
+        BRA.S opcoreExvmRunLoop
+
+opcoreExvmOpcodeEnd:
+        CMPI.L #1, D4
+        BNE.S opcoreExvmProgramFail
+        MOVEQ #0, D0
+        RTS
+
+opcoreExvmMissingEnd:
+opcoreExvmProgramFail:
+        MOVEQ #1, D0
+        RTS
 
 opcoreExprBridgeEvalAdditive:
         BSR.W opcoreExprBridgeEvalSingleTerm
@@ -480,6 +824,17 @@ opcoreExprBridgeLabelEqualsNo:
 opcoreExprBridgeLabelEqualsReturn:
         MOVEM.L (SP)+, D1-D3/A0-A1
         RTS
+
+opcoreExvmDefaultProgram:
+        .byte EXVM_OPCODE_PARSE_EXPRESSION, EXVM_OPCODE_END
+opcoreExvmDefaultProgramEnd:
+
+        .endsection
+
+        .section bss, kind=bss
+
+opcoreExprVmStack:
+        .res long,OPCORE_EXPRVM_STACK_CAPACITY
 
         .endsection
         .endmodule

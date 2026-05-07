@@ -1692,6 +1692,18 @@ fn expr_parser_vm_v2_operator_kind_from_u8_round_trip_and_unknown_rejection() {
         (0x08, ExvmOperatorKindV2::LogicNot),
         (0x09, ExvmOperatorKindV2::Lt),
         (0x0A, ExvmOperatorKindV2::Gt),
+        (0x0B, ExvmOperatorKindV2::Shl),
+        (0x0C, ExvmOperatorKindV2::Shr),
+        (0x0D, ExvmOperatorKindV2::Eq),
+        (0x0E, ExvmOperatorKindV2::Ne),
+        (0x0F, ExvmOperatorKindV2::Ge),
+        (0x10, ExvmOperatorKindV2::Le),
+        (0x11, ExvmOperatorKindV2::BitAnd),
+        (0x12, ExvmOperatorKindV2::BitOr),
+        (0x13, ExvmOperatorKindV2::BitXor),
+        (0x14, ExvmOperatorKindV2::LogicAnd),
+        (0x15, ExvmOperatorKindV2::LogicOr),
+        (0x16, ExvmOperatorKindV2::LogicXor),
     ];
 
     for (byte, kind) in kinds {

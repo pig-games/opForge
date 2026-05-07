@@ -224,7 +224,7 @@ this migration lands and proves parity.
     - The implementation remains a narrow vertical slice with one focused
       arithmetic validation target.
 
-- [ ] Item 4 - Add shift, comparison, and bitwise or logical parsing to `EXVM v2`
+- [x] Item 4 - Add shift, comparison, and bitwise or logical parsing to `EXVM v2`
   - Source requirement or finding IDs: `SR-EXPR-VM-AUTHORITY`,
     `SR-EXVM-BYTECODE`, `SR-NO-AST-AUTHORITY`, `SR-DETERMINISM`.
   - Expected files:

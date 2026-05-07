@@ -27,234 +27,362 @@ use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_parse_utils::runtime_bridge_error_to_parse_error;
 pub use crate::vm_core::HierarchyExecutionModel;
 use crate::vm_opasm_parse::VmExprParseContext;
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
 const EXVM_DEFAULT_PROGRAM_V1: &[u8] = &[
     package::ExvmOpcode::ParseExpression as u8,
     package::ExvmOpcode::End as u8,
 ];
 
-const EXVM_DEFAULT_PROGRAM_V2: &[u8] = &[
-    package::ExvmOpcodeV2::Call as u8,
-    4,
-    0,
-    package::ExvmOpcodeV2::End as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    38,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Plus as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    18,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Minus as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    28,
-    0,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Plus as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    38,
-    0,
-    package::ExvmOpcodeV2::BuildBinary as u8,
-    package::ExvmOperatorKindV2::Plus as u8,
-    package::ExvmOpcodeV2::Jump as u8,
-    7,
-    0,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Minus as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    38,
-    0,
-    package::ExvmOpcodeV2::BuildBinary as u8,
-    package::ExvmOperatorKindV2::Minus as u8,
-    package::ExvmOpcodeV2::Jump as u8,
-    7,
-    0,
-    package::ExvmOpcodeV2::Call as u8,
-    87,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Multiply as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    57,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Divide as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    67,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Mod as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    77,
-    0,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Multiply as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    87,
-    0,
-    package::ExvmOpcodeV2::BuildBinary as u8,
-    package::ExvmOperatorKindV2::Multiply as u8,
-    package::ExvmOpcodeV2::Jump as u8,
-    41,
-    0,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Divide as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    87,
-    0,
-    package::ExvmOpcodeV2::BuildBinary as u8,
-    package::ExvmOperatorKindV2::Divide as u8,
-    package::ExvmOpcodeV2::Jump as u8,
-    41,
-    0,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Mod as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    87,
-    0,
-    package::ExvmOpcodeV2::BuildBinary as u8,
-    package::ExvmOperatorKindV2::Mod as u8,
-    package::ExvmOpcodeV2::Jump as u8,
-    41,
-    0,
-    package::ExvmOpcodeV2::Call as u8,
-    104,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Power as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    96,
-    0,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Power as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    87,
-    0,
-    package::ExvmOpcodeV2::BuildBinary as u8,
-    package::ExvmOperatorKindV2::Power as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Plus as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    138,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Minus as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    146,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::BitNot as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    154,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::LogicNot as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    162,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Lt as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    170,
-    0,
-    package::ExvmOpcodeV2::PeekOperator as u8,
-    package::ExvmOperatorKindV2::Gt as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    178,
-    0,
-    package::ExvmOpcodeV2::Call as u8,
-    186,
-    0,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Plus as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    104,
-    0,
-    package::ExvmOpcodeV2::BuildUnary as u8,
-    package::ExvmOperatorKindV2::Plus as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Minus as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    104,
-    0,
-    package::ExvmOpcodeV2::BuildUnary as u8,
-    package::ExvmOperatorKindV2::Minus as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::BitNot as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    104,
-    0,
-    package::ExvmOpcodeV2::BuildUnary as u8,
-    package::ExvmOperatorKindV2::BitNot as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::LogicNot as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    104,
-    0,
-    package::ExvmOpcodeV2::BuildUnary as u8,
-    package::ExvmOperatorKindV2::LogicNot as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Lt as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    104,
-    0,
-    package::ExvmOpcodeV2::BuildUnary as u8,
-    package::ExvmOperatorKindV2::Lt as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ConsumeOperator as u8,
-    package::ExvmOperatorKindV2::Gt as u8,
-    package::ExvmOpcodeV2::Call as u8,
-    104,
-    0,
-    package::ExvmOpcodeV2::BuildUnary as u8,
-    package::ExvmOperatorKindV2::Gt as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::PeekKind as u8,
-    package::ExvmTokenKindV2::Number as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    207,
-    0,
-    package::ExvmOpcodeV2::PeekKind as u8,
-    package::ExvmTokenKindV2::Identifier as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    211,
-    0,
-    package::ExvmOpcodeV2::PeekKind as u8,
-    package::ExvmTokenKindV2::Dollar as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    215,
-    0,
-    package::ExvmOpcodeV2::PeekKind as u8,
-    package::ExvmTokenKindV2::OpenParen as u8,
-    package::ExvmOpcodeV2::JumpIfTrue as u8,
-    218,
-    0,
-    package::ExvmOpcodeV2::EmitDiag as u8,
-    package::ExvmOpcodeV2::LoadTokenText as u8,
-    package::ExvmOpcodeV2::BuildNumber as u8,
-    package::ExvmOpcodeV2::Advance as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::LoadTokenText as u8,
-    package::ExvmOpcodeV2::BuildIdentifier as u8,
-    package::ExvmOpcodeV2::Advance as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::BuildCurrentAddress as u8,
-    package::ExvmOpcodeV2::Advance as u8,
-    package::ExvmOpcodeV2::Return as u8,
-    package::ExvmOpcodeV2::ParseGrouping as u8,
-    package::ExvmOpcodeV2::Return as u8,
-];
+static EXVM_DEFAULT_PROGRAM_V2: LazyLock<Vec<u8>> = LazyLock::new(build_default_exvm_program_v2);
+
+struct ExvmV2DefaultProgramBuilder {
+    bytes: Vec<u8>,
+    labels: HashMap<&'static str, usize>,
+    patches: Vec<(&'static str, usize)>,
+}
+
+impl ExvmV2DefaultProgramBuilder {
+    fn new() -> Self {
+        Self {
+            bytes: Vec::new(),
+            labels: HashMap::new(),
+            patches: Vec::new(),
+        }
+    }
+
+    fn mark(&mut self, label: &'static str) {
+        let prev = self.labels.insert(label, self.bytes.len());
+        assert!(prev.is_none(), "duplicate EXVM v2 default label: {label}");
+    }
+
+    fn opcode(&mut self, opcode: package::ExvmOpcodeV2) {
+        self.bytes.push(opcode as u8);
+    }
+
+    fn operator(&mut self, operator: package::ExvmOperatorKindV2) {
+        self.bytes.push(operator as u8);
+    }
+
+    fn token_kind(&mut self, kind: package::ExvmTokenKindV2) {
+        self.bytes.push(kind as u8);
+    }
+
+    fn push_label_target(&mut self, label: &'static str) {
+        let offset = self.bytes.len();
+        self.bytes.extend_from_slice(&0u16.to_le_bytes());
+        self.patches.push((label, offset));
+    }
+
+    fn call(&mut self, label: &'static str) {
+        self.opcode(package::ExvmOpcodeV2::Call);
+        self.push_label_target(label);
+    }
+
+    fn jump(&mut self, label: &'static str) {
+        self.opcode(package::ExvmOpcodeV2::Jump);
+        self.push_label_target(label);
+    }
+
+    fn jump_if_true(&mut self, label: &'static str) {
+        self.opcode(package::ExvmOpcodeV2::JumpIfTrue);
+        self.push_label_target(label);
+    }
+
+    fn ret(&mut self) {
+        self.opcode(package::ExvmOpcodeV2::Return);
+    }
+
+    fn peek_kind_jump_if_true(&mut self, kind: package::ExvmTokenKindV2, label: &'static str) {
+        self.opcode(package::ExvmOpcodeV2::PeekKind);
+        self.token_kind(kind);
+        self.jump_if_true(label);
+    }
+
+    fn peek_operator_jump_if_true(
+        &mut self,
+        operator: package::ExvmOperatorKindV2,
+        label: &'static str,
+    ) {
+        self.opcode(package::ExvmOpcodeV2::PeekOperator);
+        self.operator(operator);
+        self.jump_if_true(label);
+    }
+
+    fn consume_operator(&mut self, operator: package::ExvmOperatorKindV2) {
+        self.opcode(package::ExvmOpcodeV2::ConsumeOperator);
+        self.operator(operator);
+    }
+
+    fn build_unary(&mut self, operator: package::ExvmOperatorKindV2) {
+        self.opcode(package::ExvmOpcodeV2::BuildUnary);
+        self.operator(operator);
+    }
+
+    fn build_binary(&mut self, operator: package::ExvmOperatorKindV2) {
+        self.opcode(package::ExvmOpcodeV2::BuildBinary);
+        self.operator(operator);
+    }
+
+    fn finish(mut self) -> Vec<u8> {
+        for (label, offset) in self.patches {
+            let target = *self
+                .labels
+                .get(label)
+                .unwrap_or_else(|| panic!("missing EXVM v2 default label: {label}"));
+            let target = u16::try_from(target).expect("EXVM v2 default program exceeds u16");
+            self.bytes[offset..offset + 2].copy_from_slice(&target.to_le_bytes());
+        }
+        self.bytes
+    }
+}
+
+fn build_default_exvm_program_v2() -> Vec<u8> {
+    let mut builder = ExvmV2DefaultProgramBuilder::new();
+
+    builder.call("logical_or");
+    builder.opcode(package::ExvmOpcodeV2::End);
+
+    builder.mark("logical_or");
+    builder.call("logical_and");
+    builder.mark("logical_or_loop");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::LogicOr, "logical_or_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::LogicXor, "logical_xor_build");
+    builder.ret();
+    builder.mark("logical_or_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::LogicOr);
+    builder.call("logical_and");
+    builder.build_binary(package::ExvmOperatorKindV2::LogicOr);
+    builder.jump("logical_or_loop");
+    builder.mark("logical_xor_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::LogicXor);
+    builder.call("logical_and");
+    builder.build_binary(package::ExvmOperatorKindV2::LogicXor);
+    builder.jump("logical_or_loop");
+
+    builder.mark("logical_and");
+    builder.call("bit_or");
+    builder.mark("logical_and_loop");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::LogicAnd, "logical_and_build");
+    builder.ret();
+    builder.mark("logical_and_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::LogicAnd);
+    builder.call("bit_or");
+    builder.build_binary(package::ExvmOperatorKindV2::LogicAnd);
+    builder.jump("logical_and_loop");
+
+    builder.mark("bit_or");
+    builder.call("bit_xor");
+    builder.mark("bit_or_loop");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitOr, "bit_or_build");
+    builder.ret();
+    builder.mark("bit_or_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::BitOr);
+    builder.call("bit_xor");
+    builder.build_binary(package::ExvmOperatorKindV2::BitOr);
+    builder.jump("bit_or_loop");
+
+    builder.mark("bit_xor");
+    builder.call("bit_and");
+    builder.mark("bit_xor_loop");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitXor, "bit_xor_build");
+    builder.ret();
+    builder.mark("bit_xor_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::BitXor);
+    builder.call("bit_and");
+    builder.build_binary(package::ExvmOperatorKindV2::BitXor);
+    builder.jump("bit_xor_loop");
+
+    builder.mark("bit_and");
+    builder.call("compare");
+    builder.mark("bit_and_loop");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitAnd, "bit_and_build");
+    builder.ret();
+    builder.mark("bit_and_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::BitAnd);
+    builder.call("compare");
+    builder.build_binary(package::ExvmOperatorKindV2::BitAnd);
+    builder.jump("bit_and_loop");
+
+    builder.mark("compare");
+    builder.call("shift");
+    builder.mark("compare_loop");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Eq, "compare_eq_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Ne, "compare_ne_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Ge, "compare_ge_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Gt, "compare_gt_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Le, "compare_le_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Lt, "compare_lt_build");
+    builder.ret();
+    builder.mark("compare_eq_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Eq);
+    builder.call("shift");
+    builder.build_binary(package::ExvmOperatorKindV2::Eq);
+    builder.jump("compare_loop");
+    builder.mark("compare_ne_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Ne);
+    builder.call("shift");
+    builder.build_binary(package::ExvmOperatorKindV2::Ne);
+    builder.jump("compare_loop");
+    builder.mark("compare_ge_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Ge);
+    builder.call("shift");
+    builder.build_binary(package::ExvmOperatorKindV2::Ge);
+    builder.jump("compare_loop");
+    builder.mark("compare_gt_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Gt);
+    builder.call("shift");
+    builder.build_binary(package::ExvmOperatorKindV2::Gt);
+    builder.jump("compare_loop");
+    builder.mark("compare_le_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Le);
+    builder.call("shift");
+    builder.build_binary(package::ExvmOperatorKindV2::Le);
+    builder.jump("compare_loop");
+    builder.mark("compare_lt_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Lt);
+    builder.call("shift");
+    builder.build_binary(package::ExvmOperatorKindV2::Lt);
+    builder.jump("compare_loop");
+
+    builder.mark("shift");
+    builder.call("sum");
+    builder.mark("shift_loop");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Shl, "shift_shl_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Shr, "shift_shr_build");
+    builder.ret();
+    builder.mark("shift_shl_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Shl);
+    builder.call("sum");
+    builder.build_binary(package::ExvmOperatorKindV2::Shl);
+    builder.jump("shift_loop");
+    builder.mark("shift_shr_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Shr);
+    builder.call("sum");
+    builder.build_binary(package::ExvmOperatorKindV2::Shr);
+    builder.jump("shift_loop");
+
+    builder.mark("sum");
+    builder.call("term");
+    builder.mark("sum_loop");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Plus, "sum_plus_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Minus, "sum_minus_build");
+    builder.ret();
+    builder.mark("sum_plus_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Plus);
+    builder.call("term");
+    builder.build_binary(package::ExvmOperatorKindV2::Plus);
+    builder.jump("sum_loop");
+    builder.mark("sum_minus_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Minus);
+    builder.call("term");
+    builder.build_binary(package::ExvmOperatorKindV2::Minus);
+    builder.jump("sum_loop");
+
+    builder.mark("term");
+    builder.call("power");
+    builder.mark("term_loop");
+    builder
+        .peek_operator_jump_if_true(package::ExvmOperatorKindV2::Multiply, "term_multiply_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Divide, "term_divide_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Mod, "term_mod_build");
+    builder.ret();
+    builder.mark("term_multiply_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Multiply);
+    builder.call("power");
+    builder.build_binary(package::ExvmOperatorKindV2::Multiply);
+    builder.jump("term_loop");
+    builder.mark("term_divide_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Divide);
+    builder.call("power");
+    builder.build_binary(package::ExvmOperatorKindV2::Divide);
+    builder.jump("term_loop");
+    builder.mark("term_mod_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Mod);
+    builder.call("power");
+    builder.build_binary(package::ExvmOperatorKindV2::Mod);
+    builder.jump("term_loop");
+
+    builder.mark("power");
+    builder.call("unary");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Power, "power_build");
+    builder.ret();
+    builder.mark("power_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Power);
+    builder.call("power");
+    builder.build_binary(package::ExvmOperatorKindV2::Power);
+    builder.ret();
+
+    builder.mark("unary");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Plus, "unary_plus_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Minus, "unary_minus_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitNot, "unary_bit_not_build");
+    builder.peek_operator_jump_if_true(
+        package::ExvmOperatorKindV2::LogicNot,
+        "unary_logic_not_build",
+    );
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Lt, "unary_low_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Gt, "unary_high_build");
+    builder.call("primary");
+    builder.ret();
+    builder.mark("unary_plus_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Plus);
+    builder.call("unary");
+    builder.build_unary(package::ExvmOperatorKindV2::Plus);
+    builder.ret();
+    builder.mark("unary_minus_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Minus);
+    builder.call("unary");
+    builder.build_unary(package::ExvmOperatorKindV2::Minus);
+    builder.ret();
+    builder.mark("unary_bit_not_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::BitNot);
+    builder.call("unary");
+    builder.build_unary(package::ExvmOperatorKindV2::BitNot);
+    builder.ret();
+    builder.mark("unary_logic_not_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::LogicNot);
+    builder.call("unary");
+    builder.build_unary(package::ExvmOperatorKindV2::LogicNot);
+    builder.ret();
+    builder.mark("unary_low_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Lt);
+    builder.call("unary");
+    builder.build_unary(package::ExvmOperatorKindV2::Lt);
+    builder.ret();
+    builder.mark("unary_high_build");
+    builder.consume_operator(package::ExvmOperatorKindV2::Gt);
+    builder.call("unary");
+    builder.build_unary(package::ExvmOperatorKindV2::Gt);
+    builder.ret();
+
+    builder.mark("primary");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Number, "primary_number");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Identifier, "primary_identifier");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Dollar, "primary_dollar");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::OpenParen, "primary_grouping");
+    builder.opcode(package::ExvmOpcodeV2::EmitDiag);
+    builder.mark("primary_number");
+    builder.opcode(package::ExvmOpcodeV2::LoadTokenText);
+    builder.opcode(package::ExvmOpcodeV2::BuildNumber);
+    builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.ret();
+    builder.mark("primary_identifier");
+    builder.opcode(package::ExvmOpcodeV2::LoadTokenText);
+    builder.opcode(package::ExvmOpcodeV2::BuildIdentifier);
+    builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.ret();
+    builder.mark("primary_dollar");
+    builder.opcode(package::ExvmOpcodeV2::BuildCurrentAddress);
+    builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.ret();
+    builder.mark("primary_grouping");
+    builder.opcode(package::ExvmOpcodeV2::ParseGrouping);
+    builder.ret();
+
+    builder.finish()
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ExvmExecutionBudgets {
@@ -267,7 +395,7 @@ pub(crate) struct ExvmExecutionBudgets {
 impl ExvmExecutionBudgets {
     pub(crate) fn for_tokens(token_count: usize) -> Self {
         Self {
-            max_steps: token_count.saturating_mul(32).max(64),
+            max_steps: token_count.saturating_mul(128).max(128),
             max_token_count: token_count,
             max_stack_depth: token_count.max(1),
             allow_out_of_scope_compatibility: true,
@@ -331,7 +459,7 @@ pub(crate) fn parse_expression_tokens_with_opcode_version(
     let budgets = ExvmExecutionBudgets::for_tokens(tokens.len());
     let program = match opcode_version {
         package::EXVM_OPCODE_VERSION_V1 => EXVM_DEFAULT_PROGRAM_V1,
-        package::EXVM_OPCODE_VERSION_V2 => EXVM_DEFAULT_PROGRAM_V2,
+        package::EXVM_OPCODE_VERSION_V2 => EXVM_DEFAULT_PROGRAM_V2.as_slice(),
         _ => {
             return Err(ParseError {
                 message: format!("unsupported EXVM opcode version {}", opcode_version),

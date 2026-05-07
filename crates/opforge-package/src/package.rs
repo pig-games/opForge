@@ -489,6 +489,18 @@ pub enum ExvmOperatorKindV2 {
     LogicNot = 0x08,
     Lt = 0x09,
     Gt = 0x0A,
+    Shl = 0x0B,
+    Shr = 0x0C,
+    Eq = 0x0D,
+    Ne = 0x0E,
+    Ge = 0x0F,
+    Le = 0x10,
+    BitAnd = 0x11,
+    BitOr = 0x12,
+    BitXor = 0x13,
+    LogicAnd = 0x14,
+    LogicOr = 0x15,
+    LogicXor = 0x16,
 }
 
 impl ExvmOperatorKindV2 {
@@ -504,6 +516,18 @@ impl ExvmOperatorKindV2 {
             0x08 => Some(Self::LogicNot),
             0x09 => Some(Self::Lt),
             0x0A => Some(Self::Gt),
+            0x0B => Some(Self::Shl),
+            0x0C => Some(Self::Shr),
+            0x0D => Some(Self::Eq),
+            0x0E => Some(Self::Ne),
+            0x0F => Some(Self::Ge),
+            0x10 => Some(Self::Le),
+            0x11 => Some(Self::BitAnd),
+            0x12 => Some(Self::BitOr),
+            0x13 => Some(Self::BitXor),
+            0x14 => Some(Self::LogicAnd),
+            0x15 => Some(Self::LogicOr),
+            0x16 => Some(Self::LogicXor),
             _ => None,
         }
     }

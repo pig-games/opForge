@@ -246,6 +246,19 @@ Expected result for the current smoke slice:
 - `Work:opforge_native_out.bin` is written with the same bytes as the Rust VM
   reference for the smoke program.
 
+On an actual Amiga, copy or otherwise place the native Hunk executable,
+`opforge_cli_package.opasm`, and the source file in the same AmigaOS directory.
+The file transfer method is outside this guide. From an AmigaShell in that
+directory, run:
+
+```text
+opforge_cli opforge_6502_native_cli_smoke.asm --bin opforge_native_out.bin --cpu m6502 --opasm-package opforge_cli_package.opasm
+```
+
+The current smoke build expects a 68020-capable AmigaOS host. The command writes
+`opforge_native_out.bin` in the current directory and prints the same
+`OPFORGE-NATIVE 1` status report used by the FS-UAE checks.
+
 To launch the same prepared `Work:` volume with the local FS-UAE template used
 by the test harness:
 

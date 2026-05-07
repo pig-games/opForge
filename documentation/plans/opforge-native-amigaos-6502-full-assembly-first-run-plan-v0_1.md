@@ -115,6 +115,39 @@ The output subsystem should still be structured as native artifact components so
 later `.srec`, Amiga Hunk, map files, labels, dependency files, and export
 section outputs can be added without moving behavior back into CLI glue.
 
+## First-Run 6502 Acceptance Matrix
+
+The first executable parity contract is
+`examples/mos6502/6502_first_run_artifact_contract.asm`, with Rust references in
+`examples/reference/mos6502/6502_first_run_artifact_contract.hex` and
+`examples/reference/mos6502/6502_first_run_artifact_contract.lst`.
+
+This fixture is the Item 1 acceptance target for the native AmigaOS path:
+
+- CPU and pipeline selection: `.cpu 6502`.
+- Origin/range control: placed `code` section in a `$0800..$083f` region, plus
+  a `.bin` comparison range of `$0800..$0814`.
+- Symbols and expressions: `.const`, `.var`, `sta $0200 + OFFSET`, and
+  `.word start + 3`.
+- Instruction/addressing coverage: immediate, absolute expression, relative
+  forward branch, relative backward branch, and implied forms.
+- Directive coverage: `.byte`, `.word`, `.text`, `.fill`, `.region`,
+  `.section`, `.place`, and `.output`.
+- First-run artifact outputs:
+  - `.bin`: `A9 42 8D 02 02 F0 05 D0 F7 A2 10 E8 AA 0C 08 03 08 4F 4B FF FF`
+    for `$0800..$0814`.
+  - `.prg`: little-endian load address prefix `00 08` followed by the `.bin`
+    payload.
+  - `.hex`: Intel HEX record
+    `:15080000A9428D0202F005D0F7A210E8AA0C0803084F4BFFFFB0` followed by EOF.
+  - `.lst`: source/byte listing matching
+    `examples/reference/mos6502/6502_first_run_artifact_contract.lst`.
+
+The focused Rust-side contract test is
+`motorola68020_opforge_native_cli_first_run_artifact_contract_locks_rust_outputs`.
+Later native implementation items must make the AmigaOS CLI artifact outputs
+match this Rust-reference contract before expanding the matrix.
+
 ## Constraints
 
 - The active worktree `AGENTS.md` workflow and execution rules remain binding at
@@ -179,7 +212,7 @@ The intended native shape mirrors the Rust path:
 
 ## Work Items
 
-- [ ] Item 1: Freeze the first-run 6502 parity matrix and artifact contract
+- [x] Item 1: Freeze the first-run 6502 parity matrix and artifact contract
   - Source requirement or finding IDs: `SR-NATIVE-6502-FULL`,
     `SR-FIRST-OUTPUTS`, `SR-FS-UAE-PARITY`; expected to establish the
     executable acceptance target.
@@ -527,7 +560,7 @@ The intended native shape mirrors the Rust path:
 
 ## Milestones
 
-- [ ] Milestone 1: first-run 6502 acceptance matrix is locked.
+- [x] Milestone 1: first-run 6502 acceptance matrix is locked.
 - [ ] Milestone 2: CLI no longer owns assembly semantics; native opasm owns
   engine/pass/session behavior.
 - [ ] Milestone 3: native `m6502` selector and encoder parity lands in two

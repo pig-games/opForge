@@ -1,0 +1,55 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Native AmigaOS 6502 first-run artifact contract.
+----                                2  ; Rust reference output for the native .bin/.prg/.hex/.lst parity matrix.
+----                                3  
+----                                4          .module main
+----                                5          .cpu 6502
+----                                6  
+----                                7          .region ram, $0800, $083f, align=1
+----                                8  
+----                                9          .section code, align=1  ; [section code]
+----    EQU 0002                   10  OFFSET  .const $02  ; [section code]
+----    EQU 0010                   11  VALUE   .var   $10  ; [section code]
+----                               12    ; [section code]
+----                               13  start  ; [section code]
+0800    A9 42                      14          lda #$42  ; [section code]
+0802    8D 02 02                   15          sta $0200 + OFFSET  ; [section code]
+0805    F0 05                      16          beq done  ; [section code]
+0807    D0 F7                      17          bne start  ; [section code]
+0809    A2 10                      18          ldx #VALUE  ; [section code]
+080B    E8                         19          inx  ; [section code]
+----                               20  done  ; [section code]
+080C    AA 0C 08                   21          .byte $aa, $0c, $08  ; [section code]
+080F    03 08                      22          .word start + 3  ; [section code]
+0811    4F 4B                      23          .text "OK"  ; [section code]
+0813    FF FF                      24          .fill byte, 2, $ff  ; [section code]
+----                               25          .endsection
+----                               26  
+----                               27          .place code in ram
+----                               28  
+----                               29          .output "build/6502-first-run.prg", format=prg, loadaddr=$0800, contiguous=false, sections=code
+----                               30  
+----                               31          .endmodule
+----                               32          .end
+
+Lines: 32  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+main.done        080C      prv  lbl 
+main.OFFSET      0002      prv  lbl 
+main.start       0800      prv  lbl 
+main.VALUE       0010      prv  var 
+
+Total memory is 21 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0800    A9 42 8D 02 02 F0 05 D0 F7 A2 10 E8 AA 0C 08 03
+0810    08 4F 4B FF FF

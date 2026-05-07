@@ -75,7 +75,9 @@ use vm::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};
 use vm::execution_model::set_core_expr_parser_failpoint_for_tests;
 use vm::hierarchy::ScopedOwner;
 use vm::intel8080_vm::mode_key_for_instruction_entry;
-use vm::output_model::{OutputFixupRecord, IMPLICIT_HUNK_CODE_SECTION_NAME};
+use vm::output_model::{
+    BinOutputSpec, BinRange, OutputFixupRecord, IMPLICIT_HUNK_CODE_SECTION_NAME,
+};
 use vm::portable_contract::{PortableOperatorKind, PortableSpan, PortableToken, PortableTokenKind};
 use vm::rollout::{
     family_runtime_mode, family_runtime_rollout_policy, package_runtime_default_enabled_for_family,
@@ -10569,6 +10571,107 @@ fn native_cli_6502_contract_expected_bin() -> Vec<u8> {
     image.store_slice(0x0805, jmp.as_slice());
     vm::vm_opasm::build_bin_output_payload(&image, 0x0800, 0x0807, 0xff)
         .expect("build native CLI 6502 smoke bin payload")
+}
+
+fn first_run_6502_artifact_contract_expected_bin() -> Vec<u8> {
+    vec![
+        0xA9, 0x42, 0x8D, 0x02, 0x02, 0xF0, 0x05, 0xD0, 0xF7, 0xA2, 0x10, 0xE8, 0xAA, 0x0C, 0x08,
+        0x03, 0x08, 0x4F, 0x4B, 0xFF, 0xFF,
+    ]
+}
+
+#[test]
+fn motorola68020_opforge_native_cli_first_run_artifact_contract_locks_rust_outputs() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root
+        .join("examples")
+        .join("mos6502")
+        .join("6502_first_run_artifact_contract.asm");
+    let out_dir = create_temp_dir("native-cli-6502-first-run-artifacts");
+    let header_title = format!("opForge Assembler v{VERSION}");
+    let bin_specs = [BinOutputSpec {
+        name: Some("6502-first-run.bin".to_string()),
+        range: Some(BinRange {
+            start_str: "0800".to_string(),
+            start: 0x0800,
+            end: 0x0814,
+        }),
+    }];
+
+    let report = run_assembly(AssemblyExecutionRequest {
+        root_path: &asm_path,
+        execution_mode: ExecutionMode::Lockstep {
+            continuation_head: ContinuationHead::Vm,
+        },
+        input_base: "6502-first-run",
+        defines: &[],
+        include_paths: &[],
+        module_paths: &[],
+        pp_macro_depth: 64,
+        cpu_override: None,
+        default_cpu: default_cpu(),
+        max_loop_iterations: 1000,
+        opasm_package_path: None,
+        out_dir: Some(&out_dir),
+        debug_conditionals: false,
+        tab_size: None,
+        output_format: EngineOutputFormat::Text,
+        go_addr: None,
+        bin_specs: &bin_specs,
+        fill_byte: 0xff,
+        fill_byte_set: false,
+        default_outputs: false,
+        labels_file: None,
+        label_output_format: CliLabelOutputFormat::Default,
+        dependency_output: None,
+        outfile_override: Some("6502-first-run"),
+        list_name_override: Some("6502-first-run.lst"),
+        hex_name_override: Some("6502-first-run.hex"),
+        srec_name_override: None,
+        hunk_name_override: None,
+        header_title: &header_title,
+        output_sink: None,
+        source_provider: None,
+        suppress_outputs: false,
+    })
+    .unwrap_or_else(|err| panic!("first-run 6502 artifact contract should assemble: {err}"));
+
+    assert_partitioned_report_traces(
+        report.runtime_processing_traces(),
+        "first-run 6502 artifact contract",
+    );
+    assert_lockstep_reference_report_clean(
+        report.lockstep_report(),
+        "first-run 6502 artifact contract",
+        true,
+    );
+
+    let expected_bin = first_run_6502_artifact_contract_expected_bin();
+    let bin = fs::read(out_dir.join("6502-first-run.bin")).expect("read first-run bin");
+    assert_eq!(bin, expected_bin);
+
+    let prg =
+        fs::read(out_dir.join("build").join("6502-first-run.prg")).expect("read first-run PRG");
+    let mut expected_prg = vec![0x00, 0x08];
+    expected_prg.extend_from_slice(&expected_bin);
+    assert_eq!(prg, expected_prg);
+
+    let hex = fs::read_to_string(out_dir.join("6502-first-run.hex")).expect("read first-run hex");
+    assert_eq!(
+        hex,
+        ":15080000A9428D0202F005D0F7A210E8AA0C0803084F4BFFFFB0\n:00000001FF\n"
+    );
+
+    let listing =
+        fs::read_to_string(out_dir.join("6502-first-run.lst")).expect("read first-run listing");
+    assert!(
+        listing.contains("A9 42") && listing.contains("lda #$42"),
+        "listing should include instruction bytes and source:\n{listing}"
+    );
+    assert!(
+        listing.contains("FF FF") && listing.contains(".fill byte, 2, $ff"),
+        "listing should include fill bytes and source:\n{listing}"
+    );
 }
 
 #[test]

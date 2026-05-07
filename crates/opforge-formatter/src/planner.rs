@@ -2,8 +2,11 @@
 // Copyright (C) 2026 Erik van der Tier
 
 use super::{
-    CaseStyle, FormatterConfig, LabelColonStyle, SurfaceDocument, SurfaceLine, SurfaceLineKind,
-    SurfaceParsedDocument, SurfaceParsedLine,
+    symbol_context::{
+        build_inline_context, effective_label_case, DocumentFormatContext, LabelRole,
+    },
+    CaseStyle, FormatterConfig, IndentChar, LabelCaseStyle, LabelColonStyle, SurfaceDocument,
+    SurfaceLine, SurfaceLineKind, SurfaceParsedDocument, SurfaceParsedLine,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +43,17 @@ pub fn plan_document(
     parsed: &SurfaceParsedDocument,
     config: &FormatterConfig,
 ) -> FormatPlan {
+    let source = doc.render();
+    let context = build_inline_context(&source, parsed, config);
+    plan_document_with_context(doc, parsed, config, &context)
+}
+
+pub(crate) fn plan_document_with_context(
+    doc: &SurfaceDocument,
+    parsed: &SurfaceParsedDocument,
+    config: &FormatterConfig,
+    context: &DocumentFormatContext,
+) -> FormatPlan {
     let mut plan = FormatPlan {
         lines: Vec::with_capacity(doc.lines.len()),
     };
@@ -70,7 +84,10 @@ pub fn plan_document(
             if parsed_line.is_fallback() {
                 (vec![line.clone()], true)
             } else {
-                (normalize_line(line, parsed_line, config), false)
+                (
+                    normalize_line(line, parsed_line, config, context, idx),
+                    false,
+                )
             }
         } else {
             (vec![line.clone()], true)
@@ -92,15 +109,22 @@ fn normalize_line(
     line: &SurfaceLine,
     parsed: &SurfaceParsedLine,
     config: &FormatterConfig,
+    context: &DocumentFormatContext,
+    line_index: usize,
 ) -> Vec<SurfaceLine> {
     match parsed.kind {
+        SurfaceLineKind::Assignment => {
+            return vec![normalize_assignment_line(
+                line, parsed, config, context, line_index,
+            )];
+        }
         SurfaceLineKind::Directive | SurfaceLineKind::Instruction => {}
         SurfaceLineKind::CommentOnly => {
             if line.indent.is_empty() {
                 return vec![line.clone()];
             }
             return vec![SurfaceLine {
-                indent: " ".repeat(config.label_alignment_column),
+                indent: indent_fill(config),
                 code: String::new(),
                 comment: line.comment.clone(),
                 line_ending: line.line_ending,
@@ -108,11 +132,13 @@ fn normalize_line(
         }
         SurfaceLineKind::LabelOnly => {
             if config.label_colon_style == LabelColonStyle::Keep
-                && config.label_case == CaseStyle::Keep
+                && label_case_for_line(context, config, line_index) == LabelCaseStyle::Keep
             {
                 return vec![line.clone()];
             }
-            return vec![normalize_label_only_line(line, parsed, config)];
+            return vec![normalize_label_only_line(
+                line, parsed, config, context, line_index,
+            )];
         }
         _ => return vec![line.clone()],
     }
@@ -126,21 +152,18 @@ fn normalize_line(
     let mut code = String::new();
     if let Some(label) = parsed.label.as_deref() {
         indent.clear();
-        let current_label_token = format_label_token(label, parsed, config);
-        let spacing = if config.label_alignment_column > current_label_token.len() {
-            config.label_alignment_column - current_label_token.len()
-        } else {
-            1
-        };
+        let current_label_token = format_label_token(label, parsed, config, context, line_index);
         code.push_str(&current_label_token);
-        code.push_str(&" ".repeat(spacing.max(1)));
+        code.push_str(&spacing_after_label(&current_label_token, config));
         label_token = Some(current_label_token);
-    } else if parsed.kind == SurfaceLineKind::Directive {
+    } else if parsed.kind == SurfaceLineKind::Directive
+        || parsed.kind == SurfaceLineKind::Assignment
+    {
         if !line.indent.is_empty() {
-            indent = " ".repeat(config.label_alignment_column);
+            indent = indent_fill(config);
         }
     } else if parsed.kind == SurfaceLineKind::Instruction && config.align_unlabeled_instructions {
-        indent = " ".repeat(config.label_alignment_column);
+        indent = indent_fill(config);
     }
     let head = if parsed.kind == SurfaceLineKind::Instruction {
         config.mnemonic_case.apply(raw_head)
@@ -152,6 +175,7 @@ fn normalize_line(
     code.push_str(&head);
 
     let mut tail = normalize_operand_tail(&parsed.tail);
+    tail = rewrite_tail(parsed, &tail, context, line_index);
     if parsed.kind == SurfaceLineKind::Instruction {
         tail = apply_register_case(&tail, config.register_case);
     }
@@ -168,6 +192,7 @@ fn normalize_line(
 
     if parsed.kind == SurfaceLineKind::Instruction
         && config.split_long_label_instructions
+        && config.indent_char == IndentChar::Space
         && label_token
             .as_ref()
             .is_some_and(|token| token.len() >= config.label_alignment_column)
@@ -197,7 +222,7 @@ fn normalize_line(
                 line_ending: split_inserted_line_ending(line.line_ending),
             },
             SurfaceLine {
-                indent: " ".repeat(config.label_alignment_column),
+                indent: indent_fill(config),
                 code: instruction_code,
                 comment,
                 line_ending: line.line_ending,
@@ -226,15 +251,75 @@ fn normalize_line(
     }]
 }
 
+fn normalize_assignment_line(
+    line: &SurfaceLine,
+    parsed: &SurfaceParsedLine,
+    config: &FormatterConfig,
+    context: &DocumentFormatContext,
+    line_index: usize,
+) -> SurfaceLine {
+    let Some(operator) = parsed.head.as_deref() else {
+        return line.clone();
+    };
+
+    let indent = if line.indent.is_empty() {
+        String::new()
+    } else {
+        indent_fill(config)
+    };
+    let raw_code = parsed.raw_code.trim_end_matches([' ', '\t']);
+    let search_start = parsed.label.as_deref().map(str::len).unwrap_or(0);
+    let Some(relative_operator_index) = raw_code[search_start..].find(operator) else {
+        return SurfaceLine {
+            indent,
+            code: line.code.clone(),
+            comment: line.comment.clone(),
+            line_ending: line.line_ending,
+        };
+    };
+    let operator_index = search_start + relative_operator_index;
+    let mut code = String::new();
+
+    if let Some(label) = parsed.label.as_deref() {
+        let label_token =
+            apply_case_to_label(label, label_case_for_line(context, config, line_index));
+        code.push_str(&label_token);
+        code.push_str(&assignment_spacing_before_operator(
+            raw_code,
+            operator_index,
+            label,
+            &label_token,
+        ));
+    } else if operator_index > 0 {
+        code.push_str(&raw_code[..operator_index]);
+    }
+
+    code.push_str(operator);
+
+    let mut tail = raw_code[operator_index + operator.len()..].to_string();
+    tail = rewrite_identifier_tokens(&tail, &context.reference_renames);
+    tail = apply_hex_literal_case(&tail, config.hex_literal_case);
+    code.push_str(&tail);
+
+    SurfaceLine {
+        indent,
+        code,
+        comment: line.comment.clone(),
+        line_ending: line.line_ending,
+    }
+}
+
 fn normalize_label_only_line(
     line: &SurfaceLine,
     parsed: &SurfaceParsedLine,
     config: &FormatterConfig,
+    context: &DocumentFormatContext,
+    line_index: usize,
 ) -> SurfaceLine {
     let Some(label) = parsed.label.as_deref() else {
         return line.clone();
     };
-    let mut code = apply_case_to_label(label, config.label_case);
+    let mut code = apply_case_to_label(label, label_case_for_line(context, config, line_index));
     if label_should_have_colon(
         raw_label_has_colon(&parsed.raw_code, label),
         config.label_colon_style,
@@ -266,8 +351,15 @@ fn split_inserted_line_ending(
     }
 }
 
-fn format_label_token(label: &str, parsed: &SurfaceParsedLine, config: &FormatterConfig) -> String {
-    let mut label_token = apply_case_to_label(label, config.label_case);
+fn format_label_token(
+    label: &str,
+    parsed: &SurfaceParsedLine,
+    config: &FormatterConfig,
+    context: &DocumentFormatContext,
+    line_index: usize,
+) -> String {
+    let mut label_token =
+        apply_case_to_label(label, label_case_for_line(context, config, line_index));
     if label_should_have_colon(
         raw_label_has_colon(&parsed.raw_code, label),
         config.label_colon_style,
@@ -277,11 +369,57 @@ fn format_label_token(label: &str, parsed: &SurfaceParsedLine, config: &Formatte
     label_token
 }
 
-fn apply_case_to_label(label: &str, case: CaseStyle) -> String {
+fn apply_case_to_label(label: &str, case: LabelCaseStyle) -> String {
     if label == "*" {
         return label.to_string();
     }
     case.apply(label)
+}
+
+fn label_case_for_line(
+    context: &DocumentFormatContext,
+    config: &FormatterConfig,
+    line_index: usize,
+) -> LabelCaseStyle {
+    let role = context
+        .label_roles
+        .get(line_index)
+        .and_then(|role| *role)
+        .unwrap_or(LabelRole::Generic);
+    effective_label_case(config, role)
+}
+
+fn indent_fill(config: &FormatterConfig) -> String {
+    config.indent_char.fill(config.label_alignment_column)
+}
+
+fn spacing_after_label(label_token: &str, config: &FormatterConfig) -> String {
+    match config.indent_char {
+        IndentChar::Space => {
+            let spacing = if config.label_alignment_column > label_token.len() {
+                config.label_alignment_column - label_token.len()
+            } else {
+                1
+            };
+            " ".repeat(spacing.max(1))
+        }
+        IndentChar::Tab => "\t".repeat(config.label_alignment_column.max(1)),
+    }
+}
+
+fn assignment_spacing_before_operator(
+    raw_code: &str,
+    operator_index: usize,
+    original_label: &str,
+    styled_label: &str,
+) -> String {
+    let original_spacing = &raw_code[original_label.len()..operator_index];
+    if styled_label.len() == original_label.len() {
+        return original_spacing.to_string();
+    }
+
+    let spacing = operator_index.saturating_sub(styled_label.len()).max(1);
+    " ".repeat(spacing)
 }
 
 fn label_should_have_colon(has_colon: bool, style: LabelColonStyle) -> bool {
@@ -297,6 +435,201 @@ fn raw_label_has_colon(raw_code: &str, label: &str) -> bool {
         .as_bytes()
         .get(label.len())
         .is_some_and(|byte| *byte == b':')
+}
+
+fn rewrite_tail(
+    parsed: &SurfaceParsedLine,
+    tail: &str,
+    context: &DocumentFormatContext,
+    line_index: usize,
+) -> String {
+    match parsed.kind {
+        SurfaceLineKind::Instruction | SurfaceLineKind::Assignment => {
+            rewrite_identifier_tokens(tail, &context.reference_renames)
+        }
+        SurfaceLineKind::Directive => {
+            let Some(head) = parsed.head.as_deref() else {
+                return tail.to_string();
+            };
+            if head.eq_ignore_ascii_case(".module") {
+                return tail.to_string();
+            }
+            if head.eq_ignore_ascii_case(".use") {
+                let renames = context
+                    .selective_import_renames
+                    .get(line_index)
+                    .cloned()
+                    .unwrap_or_default();
+                return rewrite_use_tail(tail, &renames);
+            }
+            rewrite_identifier_tokens(tail, &context.reference_renames)
+        }
+        _ => tail.to_string(),
+    }
+}
+
+fn rewrite_identifier_tokens(
+    input: &str,
+    renames: &std::collections::HashMap<String, String>,
+) -> String {
+    if renames.is_empty() {
+        return input.to_string();
+    }
+
+    let chars: Vec<char> = input.chars().collect();
+    let mut out = String::with_capacity(input.len());
+    let mut idx = 0usize;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escaped = false;
+
+    while idx < chars.len() {
+        let ch = chars[idx];
+        if escaped {
+            out.push(ch);
+            escaped = false;
+            idx += 1;
+            continue;
+        }
+        if ch == '\\' && (in_single || in_double) {
+            out.push(ch);
+            escaped = true;
+            idx += 1;
+            continue;
+        }
+        if ch == '\'' && !in_double {
+            in_single = !in_single;
+            out.push(ch);
+            idx += 1;
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+            out.push(ch);
+            idx += 1;
+            continue;
+        }
+        if in_single || in_double {
+            out.push(ch);
+            idx += 1;
+            continue;
+        }
+
+        if ch.is_ascii_alphabetic() || ch == '_' {
+            let start = idx;
+            idx += 1;
+            while idx < chars.len() && is_identish(chars[idx]) {
+                idx += 1;
+            }
+            let token: String = chars[start..idx].iter().collect();
+            if let Some(styled) = renames.get(&token) {
+                out.push_str(styled);
+            } else {
+                out.push_str(&token);
+            }
+            continue;
+        }
+
+        out.push(ch);
+        idx += 1;
+    }
+
+    out
+}
+
+fn rewrite_use_tail(input: &str, renames: &std::collections::HashMap<String, String>) -> String {
+    if renames.is_empty() {
+        return input.to_string();
+    }
+
+    let chars: Vec<char> = input.chars().collect();
+    let mut out = String::with_capacity(input.len());
+    let mut idx = 0usize;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut escaped = false;
+    let mut seen_items_paren = false;
+    let mut paren_depth = 0usize;
+    let mut skip_next_alias = false;
+
+    while idx < chars.len() {
+        let ch = chars[idx];
+        if escaped {
+            out.push(ch);
+            escaped = false;
+            idx += 1;
+            continue;
+        }
+        if ch == '\\' && (in_single || in_double) {
+            out.push(ch);
+            escaped = true;
+            idx += 1;
+            continue;
+        }
+        if ch == '\'' && !in_double {
+            in_single = !in_single;
+            out.push(ch);
+            idx += 1;
+            continue;
+        }
+        if ch == '"' && !in_single {
+            in_double = !in_double;
+            out.push(ch);
+            idx += 1;
+            continue;
+        }
+        if in_single || in_double {
+            out.push(ch);
+            idx += 1;
+            continue;
+        }
+        if ch == '(' {
+            if !seen_items_paren {
+                seen_items_paren = true;
+                paren_depth = 1;
+            } else if paren_depth > 0 {
+                paren_depth += 1;
+            }
+            out.push(ch);
+            idx += 1;
+            continue;
+        }
+        if ch == ')' {
+            paren_depth = paren_depth.saturating_sub(1);
+            out.push(ch);
+            idx += 1;
+            continue;
+        }
+        if ch.is_ascii_alphabetic() || ch == '_' {
+            let start = idx;
+            idx += 1;
+            while idx < chars.len() && is_identish(chars[idx]) {
+                idx += 1;
+            }
+            let token: String = chars[start..idx].iter().collect();
+            if paren_depth > 0 {
+                if token.eq_ignore_ascii_case("as") {
+                    skip_next_alias = true;
+                    out.push_str(&token);
+                } else if skip_next_alias {
+                    skip_next_alias = false;
+                    out.push_str(&token);
+                } else if let Some(styled) = renames.get(&token) {
+                    out.push_str(styled);
+                } else {
+                    out.push_str(&token);
+                }
+            } else {
+                out.push_str(&token);
+            }
+            continue;
+        }
+
+        out.push(ch);
+        idx += 1;
+    }
+
+    out
 }
 
 fn normalize_operand_tail(tail: &str) -> String {
@@ -423,8 +756,9 @@ fn should_case_register_token(chars: &[char], token_start: usize, token: &str) -
 }
 
 fn is_known_register_token(token: &str) -> bool {
+    let upper = token.to_ascii_uppercase();
     matches!(
-        token.to_ascii_uppercase().as_str(),
+        upper.as_str(),
         // Intel 8080/8085 register names and pairs.
         "A"
             | "B"
@@ -454,7 +788,19 @@ fn is_known_register_token(token: &str) -> bool {
             | "X"
             | "Y"
             | "S"
-    )
+            // Motorola 68000-family control registers commonly used in sources.
+            | "CCR"
+            | "SR"
+            | "USP"
+    ) || is_m68k_general_register(&upper)
+}
+
+fn is_m68k_general_register(token: &str) -> bool {
+    let bytes = token.as_bytes();
+    if bytes.len() != 2 {
+        return false;
+    }
+    matches!(bytes[0], b'D' | b'A') && bytes[1].is_ascii_digit() && bytes[1] <= b'7'
 }
 
 fn apply_hex_literal_case(input: &str, case: CaseStyle) -> String {
@@ -607,7 +953,8 @@ fn trim_trailing_space(out: &mut String) {
 mod tests {
     use super::plan_document;
     use crate::formatter::{
-        parse_document, tokenize_source, CaseStyle, FormatterConfig, LabelColonStyle,
+        parse_document, tokenize_source, CaseStyle, FormatterConfig, IndentChar, LabelCaseStyle,
+        LabelColonStyle,
     };
 
     #[test]
@@ -671,7 +1018,7 @@ mod tests {
             &FormatterConfig {
                 align_unlabeled_instructions: true,
                 label_colon_style: LabelColonStyle::Without,
-                label_case: CaseStyle::Lower,
+                label_case: LabelCaseStyle::Lower,
                 mnemonic_case: CaseStyle::Lower,
                 hex_literal_case: CaseStyle::Lower,
                 ..FormatterConfig::default()
@@ -694,7 +1041,7 @@ mod tests {
             &parsed,
             &FormatterConfig {
                 label_colon_style: LabelColonStyle::Without,
-                label_case: CaseStyle::Lower,
+                label_case: LabelCaseStyle::Lower,
                 ..FormatterConfig::default()
             },
         );
@@ -758,6 +1105,55 @@ mod tests {
             },
         );
         assert_eq!(plan.render(), "VeryLongLabel:\n        lda #1  ; c\n");
+        assert_eq!(plan.changed_line_count(), 1);
+    }
+
+    #[test]
+    fn planner_uses_tabs_for_instruction_indent_and_label_spacing() {
+        let source = "Start: MOVE.L D0,D1\n    BRA Start\n";
+        let doc = tokenize_source(source);
+        let parsed = parse_document(&doc);
+        let plan = plan_document(
+            &doc,
+            &parsed,
+            &FormatterConfig {
+                indent_char: IndentChar::Tab,
+                label_alignment_column: 1,
+                label_colon_style: LabelColonStyle::Without,
+                label_case: LabelCaseStyle::LowerCamel,
+                mnemonic_case: CaseStyle::Lower,
+                register_case: CaseStyle::Lower,
+                ..FormatterConfig::default()
+            },
+        );
+        assert_eq!(plan.render(), "start\tmove.l d0, d1\n\tbra start\n");
+    }
+
+    #[test]
+    fn planner_preserves_assignment_alignment_by_default() {
+        let source = "TK_KIND_OP_POWER                = 21\n";
+        let doc = tokenize_source(source);
+        let parsed = parse_document(&doc);
+        let plan = plan_document(&doc, &parsed, &FormatterConfig::default());
+        assert_eq!(plan.render(), source);
+        assert_eq!(plan.changed_line_count(), 0);
+    }
+
+    #[test]
+    fn planner_preserves_assignment_operator_column_when_label_case_changes() {
+        let source = "myValue = OtherValue + $ab\n";
+        let doc = tokenize_source(source);
+        let parsed = parse_document(&doc);
+        let plan = plan_document(
+            &doc,
+            &parsed,
+            &FormatterConfig {
+                constant_label_case: LabelCaseStyle::UpperSnake,
+                hex_literal_case: CaseStyle::Upper,
+                ..FormatterConfig::default()
+            },
+        );
+        assert_eq!(plan.render(), "MY_VALUE = OtherValue + $AB\n");
         assert_eq!(plan.changed_line_count(), 1);
     }
 }

@@ -1,8 +1,8 @@
 ; Shared native VM service ABI constants for the AmigaOS tkpkg scaffold.
 
-        .module tkpkg.amigaos.abi
-        .cpu 68020
-        .pub
+	.module tkpkg.amigaos.abi
+	.cpu 68020
+	.pub
 
 NATIVE_ABI_MAGIC_0                   = 'O'
 NATIVE_ABI_MAGIC_1                   = 'T'
@@ -59,31 +59,31 @@ ENCODE_INSTRUCTION_SAMPLE_MODE_LEN   = 9
 ENCODE_INSTRUCTION_SAMPLE_OPER_COUNT = 1
 ENCODE_INSTRUCTION_SAMPLE_OPER_LEN   = 1
 
-        .section data, kind=data
+	.section data, kind=data
 
-abiMarker:
-        .byte "OPFORGE-TKPKG-ABI-V1", 0
+AbiMarker
+	.byte "OPFORGE-TKPKG-ABI-V1", 0
 
-wireContractMarker:
-        .byte "TKPKG-WIRE-CONTRACT-V1", 0
+WireContractMarker
+	.byte "TKPKG-WIRE-CONTRACT-V1", 0
 
-wireSetPipelineExample:
-        .byte "68020", 0, "amigaos"
+WireSetPipelineExample
+	.byte "68020", 0, "amigaos"
 
-wireTokenizeLineExample:
-        .byte 42, 0, 0, 0
-        .byte "move.b d0,d1"
+WireTokenizeLineExample
+	.byte 42, 0, 0, 0
+	.byte "move.b d0,d1"
 
-wireParseLineExample:
-        .byte 5, 0, 0, 0
-        .byte "start:  lda #$42"
+WireParseLineExample
+	.byte 5, 0, 0, 0
+	.byte "start:  lda #$42"
 
-wireEncodeInstructionExample:
-        .byte 3, "LDA"
-        .byte 1
-        .byte 9, "immediate"
-        .byte 1
-        .byte 1, $42
+WireEncodeInstructionExample
+	.byte 3, "LDA"
+	.byte 1
+	.byte 9, "immediate"
+	.byte 1
+	.byte 1, $42
 
-        .endsection
-        .endmodule
+	.endsection
+	.endmodule

@@ -3,39 +3,39 @@
 ; Owns the AmigaOS Shell bridge, report formatting surface, and caller-owned
 ; buffers. Imports the tokenizer VM contract from tokvm.amigaos.tokenizer_vm.
 
-        .module tokvm.amigaos.cli_harness
-        .cpu 68020
-        .pub
-        .use tokvm.amigaos.tokenizer_vm (tokvm_run_68000, tokvm_set_step_budget_68000)
-        .use tokvm.amigaos.tokenizer_vm (demoProgram, demoProgramLen, TOKVM_DEFAULT_MAX_STEPS_PER_LINE)
-        .use tokvm.amigaos.tokenizer_vm (TOKEN_BUFFER_CAPACITY, TOKEN_RECORD_SIZE)
-        .use tokvm.amigaos.tokenizer_vm (SOURCE_BUFFER_CAPACITY, SCRATCH_BUFFER_CAPACITY)
-        .use tokvm.amigaos.tokenizer_vm (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_PROGRAM, TK_KIND_OP_LT)
+	.module tokvm.amigaos.cli_harness
+	.cpu 68020
+	.pub
+	.use tokvm.amigaos.tokenizer_vm (tokvmRun68000, tokvmSetStepBudget68000)
+	.use tokvm.amigaos.tokenizer_vm (DemoProgram, DemoProgramLen, TOKVM_DEFAULT_MAX_STEPS_PER_LINE)
+	.use tokvm.amigaos.tokenizer_vm (TOKEN_BUFFER_CAPACITY, TOKEN_RECORD_SIZE)
+	.use tokvm.amigaos.tokenizer_vm (SOURCE_BUFFER_CAPACITY, SCRATCH_BUFFER_CAPACITY)
+	.use tokvm.amigaos.tokenizer_vm (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_PROGRAM, TK_KIND_OP_LT)
 
 ; ---------------------------------------------------------------------------
 ; AmigaOS Exec/DOS offsets used by the CLI harness layer.
 ; ---------------------------------------------------------------------------
 
-SysBase                         = 4
+SYS_BASE                        = 4
 
-pr_CLI                          = 172
-pr_MsgPort                      = 92
+PR_CLI                          = 172
+PR_MSG_PORT                     = 92
 
-OpenLibrary                     = -552
-CloseLibrary                    = -414
-FindTask                        = -294
-WaitPort                        = -384
-GetMsg                          = -372
-ReplyMsg                        = -378
-Forbid                          = -132
+OPEN_LIBRARY                    = -552
+CLOSE_LIBRARY                   = -414
+FIND_TASK                       = -294
+WAIT_PORT                       = -384
+GET_MSG                         = -372
+REPLY_MSG                       = -378
+FORBID                          = -132
 
-Open                            = -30
-Close                           = -36
-Read                            = -42
-Write                           = -48
-Output                          = -60
-IoErr                           = -132
-GetArgStr                       = -534
+OPEN                            = -30
+CLOSE                           = -36
+READ                            = -42
+WRITE                           = -48
+OUTPUT                          = -60
+IO_ERR                          = -132
+GET_ARG_STR                     = -534
 
 MODE_OLDFILE                    = 1005
 MODE_NEWFILE                    = 1006
@@ -69,7 +69,7 @@ GLOBALS_LAST_IOERR              = 8
 GLOBALS_OUTPUT_HANDLE           = 12
 GLOBALS_SIZE                    = 16
 
-        .section code, kind=code
+	.section code, kind=code
 
 ; ---------------------------------------------------------------------------
 ; Host-facing harness.
@@ -82,643 +82,643 @@ GLOBALS_SIZE                    = 16
 ; 5. render the OPFORGE-TOKVM 1 report from the native token buffer
 ; ---------------------------------------------------------------------------
 
-tokvm_amigaos_cli_harness_run:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        LEA globals, A4  ; shared host state block: DOS base, stdout, output handle, last IoErr
-        MOVEQ #RETURN_OK, D7  ; optimistic Shell return until a host or VM failure overrides it
+tokvmAmigaosCliHarnessRun
+	movem.l d2-d7/a2-a6, -(sp)
+	lea Globals, a4  ; shared host state block: DOS base, stdout, output handle, last IoErr
+	moveq #RETURN_OK, d7  ; optimistic Shell return until a host or VM failure overrides it
 
-        BSR.W amigaos_cli_fileio_init  ; mirrors Rust-side host bootstrap: open DOS and discover stdout
-        TST.L D0
-        BNE.W tokvmHarnessCleanup
+	bsr.w amigaosCliFileioInit  ; mirrors Rust-side host bootstrap: open DOS and discover stdout
+	tst.l d0
+	bne.w tokvmHarnessCleanup
 
-        BSR.W amigaos_cli_fileio_get_arg_str  ; DOS GetArgStr provides the raw Shell argument tail
-        BSR.W tokvm_amigaos_cli_harness_parse_args  ; native spec is intentionally fixed: <input-path> <output-path>
-        TST.L D0
-        BEQ.W tokvmHarnessArgsParsed
-        MOVEQ #RETURN_USAGE, D7
-        MOVE.L GLOBALS_STDOUT_HANDLE(A4), D1
-        CMPI.L #HARNESS_STATUS_QUOTED_PATH, D0
-        BNE.S tokvmHarnessUsage
-        LEA quotedPathMessage, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        BRA.W tokvmHarnessCleanup
+	bsr.w amigaosCliFileioGetArgStr  ; DOS GetArgStr provides the raw Shell argument tail
+	bsr.w tokvmAmigaosCliHarnessParseArgs  ; native spec is intentionally fixed: <input-path> <output-path>
+	tst.l d0
+	beq.w tokvmHarnessArgsParsed
+	moveq #RETURN_USAGE, d7
+	move.l GLOBALS_STDOUT_HANDLE(a4), d1
+	cmpi.l #HARNESS_STATUS_QUOTED_PATH, d0
+	bne.s tokvmHarnessUsage
+	lea QuotedPathMessage, a0
+	bsr.w amigaosCliFileioWriteCstr
+	bra.w tokvmHarnessCleanup
 
-tokvmHarnessUsage:
-        LEA usageMessage, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        BRA.W tokvmHarnessCleanup
+tokvmHarnessUsage
+	lea UsageMessage, a0
+	bsr.w amigaosCliFileioWriteCstr
+	bra.w tokvmHarnessCleanup
 
-tokvmHarnessArgsParsed:
-        LEA outputPathBuffer, A0  ; open the report target first so later failure paths can still emit report text
-        BSR.W amigaos_cli_fileio_open_output
-        TST.L D0
-        BNE.S tokvmHarnessOutputOpened
-        MOVEQ #RETURN_OUTPUT_FAILURE, D7
-        MOVE.L GLOBALS_STDOUT_HANDLE(A4), D1
-        LEA outputOpenMessage, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        BRA.W tokvmHarnessCleanup
+tokvmHarnessArgsParsed
+	lea OutputPathBuffer, a0  ; open the report target first so later failure paths can still emit report text
+	bsr.w amigaosCliFileioOpenOutput
+	tst.l d0
+	bne.s tokvmHarnessOutputOpened
+	moveq #RETURN_OUTPUT_FAILURE, d7
+	move.l GLOBALS_STDOUT_HANDLE(a4), d1
+	lea OutputOpenMessage, a0
+	bsr.w amigaosCliFileioWriteCstr
+	bra.w tokvmHarnessCleanup
 
-tokvmHarnessOutputOpened:
-        MOVE.L D0, GLOBALS_OUTPUT_HANDLE(A4)
-        MOVE.L D0, D6  ; keep the output handle live for report writes and final cleanup
-        LEA inputPathBuffer, A0
-        BSR.W amigaos_cli_fileio_open_input
-        TST.L D0
-        BNE.S tokvmHarnessInputOpened
-        MOVEQ #RETURN_FILE_FAILURE, D7
-        MOVE.L #HARNESS_STATUS_INPUT_OPEN, D0
-        BSR.W tokvm_amigaos_cli_harness_write_failure_report
-        TST.L D0
-        BEQ.W tokvmHarnessCleanup
-        MOVEQ #RETURN_OUTPUT_FAILURE, D7
-        BRA.W tokvmHarnessCleanup
+tokvmHarnessOutputOpened
+	move.l d0, GLOBALS_OUTPUT_HANDLE(a4)
+	move.l d0, d6  ; keep the output handle live for report writes and final cleanup
+	lea InputPathBuffer, a0
+	bsr.w amigaosCliFileioOpenInput
+	tst.l d0
+	bne.s tokvmHarnessInputOpened
+	moveq #RETURN_FILE_FAILURE, d7
+	move.l #HARNESS_STATUS_INPUT_OPEN, d0
+	bsr.w tokvmAmigaosCliHarnessWriteFailureReport
+	tst.l d0
+	beq.w tokvmHarnessCleanup
+	moveq #RETURN_OUTPUT_FAILURE, d7
+	bra.w tokvmHarnessCleanup
 
-tokvmHarnessInputOpened:
-        MOVE.L D0, D5  ; input handle lives only until the bounded single-line read completes
-        LEA sourceBuffer, A0
-        MOVE.L #SOURCE_BUFFER_CAPACITY, D0  ; tokvm native ABI takes a caller-owned contiguous source slice
-        MOVE.L D5, D1
-        BSR.W amigaos_cli_fileio_read
-        CMP.L #-1, D0
-        BNE.S tokvmHarnessReadOk
-        MOVE.L D5, D1
-        BSR.W amigaos_cli_fileio_close
-        MOVEQ #RETURN_FILE_FAILURE, D7
-        MOVE.L #HARNESS_STATUS_INPUT_READ, D0
-        BSR.W tokvm_amigaos_cli_harness_write_failure_report
-        TST.L D0
-        BEQ.W tokvmHarnessCleanup
-        MOVEQ #RETURN_OUTPUT_FAILURE, D7
-        BRA.W tokvmHarnessCleanup
+tokvmHarnessInputOpened
+	move.l d0, d5  ; input handle lives only until the bounded single-line read completes
+	lea SourceBuffer, a0
+	move.l #SOURCE_BUFFER_CAPACITY, d0  ; tokvm native ABI takes a caller-owned contiguous source slice
+	move.l d5, d1
+	bsr.w amigaosCliFileioRead
+	cmp.l #-1, d0
+	bne.s tokvmHarnessReadOk
+	move.l d5, d1
+	bsr.w amigaosCliFileioClose
+	moveq #RETURN_FILE_FAILURE, d7
+	move.l #HARNESS_STATUS_INPUT_READ, d0
+	bsr.w tokvmAmigaosCliHarnessWriteFailureReport
+	tst.l d0
+	beq.w tokvmHarnessCleanup
+	moveq #RETURN_OUTPUT_FAILURE, d7
+	bra.w tokvmHarnessCleanup
 
-tokvmHarnessReadOk:
-        MOVE.L D0, D4  ; D4 becomes source byte length, matching tokvm_run_68000 input ABI
-        LEA inputProbeByte, A0
-        MOVEQ #1, D0  ; one-byte overflow probe enforces the spec's bounded single-line input rule
-        MOVE.L D5, D1
-        BSR.W amigaos_cli_fileio_read
-        MOVE.L D0, D3
-        CMP.L #-1, D0
-        BNE.S tokvmHarnessProbeOk
-        MOVE.L D5, D1
-        BSR.W amigaos_cli_fileio_close
-        MOVEQ #RETURN_FILE_FAILURE, D7
-        MOVE.L #HARNESS_STATUS_INPUT_READ, D0
-        BSR.W tokvm_amigaos_cli_harness_write_failure_report
-        TST.L D0
-        BEQ.W tokvmHarnessCleanup
-        MOVEQ #RETURN_OUTPUT_FAILURE, D7
-        BRA.W tokvmHarnessCleanup
+tokvmHarnessReadOk
+	move.l d0, d4  ; D4 becomes source byte length, matching tokvm_run_68000 input ABI
+	lea InputProbeByte, a0
+	moveq #1, d0  ; one-byte overflow probe enforces the spec's bounded single-line input rule
+	move.l d5, d1
+	bsr.w amigaosCliFileioRead
+	move.l d0, d3
+	cmp.l #-1, d0
+	bne.s tokvmHarnessProbeOk
+	move.l d5, d1
+	bsr.w amigaosCliFileioClose
+	moveq #RETURN_FILE_FAILURE, d7
+	move.l #HARNESS_STATUS_INPUT_READ, d0
+	bsr.w tokvmAmigaosCliHarnessWriteFailureReport
+	tst.l d0
+	beq.w tokvmHarnessCleanup
+	moveq #RETURN_OUTPUT_FAILURE, d7
+	bra.w tokvmHarnessCleanup
 
-tokvmHarnessProbeOk:
-        MOVE.L D5, D1
-        BSR.W amigaos_cli_fileio_close
-        TST.L D0
-        BEQ.S tokvmHarnessProbeClosed
-        MOVEQ #RETURN_FILE_FAILURE, D7
-        MOVE.L #HARNESS_STATUS_INPUT_READ, D0
-        BSR.W tokvm_amigaos_cli_harness_write_failure_report
-        TST.L D0
-        BEQ.W tokvmHarnessCleanup
-        MOVEQ #RETURN_OUTPUT_FAILURE, D7
-        BRA.W tokvmHarnessCleanup
+tokvmHarnessProbeOk
+	move.l d5, d1
+	bsr.w amigaosCliFileioClose
+	tst.l d0
+	beq.s tokvmHarnessProbeClosed
+	moveq #RETURN_FILE_FAILURE, d7
+	move.l #HARNESS_STATUS_INPUT_READ, d0
+	bsr.w tokvmAmigaosCliHarnessWriteFailureReport
+	tst.l d0
+	beq.w tokvmHarnessCleanup
+	moveq #RETURN_OUTPUT_FAILURE, d7
+	bra.w tokvmHarnessCleanup
 
-tokvmHarnessProbeClosed:
-        TST.L D3  ; any extra byte means the caller exceeded SOURCE_BUFFER_CAPACITY
-        BEQ.S tokvmHarnessInvokeVm
-        MOVEQ #RETURN_INPUT_TOO_LARGE, D7
-        MOVE.L #HARNESS_STATUS_INPUT_TOO_LARGE, D0
-        BSR.W tokvm_amigaos_cli_harness_write_failure_report
-        TST.L D0
-        BEQ.W tokvmHarnessCleanup
-        MOVEQ #RETURN_OUTPUT_FAILURE, D7
-        BRA.W tokvmHarnessCleanup
+tokvmHarnessProbeClosed
+	tst.l d3  ; any extra byte means the caller exceeded SOURCE_BUFFER_CAPACITY
+	beq.s tokvmHarnessInvokeVm
+	moveq #RETURN_INPUT_TOO_LARGE, d7
+	move.l #HARNESS_STATUS_INPUT_TOO_LARGE, d0
+	bsr.w tokvmAmigaosCliHarnessWriteFailureReport
+	tst.l d0
+	beq.w tokvmHarnessCleanup
+	moveq #RETURN_OUTPUT_FAILURE, d7
+	bra.w tokvmHarnessCleanup
 
-tokvmHarnessInvokeVm:
-        ; Register ABI for tokvm_run_68000:
-        ; A0/D0 source slice, A1/D1 token buffer+capacity, A2/D2 scratch buffer+capacity,
-        ; A3/D3 demo bytecode pointer+length. This mirrors the native contract documented
-        ; in tokvm_tokenizer_vm.asm and used by the Rust-side bridge tests.
-        MOVE.L #TOKVM_DEFAULT_MAX_STEPS_PER_LINE, D0
-        JSR tokvm_set_step_budget_68000
-        LEA sourceBuffer, A0
-        MOVE.L D4, D0
-        LEA tokenBuffer, A1
-        MOVE.L #TOKEN_BUFFER_CAPACITY, D1
-        LEA lexemeScratch, A2
-        MOVE.L #SCRATCH_BUFFER_CAPACITY, D2
-        LEA demoProgram, A3
-        MOVE.L demoProgramLen, D3
-        JSR tokvm_run_68000
+tokvmHarnessInvokeVm
+	; Register ABI for tokvm_run_68000:
+	; A0/D0 source slice, A1/D1 token buffer+capacity, A2/D2 scratch buffer+capacity,
+	; A3/D3 demo bytecode pointer+length. This mirrors the native contract documented
+	; in tokvm_tokenizer_vm.asm and used by the Rust-side bridge tests.
+	move.l #TOKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
+	jsr tokvmSetStepBudget68000
+	lea SourceBuffer, a0
+	move.l d4, d0
+	lea TokenBuffer, a1
+	move.l #TOKEN_BUFFER_CAPACITY, d1
+	lea LexemeScratch, a2
+	move.l #SCRATCH_BUFFER_CAPACITY, d2
+	lea DemoProgram, a3
+	move.l DemoProgramLen, d3
+	jsr tokvmRun68000
 
-        MOVE.L D0, D4  ; status
-        MOVE.L D1, D5  ; emitted token count
-        MOVE.L D2, D6  ; final source cursor / column end
-        TST.L D4
-        BEQ.S tokvmHarnessWriteVmReport
-        MOVEQ #RETURN_VM_FAILURE, D7
+	move.l d0, d4  ; status
+	move.l d1, d5  ; emitted token count
+	move.l d2, d6  ; final source cursor / column end
+	tst.l d4
+	beq.s tokvmHarnessWriteVmReport
+	moveq #RETURN_VM_FAILURE, d7
 
-tokvmHarnessWriteVmReport:
-        MOVE.L D4, D0
-        MOVE.L D5, D1
-        MOVE.L D6, D2
-        BSR.W tokvm_amigaos_cli_harness_write_report  ; render the OPFORGE-TOKVM 1 report consumed by asm regression tests
-        TST.L D0
-        BEQ.S tokvmHarnessCleanup
-        MOVEQ #RETURN_OUTPUT_FAILURE, D7
+tokvmHarnessWriteVmReport
+	move.l d4, d0
+	move.l d5, d1
+	move.l d6, d2
+	bsr.w tokvmAmigaosCliHarnessWriteReport  ; render the OPFORGE-TOKVM 1 report consumed by asm regression tests
+	tst.l d0
+	beq.s tokvmHarnessCleanup
+	moveq #RETURN_OUTPUT_FAILURE, d7
 
-tokvmHarnessCleanup:
-        MOVE.L GLOBALS_OUTPUT_HANDLE(A4), D1  ; close the report handle even after VM or formatting failures
-        BEQ.S tokvmHarnessShutdown
-        BSR.W amigaos_cli_fileio_close
-        CLR.L GLOBALS_OUTPUT_HANDLE(A4)
-        TST.L D0
-        BEQ.S tokvmHarnessShutdown
-        MOVEQ #RETURN_OUTPUT_FAILURE, D7
+tokvmHarnessCleanup
+	move.l GLOBALS_OUTPUT_HANDLE(a4), d1  ; close the report handle even after VM or formatting failures
+	beq.s tokvmHarnessShutdown
+	bsr.w amigaosCliFileioClose
+	clr.l GLOBALS_OUTPUT_HANDLE(a4)
+	tst.l d0
+	beq.s tokvmHarnessShutdown
+	moveq #RETURN_OUTPUT_FAILURE, d7
 
-tokvmHarnessShutdown:
-        BSR.W amigaos_cli_fileio_shutdown
-        MOVE.L D7, D0
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+tokvmHarnessShutdown
+	bsr.w amigaosCliFileioShutdown
+	move.l d7, d0
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Parse exactly two unquoted Shell paths from DOS GetArgStr output.
 ; This stays intentionally narrower than a full command-line parser because the
 ; harness spec defines a fixed tokvm <input-path> <output-path> contract.
-tokvm_amigaos_cli_harness_parse_args:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVEA.L A0, A3  ; A3 walks the raw DOS argument tail in-place
-        BSR.S tokvmHarnessSkipWhitespace  ; align with the Rust test helper that trims surrounding Shell whitespace
-        TST.B (A3)
-        BEQ.S tokvmHarnessArgsMissing
-        CMPI.B #'"', (A3)  ; quoted paths stay unsupported in this narrow first-shell contract
-        BEQ.S tokvmHarnessArgsQuoted
-        LEA inputPathBuffer, A1
-        BSR.S tokvmHarnessCopyToken  ; copy token 0 => input path
-        TST.L D0
-        BNE.S tokvmHarnessArgsDone
-        BSR.S tokvmHarnessSkipWhitespace
-        TST.B (A3)
-        BEQ.S tokvmHarnessArgsMissing
-        CMPI.B #'"', (A3)
-        BEQ.S tokvmHarnessArgsQuoted
-        LEA outputPathBuffer, A1
-        BSR.S tokvmHarnessCopyToken  ; copy token 1 => output path
-        TST.L D0
-        BNE.S tokvmHarnessArgsDone
-        BSR.S tokvmHarnessSkipWhitespace
-        TST.B (A3)
-        BNE.S tokvmHarnessArgsMissing
-        MOVEQ #0, D0
-        BRA.S tokvmHarnessArgsDone
+tokvmAmigaosCliHarnessParseArgs
+	movem.l d2-d7/a2-a6, -(sp)
+	movea.l a0, a3  ; A3 walks the raw DOS argument tail in-place
+	bsr.s tokvmHarnessSkipWhitespace  ; align with the Rust test helper that trims surrounding Shell whitespace
+	tst.b (a3)
+	beq.s tokvmHarnessArgsMissing
+	cmpi.b #'"', (a3)  ; quoted paths stay unsupported in this narrow first-shell contract
+	beq.s tokvmHarnessArgsQuoted
+	lea InputPathBuffer, a1
+	bsr.s tokvmHarnessCopyToken  ; copy token 0 => input path
+	tst.l d0
+	bne.s tokvmHarnessArgsDone
+	bsr.s tokvmHarnessSkipWhitespace
+	tst.b (a3)
+	beq.s tokvmHarnessArgsMissing
+	cmpi.b #'"', (a3)
+	beq.s tokvmHarnessArgsQuoted
+	lea OutputPathBuffer, a1
+	bsr.s tokvmHarnessCopyToken  ; copy token 1 => output path
+	tst.l d0
+	bne.s tokvmHarnessArgsDone
+	bsr.s tokvmHarnessSkipWhitespace
+	tst.b (a3)
+	bne.s tokvmHarnessArgsMissing
+	moveq #0, d0
+	bra.s tokvmHarnessArgsDone
 
-tokvmHarnessArgsMissing:
-        MOVE.L #HARNESS_STATUS_USAGE, D0
-        BRA.S tokvmHarnessArgsDone
+tokvmHarnessArgsMissing
+	move.l #HARNESS_STATUS_USAGE, d0
+	bra.s tokvmHarnessArgsDone
 
-tokvmHarnessArgsQuoted:
-        MOVE.L #HARNESS_STATUS_QUOTED_PATH, D0
+tokvmHarnessArgsQuoted
+	move.l #HARNESS_STATUS_QUOTED_PATH, d0
 
-tokvmHarnessArgsDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+tokvmHarnessArgsDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
-tokvmHarnessSkipWhitespace:
-        CMPI.B #' ', (A3)
-        BEQ.S tokvmHarnessSkipOne
-        CMPI.B #9, (A3)
-        BEQ.S tokvmHarnessSkipOne
-        CMPI.B #10, (A3)
-        BEQ.S tokvmHarnessSkipOne
-        CMPI.B #13, (A3)
-        BNE.S tokvmHarnessSkipDone
-tokvmHarnessSkipOne:
-        ADDQ.L #1, A3
-        BRA.S tokvmHarnessSkipWhitespace
+tokvmHarnessSkipWhitespace
+	cmpi.b #' ', (a3)
+	beq.s tokvmHarnessSkipOne
+	cmpi.b #9, (a3)
+	beq.s tokvmHarnessSkipOne
+	cmpi.b #10, (a3)
+	beq.s tokvmHarnessSkipOne
+	cmpi.b #13, (a3)
+	bne.s tokvmHarnessSkipDone
+tokvmHarnessSkipOne
+	addq.l #1, a3
+	bra.s tokvmHarnessSkipWhitespace
 
-tokvmHarnessSkipDone:
-        RTS
+tokvmHarnessSkipDone
+	rts
 
 ; Copy one CLI path token into the caller-selected buffer.
 ; This intentionally implements a narrow Shell token grammar rather than full
 ; quote/escape handling because the tokvm host spec only accepts raw paths.
-tokvmHarnessCopyToken:
-        MOVE.L #PATH_BUFFER_CAPACITY - 1, D6  ; reserve space for the trailing NUL DOS expects
-tokvmHarnessCopyLoop:
-        MOVEQ #0, D0
-        MOVE.B (A3), D0
-        BEQ.S tokvmHarnessCopyFinish
-        CMPI.B #' ', D0
-        BEQ.S tokvmHarnessCopyFinish
-        CMPI.B #9, D0
-        BEQ.S tokvmHarnessCopyFinish
-        CMPI.B #10, D0
-        BEQ.S tokvmHarnessCopyFinish
-        CMPI.B #13, D0
-        BEQ.S tokvmHarnessCopyFinish
-        CMPI.B #'"', D0
-        BEQ.S tokvmHarnessCopyQuoted
-        TST.L D6
-        BEQ.S tokvmHarnessCopyOverflow
-        MOVE.B D0, (A1)+  ; preserve the raw path byte; no shell-style unescaping in this slice
-        ADDQ.L #1, A3
-        SUBQ.L #1, D6
-        BRA.S tokvmHarnessCopyLoop
+tokvmHarnessCopyToken
+	move.l #PATH_BUFFER_CAPACITY - 1, d6  ; reserve space for the trailing NUL DOS expects
+tokvmHarnessCopyLoop
+	moveq #0, d0
+	move.b (a3), d0
+	beq.s tokvmHarnessCopyFinish
+	cmpi.b #' ', d0
+	beq.s tokvmHarnessCopyFinish
+	cmpi.b #9, d0
+	beq.s tokvmHarnessCopyFinish
+	cmpi.b #10, d0
+	beq.s tokvmHarnessCopyFinish
+	cmpi.b #13, d0
+	beq.s tokvmHarnessCopyFinish
+	cmpi.b #'"', d0
+	beq.s tokvmHarnessCopyQuoted
+	tst.l d6
+	beq.s tokvmHarnessCopyOverflow
+	move.b d0, (a1)+  ; preserve the raw path byte; no shell-style unescaping in this slice
+	addq.l #1, a3
+	subq.l #1, d6
+	bra.s tokvmHarnessCopyLoop
 
-tokvmHarnessCopyFinish:
-        CLR.B (A1)
-        MOVEQ #0, D0
-        RTS
+tokvmHarnessCopyFinish
+	clr.b (a1)
+	moveq #0, d0
+	rts
 
-tokvmHarnessCopyQuoted:
-        MOVE.L #HARNESS_STATUS_QUOTED_PATH, D0
-        RTS
+tokvmHarnessCopyQuoted
+	move.l #HARNESS_STATUS_QUOTED_PATH, d0
+	rts
 
-tokvmHarnessCopyOverflow:
-        MOVE.L #HARNESS_STATUS_USAGE, D0
-        RTS
+tokvmHarnessCopyOverflow
+	move.l #HARNESS_STATUS_USAGE, d0
+	rts
 
 ; Failure reports reuse the same report writer as success reports so the file
 ; format stays identical across success and host/VM failure paths.
-tokvm_amigaos_cli_harness_write_failure_report:
-        CLR.L D1
-        CLR.L D2
-        CLR.L D3
-        BRA.W tokvm_amigaos_cli_harness_write_report
+tokvmAmigaosCliHarnessWriteFailureReport
+	clr.l d1
+	clr.l d2
+	clr.l d3
+	bra.w tokvmAmigaosCliHarnessWriteReport
 
-tokvm_amigaos_cli_harness_write_report:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVE.L D0, D4
-        MOVE.L D1, D5
-        MOVE.L D2, D6
-        ; Reject malformed native buffers before formatting token lines so bad VM state
-        ; degrades to TK_STATUS_VM_FAILURE instead of emitting invalid report metadata.
-        MOVE.L D3, D2
-        BSR.W tokvm_amigaos_cli_harness_validate_vm_result
-        TST.L D0
-        BEQ.S tokvmHarnessReportValidated
-        MOVEQ #TK_STATUS_VM_FAILURE, D4
-        MOVEQ #0, D5
-        MOVEQ #0, D6
-        CLR.L D2
-tokvmHarnessReportValidated:
-        MOVE.L GLOBALS_OUTPUT_HANDLE(A4), D7  ; all report lines flow through the already-open DOS output handle
+tokvmAmigaosCliHarnessWriteReport
+	movem.l d2-d7/a2-a6, -(sp)
+	move.l d0, d4
+	move.l d1, d5
+	move.l d2, d6
+	; Reject malformed native buffers before formatting token lines so bad VM state
+	; degrades to TK_STATUS_VM_FAILURE instead of emitting invalid report metadata.
+	move.l d3, d2
+	bsr.w tokvmAmigaosCliHarnessValidateVmResult
+	tst.l d0
+	beq.s tokvmHarnessReportValidated
+	moveq #TK_STATUS_VM_FAILURE, d4
+	moveq #0, d5
+	moveq #0, d6
+	clr.l d2
+tokvmHarnessReportValidated
+	move.l GLOBALS_OUTPUT_HANDLE(a4), d7  ; all report lines flow through the already-open DOS output handle
 
-        ; The report header and scalar fields intentionally match the golden
-        ; OPFORGE-TOKVM 1 text format exercised in crates/opforge-asm/src/tests.rs.
-        MOVE.L D7, D1
-        LEA reportHeader, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	; The report header and scalar fields intentionally match the golden
+	; OPFORGE-TOKVM 1 text format exercised in crates/opforge-asm/src/tests.rs.
+	move.l d7, d1
+	lea ReportHeader, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA reportStatusPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportStatusPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        MOVE.L D4, D0
-        BSR.W tokvm_amigaos_cli_harness_write_i32
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	move.l d4, d0
+	bsr.w tokvmAmigaosCliHarnessWriteI32
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA newlineString, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea NewlineString, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA reportTokensPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportTokensPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        MOVE.L D5, D0
-        BSR.W tokvm_amigaos_cli_harness_write_u32
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	move.l d5, d0
+	bsr.w tokvmAmigaosCliHarnessWriteU32
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA newlineString, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea NewlineString, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA reportCursorPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportCursorPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        MOVE.L D6, D0
-        BSR.W tokvm_amigaos_cli_harness_write_u32
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	move.l d6, d0
+	bsr.w tokvmAmigaosCliHarnessWriteU32
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA newlineString, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea NewlineString, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        ; Walk the native 20-byte token records and re-expand them into the
-        ; stable text report surface consumed by the asm reference tests.
-        LEA tokenBuffer, A5  ; native 20-byte token records that the asm tests decode back into report lines
-        MOVEQ #0, D3
-tokvmHarnessReportTokenLoop:
-        CMP.L D5, D3
-        BCC.W tokvmHarnessReportEnd
+	; Walk the native 20-byte token records and re-expand them into the
+	; stable text report surface consumed by the asm reference tests.
+	lea TokenBuffer, a5  ; native 20-byte token records that the asm tests decode back into report lines
+	moveq #0, d3
+tokvmHarnessReportTokenLoop
+	cmp.l d5, d3
+	bcc.w tokvmHarnessReportEnd
 
-        MOVE.L D7, D1
-        LEA reportTokenPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportTokenPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        MOVE.L D3, D0
-        BSR.W tokvm_amigaos_cli_harness_write_u32
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	move.l d3, d0
+	bsr.w tokvmAmigaosCliHarnessWriteU32
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA reportKindPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportKindPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVEQ #0, D0
-        MOVE.W (A5), D0
-        BSR.W tokvm_amigaos_cli_harness_kind_name  ; record kind code -> PortableTokenKind/report name mapping
-        MOVE.L D7, D1
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	moveq #0, d0
+	move.w (a5), d0
+	bsr.w tokvmAmigaosCliHarnessKindName  ; record kind code -> PortableTokenKind/report name mapping
+	move.l d7, d1
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA reportStartPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportStartPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        MOVE.L 4(A5), D0
-        BSR.W tokvm_amigaos_cli_harness_write_u32
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	move.l 4(a5), d0
+	bsr.w tokvmAmigaosCliHarnessWriteU32
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA reportEndPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportEndPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        MOVE.L 8(A5), D0
-        BSR.W tokvm_amigaos_cli_harness_write_u32
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	move.l 8(a5), d0
+	bsr.w tokvmAmigaosCliHarnessWriteU32
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA reportLenPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportLenPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        MOVE.L 16(A5), D0
-        BSR.W tokvm_amigaos_cli_harness_write_u32
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	move.l 16(a5), d0
+	bsr.w tokvmAmigaosCliHarnessWriteU32
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA reportLexhexPrefix, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea ReportLexhexPrefix, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVEA.L A5, A6  ; A5 points at the current record, A6 is a temporary for offseted fields
-        MOVE.L 12(A6), D0
-        LEA lexemeScratch, A0
-        ADDA.L D0, A0  ; lexemeScratch + offset => the exact byte slice emitted by the native scanner
-        MOVE.L 16(A6), D0
-        MOVE.L D7, D1
-        BSR.W tokvm_amigaos_cli_harness_write_hex_bytes
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	movea.l a5, a6  ; A5 points at the current record, A6 is a temporary for offseted fields
+	move.l 12(a6), d0
+	lea LexemeScratch, a0
+	adda.l d0, a0  ; lexemeScratch + offset => the exact byte slice emitted by the native scanner
+	move.l 16(a6), d0
+	move.l d7, d1
+	bsr.w tokvmAmigaosCliHarnessWriteHexBytes
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        MOVE.L D7, D1
-        LEA newlineString, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
+	move.l d7, d1
+	lea NewlineString, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
 
-        ADDA.L #TOKEN_RECORD_SIZE, A5
-        ADDQ.L #1, D3
-        BRA.W tokvmHarnessReportTokenLoop
+	adda.l #TOKEN_RECORD_SIZE, a5
+	addq.l #1, d3
+	bra.w tokvmHarnessReportTokenLoop
 
-tokvmHarnessReportEnd:
-        ; END terminates both success and failure reports so the file format is
-        ; self-delimiting even when token count is zero.
-        MOVE.L D7, D1
-        LEA reportEndLine, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        TST.L D0
-        BNE.W tokvmHarnessReportFail
-        MOVEQ #0, D0
-        BRA.W tokvmHarnessReportDone
+tokvmHarnessReportEnd
+	; END terminates both success and failure reports so the file format is
+	; self-delimiting even when token count is zero.
+	move.l d7, d1
+	lea ReportEndLine, a0
+	bsr.w amigaosCliFileioWriteCstr
+	tst.l d0
+	bne.w tokvmHarnessReportFail
+	moveq #0, d0
+	bra.w tokvmHarnessReportDone
 
-tokvmHarnessReportFail:
-        MOVEQ #1, D0
+tokvmHarnessReportFail
+	moveq #1, d0
 
-tokvmHarnessReportDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+tokvmHarnessReportDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Defensive validation in front of report formatting.
 ; The Rust runtime validates token shapes before exposing PortableToken output;
 ; this native harness mirrors that expectation so malformed native state falls
 ; back to TK_STATUS_VM_FAILURE instead of emitting invalid token metadata.
-tokvm_amigaos_cli_harness_validate_vm_result:
-        TST.L D4  ; non-negative statuses are TK_STATUS_* VM results, negative are harness failures
-        BMI tokvmHarnessValidateNegativeStatus
-        CMPI.L #TK_STATUS_INVALID_PROGRAM, D4
-        BGT tokvmHarnessValidateInvalid
-        CMP.L #TOKEN_BUFFER_CAPACITY, D5
-        BHI tokvmHarnessValidateInvalid
-        CMP.L #SOURCE_BUFFER_CAPACITY, D6
-        BHI tokvmHarnessValidateInvalid
-        CMP.L #SCRATCH_BUFFER_CAPACITY, D2
-        BHI tokvmHarnessValidateInvalid
+tokvmAmigaosCliHarnessValidateVmResult
+	tst.l d4  ; non-negative statuses are TK_STATUS_* VM results, negative are harness failures
+	bmi tokvmHarnessValidateNegativeStatus
+	cmpi.l #TK_STATUS_INVALID_PROGRAM, d4
+	bgt tokvmHarnessValidateInvalid
+	cmp.l #TOKEN_BUFFER_CAPACITY, d5
+	bhi tokvmHarnessValidateInvalid
+	cmp.l #SOURCE_BUFFER_CAPACITY, d6
+	bhi tokvmHarnessValidateInvalid
+	cmp.l #SCRATCH_BUFFER_CAPACITY, d2
+	bhi tokvmHarnessValidateInvalid
 
-        LEA tokenBuffer, A0
-        MOVEQ #0, D1
-tokvmHarnessValidateTokenLoop:
-        CMP.L D5, D1
-        BCC.S tokvmHarnessValidateOk
+	lea TokenBuffer, a0
+	moveq #0, d1
+tokvmHarnessValidateTokenLoop
+	cmp.l d5, d1
+	bcc.s tokvmHarnessValidateOk
 
-        MOVEQ #0, D0
-        MOVE.W (A0), D0
-        CMPI.L #TK_KIND_OP_LT, D0  ; last valid kind in the native PortableTokenKind mirror table
-        BGT tokvmHarnessValidateInvalid
+	moveq #0, d0
+	move.w (a0), d0
+	cmpi.l #TK_KIND_OP_LT, d0  ; last valid kind in the native PortableTokenKind mirror table
+	bgt tokvmHarnessValidateInvalid
 
-        MOVE.L 4(A0), D0
-        TST.L D0
-        BEQ tokvmHarnessValidateInvalid
-        CMPI.L #SOURCE_BUFFER_CAPACITY + 1, D0
-        BHI tokvmHarnessValidateInvalid
+	move.l 4(a0), d0
+	tst.l d0
+	beq tokvmHarnessValidateInvalid
+	cmpi.l #SOURCE_BUFFER_CAPACITY + 1, d0
+	bhi tokvmHarnessValidateInvalid
 
-        MOVE.L 8(A0), D0
-        TST.L D0
-        BEQ tokvmHarnessValidateInvalid
-        CMPI.L #SOURCE_BUFFER_CAPACITY + 1, D0
-        BHI tokvmHarnessValidateInvalid
-        CMP.L 4(A0), D0
-        BLT tokvmHarnessValidateInvalid
+	move.l 8(a0), d0
+	tst.l d0
+	beq tokvmHarnessValidateInvalid
+	cmpi.l #SOURCE_BUFFER_CAPACITY + 1, d0
+	bhi tokvmHarnessValidateInvalid
+	cmp.l 4(a0), d0
+	blt tokvmHarnessValidateInvalid
 
-        MOVE.L 12(A0), D0  ; lexeme offset must stay inside the committed scratch prefix
-        CMP.L D2, D0
-        BHI tokvmHarnessValidateInvalid
-        MOVE.L 16(A0), D3
-        MOVE.L D0, D7
-        ADD.L D3, D7
-        CMP.L D2, D7
-        BHI tokvmHarnessValidateInvalid
+	move.l 12(a0), d0  ; lexeme offset must stay inside the committed scratch prefix
+	cmp.l d2, d0
+	bhi tokvmHarnessValidateInvalid
+	move.l 16(a0), d3
+	move.l d0, d7
+	add.l d3, d7
+	cmp.l d2, d7
+	bhi tokvmHarnessValidateInvalid
 
-        ADDA.L #TOKEN_RECORD_SIZE, A0
-        ADDQ.L #1, D1
-        BRA.S tokvmHarnessValidateTokenLoop
+	adda.l #TOKEN_RECORD_SIZE, a0
+	addq.l #1, d1
+	bra.s tokvmHarnessValidateTokenLoop
 
-tokvmHarnessValidateNegativeStatus:
-        ; Negative statuses are host-side harness failures. When one of those is
-        ; reported, no VM-owned token or scratch state is allowed to leak out.
-        CMPI.L #HARNESS_STATUS_USAGE, D4
-        BGT.S tokvmHarnessValidateInvalid
-        CMPI.L #HARNESS_STATUS_OUTPUT_OPEN, D4
-        BLT.S tokvmHarnessValidateInvalid
-        TST.L D5
-        BNE.S tokvmHarnessValidateInvalid
-        TST.L D6
-        BNE.S tokvmHarnessValidateInvalid
-        TST.L D2
-        BNE.S tokvmHarnessValidateInvalid
+tokvmHarnessValidateNegativeStatus
+	; Negative statuses are host-side harness failures. When one of those is
+	; reported, no VM-owned token or scratch state is allowed to leak out.
+	cmpi.l #HARNESS_STATUS_USAGE, d4
+	bgt.s tokvmHarnessValidateInvalid
+	cmpi.l #HARNESS_STATUS_OUTPUT_OPEN, d4
+	blt.s tokvmHarnessValidateInvalid
+	tst.l d5
+	bne.s tokvmHarnessValidateInvalid
+	tst.l d6
+	bne.s tokvmHarnessValidateInvalid
+	tst.l d2
+	bne.s tokvmHarnessValidateInvalid
 
-tokvmHarnessValidateOk:
-        MOVEQ #0, D0
-        RTS
+tokvmHarnessValidateOk
+	moveq #0, d0
+	rts
 
-tokvmHarnessValidateInvalid:
-        MOVEQ #1, D0
-        RTS
+tokvmHarnessValidateInvalid
+	moveq #1, d0
+	rts
 
 ; Signed report writer used for STATUS fields so host failures can emit their
 ; negative HARNESS_STATUS_* values without special formatting logic.
-tokvm_amigaos_cli_harness_write_i32:
-        TST.L D0
-        BPL.S tokvmHarnessWriteI32Unsigned
-        MOVE.L D2, -(SP)
-        MOVE.L D0, D2
-        MOVE.L D1, -(SP)
-        LEA minusString, A0
-        BSR.W amigaos_cli_fileio_write_cstr
-        MOVE.L (SP)+, D1
-        TST.L D0
-        BNE.S tokvmHarnessWriteI32NegativeDone
-        MOVE.L D2, D0
-        NEG.L D0
-        BSR.W tokvm_amigaos_cli_harness_write_u32
-tokvmHarnessWriteI32NegativeDone:
-        MOVE.L (SP)+, D2
-        RTS
-tokvmHarnessWriteI32Unsigned:
-        BSR.W tokvm_amigaos_cli_harness_write_u32
-tokvmHarnessWriteI32Done:
-        RTS
+tokvmAmigaosCliHarnessWriteI32
+	tst.l d0
+	bpl.s tokvmHarnessWriteI32Unsigned
+	move.l d2, -(sp)
+	move.l d0, d2
+	move.l d1, -(sp)
+	lea MinusString, a0
+	bsr.w amigaosCliFileioWriteCstr
+	move.l (sp)+, d1
+	tst.l d0
+	bne.s tokvmHarnessWriteI32NegativeDone
+	move.l d2, d0
+	neg.l d0
+	bsr.w tokvmAmigaosCliHarnessWriteU32
+tokvmHarnessWriteI32NegativeDone
+	move.l (sp)+, d2
+	rts
+tokvmHarnessWriteI32Unsigned
+	bsr.w tokvmAmigaosCliHarnessWriteU32
+tokvmHarnessWriteI32Done
+	rts
 
 ; Minimal decimal formatter. Values are accumulated right-to-left in a scratch
 ; buffer and then flushed in one exact DOS write.
-tokvm_amigaos_cli_harness_write_u32:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        LEA decimalBufferEnd, A0  ; emit backwards into scratch, then flush the exact decimal slice once
-        MOVEQ #0, D2
-        TST.L D0
-        BNE.S tokvmHarnessWriteU32Loop
-        MOVE.B #'0', -(A0)
-        MOVEQ #1, D2
-        BRA.S tokvmHarnessWriteU32Emit
+tokvmAmigaosCliHarnessWriteU32
+	movem.l d2-d7/a2-a6, -(sp)
+	lea DecimalBufferEnd, a0  ; emit backwards into scratch, then flush the exact decimal slice once
+	moveq #0, d2
+	tst.l d0
+	bne.s tokvmHarnessWriteU32Loop
+	move.b #'0', -(a0)
+	moveq #1, d2
+	bra.s tokvmHarnessWriteU32Emit
 
-tokvmHarnessWriteU32Loop:
-        DIVU.W #10, D0
-        MOVE.W D0, D3
-        SWAP D0
-        ADDI.W #'0', D0
-        MOVE.B D0, -(A0)
-        ADDQ.L #1, D2
-        MOVEQ #0, D0
-        MOVE.W D3, D0
-        TST.L D0
-        BNE.S tokvmHarnessWriteU32Loop
+tokvmHarnessWriteU32Loop
+	divu.w #10, d0
+	move.w d0, d3
+	swap d0
+	addi.w #'0', d0
+	move.b d0, -(a0)
+	addq.l #1, d2
+	moveq #0, d0
+	move.w d3, d0
+	tst.l d0
+	bne.s tokvmHarnessWriteU32Loop
 
-tokvmHarnessWriteU32Emit:
-        MOVE.L D2, D0
-        BSR.W amigaos_cli_fileio_write_exact
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+tokvmHarnessWriteU32Emit
+	move.l d2, d0
+	bsr.w amigaosCliFileioWriteExact
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Render a lexeme payload as uppercase hexadecimal bytes. This matches the
 ; LEXHEX field expected by the native report rendering tests.
-tokvm_amigaos_cli_harness_write_hex_bytes:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVEA.L A0, A6
-        MOVE.L D0, D5  ; remaining byte count for the report's LEXHEX field
-        LEA hexDigits, A5
-tokvmHarnessWriteHexLoop:
-        TST.L D5
-        BEQ.S tokvmHarnessWriteHexDone
-        MOVEQ #0, D2
-        MOVE.B (A6)+, D2
-        MOVE.L D2, D3
-        LSR.B #4, D3
-        ANDI.W #$000F, D3
-        ANDI.W #$000F, D2
-        MOVE.B 0(A5, D3.W), hexPairBuffer
-        MOVEQ #0, D4
-        MOVE.B 0(A5, D2.W), D4
-        LEA hexPairBuffer, A1
-        MOVE.B D4, 1(A1)
-        LEA hexPairBuffer, A0
-        MOVEQ #2, D0
-        BSR.W amigaos_cli_fileio_write_exact
-        TST.L D0
-        BNE.S tokvmHarnessWriteHexDone
-        SUBQ.L #1, D5
-        BRA.S tokvmHarnessWriteHexLoop
+tokvmAmigaosCliHarnessWriteHexBytes
+	movem.l d2-d7/a2-a6, -(sp)
+	movea.l a0, a6
+	move.l d0, d5  ; remaining byte count for the report's LEXHEX field
+	lea HexDigits, a5
+tokvmHarnessWriteHexLoop
+	tst.l d5
+	beq.s tokvmHarnessWriteHexDone
+	moveq #0, d2
+	move.b (a6)+, d2
+	move.l d2, d3
+	lsr.b #4, d3
+	andi.w #$000F, d3
+	andi.w #$000F, d2
+	move.b 0(a5, d3.W), HexPairBuffer
+	moveq #0, d4
+	move.b 0(a5, d2.W), d4
+	lea HexPairBuffer, a1
+	move.b d4, 1(a1)
+	lea HexPairBuffer, a0
+	moveq #2, d0
+	bsr.w amigaosCliFileioWriteExact
+	tst.l d0
+	bne.s tokvmHarnessWriteHexDone
+	subq.l #1, d5
+	bra.s tokvmHarnessWriteHexLoop
 
-tokvmHarnessWriteHexDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+tokvmHarnessWriteHexDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Token kind name lookup for report emission.
 ; The table order is locked to the TK_KIND_* numeric encoding exported by the
 ; native tokenizer VM module.
-tokvm_amigaos_cli_harness_kind_name:
-        CMP.L #TK_KIND_OP_LT, D0
-        BHI.S tokvmHarnessKindUnknown
-        ADD.L D0, D0
-        ADD.L D0, D0
-        LEA kindNamePtrs, A1
-        MOVEA.L 0(A1, D0.L), A0
-        RTS
+tokvmAmigaosCliHarnessKindName
+	cmp.l #TK_KIND_OP_LT, d0
+	bhi.s tokvmHarnessKindUnknown
+	add.l d0, d0
+	add.l d0, d0
+	lea KindNamePtrs, a1
+	movea.l 0(a1, d0.l), a0
+	rts
 
-tokvmHarnessKindUnknown:
-        LEA kindNameUnknown, A0
-        RTS
+tokvmHarnessKindUnknown
+	lea KindNameUnknown, a0
+	rts
 
 ; ---------------------------------------------------------------------------
 ; Minimal DOS helper layer used by the harness.
@@ -727,374 +727,374 @@ tokvmHarnessKindUnknown:
 ; VM below, while this layer only handles DOS open/read/write/close concerns.
 ; ---------------------------------------------------------------------------
 
-amigaos_cli_fileio_init:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        ; Reset host globals first so every early-exit path can safely call the
-        ; shared shutdown/cleanup logic.
-        CLR.L GLOBALS_DOS_BASE(A4)
-        CLR.L GLOBALS_STDOUT_HANDLE(A4)
-        CLR.L GLOBALS_LAST_IOERR(A4)
-        CLR.L GLOBALS_OUTPUT_HANDLE(A4)
-        LEA dosName, A1
-        MOVEQ #36, D0
-        MOVEA.L SysBase.W, A6
-        JSR OpenLibrary(A6)
-        TST.L D0
-        BEQ.S amigaosCliFileIoInitFail
-        MOVE.L D0, GLOBALS_DOS_BASE(A4)
-        MOVEA.L D0, A6
-        JSR Output(A6)
-        MOVE.L D0, GLOBALS_STDOUT_HANDLE(A4)
-        MOVEQ #0, D0
-        BRA.W amigaosCliFileIoInitDone
+amigaosCliFileioInit
+	movem.l d2-d7/a2-a6, -(sp)
+	; Reset host globals first so every early-exit path can safely call the
+	; shared shutdown/cleanup logic.
+	clr.l GLOBALS_DOS_BASE(a4)
+	clr.l GLOBALS_STDOUT_HANDLE(a4)
+	clr.l GLOBALS_LAST_IOERR(a4)
+	clr.l GLOBALS_OUTPUT_HANDLE(a4)
+	lea DosName, a1
+	moveq #36, d0
+	movea.l SYS_BASE.W, a6
+	jsr OPEN_LIBRARY(a6)
+	tst.l d0
+	beq.s amigaosCliFileIoInitFail
+	move.l d0, GLOBALS_DOS_BASE(a4)
+	movea.l d0, a6
+	jsr OUTPUT(a6)
+	move.l d0, GLOBALS_STDOUT_HANDLE(a4)
+	moveq #0, d0
+	bra.w amigaosCliFileIoInitDone
 
-amigaosCliFileIoInitFail:
-        MOVEQ #1, D0
+amigaosCliFileIoInitFail
+	moveq #1, d0
 
-amigaosCliFileIoInitDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+amigaosCliFileIoInitDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Release DOS library state once the harness is finished with all host I/O.
-amigaos_cli_fileio_shutdown:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVE.L GLOBALS_DOS_BASE(A4), D0
-        BEQ.S amigaosCliFileIoShutdownDone
-        MOVEA.L D0, A1
-        MOVEA.L SysBase.W, A6
-        JSR CloseLibrary(A6)
-        CLR.L GLOBALS_DOS_BASE(A4)
+amigaosCliFileioShutdown
+	movem.l d2-d7/a2-a6, -(sp)
+	move.l GLOBALS_DOS_BASE(a4), d0
+	beq.s amigaosCliFileIoShutdownDone
+	movea.l d0, a1
+	movea.l SYS_BASE.W, a6
+	jsr CLOSE_LIBRARY(a6)
+	clr.l GLOBALS_DOS_BASE(a4)
 
-amigaosCliFileIoShutdownDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+amigaosCliFileIoShutdownDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; DOS GetArgStr returns the raw argument tail for the current Shell process.
-amigaos_cli_fileio_get_arg_str:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVEA.L GLOBALS_DOS_BASE(A4), A6
-        JSR GetArgStr(A6)
-        MOVEA.L D0, A0
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+amigaosCliFileioGetArgStr
+	movem.l d2-d7/a2-a6, -(sp)
+	movea.l GLOBALS_DOS_BASE(a4), a6
+	jsr GET_ARG_STR(a6)
+	movea.l d0, a0
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
-amigaos_cli_fileio_open_input:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        ; Open the source file in read-only mode and cache IoErr on failure so
-        ; later diagnostics or debugging can inspect the DOS reason code.
-        MOVE.L A0, D1
-        MOVE.L #MODE_OLDFILE, D2
-        MOVEA.L GLOBALS_DOS_BASE(A4), A6
-        JSR Open(A6)
-        TST.L D0
-        BNE.S amigaosCliFileIoOpenDone
-        BSR.W amigaos_cli_fileio_capture_ioerr
+amigaosCliFileioOpenInput
+	movem.l d2-d7/a2-a6, -(sp)
+	; Open the source file in read-only mode and cache IoErr on failure so
+	; later diagnostics or debugging can inspect the DOS reason code.
+	move.l a0, d1
+	move.l #MODE_OLDFILE, d2
+	movea.l GLOBALS_DOS_BASE(a4), a6
+	jsr OPEN(a6)
+	tst.l d0
+	bne.s amigaosCliFileIoOpenDone
+	bsr.w amigaosCliFileioCaptureIoerr
 
-amigaosCliFileIoOpenDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+amigaosCliFileIoOpenDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Create/truncate the report target before any input work happens so all later
 ; failure paths can still emit a report file instead of only returning a code.
-amigaos_cli_fileio_open_output:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVE.L A0, D1
-        MOVE.L #MODE_NEWFILE, D2
-        MOVEA.L GLOBALS_DOS_BASE(A4), A6
-        JSR Open(A6)
-        TST.L D0
-        BNE.S amigaosCliFileIoCreateDone
-        BSR.W amigaos_cli_fileio_capture_ioerr
+amigaosCliFileioOpenOutput
+	movem.l d2-d7/a2-a6, -(sp)
+	move.l a0, d1
+	move.l #MODE_NEWFILE, d2
+	movea.l GLOBALS_DOS_BASE(a4), a6
+	jsr OPEN(a6)
+	tst.l d0
+	bne.s amigaosCliFileIoCreateDone
+	bsr.w amigaosCliFileioCaptureIoerr
 
-amigaosCliFileIoCreateDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+amigaosCliFileIoCreateDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Thin DOS Read wrapper. The harness uses it both for the bounded source read
 ; and the one-byte overflow probe that enforces the single-line capacity rule.
-amigaos_cli_fileio_read:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVE.L A0, D2  ; DOS Read uses D2=buffer, D3=len in the helper's stable calling convention
-        MOVE.L D0, D3
-        MOVEA.L GLOBALS_DOS_BASE(A4), A6
-        JSR Read(A6)
-        CMP.L #-1, D0
-        BNE.S amigaosCliFileIoReadDone
-        BSR.W amigaos_cli_fileio_capture_ioerr
+amigaosCliFileioRead
+	movem.l d2-d7/a2-a6, -(sp)
+	move.l a0, d2  ; DOS Read uses D2=buffer, D3=len in the helper's stable calling convention
+	move.l d0, d3
+	movea.l GLOBALS_DOS_BASE(a4), a6
+	jsr READ(a6)
+	cmp.l #-1, d0
+	bne.s amigaosCliFileIoReadDone
+	bsr.w amigaosCliFileioCaptureIoerr
 
-amigaosCliFileIoReadDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+amigaosCliFileIoReadDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Count a NUL-terminated string and forward it to the exact-byte write helper.
-amigaos_cli_fileio_write_cstr:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVEA.L A0, A2
-        MOVEQ #0, D0
-amigaosCliFileIoWriteCstrLoop:
-        TST.B (A0)+
-        BEQ.S amigaosCliFileIoWriteCstrEmit
-        ADDQ.L #1, D0
-        BRA.S amigaosCliFileIoWriteCstrLoop
+amigaosCliFileioWriteCstr
+	movem.l d2-d7/a2-a6, -(sp)
+	movea.l a0, a2
+	moveq #0, d0
+amigaosCliFileIoWriteCstrLoop
+	tst.b (a0)+
+	beq.s amigaosCliFileIoWriteCstrEmit
+	addq.l #1, d0
+	bra.s amigaosCliFileIoWriteCstrLoop
 
-amigaosCliFileIoWriteCstrEmit:
-        MOVEA.L A2, A0
-        BSR.W amigaos_cli_fileio_write_exact
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+amigaosCliFileIoWriteCstrEmit
+	movea.l a2, a0
+	bsr.w amigaosCliFileioWriteExact
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Preserve D1 across DOS Write calls because the report writer keeps the output handle
 ; in D1 while emitting decimal fields and repeated LEXHEX byte pairs.
-amigaos_cli_fileio_write_exact:
-        MOVEM.L D1-D7/A2-A6, -(SP)
-        MOVE.L D0, D3
-        MOVE.L A0, D2
-        MOVEA.L GLOBALS_DOS_BASE(A4), A6
-        JSR Write(A6)
-        CMP.L #-1, D0
-        BEQ.S amigaosCliFileIoWriteFail
-        CMP.L D3, D0
-        BNE.W amigaosCliFileIoWriteShort
-        MOVEQ #0, D0
-        BRA.W amigaosCliFileIoWriteDone
+amigaosCliFileioWriteExact
+	movem.l d1-d7/a2-a6, -(sp)
+	move.l d0, d3
+	move.l a0, d2
+	movea.l GLOBALS_DOS_BASE(a4), a6
+	jsr WRITE(a6)
+	cmp.l #-1, d0
+	beq.s amigaosCliFileIoWriteFail
+	cmp.l d3, d0
+	bne.w amigaosCliFileIoWriteShort
+	moveq #0, d0
+	bra.w amigaosCliFileIoWriteDone
 
-amigaosCliFileIoWriteFail:
-        BSR.W amigaos_cli_fileio_capture_ioerr
-        MOVEQ #1, D0
-        BRA.W amigaosCliFileIoWriteDone
+amigaosCliFileIoWriteFail
+	bsr.w amigaosCliFileioCaptureIoerr
+	moveq #1, d0
+	bra.w amigaosCliFileIoWriteDone
 
-amigaosCliFileIoWriteShort:
-        CLR.L GLOBALS_LAST_IOERR(A4)
-        MOVEQ #1, D0
+amigaosCliFileIoWriteShort
+	clr.l GLOBALS_LAST_IOERR(a4)
+	moveq #1, d0
 
-amigaosCliFileIoWriteDone:
-        MOVEM.L (SP)+, D1-D7/A2-A6
-        RTS
+amigaosCliFileIoWriteDone
+	movem.l (sp)+, d1-d7/a2-a6
+	rts
 
 ; Close a DOS file handle and preserve IoErr if the close itself fails.
-amigaos_cli_fileio_close:
-        MOVEM.L D2-D7/A2-A6, -(SP)
-        MOVEA.L GLOBALS_DOS_BASE(A4), A6
-        JSR Close(A6)
-        TST.L D0
-        BNE.W amigaosCliFileIoCloseOk
-        BSR.W amigaos_cli_fileio_capture_ioerr
-        MOVEQ #1, D0
-        BRA.W amigaosCliFileIoCloseDone
+amigaosCliFileioClose
+	movem.l d2-d7/a2-a6, -(sp)
+	movea.l GLOBALS_DOS_BASE(a4), a6
+	jsr CLOSE(a6)
+	tst.l d0
+	bne.w amigaosCliFileIoCloseOk
+	bsr.w amigaosCliFileioCaptureIoerr
+	moveq #1, d0
+	bra.w amigaosCliFileIoCloseDone
 
-amigaosCliFileIoCloseOk:
-        MOVEQ #0, D0
+amigaosCliFileIoCloseOk
+	moveq #0, d0
 
-amigaosCliFileIoCloseDone:
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+amigaosCliFileIoCloseDone
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
 ; Cache the last DOS IoErr in globals so callers do not need to immediately
 ; inspect D0 after every failed host I/O operation.
-amigaos_cli_fileio_capture_ioerr:
-        MOVEA.L GLOBALS_DOS_BASE(A4), A6
-        JSR IoErr(A6)
-        MOVE.L D0, GLOBALS_LAST_IOERR(A4)
-        RTS
+amigaosCliFileioCaptureIoerr
+	movea.l GLOBALS_DOS_BASE(a4), a6
+	jsr IO_ERR(a6)
+	move.l d0, GLOBALS_LAST_IOERR(a4)
+	rts
 
-        .endsection
-        .section data, kind=data
+	.endsection
+	.section data, kind=data
 
 ; Static strings and lookup tables for the host/report layer.
-dosName:
-        .byte "dos.library", 0
+DosName
+	.byte "dos.library", 0
 
-usageMessage:
-        .byte "Usage: tokvm <input-path> <output-path>", 10, 0
-quotedPathMessage:
-        .byte "tokvm: quoted paths are not supported", 10, 0
-outputOpenMessage:
-        .byte "tokvm: failed to open output file", 10, 0
+UsageMessage
+	.byte "Usage: tokvm <input-path> <output-path>", 10, 0
+QuotedPathMessage
+	.byte "tokvm: quoted paths are not supported", 10, 0
+OutputOpenMessage
+	.byte "tokvm: failed to open output file", 10, 0
 
-reportHeader:
-        .byte "OPFORGE-TOKVM 1", 10, 0
-reportStatusPrefix:
-        .byte "STATUS ", 0
-reportTokensPrefix:
-        .byte "TOKENS ", 0
-reportCursorPrefix:
-        .byte "CURSOR ", 0
-reportTokenPrefix:
-        .byte "TOKEN ", 0
-reportKindPrefix:
-        .byte " KIND ", 0
-reportStartPrefix:
-        .byte " START ", 0
-reportEndPrefix:
-        .byte " END ", 0
-reportLenPrefix:
-        .byte " LEN ", 0
-reportLexhexPrefix:
-        .byte " LEXHEX ", 0
-reportEndLine:
-        .byte "END", 10, 0
-newlineString:
-        .byte 10, 0
-minusString:
-        .byte "-", 0
-hexDigits:
-        .byte "0123456789ABCDEF"
+ReportHeader
+	.byte "OPFORGE-TOKVM 1", 10, 0
+ReportStatusPrefix
+	.byte "STATUS ", 0
+ReportTokensPrefix
+	.byte "TOKENS ", 0
+ReportCursorPrefix
+	.byte "CURSOR ", 0
+ReportTokenPrefix
+	.byte "TOKEN ", 0
+ReportKindPrefix
+	.byte " KIND ", 0
+ReportStartPrefix
+	.byte " START ", 0
+ReportEndPrefix
+	.byte " END ", 0
+ReportLenPrefix
+	.byte " LEN ", 0
+ReportLexhexPrefix
+	.byte " LEXHEX ", 0
+ReportEndLine
+	.byte "END", 10, 0
+NewlineString
+	.byte 10, 0
+MinusString
+	.byte "-", 0
+HexDigits
+	.byte "0123456789ABCDEF"
 
-kindNameIdentifier:
-        .byte "identifier", 0
-kindNameRegister:
-        .byte "register", 0
-kindNameNumber:
-        .byte "number", 0
-kindNameString:
-        .byte "string", 0
-kindNameComma:
-        .byte "comma", 0
-kindNameColon:
-        .byte "colon", 0
-kindNameDollar:
-        .byte "dollar", 0
-kindNameDot:
-        .byte "dot", 0
-kindNameHash:
-        .byte "hash", 0
-kindNameQuestion:
-        .byte "question", 0
-kindNameOpenBracket:
-        .byte "open_bracket", 0
-kindNameCloseBracket:
-        .byte "close_bracket", 0
-kindNameOpenBrace:
-        .byte "open_brace", 0
-kindNameCloseBrace:
-        .byte "close_brace", 0
-kindNameOpenParen:
-        .byte "open_paren", 0
-kindNameCloseParen:
-        .byte "close_paren", 0
-kindNameOpRange:
-        .byte "op_range", 0
-kindNameOpRangeInclusive:
-        .byte "op_range_inclusive", 0
-kindNameOpPlus:
-        .byte "op_plus", 0
-kindNameOpMinus:
-        .byte "op_minus", 0
-kindNameOpMultiply:
-        .byte "op_multiply", 0
-kindNameOpPower:
-        .byte "op_power", 0
-kindNameOpDivide:
-        .byte "op_divide", 0
-kindNameOpMod:
-        .byte "op_mod", 0
-kindNameOpShl:
-        .byte "op_shl", 0
-kindNameOpShr:
-        .byte "op_shr", 0
-kindNameOpBitNot:
-        .byte "op_bit_not", 0
-kindNameOpLogicNot:
-        .byte "op_logic_not", 0
-kindNameOpBitAnd:
-        .byte "op_bit_and", 0
-kindNameOpBitOr:
-        .byte "op_bit_or", 0
-kindNameOpBitXor:
-        .byte "op_bit_xor", 0
-kindNameOpLogicAnd:
-        .byte "op_logic_and", 0
-kindNameOpLogicOr:
-        .byte "op_logic_or", 0
-kindNameOpLogicXor:
-        .byte "op_logic_xor", 0
-kindNameOpEq:
-        .byte "op_eq", 0
-kindNameOpNe:
-        .byte "op_ne", 0
-kindNameOpGe:
-        .byte "op_ge", 0
-kindNameOpGt:
-        .byte "op_gt", 0
-kindNameOpLe:
-        .byte "op_le", 0
-kindNameOpLt:
-        .byte "op_lt", 0
-kindNameUnknown:
-        .byte "unknown", 0
+KindNameIdentifier
+	.byte "identifier", 0
+KindNameRegister
+	.byte "register", 0
+KindNameNumber
+	.byte "number", 0
+KindNameString
+	.byte "string", 0
+KindNameComma
+	.byte "comma", 0
+KindNameColon
+	.byte "colon", 0
+KindNameDollar
+	.byte "dollar", 0
+KindNameDot
+	.byte "dot", 0
+KindNameHash
+	.byte "hash", 0
+KindNameQuestion
+	.byte "question", 0
+KindNameOpenBracket
+	.byte "open_bracket", 0
+KindNameCloseBracket
+	.byte "close_bracket", 0
+KindNameOpenBrace
+	.byte "open_brace", 0
+KindNameCloseBrace
+	.byte "close_brace", 0
+KindNameOpenParen
+	.byte "open_paren", 0
+KindNameCloseParen
+	.byte "close_paren", 0
+KindNameOpRange
+	.byte "op_range", 0
+KindNameOpRangeInclusive
+	.byte "op_range_inclusive", 0
+KindNameOpPlus
+	.byte "op_plus", 0
+KindNameOpMinus
+	.byte "op_minus", 0
+KindNameOpMultiply
+	.byte "op_multiply", 0
+KindNameOpPower
+	.byte "op_power", 0
+KindNameOpDivide
+	.byte "op_divide", 0
+KindNameOpMod
+	.byte "op_mod", 0
+KindNameOpShl
+	.byte "op_shl", 0
+KindNameOpShr
+	.byte "op_shr", 0
+KindNameOpBitNot
+	.byte "op_bit_not", 0
+KindNameOpLogicNot
+	.byte "op_logic_not", 0
+KindNameOpBitAnd
+	.byte "op_bit_and", 0
+KindNameOpBitOr
+	.byte "op_bit_or", 0
+KindNameOpBitXor
+	.byte "op_bit_xor", 0
+KindNameOpLogicAnd
+	.byte "op_logic_and", 0
+KindNameOpLogicOr
+	.byte "op_logic_or", 0
+KindNameOpLogicXor
+	.byte "op_logic_xor", 0
+KindNameOpEq
+	.byte "op_eq", 0
+KindNameOpNe
+	.byte "op_ne", 0
+KindNameOpGe
+	.byte "op_ge", 0
+KindNameOpGt
+	.byte "op_gt", 0
+KindNameOpLe
+	.byte "op_le", 0
+KindNameOpLt
+	.byte "op_lt", 0
+KindNameUnknown
+	.byte "unknown", 0
 
-        .align 4
+	.align 4
 ; kindNamePtrs is indexed directly by the TK_KIND_* numeric code.
 ; Each entry expands the compact native token record into the report text name
 ; that matches PortableTokenKind-oriented test expectations.
-kindNamePtrs:
-        .long kindNameIdentifier
-        .long kindNameRegister
-        .long kindNameNumber
-        .long kindNameString
-        .long kindNameComma
-        .long kindNameColon
-        .long kindNameDollar
-        .long kindNameDot
-        .long kindNameHash
-        .long kindNameQuestion
-        .long kindNameOpenBracket
-        .long kindNameCloseBracket
-        .long kindNameOpenBrace
-        .long kindNameCloseBrace
-        .long kindNameOpenParen
-        .long kindNameCloseParen
-        .long kindNameOpRange
-        .long kindNameOpRangeInclusive
-        .long kindNameOpPlus
-        .long kindNameOpMinus
-        .long kindNameOpMultiply
-        .long kindNameOpPower
-        .long kindNameOpDivide
-        .long kindNameOpMod
-        .long kindNameOpShl
-        .long kindNameOpShr
-        .long kindNameOpBitNot
-        .long kindNameOpLogicNot
-        .long kindNameOpBitAnd
-        .long kindNameOpBitOr
-        .long kindNameOpBitXor
-        .long kindNameOpLogicAnd
-        .long kindNameOpLogicOr
-        .long kindNameOpLogicXor
-        .long kindNameOpEq
-        .long kindNameOpNe
-        .long kindNameOpGe
-        .long kindNameOpGt
-        .long kindNameOpLe
-        .long kindNameOpLt
+KindNamePtrs
+	.long KindNameIdentifier
+	.long KindNameRegister
+	.long KindNameNumber
+	.long KindNameString
+	.long KindNameComma
+	.long KindNameColon
+	.long KindNameDollar
+	.long KindNameDot
+	.long KindNameHash
+	.long KindNameQuestion
+	.long KindNameOpenBracket
+	.long KindNameCloseBracket
+	.long KindNameOpenBrace
+	.long KindNameCloseBrace
+	.long KindNameOpenParen
+	.long KindNameCloseParen
+	.long KindNameOpRange
+	.long KindNameOpRangeInclusive
+	.long KindNameOpPlus
+	.long KindNameOpMinus
+	.long KindNameOpMultiply
+	.long KindNameOpPower
+	.long KindNameOpDivide
+	.long KindNameOpMod
+	.long KindNameOpShl
+	.long KindNameOpShr
+	.long KindNameOpBitNot
+	.long KindNameOpLogicNot
+	.long KindNameOpBitAnd
+	.long KindNameOpBitOr
+	.long KindNameOpBitXor
+	.long KindNameOpLogicAnd
+	.long KindNameOpLogicOr
+	.long KindNameOpLogicXor
+	.long KindNameOpEq
+	.long KindNameOpNe
+	.long KindNameOpGe
+	.long KindNameOpGt
+	.long KindNameOpLe
+	.long KindNameOpLt
 
-        .endsection
-        .section bss, kind=bss
+	.endsection
+	.section bss, kind=bss
 
 ; Caller-owned and harness-owned buffers.
 ; tokenBuffer and lexemeScratch together form the native token ABI surface that
 ; tokvm_amigaos_cli_harness_write_report rehydrates into OPFORGE-TOKVM 1 lines.
-        .align 4
-globals:
-        .res byte, GLOBALS_SIZE
-inputPathBuffer:
-        .res byte, PATH_BUFFER_CAPACITY
-outputPathBuffer:
-        .res byte, PATH_BUFFER_CAPACITY
-sourceBuffer:
-        .res byte, SOURCE_BUFFER_CAPACITY
-tokenBuffer:
-        .res byte, TOKEN_RECORD_SIZE * TOKEN_BUFFER_CAPACITY
-lexemeScratch:
-        .res byte, SCRATCH_BUFFER_CAPACITY
-decimalBuffer:
-        .res byte, 16
-decimalBufferEnd:
-hexPairBuffer:
-        .res byte, 2
-inputProbeByte:
-        .res byte, 1
+	.align 4
+Globals
+	.res byte, GLOBALS_SIZE
+InputPathBuffer
+	.res byte, PATH_BUFFER_CAPACITY
+OutputPathBuffer
+	.res byte, PATH_BUFFER_CAPACITY
+SourceBuffer
+	.res byte, SOURCE_BUFFER_CAPACITY
+TokenBuffer
+	.res byte, TOKEN_RECORD_SIZE * TOKEN_BUFFER_CAPACITY
+LexemeScratch
+	.res byte, SCRATCH_BUFFER_CAPACITY
+DecimalBuffer
+	.res byte, 16
+DecimalBufferEnd
+HexPairBuffer
+	.res byte, 2
+InputProbeByte
+	.res byte, 1
 
-        .endsection
-        .endmodule
+	.endsection
+	.endmodule

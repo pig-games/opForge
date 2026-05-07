@@ -1075,9 +1075,9 @@ Other options:
 - `--line-numbers`: listing compatibility flag for line-number column (enabled by default).
 - `--tab-size <N>`: expand tab characters in listing source column.
 - `--verbose-list`: listing compatibility flag (reserved for expanded listing sections).
-- `--fmt`: format input files in place (shorthand for `--fmt-write`). Folder inputs also include linked module files.
-- `--fmt-check`: check formatting for input files without writing changes. Folder inputs include linked module files.
-- `--fmt-write`: apply formatter changes in place for input files. Folder inputs include linked module files.
+- `--fmt`: format input files in place (shorthand for `--fmt-write`). Folder inputs and root source-file inputs also include linked module files.
+- `--fmt-check`: check formatting for input files without writing changes. Folder inputs and root source-file inputs include linked module files.
+- `--fmt-write`: apply formatter changes in place for input files. Folder inputs and root source-file inputs include linked module files.
 - `--fmt-stdout`: format exactly one input file and write the result to stdout.
 - `--fmt-config <FILE>`: formatter config file path (requires a formatter mode flag).
 - `--cpu <ID>`: select initial CPU before source parsing (`.cpu` in source can still override later).
@@ -1121,6 +1121,11 @@ assembler output flags.
 The current formatter surface is intentionally small and conservative. The goal
 is predictable cleanup of layout and casing, not large-scale source rewriting.
 
+Project-mode formatter resolution:
+- `--fmt`, `--fmt-check`, and `--fmt-write` expand directory inputs exactly as before.
+- The same three modes now also expand root source-file inputs through the linked module graph, so formatting one root module can cover its companion module files.
+- `--fmt-stdout` remains single-file only and does not expand linked modules.
+
 Formatter config (`--fmt-config`) currently supports these keys:
 
 ```toml
@@ -1128,13 +1133,17 @@ Formatter config (`--fmt-config`) currently supports these keys:
 profile = "safe-preserve"            # only supported profile in Phase 1
 preserve_line_endings = true
 preserve_final_newline = true
+indent_char = "space"                # space|spaces|tab|tabs
 label_alignment_column = 8           # alias: code_column
 max_consecutive_blank_lines = 1      # alias: max_blank_lines
 align_unlabeled_instructions = true  # align unlabeled opcodes to code column (data directives also align)
 split_long_label_instructions = true  # if label exceeds column, move mnemonic to next line
 label_colon_style = "keep"           # keep|with|without
 directive_case = "keep"              # keep|upper|lower
-label_case = "keep"                  # keep|upper|lower
+label_case = "keep"                  # keep|upper|lower|lower_camel|upper_camel|upper_snake
+routine_label_case = "keep"          # role-aware override for routine-entry labels
+data_label_case = "keep"             # role-aware override for data labels
+constant_label_case = "keep"         # role-aware override for assignment/.const/.set labels
 mnemonic_case = "keep"               # keep|upper|lower (alias: opcode_case)
 register_case = "keep"               # keep|upper|lower
 hex_literal_case = "keep"            # keep|upper|lower
@@ -1148,8 +1157,36 @@ Validation is strict:
 - without `--fmt-config`, formatter runs always use built-in defaults and do not
   auto-discover `.opforgefmt.toml`
 
-V2 note: `label_case` is planned to become symbol-aware so label usage tokens
-are case-normalized alongside label definitions.
+Label-casing behavior:
+- `label_case` applies as the generic fallback for label definitions.
+- `routine_label_case`, `data_label_case`, and `constant_label_case` override `label_case` for symbol-aware formatter runs when a label can be classified by role.
+- Formatter rewrites now update matching same-file label usages, and project-mode formatter runs also rewrite selective `.use module (item)` imports plus imported symbol references when the defining module changes case.
+
+Example AmigaOS formatter config:
+
+```toml
+[formatter]
+profile = "safe-preserve"
+indent_char = "tab"
+label_alignment_column = 1
+align_unlabeled_instructions = true
+split_long_label_instructions = false
+label_colon_style = "without"
+label_case = "keep"
+routine_label_case = "lower_camel"
+data_label_case = "upper_camel"
+constant_label_case = "upper_snake"
+mnemonic_case = "lower"
+register_case = "lower"
+```
+
+One practical invocation for the Motorola 68000 AmigaOS tree is:
+
+```text
+opforge -i native/motorola68000/amigaos/tokvm/tokvm_interpreter.asm \
+  --fmt-check \
+  --fmt-config native/motorola68000/amigaos/opforge-amigaos-formatter.toml
+```
 
 ## 6. Messages
 

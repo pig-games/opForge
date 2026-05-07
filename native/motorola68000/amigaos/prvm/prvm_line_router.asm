@@ -1,9 +1,9 @@
 ; Native opcore-style one-line router for PRVM statement delegation.
 
-        .module prvm.amigaos.line_router
-        .cpu 68020
-        .pub
-        .use prvm.amigaos.interpreter (prvm_run_68000)
+	.module prvm.amigaos.line_router
+	.cpu 68020
+	.pub
+	.use prvm.amigaos.interpreter (prvmRun68000)
 
 PRVM_REQUEST_FRAME_SIZE             = 112
 PRVM_MAGIC_OPRP                     = $4F505250
@@ -51,7 +51,7 @@ ROUTE_FRAME_PARSER_CONTRACT_VERSION = 104
 ROUTE_FRAME_STEP_BUDGET             = 108
 ROUTE_FRAME_FLAGS                   = 112
 
-        .section code, kind=code
+	.section code, kind=code
 
 ; ---------------------------------------------------------------------------
 ; Native opcore-style one-line router.
@@ -65,153 +65,153 @@ ROUTE_FRAME_FLAGS                   = 112
 ; - returns deterministic nonzero status with D1-D3 cleared on route failure
 ; ---------------------------------------------------------------------------
 
-prvm_route_line_68000:
-        MOVEM.L D4-D7/A2-A4, -(SP)
-        MOVEA.L A0, A4
+prvmRouteLine68000
+	movem.l d4-d7/a2-a4, -(sp)
+	movea.l a0, a4
 
-        CMPI.L #PRVM_ROUTE_FRAME_SIZE, D0
-        BNE.W prvmRouteInvalidArgument
-        CMPI.L #PRVM_ROUTE_MAGIC_OPLR, ROUTE_FRAME_MAGIC(A4)
-        BNE.W prvmRouteInvalidArgument
-        CMPI.W #PRVM_ROUTE_ABI_VERSION_V1, ROUTE_FRAME_ABI_VERSION(A4)
-        BNE.W prvmRouteInvalidArgument
-        CMPI.W #PRVM_ROUTE_FRAME_SIZE, ROUTE_FRAME_FRAME_SIZE(A4)
-        BNE.W prvmRouteInvalidArgument
+	cmpi.l #PRVM_ROUTE_FRAME_SIZE, d0
+	bne.w prvmRouteInvalidArgument
+	cmpi.l #PRVM_ROUTE_MAGIC_OPLR, ROUTE_FRAME_MAGIC(a4)
+	bne.w prvmRouteInvalidArgument
+	cmpi.w #PRVM_ROUTE_ABI_VERSION_V1, ROUTE_FRAME_ABI_VERSION(a4)
+	bne.w prvmRouteInvalidArgument
+	cmpi.w #PRVM_ROUTE_FRAME_SIZE, ROUTE_FRAME_FRAME_SIZE(a4)
+	bne.w prvmRouteInvalidArgument
 
-        MOVEA.L ROUTE_FRAME_PROCESSOR_PTR(A4), A0
-        MOVE.L ROUTE_FRAME_PROCESSOR_LEN(A4), D0
-        LEA processorAsmText(PC), A1
-        MOVEQ #3, D1
-        BSR.W prvmRouteCompareText
-        TST.L D0
-        BNE.W prvmRouteUnsupported
+	movea.l ROUTE_FRAME_PROCESSOR_PTR(a4), a0
+	move.l ROUTE_FRAME_PROCESSOR_LEN(a4), d0
+	lea ProcessorAsmText(PC), a1
+	moveq #3, d1
+	bsr.w prvmRouteCompareText
+	tst.l d0
+	bne.w prvmRouteUnsupported
 
-        MOVEA.L ROUTE_FRAME_KIND_PTR(A4), A0
-        MOVE.L ROUTE_FRAME_KIND_LEN(A4), D0
-        LEA kindStatementText(PC), A1
-        MOVEQ #9, D1
-        BSR.W prvmRouteCompareText
-        TST.L D0
-        BNE.W prvmRouteUnsupported
+	movea.l ROUTE_FRAME_KIND_PTR(a4), a0
+	move.l ROUTE_FRAME_KIND_LEN(a4), d0
+	lea KindStatementText(PC), a1
+	moveq #9, d1
+	bsr.w prvmRouteCompareText
+	tst.l d0
+	bne.w prvmRouteUnsupported
 
-        MOVEA.L ROUTE_FRAME_SOURCE_PTR(A4), A0
-        MOVE.L ROUTE_FRAME_SOURCE_LEN(A4), D0
-        BSR.W prvmRouteRejectNewline
-        TST.L D0
-        BNE.W prvmRouteNewlineUnsupported
+	movea.l ROUTE_FRAME_SOURCE_PTR(a4), a0
+	move.l ROUTE_FRAME_SOURCE_LEN(a4), d0
+	bsr.w prvmRouteRejectNewline
+	tst.l d0
+	bne.w prvmRouteNewlineUnsupported
 
-        BSR.W prvmRouteBuildRequestFrame
-        LEA prvmRouteRequestFrame(PC), A0
-        MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0
-        MOVEA.L prvmRouteInterpreterEntryPtr(PC), A1
-        JSR (A1)
-        BRA.S prvmRouteDone
+	bsr.w prvmRouteBuildRequestFrame
+	lea PrvmRouteRequestFrame(PC), a0
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	movea.l PrvmRouteInterpreterEntryPtr(PC), a1
+	jsr (a1)
+	bra.s prvmRouteDone
 
-prvmRouteInvalidArgument:
-        MOVE.L #PRVM_STATUS_INVALID_ARGUMENT, D0
-        BRA.S prvmRouteClearTail
+prvmRouteInvalidArgument
+	move.l #PRVM_STATUS_INVALID_ARGUMENT, d0
+	bra.s prvmRouteClearTail
 
-prvmRouteUnsupported:
-        MOVE.L #PRVM_STATUS_UNSUPPORTED_ROUTE, D0
-        BRA.S prvmRouteClearTail
+prvmRouteUnsupported
+	move.l #PRVM_STATUS_UNSUPPORTED_ROUTE, d0
+	bra.s prvmRouteClearTail
 
-prvmRouteNewlineUnsupported:
-        MOVE.L #PRVM_STATUS_NEWLINE_UNSUPPORTED, D0
+prvmRouteNewlineUnsupported
+	move.l #PRVM_STATUS_NEWLINE_UNSUPPORTED, d0
 
-prvmRouteClearTail:
-        CLR.L D1
-        CLR.L D2
-        CLR.L D3
+prvmRouteClearTail
+	clr.l d1
+	clr.l d2
+	clr.l d3
 
-prvmRouteDone:
-        MOVEM.L (SP)+, D4-D7/A2-A4
-        RTS
+prvmRouteDone
+	movem.l (sp)+, d4-d7/a2-a4
+	rts
 
-prvmRouteCompareText:
-        CMP.L D1, D0
-        BNE.S prvmRouteCompareMismatch
-        SUBQ.L #1, D1
-        BMI.S prvmRouteCompareMatch
+prvmRouteCompareText
+	cmp.l d1, d0
+	bne.s prvmRouteCompareMismatch
+	subq.l #1, d1
+	bmi.s prvmRouteCompareMatch
 
-prvmRouteCompareLoop:
-        MOVE.B (A0)+, D2
-        CMP.B (A1)+, D2
-        BNE.S prvmRouteCompareMismatch
-        DBRA D1, prvmRouteCompareLoop
+prvmRouteCompareLoop
+	move.b (a0)+, d2
+	cmp.b (a1)+, d2
+	bne.s prvmRouteCompareMismatch
+	dbra d1, prvmRouteCompareLoop
 
-prvmRouteCompareMatch:
-        CLR.L D0
-        RTS
+prvmRouteCompareMatch
+	clr.l d0
+	rts
 
-prvmRouteCompareMismatch:
-        MOVEQ #1, D0
-        RTS
+prvmRouteCompareMismatch
+	moveq #1, d0
+	rts
 
-prvmRouteRejectNewline:
-        TST.L D0
-        BEQ.S prvmRouteNoNewline
-        SUBQ.L #1, D0
+prvmRouteRejectNewline
+	tst.l d0
+	beq.s prvmRouteNoNewline
+	subq.l #1, d0
 
-prvmRouteNewlineLoop:
-        MOVE.B (A0)+, D1
-        CMPI.B #10, D1
-        BEQ.S prvmRouteFoundNewline
-        CMPI.B #13, D1
-        BEQ.S prvmRouteFoundNewline
-        DBRA D0, prvmRouteNewlineLoop
+prvmRouteNewlineLoop
+	move.b (a0)+, d1
+	cmpi.b #10, d1
+	beq.s prvmRouteFoundNewline
+	cmpi.b #13, d1
+	beq.s prvmRouteFoundNewline
+	dbra d0, prvmRouteNewlineLoop
 
-prvmRouteNoNewline:
-        CLR.L D0
-        RTS
+prvmRouteNoNewline
+	clr.l d0
+	rts
 
-prvmRouteFoundNewline:
-        MOVEQ #1, D0
-        RTS
+prvmRouteFoundNewline
+	moveq #1, d0
+	rts
 
-prvmRouteBuildRequestFrame:
-        LEA prvmRouteRequestFrame(PC), A0
-        MOVE.L #PRVM_MAGIC_OPRP, 0(A0)
-        MOVE.W #PRVM_ABI_VERSION_V1, 4(A0)
-        MOVE.W #PRVM_REQUEST_FRAME_SIZE, 6(A0)
-        MOVE.W #PRVM_CALL_MODE_START, 8(A0)
-        MOVE.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(A0)
-        MOVE.L ROUTE_FRAME_LINE_NUM(A4), 12(A0)
-        MOVE.L ROUTE_FRAME_SOURCE_PTR(A4), 16(A0)
-        MOVE.L ROUTE_FRAME_SOURCE_LEN(A4), 20(A0)
-        MOVE.L ROUTE_FRAME_TOKEN_PTR(A4), 24(A0)
-        MOVE.L ROUTE_FRAME_TOKEN_COUNT(A4), 28(A0)
-        MOVE.W ROUTE_FRAME_TOKEN_RECORD_SIZE(A4), 32(A0)
-        CLR.W 34(A0)
-        MOVE.L ROUTE_FRAME_LEXEME_PTR(A4), 36(A0)
-        MOVE.L ROUTE_FRAME_LEXEME_LEN(A4), 40(A0)
-        MOVE.L ROUTE_FRAME_PROGRAM_PTR(A4), 44(A0)
-        MOVE.L ROUTE_FRAME_PROGRAM_LEN(A4), 48(A0)
-        MOVE.L ROUTE_FRAME_RESULT_PTR(A4), 52(A0)
-        MOVE.L ROUTE_FRAME_RESULT_CAPACITY(A4), 56(A0)
-        MOVE.L ROUTE_FRAME_DIAGNOSTIC_PTR(A4), 60(A0)
-        MOVE.L ROUTE_FRAME_DIAGNOSTIC_CAPACITY(A4), 64(A0)
-        MOVE.L ROUTE_FRAME_RESUME_PTR(A4), 68(A0)
-        MOVE.L ROUTE_FRAME_RESUME_CAPACITY(A4), 72(A0)
-        MOVE.L ROUTE_FRAME_EXPR_REQUEST_PTR(A4), 76(A0)
-        MOVE.L ROUTE_FRAME_EXPR_REQUEST_SIZE(A4), 80(A0)
-        MOVE.L ROUTE_FRAME_EXPR_RESULT_PTR(A4), 84(A0)
-        MOVE.L ROUTE_FRAME_EXPR_RESULT_COUNT(A4), 88(A0)
-        MOVE.L ROUTE_FRAME_PARSER_CONTRACT_VERSION(A4), 92(A0)
-        MOVE.L ROUTE_FRAME_STEP_BUDGET(A4), 96(A0)
-        MOVE.L ROUTE_FRAME_FLAGS(A4), 100(A0)
-        CLR.L 104(A0)
-        CLR.L 108(A0)
-        RTS
+prvmRouteBuildRequestFrame
+	lea PrvmRouteRequestFrame(PC), a0
+	move.l #PRVM_MAGIC_OPRP, 0(a0)
+	move.w #PRVM_ABI_VERSION_V1, 4(a0)
+	move.w #PRVM_REQUEST_FRAME_SIZE, 6(a0)
+	move.w #PRVM_CALL_MODE_START, 8(a0)
+	move.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
+	move.l ROUTE_FRAME_LINE_NUM(a4), 12(a0)
+	move.l ROUTE_FRAME_SOURCE_PTR(a4), 16(a0)
+	move.l ROUTE_FRAME_SOURCE_LEN(a4), 20(a0)
+	move.l ROUTE_FRAME_TOKEN_PTR(a4), 24(a0)
+	move.l ROUTE_FRAME_TOKEN_COUNT(a4), 28(a0)
+	move.w ROUTE_FRAME_TOKEN_RECORD_SIZE(a4), 32(a0)
+	clr.w 34(a0)
+	move.l ROUTE_FRAME_LEXEME_PTR(a4), 36(a0)
+	move.l ROUTE_FRAME_LEXEME_LEN(a4), 40(a0)
+	move.l ROUTE_FRAME_PROGRAM_PTR(a4), 44(a0)
+	move.l ROUTE_FRAME_PROGRAM_LEN(a4), 48(a0)
+	move.l ROUTE_FRAME_RESULT_PTR(a4), 52(a0)
+	move.l ROUTE_FRAME_RESULT_CAPACITY(a4), 56(a0)
+	move.l ROUTE_FRAME_DIAGNOSTIC_PTR(a4), 60(a0)
+	move.l ROUTE_FRAME_DIAGNOSTIC_CAPACITY(a4), 64(a0)
+	move.l ROUTE_FRAME_RESUME_PTR(a4), 68(a0)
+	move.l ROUTE_FRAME_RESUME_CAPACITY(a4), 72(a0)
+	move.l ROUTE_FRAME_EXPR_REQUEST_PTR(a4), 76(a0)
+	move.l ROUTE_FRAME_EXPR_REQUEST_SIZE(a4), 80(a0)
+	move.l ROUTE_FRAME_EXPR_RESULT_PTR(a4), 84(a0)
+	move.l ROUTE_FRAME_EXPR_RESULT_COUNT(a4), 88(a0)
+	move.l ROUTE_FRAME_PARSER_CONTRACT_VERSION(a4), 92(a0)
+	move.l ROUTE_FRAME_STEP_BUDGET(a4), 96(a0)
+	move.l ROUTE_FRAME_FLAGS(a4), 100(a0)
+	clr.l 104(a0)
+	clr.l 108(a0)
+	rts
 
-processorAsmText:
-        .byte "asm"
-kindStatementText:
-        .byte "statement"
+ProcessorAsmText
+	.byte "asm"
+KindStatementText
+	.byte "statement"
 
-prvmRouteRequestFrame:
-        .fill byte, 112, 0
-prvmRouteInterpreterEntryPtr:
-        .long prvm_run_68000
+PrvmRouteRequestFrame
+	.fill byte, 112, 0
+PrvmRouteInterpreterEntryPtr
+	.long prvmRun68000
 
-        .endsection
-        .endmodule
+	.endsection
+	.endmodule

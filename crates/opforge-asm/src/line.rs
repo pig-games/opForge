@@ -1463,14 +1463,26 @@ impl<'a> AsmLine<'a> {
         let module_id = self.symbol_scope.module_active.as_deref()?;
         let (target_module, target_name) =
             self.symbols.resolve_selective_import(module_id, name)?;
-        Some(format!("{target_module}.{target_name}"))
+        let full_name = format!("{target_module}.{target_name}");
+        Some(
+            self.symbols
+                .entry(&full_name)
+                .map(|entry| entry.name.clone())
+                .unwrap_or(full_name),
+        )
     }
 
     fn resolve_import_alias(&self, name: &str) -> Option<String> {
         let module_id = self.symbol_scope.module_active.as_deref()?;
         let (prefix, rest) = name.split_once('.')?;
         let target_module = self.symbols.resolve_import_alias(module_id, prefix)?;
-        Some(format!("{target_module}.{rest}"))
+        let full_name = format!("{target_module}.{rest}");
+        Some(
+            self.symbols
+                .entry(&full_name)
+                .map(|entry| entry.name.clone())
+                .unwrap_or(full_name),
+        )
     }
 
     fn selective_import_conflict(&self, name: &str) -> bool {
@@ -1498,7 +1510,7 @@ impl<'a> AsmLine<'a> {
                 if !self.entry_is_visible(entry) {
                     return Err(self.visibility_error(name));
                 }
-                return Ok(Some(candidate));
+                return Ok(Some(entry.name.clone()));
             }
             return Ok(None);
         }
@@ -1510,7 +1522,7 @@ impl<'a> AsmLine<'a> {
                 if !self.entry_is_visible(entry) {
                     return Err(self.visibility_error(name));
                 }
-                return Ok(Some(candidate));
+                return Ok(Some(entry.name.clone()));
             }
             depth = depth.saturating_sub(1);
         }
@@ -1518,13 +1530,13 @@ impl<'a> AsmLine<'a> {
             if !self.entry_is_visible(entry) {
                 return Err(self.visibility_error(name));
             }
-            Ok(Some(name.to_string()))
+            Ok(Some(entry.name.clone()))
         } else if let Some(imported) = self.resolve_imported_name(name) {
             if let Some(entry) = self.symbols.entry(&imported) {
                 if !self.entry_is_visible(entry) {
                     return Err(self.visibility_error(name));
                 }
-                Ok(Some(imported))
+                Ok(Some(entry.name.clone()))
             } else {
                 Ok(None)
             }

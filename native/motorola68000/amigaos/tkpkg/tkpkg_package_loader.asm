@@ -1,22 +1,22 @@
 ; Package-loader module for the tkpkg native runtime.
 
-        .module tkpkg.amigaos.package_loader
-        .cpu 68020
-        .pub
-        .use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN)
-        .use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY, PACKAGE_STATE_LOADED)
-        .use tkpkg.amigaos.buffers (PACKAGE_STATE_CLEAR_LONGWORD_COUNT)
-        .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_FAMS, PACKAGE_CHUNK_CPUS)
-        .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_DIAL, PACKAGE_CHUNK_TOKS)
-        .use tkpkg.amigaos.buffers (PACKAGE_CHUNK_TKVM, PACKAGE_CHUNK_TABL)
-        .use tkpkg.amigaos.buffers (PACKAGE_REQUIRED_CHUNK_FLAGS)
-        .use tkpkg.amigaos.buffers (packageStorage, packageStateFlags)
-        .use tkpkg.amigaos.buffers (packageChunkFlags, packageStorageLen)
-        .use tkpkg.amigaos.buffers (packageStorageLenHi, famsChunkOffsetLo)
-        .use tkpkg.amigaos.buffers (cpusChunkOffsetLo, dialChunkOffsetLo)
-        .use tkpkg.amigaos.buffers (toksChunkOffsetLo, tkvmChunkOffsetLo)
-        .use tkpkg.amigaos.buffers (tablChunkOffsetLo)
-        .use tkpkg.amigaos.buffers (activeCpuBuffer, activeDialectBuffer)
+	.module tkpkg.amigaos.package_loader
+	.cpu 68020
+	.pub
+	.use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN)
+	.use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY, PACKAGE_STATE_LOADED)
+	.use tkpkg.amigaos.buffers (PACKAGE_STATE_CLEAR_LONGWORD_COUNT)
+	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_FAMS, PACKAGE_CHUNK_CPUS)
+	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_DIAL, PACKAGE_CHUNK_TOKS)
+	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_TKVM, PACKAGE_CHUNK_TABL)
+	.use tkpkg.amigaos.buffers (PACKAGE_REQUIRED_CHUNK_FLAGS)
+	.use tkpkg.amigaos.buffers (PackageStorage, PackageStateFlags)
+	.use tkpkg.amigaos.buffers (PackageChunkFlags, PackageStorageLen)
+	.use tkpkg.amigaos.buffers (PackageStorageLenHi, FamsChunkOffsetLo)
+	.use tkpkg.amigaos.buffers (CpusChunkOffsetLo, DialChunkOffsetLo)
+	.use tkpkg.amigaos.buffers (ToksChunkOffsetLo, TkvmChunkOffsetLo)
+	.use tkpkg.amigaos.buffers (TablChunkOffsetLo)
+	.use tkpkg.amigaos.buffers (ActiveCpuBuffer, ActiveDialectBuffer)
 
 OPASM_HEADER_SIZE                    = 12
 OPASM_TOC_ENTRY_SIZE                 = 12
@@ -29,32 +29,32 @@ MISSING_CHUNK_TEXT_LEN               = 30
 CHUNK_BOUNDS_TEXT_LEN                = 27
 PACKAGE_STATE_CLEAR_LONGWORD_LAST    = PACKAGE_STATE_CLEAR_LONGWORD_COUNT - 1
 
-        .section data, kind=data
+	.section data, kind=data
 
-invalidMagicText:
-        .byte "OPC001: invalid package magic", 0
+InvalidMagicText
+	.byte "OPC001: invalid package magic", 0
 
-unsupportedVersionText:
-        .byte "OPC002: unsupported package version", 0
+UnsupportedVersionText
+	.byte "OPC002: unsupported package version", 0
 
-invalidEndianText:
-        .byte "OPC003: invalid endianness marker", 0
+InvalidEndianText
+	.byte "OPC003: invalid endianness marker", 0
 
-unexpectedEofText:
-        .byte "OPC004: unexpected end of file", 0
+UnexpectedEofText
+	.byte "OPC004: unexpected end of file", 0
 
-duplicateChunkText:
-        .byte "OPC005: duplicate tokenizer chunk", 0
+DuplicateChunkText
+	.byte "OPC005: duplicate tokenizer chunk", 0
 
-missingChunkText:
-        .byte "OPC006: missing required chunk", 0
+MissingChunkText
+	.byte "OPC006: missing required chunk", 0
 
-chunkBoundsText:
-        .byte "OPC007: chunk out of bounds", 0
+ChunkBoundsText
+	.byte "OPC007: chunk out of bounds", 0
 
-        .endsection
+	.endsection
 
-        .section code, kind=code
+	.section code, kind=code
 
 ; ---------------------------------------------------------------------------
 ; Load and validate an encoded `.opasm` hierarchy package from the service CB.
@@ -73,32 +73,32 @@ chunkBoundsText:
 ; - packageStorage/package chunk locators are updated on success.
 ; ---------------------------------------------------------------------------
 
-tkpkg_package_loader_load_v1:
-        BSR.W tkpkg_package_loader_clear_loaded_state_v1
-        BSR.W tkpkg_package_loader_read_input_len_v1
-        TST.W D0
-        BEQ.W tkpkgPackageLoaderInvalidMagic
-        CMPI.W #PACKAGE_STORAGE_CAPACITY, D0
-        BHI.W tkpkgPackageLoaderChunkBounds
-        MOVE.B D0, packageStorageLen    ; store low byte of package length for later bounded TOC walks
-        LSR.W #8, D0
-        MOVE.B D0, packageStorageLenHi  ; high byte keeps package length portable in byte-addressed state
-        BSR.W tkpkg_package_loader_read_input_offset_v1
-        LEA 0(A0,D1.W), A1              ; A1: caller package bytes inside the control-block window
-        LEA packageStorage, A2          ; A2: native package storage used by later locator reads
-        BSR.W tkpkg_package_loader_copy_input_bytes_v1
-        LEA packageStorage, A1
-        BSR.W tkpkg_package_loader_validate_header_v1
-        TST.B D0
-        BNE.S tkpkgPackageLoaderDone
-        BSR.W tkpkg_package_loader_validate_toc_v1
-        TST.B D0
-        BNE.S tkpkgPackageLoaderDone
-        MOVE.B #PACKAGE_STATE_LOADED, packageStateFlags
-        MOVEQ #0, D0
+tkpkgPackageLoaderLoadV1
+	bsr.w tkpkgPackageLoaderClearLoadedStateV1
+	bsr.w tkpkgPackageLoaderReadInputLenV1
+	tst.w d0
+	beq.w tkpkgPackageLoaderInvalidMagic
+	cmpi.w #PACKAGE_STORAGE_CAPACITY, d0
+	bhi.w tkpkgPackageLoaderChunkBounds
+	move.b d0, PackageStorageLen  ; store low byte of package length for later bounded TOC walks
+	lsr.w #8, d0
+	move.b d0, PackageStorageLenHi  ; high byte keeps package length portable in byte-addressed state
+	bsr.w tkpkgPackageLoaderReadInputOffsetV1
+	lea 0(a0, d1.W), a1  ; A1: caller package bytes inside the control-block window
+	lea PackageStorage, a2  ; A2: native package storage used by later locator reads
+	bsr.w tkpkgPackageLoaderCopyInputBytesV1
+	lea PackageStorage, a1
+	bsr.w tkpkgPackageLoaderValidateHeaderV1
+	tst.b d0
+	bne.s tkpkgPackageLoaderDone
+	bsr.w tkpkgPackageLoaderValidateTocV1
+	tst.b d0
+	bne.s tkpkgPackageLoaderDone
+	move.b #PACKAGE_STATE_LOADED, PackageStateFlags
+	moveq #0, d0
 
-tkpkgPackageLoaderDone:
-        RTS
+tkpkgPackageLoaderDone
+	rts
 
 ; ---------------------------------------------------------------------------
 ; Clear all package-derived state before loading a new package.
@@ -111,292 +111,292 @@ tkpkgPackageLoaderDone:
 ;   zeroed as one contiguous longword range.
 ; ---------------------------------------------------------------------------
 
-tkpkg_package_loader_clear_loaded_state_v1:
-        LEA packageStateFlags, A3
-        MOVE.W #PACKAGE_STATE_CLEAR_LONGWORD_LAST, D0
+tkpkgPackageLoaderClearLoadedStateV1
+	lea PackageStateFlags, a3
+	move.w #PACKAGE_STATE_CLEAR_LONGWORD_LAST, d0
 
-tkpkgPackageLoaderClearStateLoop:
-        CLR.L (A3)+
-        DBF D0, tkpkgPackageLoaderClearStateLoop
-        RTS
+tkpkgPackageLoaderClearStateLoop
+	clr.l (a3)+
+	dbf d0, tkpkgPackageLoaderClearStateLoop
+	rts
 
 ; Read CB_INPUT_LEN as a native 16-bit little-endian service length.
-tkpkg_package_loader_read_input_len_v1:
-        MOVEQ #0, D0
-        MOVE.B CB_INPUT_LEN(A0), D0
-        MOVEQ #0, D1
-        MOVE.B 19(A0), D1
-        LSL.W #8, D1
-        OR.W D1, D0
-        RTS
+tkpkgPackageLoaderReadInputLenV1
+	moveq #0, d0
+	move.b CB_INPUT_LEN(a0), d0
+	moveq #0, d1
+	move.b 19(a0), d1
+	lsl.w #8, d1
+	or.w d1, d0
+	rts
 
 ; Read CB_INPUT_PTR as a native 16-bit control-block-relative offset.
-tkpkg_package_loader_read_input_offset_v1:
-        MOVEQ #0, D1
-        MOVE.B CB_INPUT_PTR(A0), D1
-        MOVEQ #0, D2
-        MOVE.B 17(A0), D2
-        LSL.W #8, D2
-        OR.W D2, D1
-        RTS
+tkpkgPackageLoaderReadInputOffsetV1
+	moveq #0, d1
+	move.b CB_INPUT_PTR(a0), d1
+	moveq #0, d2
+	move.b 17(a0), d2
+	lsl.w #8, d2
+	or.w d2, d1
+	rts
 
 ; Copy the currently recorded package length from A1 to package storage at A2.
-tkpkg_package_loader_copy_input_bytes_v1:
-        MOVEQ #0, D2
-        MOVE.B packageStorageLen, D2
-        MOVEQ #0, D3
-        MOVE.B packageStorageLenHi, D3
-        LSL.W #8, D3
-        OR.W D3, D2
-        TST.W D2
-        BEQ.S tkpkgPackageLoaderCopyDone
+tkpkgPackageLoaderCopyInputBytesV1
+	moveq #0, d2
+	move.b PackageStorageLen, d2
+	moveq #0, d3
+	move.b PackageStorageLenHi, d3
+	lsl.w #8, d3
+	or.w d3, d2
+	tst.w d2
+	beq.s tkpkgPackageLoaderCopyDone
 
-tkpkgPackageLoaderCopyLoop:
-        MOVE.B (A1)+, (A2)+
-        SUBQ.W #1, D2
-        BNE.S tkpkgPackageLoaderCopyLoop
+tkpkgPackageLoaderCopyLoop
+	move.b (a1)+, (a2)+
+	subq.w #1, d2
+	bne.s tkpkgPackageLoaderCopyLoop
 
-tkpkgPackageLoaderCopyDone:
-        RTS
+tkpkgPackageLoaderCopyDone
+	rts
 
 ; Validate the fixed package header before any TOC offsets are trusted.
-tkpkg_package_loader_validate_header_v1:
-        MOVEQ #0, D0
-        CMPI.B #'O', (A1)
-        BNE.W tkpkgPackageLoaderInvalidMagic
-        CMPI.B #'P', 1(A1)
-        BNE.W tkpkgPackageLoaderInvalidMagic
-        CMPI.B #'C', 2(A1)
-        BNE.W tkpkgPackageLoaderInvalidMagic
-        CMPI.B #'P', 3(A1)
-        BNE.W tkpkgPackageLoaderInvalidMagic
-        CMPI.B #$01, 4(A1)
-        BNE.W tkpkgPackageLoaderUnsupportedVersion
-        TST.B 5(A1)
-        BNE.W tkpkgPackageLoaderUnsupportedVersion
-        CMPI.B #$34, 6(A1)
-        BNE.W tkpkgPackageLoaderInvalidEndian
-        CMPI.B #$12, 7(A1)
-        BNE.W tkpkgPackageLoaderInvalidEndian
-        RTS
+tkpkgPackageLoaderValidateHeaderV1
+	moveq #0, d0
+	cmpi.b #'O', (a1)
+	bne.w tkpkgPackageLoaderInvalidMagic
+	cmpi.b #'P', 1(a1)
+	bne.w tkpkgPackageLoaderInvalidMagic
+	cmpi.b #'C', 2(a1)
+	bne.w tkpkgPackageLoaderInvalidMagic
+	cmpi.b #'P', 3(a1)
+	bne.w tkpkgPackageLoaderInvalidMagic
+	cmpi.b #$01, 4(a1)
+	bne.w tkpkgPackageLoaderUnsupportedVersion
+	tst.b 5(a1)
+	bne.w tkpkgPackageLoaderUnsupportedVersion
+	cmpi.b #$34, 6(a1)
+	bne.w tkpkgPackageLoaderInvalidEndian
+	cmpi.b #$12, 7(a1)
+	bne.w tkpkgPackageLoaderInvalidEndian
+	rts
 
 ; Walk the package TOC, reject duplicates/bounds failures, and store locators.
-tkpkg_package_loader_validate_toc_v1:
-        MOVEQ #0, D7
-        MOVE.B packageStorageLen, D7
-        MOVEQ #0, D6
-        MOVE.B packageStorageLenHi, D6
-        LSL.W #8, D6
-        OR.W D6, D7
-        MOVEQ #0, D0
-        MOVE.B 8(A1), D0
-        MOVEQ #0, D1
-        MOVE.B 9(A1), D1
-        LSL.W #8, D1
-        OR.W D1, D0
-        MOVE.W D0, D2
-        LSL.W #2, D2
-        MOVE.W D0, D3
-        LSL.W #3, D3
-        ADD.W D3, D2
-        ADDI.W #OPASM_HEADER_SIZE, D2
-        CMP.W D7, D2
-        BHI.W tkpkgPackageLoaderUnexpectedEof
-        LEA OPASM_HEADER_SIZE(A1), A2
-        TST.W D0
-        BEQ.W tkpkgPackageLoaderMissingChunk
-        MOVE.W D0, D2
-        SUBQ.W #1, D2
+tkpkgPackageLoaderValidateTocV1
+	moveq #0, d7
+	move.b PackageStorageLen, d7
+	moveq #0, d6
+	move.b PackageStorageLenHi, d6
+	lsl.w #8, d6
+	or.w d6, d7
+	moveq #0, d0
+	move.b 8(a1), d0
+	moveq #0, d1
+	move.b 9(a1), d1
+	lsl.w #8, d1
+	or.w d1, d0
+	move.w d0, d2
+	lsl.w #2, d2
+	move.w d0, d3
+	lsl.w #3, d3
+	add.w d3, d2
+	addi.w #OPASM_HEADER_SIZE, d2
+	cmp.w d7, d2
+	bhi.w tkpkgPackageLoaderUnexpectedEof
+	lea OPASM_HEADER_SIZE(a1), a2
+	tst.w d0
+	beq.w tkpkgPackageLoaderMissingChunk
+	move.w d0, d2
+	subq.w #1, d2
 
-tkpkgPackageLoaderTocLoop:
-        LEA 4(A2), A3
-        BSR.W tkpkg_package_loader_read_u32_le_low16_v1
-        TST.B D1
-        BNE.W tkpkgPackageLoaderChunkBounds
-        MOVE.W D0, D4
-        LEA 8(A2), A3
-        BSR.W tkpkg_package_loader_read_u32_le_low16_v1
-        TST.B D1
-        BNE.W tkpkgPackageLoaderChunkBounds
-        MOVE.W D0, D5
-        MOVE.W D4, D6
-        ADD.W D5, D6
-        BCS.W tkpkgPackageLoaderChunkBounds
-        CMP.W D7, D6
-        BHI.W tkpkgPackageLoaderChunkBounds
+tkpkgPackageLoaderTocLoop
+	lea 4(a2), a3
+	bsr.w tkpkgPackageLoaderReadU32LeLow16V1
+	tst.b d1
+	bne.w tkpkgPackageLoaderChunkBounds
+	move.w d0, d4
+	lea 8(a2), a3
+	bsr.w tkpkgPackageLoaderReadU32LeLow16V1
+	tst.b d1
+	bne.w tkpkgPackageLoaderChunkBounds
+	move.w d0, d5
+	move.w d4, d6
+	add.w d5, d6
+	bcs.w tkpkgPackageLoaderChunkBounds
+	cmp.w d7, d6
+	bhi.w tkpkgPackageLoaderChunkBounds
 
-        CMPI.B #'F', (A2)
-        BNE.S tkpkgPackageLoaderCheckCpus
-        CMPI.B #'A', 1(A2)
-        BNE.S tkpkgPackageLoaderCheckCpus
-        CMPI.B #'M', 2(A2)
-        BNE.S tkpkgPackageLoaderCheckCpus
-        CMPI.B #'S', 3(A2)
-        BNE.S tkpkgPackageLoaderCheckCpus
-        BTST #0, packageChunkFlags
-        BNE.W tkpkgPackageLoaderDuplicateChunk
-        LEA famsChunkOffsetLo, A3
-        BSR.W tkpkg_package_loader_store_locator_v1
-        ORI.B #PACKAGE_CHUNK_FAMS, packageChunkFlags
-        BRA.W tkpkgPackageLoaderNextTocEntry
+	cmpi.b #'F', (a2)
+	bne.s tkpkgPackageLoaderCheckCpus
+	cmpi.b #'A', 1(a2)
+	bne.s tkpkgPackageLoaderCheckCpus
+	cmpi.b #'M', 2(a2)
+	bne.s tkpkgPackageLoaderCheckCpus
+	cmpi.b #'S', 3(a2)
+	bne.s tkpkgPackageLoaderCheckCpus
+	btst #0, PackageChunkFlags
+	bne.w tkpkgPackageLoaderDuplicateChunk
+	lea FamsChunkOffsetLo, a3
+	bsr.w tkpkgPackageLoaderStoreLocatorV1
+	ori.b #PACKAGE_CHUNK_FAMS, PackageChunkFlags
+	bra.w tkpkgPackageLoaderNextTocEntry
 
-tkpkgPackageLoaderCheckCpus:
-        CMPI.B #'C', (A2)
-        BNE.S tkpkgPackageLoaderCheckDial
-        CMPI.B #'P', 1(A2)
-        BNE.S tkpkgPackageLoaderCheckDial
-        CMPI.B #'U', 2(A2)
-        BNE.S tkpkgPackageLoaderCheckDial
-        CMPI.B #'S', 3(A2)
-        BNE.S tkpkgPackageLoaderCheckDial
-        BTST #1, packageChunkFlags
-        BNE.W tkpkgPackageLoaderDuplicateChunk
-        LEA cpusChunkOffsetLo, A3
-        BSR.W tkpkg_package_loader_store_locator_v1
-        ORI.B #PACKAGE_CHUNK_CPUS, packageChunkFlags
-        BRA.W tkpkgPackageLoaderNextTocEntry
+tkpkgPackageLoaderCheckCpus
+	cmpi.b #'C', (a2)
+	bne.s tkpkgPackageLoaderCheckDial
+	cmpi.b #'P', 1(a2)
+	bne.s tkpkgPackageLoaderCheckDial
+	cmpi.b #'U', 2(a2)
+	bne.s tkpkgPackageLoaderCheckDial
+	cmpi.b #'S', 3(a2)
+	bne.s tkpkgPackageLoaderCheckDial
+	btst #1, PackageChunkFlags
+	bne.w tkpkgPackageLoaderDuplicateChunk
+	lea CpusChunkOffsetLo, a3
+	bsr.w tkpkgPackageLoaderStoreLocatorV1
+	ori.b #PACKAGE_CHUNK_CPUS, PackageChunkFlags
+	bra.w tkpkgPackageLoaderNextTocEntry
 
-tkpkgPackageLoaderCheckDial:
-        CMPI.B #'D', (A2)
-        BNE.S tkpkgPackageLoaderCheckToks
-        CMPI.B #'I', 1(A2)
-        BNE.S tkpkgPackageLoaderCheckToks
-        CMPI.B #'A', 2(A2)
-        BNE.S tkpkgPackageLoaderCheckToks
-        CMPI.B #'L', 3(A2)
-        BNE.S tkpkgPackageLoaderCheckToks
-        BTST #2, packageChunkFlags
-        BNE.W tkpkgPackageLoaderDuplicateChunk
-        LEA dialChunkOffsetLo, A3
-        BSR.W tkpkg_package_loader_store_locator_v1
-        ORI.B #PACKAGE_CHUNK_DIAL, packageChunkFlags
-        BRA.W tkpkgPackageLoaderNextTocEntry
+tkpkgPackageLoaderCheckDial
+	cmpi.b #'D', (a2)
+	bne.s tkpkgPackageLoaderCheckToks
+	cmpi.b #'I', 1(a2)
+	bne.s tkpkgPackageLoaderCheckToks
+	cmpi.b #'A', 2(a2)
+	bne.s tkpkgPackageLoaderCheckToks
+	cmpi.b #'L', 3(a2)
+	bne.s tkpkgPackageLoaderCheckToks
+	btst #2, PackageChunkFlags
+	bne.w tkpkgPackageLoaderDuplicateChunk
+	lea DialChunkOffsetLo, a3
+	bsr.w tkpkgPackageLoaderStoreLocatorV1
+	ori.b #PACKAGE_CHUNK_DIAL, PackageChunkFlags
+	bra.w tkpkgPackageLoaderNextTocEntry
 
-tkpkgPackageLoaderCheckToks:
-        CMPI.B #'T', (A2)
-        BNE.S tkpkgPackageLoaderCheckTkvm
-        CMPI.B #'O', 1(A2)
-        BNE.S tkpkgPackageLoaderCheckTkvm
-        CMPI.B #'K', 2(A2)
-        BNE.S tkpkgPackageLoaderCheckTkvm
-        CMPI.B #'S', 3(A2)
-        BNE.S tkpkgPackageLoaderCheckTkvm
-        BTST #3, packageChunkFlags
-        BNE.W tkpkgPackageLoaderDuplicateChunk
-        LEA toksChunkOffsetLo, A3
-        BSR.W tkpkg_package_loader_store_locator_v1
-        ORI.B #PACKAGE_CHUNK_TOKS, packageChunkFlags
-        BRA.W tkpkgPackageLoaderNextTocEntry
+tkpkgPackageLoaderCheckToks
+	cmpi.b #'T', (a2)
+	bne.s tkpkgPackageLoaderCheckTkvm
+	cmpi.b #'O', 1(a2)
+	bne.s tkpkgPackageLoaderCheckTkvm
+	cmpi.b #'K', 2(a2)
+	bne.s tkpkgPackageLoaderCheckTkvm
+	cmpi.b #'S', 3(a2)
+	bne.s tkpkgPackageLoaderCheckTkvm
+	btst #3, PackageChunkFlags
+	bne.w tkpkgPackageLoaderDuplicateChunk
+	lea ToksChunkOffsetLo, a3
+	bsr.w tkpkgPackageLoaderStoreLocatorV1
+	ori.b #PACKAGE_CHUNK_TOKS, PackageChunkFlags
+	bra.w tkpkgPackageLoaderNextTocEntry
 
-tkpkgPackageLoaderCheckTkvm:
-        CMPI.B #'T', (A2)
-        BNE.S tkpkgPackageLoaderCheckTabl
-        CMPI.B #'K', 1(A2)
-        BNE.S tkpkgPackageLoaderCheckTabl
-        CMPI.B #'V', 2(A2)
-        BNE.S tkpkgPackageLoaderCheckTabl
-        CMPI.B #'M', 3(A2)
-        BNE.S tkpkgPackageLoaderCheckTabl
-        BTST #4, packageChunkFlags
-        BNE.W tkpkgPackageLoaderDuplicateChunk
-        LEA tkvmChunkOffsetLo, A3
-        BSR.W tkpkg_package_loader_store_locator_v1
-        ORI.B #PACKAGE_CHUNK_TKVM, packageChunkFlags
-        BRA.S tkpkgPackageLoaderNextTocEntry
+tkpkgPackageLoaderCheckTkvm
+	cmpi.b #'T', (a2)
+	bne.s tkpkgPackageLoaderCheckTabl
+	cmpi.b #'K', 1(a2)
+	bne.s tkpkgPackageLoaderCheckTabl
+	cmpi.b #'V', 2(a2)
+	bne.s tkpkgPackageLoaderCheckTabl
+	cmpi.b #'M', 3(a2)
+	bne.s tkpkgPackageLoaderCheckTabl
+	btst #4, PackageChunkFlags
+	bne.w tkpkgPackageLoaderDuplicateChunk
+	lea TkvmChunkOffsetLo, a3
+	bsr.w tkpkgPackageLoaderStoreLocatorV1
+	ori.b #PACKAGE_CHUNK_TKVM, PackageChunkFlags
+	bra.s tkpkgPackageLoaderNextTocEntry
 
-tkpkgPackageLoaderCheckTabl:
-        CMPI.B #'T', (A2)
-        BNE.S tkpkgPackageLoaderNextTocEntry
-        CMPI.B #'A', 1(A2)
-        BNE.S tkpkgPackageLoaderNextTocEntry
-        CMPI.B #'B', 2(A2)
-        BNE.S tkpkgPackageLoaderNextTocEntry
-        CMPI.B #'L', 3(A2)
-        BNE.S tkpkgPackageLoaderNextTocEntry
-        BTST #5, packageChunkFlags
-        BNE.W tkpkgPackageLoaderDuplicateChunk
-        LEA tablChunkOffsetLo, A3
-        BSR.W tkpkg_package_loader_store_locator_v1
-        ORI.B #PACKAGE_CHUNK_TABL, packageChunkFlags
+tkpkgPackageLoaderCheckTabl
+	cmpi.b #'T', (a2)
+	bne.s tkpkgPackageLoaderNextTocEntry
+	cmpi.b #'A', 1(a2)
+	bne.s tkpkgPackageLoaderNextTocEntry
+	cmpi.b #'B', 2(a2)
+	bne.s tkpkgPackageLoaderNextTocEntry
+	cmpi.b #'L', 3(a2)
+	bne.s tkpkgPackageLoaderNextTocEntry
+	btst #5, PackageChunkFlags
+	bne.w tkpkgPackageLoaderDuplicateChunk
+	lea TablChunkOffsetLo, a3
+	bsr.w tkpkgPackageLoaderStoreLocatorV1
+	ori.b #PACKAGE_CHUNK_TABL, PackageChunkFlags
 
-tkpkgPackageLoaderNextTocEntry:
-        LEA OPASM_TOC_ENTRY_SIZE(A2), A2
-        DBF D2, tkpkgPackageLoaderTocLoop
-        MOVE.B packageChunkFlags, D0
-        ANDI.B #PACKAGE_REQUIRED_CHUNK_FLAGS, D0
-        CMPI.B #PACKAGE_REQUIRED_CHUNK_FLAGS, D0
-        BNE.W tkpkgPackageLoaderMissingChunk
-        MOVEQ #0, D0
-        RTS
+tkpkgPackageLoaderNextTocEntry
+	lea OPASM_TOC_ENTRY_SIZE(a2), a2
+	dbf d2, tkpkgPackageLoaderTocLoop
+	move.b PackageChunkFlags, d0
+	andi.b #PACKAGE_REQUIRED_CHUNK_FLAGS, d0
+	cmpi.b #PACKAGE_REQUIRED_CHUNK_FLAGS, d0
+	bne.w tkpkgPackageLoaderMissingChunk
+	moveq #0, d0
+	rts
 
-tkpkg_package_loader_read_u32_le_low16_v1:
-        MOVEQ #0, D0
-        MOVE.B (A3), D0
-        MOVEQ #0, D1
-        MOVE.B 1(A3), D1
-        LSL.W #8, D1
-        OR.W D1, D0
-        MOVEQ #0, D1
-        TST.B 2(A3)
-        BNE.S tkpkgPackageLoaderReadU32HighBits
-        TST.B 3(A3)
-        BNE.S tkpkgPackageLoaderReadU32HighBits
-        RTS
+tkpkgPackageLoaderReadU32LeLow16V1
+	moveq #0, d0
+	move.b (a3), d0
+	moveq #0, d1
+	move.b 1(a3), d1
+	lsl.w #8, d1
+	or.w d1, d0
+	moveq #0, d1
+	tst.b 2(a3)
+	bne.s tkpkgPackageLoaderReadU32HighBits
+	tst.b 3(a3)
+	bne.s tkpkgPackageLoaderReadU32HighBits
+	rts
 
-tkpkgPackageLoaderReadU32HighBits:
-        MOVEQ #1, D1
-        RTS
+tkpkgPackageLoaderReadU32HighBits
+	moveq #1, d1
+	rts
 
-tkpkg_package_loader_store_locator_v1:
-        MOVE.B D4, (A3)+
-        LSR.W #8, D4
-        MOVE.B D4, (A3)+
-        MOVE.B D5, (A3)+
-        LSR.W #8, D5
-        MOVE.B D5, (A3)+
-        RTS
+tkpkgPackageLoaderStoreLocatorV1
+	move.b d4, (a3)+
+	lsr.w #8, d4
+	move.b d4, (a3)+
+	move.b d5, (a3)+
+	lsr.w #8, d5
+	move.b d5, (a3)+
+	rts
 
-tkpkgPackageLoaderInvalidMagic:
-        LEA invalidMagicText, A1
-        MOVEQ #INVALID_MAGIC_TEXT_LEN, D1
-        MOVEQ #1, D0
-        RTS
+tkpkgPackageLoaderInvalidMagic
+	lea InvalidMagicText, a1
+	moveq #INVALID_MAGIC_TEXT_LEN, d1
+	moveq #1, d0
+	rts
 
-tkpkgPackageLoaderUnsupportedVersion:
-        LEA unsupportedVersionText, A1
-        MOVEQ #UNSUPPORTED_VERSION_TEXT_LEN, D1
-        MOVEQ #1, D0
-        RTS
+tkpkgPackageLoaderUnsupportedVersion
+	lea UnsupportedVersionText, a1
+	moveq #UNSUPPORTED_VERSION_TEXT_LEN, d1
+	moveq #1, d0
+	rts
 
-tkpkgPackageLoaderInvalidEndian:
-        LEA invalidEndianText, A1
-        MOVEQ #INVALID_ENDIAN_TEXT_LEN, D1
-        MOVEQ #1, D0
-        RTS
+tkpkgPackageLoaderInvalidEndian
+	lea InvalidEndianText, a1
+	moveq #INVALID_ENDIAN_TEXT_LEN, d1
+	moveq #1, d0
+	rts
 
-tkpkgPackageLoaderUnexpectedEof:
-        LEA unexpectedEofText, A1
-        MOVEQ #UNEXPECTED_EOF_TEXT_LEN, D1
-        MOVEQ #1, D0
-        RTS
+tkpkgPackageLoaderUnexpectedEof
+	lea UnexpectedEofText, a1
+	moveq #UNEXPECTED_EOF_TEXT_LEN, d1
+	moveq #1, d0
+	rts
 
-tkpkgPackageLoaderDuplicateChunk:
-        LEA duplicateChunkText, A1
-        MOVEQ #DUPLICATE_CHUNK_TEXT_LEN, D1
-        MOVEQ #1, D0
-        RTS
+tkpkgPackageLoaderDuplicateChunk
+	lea DuplicateChunkText, a1
+	moveq #DUPLICATE_CHUNK_TEXT_LEN, d1
+	moveq #1, d0
+	rts
 
-tkpkgPackageLoaderMissingChunk:
-        LEA missingChunkText, A1
-        MOVEQ #MISSING_CHUNK_TEXT_LEN, D1
-        MOVEQ #1, D0
-        RTS
+tkpkgPackageLoaderMissingChunk
+	lea MissingChunkText, a1
+	moveq #MISSING_CHUNK_TEXT_LEN, d1
+	moveq #1, d0
+	rts
 
-tkpkgPackageLoaderChunkBounds:
-        LEA chunkBoundsText, A1
-        MOVEQ #CHUNK_BOUNDS_TEXT_LEN, D1
-        MOVEQ #1, D0
-        RTS
+tkpkgPackageLoaderChunkBounds
+	lea ChunkBoundsText, a1
+	moveq #CHUNK_BOUNDS_TEXT_LEN, d1
+	moveq #1, d0
+	rts
 
-        .endsection
-        .endmodule
+	.endsection
+	.endmodule

@@ -3,14 +3,14 @@
 ; This root file is now a true composition module: it owns only the Amiga entry
 ; path and pulls the CLI harness and tokenizer VM in through `.use`.
 
-        .module main
-        .cpu 68020
-        .use tokvm.amigaos.cli_harness (SysBase, pr_CLI, pr_MsgPort)
-        .use tokvm.amigaos.cli_harness (FindTask, WaitPort, GetMsg, ReplyMsg, Forbid)
-        .use tokvm.amigaos.cli_harness (RETURN_WORKBENCH_UNSUPPORTED, tokvm_amigaos_cli_harness_run)
-        .use tokvm.amigaos.tokenizer_vm (abiMarker)
+	.module main
+	.cpu 68020
+	.use tokvm.amigaos.cli_harness (SYS_BASE, PR_CLI, PR_MSG_PORT)
+	.use tokvm.amigaos.cli_harness (FIND_TASK, WAIT_PORT, GET_MSG, REPLY_MSG, FORBID)
+	.use tokvm.amigaos.cli_harness (RETURN_WORKBENCH_UNSUPPORTED, tokvmAmigaosCliHarnessRun)
+	.use tokvm.amigaos.tokenizer_vm (AbiMarker)
 
-        .section entry, kind=code
+	.section entry, kind=code
 
 ; ---------------------------------------------------------------------------
 ; AmigaOS process entry.
@@ -20,42 +20,42 @@
 ; hand off to the imported tokvm.amigaos.cli_harness module.
 ; ---------------------------------------------------------------------------
 
-start:
-        MOVEM.L D2-D7/A2-A6, -(SP)  ; preserve callee-owned state across the CLI harness call
-        CLR.L D2  ; no Workbench startup message is pending until GetMsg succeeds
+start
+	movem.l d2-d7/a2-a6, -(sp)  ; preserve callee-owned state across the CLI harness call
+	clr.l d2  ; no Workbench startup message is pending until GetMsg succeeds
 
-        SUBA.L A1, A1  ; Exec FindTask(NULL) => current process, same host contract as C/Rust launchers
-        MOVEA.L SysBase.W, A6  ; Exec base for FindTask/WaitPort/GetMsg/ReplyMsg/Forbid
-        JSR FindTask(A6)
+	suba.l a1, a1  ; Exec FindTask(NULL) => current process, same host contract as C/Rust launchers
+	movea.l SYS_BASE.W, a6  ; Exec base for FindTask/WaitPort/GetMsg/ReplyMsg/Forbid
+	jsr FIND_TASK(a6)
 
-        MOVEA.L D0, A2
-        TST.L pr_CLI(A2)  ; tokvm's first native slice only supports Shell launches, not Workbench icons
-        BNE.W startCli
+	movea.l d0, a2
+	tst.l PR_CLI(a2)  ; tokvm's first native slice only supports Shell launches, not Workbench icons
+	bne.w startCli
 
-        LEA pr_MsgPort(A2), A0
-        JSR WaitPort(A6)
-        LEA pr_MsgPort(A2), A0
-        JSR GetMsg(A6)
-        MOVE.L D0, D2  ; cache the startup message so we can ReplyMsg before returning
-        MOVEQ #RETURN_WORKBENCH_UNSUPPORTED, D7  ; host-visible status for unsupported Workbench activation
-        BRA.W startReply
+	lea PR_MSG_PORT(a2), a0
+	jsr WAIT_PORT(a6)
+	lea PR_MSG_PORT(a2), a0
+	jsr GET_MSG(a6)
+	move.l d0, d2  ; cache the startup message so we can ReplyMsg before returning
+	moveq #RETURN_WORKBENCH_UNSUPPORTED, d7  ; host-visible status for unsupported Workbench activation
+	bra.w startReply
 
-startCli:
-        JSR tokvm_amigaos_cli_harness_run  ; hand off to the module that mirrors the Rust host/report bridge
-        MOVE.L D0, D7  ; keep the CLI/report status live through the reply/epilogue path
+startCli
+	jsr tokvmAmigaosCliHarnessRun  ; hand off to the module that mirrors the Rust host/report bridge
+	move.l d0, d7  ; keep the CLI/report status live through the reply/epilogue path
 
-startReply:
-        TST.L D2  ; only Workbench launches require a reply to the startup message
-        BEQ.W startDone
-        JSR Forbid(A6)
-        MOVEA.L D2, A1
-        JSR ReplyMsg(A6)
+startReply
+	tst.l d2  ; only Workbench launches require a reply to the startup message
+	beq.w startDone
+	jsr FORBID(a6)
+	movea.l d2, a1
+	jsr REPLY_MSG(a6)
 
-startDone:
-        MOVE.L D7, D0  ; Amiga return register carries the harness/native VM outcome
-        MOVEM.L (SP)+, D2-D7/A2-A6
-        RTS
+startDone
+	move.l d7, d0  ; Amiga return register carries the harness/native VM outcome
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
 
-        .endsection
-        .output "build/tokvm", format=hunk, sections=entry, code, data, bss
-        .endmodule
+	.endsection
+	.output "build/tokvm", format=hunk, sections=entry, code, data, bss
+	.endmodule

@@ -25,6 +25,46 @@ impl CaseStyle {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IndentChar {
+    #[default]
+    Space,
+    Tab,
+}
+
+impl IndentChar {
+    pub fn fill(self, count: usize) -> String {
+        match self {
+            IndentChar::Space => " ".repeat(count),
+            IndentChar::Tab => "\t".repeat(count),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LabelCaseStyle {
+    #[default]
+    Keep,
+    Upper,
+    Lower,
+    LowerCamel,
+    UpperCamel,
+    UpperSnake,
+}
+
+impl LabelCaseStyle {
+    pub fn apply(self, value: &str) -> String {
+        match self {
+            LabelCaseStyle::Keep => value.to_string(),
+            LabelCaseStyle::Upper => value.to_ascii_uppercase(),
+            LabelCaseStyle::Lower => value.to_ascii_lowercase(),
+            LabelCaseStyle::LowerCamel => to_camel_case(value, false),
+            LabelCaseStyle::UpperCamel => to_camel_case(value, true),
+            LabelCaseStyle::UpperSnake => to_upper_snake_case(value),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LabelColonStyle {
     #[default]
     Keep,
@@ -37,13 +77,17 @@ pub enum LabelColonStyle {
 pub struct FormatterConfig {
     pub preserve_line_endings: bool,
     pub preserve_final_newline: bool,
+    pub indent_char: IndentChar,
     pub label_alignment_column: usize,
     pub max_consecutive_blank_lines: usize,
     pub align_unlabeled_instructions: bool,
     pub split_long_label_instructions: bool,
     pub label_colon_style: LabelColonStyle,
     pub directive_case: CaseStyle,
-    pub label_case: CaseStyle,
+    pub label_case: LabelCaseStyle,
+    pub routine_label_case: LabelCaseStyle,
+    pub data_label_case: LabelCaseStyle,
+    pub constant_label_case: LabelCaseStyle,
     pub mnemonic_case: CaseStyle,
     pub register_case: CaseStyle,
     pub hex_literal_case: CaseStyle,
@@ -54,13 +98,17 @@ impl Default for FormatterConfig {
         Self {
             preserve_line_endings: true,
             preserve_final_newline: true,
+            indent_char: IndentChar::Space,
             label_alignment_column: 8,
             max_consecutive_blank_lines: 1,
             align_unlabeled_instructions: true,
             split_long_label_instructions: true,
             label_colon_style: LabelColonStyle::Keep,
             directive_case: CaseStyle::Keep,
-            label_case: CaseStyle::Keep,
+            label_case: LabelCaseStyle::Keep,
+            routine_label_case: LabelCaseStyle::Keep,
+            data_label_case: LabelCaseStyle::Keep,
+            constant_label_case: LabelCaseStyle::Keep,
             mnemonic_case: CaseStyle::Keep,
             register_case: CaseStyle::Keep,
             hex_literal_case: CaseStyle::Keep,
@@ -152,6 +200,7 @@ impl FormatterConfig {
                 "preserve_final_newline" => {
                     config.preserve_final_newline = parse_bool(path, line_no, key, value)?
                 }
+                "indent_char" => config.indent_char = parse_indent_char(path, line_no, key, value)?,
                 "label_alignment_column" | "code_column" => {
                     config.label_alignment_column = parse_usize(path, line_no, key, value, true)?
                 }
@@ -171,7 +220,18 @@ impl FormatterConfig {
                 "directive_case" => {
                     config.directive_case = parse_case_style(path, line_no, key, value)?
                 }
-                "label_case" => config.label_case = parse_case_style(path, line_no, key, value)?,
+                "label_case" => {
+                    config.label_case = parse_label_case_style(path, line_no, key, value)?
+                }
+                "routine_label_case" => {
+                    config.routine_label_case = parse_label_case_style(path, line_no, key, value)?
+                }
+                "data_label_case" => {
+                    config.data_label_case = parse_label_case_style(path, line_no, key, value)?
+                }
+                "constant_label_case" => {
+                    config.constant_label_case = parse_label_case_style(path, line_no, key, value)?
+                }
                 "mnemonic_case" | "opcode_case" => {
                     config.mnemonic_case = parse_case_style(path, line_no, key, value)?
                 }
@@ -318,6 +378,46 @@ fn parse_case_style(
     }
 }
 
+fn parse_indent_char(
+    path: &Path,
+    line_no: usize,
+    key: &str,
+    value: &str,
+) -> Result<IndentChar, FormatterConfigError> {
+    let normalized = parse_string(path, line_no, key, value)?;
+    match normalized.to_ascii_lowercase().as_str() {
+        "space" | "spaces" => Ok(IndentChar::Space),
+        "tab" | "tabs" => Ok(IndentChar::Tab),
+        _ => Err(config_error(
+            path,
+            line_no,
+            format!("invalid indent char for '{}': {}", key, value),
+        )),
+    }
+}
+
+fn parse_label_case_style(
+    path: &Path,
+    line_no: usize,
+    key: &str,
+    value: &str,
+) -> Result<LabelCaseStyle, FormatterConfigError> {
+    let normalized = parse_string(path, line_no, key, value)?;
+    match normalized.to_ascii_lowercase().as_str() {
+        "keep" => Ok(LabelCaseStyle::Keep),
+        "upper" => Ok(LabelCaseStyle::Upper),
+        "lower" => Ok(LabelCaseStyle::Lower),
+        "lower_camel" | "lowercamel" => Ok(LabelCaseStyle::LowerCamel),
+        "upper_camel" | "uppercamel" => Ok(LabelCaseStyle::UpperCamel),
+        "upper_snake" | "uppersnake" => Ok(LabelCaseStyle::UpperSnake),
+        _ => Err(config_error(
+            path,
+            line_no,
+            format!("invalid label case style for '{}': {}", key, value),
+        )),
+    }
+}
+
 fn parse_label_colon_style(
     path: &Path,
     line_no: usize,
@@ -358,9 +458,71 @@ fn strip_toml_comment(line: &str) -> &str {
     line
 }
 
+fn split_label_words(input: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let chars: Vec<char> = input.chars().collect();
+
+    for (idx, ch) in chars.iter().copied().enumerate() {
+        if ch == '_' || ch == '-' {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+
+        let prev = idx.checked_sub(1).and_then(|pos| chars.get(pos)).copied();
+        let next = chars.get(idx + 1).copied();
+        let boundary_before = idx > 0
+            && ch.is_ascii_uppercase()
+            && (prev.is_some_and(|value| value.is_ascii_lowercase() || value.is_ascii_digit())
+                || (prev.is_some_and(|value| value.is_ascii_uppercase())
+                    && next.is_some_and(|value| value.is_ascii_lowercase())));
+        if boundary_before && !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+        current.push(ch);
+    }
+
+    if !current.is_empty() {
+        words.push(current);
+    }
+
+    words
+}
+
+fn to_camel_case(input: &str, upper_first: bool) -> String {
+    let words = split_label_words(input);
+    let mut out = String::new();
+    for (idx, word) in words.iter().enumerate() {
+        let lower = word.to_ascii_lowercase();
+        if idx == 0 && !upper_first {
+            out.push_str(&lower);
+            continue;
+        }
+        let mut chars = lower.chars();
+        if let Some(first) = chars.next() {
+            out.push(first.to_ascii_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    out
+}
+
+fn to_upper_snake_case(input: &str) -> String {
+    split_label_words(input)
+        .into_iter()
+        .map(|word| word.to_ascii_uppercase())
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CaseStyle, FormatterConfig, FormatterConfigError, LabelColonStyle};
+    use super::{
+        CaseStyle, FormatterConfig, FormatterConfigError, IndentChar, LabelCaseStyle,
+        LabelColonStyle,
+    };
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -372,13 +534,17 @@ mod tests {
         let cfg = FormatterConfig::default();
         assert!(cfg.preserve_line_endings);
         assert!(cfg.preserve_final_newline);
+        assert_eq!(cfg.indent_char, IndentChar::Space);
         assert_eq!(cfg.label_alignment_column, 8);
         assert_eq!(cfg.max_consecutive_blank_lines, 1);
         assert!(cfg.align_unlabeled_instructions);
         assert!(cfg.split_long_label_instructions);
         assert_eq!(cfg.label_colon_style, LabelColonStyle::Keep);
         assert_eq!(cfg.directive_case, CaseStyle::Keep);
-        assert_eq!(cfg.label_case, CaseStyle::Keep);
+        assert_eq!(cfg.label_case, LabelCaseStyle::Keep);
+        assert_eq!(cfg.routine_label_case, LabelCaseStyle::Keep);
+        assert_eq!(cfg.data_label_case, LabelCaseStyle::Keep);
+        assert_eq!(cfg.constant_label_case, LabelCaseStyle::Keep);
         assert_eq!(cfg.mnemonic_case, CaseStyle::Keep);
         assert_eq!(cfg.register_case, CaseStyle::Keep);
         assert_eq!(cfg.hex_literal_case, CaseStyle::Keep);
@@ -390,6 +556,7 @@ mod tests {
             "root-keys",
             "preserve_line_endings = false
 preserve_final_newline = false
+indent_char = \"tab\"
 label_alignment_column = 8
 max_consecutive_blank_lines = 2
 ",
@@ -397,6 +564,7 @@ max_consecutive_blank_lines = 2
         let cfg = FormatterConfig::load_from_path(&path).expect("load config");
         assert!(!cfg.preserve_line_endings);
         assert!(!cfg.preserve_final_newline);
+        assert_eq!(cfg.indent_char, IndentChar::Tab);
         assert_eq!(cfg.label_alignment_column, 8);
         assert_eq!(cfg.max_consecutive_blank_lines, 2);
     }
@@ -407,26 +575,34 @@ max_consecutive_blank_lines = 2
             "formatter-section",
             "[formatter]
 profile = \"safe-preserve\"
+indent_char = \"tab\"
 code_column = 10
 max_blank_lines = 0
 align_unlabeled_instructions = true
 split_long_label_instructions = true
 label_colon_style = \"without\"
 directive_case = \"lower\"
-label_case = \"lower\"
+label_case = \"lower_camel\"
+routine_label_case = \"lower_camel\"
+data_label_case = \"upper_camel\"
+constant_label_case = \"upper_snake\"
 opcode_case = \"lower\"
 register_case = \"upper\"
 hex_literal_case = \"lower\"
 ",
         );
         let cfg = FormatterConfig::load_from_path(&path).expect("load config");
+        assert_eq!(cfg.indent_char, IndentChar::Tab);
         assert_eq!(cfg.label_alignment_column, 10);
         assert_eq!(cfg.max_consecutive_blank_lines, 0);
         assert!(cfg.align_unlabeled_instructions);
         assert!(cfg.split_long_label_instructions);
         assert_eq!(cfg.label_colon_style, LabelColonStyle::Without);
         assert_eq!(cfg.directive_case, CaseStyle::Lower);
-        assert_eq!(cfg.label_case, CaseStyle::Lower);
+        assert_eq!(cfg.label_case, LabelCaseStyle::LowerCamel);
+        assert_eq!(cfg.routine_label_case, LabelCaseStyle::LowerCamel);
+        assert_eq!(cfg.data_label_case, LabelCaseStyle::UpperCamel);
+        assert_eq!(cfg.constant_label_case, LabelCaseStyle::UpperSnake);
         assert_eq!(cfg.mnemonic_case, CaseStyle::Lower);
         assert_eq!(cfg.register_case, CaseStyle::Upper);
         assert_eq!(cfg.hex_literal_case, CaseStyle::Lower);
@@ -471,6 +647,36 @@ code_column = 9
         let path = create_temp_config("bad-case", "mnemonic_case = \"camel\"\n");
         let err = FormatterConfig::load_from_path(&path).expect_err("invalid case style");
         assert_error_contains(&err, "invalid case style");
+    }
+
+    #[test]
+    fn load_from_path_rejects_invalid_indent_char() {
+        let path = create_temp_config("bad-indent-char", "indent_char = \"dots\"\n");
+        let err = FormatterConfig::load_from_path(&path).expect_err("invalid indent char");
+        assert_error_contains(&err, "invalid indent char");
+    }
+
+    #[test]
+    fn load_from_path_rejects_invalid_label_case_style() {
+        let path = create_temp_config("bad-label-case", "routine_label_case = \"pascal\"\n");
+        let err = FormatterConfig::load_from_path(&path).expect_err("invalid label case style");
+        assert_error_contains(&err, "invalid label case style");
+    }
+
+    #[test]
+    fn label_case_style_helpers_convert_expected_shapes() {
+        assert_eq!(
+            LabelCaseStyle::LowerCamel.apply("my_routine_name"),
+            "myRoutineName"
+        );
+        assert_eq!(
+            LabelCaseStyle::UpperCamel.apply("my_data_name"),
+            "MyDataName"
+        );
+        assert_eq!(
+            LabelCaseStyle::UpperSnake.apply("myDataName"),
+            "MY_DATA_NAME"
+        );
     }
 
     #[test]

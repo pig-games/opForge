@@ -323,11 +323,14 @@ opcoreExprVmReadI64Low32:
         OR.L D2, D3
         MOVEQ #0, D2
         MOVE.B (A0)+, D2
-        LSL.L #16, D2
+        LSL.L #8, D2
+        LSL.L #8, D2
         OR.L D2, D3
         MOVEQ #0, D2
         MOVE.B (A0)+, D2
-        LSL.L #24, D2
+        LSL.L #8, D2
+        LSL.L #8, D2
+        LSL.L #8, D2
         OR.L D2, D3
         ADDQ.L #4, A0
         SUBQ.L #8, D0
@@ -358,7 +361,7 @@ opcoreExprBridgeNoImmediatePrefix:
         TST.L D0
         BEQ.W opcoreExprBridgeFail
         LEA opcoreExvmDefaultProgram(PC), A1
-        MOVEQ #opcoreExvmDefaultProgramEnd - opcoreExvmDefaultProgram, D1
+        MOVEQ #OPCORE_EXVM_DEFAULT_PROGRAM_LEN, D1
         BSR.W opcoreExvmRunEvalProgram
         BRA.W opcoreExprBridgeReturn
 
@@ -828,6 +831,8 @@ opcoreExprBridgeLabelEqualsReturn:
 opcoreExvmDefaultProgram:
         .byte EXVM_OPCODE_PARSE_EXPRESSION, EXVM_OPCODE_END
 opcoreExvmDefaultProgramEnd:
+
+OPCORE_EXVM_DEFAULT_PROGRAM_LEN = opcoreExvmDefaultProgramEnd - opcoreExvmDefaultProgram
 
         .endsection
 

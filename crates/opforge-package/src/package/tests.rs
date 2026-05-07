@@ -1653,10 +1653,14 @@ fn expr_parser_vm_opcode_from_u8_round_trip_and_unknown_rejection() {
 fn expr_parser_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
     let opcodes = [
         (0x00, ExvmOpcodeV2::End),
+        (0x02, ExvmOpcodeV2::JumpIfTrue),
         (0x10, ExvmOpcodeV2::PeekKind),
         (0x20, ExvmOpcodeV2::Advance),
         (0x32, ExvmOpcodeV2::LoadTokenText),
         (0x60, ExvmOpcodeV2::BuildIdentifier),
+        (0x61, ExvmOpcodeV2::BuildNumber),
+        (0x62, ExvmOpcodeV2::BuildCurrentAddress),
+        (0x63, ExvmOpcodeV2::ParseGrouping),
         (0x70, ExvmOpcodeV2::EmitDiag),
         (0x72, ExvmOpcodeV2::Fail),
     ];
@@ -1667,6 +1671,24 @@ fn expr_parser_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
     }
     assert_eq!(ExvmOpcodeV2::from_u8(0x01), None);
     assert_eq!(ExvmOpcodeV2::from_u8(0xFF), None);
+}
+
+#[test]
+fn expr_parser_vm_v2_token_kind_from_u8_round_trip_and_unknown_rejection() {
+    let kinds = [
+        (0x01, ExvmTokenKindV2::Number),
+        (0x02, ExvmTokenKindV2::Identifier),
+        (0x03, ExvmTokenKindV2::Dollar),
+        (0x04, ExvmTokenKindV2::OpenParen),
+        (0x05, ExvmTokenKindV2::CloseParen),
+    ];
+
+    for (byte, kind) in kinds {
+        assert_eq!(ExvmTokenKindV2::from_u8(byte), Some(kind));
+        assert_eq!(kind as u8, byte);
+    }
+    assert_eq!(ExvmTokenKindV2::from_u8(0x00), None);
+    assert_eq!(ExvmTokenKindV2::from_u8(0xFF), None);
 }
 
 #[test]

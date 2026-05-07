@@ -1240,7 +1240,9 @@ impl RuntimeModelCore {
             contract.diagnostics.invalid_expression_program.as_str()
         };
 
-        if contract.opcode_version != EXVM_OPCODE_VERSION_V1 {
+        if contract.opcode_version != EXVM_OPCODE_VERSION_V1
+            && contract.opcode_version != package::EXVM_OPCODE_VERSION_V2
+        {
             return Err(RuntimeBridgeError::Resolve(format!(
                 "{}: unsupported expression parser contract opcode version {}",
                 error_code, contract.opcode_version
@@ -1281,13 +1283,15 @@ impl RuntimeModelCore {
                 ),
             ));
         };
-        if contract.opcode_version != EXVM_OPCODE_VERSION_V1 {
+        if contract.opcode_version != EXVM_OPCODE_VERSION_V1
+            && contract.opcode_version != package::EXVM_OPCODE_VERSION_V2
+        {
             return Err(RuntimeBridgeError::Diagnostic(
                 RuntimeBridgeDiagnostic::new(
                     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
                     format!(
-                        "opasm v2 expression sub-call opcode version mismatch ({} != {})",
-                        contract.opcode_version, EXVM_OPCODE_VERSION_V1
+                        "opasm v2 expression sub-call opcode version mismatch ({} unsupported)",
+                        contract.opcode_version
                     ),
                     None,
                 ),

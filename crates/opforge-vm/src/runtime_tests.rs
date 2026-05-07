@@ -30,7 +30,8 @@ use crate::vm_opasm::{build_bin_output_payload, build_hex_output_payload};
 use crate::vm_opasm_parse::tokenize_parser_tokens_with_model;
 use crate::vm_opcore::{
     evaluate_expression_for_assembler, expression_has_unstable_symbols_for_assembler,
-    parse_expression_tokens, run_exvm_expression_parser_program, ExvmExecutionBudgets,
+    parse_expression_tokens, parse_expression_tokens_with_opcode_version,
+    run_exvm_expression_parser_program, ExvmExecutionBudgets,
 };
 use families::{
     intel8080::Operand as IntelOperand,
@@ -2460,6 +2461,11 @@ fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
     )
 }
 
+fn parse_exvm_scalar_leaf_v2(source: &str) -> Result<Expr, ParseError> {
+    let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+    parse_expression_tokens_with_opcode_version(tokens, end_span, None, EXVM_OPCODE_VERSION_V2)
+}
+
 #[test]
 fn runtime_expression_parser_locks_covered_exvm_expression_corpus_directly() {
     for (source, expected_shape) in EXVM_COVERED_EXPRESSION_CONTRACT_CORPUS {
@@ -3179,7 +3185,7 @@ fn execution_model_parser_vm_v2_expr_subcall_contract_validation_is_runtime_medi
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_parser_contracts.clear();
     let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    contract.opcode_version = EXVM_OPCODE_VERSION_V1.saturating_add(1);
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2.saturating_add(1);
     chunks.expr_parser_contracts.push(contract);
     let mismatch_model =
         HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
@@ -3199,7 +3205,7 @@ fn execution_model_parse_expression_program_for_assembler_uses_expr_parser_contr
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_parser_contracts.clear();
     let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    contract.opcode_version = EXVM_OPCODE_VERSION_V1.saturating_add(1);
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2.saturating_add(1);
     chunks.expr_parser_contracts.push(contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -3346,7 +3352,7 @@ fn execution_model_compile_expression_program_parser_vm_opt_in_rejects_unknown_o
             tokens,
             end_span,
             None,
-            Some(EXVM_OPCODE_VERSION_V1.saturating_add(1)),
+            Some(EXVM_OPCODE_VERSION_V2.saturating_add(1)),
         )
         .expect_err("unknown EXVM opcode version should fail");
     assert!(err
@@ -3356,7 +3362,63 @@ fn execution_model_compile_expression_program_parser_vm_opt_in_rejects_unknown_o
 }
 
 #[test]
-fn exvm_v2_parser_contract_is_rejected_until_runtime_support_lands() {
+fn exvm_scalar_leaf_v2_runtime_parses_leaf_and_grouping_contract_corpus() {
+    let cases = [
+        ("1", "Number"),
+        ("value", "Identifier"),
+        ("$", "Dollar"),
+        ("(1)", "Number"),
+        ("((value))", "Identifier"),
+    ];
+
+    for (source, expected_shape) in cases {
+        let expr = parse_exvm_scalar_leaf_v2(source)
+            .unwrap_or_else(|err| panic!("EXVM v2 leaf parse {source}: {}", err.message));
+        assert_eq!(
+            expression_contract_shape(&expr),
+            expected_shape,
+            "EXVM v2 leaf/grouping shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_scalar_leaf_v2_contract_compiles_and_evaluates_end_to_end() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.values.insert("value".to_string(), 99);
+    ctx.addr = 0x2345;
+
+    let cases = [("1", 1), ("value", 99), ("$", 0x2345), ("((value))", 99)];
+
+    for (source, expected_value) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| panic!("EXVM v2 compile {source}: {}", err.message));
+        let evaluation = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .unwrap_or_else(|err| panic!("EXVM v2 eval {source}: {err}"));
+        assert_eq!(
+            evaluation.value, expected_value,
+            "EXVM v2 evaluation changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_scalar_leaf_v2_contract_rejects_uncovered_arithmetic_without_fallback() {
     let registry = mos6502_family_registry();
 
     let mut chunks =
@@ -3370,11 +3432,8 @@ fn exvm_v2_parser_contract_is_rejected_until_runtime_support_lands() {
     let (tokens, end_span) = tokenize_core_expr_tokens("1+2", 1);
     let err = model
         .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
-        .expect_err("staged EXVM v2 should not execute yet");
-    assert!(err
-        .message
-        .to_ascii_lowercase()
-        .contains("unsupported expression parser contract opcode version"));
+        .expect_err("EXVM v2 leaf slice should reject uncovered arithmetic");
+    assert_eq!(err.message, "Unexpected trailing tokens");
 }
 
 #[test]

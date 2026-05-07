@@ -431,10 +431,14 @@ impl ExvmOpcode {
 #[repr(u8)]
 pub enum ExvmOpcodeV2 {
     End = 0x00,
+    JumpIfTrue = 0x02,
     PeekKind = 0x10,
     Advance = 0x20,
     LoadTokenText = 0x32,
     BuildIdentifier = 0x60,
+    BuildNumber = 0x61,
+    BuildCurrentAddress = 0x62,
+    ParseGrouping = 0x63,
     EmitDiag = 0x70,
     Fail = 0x72,
 }
@@ -443,12 +447,39 @@ impl ExvmOpcodeV2 {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x00 => Some(Self::End),
+            0x02 => Some(Self::JumpIfTrue),
             0x10 => Some(Self::PeekKind),
             0x20 => Some(Self::Advance),
             0x32 => Some(Self::LoadTokenText),
             0x60 => Some(Self::BuildIdentifier),
+            0x61 => Some(Self::BuildNumber),
+            0x62 => Some(Self::BuildCurrentAddress),
+            0x63 => Some(Self::ParseGrouping),
             0x70 => Some(Self::EmitDiag),
             0x72 => Some(Self::Fail),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ExvmTokenKindV2 {
+    Number = 0x01,
+    Identifier = 0x02,
+    Dollar = 0x03,
+    OpenParen = 0x04,
+    CloseParen = 0x05,
+}
+
+impl ExvmTokenKindV2 {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0x01 => Some(Self::Number),
+            0x02 => Some(Self::Identifier),
+            0x03 => Some(Self::Dollar),
+            0x04 => Some(Self::OpenParen),
+            0x05 => Some(Self::CloseParen),
             _ => None,
         }
     }

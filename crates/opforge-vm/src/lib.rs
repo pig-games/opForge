@@ -16,6 +16,7 @@ pub mod builder;
 pub mod bytecode;
 pub mod execution_model;
 pub mod expr_vm_compat;
+pub(crate) mod exvm_v2_runtime;
 pub mod hierarchy;
 pub mod intel8080_vm;
 pub mod listing;

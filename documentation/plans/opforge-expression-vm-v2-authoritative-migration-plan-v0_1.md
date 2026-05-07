@@ -163,7 +163,7 @@ this migration lands and proves parity.
     - Legacy `EXVM v1` and `EXPR v1` behavior is still available for staged
       rollout.
 
-- [ ] Item 2 - Implement minimal `EXVM v2` execution for leaf and grouping expressions
+- [x] Item 2 - Implement minimal `EXVM v2` execution for leaf and grouping expressions
   - Source requirement or finding IDs: `SR-EXPR-VM-AUTHORITY`,
     `SR-EXVM-BYTECODE`, `SR-DETERMINISM`, `SR-NO-AST-AUTHORITY`.
   - Expected files:

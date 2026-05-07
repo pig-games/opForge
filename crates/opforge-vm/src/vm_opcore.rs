@@ -28,9 +28,46 @@ use crate::runtime_parse_utils::runtime_bridge_error_to_parse_error;
 pub use crate::vm_core::HierarchyExecutionModel;
 use crate::vm_opasm_parse::VmExprParseContext;
 
-const EXVM_DEFAULT_PROGRAM: &[u8] = &[
+const EXVM_DEFAULT_PROGRAM_V1: &[u8] = &[
     package::ExvmOpcode::ParseExpression as u8,
     package::ExvmOpcode::End as u8,
+];
+
+const EXVM_DEFAULT_PROGRAM_V2: &[u8] = &[
+    package::ExvmOpcodeV2::PeekKind as u8,
+    package::ExvmTokenKindV2::Number as u8,
+    package::ExvmOpcodeV2::JumpIfTrue as u8,
+    21,
+    0,
+    package::ExvmOpcodeV2::PeekKind as u8,
+    package::ExvmTokenKindV2::Identifier as u8,
+    package::ExvmOpcodeV2::JumpIfTrue as u8,
+    25,
+    0,
+    package::ExvmOpcodeV2::PeekKind as u8,
+    package::ExvmTokenKindV2::Dollar as u8,
+    package::ExvmOpcodeV2::JumpIfTrue as u8,
+    29,
+    0,
+    package::ExvmOpcodeV2::PeekKind as u8,
+    package::ExvmTokenKindV2::OpenParen as u8,
+    package::ExvmOpcodeV2::JumpIfTrue as u8,
+    32,
+    0,
+    package::ExvmOpcodeV2::EmitDiag as u8,
+    package::ExvmOpcodeV2::LoadTokenText as u8,
+    package::ExvmOpcodeV2::BuildNumber as u8,
+    package::ExvmOpcodeV2::Advance as u8,
+    package::ExvmOpcodeV2::End as u8,
+    package::ExvmOpcodeV2::LoadTokenText as u8,
+    package::ExvmOpcodeV2::BuildIdentifier as u8,
+    package::ExvmOpcodeV2::Advance as u8,
+    package::ExvmOpcodeV2::End as u8,
+    package::ExvmOpcodeV2::BuildCurrentAddress as u8,
+    package::ExvmOpcodeV2::Advance as u8,
+    package::ExvmOpcodeV2::End as u8,
+    package::ExvmOpcodeV2::ParseGrouping as u8,
+    package::ExvmOpcodeV2::End as u8,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,17 +128,92 @@ pub fn parse_expression_tokens(
     end_span: Span,
     end_token_text: Option<String>,
 ) -> Result<Expr, ParseError> {
-    let budgets = ExvmExecutionBudgets::for_tokens(tokens.len());
-    run_exvm_expression_parser_program(
+    parse_expression_tokens_with_opcode_version(
         tokens,
         end_span,
         end_token_text,
-        EXVM_DEFAULT_PROGRAM,
-        budgets,
+        package::EXVM_OPCODE_VERSION_V1,
     )
 }
 
+pub(crate) fn parse_expression_tokens_with_opcode_version(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    opcode_version: u16,
+) -> Result<Expr, ParseError> {
+    let budgets = ExvmExecutionBudgets::for_tokens(tokens.len());
+    let program = match opcode_version {
+        package::EXVM_OPCODE_VERSION_V1 => EXVM_DEFAULT_PROGRAM_V1,
+        package::EXVM_OPCODE_VERSION_V2 => EXVM_DEFAULT_PROGRAM_V2,
+        _ => {
+            return Err(ParseError {
+                message: format!("unsupported EXVM opcode version {}", opcode_version),
+                span: end_span,
+            })
+        }
+    };
+    run_exvm_expression_parser_program_with_opcode_version(
+        tokens,
+        end_span,
+        end_token_text,
+        program,
+        budgets,
+        opcode_version,
+    )
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn run_exvm_expression_parser_program(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    program: &[u8],
+    budgets: ExvmExecutionBudgets,
+) -> Result<Expr, ParseError> {
+    run_exvm_expression_parser_program_with_opcode_version(
+        tokens,
+        end_span,
+        end_token_text,
+        program,
+        budgets,
+        package::EXVM_OPCODE_VERSION_V1,
+    )
+}
+
+pub(crate) fn run_exvm_expression_parser_program_with_opcode_version(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    program: &[u8],
+    budgets: ExvmExecutionBudgets,
+    opcode_version: u16,
+) -> Result<Expr, ParseError> {
+    match opcode_version {
+        package::EXVM_OPCODE_VERSION_V1 => run_exvm_v1_expression_parser_program(
+            tokens,
+            end_span,
+            end_token_text,
+            program,
+            budgets,
+        ),
+        package::EXVM_OPCODE_VERSION_V2 => {
+            crate::exvm_v2_runtime::run_exvm_expression_parser_program(
+                tokens,
+                end_span,
+                end_token_text,
+                program,
+                budgets,
+            )
+        }
+        _ => Err(ParseError {
+            message: format!("unsupported EXVM opcode version {}", opcode_version),
+            span: end_span,
+        }),
+    }
+}
+
+fn run_exvm_v1_expression_parser_program(
     tokens: Vec<Token>,
     end_span: Span,
     end_token_text: Option<String>,
@@ -551,6 +663,13 @@ pub(crate) fn parse_expr_with_authoritative_exvm_contract(
 
     let mut owned_tokens = Vec::with_capacity(tokens.len());
     owned_tokens.extend_from_slice(tokens);
+    let opcode_version = expr_parse_ctx
+        .model
+        .resolve_expr_parser_opcode_version_for_assembler(
+            expr_parse_ctx.cpu_id,
+            expr_parse_ctx.dialect_override,
+            end_span,
+        )?;
     expr_parse_ctx
         .model
         .parse_expression_with_mode_for_assembler(
@@ -559,7 +678,7 @@ pub(crate) fn parse_expr_with_authoritative_exvm_contract(
             owned_tokens,
             end_span,
             end_token_text,
-            true,
+            Some(opcode_version),
         )
 }
 
@@ -625,13 +744,23 @@ impl HierarchyExecutionModel {
             end_span,
         )?;
 
+        let expr_parser_opcode_version = if use_vm_parser {
+            Some(self.resolve_expr_parser_opcode_version_for_assembler(
+                cpu_id,
+                dialect_override,
+                end_span,
+            )?)
+        } else {
+            None
+        };
+
         self.parse_expression_with_mode_for_assembler(
             cpu_id,
             dialect_override,
             tokens,
             end_span,
             end_token_text,
-            use_vm_parser,
+            expr_parser_opcode_version,
         )
     }
 
@@ -642,7 +771,7 @@ impl HierarchyExecutionModel {
         tokens: Vec<Token>,
         end_span: Span,
         end_token_text: Option<String>,
-        use_vm_parser: bool,
+        expr_parser_opcode_version: Option<u16>,
     ) -> Result<Expr, ParseError> {
         self.validate_parser_contract_for_assembler(cpu_id, dialect_override, tokens.len())
             .map_err(|err| ParseError {
@@ -650,8 +779,13 @@ impl HierarchyExecutionModel {
                 span: end_span,
             })?;
 
-        if use_vm_parser {
-            return parse_expression_tokens(tokens, end_span, end_token_text);
+        if let Some(opcode_version) = expr_parser_opcode_version {
+            return parse_expression_tokens_with_opcode_version(
+                tokens,
+                end_span,
+                end_token_text,
+                opcode_version,
+            );
         }
 
         #[cfg(test)]
@@ -718,6 +852,24 @@ impl HierarchyExecutionModel {
         Self::compile_parsed_expression_for_assembler(&expr, end_span)
     }
 
+    fn resolve_expr_parser_opcode_version_for_assembler(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        end_span: Span,
+    ) -> Result<u16, ParseError> {
+        let contract = self
+            .resolve_expr_parser_contract(cpu_id, dialect_override)
+            .map_err(|err| ParseError {
+                message: err.to_string(),
+                span: end_span,
+            })?;
+        Ok(contract
+            .as_ref()
+            .map(|entry| entry.opcode_version)
+            .unwrap_or(package::EXVM_OPCODE_VERSION_V1))
+    }
+
     pub fn parse_expression_program_for_assembler(
         &self,
         cpu_id: &str,
@@ -777,7 +929,7 @@ impl HierarchyExecutionModel {
                 tokens,
                 end_span,
                 end_token_text,
-                false,
+                None,
             );
             return expr
                 .and_then(|expr| Self::compile_parsed_expression_for_assembler(&expr, end_span));
@@ -801,7 +953,9 @@ impl HierarchyExecutionModel {
         let opcode_version = parser_vm_opcode_version
             .or_else(|| contract.as_ref().map(|entry| entry.opcode_version))
             .unwrap_or(package::EXVM_OPCODE_VERSION_V1);
-        if opcode_version != package::EXVM_OPCODE_VERSION_V1 {
+        if opcode_version != package::EXVM_OPCODE_VERSION_V1
+            && opcode_version != package::EXVM_OPCODE_VERSION_V2
+        {
             return Err(ParseError {
                 message: format!("unsupported EXVM opcode version {}", opcode_version),
                 span: end_span,
@@ -814,7 +968,7 @@ impl HierarchyExecutionModel {
             tokens,
             end_span,
             end_token_text,
-            true,
+            Some(opcode_version),
         )?;
         Self::compile_parsed_expression_for_assembler(&expr, end_span)
     }

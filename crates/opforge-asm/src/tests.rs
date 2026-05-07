@@ -53,7 +53,7 @@ use formatter::{FormatterConfig, FormatterEngine};
 use opcore::macro_processor::MacroProcessor;
 use package::{
     encode_hierarchy_chunks_from_chunks, ModeSelectorDescriptor, ParserVmOpcodeV2,
-    TokenizerVmOpcode, EXVM_OPCODE_VERSION_V1,
+    TokenizerVmOpcode, EXVM_OPCODE_VERSION_V2,
 };
 use registry::cpu::CpuType;
 use registry::family::AssemblerContext;
@@ -25160,7 +25160,7 @@ fn vm_runtime_mos6502_expr_parser_contract_breakage_errors_instead_of_host_fallb
         .cloned()
         .expect("mos6502 family expr parser contract");
     cpu_override.owner = ScopedOwner::Cpu("m6502".to_string());
-    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V1.saturating_add(1);
+    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V2.saturating_add(1);
     chunks.expr_parser_contracts.push(cpu_override);
 
     asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));
@@ -25435,7 +25435,7 @@ fn vm_runtime_intel8085_expr_parser_contract_breakage_errors_instead_of_host_fal
         .cloned()
         .expect("intel8080 family expr parser contract");
     cpu_override.owner = ScopedOwner::Cpu("8085".to_string());
-    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V1.saturating_add(1);
+    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V2.saturating_add(1);
     chunks.expr_parser_contracts.push(cpu_override);
 
     asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));
@@ -25470,7 +25470,7 @@ fn vm_runtime_motorola6800_expr_parser_contract_breakage_errors_instead_of_host_
         .cloned()
         .expect("motorola6800 family expr parser contract");
     cpu_override.owner = ScopedOwner::Cpu("m6809".to_string());
-    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V1.saturating_add(1);
+    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V2.saturating_add(1);
     chunks.expr_parser_contracts.push(cpu_override);
 
     asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));

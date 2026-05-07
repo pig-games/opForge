@@ -152,6 +152,8 @@ opasmEngineStmtMnemLenTable:
         .res word,NATIVE_STATEMENT_TABLE_CAPACITY
 opasmEngineStmtOperandLenTable:
         .res word,NATIVE_STATEMENT_TABLE_CAPACITY
+opasmEngineStmtDirectiveKindTable:
+        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
 opasmEngineStmtMnemOffTable:
         .res long,NATIVE_STATEMENT_TABLE_CAPACITY
 opasmEngineStmtLabelNameTable:

@@ -262,7 +262,7 @@ The intended native shape mirrors the Rust path:
     smoke path until Item 3 moves broader parse records through the package
     boundary.
 
-- [ ] Item 3: Complete package-backed parse records for directives and operands
+- [x] Item 3: Complete package-backed parse records for directives and operands
   - Source requirement or finding IDs: `SR-TKPKG-SERVICE`,
     `SR-DIRECTIVES`, `SR-EXPR-PARITY`; expected to broaden parse output from
     smoke statements into directive-ready engine rows.
@@ -281,6 +281,12 @@ The intended native shape mirrors the Rust path:
     the first-run directive and operand set without adding CLI-side re-parsing.
   - Definition of done: native opasm receives enough structured row data to
     execute first-run directives and instructions from PRVM/tkpkg service output.
+  - Completion note, 2026-05-07: native PRVM now emits distinct
+    `directive_text` and `operand_text` result records through the tkpkg
+    parse-line service boundary. The native CLI consumes those parse records to
+    distinguish directives, copy operand spans into opasm statement rows, and
+    store statement directive-kind metadata in opasm-owned session storage
+    without adding new CLI-side mnemonic or operand re-parsing.
 
 - [ ] Item 4: Implement opcore expression parity for first-run 6502 assembly
   - Source requirement or finding IDs: `SR-EXPR-PARITY`,

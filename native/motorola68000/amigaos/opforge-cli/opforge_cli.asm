@@ -32,7 +32,8 @@
         .use opasm.amigaos.engine (opasmEngineSessionCurrentPc, opasmEngineSourceLineNumTable)
         .use opasm.amigaos.engine (opasmEngineSourceLineLenTable, opasmEngineStmtLineTable)
         .use opasm.amigaos.engine (opasmEngineStmtLabelLenTable, opasmEngineStmtMnemLenTable)
-        .use opasm.amigaos.engine (opasmEngineStmtOperandLenTable, opasmEngineStmtMnemOffTable)
+        .use opasm.amigaos.engine (opasmEngineStmtOperandLenTable)
+        .use opasm.amigaos.engine (opasmEngineStmtDirectiveKindTable, opasmEngineStmtMnemOffTable)
         .use opasm.amigaos.engine (opasmEngineStmtLabelNameTable, opasmEngineStmtMnemNameTable)
         .use opasm.amigaos.engine (opasmEngineStmtOperandNameTable, opasmEngineLabelValueTable)
         .use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineImageBuffer)
@@ -80,14 +81,14 @@ NATIVE_LABEL_TABLE_CAPACITY     = 16
 NATIVE_IMAGE_BUFFER_CAPACITY    = 4096
 NATIVE_OPASM_ENGINE_CONTEXT_LONGS = 10
 NATIVE_MODULE_USE_STATE_BYTES   = (7 * 2) + (NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_MODULE_TABLE_CAPACITY * 4) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 4) + (NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY)
-NATIVE_ASSEMBLY_SESSION_BYTES   = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_IMAGE_BUFFER_CAPACITY
+NATIVE_ASSEMBLY_SESSION_BYTES   = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_IMAGE_BUFFER_CAPACITY
 PACKAGE_INPUT_PTR_V1            = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
 NATIVE_INCLUDE_DEPTH_LIMIT      = 1
 PRVM_ROUTE_MAGIC_OPLR           = $4F504C52
 PRVM_ROUTE_FRAME_SIZE           = 116
 PRVM_ROUTE_ABI_VERSION_V1       = 1
 PRVM_PARSER_CONTRACT_VERSION_V2 = 2
-PRVM_ROUTE_RESULT_CAPACITY      = 128
+PRVM_ROUTE_RESULT_CAPACITY      = 192
 PRVM_ROUTE_DIAG_CAPACITY        = 32
 PRVM_ROUTE_RESUME_CAPACITY      = 40
 PRVM_ROUTE_EXPR_REQUEST_SIZE    = 32
@@ -100,6 +101,8 @@ PRVM_RESULT_RECORD_COUNT        = PRVM_ROUTE_RESULT_CAPACITY / PRVM_RESULT_RECOR
 PRVM_RESULT_LABEL_TEXT          = 2
 PRVM_RESULT_MNEMONIC_TEXT       = 3
 PRVM_RESULT_OPERAND_EXPR_SLOT   = 4
+PRVM_RESULT_DIRECTIVE_TEXT      = 6
+PRVM_RESULT_OPERAND_TEXT        = 7
 OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 46
 NATIVE_TOKEN_RECORD_SIZE        = 20
 TK_KIND_IDENTIFIER              = 0
@@ -107,6 +110,7 @@ NCLI_PARSER_DIRECTIVE_NONE      = 0
 NCLI_PARSER_DIRECTIVE_MODULE    = 1
 NCLI_PARSER_DIRECTIVE_ENDMODULE = 2
 NCLI_PARSER_DIRECTIVE_USE       = 3
+NCLI_PARSER_DIRECTIVE_GENERIC   = 4
 
         .section entry, kind=code
 
@@ -1009,7 +1013,10 @@ opforgeNativeCliBuildPrvmRouteFrame:
 opforgeNativeCliParserDirectiveKind:
         LEA opforgeNativeCliPrvmResultBuffer, A2
         CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 32(A2)
+        BEQ.S opforgeNativeCliParserDirectiveKindHaveText
+        CMPI.W #PRVM_RESULT_DIRECTIVE_TEXT, 32(A2)
         BNE.W opforgeNativeCliParserDirectiveKindFallback
+opforgeNativeCliParserDirectiveKindHaveText:
         MOVE.L 48(A2), D0
         LEA tokenScratchBuffer, A0
         ADDA.L D0, A0
@@ -1101,6 +1108,8 @@ opforgeNativeCliRecordPrvmStatementRouteOk:
         CLR.L nativeCliStmtMnemEnd
         CLR.L nativeCliStmtMnemOff
         CLR.L nativeCliStmtMnemLen
+        CLR.L nativeCliStmtOperandStart
+        CLR.L nativeCliStmtOperandEnd
         CLR.L nativeCliStmtExprOperandIndex
         CLR.L nativeCliStmtExprSlotIndex
         CLR.L nativeCliStmtExprStartToken
@@ -1129,6 +1138,10 @@ opforgeNativeCliRecordPrvmStatementScan:
         BEQ.W opforgeNativeCliRecordPrvmStatementHaveLabel
         CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 0(A2)
         BEQ.W opforgeNativeCliRecordPrvmStatementHaveMnemonic
+        CMPI.W #PRVM_RESULT_DIRECTIVE_TEXT, 0(A2)
+        BEQ.W opforgeNativeCliRecordPrvmStatementHaveDirective
+        CMPI.W #PRVM_RESULT_OPERAND_TEXT, 0(A2)
+        BEQ.W opforgeNativeCliRecordPrvmStatementHaveOperandText
         CMPI.W #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(A2)
         BEQ.W opforgeNativeCliRecordPrvmStatementHaveOperandExpr
 
@@ -1171,6 +1184,15 @@ opforgeNativeCliRecordPrvmStatementHaveMnemonic:
         MOVE.L 16(A2), nativeCliStmtMnemOff
         MOVE.L 20(A2), nativeCliStmtMnemLen
         MOVE.W #1, nativeCliStmtMnemFound
+        BRA.W opforgeNativeCliRecordPrvmStatementNext
+
+opforgeNativeCliRecordPrvmStatementHaveDirective:
+        MOVE.W #NCLI_PARSER_DIRECTIVE_GENERIC, nativeCliStmtDirectiveKind
+        BRA.S opforgeNativeCliRecordPrvmStatementHaveMnemonic
+
+opforgeNativeCliRecordPrvmStatementHaveOperandText:
+        MOVE.L 8(A2), nativeCliStmtOperandStart
+        MOVE.L 12(A2), nativeCliStmtOperandEnd
         BRA.W opforgeNativeCliRecordPrvmStatementNext
 
 opforgeNativeCliRecordPrvmStatementHaveOperandExpr:
@@ -1222,6 +1244,8 @@ opforgeNativeCliStoreStatementRecord:
         MOVE.W nativeCliStmtMnemLen, 0(A0,D2.L)
         LEA opasmEngineStmtOperandLenTable.L, A0
         CLR.W 0(A0,D2.L)
+        LEA opasmEngineStmtDirectiveKindTable.L, A0
+        MOVE.W nativeCliStmtDirectiveKind, 0(A0,D2.L)
         MOVEQ #0, D3
         MOVE.W opasmEngineStmtCount.L, D3
         LSL.L #6, D3
@@ -1243,7 +1267,7 @@ opforgeNativeCliStoreStatementMnemText:
         ADDA.L D3, A1
         CLR.B (A1)
         MOVE.L nativeCliStmtMnemLen, D0
-        BEQ.S opforgeNativeCliStoreStatementDone
+        BEQ.W opforgeNativeCliStoreStatementDone
         LEA tokenScratchBuffer, A0
         ADDA.L nativeCliStmtMnemOff, A0
         BSR.W opforge_native_cli_copy_fixed_string
@@ -1253,17 +1277,37 @@ opforgeNativeCliStoreStatementOperandText:
         LEA opasmEngineStmtOperandNameTable.L, A1
         ADDA.L D3, A1
         CLR.B (A1)
+        MOVE.L nativeCliStmtOperandStart, D0
+        BEQ.S opforgeNativeCliStoreStatementOperandFallback
+        MOVE.L nativeCliStmtOperandEnd, D1
+        CMP.L D0, D1
+        BLS.S opforgeNativeCliStoreStatementOperandFallback
+        MOVE.L D0, D2
+        SUBQ.L #1, D2
+        SUB.L D0, D1
+        LEA nativeCliSourceLine, A0
+        ADDA.L D2, A0
+        MOVE.L D1, D0
+        BSR.W opforgeNativeCliCopyOperandText
+        MOVEQ #0, D0
+        MOVE.W opasmEngineStmtCount.L, D0
+        ADD.W D0, D0
+        LEA opasmEngineStmtOperandLenTable.L, A0
+        MOVE.W D5, 0(A0,D0.L)
+        BRA.S opforgeNativeCliStoreStatementDone
+
+opforgeNativeCliStoreStatementOperandFallback:
         MOVE.L nativeCliStmtMnemStart, D0
-        BEQ.S opforgeNativeCliStoreStatementDone
+        BEQ.W opforgeNativeCliStoreStatementDone
         MOVE.L nativeCliStmtMnemLen, D2
-        BEQ.S opforgeNativeCliStoreStatementDone
+        BEQ.W opforgeNativeCliStoreStatementDone
         ADD.L D2, D0
-        BEQ.S opforgeNativeCliStoreStatementDone
+        BEQ.W opforgeNativeCliStoreStatementDone
         SUBQ.L #1, D0
         MOVEQ #0, D1
         MOVE.W nativeCliSourceLineLen, D1
         CMP.L D1, D0
-        BHS.S opforgeNativeCliStoreStatementDone
+        BHS.W opforgeNativeCliStoreStatementDone
         LEA nativeCliSourceLine, A0
         ADDA.L D0, A0
         SUB.L D0, D1
@@ -4584,6 +4628,10 @@ nativeCliStmtMnemEnd:
 nativeCliStmtMnemOff:
         .res long,1
 nativeCliStmtMnemLen:
+        .res long,1
+nativeCliStmtOperandStart:
+        .res long,1
+nativeCliStmtOperandEnd:
         .res long,1
 nativeCliStmtExprOperandIndex:
         .res long,1

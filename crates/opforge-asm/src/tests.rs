@@ -8696,6 +8696,8 @@ fn prvm_native_result_kind_name(kind_code: u16) -> Option<&'static str> {
         3 => Some("mnemonic_text"),
         4 => Some("operand_expr_slot"),
         5 => Some("finish_line"),
+        6 => Some("directive_text"),
+        7 => Some("operand_text"),
         _ => None,
     }
 }
@@ -8830,7 +8832,7 @@ fn render_prvm_native_report(input: PrvmNativeReportInput<'_>) -> Vec<String> {
         let col_start = read_tokvm_native_u32(record, 8);
         let col_end = read_tokvm_native_u32(record, 12);
         match kind_code {
-            2 | 3 => {
+            2 | 3 | 6 => {
                 let lexeme_offset = usize::try_from(read_tokvm_native_u32(record, 16))
                     .expect("offset fits usize");
                 let lexeme_len = usize::try_from(read_tokvm_native_u32(record, 20))
@@ -8846,6 +8848,11 @@ fn render_prvm_native_report(input: PrvmNativeReportInput<'_>) -> Vec<String> {
                 read_tokvm_native_u32(record, 20),
                 read_tokvm_native_u32(record, 24),
                 read_tokvm_native_u32(record, 28)
+            )),
+            7 => lines.push(format!(
+                "RESULT {index} KIND {kind_name} START {col_start} END {col_end} TOKENS {}..{}",
+                read_tokvm_native_u32(record, 16),
+                read_tokvm_native_u32(record, 20)
             )),
             _ => lines.push(format!("RESULT {index} KIND {kind_name}")),
         }
@@ -9057,6 +9064,44 @@ fn motorola68020_prvm_native_abi_renders_success_report() {
             "RESULT 1 KIND label_text START 1 END 6 LEN 5 LEXHEX 7374617274",
             "RESULT 2 KIND mnemonic_text START 8 END 11 LEN 3 LEXHEX 4E4F50",
             "RESULT 3 KIND finish_line",
+            "END",
+        ]
+    );
+}
+
+#[test]
+fn motorola68020_prvm_native_abi_renders_directive_and_operand_records() {
+    let lexemes = b"cpuLDA".to_vec();
+    let mut records = Vec::new();
+    push_prvm_report_result_record(&mut records, 1, 12, 1, 9, [0, 0, 0, 0]);
+    push_prvm_report_result_record(&mut records, 6, 12, 2, 5, [0, 3, 0, 0]);
+    push_prvm_report_result_record(&mut records, 7, 12, 6, 9, [2, 5, 0, 0]);
+    push_prvm_report_result_record(&mut records, 3, 13, 9, 12, [3, 3, 0, 0]);
+    push_prvm_report_result_record(&mut records, 7, 13, 13, 17, [4, 7, 0, 0]);
+
+    let report = render_prvm_native_report(PrvmNativeReportInput {
+        status: 0,
+        result_count: 5,
+        cursor: 4,
+        result_bytes: 160,
+        result_records: &records,
+        lexemes: &lexemes,
+        diagnostic_records: &[],
+        expr_request: None,
+    });
+    assert_eq!(
+        report,
+        vec![
+            "OPFORGE-PRVM 1",
+            "STATUS 0",
+            "RESULTS 5",
+            "CURSOR 4",
+            "BYTES 160",
+            "RESULT 0 KIND begin_statement",
+            "RESULT 1 KIND directive_text START 2 END 5 LEN 3 LEXHEX 637075",
+            "RESULT 2 KIND operand_text START 6 END 9 TOKENS 2..5",
+            "RESULT 3 KIND mnemonic_text START 9 END 12 LEN 3 LEXHEX 4C4441",
+            "RESULT 4 KIND operand_text START 13 END 17 TOKENS 4..7",
             "END",
         ]
     );
@@ -9666,6 +9711,8 @@ fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
     assert!(source.contains("PRVM_STATUS_EXPR_REQUEST"));
     assert!(source.contains("PRVM_RESULT_LABEL_TEXT"));
     assert!(source.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
+    assert!(source.contains("PRVM_RESULT_DIRECTIVE_TEXT"));
+    assert!(source.contains("PRVM_RESULT_OPERAND_TEXT"));
     assert!(source.contains("prvmOpcodeParseOptionalLabel"));
     assert!(source.contains("prvmOpcodeJumpIfFalse"));
     assert!(source.contains("prvmOpcodeCheckpoint"));
@@ -9786,6 +9833,8 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
     assert!(listing.contains("PRVM_SMOKE_PROGRAM_LEN"));
     assert!(listing.contains("PRVM_RESULT_LABEL_TEXT"));
     assert!(listing.contains("PRVM_RESULT_OPERAND_EXPR_SLOT"));
+    assert!(listing.contains("PRVM_RESULT_DIRECTIVE_TEXT"));
+    assert!(listing.contains("PRVM_RESULT_OPERAND_TEXT"));
     assert!(listing.contains("prvmSmokeServiceExprRequest"));
     assert!(listing.contains("PRVM_NATIVE_EXPR_KIND_IMM_DEC"));
     assert!(listing.contains("OPFORGE-PRVM smoke OK"));
@@ -10056,6 +10105,9 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliEmitAssemblySessionSummary"));
     assert!(source.contains("opasmEngineStmtCount"));
     assert!(source.contains("nativeCliStmtDirectiveKind"));
+    assert!(source.contains("nativeCliStmtOperandStart"));
+    assert!(source.contains("nativeCliStmtOperandEnd"));
+    assert!(source.contains("opasmEngineStmtDirectiveKindTable"));
     assert!(source.contains("nativeCliStmtExprFound"));
     assert!(source.contains("nativeCliStmtExprOperandIndex"));
     assert!(source.contains("nativeCliStmtExprSpanStart"));
@@ -10101,6 +10153,14 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(tokvm_source_contains(
         &source,
         "PRVM_RESULT_OPERAND_EXPR_SLOT   = 4"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "PRVM_RESULT_DIRECTIVE_TEXT      = 6"
+    ));
+    assert!(tokvm_source_contains(
+        &source,
+        "PRVM_RESULT_OPERAND_TEXT        = 7"
     ));
     assert!(tokvm_source_contains(
         &source,
@@ -10224,6 +10284,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "LEA opforgeNativeCliPrvmResultBuffer, A2",
             "CMPI.W #PRVM_RESULT_LABEL_TEXT, 0(A2)",
             "CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 0(A2)",
+            "CMPI.W #PRVM_RESULT_DIRECTIVE_TEXT, 0(A2)",
+            "CMPI.W #PRVM_RESULT_OPERAND_TEXT, 0(A2)",
             "CMPI.W #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(A2)",
             "BSR.W opforgeNativeCliRecordPrvmExpressionRequest",
             "BSR.W opforgeNativeCliStoreStatementRecord",
@@ -10863,6 +10925,7 @@ fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
             "opasmEngineSessionCurrentPc:",
             "opasmEngineSourceLineNumTable:",
             "opasmEngineStmtLineTable:",
+            "opasmEngineStmtDirectiveKindTable:",
             "opasmEngineLabelValueTable:",
             "opasmEngineImageBuffer:",
             "opasmEngineAssemblySessionEnd:",

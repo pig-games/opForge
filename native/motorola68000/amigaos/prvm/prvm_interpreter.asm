@@ -67,6 +67,8 @@ PRVM_RESULT_LABEL_TEXT              = 2
 PRVM_RESULT_MNEMONIC_TEXT           = 3
 PRVM_RESULT_OPERAND_EXPR_SLOT       = 4
 PRVM_RESULT_FINISH_LINE             = 5
+PRVM_RESULT_DIRECTIVE_TEXT          = 6
+PRVM_RESULT_OPERAND_TEXT            = 7
 
 PRVM_EXPR_REQUEST_RECORD_SIZE       = 32
 PRVM_EXPR_RESULT_SLOT_SIZE          = 32
@@ -496,7 +498,13 @@ prvmOpcodeSetMnemonic:
         BRA prvmProgramLoop
 
 prvmOpcodeSetDotMnemonic:
-        BRA prvmOpcodeSetMnemonic
+        TST.L LOCAL_LOADED_FLAG(A3)
+        BEQ prvmInvalidProgramAtCursor
+        BSR.W prvmEmitDirectiveText
+        TST.L D0
+        BNE prvmReturnWithLocals
+        CLR.L LOCAL_LOADED_FLAG(A3)
+        BRA prvmProgramLoop
 
 prvmOpcodeFinishLine:
         BSR.W prvmEmitFinishLine
@@ -545,6 +553,9 @@ prvmOperandEndFound:
         MOVE.L D5, LOCAL_EXPR_END_TOKEN(A3)
         MOVE.L LOCAL_OPERAND_COUNT(A3), D0
         MOVE.L D0, LOCAL_EXPR_SLOT_INDEX(A3)
+        BSR.W prvmEmitOperandTextSpan
+        TST.L D0
+        BNE prvmReturnWithLocals
         BSR.W prvmWriteExpressionRequest
         TST.L D0
         BNE prvmReturnWithLocals
@@ -758,6 +769,57 @@ prvmEmitMnemonicText:
         CLR.L 24(A2)
         CLR.L 28(A2)
         BRA prvmCommitResultRecord
+
+prvmEmitDirectiveText:
+        BSR.W prvmResultRecordPtr
+        TST.L D0
+        BNE prvmEmitRecordReturn
+        MOVE.W #PRVM_RESULT_DIRECTIVE_TEXT, 0(A2)
+        CLR.W 2(A2)
+        MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)
+        MOVE.L LOCAL_LOADED_COL_START(A3), 8(A2)
+        MOVE.L LOCAL_LOADED_COL_END(A3), 12(A2)
+        MOVE.L LOCAL_LOADED_LEXEME_OFFSET(A3), 16(A2)
+        MOVE.L LOCAL_LOADED_LEXEME_LEN(A3), 20(A2)
+        CLR.L 24(A2)
+        CLR.L 28(A2)
+        BRA prvmCommitResultRecord
+
+prvmEmitOperandTextSpan:
+        MOVE.L LOCAL_EXPR_START_TOKEN(A3), D0
+        CMP.L LOCAL_EXPR_END_TOKEN(A3), D0
+        BCC prvmEmitOperandTextSpanNone
+        BSR.W prvmTokenPtrByIndex
+        TST.L D0
+        BNE prvmEmitRecordReturn
+        MOVE.L 4(A1), D5
+        MOVE.L LOCAL_EXPR_END_TOKEN(A3), D0
+        SUBQ.L #1, D0
+        BSR.W prvmTokenPtrByIndex
+        TST.L D0
+        BNE prvmEmitRecordReturn
+        MOVE.L 8(A1), D7
+        MOVE.L D5, -(SP)
+        MOVE.L D7, -(SP)
+        BSR.W prvmResultRecordPtr
+        MOVE.L (SP)+, D7
+        MOVE.L (SP)+, D5
+        TST.L D0
+        BNE prvmEmitRecordReturn
+        MOVE.W #PRVM_RESULT_OPERAND_TEXT, 0(A2)
+        CLR.W 2(A2)
+        MOVE.L PRVM_FRAME_LINE_NUM(A4), 4(A2)
+        MOVE.L D5, 8(A2)
+        MOVE.L D7, 12(A2)
+        MOVE.L LOCAL_EXPR_START_TOKEN(A3), 16(A2)
+        MOVE.L LOCAL_EXPR_END_TOKEN(A3), 20(A2)
+        CLR.L 24(A2)
+        CLR.L 28(A2)
+        BRA prvmCommitResultRecord
+
+prvmEmitOperandTextSpanNone:
+        CLR.L D0
+        RTS
 
 prvmEmitOperandExprSlot:
         BSR.W prvmResultRecordPtr

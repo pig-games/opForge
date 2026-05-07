@@ -213,21 +213,21 @@ pub struct Cli {
         long = "fmt",
         action = ArgAction::SetTrue,
         conflicts_with_all = ["fmt_check", "fmt_write", "fmt_stdout"],
-        long_help = "Format input files in place. For folder inputs, opForge resolves the root module and formats linked module files as well. This is shorthand for --fmt-write."
+        long_help = "Format input files in place. For folder inputs and root source-file inputs, opForge resolves the root module and formats linked module files as well. This is shorthand for --fmt-write."
     )]
     pub fmt: bool,
     #[arg(
         long = "fmt-check",
         action = ArgAction::SetTrue,
         conflicts_with_all = ["fmt", "fmt_write", "fmt_stdout"],
-        long_help = "Check formatting for input files without writing changes. For folder inputs, linked module files are included."
+        long_help = "Check formatting for input files without writing changes. For folder inputs and root source-file inputs, linked module files are included."
     )]
     pub fmt_check: bool,
     #[arg(
         long = "fmt-write",
         action = ArgAction::SetTrue,
         conflicts_with_all = ["fmt", "fmt_check", "fmt_stdout"],
-        long_help = "Apply formatter changes in place for input files. For folder inputs, linked module files are included."
+        long_help = "Apply formatter changes in place for input files. For folder inputs and root source-file inputs, linked module files are included."
     )]
     pub fmt_write: bool,
     #[arg(
@@ -602,9 +602,24 @@ pub fn input_base_from_path(
 /// Directory inputs expand to the root module plus all linked module/include
 /// source files discovered through the module graph loader.
 pub fn resolve_formatter_input_paths(config: &CliConfig) -> Result<Vec<PathBuf>, AsmRunError> {
+    resolve_formatter_input_paths_with_mode(config, false)
+}
+
+/// Resolve source files for formatter project modes.
+///
+/// Both root source files and directory inputs expand to the full linked
+/// module/include file set discovered through the module graph loader.
+pub fn resolve_formatter_project_paths(config: &CliConfig) -> Result<Vec<PathBuf>, AsmRunError> {
+    resolve_formatter_input_paths_with_mode(config, true)
+}
+
+fn resolve_formatter_input_paths_with_mode(
+    config: &CliConfig,
+    expand_file_roots: bool,
+) -> Result<Vec<PathBuf>, AsmRunError> {
     let mut resolved = Vec::new();
     for input_path in &config.input_paths {
-        if input_path.is_dir() {
+        if input_path.is_dir() || expand_file_roots {
             resolved.extend(resolve_formatter_module_paths(input_path, config)?);
             continue;
         }
@@ -2277,6 +2292,21 @@ mod tests {
         assert_eq!(base, dir.file_name().unwrap().to_string_lossy());
     }
 
+    #[test]
+    fn resolve_formatter_project_paths_expands_root_source_file_dependencies() {
+        let dir = create_temp_dir("formatter-project-file-root");
+        let root_path = dir.join("app.asm");
+        let dep_path = dir.join("util.asm");
+        fs::write(&root_path, ".module app\n    .use util\n.endmodule\n").expect("write root");
+        fs::write(&dep_path, ".module util\nVALUE .const 1\n.endmodule\n").expect("write dep");
+
+        let config = formatter_test_cli_config(vec![root_path.clone()], dir.clone());
+        let files = resolve_formatter_project_paths(&config).expect("resolve formatter project");
+
+        assert!(files.iter().any(|path| path.ends_with("app.asm")));
+        assert!(files.iter().any(|path| path.ends_with("util.asm")));
+    }
+
     fn create_temp_dir(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2287,5 +2317,43 @@ mod tests {
             .join(format!("test-{label}-{}-{nanos}", process::id()));
         fs::create_dir_all(&dir).expect("Create temp dir");
         dir
+    }
+
+    fn formatter_test_cli_config(input_paths: Vec<PathBuf>, include_dir: PathBuf) -> CliConfig {
+        CliConfig {
+            input_paths,
+            input_extensions: default_input_extensions(),
+            cpu_override: None,
+            opasm_package: None,
+            defines: Vec::new(),
+            go_addr: None,
+            bin_specs: Vec::new(),
+            srec_name: None,
+            hunk_name: None,
+            fill_byte: 0,
+            fill_byte_set: false,
+            out_dir: None,
+            include_paths: vec![include_dir],
+            module_paths: Vec::new(),
+            quiet: false,
+            line_numbers: false,
+            tab_size: None,
+            verbose_list: false,
+            debug_conditionals: false,
+            output_format: OutputFormat::Text,
+            diagnostics_style: DiagnosticsStyle::Classic,
+            fixits_dry_run: false,
+            apply_fixits: false,
+            fixits_output: None,
+            diagnostics_sink: DiagnosticsSinkConfig::Stderr,
+            warning_policy: WarningPolicy::default(),
+            labels_file: None,
+            label_output_format: LabelOutputFormat::default(),
+            dependency_output: None,
+            pp_macro_depth: 32,
+            max_loop_iterations: 10_000,
+            default_outputs: false,
+            formatter: None,
+        }
     }
 }

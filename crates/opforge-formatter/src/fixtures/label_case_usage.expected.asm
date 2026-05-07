@@ -1,4 +1,4 @@
 .cpu 8085
 start   mvi a, 1
-        jmp Start
+        jmp start
         jnz START

@@ -15,7 +15,7 @@
         .use tkpkg.amigaos.buffers (lastTokenCount, lastLexemeLen, TOKEN_RECORD_SIZE)
         .use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY)
         .use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
-        .use tkpkg.amigaos.service (tkpkg_service_dispatch_v1)
+        .use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
         .use opcore.amigaos.expr_bridge (opcore_expr_eval_operand_v1)
         .use opasm.amigaos.selector_stage (opasm_selector_stage_build_encode_request_v1)
         .use opasm.amigaos.selector_stage (opasm_selector_stage_instruction_size_v1)
@@ -569,7 +569,7 @@ opforgeNativeCliTokenizeFileFailClose:
 opforge_native_cli_init_package_pipeline:
         LEA controlBlockV1, A0
         MOVEQ #ENTRY_ORD_INIT, D0
-        JSR tkpkg_service_dispatch_v1
+        JSR tkpkgServiceDispatchV1
         BSR.W opforge_native_cli_read_status
         TST.B D0
         BNE.W opforgeNativeCliInitPipelineFail
@@ -583,7 +583,7 @@ opforge_native_cli_init_package_pipeline:
         MOVE.W nativeCliPackageLenActive, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_LOAD_PACKAGE, D0
-        JSR tkpkg_service_dispatch_v1
+        JSR tkpkgServiceDispatchV1
         BSR.W opforge_native_cli_read_status
         TST.B D0
         BNE.S opforgeNativeCliInitPipelineFail
@@ -597,7 +597,7 @@ opforge_native_cli_init_package_pipeline:
         MOVE.W nativeCliPipelineRequestLen, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_SET_PIPELINE, D0
-        JSR tkpkg_service_dispatch_v1
+        JSR tkpkgServiceDispatchV1
         BSR.W opforge_native_cli_read_status
         TST.B D0
         BNE.S opforgeNativeCliInitPipelineFail
@@ -713,7 +713,7 @@ opforge_native_cli_dispatch_parse_line_envelope:
         MOVE.W nativeCliLineRequestLen, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_PARSE_LINE, D0
-        JSR tkpkg_service_dispatch_v1
+        JSR tkpkgServiceDispatchV1
         MOVE.L D0, nativeCliPrvmRouteStatus
         MOVE.W D1, nativeCliPrvmResultCount
         LEA controlBlockV1, A0
@@ -766,7 +766,7 @@ opforge_native_cli_dispatch_encode_instruction_envelope:
         MOVE.W nativeCliEncodeRequestLen, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_ENCODE_INSTRUCTION, D0
-        JSR tkpkg_service_dispatch_v1
+        JSR tkpkgServiceDispatchV1
         BSR.W opforge_native_cli_read_status
 
 opforgeNativeCliDispatchEncodeDone:
@@ -788,7 +788,7 @@ opforgeNativeCliTokenizeCurrentLineNoIncludeRecord:
         MOVE.W nativeCliLineRequestLen, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_TOKENIZE_LINE, D0
-        JSR tkpkg_service_dispatch_v1
+        JSR tkpkgServiceDispatchV1
         BSR.W opforge_native_cli_read_status
         TST.B D0
         BNE.S opforgeNativeCliTokenizeCurrentLineFail
@@ -3167,7 +3167,7 @@ opforgeNativeCliPassTwoEmitImageBytes:
         MOVE.W nativeCliEncodeRequestLen.L, D1
         BSR.W opforge_native_cli_write_input_window
         MOVEQ #ENTRY_ORD_ENCODE_INSTRUCTION, D0
-        JSR tkpkg_service_dispatch_v1
+        JSR tkpkgServiceDispatchV1
         BSR.W opforge_native_cli_read_status
         TST.B D0
         BNE.W opforgeNativeCliPassTwoEmitFail

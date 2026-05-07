@@ -2,7 +2,7 @@
 
         .module main
         .cpu 68020
-        .use prvm.amigaos.interpreter (prvm_run_68000)
+        .use prvm.amigaos.interpreter (prvmRun68000)
 
 SysBase                         = 4
 RETURN_OK                       = 0
@@ -73,7 +73,7 @@ prvmDebugCliHaveDos:
         BSR.W prvmDebugCliBuildRequestFrame
         LEA requestFrame(PC), A0
         MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0
-        JSR prvm_run_68000.L
+        JSR prvmRun68000.L
 
         LEA prvmStatus(PC), A0
         MOVE.L D0, 0(A0)

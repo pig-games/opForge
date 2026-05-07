@@ -205,6 +205,11 @@ directive_case = "lower" # keep|upper|lower
 dialect_rewrite = "off"  # off|canonical|preferred
 ```
 
+Current implementation note:
+- project formatter modes now expand both directory inputs and root source-file inputs through the linked module graph
+- `indent_char` supports `space`/`tab`
+- label casing is symbol-aware and can be specialized per role with `routine_label_case`, `data_label_case`, and `constant_label_case`
+
 Precedence:
 1. built-in defaults
 2. config file

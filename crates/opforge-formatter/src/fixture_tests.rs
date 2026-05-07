@@ -145,9 +145,9 @@ fn register_case_fixture_applies_when_enabled() {
 }
 
 #[test]
-fn label_case_fixture_changes_definition_without_rewriting_usages() {
+fn label_case_fixture_rewrites_same_file_usages() {
     let engine = FormatterEngine::new(FormatterConfig {
-        label_case: super::CaseStyle::Lower,
+        label_case: super::LabelCaseStyle::Lower,
         ..FormatterConfig::default()
     });
     let input = read_fixture("label_case_usage", "input");

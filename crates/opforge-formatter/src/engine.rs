@@ -6,8 +6,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use super::{
-    collect_fallback_diagnostics, parse_document, plan_document, render_plan, tokenize_source,
-    FormatterConfig, FormatterDiagnostic,
+    collect_fallback_diagnostics, parse_document,
+    planner::plan_document_with_context,
+    render_plan,
+    symbol_context::{build_project_context, DocumentFormatContext},
+    tokenize_source, FormatterConfig, FormatterDiagnostic,
 };
 
 /// Formatter execution mode.
@@ -65,7 +68,8 @@ impl FormatterEngine {
         let doc = tokenize_source(source);
         let parsed = parse_document(&doc);
         let diagnostics = collect_fallback_diagnostics(&parsed);
-        let plan = plan_document(&doc, &parsed, &self.config);
+        let context = super::symbol_context::build_inline_context(source, &parsed, &self.config);
+        let plan = plan_document_with_context(&doc, &parsed, &self.config, &context);
         let rendered = render_plan(&plan, &doc, &self.config);
         FormatterOutput {
             rendered,
@@ -96,19 +100,31 @@ impl FormatterEngine {
         paths: &[PathBuf],
         mode: FormatMode,
     ) -> io::Result<FormatterRunReport> {
+        let mut loaded = Vec::with_capacity(paths.len());
+        for path in paths {
+            let input = fs::read_to_string(path)?;
+            let doc = tokenize_source(&input);
+            let parsed = parse_document(&doc);
+            loaded.push((path.clone(), input, doc, parsed));
+        }
+        let context_entries: Vec<(PathBuf, String, super::SurfaceParsedDocument)> = loaded
+            .iter()
+            .map(|(path, input, _doc, parsed)| (path.clone(), input.clone(), parsed.clone()))
+            .collect();
+        let contexts = build_project_context(&context_entries, &self.config);
+
         let mut report = FormatterRunReport {
             summary: FormatterRunSummary::default(),
             files: Vec::with_capacity(paths.len()),
         };
-        for path in paths {
+        for (path, input, doc, parsed) in loaded {
             report.summary.files_seen += 1;
-            let input = fs::read_to_string(path)?;
-            let output = self.format_source_with_diagnostics(&input);
+            let output = self.format_loaded_source(&input, &doc, &parsed, contexts.get(&path));
             let changed = output.rendered != input;
             if changed {
                 report.summary.files_changed += 1;
                 if mode == FormatMode::Write {
-                    fs::write(path, &output.rendered)?;
+                    fs::write(&path, &output.rendered)?;
                 }
             }
             if !output.diagnostics.is_empty() {
@@ -123,12 +139,36 @@ impl FormatterEngine {
         }
         Ok(report)
     }
+
+    fn format_loaded_source(
+        &self,
+        input: &str,
+        doc: &super::SurfaceDocument,
+        parsed: &super::SurfaceParsedDocument,
+        context: Option<&DocumentFormatContext>,
+    ) -> FormatterOutput {
+        let diagnostics = collect_fallback_diagnostics(parsed);
+        let fallback_context_storage;
+        let context = if let Some(context) = context {
+            context
+        } else {
+            fallback_context_storage =
+                super::symbol_context::build_inline_context(input, parsed, &self.config);
+            &fallback_context_storage
+        };
+        let plan = plan_document_with_context(doc, parsed, &self.config, context);
+        let rendered = render_plan(&plan, doc, &self.config);
+        FormatterOutput {
+            rendered,
+            diagnostics,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{FormatMode, FormatterEngine};
-    use crate::formatter::FormatterConfig;
+    use crate::formatter::{FormatterConfig, LabelCaseStyle};
     use std::env;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -210,6 +250,37 @@ mod tests {
         assert_eq!(report.files[0].diagnostics.len(), 1);
     }
 
+    #[test]
+    fn run_paths_with_report_rewrites_linked_module_imports_for_project_scope() {
+        let dir = create_temp_dir("run-paths-project-scope");
+        let lib_path = dir.join("lib.asm");
+        let app_path = dir.join("app.asm");
+        fs::write(&lib_path, ".module lib\nvalue:\n    .byte 1\n.endmodule\n").expect("write lib");
+        fs::write(
+            &app_path,
+            ".module app\n    .use lib (value)\nstart:\n    jmp value\n.endmodule\n",
+        )
+        .expect("write app");
+
+        let engine = FormatterEngine::new(FormatterConfig {
+            data_label_case: LabelCaseStyle::UpperCamel,
+            ..FormatterConfig::default()
+        });
+        let report = engine
+            .run_paths_with_report(&[lib_path.clone(), app_path.clone()], FormatMode::Write)
+            .expect("run formatter project scope");
+
+        assert_eq!(report.summary.files_seen, 2);
+        assert_eq!(
+            fs::read_to_string(&lib_path).expect("read lib"),
+            ".module lib\nValue:\n        .byte 1\n.endmodule\n"
+        );
+        assert_eq!(
+            fs::read_to_string(&app_path).expect("read app"),
+            ".module app\n        .use lib (Value)\nstart:\n        jmp Value\n.endmodule\n"
+        );
+    }
+
     fn create_temp_file(label: &str, content: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -223,5 +294,20 @@ mod tests {
         fs::write(&path, content).expect("write temp file");
         assert!(Path::new(&path).exists());
         path
+    }
+
+    fn create_temp_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join(format!(
+                "test-formatter-dir-{label}-{}-{nanos}",
+                process::id()
+            ));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
     }
 }

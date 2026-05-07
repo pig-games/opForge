@@ -1,9 +1,9 @@
 ; Owned runtime buffers for the first tkpkg native ABI slice.
 
-        .module tkpkg.amigaos.buffers
-        .cpu 68020
-        .pub
-        .use tkpkg.amigaos.abi (NATIVE_CONTROL_BLOCK_SIZE_V1)
+	.module tkpkg.amigaos.buffers
+	.cpu 68020
+	.pub
+	.use tkpkg.amigaos.abi (NATIVE_CONTROL_BLOCK_SIZE_V1)
 
 LAST_ERROR_BUFFER_CAPACITY           = 4096
 LAST_ERROR_BUFFER_PTR_V1             = NATIVE_CONTROL_BLOCK_SIZE_V1
@@ -35,331 +35,331 @@ LAST_ERROR_KIND_BAD_REQUEST          = 1
 LAST_ERROR_KIND_BAD_CONTROL          = 2
 LAST_ERROR_KIND_RUNTIME              = 3
 
-        .section data, kind=data
+	.section data, kind=data
 
-runtimeStageMarker:
-        .byte "TKPKG-SLICE-1", 0
+RuntimeStageMarker
+	.byte "TKPKG-SLICE-1", 0
 
-badRequestText:
-        .byte "OTR002: bad request", 0
+BadRequestText
+	.byte "OTR002: bad request", 0
 
-controlBlockErrorText:
-        .byte "OTR003: bad control", 0
+ControlBlockErrorText
+	.byte "OTR003: bad control", 0
 
-runtimeErrorText:
-        .byte "OTR901: unimplemented", 0
+RuntimeErrorText
+	.byte "OTR901: unimplemented", 0
 
-        .endsection
+	.endsection
 
-        .section bss, kind=bss
+	.section bss, kind=bss
 
-controlBlockV1:
-        .res byte, NATIVE_CONTROL_BLOCK_SIZE_V1
+ControlBlockV1
+	.res byte, NATIVE_CONTROL_BLOCK_SIZE_V1
 
-lastErrorBuffer:
-        .res byte, LAST_ERROR_BUFFER_CAPACITY
+LastErrorBuffer
+	.res byte, LAST_ERROR_BUFFER_CAPACITY
 
-packageStorage:
-        .res byte, PACKAGE_STORAGE_CAPACITY
+PackageStorage
+	.res byte, PACKAGE_STORAGE_CAPACITY
 
-tokenRecordBuffer:
-        .res byte, TOKEN_RECORD_SIZE * TOKEN_BUFFER_CAPACITY
+TokenRecordBuffer
+	.res byte, TOKEN_RECORD_SIZE * TOKEN_BUFFER_CAPACITY
 
-tokenScratchBuffer:
-        .res byte, TOKEN_SCRATCH_CAPACITY
+TokenScratchBuffer
+	.res byte, TOKEN_SCRATCH_CAPACITY
 
-lastTokenCount:
-        .res word, 1
+LastTokenCount
+	.res word, 1
 
-lastLexemeLen:
-        .res word, 1
+LastLexemeLen
+	.res word, 1
 
-        .align 2
-packageStateFlags:
-        .res byte, 1
+	.align 2
+PackageStateFlags
+	.res byte, 1
 
-packageChunkFlags:
-        .res byte, 1
+PackageChunkFlags
+	.res byte, 1
 
-packageStorageLen:
-        .res byte, 1
+PackageStorageLen
+	.res byte, 1
 
-packageStorageLenHi:
-        .res byte, 1
+PackageStorageLenHi
+	.res byte, 1
 
-famsChunkOffsetLo:
-        .res byte, 1
+FamsChunkOffsetLo
+	.res byte, 1
 
-famsChunkOffsetHi:
-        .res byte, 1
+FamsChunkOffsetHi
+	.res byte, 1
 
-famsChunkLenLo:
-        .res byte, 1
+FamsChunkLenLo
+	.res byte, 1
 
-famsChunkLenHi:
-        .res byte, 1
+FamsChunkLenHi
+	.res byte, 1
 
-cpusChunkOffsetLo:
-        .res byte, 1
+CpusChunkOffsetLo
+	.res byte, 1
 
-cpusChunkOffsetHi:
-        .res byte, 1
+CpusChunkOffsetHi
+	.res byte, 1
 
-cpusChunkLenLo:
-        .res byte, 1
+CpusChunkLenLo
+	.res byte, 1
 
-cpusChunkLenHi:
-        .res byte, 1
+CpusChunkLenHi
+	.res byte, 1
 
-dialChunkOffsetLo:
-        .res byte, 1
+DialChunkOffsetLo
+	.res byte, 1
 
-dialChunkOffsetHi:
-        .res byte, 1
+DialChunkOffsetHi
+	.res byte, 1
 
-dialChunkLenLo:
-        .res byte, 1
+DialChunkLenLo
+	.res byte, 1
 
-dialChunkLenHi:
-        .res byte, 1
+DialChunkLenHi
+	.res byte, 1
 
-toksChunkOffsetLo:
-        .res byte, 1
+ToksChunkOffsetLo
+	.res byte, 1
 
-toksChunkOffsetHi:
-        .res byte, 1
+ToksChunkOffsetHi
+	.res byte, 1
 
-toksChunkLenLo:
-        .res byte, 1
+ToksChunkLenLo
+	.res byte, 1
 
-toksChunkLenHi:
-        .res byte, 1
+ToksChunkLenHi
+	.res byte, 1
 
-tkvmChunkOffsetLo:
-        .res byte, 1
+TkvmChunkOffsetLo
+	.res byte, 1
 
-tkvmChunkOffsetHi:
-        .res byte, 1
+TkvmChunkOffsetHi
+	.res byte, 1
 
-tkvmChunkLenLo:
-        .res byte, 1
+TkvmChunkLenLo
+	.res byte, 1
 
-tkvmChunkLenHi:
-        .res byte, 1
+TkvmChunkLenHi
+	.res byte, 1
 
-tablChunkOffsetLo:
-        .res byte, 1
+TablChunkOffsetLo
+	.res byte, 1
 
-tablChunkOffsetHi:
-        .res byte, 1
+TablChunkOffsetHi
+	.res byte, 1
 
-tablChunkLenLo:
-        .res byte, 1
+TablChunkLenLo
+	.res byte, 1
 
-tablChunkLenHi:
-        .res byte, 1
+TablChunkLenHi
+	.res byte, 1
 
-activeCpuBuffer:
-        .res byte, PIPELINE_ID_BUFFER_CAPACITY
+ActiveCpuBuffer
+	.res byte, PIPELINE_ID_BUFFER_CAPACITY
 
-activeDialectBuffer:
-        .res byte, PIPELINE_ID_BUFFER_CAPACITY
+ActiveDialectBuffer
+	.res byte, PIPELINE_ID_BUFFER_CAPACITY
 
-activeFamilyBuffer:
-        .res byte, PIPELINE_ID_BUFFER_CAPACITY
+ActiveFamilyBuffer
+	.res byte, PIPELINE_ID_BUFFER_CAPACITY
 
-        .align 2
-activeTokenPolicyOffsetLo:
-        .res byte, 1
+	.align 2
+ActiveTokenPolicyOffsetLo
+	.res byte, 1
 
-activeTokenPolicyOffsetHi:
-        .res byte, 1
+ActiveTokenPolicyOffsetHi
+	.res byte, 1
 
-activeTokenPolicyLenLo:
-        .res byte, 1
+ActiveTokenPolicyLenLo
+	.res byte, 1
 
-activeTokenPolicyLenHi:
-        .res byte, 1
+ActiveTokenPolicyLenHi
+	.res byte, 1
 
-activeTokenPolicyOwnerTag:
-        .res byte, 1
+ActiveTokenPolicyOwnerTag
+	.res byte, 1
 
-        .align 2
-activeTokenizerVmOffsetLo:
-        .res byte, 1
+	.align 2
+ActiveTokenizerVmOffsetLo
+	.res byte, 1
 
-activeTokenizerVmOffsetHi:
-        .res byte, 1
+ActiveTokenizerVmOffsetHi
+	.res byte, 1
 
-activeTokenizerVmLenLo:
-        .res byte, 1
+ActiveTokenizerVmLenLo
+	.res byte, 1
 
-activeTokenizerVmLenHi:
-        .res byte, 1
+ActiveTokenizerVmLenHi
+	.res byte, 1
 
-activeTokenizerVmOwnerTag:
-        .res byte, 1
+ActiveTokenizerVmOwnerTag
+	.res byte, 1
 
-activeTokenizerVmStartStateLo:
-        .res byte, 1
+ActiveTokenizerVmStartStateLo
+	.res byte, 1
 
-activeTokenizerVmStartStateHi:
-        .res byte, 1
+ActiveTokenizerVmStartStateHi
+	.res byte, 1
 
-activeTokenizerVmStateCountLo:
-        .res byte, 1
+ActiveTokenizerVmStateCountLo
+	.res byte, 1
 
-activeTokenizerVmStateCountHi:
-        .res byte, 1
+ActiveTokenizerVmStateCountHi
+	.res byte, 1
 
-activeTokenizerVmStateTable:
-        .res byte, TOKENIZER_VM_STATE_TABLE_CAPACITY * 4
+ActiveTokenizerVmStateTable
+	.res byte, TOKENIZER_VM_STATE_TABLE_CAPACITY * 4
 
-activeTokenizerVmMaxErrorsPerLine:
-        .res byte, 4
+ActiveTokenizerVmMaxErrorsPerLine
+	.res byte, 4
 
-activeTokenizerVmInvalidCharDiagLen:
-        .res byte, 1
+ActiveTokenizerVmInvalidCharDiagLen
+	.res byte, 1
 
-activeTokenizerVmInvalidCharDiagCode:
-        .res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
+ActiveTokenizerVmInvalidCharDiagCode
+	.res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
 
-activeTokenizerVmUnterminatedStringDiagLen:
-        .res byte, 1
+ActiveTokenizerVmUnterminatedStringDiagLen
+	.res byte, 1
 
-activeTokenizerVmUnterminatedStringDiagCode:
-        .res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
+ActiveTokenizerVmUnterminatedStringDiagCode
+	.res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
 
-activeTokenizerVmStepLimitDiagLen:
-        .res byte, 1
+ActiveTokenizerVmStepLimitDiagLen
+	.res byte, 1
 
-activeTokenizerVmStepLimitDiagCode:
-        .res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
+ActiveTokenizerVmStepLimitDiagCode
+	.res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
 
-activeTokenizerVmTokenLimitDiagLen:
-        .res byte, 1
+ActiveTokenizerVmTokenLimitDiagLen
+	.res byte, 1
 
-activeTokenizerVmTokenLimitDiagCode:
-        .res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
+ActiveTokenizerVmTokenLimitDiagCode
+	.res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
 
-activeTokenizerVmLexemeLimitDiagLen:
-        .res byte, 1
+ActiveTokenizerVmLexemeLimitDiagLen
+	.res byte, 1
 
-activeTokenizerVmLexemeLimitDiagCode:
-        .res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
+ActiveTokenizerVmLexemeLimitDiagCode
+	.res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
 
-activeTokenizerVmErrorLimitDiagLen:
-        .res byte, 1
+ActiveTokenizerVmErrorLimitDiagLen
+	.res byte, 1
 
-activeTokenizerVmErrorLimitDiagCode:
-        .res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
+ActiveTokenizerVmErrorLimitDiagCode
+	.res byte, TOKENIZER_VM_DIAG_CODE_CAPACITY
 
-        .align 2
-pendingFamilyOffsetLo:
-        .res byte, 1
+	.align 2
+PendingFamilyOffsetLo
+	.res byte, 1
 
-pendingFamilyOffsetHi:
-        .res byte, 1
+PendingFamilyOffsetHi
+	.res byte, 1
 
-pendingFamilyLenLo:
-        .res byte, 1
+PendingFamilyLenLo
+	.res byte, 1
 
-pendingFamilyLenHi:
-        .res byte, 1
+PendingFamilyLenHi
+	.res byte, 1
 
-pendingCpuOffsetLo:
-        .res byte, 1
+PendingCpuOffsetLo
+	.res byte, 1
 
-pendingCpuOffsetHi:
-        .res byte, 1
+PendingCpuOffsetHi
+	.res byte, 1
 
-pendingCpuLenLo:
-        .res byte, 1
+PendingCpuLenLo
+	.res byte, 1
 
-pendingCpuLenHi:
-        .res byte, 1
+PendingCpuLenHi
+	.res byte, 1
 
-pendingDialectOffsetLo:
-        .res byte, 1
+PendingDialectOffsetLo
+	.res byte, 1
 
-pendingDialectOffsetHi:
-        .res byte, 1
+PendingDialectOffsetHi
+	.res byte, 1
 
-pendingDialectLenLo:
-        .res byte, 1
+PendingDialectLenLo
+	.res byte, 1
 
-pendingDialectLenHi:
-        .res byte, 1
+PendingDialectLenHi
+	.res byte, 1
 
-pendingDefaultDialectOffsetLo:
-        .res byte, 1
+PendingDefaultDialectOffsetLo
+	.res byte, 1
 
-pendingDefaultDialectOffsetHi:
-        .res byte, 1
+PendingDefaultDialectOffsetHi
+	.res byte, 1
 
-pendingDefaultDialectLenLo:
-        .res byte, 1
+PendingDefaultDialectLenLo
+	.res byte, 1
 
-pendingDefaultDialectLenHi:
-        .res byte, 1
+PendingDefaultDialectLenHi
+	.res byte, 1
 
-pendingCanonicalDialectOffsetLo:
-        .res byte, 1
+PendingCanonicalDialectOffsetLo
+	.res byte, 1
 
-pendingCanonicalDialectOffsetHi:
-        .res byte, 1
+PendingCanonicalDialectOffsetHi
+	.res byte, 1
 
-pendingCanonicalDialectLenLo:
-        .res byte, 1
+PendingCanonicalDialectLenLo
+	.res byte, 1
 
-pendingCanonicalDialectLenHi:
-        .res byte, 1
+PendingCanonicalDialectLenHi
+	.res byte, 1
 
-pendingTokenPolicyOffsetLo:
-        .res byte, 1
+PendingTokenPolicyOffsetLo
+	.res byte, 1
 
-pendingTokenPolicyOffsetHi:
-        .res byte, 1
+PendingTokenPolicyOffsetHi
+	.res byte, 1
 
-pendingTokenPolicyLenLo:
-        .res byte, 1
+PendingTokenPolicyLenLo
+	.res byte, 1
 
-pendingTokenPolicyLenHi:
-        .res byte, 1
+PendingTokenPolicyLenHi
+	.res byte, 1
 
-pendingTokenPolicyOwnerTag:
-        .res byte, 1
+PendingTokenPolicyOwnerTag
+	.res byte, 1
 
-        .align 2
-pendingTokenizerVmOffsetLo:
-        .res byte, 1
+	.align 2
+PendingTokenizerVmOffsetLo
+	.res byte, 1
 
-pendingTokenizerVmOffsetHi:
-        .res byte, 1
+PendingTokenizerVmOffsetHi
+	.res byte, 1
 
-pendingTokenizerVmLenLo:
-        .res byte, 1
+PendingTokenizerVmLenLo
+	.res byte, 1
 
-pendingTokenizerVmLenHi:
-        .res byte, 1
+PendingTokenizerVmLenHi
+	.res byte, 1
 
-pendingTokenizerVmOwnerTag:
-        .res byte, 1
+PendingTokenizerVmOwnerTag
+	.res byte, 1
 
-storedLastErrorLen:
-        .res byte, 1
+StoredLastErrorLen
+	.res byte, 1
 
-storedLastErrorLenHi:
-        .res byte, 1
+StoredLastErrorLenHi
+	.res byte, 1
 
-storedLastErrorKind:
-        .res byte, 1
+StoredLastErrorKind
+	.res byte, 1
 
-nextRequestIdLo:
-        .res byte, 1
+NextRequestIdLo
+	.res byte, 1
 
-nextRequestIdHi:
-        .res byte, 1
+NextRequestIdHi
+	.res byte, 1
 
-        .endsection
-        .endmodule
+	.endsection
+	.endmodule

@@ -16,6 +16,7 @@ mod renderer;
 mod state_tracker;
 mod surface_parser;
 mod surface_tokenizer;
+mod symbol_context;
 
 pub mod formatter {
     pub use crate::*;
@@ -95,7 +96,7 @@ pub mod m68000 {
     }
 }
 
-pub use config::{CaseStyle, FormatterConfig, LabelColonStyle};
+pub use config::{CaseStyle, FormatterConfig, IndentChar, LabelCaseStyle, LabelColonStyle};
 pub use diagnostics::{collect_fallback_diagnostics, FormatterDiagnostic};
 pub use engine::{
     FormatMode, FormatterEngine, FormatterFileReport, FormatterOutput, FormatterRunReport,

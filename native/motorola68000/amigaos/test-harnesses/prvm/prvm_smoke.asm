@@ -2,7 +2,7 @@
 
         .module main
         .cpu 68020
-        .use prvm.amigaos.interpreter (prvm_run_68000)
+        .use prvm.amigaos.interpreter (prvmRun68000)
 
 SysBase                         = 4
 RETURN_OK                       = 0
@@ -93,7 +93,7 @@ prvmSmokeHaveDos:
         BSR.W prvmSmokeBuildRequestFrame
         LEA requestFrame(PC), A0
         MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0
-        JSR prvm_run_68000.L
+        JSR prvmRun68000.L
 
         LEA smokeStatus(PC), A0
         MOVE.L D0, 0(A0)
@@ -112,7 +112,7 @@ prvmSmokeHaveDos:
         LEA requestFrame(PC), A0
         MOVE.W #PRVM_CALL_MODE_RESUME, 8(A0)
         MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0
-        JSR prvm_run_68000.L
+        JSR prvmRun68000.L
 
         LEA smokeStatus(PC), A0
         MOVE.L D0, 0(A0)

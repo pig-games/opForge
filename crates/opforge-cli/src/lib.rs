@@ -11,9 +11,10 @@ use serde_json::json;
 
 use api::diagnostics::{build_context_lines, AsmRunError, Diagnostic, Severity};
 use cli_core::{
-    resolve_formatter_input_paths, run_with_cli_with_context, validate_cli, Cli, CliConfig,
-    CliRunError, CliRunReport, DiagnosticsSinkConfig, DiagnosticsStyle,
-    FormatterMode as CliFormatterMode, OutputFormat, BUILD_PROFILE_SUMMARY, VERSION,
+    resolve_formatter_input_paths, resolve_formatter_project_paths, run_with_cli_with_context,
+    validate_cli, Cli, CliConfig, CliRunError, CliRunReport, DiagnosticsSinkConfig,
+    DiagnosticsStyle, FormatterMode as CliFormatterMode, OutputFormat, BUILD_PROFILE_SUMMARY,
+    VERSION,
 };
 
 struct DiagnosticsSink {
@@ -838,8 +839,12 @@ fn run_formatter_mode(cli_config: &CliConfig) -> Result<i32, String> {
         CliFormatterMode::Write => api::formatter::FormatMode::Write,
         CliFormatterMode::Stdout => api::formatter::FormatMode::Stdout,
     };
-    let formatter_paths = resolve_formatter_input_paths(cli_config)
-        .map_err(|err| format!("formatter target resolution failed: {err}"))?;
+    let formatter_paths = if mode == api::formatter::FormatMode::Stdout {
+        resolve_formatter_input_paths(cli_config)
+    } else {
+        resolve_formatter_project_paths(cli_config)
+    }
+    .map_err(|err| format!("formatter target resolution failed: {err}"))?;
 
     if mode == api::formatter::FormatMode::Stdout {
         if formatter_paths.len() != 1 {

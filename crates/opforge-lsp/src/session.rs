@@ -2246,14 +2246,12 @@ mod tests {
             }
         }));
 
-        assert!(session
+        assert!(!session
             .diagnostic_contributions_by_root
-            .get(&main_uri)
-            .is_none());
-        assert!(session
+            .contains_key(&main_uri));
+        assert!(!session
             .validation_dependencies_by_root
-            .get(&main_uri)
-            .is_none());
+            .contains_key(&main_uri));
         assert!(session.pending_validation_uris.contains(&main_uri));
         assert!(out.iter().any(|message| matches!(
             message,

@@ -3,7 +3,7 @@
 # VM Boundary & Protocol Specification (v1)
 
 Status: active canonical spec  
-Last updated: 2026-05-01
+Last updated: 2026-05-11
 
 See also:
 - [opForge Reference Manual](opForge-reference-manual.md) (Appendix: multi-CPU architecture)
@@ -41,7 +41,7 @@ It specifies:
 | Macro expansion | Host | No (engine) | Host `MacroProcessor` performs expansion/injection; VM is not the macro executor. |
 | Per-line tokenization in assembler passes | VM | Yes | Per-line processing requires a runtime model and uses the VM tokenization path. |
 | Per-line parser envelope | VM | Yes | Per-line parsing validates parser contracts and executes the parser VM envelope. |
-| Expression parse/eval on assembly hot path | VM by default | Yes | `EXVM` parses covered mathematical expression token ranges; `EXPR` evaluates compiled portable expression programs. PRVM/opasm retains CPU-family operand-shape ownership. Strict contract/version checks are errors. |
+| Expression parse/eval on assembly hot path | VM by default | Yes | `EXVM v2` parses covered mathematical expression token ranges and emits `PortableExprProgram` directly on the authoritative path; `EXPR v2` evaluates that portable program, including structural values plus explicit scalar-boundary enforcement for scalar callers. The Rust `Expr` backend remains a compatibility/debug output backend rather than the canonical portable seam. PRVM/opasm retains CPU-family operand-shape ownership, and one narrow repetition-side-table member/index carveout remains host-owned. Strict contract/version checks are errors. |
 | Instruction candidate resolution/encode | VM-first with strictness | Yes | VM encode path is authoritative for certified families; contract failures are explicit errors. |
 | Pass orchestration, symbols, image/list/map output | Host | No | Host controls pass loop, symbol lifecycle, listings/map/hex/bin I/O. |
 
@@ -141,6 +141,22 @@ expression grammar; immediate wrappers, m68k tuple/postincrement/predecrement
 forms, register-pair operands, bitfield suffixes, long-indirect brackets, and
 other CPU-family operand shapes remain PRVM/opasm responsibilities.
 
+`EXPR v2` is now the active evaluator contract on the authoritative expression
+path. `PortableExprProgram` is the canonical portable carrier across that
+boundary: on the covered `EXVM v2` path the runtime emits portable programs
+directly, and native hosts only need to honor the published `EXVM`/`EXPR`
+contracts rather than reproduce Rust AST lowering. `EXPR v2` can carry
+structural values for covered grammar such as lists, ranges, struct types, and
+struct literals. Scalar-only assembler callers cross an explicit
+`RequireScalar` boundary, so irreducible structural results fail with
+deterministic diagnostics instead of silently collapsing to host-side scalar
+reduction.
+
+One explicit host carveout remains in the current assembler boundary:
+repetition-side-table member/index forms such as `repeatLabel[index].field`
+still evaluate on the host because they depend on assembler-owned iteration
+scope side tables rather than generic `EXPR v2` structural values.
+
 ## 7. Ownership and Precedence
 
 All runtime-resolved contracts are owner-scoped and resolved with this precedence:
@@ -158,21 +174,29 @@ Normative rules:
 - Invalid VM output shape (for example empty non-comment token stream where forbidden) is a hard error.
 - VM contract/version failures are never interpreted as soft host fallback signals.
 - Covered `EXVM` grammar must not silently delegate to host expression parsing.
+- Covered `EXPR v2` evaluation must not silently reduce irreducible structural values to scalars; scalar callers fail only through the explicit boundary opcode.
+- Covered authoritative-family pass-2 expression evaluation must not silently
+	retry host AST evaluation after VM unknown-symbol, budget, or scalar-boundary
+	failures.
 - Calls and placeholders are explicit compatibility/out-of-scope value nodes,
   not covered `EXVM` grammar; strict execution reports deterministic unsupported
   diagnostics for them.
+- Any remaining host carveout must stay explicit, narrow, and tied to assembler-owned state that is not represented in the generic VM value model.
 
 Determinism requirements:
 - Budget ceilings and diagnostics are deterministic for repeated runs over identical inputs.
 
 ## 9. Rollout Defaults and Override Controls
 
-### 9.1 Current defaults (v1, active)
+### 9.1 Current defaults (active)
 - Runtime/package path: authoritative for `mos6502` and `intel8080` families.
-- Expression eval path: authoritative for `mos6502` and `intel8080` families.
-- Expression parser path: authoritative for `mos6502` and `intel8080` families.
-- Parser-VM expression subcalls route covered expression ranges through `EXVM`
-  even when the surrounding CPU-family operand shape remains staged.
+- Expression eval path: authoritative `EXPR v2` for `mos6502`, `intel8080`, and `motorola68000` families.
+- Expression parser path: authoritative `EXVM v2` for `mos6502`, `intel8080`, and `motorola68000` families.
+- Covered structural expression values run through `EXPR v2`; scalar-only callers rely on explicit scalar-boundary enforcement rather than implicit host reduction.
+- Parser-VM expression subcalls route covered expression ranges through `EXVM v2`
+	even when the surrounding CPU-family operand shape remains staged.
+- Within the `motorola68000` family claim, covered `m68000`, `m68010`, `m68020`, `m68030`, `m68040`, and full `m68080` expression-bearing callers stay on the authoritative parser/eval path under their existing CPU legality rules; `m68080` integer, AMMX, Apollo-gated, and `fpu 68080` expression-bearing forms are included in that family scope.
+- Remaining explicit host carveout: repetition-side-table member/index forms stay on the host until their assembler-owned side-table state has a versioned VM representation.
 
 ### 9.2 Host override controls
 
@@ -187,6 +211,9 @@ Rules:
 
 Boundary caveat:
 - These controls affect expression eval gating only.
+- They do not create implicit parser fallback or bypass the explicit scalar-boundary rules on the active `EXPR v2` path.
+- They are the only supported opt-out from the no-silent-fallback rule for
+	authoritative-family pass-2 expression evaluation.
 - They do not replace host orchestration responsibilities (preprocess/module graph/macro/output orchestration).
 
 ## 10. Explicit Host Responsibilities (Non-VM)
@@ -197,6 +224,10 @@ The following remain host-owned by specification:
 - Macro expansion and import visibility injection.
 - Pass1/pass2 scheduling and line traversal.
 - Symbol table lifecycle + diagnostics aggregation.
+- Provisional pass-1 unresolved-symbol placeholder evaluation when an
+	assembler caller still needs a temporary numeric value before symbol
+	finalization.
+- Repetition-side-table member/index evaluation that depends on assembler iteration scopes rather than generic VM value storage.
 - Artifact emission (`.lst`, `.hex`, `.bin`, map/export/link outputs).
 
 ## 11. Compliance Criteria
@@ -206,6 +237,7 @@ An implementation is compliant with this spec when:
 - Host orchestration boundary remains explicit as defined in Sections 3/10.
 - Runtime precedence is `dialect -> cpu -> family`.
 - Contract and opcode compatibility checks are enforced at runtime.
+- Scalar-only expression callers fail through explicit scalar-boundary enforcement when a covered structural result is not reducible.
 - Deterministic limits and diagnostics are preserved.
 
 ## 12. Supersession

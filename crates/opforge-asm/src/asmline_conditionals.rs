@@ -17,7 +17,7 @@ impl<'a> AsmLine<'a> {
         match kind {
             ConditionalKind::If => {
                 let val = match exprs.first() {
-                    Some(expr) => match self.eval_expr_ast(expr) {
+                    Some(expr) => match self.eval_expr_for_scalar_context(expr) {
                         Ok(v) => v,
                         Err(err) => {
                             return self.failure_at_span(
@@ -48,7 +48,7 @@ impl<'a> AsmLine<'a> {
             }
             ConditionalKind::Switch => {
                 let val = match exprs.first() {
-                    Some(expr) => match self.eval_expr_ast(expr) {
+                    Some(expr) => match self.eval_expr_for_scalar_context(expr) {
                         Ok(v) => v,
                         Err(err) => {
                             return self.failure_at_span(
@@ -127,7 +127,7 @@ impl<'a> AsmLine<'a> {
                     1
                 } else {
                     match exprs.first() {
-                        Some(expr) => match self.eval_expr_ast(expr) {
+                        Some(expr) => match self.eval_expr_for_scalar_context(expr) {
                             Ok(v) => v,
                             Err(err) => {
                                 return self.failure_at_span(
@@ -255,7 +255,7 @@ impl<'a> AsmLine<'a> {
                 }
                 let mut case_match = false;
                 for expr in exprs.iter() {
-                    match self.eval_expr_ast(expr) {
+                    match self.eval_expr_for_scalar_context(expr) {
                         Ok(val) => {
                             if val == switch_val {
                                 case_match = true;

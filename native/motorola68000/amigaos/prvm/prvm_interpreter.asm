@@ -131,6 +131,8 @@ AbiMarker
 
 	.section code, kind=code
 
+	.pub
+
 ; ---------------------------------------------------------------------------
 ; Native parser VM entry.
 ;
@@ -144,14 +146,13 @@ AbiMarker
 ; - D2: final token cursor or status-specific offset
 ; - D3: committed result bytes on success
 ; ---------------------------------------------------------------------------
-
-prvmRun68000
+prvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
 	move.l a0, d1  ; null-check the frame before touching any offset fields
 	tst.l d1
-	beq prvmInvalidArgument
+	beq invalidArgument
 	cmpi.l #PRVM_REQUEST_FRAME_SIZE, d0
-	blt prvmInvalidArgument
+	blt invalidArgument
 
 	movea.l a0, a4  ; A4 is the stable request-frame base for the interpreter run
 	suba.l #LOCAL_SIZE, sp  ; fixed native frame mirrors Rust parser VM execution state
@@ -165,202 +166,202 @@ prvmRun68000
 	clr.l LOCAL_CHECKPOINT_DEPTH(a3)
 
 	cmpi.l #PRVM_MAGIC_OPRP, PRVM_FRAME_MAGIC(a4)  ; reject frames from another native ABI surface
-	bne prvmInvalidArgumentWithLocals
+	bne invalidArgumentWithLocals
 	cmpi.w #PRVM_ABI_VERSION_V1, PRVM_FRAME_ABI_VERSION(a4)
-	bne prvmInvalidArgumentWithLocals
+	bne invalidArgumentWithLocals
 	moveq #0, d0
 	move.w PRVM_FRAME_FRAME_SIZE(a4), d0
 	cmpi.l #PRVM_REQUEST_FRAME_SIZE, d0
-	blt prvmInvalidArgumentWithLocals
+	blt invalidArgumentWithLocals
 	cmpi.w #PRVM_CALL_MODE_START, PRVM_FRAME_CALL_MODE(a4)
-	beq prvmValidateEntryKind
+	beq validateEntryKind
 	cmpi.w #PRVM_CALL_MODE_RESUME, PRVM_FRAME_CALL_MODE(a4)
-	bne prvmInvalidArgumentWithLocals
-prvmValidateEntryKind
+	bne invalidArgumentWithLocals
+validateEntryKind
 	cmpi.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, PRVM_FRAME_ENTRY_KIND(a4)  ; current PRVM slice routes opasm statements only
-	bne prvmEntryBoundary
+	bne entryBoundary
 	cmpi.w #PRVM_TOKEN_RECORD_SIZE, PRVM_FRAME_TOKEN_RECORD_SIZE(a4)
-	bne prvmInvalidArgumentWithLocals
+	bne invalidArgumentWithLocals
 	cmpi.l #PRVM_PARSER_CONTRACT_VERSION_V2, PRVM_FRAME_PARSER_CONTRACT_VERSION(a4)  ; keep parser bytecode/result contract explicit
-	bne prvmInvalidProgramAtCursor
+	bne invalidProgramAtCursor
 	tst.l PRVM_FRAME_FLAGS(a4)
-	bne prvmInvalidArgumentWithLocals
+	bne invalidArgumentWithLocals
 
 	move.l PRVM_FRAME_SOURCE_LEN(a4), d6
-	bmi prvmInvalidArgumentWithLocals
-	beq prvmValidateTokenBuffer
+	bmi invalidArgumentWithLocals
+	beq validateTokenBuffer
 	move.l PRVM_FRAME_SOURCE_PTR(a4), d0
 	tst.l d0
-	beq prvmInvalidArgumentWithLocals
+	beq invalidArgumentWithLocals
 
-prvmValidateTokenBuffer
+validateTokenBuffer
 	move.l PRVM_FRAME_TOKEN_COUNT(a4), d4
-	bmi prvmInvalidArgumentWithLocals
-	beq prvmValidateLexemeBuffer
+	bmi invalidArgumentWithLocals
+	beq validateLexemeBuffer
 	move.l PRVM_FRAME_TOKEN_PTR(a4), d0
 	tst.l d0
-	beq prvmInvalidArgumentWithLocals
+	beq invalidArgumentWithLocals
 
-prvmValidateLexemeBuffer
+validateLexemeBuffer
 	move.l PRVM_FRAME_LEXEME_LEN(a4), d0
-	bmi prvmInvalidArgumentWithLocals
-	beq prvmValidateProgramBuffer
+	bmi invalidArgumentWithLocals
+	beq validateProgramBuffer
 	move.l PRVM_FRAME_LEXEME_PTR(a4), d7
 	tst.l d7
-	beq prvmInvalidArgumentWithLocals
+	beq invalidArgumentWithLocals
 
-prvmValidateProgramBuffer
+validateProgramBuffer
 	move.l PRVM_FRAME_PROGRAM_LEN(a4), d6
-	ble prvmInvalidProgramAtCursor
+	ble invalidProgramAtCursor
 	move.l PRVM_FRAME_PROGRAM_PTR(a4), d0
 	tst.l d0
-	beq prvmInvalidArgumentWithLocals
+	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_RESULT_PTR(a4), d0
 	tst.l d0
-	beq prvmInvalidArgumentWithLocals
+	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_RESULT_CAPACITY(a4), d0
-	bmi prvmInvalidArgumentWithLocals
+	bmi invalidArgumentWithLocals
 	move.l PRVM_FRAME_DIAGNOSTIC_PTR(a4), d0
 	tst.l d0
-	beq prvmInvalidArgumentWithLocals
+	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_RESUME_PTR(a4), d0
 	tst.l d0
-	beq prvmInvalidArgumentWithLocals
+	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_RESUME_CAPACITY(a4), d0
 	cmpi.l #PRVM_RESUME_STATE_SIZE, d0
-	blt prvmInvalidArgumentWithLocals
+	blt invalidArgumentWithLocals
 	move.l PRVM_FRAME_EXPR_REQUEST_PTR(a4), d0
 	tst.l d0
-	beq prvmInvalidArgumentWithLocals
+	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_EXPR_REQUEST_SIZE(a4), d0
 	cmpi.l #PRVM_EXPR_REQUEST_RECORD_SIZE, d0
-	blt prvmInvalidArgumentWithLocals
+	blt invalidArgumentWithLocals
 	move.l PRVM_FRAME_EXPR_RESULT_COUNT(a4), d0
-	bmi prvmInvalidArgumentWithLocals
-	beq prvmValidateExpressionResultBufferDone
+	bmi invalidArgumentWithLocals
+	beq validateExpressionResultBufferDone
 	move.l PRVM_FRAME_EXPR_RESULT_PTR(a4), d7
 	tst.l d7
-	beq prvmInvalidArgumentWithLocals
-prvmValidateExpressionResultBufferDone
+	beq invalidArgumentWithLocals
+validateExpressionResultBufferDone
 
 	movea.l PRVM_FRAME_SOURCE_PTR(a4), a0  ; PRVM consumes one logical line; iterator/router split newlines first
 	move.l PRVM_FRAME_SOURCE_LEN(a4), d6
 	clr.l d0
-prvmNewlineScanLoop
+newlineScanLoop
 	cmp.l d6, d0
-	bcc prvmNewlineScanDone
+	bcc newlineScanDone
 	cmpi.b #10, 0(a0, d0.l)
-	beq prvmNewlineUnsupported
+	beq newlineUnsupported
 	cmpi.b #13, 0(a0, d0.l)
-	beq prvmNewlineUnsupported
+	beq newlineUnsupported
 	addq.l #1, d0
-	bra prvmNewlineScanLoop
+	bra newlineScanLoop
 
-prvmNewlineUnsupported
+newlineUnsupported
 	clr.l d1
 	move.l d0, d2
 	clr.l d3
 	moveq #PRVM_STATUS_NEWLINE_UNSUPPORTED, d0
-	bra prvmReturnWithLocals
+	bra returnWithLocals
 
-prvmNewlineScanDone
+newlineScanDone
 	movea.l PRVM_FRAME_PROGRAM_PTR(a4), a5
 	move.l PRVM_FRAME_PROGRAM_LEN(a4), d6
 	lea 0(a5, d6.l), a6
 	move.l PRVM_FRAME_STEP_BUDGET(a4), d6
-	bgt prvmStartProgram
+	bgt startProgram
 	move.l #PRVM_DEFAULT_STEP_BUDGET, d6
 
-prvmStartProgram
+startProgram
 	cmpi.w #PRVM_CALL_MODE_RESUME, PRVM_FRAME_CALL_MODE(a4)
-	beq prvmResumeFromExpression
+	beq resumeFromExpression
 	clr.l d1
 	clr.l d2
 	clr.l d3
 
-prvmProgramLoop
+programLoop
 	move.l LOCAL_STEP_COUNT(a3), d0
 	addq.l #1, d0
 	move.l d0, LOCAL_STEP_COUNT(a3)
 	cmp.l d6, d0
-	bhi prvmBudgetExceeded
+	bhi budgetExceeded
 	cmpa.l a6, a5
-	bcc prvmInvalidProgramAtCursor
+	bcc invalidProgramAtCursor
 
 	moveq #0, d7
 	move.b (a5)+, d7
 	cmpi.b #PRVM_OPCODE_END, d7
-	beq prvmOpcodeEnd
+	beq opcodeEnd
 	cmpi.b #PRVM_OPCODE_JUMP, d7
-	beq prvmOpcodeJump
+	beq opcodeJump
 	cmpi.b #PRVM_OPCODE_JUMP_IF_FALSE, d7
-	beq prvmOpcodeJumpIfFalse
+	beq opcodeJumpIfFalse
 	cmpi.b #PRVM_OPCODE_CHECKPOINT, d7
-	beq prvmOpcodeCheckpoint
+	beq opcodeCheckpoint
 	cmpi.b #PRVM_OPCODE_ROLLBACK, d7
-	beq prvmOpcodeRollback
+	beq opcodeRollback
 	cmpi.b #PRVM_OPCODE_COMMIT, d7
-	beq prvmOpcodeCommit
+	beq opcodeCommit
 	cmpi.b #PRVM_OPCODE_PEEK_KIND, d7
-	beq prvmOpcodePeekKind
+	beq opcodePeekKind
 	cmpi.b #PRVM_OPCODE_IS_EOL, d7
-	beq prvmOpcodeIsEol
+	beq opcodeIsEol
 	cmpi.b #PRVM_OPCODE_PEEK_ASSIGNMENT, d7
-	beq prvmOpcodePeekAssignment
+	beq opcodePeekAssignment
 	cmpi.b #PRVM_OPCODE_PEEK_STAR_ORG, d7
-	beq prvmOpcodePeekStarOrg
+	beq opcodePeekStarOrg
 	cmpi.b #PRVM_OPCODE_ADVANCE, d7
-	beq prvmOpcodeAdvance
+	beq opcodeAdvance
 	cmpi.b #PRVM_OPCODE_LOAD_IDENTIFIER, d7
-	beq prvmOpcodeLoadIdentifier
+	beq opcodeLoadIdentifier
 	cmpi.b #PRVM_OPCODE_PARSE_OPTIONAL_LABEL, d7
-	beq prvmOpcodeParseOptionalLabel
+	beq opcodeParseOptionalLabel
 	cmpi.b #PRVM_OPCODE_SCAN_COMMA_BOUNDARIES, d7
-	beq prvmProgramLoop
+	beq programLoop
 	cmpi.b #PRVM_OPCODE_PARSE_OPERAND_EXPR, d7
-	beq prvmOpcodeParseOperandExpr
+	beq opcodeParseOperandExpr
 	cmpi.b #PRVM_OPCODE_BEGIN_STATEMENT, d7
-	beq prvmOpcodeBeginStatement
+	beq opcodeBeginStatement
 	cmpi.b #PRVM_OPCODE_SET_MNEMONIC, d7
-	beq prvmOpcodeSetMnemonic
+	beq opcodeSetMnemonic
 	cmpi.b #PRVM_OPCODE_FINISH_LINE, d7
-	beq prvmOpcodeFinishLine
+	beq opcodeFinishLine
 	cmpi.b #PRVM_OPCODE_SET_DOT_MNEMONIC, d7
-	beq prvmOpcodeSetDotMnemonic
-	bra prvmUnsupportedOpcode
+	beq opcodeSetDotMnemonic
+	bra unsupportedOpcode
 
-prvmOpcodeEnd
+opcodeEnd
 	tst.l LOCAL_FINISHED_FLAG(a3)
-	beq prvmInvalidProgramAtCursor
+	beq invalidProgramAtCursor
 	moveq #PRVM_STATUS_OK, d0
-	bra prvmReturnWithLocals
+	bra returnWithLocals
 
-prvmOpcodeJump
-	bsr.w prvmReadProgramTarget
+opcodeJump
+	bsr.w readProgramTarget
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	movea.l d5, a5
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeJumpIfFalse
-	bsr.w prvmReadProgramTarget
+opcodeJumpIfFalse
+	bsr.w readProgramTarget
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	tst.l LOCAL_BOOL_VALUE(a3)
-	bne prvmProgramLoop
+	bne programLoop
 	movea.l d5, a5
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeCheckpoint
-	bsr.w prvmPushCheckpoint
+opcodeCheckpoint
+	bsr.w pushCheckpoint
 	tst.l d0
-	bne prvmReturnWithLocals
-	bra prvmProgramLoop
+	bne returnWithLocals
+	bra programLoop
 
-prvmOpcodeRollback
-	bsr.w prvmPopCheckpointAddress
+opcodeRollback
+	bsr.w popCheckpointAddress
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	move.l (a0)+, d2
 	move.l (a0)+, d1
 	move.l (a0)+, d3
@@ -368,91 +369,91 @@ prvmOpcodeRollback
 	move.l (a0)+, LOCAL_FINISHED_FLAG(a3)
 	move.l (a0)+, LOCAL_LABEL_FLAG(a3)
 	move.l (a0)+, LOCAL_BOOL_VALUE(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeCommit
-	bsr.w prvmPopCheckpointAddress
+opcodeCommit
+	bsr.w popCheckpointAddress
 	tst.l d0
-	bne prvmReturnWithLocals
-	bra prvmProgramLoop
+	bne returnWithLocals
+	bra programLoop
 
-prvmOpcodePeekKind
+opcodePeekKind
 	cmpa.l a6, a5
-	bcc prvmInvalidProgramAtCursor
+	bcc invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a5)+, d0
-	bsr.w prvmPeekKind
+	bsr.w peekKind
 	move.l d0, LOCAL_BOOL_VALUE(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeIsEol
+opcodeIsEol
 	clr.l LOCAL_BOOL_VALUE(a3)
 	cmp.l d4, d2
-	bcs prvmProgramLoop
+	bcs programLoop
 	move.l #1, LOCAL_BOOL_VALUE(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodePeekAssignment
+opcodePeekAssignment
 	clr.l LOCAL_BOOL_VALUE(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodePeekStarOrg
+opcodePeekStarOrg
 	clr.l LOCAL_BOOL_VALUE(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeAdvance
+opcodeAdvance
 	cmp.l d4, d2
-	bcc prvmProgramLoop
+	bcc programLoop
 	addq.l #1, d2
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeLoadIdentifier
-	bsr.w prvmCurrentTokenPtr
+opcodeLoadIdentifier
+	bsr.w currentTokenPtr
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
-	bne prvmInvalidTokenAtCursor
+	bne invalidTokenAtCursor
 	move.l 4(a1), d0
-	beq prvmInvalidTokenAtCursor
+	beq invalidTokenAtCursor
 	move.l 8(a1), d7
 	cmp.l d0, d7
-	bcs prvmInvalidTokenAtCursor
+	bcs invalidTokenAtCursor
 	move.l 12(a1), d0
 	move.l 16(a1), d7
-	beq prvmInvalidTokenAtCursor
+	beq invalidTokenAtCursor
 	move.l d0, d5
 	add.l d7, d5
-	bcs prvmInvalidTokenAtCursor
+	bcs invalidTokenAtCursor
 	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d5
-	bhi prvmInvalidTokenAtCursor
+	bhi invalidTokenAtCursor
 	move.l 4(a1), LOCAL_LOADED_COL_START(a3)
 	move.l 8(a1), LOCAL_LOADED_COL_END(a3)
 	move.l 12(a1), LOCAL_LOADED_LEXEME_OFFSET(a3)
 	move.l 16(a1), LOCAL_LOADED_LEXEME_LEN(a3)
 	move.l #1, LOCAL_LOADED_FLAG(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeParseOptionalLabel
+opcodeParseOptionalLabel
 	tst.l d2
-	bne prvmProgramLoop
+	bne programLoop
 	tst.l d4
-	beq prvmProgramLoop
+	beq programLoop
 	clr.l d0
-	bsr.w prvmTokenPtrByIndex
+	bsr.w tokenPtrByIndex
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
-	bne prvmProgramLoop
+	bne programLoop
 	cmpi.l #1, 4(a1)
-	bne prvmProgramLoop
+	bne programLoop
 	move.l 12(a1), d0
 	move.l 16(a1), d7
-	beq prvmInvalidTokenAtCursor
+	beq invalidTokenAtCursor
 	move.l d0, d5
 	add.l d7, d5
-	bcs prvmInvalidTokenAtCursor
+	bcs invalidTokenAtCursor
 	cmp.l PRVM_FRAME_LEXEME_LEN(a4), d5
-	bhi prvmInvalidTokenAtCursor
+	bhi invalidTokenAtCursor
 	move.l 4(a1), LOCAL_LABEL_COL_START(a3)
 	move.l 8(a1), LOCAL_LABEL_COL_END(a3)
 	move.l 12(a1), LOCAL_LABEL_LEXEME_OFFSET(a3)
@@ -460,124 +461,124 @@ prvmOpcodeParseOptionalLabel
 	move.l #1, LOCAL_LABEL_FLAG(a3)
 	moveq #1, d2
 	cmpi.l #2, d4
-	bcs prvmEmitOptionalLabel
+	bcs emitOptionalLabel
 	moveq #1, d0
-	bsr.w prvmTokenPtrByIndex
+	bsr.w tokenPtrByIndex
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_COLON, 0(a1)
-	bne prvmEmitOptionalLabel
+	bne emitOptionalLabel
 	move.l 4(a1), d0
 	cmp.l LOCAL_LABEL_COL_END(a3), d0
-	bne prvmEmitOptionalLabel
+	bne emitOptionalLabel
 	moveq #2, d2
 
-prvmEmitOptionalLabel
-	bsr.w prvmEmitLabelText
+emitOptionalLabel
+	bsr.w emitLabelText
 	tst.l d0
-	bne prvmReturnWithLocals
-	bra prvmProgramLoop
+	bne returnWithLocals
+	bra programLoop
 
-prvmOpcodeBeginStatement
+opcodeBeginStatement
 	clr.l LOCAL_LOADED_FLAG(a3)
 	clr.l LOCAL_FINISHED_FLAG(a3)
 	clr.l LOCAL_OPERAND_COUNT(a3)
 	clr.l LOCAL_LABEL_FLAG(a3)
-	bsr.w prvmEmitBeginStatement
+	bsr.w emitBeginStatement
 	tst.l d0
-	bne prvmReturnWithLocals
-	bra prvmProgramLoop
+	bne returnWithLocals
+	bra programLoop
 
-prvmOpcodeSetMnemonic
+opcodeSetMnemonic
 	tst.l LOCAL_LOADED_FLAG(a3)
-	beq prvmInvalidProgramAtCursor
-	bsr.w prvmEmitMnemonicText
+	beq invalidProgramAtCursor
+	bsr.w emitMnemonicText
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	clr.l LOCAL_LOADED_FLAG(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeSetDotMnemonic
+opcodeSetDotMnemonic
 	tst.l LOCAL_LOADED_FLAG(a3)
-	beq prvmInvalidProgramAtCursor
-	bsr.w prvmEmitDirectiveText
+	beq invalidProgramAtCursor
+	bsr.w emitDirectiveText
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	clr.l LOCAL_LOADED_FLAG(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeFinishLine
-	bsr.w prvmEmitFinishLine
+opcodeFinishLine
+	bsr.w emitFinishLine
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	move.l #1, LOCAL_FINISHED_FLAG(a3)
-	bra prvmProgramLoop
+	bra programLoop
 
-prvmOpcodeParseOperandExpr
+opcodeParseOperandExpr
 	movea.l a5, a0
 	adda.l #4, a0
 	cmpa.l a6, a0
-	bhi prvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	move.b (a5)+, d0
 	cmpi.b #$FF, d0
-	bne prvmUnsupportedOpcode
+	bne unsupportedOpcode
 	move.b (a5)+, d0
 	cmpi.b #$FF, d0
-	bne prvmUnsupportedOpcode
+	bne unsupportedOpcode
 	move.b (a5)+, d0
 	cmpi.b #$FF, d0
-	bne prvmUnsupportedOpcode
+	bne unsupportedOpcode
 	move.b (a5)+, d0
 	cmpi.b #$FF, d0
-	bne prvmUnsupportedOpcode
+	bne unsupportedOpcode
 	cmp.l d4, d2
-	bcc prvmProgramLoop
-	bra prvmRequestOperandAtCursor
+	bcc programLoop
+	bra requestOperandAtCursor
 
-prvmRequestOperandAtCursor
+requestOperandAtCursor
 	move.l d2, LOCAL_EXPR_START_TOKEN(a3)
 	move.l d2, d5
-prvmFindOperandEndLoop
+findOperandEndLoop
 	cmp.l d4, d5
-	bcc prvmOperandEndFound
+	bcc operandEndFound
 	move.l d5, d0
-	bsr.w prvmTokenPtrByIndex
+	bsr.w tokenPtrByIndex
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_COMMA, 0(a1)
-	beq prvmOperandEndFound
+	beq operandEndFound
 	addq.l #1, d5
-	bra prvmFindOperandEndLoop
+	bra findOperandEndLoop
 
-prvmOperandEndFound
+operandEndFound
 	move.l d5, LOCAL_EXPR_END_TOKEN(a3)
 	move.l LOCAL_OPERAND_COUNT(a3), d0
 	move.l d0, LOCAL_EXPR_SLOT_INDEX(a3)
-	bsr.w prvmEmitOperandTextSpan
+	bsr.w emitOperandTextSpan
 	tst.l d0
-	bne prvmReturnWithLocals
-	bsr.w prvmWriteExpressionRequest
+	bne returnWithLocals
+	bsr.w writeExpressionRequest
 	tst.l d0
-	bne prvmReturnWithLocals
-	bsr.w prvmWriteResumeState
+	bne returnWithLocals
+	bsr.w writeResumeState
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), d1
 	move.l LOCAL_EXPR_START_TOKEN(a3), d2
 	move.l #PRVM_RESUME_STATE_SIZE, d3
 	moveq #PRVM_STATUS_EXPR_REQUEST, d0
-	bra prvmReturnWithLocals
+	bra returnWithLocals
 
-prvmResumeFromExpression
+resumeFromExpression
 	movea.l PRVM_FRAME_RESUME_PTR(a4), a2
 	cmpi.l #PRVM_RESUME_MAGIC, 0(a2)
-	bne prvmInvalidResume
+	bne invalidResume
 	cmpi.w #PRVM_RESUME_VERSION, 4(a2)
-	bne prvmInvalidResume
+	bne invalidResume
 	cmpi.w #PRVM_RESUME_STATE_SIZE, 6(a2)
-	blt prvmInvalidResume
+	blt invalidResume
 	cmpi.l #PRVM_CONTINUATION_PARSE_OPERAND, 8(a2)
-	bne prvmInvalidResume
+	bne invalidResume
 	move.l 12(a2), LOCAL_EXPR_SLOT_INDEX(a3)
 	move.l 20(a2), d2
 	move.l 24(a2), d1
@@ -588,27 +589,98 @@ prvmResumeFromExpression
 	add.l 16(a2), d0
 	movea.l d0, a5
 	cmpa.l a6, a5
-	bhi prvmInvalidResume
-	bsr.w prvmValidateExpressionResultSlot
+	bhi invalidResume
+	bsr.w validateExpressionResultSlot
 	tst.l d0
-	bne prvmReturnWithLocals
-	bsr.w prvmEmitOperandExprSlot
+	bne returnWithLocals
+	bsr.w emitOperandExprSlot
 	tst.l d0
-	bne prvmReturnWithLocals
+	bne returnWithLocals
 	move.l LOCAL_OPERAND_COUNT(a3), d0
 	addq.l #1, d0
 	move.l d0, LOCAL_OPERAND_COUNT(a3)
 	cmp.l d4, d2
-	bcs prvmRequestOperandAtCursor
-	bra prvmProgramLoop
+	bcs requestOperandAtCursor
+	bra programLoop
 
-prvmCurrentTokenPtr
+entryBoundary
+	clr.l d1
+	clr.l d2
+	clr.l d3
+	moveq #PRVM_STATUS_ENTRY_BOUNDARY, d0
+	bra returnWithLocals
+
+invalidTokenAtCursor
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_TOKEN, d0
+	bra returnWithLocals
+
+invalidProgramAtCursor
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
+	bra returnWithLocals
+
+outputOverflow
+	moveq #PRVM_STATUS_OUTPUT_OVERFLOW, d0
+	rts
+
+unsupportedOpcode
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_UNSUPPORTED_OPCODE, d0
+	bra returnWithLocals
+
+invalidResume
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_RESUME, d0
+	bra returnWithLocals
+
+expressionResultInvalid
+	move.l LOCAL_EXPR_SLOT_INDEX(a3), d1
+	clr.l d3
+	moveq #PRVM_STATUS_EXPR_RESULT_INVALID, d0
+	bra returnWithLocals
+
+budgetExceeded
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_BUDGET_EXCEEDED, d0
+	bra returnWithLocals
+
+invalidArgumentWithLocals
+	clr.l d1
+	clr.l d2
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_ARGUMENT, d0
+	bra returnWithLocals
+
+returnWithLocals
+	adda.l #LOCAL_SIZE, sp
+	movem.l (sp)+, d4-d7/a4-a6
+	rts
+
+invalidArgument
+	clr.l d1
+	clr.l d2
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_ARGUMENT, d0
+	movem.l (sp)+, d4-d7/a4-a6
+	rts
+	.bend  ; prvmRun68000
+	
+	.priv
+
+currentTokenPtr	.block
 	move.l d2, d0
-	bra prvmTokenPtrByIndex
+	bra tokenPtrByIndex
+	.bend  ; currentTokenPtr
 
-prvmTokenPtrByIndex
+tokenPtrByIndex	.block
 	cmp.l d4, d0
-	bcc prvmCurrentTokenInvalid
+	bcc invalidToken
 	lsl.l #4, d0
 	move.l d0, d7
 	lsr.l #4, d7
@@ -619,11 +691,18 @@ prvmTokenPtrByIndex
 	clr.l d0
 	rts
 
-prvmReadProgramTarget
+invalidToken
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_TOKEN, d0
+	rts
+	.bend  ; tokenPtrByIndex
+
+readProgramTarget	.block
 	movea.l a5, a0
 	adda.l #2, a0
 	cmpa.l a6, a0
-	bhi prvmInvalidProgramAtCursor
+	bhi invalidProgram
 	moveq #0, d5
 	move.b (a5)+, d5
 	moveq #0, d7
@@ -634,16 +713,23 @@ prvmReadProgramTarget
 	add.l d5, d0
 	movea.l d0, a0
 	cmpa.l a6, a0
-	bhi prvmInvalidProgramAtCursor
+	bhi invalidProgram
 	move.l a0, d5
 	clr.l d0
 	rts
 
-prvmPushCheckpoint
+invalidProgram
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
+	rts
+	.bend  ; readProgramTarget
+
+pushCheckpoint	.block
 	move.l LOCAL_CHECKPOINT_DEPTH(a3), d0
 	cmpi.l #LOCAL_CHECKPOINT_MAX_DEPTH, d0
-	bcc prvmInvalidProgramAtCursor
-	bsr.w prvmCheckpointAddressForDepth
+	bcc invalidProgram
+	bsr.w checkpointAddressForDepth
 	move.l d2, (a0)+
 	move.l d1, (a0)+
 	move.l d3, (a0)+
@@ -655,16 +741,30 @@ prvmPushCheckpoint
 	clr.l d0
 	rts
 
-prvmPopCheckpointAddress
+invalidProgram
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
+	rts
+	.bend  ; pushCheckpoint
+
+popCheckpointAddress	.block
 	move.l LOCAL_CHECKPOINT_DEPTH(a3), d0
-	beq prvmInvalidProgramAtCursor
+	beq invalidProgram
 	subq.l #1, d0
 	move.l d0, LOCAL_CHECKPOINT_DEPTH(a3)
-	bsr.w prvmCheckpointAddressForDepth
+	bsr.w checkpointAddressForDepth
 	clr.l d0
 	rts
 
-prvmCheckpointAddressForDepth
+invalidProgram
+	clr.l d1
+	clr.l d3
+	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
+	rts
+	.bend  ; popCheckpointAddress
+
+checkpointAddressForDepth	.block
 	move.l d0, d5
 	lsl.l #5, d5
 	move.l d0, d7
@@ -673,10 +773,11 @@ prvmCheckpointAddressForDepth
 	lea LOCAL_CHECKPOINT_STACK(a3), a0
 	adda.l d5, a0
 	rts
+	.bend  ; checkpointAddressForDepth
 
-prvmPeekKind
+peekKind	.block
 	cmp.l d4, d2
-	bcc prvmPeekKindFalse
+	bcc false
 	move.l d2, d5
 	lsl.l #4, d5
 	move.l d2, d7
@@ -685,48 +786,49 @@ prvmPeekKind
 	movea.l PRVM_FRAME_TOKEN_PTR(a4), a1
 	adda.l d5, a1
 	cmpi.b #$03, d0
-	beq prvmPeekKindDot
-	bra prvmPeekKindFalse
+	beq dot
+	bra false
 
-prvmPeekKindDot
+dot
 	cmpi.w #PRVM_TOKEN_KIND_DOT, 0(a1)
-	bne prvmPeekKindFalse
+	bne false
 	moveq #1, d0
 	rts
 
-prvmPeekKindFalse
+false
 	clr.l d0
 	rts
+	.bend  ; peekKind
 
-prvmCurrentTokenInvalid
-	clr.l d1
-	clr.l d3
-	moveq #PRVM_STATUS_INVALID_TOKEN, d0
-	rts
-
-prvmResultRecordPtr
+resultRecordPtr	.block
 	move.l d1, d0
 	lsl.l #5, d0
 	move.l d0, d7
 	addi.l #PRVM_RESULT_RECORD_SIZE, d7
 	cmp.l PRVM_FRAME_RESULT_CAPACITY(a4), d7
-	bhi prvmOutputOverflow
+	bhi overflow
 	movea.l PRVM_FRAME_RESULT_PTR(a4), a2
 	adda.l d0, a2
 	clr.l d0
 	rts
 
-prvmCommitResultRecord
+overflow
+	moveq #PRVM_STATUS_OUTPUT_OVERFLOW, d0
+	rts
+	.bend  ; resultRecordPtr
+
+commitResultRecord	.block
 	addq.l #1, d1
 	move.l d1, d3
 	lsl.l #5, d3
 	clr.l d0
 	rts
+	.bend  ; commitResultRecord
 
-prvmEmitBeginStatement
-	bsr.w prvmResultRecordPtr
+emitBeginStatement	.block
+	bsr.w resultRecordPtr
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.w #PRVM_RESULT_BEGIN_STATEMENT, 0(a2)
 	clr.w 2(a2)
 	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
@@ -736,14 +838,18 @@ prvmEmitBeginStatement
 	clr.l 20(a2)
 	clr.l 24(a2)
 	clr.l 28(a2)
-	bra prvmCommitResultRecord
+	bra commitResultRecord
 
-prvmEmitLabelText
+return
+	rts
+	.bend  ; emitBeginStatement
+
+emitLabelText	.block
 	tst.l LOCAL_LABEL_FLAG(a3)
-	beq prvmEmitRecordReturn
-	bsr.w prvmResultRecordPtr
+	beq return
+	bsr.w resultRecordPtr
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.w #PRVM_RESULT_LABEL_TEXT, 0(a2)
 	clr.w 2(a2)
 	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
@@ -753,12 +859,16 @@ prvmEmitLabelText
 	move.l LOCAL_LABEL_LEXEME_LEN(a3), 20(a2)
 	clr.l 24(a2)
 	clr.l 28(a2)
-	bra prvmCommitResultRecord
+	bra commitResultRecord
 
-prvmEmitMnemonicText
-	bsr.w prvmResultRecordPtr
+return
+	rts
+	.bend  ; emitLabelText
+
+emitMnemonicText	.block
+	bsr.w resultRecordPtr
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.w #PRVM_RESULT_MNEMONIC_TEXT, 0(a2)
 	clr.w 2(a2)
 	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
@@ -768,12 +878,16 @@ prvmEmitMnemonicText
 	move.l LOCAL_LOADED_LEXEME_LEN(a3), 20(a2)
 	clr.l 24(a2)
 	clr.l 28(a2)
-	bra prvmCommitResultRecord
+	bra commitResultRecord
 
-prvmEmitDirectiveText
-	bsr.w prvmResultRecordPtr
+return
+	rts
+	.bend  ; emitMnemonicText
+
+emitDirectiveText	.block
+	bsr.w resultRecordPtr
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.w #PRVM_RESULT_DIRECTIVE_TEXT, 0(a2)
 	clr.w 2(a2)
 	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
@@ -783,29 +897,33 @@ prvmEmitDirectiveText
 	move.l LOCAL_LOADED_LEXEME_LEN(a3), 20(a2)
 	clr.l 24(a2)
 	clr.l 28(a2)
-	bra prvmCommitResultRecord
+	bra commitResultRecord
 
-prvmEmitOperandTextSpan
+return
+	rts
+	.bend  ; emitDirectiveText
+
+emitOperandTextSpan	.block
 	move.l LOCAL_EXPR_START_TOKEN(a3), d0
 	cmp.l LOCAL_EXPR_END_TOKEN(a3), d0
-	bcc prvmEmitOperandTextSpanNone
-	bsr.w prvmTokenPtrByIndex
+	bcc none
+	bsr.w tokenPtrByIndex
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.l 4(a1), d5
 	move.l LOCAL_EXPR_END_TOKEN(a3), d0
 	subq.l #1, d0
-	bsr.w prvmTokenPtrByIndex
+	bsr.w tokenPtrByIndex
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.l 8(a1), d7
 	move.l d5, -(sp)
 	move.l d7, -(sp)
-	bsr.w prvmResultRecordPtr
+	bsr.w resultRecordPtr
 	move.l (sp)+, d7
 	move.l (sp)+, d5
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.w #PRVM_RESULT_OPERAND_TEXT, 0(a2)
 	clr.w 2(a2)
 	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
@@ -815,16 +933,18 @@ prvmEmitOperandTextSpan
 	move.l LOCAL_EXPR_END_TOKEN(a3), 20(a2)
 	clr.l 24(a2)
 	clr.l 28(a2)
-	bra prvmCommitResultRecord
+	bra commitResultRecord
 
-prvmEmitOperandTextSpanNone
+none
 	clr.l d0
+return
 	rts
+	.bend  ; emitOperandTextSpan
 
-prvmEmitOperandExprSlot
-	bsr.w prvmResultRecordPtr
+emitOperandExprSlot	.block
+	bsr.w resultRecordPtr
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.w #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(a2)
 	clr.w 2(a2)
 	move.l 8(a1), 4(a2)
@@ -834,12 +954,16 @@ prvmEmitOperandExprSlot
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), 20(a2)
 	move.l LOCAL_EXPR_START_TOKEN(a3), 24(a2)
 	move.l LOCAL_EXPR_END_TOKEN(a3), 28(a2)
-	bra prvmCommitResultRecord
+	bra commitResultRecord
 
-prvmEmitFinishLine
-	bsr.w prvmResultRecordPtr
+return
+	rts
+	.bend  ; emitOperandExprSlot
+
+emitFinishLine	.block
+	bsr.w resultRecordPtr
 	tst.l d0
-	bne prvmEmitRecordReturn
+	bne return
 	move.w #PRVM_RESULT_FINISH_LINE, 0(a2)
 	clr.w 2(a2)
 	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
@@ -849,12 +973,13 @@ prvmEmitFinishLine
 	clr.l 20(a2)
 	clr.l 24(a2)
 	clr.l 28(a2)
-	bra prvmCommitResultRecord
+	bra commitResultRecord
 
-prvmEmitRecordReturn
+return
 	rts
+	.bend  ; emitFinishLine
 
-prvmWriteExpressionRequest
+writeExpressionRequest	.block
 	movea.l PRVM_FRAME_EXPR_REQUEST_PTR(a4), a2
 	move.w #1, 0(a2)
 	clr.w 2(a2)
@@ -864,25 +989,26 @@ prvmWriteExpressionRequest
 	move.l LOCAL_EXPR_END_TOKEN(a3), 16(a2)
 	move.l LOCAL_EXPR_START_TOKEN(a3), d0
 	cmp.l d4, d0
-	bcc prvmWriteExpressionRequestEndSpan
-	bsr.w prvmTokenPtrByIndex
+	bcc endSpan
+	bsr.w tokenPtrByIndex
 	tst.l d0
-	bne prvmWriteExpressionRequestReturn
+	bne return
 	move.l PRVM_FRAME_LINE_NUM(a4), 20(a2)
 	move.l 4(a1), 24(a2)
 	move.l 8(a1), 28(a2)
 	clr.l d0
 	rts
 
-prvmWriteExpressionRequestEndSpan
+endSpan
 	move.l PRVM_FRAME_LINE_NUM(a4), 20(a2)
 	clr.l 24(a2)
 	clr.l 28(a2)
 	clr.l d0
-prvmWriteExpressionRequestReturn
+return
 	rts
+	.bend  ; writeExpressionRequest
 
-prvmWriteResumeState
+writeResumeState	.block
 	movea.l PRVM_FRAME_RESUME_PTR(a4), a2
 	move.l #PRVM_RESUME_MAGIC, 0(a2)
 	move.w #PRVM_RESUME_VERSION, 4(a2)
@@ -894,9 +1020,9 @@ prvmWriteResumeState
 	move.l d0, 16(a2)
 	move.l LOCAL_EXPR_END_TOKEN(a3), d0
 	cmp.l d4, d0
-	bcc prvmWriteResumeCursor
+	bcc writeResumeCursor
 	addq.l #1, d0
-prvmWriteResumeCursor
+writeResumeCursor
 	move.l d0, 20(a2)
 	move.l d1, 24(a2)
 	move.l LOCAL_OPERAND_COUNT(a3), 28(a2)
@@ -904,98 +1030,39 @@ prvmWriteResumeCursor
 	move.l LOCAL_EXPR_END_TOKEN(a3), 36(a2)
 	clr.l d0
 	rts
+	.bend  ; writeResumeState
 
-prvmValidateExpressionResultSlot
+validateExpressionResultSlot	.block
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), d0
 	cmp.l PRVM_FRAME_EXPR_RESULT_COUNT(a4), d0
-	bcc prvmExpressionResultInvalid
+	bcc invalid
 	lsl.l #5, d0
 	movea.l PRVM_FRAME_EXPR_RESULT_PTR(a4), a1
 	adda.l d0, a1
 	move.w 0(a1), d0
 	cmpi.w #PRVM_EXPR_SLOT_READY, d0
-	beq prvmValidateExpressionResultReady
+	beq ready
 	cmpi.w #PRVM_EXPR_SLOT_READY_ERROR, d0
-	bne prvmExpressionResultInvalid
-prvmValidateExpressionResultReady
+	bne invalid
+ready
 	tst.w 2(a1)
-	bne prvmExpressionResultInvalid
+	bne invalid
 	move.l 4(a1), d0
 	cmp.l LOCAL_EXPR_SLOT_INDEX(a3), d0
-	bne prvmExpressionResultInvalid
+	bne invalid
 	cmpi.l #$FFFFFFFF, 24(a1)
-	bne prvmExpressionResultInvalid
+	bne invalid
 	tst.l 28(a1)
-	bne prvmExpressionResultInvalid
+	bne invalid
 	clr.l d0
 	rts
 
-prvmEntryBoundary
-	clr.l d1
-	clr.l d2
-	clr.l d3
-	moveq #PRVM_STATUS_ENTRY_BOUNDARY, d0
-	bra prvmReturnWithLocals
-
-prvmInvalidTokenAtCursor
-	clr.l d1
-	clr.l d3
-	moveq #PRVM_STATUS_INVALID_TOKEN, d0
-	bra prvmReturnWithLocals
-
-prvmInvalidProgramAtCursor
-	clr.l d1
-	clr.l d3
-	moveq #PRVM_STATUS_INVALID_PROGRAM, d0
-	bra prvmReturnWithLocals
-
-prvmOutputOverflow
-	moveq #PRVM_STATUS_OUTPUT_OVERFLOW, d0
-	rts
-
-prvmUnsupportedOpcode
-	clr.l d1
-	clr.l d3
-	moveq #PRVM_STATUS_UNSUPPORTED_OPCODE, d0
-	bra prvmReturnWithLocals
-
-prvmInvalidResume
-	clr.l d1
-	clr.l d3
-	moveq #PRVM_STATUS_INVALID_RESUME, d0
-	bra prvmReturnWithLocals
-
-prvmExpressionResultInvalid
+invalid
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), d1
 	clr.l d3
 	moveq #PRVM_STATUS_EXPR_RESULT_INVALID, d0
-	bra prvmReturnWithLocals
-
-prvmBudgetExceeded
-	clr.l d1
-	clr.l d3
-	moveq #PRVM_STATUS_BUDGET_EXCEEDED, d0
-	bra prvmReturnWithLocals
-
-prvmInvalidArgumentWithLocals
-	clr.l d1
-	clr.l d2
-	clr.l d3
-	moveq #PRVM_STATUS_INVALID_ARGUMENT, d0
-	bra prvmReturnWithLocals
-
-prvmReturnWithLocals
-	adda.l #LOCAL_SIZE, sp
-	movem.l (sp)+, d4-d7/a4-a6
 	rts
-
-prvmInvalidArgument
-	clr.l d1
-	clr.l d2
-	clr.l d3
-	moveq #PRVM_STATUS_INVALID_ARGUMENT, d0
-	movem.l (sp)+, d4-d7/a4-a6
-	rts
+	.bend  ; validateExpressionResultSlot
 
 	.endsection
 	.endmodule

@@ -1,3 +1,4 @@
+<!-- workflow-provenance: skill=opforge-plan-authoring; entrypoint=run_plan_workflow.sh -->
 # opForge Native AmigaOS 6502 Full Assembly First Run Plan v0.1
 
 ## Metadata
@@ -179,8 +180,7 @@ match this Rust-reference contract before expanding the matrix.
 - Affected component(s): native AmigaOS opForge CLI, native opasm engine,
   native tkpkg service, native PRVM/opcore integration, native output artifact
   modules, FS-UAE smoke/parity tests, Rust reference fixtures for 6502.
-- Impact class: feature implementation with externally visible native CLI
-  behavior.
+- Impact class: minor
 - Owned contract: native AmigaOS opForge 6502 assembly behavior and first-run
   artifact output parity with the Rust VM path.
 - Rationale: the current native implementation has advanced from tokenizer and
@@ -288,59 +288,115 @@ The intended native shape mirrors the Rust path:
     store statement directive-kind metadata in opasm-owned session storage
     without adding new CLI-side mnemonic or operand re-parsing.
 
-- [ ] Item 4: Implement opcore expression parity for first-run 6502 assembly
+- [x] Item 4: Implement full VM-based expression processing parity for first-run
+  6502 assembly
   - Source requirement or finding IDs: `SR-EXPR-PARITY`,
-    `SR-RUST-VM-ARCH`; expected to make expressions pass-aware and engine-owned.
+    `SR-RUST-VM-ARCH`; expected to make expression processing pass-aware,
+    parser/evaluator-driven, and engine-owned.
+  - Scope boundary: Item 4 covers scalar operand-expression forms needed by the
+    first-run 6502 matrix. Item 5 starts only after the
+    `evaluate-expression` boundary has produced resolved operand values.
   - Expected files: `native/motorola68000/amigaos/opcore/*`,
-    `native/motorola68000/amigaos/opasm/*`, and focused VM/ASM tests.
-  - Full quality gates: focused expression tests for literals, unary/binary
+    `native/motorola68000/amigaos/opasm/*`,
+    `native/motorola68000/amigaos/opforge-cli/*`,
+    `native/motorola68000/amigaos/tkpkg/*`, and focused VM/ASM tests.
+  - Full quality gates: focused VM-expression-processing tests for the
+    service-backed parse/eval boundary across literals, unary/binary
     operations, current PC, constants, labels, forward references, branch
-    offsets, and error cases; `cargo test -p vm vm_opcore_expression_ --
-    --nocapture`; `cargo test -p asm motorola68020_opforge_native_cli_ --
-    --nocapture`; plus `scripts/workflow/run_rust_quality_gate.sh`.
-  - Plan-compliance review evidence: before commit, run
-    `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 4 slice
-    summary, changed files, and validation output; require `PASS`.
-  - Commit outcome: exactly one commit that lets native opasm evaluate first-run
-    6502 expressions through opcore/EXVM callbacks rather than local ad hoc
-    parsing.
-  - In-progress slice completed: selector scalar operand evaluation now routes through
-    `opcore_expr_eval_operand_v1`, the shared opcore bridge evaluates simple
-    additive/subtractive literal and label terms for first-run operands, and
-    focused native source/assembly tests lock the ownership boundary.
-  - In-progress EXVM-parity slice completed: native opasm now passes current-PC
-    evaluation context into opcore, and the bridge supports the 6502 first-run
-    scalar subset for `*`, unary `+`/`-`, chained additive/subtractive terms,
-    `$`/`0x` hex literals, `%` binary literals, decimal literals, and
-    label/constant-table symbols.
-  - Remaining actual EXVM parity: replace the temporary native text-expression
-    subset with the real opcore/EXVM expression contract for the 6502 focus,
-    including the token/bytecode expression parser/evaluator surface, pass-aware
-    unresolved-symbol handling, branch-offset expression cases, and the focused
-    error matrix. Do not treat bridge-subset growth as completion of Item 4.
+    offsets, parse failures, and error cases; `cargo test -p vm
+    vm_opcore_expression_ -- --nocapture`; `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm
+    motorola68020_tkpkg_ -- --nocapture`; plus
+    `scripts/workflow/run_rust_quality_gate.sh`.
+  - Plan-compliance review evidence: `PASS` on the dedicated staged Item 4
+    completion slice after excluding Item 5 select/encode-selected work.
+  - Commit outcome: exactly one completion commit that replaces the remaining
+    compatibility service-backed path with package-backed EXVM/EXPR
+    parse/eval for first-run 6502 scalar expressions, leaving no authoritative
+    CLI-side operand parsing or direct bridge-only evaluation path.
+  - Completed selector/service slice: native opasm selector-stage operand
+    resolution is callback-based, and the native CLI routes both selector
+    requests and stored-statement operand reads through
+    `ENTRY_ORD_EVALUATE_EXPRESSION` instead of directly calling
+    `opcore_expr_eval_operand_v1` from the CLI or selector stage.
+  - Completed persistence slice: native opasm session storage now keeps
+    per-statement expression-slot flags, slot ids, token bounds, span metadata,
+    source-line text, and label-finalized state so later evaluation can reload
+    the original operand slice with pass-aware symbol-finalization behavior.
+  - Completed ABI/service slice: tkpkg now exposes an evaluate-expression ABI
+    envelope plus an extension window for label-table, symbol-value,
+    current-PC, and result-slot exchange, and the current service
+    implementation resolves EXPR/EXVM contract versions before dispatching
+    through `opcore_exvm_eval_operand_v1`.
+  - Completed EXVM-parity slice: the native opcore bridge covers the current
+    first-run 6502 scalar subset for `*`, unary `+`/`-`, chained
+    additive/subtractive terms, `$`/`0x` hex literals, `%` binary literals,
+    decimal literals, and label/constant-table symbols.
+  - Validation evidence: `cargo test -p vm vm_opcore_expression_ --
+    --nocapture`; `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`;
+    `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; and
+    `./scripts/workflow/run_rust_quality_gate_summary.sh` all passed for the
+    governed closure work.
+  - Item 4 closure note, 2026-05-11: this dedicated completion commit closes
+    Item 4. The remaining unstaged selector/select-instruction and
+    encode-selected work is explicitly Item 5 scope and is not part of this
+    closure slice.
   - Definition of done: `.org`, operands, constants, labels, current-PC
-    references, and forward-reference resolution behave like the Rust VM path
-    for the first-run matrix.
+    references, forward-reference resolution, and branch-offset behavior match
+    the Rust VM path for the first-run scalar matrix, with native expression
+    text processed through the same VM-style package parse/eval boundary rather
+    than native ad hoc parsing or bridge-only evaluation.
 
-- [ ] Item 5: Implement baseline `m6502` selector parity for data-bearing modes
+- [x] Item 5: Implement baseline `m6502` selector parity for data-bearing modes
   - Source requirement or finding IDs: `SR-6502-SELECTOR`,
     `SR-6502-ENCODER`; expected to remove the largest remaining
     tiny-subset limitation without taking on every edge mode at once.
   - Expected files: `native/motorola68000/amigaos/opasm/*`,
+    `native/motorola68000/amigaos/opforge-cli/*`,
     `native/motorola68000/amigaos/tkpkg/*`, and focused tests in
     `crates/opforge-asm/src/tests.rs`.
+  - Scope note: Item 4 owns expression-value production through the native
+    evaluate-expression boundary. Item 5 starts after that boundary and focuses
+    on turning resolved operand values into baseline `m6502` selection and
+    encoding decisions for the first-run data-bearing families.
+  - Completion note, 2026-05-12: Item 5 now routes native pass-two emission
+    through the shared line/span request, `ENTRY_ORD_SELECT_INSTRUCTION`, and
+    `ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION`, so selection and selected-form
+    encoding cross the tkpkg boundary before selector-stage policy runs. The
+    tkpkg/native selector stage distinguishes resolved zero-page versus absolute
+    forms, parses simple `,X`/`,Y` indexed suffixes for the baseline
+    data-bearing families, and feeds those concrete selections back into
+    pass-one sizing through the package-backed selected-encode path. The focused
+    6502 smoke contract and FS-UAE native-output path cover immediate,
+    zero-page, zero-page indexed, absolute, absolute indexed, and jump bytes in
+    the same fixture.
+  - Validation evidence, 2026-05-12: `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture` passed 5 tests; `cargo
+    test -p asm motorola68020_tkpkg_ -- --nocapture` passed 31 tests; `cargo
+    test -p vm vm_runtime_mos6502_ -- --nocapture` passed 10 tests; the opt-in
+    FS-UAE smoke `external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin`
+    passed and wrote a Rust-matching `opforge_native_out.bin`; and
+    `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
   - Full quality gates: focused selector/encoder tests for immediate,
-    zero-page, zero-page indexed, absolute, and absolute indexed forms;
-    `cargo test -p vm vm_runtime_mos6502_ -- --nocapture`; `cargo test -p asm
-    motorola68020_opforge_native_cli_ -- --nocapture`; plus
+    zero-page, zero-page indexed, absolute, and absolute indexed forms through
+    package-backed select/encode-selected surfaces; `cargo test -p vm
+    vm_runtime_mos6502_ -- --nocapture`; `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture`; `cargo test -p asm
+    motorola68020_tkpkg_ -- --nocapture`; the opt-in FS-UAE native CLI output
+    smoke when host FS-UAE access is available; plus
     `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 5 slice
     summary, changed files, and validation output; require `PASS`.
-  - Commit outcome: exactly one commit that removes CLI-side mnemonic and mode
-    filtering for the core data-bearing `m6502` addressing families.
-  - Definition of done: native emits Rust-matching bytes for the first-run
-    corpus that uses immediate, zero-page, and absolute addressing families.
+  - Commit outcome: exactly one commit that moves baseline `m6502`
+    data-bearing mode selection and selected-form encoding onto the native
+    package-backed selector/encoder boundary, removing CLI-side mnemonic and
+    addressing-mode policy for the core immediate/zero-page/absolute families.
+  - Definition of done: once Item 4 supplies resolved operand values through
+    the native expression service boundary, native select/encode flow emits
+    Rust-matching bytes for the first-run corpus that uses immediate,
+    zero-page, zero-page indexed, absolute, and absolute indexed addressing
+    families without hard-coded CLI acceptance logic.
 
 - [ ] Item 6: Implement remaining `m6502` selector and encoder edge modes
   - Source requirement or finding IDs: `SR-6502-SELECTOR`,
@@ -368,17 +424,20 @@ The intended native shape mirrors the Rust path:
   - Expected files: `native/motorola68000/amigaos/opasm/*`,
     `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm` only for
     boundary wiring if needed, and directive parity tests.
-  - Full quality gates: focused tests for `.org`, `.align`, `.fill`, and
-    `.res/.ds`; `cargo test -p asm motorola68020_opforge_native_cli_ --
-    --nocapture`; plus `scripts/workflow/run_rust_quality_gate.sh`.
+  - Full quality gates: focused tests for `.org`, `.align`, `.fill`,
+    `.res/.ds`, `.region`, `.section`, and `.place`; `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture`; plus
+    `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 7 slice
     summary, changed files, and validation output; require `PASS`.
   - Commit outcome: exactly one commit that implements layout-control
-    directive execution inside native opasm.
+    directive execution inside native opasm, including section/region/placement
+    state required by the first-run fixture contract.
   - Definition of done: first-run fixtures can use the listed data-placement
-    directives to control origin, alignment, fill, and reserved ranges with
-    Rust-compatible state changes and diagnostics.
+    directives to control origin, regions, sections, placement, alignment,
+    fill, and reserved ranges with Rust-compatible state changes and
+    diagnostics.
 
 - [ ] Item 8: Implement data and text emission directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,
@@ -475,22 +534,26 @@ The intended native shape mirrors the Rust path:
 
 - [ ] Item 13: Add native output artifact architecture and `.bin` parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,
-    `SR-FIRST-OUTPUTS`; expected to establish the native output component shape
-    with the simplest binary artifact first.
+    `SR-FIRST-OUTPUTS`, `SR-DIRECTIVES`; expected to establish the native
+    output component shape with the simplest binary artifact first.
   - Expected files: new or existing `native/motorola68000/amigaos/opasm/*`
     output modules, `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm`,
     and artifact tests.
   - Full quality gates: focused native/Rust parity tests for `.bin` ranges,
-    fill behavior, and path/default-name selection; `cargo test -p asm
-    motorola68020_opforge_native_cli_ -- --nocapture`; opt-in FS-UAE output
-    smoke for `.bin`; plus `scripts/workflow/run_rust_quality_gate.sh`.
+    fill behavior, `.output` directive request handling, and path/default-name
+    selection; `cargo test -p asm motorola68020_opforge_native_cli_ --
+    --nocapture`; opt-in FS-UAE output smoke for `.bin`; plus
+    `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 13 slice
     summary, changed files, and validation output; require `PASS`.
   - Commit outcome: exactly one commit that introduces native output artifact
-    modules and implements `.bin` output parity.
+    modules, routes first-run `.output` requests into that layer, and
+    implements `.bin` output parity.
   - Definition of done: `.bin` is rendered through output artifact code, not
-    CLI internals, and matches Rust references for first-run cases.
+    CLI internals, `.output` selects the requested first-run artifact through
+    the same layer, and native output matches Rust references for first-run
+    cases.
 
 - [ ] Item 14: Add `.prg` output parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,

@@ -638,6 +638,8 @@ impl ExvmScalarExpressionParser {
     }
 }
 
+/// Host-side compatibility parser for explicit legacy parsing and parser tests.
+/// Covered authoritative assembler parsing now routes through EXVM v2.
 pub struct RuntimeExpressionParser {
     tokens: Vec<Token>,
     index: usize,

@@ -3,8 +3,9 @@ use crate::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};
 use crate::execution_model::{
     apply_token_policy_to_token, intel8080_candidate_from_resolved,
     intel8080_ld_indirect_candidate, FamilyExprResolver, HierarchyExecutionModel,
-    CORE_EXPR_PARSER_FAILPOINT,
+    CORE_EXPR_PARSER_FAILPOINT, RUNTIME_EXPR_COMPATIBILITY_FAILPOINT,
 };
+use crate::exvm_v2_runtime::{run_exvm_expression_parser_program_with_backend, ExvmRuntimeBackend};
 use crate::hierarchy::{
     CpuDescriptor, DialectDescriptor, FamilyDescriptor, HierarchyError, HierarchyPackage,
     ResolvedHierarchy, ScopedOwner,
@@ -12,7 +13,7 @@ use crate::hierarchy::{
 use crate::intel8080_vm::{mode_key_for_instruction_entry, mode_key_for_z80_ld_indirect};
 use crate::native6502::{
     Native6502ControlBlockV1, Native6502Harness, Native6502HarnessOutput, Native6502HarnessRequest,
-    NATIVE_6502_STATUS_OK_V1,
+    NATIVE_6502_STATUS_OK_V1, NATIVE_6502_STATUS_RUNTIME_ERROR_V1,
 };
 use crate::native6502_abi::*;
 use crate::native_prvm::{
@@ -29,8 +30,9 @@ use crate::runtime_portable_types::*;
 use crate::vm_opasm::{build_bin_output_payload, build_hex_output_payload};
 use crate::vm_opasm_parse::tokenize_parser_tokens_with_model;
 use crate::vm_opcore::{
+    compile_expression_tokens_to_portable_program_with_opcode_versions,
     evaluate_expression_for_assembler, expression_has_unstable_symbols_for_assembler,
-    parse_expression_tokens, parse_expression_tokens_with_opcode_version,
+    parse_expression_tokens_with_opcode_version, parse_runtime_expression_compatibility,
     run_exvm_expression_parser_program, ExvmExecutionBudgets,
 };
 use families::{
@@ -44,6 +46,7 @@ use families::{
     register_motorola68000_family_stack, register_motorola6800_family_stack,
 };
 use opcore::expr_vm::compile_core_expr_to_portable_program;
+use opcore::expr_vm::set_legacy_expr_compiler_failpoint_for_tests;
 use opcore::parser::{
     AssignOp, BinaryOp, Expr, Label, LineAst, ParseError, SignatureAtom, StatementSignature,
     UnaryOp, UseItem, UseParam,
@@ -60,8 +63,9 @@ use package::{
     DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW, DIAG_EXPR_UNKNOWN_SYMBOL,
     DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
-    EXPR_VM_OPCODE_VERSION_V1, EXVM_OPCODE_VERSION_V1, EXVM_OPCODE_VERSION_V2,
-    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, TOKENIZER_VM_OPCODE_VERSION_V1,
+    EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
+    EXVM_OPCODE_VERSION_V2, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+    TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, VmEncodeCandidate};
@@ -69,6 +73,7 @@ use registry::syntax::register_checker_none;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use types::asm_value::{AsmValue, StructDef, StructField};
 use types::image::ImageStore;
 use types::line_ast::{ConditionalAst, PackAst, PlaceAst, UseAst};
 
@@ -436,6 +441,84 @@ fn motorola68000_example_tokenizer_cases() -> Vec<(String, String, u32, String)>
     cases
 }
 
+fn motorola68000_example_line(relative_path: &str, line_num: u32) -> String {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("workspace root");
+    let path = repo_root.join(relative_path);
+    let source = fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("read motorola68000 example {}: {err}", path.display()));
+    source
+        .lines()
+        .nth(line_num.saturating_sub(1) as usize)
+        .unwrap_or_else(|| {
+            panic!(
+                "missing motorola68000 example line {} in {}",
+                line_num,
+                path.display()
+            )
+        })
+        .to_string()
+}
+
+fn motorola68000_expression_parser_parity_cases(
+) -> Vec<(&'static str, &'static str, u32, &'static str)> {
+    let cases = vec![
+        (
+            "examples/motorola68000/68000_immediate_unary.asm",
+            "m68000",
+            8,
+            "1",
+        ),
+        (
+            "examples/motorola68000/68000_control_addressing.asm",
+            "m68000",
+            6,
+            "4",
+        ),
+        (
+            "examples/motorola68000/68080_full_additional_surface.asm",
+            "m68080",
+            10,
+            "$1020",
+        ),
+        (
+            "examples/motorola68000/68080_ammx_addressing_matrix.asm",
+            "m68080",
+            16,
+            "ammxTarget",
+        ),
+        (
+            "examples/motorola68000/68080_ammx_addressing_matrix.asm",
+            "m68080",
+            39,
+            "3",
+        ),
+        (
+            "examples/motorola68000/68080_fpu_surface.asm",
+            "m68080",
+            10,
+            "11",
+        ),
+    ];
+
+    for (relative_path, _, line_num, expr_source) in &cases {
+        let line = motorola68000_example_line(relative_path, *line_num);
+        assert!(
+            line.contains(expr_source),
+            "audited motorola68000 expression fragment {:?} missing from {}:{} line {:?}",
+            expr_source,
+            relative_path,
+            line_num,
+            line
+        );
+    }
+
+    cases
+}
+
 fn deterministic_fuzz_lines(seed: u64, count: usize, max_len: usize) -> Vec<String> {
     const ALPHABET: &str =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_,$#:+-*/()[]{}'\";<>|&^%!~.\\ \t";
@@ -641,6 +724,7 @@ fn runtime_vm_program_for_test(
 
 struct TestAssemblerContext {
     values: HashMap<String, i64>,
+    value_symbols: HashMap<String, AsmValue>,
     finalized: HashMap<String, bool>,
     cpu_flags: HashMap<String, u32>,
     addr: u32,
@@ -652,6 +736,7 @@ impl TestAssemblerContext {
     fn new() -> Self {
         Self {
             values: HashMap::new(),
+            value_symbols: HashMap::new(),
             finalized: HashMap::new(),
             cpu_flags: HashMap::new(),
             addr: 0,
@@ -670,7 +755,30 @@ impl AssemblerContext for TestAssemblerContext {
             Expr::Number(text, _) => text
                 .parse::<i64>()
                 .map_err(|_| format!("invalid test number '{}'", text)),
+            Expr::String(bytes, _) => match bytes.as_slice() {
+                [single] => Ok(*single as i64),
+                [hi, lo] => Ok(((*hi as i64) << 8) | (*lo as i64)),
+                _ => Err("Multi-character string not allowed in expression.".to_string()),
+            },
             Expr::Identifier(name, _) | Expr::Register(name, _) => {
+                if let Some(value) = self.value_symbols.get(name) {
+                    return match value {
+                        AsmValue::Scalar(value) => Ok(*value),
+                        AsmValue::List(_) => {
+                            Err("List cannot be evaluated as scalar expression".to_string())
+                        }
+                        AsmValue::Range { .. } => {
+                            Err("Range cannot be evaluated as scalar expression".to_string())
+                        }
+                        AsmValue::Struct(_) => {
+                            Err("Struct cannot be evaluated as scalar expression".to_string())
+                        }
+                        AsmValue::StructInstance(_) => {
+                            Err("Struct instance cannot be evaluated as scalar expression"
+                                .to_string())
+                        }
+                    };
+                }
                 self.values.get(name).copied().map(Ok).unwrap_or_else(|| {
                     if self.pass == 1 {
                         Ok(0)
@@ -689,7 +797,7 @@ impl AssemblerContext for TestAssemblerContext {
     }
 
     fn has_symbol(&self, name: &str) -> bool {
-        self.values.contains_key(name)
+        self.values.contains_key(name) || self.value_symbols.contains_key(name)
     }
 
     fn symbol_is_finalized(&self, name: &str) -> Option<bool> {
@@ -704,9 +812,35 @@ impl AssemblerContext for TestAssemblerContext {
         self.pass
     }
 
+    fn value_symbol(&self, name: &str) -> Option<AsmValue> {
+        self.value_symbols
+            .get(name)
+            .cloned()
+            .or_else(|| self.values.get(name).copied().map(AsmValue::Scalar))
+    }
+
     fn cpu_state_flag(&self, key: &str) -> Option<u32> {
         self.cpu_flags.get(key).copied()
     }
+}
+
+fn point_struct_value() -> AsmValue {
+    AsmValue::Struct(StructDef {
+        name: "Point".to_string(),
+        fields: vec![
+            StructField {
+                name: "x".to_string(),
+                offset: 0,
+                size: 1,
+            },
+            StructField {
+                name: "y".to_string(),
+                offset: 1,
+                size: 1,
+            },
+        ],
+        size: 2,
+    })
 }
 
 fn sample_package() -> HierarchyPackage {
@@ -1107,6 +1241,47 @@ fn vm_runtime_mos6502_native_prvm_bridge_uses_symbol_and_current_pc_callbacks() 
             "unexpected native PRVM callback evaluation for {operand_text}"
         );
     }
+}
+
+#[test]
+fn vm_runtime_mos6502_native_prvm_bridge_evaluates_branch_offset_expressions() {
+    let mut ctx = TestAssemblerContext::new();
+    ctx.addr = 0x0800;
+    ctx.values.insert("done".to_string(), 0x0805);
+    ctx.finalized.insert("done".to_string(), true);
+
+    let evaluation = evaluate_native_prvm_expression_for_test(
+        "    beq done - $ - 2",
+        "done - $ - 2",
+        Some("beq"),
+        &ctx,
+    )
+    .expect("native PRVM bridge should evaluate branch-offset expressions");
+    assert_eq!(
+        evaluation,
+        NativePrvmHostExpressionEvaluation::Concrete { value: 3 }
+    );
+}
+
+#[test]
+fn vm_runtime_mos6502_native_prvm_bridge_defers_unresolved_branch_offset_symbols_in_pass1() {
+    let mut pass1_ctx = TestAssemblerContext::new();
+    pass1_ctx.addr = 0x0800;
+    pass1_ctx.pass = 1;
+
+    let pass1 = evaluate_native_prvm_expression_for_test(
+        "    beq done - $ - 2",
+        "done - $ - 2",
+        Some("beq"),
+        &pass1_ctx,
+    )
+    .expect("pass 1 unresolved branch-offset symbol should defer");
+    assert_eq!(
+        pass1,
+        NativePrvmHostExpressionEvaluation::DeferredUnresolved {
+            message: "expression depends on unresolved symbols".to_string(),
+        }
+    );
 }
 
 #[test]
@@ -1649,7 +1824,7 @@ fn execution_model_from_registry_exposes_default_family_expr_contract() {
         .resolve_expr_contract("m6502", None)
         .expect("expr contract resolution")
         .expect("expr contract should resolve");
-    assert_eq!(contract.opcode_version, EXPR_VM_OPCODE_VERSION_V1);
+    assert_eq!(contract.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
     assert_eq!(contract.max_program_bytes, 2048);
 
     let budgets = model
@@ -2046,6 +2221,34 @@ fn execution_model_parse_expression_for_assembler_certified_path_bypasses_core_p
 }
 
 #[test]
+fn execution_model_parse_expression_for_assembler_certified_path_bypasses_runtime_expr_compatibility_failpoint(
+) {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            RUNTIME_EXPR_COMPATIBILITY_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    RUNTIME_EXPR_COMPATIBILITY_FAILPOINT.with(|flag| flag.set(true));
+
+    let registry = mos6502_family_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+
+    let (tokens, end_span) = tokenize_core_expr_tokens("Point{x:1,y:2}.x", 1);
+    let expr = model
+        .parse_expression_for_assembler("m6502", None, tokens, end_span, None)
+        .expect("certified parser path should bypass runtime compatibility failpoint");
+
+    assert_eq!(
+        expression_contract_shape(&expr),
+        "Member(StructLiteral(Point,x:Number,y:Number),x)"
+    );
+}
+
+#[test]
 fn parser_vm_v2_parity_exvm_operand_expr_range_preserves_wrappers_with_core_failpoint() {
     struct FailpointReset;
 
@@ -2061,7 +2264,6 @@ fn parser_vm_v2_parity_exvm_operand_expr_range_preserves_wrappers_with_core_fail
     let registry = mos6502_and_motorola68000_registry();
     let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
     let register_checker = register_checker_none();
-
     let (mos_line, _, _) = crate::vm_opasm::parse_statement_line_with_model(
         &model,
         "m6502",
@@ -2137,6 +2339,344 @@ fn execution_model_compile_expression_program_vm_opt_in_bypasses_core_parser_fai
         )
         .expect("vm opt-in compile should bypass core parser failpoint");
     assert!(!program.code.is_empty());
+}
+
+#[test]
+fn execution_model_parse_expression_program_v2_direct_leaf_bypasses_legacy_expr_compiler_failpoint()
+{
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            set_legacy_expr_compiler_failpoint_for_tests(false);
+        }
+    }
+
+    let _reset = FailpointReset;
+    set_legacy_expr_compiler_failpoint_for_tests(true);
+
+    let registry = mos6502_family_registry();
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+    let mut parser_contract =
+        expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    parser_contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(parser_contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let (tokens, end_span) = tokenize_core_expr_tokens("target", 1);
+    let program = model
+        .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+        .expect("direct leaf compile should bypass legacy expression compiler failpoint");
+
+    assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
+    assert_eq!(program.symbols, vec!["target".to_string()]);
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.values.insert("target".to_string(), 42);
+    let evaluation = model
+        .evaluate_portable_expression_program_with_contract_for_assembler(
+            "m6502", None, &program, &ctx,
+        )
+        .expect("direct leaf program should evaluate through EXPR");
+    assert_eq!(evaluation.value, 42);
+}
+
+#[test]
+fn execution_model_parse_expression_program_v2_scalar_grammar_bypasses_legacy_expr_compiler_failpoint(
+) {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            set_legacy_expr_compiler_failpoint_for_tests(false);
+        }
+    }
+
+    let _reset = FailpointReset;
+    set_legacy_expr_compiler_failpoint_for_tests(true);
+
+    let registry = mos6502_family_registry();
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+    let mut parser_contract =
+        expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    parser_contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(parser_contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.values.insert("target".to_string(), 42);
+    ctx.addr = 7;
+
+    let cases = [
+        ("1+2*3", 7),
+        ("-(1+2)", -3),
+        ("1<<2==4&&1", 1),
+        ("0?1:target", 42),
+        ("$+1", 8),
+        ("\"A\"", 0x41),
+    ];
+
+    for (source, expected_value) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!("{source} should bypass legacy compiler failpoint: {err:?}")
+            });
+
+        assert_eq!(
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            "{source}"
+        );
+
+        let evaluation = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .unwrap_or_else(|err| panic!("{source} should evaluate through EXPR: {err:?}"));
+        assert_eq!(evaluation.value, expected_value, "{source}");
+    }
+}
+
+#[test]
+fn execution_model_parse_expression_program_v2_structural_constructors_bypass_legacy_expr_compiler_failpoint(
+) {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            set_legacy_expr_compiler_failpoint_for_tests(false);
+        }
+    }
+
+    let _reset = FailpointReset;
+    set_legacy_expr_compiler_failpoint_for_tests(true);
+
+    let registry = mos6502_family_registry();
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+    let mut parser_contract =
+        expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    parser_contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(parser_contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.value_symbols
+        .insert("Point".to_string(), point_struct_value());
+
+    let cases = [
+        ("{1,2}", "List cannot be evaluated as scalar expression"),
+        ("1..4:2", "Range cannot be evaluated as scalar expression"),
+        (
+            "Point{x:1,y:2}",
+            "Struct instance cannot be evaluated as scalar expression",
+        ),
+    ];
+
+    for (source, expected_message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!("{source} should bypass legacy compiler failpoint: {err:?}")
+            });
+
+        assert_eq!(
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            "{source}"
+        );
+
+        let err = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .expect_err("structural constructor root should fail only at the scalar boundary");
+        assert!(
+            err.to_string().contains(expected_message),
+            "{source}: {err}"
+        );
+    }
+}
+
+#[test]
+fn execution_model_parse_expression_program_v2_member_index_bypasses_legacy_expr_compiler_failpoint(
+) {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            set_legacy_expr_compiler_failpoint_for_tests(false);
+        }
+    }
+
+    let _reset = FailpointReset;
+    set_legacy_expr_compiler_failpoint_for_tests(true);
+
+    let registry = mos6502_family_registry();
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+    let mut parser_contract =
+        expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    parser_contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(parser_contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.value_symbols
+        .insert("Point".to_string(), point_struct_value());
+
+    let cases = [("{1,2}[0]", 1), ("Point{x:1,y:2}.x", 1)];
+
+    for (source, expected_value) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!("{source} should bypass legacy compiler failpoint: {err:?}")
+            });
+        assert_eq!(
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            "{source}"
+        );
+
+        let evaluation = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .unwrap_or_else(|err| panic!("{source} should evaluate through EXPR: {err:?}"));
+        assert_eq!(evaluation.value, expected_value, "{source}");
+    }
+}
+
+#[test]
+fn exvm_v2_runtime_portable_program_backend_bypasses_legacy_expr_compiler_failpoint() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            set_legacy_expr_compiler_failpoint_for_tests(false);
+        }
+    }
+
+    let _reset = FailpointReset;
+    set_legacy_expr_compiler_failpoint_for_tests(true);
+
+    let cases = [
+        "target",
+        "$+1",
+        "1+2*3",
+        "0?1:target",
+        "{1,2}",
+        "1..4:2",
+        "{1,2}[0]",
+        "Point{x:1,y:2}",
+        "Point{x:1,y:2}.x",
+    ];
+
+    for (index, source) in cases.iter().enumerate() {
+        let (tokens, end_span) =
+            tokenize_core_expr_tokens(source, (index as u32).saturating_add(1));
+        let program = compile_expression_tokens_to_portable_program_with_opcode_versions(
+            tokens,
+            end_span,
+            None,
+            EXVM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V2,
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "{source} should bypass legacy compiler failpoint through runtime backend: {err:?}"
+            )
+        });
+
+        assert_eq!(
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn execution_model_parse_expression_program_v2_matches_runtime_backend_for_covered_corpus() {
+    let registry = mos6502_family_registry();
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+
+    let mut parser_contract =
+        expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    parser_contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(parser_contract);
+
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+    let cases = [
+        "target",
+        "$+1",
+        "1+2*3",
+        "0?1:target",
+        "{1,2}",
+        "1..4:2",
+        "{1,2}[0]",
+        "Point{x:1,y:2}",
+        "Point{x:1,y:2}.x",
+    ];
+
+    for (index, source) in cases.iter().enumerate() {
+        let line_num = (index as u32).saturating_add(1);
+        let (runtime_tokens, runtime_end_span) = tokenize_core_expr_tokens(source, line_num);
+        let (helper_tokens, helper_end_span) = tokenize_core_expr_tokens(source, line_num);
+
+        let runtime_program = compile_expression_tokens_to_portable_program_with_opcode_versions(
+            runtime_tokens,
+            runtime_end_span,
+            None,
+            EXVM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V2,
+        )
+        .unwrap_or_else(|err| panic!("runtime backend should compile {source}: {err:?}"));
+
+        let assembler_program = model
+            .parse_expression_program_for_assembler(
+                "m6502",
+                None,
+                helper_tokens,
+                helper_end_span,
+                None,
+            )
+            .unwrap_or_else(|err| {
+                panic!("assembler program-returning path should compile {source}: {err:?}")
+            });
+
+        assert_eq!(runtime_program, assembler_program, "{source}");
+    }
 }
 
 #[test]
@@ -2308,7 +2848,6 @@ fn expression_contract_shape(expr: &Expr) -> String {
 
 const EXVM_COVERED_EXPRESSION_CONTRACT_CORPUS: &[(&str, &str)] = &[
     ("42", "Number"),
-    ("\"ok\"", "String"),
     ("label", "Identifier"),
     ("$", "Dollar"),
     (
@@ -2461,16 +3000,20 @@ fn parse_exvm_scalar_strict(source: &str) -> Result<Expr, ParseError> {
     )
 }
 
-fn parse_exvm_scalar_v2(source: &str) -> Result<Expr, ParseError> {
+fn parse_exvm_v2_authoritative(source: &str) -> Result<Expr, ParseError> {
     let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
     parse_expression_tokens_with_opcode_version(tokens, end_span, None, EXVM_OPCODE_VERSION_V2)
+}
+
+fn parse_runtime_expression_compatibility_direct(source: &str) -> Result<Expr, ParseError> {
+    let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+    parse_runtime_expression_compatibility(tokens, end_span, None)
 }
 
 #[test]
 fn runtime_expression_parser_locks_covered_exvm_expression_corpus_directly() {
     for (source, expected_shape) in EXVM_COVERED_EXPRESSION_CONTRACT_CORPUS {
-        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
-        let expr = parse_expression_tokens(tokens, end_span, None)
+        let expr = parse_exvm_v2_authoritative(source)
             .unwrap_or_else(|err| panic!("parse covered expression {source}: {}", err.message));
 
         assert_eq!(
@@ -2519,8 +3062,7 @@ fn runtime_expression_parser_locks_malformed_covered_expression_diagnostics() {
     ];
 
     for (source, expected_message) in cases {
-        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
-        let err = parse_expression_tokens(tokens, end_span, None)
+        let err = parse_exvm_v2_authoritative(source)
             .expect_err("malformed covered expression should fail");
 
         assert_eq!(
@@ -2543,8 +3085,7 @@ fn runtime_expression_parser_locks_operand_shape_guardrail_rejections() {
     ];
 
     for (source, expected_message) in cases {
-        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
-        let err = parse_expression_tokens(tokens, end_span, None)
+        let err = parse_exvm_v2_authoritative(source)
             .expect_err("operand-shape guardrail should reject expression parsing");
 
         assert_eq!(
@@ -2556,8 +3097,7 @@ fn runtime_expression_parser_locks_operand_shape_guardrail_rejections() {
 
 #[test]
 fn runtime_expression_parser_locks_predecrement_tokens_as_math_unary_not_operand_shape() {
-    let (tokens, end_span) = tokenize_core_expr_tokens("-(A0)", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
+    let expr = parse_exvm_v2_authoritative("-(A0)")
         .expect("predecrement token sequence should remain math-unary compatible");
 
     assert_eq!(expression_contract_shape(&expr), "Unary(Minus,Identifier)");
@@ -2579,10 +3119,9 @@ fn exvm_remaining_value_out_of_scope_compatibility_path_preserves_call_and_place
     ];
 
     for (source, expected_shape, expected_compile_message) in cases {
-        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
-        let expr = parse_expression_tokens(tokens, end_span, None).unwrap_or_else(|err| {
+        let expr = parse_runtime_expression_compatibility_direct(source).unwrap_or_else(|err| {
             panic!(
-                "parse explicit out-of-scope compatibility expression {source}: {}",
+                "parse explicit legacy compatibility expression {source}: {}",
                 err.message
             )
         });
@@ -2633,6 +3172,38 @@ fn exvm_remaining_value_out_of_scope_strict_mode_reports_deterministic_diagnosti
 }
 
 #[test]
+fn exvm_remaining_value_out_of_scope_authoritative_v2_reports_deterministic_diagnostics() {
+    let cases = [
+        (
+            "?",
+            "EXVM strict mode does not cover placeholder expressions",
+        ),
+        (
+            "flag ? ? : value",
+            "EXVM strict mode does not cover placeholder expressions",
+        ),
+        (
+            ".pick({1,2},?)",
+            "EXVM strict mode does not cover function/call expressions",
+        ),
+        (
+            "value + .pick(1,2)",
+            "EXVM strict mode does not cover function/call expressions",
+        ),
+    ];
+
+    for (source, expected_message) in cases {
+        let err = parse_exvm_v2_authoritative(source)
+            .expect_err("authoritative EXVM v2 should reject out-of-scope expression");
+
+        assert_eq!(
+            err.message, expected_message,
+            "authoritative EXVM v2 out-of-scope diagnostic changed for {source}"
+        );
+    }
+}
+
+#[test]
 fn exvm_interpreter_default_program_parses_expression() {
     let (tokens, end_span) = tokenize_core_expr_tokens("1+2*3", 1);
     let expr = run_exvm_expression_parser_program(
@@ -2650,6 +3221,175 @@ fn exvm_interpreter_default_program_parses_expression() {
     assert_eq!(
         expression_contract_shape(&expr),
         "Binary(Add,Number,Binary(Multiply,Number,Number))"
+    );
+}
+
+struct ExvmShapeBackend;
+
+impl ExvmRuntimeBackend for ExvmShapeBackend {
+    type Value = String;
+    type FinalOutput = String;
+
+    fn build_identifier(&mut self, name: String, _span: Span) -> Result<Self::Value, ParseError> {
+        Ok(format!("Identifier({name})"))
+    }
+
+    fn build_number(&mut self, text: String, _span: Span) -> Result<Self::Value, ParseError> {
+        Ok(format!("Number({text})"))
+    }
+
+    fn build_current_address(&mut self, _span: Span) -> Result<Self::Value, ParseError> {
+        Ok("Dollar".to_string())
+    }
+
+    fn build_unary(
+        &mut self,
+        operator: package::ExvmOperatorKindV2,
+        expr: Self::Value,
+        _span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Ok(format!("Unary({operator:?},{expr})"))
+    }
+
+    fn build_binary(
+        &mut self,
+        operator: package::ExvmOperatorKindV2,
+        left: Self::Value,
+        right: Self::Value,
+        _span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Ok(format!("Binary({operator:?},{left},{right})"))
+    }
+
+    fn build_ternary(
+        &mut self,
+        cond: Self::Value,
+        then_expr: Self::Value,
+        else_expr: Self::Value,
+        _span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Ok(format!("Ternary({cond},{then_expr},{else_expr})"))
+    }
+
+    fn build_range(
+        &mut self,
+        start: Self::Value,
+        end: Self::Value,
+        step: Option<Self::Value>,
+        inclusive: bool,
+        _span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Ok(format!(
+            "Range({},{},{},{})",
+            if inclusive { "inclusive" } else { "exclusive" },
+            start,
+            end,
+            step.unwrap_or_else(|| "None".to_string())
+        ))
+    }
+
+    fn build_list(
+        &mut self,
+        elements: Vec<Self::Value>,
+        _span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Ok(format!("List({})", elements.join(",")))
+    }
+
+    fn struct_literal_type_name(&self, value: &Self::Value) -> Option<(String, Span)> {
+        for prefix in ["Identifier(", "Register("] {
+            if let Some(rest) = value.strip_prefix(prefix) {
+                let name = rest.strip_suffix(')')?.to_string();
+                return Some((
+                    name,
+                    Span {
+                        line: 0,
+                        col_start: 0,
+                        col_end: 0,
+                    },
+                ));
+            }
+        }
+        None
+    }
+
+    fn build_struct_literal(
+        &mut self,
+        type_name: String,
+        fields: Vec<(String, Self::Value)>,
+        _span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        let fields = fields
+            .into_iter()
+            .map(|(name, value)| format!("{name}:{value}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        Ok(format!("StructLiteral({type_name},{fields})"))
+    }
+
+    fn value_span(&self, _value: &Self::Value) -> Span {
+        Span {
+            line: 0,
+            col_start: 0,
+            col_end: 0,
+        }
+    }
+
+    fn build_index(
+        &mut self,
+        base: Self::Value,
+        index: Self::Value,
+        _span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Ok(format!("Index({base},{index})"))
+    }
+
+    fn build_member(
+        &mut self,
+        base: Self::Value,
+        field: String,
+        _span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Ok(format!("Member({base},{field})"))
+    }
+
+    fn finish_value(&mut self, value: Self::Value) -> Result<Self::FinalOutput, ParseError> {
+        Ok(value)
+    }
+}
+
+#[test]
+fn exvm_v2_runtime_backend_abstraction_can_emit_non_expr_values() {
+    let (tokens, end_span) = tokenize_core_expr_tokens("1+2*3", 1);
+    let shape = run_exvm_expression_parser_program_with_backend(
+        tokens,
+        end_span,
+        None,
+        &[
+            package::ExvmOpcodeV2::BuildNumber as u8,
+            package::ExvmOpcodeV2::Advance as u8,
+            package::ExvmOpcodeV2::ConsumeOperator as u8,
+            package::ExvmOperatorKindV2::Plus as u8,
+            package::ExvmOpcodeV2::BuildNumber as u8,
+            package::ExvmOpcodeV2::Advance as u8,
+            package::ExvmOpcodeV2::ConsumeOperator as u8,
+            package::ExvmOperatorKindV2::Multiply as u8,
+            package::ExvmOpcodeV2::BuildNumber as u8,
+            package::ExvmOpcodeV2::Advance as u8,
+            package::ExvmOpcodeV2::BuildBinary as u8,
+            package::ExvmOperatorKindV2::Multiply as u8,
+            package::ExvmOpcodeV2::BuildBinary as u8,
+            package::ExvmOperatorKindV2::Plus as u8,
+            package::ExvmOpcodeV2::End as u8,
+        ],
+        ExvmExecutionBudgets::for_tokens(5),
+        ExvmShapeBackend,
+    )
+    .expect("backend abstraction should support non-Expr emission");
+
+    assert_eq!(
+        shape,
+        "Binary(Plus,Number(1),Binary(Multiply,Number(2),Number(3)))"
     );
 }
 
@@ -2970,9 +3710,7 @@ fn exvm_interpreter_rejects_delegate_core_and_missing_end() {
 
 #[test]
 fn runtime_expression_parser_rejects_missing_ternary_colon_directly() {
-    let (tokens, end_span) = tokenize_core_expr_tokens("1 ? 2", 1);
-    let err = parse_expression_tokens(tokens, end_span, None)
-        .expect_err("missing ternary ':' should fail");
+    let err = parse_exvm_v2_authoritative("1 ? 2").expect_err("missing ternary ':' should fail");
     assert!(
         err.message
             .contains("Missing ':' in conditional expression"),
@@ -2983,9 +3721,7 @@ fn runtime_expression_parser_rejects_missing_ternary_colon_directly() {
 
 #[test]
 fn runtime_expression_parser_rejects_unexpected_primary_token_directly() {
-    let (tokens, end_span) = tokenize_core_expr_tokens(",1", 1);
-    let err = parse_expression_tokens(tokens, end_span, None)
-        .expect_err("unexpected leading comma should fail");
+    let err = parse_exvm_v2_authoritative(",1").expect_err("unexpected leading comma should fail");
     assert!(
         err.message.contains("Unexpected token in expression"),
         "unexpected message: {}",
@@ -2995,8 +3731,7 @@ fn runtime_expression_parser_rejects_unexpected_primary_token_directly() {
 
 #[test]
 fn runtime_expression_parser_honors_operator_precedence_directly() {
-    let (tokens, end_span) = tokenize_core_expr_tokens("1+2*3", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
+    let expr = parse_exvm_v2_authoritative("1+2*3")
         .expect("direct runtime parser should parse expression");
 
     match expr {
@@ -3021,8 +3756,7 @@ fn runtime_expression_parser_honors_operator_precedence_directly() {
 
 #[test]
 fn runtime_expression_parser_rejects_bracket_tuple_indirect_long_forms() {
-    let (tokens, end_span) = tokenize_core_expr_tokens("[$20,X]", 1);
-    let err = parse_expression_tokens(tokens, end_span, None)
+    let err = parse_exvm_v2_authoritative("[$20,X]")
         .expect_err("direct runtime parser should reject bracket operand forms");
 
     assert_eq!(err.message, "Unexpected token in expression");
@@ -3031,8 +3765,7 @@ fn runtime_expression_parser_rejects_bracket_tuple_indirect_long_forms() {
 
 #[test]
 fn runtime_expression_parser_parses_index_member_postfix_chain() {
-    let (tokens, end_span) = tokenize_core_expr_tokens("arr[2].len", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
+    let expr = parse_exvm_v2_authoritative("arr[2].len")
         .expect("direct runtime parser should parse postfix chain");
 
     match expr {
@@ -3046,8 +3779,7 @@ fn runtime_expression_parser_parses_index_member_postfix_chain() {
 
 #[test]
 fn runtime_expression_parser_rejects_postfix_indirect_tuple_for_68k_addressing() {
-    let (tokens, end_span) = tokenize_core_expr_tokens("4(A0,D1.W)", 1);
-    let err = parse_expression_tokens(tokens, end_span, None)
+    let err = parse_exvm_v2_authoritative("4(A0,D1.W)")
         .expect_err("direct runtime parser should reject m68k postfix operand forms");
 
     assert_eq!(err.message, "Unexpected trailing tokens");
@@ -3056,8 +3788,7 @@ fn runtime_expression_parser_rejects_postfix_indirect_tuple_for_68k_addressing()
 
 #[test]
 fn runtime_expression_parser_rejects_postincrement_indirect_for_68k_addressing() {
-    let (tokens, end_span) = tokenize_core_expr_tokens("(A0)+", 1);
-    let err = parse_expression_tokens(tokens, end_span, None)
+    let err = parse_exvm_v2_authoritative("(A0)+")
         .expect_err("direct runtime parser should reject m68k postincrement operands");
 
     assert_eq!(err.message, "Unexpected end of expression");
@@ -3066,9 +3797,8 @@ fn runtime_expression_parser_rejects_postincrement_indirect_for_68k_addressing()
 
 #[test]
 fn runtime_expression_parser_parses_call_with_list_and_placeholder_args() {
-    let (tokens, end_span) = tokenize_core_expr_tokens(".pick({1,2},?)", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
-        .expect("direct runtime parser should parse call");
+    let expr = parse_runtime_expression_compatibility_direct(".pick({1,2},?)")
+        .expect("legacy runtime parser should parse call");
 
     match expr {
         Expr::Call { name, args, .. } => {
@@ -3083,8 +3813,7 @@ fn runtime_expression_parser_parses_call_with_list_and_placeholder_args() {
 
 #[test]
 fn runtime_expression_parser_parses_struct_literal_expression() {
-    let (tokens, end_span) = tokenize_core_expr_tokens("Point{x:1,y:2}.x", 1);
-    let expr = parse_expression_tokens(tokens, end_span, None)
+    let expr = parse_exvm_v2_authoritative("Point{x:1,y:2}.x")
         .expect("direct runtime parser should parse struct literal");
 
     match expr {
@@ -3097,38 +3826,99 @@ fn runtime_expression_parser_parses_struct_literal_expression() {
 }
 
 #[test]
+fn runtime_expression_parser_directly_parses_string_literal_expression() {
+    let expr = parse_runtime_expression_compatibility_direct("\"ok\"")
+        .expect("legacy runtime parser should parse string literal");
+
+    assert_eq!(expression_contract_shape(&expr), "String");
+}
+
+#[test]
+fn runtime_expression_compatibility_entrypoint_is_explicitly_failpointed() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            RUNTIME_EXPR_COMPATIBILITY_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    RUNTIME_EXPR_COMPATIBILITY_FAILPOINT.with(|flag| flag.set(true));
+
+    let (tokens, end_span) = tokenize_core_expr_tokens(".pick({1,2},?)", 1);
+    let err = parse_runtime_expression_compatibility(tokens, end_span, None)
+        .expect_err("explicit compatibility entrypoint should trip the failpoint");
+    assert_eq!(err.message, "runtime expression compatibility failpoint");
+}
+
+#[test]
 fn runtime_expression_generic_value_nodes_parse_but_reject_scalar_vm_compile() {
-    let cases = [
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+    let mut parser_contract =
+        expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    parser_contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(parser_contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.value_symbols
+        .insert("arr".to_string(), AsmValue::List(vec![10, 20, 30]));
+    ctx.value_symbols
+        .insert("Point".to_string(), point_struct_value());
+
+    let boundary_cases = [
         ("{1,2}", "List cannot be evaluated as scalar expression"),
         (
-            "arr[2]",
-            "Index expression cannot be evaluated as scalar expression",
+            "Point{x:1,y:2}",
+            "Struct instance cannot be evaluated as scalar expression",
         ),
-        (
-            "arr[2].len",
-            "Member expression cannot be evaluated as scalar expression",
-        ),
-        (
-            "Point{x:1}",
-            "Struct literal cannot be evaluated as scalar expression",
-        ),
-        (
-            ".pick({1,2},?)",
-            "Call expression cannot be evaluated as scalar expression",
-        ),
-        ("?", "Placeholder cannot be evaluated as scalar expression"),
         ("1..4", "Range cannot be evaluated as scalar expression"),
     ];
 
-    for (source, message) in cases {
+    for (source, message) in boundary_cases {
         let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
-        let expr = parse_expression_tokens(tokens, end_span, None)
-            .expect("generic value expression should parse");
-        let err = compile_core_expr_to_portable_program(&expr)
-            .expect_err("generic value expression should reject scalar compilation");
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!("generic value program compile {source}: {}", err.message)
+            });
+        let err = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .expect_err(
+                "irreducible structural scalar value should fail at the RequireScalar boundary",
+            );
+        assert!(
+            err.to_string().contains(message),
+            "unexpected boundary diagnostic for {source}: {err}"
+        );
+    }
 
-        assert_eq!(err.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
-        assert_eq!(err.message, message);
+    let reduction_cases = [("arr[2]", 30), ("Point{x:1,y:2}.x", 1)];
+
+    for (source, expected_value) in reduction_cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!("generic value program compile {source}: {}", err.message)
+            });
+        let evaluation = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .unwrap_or_else(|err| panic!("generic value scalar reduction {source}: {err}"));
+        assert_eq!(evaluation.value, expected_value);
     }
 }
 
@@ -3362,6 +4152,272 @@ fn execution_model_compile_expression_program_parser_vm_opt_in_rejects_unknown_o
 }
 
 #[test]
+fn execution_model_motorola68000_authoritative_parser_uses_vm_expr_parser_by_default() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(true));
+
+    let registry = mos6502_and_motorola68000_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let opt_in = vec!["motorola68000".to_string()];
+    let (default_tokens, default_end_span) = tokenize_core_expr_tokens("1+2", 1);
+    let default_program = model
+        .compile_expression_program_for_assembler(
+            "m68000",
+            None,
+            default_tokens,
+            default_end_span,
+            None,
+        )
+        .expect("authoritative motorola68000 parser should use EXVM by default");
+    let (opt_in_tokens, opt_in_end_span) = tokenize_core_expr_tokens("1+2", 1);
+    let opt_in_program = model
+        .compile_expression_program_with_parser_vm_rollout_overrides_for_assembler(
+            "m68000",
+            None,
+            &opt_in,
+            &[],
+            opt_in_tokens,
+            opt_in_end_span,
+            None,
+            None,
+        )
+        .expect("explicit motorola68000 parser opt-in should still route through EXVM");
+    assert!(
+        !default_program.code.is_empty(),
+        "authoritative motorola68000 parser path should emit a portable expr program"
+    );
+    assert_eq!(default_program, opt_in_program);
+}
+
+#[test]
+fn execution_model_motorola68000_parser_force_host_overrides_authoritative_default() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(false));
+        }
+    }
+
+    let _reset = FailpointReset;
+    CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(true));
+
+    let registry = mos6502_and_motorola68000_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let force_host = vec!["motorola68000".to_string()];
+    let (tokens, end_span) = tokenize_core_expr_tokens("1+2", 1);
+    let err = model
+        .compile_expression_program_with_parser_vm_rollout_overrides_for_assembler(
+            "m68000",
+            None,
+            &[],
+            &force_host,
+            tokens,
+            end_span,
+            None,
+            None,
+        )
+        .expect_err("force-host override should beat authoritative motorola68000 parser default");
+    assert!(
+        err.message.contains("core expression parser failpoint"),
+        "unexpected force-host parser diagnostic: {}",
+        err.message
+    );
+}
+
+#[test]
+fn execution_model_motorola68000_authoritative_parser_matches_host_for_audited_fragments() {
+    let cases = motorola68000_expression_parser_parity_cases();
+    let registry = mos6502_and_motorola68000_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let force_host = vec!["motorola68000".to_string()];
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.addr = 0x1000;
+    ctx.values.insert("ammxTarget".to_string(), 0x1234);
+
+    for (relative_path, cpu_id, line_num, expr_source) in cases {
+        let (host_tokens, host_end_span) = tokenize_core_expr_tokens(expr_source, line_num);
+        let (opt_in_tokens, opt_in_end_span) = tokenize_core_expr_tokens(expr_source, line_num);
+
+        let host_program = model
+            .compile_expression_program_with_parser_vm_rollout_overrides_for_assembler(
+                cpu_id,
+                None,
+                &[],
+                &force_host,
+                host_tokens,
+                host_end_span,
+                None,
+                None,
+            )
+            .unwrap_or_else(|err| {
+                panic!(
+                    "host parser compile failed for {}:{} on {} expr {:?}: {}",
+                    relative_path, line_num, cpu_id, expr_source, err.message
+                )
+            });
+        let opt_in_program = model
+            .compile_expression_program_for_assembler(
+                cpu_id,
+                None,
+                opt_in_tokens,
+                opt_in_end_span,
+                None,
+            )
+            .unwrap_or_else(|err| {
+                panic!(
+                    "vm parser compile failed for {}:{} on {} expr {:?}: {}",
+                    relative_path, line_num, cpu_id, expr_source, err.message
+                )
+            });
+
+        assert_eq!(
+            opt_in_program, host_program,
+            "motorola68000 expr parser parity mismatch for {}:{} on {} expr {:?}",
+            relative_path, line_num, cpu_id, expr_source
+        );
+
+        let host_eval = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                cpu_id,
+                None,
+                &host_program,
+                &ctx,
+            )
+            .unwrap_or_else(|err| {
+                panic!(
+                    "host eval failed for {}:{} on {} expr {:?}: {}",
+                    relative_path, line_num, cpu_id, expr_source, err
+                )
+            });
+        let opt_in_eval = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                cpu_id,
+                None,
+                &opt_in_program,
+                &ctx,
+            )
+            .unwrap_or_else(|err| {
+                panic!(
+                    "vm eval failed for {}:{} on {} expr {:?}: {}",
+                    relative_path, line_num, cpu_id, expr_source, err
+                )
+            });
+
+        assert_eq!(
+            opt_in_eval, host_eval,
+            "motorola68000 expr eval parity mismatch for {}:{} on {} expr {:?}",
+            relative_path, line_num, cpu_id, expr_source
+        );
+    }
+}
+
+#[test]
+fn execution_model_motorola68000_authoritative_parser_reports_deterministic_non_goals() {
+    let registry = mos6502_and_motorola68000_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let cases = [
+        (
+            "m68000",
+            "?",
+            "Placeholder cannot be evaluated as scalar expression",
+        ),
+        (
+            "m68000",
+            ".pick({1,2},?)",
+            "Call expression cannot be evaluated as scalar expression",
+        ),
+        (
+            "m68080",
+            "?",
+            "Placeholder cannot be evaluated as scalar expression",
+        ),
+        (
+            "m68080",
+            ".pick({1,2},?)",
+            "Call expression cannot be evaluated as scalar expression",
+        ),
+    ];
+
+    for (cpu_id, expr_source, expected_message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(expr_source, 1);
+        let err = model
+            .compile_expression_program_for_assembler(cpu_id, None, tokens, end_span, None)
+            .expect_err("authoritative motorola68000 parser should keep non-goals explicit");
+
+        assert!(
+            err.message
+                .starts_with(&format!("{}: ", DIAG_EXPR_UNSUPPORTED_FEATURE))
+                && err.message.ends_with(expected_message),
+            "motorola68000 non-goal diagnostic changed for {} expr {:?}: {}",
+            cpu_id,
+            expr_source,
+            err.message
+        );
+    }
+}
+
+#[test]
+fn execution_model_motorola68000_eval_direct_stage_respects_budgets_and_symbol_stability() {
+    let registry = mos6502_and_motorola68000_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    let mut m68000_contract = expr_contract_for_test(ScopedOwner::Cpu("m68000".to_string()));
+    m68000_contract.max_eval_steps = 0;
+    chunks.expr_contracts.push(m68000_contract);
+    let mut m68080_contract = expr_contract_for_test(ScopedOwner::Cpu("m68080".to_string()));
+    m68080_contract.max_eval_steps = 0;
+    chunks.expr_contracts.push(m68080_contract);
+    let budget_model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let expr = Expr::Binary {
+        op: BinaryOp::Add,
+        left: Box::new(Expr::Number("1".to_string(), Span::default())),
+        right: Box::new(Expr::Number("2".to_string(), Span::default())),
+        span: Span::default(),
+    };
+    let ctx = TestAssemblerContext::new();
+
+    for cpu_id in ["m68000", "m68080"] {
+        let err = evaluate_expression_for_assembler(&budget_model, cpu_id, None, &expr, &ctx)
+            .expect_err("motorola68000 direct eval stage should enforce expr budgets");
+        assert!(
+            err.to_ascii_lowercase().contains("ope007"),
+            "expected expr budget diagnostic for {cpu_id}, got: {err}"
+        );
+    }
+
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let ident = Expr::Identifier("target".to_string(), Span::default());
+    let mut ctx = TestAssemblerContext::new();
+    ctx.values.insert("target".to_string(), 0x2a);
+    ctx.finalized.insert("target".to_string(), false);
+
+    assert!(
+        expression_has_unstable_symbols_for_assembler(&model, "m68080", None, &ident, &ctx)
+            .expect("motorola68000 unstable-symbol scan should succeed"),
+        "expected unfinalized motorola68000 family symbol to remain unstable"
+    );
+
+    ctx.finalized.insert("target".to_string(), true);
+    assert!(
+        !expression_has_unstable_symbols_for_assembler(&model, "m68080", None, &ident, &ctx)
+            .expect("motorola68000 finalized-symbol scan should succeed"),
+        "expected finalized motorola68000 family symbol to stop reporting unstable"
+    );
+}
+
+#[test]
 fn exvm_scalar_leaf_v2_runtime_parses_leaf_and_grouping_contract_corpus() {
     let cases = [
         ("1", "Number"),
@@ -3372,7 +4428,7 @@ fn exvm_scalar_leaf_v2_runtime_parses_leaf_and_grouping_contract_corpus() {
     ];
 
     for (source, expected_shape) in cases {
-        let expr = parse_exvm_scalar_v2(source)
+        let expr = parse_exvm_v2_authoritative(source)
             .unwrap_or_else(|err| panic!("EXVM v2 leaf parse {source}: {}", err.message));
         assert_eq!(
             expression_contract_shape(&expr),
@@ -3406,7 +4462,7 @@ fn exvm_scalar_v2_runtime_parses_unary_and_arithmetic_contract_corpus() {
     ];
 
     for (source, expected_shape) in cases {
-        let expr = parse_exvm_scalar_v2(source)
+        let expr = parse_exvm_v2_authoritative(source)
             .unwrap_or_else(|err| panic!("EXVM v2 arithmetic parse {source}: {}", err.message));
         assert_eq!(
             expression_contract_shape(&expr),
@@ -3419,7 +4475,7 @@ fn exvm_scalar_v2_runtime_parses_unary_and_arithmetic_contract_corpus() {
 #[test]
 fn exvm_operator_v2_runtime_parses_scalar_operator_contract_corpus() {
     for (source, expected_shape) in EXVM_OPERATOR_CONTRACT_CORPUS {
-        let expr = parse_exvm_scalar_v2(source)
+        let expr = parse_exvm_v2_authoritative(source)
             .unwrap_or_else(|err| panic!("EXVM v2 operator parse {source}: {}", err.message));
         assert_eq!(
             expression_contract_shape(&expr),
@@ -3432,7 +4488,7 @@ fn exvm_operator_v2_runtime_parses_scalar_operator_contract_corpus() {
 #[test]
 fn exvm_ternary_v2_runtime_parses_contract_corpus() {
     for (source, expected_shape) in EXVM_TERNARY_CONTRACT_CORPUS {
-        let expr = parse_exvm_scalar_v2(source)
+        let expr = parse_exvm_v2_authoritative(source)
             .unwrap_or_else(|err| panic!("EXVM v2 ternary parse {source}: {}", err.message));
         assert_eq!(
             expression_contract_shape(&expr),
@@ -3443,15 +4499,45 @@ fn exvm_ternary_v2_runtime_parses_contract_corpus() {
 }
 
 #[test]
-fn exvm_scalar_v2_contract_compiles_and_evaluates_arithmetic_end_to_end() {
+fn exvm_range_list_v2_runtime_parses_contract_corpus() {
+    for (source, expected_shape) in EXVM_RANGE_LIST_CONTRACT_CORPUS {
+        let expr = parse_exvm_v2_authoritative(source)
+            .unwrap_or_else(|err| panic!("EXVM v2 range/list parse {source}: {}", err.message));
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "EXVM v2 range/list shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_struct_access_v2_runtime_parses_contract_corpus() {
+    for (source, expected_shape) in EXVM_STRUCT_ACCESS_CONTRACT_CORPUS {
+        let expr = parse_exvm_v2_authoritative(source)
+            .unwrap_or_else(|err| panic!("EXVM v2 struct/access parse {source}: {}", err.message));
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "EXVM v2 struct/access shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn runtime_expression_eval_scalar_v2_contract_compiles_and_evaluates_arithmetic_end_to_end() {
     let registry = mos6502_family_registry();
 
     let mut chunks =
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
     let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
     contract.opcode_version = EXVM_OPCODE_VERSION_V2;
     chunks.expr_parser_contracts.push(contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
     let mut ctx = TestAssemblerContext::new();
@@ -3469,6 +4555,10 @@ fn exvm_scalar_v2_contract_compiles_and_evaluates_arithmetic_end_to_end() {
         let program = model
             .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
             .unwrap_or_else(|err| panic!("EXVM v2 compile {source}: {}", err.message));
+        assert_eq!(
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            "EXPR v2 program version changed for {source}"
+        );
         let evaluation = model
             .evaluate_portable_expression_program_with_contract_for_assembler(
                 "m6502", None, &program, &ctx,
@@ -3482,15 +4572,352 @@ fn exvm_scalar_v2_contract_compiles_and_evaluates_arithmetic_end_to_end() {
 }
 
 #[test]
+fn runtime_expression_eval_full_scalar_v2_contract_compiles_and_evaluates_operator_and_ternary_forms(
+) {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+    let mut parser_contract =
+        expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    parser_contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(parser_contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let cases = [
+        ("1 << 2 == 4 || 0", HashMap::new(), 1),
+        (
+            "mask & flag | extra ^ invert",
+            HashMap::from([
+                ("mask".to_string(), 6),
+                ("flag".to_string(), 3),
+                ("extra".to_string(), 1),
+                ("invert".to_string(), 2),
+            ]),
+            3,
+        ),
+        (
+            "flag ? zero ? 8 : 9 : 10",
+            HashMap::from([("flag".to_string(), 1), ("zero".to_string(), 0)]),
+            9,
+        ),
+    ];
+
+    for (source, values, expected_value) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| panic!("EXPR v2 full-scalar compile {source}: {}", err.message));
+        assert_eq!(
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            "EXPR v2 program version changed for {source}"
+        );
+
+        let mut ctx = TestAssemblerContext::new();
+        ctx.values = values;
+        let evaluation = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .unwrap_or_else(|err| panic!("EXPR v2 full-scalar eval {source}: {err}"));
+        assert_eq!(evaluation.value, expected_value);
+    }
+}
+
+#[test]
+fn runtime_expression_eval_direct_stage_preserves_current_address_and_unstable_symbol_behavior_under_expr_v2_contract(
+) {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_contracts.clear();
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let expr = Expr::Binary {
+        op: BinaryOp::Add,
+        left: Box::new(Expr::Dollar(Span::default())),
+        right: Box::new(Expr::Number("1".to_string(), Span::default())),
+        span: Span::default(),
+    };
+    let mut ctx = TestAssemblerContext::new();
+    ctx.addr = 0x2000;
+    let value = evaluate_expression_for_assembler(&model, "m6502", None, &expr, &ctx)
+        .expect("direct eval stage should honor EXPR v2 scalar contract");
+    assert_eq!(value, 0x2001);
+
+    let unstable = expression_has_unstable_symbols_for_assembler(
+        &model,
+        "m6502",
+        None,
+        &Expr::Identifier("forward_label".to_string(), Span::default()),
+        &ctx,
+    )
+    .expect("direct unstable-symbol stage should honor EXPR v2 scalar contract");
+    assert!(unstable);
+}
+
+#[test]
+fn runtime_expression_eval_direct_stage_supports_full_scalar_grammar_under_expr_v2_contract() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_contracts.clear();
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let cases = [
+        (
+            Expr::Binary {
+                op: BinaryOp::LogicOr,
+                left: Box::new(Expr::Binary {
+                    op: BinaryOp::Eq,
+                    left: Box::new(Expr::Binary {
+                        op: BinaryOp::Shl,
+                        left: Box::new(Expr::Number("1".to_string(), Span::default())),
+                        right: Box::new(Expr::Number("2".to_string(), Span::default())),
+                        span: Span::default(),
+                    }),
+                    right: Box::new(Expr::Number("4".to_string(), Span::default())),
+                    span: Span::default(),
+                }),
+                right: Box::new(Expr::Number("0".to_string(), Span::default())),
+                span: Span::default(),
+            },
+            HashMap::new(),
+            1,
+        ),
+        (
+            Expr::Ternary {
+                cond: Box::new(Expr::Identifier("flag".to_string(), Span::default())),
+                then_expr: Box::new(Expr::Number("1".to_string(), Span::default())),
+                else_expr: Box::new(Expr::Number("0".to_string(), Span::default())),
+                span: Span::default(),
+            },
+            HashMap::from([("flag".to_string(), 1)]),
+            1,
+        ),
+    ];
+
+    for (expr, values, expected_value) in cases {
+        let mut ctx = TestAssemblerContext::new();
+        ctx.values = values;
+        let value = evaluate_expression_for_assembler(&model, "m6502", None, &expr, &ctx)
+            .expect("direct eval stage should use EXPR v2 for the full scalar grammar");
+        assert_eq!(value, expected_value);
+    }
+}
+
+#[test]
+fn runtime_expression_eval_direct_stage_supports_structural_reductions_and_boundaries_under_expr_v2_contract(
+) {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_contracts.clear();
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.value_symbols
+        .insert("arr".to_string(), AsmValue::List(vec![10, 20, 30]));
+    ctx.value_symbols
+        .insert("Point".to_string(), point_struct_value());
+
+    let reduction_cases = [
+        (
+            Expr::Index {
+                base: Box::new(Expr::Identifier("arr".to_string(), Span::default())),
+                index: Box::new(Expr::Number("1".to_string(), Span::default())),
+                span: Span::default(),
+            },
+            20,
+        ),
+        (
+            Expr::Member {
+                base: Box::new(Expr::Identifier("Point".to_string(), Span::default())),
+                field: "y".to_string(),
+                span: Span::default(),
+            },
+            1,
+        ),
+        (
+            Expr::Member {
+                base: Box::new(Expr::StructLiteral {
+                    type_name: "Point".to_string(),
+                    fields: vec![
+                        (
+                            "x".to_string(),
+                            Expr::Number("4".to_string(), Span::default()),
+                        ),
+                        (
+                            "y".to_string(),
+                            Expr::Number("7".to_string(), Span::default()),
+                        ),
+                    ],
+                    span: Span::default(),
+                }),
+                field: "x".to_string(),
+                span: Span::default(),
+            },
+            4,
+        ),
+    ];
+
+    for (expr, expected_value) in reduction_cases {
+        let value = evaluate_expression_for_assembler(&model, "m6502", None, &expr, &ctx)
+            .expect("structural direct-stage reduction should succeed under EXPR v2");
+        assert_eq!(value, expected_value);
+    }
+
+    let boundary_cases = [
+        (
+            Expr::Identifier("arr".to_string(), Span::default()),
+            "List cannot be evaluated as scalar expression",
+        ),
+        (
+            Expr::Range {
+                start: Box::new(Expr::Number("1".to_string(), Span::default())),
+                end: Box::new(Expr::Number("4".to_string(), Span::default())),
+                step: None,
+                inclusive: false,
+                span: Span::default(),
+            },
+            "Range cannot be evaluated as scalar expression",
+        ),
+        (
+            Expr::StructLiteral {
+                type_name: "Point".to_string(),
+                fields: vec![
+                    (
+                        "x".to_string(),
+                        Expr::Number("1".to_string(), Span::default()),
+                    ),
+                    (
+                        "y".to_string(),
+                        Expr::Number("2".to_string(), Span::default()),
+                    ),
+                ],
+                span: Span::default(),
+            },
+            "Struct instance cannot be evaluated as scalar expression",
+        ),
+    ];
+
+    for (expr, expected_message) in boundary_cases {
+        let err = evaluate_expression_for_assembler(&model, "m6502", None, &expr, &ctx)
+            .expect_err("irreducible structural value should fail at the scalar boundary");
+        assert!(
+            err.contains(expected_message),
+            "unexpected structural boundary diagnostic: {err}"
+        );
+    }
+}
+
+#[test]
+fn runtime_expression_direct_stage_v2_bypasses_legacy_expr_compiler_failpoint_for_covered_shapes() {
+    struct FailpointReset;
+
+    impl Drop for FailpointReset {
+        fn drop(&mut self) {
+            set_legacy_expr_compiler_failpoint_for_tests(false);
+        }
+    }
+
+    let _reset = FailpointReset;
+    set_legacy_expr_compiler_failpoint_for_tests(true);
+
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_contracts.clear();
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let span = Span::default();
+    let mut ctx = TestAssemblerContext::new();
+    ctx.addr = 0x2000;
+    ctx.value_symbols
+        .insert("arr".to_string(), AsmValue::List(vec![10, 20, 30]));
+
+    let scalar_expr = Expr::Binary {
+        op: BinaryOp::Add,
+        left: Box::new(Expr::Dollar(span)),
+        right: Box::new(Expr::Number("1".to_string(), span)),
+        span,
+    };
+    let scalar_value = evaluate_expression_for_assembler(&model, "m6502", None, &scalar_expr, &ctx)
+        .expect("covered scalar direct-stage eval should bypass legacy compiler failpoint");
+    assert_eq!(scalar_value, 0x2001);
+
+    let index_expr = Expr::Index {
+        base: Box::new(Expr::Identifier("arr".to_string(), span)),
+        index: Box::new(Expr::Number("1".to_string(), span)),
+        span,
+    };
+    let index_value = evaluate_expression_for_assembler(&model, "m6502", None, &index_expr, &ctx)
+        .expect("covered member/index direct-stage eval should bypass legacy compiler failpoint");
+    assert_eq!(index_value, 20);
+
+    let range_expr = Expr::Range {
+        start: Box::new(Expr::Number("1".to_string(), span)),
+        end: Box::new(Expr::Number("4".to_string(), span)),
+        step: None,
+        inclusive: false,
+        span,
+    };
+    let range_err = evaluate_expression_for_assembler(&model, "m6502", None, &range_expr, &ctx)
+        .expect_err(
+            "covered structural direct-stage boundary should bypass legacy compiler failpoint",
+        );
+    assert!(
+        range_err.contains("Range cannot be evaluated as scalar expression"),
+        "unexpected structural boundary diagnostic: {range_err}"
+    );
+
+    let unstable_expr = Expr::Binary {
+        op: BinaryOp::Add,
+        left: Box::new(Expr::Identifier("forward_label".to_string(), span)),
+        right: Box::new(Expr::Number("1".to_string(), span)),
+        span,
+    };
+    let unstable =
+        expression_has_unstable_symbols_for_assembler(&model, "m6502", None, &unstable_expr, &ctx)
+            .expect("direct unstable-symbol scan should bypass legacy compiler failpoint");
+    assert!(unstable);
+}
+
+#[test]
 fn exvm_operator_v2_contract_compiles_and_evaluates_end_to_end() {
     let registry = mos6502_family_registry();
 
     let mut chunks =
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
     let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
     contract.opcode_version = EXVM_OPCODE_VERSION_V2;
     chunks.expr_parser_contracts.push(contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
     let mut ctx = TestAssemblerContext::new();
@@ -3510,6 +4937,7 @@ fn exvm_operator_v2_contract_compiles_and_evaluates_end_to_end() {
         let program = model
             .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
             .unwrap_or_else(|err| panic!("EXVM v2 operator compile {source}: {}", err.message));
+        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
         let evaluation = model
             .evaluate_portable_expression_program_with_contract_for_assembler(
                 "m6502", None, &program, &ctx,
@@ -3529,9 +4957,13 @@ fn exvm_ternary_v2_contract_compiles_and_evaluates_end_to_end() {
     let mut chunks =
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
     let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
     contract.opcode_version = EXVM_OPCODE_VERSION_V2;
     chunks.expr_parser_contracts.push(contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
     let mut ctx = TestAssemblerContext::new();
@@ -3549,6 +4981,7 @@ fn exvm_ternary_v2_contract_compiles_and_evaluates_end_to_end() {
         let program = model
             .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
             .unwrap_or_else(|err| panic!("EXVM v2 ternary compile {source}: {}", err.message));
+        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
         let evaluation = model
             .evaluate_portable_expression_program_with_contract_for_assembler(
                 "m6502", None, &program, &ctx,
@@ -3611,6 +5044,285 @@ fn exvm_ternary_v2_contract_keeps_calls_and_placeholders_out_of_scope() {
         assert_eq!(
             err.message, expected_message,
             "EXVM v2 ternary out-of-scope diagnostic changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_range_list_v2_contract_parses_for_assembler() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    for (source, expected_shape) in EXVM_RANGE_LIST_CONTRACT_CORPUS {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let expr = model
+            .parse_expression_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "EXVM v2 range/list assembler parse {source}: {}",
+                    err.message
+                )
+            });
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "EXVM v2 range/list assembler shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_range_list_v2_contract_preserves_malformed_diagnostics() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let (list_tokens, list_end_span) = tokenize_core_expr_tokens("{1,2", 1);
+    let list_err = model
+        .parse_expression_for_assembler("m6502", None, list_tokens, list_end_span, None)
+        .expect_err("EXVM v2 list parser should reject missing close brace");
+    assert_eq!(list_err.message, "Missing '}' in list literal");
+
+    let (range_tokens, range_end_span) = tokenize_core_expr_tokens("1..", 1);
+    let range_err = model
+        .parse_expression_for_assembler("m6502", None, range_tokens, range_end_span, None)
+        .expect_err("EXVM v2 range parser should reject missing range end");
+    assert_eq!(range_err.message, "Unexpected end of expression");
+}
+
+#[test]
+fn exvm_range_list_v2_contract_compiles_and_enforces_scalar_boundary() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let boundary_cases = [
+        ("{1,2}", "List cannot be evaluated as scalar expression"),
+        ("1..4:2", "Range cannot be evaluated as scalar expression"),
+    ];
+
+    for (source, expected_message) in boundary_cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| panic!("EXVM v2 range/list compile {source}: {}", err.message));
+        let err = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502",
+                None,
+                &program,
+                &TestAssemblerContext::new(),
+            )
+            .expect_err("EXVM v2 range/list irreducible values should fail at scalar boundary");
+        assert!(
+            err.to_string().contains(expected_message),
+            "EXVM v2 range/list scalar compile rejection changed for {source}: {}",
+            err
+        );
+    }
+
+    let reduction_cases = [("{10,20,30}[1]", 20), ("(0..=6:3)[2]", 6)];
+
+    for (source, expected_value) in reduction_cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| panic!("EXVM v2 range/list compile {source}: {}", err.message));
+        let evaluation = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502",
+                None,
+                &program,
+                &TestAssemblerContext::new(),
+            )
+            .unwrap_or_else(|err| panic!("EXVM v2 range/list eval {source}: {err}"));
+        assert_eq!(evaluation.value, expected_value);
+    }
+}
+
+#[test]
+fn exvm_struct_access_v2_contract_parses_for_assembler() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    for (source, expected_shape) in EXVM_STRUCT_ACCESS_CONTRACT_CORPUS {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let expr = model
+            .parse_expression_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "EXVM v2 struct/access assembler parse {source}: {}",
+                    err.message
+                )
+            });
+        assert_eq!(
+            expression_contract_shape(&expr),
+            *expected_shape,
+            "EXVM v2 struct/access assembler shape changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_struct_access_v2_contract_preserves_malformed_diagnostics() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let cases = [
+        (
+            "Point{x 1}",
+            "Expected ':' after field name in struct literal",
+        ),
+        ("Point{x:1", "Missing '}' in struct literal"),
+        ("arr[2", "Missing ']' in index expression"),
+        ("arr[2].", "Expected member name after '.'"),
+    ];
+
+    for (source, expected_message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let err = model
+            .parse_expression_for_assembler("m6502", None, tokens, end_span, None)
+            .expect_err("EXVM v2 struct/access parser should preserve malformed diagnostics");
+        assert_eq!(
+            err.message, expected_message,
+            "EXVM v2 struct/access diagnostic changed for {source}"
+        );
+    }
+}
+
+#[test]
+fn exvm_struct_access_v2_contract_compiles_and_enforces_scalar_boundary() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    chunks.expr_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    chunks.expr_contracts.push(expr_contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let mut ctx = TestAssemblerContext::new();
+    ctx.value_symbols
+        .insert("Point".to_string(), point_struct_value());
+
+    let boundary_cases = [
+        (
+            "Point{x:1,y:2}",
+            "Struct instance cannot be evaluated as scalar expression",
+        ),
+        ("Point", "Struct cannot be evaluated as scalar expression"),
+    ];
+
+    for (source, expected_message) in boundary_cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!("EXVM v2 struct/access compile {source}: {}", err.message)
+            });
+        let err = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .expect_err("EXVM v2 struct/access irreducible value should fail at scalar boundary");
+        assert!(
+            err.to_string().contains(expected_message),
+            "EXVM v2 struct/access scalar compile rejection changed for {source}: {}",
+            err
+        );
+    }
+
+    let reduction_cases = [("Point{x:1,y:2}.x", 1), ("Point{x:1,y:2}.y", 2)];
+
+    for (source, expected_value) in reduction_cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let program = model
+            .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
+            .unwrap_or_else(|err| {
+                panic!("EXVM v2 struct/access compile {source}: {}", err.message)
+            });
+        let evaluation = model
+            .evaluate_portable_expression_program_with_contract_for_assembler(
+                "m6502", None, &program, &ctx,
+            )
+            .unwrap_or_else(|err| panic!("EXVM v2 struct/access eval {source}: {err}"));
+        assert_eq!(evaluation.value, expected_value);
+    }
+}
+
+#[test]
+fn exvm_struct_access_v2_contract_keeps_calls_and_placeholders_out_of_scope() {
+    let registry = mos6502_family_registry();
+
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    chunks.expr_parser_contracts.clear();
+    let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
+    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    chunks.expr_parser_contracts.push(contract);
+    let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
+
+    let cases = [
+        (
+            "items[?]",
+            "EXVM strict mode does not cover placeholder expressions",
+        ),
+        (
+            "item.value + .pick(1,2)",
+            "EXVM strict mode does not cover function/call expressions",
+        ),
+    ];
+
+    for (source, expected_message) in cases {
+        let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
+        let err = model
+            .parse_expression_for_assembler("m6502", None, tokens, end_span, None)
+            .expect_err("EXVM v2 struct/access parser should keep out-of-scope nodes explicit");
+        assert_eq!(
+            err.message, expected_message,
+            "EXVM v2 struct/access out-of-scope diagnostic changed for {source}"
         );
     }
 }
@@ -3709,7 +5421,10 @@ fn expr_parser_vm_certification_entries_require_parity_checklist_text() {
 
 #[test]
 fn execution_model_parser_certification_checklists_return_expr_and_instruction_tracks() {
-    let registry = parity_registry();
+    let mut registry = ModuleRegistry::new();
+    register_mos6502_family_stack(&mut registry);
+    register_motorola6800_family_stack(&mut registry);
+    register_motorola68000_family_stack(&mut registry);
     let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
     let checklists = model
         .resolve_parser_certification_checklists("m6502", None)
@@ -3733,6 +5448,18 @@ fn execution_model_parser_certification_checklists_return_expr_and_instruction_t
     assert_eq!(
         motorola.instruction_parse_encode_checklist,
         Some("phase6-motorola6800-rollout-criteria")
+    );
+
+    let motorola68000 = model
+        .resolve_parser_certification_checklists("m68020", None)
+        .expect("motorola68000 checklist resolution");
+    assert_eq!(
+        motorola68000.expression_parser_checklist,
+        Some("phase8-motorola68000-expr-parser-vm-authoritative")
+    );
+    assert_eq!(
+        motorola68000.instruction_parse_encode_checklist,
+        Some("phase6-motorola68000-runtime-staged-verification")
     );
 }
 
@@ -5535,6 +7262,156 @@ fn vm_runtime_mos6502_native6502_harness_evaluates_expression_via_active_abi() {
 }
 
 #[test]
+fn vm_runtime_mos6502_native6502_harness_evaluates_branch_offset_expression_via_active_abi() {
+    let registry = native6502_m6502_registry();
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("package bytes build");
+    let mut harness = Native6502Harness::new();
+    let mut control_block = Native6502ControlBlockV1::new_v1();
+
+    let init = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_INIT_V1,
+        Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, NATIVE_6502_STATUS_OK_V1);
+
+    let load = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        Native6502HarnessRequest::LoadPackage {
+            package_bytes: package_bytes.as_slice(),
+        },
+    );
+    assert_eq!(
+        load.status_code, NATIVE_6502_STATUS_OK_V1,
+        "{:?}",
+        load.output
+    );
+
+    let set_pipeline = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        Native6502HarnessRequest::SetPipeline {
+            cpu_id: "m6502",
+            dialect_override: None,
+        },
+    );
+    assert_eq!(set_pipeline.status_code, NATIVE_6502_STATUS_OK_V1);
+
+    let source_line = "    beq done - $ - 2";
+    let operand_text = "done - $ - 2";
+    let operand_start_col = source_line.find(operand_text).expect("operand text") as u16 + 1;
+    let operand_end_col = operand_start_col + operand_text.len() as u16;
+    let mut assembler_ctx = TestAssemblerContext::new();
+    assembler_ctx.addr = 0x0800;
+    assembler_ctx.values.insert("done".to_string(), 0x0805);
+    assembler_ctx.finalized.insert("done".to_string(), true);
+    let eval = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1,
+        Native6502HarnessRequest::EvaluateExpression {
+            source_line,
+            line_num: 1,
+            operand_start_col,
+            operand_end_col,
+            mnemonic: Some("beq"),
+            assembler_ctx: &assembler_ctx,
+        },
+    );
+
+    assert_eq!(
+        eval.status_code, NATIVE_6502_STATUS_OK_V1,
+        "{:?}",
+        eval.output
+    );
+    match eval.output {
+        Native6502HarnessOutput::ExpressionEvaluation(
+            NativePrvmHostExpressionEvaluation::Concrete { value },
+        ) => assert_eq!(value, 3),
+        other => panic!("unexpected branch-offset expression evaluation output: {other:?}"),
+    }
+}
+
+#[test]
+fn vm_runtime_mos6502_native6502_harness_reports_expression_parse_failures_via_active_abi() {
+    let registry = native6502_m6502_registry();
+    let package_bytes =
+        build_hierarchy_package_from_registry(&registry).expect("package bytes build");
+    let mut harness = Native6502Harness::new();
+    let mut control_block = Native6502ControlBlockV1::new_v1();
+
+    let init = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_INIT_V1,
+        Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, NATIVE_6502_STATUS_OK_V1);
+
+    let load = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        Native6502HarnessRequest::LoadPackage {
+            package_bytes: package_bytes.as_slice(),
+        },
+    );
+    assert_eq!(
+        load.status_code, NATIVE_6502_STATUS_OK_V1,
+        "{:?}",
+        load.output
+    );
+
+    let set_pipeline = harness.invoke_v1(
+        &mut control_block,
+        NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        Native6502HarnessRequest::SetPipeline {
+            cpu_id: "m6502",
+            dialect_override: None,
+        },
+    );
+    assert_eq!(set_pipeline.status_code, NATIVE_6502_STATUS_OK_V1);
+
+    let assembler_ctx = TestAssemblerContext::new();
+    for (source_line, operand_text, mnemonic) in [
+        ("    lda [$20,X]", "[$20,X]", Some("lda")),
+        ("    lda (A0,D0)", "(A0,D0)", Some("lda")),
+    ] {
+        let operand_start_col = source_line.find(operand_text).expect("operand text") as u16 + 1;
+        let operand_end_col = operand_start_col + operand_text.len() as u16;
+        let eval = harness.invoke_v1(
+            &mut control_block,
+            NATIVE_6502_ENTRYPOINT_EVALUATE_EXPRESSION_V1,
+            Native6502HarnessRequest::EvaluateExpression {
+                source_line,
+                line_num: 1,
+                operand_start_col,
+                operand_end_col,
+                mnemonic,
+                assembler_ctx: &assembler_ctx,
+            },
+        );
+
+        assert_eq!(
+            eval.status_code, NATIVE_6502_STATUS_RUNTIME_ERROR_V1,
+            "unexpected status for {source_line}: {:?}",
+            eval.output
+        );
+        match eval.output {
+            Native6502HarnessOutput::ErrorMessage(message) => {
+                assert!(
+                    message.contains("Unexpected token in expression")
+                        || message.contains(
+                            "tuple expression is not supported by portable expression VM"
+                        ),
+                    "unexpected parse failure for {source_line}: {message}"
+                );
+            }
+            other => panic!("unexpected parse-failure output for {source_line}: {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn vm_runtime_mos6502_selector_native6502_harness_selects_candidates_via_active_abi() {
     let registry = native6502_m6502_registry();
     let package_bytes =
@@ -5576,11 +7453,32 @@ fn vm_runtime_mos6502_selector_native6502_harness_selects_candidates_via_active_
         ("    lda #$42", "lda", "#$42", "immediate", vec![0xA9, 0x42]),
         ("    sta $20", "sta", "$20", "zeropage", vec![0x85, 0x20]),
         (
+            "    lda $20,x",
+            "lda",
+            "$20,x",
+            "zeropagex",
+            vec![0xB5, 0x20],
+        ),
+        (
             "    sta $0200",
             "sta",
             "$0200",
             "absolute",
             vec![0x8D, 0x00, 0x02],
+        ),
+        (
+            "    lda $0200,x",
+            "lda",
+            "$0200,x",
+            "absolutex",
+            vec![0xBD, 0x00, 0x02],
+        ),
+        (
+            "    lda $0200,y",
+            "lda",
+            "$0200,y",
+            "absolutey",
+            vec![0xB9, 0x00, 0x02],
         ),
         (
             "    jmp $0200",
@@ -5681,24 +7579,46 @@ fn vm_runtime_mos6502_native6502_harness_encodes_selected_instructions_into_sess
     assert_eq!(set_pipeline.status_code, NATIVE_6502_STATUS_OK_V1);
 
     let mut assembler_ctx = TestAssemblerContext::new();
-    assembler_ctx.values.insert("done".to_string(), 0x0805);
+    assembler_ctx.values.insert("done".to_string(), 0x080F);
     assembler_ctx.finalized.insert("done".to_string(), true);
 
     for (source_line, mnemonic, operand_text, address, expected_bytes) in [
         ("start:  lda #$42", "lda", "#$42", 0x0800, vec![0xA9, 0x42]),
+        ("        sta $20", "sta", "$20", 0x0802, vec![0x85, 0x20]),
+        (
+            "        lda $20,x",
+            "lda",
+            "$20,x",
+            0x0804,
+            vec![0xB5, 0x20],
+        ),
         (
             "        sta $0200",
             "sta",
             "$0200",
-            0x0802,
+            0x0806,
             vec![0x8D, 0x00, 0x02],
+        ),
+        (
+            "        lda $0200,x",
+            "lda",
+            "$0200,x",
+            0x0809,
+            vec![0xBD, 0x00, 0x02],
+        ),
+        (
+            "        lda $0200,y",
+            "lda",
+            "$0200,y",
+            0x080C,
+            vec![0xB9, 0x00, 0x02],
         ),
         (
             "done:   jmp done",
             "jmp",
             "done",
-            0x0805,
-            vec![0x4C, 0x05, 0x08],
+            0x080F,
+            vec![0x4C, 0x0F, 0x08],
         ),
     ] {
         let start = source_line.find(operand_text).expect("operand text") as u16 + 1;
@@ -5729,7 +7649,10 @@ fn vm_runtime_mos6502_native6502_harness_encodes_selected_instructions_into_sess
     assert_eq!(harness.session_image_origin(), Some(0x0800));
     assert_eq!(
         harness.session_image_bytes(),
-        &[0xA9, 0x42, 0x8D, 0x00, 0x02, 0x4C, 0x05, 0x08]
+        &[
+            0xA9, 0x42, 0x85, 0x20, 0xB5, 0x20, 0x8D, 0x00, 0x02, 0xBD, 0x00, 0x02, 0xB9, 0x00,
+            0x02, 0x4C, 0x0F, 0x08,
+        ]
     );
 }
 

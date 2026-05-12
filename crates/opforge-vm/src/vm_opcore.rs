@@ -5,13 +5,21 @@
 //! This groups VM-side functionality that primarily supports the language/core
 //! processor domain rather than assembler instruction selection or encoding.
 
-use opcore::expr_vm::compile_core_expr_to_portable_program;
 use opcore::expr_vm::{
-    eval_portable_expr_program, expr_program_has_unstable_symbols, PortableExprBudgets,
-    PortableExprEvalContext, PortableExprEvaluation, PortableExprProgram, PortableExprRef,
+    compile_core_expr_to_portable_program_with_opcode_version,
+    compile_portable_expr_direct_leaf_to_program_with_opcode_version,
+    compile_portable_expr_direct_member_index_to_program_with_opcode_version,
+    compile_portable_expr_direct_scalar_to_program_with_opcode_version,
+    compile_portable_expr_direct_structural_to_program_with_opcode_version,
+    eval_portable_expr_program, expr_is_supported_by_direct_member_index_lowering,
+    expr_is_supported_by_direct_scalar_lowering, expr_is_supported_by_direct_structural_lowering,
+    expr_program_has_unstable_symbols, PortableExprBudgets, PortableExprDirectLeaf,
+    PortableExprEvalContext, PortableExprEvaluation, PortableExprProgram, PortableExprRangeValueV2,
+    PortableExprRef, PortableExprStructFieldValueV2, PortableExprStructLiteralValueV2,
+    PortableExprStructTypeFieldValueV2, PortableExprStructTypeValueV2, PortableExprValueV2,
 };
 use opcore::parser::{Expr, ParseError, Parser};
-use opcore::tokenizer::{Span, Token};
+use opcore::tokenizer::{Span, Token, TokenKind};
 use registry::family::AssemblerContext;
 use registry::syntax::RegisterChecker;
 use types::processing::{
@@ -19,7 +27,7 @@ use types::processing::{
 };
 
 #[cfg(test)]
-use crate::execution_model::CORE_EXPR_PARSER_FAILPOINT;
+use crate::execution_model::{CORE_EXPR_PARSER_FAILPOINT, RUNTIME_EXPR_COMPATIBILITY_FAILPOINT};
 pub use crate::expr_vm_compat;
 use crate::rollout::portable_expr_parser_runtime_enabled_for_family;
 use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
@@ -29,6 +37,7 @@ pub use crate::vm_core::HierarchyExecutionModel;
 use crate::vm_opasm_parse::VmExprParseContext;
 use std::collections::HashMap;
 use std::sync::LazyLock;
+use types::asm_value::AsmValue;
 
 const EXVM_DEFAULT_PROGRAM_V1: &[u8] = &[
     package::ExvmOpcode::ParseExpression as u8,
@@ -67,6 +76,10 @@ impl ExvmV2DefaultProgramBuilder {
 
     fn token_kind(&mut self, kind: package::ExvmTokenKindV2) {
         self.bytes.push(kind as u8);
+    }
+
+    fn byte(&mut self, value: u8) {
+        self.bytes.push(value);
     }
 
     fn push_label_target(&mut self, label: &'static str) {
@@ -132,6 +145,19 @@ impl ExvmV2DefaultProgramBuilder {
 
     fn build_ternary(&mut self) {
         self.opcode(package::ExvmOpcodeV2::BuildTernary);
+    }
+
+    fn build_range(&mut self, inclusive: bool, has_step: bool) {
+        self.opcode(package::ExvmOpcodeV2::BuildRange);
+        self.byte(u8::from(inclusive) | (u8::from(has_step) << 1));
+    }
+
+    fn parse_struct_literal_if_present(&mut self) {
+        self.opcode(package::ExvmOpcodeV2::ParseStructLiteralIfPresent);
+    }
+
+    fn parse_postfix_chain(&mut self) {
+        self.opcode(package::ExvmOpcodeV2::ParsePostfixChain);
     }
 
     fn finish(mut self) -> Vec<u8> {
@@ -216,15 +242,46 @@ fn build_default_exvm_program_v2() -> Vec<u8> {
     builder.jump("bit_xor_loop");
 
     builder.mark("bit_and");
-    builder.call("compare");
+    builder.call("range");
     builder.mark("bit_and_loop");
     builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitAnd, "bit_and_build");
     builder.ret();
     builder.mark("bit_and_build");
     builder.consume_operator(package::ExvmOperatorKindV2::BitAnd);
-    builder.call("compare");
+    builder.call("range");
     builder.build_binary(package::ExvmOperatorKindV2::BitAnd);
     builder.jump("bit_and_loop");
+
+    builder.mark("range");
+    builder.call("compare");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Range, "range_exclusive");
+    builder.peek_operator_jump_if_true(
+        package::ExvmOperatorKindV2::RangeInclusive,
+        "range_inclusive",
+    );
+    builder.ret();
+    builder.mark("range_exclusive");
+    builder.consume_operator(package::ExvmOperatorKindV2::Range);
+    builder.call("compare");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Colon, "range_exclusive_step");
+    builder.build_range(false, false);
+    builder.ret();
+    builder.mark("range_exclusive_step");
+    builder.consume_kind(package::ExvmTokenKindV2::Colon);
+    builder.call("compare");
+    builder.build_range(false, true);
+    builder.ret();
+    builder.mark("range_inclusive");
+    builder.consume_operator(package::ExvmOperatorKindV2::RangeInclusive);
+    builder.call("compare");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Colon, "range_inclusive_step");
+    builder.build_range(true, false);
+    builder.ret();
+    builder.mark("range_inclusive_step");
+    builder.consume_kind(package::ExvmTokenKindV2::Colon);
+    builder.call("compare");
+    builder.build_range(true, true);
+    builder.ret();
 
     builder.mark("compare");
     builder.call("shift");
@@ -383,23 +440,33 @@ fn build_default_exvm_program_v2() -> Vec<u8> {
     builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Identifier, "primary_identifier");
     builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Dollar, "primary_dollar");
     builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::OpenParen, "primary_grouping");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::OpenBrace, "primary_list");
     builder.opcode(package::ExvmOpcodeV2::EmitDiag);
     builder.mark("primary_number");
     builder.opcode(package::ExvmOpcodeV2::LoadTokenText);
     builder.opcode(package::ExvmOpcodeV2::BuildNumber);
     builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.parse_postfix_chain();
     builder.ret();
     builder.mark("primary_identifier");
     builder.opcode(package::ExvmOpcodeV2::LoadTokenText);
     builder.opcode(package::ExvmOpcodeV2::BuildIdentifier);
     builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.parse_struct_literal_if_present();
+    builder.parse_postfix_chain();
     builder.ret();
     builder.mark("primary_dollar");
     builder.opcode(package::ExvmOpcodeV2::BuildCurrentAddress);
     builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.parse_postfix_chain();
     builder.ret();
     builder.mark("primary_grouping");
     builder.opcode(package::ExvmOpcodeV2::ParseGrouping);
+    builder.parse_postfix_chain();
+    builder.ret();
+    builder.mark("primary_list");
+    builder.opcode(package::ExvmOpcodeV2::ParseList);
+    builder.parse_postfix_chain();
     builder.ret();
 
     builder.finish()
@@ -428,14 +495,81 @@ struct RuntimePortableExprEvalContext<'a> {
     assembler_ctx: &'a dyn AssemblerContext,
 }
 
+fn asm_value_to_portable_expr_value(value: AsmValue) -> PortableExprValueV2 {
+    match value {
+        AsmValue::Scalar(value) => PortableExprValueV2::Int(value),
+        AsmValue::Range { start, end, step } => {
+            PortableExprValueV2::Range(PortableExprRangeValueV2 {
+                start: Box::new(PortableExprValueV2::Int(start)),
+                end: Box::new(PortableExprValueV2::Int(end)),
+                step: Some(Box::new(PortableExprValueV2::Int(step))),
+                inclusive: false,
+            })
+        }
+        AsmValue::List(items) => {
+            PortableExprValueV2::List(items.into_iter().map(PortableExprValueV2::Int).collect())
+        }
+        AsmValue::Struct(def) => PortableExprValueV2::StructType(PortableExprStructTypeValueV2 {
+            type_name: def.name,
+            fields: def
+                .fields
+                .into_iter()
+                .map(|field| PortableExprStructTypeFieldValueV2 {
+                    field_name: field.name,
+                    offset: field.offset,
+                    size: field.size,
+                })
+                .collect(),
+            size: def.size,
+        }),
+        AsmValue::StructInstance(instance) => {
+            let mut fields: Vec<_> = instance.fields.into_iter().collect();
+            fields.sort_by(|left, right| {
+                left.0
+                    .to_ascii_lowercase()
+                    .cmp(&right.0.to_ascii_lowercase())
+            });
+            PortableExprValueV2::StructLiteral(PortableExprStructLiteralValueV2 {
+                type_name: instance.type_name,
+                fields: fields
+                    .into_iter()
+                    .map(|(field_name, value)| PortableExprStructFieldValueV2 {
+                        field_name,
+                        value: PortableExprValueV2::Int(value),
+                    })
+                    .collect(),
+            })
+        }
+    }
+}
+
 impl PortableExprEvalContext for RuntimePortableExprEvalContext<'_> {
     fn lookup_symbol(&self, name: &str) -> Option<i64> {
+        if let Some(value) = self.assembler_ctx.value_symbol(name) {
+            return match value {
+                AsmValue::Scalar(value) => Some(value),
+                _ => None,
+            };
+        }
         if !self.assembler_ctx.has_symbol(name) {
             return None;
         }
         self.assembler_ctx
             .eval_expr(&Expr::Identifier(name.to_string(), Span::default()))
             .ok()
+    }
+
+    fn lookup_symbol_value(&self, name: &str) -> Option<PortableExprValueV2> {
+        if let Some(value) = self.assembler_ctx.value_symbol(name) {
+            return Some(asm_value_to_portable_expr_value(value));
+        }
+        if !self.assembler_ctx.has_symbol(name) {
+            return None;
+        }
+        self.assembler_ctx
+            .eval_expr(&Expr::Identifier(name.to_string(), Span::default()))
+            .ok()
+            .map(PortableExprValueV2::Int)
     }
 
     fn current_address(&self) -> Option<i64> {
@@ -499,6 +633,69 @@ pub(crate) fn parse_expression_tokens_with_opcode_version(
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn compile_expression_tokens_to_portable_program_with_opcode_versions(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    expr_parser_opcode_version: u16,
+    expr_opcode_version: u16,
+) -> Result<PortableExprProgram, ParseError> {
+    let budgets = ExvmExecutionBudgets::for_tokens(tokens.len());
+    let program = match expr_parser_opcode_version {
+        package::EXVM_OPCODE_VERSION_V1 => EXVM_DEFAULT_PROGRAM_V1,
+        package::EXVM_OPCODE_VERSION_V2 => EXVM_DEFAULT_PROGRAM_V2.as_slice(),
+        _ => {
+            return Err(ParseError {
+                message: format!(
+                    "unsupported EXVM opcode version {}",
+                    expr_parser_opcode_version
+                ),
+                span: end_span,
+            })
+        }
+    };
+
+    match expr_parser_opcode_version {
+        package::EXVM_OPCODE_VERSION_V1 => {
+            let expr = run_exvm_expression_parser_program_with_opcode_version(
+                tokens,
+                end_span,
+                end_token_text,
+                program,
+                budgets,
+                expr_parser_opcode_version,
+            )?;
+            HierarchyExecutionModel::compile_parsed_expression_for_assembler(
+                &expr,
+                expr_opcode_version,
+                end_span,
+            )
+        }
+        package::EXVM_OPCODE_VERSION_V2 => {
+            let strict_tokens = tokens.clone();
+            crate::exvm_v2_runtime::run_exvm_expression_parser_program_to_portable_program(
+                tokens,
+                end_span,
+                end_token_text,
+                program,
+                budgets,
+                expr_opcode_version,
+            )
+            .map_err(|err| {
+                if let Some(parse_error) =
+                    strict_out_of_scope_value_node_error(&strict_tokens, end_span)
+                {
+                    parse_error
+                } else {
+                    err
+                }
+            })
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn run_exvm_expression_parser_program(
     tokens: Vec<Token>,
     end_span: Span,
@@ -534,7 +731,6 @@ pub(crate) fn run_exvm_expression_parser_program_with_opcode_version(
         ),
         package::EXVM_OPCODE_VERSION_V2 => {
             let strict_tokens = tokens.clone();
-            let strict_end_token_text = end_token_text.clone();
             crate::exvm_v2_runtime::run_exvm_expression_parser_program(
                 tokens,
                 end_span,
@@ -543,11 +739,9 @@ pub(crate) fn run_exvm_expression_parser_program_with_opcode_version(
                 budgets,
             )
             .map_err(|err| {
-                if let Some(parse_error) = strict_out_of_scope_value_node_error(
-                    strict_tokens,
-                    end_span,
-                    strict_end_token_text,
-                ) {
+                if let Some(parse_error) =
+                    strict_out_of_scope_value_node_error(&strict_tokens, end_span)
+                {
                     parse_error
                 } else {
                     err
@@ -645,11 +839,9 @@ fn run_exvm_v1_expression_parser_program(
                             }
                         }
 
-                        if let Some(parse_error) = strict_out_of_scope_value_node_error(
-                            tokens.clone(),
-                            end_span,
-                            end_token_text.clone(),
-                        ) {
+                        if let Some(parse_error) =
+                            strict_out_of_scope_value_node_error(&tokens, end_span)
+                        {
                             Err(parse_error)
                         } else {
                             Err(err)
@@ -703,25 +895,279 @@ fn parse_out_of_scope_compatibility_expr(
     end_span: Span,
     end_token_text: Option<String>,
 ) -> Option<Expr> {
-    let expr =
-        crate::runtime_expr_parser::RuntimeExpressionParser::new(tokens, end_span, end_token_text)
-            .parse_expr_from_tokens()
-            .ok()?;
+    let expr = parse_runtime_expression_compatibility(tokens, end_span, end_token_text).ok()?;
     find_strict_out_of_scope_value_node(&expr)?;
     Some(expr)
 }
 
-fn strict_out_of_scope_value_node_error(
+pub(crate) fn parse_runtime_expression_compatibility(
     tokens: Vec<Token>,
     end_span: Span,
     end_token_text: Option<String>,
-) -> Option<ParseError> {
-    let expr = parse_out_of_scope_compatibility_expr(tokens, end_span, end_token_text)?;
-    let node = find_strict_out_of_scope_value_node(&expr)?;
+) -> Result<Expr, ParseError> {
+    #[cfg(test)]
+    if RUNTIME_EXPR_COMPATIBILITY_FAILPOINT.with(|flag| flag.get()) {
+        return Err(ParseError {
+            message: "runtime expression compatibility failpoint".to_string(),
+            span: end_span,
+        });
+    }
+
+    crate::runtime_expr_parser::RuntimeExpressionParser::new(tokens, end_span, end_token_text)
+        .parse_expr_from_tokens()
+}
+
+fn parse_expression_with_core_parser_compatibility_for_assembler(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+) -> Result<Expr, ParseError> {
+    #[cfg(test)]
+    if CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.get()) {
+        return Err(ParseError {
+            message: "core expression parser failpoint".to_string(),
+            span: end_span,
+        });
+    }
+
+    Parser::parse_expr_from_tokens(tokens, end_span, end_token_text)
+}
+
+fn direct_leaf_from_tokens(tokens: &[Token]) -> Option<PortableExprDirectLeaf> {
+    let [token] = tokens else {
+        return None;
+    };
+
+    match &token.kind {
+        TokenKind::Number(text) => Some(PortableExprDirectLeaf::NumberText(text.text.clone())),
+        TokenKind::Identifier(name) | TokenKind::Register(name) => {
+            Some(PortableExprDirectLeaf::SymbolName(name.clone()))
+        }
+        TokenKind::Dollar => Some(PortableExprDirectLeaf::CurrentAddress),
+        TokenKind::String(bytes) => {
+            Some(PortableExprDirectLeaf::StringLiteral(bytes.bytes.clone()))
+        }
+        _ => None,
+    }
+}
+
+fn tokens_require_ast_portable_program_fallback(tokens: &[Token]) -> bool {
+    tokens
+        .iter()
+        .any(|token| matches!(token.kind, TokenKind::String(_) | TokenKind::Register(_)))
+}
+
+fn try_compile_direct_leaf_expression_program_for_assembler(
+    tokens: &[Token],
+    expr_opcode_version: u16,
+    expr_parser_opcode_version: u16,
+    end_span: Span,
+) -> Result<Option<PortableExprProgram>, ParseError> {
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION_V2 {
+        return Ok(None);
+    }
+
+    let Some(leaf) = direct_leaf_from_tokens(tokens) else {
+        return Ok(None);
+    };
+
+    compile_portable_expr_direct_leaf_to_program_with_opcode_version(&leaf, expr_opcode_version)
+        .map(Some)
+        .map_err(|err| ParseError {
+            message: err.to_string(),
+            span: err.span.unwrap_or(end_span),
+        })
+}
+
+fn try_compile_direct_scalar_expression_program_for_assembler(
+    expr: &Expr,
+    expr_opcode_version: u16,
+    expr_parser_opcode_version: u16,
+    end_span: Span,
+) -> Result<Option<PortableExprProgram>, ParseError> {
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION_V2 {
+        return Ok(None);
+    }
+
+    if !expr_is_supported_by_direct_scalar_lowering(expr) {
+        return Ok(None);
+    }
+
+    compile_portable_expr_direct_scalar_to_program_with_opcode_version(expr, expr_opcode_version)
+        .map(Some)
+        .map_err(|err| ParseError {
+            message: err.to_string(),
+            span: err.span.unwrap_or(end_span),
+        })
+}
+
+fn try_compile_direct_structural_expression_program_for_assembler(
+    expr: &Expr,
+    expr_opcode_version: u16,
+    expr_parser_opcode_version: u16,
+    end_span: Span,
+) -> Result<Option<PortableExprProgram>, ParseError> {
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION_V2 {
+        return Ok(None);
+    }
+
+    if !expr_is_supported_by_direct_structural_lowering(expr) {
+        return Ok(None);
+    }
+
+    compile_portable_expr_direct_structural_to_program_with_opcode_version(
+        expr,
+        expr_opcode_version,
+    )
+    .map(Some)
+    .map_err(|err| ParseError {
+        message: err.to_string(),
+        span: err.span.unwrap_or(end_span),
+    })
+}
+
+fn try_compile_direct_member_index_expression_program_for_assembler(
+    expr: &Expr,
+    expr_opcode_version: u16,
+    expr_parser_opcode_version: u16,
+    end_span: Span,
+) -> Result<Option<PortableExprProgram>, ParseError> {
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION_V2 {
+        return Ok(None);
+    }
+
+    if !expr_is_supported_by_direct_member_index_lowering(expr) {
+        return Ok(None);
+    }
+
+    compile_portable_expr_direct_member_index_to_program_with_opcode_version(
+        expr,
+        expr_opcode_version,
+    )
+    .map(Some)
+    .map_err(|err| ParseError {
+        message: err.to_string(),
+        span: err.span.unwrap_or(end_span),
+    })
+}
+
+fn compile_expression_program_for_direct_stage(
+    expr: &Expr,
+    expr_opcode_version: u16,
+) -> Result<PortableExprProgram, String> {
+    if expr_opcode_version == package::EXPR_VM_OPCODE_VERSION_V2 {
+        if expr_is_supported_by_direct_scalar_lowering(expr) {
+            return compile_portable_expr_direct_scalar_to_program_with_opcode_version(
+                expr,
+                expr_opcode_version,
+            )
+            .map_err(|err| err.to_string());
+        }
+
+        if expr_is_supported_by_direct_structural_lowering(expr) {
+            return compile_portable_expr_direct_structural_to_program_with_opcode_version(
+                expr,
+                expr_opcode_version,
+            )
+            .map_err(|err| err.to_string());
+        }
+
+        if expr_is_supported_by_direct_member_index_lowering(expr) {
+            return compile_portable_expr_direct_member_index_to_program_with_opcode_version(
+                expr,
+                expr_opcode_version,
+            )
+            .map_err(|err| err.to_string());
+        }
+    }
+
+    compile_core_expr_to_portable_program_with_opcode_version(expr, expr_opcode_version)
+        .map_err(|err| err.to_string())
+}
+
+fn strict_out_of_scope_value_node_error(tokens: &[Token], end_span: Span) -> Option<ParseError> {
+    let node = find_strict_out_of_scope_value_node_in_tokens(tokens, end_span)?;
     Some(ParseError {
         message: node.message().to_string(),
         span: node.span(),
     })
+}
+
+fn find_strict_out_of_scope_value_node_in_tokens(
+    tokens: &[Token],
+    end_span: Span,
+) -> Option<StrictOutOfScopeValueNode> {
+    let mut expecting_value = true;
+
+    for (index, token) in tokens.iter().enumerate() {
+        match &token.kind {
+            TokenKind::Question if expecting_value => {
+                return Some(StrictOutOfScopeValueNode::Placeholder(token.span));
+            }
+            TokenKind::Question => expecting_value = true,
+            TokenKind::Dot if expecting_value => {
+                let next_is_name = matches!(
+                    tokens.get(index + 1).map(|next| &next.kind),
+                    Some(TokenKind::Identifier(_) | TokenKind::Register(_))
+                );
+                let next_is_open_paren = matches!(
+                    tokens.get(index + 2).map(|next| &next.kind),
+                    Some(TokenKind::OpenParen)
+                );
+                if next_is_name && next_is_open_paren {
+                    return Some(StrictOutOfScopeValueNode::Call(
+                        strict_out_of_scope_call_span(tokens, index, end_span),
+                    ));
+                }
+                expecting_value = true;
+            }
+            TokenKind::Dot => expecting_value = false,
+            TokenKind::Number(_)
+            | TokenKind::Identifier(_)
+            | TokenKind::Register(_)
+            | TokenKind::Dollar
+            | TokenKind::String(_)
+            | TokenKind::CloseParen
+            | TokenKind::CloseBracket
+            | TokenKind::CloseBrace => expecting_value = false,
+            TokenKind::OpenParen
+            | TokenKind::OpenBracket
+            | TokenKind::OpenBrace
+            | TokenKind::Comma
+            | TokenKind::Colon
+            | TokenKind::Hash
+            | TokenKind::Operator(_) => expecting_value = true,
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn strict_out_of_scope_call_span(tokens: &[Token], call_start: usize, end_span: Span) -> Span {
+    let dot_span = tokens[call_start].span;
+    let mut paren_depth = 0usize;
+
+    for token in tokens.iter().skip(call_start + 2) {
+        match token.kind {
+            TokenKind::OpenParen => paren_depth += 1,
+            TokenKind::CloseParen if paren_depth <= 1 => {
+                return Span {
+                    line: dot_span.line,
+                    col_start: dot_span.col_start,
+                    col_end: token.span.col_end,
+                };
+            }
+            TokenKind::CloseParen => paren_depth -= 1,
+            _ => {}
+        }
+    }
+
+    Span {
+        line: dot_span.line,
+        col_start: dot_span.col_start,
+        col_end: end_span.col_end,
+    }
 }
 
 fn find_strict_out_of_scope_value_node(expr: &Expr) -> Option<StrictOutOfScopeValueNode> {
@@ -777,7 +1223,21 @@ pub fn evaluate_expression_for_assembler(
     expr: &Expr,
     ctx: &dyn AssemblerContext,
 ) -> Result<i64, String> {
-    let program = compile_core_expr_to_portable_program(expr).map_err(|err| err.to_string())?;
+    let opcode_version = model
+        .resolve_expr_contract(cpu_id, dialect_override)
+        .map_err(|err| err.to_string())?
+        .as_ref()
+        .map(|entry| entry.opcode_version)
+        .unwrap_or(package::EXPR_VM_OPCODE_VERSION_V1);
+    if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1
+        && opcode_version != package::EXPR_VM_OPCODE_VERSION_V2
+    {
+        return Err(format!(
+            "unsupported EXPR opcode version {}",
+            opcode_version
+        ));
+    }
+    let program = compile_expression_program_for_direct_stage(expr, opcode_version)?;
     model
         .evaluate_portable_expression_program_with_contract_for_assembler(
             cpu_id,
@@ -798,7 +1258,21 @@ pub fn expression_has_unstable_symbols_for_assembler(
     expr: &Expr,
     ctx: &dyn AssemblerContext,
 ) -> Result<bool, String> {
-    let program = compile_core_expr_to_portable_program(expr).map_err(|err| err.to_string())?;
+    let opcode_version = model
+        .resolve_expr_contract(cpu_id, dialect_override)
+        .map_err(|err| err.to_string())?
+        .as_ref()
+        .map(|entry| entry.opcode_version)
+        .unwrap_or(package::EXPR_VM_OPCODE_VERSION_V1);
+    if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1
+        && opcode_version != package::EXPR_VM_OPCODE_VERSION_V2
+    {
+        return Err(format!(
+            "unsupported EXPR opcode version {}",
+            opcode_version
+        ));
+    }
+    let program = compile_expression_program_for_direct_stage(expr, opcode_version)?;
     model
         .portable_expression_has_unstable_symbols_with_contract_for_assembler(
             cpu_id,
@@ -996,7 +1470,18 @@ pub(crate) fn parse_expr_with_authoritative_exvm_contract(
     end_span: Span,
     end_token_text: Option<String>,
 ) -> Result<Expr, ParseError> {
-    if expr_parse_ctx.expr_handler.is_some() {
+    let use_vm_parser = expr_parse_ctx
+        .model
+        .resolve_expr_parser_vm_rollout_for_assembler(
+            expr_parse_ctx.cpu_id,
+            expr_parse_ctx.dialect_override,
+            expr_parse_ctx.expr_parser_opt_in_families,
+            expr_parse_ctx.expr_parser_force_host_families,
+            false,
+            end_span,
+        )?;
+
+    if expr_parse_ctx.expr_handler.is_some() || !use_vm_parser {
         return parse_expr_with_vm_contract(expr_parse_ctx, tokens, end_span, end_token_text);
     }
 
@@ -1023,6 +1508,8 @@ pub(crate) fn parse_expr_with_authoritative_exvm_contract(
         .parse_expression_with_mode_for_assembler(
             expr_parse_ctx.cpu_id,
             expr_parse_ctx.dialect_override,
+            expr_parse_ctx.expr_parser_opt_in_families,
+            expr_parse_ctx.expr_parser_force_host_families,
             owned_tokens,
             end_span,
             end_token_text,
@@ -1085,9 +1572,33 @@ impl HierarchyExecutionModel {
         end_span: Span,
         end_token_text: Option<String>,
     ) -> Result<Expr, ParseError> {
+        self.parse_expression_for_assembler_with_rollout_overrides(
+            cpu_id,
+            dialect_override,
+            &[],
+            &[],
+            tokens,
+            end_span,
+            end_token_text,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn parse_expression_for_assembler_with_rollout_overrides(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        expr_parser_opt_in_families: &[String],
+        expr_parser_force_host_families: &[String],
+        tokens: Vec<Token>,
+        end_span: Span,
+        end_token_text: Option<String>,
+    ) -> Result<Expr, ParseError> {
         let use_vm_parser = self.resolve_expr_parser_vm_rollout_for_assembler(
             cpu_id,
             dialect_override,
+            expr_parser_opt_in_families,
+            expr_parser_force_host_families,
             false,
             end_span,
         )?;
@@ -1105,6 +1616,8 @@ impl HierarchyExecutionModel {
         self.parse_expression_with_mode_for_assembler(
             cpu_id,
             dialect_override,
+            expr_parser_opt_in_families,
+            expr_parser_force_host_families,
             tokens,
             end_span,
             end_token_text,
@@ -1112,10 +1625,13 @@ impl HierarchyExecutionModel {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn parse_expression_with_mode_for_assembler(
         &self,
         cpu_id: &str,
         dialect_override: Option<&str>,
+        expr_parser_opt_in_families: &[String],
+        expr_parser_force_host_families: &[String],
         tokens: Vec<Token>,
         end_span: Span,
         end_token_text: Option<String>,
@@ -1136,21 +1652,21 @@ impl HierarchyExecutionModel {
             );
         }
 
-        #[cfg(test)]
-        if CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.get()) {
-            return Err(ParseError {
-                message: "core expression parser failpoint".to_string(),
-                span: end_span,
-            });
-        }
+        let _ = (expr_parser_opt_in_families, expr_parser_force_host_families);
 
-        Parser::parse_expr_from_tokens(tokens, end_span, end_token_text)
+        parse_expression_with_core_parser_compatibility_for_assembler(
+            tokens,
+            end_span,
+            end_token_text,
+        )
     }
 
     fn resolve_expr_parser_vm_rollout_for_assembler(
         &self,
         cpu_id: &str,
         dialect_override: Option<&str>,
+        expr_parser_opt_in_families: &[String],
+        expr_parser_force_host_families: &[String],
         force_vm_parser: bool,
         end_span: Span,
     ) -> Result<bool, ParseError> {
@@ -1167,19 +1683,49 @@ impl HierarchyExecutionModel {
 
         Ok(portable_expr_parser_runtime_enabled_for_family(
             resolved.family_id.as_str(),
-            &[],
-            &[],
+            expr_parser_opt_in_families,
+            expr_parser_force_host_families,
         ))
     }
 
     fn compile_parsed_expression_for_assembler(
         expr: &Expr,
+        opcode_version: u16,
         end_span: Span,
     ) -> Result<PortableExprProgram, ParseError> {
-        compile_core_expr_to_portable_program(expr).map_err(|err| ParseError {
-            message: err.to_string(),
-            span: err.span.unwrap_or(end_span),
-        })
+        compile_core_expr_to_portable_program_with_opcode_version(expr, opcode_version).map_err(
+            |err| ParseError {
+                message: err.to_string(),
+                span: err.span.unwrap_or(end_span),
+            },
+        )
+    }
+
+    fn resolve_expr_opcode_version_for_assembler(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        end_span: Span,
+    ) -> Result<u16, ParseError> {
+        let contract = self
+            .resolve_expr_contract(cpu_id, dialect_override)
+            .map_err(|err| ParseError {
+                message: err.to_string(),
+                span: end_span,
+            })?;
+        let opcode_version = contract
+            .as_ref()
+            .map(|entry| entry.opcode_version)
+            .unwrap_or(package::EXPR_VM_OPCODE_VERSION_V1);
+        if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1
+            && opcode_version != package::EXPR_VM_OPCODE_VERSION_V2
+        {
+            return Err(ParseError {
+                message: format!("unsupported EXPR opcode version {}", opcode_version),
+                span: end_span,
+            });
+        }
+        Ok(opcode_version)
     }
 
     pub fn compile_expression_program_for_assembler(
@@ -1190,14 +1736,18 @@ impl HierarchyExecutionModel {
         end_span: Span,
         end_token_text: Option<String>,
     ) -> Result<PortableExprProgram, ParseError> {
-        let expr = self.parse_expression_for_assembler(
+        let expr = self.parse_expression_for_assembler_with_rollout_overrides(
             cpu_id,
             dialect_override,
+            &[],
+            &[],
             tokens,
             end_span,
             end_token_text,
         )?;
-        Self::compile_parsed_expression_for_assembler(&expr, end_span)
+        let opcode_version =
+            self.resolve_expr_opcode_version_for_assembler(cpu_id, dialect_override, end_span)?;
+        Self::compile_parsed_expression_for_assembler(&expr, opcode_version, end_span)
     }
 
     fn resolve_expr_parser_opcode_version_for_assembler(
@@ -1241,9 +1791,27 @@ impl HierarchyExecutionModel {
         cpu_id: &str,
         dialect_override: Option<&str>,
     ) -> Result<(), RuntimeBridgeError> {
+        self.validate_expression_parser_contract_with_rollout_overrides_for_assembler(
+            cpu_id,
+            dialect_override,
+            &[],
+            &[],
+        )
+    }
+
+    pub fn validate_expression_parser_contract_with_rollout_overrides_for_assembler(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        expr_parser_opt_in_families: &[String],
+        expr_parser_force_host_families: &[String],
+    ) -> Result<(), RuntimeBridgeError> {
         let resolved = self.resolve_pipeline(cpu_id, dialect_override)?;
-        let use_expr_parser_vm =
-            portable_expr_parser_runtime_enabled_for_family(resolved.family_id.as_str(), &[], &[]);
+        let use_expr_parser_vm = portable_expr_parser_runtime_enabled_for_family(
+            resolved.family_id.as_str(),
+            expr_parser_opt_in_families,
+            expr_parser_force_host_families,
+        );
         if !use_expr_parser_vm {
             return Ok(());
         }
@@ -1264,23 +1832,54 @@ impl HierarchyExecutionModel {
         end_token_text: Option<String>,
         parser_vm_opcode_version: Option<u16>,
     ) -> Result<PortableExprProgram, ParseError> {
+        self.compile_expression_program_with_parser_vm_rollout_overrides_for_assembler(
+            cpu_id,
+            dialect_override,
+            &[],
+            &[],
+            tokens,
+            end_span,
+            end_token_text,
+            parser_vm_opcode_version,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn compile_expression_program_with_parser_vm_rollout_overrides_for_assembler(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+        expr_parser_opt_in_families: &[String],
+        expr_parser_force_host_families: &[String],
+        tokens: Vec<Token>,
+        end_span: Span,
+        end_token_text: Option<String>,
+        parser_vm_opcode_version: Option<u16>,
+    ) -> Result<PortableExprProgram, ParseError> {
         let use_expr_parser_vm = self.resolve_expr_parser_vm_rollout_for_assembler(
             cpu_id,
             dialect_override,
+            expr_parser_opt_in_families,
+            expr_parser_force_host_families,
             parser_vm_opcode_version.is_some(),
             end_span,
         )?;
+        let expr_opcode_version =
+            self.resolve_expr_opcode_version_for_assembler(cpu_id, dialect_override, end_span)?;
         if !use_expr_parser_vm {
             let expr = self.parse_expression_with_mode_for_assembler(
                 cpu_id,
                 dialect_override,
+                expr_parser_opt_in_families,
+                expr_parser_force_host_families,
                 tokens,
                 end_span,
                 end_token_text,
                 None,
             );
-            return expr
-                .and_then(|expr| Self::compile_parsed_expression_for_assembler(&expr, end_span));
+            return expr.and_then(|expr| {
+                Self::compile_parsed_expression_for_assembler(&expr, expr_opcode_version, end_span)
+            });
         }
 
         let contract = self
@@ -1310,15 +1909,63 @@ impl HierarchyExecutionModel {
             });
         }
 
+        if opcode_version == package::EXVM_OPCODE_VERSION_V2
+            && expr_opcode_version == package::EXPR_VM_OPCODE_VERSION_V2
+            && !tokens_require_ast_portable_program_fallback(&tokens)
+        {
+            return compile_expression_tokens_to_portable_program_with_opcode_versions(
+                tokens,
+                end_span,
+                end_token_text,
+                opcode_version,
+                expr_opcode_version,
+            );
+        }
+
+        if let Some(program) = try_compile_direct_leaf_expression_program_for_assembler(
+            &tokens,
+            expr_opcode_version,
+            opcode_version,
+            end_span,
+        )? {
+            return Ok(program);
+        }
+
         let expr = self.parse_expression_with_mode_for_assembler(
             cpu_id,
             dialect_override,
+            expr_parser_opt_in_families,
+            expr_parser_force_host_families,
             tokens,
             end_span,
             end_token_text,
             Some(opcode_version),
         )?;
-        Self::compile_parsed_expression_for_assembler(&expr, end_span)
+        if let Some(program) = try_compile_direct_scalar_expression_program_for_assembler(
+            &expr,
+            expr_opcode_version,
+            opcode_version,
+            end_span,
+        )? {
+            return Ok(program);
+        }
+        if let Some(program) = try_compile_direct_structural_expression_program_for_assembler(
+            &expr,
+            expr_opcode_version,
+            opcode_version,
+            end_span,
+        )? {
+            return Ok(program);
+        }
+        if let Some(program) = try_compile_direct_member_index_expression_program_for_assembler(
+            &expr,
+            expr_opcode_version,
+            opcode_version,
+            end_span,
+        )? {
+            return Ok(program);
+        }
+        Self::compile_parsed_expression_for_assembler(&expr, expr_opcode_version, end_span)
     }
 
     pub fn evaluate_portable_expression_program_for_assembler(

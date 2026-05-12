@@ -7,6 +7,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from workflow_common import gate_status, parse_gate_text
+
 
 GATED_ARTIFACT_PATTERNS = (
     "documentation/plans/",
@@ -36,14 +38,28 @@ def validate_gate_file(path: Path) -> list[str]:
         return [f"{path}: quality gate path is not a file"]
 
     text = path.read_text(encoding="utf-8")
-    first_line = text.splitlines()[0].strip() if text.splitlines() else ""
-    if first_line != "PASS" and not first_line.startswith("PASS:"):
-        errors.append(f"{path}: quality gate file must begin with `PASS` or `PASS:`")
+    status = gate_status(text)
+    if status != "PASS":
+        errors.append(
+            f"{path}: quality gate file must report PASS using `PASS`, `PASS: ...`, or `status: PASS`"
+        )
 
     source_name = path.name.removesuffix(".quality-gate.txt")
     source_path = path.with_name(source_name)
     if not source_path.exists():
         errors.append(f"{path}: source artifact `{source_path}` does not exist")
+
+    metadata = parse_gate_text(text)
+    artifact = metadata.get("artifact")
+    if artifact:
+        artifact_path = Path(artifact)
+        if not artifact_path.is_absolute():
+            artifact_path = (Path.cwd() / artifact_path).resolve()
+        source_resolved = source_path.resolve()
+        if artifact_path.resolve() != source_resolved and artifact != source_name:
+            errors.append(
+                f"{path}: structured artifact field `{artifact}` does not match source artifact `{source_path}`"
+            )
 
     return errors
 

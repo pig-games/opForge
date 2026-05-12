@@ -1,15 +1,15 @@
 ; FS-UAE-friendly native smoke executable for the PRVM line iterator.
 
-        .module main
-        .cpu 68020
+	.module main
+	.cpu 68020
 
-SysBase                         = 4
+SYS_BASE                        = 4
 RETURN_OK                       = 0
 RETURN_FAIL                     = 20
 
-OpenLibrary                     = -552
-CloseLibrary                    = -414
-PutStr                          = -948
+OPEN_LIBRARY                    = -552
+CLOSE_LIBRARY                   = -414
+PUT_STR                         = -948
 
 PRVM_ITER_FRAME_SIZE            = 116
 PRVM_ITER_MAGIC_OPLI            = $4F504C49
@@ -20,287 +20,303 @@ PRVM_ITER_STATUS_OK             = 0
 PRVM_STATUS_UNSUPPORTED_ROUTE   = 100
 PRVM_DEBUG_PROGRAM_LEN          = 59
 
-        .section entry, kind=code
+	.section entry, kind=code
 
-start:
-        MOVEQ #RETURN_FAIL, D7
+	.pub
+	
+start	.block
+	moveq #RETURN_FAIL, d7
 
-        LEA dosName(PC), A1
-        MOVEQ #36, D0
-        MOVEA.L SysBase.W, A6
-        JSR OpenLibrary(A6)
+	lea DosName(PC), a1
+	moveq #36, d0
+	movea.l SYS_BASE.W, a6
+	jsr OPEN_LIBRARY(a6)
 
-        TST.L D0
-        BNE.S prvmIterSmokeHaveDos
+	tst.l d0
+	bne.s haveDos
 
-        LEA dosName(PC), A1
-        MOVEQ #0, D0
-        MOVEA.L SysBase.W, A6
-        JSR OpenLibrary(A6)
-        TST.L D0
-        BEQ.W prvmIterSmokeDone
+	lea DosName(PC), a1
+	moveq #0, d0
+	movea.l SYS_BASE.W, a6
+	jsr OPEN_LIBRARY(a6)
+	tst.l d0
+	beq.w done
 
-prvmIterSmokeHaveDos:
-        MOVEA.L D0, A5
-        BSR.W prvmIterSmokeBuildFrame
-        LEA iteratorFrame(PC), A0
-        MOVE.L #PRVM_ITER_FRAME_SIZE, D0
-        MOVEA.L prvmIteratorEntryPtr(PC), A1
-        JSR (A1)
+haveDos
+	movea.l d0, a5
+	bsr.w buildFrame
+	lea IteratorFrame(PC), a0
+	move.l #PRVM_ITER_FRAME_SIZE, d0
+	movea.l PrvmIteratorEntryPtr(PC), a1
+	jsr (a1)
 
-        LEA iteratorStatus(PC), A0
-        MOVE.L D0, 0(A0)
-        MOVE.L D1, 4(A0)
-        MOVE.L D2, 8(A0)
-        MOVE.L D3, 12(A0)
+	lea IteratorStatus(PC), a0
+	move.l d0, 0(a0)
+	move.l d1, 4(a0)
+	move.l d2, 8(a0)
+	move.l d3, 12(a0)
 
-        BSR.W prvmIterSmokeValidateResult
-        TST.L D0
-        BNE.S prvmIterSmokeReportFailure
+	bsr.w validateResult
+	tst.l d0
+	bne.s reportFailure
 
-        BSR.W prvmIterSmokeBuildFrame
-        LEA iteratorFrame(PC), A0
-        MOVE.L #40, 24(A0)
-        LEA unsupportedProcessorText(PC), A1
-        MOVE.L A1, 8(A0)
-        MOVE.L #3, 12(A0)
-        LEA iteratorFrame(PC), A0
-        MOVE.L #PRVM_ITER_FRAME_SIZE, D0
-        MOVEA.L prvmIteratorEntryPtr(PC), A1
-        JSR (A1)
+	bsr.w buildFrame
+	lea IteratorFrame(PC), a0
+	move.l #40, 24(a0)
+	lea UnsupportedProcessorText(PC), a1
+	move.l a1, 8(a0)
+	move.l #3, 12(a0)
+	lea IteratorFrame(PC), a0
+	move.l #PRVM_ITER_FRAME_SIZE, d0
+	movea.l PrvmIteratorEntryPtr(PC), a1
+	jsr (a1)
 
-        LEA iteratorStatus(PC), A0
-        MOVE.L D0, 0(A0)
-        MOVE.L D1, 4(A0)
-        MOVE.L D2, 8(A0)
-        MOVE.L D3, 12(A0)
+	lea IteratorStatus(PC), a0
+	move.l d0, 0(a0)
+	move.l d1, 4(a0)
+	move.l d2, 8(a0)
+	move.l d3, 12(a0)
 
-        BSR.W prvmIterSmokeValidateFailFastResult
-        TST.L D0
-        BNE.S prvmIterSmokeReportFailure
+	bsr.w validateFailFastResult
+	tst.l d0
+	bne.s reportFailure
 
-        LEA successText(PC), A1
-        MOVE.L A1, D1
-        BSR.W prvmIterSmokePutStr
-        MOVEQ #RETURN_OK, D7
-        BRA.S prvmIterSmokeCloseDos
+	lea SuccessText(PC), a1
+	move.l a1, d1
+	bsr.w putStr
+	moveq #RETURN_OK, d7
+	bra.s closeDos
 
-prvmIterSmokeReportFailure:
-        MOVE.L A1, D1
-        BSR.W prvmIterSmokePutStr
+reportFailure
+	move.l a1, d1
+	bsr.w putStr
 
-prvmIterSmokeCloseDos:
-        MOVEA.L A5, A1
-        MOVEA.L SysBase.W, A6
-        JSR CloseLibrary(A6)
+closeDos
+	movea.l a5, a1
+	movea.l SYS_BASE.W, a6
+	jsr CLOSE_LIBRARY(a6)
 
-prvmIterSmokeDone:
-        MOVE.L D7, D0
-        RTS
+done
+	move.l d7, d0
+	rts
+	.bend  ; start
+	.priv
 
-prvmIterSmokePutStr:
-        MOVEA.L A5, A6
-        JSR PutStr(A6)
-        RTS
+putStr	.block
+	movea.l a5, a6
+	jsr PUT_STR(a6)
+	rts
+	.bend  ; putStr
 
-prvmIterSmokeBuildFrame:
-        LEA iteratorFrame(PC), A0
-        MOVE.L #PRVM_ITER_MAGIC_OPLI, 0(A0)
-        MOVE.W #PRVM_ITER_ABI_VERSION_V1, 4(A0)
-        MOVE.W #PRVM_ITER_FRAME_SIZE, 6(A0)
-        LEA processorAsmText(PC), A1
-        MOVE.L A1, 8(A0)
-        MOVE.L #3, 12(A0)
-        LEA kindStatementText(PC), A1
-        MOVE.L A1, 16(A0)
-        MOVE.L #9, 20(A0)
-        MOVE.L #7, 24(A0)
-        LEA sourceText(PC), A1
-        MOVE.L A1, 28(A0)
-        MOVE.L #21, 32(A0)
-        LEA tokenRecord(PC), A1
-        MOVE.L A1, 36(A0)
-        MOVE.L #3, 40(A0)
-        MOVE.W #PRVM_TOKEN_RECORD_SIZE, 44(A0)
-        CLR.W 46(A0)
-        LEA lexemeBytes(PC), A1
-        MOVE.L A1, 48(A0)
-        MOVE.L #8, 52(A0)
-        LEA parserProgram(PC), A1
-        MOVE.L A1, 56(A0)
-        MOVE.L #PRVM_DEBUG_PROGRAM_LEN, 60(A0)
-        LEA resultBuffer(PC), A1
-        MOVE.L A1, 64(A0)
-        MOVE.L #128, 68(A0)
-        LEA diagnosticBuffer(PC), A1
-        MOVE.L A1, 72(A0)
-        MOVE.L #32, 76(A0)
-        LEA resumeBuffer(PC), A1
-        MOVE.L A1, 80(A0)
-        MOVE.L #40, 84(A0)
-        LEA exprRequestBuffer(PC), A1
-        MOVE.L A1, 88(A0)
-        MOVE.L #32, 92(A0)
-        LEA exprResultBuffer(PC), A1
-        MOVE.L A1, 96(A0)
-        MOVE.L #0, 100(A0)
-        MOVE.L #PRVM_PARSER_CONTRACT_VERSION_V2, 104(A0)
-        MOVE.L #64, 108(A0)
-        CLR.L 112(A0)
-        RTS
+buildFrame	.block
+	lea IteratorFrame(PC), a0
+	move.l #PRVM_ITER_MAGIC_OPLI, 0(a0)
+	move.w #PRVM_ITER_ABI_VERSION_V1, 4(a0)
+	move.w #PRVM_ITER_FRAME_SIZE, 6(a0)
+	lea ProcessorAsmText(PC), a1
+	move.l a1, 8(a0)
+	move.l #3, 12(a0)
+	lea KindStatementText(PC), a1
+	move.l a1, 16(a0)
+	move.l #9, 20(a0)
+	move.l #7, 24(a0)
+	lea SourceText(PC), a1
+	move.l a1, 28(a0)
+	move.l #21, 32(a0)
+	lea TokenRecord(PC), a1
+	move.l a1, 36(a0)
+	move.l #3, 40(a0)
+	move.w #PRVM_TOKEN_RECORD_SIZE, 44(a0)
+	clr.w 46(a0)
+	lea LexemeBytes(PC), a1
+	move.l a1, 48(a0)
+	move.l #8, 52(a0)
+	lea ParserProgram(PC), a1
+	move.l a1, 56(a0)
+	move.l #PRVM_DEBUG_PROGRAM_LEN, 60(a0)
+	lea ResultBuffer(PC), a1
+	move.l a1, 64(a0)
+	move.l #128, 68(a0)
+	lea DiagnosticBuffer(PC), a1
+	move.l a1, 72(a0)
+	move.l #32, 76(a0)
+	lea ResumeBuffer(PC), a1
+	move.l a1, 80(a0)
+	move.l #40, 84(a0)
+	lea ExprRequestBuffer(PC), a1
+	move.l a1, 88(a0)
+	move.l #32, 92(a0)
+	lea ExprResultBuffer(PC), a1
+	move.l a1, 96(a0)
+	move.l #0, 100(a0)
+	move.l #PRVM_PARSER_CONTRACT_VERSION_V2, 104(a0)
+	move.l #64, 108(a0)
+	clr.l 112(a0)
+	rts
+	.bend  ; buildFrame
 
-prvmIterSmokeValidateResult:
-        LEA iteratorStatus(PC), A0
-        CMPI.L #PRVM_ITER_STATUS_OK, 0(A0)
-        BNE.S prvmIterSmokeInvalidStatus
-        CMPI.L #2, 4(A0)
-        BNE.S prvmIterSmokeInvalidRouted
-        TST.L 8(A0)
-        BNE.S prvmIterSmokeInvalidFailLine
-        CMPI.L #2, 12(A0)
-        BNE.S prvmIterSmokeInvalidTotal
-        CLR.L D0
-        RTS
+validateResult	.block
+	lea IteratorStatus(PC), a0
+	cmpi.l #PRVM_ITER_STATUS_OK, 0(a0)
+	bne.s invalidStatus
+	cmpi.l #2, 4(a0)
+	bne.s invalidRouted
+	tst.l 8(a0)
+	bne.s invalidFailLine
+	cmpi.l #2, 12(a0)
+	bne.s invalidTotal
+	clr.l d0
+	rts
+	.bend  ; validateResult
 
-prvmIterSmokeValidateFailFastResult:
-        LEA iteratorStatus(PC), A0
-        CMPI.L #PRVM_STATUS_UNSUPPORTED_ROUTE, 0(A0)
-        BNE.S prvmIterSmokeInvalidFailFastStatus
-        TST.L 4(A0)
-        BNE.S prvmIterSmokeInvalidFailFastRouted
-        CMPI.L #40, 8(A0)
-        BNE.S prvmIterSmokeInvalidFailFastFailLine
-        CMPI.L #1, 12(A0)
-        BNE.S prvmIterSmokeInvalidFailFastTotal
-        CLR.L D0
-        RTS
+validateFailFastResult	.block
+	lea IteratorStatus(PC), a0
+	cmpi.l #PRVM_STATUS_UNSUPPORTED_ROUTE, 0(a0)
+	bne.s invalidFailFastStatus
+	tst.l 4(a0)
+	bne.s invalidFailFastRouted
+	cmpi.l #40, 8(a0)
+	bne.s invalidFailFastFailLine
+	cmpi.l #1, 12(a0)
+	bne.s invalidFailFastTotal
+	clr.l d0
+	rts
+	.bend  ; validateFailFastResult
 
-prvmIterSmokeInvalidStatus:
-        LEA failureStatusText(PC), A1
-        MOVEQ #1, D0
-        RTS
+invalidStatus	.block
+	lea FailureStatusText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; invalidStatus
 
-prvmIterSmokeInvalidRouted:
-        LEA failureRoutedText(PC), A1
-        MOVEQ #1, D0
-        RTS
+invalidRouted	.block
+	lea FailureRoutedText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; invalidRouted
 
-prvmIterSmokeInvalidFailLine:
-        LEA failureFailLineText(PC), A1
-        MOVEQ #1, D0
-        RTS
+invalidFailLine	.block
+	lea FailureFailLineText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; invalidFailLine
 
-prvmIterSmokeInvalidTotal:
-        LEA failureTotalText(PC), A1
-        MOVEQ #1, D0
-        RTS
+invalidTotal	.block
+	lea FailureTotalText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; invalidTotal
 
-prvmIterSmokeInvalidFailFastStatus:
-        LEA failureFailFastStatusText(PC), A1
-        MOVEQ #1, D0
-        RTS
+invalidFailFastStatus	.block
+	lea FailureFailFastStatusText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; invalidFailFastStatus
 
-prvmIterSmokeInvalidFailFastRouted:
-        LEA failureFailFastRoutedText(PC), A1
-        MOVEQ #1, D0
-        RTS
+invalidFailFastRouted	.block
+	lea FailureFailFastRoutedText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; invalidFailFastRouted
 
-prvmIterSmokeInvalidFailFastFailLine:
-        LEA failureFailFastFailLineText(PC), A1
-        MOVEQ #1, D0
-        RTS
+invalidFailFastFailLine	.block
+	lea FailureFailFastFailLineText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; invalidFailFastFailLine
 
-prvmIterSmokeInvalidFailFastTotal:
-        LEA failureFailFastTotalText(PC), A1
-        MOVEQ #1, D0
-        RTS
+invalidFailFastTotal	.block
+	lea FailureFailFastTotalText(PC), a1
+	moveq #1, d0
+	rts
+	.bend  ; invalidFailFastTotal
 
-dosName:
-        .byte "dos.library",0
-processorAsmText:
-        .byte "asm"
-kindStatementText:
-        .byte "statement"
-unsupportedProcessorText:
-        .byte "bad"
-successText:
-        .byte "OPFORGE-PRVM-ITER smoke OK",10,0
-failureStatusText:
-        .byte "OPFORGE-PRVM-ITER smoke FAIL status",10,0
-failureRoutedText:
-        .byte "OPFORGE-PRVM-ITER smoke FAIL routed",10,0
-failureFailLineText:
-        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-line",10,0
-failureTotalText:
-        .byte "OPFORGE-PRVM-ITER smoke FAIL total",10,0
-failureFailFastStatusText:
-        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast status",10,0
-failureFailFastRoutedText:
-        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast routed",10,0
-failureFailFastFailLineText:
-        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast line",10,0
-failureFailFastTotalText:
-        .byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast total",10,0
+DosName
+	.byte "dos.library", 0
+ProcessorAsmText
+	.byte "asm"
+KindStatementText
+	.byte "statement"
+UnsupportedProcessorText
+	.byte "bad"
+SuccessText
+	.byte "OPFORGE-PRVM-ITER smoke OK", 10, 0
+FailureStatusText
+	.byte "OPFORGE-PRVM-ITER smoke FAIL status", 10, 0
+FailureRoutedText
+	.byte "OPFORGE-PRVM-ITER smoke FAIL routed", 10, 0
+FailureFailLineText
+	.byte "OPFORGE-PRVM-ITER smoke FAIL fail-line", 10, 0
+FailureTotalText
+	.byte "OPFORGE-PRVM-ITER smoke FAIL total", 10, 0
+FailureFailFastStatusText
+	.byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast status", 10, 0
+FailureFailFastRoutedText
+	.byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast routed", 10, 0
+FailureFailFastFailLineText
+	.byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast line", 10, 0
+FailureFailFastTotalText
+	.byte "OPFORGE-PRVM-ITER smoke FAIL fail-fast total", 10, 0
 
-sourceText:
-        .byte "start: NOP",10,"start: NOP"
-lexemeBytes:
-        .byte "startNOP"
+SourceText
+	.byte "start: NOP", 10, "start: NOP"
+LexemeBytes
+	.byte "startNOP"
 
-parserProgram:
-        .byte $60,$40,$13,$03,$08,$00,$64,$00
-        .byte $14,$03,$0E,$00,$66,$00
-        .byte $15,$03,$24,$00
-        .byte $33,$04,".","o","r","g",$62,$20,$22,$02,$41,$50
-        .byte $FF,$FF,$FF,$FF,$64,$00
-        .byte $10,$03,$03,$30,$00,$20,$30,$65,$20,$01,$33,$00
-        .byte $30,$62,$20,$41,$50,$FF,$FF,$FF,$FF,$64,$00
+ParserProgram
+	.byte $60, $40, $13, $03, $08, $00, $64, $00
+	.byte $14, $03, $0E, $00, $66, $00
+	.byte $15, $03, $24, $00
+	.byte $33, $04, ".", "o", "r", "g", $62, $20, $22, $02, $41, $50
+	.byte $FF, $FF, $FF, $FF, $64, $00
+	.byte $10, $03, $03, $30, $00, $20, $30, $65, $20, $01, $33, $00
+	.byte $30, $62, $20, $41, $50, $FF, $FF, $FF, $FF, $64, $00
 
-tokenRecord:
-        .word 0
-        .word 0
-        .long 1
-        .long 6
-        .long 0
-        .long 5
-        .word 5
-        .word 0
-        .long 6
-        .long 7
-        .long 0
-        .long 0
-        .word 0
-        .word 0
-        .long 8
-        .long 11
-        .long 5
-        .long 3
+TokenRecord
+	.word 0
+	.word 0
+	.long 1
+	.long 6
+	.long 0
+	.long 5
+	.word 5
+	.word 0
+	.long 6
+	.long 7
+	.long 0
+	.long 0
+	.word 0
+	.word 0
+	.long 8
+	.long 11
+	.long 5
+	.long 3
 
-iteratorStatus:
-        .long 0
-iteratorRoutedCount:
-        .long 0
-iteratorFailLine:
-        .long 0
-iteratorTotalLines:
-        .long 0
+IteratorStatus
+	.long 0
+IteratorRoutedCount
+	.long 0
+IteratorFailLine
+	.long 0
+IteratorTotalLines
+	.long 0
 
-iteratorFrame:
-        .fill byte, 116, 0
-resultBuffer:
-        .fill byte, 128, 0
-diagnosticBuffer:
-        .fill byte, 32, 0
-resumeBuffer:
-        .fill byte, 40, 0
-exprRequestBuffer:
-        .fill byte, 32, 0
-exprResultBuffer:
-        .fill byte, 32, 0
-prvmIteratorEntryPtr:
-        .long prvm_iterate_lines_68000
+IteratorFrame
+	.fill byte, 116, 0
+ResultBuffer
+	.fill byte, 128, 0
+DiagnosticBuffer
+	.fill byte, 32, 0
+ResumeBuffer
+	.fill byte, 40, 0
+ExprRequestBuffer
+	.fill byte, 32, 0
+ExprResultBuffer
+	.fill byte, 32, 0
+PrvmIteratorEntryPtr
+	.long prvmIterateLines68000
 
-        .endsection
-        .use prvm.amigaos.line_iterator (prvm_iterate_lines_68000)
-        .output "build/prvm_line_iterator_smoke.hunk", format=hunk, sections=entry,code
-        .endmodule
+	.endsection
+	.use prvm.amigaos.line_iterator (prvmIterateLines68000)
+	.output "build/prvm_line_iterator_smoke.hunk", format=hunk, sections=entry, code
+	.endmodule

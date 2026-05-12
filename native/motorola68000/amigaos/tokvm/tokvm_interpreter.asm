@@ -8,9 +8,11 @@
 	.use tokvm.amigaos.cli_harness (SYS_BASE, PR_CLI, PR_MSG_PORT)
 	.use tokvm.amigaos.cli_harness (FIND_TASK, WAIT_PORT, GET_MSG, REPLY_MSG, FORBID)
 	.use tokvm.amigaos.cli_harness (RETURN_WORKBENCH_UNSUPPORTED, tokvmAmigaosCliHarnessRun)
-	.use tokvm.amigaos.tokenizer_vm (AbiMarker)
+	.use tokvm.amigaos.tokenizer_vm (tokvmRun68000)
 
 	.section entry, kind=code
+
+	.pub
 
 ; ---------------------------------------------------------------------------
 ; AmigaOS process entry.
@@ -20,7 +22,7 @@
 ; hand off to the imported tokvm.amigaos.cli_harness module.
 ; ---------------------------------------------------------------------------
 
-start
+start	.block
 	movem.l d2-d7/a2-a6, -(sp)  ; preserve callee-owned state across the CLI harness call
 	clr.l d2  ; no Workbench startup message is pending until GetMsg succeeds
 
@@ -30,7 +32,7 @@ start
 
 	movea.l d0, a2
 	tst.l PR_CLI(a2)  ; tokvm's first native slice only supports Shell launches, not Workbench icons
-	bne.w startCli
+	bne.w cli
 
 	lea PR_MSG_PORT(a2), a0
 	jsr WAIT_PORT(a6)
@@ -38,23 +40,24 @@ start
 	jsr GET_MSG(a6)
 	move.l d0, d2  ; cache the startup message so we can ReplyMsg before returning
 	moveq #RETURN_WORKBENCH_UNSUPPORTED, d7  ; host-visible status for unsupported Workbench activation
-	bra.w startReply
+	bra.w reply
 
-startCli
+cli
 	jsr tokvmAmigaosCliHarnessRun  ; hand off to the module that mirrors the Rust host/report bridge
 	move.l d0, d7  ; keep the CLI/report status live through the reply/epilogue path
 
-startReply
+reply
 	tst.l d2  ; only Workbench launches require a reply to the startup message
-	beq.w startDone
+	beq.w done
 	jsr FORBID(a6)
 	movea.l d2, a1
 	jsr REPLY_MSG(a6)
 
-startDone
+done
 	move.l d7, d0  ; Amiga return register carries the harness/native VM outcome
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
+	.bend ; start
 
 	.endsection
 	.output "build/tokvm", format=hunk, sections=entry, code, data, bss

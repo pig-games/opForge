@@ -34,6 +34,15 @@
 
 - [ ] Milestone 1
 
+## Completion Archive
+
+- When every checkbox in this plan is complete and the plan is no longer the
+  active execution artifact, archive it with
+  `scripts/workflow/archive_completed_plan.sh`.
+- The archived filename must move to `documentation/plans/completed/` and end
+  in `-completed-YYYY-MM-DDTHHMMSSZ.md`.
+- Move the companion quality-gate sidecar with the same timestamped basename.
+
 ## Blocking Rules
 
 - the active worktree `AGENTS.md` rules must be followed throughout execution

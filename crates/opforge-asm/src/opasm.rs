@@ -17,8 +17,8 @@ use types::lockstep::{
 use types::processing::{LineProcessingTrace, ProcessingOutcome, ProcessingRequestKind};
 use vm::portable_contract::PortableLineAst;
 use vm::vm_opasm::{
-    parse_statement_line_with_model, parse_statement_line_with_model_and_expr_handler,
-    HierarchyExecutionModel,
+    parse_statement_line_with_model_and_expr_handler_with_rollout_overrides,
+    parse_statement_line_with_model_with_rollout_overrides, HierarchyExecutionModel,
 };
 
 #[derive(Debug, Clone)]
@@ -34,6 +34,8 @@ pub struct StatementRequest<'a> {
     pub model: Option<&'a HierarchyExecutionModel>,
     pub cpu_id: &'a str,
     pub dialect_override: Option<&'a str>,
+    pub expr_parser_opt_in_families: &'a [String],
+    pub expr_parser_force_host_families: &'a [String],
     pub line: &'a str,
     pub line_num: u32,
     pub register_checker: &'a RegisterChecker,
@@ -46,6 +48,8 @@ impl<'a> StatementRequest<'a> {
             model: None,
             cpu_id: "",
             dialect_override: None,
+            expr_parser_opt_in_families: &[],
+            expr_parser_force_host_families: &[],
             line,
             line_num,
             register_checker: default_register_checker(),
@@ -66,6 +70,16 @@ impl<'a> StatementRequest<'a> {
         self.model = Some(model);
         self.cpu_id = cpu_id;
         self.dialect_override = dialect_override;
+        self
+    }
+
+    pub fn with_expr_parser_rollout_overrides(
+        mut self,
+        expr_parser_opt_in_families: &'a [String],
+        expr_parser_force_host_families: &'a [String],
+    ) -> Self {
+        self.expr_parser_opt_in_families = expr_parser_opt_in_families;
+        self.expr_parser_force_host_families = expr_parser_force_host_families;
         self
     }
 
@@ -220,20 +234,24 @@ fn parse_statement_vm(
             lockstep_report,
         })
             as Box<dyn vm::vm_opasm::ExprProcessingHandler + '_>));
-        parse_statement_line_with_model_and_expr_handler(
+        parse_statement_line_with_model_and_expr_handler_with_rollout_overrides(
             model,
             request.cpu_id,
             request.dialect_override,
+            request.expr_parser_opt_in_families,
+            request.expr_parser_force_host_families,
             request.line,
             request.line_num,
             request.register_checker,
             Some(expr_handler),
         )
     } else {
-        parse_statement_line_with_model(
+        parse_statement_line_with_model_with_rollout_overrides(
             model,
             request.cpu_id,
             request.dialect_override,
+            request.expr_parser_opt_in_families,
+            request.expr_parser_force_host_families,
             request.line,
             request.line_num,
             request.register_checker,

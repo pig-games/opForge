@@ -203,6 +203,14 @@ cargo run -p cli --bin opforge -- \
   native/motorola68000/amigaos/opforge-cli/opforge_cli.asm
 ```
 
+The repository-native formatter path for supported Motorola 68000 AmigaOS
+sources uses the shared root config and workflow wrapper:
+
+```sh
+make native-68000-format-check
+make native-68000-format
+```
+
 The current canonical Hunk build path is the same assembly helper used by the
 native contract tests. It emits a listing and AmigaOS Hunk executable under a
 fresh `crates/opforge-asm/target/test-m68000-opforge-native-cli-*` directory:
@@ -226,7 +234,11 @@ cp native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm \
   target/native-amigaos/Work/opforge_cli_package.opasm
 cat > target/native-amigaos/Work/opforge_6502_native_cli_smoke.asm <<'EOF'
 start   lda #$42
-        sta $0200
+  sta $20
+  lda $20,x
+  sta $0200
+  lda $0200,x
+  lda $0200,y
 done    jmp done
 EOF
 ```

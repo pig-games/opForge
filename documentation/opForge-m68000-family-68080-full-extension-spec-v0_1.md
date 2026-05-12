@@ -15,8 +15,8 @@ implementation work while preserving existing 68000‑68040 behavior.
 
 | Source | Location |
 |--------|----------|
-| AC68080PRM (full text) | `dev-docs/68080specs/AC68080PRM.txt` (2 507 lines) |
-| AC68080PRM (PDF) | `dev-docs/68080specs/AC68080PRM.pdf` (97 pages) |
+| AC68080PRM (full text) | `dev-docs/680x0specs/support/raw/apollo-68080/AC68080PRM.txt` (2 507 lines) |
+| AC68080PRM (PDF) | `dev-docs/680x0specs/support/raw/apollo-68080/AC68080PRM.pdf` (97 pages) |
 | WDrijver/ApolloCrossDev AMMX | `github.com/WDrijver/ApolloCrossDev/tree/main/Docs/AMMX` |
 | WDrijver/ApolloCrossDev Integer | `github.com/WDrijver/ApolloCrossDev/tree/main/Docs/Integer` |
 | WDrijver/ApolloCrossDev FPU | `github.com/WDrijver/ApolloCrossDev/tree/main/Docs/FPU` |

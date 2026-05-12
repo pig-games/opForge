@@ -4,5 +4,9 @@
         .cpu 6502
         .org $0800
 start   lda #$42
+        sta $20
+        lda $20,x
         sta $0200
+        lda $0200,x
+        lda $0200,y
 done    jmp done

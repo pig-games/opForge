@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_FORBIDDEN = ["litellm"]
+DEFAULT_FORBIDDEN = ["litellm", "gitkraken"]
 SKIP_DIRS = {
     ".git",
     ".venv",

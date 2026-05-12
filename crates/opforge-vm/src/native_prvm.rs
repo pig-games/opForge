@@ -217,6 +217,8 @@ impl<'a> NativePrvmHostExpressionBridge<'a> {
                 model: self.model,
                 cpu_id: self.cpu_id,
                 dialect_override: self.dialect_override,
+                expr_parser_opt_in_families: &[],
+                expr_parser_force_host_families: &[],
                 expr_handler: None,
             },
             &mut operands,

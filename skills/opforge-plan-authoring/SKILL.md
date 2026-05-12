@@ -51,6 +51,10 @@ For remediation plans, each work item must also list:
 - Rust code changes should list `scripts/workflow/run_rust_quality_gate.sh` (or
   `make quality-gate`) as the full Rust gate, plus any focused tests required
   by the specific slice.
+- Slices that change `native/motorola68000/**/*.asm` should also name
+  `scripts/workflow/run_native_68000_format_gate.sh` (or
+  `make native-68000-format-check`) when the 68000 formatter pass is the
+  slice-specific gate being called out explicitly.
 - `plan-compliance-reviewer` must pass before each commit.
 - Checkbox updates are mandatory bookkeeping.
 - Every generated plan must state that the active worktree `AGENTS.md`
@@ -68,5 +72,10 @@ For remediation plans, each work item must also list:
 ## Helper scripts
 
 - `../../scripts/workflow/new_artifact_from_template.sh`
+- `../../scripts/workflow/start_artifact.py`
+- `../../scripts/workflow/derive_plan_from_artifact.py`
+- `../../scripts/workflow/render_quality_gate_preset.py`
 - `../../scripts/workflow/check_plan_checkboxes.py`
+- `../../scripts/workflow/check_workflow_artifact_bundle.py`
 - `../../scripts/workflow/run_rust_quality_gate.sh`
+- `../../scripts/workflow/run_native_68000_format_gate.sh`

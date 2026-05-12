@@ -444,10 +444,14 @@ pub enum ExvmOpcodeV2 {
     BuildUnary = 0x40,
     BuildBinary = 0x41,
     BuildTernary = 0x42,
+    BuildRange = 0x43,
     BuildIdentifier = 0x60,
     BuildNumber = 0x61,
     BuildCurrentAddress = 0x62,
     ParseGrouping = 0x63,
+    ParseList = 0x64,
+    ParseStructLiteralIfPresent = 0x65,
+    ParsePostfixChain = 0x66,
     EmitDiag = 0x70,
     Fail = 0x72,
 }
@@ -469,10 +473,14 @@ impl ExvmOpcodeV2 {
             0x40 => Some(Self::BuildUnary),
             0x41 => Some(Self::BuildBinary),
             0x42 => Some(Self::BuildTernary),
+            0x43 => Some(Self::BuildRange),
             0x60 => Some(Self::BuildIdentifier),
             0x61 => Some(Self::BuildNumber),
             0x62 => Some(Self::BuildCurrentAddress),
             0x63 => Some(Self::ParseGrouping),
+            0x64 => Some(Self::ParseList),
+            0x65 => Some(Self::ParseStructLiteralIfPresent),
+            0x66 => Some(Self::ParsePostfixChain),
             0x70 => Some(Self::EmitDiag),
             0x72 => Some(Self::Fail),
             _ => None,
@@ -505,6 +513,8 @@ pub enum ExvmOperatorKindV2 {
     LogicAnd = 0x14,
     LogicOr = 0x15,
     LogicXor = 0x16,
+    Range = 0x17,
+    RangeInclusive = 0x18,
 }
 
 impl ExvmOperatorKindV2 {
@@ -532,6 +542,8 @@ impl ExvmOperatorKindV2 {
             0x14 => Some(Self::LogicAnd),
             0x15 => Some(Self::LogicOr),
             0x16 => Some(Self::LogicXor),
+            0x17 => Some(Self::Range),
+            0x18 => Some(Self::RangeInclusive),
             _ => None,
         }
     }
@@ -547,6 +559,7 @@ pub enum ExvmTokenKindV2 {
     CloseParen = 0x05,
     Question = 0x06,
     Colon = 0x07,
+    OpenBrace = 0x08,
 }
 
 impl ExvmTokenKindV2 {
@@ -559,6 +572,7 @@ impl ExvmTokenKindV2 {
             0x05 => Some(Self::CloseParen),
             0x06 => Some(Self::Question),
             0x07 => Some(Self::Colon),
+            0x08 => Some(Self::OpenBrace),
             _ => None,
         }
     }

@@ -1,16 +1,16 @@
 ; FS-UAE-friendly native smoke executable for the PRVM interpreter.
 
-        .module main
-        .cpu 68020
-        .use prvm.amigaos.interpreter (prvmRun68000)
+	.module main
+	.cpu 68020
+	.use prvm.amigaos.interpreter (prvmRun68000)
 
-SysBase                         = 4
+SYS_BASE                        = 4
 RETURN_OK                       = 0
 RETURN_FAIL                     = 20
 
-OpenLibrary                     = -552
-CloseLibrary                    = -414
-PutStr                          = -948
+OPEN_LIBRARY                    = -552
+CLOSE_LIBRARY                   = -414
+PUT_STR                         = -948
 
 PRVM_REQUEST_FRAME_SIZE         = 112
 PRVM_MAGIC_OPRP                 = $4F505250
@@ -39,6 +39,7 @@ PRVM_RESULT_LABEL_TEXT          = 2
 PRVM_RESULT_MNEMONIC_TEXT       = 3
 PRVM_RESULT_OPERAND_EXPR_SLOT   = 4
 PRVM_RESULT_FINISH_LINE         = 5
+PRVM_RESULT_OPERAND_TEXT        = 7
 PRVM_RESUME_MAGIC               = $50525253
 PRVM_NATIVE_EXPR_STATE_READY    = 1
 PRVM_NATIVE_EXPR_KIND_IMM_DEC   = 1
@@ -64,678 +65,691 @@ PRVM_OPCODE_SET_DOT_MNEMONIC    = $65
 PRVM_OPCODE_FINISH_ASSIGNMENT   = $66
 PRVM_SMOKE_PROGRAM_LEN          = 59
 
-        .section entry, kind=code
-
-start:
-        MOVEQ #RETURN_FAIL, D7
-
-        LEA dosName(PC), A1
-        MOVEQ #36, D0
-        MOVEA.L SysBase.W, A6
-        JSR OpenLibrary(A6)
-
-        TST.L D0
-        BNE.S prvmSmokeHaveDos
-
-        LEA dosName(PC), A1
-        MOVEQ #0, D0
-        MOVEA.L SysBase.W, A6
-        JSR OpenLibrary(A6)
-        TST.L D0
-        BEQ.W prvmSmokeDone
-
-prvmSmokeHaveDos:
-        MOVEA.L D0, A5
-        LEA startedText(PC), A1
-        MOVE.L A1, D1
-        BSR.W prvmSmokePutStr
-
-        BSR.W prvmSmokeBuildRequestFrame
-        LEA requestFrame(PC), A0
-        MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0
-        JSR prvmRun68000.L
-
-        LEA smokeStatus(PC), A0
-        MOVE.L D0, 0(A0)
-        MOVE.L D1, 4(A0)
-        MOVE.L D2, 8(A0)
-        MOVE.L D3, 12(A0)
-
-        BSR.W prvmSmokeValidateExprRequest
-        TST.L D0
-        BNE.S prvmSmokeReportFailure
-
-        BSR.W prvmSmokeServiceExprRequest
-        TST.L D0
-        BNE.S prvmSmokeReportFailure
-
-        LEA requestFrame(PC), A0
-        MOVE.W #PRVM_CALL_MODE_RESUME, 8(A0)
-        MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0
-        JSR prvmRun68000.L
-
-        LEA smokeStatus(PC), A0
-        MOVE.L D0, 0(A0)
-        MOVE.L D1, 4(A0)
-        MOVE.L D2, 8(A0)
-        MOVE.L D3, 12(A0)
-
-        BSR.W prvmSmokeValidateResult
-        TST.L D0
-        BNE.S prvmSmokeReportFailure
-
-        LEA successText(PC), A1
-        MOVE.L A1, D1
-        BSR.W prvmSmokePutStr
-        MOVEQ #RETURN_OK, D7
-        BRA.S prvmSmokeCloseDos
-
-prvmSmokeReportFailure:
-        MOVE.L A1, D1
-        BSR.W prvmSmokePutStr
-
-prvmSmokeCloseDos:
-        MOVEA.L A5, A1
-        MOVEA.L SysBase.W, A6
-        JSR CloseLibrary(A6)
-
-prvmSmokeDone:
-        MOVE.L D7, D0
-        RTS
-
-prvmSmokePutStr:
-        MOVEA.L A5, A6
-        JSR PutStr(A6)
-        RTS
-
-prvmSmokeBuildRequestFrame:
-        LEA requestFrame(PC), A0
-        MOVE.L #PRVM_MAGIC_OPRP, 0(A0)
-        MOVE.W #PRVM_ABI_VERSION_V1, 4(A0)
-        MOVE.W #PRVM_REQUEST_FRAME_SIZE, 6(A0)
-        MOVE.W #PRVM_CALL_MODE_START, 8(A0)
-        MOVE.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(A0)
-        MOVE.L #1, 12(A0)
-        LEA sourceLine(PC), A1
-        MOVE.L A1, 16(A0)
-        MOVE.L #14, 20(A0)
-        LEA tokenRecord(PC), A1
-        MOVE.L A1, 24(A0)
-        MOVE.L #4, 28(A0)
-        MOVE.W #PRVM_TOKEN_RECORD_SIZE, 32(A0)
-        CLR.W 34(A0)
-        LEA lexemeBytes(PC), A1
-        MOVE.L A1, 36(A0)
-        MOVE.L #11, 40(A0)
-        LEA parserProgram(PC), A1
-        MOVE.L A1, 44(A0)
-        MOVE.L #PRVM_SMOKE_PROGRAM_LEN, 48(A0)
-        LEA resultBuffer(PC), A1
-        MOVE.L A1, 52(A0)
-        MOVE.L #160, 56(A0)
-        LEA diagnosticBuffer(PC), A1
-        MOVE.L A1, 60(A0)
-        MOVE.L #32, 64(A0)
-        LEA resumeBuffer(PC), A1
-        MOVE.L A1, 68(A0)
-        MOVE.L #40, 72(A0)
-        LEA exprRequestBuffer(PC), A1
-        MOVE.L A1, 76(A0)
-        MOVE.L #32, 80(A0)
-        LEA exprResultBuffer(PC), A1
-        MOVE.L A1, 84(A0)
-        MOVE.L #1, 88(A0)
-        MOVE.L #PRVM_PARSER_CONTRACT_VERSION_V2, 92(A0)
-        MOVE.L #64, 96(A0)
-        CLR.L 100(A0)
-        CLR.L 104(A0)
-        CLR.L 108(A0)
-        RTS
-
-prvmSmokeServiceExprRequest:
-        LEA exprRequestBuffer(PC), A2
-        MOVE.L 12(A2), D0
-        MOVE.L 16(A2), D1
-        MOVE.L D1, D2
-        SUB.L D0, D2
-        CMPI.L #1, D2
-        BNE.W prvmSmokeInvalidExprService
-        BSR.W prvmSmokeTokenPtrByIndex
-        TST.L D0
-        BNE.W prvmSmokeInvalidExprService
-        MOVE.L 16(A0), D4
-        CMPI.L #2, D4
-        BLT.W prvmSmokeInvalidExprService
-        MOVE.L 12(A0), D2
-        LEA lexemeBytes(PC), A3
-        ADDA.L D2, A3
-        CMPI.B #"#", (A3)+
-        BNE.W prvmSmokeInvalidExprService
-        SUBQ.L #1, D4
-        CLR.L D5
-
-prvmSmokeParseDecimalLoop:
-        TST.L D4
-        BEQ.S prvmSmokeParsedImmediate
-        MOVEQ #0, D0
-        MOVE.B (A3)+, D0
-        CMPI.B #"0", D0
-        BCS.W prvmSmokeInvalidExprService
-        CMPI.B #"9", D0
-        BHI.W prvmSmokeInvalidExprService
-        SUBI.B #"0", D0
-        MOVEQ #10, D6
-        MULU.W D6, D5
-        ADD.L D0, D5
-        SUBQ.L #1, D4
-        BRA.S prvmSmokeParseDecimalLoop
-
-prvmSmokeParsedImmediate:
-        BSR.W prvmSmokeWriteNativeExprSlot
-        LEA exprResultBuffer(PC), A1
-        MOVE.W #1, 0(A1)
-        CLR.W 2(A1)
-        MOVE.L 8(A2), 4(A1)
-        MOVE.L 20(A2), 8(A1)
-        MOVE.L 4(A0), 12(A1)
-        MOVE.L 8(A0), 16(A1)
-        CLR.L 20(A1)
-        MOVE.L #$FFFFFFFF, 24(A1)
-        CLR.L 28(A1)
-        CLR.L D0
-        RTS
-
-prvmSmokeTokenPtrByIndex:
-        CMPI.L #4, D0
-        BCC.S prvmSmokeTokenPtrInvalid
-        MOVE.L D0, D2
-        LSL.L #4, D2
-        MOVE.L D0, D3
-        LSL.L #2, D3
-        ADD.L D3, D2
-        LEA tokenRecord(PC), A0
-        ADDA.L D2, A0
-        CLR.L D0
-        RTS
-
-prvmSmokeTokenPtrInvalid:
-        MOVEQ #1, D0
-        RTS
-
-prvmSmokeWriteNativeExprSlot:
-        LEA nativeExprSlotTable(PC), A1
-        MOVE.W #PRVM_NATIVE_EXPR_STATE_READY, 0(A1)
-        MOVE.W #PRVM_NATIVE_EXPR_KIND_IMM_DEC, 2(A1)
-        MOVE.L 8(A2), 4(A1)
-        MOVE.L D5, 8(A1)
-        MOVE.L 20(A2), 12(A1)
-        MOVE.L 4(A0), 16(A1)
-        MOVE.L 8(A0), 20(A1)
-        MOVE.L 12(A0), 24(A1)
-        MOVE.L 16(A0), 28(A1)
-        RTS
-
-prvmSmokeInvalidExprService:
-        LEA failureExprServiceText(PC), A1
-        MOVEQ #1, D0
-        RTS
-
-prvmSmokeValidateExprRequest:
-        LEA smokeStatus(PC), A1
-        LEA exprRequestBuffer(PC), A0
-        CMPI.L #PRVM_STATUS_EXPR_REQUEST, 0(A1)
-        BNE.W prvmSmokeInvalidStatus
-        TST.L 4(A1)
-        BNE.W prvmSmokeInvalidExprSlot
-        CMPI.L #3, 8(A1)
-        BNE.W prvmSmokeInvalidExprCursor
-        CMPI.L #40, 12(A1)
-        BNE.W prvmSmokeInvalidExprResumeBytes
-        CMPI.W #1, 0(A0)
-        BNE.W prvmSmokeInvalidExprRequest
-        TST.W 2(A0)
-        BNE.W prvmSmokeInvalidExprRequest
-        TST.L 4(A0)
-        BNE.W prvmSmokeInvalidExprOperand
-        TST.L 8(A0)
-        BNE.W prvmSmokeInvalidExprSlot
-        CMPI.L #3, 12(A0)
-        BNE.W prvmSmokeInvalidExprStart
-        CMPI.L #4, 16(A0)
-        BNE.W prvmSmokeInvalidExprEnd
-        CMPI.L #1, 20(A0)
-        BNE.W prvmSmokeInvalidExprBoundary
-        CMPI.L #12, 24(A0)
-        BNE.W prvmSmokeInvalidExprBoundary
-        CMPI.L #15, 28(A0)
-        BNE.W prvmSmokeInvalidExprBoundary
-        LEA resumeBuffer(PC), A0
-        CMPI.L #PRVM_RESUME_MAGIC, 0(A0)
-        BNE.W prvmSmokeInvalidResume
-        CLR.L D0
-        RTS
-
-prvmSmokeValidateResult:
-        LEA smokeStatus(PC), A1
-        LEA resultBuffer(PC), A0
-        CMPI.L #PRVM_STATUS_OK, 0(A1)
-        BNE.W prvmSmokeInvalidStatus
-        CMPI.L #5, 4(A1)
-        BNE.W prvmSmokeInvalidCount
-        CMPI.L #4, 8(A1)
-        BNE.W prvmSmokeInvalidCursor
-        CMPI.L #160, 12(A1)
-        BNE.W prvmSmokeInvalidBytes
-        CMPI.W #PRVM_RESULT_BEGIN_STATEMENT, 0(A0)
-        BNE.W prvmSmokeInvalidBegin
-        CMPI.W #PRVM_RESULT_LABEL_TEXT, 32(A0)
-        BNE.W prvmSmokeInvalidLabel
-        CMPI.L #1, 40(A0)
-        BNE.W prvmSmokeInvalidLabel
-        CMPI.L #6, 44(A0)
-        BNE.W prvmSmokeInvalidLabel
-        TST.L 48(A0)
-        BNE.W prvmSmokeInvalidLabel
-        CMPI.L #5, 52(A0)
-        BNE.W prvmSmokeInvalidLabel
-        CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 64(A0)
-        BNE.W prvmSmokeInvalidMnemonic
-        CMPI.L #8, 72(A0)
-        BNE.W prvmSmokeInvalidColStart
-        CMPI.L #11, 76(A0)
-        BNE.W prvmSmokeInvalidColEnd
-        CMPI.L #5, 80(A0)
-        BNE.W prvmSmokeInvalidLexemeOffset
-        CMPI.L #3, 84(A0)
-        BNE.W prvmSmokeInvalidLexemeLen
-        CMPI.W #PRVM_RESULT_OPERAND_EXPR_SLOT, 96(A0)
-        BNE.W prvmSmokeInvalidOperand
-        CMPI.L #12, 104(A0)
-        BNE.W prvmSmokeInvalidOperand
-        CMPI.L #15, 108(A0)
-        BNE.W prvmSmokeInvalidOperand
-        TST.L 112(A0)
-        BNE.W prvmSmokeInvalidExprOperand
-        TST.L 116(A0)
-        BNE.W prvmSmokeInvalidExprSlot
-        CMPI.L #3, 120(A0)
-        BNE.W prvmSmokeInvalidExprStart
-        CMPI.L #4, 124(A0)
-        BNE.W prvmSmokeInvalidExprEnd
-        CMPI.W #PRVM_RESULT_FINISH_LINE, 128(A0)
-        BNE.W prvmSmokeInvalidFinish
-        BSR.W prvmSmokeValidateNativeExprSlot
-        TST.L D0
-        BNE.S prvmSmokeValidateResultReturn
-        LEA successText(PC), A1
-        CLR.L D0
-
-prvmSmokeValidateResultReturn:
-        RTS
-
-prvmSmokeValidateNativeExprSlot:
-        LEA nativeExprSlotTable(PC), A0
-        CMPI.W #PRVM_NATIVE_EXPR_STATE_READY, 0(A0)
-        BNE.W prvmSmokeInvalidNativeExprSlot
-        CMPI.W #PRVM_NATIVE_EXPR_KIND_IMM_DEC, 2(A0)
-        BNE.W prvmSmokeInvalidNativeExprKind
-        TST.L 4(A0)
-        BNE.W prvmSmokeInvalidNativeExprSlot
-        CMPI.L #42, 8(A0)
-        BNE.W prvmSmokeInvalidNativeExprValue
-        CMPI.L #1, 12(A0)
-        BNE.W prvmSmokeInvalidNativeExprSlot
-        CMPI.L #12, 16(A0)
-        BNE.W prvmSmokeInvalidNativeExprSlot
-        CMPI.L #15, 20(A0)
-        BNE.W prvmSmokeInvalidNativeExprSlot
-        CMPI.L #8, 24(A0)
-        BNE.W prvmSmokeInvalidNativeExprSlot
-        CMPI.L #3, 28(A0)
-        BNE.W prvmSmokeInvalidNativeExprSlot
-        CLR.L D0
-        RTS
-
-prvmSmokeInvalidStatus:
-        BSR.W prvmSmokeFormatStatus
-        CMPI.L #PRVM_STATUS_EXPR_REQUEST, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusExpr
-        CMPI.L #PRVM_STATUS_NEWLINE_UNSUPPORTED, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusNewline
-        CMPI.L #PRVM_STATUS_ENTRY_BOUNDARY, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusEntry
-        CMPI.L #PRVM_STATUS_INVALID_ARGUMENT, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusArgument
-        CMPI.L #PRVM_STATUS_INVALID_TOKEN, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusToken
-        CMPI.L #PRVM_STATUS_INVALID_PROGRAM, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusProgram
-        CMPI.L #PRVM_STATUS_OUTPUT_OVERFLOW, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusOverflow
-        CMPI.L #PRVM_STATUS_UNSUPPORTED_OPCODE, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusOpcode
-        CMPI.L #PRVM_STATUS_INVALID_RESUME, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusResume
-        CMPI.L #PRVM_STATUS_EXPR_RESULT_INVALID, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusExprResult
-        CMPI.L #PRVM_STATUS_BUDGET_EXCEEDED, 0(A1)
-        BEQ.S prvmSmokeInvalidStatusBudget
-        LEA failureStatusText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusExpr:
-        LEA failureStatusExprText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusNewline:
-        LEA failureStatusNewlineText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusEntry:
-        LEA failureStatusEntryText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusArgument:
-        LEA failureStatusArgumentText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusToken:
-        LEA failureStatusTokenText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusProgram:
-        LEA failureStatusProgramText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusOverflow:
-        LEA failureStatusOverflowText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusOpcode:
-        LEA failureStatusOpcodeText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusResume:
-        LEA failureStatusResumeText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusExprResult:
-        LEA failureStatusExprResultText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidStatusBudget:
-        LEA failureStatusBudgetText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidCount:
-        LEA failureCountText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidCursor:
-        LEA failureCursorText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidBytes:
-        LEA failureBytesText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidBegin:
-        LEA failureBeginText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidMnemonic:
-        LEA failureMnemonicText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidLabel:
-        LEA failureLabelText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidColStart:
-        LEA failureColStartText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidColEnd:
-        LEA failureColEndText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidLexemeOffset:
-        LEA failureLexemeOffsetText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidLexemeLen:
-        LEA failureLexemeLenText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidOperand:
-        LEA failureOperandText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidExprRequest:
-        LEA failureExprRequestText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidExprOperand:
-        LEA failureExprOperandText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidExprSlot:
-        LEA failureExprSlotText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidExprStart:
-        LEA failureExprStartText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidExprEnd:
-        LEA failureExprEndText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidNativeExprSlot:
-        LEA failureNativeExprSlotText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidNativeExprKind:
-        LEA failureNativeExprKindText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidNativeExprValue:
-        LEA failureNativeExprValueText(PC), A1
-        BRA.W prvmSmokeInvalid
-
-prvmSmokeInvalidExprCursor:
-        LEA failureExprCursorText(PC), A1
-        BRA.S prvmSmokeInvalid
-
-prvmSmokeInvalidExprResumeBytes:
-        LEA failureExprResumeBytesText(PC), A1
-        BRA.S prvmSmokeInvalid
-
-prvmSmokeInvalidExprBoundary:
-        LEA failureExprBoundaryText(PC), A1
-        BRA.S prvmSmokeInvalid
-
-prvmSmokeInvalidResume:
-        LEA failureResumeText(PC), A1
-        BRA.S prvmSmokeInvalid
-
-prvmSmokeInvalidFinish:
-        LEA failureFinishText(PC), A1
-
-prvmSmokeInvalid:
-        MOVEQ #1, D0
-        RTS
-
-prvmSmokeFormatStatus:
-        MOVE.L 0(A1), D0
-        LEA failureStatusHexDigits(PC), A0
-        MOVEQ #7, D2
-
-prvmSmokeFormatStatusLoop:
-        ROL.L #4, D0
-        MOVE.L D0, D3
-        ANDI.B #$0F, D3
-        CMPI.B #10, D3
-        BCS.S prvmSmokeFormatStatusDigit
-        ADDI.B #7, D3
-
-prvmSmokeFormatStatusDigit:
-        ADDI.B #"0", D3
-        MOVE.B D3, (A0)+
-        DBRA D2, prvmSmokeFormatStatusLoop
-        RTS
-
-dosName:
-        .byte "dos.library",0
-startedText:
-        .byte "OPFORGE-PRVM smoke start",10,0
-successText:
-        .byte "OPFORGE-PRVM smoke OK",10,0
-failureText:
-        .byte "OPFORGE-PRVM smoke FAIL",10,0
-failureStatusText:
-        .byte "OPFORGE-PRVM smoke FAIL status $"
-failureStatusHexDigits:
-        .byte "00000000",10,0
-failureStatusExprText:
-        .byte "OPFORGE-PRVM smoke FAIL status expr",10,0
-failureStatusNewlineText:
-        .byte "OPFORGE-PRVM smoke FAIL status newline",10,0
-failureStatusEntryText:
-        .byte "OPFORGE-PRVM smoke FAIL status entry",10,0
-failureStatusArgumentText:
-        .byte "OPFORGE-PRVM smoke FAIL status argument",10,0
-failureStatusTokenText:
-        .byte "OPFORGE-PRVM smoke FAIL status token",10,0
-failureStatusProgramText:
-        .byte "OPFORGE-PRVM smoke FAIL status program",10,0
-failureStatusOverflowText:
-        .byte "OPFORGE-PRVM smoke FAIL status overflow",10,0
-failureStatusOpcodeText:
-        .byte "OPFORGE-PRVM smoke FAIL status opcode",10,0
-failureStatusResumeText:
-        .byte "OPFORGE-PRVM smoke FAIL status resume",10,0
-failureStatusExprResultText:
-        .byte "OPFORGE-PRVM smoke FAIL status expr-result",10,0
-failureStatusBudgetText:
-        .byte "OPFORGE-PRVM smoke FAIL status budget",10,0
-failureCountText:
-        .byte "OPFORGE-PRVM smoke FAIL count",10,0
-failureCursorText:
-        .byte "OPFORGE-PRVM smoke FAIL cursor",10,0
-failureBytesText:
-        .byte "OPFORGE-PRVM smoke FAIL bytes",10,0
-failureBeginText:
-        .byte "OPFORGE-PRVM smoke FAIL begin",10,0
-failureMnemonicText:
-        .byte "OPFORGE-PRVM smoke FAIL mnemonic",10,0
-failureLabelText:
-        .byte "OPFORGE-PRVM smoke FAIL label",10,0
-failureColStartText:
-        .byte "OPFORGE-PRVM smoke FAIL col-start",10,0
-failureColEndText:
-        .byte "OPFORGE-PRVM smoke FAIL col-end",10,0
-failureLexemeOffsetText:
-        .byte "OPFORGE-PRVM smoke FAIL lexeme-offset",10,0
-failureLexemeLenText:
-        .byte "OPFORGE-PRVM smoke FAIL lexeme-len",10,0
-failureOperandText:
-        .byte "OPFORGE-PRVM smoke FAIL operand",10,0
-failureExprRequestText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-request",10,0
-failureExprOperandText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-operand",10,0
-failureExprSlotText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-slot",10,0
-failureExprStartText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-start",10,0
-failureExprEndText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-end",10,0
-failureExprServiceText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-service",10,0
-failureNativeExprSlotText:
-        .byte "OPFORGE-PRVM smoke FAIL native-expr-slot",10,0
-failureNativeExprKindText:
-        .byte "OPFORGE-PRVM smoke FAIL native-expr-kind",10,0
-failureNativeExprValueText:
-        .byte "OPFORGE-PRVM smoke FAIL native-expr-value",10,0
-failureExprCursorText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-cursor",10,0
-failureExprResumeBytesText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-resume-bytes",10,0
-failureExprBoundaryText:
-        .byte "OPFORGE-PRVM smoke FAIL expr-boundary",10,0
-failureResumeText:
-        .byte "OPFORGE-PRVM smoke FAIL resume",10,0
-failureFinishText:
-        .byte "OPFORGE-PRVM smoke FAIL finish",10,0
-
-sourceLine:
-        .byte "start: LDA #42"
-
-lexemeBytes:
-        .byte "startLDA#42"
-
-parserProgram:
-        .byte $60,$40,$13,$03,$08,$00,$64,$00
-        .byte $14,$03,$0E,$00,$66,$00
-        .byte $15,$03,$24,$00
-        .byte $33,$04,".","o","r","g",$62,$20,$22,$02,$41,$50
-        .byte $FF,$FF,$FF,$FF,$64,$00
-        .byte $10,$03,$03,$30,$00,$20,$30,$65,$20,$01,$33,$00
-        .byte $30,$62,$20,$41,$50,$FF,$FF,$FF,$FF,$64,$00
-parserProgramEnd:
-
-tokenRecord:
-        .word 0
-        .word 0
-        .long 1
-        .long 6
-        .long 0
-        .long 5
-        .word 5
-        .word 0
-        .long 6
-        .long 7
-        .long 0
-        .long 0
-        .word 0
-        .word 0
-        .long 8
-        .long 11
-        .long 5
-        .long 3
-        .word 0
-        .word 0
-        .long 12
-        .long 15
-        .long 8
-        .long 3
-
-smokeStatus:
-        .long 0
-smokeResultCount:
-        .long 0
-smokeCursor:
-        .long 0
-smokeResultBytes:
-        .long 0
-
-requestFrame:
-        .fill byte, 112, 0
-resultBuffer:
-        .fill byte, 160, 0
-diagnosticBuffer:
-        .fill byte, 32, 0
-resumeBuffer:
-        .fill byte, 40, 0
-exprRequestBuffer:
-        .fill byte, 32, 0
-exprResultBuffer:
-        .fill byte, 32, 0
-nativeExprSlotTable:
-        .fill byte, 32, 0
-
-        .endsection
-        .output "build/prvm_smoke.hunk", format=hunk, sections=entry,code
-        .endmodule
+	.section entry, kind=code
+	.pub
+
+start	.block
+	moveq #RETURN_FAIL, d7
+
+	lea DosName(PC), a1
+	moveq #36, d0
+	movea.l SYS_BASE.W, a6
+	jsr OPEN_LIBRARY(a6)
+
+	tst.l d0
+	bne.s haveDos
+
+	lea DosName(PC), a1
+	moveq #0, d0
+	movea.l SYS_BASE.W, a6
+	jsr OPEN_LIBRARY(a6)
+	tst.l d0
+	beq.w done
+
+haveDos
+	movea.l d0, a5
+	lea StartedText(PC), a1
+	move.l a1, d1
+	bsr.w putStr
+
+	bsr.w buildRequestFrame
+	lea RequestFrame(PC), a0
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	jsr prvmRun68000.l
+
+	lea SmokeStatus(PC), a0
+	move.l d0, 0(a0)
+	move.l d1, 4(a0)
+	move.l d2, 8(a0)
+	move.l d3, 12(a0)
+
+	bsr.w validateExprRequest
+	tst.l d0
+	bne.s reportFailure
+
+	bsr.w serviceExprRequest
+	tst.l d0
+	bne.s reportFailure
+
+	lea RequestFrame(PC), a0
+	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	jsr prvmRun68000.l
+
+	lea SmokeStatus(PC), a0
+	move.l d0, 0(a0)
+	move.l d1, 4(a0)
+	move.l d2, 8(a0)
+	move.l d3, 12(a0)
+
+	bsr.w validateResult
+	tst.l d0
+	bne.s reportFailure
+
+	lea SuccessText(PC), a1
+	move.l a1, d1
+	bsr.w putStr
+	moveq #RETURN_OK, d7
+	bra.s closeDos
+
+reportFailure
+	move.l a1, d1
+	bsr.w putStr
+
+closeDos
+	movea.l a5, a1
+	movea.l SYS_BASE.W, a6
+	jsr CLOSE_LIBRARY(a6)
+
+done
+	move.l d7, d0
+	rts
+
+putStr
+	movea.l a5, a6
+	jsr PUT_STR(a6)
+	rts
+
+buildRequestFrame
+	lea RequestFrame(PC), a0
+	move.l #PRVM_MAGIC_OPRP, 0(a0)
+	move.w #PRVM_ABI_VERSION_V1, 4(a0)
+	move.w #PRVM_REQUEST_FRAME_SIZE, 6(a0)
+	move.w #PRVM_CALL_MODE_START, 8(a0)
+	move.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
+	move.l #1, 12(a0)
+	lea SourceLine(PC), a1
+	move.l a1, 16(a0)
+	move.l #14, 20(a0)
+	lea TokenRecord(PC), a1
+	move.l a1, 24(a0)
+	move.l #4, 28(a0)
+	move.w #PRVM_TOKEN_RECORD_SIZE, 32(a0)
+	clr.w 34(a0)
+	lea LexemeBytes(PC), a1
+	move.l a1, 36(a0)
+	move.l #11, 40(a0)
+	lea ParserProgram(PC), a1
+	move.l a1, 44(a0)
+	move.l #PRVM_SMOKE_PROGRAM_LEN, 48(a0)
+	lea ResultBuffer(PC), a1
+	move.l a1, 52(a0)
+	move.l #192, 56(a0)
+	lea DiagnosticBuffer(PC), a1
+	move.l a1, 60(a0)
+	move.l #32, 64(a0)
+	lea ResumeBuffer(PC), a1
+	move.l a1, 68(a0)
+	move.l #40, 72(a0)
+	lea ExprRequestBuffer(PC), a1
+	move.l a1, 76(a0)
+	move.l #32, 80(a0)
+	lea ExprResultBuffer(PC), a1
+	move.l a1, 84(a0)
+	move.l #1, 88(a0)
+	move.l #PRVM_PARSER_CONTRACT_VERSION_V2, 92(a0)
+	move.l #64, 96(a0)
+	clr.l 100(a0)
+	clr.l 104(a0)
+	clr.l 108(a0)
+	rts
+
+serviceExprRequest
+	lea ExprRequestBuffer(PC), a2
+	move.l 12(a2), d0
+	move.l 16(a2), d1
+	move.l d1, d2
+	sub.l d0, d2
+	cmpi.l #1, d2
+	bne.w invalidExprService
+	bsr.w tokenPtrByIndex
+	tst.l d0
+	bne.w invalidExprService
+	move.l 16(a0), d4
+	cmpi.l #2, d4
+	blt.w invalidExprService
+	move.l 12(a0), d2
+	lea LexemeBytes(PC), a3
+	adda.l d2, a3
+	cmpi.b #"#", (a3)+
+	bne.w invalidExprService
+	subq.l #1, d4
+	clr.l d5
+
+parseDecimalLoop
+	tst.l d4
+	beq.s parsedImmediate
+	moveq #0, d0
+	move.b (a3)+, d0
+	cmpi.b #"0", d0
+	bcs.w invalidExprService
+	cmpi.b #"9", d0
+	bhi.w invalidExprService
+	subi.b #"0", d0
+	moveq #10, d6
+	mulu.w d6, d5
+	add.l d0, d5
+	subq.l #1, d4
+	bra.s parseDecimalLoop
+
+parsedImmediate
+	bsr.w writeNativeExprSlot
+	lea ExprResultBuffer(PC), a1
+	move.w #1, 0(a1)
+	clr.w 2(a1)
+	move.l 8(a2), 4(a1)
+	move.l 20(a2), 8(a1)
+	move.l 4(a0), 12(a1)
+	move.l 8(a0), 16(a1)
+	clr.l 20(a1)
+	move.l #$FFFFFFFF, 24(a1)
+	clr.l 28(a1)
+	clr.l d0
+	rts
+
+tokenPtrByIndex
+	cmpi.l #4, d0
+	bcc.s tokenPtrInvalid
+	move.l d0, d2
+	lsl.l #4, d2
+	move.l d0, d3
+	lsl.l #2, d3
+	add.l d3, d2
+	lea TokenRecord(PC), a0
+	adda.l d2, a0
+	clr.l d0
+	rts
+
+tokenPtrInvalid
+	moveq #1, d0
+	rts
+
+writeNativeExprSlot
+	lea NativeExprSlotTable(PC), a1
+	move.w #PRVM_NATIVE_EXPR_STATE_READY, 0(a1)
+	move.w #PRVM_NATIVE_EXPR_KIND_IMM_DEC, 2(a1)
+	move.l 8(a2), 4(a1)
+	move.l d5, 8(a1)
+	move.l 20(a2), 12(a1)
+	move.l 4(a0), 16(a1)
+	move.l 8(a0), 20(a1)
+	move.l 12(a0), 24(a1)
+	move.l 16(a0), 28(a1)
+	rts
+
+invalidExprService
+	lea FailureExprServiceText(PC), a1
+	moveq #1, d0
+	rts
+
+validateExprRequest
+	lea SmokeStatus(PC), a1
+	lea ExprRequestBuffer(PC), a0
+	cmpi.l #PRVM_STATUS_EXPR_REQUEST, 0(a1)
+	bne.w invalidStatus
+	tst.l 4(a1)
+	bne.w invalidExprSlot
+	cmpi.l #3, 8(a1)
+	bne.w invalidExprCursor
+	cmpi.l #40, 12(a1)
+	bne.w invalidExprResumeBytes
+	cmpi.w #1, 0(a0)
+	bne.w invalidExprRequest
+	tst.w 2(a0)
+	bne.w invalidExprRequest
+	tst.l 4(a0)
+	bne.w invalidExprOperand
+	tst.l 8(a0)
+	bne.w invalidExprSlot
+	cmpi.l #3, 12(a0)
+	bne.w invalidExprStart
+	cmpi.l #4, 16(a0)
+	bne.w invalidExprEnd
+	cmpi.l #1, 20(a0)
+	bne.w invalidExprBoundary
+	cmpi.l #12, 24(a0)
+	bne.w invalidExprBoundary
+	cmpi.l #15, 28(a0)
+	bne.w invalidExprBoundary
+	lea ResumeBuffer(PC), a0
+	cmpi.l #PRVM_RESUME_MAGIC, 0(a0)
+	bne.w invalidResume
+	clr.l d0
+	rts
+
+validateResult
+	lea SmokeStatus(PC), a1
+	lea ResultBuffer(PC), a0
+	cmpi.l #PRVM_STATUS_OK, 0(a1)
+	bne.w invalidStatus
+	cmpi.l #6, 4(a1)
+	bne.w invalidCount
+	cmpi.l #4, 8(a1)
+	bne.w invalidCursor
+	cmpi.l #192, 12(a1)
+	bne.w invalidBytes
+	cmpi.w #PRVM_RESULT_BEGIN_STATEMENT, 0(a0)
+	bne.w invalidBegin
+	cmpi.w #PRVM_RESULT_LABEL_TEXT, 32(a0)
+	bne.w invalidLabel
+	cmpi.l #1, 40(a0)
+	bne.w invalidLabel
+	cmpi.l #6, 44(a0)
+	bne.w invalidLabel
+	tst.l 48(a0)
+	bne.w invalidLabel
+	cmpi.l #5, 52(a0)
+	bne.w invalidLabel
+	cmpi.w #PRVM_RESULT_MNEMONIC_TEXT, 64(a0)
+	bne.w invalidMnemonic
+	cmpi.l #8, 72(a0)
+	bne.w invalidColStart
+	cmpi.l #11, 76(a0)
+	bne.w invalidColEnd
+	cmpi.l #5, 80(a0)
+	bne.w invalidLexemeOffset
+	cmpi.l #3, 84(a0)
+	bne.w invalidLexemeLen
+	cmpi.w #PRVM_RESULT_OPERAND_TEXT, 96(a0)
+	bne.w invalidOperand
+	cmpi.l #12, 104(a0)
+	bne.w invalidOperand
+	cmpi.l #15, 108(a0)
+	bne.w invalidOperand
+	cmpi.l #3, 112(a0)
+	bne.w invalidExprOperand
+	cmpi.l #4, 116(a0)
+	bne.w invalidExprEnd
+	cmpi.w #PRVM_RESULT_OPERAND_EXPR_SLOT, 128(a0)
+	bne.w invalidOperand
+	cmpi.l #12, 136(a0)
+	bne.w invalidOperand
+	cmpi.l #15, 140(a0)
+	bne.w invalidOperand
+	tst.l 144(a0)
+	bne.w invalidExprOperand
+	tst.l 148(a0)
+	bne.w invalidExprSlot
+	cmpi.l #3, 152(a0)
+	bne.w invalidExprStart
+	cmpi.l #4, 156(a0)
+	bne.w invalidExprEnd
+	cmpi.w #PRVM_RESULT_FINISH_LINE, 160(a0)
+	bne.w invalidFinish
+	bsr.w validateNativeExprSlot
+	tst.l d0
+	bne.s validateResultReturn
+	lea SuccessText(PC), a1
+	clr.l d0
+
+validateResultReturn
+	rts
+
+validateNativeExprSlot
+	lea NativeExprSlotTable(PC), a0
+	cmpi.w #PRVM_NATIVE_EXPR_STATE_READY, 0(a0)
+	bne.w invalidNativeExprSlot
+	cmpi.w #PRVM_NATIVE_EXPR_KIND_IMM_DEC, 2(a0)
+	bne.w invalidNativeExprKind
+	tst.l 4(a0)
+	bne.w invalidNativeExprSlot
+	cmpi.l #42, 8(a0)
+	bne.w invalidNativeExprValue
+	cmpi.l #1, 12(a0)
+	bne.w invalidNativeExprSlot
+	cmpi.l #12, 16(a0)
+	bne.w invalidNativeExprSlot
+	cmpi.l #15, 20(a0)
+	bne.w invalidNativeExprSlot
+	cmpi.l #8, 24(a0)
+	bne.w invalidNativeExprSlot
+	cmpi.l #3, 28(a0)
+	bne.w invalidNativeExprSlot
+	clr.l d0
+	rts
+
+invalidStatus
+	bsr.w formatStatus
+	cmpi.l #PRVM_STATUS_EXPR_REQUEST, 0(a1)
+	beq.s invalidStatusExpr
+	cmpi.l #PRVM_STATUS_NEWLINE_UNSUPPORTED, 0(a1)
+	beq.s invalidStatusNewline
+	cmpi.l #PRVM_STATUS_ENTRY_BOUNDARY, 0(a1)
+	beq.s invalidStatusEntry
+	cmpi.l #PRVM_STATUS_INVALID_ARGUMENT, 0(a1)
+	beq.s invalidStatusArgument
+	cmpi.l #PRVM_STATUS_INVALID_TOKEN, 0(a1)
+	beq.s invalidStatusToken
+	cmpi.l #PRVM_STATUS_INVALID_PROGRAM, 0(a1)
+	beq.s invalidStatusProgram
+	cmpi.l #PRVM_STATUS_OUTPUT_OVERFLOW, 0(a1)
+	beq.s invalidStatusOverflow
+	cmpi.l #PRVM_STATUS_UNSUPPORTED_OPCODE, 0(a1)
+	beq.s invalidStatusOpcode
+	cmpi.l #PRVM_STATUS_INVALID_RESUME, 0(a1)
+	beq.s invalidStatusResume
+	cmpi.l #PRVM_STATUS_EXPR_RESULT_INVALID, 0(a1)
+	beq.s invalidStatusExprResult
+	cmpi.l #PRVM_STATUS_BUDGET_EXCEEDED, 0(a1)
+	beq.s invalidStatusBudget
+	lea FailureStatusText(PC), a1
+	bra.w invalid
+
+invalidStatusExpr
+	lea FailureStatusExprText(PC), a1
+	bra.w invalid
+
+invalidStatusNewline
+	lea FailureStatusNewlineText(PC), a1
+	bra.w invalid
+
+invalidStatusEntry
+	lea FailureStatusEntryText(PC), a1
+	bra.w invalid
+
+invalidStatusArgument
+	lea FailureStatusArgumentText(PC), a1
+	bra.w invalid
+
+invalidStatusToken
+	lea FailureStatusTokenText(PC), a1
+	bra.w invalid
+
+invalidStatusProgram
+	lea FailureStatusProgramText(PC), a1
+	bra.w invalid
+
+invalidStatusOverflow
+	lea FailureStatusOverflowText(PC), a1
+	bra.w invalid
+
+invalidStatusOpcode
+	lea FailureStatusOpcodeText(PC), a1
+	bra.w invalid
+
+invalidStatusResume
+	lea FailureStatusResumeText(PC), a1
+	bra.w invalid
+
+invalidStatusExprResult
+	lea FailureStatusExprResultText(PC), a1
+	bra.w invalid
+
+invalidStatusBudget
+	lea FailureStatusBudgetText(PC), a1
+	bra.w invalid
+
+invalidCount
+	lea FailureCountText(PC), a1
+	bra.w invalid
+
+invalidCursor
+	lea FailureCursorText(PC), a1
+	bra.w invalid
+
+invalidBytes
+	lea FailureBytesText(PC), a1
+	bra.w invalid
+
+invalidBegin
+	lea FailureBeginText(PC), a1
+	bra.w invalid
+
+invalidMnemonic
+	lea FailureMnemonicText(PC), a1
+	bra.w invalid
+
+invalidLabel
+	lea FailureLabelText(PC), a1
+	bra.w invalid
+
+invalidColStart
+	lea FailureColStartText(PC), a1
+	bra.w invalid
+
+invalidColEnd
+	lea FailureColEndText(PC), a1
+	bra.w invalid
+
+invalidLexemeOffset
+	lea FailureLexemeOffsetText(PC), a1
+	bra.w invalid
+
+invalidLexemeLen
+	lea FailureLexemeLenText(PC), a1
+	bra.w invalid
+
+invalidOperand
+	lea FailureOperandText(PC), a1
+	bra.w invalid
+
+invalidExprRequest
+	lea FailureExprRequestText(PC), a1
+	bra.w invalid
+
+invalidExprOperand
+	lea FailureExprOperandText(PC), a1
+	bra.w invalid
+
+invalidExprSlot
+	lea FailureExprSlotText(PC), a1
+	bra.w invalid
+
+invalidExprStart
+	lea FailureExprStartText(PC), a1
+	bra.w invalid
+
+invalidExprEnd
+	lea FailureExprEndText(PC), a1
+	bra.w invalid
+
+invalidNativeExprSlot
+	lea FailureNativeExprSlotText(PC), a1
+	bra.w invalid
+
+invalidNativeExprKind
+	lea FailureNativeExprKindText(PC), a1
+	bra.w invalid
+
+invalidNativeExprValue
+	lea FailureNativeExprValueText(PC), a1
+	bra.w invalid
+
+invalidExprCursor
+	lea FailureExprCursorText(PC), a1
+	bra.s invalid
+
+invalidExprResumeBytes
+	lea FailureExprResumeBytesText(PC), a1
+	bra.s invalid
+
+invalidExprBoundary
+	lea FailureExprBoundaryText(PC), a1
+	bra.s invalid
+
+invalidResume
+	lea FailureResumeText(PC), a1
+	bra.s invalid
+
+invalidFinish
+	lea FailureFinishText(PC), a1
+
+invalid
+	moveq #1, d0
+	rts
+
+formatStatus
+	move.l 0(a1), d0
+	lea FailureStatusHexDigits(PC), a0
+	moveq #7, d2
+
+formatStatusLoop
+	rol.l #4, d0
+	move.l d0, d3
+	andi.b #$0F, d3
+	cmpi.b #10, d3
+	bcs.s formatStatusDigit
+	addi.b #7, d3
+
+formatStatusDigit
+	addi.b #"0", d3
+	move.b d3, (a0)+
+	dbra d2, formatStatusLoop
+	rts
+
+DosName
+	.byte "dos.library", 0
+StartedText
+	.byte "OPFORGE-PRVM smoke start", 10, 0
+SuccessText
+	.byte "OPFORGE-PRVM smoke OK", 10, 0
+FailureText
+	.byte "OPFORGE-PRVM smoke FAIL", 10, 0
+FailureStatusText
+	.byte "OPFORGE-PRVM smoke FAIL status $"
+FailureStatusHexDigits
+	.byte "00000000", 10, 0
+FailureStatusExprText
+	.byte "OPFORGE-PRVM smoke FAIL status expr", 10, 0
+FailureStatusNewlineText
+	.byte "OPFORGE-PRVM smoke FAIL status newline", 10, 0
+FailureStatusEntryText
+	.byte "OPFORGE-PRVM smoke FAIL status entry", 10, 0
+FailureStatusArgumentText
+	.byte "OPFORGE-PRVM smoke FAIL status argument", 10, 0
+FailureStatusTokenText
+	.byte "OPFORGE-PRVM smoke FAIL status token", 10, 0
+FailureStatusProgramText
+	.byte "OPFORGE-PRVM smoke FAIL status program", 10, 0
+FailureStatusOverflowText
+	.byte "OPFORGE-PRVM smoke FAIL status overflow", 10, 0
+FailureStatusOpcodeText
+	.byte "OPFORGE-PRVM smoke FAIL status opcode", 10, 0
+FailureStatusResumeText
+	.byte "OPFORGE-PRVM smoke FAIL status resume", 10, 0
+FailureStatusExprResultText
+	.byte "OPFORGE-PRVM smoke FAIL status expr-result", 10, 0
+FailureStatusBudgetText
+	.byte "OPFORGE-PRVM smoke FAIL status budget", 10, 0
+FailureCountText
+	.byte "OPFORGE-PRVM smoke FAIL count", 10, 0
+FailureCursorText
+	.byte "OPFORGE-PRVM smoke FAIL cursor", 10, 0
+FailureBytesText
+	.byte "OPFORGE-PRVM smoke FAIL bytes", 10, 0
+FailureBeginText
+	.byte "OPFORGE-PRVM smoke FAIL begin", 10, 0
+FailureMnemonicText
+	.byte "OPFORGE-PRVM smoke FAIL mnemonic", 10, 0
+FailureLabelText
+	.byte "OPFORGE-PRVM smoke FAIL label", 10, 0
+FailureColStartText
+	.byte "OPFORGE-PRVM smoke FAIL col-start", 10, 0
+FailureColEndText
+	.byte "OPFORGE-PRVM smoke FAIL col-end", 10, 0
+FailureLexemeOffsetText
+	.byte "OPFORGE-PRVM smoke FAIL lexeme-offset", 10, 0
+FailureLexemeLenText
+	.byte "OPFORGE-PRVM smoke FAIL lexeme-len", 10, 0
+FailureOperandText
+	.byte "OPFORGE-PRVM smoke FAIL operand", 10, 0
+FailureExprRequestText
+	.byte "OPFORGE-PRVM smoke FAIL expr-request", 10, 0
+FailureExprOperandText
+	.byte "OPFORGE-PRVM smoke FAIL expr-operand", 10, 0
+FailureExprSlotText
+	.byte "OPFORGE-PRVM smoke FAIL expr-slot", 10, 0
+FailureExprStartText
+	.byte "OPFORGE-PRVM smoke FAIL expr-start", 10, 0
+FailureExprEndText
+	.byte "OPFORGE-PRVM smoke FAIL expr-end", 10, 0
+FailureExprServiceText
+	.byte "OPFORGE-PRVM smoke FAIL expr-service", 10, 0
+FailureNativeExprSlotText
+	.byte "OPFORGE-PRVM smoke FAIL native-expr-slot", 10, 0
+FailureNativeExprKindText
+	.byte "OPFORGE-PRVM smoke FAIL native-expr-kind", 10, 0
+FailureNativeExprValueText
+	.byte "OPFORGE-PRVM smoke FAIL native-expr-value", 10, 0
+FailureExprCursorText
+	.byte "OPFORGE-PRVM smoke FAIL expr-cursor", 10, 0
+FailureExprResumeBytesText
+	.byte "OPFORGE-PRVM smoke FAIL expr-resume-bytes", 10, 0
+FailureExprBoundaryText
+	.byte "OPFORGE-PRVM smoke FAIL expr-boundary", 10, 0
+FailureResumeText
+	.byte "OPFORGE-PRVM smoke FAIL resume", 10, 0
+FailureFinishText
+	.byte "OPFORGE-PRVM smoke FAIL finish", 10, 0
+
+SourceLine
+	.byte "start: LDA #42"
+
+LexemeBytes
+	.byte "startLDA#42"
+
+ParserProgram
+	.byte $60, $40, $13, $03, $08, $00, $64, $00
+	.byte $14, $03, $0E, $00, $66, $00
+	.byte $15, $03, $24, $00
+	.byte $33, $04, ".", "o", "r", "g", $62, $20, $22, $02, $41, $50
+	.byte $FF, $FF, $FF, $FF, $64, $00
+	.byte $10, $03, $03, $30, $00, $20, $30, $65, $20, $01, $33, $00
+	.byte $30, $62, $20, $41, $50, $FF, $FF, $FF, $FF, $64, $00
+ParserProgramEnd
+
+TokenRecord
+	.word 0
+	.word 0
+	.long 1
+	.long 6
+	.long 0
+	.long 5
+	.word 5
+	.word 0
+	.long 6
+	.long 7
+	.long 0
+	.long 0
+	.word 0
+	.word 0
+	.long 8
+	.long 11
+	.long 5
+	.long 3
+	.word 0
+	.word 0
+	.long 12
+	.long 15
+	.long 8
+	.long 3
+
+SmokeStatus
+	.long 0
+SmokeResultCount
+	.long 0
+SmokeCursor
+	.long 0
+SmokeResultBytes
+	.long 0
+
+RequestFrame
+	.fill byte, 112, 0
+ResultBuffer
+	.fill byte, 192, 0
+DiagnosticBuffer
+	.fill byte, 32, 0
+ResumeBuffer
+	.fill byte, 40, 0
+ExprRequestBuffer
+	.fill byte, 32, 0
+ExprResultBuffer
+	.fill byte, 32, 0
+NativeExprSlotTable
+	.fill byte, 32, 0
+	.bend  ; start
+	.priv
+
+	.endsection
+	.output "build/prvm_smoke.hunk", format=hunk, sections=entry, code
+	.endmodule

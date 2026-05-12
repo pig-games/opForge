@@ -1162,7 +1162,7 @@ Label-casing behavior:
 - `routine_label_case`, `data_label_case`, and `constant_label_case` override `label_case` for symbol-aware formatter runs when a label can be classified by role.
 - Formatter rewrites now update matching same-file label usages, and project-mode formatter runs also rewrite selective `.use module (item)` imports plus imported symbol references when the defining module changes case.
 
-Example AmigaOS formatter config:
+Example repository formatter config for native Motorola 68000 work:
 
 ```toml
 [formatter]
@@ -1185,7 +1185,13 @@ One practical invocation for the Motorola 68000 AmigaOS tree is:
 ```text
 opforge -i native/motorola68000/amigaos/tokvm/tokvm_interpreter.asm \
   --fmt-check \
-  --fmt-config native/motorola68000/amigaos/opforge-amigaos-formatter.toml
+  --fmt-config .opforgefmt.toml
+```
+
+The repository workflow wrapper for supported native Motorola 68000 roots is:
+
+```text
+scripts/workflow/run_native_68000_format_gate.sh
 ```
 
 ## 6. Messages

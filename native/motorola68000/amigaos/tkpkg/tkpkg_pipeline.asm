@@ -55,6 +55,7 @@ IdentifierTooLongText
 	.endsection
 
 	.section code, kind=code
+	.pub
 
 ; ---------------------------------------------------------------------------
 ; Select the active package pipeline for a CPU/dialect request.
@@ -72,44 +73,47 @@ IdentifierTooLongText
 ;   failure.
 ; - A1/D1: runtime failure text pointer/length when D0 is runtime error.
 ; ---------------------------------------------------------------------------
-
-tkpkgPipelineSetActiveV1
+tkpkgPipelineSetActiveV1	.block
 	btst #0, PackageStateFlags  ; require load_package before selecting any runtime pipeline
-	bne.s tkpkgPipelineParseRequest
+	bne.s parseRequest
 	lea NoPackageText, a1
 	moveq #NO_PACKAGE_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
-tkpkgPipelineParseRequest
-	bsr.w tkpkgPipelineParseRequestV1
+parseRequest
+	bsr.w parseRequestV1
 	tst.b d0
-	bne.w tkpkgPipelineDone
-	bsr.w tkpkgPipelineResolveHierarchyV1
+	bne.w done
+	bsr.w resolveHierarchyV1
 	tst.b d0
-	bne.w tkpkgPipelineDone
+	bne.w done
 	bsr.w tkpkgTokenPolicyResolveLocatorV1
 	tst.b d0
-	bne.w tkpkgPipelineDone
-	bsr.w tkpkgPipelineResolveTokenizerVmLocatorV1
+	bne.w done
+	bsr.w resolveTokenizerVmLocatorV1
 	tst.b d0
-	bne.w tkpkgPipelineDone
-	bsr.w tkpkgPipelineCommitActiveSelectionV1
+	bne.w done
+	bsr.w commitActiveSelectionV1
 	tst.b d0
-	bne.w tkpkgPipelineDone
+	bne.w done
 	moveq #0, d0
 
-tkpkgPipelineDone
+done
 	rts
 
 ; Parse `<cpu-id>\0<dialect-id?>` into pending request locators.
-tkpkgPipelineParseRequestV1
+	.bend  ; tkpkgPipelineSetActiveV1
+
+	.priv
+
+parseRequestV1	.block
 	lea PendingFamilyOffsetLo, a3
 	moveq #29, d0
 
-tkpkgPipelineClearPendingLoop
+clearPendingLoop
 	clr.b (a3)+
-	dbf d0, tkpkgPipelineClearPendingLoop
+	dbf d0, clearPendingLoop
 	moveq #0, d0
 	move.b CB_INPUT_LEN(a0), d0
 	moveq #0, d1
@@ -117,7 +121,7 @@ tkpkgPipelineClearPendingLoop
 	lsl.w #8, d1
 	or.w d1, d0
 	cmpi.w #2, d0
-	blo.w tkpkgPipelineBadRequest
+	blo.w badRequest
 	move.w d0, d6
 	moveq #0, d1
 	move.b CB_INPUT_PTR(a0), d1
@@ -126,23 +130,23 @@ tkpkgPipelineClearPendingLoop
 	lsl.w #8, d2
 	or.w d2, d1
 	tst.w d1
-	beq.w tkpkgPipelineBadRequest
+	beq.w badRequest
 	lea 0(a0, d1.W), a1
 	moveq #0, d3
 	move.w d6, d4
 
-tkpkgPipelineSeparatorLoop
+separatorLoop
 	tst.w d4
-	beq.w tkpkgPipelineBadRequest
+	beq.w badRequest
 	tst.b 0(a1, d3.W)
-	beq.s tkpkgPipelineSeparatorFound
+	beq.s separatorFound
 	addq.w #1, d3
 	subq.w #1, d4
-	bra.w tkpkgPipelineSeparatorLoop
+	bra.w separatorLoop
 
-tkpkgPipelineSeparatorFound
+separatorFound
 	tst.w d3
-	beq.w tkpkgPipelineBadRequest
+	beq.w badRequest
 	move.w d1, d4
 	move.w d3, d5
 	lea PendingCpuOffsetLo, a3
@@ -156,7 +160,7 @@ tkpkgPipelineSeparatorFound
 	move.w d3, d1
 	sub.w d1, d0
 	subq.w #1, d0
-	beq.s tkpkgPipelineNoDialect
+	beq.s noDialect
 	lea PendingDialectOffsetLo, a3
 	move.w d4, d2
 	lsl.w #8, d2
@@ -174,69 +178,71 @@ tkpkgPipelineSeparatorFound
 	moveq #0, d0
 	rts
 
-tkpkgPipelineNoDialect
+noDialect
 	lea PendingDialectOffsetLo, a3
 	clr.l (a3)
 	moveq #0, d0
 	rts
 
-tkpkgPipelineBadRequest
+badRequest
 	moveq #STATUS_BAD_REQUEST_V1, d0
 	rts
+	.bend  ; parseRequestV1
 
 ; Resolve the pending CPU/family/dialect hierarchy before runtime locators.
-tkpkgPipelineResolveHierarchyV1
-	bsr.w tkpkgPipelineFindCpuEntryV1
+resolveHierarchyV1	.block
+	bsr.w findCpuEntryV1
 	tst.b d0
-	bne.w tkpkgPipelineCpuUnresolved
-	bsr.w tkpkgPipelineFindFamilyEntryV1
+	bne.w cpuUnresolved
+	bsr.w findFamilyEntryV1
 	tst.b d0
-	bne.w tkpkgPipelineFamilyUnresolved
-	bsr.w tkpkgPipelineResolveSelectedDialectV1
+	bne.w familyUnresolved
+	bsr.w resolveSelectedDialectV1
 	tst.b d0
-	bne.w tkpkgPipelineDialectUnresolved
+	bne.w dialectUnresolved
 	moveq #0, d0
 	rts
 
-tkpkgPipelineCpuUnresolved
+cpuUnresolved
 	lea UnresolvedCpuText, a1
 	moveq #UNRESOLVED_CPU_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
-tkpkgPipelineFamilyUnresolved
+familyUnresolved
 	lea UnresolvedFamilyText, a1
 	moveq #UNRESOLVED_FAMILY_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
-tkpkgPipelineDialectUnresolved
+dialectUnresolved
 	lea UnresolvedDialectText, a1
 	moveq #UNRESOLVED_DIALECT_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
+	.bend  ; resolveHierarchyV1
 
 ; Find the CPUS record matching the requested CPU id and stage its family.
-tkpkgPipelineFindCpuEntryV1
+findCpuEntryV1	.block
 	lea PendingCpuOffsetLo, a3
-	bsr.w tkpkgPipelineReadRequestLocatorPtrLenV1
+	bsr.w readRequestLocatorPtrLenV1
 	move.w d3, d5
 	movea.l a1, a5
 	lea CpusChunkOffsetLo, a3
-	bsr.w tkpkgPipelineChunkPtrFromLocatorV1
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+	bsr.w chunkPtrFromLocatorV1
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.w tkpkgPipelineCpuMissing
+	bne.w cpuMissing
 	tst.w d0
-	beq.w tkpkgPipelineCpuMissing
+	beq.w cpuMissing
 	move.w d0, d7
 	subq.w #1, d7
 	lea 4(a2), a2
 
-tkpkgPipelineCpuLoop
-	bsr.w tkpkgPipelineLocateStringV1
+cpuLoop
+	bsr.w locateStringV1
 	tst.b d1
-	bne.w tkpkgPipelineCpuMissing
+	bne.w cpuMissing
 	move.w d0, d6
 	movea.l a1, a4
 	move.l a2, -(sp)
@@ -244,62 +250,63 @@ tkpkgPipelineCpuLoop
 	move.w d5, d1
 	movea.l a4, a1
 	movea.l a5, a2
-	bsr.w tkpkgPipelineStringEqAsciiCasefoldV1
+	bsr.w stringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
 	tst.b d0
-	beq.w tkpkgPipelineSkipCpuEntry
+	beq.w skipCpuEntry
 	lea PendingCpuOffsetLo, a3
 	movea.l a4, a1
 	move.w d6, d0
-	bsr.w tkpkgPipelineStorePackageStringLocatorV1
-	bsr.w tkpkgPipelineLocateStringV1
+	bsr.w storePackageStringLocatorV1
+	bsr.w locateStringV1
 	tst.b d1
-	bne.w tkpkgPipelineCpuMissing
+	bne.w cpuMissing
 	lea PendingFamilyOffsetLo, a3
-	bsr.w tkpkgPipelineStorePackageStringLocatorV1
-	bsr.w tkpkgPipelineLocateOptionalStringV1
+	bsr.w storePackageStringLocatorV1
+	bsr.w locateOptionalStringV1
 	tst.b d1
-	bne.w tkpkgPipelineCpuMissing
+	bne.w cpuMissing
 	lea PendingDefaultDialectOffsetLo, a3
-	bsr.w tkpkgPipelineStoreOptionalPackageStringLocatorV1
+	bsr.w storeOptionalPackageStringLocatorV1
 	moveq #0, d0
 	rts
 
-tkpkgPipelineSkipCpuEntry
-	bsr.w tkpkgPipelineSkipStringV1
+skipCpuEntry
+	bsr.w skipStringV1
 	tst.b d1
-	bne.w tkpkgPipelineCpuMissing
-	bsr.w tkpkgPipelineSkipOptionalStringV1
+	bne.w cpuMissing
+	bsr.w skipOptionalStringV1
 	tst.b d1
-	bne.w tkpkgPipelineCpuMissing
-	dbf d7, tkpkgPipelineCpuLoop
+	bne.w cpuMissing
+	dbf d7, cpuLoop
 
-tkpkgPipelineCpuMissing
+cpuMissing
 	moveq #1, d0
 	rts
+	.bend  ; findCpuEntryV1
 
 ; Find the FAMS record matching the family referenced by the selected CPU.
-tkpkgPipelineFindFamilyEntryV1
+findFamilyEntryV1	.block
 	lea PackageStorage, a6
 	lea PendingFamilyOffsetLo, a3
-	bsr.w tkpkgPipelineReadLocatorPtrLenV1
+	bsr.w readLocatorPtrLenV1
 	move.w d3, d5
 	movea.l a1, a5
 	lea FamsChunkOffsetLo, a3
-	bsr.w tkpkgPipelineChunkPtrFromLocatorV1
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+	bsr.w chunkPtrFromLocatorV1
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.w tkpkgPipelineFamilyMissing
+	bne.w familyMissing
 	tst.w d0
-	beq.w tkpkgPipelineFamilyMissing
+	beq.w familyMissing
 	move.w d0, d7
 	subq.w #1, d7
 	lea 4(a2), a2
 
-tkpkgPipelineFamilyLoop
-	bsr.w tkpkgPipelineLocateStringV1
+familyLoop
+	bsr.w locateStringV1
 	tst.b d1
-	bne.w tkpkgPipelineFamilyMissing
+	bne.w familyMissing
 	move.w d0, d6
 	movea.l a1, a4
 	move.l a2, -(sp)
@@ -307,96 +314,101 @@ tkpkgPipelineFamilyLoop
 	move.w d5, d1
 	movea.l a4, a1
 	movea.l a5, a2
-	bsr.w tkpkgPipelineStringEqAsciiCasefoldV1
+	bsr.w stringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
 	tst.b d0
-	beq.w tkpkgPipelineSkipFamilyEntry
-	bsr.w tkpkgPipelineLocateStringV1
+	beq.w skipFamilyEntry
+	bsr.w locateStringV1
 	tst.b d1
-	bne.w tkpkgPipelineFamilyMissing
+	bne.w familyMissing
 	lea PendingCanonicalDialectOffsetLo, a3
-	bsr.w tkpkgPipelineStorePackageStringLocatorV1
+	bsr.w storePackageStringLocatorV1
 	moveq #0, d0
 	rts
 
-tkpkgPipelineSkipFamilyEntry
-	bsr.w tkpkgPipelineSkipStringV1
+skipFamilyEntry
+	bsr.w skipStringV1
 	tst.b d1
-	bne.w tkpkgPipelineFamilyMissing
-	dbf d7, tkpkgPipelineFamilyLoop
+	bne.w familyMissing
+	dbf d7, familyLoop
 
-tkpkgPipelineFamilyMissing
+familyMissing
 	moveq #1, d0
 	rts
+	.bend  ; findFamilyEntryV1
 
 ; Choose requested dialect when present, otherwise CPU default, then family canonical.
-tkpkgPipelineResolveSelectedDialectV1
+resolveSelectedDialectV1	.block
 	lea PendingDialectOffsetLo, a3
-	bsr.w tkpkgPipelineReadLocatorPtrLenV1
+	bsr.w readLocatorPtrLenV1
 	tst.w d3
-	beq.s tkpkgPipelineDefaultDialect
+	beq.s defaultDialect
 	lea PendingDialectOffsetLo, a3
-	bsr.w tkpkgPipelineFindRequestedDialectEntryV1
+	bsr.w findRequestedDialectEntryV1
 	tst.b d0
-	beq.s tkpkgPipelineDialectDone
+	beq.s dialectDone
 	moveq #1, d0
 	rts
 
-tkpkgPipelineDefaultDialect
+defaultDialect
 	lea PendingDefaultDialectOffsetLo, a3
-	bsr.w tkpkgPipelineReadLocatorPtrLenV1
+	bsr.w readLocatorPtrLenV1
 	tst.w d3
-	beq.s tkpkgPipelineCanonicalDialect
+	beq.s canonicalDialect
 	lea PendingDefaultDialectOffsetLo, a3
-	bsr.w tkpkgPipelineFindDialectEntryV1
+	bsr.w findDialectEntryV1
 	tst.b d0
-	beq.s tkpkgPipelineDialectDone
+	beq.s dialectDone
 
-tkpkgPipelineCanonicalDialect
+canonicalDialect
 	lea PendingCanonicalDialectOffsetLo, a3
-	bsr.w tkpkgPipelineFindDialectEntryV1
+	bsr.w findDialectEntryV1
 	tst.b d0
-	bne.s tkpkgPipelineDialectMissing
+	bne.s dialectMissing
 
-tkpkgPipelineDialectDone
+dialectDone
 	moveq #0, d0
 	rts
 
-tkpkgPipelineDialectMissing
+dialectMissing
 	moveq #1, d0
 	rts
+	.bend  ; resolveSelectedDialectV1
 
 ; Resolve the caller-requested dialect id through the DIAL chunk.
-tkpkgPipelineFindRequestedDialectEntryV1
-	bsr.w tkpkgPipelineReadRequestLocatorPtrLenV1
-	bra.s tkpkgPipelineFindDialectEntryLoaded
+findRequestedDialectEntryV1	.block
+	bsr.w readRequestLocatorPtrLenV1
+	bra.w findDialectEntryLoadedV1
+	.bend  ; findRequestedDialectEntryV1
 
 ; Resolve a package-owned dialect locator through the DIAL chunk.
-tkpkgPipelineFindDialectEntryV1
-	bsr.w tkpkgPipelineReadLocatorPtrLenV1
+findDialectEntryV1	.block
+	bsr.w readLocatorPtrLenV1
+	bra.w findDialectEntryLoadedV1
+	.bend  ; findDialectEntryV1
 
-tkpkgPipelineFindDialectEntryLoaded
+findDialectEntryLoadedV1	.block
 	move.w d3, d5
 	movea.l a1, a5
 	lea PendingFamilyOffsetLo, a3
-	bsr.w tkpkgPipelineReadLocatorPtrLenV1
+	bsr.w readLocatorPtrLenV1
 	move.w d3, d6
 	movea.l a1, a4
 	lea DialChunkOffsetLo, a3
-	bsr.w tkpkgPipelineChunkPtrFromLocatorV1
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+	bsr.w chunkPtrFromLocatorV1
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.w tkpkgPipelineDialectNotFound
+	bne.w dialectNotFound
 	tst.w d0
-	beq.w tkpkgPipelineDialectNotFound
+	beq.w dialectNotFound
 	move.w d0, d7
 	subq.w #1, d7
 	lea 4(a2), a2
 
-tkpkgPipelineDialectLoop
-	bsr.w tkpkgPipelineLocateStringV1
+dialectLoop
+	bsr.w locateStringV1
 	tst.b d1
-	bne.w tkpkgPipelineDialectNotFound
+	bne.w dialectNotFound
 	move.w d0, -(sp)
 	movea.l a1, a0
 	move.l a2, -(sp)
@@ -404,89 +416,90 @@ tkpkgPipelineDialectLoop
 	move.w d5, d1
 	movea.l a0, a1
 	movea.l a5, a2
-	bsr.w tkpkgPipelineStringEqAsciiCasefoldV1
+	bsr.w stringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
 	tst.b d0
-	beq.w tkpkgPipelineSkipDialectEntry
-	bsr.w tkpkgPipelineLocateStringV1
+	beq.w skipDialectEntry
+	bsr.w locateStringV1
 	tst.b d1
-	beq.s tkpkgPipelineDialectFamilyLoaded
+	beq.s dialectFamilyLoaded
 	addq.w #2, sp
-	bra.w tkpkgPipelineDialectNotFound
+	bra.w dialectNotFound
 
-tkpkgPipelineDialectFamilyLoaded
+dialectFamilyLoaded
 	move.w d0, d2
 	move.l a2, -(sp)
 	move.w d2, d0
 	move.w d6, d1
 	movea.l a4, a2
-	bsr.w tkpkgPipelineStringEqAsciiCasefoldV1
+	bsr.w stringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
 	tst.b d0
-	beq.w tkpkgPipelineSkipDialectAllowList
+	beq.w skipDialectAllowList
 	move.w d2, -(sp)
-	bsr.w tkpkgPipelineDialectAllowsCpuV1
+	bsr.w dialectAllowsCpuV1
 	move.w (sp)+, d2
 	tst.b d0
-	beq.w tkpkgPipelineDialectAccept
+	beq.w dialectAccept
 	addq.w #2, sp
-	bra.w tkpkgPipelineDialectNext
+	bra.w dialectNext
 
-tkpkgPipelineSkipDialectEntry
+skipDialectEntry
 	addq.w #2, sp
-	bsr.w tkpkgPipelineSkipStringV1
-	bra.s tkpkgPipelineSkipDialectAllowListPayload
+	bsr.w skipStringV1
+	bra.s skipDialectAllowListPayload
 
-tkpkgPipelineSkipDialectAllowList
+skipDialectAllowList
 	addq.w #2, sp
 
-tkpkgPipelineSkipDialectAllowListPayload
-	bsr.w tkpkgPipelineSkipOptionalStringListV1
+skipDialectAllowListPayload
+	bsr.w skipOptionalStringListV1
 	tst.b d1
-	bne.w tkpkgPipelineDialectNotFound
+	bne.w dialectNotFound
 
-tkpkgPipelineDialectNext
-	dbf d7, tkpkgPipelineDialectLoop
+dialectNext
+	dbf d7, dialectLoop
 
-tkpkgPipelineDialectNotFound
+dialectNotFound
 	moveq #1, d0
 	rts
 
-tkpkgPipelineDialectAccept
+dialectAccept
 	lea PendingDialectOffsetLo, a3
 	movea.l a0, a1
 	move.w (sp)+, d0
-	bsr.w tkpkgPipelineStorePackageStringLocatorV1
+	bsr.w storePackageStringLocatorV1
 	moveq #0, d0
 	rts
+	.bend  ; findDialectEntryLoadedV1
 
-tkpkgPipelineDialectAllowsCpuV1
+dialectAllowsCpuV1	.block
 	move.w d7, -(sp)
 	moveq #1, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.s tkpkgPipelineDialectRejected
+	bne.s dialectRejected
 	move.b (a2)+, d0
-	beq.s tkpkgPipelineDialectAllowed
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+	beq.s dialectAllowed
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.s tkpkgPipelineDialectRejected
+	bne.s dialectRejected
 	move.w d0, d7
 	lea 4(a2), a2
 	tst.w d7
-	beq.s tkpkgPipelineDialectRejected
+	beq.s dialectRejected
 	move.l a6, -(sp)
 	lea PendingCpuOffsetLo, a3
-	bsr.w tkpkgPipelineReadLocatorPtrLenV1
+	bsr.w readLocatorPtrLenV1
 	movea.l (sp)+, a6
 	move.w d3, d5
 	movea.l a1, a5
 	subq.w #1, d7
 
-tkpkgPipelineAllowLoop
-	bsr.w tkpkgPipelineLocateStringV1
+allowLoop
+	bsr.w locateStringV1
 	tst.b d1
-	bne.s tkpkgPipelineDialectRejected
+	bne.s dialectRejected
 	move.w d0, d6
 	movea.l a1, a4
 	move.l a2, -(sp)
@@ -494,245 +507,252 @@ tkpkgPipelineAllowLoop
 	move.w d5, d1
 	movea.l a4, a1
 	movea.l a5, a2
-	bsr.w tkpkgPipelineStringEqAsciiCasefoldV1
+	bsr.w stringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
 	tst.b d0
-	bne.s tkpkgPipelineDialectAllowed
-	dbf d7, tkpkgPipelineAllowLoop
+	bne.s dialectAllowed
+	dbf d7, allowLoop
 
-tkpkgPipelineDialectRejected
+dialectRejected
 	move.w (sp)+, d7
 	moveq #1, d0
 	rts
 
-tkpkgPipelineDialectAllowed
+dialectAllowed
 	move.w (sp)+, d7
 	moveq #0, d0
 	rts
+	.bend  ; dialectAllowsCpuV1
 
 ; Resolve tokenizer VM program with dialect -> CPU -> family owner precedence.
-tkpkgPipelineResolveTokenizerVmLocatorV1
+resolveTokenizerVmLocatorV1	.block
 	moveq #SCOPED_OWNER_DIALECT, d0
 	lea PendingDialectOffsetLo, a3
-	bsr.w tkpkgPipelineFindTokenizerVmOwnerV1
+	bsr.w findTokenizerVmOwnerV1
 	tst.b d0
-	beq.s tkpkgPipelineVmResolved
+	beq.s vmResolved
 	moveq #SCOPED_OWNER_CPU, d0
 	lea PendingCpuOffsetLo, a3
-	bsr.w tkpkgPipelineFindTokenizerVmOwnerV1
+	bsr.w findTokenizerVmOwnerV1
 	tst.b d0
-	beq.s tkpkgPipelineVmResolved
+	beq.s vmResolved
 	moveq #SCOPED_OWNER_FAMILY, d0
 	lea PendingFamilyOffsetLo, a3
-	bsr.w tkpkgPipelineFindTokenizerVmOwnerV1
+	bsr.w findTokenizerVmOwnerV1
 	tst.b d0
-	beq.s tkpkgPipelineVmResolved
+	beq.s vmResolved
 	lea MissingProgramText, a1
 	moveq #MISSING_PROGRAM_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
-tkpkgPipelineVmResolved
+vmResolved
 	moveq #0, d0
 	rts
+	.bend  ; resolveTokenizerVmLocatorV1
 
 ; Find a TKVM record matching the scoped owner locator in A3/D0.
-tkpkgPipelineFindTokenizerVmOwnerV1
+findTokenizerVmOwnerV1	.block
 	move.b d0, d6
 	lea PackageStorage, a6
-	bsr.w tkpkgPipelineReadLocatorPtrLenV1
+	bsr.w readLocatorPtrLenV1
 	move.w d3, d5
 	movea.l a1, a5
 	lea TkvmChunkOffsetLo, a3
-	bsr.w tkpkgPipelineChunkPtrFromLocatorV1
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+	bsr.w chunkPtrFromLocatorV1
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.w tkpkgPipelineVmOwnerMissing
+	bne.w vmOwnerMissing
 	tst.w d0
-	beq.w tkpkgPipelineVmOwnerMissing
+	beq.w vmOwnerMissing
 	move.w d0, d7
 	subq.w #1, d7
 	lea 4(a2), a2
 
-tkpkgPipelineVmLoop
+vmLoop
 	movea.l a2, a4
 	moveq #1, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.w tkpkgPipelineVmOwnerMissing
+	bne.w vmOwnerMissing
 	move.b (a2)+, d4
-	bsr.w tkpkgPipelineLocateStringV1
+	bsr.w locateStringV1
 	tst.b d1
-	bne.w tkpkgPipelineVmOwnerMissing
+	bne.w vmOwnerMissing
 	cmp.b d6, d4
-	bne.w tkpkgPipelineVmSkipEntry
+	bne.w vmSkipEntry
 	move.w d0, d2
 	move.l a2, -(sp)
 	move.w d2, d0
 	move.w d5, d1
 	movea.l a5, a2
-	bsr.w tkpkgPipelineStringEqAsciiCasefoldV1
+	bsr.w stringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
 	tst.b d0
-	bne.w tkpkgPipelineVmFound
+	bne.w vmFound
 
-tkpkgPipelineVmSkipEntry
-	bsr.w tkpkgPipelineSkipTokenizerVmEntryV1
+vmSkipEntry
+	bsr.w skipTokenizerVmEntryV1
 	tst.b d1
-	bne.w tkpkgPipelineVmOwnerMissing
-	dbf d7, tkpkgPipelineVmLoop
+	bne.w vmOwnerMissing
+	dbf d7, vmLoop
 
-tkpkgPipelineVmOwnerMissing
+vmOwnerMissing
 	moveq #1, d0
 	rts
 
-tkpkgPipelineVmFound
-	bsr.w tkpkgPipelineSkipTokenizerVmEntryV1
+vmFound
+	bsr.w skipTokenizerVmEntryV1
 	tst.b d1
-	bne.w tkpkgPipelineVmOwnerMissing
+	bne.w vmOwnerMissing
 	lea PendingTokenizerVmOffsetLo, a3
 	movea.l a4, a1
 	move.l a2, d0
 	sub.l a4, d0
-	bsr.w tkpkgPipelineStoreRecordLocatorV1
+	bsr.w storeRecordLocatorV1
 	move.b d6, PendingTokenizerVmOwnerTag
 	moveq #0, d0
 	rts
+	.bend  ; findTokenizerVmOwnerV1
 
 ; Skip one TKVM chunk entry while preserving the package cursor invariants.
-tkpkgPipelineSkipTokenizerVmEntryV1
+skipTokenizerVmEntryV1	.block
 	move.w d7, -(sp)
 	moveq #TOKENIZER_VM_ENTRY_PREFIX_SIZE, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
+	bne.w vmSkipBoundsFail
 	lea TOKENIZER_VM_ENTRY_PREFIX_SIZE(a2), a2
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
+	bne.w vmSkipBoundsFail
 	move.w d0, d7
 	lea 4(a2), a2
 	moveq #0, d0
 	move.w d7, d0
 	lsl.l #2, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
+	bne.w vmSkipBoundsFail
 	tst.w d7
-	beq.s tkpkgPipelineVmAfterOffsets
+	beq.s vmAfterOffsets
 	subq.w #1, d7
 
-tkpkgPipelineVmOffsetLoop
+vmOffsetLoop
 	addq.w #4, a2
-	dbf d7, tkpkgPipelineVmOffsetLoop
+	dbf d7, vmOffsetLoop
 
-tkpkgPipelineVmAfterOffsets
+vmAfterOffsets
 	moveq #TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
+	bne.w vmSkipBoundsFail
 	lea TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE(a2), a2
-	bsr.w tkpkgPipelineSkipStringV1
+	bsr.w skipStringV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
-	bsr.w tkpkgPipelineSkipStringV1
+	bne.w vmSkipBoundsFail
+	bsr.w skipStringV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
-	bsr.w tkpkgPipelineSkipStringV1
+	bne.w vmSkipBoundsFail
+	bsr.w skipStringV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
-	bsr.w tkpkgPipelineSkipStringV1
+	bne.w vmSkipBoundsFail
+	bsr.w skipStringV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
-	bsr.w tkpkgPipelineSkipStringV1
+	bne.w vmSkipBoundsFail
+	bsr.w skipStringV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
-	bsr.w tkpkgPipelineSkipStringV1
+	bne.w vmSkipBoundsFail
+	bsr.w skipStringV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+	bne.w vmSkipBoundsFail
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
+	bne.w vmSkipBoundsFail
 	move.l d0, d2
 	move.l d0, d3
 	addq.l #4, d3
 	move.l d3, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.w tkpkgPipelineVmSkipBoundsFail
+	bne.w vmSkipBoundsFail
 	lea 4(a2), a2
 	adda.l d2, a2
 	move.w (sp)+, d7
 	moveq #0, d1
 	rts
 
-tkpkgPipelineVmSkipBoundsFail
+vmSkipBoundsFail
 	move.w (sp)+, d7
 	moveq #1, d1
 	rts
+	.bend  ; skipTokenizerVmEntryV1
 
 ; Commit fully resolved pending locators into active service state.
-tkpkgPipelineCommitActiveSelectionV1
+commitActiveSelectionV1	.block
 	lea PendingCpuOffsetLo, a3
 	lea ActiveCpuBuffer.l, a2
-	bsr.w tkpkgPipelineCopyLocatorToBufferV1
+	bsr.w copyLocatorToBufferV1
 	tst.b d0
-	bne.s tkpkgPipelineCommitDone
+	bne.s commitDone
 	lea PendingDialectOffsetLo, a3
 	lea ActiveDialectBuffer.l, a2
-	bsr.w tkpkgPipelineCopyLocatorToBufferV1
+	bsr.w copyLocatorToBufferV1
 	tst.b d0
-	bne.s tkpkgPipelineCommitDone
+	bne.s commitDone
 	lea PendingFamilyOffsetLo, a3
 	lea ActiveFamilyBuffer.l, a2
-	bsr.w tkpkgPipelineCopyLocatorToBufferV1
+	bsr.w copyLocatorToBufferV1
 	tst.b d0
-	bne.s tkpkgPipelineCommitDone
+	bne.s commitDone
 	lea PendingTokenPolicyOffsetLo, a3
 	lea ActiveTokenPolicyOffsetLo.l, a2
-	bsr.w tkpkgPipelineCopyRecordLocatorV1
+	bsr.w copyRecordLocatorV1
 	move.b PendingTokenPolicyOwnerTag, d0
 	move.b d0, ActiveTokenPolicyOwnerTag
 	lea PendingTokenizerVmOffsetLo, a3
 	lea ActiveTokenizerVmOffsetLo.l, a2
-	bsr.w tkpkgPipelineCopyRecordLocatorV1
+	bsr.w copyRecordLocatorV1
 	move.b PendingTokenizerVmOwnerTag, d0
 	move.b d0, ActiveTokenizerVmOwnerTag
 	ori.b #PACKAGE_STATE_PIPELINE_ACTIVE, PackageStateFlags
 	moveq #0, d0
 
-tkpkgPipelineCommitDone
+commitDone
 	rts
+	.bend  ; commitActiveSelectionV1
 
-tkpkgPipelineCopyLocatorToBufferV1
-	bsr.w tkpkgPipelineReadLocatorPtrLenV1
+copyLocatorToBufferV1	.block
+	bsr.w readLocatorPtrLenV1
 	cmpi.w #PIPELINE_ID_BUFFER_CAPACITY, d3
-	bhs.s tkpkgPipelineCopyBufferTooLong
+	bhs.s copyBufferTooLong
 	move.w d3, d2
 	tst.w d2
-	beq.s tkpkgPipelineCopyBufferDone
+	beq.s copyBufferDone
 	subq.w #1, d2
 
-tkpkgPipelineCopyBufferLoop
+copyBufferLoop
 	move.b (a1)+, (a2)+
-	dbf d2, tkpkgPipelineCopyBufferLoop
+	dbf d2, copyBufferLoop
 
-tkpkgPipelineCopyBufferDone
+copyBufferDone
 	clr.b (a2)
 	moveq #0, d0
 	rts
 
-tkpkgPipelineCopyBufferTooLong
+copyBufferTooLong
 	lea IdentifierTooLongText, a1
 	moveq #IDENTIFIER_TOO_LONG_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
+	.bend  ; copyLocatorToBufferV1
 
-tkpkgPipelineCopyRecordLocatorV1
+copyRecordLocatorV1	.block
 	move.l (a3), (a2)
 	rts
+	.bend  ; copyRecordLocatorV1
 
-tkpkgPipelineStorePackageStringLocatorV1
+storePackageStringLocatorV1	.block
 	move.l a6, -(sp)
 	move.l a1, d2
 	lea PackageStorage, a6
@@ -745,18 +765,20 @@ tkpkgPipelineStorePackageStringLocatorV1
 	move.b d0, (a3)+
 	movea.l (sp)+, a6
 	rts
+	.bend  ; storePackageStringLocatorV1
 
-tkpkgPipelineStoreOptionalPackageStringLocatorV1
+storeOptionalPackageStringLocatorV1	.block
 	tst.w d0
-	beq.s tkpkgPipelineClearOptionalLocator
-	bsr.w tkpkgPipelineStorePackageStringLocatorV1
+	beq.s clearOptionalLocator
+	bsr.w storePackageStringLocatorV1
 	rts
 
-tkpkgPipelineClearOptionalLocator
+clearOptionalLocator
 	clr.l (a3)
 	rts
+	.bend  ; storeOptionalPackageStringLocatorV1
 
-tkpkgPipelineStoreRecordLocatorV1
+storeRecordLocatorV1	.block
 	move.l a6, -(sp)
 	move.l a1, d2
 	lea PackageStorage, a6
@@ -769,8 +791,9 @@ tkpkgPipelineStoreRecordLocatorV1
 	move.b d0, (a3)+
 	movea.l (sp)+, a6
 	rts
+	.bend  ; storeRecordLocatorV1
 
-tkpkgPipelineReadLocatorPtrLenV1
+readLocatorPtrLenV1	.block
 	moveq #0, d2
 	move.b (a3)+, d2
 	moveq #0, d1
@@ -786,8 +809,9 @@ tkpkgPipelineReadLocatorPtrLenV1
 	lea PackageStorage, a6
 	lea 0(a6, d2.W), a1
 	rts
+	.bend  ; readLocatorPtrLenV1
 
-tkpkgPipelineReadRequestLocatorPtrLenV1
+readRequestLocatorPtrLenV1	.block
 	moveq #0, d2
 	move.b (a3)+, d2
 	moveq #0, d1
@@ -802,8 +826,9 @@ tkpkgPipelineReadRequestLocatorPtrLenV1
 	or.w d1, d3
 	lea 0(a0, d2.W), a1
 	rts
+	.bend  ; readRequestLocatorPtrLenV1
 
-tkpkgPipelineChunkPtrFromLocatorV1
+chunkPtrFromLocatorV1	.block
 	moveq #0, d0
 	move.b (a3)+, d0
 	moveq #0, d1
@@ -820,18 +845,19 @@ tkpkgPipelineChunkPtrFromLocatorV1
 	lea 0(a6, d0.W), a2
 	lea 0(a2, d7.W), a6
 	rts
+	.bend  ; chunkPtrFromLocatorV1
 
-tkpkgPipelineLocateStringV1
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+locateStringV1	.block
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.s tkpkgPipelineLocateStringBoundsFail
+	bne.s locateStringBoundsFail
 	move.l d0, d2
 	move.l d0, d3
 	addq.l #4, d3
 	move.l d3, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.s tkpkgPipelineLocateStringBoundsFail
+	bne.s locateStringBoundsFail
 	move.l d2, d0
 	lea 4(a2), a1
 	lea 4(a2), a2
@@ -839,80 +865,85 @@ tkpkgPipelineLocateStringV1
 	moveq #0, d1
 	rts
 
-tkpkgPipelineLocateStringBoundsFail
+locateStringBoundsFail
 	moveq #0, d0
 	movea.l d0, a1
 	moveq #1, d1
 	rts
+	.bend  ; locateStringV1
 
-tkpkgPipelineSkipStringV1
-	bsr.w tkpkgPipelineLocateStringV1
+skipStringV1	.block
+	bsr.w locateStringV1
 	rts
+	.bend  ; skipStringV1
 
-tkpkgPipelineLocateOptionalStringV1
+locateOptionalStringV1	.block
 	moveq #1, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.s tkpkgPipelineOptionalBoundsFail
+	bne.s optionalBoundsFail
 	move.b (a2)+, d1
-	beq.s tkpkgPipelineOptionalNone
-	bsr.w tkpkgPipelineLocateStringV1
+	beq.s optionalNone
+	bsr.w locateStringV1
 	rts
 
-tkpkgPipelineOptionalNone
+optionalNone
 	moveq #0, d0
 	movea.l d0, a1
 	moveq #0, d1
 	rts
 
-tkpkgPipelineOptionalBoundsFail
+optionalBoundsFail
 	moveq #0, d0
 	movea.l d0, a1
 	moveq #1, d1
 	rts
+	.bend  ; locateOptionalStringV1
 
-tkpkgPipelineSkipOptionalStringV1
-	bsr.w tkpkgPipelineLocateOptionalStringV1
+skipOptionalStringV1	.block
+	bsr.w locateOptionalStringV1
 	rts
+	.bend  ; skipOptionalStringV1
 
-tkpkgPipelineSkipOptionalStringListV1
+skipOptionalStringListV1	.block
 	move.w d7, -(sp)
 	moveq #1, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.s tkpkgPipelineSkipListBoundsFail
+	bne.s skipListBoundsFail
 	move.b (a2)+, d1
-	beq.s tkpkgPipelineSkipListDone
-	bsr.w tkpkgPipelineReadU32LeLow16V1
+	beq.s skipListDone
+	bsr.w readU32LeLow16V1
 	tst.b d1
-	bne.s tkpkgPipelineSkipListBoundsFail
+	bne.s skipListBoundsFail
 	move.w d0, d7
 	lea 4(a2), a2
 	tst.w d7
-	beq.s tkpkgPipelineSkipListDone
+	beq.s skipListDone
 	subq.w #1, d7
 
-tkpkgPipelineSkipListLoop
-	bsr.w tkpkgPipelineSkipStringV1
+skipListLoop
+	bsr.w skipStringV1
 	tst.b d1
-	bne.s tkpkgPipelineSkipListBoundsFail
-	dbf d7, tkpkgPipelineSkipListLoop
+	bne.s skipListBoundsFail
+	dbf d7, skipListLoop
 
-tkpkgPipelineSkipListDone
+skipListDone
 	move.w (sp)+, d7
 	moveq #0, d1
 	rts
 
-tkpkgPipelineSkipListBoundsFail
+skipListBoundsFail
 	move.w (sp)+, d7
 	moveq #1, d1
 	rts
+	.bend  ; skipOptionalStringListV1
 
-tkpkgPipelineReadU32LeLow16V1
+readU32LeLow16V1	.block
 	moveq #4, d0
-	bsr.w tkpkgPipelineRequireBytesV1
+	bsr.w requireBytesV1
 	tst.b d1
-	bne.s tkpkgPipelineReadU32BoundsFail
+	bne.s readU32BoundsFail
 	moveq #0, d0
 	move.b (a2), d0
 	moveq #0, d1
@@ -922,65 +953,70 @@ tkpkgPipelineReadU32LeLow16V1
 	moveq #0, d1
 	rts
 
-tkpkgPipelineReadU32BoundsFail
+readU32BoundsFail
 	moveq #0, d0
 	moveq #1, d1
 	rts
+	.bend  ; readU32LeLow16V1
 
-tkpkgPipelineRequireBytesV1
+requireBytesV1	.block
 	movea.l a2, a1
 	adda.l d0, a1
 	cmpa.l a6, a1
-	bhi.s tkpkgPipelineRequireBytesFail
+	bhi.s requireBytesFail
 	moveq #0, d1
 	rts
 
-tkpkgPipelineRequireBytesFail
+requireBytesFail
 	moveq #1, d1
 	rts
+	.bend  ; requireBytesV1
 
-tkpkgPipelineStringEqAsciiCasefoldV1
+stringEqAsciiCasefoldV1	.block
 	cmp.w d1, d0
-	bne.s tkpkgPipelineStringNoMatch
+	bne.s stringNoMatch
 	move.w d0, d4
 	tst.w d4
-	beq.s tkpkgPipelineStringMatch
+	beq.s stringMatch
 	subq.w #1, d4
 
-tkpkgPipelineStringLoop
+stringLoop
 	moveq #0, d2
 	move.b (a1)+, d2
 	moveq #0, d3
 	move.b (a2)+, d3
 	move.b d2, d0
-	bsr.w tkpkgPipelineFoldAsciiLowerV1
+	bsr.w foldAsciiLowerV1
 	move.b d0, d2
 	move.b d3, d0
-	bsr.w tkpkgPipelineFoldAsciiLowerV1
+	bsr.w foldAsciiLowerV1
 	cmp.b d0, d2
-	bne.s tkpkgPipelineStringNoMatch
-	dbf d4, tkpkgPipelineStringLoop
+	bne.s stringNoMatch
+	dbf d4, stringLoop
 
-tkpkgPipelineStringMatch
+stringMatch
 	moveq #1, d0
 	rts
 
-tkpkgPipelineStringNoMatch
+stringNoMatch
 	moveq #0, d0
 	rts
+	.bend  ; stringEqAsciiCasefoldV1
 
-tkpkgPipelineFoldAsciiLowerV1
+foldAsciiLowerV1	.block
 	cmpi.b #'A', d0
-	blo.s tkpkgPipelineFoldDone
+	blo.s foldDone
 	cmpi.b #'Z', d0
-	bhi.s tkpkgPipelineFoldDone
+	bhi.s foldDone
 	ori.b #$20, d0
 
-tkpkgPipelineFoldDone
+foldDone
 	rts
+	.bend  ; foldAsciiLowerV1
 
-tkpkgPipelinePlaceholder
+placeholder	.block
 	rts
-
+	.bend  ; placeholder
+	
 	.endsection
 	.endmodule

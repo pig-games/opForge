@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +25,17 @@ EVIDENCE_MARKERS = (
     "regenerated",
     "golden",
     "fixture",
+)
+ALLOWLIST_HEADINGS = (
+    "## allowed reference updates",
+    "## intentional reference updates",
+)
+ALLOWLIST_ITEM_RE = re.compile(r"^\s*-\s+`?(?P<path>[^`\n]+?)`?\s*$", re.MULTILINE)
+DEFAULT_MAX_REFERENCE_UPDATES = 8
+BULK_OVERRIDE_MARKERS = (
+    "bulk reference update approved",
+    "bulk reference refresh approved",
+    "full reference refresh approved",
 )
 
 
@@ -88,6 +100,34 @@ def evidence_has_refresh_marker(evidence_text: str) -> bool:
     return any(marker in evidence_text for marker in EVIDENCE_MARKERS)
 
 
+def evidence_allows_bulk_refresh(evidence_text: str) -> bool:
+    return any(marker in evidence_text for marker in BULK_OVERRIDE_MARKERS)
+
+
+def extract_allowlisted_references(evidence_text: str) -> set[str]:
+    lines = evidence_text.splitlines()
+    allowlisted: set[str] = set()
+    in_allowlist = False
+
+    for line in lines:
+        lower_line = line.strip().lower()
+        if lower_line.startswith("## "):
+            in_allowlist = lower_line in ALLOWLIST_HEADINGS
+            continue
+        if not in_allowlist:
+            continue
+        if not line.strip():
+            continue
+        match = ALLOWLIST_ITEM_RE.match(line)
+        if not match:
+            continue
+        path = match.group("path").strip()
+        if is_reference_path(path):
+            allowlisted.add(Path(path).as_posix())
+
+    return allowlisted
+
+
 def validate_scope(root: Path, changed_files: list[str]) -> list[str]:
     reference_files = [path for path in changed_files if is_reference_path(path)]
     if not reference_files:
@@ -96,11 +136,24 @@ def validate_scope(root: Path, changed_files: list[str]) -> list[str]:
     evidence_files = [path for path in changed_files if is_evidence_path(path)]
     evidence_texts = {path: read_text(root, path) for path in evidence_files}
     errors: list[str] = []
+    allowlisted_references: set[str] = set()
+    bulk_override = False
+
+    for text in evidence_texts.values():
+        allowlisted_references.update(extract_allowlisted_references(text))
+        bulk_override = bulk_override or evidence_allows_bulk_refresh(text)
 
     if not evidence_files:
         errors.append(
             "reference/golden outputs changed but no Markdown evidence artifact changed"
         )
+
+    if len(reference_files) > DEFAULT_MAX_REFERENCE_UPDATES and not bulk_override:
+        errors.append(
+            f"{len(reference_files)} reference/golden outputs changed; limit is {DEFAULT_MAX_REFERENCE_UPDATES} unless evidence explicitly approves a bulk refresh"
+        )
+
+    reference_set = {Path(path).as_posix() for path in reference_files}
 
     for reference_path in reference_files:
         matching_evidence = [
@@ -119,6 +172,17 @@ def validate_scope(root: Path, changed_files: list[str]) -> list[str]:
             errors.append(
                 f"{reference_path}: evidence must include an intentional reference/golden refresh marker"
             )
+
+        if allowlisted_references and reference_path not in allowlisted_references:
+            errors.append(
+                f"{reference_path}: changed reference is not listed in an explicit allowed-reference section"
+            )
+
+    extra_allowlist = sorted(allowlisted_references - reference_set)
+    for reference_path in extra_allowlist:
+        errors.append(
+            f"{reference_path}: allowlisted reference did not actually change; keep the allowlist minimal"
+        )
 
     return errors
 

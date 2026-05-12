@@ -22,6 +22,8 @@ PACKAGE_CHUNK_DIAL                   = 4
 PACKAGE_CHUNK_TOKS                   = 8
 PACKAGE_CHUNK_TKVM                   = 16
 PACKAGE_CHUNK_TABL                   = 32
+PACKAGE_CHUNK_EXPR                   = 64
+PACKAGE_CHUNK_EXVM                   = 128
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
 PACKAGE_STATE_CLEAR_LONGWORD_COUNT   = 40
 SCOPED_OWNER_FAMILY                  = 0
@@ -157,6 +159,30 @@ TablChunkLenLo
 	.res byte, 1
 
 TablChunkLenHi
+	.res byte, 1
+
+ExprChunkOffsetLo
+	.res byte, 1
+
+ExprChunkOffsetHi
+	.res byte, 1
+
+ExprChunkLenLo
+	.res byte, 1
+
+ExprChunkLenHi
+	.res byte, 1
+
+ExvmChunkOffsetLo
+	.res byte, 1
+
+ExvmChunkOffsetHi
+	.res byte, 1
+
+ExvmChunkLenLo
+	.res byte, 1
+
+ExvmChunkLenHi
 	.res byte, 1
 
 ActiveCpuBuffer

@@ -1,10 +1,11 @@
 ; Native opcore/EXVM-style scalar operand expression bridge.
 
-        .module opcore.amigaos.expr_bridge
-        .cpu 68020
-        .pub
+	.module opcore.amigaos.expr_bridge
+	.cpu 68020
+	.pub
 
 TOKEN_BUFFER_CAPACITY           = 64
+OPCORE_EXPRVM_PROGRAM_CAPACITY  = 128
 EXVM_OPCODE_END                 = $00
 EXVM_OPCODE_PARSE_EXPRESSION    = $01
 EXVM_OPCODE_EMIT_DIAG           = $02
@@ -15,6 +16,13 @@ EXPRVM_OPCODE_PUSH_CURRENT_ADDR = $02
 EXPRVM_OPCODE_PUSH_SYMBOL       = $03
 EXPRVM_OPCODE_APPLY_UNARY       = $04
 EXPRVM_OPCODE_APPLY_BINARY      = $05
+EXPRVM_V2_OPCODE_END            = $00
+EXPRVM_V2_OPCODE_PUSH_LITERAL   = $10
+EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR = $11
+EXPRVM_V2_OPCODE_PUSH_SYMBOL    = $12
+EXPRVM_V2_OPCODE_APPLY_UNARY    = $20
+EXPRVM_V2_OPCODE_APPLY_BINARY   = $21
+EXPRVM_V2_OPCODE_REQUIRE_SCALAR = $70
 EXPRVM_UNARY_PLUS               = 0
 EXPRVM_UNARY_MINUS              = 1
 EXPRVM_UNARY_BIT_NOT            = 2
@@ -25,17 +33,15 @@ EXPRVM_BINARY_ADD               = 6
 EXPRVM_BINARY_SUBTRACT          = 7
 OPCORE_EXPRVM_STACK_CAPACITY    = 8
 
-        .section code, kind=code
+	.section code, kind=code
 
 ; ---------------------------------------------------------------------------
 ; Evaluate one scalar operand expression through the native EXVM default path.
 ;
-; opcore_expr_eval_operand_v1 is the compatibility entry used by the current
+; opcoreExprEvalOperandV1 is the compatibility entry used by the current
 ; native selector/pass code. It now runs the same EXVM default program shape as
-; the Rust path (`ParseExpression`, `End`) before evaluating the 6502 first-run
-; scalar subset. The ParseExpression opcode still delegates to the temporary
-; native text parser below until the full token/bytecode expression contract is
-; implemented natively.
+; the Rust path (`ParseExpression`, `End`) by compiling the current native
+; scalar subset into ExprVM bytecode and then executing the ExprVM evaluator.
 ;
 ; Supported input forms:
 ; - optional immediate prefix '#'
@@ -44,7 +50,8 @@ OPCORE_EXPRVM_STACK_CAPACITY    = 8
 ; - decimal numbers
 ; - unary '+' and '-'
 ; - additive/subtractive expressions over scalar terms
-; - '*' current address terms supplied by the caller
+; - '$' current-address terms matching the portable VM syntax
+; - '*' current-address terms accepted as compatibility syntax
 ; - labels resolved through the caller-supplied label tables
 ;
 ; Inputs:
@@ -52,11 +59,17 @@ OPCORE_EXPRVM_STACK_CAPACITY    = 8
 ; - A1: fixed-width label-name table pointer.
 ; - A2: label-value table pointer parallel to A1.
 ; - D1: number of label entries.
-; - D2: current assembly PC for '*' current-address terms.
+; - D2: current assembly PC for '$' current-address terms.
+; - D4: EXVM parser opcode version.
+; - D5: expression evaluator opcode version (1 or 2).
+; - D6: current assembler pass number.
 ;
 ; Outputs:
 ; - D0: 0 on success, 1 on parse/lookup failure.
 ; - D3: resolved scalar value on success.
+; - D4: nonzero when the evaluated program referenced at least one symbol.
+; - D5: nonzero when the evaluated program referenced a symbol that is
+;   unstable for the current pass.
 ; ---------------------------------------------------------------------------
 
 ; ---------------------------------------------------------------------------
@@ -69,777 +82,1231 @@ OPCORE_EXPRVM_STACK_CAPACITY    = 8
 ; - A2: symbol-value table pointer parallel to A1.
 ; - D1: number of symbol entries.
 ; - D2: current assembly PC for PushCurrentAddress.
-; - D6: assembler pass number.
 ;
 ; Outputs:
 ; - D0: 0 on success, 1 on invalid program/evaluation failure.
 ; - D3: resolved scalar value on success.
 ; - D4: nonzero when the program referenced at least one symbol.
-; - D5: nonzero when the program referenced a symbol during pass 1.
+; - D5: nonzero when the program referenced a symbol that is unstable for the
+;   current pass.
 ; ---------------------------------------------------------------------------
 
-opcore_exprvm_eval_program_v1:
-        MOVEM.L D1-D2/D6-D7/A0-A6, -(SP)
-        MOVEA.L A1, A3
-        MOVEA.L A2, A4
-        MOVEA.L D2, A5
-        MOVEA.L D6, A6
-        CLR.L D3
-        CLR.L D4
-        CLR.L D5
-        CLR.L D7
-
-opcoreExprVmEvalLoop:
-        TST.L D0
-        BEQ.W opcoreExprVmEvalFail
-        MOVEQ #0, D6
-        MOVE.B (A0)+, D6
-        SUBQ.L #1, D0
-        CMPI.B #EXPRVM_OPCODE_END, D6
-        BEQ.W opcoreExprVmOpcodeEnd
-        CMPI.B #EXPRVM_OPCODE_PUSH_LITERAL, D6
-        BEQ.W opcoreExprVmOpcodePushLiteral
-        CMPI.B #EXPRVM_OPCODE_PUSH_CURRENT_ADDR, D6
-        BEQ.W opcoreExprVmOpcodePushCurrent
-        CMPI.B #EXPRVM_OPCODE_PUSH_SYMBOL, D6
-        BEQ.W opcoreExprVmOpcodePushSymbol
-        CMPI.B #EXPRVM_OPCODE_APPLY_UNARY, D6
-        BEQ.W opcoreExprVmOpcodeApplyUnary
-        CMPI.B #EXPRVM_OPCODE_APPLY_BINARY, D6
-        BEQ.W opcoreExprVmOpcodeApplyBinary
-        BRA.W opcoreExprVmEvalFail
-
-opcoreExprVmOpcodePushLiteral:
-        BSR.W opcoreExprVmReadI64Low32
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        BSR.W opcoreExprVmPushD3
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        BRA.W opcoreExprVmEvalLoop
-
-opcoreExprVmOpcodePushCurrent:
-        MOVE.L A5, D3
-        BSR.W opcoreExprVmPushD3
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        BRA.W opcoreExprVmEvalLoop
-
-opcoreExprVmOpcodePushSymbol:
-        BSR.W opcoreExprVmReadU16
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        CMP.W D1, D3
-        BHS.W opcoreExprVmEvalFail
-        MOVEQ #1, D4
-        MOVE.L A6, D6
-        CMPI.L #1, D6
-        BNE.S opcoreExprVmPushSymbolStable
-        MOVEQ #1, D5
-
-opcoreExprVmPushSymbolStable:
-        MOVEQ #0, D6
-        MOVE.W D3, D6
-        LSL.L #2, D6
-        MOVEA.L A4, A2
-        MOVE.L 0(A2,D6.L), D3
-        BSR.W opcoreExprVmPushD3
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        BRA.W opcoreExprVmEvalLoop
-
-opcoreExprVmOpcodeApplyUnary:
-        BSR.W opcoreExprVmReadU8
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        MOVE.L D3, D6
-        BSR.W opcoreExprVmPopD3
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        CMPI.B #EXPRVM_UNARY_PLUS, D6
-        BEQ.S opcoreExprVmApplyUnaryDone
-        CMPI.B #EXPRVM_UNARY_MINUS, D6
-        BEQ.S opcoreExprVmApplyUnaryMinus
-        CMPI.B #EXPRVM_UNARY_BIT_NOT, D6
-        BEQ.S opcoreExprVmApplyUnaryBitNot
-        CMPI.B #EXPRVM_UNARY_LOGIC_NOT, D6
-        BEQ.S opcoreExprVmApplyUnaryLogicNot
-        CMPI.B #EXPRVM_UNARY_HIGH, D6
-        BEQ.S opcoreExprVmApplyUnaryHigh
-        CMPI.B #EXPRVM_UNARY_LOW, D6
-        BEQ.S opcoreExprVmApplyUnaryLow
-        BRA.W opcoreExprVmEvalFail
-
-opcoreExprVmApplyUnaryMinus:
-        NEG.L D3
-        BRA.S opcoreExprVmApplyUnaryDone
-
-opcoreExprVmApplyUnaryBitNot:
-        NOT.L D3
-        BRA.S opcoreExprVmApplyUnaryDone
-
-opcoreExprVmApplyUnaryLogicNot:
-        TST.L D3
-        BEQ.S opcoreExprVmApplyUnaryLogicNotTrue
-        CLR.L D3
-        BRA.S opcoreExprVmApplyUnaryDone
-
-opcoreExprVmApplyUnaryLogicNotTrue:
-        MOVEQ #1, D3
-        BRA.S opcoreExprVmApplyUnaryDone
-
-opcoreExprVmApplyUnaryHigh:
-        LSR.L #8, D3
-        ANDI.L #$000000FF, D3
-        BRA.S opcoreExprVmApplyUnaryDone
-
-opcoreExprVmApplyUnaryLow:
-        ANDI.L #$000000FF, D3
-
-opcoreExprVmApplyUnaryDone:
-        BSR.W opcoreExprVmPushD3
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        BRA.W opcoreExprVmEvalLoop
-
-opcoreExprVmOpcodeApplyBinary:
-        BSR.W opcoreExprVmReadU8
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        MOVE.L D3, D6
-        BSR.W opcoreExprVmPopD3
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        MOVE.L D3, -(SP)
-        BSR.W opcoreExprVmPopD3
-        TST.L D0
-        BMI.S opcoreExprVmApplyBinaryRestoreFail
-        MOVE.L (SP)+, D2
-        CMPI.B #EXPRVM_BINARY_ADD, D6
-        BEQ.S opcoreExprVmApplyBinaryAdd
-        CMPI.B #EXPRVM_BINARY_SUBTRACT, D6
-        BEQ.S opcoreExprVmApplyBinarySubtract
-        BRA.W opcoreExprVmEvalFail
-
-opcoreExprVmApplyBinaryRestoreFail:
-        ADDQ.L #4, SP
-        BRA.W opcoreExprVmEvalFail
-
-opcoreExprVmApplyBinaryAdd:
-        ADD.L D2, D3
-        BRA.S opcoreExprVmApplyBinaryDone
-
-opcoreExprVmApplyBinarySubtract:
-        SUB.L D2, D3
-
-opcoreExprVmApplyBinaryDone:
-        BSR.W opcoreExprVmPushD3
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        BRA.W opcoreExprVmEvalLoop
-
-opcoreExprVmOpcodeEnd:
-        CMPI.L #1, D7
-        BNE.W opcoreExprVmEvalFail
-        BSR.W opcoreExprVmPopD3
-        TST.L D0
-        BMI.W opcoreExprVmEvalFail
-        MOVEQ #0, D0
-        BRA.S opcoreExprVmEvalReturn
-
-opcoreExprVmEvalFail:
-        MOVEQ #1, D0
-
-opcoreExprVmEvalReturn:
-        MOVEM.L (SP)+, D1-D2/D6-D7/A0-A6
-        RTS
-
-opcoreExprVmPushD3:
-        CMPI.L #OPCORE_EXPRVM_STACK_CAPACITY, D7
-        BHS.S opcoreExprVmPushFail
-        MOVE.L D7, D2
-        LSL.L #2, D2
-        LEA opcoreExprVmStack, A2
-        MOVE.L D3, 0(A2,D2.L)
-        ADDQ.L #1, D7
-        MOVEQ #0, D0
-        RTS
-
-opcoreExprVmPushFail:
-        MOVEQ #-1, D0
-        RTS
-
-opcoreExprVmPopD3:
-        TST.L D7
-        BEQ.S opcoreExprVmPopFail
-        SUBQ.L #1, D7
-        MOVE.L D7, D2
-        LSL.L #2, D2
-        LEA opcoreExprVmStack, A2
-        MOVE.L 0(A2,D2.L), D3
-        MOVEQ #0, D0
-        RTS
-
-opcoreExprVmPopFail:
-        MOVEQ #-1, D0
-        RTS
-
-opcoreExprVmReadU8:
-        TST.L D0
-        BEQ.S opcoreExprVmReadU8Fail
-        MOVEQ #0, D3
-        MOVE.B (A0)+, D3
-        SUBQ.L #1, D0
-        RTS
-
-opcoreExprVmReadU8Fail:
-        MOVEQ #-1, D0
-        RTS
-
-opcoreExprVmReadU16:
-        CMPI.L #2, D0
-        BCS.S opcoreExprVmReadU16Fail
-        MOVEQ #0, D3
-        MOVE.B (A0)+, D3
-        MOVEQ #0, D2
-        MOVE.B (A0)+, D2
-        LSL.W #8, D2
-        OR.W D2, D3
-        SUBQ.L #2, D0
-        RTS
-
-opcoreExprVmReadU16Fail:
-        MOVEQ #-1, D0
-        RTS
-
-opcoreExprVmReadI64Low32:
-        CMPI.L #8, D0
-        BCS.S opcoreExprVmReadI64Fail
-        MOVEQ #0, D3
-        MOVE.B (A0)+, D3
-        MOVEQ #0, D2
-        MOVE.B (A0)+, D2
-        LSL.L #8, D2
-        OR.L D2, D3
-        MOVEQ #0, D2
-        MOVE.B (A0)+, D2
-        LSL.L #8, D2
-        LSL.L #8, D2
-        OR.L D2, D3
-        MOVEQ #0, D2
-        MOVE.B (A0)+, D2
-        LSL.L #8, D2
-        LSL.L #8, D2
-        LSL.L #8, D2
-        OR.L D2, D3
-        ADDQ.L #4, A0
-        SUBQ.L #8, D0
-        RTS
-
-opcoreExprVmReadI64Fail:
-        MOVEQ #-1, D0
-        RTS
-
-opcore_expr_eval_operand_v1:
-opcore_exvm_eval_operand_v1:
-        MOVEM.L D1-D2/D4-D7/A0-A5, -(SP)
-        MOVEA.L A1, A3                  ; label-name table base kept stable across parse helpers
-        MOVEA.L A2, A4                  ; label-value table base kept stable across parse helpers
-        MOVEA.L D2, A5                  ; A5 carries the current PC for '*' terms
-        MOVE.W D1, D7                   ; D7 is the label count consumed by the resolver loop
-        CLR.L D3
-        BSR.W opcoreExprBridgeSkipWhitespace
-        TST.L D0
-        BEQ.W opcoreExprBridgeFail
-        CMPI.B #'#', (A0)
-        BNE.S opcoreExprBridgeNoImmediatePrefix
-        ADDQ.L #1, A0                   ; strip immediate marker; addressing mode was selected elsewhere
-        SUBQ.L #1, D0                   ; keep remaining text length aligned with A0
-        BSR.W opcoreExprBridgeSkipWhitespace
-
-opcoreExprBridgeNoImmediatePrefix:
-        TST.L D0
-        BEQ.W opcoreExprBridgeFail
-        LEA opcoreExvmDefaultProgram(PC), A1
-        MOVEQ #OPCORE_EXVM_DEFAULT_PROGRAM_LEN, D1
-        BSR.W opcoreExvmRunEvalProgram
-        BRA.W opcoreExprBridgeReturn
-
-opcoreExvmRunEvalProgram:
-        MOVEQ #0, D4                    ; output expression count, matching Rust's stack-depth 1 contract
-
-opcoreExvmRunLoop:
-        TST.L D1
-        BEQ.S opcoreExvmMissingEnd
-        MOVEQ #0, D6
-        MOVE.B (A1)+, D6
-        SUBQ.L #1, D1
-        CMPI.B #EXVM_OPCODE_END, D6
-        BEQ.S opcoreExvmOpcodeEnd
-        CMPI.B #EXVM_OPCODE_PARSE_EXPRESSION, D6
-        BEQ.S opcoreExvmOpcodeParseExpression
-        CMPI.B #EXVM_OPCODE_EMIT_DIAG, D6
-        BEQ.S opcoreExvmProgramFail
-        CMPI.B #EXVM_OPCODE_FAIL, D6
-        BEQ.S opcoreExvmProgramFail
-        BRA.S opcoreExvmProgramFail
-
-opcoreExvmOpcodeParseExpression:
-        TST.L D4
-        BNE.S opcoreExvmProgramFail
-        MOVEM.L D1/D4/A1, -(SP)
-        BSR.W opcoreExprBridgeEvalAdditive
-        MOVE.L D0, D2
-        MOVEM.L (SP)+, D1/D4/A1
-        TST.L D2
-        BNE.S opcoreExvmProgramFail
-        ADDQ.L #1, D4
-        BRA.S opcoreExvmRunLoop
-
-opcoreExvmOpcodeEnd:
-        CMPI.L #1, D4
-        BNE.S opcoreExvmProgramFail
-        MOVEQ #0, D0
-        RTS
-
-opcoreExvmMissingEnd:
-opcoreExvmProgramFail:
-        MOVEQ #1, D0
-        RTS
-
-opcoreExprBridgeEvalAdditive:
-        BSR.W opcoreExprBridgeEvalSingleTerm
-        TST.L D5
-        BNE.S opcoreExprBridgeEvalAdditiveReturn
-
-opcoreExprBridgeEvalAdditiveLoop:
-        BSR.W opcoreExprBridgeSkipWhitespace
-        TST.L D0
-        BEQ.S opcoreExprBridgeEvalAdditiveOk
-        MOVEQ #0, D6
-        MOVE.B (A0), D6
-        CMPI.B #'+', D6
-        BEQ.S opcoreExprBridgeEvalAdditiveOperator
-        CMPI.B #'-', D6
-        BNE.S opcoreExprBridgeEvalAdditiveFail
-
-opcoreExprBridgeEvalAdditiveOperator:
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        MOVE.L D3, D4
-        BSR.W opcoreExprBridgeEvalSingleTerm
-        TST.L D5
-        BNE.S opcoreExprBridgeEvalAdditiveReturn
-        CMPI.B #'+', D6
-        BEQ.S opcoreExprBridgeEvalAdditiveAdd
-        MOVE.L D4, D2
-        SUB.L D3, D2
-        MOVE.L D2, D3
-        BRA.S opcoreExprBridgeEvalAdditiveLoop
-
-opcoreExprBridgeEvalAdditiveAdd:
-        ADD.L D4, D3
-        BRA.S opcoreExprBridgeEvalAdditiveLoop
-
-opcoreExprBridgeEvalAdditiveOk:
-        MOVEQ #0, D0
-        RTS
-
-opcoreExprBridgeEvalAdditiveFail:
-        MOVEQ #1, D0
-
-opcoreExprBridgeEvalAdditiveReturn:
-        RTS
-
-opcoreExprBridgeEvalSingleTerm:
-        MOVEM.L D4, -(SP)
-        MOVEQ #0, D4
-        MOVEQ #0, D5
-        BSR.W opcoreExprBridgeSkipWhitespace
-        TST.L D0
-        BEQ.W opcoreExprBridgeEvalSingleFail
-        CMPI.B #'+', (A0)
-        BEQ.S opcoreExprBridgeEvalSingleUnaryPlus
-        CMPI.B #'-', (A0)
-        BEQ.S opcoreExprBridgeEvalSingleUnaryMinus
-
-opcoreExprBridgeEvalSingleBody:
-        TST.L D0
-        BEQ.W opcoreExprBridgeEvalSingleFail
-        CMPI.B #'*', (A0)
-        BEQ.S opcoreExprBridgeCurrentPc
-        CMPI.B #'$', (A0)
-        BEQ.W opcoreExprBridgeHex
-        CMPI.B #'%', (A0)
-        BEQ.W opcoreExprBridgeBinaryLiteral
-        CMPI.B #'0', (A0)
-        BNE.S opcoreExprBridgeEvalSingleNumberOrLabel
-        CMPI.L #2, D0
-        BCS.S opcoreExprBridgeEvalSingleNumberOrLabel
-        CMPI.B #'x', 1(A0)
-        BEQ.S opcoreExprBridgeHex0x
-        CMPI.B #'X', 1(A0)
-        BEQ.S opcoreExprBridgeHex0x
-
-opcoreExprBridgeEvalSingleNumberOrLabel:
-        MOVEQ #0, D1
-        MOVE.B (A0), D1                 ; first non-space byte decides decimal versus label lookup
-        CMPI.B #'0', D1
-        BCS.S opcoreExprBridgeLabel
-        CMPI.B #'9', D1
-        BHI.S opcoreExprBridgeLabel
-        BRA.S opcoreExprBridgeDecimal
-
-opcoreExprBridgeEvalSingleUnaryPlus:
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        BRA.S opcoreExprBridgeEvalSingleBody
-
-opcoreExprBridgeEvalSingleUnaryMinus:
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        MOVEQ #1, D4
-        BRA.S opcoreExprBridgeEvalSingleBody
-
-opcoreExprBridgeCurrentPc:
-        MOVE.L A5, D3
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        BRA.S opcoreExprBridgeEvalSingleApplyUnary
-
-opcoreExprBridgeHex:
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        BSR.W opcoreExprBridgeParseHex
-        BRA.S opcoreExprBridgeEvalSingleMaybeApplyUnary
-
-opcoreExprBridgeHex0x:
-        ADDQ.L #2, A0
-        SUBQ.L #2, D0
-        BSR.W opcoreExprBridgeParseHex
-        BRA.S opcoreExprBridgeEvalSingleMaybeApplyUnary
-
-opcoreExprBridgeBinaryLiteral:
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        BSR.W opcoreExprBridgeParseBinary
-        BRA.S opcoreExprBridgeEvalSingleMaybeApplyUnary
-
-opcoreExprBridgeDecimal:
-        BSR.W opcoreExprBridgeParseDecimal
-        BRA.S opcoreExprBridgeEvalSingleMaybeApplyUnary
-
-opcoreExprBridgeLabel:
-        MOVE.L D0, D6
-        BSR.W opcoreExprBridgeTermLength
-        MOVE.L D0, D2
-        BSR.W opcoreExprBridgeResolveLabel
-        MOVE.L D0, D5
-        TST.L D5
-        BNE.S opcoreExprBridgeEvalSingleMaybeApplyUnary
-        ADDA.L D2, A0
-        MOVE.L D6, D0
-        SUB.L D2, D0
-
-opcoreExprBridgeEvalSingleMaybeApplyUnary:
-        TST.L D5
-        BNE.S opcoreExprBridgeEvalSingleReturn
-
-opcoreExprBridgeEvalSingleApplyUnary:
-        TST.L D4
-        BEQ.S opcoreExprBridgeEvalSingleOk
-        NEG.L D3
-
-opcoreExprBridgeEvalSingleOk:
-        MOVEQ #0, D5
-        BRA.S opcoreExprBridgeEvalSingleReturn
-
-opcoreExprBridgeEvalSingleFail:
-        MOVEQ #1, D5
-
-opcoreExprBridgeEvalSingleReturn:
-        MOVEM.L (SP)+, D4
-        RTS
-
-opcoreExprBridgeFail:
-        MOVEQ #1, D0
-
-opcoreExprBridgeReturn:
-        MOVEM.L (SP)+, D1-D2/D4-D7/A0-A5
-        RTS
-
-opcoreExprBridgeSkipWhitespace:
-        TST.L D0
-        BEQ.S opcoreExprBridgeSkipWhitespaceDone
-        MOVEQ #0, D1
-        MOVE.B (A0), D1
-        CMPI.B #' ', D1
-        BEQ.S opcoreExprBridgeSkipWhitespaceOne
-        CMPI.B #9, D1
-        BNE.S opcoreExprBridgeSkipWhitespaceDone
-
-opcoreExprBridgeSkipWhitespaceOne:
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        BRA.S opcoreExprBridgeSkipWhitespace
-
-opcoreExprBridgeSkipWhitespaceDone:
-        RTS
-
-opcoreExprBridgeTermLength:
-        MOVEM.L D1-D2/A0, -(SP)
-        CLR.L D2
-
-opcoreExprBridgeTermLengthLoop:
-        CMP.L D0, D2
-        BHS.S opcoreExprBridgeTermLengthDone
-        MOVEQ #0, D1
-        MOVE.B 0(A0,D2.L), D1
-        CMPI.B #' ', D1
-        BEQ.S opcoreExprBridgeTermLengthDone
-        CMPI.B #9, D1
-        BEQ.S opcoreExprBridgeTermLengthDone
-        CMPI.B #'+', D1
-        BEQ.S opcoreExprBridgeTermLengthDone
-        CMPI.B #'-', D1
-        BEQ.S opcoreExprBridgeTermLengthDone
-        ADDQ.L #1, D2
-        BRA.S opcoreExprBridgeTermLengthLoop
-
-opcoreExprBridgeTermLengthDone:
-        MOVE.L D2, D0
-        MOVEM.L (SP)+, D1-D2/A0
-        RTS
-
-opcoreExprBridgeParseHex:
-        MOVEM.L D1-D2, -(SP)
-        CLR.L D3
-
-opcoreExprBridgeParseHexLoop:
-        TST.L D0
-        BEQ.S opcoreExprBridgeParseHexOk
-        MOVEQ #0, D1
-        MOVE.B (A0)+, D1
-        SUBQ.L #1, D0
-        CMPI.B #'+', D1
-        BEQ.S opcoreExprBridgeParseHexEndBeforeOperator
-        CMPI.B #'-', D1
-        BEQ.S opcoreExprBridgeParseHexEndBeforeOperator
-        CMPI.B #' ', D1
-        BEQ.S opcoreExprBridgeParseHexOk
-        CMPI.B #9, D1
-        BEQ.S opcoreExprBridgeParseHexOk
-        CMPI.B #'0', D1
-        BCS.S opcoreExprBridgeParseHexFail
-        CMPI.B #'9', D1
-        BLS.S opcoreExprBridgeParseHexDigit
-        CMPI.B #'A', D1
-        BCS.S opcoreExprBridgeParseHexLower
-        CMPI.B #'F', D1
-        BHI.S opcoreExprBridgeParseHexLower
-        SUBI.B #'A' - 10, D1
-        BRA.S opcoreExprBridgeParseHexHaveDigit
-
-opcoreExprBridgeParseHexLower:
-        CMPI.B #'a', D1
-        BCS.S opcoreExprBridgeParseHexFail
-        CMPI.B #'f', D1
-        BHI.S opcoreExprBridgeParseHexFail
-        SUBI.B #'a' - 10, D1
-        BRA.S opcoreExprBridgeParseHexHaveDigit
-
-opcoreExprBridgeParseHexDigit:
-        SUBI.B #'0', D1
-
-opcoreExprBridgeParseHexHaveDigit:
-        LSL.L #4, D3
-        OR.B D1, D3
-        BRA.S opcoreExprBridgeParseHexLoop
-
-opcoreExprBridgeParseHexOk:
-        MOVEQ #0, D5
-        BRA.S opcoreExprBridgeParseHexReturn
-
-opcoreExprBridgeParseHexEndBeforeOperator:
-        SUBQ.L #1, A0
-        ADDQ.L #1, D0
-        MOVEQ #0, D5
-        BRA.S opcoreExprBridgeParseHexReturn
-
-opcoreExprBridgeParseHexFail:
-        MOVEQ #1, D5
-
-opcoreExprBridgeParseHexReturn:
-        MOVEM.L (SP)+, D1-D2
-        RTS
-
-opcoreExprBridgeParseBinary:
-        MOVEM.L D1, -(SP)
-        CLR.L D3
-
-opcoreExprBridgeParseBinaryLoop:
-        TST.L D0
-        BEQ.S opcoreExprBridgeParseBinaryOk
-        MOVEQ #0, D1
-        MOVE.B (A0)+, D1
-        SUBQ.L #1, D0
-        CMPI.B #'+', D1
-        BEQ.S opcoreExprBridgeParseBinaryEndBeforeOperator
-        CMPI.B #'-', D1
-        BEQ.S opcoreExprBridgeParseBinaryEndBeforeOperator
-        CMPI.B #' ', D1
-        BEQ.S opcoreExprBridgeParseBinaryOk
-        CMPI.B #9, D1
-        BEQ.S opcoreExprBridgeParseBinaryOk
-        CMPI.B #'0', D1
-        BEQ.S opcoreExprBridgeParseBinaryDigit
-        CMPI.B #'1', D1
-        BNE.S opcoreExprBridgeParseBinaryFail
-
-opcoreExprBridgeParseBinaryDigit:
-        SUBI.B #'0', D1
-        LSL.L #1, D3
-        OR.B D1, D3
-        BRA.S opcoreExprBridgeParseBinaryLoop
-
-opcoreExprBridgeParseBinaryOk:
-        MOVEQ #0, D5
-        BRA.S opcoreExprBridgeParseBinaryReturn
-
-opcoreExprBridgeParseBinaryEndBeforeOperator:
-        SUBQ.L #1, A0
-        ADDQ.L #1, D0
-        MOVEQ #0, D5
-        BRA.S opcoreExprBridgeParseBinaryReturn
-
-opcoreExprBridgeParseBinaryFail:
-        MOVEQ #1, D5
-
-opcoreExprBridgeParseBinaryReturn:
-        MOVEM.L (SP)+, D1
-        RTS
-
-opcoreExprBridgeParseDecimal:
-        MOVEM.L D1-D2, -(SP)
-        CLR.L D3
-
-opcoreExprBridgeParseDecimalLoop:
-        TST.L D0
-        BEQ.S opcoreExprBridgeParseDecimalOk
-        MOVEQ #0, D1
-        MOVE.B (A0)+, D1
-        SUBQ.L #1, D0
-        CMPI.B #'+', D1
-        BEQ.S opcoreExprBridgeParseDecimalEndBeforeOperator
-        CMPI.B #'-', D1
-        BEQ.S opcoreExprBridgeParseDecimalEndBeforeOperator
-        CMPI.B #' ', D1
-        BEQ.S opcoreExprBridgeParseDecimalOk
-        CMPI.B #9, D1
-        BEQ.S opcoreExprBridgeParseDecimalOk
-        CMPI.B #'0', D1
-        BCS.S opcoreExprBridgeParseDecimalFail
-        CMPI.B #'9', D1
-        BHI.S opcoreExprBridgeParseDecimalFail
-        SUBI.B #'0', D1
-        MOVE.L D3, D2
-        LSL.L #3, D3
-        ADD.L D2, D3
-        ADD.L D2, D3
-        ADD.L D1, D3
-        BRA.S opcoreExprBridgeParseDecimalLoop
-
-opcoreExprBridgeParseDecimalOk:
-        MOVEQ #0, D5
-        BRA.S opcoreExprBridgeParseDecimalReturn
-
-opcoreExprBridgeParseDecimalEndBeforeOperator:
-        SUBQ.L #1, A0
-        ADDQ.L #1, D0
-        MOVEQ #0, D5
-        BRA.S opcoreExprBridgeParseDecimalReturn
-
-opcoreExprBridgeParseDecimalFail:
-        MOVEQ #1, D5
-
-opcoreExprBridgeParseDecimalReturn:
-        MOVEM.L (SP)+, D1-D2
-        RTS
-
-opcoreExprBridgeResolveLabel:
-        MOVEM.L D1-D2/D4-D6/A0-A2, -(SP)
-        MOVEA.L A0, A2
-        MOVE.L D0, D6
-        CLR.W D4
-
-opcoreExprBridgeResolveLabelLoop:
-        CMP.W D7, D4
-        BHS.S opcoreExprBridgeResolveLabelFail
-        MOVEQ #0, D5
-        MOVE.W D4, D5
-        LSL.L #6, D5
-        MOVEA.L A3, A0
-        ADDA.L D5, A0
-        MOVEA.L A2, A1
-        MOVE.L D6, D0
-        BSR.W opcoreExprBridgeLabelEquals
-        TST.L D0
-        BNE.S opcoreExprBridgeResolveLabelFound
-        ADDQ.W #1, D4
-        BRA.S opcoreExprBridgeResolveLabelLoop
-
-opcoreExprBridgeResolveLabelFound:
-        MOVEQ #0, D5
-        MOVE.W D4, D5
-        LSL.L #2, D5
-        MOVEA.L A4, A0
-        MOVE.L 0(A0,D5.L), D3
-        MOVEQ #0, D0
-        BRA.S opcoreExprBridgeResolveLabelReturn
-
-opcoreExprBridgeResolveLabelFail:
-        MOVEQ #1, D0
-
-opcoreExprBridgeResolveLabelReturn:
-        MOVEM.L (SP)+, D1-D2/D4-D6/A0-A2
-        RTS
-
-opcoreExprBridgeLabelEquals:
-        MOVEM.L D1-D3/A0-A1, -(SP)
-        MOVE.L D0, D3
-        BEQ.S opcoreExprBridgeLabelEqualsNo
-
-opcoreExprBridgeLabelEqualsLoop:
-        MOVE.B (A0)+, D1
-        MOVE.B (A1)+, D2
-        CMP.B D2, D1
-        BNE.S opcoreExprBridgeLabelEqualsNo
-        SUBQ.L #1, D3
-        BNE.S opcoreExprBridgeLabelEqualsLoop
-        TST.B (A0)
-        BNE.S opcoreExprBridgeLabelEqualsNo
-        MOVEQ #1, D0
-        BRA.S opcoreExprBridgeLabelEqualsReturn
-
-opcoreExprBridgeLabelEqualsNo:
-        MOVEQ #0, D0
-
-opcoreExprBridgeLabelEqualsReturn:
-        MOVEM.L (SP)+, D1-D3/A0-A1
-        RTS
-
-opcoreExvmDefaultProgram:
-        .byte EXVM_OPCODE_PARSE_EXPRESSION, EXVM_OPCODE_END
-opcoreExvmDefaultProgramEnd:
-
-OPCORE_EXVM_DEFAULT_PROGRAM_LEN = opcoreExvmDefaultProgramEnd - opcoreExvmDefaultProgram
-
-        .endsection
-
-        .section bss, kind=bss
-
-opcoreExprVmStack:
-        .res long,OPCORE_EXPRVM_STACK_CAPACITY
-
-        .endsection
-        .endmodule
+	.pub
+opcoreExprvmEvalProgramV1	.block
+	movem.l d1-d2/d6-d7/a0-a6, -(sp)
+	movea.l a1, a3
+	movea.l a2, a4
+	movea.l d2, a5
+	clr.l d3
+	clr.l d4
+	clr.l d5
+	clr.l d7
+
+opcoreExprVmEvalLoop
+	tst.l d0
+	beq.w opcoreExprVmEvalMissingEnd
+	moveq #0, d6
+	move.b (a0)+, d6
+	subq.l #1, d0
+	moveq #0, d2
+	move.w OpcoreExprVmSelectedOpcodeVersion, d2
+	cmpi.w #2, d2
+	beq.s opcoreExprVmEvalLoopV2
+	cmpi.b #EXPRVM_OPCODE_END, d6
+	beq.w opcoreExprVmOpcodeEnd
+	cmpi.b #EXPRVM_OPCODE_PUSH_LITERAL, d6
+	beq.w opcoreExprVmOpcodePushLiteral
+	cmpi.b #EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d6
+	beq.w opcoreExprVmOpcodePushCurrent
+	cmpi.b #EXPRVM_OPCODE_PUSH_SYMBOL, d6
+	beq.w opcoreExprVmOpcodePushSymbol
+	cmpi.b #EXPRVM_OPCODE_APPLY_UNARY, d6
+	beq.w opcoreExprVmOpcodeApplyUnary
+	cmpi.b #EXPRVM_OPCODE_APPLY_BINARY, d6
+	beq.w opcoreExprVmOpcodeApplyBinary
+	bra.w opcoreExprVmEvalUnknownOpcode
+
+opcoreExprVmEvalLoopV2
+	cmpi.b #EXPRVM_V2_OPCODE_END, d6
+	beq.w opcoreExprVmOpcodeEnd
+	cmpi.b #EXPRVM_V2_OPCODE_PUSH_LITERAL, d6
+	beq.w opcoreExprVmOpcodePushLiteral
+	cmpi.b #EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
+	beq.w opcoreExprVmOpcodePushCurrent
+	cmpi.b #EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
+	beq.w opcoreExprVmOpcodePushSymbol
+	cmpi.b #EXPRVM_V2_OPCODE_APPLY_UNARY, d6
+	beq.w opcoreExprVmOpcodeApplyUnary
+	cmpi.b #EXPRVM_V2_OPCODE_APPLY_BINARY, d6
+	beq.w opcoreExprVmOpcodeApplyBinary
+	cmpi.b #EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6
+	beq.w opcoreExprVmOpcodeRequireScalar
+	bra.w opcoreExprVmEvalUnknownOpcode
+
+opcoreExprVmOpcodePushLiteral
+	bsr.w readI64Low32
+	tst.l d0
+	bmi.w opcoreExprVmEvalLiteralReadFail
+	move.l d0, OpcoreExprVmEvalRemaining
+	bsr.w pushD3
+	tst.l d0
+	bmi.w opcoreExprVmEvalLiteralPushFail
+	move.l OpcoreExprVmEvalRemaining, d0
+	bra.w opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodePushCurrent
+	move.l a5, d3
+	move.l d0, OpcoreExprVmEvalRemaining
+	bsr.w pushD3
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	move.l OpcoreExprVmEvalRemaining, d0
+	bra.w opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodePushSymbol
+	bsr.w readU16
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	cmp.w d1, d3
+	bhs.w opcoreExprVmEvalFail
+	moveq #1, d4
+	moveq #0, d6
+	move.w OpcoreExprVmCurrentPass, d6
+	cmpi.w #1, d6
+	beq.s opcoreExprVmPushSymbolUnstable
+	moveq #0, d6
+	move.w d3, d6
+	tst.b 0(a6, d6.l)
+	bne.s opcoreExprVmPushSymbolStable
+
+opcoreExprVmPushSymbolUnstable
+	moveq #1, d5
+
+opcoreExprVmPushSymbolStable
+	move.l d0, OpcoreExprVmEvalRemaining
+	moveq #0, d6
+	move.w d3, d6
+	lsl.l #2, d6
+	movea.l a4, a2
+	move.l 0(a2, d6.l), d3
+	bsr.w pushD3
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	move.l OpcoreExprVmEvalRemaining, d0
+	bra.w opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodeApplyUnary
+	bsr.w readU8
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	move.l d0, OpcoreExprVmEvalRemaining
+	move.l d3, d6
+	bsr.w popD3
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	cmpi.b #EXPRVM_UNARY_PLUS, d6
+	beq.s opcoreExprVmApplyUnaryDone
+	cmpi.b #EXPRVM_UNARY_MINUS, d6
+	beq.s opcoreExprVmApplyUnaryMinus
+	cmpi.b #EXPRVM_UNARY_BIT_NOT, d6
+	beq.s opcoreExprVmApplyUnaryBitNot
+	cmpi.b #EXPRVM_UNARY_LOGIC_NOT, d6
+	beq.s opcoreExprVmApplyUnaryLogicNot
+	cmpi.b #EXPRVM_UNARY_HIGH, d6
+	beq.s opcoreExprVmApplyUnaryHigh
+	cmpi.b #EXPRVM_UNARY_LOW, d6
+	beq.s opcoreExprVmApplyUnaryLow
+	bra.w opcoreExprVmEvalFail
+
+opcoreExprVmApplyUnaryMinus
+	neg.l d3
+	bra.s opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryBitNot
+	not.l d3
+	bra.s opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryLogicNot
+	tst.l d3
+	beq.s opcoreExprVmApplyUnaryLogicNotTrue
+	clr.l d3
+	bra.s opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryLogicNotTrue
+	moveq #1, d3
+	bra.s opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryHigh
+	lsr.l #8, d3
+	andi.l #$000000FF, d3
+	bra.s opcoreExprVmApplyUnaryDone
+
+opcoreExprVmApplyUnaryLow
+	andi.l #$000000FF, d3
+
+opcoreExprVmApplyUnaryDone
+	bsr.w pushD3
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	move.l OpcoreExprVmEvalRemaining, d0
+	bra.w opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodeApplyBinary
+	bsr.w readU8
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	move.l d0, OpcoreExprVmEvalRemaining
+	move.l d3, d6
+	bsr.w popD3
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	move.l d3, -(sp)
+	bsr.w popD3
+	tst.l d0
+	bmi.s opcoreExprVmApplyBinaryRestoreFail
+	move.l (sp)+, d2
+	cmpi.b #EXPRVM_BINARY_ADD, d6
+	beq.s opcoreExprVmApplyBinaryAdd
+	cmpi.b #EXPRVM_BINARY_SUBTRACT, d6
+	beq.s opcoreExprVmApplyBinarySubtract
+	bra.w opcoreExprVmEvalFail
+
+opcoreExprVmApplyBinaryRestoreFail
+	addq.l #4, sp
+	bra.w opcoreExprVmEvalFail
+
+opcoreExprVmApplyBinaryAdd
+	add.l d2, d3
+	bra.s opcoreExprVmApplyBinaryDone
+
+opcoreExprVmApplyBinarySubtract
+	sub.l d2, d3
+
+opcoreExprVmApplyBinaryDone
+	bsr.w pushD3
+	tst.l d0
+	bmi.w opcoreExprVmEvalFail
+	move.l OpcoreExprVmEvalRemaining, d0
+	bra.w opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodeRequireScalar
+	cmpi.l #1, d7
+	bne.w opcoreExprVmEvalRequireScalarFail
+	bra.w opcoreExprVmEvalLoop
+
+opcoreExprVmOpcodeEnd
+	cmpi.l #1, d7
+	bne.w opcoreExprVmEvalEndStackFail
+	bsr.w popD3
+	tst.l d0
+	bmi.w opcoreExprVmEvalPopFail
+	moveq #0, d0
+	bra.s opcoreExprVmEvalReturn
+
+opcoreExprVmEvalFail
+	moveq #1, d0
+	bra.s opcoreExprVmEvalReturn
+
+opcoreExprVmEvalMissingEnd
+	moveq #51, d0
+	bra.s opcoreExprVmEvalReturn
+
+opcoreExprVmEvalUnknownOpcode
+	moveq #52, d0
+	bra.s opcoreExprVmEvalReturn
+
+opcoreExprVmEvalLiteralReadFail
+	moveq #53, d0
+	bra.s opcoreExprVmEvalReturn
+
+opcoreExprVmEvalLiteralPushFail
+	moveq #54, d0
+	bra.s opcoreExprVmEvalReturn
+
+opcoreExprVmEvalRequireScalarFail
+	moveq #55, d0
+	bra.s opcoreExprVmEvalReturn
+
+opcoreExprVmEvalEndStackFail
+	moveq #56, d0
+	bra.s opcoreExprVmEvalReturn
+
+opcoreExprVmEvalPopFail
+	moveq #57, d0
+
+opcoreExprVmEvalReturn
+	movem.l (sp)+, d1-d2/d6-d7/a0-a6
+	rts
+	.bend  ; opcoreExprvmEvalProgramV1
+
+pushD3	.block
+	cmpi.l #OPCORE_EXPRVM_STACK_CAPACITY, d7
+	bhs.s fail
+	move.l d7, d2
+	lsl.l #2, d2
+	lea OpcoreExprVmStack, a2
+	move.l d3, 0(a2, d2.l)
+	addq.l #1, d7
+	moveq #0, d0
+	rts
+
+fail
+	moveq #-1, d0
+	rts
+	.bend  ; pushD3
+
+popD3	.block
+	tst.l d7
+	beq.s fail
+	subq.l #1, d7
+	move.l d7, d2
+	lsl.l #2, d2
+	lea OpcoreExprVmStack, a2
+	move.l 0(a2, d2.l), d3
+	moveq #0, d0
+	rts
+
+fail
+	moveq #-1, d0
+	rts
+	.bend  ; popD3
+
+readU8	.block
+	tst.l d0
+	beq.s fail
+	moveq #0, d3
+	move.b (a0)+, d3
+	subq.l #1, d0
+	rts
+
+fail
+	moveq #-1, d0
+	rts
+	.bend  ; readU8
+
+readU16	.block
+	cmpi.l #2, d0
+	bcs.s fail
+	moveq #0, d3
+	move.b (a0)+, d3
+	moveq #0, d2
+	move.b (a0)+, d2
+	lsl.w #8, d2
+	or.w d2, d3
+	subq.l #2, d0
+	rts
+
+fail
+	moveq #-1, d0
+	rts
+	.bend  ; readU16
+
+readI64Low32	.block
+	cmpi.l #8, d0
+	bcs.s fail
+	moveq #0, d3
+	move.b (a0)+, d3
+	moveq #0, d2
+	move.b (a0)+, d2
+	lsl.l #8, d2
+	or.l d2, d3
+	moveq #0, d2
+	move.b (a0)+, d2
+	lsl.l #8, d2
+	lsl.l #8, d2
+	or.l d2, d3
+	moveq #0, d2
+	move.b (a0)+, d2
+	lsl.l #8, d2
+	lsl.l #8, d2
+	lsl.l #8, d2
+	or.l d2, d3
+	addq.l #4, a0
+	subq.l #8, d0
+	rts
+
+fail
+	moveq #-1, d0
+	rts
+	.bend  ; readI64Low32
+
+opcoreExprEvalOperandV1	.block
+	moveq #1, d4
+	bra.w opcoreExvmEvalOperandV1
+	.bend  ; opcoreExprEvalOperandV1
+
+opcoreExvmEvalOperandV1	.block
+	move.w d4, OpcoreExvmSelectedOpcodeVersion
+	movem.l d1-d2/d6-d7/a0-a5, -(sp)
+	cmpi.w #2, d5
+	beq.s selectedVersionReady
+	moveq #1, d5
+
+selectedVersionReady
+	move.w d5, OpcoreExprVmSelectedOpcodeVersion
+	move.w d6, OpcoreExprVmCurrentPass
+	movea.l a1, a3  ; label-name table base kept stable across parse helpers
+	movea.l a2, a4  ; label-value table base kept stable across parse helpers
+	movea.l d2, a5  ; A5 carries the current PC for '*' terms
+	move.w d1, d7  ; D7 is the label count consumed by the resolver loop
+	clr.l d3
+	bsr.w skipWhitespace
+	tst.l d0
+	beq.w fail
+	cmpi.b #'#', (a0)
+	bne.s noImmediatePrefix
+	addq.l #1, a0  ; strip immediate marker; addressing mode was selected elsewhere
+	subq.l #1, d0  ; keep remaining text length aligned with A0
+	bsr.w skipWhitespace
+
+noImmediatePrefix
+	tst.l d0
+	beq.w fail
+	move.l d0, -(sp)
+	bsr.w selectProgram
+	move.l d0, d2
+	move.l (sp)+, d0
+	tst.l d2
+	bne.w fail
+	bsr.w runEvalProgram
+	bra.w return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d6-d7/a0-a5
+	rts
+	.bend  ; opcoreExvmEvalOperandV1
+
+selectProgram	.block
+	moveq #0, d0
+	move.w OpcoreExvmSelectedOpcodeVersion, d6
+	cmpi.w #1, d6
+	beq.s version1
+	moveq #1, d0
+	rts
+
+version1
+	lea OpcoreExvmDefaultProgram(PC), a1
+	moveq #OPCORE_EXVM_DEFAULT_PROGRAM_LEN, d1
+	rts
+	.bend  ; selectProgram
+
+runEvalProgram	.block
+	moveq #0, d4  ; output expression count, matching Rust's stack-depth 1 contract
+
+loop
+	tst.l d1
+	beq.w missingEnd
+	moveq #0, d6
+	move.b (a1)+, d6
+	subq.l #1, d1
+	cmpi.b #EXVM_OPCODE_END, d6
+	beq.w opcodeEnd
+	cmpi.b #EXVM_OPCODE_PARSE_EXPRESSION, d6
+	beq.w opcodeParseExpression
+	cmpi.b #EXVM_OPCODE_EMIT_DIAG, d6
+	beq.w programFail
+	cmpi.b #EXVM_OPCODE_FAIL, d6
+	beq.w programFail
+	bra.w programFail
+
+opcodeParseExpression
+	tst.l d4
+	bne.w programFail
+	movem.l d1/d4/a1, -(sp)
+	bsr.w compileAdditive
+	move.l d0, d2
+	tst.l d2
+	beq.s compileOk
+	cmpi.l #2, d2
+	bhs.s restore
+	moveq #3, d2
+	bra.s restore
+
+compileOk
+	bsr.w finalizeProgram
+	move.l d0, d2
+	tst.l d2
+	beq.s finalizeOk
+	moveq #4, d2
+	bra.s restore
+
+finalizeOk
+	moveq #EXPRVM_OPCODE_END, d6
+	bsr.w emitU8D6
+	move.l d0, d2
+	tst.l d2
+	beq.s ensureEndOk
+	moveq #4, d2
+	bra.s restore
+
+ensureEndOk
+	lea OpcoreExprVmProgramBuffer, a0
+	moveq #0, d0
+	move.w OpcoreExprVmProgramLen, d0
+	movea.l a3, a1
+	movea.l a4, a2
+	move.l d7, d1
+	move.l a5, d2
+	moveq #0, d6
+	move.w OpcoreExprVmSelectedOpcodeVersion, d6
+	jsr opcoreExprvmEvalProgramV1
+	move.l d0, d2
+	tst.l d2
+	beq.s restore
+	cmpi.l #51, d2
+	bhs.s restore
+	moveq #5, d2
+
+restore
+	movem.l (sp)+, d1/d4/a1
+	tst.l d2
+	bne.w failWithCode
+	addq.l #1, d4
+	bra.w loop
+
+opcodeEnd
+	cmpi.l #1, d4
+	bne.s programFail
+	moveq #0, d0
+	rts
+
+missingEnd
+programFail
+	moveq #1, d0
+	rts
+
+failWithCode
+	move.l d2, d0
+	rts
+	.bend  ; runEvalProgram
+
+compileAdditive	.block
+	bsr.w resetProgram
+	bsr.w compileSingleTerm
+	tst.l d5
+	bne.s fail
+
+loop
+	bsr.w skipWhitespace
+	tst.l d0
+	beq.s ok
+	moveq #0, d6
+	move.b (a0), d6
+	cmpi.b #'+', d6
+	beq.s operator
+	cmpi.b #'-', d6
+	bne.s trailingFail
+
+operator
+	move.l d6, -(sp)
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w compileSingleTerm
+	move.l (sp)+, d6
+	tst.l d5
+	bne.s fail
+	cmpi.b #'+', d6
+	beq.s add
+	moveq #EXPRVM_BINARY_SUBTRACT, d6
+	bsr.w emitApplyBinaryD6
+	tst.l d0
+	bne.s fail
+	bra.s loop
+
+add
+	moveq #EXPRVM_BINARY_ADD, d6
+	bsr.w emitApplyBinaryD6
+	tst.l d0
+	bne.s fail
+	bra.s loop
+
+trailingFail
+	moveq #33, d5
+	bra.s fail
+
+ok
+	moveq #0, d0
+	rts
+
+fail
+	tst.l d5
+	beq.s genericFail
+	move.l d5, d0
+	rts
+
+genericFail
+	moveq #1, d0
+	rts
+	.bend  ; compileAdditive
+
+compileSingleTerm	.block
+	movem.l d4, -(sp)
+	moveq #0, d4
+	moveq #0, d5
+	bsr.w skipWhitespace
+	tst.l d0
+	beq.w fail
+	cmpi.b #'+', (a0)
+	beq.s unaryPlus
+	cmpi.b #'-', (a0)
+	beq.s unaryMinus
+
+body
+	tst.l d0
+	beq.w fail
+	cmpi.b #'*', (a0)
+	beq.s currentPc
+	cmpi.b #'$', (a0)
+	beq.w dollar
+	cmpi.b #'%', (a0)
+	beq.w binaryLiteral
+	cmpi.b #'0', (a0)
+	bne.s numberOrLabel
+	cmpi.l #2, d0
+	bcs.s numberOrLabel
+	cmpi.b #'x', 1(a0)
+	beq.w hex0x
+	cmpi.b #'X', 1(a0)
+	beq.w hex0x
+
+numberOrLabel
+	moveq #0, d1
+	move.b (a0), d1
+	cmpi.b #'0', d1
+	bcs.w label
+	cmpi.b #'9', d1
+	bhi.w label
+	bra.w decimal
+
+unaryPlus
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.s body
+
+unaryMinus
+	addq.l #1, a0
+	subq.l #1, d0
+	moveq #1, d4
+	bra.s body
+
+currentPc
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w emitPushCurrent
+	bra.w maybeApplyUnary
+
+dollar
+	cmpi.l #1, d0
+	beq.w currentPc
+	moveq #0, d1
+	move.b 1(a0), d1
+	cmpi.b #'0', d1
+	blo.s dollarUpperHex
+	cmpi.b #'9', d1
+	bls.w hex
+
+dollarUpperHex
+	cmpi.b #'A', d1
+	blo.s dollarLowerHex
+	cmpi.b #'F', d1
+	bls.w hex
+
+dollarLowerHex
+	cmpi.b #'a', d1
+	blo.w currentPc
+	cmpi.b #'f', d1
+	bls.w hex
+	bra.w currentPc
+
+hex
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w parseHex
+	tst.l d5
+	beq.s hexParsed
+	moveq #31, d5
+	bra.w maybeApplyUnary
+
+hexParsed
+	bsr.w emitPushLiteralD3
+	tst.l d0
+	beq.s hexEmitOk
+	moveq #32, d5
+	bra.w maybeApplyUnary
+
+hexEmitOk
+	moveq #0, d5
+	bra.w maybeApplyUnary
+
+hex0x
+	addq.l #2, a0
+	subq.l #2, d0
+	bsr.w parseHex
+	tst.l d5
+	bne.w maybeApplyUnary
+	bsr.w emitPushLiteralD3
+	move.l d0, d5
+	bra.w maybeApplyUnary
+
+binaryLiteral
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w parseBinary
+	tst.l d5
+	bne.s maybeApplyUnary
+	bsr.w emitPushLiteralD3
+	move.l d0, d5
+	bra.s maybeApplyUnary
+
+decimal
+	bsr.w parseDecimal
+	tst.l d5
+	bne.w maybeApplyUnary
+	bsr.w emitPushLiteralD3
+	move.l d0, d5
+	bra.w maybeApplyUnary
+
+label
+	move.l d0, d6
+	bsr.w termLength
+	move.l d0, d2
+	bsr.w resolveLabelIndex
+	move.l d0, d5
+	tst.l d5
+	beq.s labelResolved
+	moveq #0, d3
+	move.w OpcoreExprVmCurrentPass, d3
+	cmpi.w #1, d3
+	bne.s maybeApplyUnary
+	clr.l d3
+	bsr.w emitPushLiteralD3
+	move.l d0, d5
+	tst.l d5
+	bne.s maybeApplyUnary
+	adda.l d2, a0
+	move.l d6, d0
+	sub.l d2, d0
+	bra.s maybeApplyUnary
+
+labelResolved
+	bsr.w emitPushSymbolD3
+	move.l d0, d5
+	tst.l d5
+	bne.s maybeApplyUnary
+	adda.l d2, a0
+	move.l d6, d0
+	sub.l d2, d0
+
+maybeApplyUnary
+	tst.l d5
+	bne.w return
+	tst.l d4
+	beq.s ok
+	moveq #EXPRVM_UNARY_MINUS, d6
+	bsr.w emitApplyUnaryD6
+	move.l d0, d5
+	bne.w return
+
+ok
+	moveq #0, d5
+	bra.s return
+
+fail
+	moveq #34, d5
+
+return
+	movem.l (sp)+, d4
+	rts
+	.bend  ; compileSingleTerm
+
+resetProgram	.block
+	clr.w OpcoreExprVmProgramLen
+	rts
+	.bend  ; resetProgram
+
+finalizeProgram	.block
+	move.w OpcoreExprVmSelectedOpcodeVersion, d3
+	cmpi.w #2, d3
+	bne.s version1
+	moveq #EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	moveq #EXPRVM_V2_OPCODE_END, d6
+	bra.s return
+
+version1
+	moveq #EXPRVM_OPCODE_END, d6
+
+return
+	bsr.w emitU8D6
+	rts
+	.bend  ; finalizeProgram
+
+emitPushCurrent	.block
+	move.w OpcoreExprVmSelectedOpcodeVersion, d3
+	cmpi.w #2, d3
+	bne.w version1
+	moveq #EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
+	bra.w ready
+
+version1
+	moveq #EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d6
+
+ready
+	bra.w emitU8D6
+	.bend  ; emitPushCurrent
+
+emitApplyUnaryD6	.block
+	movem.l d6, -(sp)
+	move.l d6, d3
+	move.w OpcoreExprVmSelectedOpcodeVersion, d6
+	cmpi.w #2, d6
+	bne.s version1
+	moveq #EXPRVM_V2_OPCODE_APPLY_UNARY, d6
+	bra.s ready
+
+version1
+	moveq #EXPRVM_OPCODE_APPLY_UNARY, d6
+
+ready
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	move.l d3, d6
+	bsr.w emitU8D6
+
+return
+	movem.l (sp)+, d6
+	rts
+	.bend  ; emitApplyUnaryD6
+
+emitApplyBinaryD6	.block
+	movem.l d6, -(sp)
+	move.l d6, d3
+	move.w OpcoreExprVmSelectedOpcodeVersion, d6
+	cmpi.w #2, d6
+	bne.s version1
+	moveq #EXPRVM_V2_OPCODE_APPLY_BINARY, d6
+	bra.s ready
+
+version1
+	moveq #EXPRVM_OPCODE_APPLY_BINARY, d6
+
+ready
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	move.l d3, d6
+	bsr.w emitU8D6
+
+return
+	movem.l (sp)+, d6
+	rts
+	.bend  ; emitApplyBinaryD6
+
+emitPushSymbolD3	.block
+	movem.l d2-d3/d6, -(sp)
+	move.w OpcoreExprVmSelectedOpcodeVersion, d6
+	cmpi.w #2, d6
+	bne.s version1
+	moveq #EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
+	bra.s ready
+
+version1
+	moveq #EXPRVM_OPCODE_PUSH_SYMBOL, d6
+
+ready
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	movem.l (sp), d2-d3/d6
+	bsr.w emitU16D3
+
+return
+	movem.l (sp)+, d2-d3/d6
+	rts
+	.bend  ; emitPushSymbolD3
+
+emitPushLiteralD3	.block
+	movem.l d2-d3/d6, -(sp)
+	move.w OpcoreExprVmSelectedOpcodeVersion, d6
+	cmpi.w #2, d6
+	bne.s version1
+	moveq #EXPRVM_V2_OPCODE_PUSH_LITERAL, d6
+	bra.s ready
+
+version1
+	moveq #EXPRVM_OPCODE_PUSH_LITERAL, d6
+
+ready
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	movem.l (sp), d2-d3/d6
+	bsr.w emitU32D3
+	tst.l d0
+	bne.s return
+	clr.l d3
+	bsr.w emitU32D3
+
+return
+	movem.l (sp)+, d2-d3/d6
+	rts
+	.bend  ; emitPushLiteralD3
+
+emitU32D3	.block
+	move.l d3, d6
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	move.l d3, d6
+	lsr.l #8, d6
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	move.l d3, d6
+	lsr.l #8, d6
+	lsr.l #8, d6
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	move.l d3, d6
+	lsr.l #8, d6
+	lsr.l #8, d6
+	lsr.l #8, d6
+	bsr.w emitU8D6
+
+return
+	rts
+	.bend  ; emitU32D3
+
+emitU16D3	.block
+	move.l d3, d6
+	bsr.w emitU8D6
+	tst.l d0
+	bne.s return
+	move.l d3, d6
+	lsr.l #8, d6
+	bsr.w emitU8D6
+
+return
+	rts
+	.bend  ; emitU16D3
+
+emitU8D6	.block
+	movem.l d1/a2, -(sp)
+	moveq #0, d0
+	move.w OpcoreExprVmProgramLen, d0
+	cmpi.l #OPCORE_EXPRVM_PROGRAM_CAPACITY, d0
+	bhs.s fail
+	lea OpcoreExprVmProgramBuffer, a2
+	move.b d6, 0(a2, d0.l)
+	addi.w #1, OpcoreExprVmProgramLen
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1/a2
+	rts
+	.bend  ; emitU8D6
+
+skipWhitespace	.block
+	tst.l d0
+	beq.s done
+	moveq #0, d1
+	move.b (a0), d1
+	cmpi.b #' ', d1
+	beq.s one
+	cmpi.b #9, d1
+	bne.s done
+
+one
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.s skipWhitespace
+
+done
+	rts
+	.bend  ; skipWhitespace
+
+termLength	.block
+	movem.l d1-d2/a0, -(sp)
+	clr.l d2
+
+loop
+	cmp.l d0, d2
+	bhs.s done
+	moveq #0, d1
+	move.b 0(a0, d2.l), d1
+	cmpi.b #' ', d1
+	beq.s done
+	cmpi.b #9, d1
+	beq.s done
+	cmpi.b #'+', d1
+	beq.s done
+	cmpi.b #'-', d1
+	beq.s done
+	addq.l #1, d2
+	bra.s loop
+
+done
+	move.l d2, d0
+	movem.l (sp)+, d1-d2/a0
+	rts
+	.bend  ; termLength
+
+parseHex	.block
+	movem.l d1-d2, -(sp)
+	clr.l d3
+
+loop
+	tst.l d0
+	beq.s ok
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d0
+	cmpi.b #'+', d1
+	beq.s endBeforeOperator
+	cmpi.b #'-', d1
+	beq.s endBeforeOperator
+	cmpi.b #' ', d1
+	beq.s ok
+	cmpi.b #9, d1
+	beq.s ok
+	cmpi.b #'0', d1
+	bcs.s fail
+	cmpi.b #'9', d1
+	bls.s digit
+	cmpi.b #'A', d1
+	bcs.s lower
+	cmpi.b #'F', d1
+	bhi.s lower
+	subi.b #'A' - 10, d1
+	bra.s haveDigit
+
+lower
+	cmpi.b #'a', d1
+	bcs.s fail
+	cmpi.b #'f', d1
+	bhi.s fail
+	subi.b #'a' - 10, d1
+	bra.s haveDigit
+
+digit
+	subi.b #'0', d1
+
+haveDigit
+	lsl.l #4, d3
+	or.b d1, d3
+	bra.s loop
+
+ok
+	moveq #0, d5
+	bra.s return
+
+endBeforeOperator
+	subq.l #1, a0
+	addq.l #1, d0
+	moveq #0, d5
+	bra.s return
+
+fail
+	moveq #1, d5
+
+return
+	movem.l (sp)+, d1-d2
+	rts
+	.bend  ; parseHex
+
+parseBinary	.block
+	movem.l d1, -(sp)
+	clr.l d3
+
+loop
+	tst.l d0
+	beq.s ok
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d0
+	cmpi.b #'+', d1
+	beq.s endBeforeOperator
+	cmpi.b #'-', d1
+	beq.s endBeforeOperator
+	cmpi.b #' ', d1
+	beq.s ok
+	cmpi.b #9, d1
+	beq.s ok
+	cmpi.b #'0', d1
+	beq.s digit
+	cmpi.b #'1', d1
+	bne.s fail
+
+digit
+	subi.b #'0', d1
+	lsl.l #1, d3
+	or.b d1, d3
+	bra.s loop
+
+ok
+	moveq #0, d5
+	bra.s return
+
+endBeforeOperator
+	subq.l #1, a0
+	addq.l #1, d0
+	moveq #0, d5
+	bra.s return
+
+fail
+	moveq #1, d5
+
+return
+	movem.l (sp)+, d1
+	rts
+	.bend  ; parseBinary
+
+parseDecimal	.block
+	movem.l d1-d2, -(sp)
+	clr.l d3
+
+loop
+	tst.l d0
+	beq.s ok
+	moveq #0, d1
+	move.b (a0)+, d1
+	subq.l #1, d0
+	cmpi.b #'+', d1
+	beq.s endBeforeOperator
+	cmpi.b #'-', d1
+	beq.s endBeforeOperator
+	cmpi.b #' ', d1
+	beq.s ok
+	cmpi.b #9, d1
+	beq.s ok
+	cmpi.b #'0', d1
+	bcs.s fail
+	cmpi.b #'9', d1
+	bhi.s fail
+	subi.b #'0', d1
+	move.l d3, d2
+	lsl.l #3, d3
+	add.l d2, d3
+	add.l d2, d3
+	add.l d1, d3
+	bra.s loop
+
+ok
+	moveq #0, d5
+	bra.s return
+
+endBeforeOperator
+	subq.l #1, a0
+	addq.l #1, d0
+	moveq #0, d5
+	bra.s return
+
+fail
+	moveq #1, d5
+
+return
+	movem.l (sp)+, d1-d2
+	rts
+	.bend  ; parseDecimal
+
+resolveLabelIndex	.block
+	movem.l d1-d2/d4-d6/a0-a2, -(sp)
+	movea.l a0, a2
+	move.l d0, d6
+	clr.w d4
+
+loop
+	cmp.w d7, d4
+	bhs.s fail
+	moveq #0, d5
+	move.w d4, d5
+	lsl.l #6, d5
+	movea.l a3, a0
+	adda.l d5, a0
+	movea.l a2, a1
+	move.l d6, d0
+	bsr.w labelEquals
+	tst.l d0
+	bne.s found
+	addq.w #1, d4
+	bra.s loop
+
+found
+	moveq #0, d3
+	move.w d4, d3
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d4-d6/a0-a2
+	rts
+	.bend  ; resolveLabelIndex
+
+labelEquals	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	move.l d0, d3
+	beq.s no
+
+loop
+	move.b (a0)+, d1
+	move.b (a1)+, d2
+	cmp.b d2, d1
+	bne.s no
+	subq.l #1, d3
+	bne.s loop
+	tst.b (a0)
+	bne.s no
+	moveq #1, d0
+	bra.s return
+
+no
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d3/a0-a1
+	rts
+	.bend  ; labelEquals
+
+OpcoreExvmDefaultProgram
+	.byte EXVM_OPCODE_PARSE_EXPRESSION, EXVM_OPCODE_END
+OPCORE_EXVM_DEFAULT_PROGRAM_END
+
+OPCORE_EXVM_DEFAULT_PROGRAM_LEN = OPCORE_EXVM_DEFAULT_PROGRAM_END - OpcoreExvmDefaultProgram
+	.priv
+
+	.endsection
+
+	.section bss, kind=bss
+
+OpcoreExprVmStack
+	.res long, OPCORE_EXPRVM_STACK_CAPACITY
+OpcoreExvmSelectedOpcodeVersion
+	.res word, 1
+OpcoreExprVmSelectedOpcodeVersion
+	.res word, 1
+OpcoreExprVmCurrentPass
+	.res word, 1
+OpcoreExprVmProgramLen
+	.res word, 1
+OpcoreExprVmProgramBuffer
+	.res byte, OPCORE_EXPRVM_PROGRAM_CAPACITY
+	.align 4
+OpcoreExprVmEvalRemaining
+	.res long, 1
+
+	.endsection
+	.endmodule

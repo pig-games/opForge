@@ -68,10 +68,35 @@ pub fn parse_statement_line_with_model(
     line_num: u32,
     register_checker: &RegisterChecker,
 ) -> Result<(LineAst, Span, Option<String>), ParseError> {
-    crate::vm_opasm_parse::parse_line_with_model(
+    parse_statement_line_with_model_with_rollout_overrides(
         model,
         cpu_id,
         dialect_override,
+        &[],
+        &[],
+        line,
+        line_num,
+        register_checker,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn parse_statement_line_with_model_with_rollout_overrides(
+    model: &HierarchyExecutionModel,
+    cpu_id: &str,
+    dialect_override: Option<&str>,
+    expr_parser_opt_in_families: &[String],
+    expr_parser_force_host_families: &[String],
+    line: &str,
+    line_num: u32,
+    register_checker: &RegisterChecker,
+) -> Result<(LineAst, Span, Option<String>), ParseError> {
+    crate::vm_opasm_parse::parse_line_with_model_with_rollout_overrides(
+        model,
+        cpu_id,
+        dialect_override,
+        expr_parser_opt_in_families,
+        expr_parser_force_host_families,
         line,
         line_num,
         register_checker,
@@ -93,6 +118,31 @@ pub fn parse_statement_line_with_model_and_expr_handler<'a>(
         model,
         cpu_id,
         dialect_override,
+        line,
+        line_num,
+        register_checker,
+        expr_handler,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn parse_statement_line_with_model_and_expr_handler_with_rollout_overrides<'a>(
+    model: &'a HierarchyExecutionModel,
+    cpu_id: &'a str,
+    dialect_override: Option<&'a str>,
+    expr_parser_opt_in_families: &'a [String],
+    expr_parser_force_host_families: &'a [String],
+    line: &'a str,
+    line_num: u32,
+    register_checker: &RegisterChecker,
+    expr_handler: Option<DynExprProcessingHandler<'a>>,
+) -> Result<(LineAst, Span, Option<String>), ParseError> {
+    crate::vm_opasm_parse::parse_line_with_model_with_expr_handler_and_rollout_overrides(
+        model,
+        cpu_id,
+        dialect_override,
+        expr_parser_opt_in_families,
+        expr_parser_force_host_families,
         line,
         line_num,
         register_checker,

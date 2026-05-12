@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Erik van der Tier
 
-.PHONY: build release clean fmt clippy audit quality-gate workflow-gate reference reference-test test test-core test-external-oracle test-external-oracle-mos6502-64tass test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opasm-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-cli build-lsp build-ffi build-ffi-release test-ffi-packaging build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf
+.PHONY: build release clean fmt clippy audit quality-gate workflow-gate native-68000-format-check native-68000-format reference reference-test test test-core test-external-oracle test-external-oracle-mos6502-64tass test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opasm-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-cli build-lsp build-ffi build-ffi-release test-ffi-packaging build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf
 
 MANUAL_MD := documentation/opForge-reference-manual.md
 MANUAL_PDF := documentation/opForge-reference-manual.pdf
@@ -52,6 +52,12 @@ audit:
 
 quality-gate:
 	scripts/workflow/run_rust_quality_gate.sh
+
+native-68000-format-check:
+	scripts/workflow/run_native_68000_format_gate.sh
+
+native-68000-format:
+	scripts/workflow/run_native_68000_format_gate.sh --write
 
 workflow-gate:
 	python3 scripts/workflow/check_agent_symlinks.py

@@ -400,10 +400,14 @@ The most important reference code is:
   runtime-model loading, lookup, and budget/compatibility enforcement
 - `crates/opforge-vm/src/execution_model/parser_vm.rs`
   parser VM execution semantics
+- `crates/opforge-vm/src/runtime_expr_parser.rs`
+  authoritative `EXVM v2` parser execution semantics for covered expression grammar
+- `crates/opforge-vm/src/vm_opcore.rs`
+  opcore bridge points where assembler/runtime code crosses into `EXVM` and `EXPR`
 - `crates/opforge-vm/src/bytecode.rs`
   encode-bytecode execution semantics
 - `crates/opforge-core/src/expr_vm.rs`
-  portable expression evaluator VM semantics
+  portable expression evaluator VM semantics, including `EXPR v2` structural values and explicit scalar-boundary enforcement
 
 The target-native implementation should aim to reproduce those semantics, not the Rust source structure.
 
@@ -419,8 +423,10 @@ For an 8-bit-native runtime, the practical component list is:
   run `TKVM` programs against one line buffer with the same budgets and diagnostic behavior
 - parser VM executor
   run `PRVM` envelopes over the produced token stream and return the expected line shape
-- expression parser/evaluator support
-  provide the expression parser/evaluator behavior required by the active contract path
+- expression parser VM executor
+  run covered `EXVM v2` programs for bounded expression token ranges and report deterministic unsupported diagnostics for out-of-scope value nodes
+- expression evaluator VM support
+  run `EXPR v2` programs with typed values and explicit scalar-boundary enforcement for scalar-only callers
 - encode bytecode executor
   run the minimal bytecode emitter that produces final instruction bytes from resolved operand byte slices
 - native ABI surface
@@ -442,8 +448,12 @@ For native bring-up, this split matters:
 - Parser VM (`PRVM`)
   opcode definitions: `crates/opforge-package/src/package.rs`
   reference executor: `crates/opforge-vm/src/execution_model/parser_vm.rs`
+- Expression parser VM (`EXVM`)
+  opcode definitions: `crates/opforge-package/src/package.rs`
+  reference executor: `crates/opforge-vm/src/runtime_expr_parser.rs`
 - Expression evaluator VM (`EXPR`)
   opcode definitions and reference executor: `crates/opforge-core/src/expr_vm.rs`
+  active assembler path: `EXPR v2` with structural values plus explicit `RequireScalar` boundaries for scalar-only callers
 - Encode bytecode VM
   reference executor: `crates/opforge-vm/src/bytecode.rs`
 - Native 6502 harness surface
@@ -483,6 +493,26 @@ The current architecture still has Rust on the outside:
 - pass 1 / pass 2 orchestration
 - image/list/map/hex/bin/label output emission
 
+One narrow expression carveout also remains host-owned in the current assembler
+boundary: repetition-side-table member/index forms such as
+`repeatLabel[index].field` still reduce through the host because they depend on
+assembler-owned iteration-scope side tables rather than generic `EXPR v2`
+structural values.
+
+Outside that carveout, covered authoritative-family expression parse/eval
+failures stay on the VM/contract surface during pass 2 rather than silently
+retrying host AST evaluation. Host scalar evaluation on those families is now
+non-default: it occurs only through the explicit `FORCE_HOST` override controls
+or through the host's provisional pass-1 unresolved-symbol placeholder rules
+when a caller still needs a temporary numeric value before symbol finalization.
+
+The active authoritative expression-family set now includes
+`motorola68000` alongside `mos6502` and `intel8080`. That family claim covers
+the audited `m68000`, `m68010`, `m68020`, `m68030`, `m68040`, and full
+`m68080` expression-bearing paths under their existing legality checks,
+including `m68080` integer, AMMX, Apollo-gated, and `fpu 68080`
+expression-bearing callers.
+
 That host work is coordinated mainly in:
 
 - `crates/opforge-engine/src/lib.rs`
@@ -507,9 +537,9 @@ The safest order for native bring-up is usually:
 2. implement package loading and pipeline selection
 3. implement tokenizer VM execution
 4. implement parser VM execution
-5. implement encode-bytecode execution
-6. implement expression evaluation
-7. implement expression-parser compatibility behavior if required by the active rollout
+5. implement expression parser VM execution for the covered `EXVM v2` surface
+6. implement expression evaluation with `EXPR v2`, including explicit scalar-boundary checks for scalar-only callers
+7. implement encode-bytecode execution
 8. connect the full `load_package -> set_pipeline -> tokenize -> parse -> encode -> last_error` flow
 
 That order keeps the surface testable at each step and mirrors the current native smoke-flow expectations documented in `documentation/vm-ultimate64-abi-contract-v1.md`.
@@ -526,10 +556,11 @@ If the real goal is "make an 8-bit machine do what the Rust assembler path is do
 6. `crates/opforge-package/src/package.rs`
 7. `crates/opforge-vm/src/runtime_model_core.rs`
 8. `crates/opforge-vm/src/execution_model/parser_vm.rs`
-9. `crates/opforge-vm/src/bytecode.rs`
-10. `crates/opforge-core/src/expr_vm.rs`
-11. `crates/opforge-asm/src/line.rs`
-12. `crates/opforge-engine/src/lib.rs`
+9. `crates/opforge-vm/src/runtime_expr_parser.rs`
+10. `crates/opforge-vm/src/vm_opcore.rs`
+11. `crates/opforge-core/src/expr_vm.rs`
+12. `crates/opforge-asm/src/line.rs`
+13. `crates/opforge-engine/src/lib.rs`
 
 That sequence keeps the focus on native runtime semantics first, then shows how the current host wraps those semantics into the larger assembler workflow.
 

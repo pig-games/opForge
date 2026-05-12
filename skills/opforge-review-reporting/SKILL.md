@@ -54,5 +54,8 @@ Each finding must include:
 
 ## Helper scripts
 
+- `../../scripts/workflow/allocate_review_finding_id.py`
+- `../../scripts/workflow/start_artifact.py`
 - `../../scripts/workflow/check_review_report.py`
+- `../../scripts/workflow/check_workflow_artifact_bundle.py`
 - `../../scripts/workflow/run_review_workflow.sh`

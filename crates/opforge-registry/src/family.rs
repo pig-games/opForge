@@ -5,6 +5,7 @@
 
 use opcore::parser::Expr;
 use opcore::tokenizer::Span;
+use types::asm_value::AsmValue;
 use types::symbol::SymbolTable;
 
 use crate::symbol_stability::is_symbol_unstable;
@@ -157,6 +158,10 @@ pub trait AssemblerContext {
 
     fn scalar_value_symbol(&self, _name: &str) -> Option<i64> {
         None
+    }
+
+    fn value_symbol(&self, name: &str) -> Option<AsmValue> {
+        self.scalar_value_symbol(name).map(AsmValue::Scalar)
     }
 
     fn cpu_state_flag(&self, _key: &str) -> Option<u32> {

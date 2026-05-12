@@ -1,17 +1,17 @@
 ; Native opasm selector/request staging for the initial AmigaOS CLI slice.
 
-        .module opasm.amigaos.selector_stage
-        .cpu 68020
-        .pub
-        .use opcore.amigaos.expr_bridge (opcore_expr_eval_operand_v1)
-
+	.module opasm.amigaos.selector_stage
+	.cpu 68020
+	.pub
 OPASM_SELECTOR_STATUS_OK                  = 0
 OPASM_SELECTOR_STATUS_NO_OUTPUT           = 1
 OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC    = 2
 OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS = 3
 OPASM_SELECTOR_STATUS_OPERAND_ERROR       = 4
 
-        .section code, kind=code
+	.section code, kind=code
+
+	.pub
 
 ; ---------------------------------------------------------------------------
 ; Build the compact tkpkg encode-request payload for one parsed statement.
@@ -26,131 +26,203 @@ OPASM_SELECTOR_STATUS_OPERAND_ERROR       = 4
 ; - A1/D1: operand text pointer and byte length.
 ; - A4: selector context pointer containing:
 ;   - long 0: output request buffer pointer.
-;   - long 1: label-name table pointer.
-;   - long 2: label-value table pointer.
-;   - long 3: label count.
-;   - long 4: current assembly PC for opcore expression evaluation.
+;   - long 1: operand-evaluation callback pointer returning D3=value and D5=1
+;     when the operand depended on unstable pass-1 symbols.
 ;
 ; Outputs:
 ; - D0: OPASM_SELECTOR_STATUS_*.
 ; - D1: request byte length when D0 is OPASM_SELECTOR_STATUS_OK.
 ; - request buffer contains the compact package encode envelope.
 ; ---------------------------------------------------------------------------
+	
+opasmSelectorStageBuildEncodeRequestV1	.block
+	movem.l d3-d7/a2-a6, -(sp)
+	movea.l a0, a5  ; mnemonic text base survives helper calls in A5
+	moveq #0, d6
+	move.w d0, d6  ; D6 is the mnemonic length used in string compare/copy
+	movea.l a1, a6  ; operand text base; later reused by operand evaluators
+	moveq #0, d7
+	move.w d1, d7  ; D7 is the operand text length
+	movea.l a4, a0  ; unpack the selector context supplied by the CLI/session
+	movea.l (a0)+, a4  ; A4 becomes the output request buffer
+	movea.l (a0), a3  ; A3 is the caller-supplied operand-evaluation callback
+	movea.l a4, a0  ; restore output-buffer base for later payload construction
+	tst.w d6
+	beq.w noOutput
+	movea.l a5, a0
+	move.w d6, d0
+	lea OpasmSelectorLdaText, a1
+	moveq #3, d1
+	bsr.w textEquals
+	tst.l d0
+	bne.w buildLda
+	movea.l a5, a0
+	move.w d6, d0
+	lea OpasmSelectorStaText, a1
+	moveq #3, d1
+	bsr.w textEquals
+	tst.l d0
+	bne.w buildSta
+	movea.l a5, a0
+	move.w d6, d0
+	lea OpasmSelectorJmpText, a1
+	moveq #3, d1
+	bsr.w textEquals
+	tst.l d0
+	bne.w buildJmp
+	moveq #OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC, d0
+	bra.w return
 
-opasm_selector_stage_build_encode_request_v1:
-        MOVEM.L D3-D7/A2-A6, -(SP)
-        MOVEA.L A0, A5                  ; mnemonic text base survives helper calls in A5
-        MOVEQ #0, D6
-        MOVE.W D0, D6                   ; D6 is the mnemonic length used in string compare/copy
-        MOVEA.L A1, A6                  ; operand text base; later reused by operand evaluators
-        MOVEQ #0, D7
-        MOVE.W D1, D7                   ; D7 is the operand text length
-        MOVEA.L A4, A0                  ; unpack the selector context supplied by the CLI/session
-        MOVEA.L (A0)+, A4               ; A4 becomes the output request buffer
-        MOVEA.L (A0)+, A2               ; A2 points at fixed-width label names
-        MOVEA.L (A0)+, A3               ; A3 points at label values parallel to A2
-        MOVE.L (A0)+, D2                ; D2 is the number of live label entries
-        MOVE.L (A0), D3                 ; D3 carries current PC until opcore returns an operand value
-        MOVEA.L A4, A0                  ; restore output-buffer base for later payload construction
-        TST.W D6
-        BEQ.W opasmSelectorNoOutput
-        MOVEA.L A5, A0
-        MOVE.W D6, D0
-        LEA opasmSelectorLdaText, A1
-        MOVEQ #3, D1
-        BSR.W opasmSelectorTextEquals
-        TST.L D0
-        BNE.W opasmSelectorBuildImmediate
-        MOVEA.L A5, A0
-        MOVE.W D6, D0
-        LEA opasmSelectorStaText, A1
-        MOVEQ #3, D1
-        BSR.W opasmSelectorTextEquals
-        TST.L D0
-        BNE.W opasmSelectorBuildAbsolute
-        MOVEA.L A5, A0
-        MOVE.W D6, D0
-        LEA opasmSelectorJmpText, A1
-        MOVEQ #3, D1
-        BSR.W opasmSelectorTextEquals
-        TST.L D0
-        BNE.W opasmSelectorBuildAbsolute
-        MOVEQ #OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC, D0
-        BRA.W opasmSelectorReturn
+buildLda
+	movea.l a6, a0
+	move.l d7, d0
+	bsr.w operandHasImmediatePrefix
+	tst.l d0
+	bne.w buildImmediate
+	moveq #0, d2
+	bra.w buildMemory
 
-opasmSelectorBuildImmediate:
-        MOVEA.L A6, A0
-        MOVE.L D7, D0
-        BSR.W opasmSelectorOperandHasImmediatePrefix
-        TST.L D0
-        BNE.S opasmSelectorImmediateOk
-        MOVEQ #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, D0
-        BRA.W opasmSelectorReturn
+buildSta
+	moveq #1, d2
+	bra.w buildMemory
 
-opasmSelectorImmediateOk:
-        MOVEQ #1, D5
-        MOVEQ #9, D4
-        BSR.W opasmSelectorReadOperandValue
-        TST.L D0
-        BNE.W opasmSelectorOperandError
-        LEA opasmSelectorImmediateText, A6
-        BRA.S opasmSelectorBuildPayload
+buildJmp
+	moveq #2, d2
+	bra.w buildMemory
 
-opasmSelectorBuildAbsolute:
-        MOVEQ #2, D5
-        MOVEQ #8, D4
-        BSR.W opasmSelectorReadOperandValue
-        TST.L D0
-        BNE.W opasmSelectorOperandError
-        LEA opasmSelectorAbsoluteText, A6
+buildImmediate
+	movea.l a6, a0
+	move.l d7, d0
+	bsr.w readOperandValue
+	tst.l d0
+	bne.w operandError
+	cmpi.l #$000000FF, d3
+	bhi.w operandError
+	moveq #1, d5
+	moveq #9, d4
+	lea OpasmSelectorImmediateText, a6
+	bra.w buildPayload
 
-opasmSelectorBuildPayload:
-        MOVEA.L A4, A2
-        MOVE.B D6, (A2)+
-        MOVEA.L A5, A0
-        MOVEA.L A2, A1
-        MOVE.W D6, D0
-        BSR.W opasmSelectorCopyFixedString
-        MOVEA.L A1, A2
-        MOVE.B #1, (A2)+
-        MOVE.B D4, (A2)+
-        MOVEA.L A6, A0
-        MOVEA.L A2, A1
-        MOVE.W D4, D0
-        BSR.W opasmSelectorCopyFixedString
-        MOVEA.L A1, A2
-        MOVE.B #1, (A2)+
-        MOVE.B D5, (A2)+
-        MOVE.B D3, (A2)+
-        CMPI.B #2, D5
-        BNE.S opasmSelectorBuildPayloadLenDone
-        MOVE.L D3, D0
-        LSR.L #8, D0
-        MOVE.B D0, (A2)+
+buildMemory
+	move.l d2, -(sp)
+	movea.l a6, a0
+	move.l d7, d0
+	bsr.w splitIndexedOperand
+	tst.l d2
+	bne.w buildMemorySplitFail
+	move.l (sp)+, d2
+	bsr.w readOperandValue
+	tst.l d0
+	bne.w operandError
+	tst.l d1
+	beq.w buildUnindexed
+	cmpi.l #1, d1
+	beq.w buildIndexedX
+	cmpi.l #2, d1
+	beq.w buildIndexedY
+	moveq #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
+	bra.w return
 
-opasmSelectorBuildPayloadLenDone:
-        MOVE.L A2, D1
-        SUB.L A4, D1
-        MOVEQ #OPASM_SELECTOR_STATUS_OK, D0
-        BRA.S opasmSelectorReturn
+buildMemorySplitFail
+	addq.l #4, sp
+	bra.w unsupportedAddress
 
-opasmSelectorNoOutput:
-        MOVEQ #0, D1
-        MOVEQ #OPASM_SELECTOR_STATUS_NO_OUTPUT, D0
-        BRA.S opasmSelectorReturn
+buildUnindexed
+	cmpi.l #2, d2
+	beq.w buildAbsoluteMode
+	tst.l d5
+	bne.w buildAbsoluteMode
+	cmpi.l #$000000FF, d3
+	bhi.w buildAbsoluteMode
+	moveq #1, d5
+	moveq #8, d4
+	lea OpasmSelectorZeroPageText, a6
+	bra.w buildPayload
 
-opasmSelectorOperandError:
-        MOVEQ #OPASM_SELECTOR_STATUS_OPERAND_ERROR, D0
+buildIndexedX
+	cmpi.l #2, d2
+	beq.w unsupportedAddress
+	tst.l d5
+	bne.w buildAbsoluteXMode
+	cmpi.l #$000000FF, d3
+	bhi.w buildAbsoluteXMode
+	moveq #1, d5
+	moveq #9, d4
+	lea OpasmSelectorZeroPageXText, a6
+	bra.w buildPayload
 
-opasmSelectorReturn:
-        MOVEM.L (SP)+, D3-D7/A2-A6
-        RTS
+buildIndexedY
+	cmpi.l #2, d2
+	beq.w unsupportedAddress
+	moveq #2, d5
+	moveq #9, d4
+	lea OpasmSelectorAbsoluteYText, a6
+	bra.w buildPayload
+
+buildAbsoluteMode
+	moveq #2, d5
+	moveq #8, d4
+	lea OpasmSelectorAbsoluteText, a6
+	bra.s buildPayload
+
+buildAbsoluteXMode
+	moveq #2, d5
+	moveq #9, d4
+	lea OpasmSelectorAbsoluteXText, a6
+	bra.s buildPayload
+
+unsupportedAddress
+	moveq #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
+	bra.w return
+
+buildPayload
+	movea.l a4, a2
+	move.b d6, (a2)+
+	movea.l a5, a0
+	movea.l a2, a1
+	move.w d6, d0
+	bsr.w copyFixedString
+	movea.l a1, a2
+	move.b #1, (a2)+
+	move.b d4, (a2)+
+	movea.l a6, a0
+	movea.l a2, a1
+	move.w d4, d0
+	bsr.w copyFixedString
+	movea.l a1, a2
+	move.b #1, (a2)+
+	move.b d5, (a2)+
+	move.b d3, (a2)+
+	cmpi.b #2, d5
+	bne.s payloadLenDone
+	move.l d3, d0
+	lsr.l #8, d0
+	move.b d0, (a2)+
+
+payloadLenDone
+	move.l a2, d1
+	sub.l a4, d1
+	moveq #OPASM_SELECTOR_STATUS_OK, d0
+	bra.s return
+
+noOutput
+	moveq #0, d1
+	moveq #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
+	bra.s return
+
+operandError
+	moveq #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+
+return
+	movem.l (sp)+, d3-d7/a2-a6
+	rts
+	.bend  ; opasmSelectorStageBuildEncodeRequestV1
 
 ; ---------------------------------------------------------------------------
 ; Return the byte length for one currently supported statement mnemonic.
 ;
 ; This is pass-1 sizing support for the same smoke subset as
-; opasm_selector_stage_build_encode_request_v1. Unknown or non-output
+; opasmSelectorStageBuildEncodeRequestV1. Unknown or non-output
 ; statements return size 0 so the caller can leave PC unchanged.
 ;
 ; Inputs:
@@ -161,220 +233,339 @@ opasmSelectorReturn:
 ; - D1: instruction size in bytes, or 0 for no output/unknown.
 ; ---------------------------------------------------------------------------
 
-opasm_selector_stage_instruction_size_v1:
-        MOVEM.L D2/A0-A2, -(SP)
-        MOVEQ #0, D2
-        MOVE.W D0, D2                   ; preserve caller's mnemonic length for repeated compares
-        MOVEA.L A0, A2                  ; preserve caller's mnemonic pointer for repeated compares
-        MOVEQ #0, D1
-        TST.W D2
-        BEQ.S opasmSelectorInstructionSizeDone
-        MOVEA.L A2, A0
-        MOVE.W D2, D0
-        LEA opasmSelectorLdaText, A1
-        MOVEQ #3, D1
-        BSR.W opasmSelectorTextEquals
-        TST.L D0
-        BNE.S opasmSelectorInstructionSizeTwo
-        MOVEA.L A2, A0
-        MOVE.W D2, D0
-        LEA opasmSelectorNopText, A1
-        MOVEQ #3, D1
-        BSR.W opasmSelectorTextEquals
-        TST.L D0
-        BNE.S opasmSelectorInstructionSizeOne
-        MOVEA.L A2, A0
-        MOVE.W D2, D0
-        LEA opasmSelectorStaText, A1
-        MOVEQ #3, D1
-        BSR.W opasmSelectorTextEquals
-        TST.L D0
-        BNE.S opasmSelectorInstructionSizeThree
-        MOVEA.L A2, A0
-        MOVE.W D2, D0
-        LEA opasmSelectorJmpText, A1
-        MOVEQ #3, D1
-        BSR.W opasmSelectorTextEquals
-        TST.L D0
-        BNE.S opasmSelectorInstructionSizeThree
-        BRA.S opasmSelectorInstructionSizeDone
+opasmSelectorStageInstructionSizeV1	.block
+	movem.l d2/a0-a2, -(sp)
+	moveq #0, d2
+	move.w d0, d2  ; preserve caller's mnemonic length for repeated compares
+	movea.l a0, a2  ; preserve caller's mnemonic pointer for repeated compares
+	moveq #0, d1
+	tst.w d2
+	beq.s done
+	movea.l a2, a0
+	move.w d2, d0
+	lea OpasmSelectorLdaText, a1
+	moveq #3, d1
+	bsr.w textEquals
+	tst.l d0
+	bne.s sizeTwo
+	movea.l a2, a0
+	move.w d2, d0
+	lea OpasmSelectorNopText, a1
+	moveq #3, d1
+	bsr.w textEquals
+	tst.l d0
+	bne.s sizeOne
+	movea.l a2, a0
+	move.w d2, d0
+	lea OpasmSelectorStaText, a1
+	moveq #3, d1
+	bsr.w textEquals
+	tst.l d0
+	bne.s sizeThree
+	movea.l a2, a0
+	move.w d2, d0
+	lea OpasmSelectorJmpText, a1
+	moveq #3, d1
+	bsr.w textEquals
+	tst.l d0
+	bne.s sizeThree
+	bra.s done
 
-opasmSelectorInstructionSizeOne:
-        MOVEQ #1, D1
-        BRA.S opasmSelectorInstructionSizeDone
+sizeOne
+	moveq #1, d1
+	bra.s done
 
-opasmSelectorInstructionSizeTwo:
-        MOVEQ #2, D1
-        BRA.S opasmSelectorInstructionSizeDone
+sizeTwo
+	moveq #2, d1
+	bra.s done
 
-opasmSelectorInstructionSizeThree:
-        MOVEQ #3, D1
+sizeThree
+	moveq #3, d1
 
-opasmSelectorInstructionSizeDone:
-        MOVEQ #OPASM_SELECTOR_STATUS_OK, D0
-        MOVEM.L (SP)+, D2/A0-A2
-        RTS
+done
+	moveq #OPASM_SELECTOR_STATUS_OK, d0
+	movem.l (sp)+, d2/a0-a2
+	rts
+	.bend  ; opasmSelectorStageInstructionSizeV1
+	
+	.priv
 
-opasmSelectorReadOperandValue:
-        MOVEM.L D1-D2/D4-D7/A0-A2, -(SP)
-        MOVEA.L A6, A0
-        MOVE.L D7, D0
-        BSR.W opasmSelectorResolveLabelOperand
-        TST.L D0
-        BEQ.S opasmSelectorReadOperandHaveValue
-        BRA.S opasmSelectorReadOperandFail
+readOperandValue	.block
+	movem.l d1-d2/d4/d6-d7/a0-a2, -(sp)
+	moveq #0, d5
+	bsr.w resolveLabelOperand
+	tst.l d0
+	beq.s haveValue
+	bra.s fail
 
-opasmSelectorReadOperandHaveValue:
-        CMPI.B #1, D5
-        BNE.S opasmSelectorReadOperandOk
-        CMPI.L #$000000FF, D3
-        BHI.S opasmSelectorReadOperandFail
+haveValue
+	moveq #0, d0
+	bra.s return
 
-opasmSelectorReadOperandOk:
-        MOVEQ #0, D0
-        BRA.S opasmSelectorReadOperandReturn
+fail
+	moveq #0, d5
+	moveq #1, d0
 
-opasmSelectorReadOperandFail:
-        MOVEQ #1, D0
+return
+	movem.l (sp)+, d1-d2/d4/d6-d7/a0-a2
+	rts
+	.bend  ; readOperandValue
 
-opasmSelectorReadOperandReturn:
-        MOVEM.L (SP)+, D1-D2/D4-D7/A0-A2
-        RTS
+resolveLabelOperand	.block
+	movem.l d1/a0, -(sp)
+	bsr.w skipWhitespace
+	tst.l d0
+	beq.s fail
+	cmpi.b #'#', (a0)
+	bne.s noImmediatePrefix
+	addq.l #1, a0
+	subq.l #1, d0
+	bsr.w skipWhitespace
+	tst.l d0
+	beq.s fail
 
-opasmSelectorResolveLabelOperand:
-        MOVEM.L D1/A0, -(SP)
-        MOVEA.L A6, A0
-        MOVE.L D7, D0
-        BSR.W opasmSelectorSkipWhitespace
-        TST.L D0
-        BEQ.S opasmSelectorResolveLabelFail
-        CMPI.B #'#', (A0)
-        BNE.S opasmSelectorResolveNoImmediatePrefix
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        BSR.W opasmSelectorSkipWhitespace
-        TST.L D0
-        BEQ.S opasmSelectorResolveLabelFail
+noImmediatePrefix
+	move.l a3, d1
+	tst.l d1
+	beq.s fail
+	jsr (a3)
+	bra.s return
 
-opasmSelectorResolveNoImmediatePrefix:
-        MOVEM.L D1/A1-A3, -(SP)
-        MOVEA.L A2, A1
-        MOVEA.L A3, A2
-        MOVE.L D2, D1
-        MOVE.L D3, D2
-        JSR opcore_expr_eval_operand_v1
-        MOVEM.L (SP)+, D1/A1-A3
-        BRA.S opasmSelectorResolveLabelReturn
+fail
+	moveq #1, d0
 
-opasmSelectorResolveLabelFail:
-        MOVEQ #1, D0
+return
+	movem.l (sp)+, d1/a0
+	rts
+	.bend  ; resolveLabelOperand
 
-opasmSelectorResolveLabelReturn:
-        MOVEM.L (SP)+, D1/A0
-        RTS
+operandHasImmediatePrefix	.block
+	bsr.w skipWhitespace
+	tst.l d0
+	beq.s no
+	cmpi.b #'#', (a0)
+	bne.s no
+	moveq #1, d0
+	rts
 
-opasmSelectorOperandHasImmediatePrefix:
-        BSR.W opasmSelectorSkipWhitespace
-        TST.L D0
-        BEQ.S opasmSelectorOperandImmediateNo
-        CMPI.B #'#', (A0)
-        BNE.S opasmSelectorOperandImmediateNo
-        MOVEQ #1, D0
-        RTS
+no
+	moveq #0, d0
+	rts
+	.bend  ; operandHasImmediatePrefix
 
-opasmSelectorOperandImmediateNo:
-        MOVEQ #0, D0
-        RTS
+splitIndexedOperand	.block
+	movem.l d3-d5/a1-a2, -(sp)
+	bsr.w skipWhitespace
+	tst.l d0
+	beq.w fail
+	movea.l a0, a1
+	move.l d0, d4
+	move.l d4, d5
 
-opasmSelectorTextEquals:
-        MOVEM.L D2-D3, -(SP)
-        CMP.L D1, D0
-        BNE.S opasmSelectorTextNotEqual
-        TST.L D1
-        BEQ.S opasmSelectorTextEqual
+trimTailLoop
+	tst.l d5
+	beq.s none
+	movea.l a1, a2
+	adda.l d5, a2
+	subq.l #1, a2
+	moveq #0, d3
+	move.b (a2), d3
+	tst.b d3
+	beq.s trimTailOne
+	cmpi.b #' ', d3
+	beq.s trimTailOne
+	cmpi.b #9, d3
+	bne.s tailReady
 
-opasmSelectorTextLoop:
-        MOVE.B (A0)+, D2
-        MOVE.B (A1)+, D3
-        CMPI.B #'A', D2
-        BCS.S opasmSelectorTextSourceCaseOk
-        CMPI.B #'Z', D2
-        BHI.S opasmSelectorTextSourceCaseOk
-        ADDI.B #'a' - 'A', D2
+trimTailOne
+	subq.l #1, d5
+	bra.s trimTailLoop
 
-opasmSelectorTextSourceCaseOk:
-        CMPI.B #'A', D3
-        BCS.S opasmSelectorTextNeedleCaseOk
-        CMPI.B #'Z', D3
-        BHI.S opasmSelectorTextNeedleCaseOk
-        ADDI.B #'a' - 'A', D3
+tailReady
+	cmpi.b #'A', d3
+	bcs.s suffixCaseOk
+	cmpi.b #'Z', d3
+	bhi.s suffixCaseOk
+	addi.b #'a' - 'A', d3
 
-opasmSelectorTextNeedleCaseOk:
-        CMP.B D3, D2
-        BNE.S opasmSelectorTextNotEqual
-        SUBQ.L #1, D1
-        BNE.S opasmSelectorTextLoop
+suffixCaseOk
+	cmpi.b #'x', d3
+	beq.s haveX
+	cmpi.b #'y', d3
+	beq.s haveY
+	bra.s none
 
-opasmSelectorTextEqual:
-        MOVEQ #1, D0
-        BRA.S opasmSelectorTextReturn
+haveX
+	moveq #1, d1
+	bra.s findComma
 
-opasmSelectorTextNotEqual:
-        MOVEQ #0, D0
+haveY
+	moveq #2, d1
 
-opasmSelectorTextReturn:
-        MOVEM.L (SP)+, D2-D3
-        RTS
+findComma
+	subq.l #1, d5
 
-opasmSelectorSkipWhitespace:
-        TST.L D0
-        BEQ.S opasmSelectorSkipWhitespaceDone
-        MOVEQ #0, D1
-        MOVE.B (A0), D1
-        CMPI.B #' ', D1
-        BEQ.S opasmSelectorSkipWhitespaceOne
-        CMPI.B #9, D1
-        BNE.S opasmSelectorSkipWhitespaceDone
+findCommaLoop
+	tst.l d5
+	beq.s fail
+	movea.l a1, a2
+	adda.l d5, a2
+	subq.l #1, a2
+	moveq #0, d3
+	move.b (a2), d3
+	cmpi.b #' ', d3
+	beq.s findCommaTrim
+	cmpi.b #9, d3
+	beq.s findCommaTrim
+	cmpi.b #',', d3
+	beq.s found
+	bra.s fail
 
-opasmSelectorSkipWhitespaceOne:
-        ADDQ.L #1, A0
-        SUBQ.L #1, D0
-        BRA.S opasmSelectorSkipWhitespace
+findCommaTrim
+	subq.l #1, d5
+	bra.s findCommaLoop
 
-opasmSelectorSkipWhitespaceDone:
-        RTS
+none
+	movea.l a1, a0
+	move.l d4, d0
+	moveq #0, d1
+	moveq #0, d2
+	bra.s return
 
-opasmSelectorCopyFixedString:
-        TST.W D0
-        BEQ.S opasmSelectorCopyFixedDone
+found
+	subq.l #1, d5
+	move.l d5, d0
+	beq.s fail
 
-opasmSelectorCopyFixedLoop:
-        MOVE.B (A0)+, (A1)+
-        SUBQ.W #1, D0
-        BNE.S opasmSelectorCopyFixedLoop
+trimLoop
+	tst.l d0
+	beq.s fail
+	movea.l a1, a0
+	adda.l d0, a0
+	subq.l #1, a0
+	cmpi.b #' ', (a0)
+	beq.s trimOne
+	cmpi.b #9, (a0)
+	bne.s afterExpr
 
-opasmSelectorCopyFixedDone:
-        RTS
+trimOne
+	subq.l #1, d0
+	bra.s trimLoop
 
-        .endsection
+afterExpr
+	movea.l a1, a0
+	moveq #0, d2
+	bra.s return
 
-        .section data, kind=data
+fail
+	moveq #1, d2
 
-opasmSelectorStageMarker:
-        .byte "OPASM-SELECTOR-STAGE-V1", 0
+return
+	movem.l (sp)+, d3-d5/a1-a2
+	rts
+	.bend  ; splitIndexedOperand
 
-opasmSelectorLdaText:
-        .byte "lda"
-opasmSelectorStaText:
-        .byte "sta"
-opasmSelectorJmpText:
-        .byte "jmp"
-opasmSelectorNopText:
-        .byte "nop"
-opasmSelectorImmediateText:
-        .byte "immediate"
-opasmSelectorAbsoluteText:
-        .byte "absolute"
+textEquals	.block
+	movem.l d2-d3, -(sp)
+	cmp.l d1, d0
+	bne.s notEqual
+	tst.l d1
+	beq.s equal
 
-        .endsection
-        .endmodule
+loop
+	move.b (a0)+, d2
+	move.b (a1)+, d3
+	cmpi.b #'A', d2
+	bcs.s sourceCaseOk
+	cmpi.b #'Z', d2
+	bhi.s sourceCaseOk
+	addi.b #'a' - 'A', d2
+
+sourceCaseOk
+	cmpi.b #'A', d3
+	bcs.s needleCaseOk
+	cmpi.b #'Z', d3
+	bhi.s needleCaseOk
+	addi.b #'a' - 'A', d3
+
+needleCaseOk
+	cmp.b d3, d2
+	bne.s notEqual
+	subq.l #1, d1
+	bne.s loop
+
+equal
+	moveq #1, d0
+	bra.s return
+
+notEqual
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d2-d3
+	rts
+	.bend  ; textEquals
+
+skipWhitespace	.block
+loop
+	tst.l d0
+	beq.s done
+	moveq #0, d1
+	move.b (a0), d1
+	cmpi.b #' ', d1
+	beq.s one
+	cmpi.b #9, d1
+	bne.s done
+
+one
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.s loop
+
+done
+	rts
+	.bend  ; skipWhitespace
+
+copyFixedString	.block
+	tst.w d0
+	beq.s done
+
+loop
+	move.b (a0)+, (a1)+
+	subq.w #1, d0
+	bne.s loop
+
+done
+	rts
+	.bend  ; copyFixedString
+
+	.endsection
+
+	.section data, kind=data
+
+OpasmSelectorStageMarker
+	.byte "OPASM-SELECTOR-STAGE-V1", 0
+
+OpasmSelectorLdaText
+	.byte "lda"
+OpasmSelectorStaText
+	.byte "sta"
+OpasmSelectorJmpText
+	.byte "jmp"
+OpasmSelectorNopText
+	.byte "nop"
+OpasmSelectorImmediateText
+	.byte "immediate"
+OpasmSelectorZeroPageText
+	.byte "zeropage"
+OpasmSelectorZeroPageXText
+	.byte "zeropagex"
+OpasmSelectorAbsoluteText
+	.byte "absolute"
+OpasmSelectorAbsoluteXText
+	.byte "absolutex"
+OpasmSelectorAbsoluteYText
+	.byte "absolutey"
+
+	.endsection
+	.endmodule

@@ -26,7 +26,11 @@ use crate::native_prvm::{
 use crate::portable_contract::{PortableLineAst, PortableToken};
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_portable_types::PortableInstructionRequest;
-use crate::vm_opasm_parse::tokenize_parser_tokens_with_model;
+use crate::vm_opasm::{
+    parse_operand_expr_range, split_top_level_comma_ranges, OperandExprBoundary,
+    OperandExprParseHints,
+};
+use crate::vm_opasm_parse::{tokenize_parser_tokens_with_model, VmExprParseContext};
 use opcore::parser::Expr;
 use opcore::tokenizer::Span;
 use registry::family::AssemblerContext;
@@ -798,13 +802,13 @@ impl Native6502Harness {
             ));
         }
         let operands = match operand_span {
-            Some((operand_start_col, operand_end_col)) => vec![self.parse_operand_expression(
+            Some((operand_start_col, operand_end_col)) => self.parse_operand_expressions(
                 source_line,
                 line_num,
                 operand_start_col,
                 operand_end_col,
                 Some(mnemonic),
-            )?],
+            )?,
             None => Vec::new(),
         };
         let candidates = model
@@ -819,14 +823,14 @@ impl Native6502Harness {
         Ok(candidates)
     }
 
-    fn parse_operand_expression(
+    fn parse_operand_expressions(
         &self,
         source_line: &str,
         line_num: u32,
         operand_start_col: u16,
         operand_end_col: u16,
         mnemonic: Option<&str>,
-    ) -> Result<Expr, String> {
+    ) -> Result<Vec<Expr>, String> {
         if operand_start_col == 0 || operand_end_col < operand_start_col {
             return Err("native selector request has invalid operand span".to_string());
         }
@@ -851,32 +855,43 @@ impl Native6502Harness {
             .iter()
             .position(|token| token.span.col_start >= operand_end_col)
             .unwrap_or(tokens.len());
-        let mut bridge = NativePrvmHostExpressionBridge::from_source_line(
-            model,
-            active_cpu,
-            dialect_override,
-            source_line,
-            line_num,
-            &register_checker,
-            mnemonic,
-        )
-        .map_err(|err| err.message)?;
-        let request = NativePrvmExprRequest {
-            operand_index: 0,
-            expr_slot_index: 0,
-            start_token: start_token as u32,
-            end_token: end_token as u32,
-            boundary_span: Span {
-                line: line_num,
-                col_start: operand_start_col,
-                col_end: operand_end_col,
-            },
+        let boundary_span = Span {
+            line: line_num,
+            col_start: operand_start_col,
+            col_end: operand_end_col,
         };
-        let mut result_slot = [0u8; NATIVE_PRVM_EXPR_RESULT_SLOT_SIZE];
-        bridge
-            .handle_expression_request(request, &mut result_slot)
-            .map(|result| result.expr)
-            .map_err(|err| format!("native selector expression parse failed: {err:?}"))
+        let mut operands = Vec::new();
+        let expr_parse_ctx = VmExprParseContext {
+            model,
+            cpu_id: active_cpu,
+            dialect_override,
+            expr_parser_opt_in_families: &[],
+            expr_parser_force_host_families: &[],
+            expr_handler: None,
+        };
+        for (operand_index, (start, end)) in
+            split_top_level_comma_ranges(tokens.as_slice(), start_token, end_token)
+                .into_iter()
+                .enumerate()
+        {
+            parse_operand_expr_range(
+                tokens.as_slice(),
+                start,
+                end,
+                OperandExprBoundary {
+                    end_span: boundary_span,
+                    end_token_text: None,
+                },
+                OperandExprParseHints {
+                    mnemonic,
+                    operand_index,
+                },
+                &expr_parse_ctx,
+                &mut operands,
+            )
+            .map_err(|err| format!("native selector expression parse failed: {err:?}"))?;
+        }
+        Ok(operands)
     }
 
     fn require_active_model(

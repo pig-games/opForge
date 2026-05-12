@@ -1,9 +1,9 @@
 ; Native whole-file iterator over newline-free PRVM line routes.
 
-        .module prvm.amigaos.line_iterator
-        .cpu 68020
-        .pub
-        .use prvm.amigaos.line_router (prvmRouteLine68000)
+	.module prvm.amigaos.line_iterator
+	.cpu 68020
+	.pub
+	.use prvm.amigaos.line_router (prvmRouteLine68000)
 
 PRVM_ROUTE_MAGIC_OPLR               = $4F504C52
 PRVM_ROUTE_FRAME_SIZE               = 116
@@ -78,7 +78,9 @@ ROUTE_FRAME_PARSER_CONTRACT_VERSION = 104
 ROUTE_FRAME_STEP_BUDGET             = 108
 ROUTE_FRAME_FLAGS                   = 112
 
-        .section code, kind=code
+	.section code, kind=code
+
+	.pub
 
 ; ---------------------------------------------------------------------------
 ; Native whole-file iterator.
@@ -93,184 +95,190 @@ ROUTE_FRAME_FLAGS                   = 112
 ; - D2: one-based line number for the first failing line, or zero
 ; - D3: total logical line count observed
 ; ---------------------------------------------------------------------------
+prvmIterateLines68000	.block
+	movem.l d4-d7/a2-a6, -(sp)
+	movea.l a0, a6
+	clr.l d5
+	clr.l d6
+	clr.l d7
 
-prvm_iterate_lines_68000:
-        MOVEM.L D4-D7/A2-A6, -(SP)
-        MOVEA.L A0, A6
-        CLR.L D5
-        CLR.L D6
-        CLR.L D7
+	cmpi.l #PRVM_ITER_FRAME_SIZE, d0
+	bne.w invalidArgument
+	cmpi.l #PRVM_ITER_MAGIC_OPLI, ITER_FRAME_MAGIC(a6)
+	bne.w invalidArgument
+	cmpi.w #PRVM_ITER_ABI_VERSION_V1, ITER_FRAME_ABI_VERSION(a6)
+	bne.w invalidArgument
+	cmpi.w #PRVM_ITER_FRAME_SIZE, ITER_FRAME_FRAME_SIZE(a6)
+	bne.w invalidArgument
 
-        CMPI.L #PRVM_ITER_FRAME_SIZE, D0
-        BNE.W prvmIteratorInvalidArgument
-        CMPI.L #PRVM_ITER_MAGIC_OPLI, ITER_FRAME_MAGIC(A6)
-        BNE.W prvmIteratorInvalidArgument
-        CMPI.W #PRVM_ITER_ABI_VERSION_V1, ITER_FRAME_ABI_VERSION(A6)
-        BNE.W prvmIteratorInvalidArgument
-        CMPI.W #PRVM_ITER_FRAME_SIZE, ITER_FRAME_FRAME_SIZE(A6)
-        BNE.W prvmIteratorInvalidArgument
+	move.l ITER_FRAME_START_LINE_NUM(a6), d6
+	tst.l d6
+	bne.s startLineReady
+	moveq #1, d6
 
-        MOVE.L ITER_FRAME_START_LINE_NUM(A6), D6
-        TST.L D6
-        BNE.S prvmIteratorStartLineReady
-        MOVEQ #1, D6
+startLineReady
+	movea.l ITER_FRAME_SOURCE_PTR(a6), a2
+	move.l ITER_FRAME_SOURCE_LEN(a6), d4
 
-prvmIteratorStartLineReady:
-        MOVEA.L ITER_FRAME_SOURCE_PTR(A6), A2
-        MOVE.L ITER_FRAME_SOURCE_LEN(A6), D4
+nextLine
+	tst.l d4
+	beq.w success
+	movea.l a2, a3
+	move.l d4, d0
+	bsr.w findLineEnd
+	move.l d0, d3
+	move.l d1, d4
+	movea.l a2, a0
+	move.l d3, d0
+	bsr.w trimCr
+	move.l d0, d3
+	addq.l #1, d7
+	movea.l a2, a0
+	move.l d3, d0
+	bsr.w lineIsBlank
+	tst.l d0
+	bne.s skipRoute
 
-prvmIteratorNextLine:
-        TST.L D4
-        BEQ.W prvmIteratorSuccess
-        MOVEA.L A2, A3
-        MOVE.L D4, D0
-        BSR.W prvmIteratorFindLineEnd
-        MOVE.L D0, D3
-        MOVE.L D1, D4
-        MOVEA.L A2, A0
-        MOVE.L D3, D0
-        BSR.W prvmIteratorTrimCr
-        MOVE.L D0, D3
-        ADDQ.L #1, D7
-        MOVEA.L A2, A0
-        MOVE.L D3, D0
-        BSR.W prvmIteratorLineIsBlank
-        TST.L D0
-        BNE.S prvmIteratorSkipRoute
+	movea.l a2, a0
+	move.l d3, d0
+	bsr.w buildRouteFrame
+	lea PrvmIteratorRouteFrame(PC), a0
+	move.l #PRVM_ROUTE_FRAME_SIZE, d0
+	movea.l PrvmIteratorRouteEntryPtr(PC), a1
+	jsr (a1)
+	tst.l d0
+	bne.w failFast
+	addq.l #1, d5
 
-        MOVEA.L A2, A0
-        MOVE.L D3, D0
-        BSR.W prvmIteratorBuildRouteFrame
-        LEA prvmIteratorRouteFrame(PC), A0
-        MOVE.L #PRVM_ROUTE_FRAME_SIZE, D0
-        MOVEA.L prvmIteratorRouteEntryPtr(PC), A1
-        JSR (A1)
-        TST.L D0
-        BNE.W prvmIteratorFailFast
-        ADDQ.L #1, D5
+skipRoute
+	movea.l a3, a2
+	addq.l #1, d6
+	bra.w nextLine
 
-prvmIteratorSkipRoute:
-        MOVEA.L A3, A2
-        ADDQ.L #1, D6
-        BRA.W prvmIteratorNextLine
+success
+	move.l #PRVM_ITER_STATUS_OK, d0
+	move.l d5, d1
+	clr.l d2
+	move.l d7, d3
+	bra.s done
 
-prvmIteratorSuccess:
-        MOVE.L #PRVM_ITER_STATUS_OK, D0
-        MOVE.L D5, D1
-        CLR.L D2
-        MOVE.L D7, D3
-        BRA.S prvmIteratorDone
+failFast
+	move.l d5, d1
+	move.l d6, d2
+	move.l d7, d3
+	bra.s done
 
-prvmIteratorFailFast:
-        MOVE.L D5, D1
-        MOVE.L D6, D2
-        MOVE.L D7, D3
-        BRA.S prvmIteratorDone
+invalidArgument
+	move.l #PRVM_ITER_STATUS_INVALID_ARGUMENT, d0
+	clr.l d1
+	clr.l d2
+	clr.l d3
 
-prvmIteratorInvalidArgument:
-        MOVE.L #PRVM_ITER_STATUS_INVALID_ARGUMENT, D0
-        CLR.L D1
-        CLR.L D2
-        CLR.L D3
+done
+	movem.l (sp)+, d4-d7/a2-a6
+	rts
+	.bend  ; prvmIterateLines68000
+	
+	.priv
 
-prvmIteratorDone:
-        MOVEM.L (SP)+, D4-D7/A2-A6
-        RTS
+findLineEnd	.block
+	clr.l d1
 
-prvmIteratorFindLineEnd:
-        CLR.L D1
+loop
+	tst.l d0
+	beq.s done
+	move.b (a3)+, d2
+	subq.l #1, d0
+	cmpi.b #10, d2
+	beq.s done
+	addq.l #1, d1
+	bra.s loop
 
-prvmIteratorFindLineLoop:
-        TST.L D0
-        BEQ.S prvmIteratorFindDone
-        MOVE.B (A3)+, D2
-        SUBQ.L #1, D0
-        CMPI.B #10, D2
-        BEQ.S prvmIteratorFindDone
-        ADDQ.L #1, D1
-        BRA.S prvmIteratorFindLineLoop
+done
+	move.l d0, d2
+	move.l d1, d0
+	move.l d2, d1
+	rts
+	.bend  ; findLineEnd
 
-prvmIteratorFindDone:
-        MOVE.L D0, D2
-        MOVE.L D1, D0
-        MOVE.L D2, D1
-        RTS
+trimCr	.block
+	tst.l d0
+	beq.s done
+	movea.l a0, a1
+	adda.l d0, a1
+	subq.l #1, a1
+	cmpi.b #13, (a1)
+	bne.s done
+	subq.l #1, d0
 
-prvmIteratorTrimCr:
-        TST.L D0
-        BEQ.S prvmIteratorTrimDone
-        MOVEA.L A0, A1
-        ADDA.L D0, A1
-        SUBQ.L #1, A1
-        CMPI.B #13, (A1)
-        BNE.S prvmIteratorTrimDone
-        SUBQ.L #1, D0
+done
+	rts
+	.bend  ; trimCr
 
-prvmIteratorTrimDone:
-        RTS
+lineIsBlank	.block
+	tst.l d0
+	beq.s blank
+	subq.l #1, d0
 
-prvmIteratorLineIsBlank:
-        TST.L D0
-        BEQ.S prvmIteratorBlank
-        SUBQ.L #1, D0
+loop
+	move.b (a0)+, d2
+	cmpi.b #32, d2
+	beq.s next
+	cmpi.b #9, d2
+	bne.s notBlank
 
-prvmIteratorBlankLoop:
-        MOVE.B (A0)+, D2
-        CMPI.B #32, D2
-        BEQ.S prvmIteratorBlankNext
-        CMPI.B #9, D2
-        BNE.S prvmIteratorNotBlank
+next
+	dbra d0, loop
 
-prvmIteratorBlankNext:
-        DBRA D0, prvmIteratorBlankLoop
+blank
+	moveq #1, d0
+	rts
 
-prvmIteratorBlank:
-        MOVEQ #1, D0
-        RTS
+notBlank
+	clr.l d0
+	rts
+	.bend  ; lineIsBlank
 
-prvmIteratorNotBlank:
-        CLR.L D0
-        RTS
+buildRouteFrame	.block
+	lea PrvmIteratorRouteFrame(PC), a1
+	move.l #PRVM_ROUTE_MAGIC_OPLR, ROUTE_FRAME_MAGIC(a1)
+	move.w #PRVM_ROUTE_ABI_VERSION_V1, ROUTE_FRAME_ABI_VERSION(a1)
+	move.w #PRVM_ROUTE_FRAME_SIZE, ROUTE_FRAME_FRAME_SIZE(a1)
+	move.l ITER_FRAME_PROCESSOR_PTR(a6), ROUTE_FRAME_PROCESSOR_PTR(a1)
+	move.l ITER_FRAME_PROCESSOR_LEN(a6), ROUTE_FRAME_PROCESSOR_LEN(a1)
+	move.l ITER_FRAME_KIND_PTR(a6), ROUTE_FRAME_KIND_PTR(a1)
+	move.l ITER_FRAME_KIND_LEN(a6), ROUTE_FRAME_KIND_LEN(a1)
+	move.l d6, ROUTE_FRAME_LINE_NUM(a1)
+	move.l a0, ROUTE_FRAME_SOURCE_PTR(a1)
+	move.l d0, ROUTE_FRAME_SOURCE_LEN(a1)
+	move.l ITER_FRAME_TOKEN_PTR(a6), ROUTE_FRAME_TOKEN_PTR(a1)
+	move.l ITER_FRAME_TOKEN_COUNT(a6), ROUTE_FRAME_TOKEN_COUNT(a1)
+	move.w ITER_FRAME_TOKEN_RECORD_SIZE(a6), ROUTE_FRAME_TOKEN_RECORD_SIZE(a1)
+	clr.w 46(a1)
+	move.l ITER_FRAME_LEXEME_PTR(a6), ROUTE_FRAME_LEXEME_PTR(a1)
+	move.l ITER_FRAME_LEXEME_LEN(a6), ROUTE_FRAME_LEXEME_LEN(a1)
+	move.l ITER_FRAME_PROGRAM_PTR(a6), ROUTE_FRAME_PROGRAM_PTR(a1)
+	move.l ITER_FRAME_PROGRAM_LEN(a6), ROUTE_FRAME_PROGRAM_LEN(a1)
+	move.l ITER_FRAME_RESULT_PTR(a6), ROUTE_FRAME_RESULT_PTR(a1)
+	move.l ITER_FRAME_RESULT_CAPACITY(a6), ROUTE_FRAME_RESULT_CAPACITY(a1)
+	move.l ITER_FRAME_DIAGNOSTIC_PTR(a6), ROUTE_FRAME_DIAGNOSTIC_PTR(a1)
+	move.l ITER_FRAME_DIAGNOSTIC_CAPACITY(a6), ROUTE_FRAME_DIAGNOSTIC_CAPACITY(a1)
+	move.l ITER_FRAME_RESUME_PTR(a6), ROUTE_FRAME_RESUME_PTR(a1)
+	move.l ITER_FRAME_RESUME_CAPACITY(a6), ROUTE_FRAME_RESUME_CAPACITY(a1)
+	move.l ITER_FRAME_EXPR_REQUEST_PTR(a6), ROUTE_FRAME_EXPR_REQUEST_PTR(a1)
+	move.l ITER_FRAME_EXPR_REQUEST_SIZE(a6), ROUTE_FRAME_EXPR_REQUEST_SIZE(a1)
+	move.l ITER_FRAME_EXPR_RESULT_PTR(a6), ROUTE_FRAME_EXPR_RESULT_PTR(a1)
+	move.l ITER_FRAME_EXPR_RESULT_COUNT(a6), ROUTE_FRAME_EXPR_RESULT_COUNT(a1)
+	move.l ITER_FRAME_PARSER_CONTRACT_VERSION(a6), ROUTE_FRAME_PARSER_CONTRACT_VERSION(a1)
+	move.l ITER_FRAME_STEP_BUDGET(a6), ROUTE_FRAME_STEP_BUDGET(a1)
+	move.l ITER_FRAME_FLAGS(a6), ROUTE_FRAME_FLAGS(a1)
+	rts
+	.bend  ; buildRouteFrame
 
-prvmIteratorBuildRouteFrame:
-        LEA prvmIteratorRouteFrame(PC), A1
-        MOVE.L #PRVM_ROUTE_MAGIC_OPLR, ROUTE_FRAME_MAGIC(A1)
-        MOVE.W #PRVM_ROUTE_ABI_VERSION_V1, ROUTE_FRAME_ABI_VERSION(A1)
-        MOVE.W #PRVM_ROUTE_FRAME_SIZE, ROUTE_FRAME_FRAME_SIZE(A1)
-        MOVE.L ITER_FRAME_PROCESSOR_PTR(A6), ROUTE_FRAME_PROCESSOR_PTR(A1)
-        MOVE.L ITER_FRAME_PROCESSOR_LEN(A6), ROUTE_FRAME_PROCESSOR_LEN(A1)
-        MOVE.L ITER_FRAME_KIND_PTR(A6), ROUTE_FRAME_KIND_PTR(A1)
-        MOVE.L ITER_FRAME_KIND_LEN(A6), ROUTE_FRAME_KIND_LEN(A1)
-        MOVE.L D6, ROUTE_FRAME_LINE_NUM(A1)
-        MOVE.L A0, ROUTE_FRAME_SOURCE_PTR(A1)
-        MOVE.L D0, ROUTE_FRAME_SOURCE_LEN(A1)
-        MOVE.L ITER_FRAME_TOKEN_PTR(A6), ROUTE_FRAME_TOKEN_PTR(A1)
-        MOVE.L ITER_FRAME_TOKEN_COUNT(A6), ROUTE_FRAME_TOKEN_COUNT(A1)
-        MOVE.W ITER_FRAME_TOKEN_RECORD_SIZE(A6), ROUTE_FRAME_TOKEN_RECORD_SIZE(A1)
-        CLR.W 46(A1)
-        MOVE.L ITER_FRAME_LEXEME_PTR(A6), ROUTE_FRAME_LEXEME_PTR(A1)
-        MOVE.L ITER_FRAME_LEXEME_LEN(A6), ROUTE_FRAME_LEXEME_LEN(A1)
-        MOVE.L ITER_FRAME_PROGRAM_PTR(A6), ROUTE_FRAME_PROGRAM_PTR(A1)
-        MOVE.L ITER_FRAME_PROGRAM_LEN(A6), ROUTE_FRAME_PROGRAM_LEN(A1)
-        MOVE.L ITER_FRAME_RESULT_PTR(A6), ROUTE_FRAME_RESULT_PTR(A1)
-        MOVE.L ITER_FRAME_RESULT_CAPACITY(A6), ROUTE_FRAME_RESULT_CAPACITY(A1)
-        MOVE.L ITER_FRAME_DIAGNOSTIC_PTR(A6), ROUTE_FRAME_DIAGNOSTIC_PTR(A1)
-        MOVE.L ITER_FRAME_DIAGNOSTIC_CAPACITY(A6), ROUTE_FRAME_DIAGNOSTIC_CAPACITY(A1)
-        MOVE.L ITER_FRAME_RESUME_PTR(A6), ROUTE_FRAME_RESUME_PTR(A1)
-        MOVE.L ITER_FRAME_RESUME_CAPACITY(A6), ROUTE_FRAME_RESUME_CAPACITY(A1)
-        MOVE.L ITER_FRAME_EXPR_REQUEST_PTR(A6), ROUTE_FRAME_EXPR_REQUEST_PTR(A1)
-        MOVE.L ITER_FRAME_EXPR_REQUEST_SIZE(A6), ROUTE_FRAME_EXPR_REQUEST_SIZE(A1)
-        MOVE.L ITER_FRAME_EXPR_RESULT_PTR(A6), ROUTE_FRAME_EXPR_RESULT_PTR(A1)
-        MOVE.L ITER_FRAME_EXPR_RESULT_COUNT(A6), ROUTE_FRAME_EXPR_RESULT_COUNT(A1)
-        MOVE.L ITER_FRAME_PARSER_CONTRACT_VERSION(A6), ROUTE_FRAME_PARSER_CONTRACT_VERSION(A1)
-        MOVE.L ITER_FRAME_STEP_BUDGET(A6), ROUTE_FRAME_STEP_BUDGET(A1)
-        MOVE.L ITER_FRAME_FLAGS(A6), ROUTE_FRAME_FLAGS(A1)
-        RTS
+PrvmIteratorRouteFrame
+	.fill byte, 116, 0
+PrvmIteratorRouteEntryPtr
+	.long prvmRouteLine68000
 
-prvmIteratorRouteFrame:
-        .fill byte, 116, 0
-prvmIteratorRouteEntryPtr:
-        .long prvmRouteLine68000
-
-        .endsection
-        .endmodule
+	.endsection
+	.endmodule

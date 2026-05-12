@@ -1666,10 +1666,14 @@ fn expr_parser_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
         (0x40, ExvmOpcodeV2::BuildUnary),
         (0x41, ExvmOpcodeV2::BuildBinary),
         (0x42, ExvmOpcodeV2::BuildTernary),
+        (0x43, ExvmOpcodeV2::BuildRange),
         (0x60, ExvmOpcodeV2::BuildIdentifier),
         (0x61, ExvmOpcodeV2::BuildNumber),
         (0x62, ExvmOpcodeV2::BuildCurrentAddress),
         (0x63, ExvmOpcodeV2::ParseGrouping),
+        (0x64, ExvmOpcodeV2::ParseList),
+        (0x65, ExvmOpcodeV2::ParseStructLiteralIfPresent),
+        (0x66, ExvmOpcodeV2::ParsePostfixChain),
         (0x70, ExvmOpcodeV2::EmitDiag),
         (0x72, ExvmOpcodeV2::Fail),
     ];
@@ -1706,6 +1710,8 @@ fn expr_parser_vm_v2_operator_kind_from_u8_round_trip_and_unknown_rejection() {
         (0x14, ExvmOperatorKindV2::LogicAnd),
         (0x15, ExvmOperatorKindV2::LogicOr),
         (0x16, ExvmOperatorKindV2::LogicXor),
+        (0x17, ExvmOperatorKindV2::Range),
+        (0x18, ExvmOperatorKindV2::RangeInclusive),
     ];
 
     for (byte, kind) in kinds {
@@ -1726,6 +1732,7 @@ fn expr_parser_vm_v2_token_kind_from_u8_round_trip_and_unknown_rejection() {
         (0x05, ExvmTokenKindV2::CloseParen),
         (0x06, ExvmTokenKindV2::Question),
         (0x07, ExvmTokenKindV2::Colon),
+        (0x08, ExvmTokenKindV2::OpenBrace),
     ];
 
     for (byte, kind) in kinds {

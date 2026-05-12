@@ -4,12 +4,12 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/workflow/run_review_workflow.sh <review-path> <review-scope> [focus]
+  scripts/workflow/run_review_workflow.sh [--check-once] [--root <root>] <review-path> <review-scope> [focus]
 
 Behavior:
   - Creates the review artifact from the template if it does not exist.
   - Prints the exact branch-local review workflow instructions.
-  - Validates the review artifact structure.
+  - Validates the review artifact bundle.
   - Requires a companion gate result file with PASS from review-report-quality-reviewer.
   - Allows at most 3 failed re-check cycles, then halts and asks the user to resolve the blockage.
 
@@ -27,25 +27,57 @@ Examples:
 EOF
 }
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  usage
-  exit 0
-fi
+check_once=0
+bundle_root="."
+positionals=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --check-once|--non-interactive)
+      check_once=1
+      shift
+      ;;
+    --root)
+      if [[ $# -lt 2 ]]; then
+        usage >&2
+        exit 1
+      fi
+      bundle_root="$2"
+      shift 2
+      ;;
+    *)
+      positionals+=("$1")
+      shift
+      ;;
+  esac
+done
 
-if [[ $# -lt 2 || $# -gt 3 ]]; then
+if [[ ${#positionals[@]} -lt 2 || ${#positionals[@]} -gt 3 ]]; then
   usage >&2
   exit 1
 fi
 
-review_path="$1"
-review_scope="$2"
-focus="${3:-}"
+review_path="${positionals[0]}"
+review_scope="${positionals[1]}"
+focus="${positionals[2]:-}"
 gate_path="${review_path}.quality-gate.txt"
 max_attempts=3
 
 if [[ ! -e "$review_path" ]]; then
-  scripts/workflow/new_artifact_from_template.sh review "$review_path"
+  scripts/workflow/new_artifact_from_template.sh \
+    review \
+    "$review_path" \
+    --title "$(basename "${review_path%.md}" | tr '-' ' ')" \
+    --scope "$review_scope"
 fi
+
+python3 scripts/workflow/stamp_workflow_provenance.py \
+  "$review_path" \
+  --skill opforge-review-reporting \
+  --entrypoint run_review_workflow.sh
 
 print_instructions() {
   cat <<EOF
@@ -75,28 +107,18 @@ EOF
   cat <<'EOF'
 
 The script will keep checking until:
-- check_review_report.py passes
-- the quality gate file starts with PASS:
+- check_workflow_artifact_bundle.py passes for the review
+- the quality gate file reports PASS
 
 The script allows at most 3 failed re-check cycles.
 If that limit is reached, stop and ask the user how to resolve the blockage.
 
-Press Enter after each review/gate update to re-check.
+Press Enter after each review/gate update to re-check, or use --check-once for one-shot validation.
 EOF
 }
 
 check_gate_file() {
-  if [[ ! -f "$gate_path" ]]; then
-    echo "FAIL: missing quality gate file: $gate_path" >&2
-    return 1
-  fi
-
-  if ! grep -Eq '^PASS:' "$gate_path"; then
-    echo "FAIL: quality gate file must begin with 'PASS:'" >&2
-    echo "Current contents:" >&2
-    sed -n '1,20p' "$gate_path" >&2
-    return 1
-  fi
+  python3 scripts/workflow/check_quality_gate_evidence.py "$gate_path"
 }
 
 print_instructions
@@ -106,7 +128,7 @@ while true; do
   review_ok=0
   gate_ok=0
 
-  if python3 scripts/workflow/check_review_report.py "$review_path"; then
+  if python3 scripts/workflow/check_workflow_artifact_bundle.py --root "$bundle_root" review "$review_path"; then
     review_ok=1
   fi
 
@@ -129,6 +151,9 @@ while true; do
 
   echo
   echo "Review workflow not complete yet. Failed re-check cycle: $attempt/$max_attempts."
+  if [[ $check_once -eq 1 ]]; then
+    exit 1
+  fi
   echo "Update the review artifact and/or quality gate result, then press Enter to re-check."
   read -r _
 done

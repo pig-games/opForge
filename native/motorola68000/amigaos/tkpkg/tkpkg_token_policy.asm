@@ -39,65 +39,68 @@ MissingPolicyText
 ; - A1/D1: failure message pointer/length on missing-policy error.
 ; ---------------------------------------------------------------------------
 
-tkpkgTokenPolicyResolveLocatorV1
+	.pub
+tkpkgTokenPolicyResolveLocatorV1	.block
 	moveq #SCOPED_OWNER_DIALECT, d0  ; prefer dialect-specific tokenization rules when present
 	lea PendingDialectOffsetLo, a3
-	bsr.w tkpkgTokenPolicyFindOwnerV1
+	bsr.w findOwner
 	tst.b d0
-	beq.s tkpkgTokenPolicyResolveDone
+	beq.s done
 	moveq #SCOPED_OWNER_CPU, d0  ; fall back to CPU-local policy
 	lea PendingCpuOffsetLo, a3
-	bsr.w tkpkgTokenPolicyFindOwnerV1
+	bsr.w findOwner
 	tst.b d0
-	beq.s tkpkgTokenPolicyResolveDone
+	beq.s done
 	moveq #SCOPED_OWNER_FAMILY, d0  ; final fallback is family-wide policy
 	lea PendingFamilyOffsetLo, a3
-	bsr.w tkpkgTokenPolicyFindOwnerV1
+	bsr.w findOwner
 	tst.b d0
-	beq.s tkpkgTokenPolicyResolveDone
+	beq.s done
 	lea MissingPolicyText, a1
 	moveq #MISSING_POLICY_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
-tkpkgTokenPolicyResolveDone
+done
 	moveq #0, d0
 	rts
+	.bend  ; tkpkgTokenPolicyResolveLocatorV1
+	.priv
 
 ; Find a TOKS record matching the scoped owner type in D0 and owner locator A3.
-tkpkgTokenPolicyFindOwnerV1
+findOwner	.block
 	move.b d0, d6  ; D6 keeps the scoped-owner tag while D0 is reused by helpers
 	move.l a3, -(sp)
 	lea PendingTokenPolicyOffsetLo, a3
 	clr.l (a3)+
 	clr.b (a3)
 	movea.l (sp)+, a3
-	bsr.w tkpkgTokenPolicyReadLocatorPtrLenV1
+	bsr.w readLocatorPtrLen
 	move.w d3, d5
 	movea.l a1, a5
 	lea ToksChunkOffsetLo, a3
-	bsr.w tkpkgTokenPolicyChunkPtrFromLocatorV1
-	bsr.w tkpkgTokenPolicyReadU32LeLow16V1
+	bsr.w chunkPtrFromLocator
+	bsr.w readU32LeLow16
 	tst.b d1
-	bne.w tkpkgTokenPolicyOwnerMissing
+	bne.w missing
 	tst.w d0
-	beq.w tkpkgTokenPolicyOwnerMissing
+	beq.w missing
 	move.w d0, d7
 	subq.w #1, d7
 	lea 4(a2), a2
 
-tkpkgTokenPolicyOwnerLoop
+loop
 	movea.l a2, a4
 	moveq #1, d0
-	bsr.w tkpkgTokenPolicyRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.w tkpkgTokenPolicyOwnerMissing
+	bne.w missing
 	move.b (a2)+, d4
-	bsr.w tkpkgTokenPolicyLocateStringV1
+	bsr.w locateString
 	tst.b d1
-	bne.w tkpkgTokenPolicyOwnerMissing
+	bne.w missing
 	cmp.b d6, d4
-	bne.w tkpkgTokenPolicySkipEntry
+	bne.w skipEntry
 	move.w d0, d4
 	movea.l a1, a0
 	move.l a2, -(sp)
@@ -105,125 +108,127 @@ tkpkgTokenPolicyOwnerLoop
 	move.w d5, d1
 	movea.l a0, a1
 	movea.l a5, a2
-	bsr.w tkpkgTokenPolicyStringEqAsciiCasefoldV1
+	bsr.w stringEqAsciiCasefold
 	movea.l (sp)+, a2
 	tst.b d0
-	bne.w tkpkgTokenPolicyFound
+	bne.w found
 
-tkpkgTokenPolicySkipEntry
-	bsr.w tkpkgTokenPolicySkipToksEntryV1
+skipEntry
+	bsr.w skipToksEntry
 	tst.b d1
-	bne.w tkpkgTokenPolicyOwnerMissing
-	dbf d7, tkpkgTokenPolicyOwnerLoop
+	bne.w missing
+	dbf d7, loop
 
-tkpkgTokenPolicyOwnerMissing
+missing
 	moveq #1, d0
 	rts
 
-tkpkgTokenPolicyFound
-	bsr.w tkpkgTokenPolicySkipToksEntryV1
+found
+	bsr.w skipToksEntry
 	tst.b d1
-	bne.w tkpkgTokenPolicyOwnerMissing
+	bne.w missing
 	lea PendingTokenPolicyOffsetLo, a3
 	movea.l a4, a1
 	move.l a2, d0
 	sub.l a4, d0
-	bsr.w tkpkgTokenPolicyStoreRecordLocatorV1
+	bsr.w storeRecordLocator
 	move.b d6, PendingTokenPolicyOwnerTag
 	moveq #0, d0
 	rts
+	.bend  ; findOwner
 
 ; Skip one TOKS entry, including optional tail extension fields.
-tkpkgTokenPolicySkipToksEntryV1
+skipToksEntry	.block
 	move.w d7, -(sp)
 	moveq #TOKS_ENTRY_FIXED_PREFIX_SIZE, d0
-	bsr.w tkpkgTokenPolicyRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
+	bne.w boundsFail
 	lea TOKS_ENTRY_FIXED_PREFIX_SIZE(a2), a2
-	bsr.w tkpkgTokenPolicySkipStringV1
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
+	bne.w boundsFail
 	moveq #1, d0
-	bsr.w tkpkgTokenPolicyRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	beq.s tkpkgTokenPolicyTailMarkerReady
-	bra.w tkpkgTokenPolicySkipBoundsFail
+	beq.s tailMarkerReady
+	bra.w boundsFail
 
-tkpkgTokenPolicyTailMarkerReady
+tailMarkerReady
 	cmpi.b #$FF, (a2)
-	beq.s tkpkgTokenPolicySkipTailExt
-	bra.w tkpkgTokenPolicySkipDone
+	beq.s tailExt
+	bra.w done
 
-tkpkgTokenPolicySkipTailExt
+tailExt
 	moveq #1, d0
-	bsr.w tkpkgTokenPolicyRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
+	bne.w boundsFail
 	addq.w #1, a2
-	bsr.w tkpkgTokenPolicySkipStringV1
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
-	bsr.w tkpkgTokenPolicySkipStringV1
+	bne.w boundsFail
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
+	bne.w boundsFail
 	moveq #1, d0
-	bsr.w tkpkgTokenPolicyRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
+	bne.w boundsFail
 	tst.b (a2)+
-	beq.s tkpkgTokenPolicySkipTailStrings
+	beq.s tailStrings
 	moveq #1, d0
-	bsr.w tkpkgTokenPolicyRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
+	bne.w boundsFail
 	addq.w #1, a2
 
-tkpkgTokenPolicySkipTailStrings
-	bsr.w tkpkgTokenPolicySkipStringV1
+tailStrings
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
-	bsr.w tkpkgTokenPolicySkipStringV1
+	bne.w boundsFail
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
-	bsr.w tkpkgTokenPolicySkipStringV1
+	bne.w boundsFail
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
-	bsr.w tkpkgTokenPolicySkipStringV1
+	bne.w boundsFail
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
-	bsr.w tkpkgTokenPolicySkipStringV1
+	bne.w boundsFail
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
-	bsr.w tkpkgTokenPolicySkipStringV1
+	bne.w boundsFail
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
-	bsr.w tkpkgTokenPolicyReadU32LeLow16V1
+	bne.w boundsFail
+	bsr.w readU32LeLow16
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
+	bne.w boundsFail
 	move.w d0, d7
 	lea 4(a2), a2
 	tst.w d7
-	beq.s tkpkgTokenPolicySkipDone
+	beq.s done
 	subq.w #1, d7
 
-tkpkgTokenPolicySkipOperatorsLoop
-	bsr.w tkpkgTokenPolicySkipStringV1
+operatorsLoop
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenPolicySkipBoundsFail
-	dbf d7, tkpkgTokenPolicySkipOperatorsLoop
+	bne.w boundsFail
+	dbf d7, operatorsLoop
 
-tkpkgTokenPolicySkipDone
+done
 	move.w (sp)+, d7
 	moveq #0, d1
 	rts
 
-tkpkgTokenPolicySkipBoundsFail
+boundsFail
 	move.w (sp)+, d7
 	moveq #1, d1
 	rts
+	.bend  ; skipToksEntry
 
-tkpkgTokenPolicyStoreRecordLocatorV1
+storeRecordLocator	.block
 	move.l a6, -(sp)
 	move.l a1, d2
 	lea PackageStorage, a6
@@ -236,8 +241,9 @@ tkpkgTokenPolicyStoreRecordLocatorV1
 	move.b d0, (a3)+
 	movea.l (sp)+, a6
 	rts
+	.bend  ; storeRecordLocator
 
-tkpkgTokenPolicyReadLocatorPtrLenV1
+readLocatorPtrLen	.block
 	moveq #0, d2
 	move.b (a3)+, d2
 	moveq #0, d1
@@ -253,8 +259,9 @@ tkpkgTokenPolicyReadLocatorPtrLenV1
 	lea PackageStorage, a6
 	lea 0(a6, d2.W), a1
 	rts
+	.bend  ; readLocatorPtrLen
 
-tkpkgTokenPolicyChunkPtrFromLocatorV1
+chunkPtrFromLocator	.block
 	moveq #0, d0
 	move.b (a3)+, d0
 	moveq #0, d1
@@ -271,20 +278,25 @@ tkpkgTokenPolicyChunkPtrFromLocatorV1
 	lea 0(a6, d0.W), a2
 	lea 0(a2, d7.W), a6
 	rts
+	.bend  ; chunkPtrFromLocator
 
 ; skip_string is an alias for callers that only need the A2 advance.
-tkpkgTokenPolicySkipStringV1
-tkpkgTokenPolicyLocateStringV1
-	bsr.w tkpkgTokenPolicyReadU32LeLow16V1
+skipString	.block
+	bsr.w locateString
+	rts
+	.bend  ; skipString
+
+locateString	.block
+	bsr.w readU32LeLow16
 	tst.b d1
-	bne.s tkpkgTokenPolicyLocateStringBoundsFail
+	bne.s boundsFail
 	move.l d0, d2
 	move.l d0, d3
 	addq.l #4, d3
 	move.l d3, d0
-	bsr.w tkpkgTokenPolicyRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.s tkpkgTokenPolicyLocateStringBoundsFail
+	bne.s boundsFail
 	move.l d2, d0
 	lea 4(a2), a1
 	lea 4(a2), a2
@@ -292,17 +304,18 @@ tkpkgTokenPolicyLocateStringV1
 	moveq #0, d1
 	rts
 
-tkpkgTokenPolicyLocateStringBoundsFail
+boundsFail
 	moveq #0, d0
 	movea.l d0, a1
 	moveq #1, d1
 	rts
+	.bend  ; locateString
 
-tkpkgTokenPolicyReadU32LeLow16V1
+readU32LeLow16	.block
 	moveq #4, d0
-	bsr.w tkpkgTokenPolicyRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.s tkpkgTokenPolicyReadU32BoundsFail
+	bne.s boundsFail
 	moveq #0, d0
 	move.b (a2), d0
 	moveq #0, d1
@@ -312,65 +325,70 @@ tkpkgTokenPolicyReadU32LeLow16V1
 	moveq #0, d1
 	rts
 
-tkpkgTokenPolicyReadU32BoundsFail
+boundsFail
 	moveq #0, d0
 	moveq #1, d1
 	rts
+	.bend  ; readU32LeLow16
 
-tkpkgTokenPolicyRequireBytesV1
+requireBytes	.block
 	movea.l a2, a1
 	adda.l d0, a1
 	cmpa.l a6, a1
-	bhi.s tkpkgTokenPolicyRequireBytesFail
+	bhi.s fail
 	moveq #0, d1
 	rts
 
-tkpkgTokenPolicyRequireBytesFail
+fail
 	moveq #1, d1
 	rts
+	.bend  ; requireBytes
 
-tkpkgTokenPolicyStringEqAsciiCasefoldV1
+stringEqAsciiCasefold	.block
 	cmp.w d1, d0
-	bne.s tkpkgTokenPolicyStringNoMatch
+	bne.s noMatch
 	move.w d0, d4
 	tst.w d4
-	beq.s tkpkgTokenPolicyStringMatch
+	beq.s match
 	subq.w #1, d4
 
-tkpkgTokenPolicyStringLoop
+loop
 	moveq #0, d2
 	move.b (a1)+, d2
 	moveq #0, d3
 	move.b (a2)+, d3
 	move.b d2, d0
-	bsr.w tkpkgTokenPolicyFoldAsciiLowerV1
+	bsr.w foldAsciiLower
 	move.b d0, d2
 	move.b d3, d0
-	bsr.w tkpkgTokenPolicyFoldAsciiLowerV1
+	bsr.w foldAsciiLower
 	cmp.b d0, d2
-	bne.s tkpkgTokenPolicyStringNoMatch
-	dbf d4, tkpkgTokenPolicyStringLoop
+	bne.s noMatch
+	dbf d4, loop
 
-tkpkgTokenPolicyStringMatch
+match
 	moveq #1, d0
 	rts
 
-tkpkgTokenPolicyStringNoMatch
+noMatch
 	moveq #0, d0
 	rts
+	.bend  ; stringEqAsciiCasefold
 
-tkpkgTokenPolicyFoldAsciiLowerV1
+foldAsciiLower	.block
 	cmpi.b #'A', d0
-	blo.s tkpkgTokenPolicyFoldDone
+	blo.s done
 	cmpi.b #'Z', d0
-	bhi.s tkpkgTokenPolicyFoldDone
+	bhi.s done
 	ori.b #$20, d0
 
-tkpkgTokenPolicyFoldDone
+done
 	rts
+	.bend  ; foldAsciiLower
 
-tkpkgTokenPolicyPlaceholder
+placeholder	.block
 	rts
+	.bend  ; placeholder
 
 	.endsection
 	.endmodule

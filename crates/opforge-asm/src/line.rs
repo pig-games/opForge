@@ -11,6 +11,7 @@ use crate::output::{
 };
 use crate::runtime_config::{
     expr_eval_force_host_families_from_env, expr_eval_opt_in_families_from_env,
+    expr_parser_force_host_families_from_env, expr_parser_opt_in_families_from_env,
     portable_expr_runtime_enabled_for_family,
 };
 use crate::runtime_model::{
@@ -180,6 +181,8 @@ pub struct AsmLine<'a> {
     pub cpu_mode: AsmCpuModeState,
     pub opthread_expr_eval_opt_in_families: Vec<String>,
     pub opthread_expr_eval_force_host_families: Vec<String>,
+    pub opthread_expr_parser_opt_in_families: Vec<String>,
+    pub opthread_expr_parser_force_host_families: Vec<String>,
     pub opthread_execution_model: Option<HierarchyExecutionModel>,
     text_encoding_registry: TextEncodingRegistry,
     active_text_encoding: String,
@@ -255,6 +258,8 @@ impl<'a> AsmLine<'a> {
             cpu_mode: AsmCpuModeState::new(registry, cpu),
             opthread_expr_eval_opt_in_families: expr_eval_opt_in_families_from_env(),
             opthread_expr_eval_force_host_families: expr_eval_force_host_families_from_env(),
+            opthread_expr_parser_opt_in_families: expr_parser_opt_in_families_from_env(),
+            opthread_expr_parser_force_host_families: expr_parser_force_host_families_from_env(),
             opthread_execution_model: build_opthread_execution_model(registry, cpu),
             text_encoding_registry,
             active_text_encoding,
@@ -1627,6 +1632,10 @@ impl<'a> AsmLine<'a> {
                 StatementRequest::new(line, line_num)
                     .with_execution_mode(ExecutionMode::Vm)
                     .with_model(model, self.cpu.as_str(), None)
+                    .with_expr_parser_rollout_overrides(
+                        &self.opthread_expr_parser_opt_in_families,
+                        &self.opthread_expr_parser_force_host_families,
+                    )
                     .with_register_checker(&self.register_checker),
                 None,
             )
@@ -2015,7 +2024,7 @@ impl<'a> AsmLine<'a> {
                         return LineStatus::DirEqu;
                     }
                 }
-                let value = match self.eval_expr_ast(expr) {
+                let value = match self.eval_expr_for_scalar_context(expr) {
                     Ok(scalar) => match self.eval_value_ast(expr) {
                         Ok(
                             value @ (AsmValue::List(_)
@@ -2173,7 +2182,7 @@ impl<'a> AsmLine<'a> {
             );
         }
 
-        let rhs = match self.eval_expr_ast(expr) {
+        let rhs = match self.eval_expr_for_scalar_context(expr) {
             Ok(value) => value,
             Err(err) => {
                 return self.failure_at_span(
@@ -2484,15 +2493,25 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    fn eval_expr_for_data_directive(&self, expr: &Expr) -> Result<u32, AstEvalError> {
+    pub(crate) fn eval_expr_for_scalar_context(&self, expr: &Expr) -> Result<u32, AstEvalError> {
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
             return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
+        }
+
+        if let Expr::Identifier(name, _) | Expr::Register(name, _) = expr {
+            if let Some(AsmValue::Scalar(value)) = AssemblerContext::value_symbol(self, name) {
+                return Ok(value as u32);
+            }
         }
 
         match AssemblerContext::eval_expr(self, expr) {
             Ok(value) => Ok(value as u32),
             Err(message) => Err(AstEvalError::expression(message, expr_span(expr))),
         }
+    }
+
+    fn eval_expr_for_data_directive(&self, expr: &Expr) -> Result<u32, AstEvalError> {
+        self.eval_expr_for_scalar_context(expr)
     }
 
     fn find_private_symbol_in_expr(&self, expr: &Expr) -> Option<(String, Span)> {

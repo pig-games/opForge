@@ -1369,6 +1369,8 @@ mod tests {
                 model,
                 cpu_id: "m6502",
                 dialect_override: None,
+                expr_parser_opt_in_families: &[],
+                expr_parser_force_host_families: &[],
                 expr_handler: handler,
             },
         }

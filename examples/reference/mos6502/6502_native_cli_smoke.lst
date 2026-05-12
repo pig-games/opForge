@@ -1,4 +1,4 @@
-opForge Assembler v0.9.7
+opForge Assembler v0.9.7 | full-runtime | bundled
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
 ----                                1  ; Native AmigaOS CLI 6502 small-assembly contract.
@@ -7,22 +7,27 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                4          .cpu 6502
 ----    EQU 0800                    5          .org $0800
 0800    A9 42                       6  start   lda #$42
-0802    8D 00 02                    7          sta $0200
-0805    4C 05 08                    8  done    jmp done
+0802    85 20                       7          sta $20
+0804    B5 20                       8          lda $20,x
+0806    8D 00 02                    9          sta $0200
+0809    BD 00 02                   10          lda $0200,x
+080C    B9 00 02                   11          lda $0200,y
+080F    4C 0F 08                   12  done    jmp done
 
-Lines: 8  Errors: 0  Warnings: 0
+Lines: 12  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-done             0805      prv  lbl 
+done             080F      prv  lbl 
 start            0800      prv  lbl 
 
-Total memory is 8 bytes
+Total memory is 18 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-0800    A9 42 8D 00 02 4C 05 08
+0800    A9 42 85 20 B5 20 8D 00 02 BD 00 02 B9 00 02 4C
+0810    0F 08

@@ -1653,34 +1653,22 @@ fn ffi_prepared_session_boundary(
 #[cfg(any(test, feature = "panic-test-hooks"))]
 mod ffi_test_hooks {
     use std::cell::Cell;
-    use std::sync::atomic::{AtomicBool, Ordering};
 
     thread_local! {
         static PANIC_POINT: Cell<Option<&'static str>> = const { Cell::new(None) };
     }
 
-    static PANIC_ASSEMBLE_FILE_WITH_REQUEST: AtomicBool = AtomicBool::new(false);
-
     #[cfg_attr(feature = "panic-test-hooks", allow(dead_code))]
     pub fn arm(point: &'static str) {
         PANIC_POINT.with(|slot| slot.set(Some(point)));
-        if point == "opforge_asm_assemble_file_with_request" {
-            PANIC_ASSEMBLE_FILE_WITH_REQUEST.store(true, Ordering::SeqCst);
-        }
     }
 
     #[cfg(feature = "panic-test-hooks")]
     pub fn arm_assemble_file_with_request() {
-        PANIC_ASSEMBLE_FILE_WITH_REQUEST.store(true, Ordering::SeqCst);
+        PANIC_POINT.with(|slot| slot.set(Some("opforge_asm_assemble_file_with_request")));
     }
 
     pub fn trigger(point: &'static str) {
-        if point == "opforge_asm_assemble_file_with_request"
-            && PANIC_ASSEMBLE_FILE_WITH_REQUEST.swap(false, Ordering::SeqCst)
-        {
-            panic!("forced ffi panic at {point}");
-        }
-
         PANIC_POINT.with(|slot| {
             if slot.get() == Some(point) {
                 slot.set(None);

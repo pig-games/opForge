@@ -152,7 +152,7 @@ impl<'a> AsmLine<'a> {
                 );
             }
         };
-        let coded = match self.eval_expr_ast(&operands[2]) {
+        let coded = match self.eval_expr_for_scalar_context(&operands[2]) {
             Ok(value) => value,
             Err(err) => {
                 return self.failure_at_span(
@@ -215,7 +215,7 @@ impl<'a> AsmLine<'a> {
             }
         };
         if operands.len() == 2 {
-            let start_value = match self.eval_expr_ast(&operands[1]) {
+            let start_value = match self.eval_expr_for_scalar_context(&operands[1]) {
                 Ok(value) => value,
                 Err(err) => {
                     return self.failure_at_span(
@@ -402,7 +402,7 @@ impl<'a> AsmLine<'a> {
         directive_name: &str,
     ) -> Result<(u8, Span), AstEvalError> {
         let span = expr_span(expr);
-        let value = self.eval_expr_ast(expr)?;
+        let value = self.eval_expr_for_scalar_context(expr)?;
         if value > u8::MAX as u32 {
             return Err(AstEvalError::directive(
                 format!("{directive_name} value ${value:X} does not fit in a byte"),

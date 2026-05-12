@@ -4,12 +4,12 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/workflow/run_plan_workflow.sh <plan-path> <plan-source-summary> [constraints]
+  scripts/workflow/run_plan_workflow.sh [--check-once] [--mode <mode>] [--root <root>] <plan-path> <plan-source-summary> [constraints]
 
 Behavior:
   - Creates the plan artifact from the template if it does not exist.
   - Prints the exact branch-local plan workflow instructions.
-  - Validates required plan workflow structure.
+  - Validates the plan artifact bundle.
   - Requires a companion gate result file with PASS from Plan Quality Orchestrator.
   - Allows at most 3 failed re-check cycles, then halts and asks the user to resolve the blockage.
 
@@ -27,25 +27,67 @@ Examples:
 EOF
 }
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  usage
-  exit 0
-fi
+check_once=0
+plan_mode="implementation"
+bundle_root="."
+positionals=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --check-once|--non-interactive)
+      check_once=1
+      shift
+      ;;
+    --mode)
+      if [[ $# -lt 2 ]]; then
+        usage >&2
+        exit 1
+      fi
+      plan_mode="$2"
+      shift 2
+      ;;
+    --root)
+      if [[ $# -lt 2 ]]; then
+        usage >&2
+        exit 1
+      fi
+      bundle_root="$2"
+      shift 2
+      ;;
+    *)
+      positionals+=("$1")
+      shift
+      ;;
+  esac
+done
 
-if [[ $# -lt 2 || $# -gt 3 ]]; then
+if [[ ${#positionals[@]} -lt 2 || ${#positionals[@]} -gt 3 ]]; then
   usage >&2
   exit 1
 fi
 
-plan_path="$1"
-plan_source_summary="$2"
-constraints="${3:-}"
+plan_path="${positionals[0]}"
+plan_source_summary="${positionals[1]}"
+constraints="${positionals[2]:-}"
 gate_path="${plan_path}.quality-gate.txt"
 max_attempts=3
 
 if [[ ! -e "$plan_path" ]]; then
-  scripts/workflow/new_artifact_from_template.sh plan "$plan_path"
+  scripts/workflow/new_artifact_from_template.sh \
+    plan \
+    "$plan_path" \
+    --title "$(basename "${plan_path%.md}" | tr '-' ' ')" \
+    --source "$plan_source_summary" \
+    --mode "$plan_mode"
 fi
+
+python3 scripts/workflow/stamp_workflow_provenance.py \
+  "$plan_path" \
+  --skill opforge-plan-authoring \
+  --entrypoint run_plan_workflow.sh
 
 print_instructions() {
   cat <<EOF
@@ -75,28 +117,18 @@ EOF
   cat <<'EOF'
 
 The script will keep checking until:
-- check_plan_checkboxes.py passes
-- the quality gate file starts with PASS:
+- check_workflow_artifact_bundle.py passes for the plan
+- the quality gate file reports PASS
 
 The script allows at most 3 failed re-check cycles.
 If that limit is reached, stop and ask the user how to resolve the blockage.
 
-Press Enter after each plan/gate update to re-check.
+Press Enter after each plan/gate update to re-check, or use --check-once for one-shot validation.
 EOF
 }
 
 check_gate_file() {
-  if [[ ! -f "$gate_path" ]]; then
-    echo "FAIL: missing quality gate file: $gate_path" >&2
-    return 1
-  fi
-
-  if ! grep -Eq '^PASS:' "$gate_path"; then
-    echo "FAIL: quality gate file must begin with 'PASS:'" >&2
-    echo "Current contents:" >&2
-    sed -n '1,20p' "$gate_path" >&2
-    return 1
-  fi
+  python3 scripts/workflow/check_quality_gate_evidence.py "$gate_path"
 }
 
 print_instructions
@@ -106,7 +138,7 @@ while true; do
   plan_ok=0
   gate_ok=0
 
-  if python3 scripts/workflow/check_plan_checkboxes.py "$plan_path"; then
+  if python3 scripts/workflow/check_workflow_artifact_bundle.py --root "$bundle_root" plan "$plan_path"; then
     plan_ok=1
   fi
 
@@ -129,6 +161,9 @@ while true; do
 
   echo
   echo "Plan workflow not complete yet. Failed re-check cycle: $attempt/$max_attempts."
+  if [[ $check_once -eq 1 ]]; then
+    exit 1
+  fi
   echo "Update the plan artifact and/or quality gate result, then press Enter to re-check."
   read -r _
 done

@@ -31,6 +31,15 @@ definitions there.
 - If a push seems like the natural next step, stop after preparing the local
   work and ask the user whether they want the push performed.
 
+## Git UI Safety Rule
+
+- Never use, launch, automate, recommend, or rely on GitKraken for repository
+  work in this worktree.
+- Use non-interactive `git` commands and repository-local workflow scripts
+  instead of GUI git tools.
+- If a task appears to require GitKraken, stop and ask the user for a
+  command-line or repository-script alternative.
+
 ## Supply-Chain Safety Rule
 
 - Never install, import, add, recommend, vendor, execute, or otherwise touch
@@ -83,13 +92,35 @@ Plan-specific rule:
 - every generated plan must explicitly say that the active worktree
   `AGENTS.md` workflow and execution rules remain binding at all times
 
+Plan archive rule:
+
+- When a plan is fully complete and no longer the active execution artifact,
+  archive it immediately into `documentation/plans/completed/`.
+- Archived plan filenames must append a UTC completion timestamp in the form
+  `-completed-YYYY-MM-DDTHHMMSSZ.md` so the finish time is explicit.
+- Move the companion quality-gate sidecar with the same timestamped basename,
+  for example `<plan>.md.quality-gate.txt` becomes
+  `<archived-plan>.md.quality-gate.txt`.
+- Use `scripts/workflow/archive_completed_plan.sh` for this move so the
+  timestamping and sidecar handling stay consistent.
+- Plans that are not clearly complete must not be archived as completed; keep
+  them active or move them to a separate review bucket such as
+  `documentation/plans/check_for_completion/` only when the task explicitly
+  calls for that triage.
+
 Helper scripts:
 
 - [scripts/workflow/new_artifact_from_template.sh](scripts/workflow/new_artifact_from_template.sh)
+- [scripts/workflow/start_artifact.py](scripts/workflow/start_artifact.py)
+- [scripts/workflow/derive_plan_from_artifact.py](scripts/workflow/derive_plan_from_artifact.py)
+- [scripts/workflow/allocate_review_finding_id.py](scripts/workflow/allocate_review_finding_id.py)
+- [scripts/workflow/render_quality_gate_preset.py](scripts/workflow/render_quality_gate_preset.py)
 - [scripts/workflow/check_spec_artifact.py](scripts/workflow/check_spec_artifact.py)
 - [scripts/workflow/check_plan_checkboxes.py](scripts/workflow/check_plan_checkboxes.py)
+- [scripts/workflow/archive_completed_plan.sh](scripts/workflow/archive_completed_plan.sh)
 - [scripts/workflow/check_review_report.py](scripts/workflow/check_review_report.py)
 - [scripts/workflow/check_closure_report.py](scripts/workflow/check_closure_report.py)
+- [scripts/workflow/check_workflow_artifact_bundle.py](scripts/workflow/check_workflow_artifact_bundle.py)
 - [scripts/workflow/check_agent_symlinks.py](scripts/workflow/check_agent_symlinks.py)
 - [scripts/workflow/check_supply_chain_ban.py](scripts/workflow/check_supply_chain_ban.py)
 - [scripts/workflow/check_version_impact.py](scripts/workflow/check_version_impact.py)
@@ -97,10 +128,15 @@ Helper scripts:
 - [scripts/workflow/check_traceability.py](scripts/workflow/check_traceability.py)
 - [scripts/workflow/check_reference_update_scope.py](scripts/workflow/check_reference_update_scope.py)
 - [scripts/workflow/check_release_notes_policy.py](scripts/workflow/check_release_notes_policy.py)
+- [scripts/workflow/update_references.sh](scripts/workflow/update_references.sh)
+- [scripts/workflow/stage_and_commit.sh](scripts/workflow/stage_and_commit.sh)
 - [scripts/workflow/run_rust_quality_gate.sh](scripts/workflow/run_rust_quality_gate.sh)
+- [scripts/workflow/run_native_68000_format_gate.sh](scripts/workflow/run_native_68000_format_gate.sh)
+- [scripts/workflow/run_rust_quality_gate_summary.sh](scripts/workflow/run_rust_quality_gate_summary.sh)
 - [scripts/workflow/run_spec_workflow.sh](scripts/workflow/run_spec_workflow.sh)
 - [scripts/workflow/run_plan_workflow.sh](scripts/workflow/run_plan_workflow.sh)
 - [scripts/workflow/run_review_workflow.sh](scripts/workflow/run_review_workflow.sh)
+- [scripts/workflow/run_closure_workflow.sh](scripts/workflow/run_closure_workflow.sh)
 
 Deterministic workflow-hygiene rule:
 
@@ -109,11 +145,41 @@ Deterministic workflow-hygiene rule:
   `scripts/workflow/check_*.py` validators and record the result in the final
   status, plan, or closure report.
 
+Progress update rule:
+
+- Intermediary agent updates must report only user-relevant status, results,
+  blockers, or the next concrete action.
+- Do not include agent-internal bookkeeping such as “checking memory”,
+  “capturing context”, “storing this lesson”, or similar internal process
+  narration.
+
+Git staging/commit rule:
+
+- Do not chain `git status`, `git add`, and `git commit` in one ad hoc shell
+  command.
+- Prefer `scripts/workflow/stage_and_commit.sh` when the task is to stage an
+  explicit file set and create one focused commit.
+- Keep plan/spec/review/closure files out of a code commit unless the workflow
+  artifact itself changed for a clear reason and that scope is stated.
+
 Release notes policy:
 
 - Create or update `RELEASE_NOTES_v*.md` only as part of release-bearing work
   with version-impact evidence. Never edit release notes for a version that is
   already tagged.
+
+Reference refresh policy:
+
+- Update only the minimum reference or golden artifacts directly affected by the
+  current slice.
+- Do not run broad reference refresh commands unless the user explicitly asked
+  for a full refresh or the changed evidence artifact explicitly approves a bulk
+  refresh.
+- Reference/golden refresh evidence must include an explicit allowlist naming
+  the exact artifacts expected to change.
+- When refreshing governed references or goldens, prefer
+  `scripts/workflow/update_references.sh` with explicit paths over ad hoc broad
+  regeneration commands.
 
 Rust quality-gate rule:
 
@@ -122,6 +188,52 @@ Rust quality-gate rule:
   record the result in the plan, closure report, or final status. This is the
   canonical full Rust quality gate; add focused tests for the specific slice as
   needed, but do not replace the full gate by listing individual Cargo commands.
+- The canonical Rust quality gate now also runs the repository-native Motorola
+  68000 formatter check before the Rust-only steps so mixed Rust/native work
+  keeps one standard gate path.
+- When output retrieval is flaky or tool output needs to stay short, prefer
+  `scripts/workflow/run_rust_quality_gate_summary.sh` over ad hoc temp-log
+  one-liners.
+- Do not improvise temp-log cleanup chains with `mktemp`, `tail`, and `rm` for
+  the Rust quality gate when the repository wrapper can provide the summary.
+- Avoid shell-specific special variable names such as `status`, `path`, and
+  `pipestatus` in workflow command wrappers.
+
+Native Motorola 68000 formatter rule:
+
+- Before committing changes to supported `native/motorola68000/**/*.asm`
+  sources, run `scripts/workflow/run_native_68000_format_gate.sh` (or
+  `make native-68000-format-check`) and record the result in the plan, closure
+  report, or final status.
+- When the formatter reports required changes, apply them with
+  `scripts/workflow/run_native_68000_format_gate.sh --write` (or
+  `make native-68000-format`) before re-running the check.
+- The repository formatter policy now lives at the repo root in
+  `.opforgefmt.toml`; use that shared config for new Motorola 68000 formatting
+  work unless the user explicitly requests a different policy.
+
+Native Motorola 68000 routine style rule:
+
+- Always run the repository native Motorola 68000 formatter for supported
+  `native/motorola68000/**/*.asm` files before treating formatting as complete.
+  The formatter handles mechanical layout only; the routine-structure rules
+  below are required on top of formatter output.
+- Every logical routine must be enclosed in a `.block` / `.bend` pair. Put
+  `.block` on the same line as the routine label, and put `.bend` after the
+  routine's final `rts`, with a trailing comment naming the routine, for example
+  `routineName	.block` ... `rts` ... `.bend  ; routineName`.
+- Do not wrap ordinary branch targets or loop labels in their own `.block`
+  unless they are standalone callable routines. Local control-flow labels belong
+  inside the enclosing routine block.
+- Group exported routines before internal helpers. Start the exported group with
+  `.pub`, then start the helper/internal group with `.priv`.
+- Mark a routine or symbol public only when it is intentionally consumed from
+  another module. Keep implementation helpers private by default.
+- Treat public routines as module ABI. Public entry points must document or make
+  clear their input/output register contract and must preserve caller-visible
+  registers unless the routine contract explicitly says otherwise. Use balanced
+  register save/restore at entry and exit, commonly `movem.l ...,-(sp)` and
+  `movem.l (sp)+,...`, for public routines that touch non-scratch state.
 
 FS-UAE testing rule:
 
@@ -153,24 +265,32 @@ FS-UAE testing rule:
 
 Use the following routing rules by default:
 
-- for code review reports, use the review workflow:
+- for code review reports, agents must use the review workflow skill and
+  wrapper:
   - [skills/opforge-review-reporting/SKILL.md](skills/opforge-review-reporting/SKILL.md)
+  - [scripts/workflow/run_review_workflow.sh](scripts/workflow/run_review_workflow.sh)
   - for multi-model code review, prefer the branch-local triple review stack:
     - [agents/review-triple-orchestrator.agent.md](agents/review-triple-orchestrator.agent.md)
-- for implementation or remediation plans, use:
+- for implementation or remediation plans, agents must use the plan-authoring
+  skill and plan workflow wrapper:
   - [skills/opforge-plan-authoring/SKILL.md](skills/opforge-plan-authoring/SKILL.md)
+  - [scripts/workflow/run_plan_workflow.sh](scripts/workflow/run_plan_workflow.sh)
   - for high-value or high-ambiguity plan gate review, prefer the branch-local
     multi-agent plan quality gate using the same nested custom-agent pattern as
     the triple review workflow:
     - [agents/plan-quality-orchestrator.agent.md](agents/plan-quality-orchestrator.agent.md)
-- for new behavioral specs, use:
+- for new behavioral specs, agents must use the spec-authoring skill and spec
+  workflow wrapper:
   - [skills/opforge-spec-authoring/SKILL.md](skills/opforge-spec-authoring/SKILL.md)
+  - [scripts/workflow/run_spec_workflow.sh](scripts/workflow/run_spec_workflow.sh)
   - for high-value or high-ambiguity spec gate review, prefer the branch-local
     multi-agent spec quality gate using the same nested custom-agent pattern as
     the triple review workflow:
     - [agents/spec-quality-orchestrator.agent.md](agents/spec-quality-orchestrator.agent.md)
-- for review finding closure claims, use:
+- for review finding closure claims, agents must use the review-closure skill
+  and closure workflow wrapper:
   - [skills/opforge-review-closure/SKILL.md](skills/opforge-review-closure/SKILL.md)
+  - [scripts/workflow/run_closure_workflow.sh](scripts/workflow/run_closure_workflow.sh)
 
 ## Workflow gates
 
@@ -195,6 +315,10 @@ Use the following branch-local gates:
 
 Rules:
 
+- governed spec, plan, review, and closure artifacts must carry workflow
+  provenance showing the matching local skill and workflow wrapper entrypoint
+- artifact bundle validation may reject governed artifacts that lack matching
+  workflow provenance
 - no plan should become active until the plan-quality reviewer passes
 - no plan-driven commit is allowed until the plan-compliance reviewer passes
 - no plan-driven commit is allowed until all quality gates pass

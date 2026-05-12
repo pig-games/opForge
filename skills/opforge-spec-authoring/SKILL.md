@@ -33,3 +33,8 @@ Use [templates/spec-template.md](/Users/erik/Code/Retro/opForge/templates/spec-t
 - `../../references/workflow/spec-quality-checklist.md`
 - `../../templates/spec-template.md`
 
+## Helper scripts
+
+- `../../scripts/workflow/start_artifact.py`
+- `../../scripts/workflow/check_workflow_artifact_bundle.py`
+- `../../scripts/workflow/run_spec_workflow.sh`

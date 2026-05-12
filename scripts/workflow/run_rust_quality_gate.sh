@@ -7,11 +7,12 @@ Usage:
   scripts/workflow/run_rust_quality_gate.sh [--help]
 
 Runs the canonical Rust quality gate for opForge code changes:
-  1. cargo fmt --all --check
-  2. cargo clippy -- -D warnings
-  3. cargo audit
-  4. C compiler availability check for FFI ABI coverage
-  5. cargo test --locked
+  1. native Motorola 68000 formatter check
+  2. cargo fmt --all
+  3. cargo clippy -- -D warnings
+  4. cargo audit
+  5. C compiler availability check for FFI ABI coverage
+  6. cargo test --locked
 
 Use this single command when a plan, review, or implementation slice requires
 the full Rust quality gate.
@@ -51,7 +52,8 @@ require_c_compiler() {
   return 1
 }
 
-run_step "Check Rust formatting" cargo fmt --all --check
+run_step "Run native Motorola 68000 formatter gate" "${script_dir}/run_native_68000_format_gate.sh"
+run_step "Run Rust formatter" cargo fmt --all
 run_step "Run Rust clippy" cargo clippy -- -D warnings
 run_step "Run cargo audit" cargo audit
 run_step "Require C compiler for FFI ABI coverage" require_c_compiler

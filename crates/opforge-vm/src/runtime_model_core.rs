@@ -12,9 +12,9 @@ use package::{
     TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
     TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
     DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_VM_OPCODE_VERSION_V1,
-    EXVM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
-    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, TOKENIZER_VM_OPCODE_VERSION_V1,
-    TOKENIZER_VM_STREAM_VERSION_V1,
+    EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1,
+    PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+    TOKENIZER_VM_OPCODE_VERSION_V1, TOKENIZER_VM_STREAM_VERSION_V1,
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
@@ -1106,7 +1106,9 @@ impl RuntimeModelCore {
         let Some(contract) = self.expr_contract_for_resolved(&resolved) else {
             return Ok(PortableExprBudgets::default());
         };
-        if contract.opcode_version != EXPR_VM_OPCODE_VERSION_V1 {
+        if contract.opcode_version != EXPR_VM_OPCODE_VERSION_V1
+            && contract.opcode_version != EXPR_VM_OPCODE_VERSION_V2
+        {
             return Err(RuntimeBridgeError::Resolve(format!(
                 "unsupported VM expression contract opcode version {}",
                 contract.opcode_version

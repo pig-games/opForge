@@ -4,12 +4,12 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/workflow/run_spec_workflow.sh <spec-path> [constraints]
+  scripts/workflow/run_spec_workflow.sh [--check-once] [--root <root>] <spec-path> [constraints]
 
 Behavior:
   - Creates the spec artifact from the template if it does not exist.
   - Prints the exact branch-local spec workflow instructions.
-  - Validates the spec artifact structure.
+  - Validates the spec artifact bundle.
   - Requires a companion gate result file with PASS from Spec Quality Orchestrator.
   - Allows at most 3 failed re-check cycles, then halts and asks the user to resolve the blockage.
 
@@ -26,24 +26,52 @@ Examples:
 EOF
 }
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  usage
-  exit 0
-fi
+check_once=0
+bundle_root="."
+positionals=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --check-once|--non-interactive)
+      check_once=1
+      shift
+      ;;
+    --root)
+      if [[ $# -lt 2 ]]; then
+        usage >&2
+        exit 1
+      fi
+      bundle_root="$2"
+      shift 2
+      ;;
+    *)
+      positionals+=("$1")
+      shift
+      ;;
+  esac
+done
 
-if [[ $# -lt 1 || $# -gt 2 ]]; then
+if [[ ${#positionals[@]} -lt 1 || ${#positionals[@]} -gt 2 ]]; then
   usage >&2
   exit 1
 fi
 
-spec_path="$1"
-constraints="${2:-}"
+spec_path="${positionals[0]}"
+constraints="${positionals[1]:-}"
 gate_path="${spec_path}.quality-gate.txt"
 max_attempts=3
 
 if [[ ! -e "$spec_path" ]]; then
-  scripts/workflow/new_artifact_from_template.sh spec "$spec_path"
+  scripts/workflow/new_artifact_from_template.sh spec "$spec_path" --title "$(basename "${spec_path%.md}" | tr '-' ' ')"
 fi
+
+python3 scripts/workflow/stamp_workflow_provenance.py \
+  "$spec_path" \
+  --skill opforge-spec-authoring \
+  --entrypoint run_spec_workflow.sh
 
 print_instructions() {
   cat <<EOF
@@ -70,28 +98,18 @@ EOF
   cat <<'EOF'
 
 The script will keep checking until:
-- check_spec_artifact.py passes
-- the quality gate file starts with PASS:
+- check_workflow_artifact_bundle.py passes for the spec
+- the quality gate file reports PASS
 
 The script allows at most 3 failed re-check cycles.
 If that limit is reached, stop and ask the user how to resolve the blockage.
 
-Press Enter after each spec/gate update to re-check.
+Press Enter after each spec/gate update to re-check, or use --check-once for one-shot validation.
 EOF
 }
 
 check_gate_file() {
-  if [[ ! -f "$gate_path" ]]; then
-    echo "FAIL: missing quality gate file: $gate_path" >&2
-    return 1
-  fi
-
-  if ! grep -Eq '^PASS:' "$gate_path"; then
-    echo "FAIL: quality gate file must begin with 'PASS:'" >&2
-    echo "Current contents:" >&2
-    sed -n '1,20p' "$gate_path" >&2
-    return 1
-  fi
+  python3 scripts/workflow/check_quality_gate_evidence.py "$gate_path"
 }
 
 print_instructions
@@ -101,7 +119,7 @@ while true; do
   spec_ok=0
   gate_ok=0
 
-  if python3 scripts/workflow/check_spec_artifact.py "$spec_path"; then
+  if python3 scripts/workflow/check_workflow_artifact_bundle.py --root "$bundle_root" spec "$spec_path"; then
     spec_ok=1
   fi
 
@@ -124,6 +142,9 @@ while true; do
 
   echo
   echo "Spec workflow not complete yet. Failed re-check cycle: $attempt/$max_attempts."
+  if [[ $check_once -eq 1 ]]; then
+    exit 1
+  fi
   echo "Update the spec artifact and/or quality gate result, then press Enter to re-check."
   read -r _
 done

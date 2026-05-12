@@ -42,5 +42,7 @@ Use [templates/finding-closure-report-template.md](/Users/erik/Code/Retro/opForg
 
 ## Helper scripts
 
+- `../../scripts/workflow/start_artifact.py`
 - `../../scripts/workflow/check_closure_report.py`
-
+- `../../scripts/workflow/check_workflow_artifact_bundle.py`
+- `../../scripts/workflow/run_closure_workflow.sh`

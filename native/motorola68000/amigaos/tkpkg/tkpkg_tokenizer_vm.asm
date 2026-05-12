@@ -286,30 +286,31 @@ OpLtText
 ; - lastTokenCount/lastLexemeLen and token buffers are updated on success.
 ; ---------------------------------------------------------------------------
 
-tkpkgTokenizerVmTokenizeLineV1
+	.pub
+tkpkgTokenizerVmTokenizeLineV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	btst #1, PackageStateFlags  ; require set_pipeline before executing any package VM program
-	bne.s tkpkgTokenizerPipelineReady
+	bne.s pipelineReady
 	lea NoPipelineText, a1
 	moveq #NO_PIPELINE_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
-	bra.w tkpkgTokenizerDone
+	bra.w tokenizeDone
 
-tkpkgTokenizerPipelineReady
-	bsr.w tkpkgTokenizerVmReadLinePayloadV1
+pipelineReady
+	bsr.w readLinePayload
 	tst.b d0
-	bne.w tkpkgTokenizerDone
-	bsr.w tkpkgTokenizerVmReadProgramV1
+	bne.w tokenizeDone
+	bsr.w readProgram
 	tst.b d0
-	bne.w tkpkgTokenizerDone
+	bne.w tokenizeDone
 	move.l #TOKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
 	jsr tokvmSetStepBudget68000  ; keep tkpkg-driven tokenizer runs under the bounded VM budget
 	movea.l a3, a5  ; A5 keeps program bytes while A3 is reused for tokvm call ABI
 	move.l d3, d7  ; D7 keeps program length while record metadata is decoded
 	cmpi.b #1, (a5)
-	bne.w tkpkgTokenizerDebugBadProgramHeader
+	bne.w badProgramHeader
 	cmpi.b #8, 1(a5)
-	bne.w tkpkgTokenizerDebugBadProgramHeader
+	bne.w badProgramHeader
 	move.l d6, -(sp)
 	lea ActiveTokenizerVmStateTable, a0
 	moveq #0, d0
@@ -338,24 +339,38 @@ tkpkgTokenizerPipelineReady
 	jsr tokvmRun68000
 	move.l (sp)+, d6
 	cmpi.b #TK_STATUS_SUCCESS, d0
-	beq.s tkpkgTokenizerRender
-	bsr.w tkpkgTokenizerVmStatusMessageV1
-	bra.w tkpkgTokenizerDone
+	beq.s render
+	bsr.w statusMessage
+	bra.w tokenizeDone
 
-tkpkgTokenizerRender
+render
 	move.w d1, LastTokenCount
 	move.w d3, LastLexemeLen
-	bsr.w tkpkgTokenizerVmValidateResultV1
+	bsr.w validateResult
 	tst.b d0
-	bne.w tkpkgTokenizerInvalidProgram
-	bsr.w tkpkgTokenizerVmRenderOutputV1
+	bne.w invalidProgram
+	bsr.w renderOutput
+	bra.w tokenizeDone
 
-tkpkgTokenizerDone
+invalidProgram
+	lea InvalidProgramText, a1
+	moveq #INVALID_PROGRAM_TEXT_LEN, d1
+	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	bra.w tokenizeDone
+
+badProgramHeader
+	lea BadProgramHeaderText, a1
+	moveq #BAD_PROGRAM_HEADER_TEXT_LEN, d1
+	moveq #STATUS_RUNTIME_ERROR_V1, d0
+
+tokenizeDone
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
+	.bend  ; tkpkgTokenizerVmTokenizeLineV1
+	.priv
 
 ; Read the line-number-prefixed tokenizer service payload.
-tkpkgTokenizerVmReadLinePayloadV1
+readLinePayload	.block
 	moveq #0, d0
 	move.b CB_INPUT_LEN(a0), d0
 	moveq #0, d1
@@ -363,7 +378,7 @@ tkpkgTokenizerVmReadLinePayloadV1
 	lsl.w #8, d1
 	or.w d1, d0
 	cmpi.w #4, d0
-	blo.s tkpkgTokenizerBadPayload
+	blo.s badPayload
 	move.w d0, d4
 	subq.w #4, d4
 	moveq #0, d0
@@ -373,7 +388,7 @@ tkpkgTokenizerVmReadLinePayloadV1
 	lsl.w #8, d1
 	or.w d1, d0
 	tst.w d0
-	beq.s tkpkgTokenizerBadPayload
+	beq.s badPayload
 	lea 0(a0, d0.W), a4
 	moveq #0, d6
 	move.b (a4)+, d6
@@ -395,14 +410,15 @@ tkpkgTokenizerVmReadLinePayloadV1
 	moveq #0, d0
 	rts
 
-tkpkgTokenizerBadPayload
+badPayload
 	lea BadPayloadText, a1
 	moveq #BAD_PAYLOAD_TEXT_LEN, d1
 	moveq #STATUS_BAD_REQUEST_V1, d0
 	rts
+	.bend  ; readLinePayload
 
 ; Decode the active TKVM package record and expose program bytes/state table.
-tkpkgTokenizerVmReadProgramV1
+readProgram	.block
 	lea ActiveTokenizerVmOffsetLo, a1
 	moveq #0, d0
 	move.b (a1)+, d0
@@ -417,37 +433,37 @@ tkpkgTokenizerVmReadProgramV1
 	lsl.w #8, d1
 	or.w d1, d2
 	tst.w d2
-	beq.w tkpkgTokenizerInvalidProgram
+	beq.w invalidProgram
 	lea PackageStorage, a2
 	lea 0(a2, d0.W), a2
 	movea.l a2, a6
 	adda.l d2, a6
 	moveq #1, d0
-	bsr.w tkpkgTokenizerVmRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	addq.w #1, a2
-	bsr.w tkpkgTokenizerVmSkipStringV1
+	bsr.w skipString
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
-	bsr.w tkpkgTokenizerVmReadU16LeV1
+	bne.w invalidProgram
+	bsr.w readU16Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	cmpi.w #TKVM_OPCODE_VERSION_V1, d0
-	bne.w tkpkgTokenizerInvalidProgram
-	bsr.w tkpkgTokenizerVmReadU16LeV1
+	bne.w invalidProgram
+	bsr.w readU16Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	move.b d0, ActiveTokenizerVmStartStateLo
 	lsr.w #8, d0
 	move.b d0, ActiveTokenizerVmStartStateHi
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+	bsr.w readU32Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	tst.l d0
-	beq.w tkpkgTokenizerInvalidProgram
+	beq.w invalidProgram
 	cmpi.l #TOKENIZER_VM_STATE_TABLE_CAPACITY, d0
-	bhi.w tkpkgTokenizerInvalidProgram
+	bhi.w invalidProgram
 	move.b d0, ActiveTokenizerVmStateCountLo
 	lsr.l #8, d0
 	move.b d0, ActiveTokenizerVmStateCountHi
@@ -461,74 +477,74 @@ tkpkgTokenizerVmReadProgramV1
 	lea ActiveTokenizerVmStateTable, a3
 	subq.w #1, d7
 
-tkpkgTokenizerSkipStateOffsets
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+skipStateOffsets
+	bsr.w readU32Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	move.l d0, (a3)+
-	dbf d7, tkpkgTokenizerSkipStateOffsets
-	bsr.w tkpkgTokenizerVmReadU16LeV1
+	dbf d7, skipStateOffsets
+	bsr.w readU16Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	cmpi.w #TKVM_STREAM_VERSION_V1, d0
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	moveq #1, d0
-	bsr.w tkpkgTokenizerVmRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	moveq #0, d0
 	move.b (a2)+, d0
 	cmpi.b #TKVM_STREAM_MODE_LINE, d0
-	bne.w tkpkgTokenizerInvalidProgram
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+	bne.w invalidProgram
+	bsr.w readU32Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	move.l d0, d5
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+	bsr.w readU32Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+	bne.w invalidProgram
+	bsr.w readU32Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+	bne.w invalidProgram
+	bsr.w readU32Le
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	move.l d0, ActiveTokenizerVmMaxErrorsPerLine
 	lea ActiveTokenizerVmInvalidCharDiagCode, a3
 	lea ActiveTokenizerVmInvalidCharDiagLen, a1
-	bsr.w tkpkgTokenizerVmReadStringIntoSlotV1
+	bsr.w readStringIntoSlot
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	lea ActiveTokenizerVmUnterminatedStringDiagCode, a3
 	lea ActiveTokenizerVmUnterminatedStringDiagLen, a1
-	bsr.w tkpkgTokenizerVmReadStringIntoSlotV1
+	bsr.w readStringIntoSlot
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	lea ActiveTokenizerVmStepLimitDiagCode, a3
 	lea ActiveTokenizerVmStepLimitDiagLen, a1
-	bsr.w tkpkgTokenizerVmReadStringIntoSlotV1
+	bsr.w readStringIntoSlot
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	lea ActiveTokenizerVmTokenLimitDiagCode, a3
 	lea ActiveTokenizerVmTokenLimitDiagLen, a1
-	bsr.w tkpkgTokenizerVmReadStringIntoSlotV1
+	bsr.w readStringIntoSlot
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	lea ActiveTokenizerVmLexemeLimitDiagCode, a3
 	lea ActiveTokenizerVmLexemeLimitDiagLen, a1
-	bsr.w tkpkgTokenizerVmReadStringIntoSlotV1
+	bsr.w readStringIntoSlot
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	lea ActiveTokenizerVmErrorLimitDiagCode, a3
 	lea ActiveTokenizerVmErrorLimitDiagLen, a1
-	bsr.w tkpkgTokenizerVmReadStringIntoSlotV1
+	bsr.w readStringIntoSlot
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
-	bsr.w tkpkgTokenizerVmReadBytesFieldV1
+	bne.w invalidProgram
+	bsr.w readBytesField
 	tst.b d1
-	bne.w tkpkgTokenizerInvalidProgram
+	bne.w invalidProgram
 	tst.w d3
-	beq.w tkpkgTokenizerInvalidProgram
+	beq.w invalidProgram
 	moveq #0, d0
 	move.b ActiveTokenizerVmStartStateLo, d0
 	moveq #0, d1
@@ -542,137 +558,133 @@ tkpkgTokenizerSkipStateOffsets
 	lsl.w #8, d2
 	or.w d2, d1
 	cmp.w d1, d0
-	bcc.w tkpkgTokenizerInvalidProgram
+	bcc.w invalidProgram
 	moveq #0, d0
 	rts
 
-tkpkgTokenizerInvalidProgram
+invalidProgram
 	lea InvalidProgramText, a1
 	moveq #INVALID_PROGRAM_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
-
-tkpkgTokenizerDebugBadProgramHeader
-	lea BadProgramHeaderText, a1
-	moveq #BAD_PROGRAM_HEADER_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
-	rts
+	.bend  ; readProgram
 
 ; Convert a tokvm status/failure code into the tkpkg runtime diagnostic string.
-tkpkgTokenizerVmStatusMessageV1
+statusMessage	.block
 	cmpi.b #TK_STATUS_NEWLINE_UNSUPPORTED, d0
-	beq.s tkpkgTokenizerStatusNewline
+	beq.s statusNewline
 	cmpi.b #TK_STATUS_STEP_LIMIT_EXCEEDED, d0
-	beq.s tkpkgTokenizerStatusStepLimit
+	beq.s statusStepLimit
 	cmpi.b #TK_STATUS_TOKEN_OVERFLOW, d0
-	beq.s tkpkgTokenizerStatusTokenOverflow
+	beq.s statusTokenOverflow
 	cmpi.b #TK_STATUS_LEXEME_OVERFLOW, d0
-	beq.s tkpkgTokenizerStatusLexemeOverflow
+	beq.s statusLexemeOverflow
 	cmpi.b #TK_STATUS_VM_FAILURE, d0
-	bne.s tkpkgTokenizerStatusCheckInvalidArgument
-	bra.w tkpkgTokenizerStatusVmFailure
-tkpkgTokenizerStatusCheckInvalidArgument
+	bne.s checkInvalidArgument
+	bra.w statusVmFailure
+checkInvalidArgument
 	cmpi.b #TK_STATUS_INVALID_ARGUMENT, d0
-	bne.s tkpkgTokenizerStatusFallbackInvalidProgram
-	bra.w tkpkgTokenizerStatusInvalidArgument
-tkpkgTokenizerStatusFallbackInvalidProgram
+	bne.s fallbackInvalidProgram
+	bra.w statusInvalidArgument
+fallbackInvalidProgram
 	lea InvalidProgramText, a1
 	moveq #INVALID_PROGRAM_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
-tkpkgTokenizerStatusNewline
+statusNewline
 	lea NewlineText, a1
 	moveq #NEWLINE_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
-tkpkgTokenizerStatusStepLimit
-	bsr.w tkpkgTokenizerVmBeginStatusBufferV1
+statusStepLimit
+	bsr.w beginStatusBuffer
 	moveq #2, d0
-	bsr.w tkpkgTokenizerVmGetDiagCodeV1
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w getDiagCode
+	bsr.w appendBytes
 	lea StepLimitSuffixText, a1
 	moveq #STEP_LIMIT_SUFFIX_LEN, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
-	bra.w tkpkgTokenizerVmFinishStatusBufferV1
+	bsr.w appendBytes
+	bra.w finishStatusBuffer
 
-tkpkgTokenizerStatusTokenOverflow
-	bsr.w tkpkgTokenizerVmBeginStatusBufferV1
+statusTokenOverflow
+	bsr.w beginStatusBuffer
 	moveq #3, d0
-	bsr.w tkpkgTokenizerVmGetDiagCodeV1
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w getDiagCode
+	bsr.w appendBytes
 	lea TokenOverflowSuffixText, a1
 	moveq #TOKEN_OVERFLOW_SUFFIX_LEN, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
-	bra.w tkpkgTokenizerVmFinishStatusBufferV1
+	bsr.w appendBytes
+	bra.w finishStatusBuffer
 
-tkpkgTokenizerStatusLexemeOverflow
-	bsr.w tkpkgTokenizerVmBeginStatusBufferV1
+statusLexemeOverflow
+	bsr.w beginStatusBuffer
 	moveq #4, d0
-	bsr.w tkpkgTokenizerVmGetDiagCodeV1
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w getDiagCode
+	bsr.w appendBytes
 	lea LexemeOverflowSuffixText, a1
 	moveq #LEXEME_OVERFLOW_SUFFIX_LEN, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
-	bra.w tkpkgTokenizerVmFinishStatusBufferV1
+	bsr.w appendBytes
+	bra.w finishStatusBuffer
 
-tkpkgTokenizerStatusVmFailure
+statusVmFailure
 	jsr tokvmReadLastFailure68000
 	cmpi.w #TK_VM_FAILURE_KIND_FAIL, d0
-	beq.w tkpkgTokenizerStatusVmFailReason
+	beq.w statusVmFailReason
 	cmpi.w #TK_VM_FAILURE_KIND_EMIT_DIAG, d0
-	beq.w tkpkgTokenizerStatusVmEmitDiag
+	beq.w statusVmEmitDiag
 	lea VmFailureFallbackText, a1
 	moveq #VM_FAILURE_FALLBACK_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
-tkpkgTokenizerStatusVmFailReason
-	bsr.w tkpkgTokenizerVmBeginStatusBufferV1
+statusVmFailReason
+	bsr.w beginStatusBuffer
 	move.l d1, d6
 	moveq #0, d0
-	bsr.w tkpkgTokenizerVmGetDiagCodeV1
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w getDiagCode
+	bsr.w appendBytes
 	lea VmFailureReasonSuffixText, a1
 	moveq #VM_FAILURE_REASON_SUFFIX_LEN, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	move.l d6, d0
-	bsr.w tkpkgTokenizerVmAppendU32V1
-	bra.w tkpkgTokenizerVmFinishStatusBufferV1
+	bsr.w appendU32
+	bra.w finishStatusBuffer
 
-tkpkgTokenizerStatusVmEmitDiag
+statusVmEmitDiag
 	move.l d1, d6
 	tst.l ActiveTokenizerVmMaxErrorsPerLine
-	beq.s tkpkgTokenizerStatusVmDiagBudgetExceeded
-	bsr.w tkpkgTokenizerVmBeginStatusBufferV1
+	beq.s statusVmDiagBudgetExceeded
+	bsr.w beginStatusBuffer
 	move.l d6, d0
-	bsr.w tkpkgTokenizerVmGetDiagCodeV1
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w getDiagCode
+	bsr.w appendBytes
 	lea VmEmitDiagSuffixText, a1
 	moveq #VM_EMIT_DIAG_SUFFIX_LEN, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	move.l d6, d0
-	bsr.w tkpkgTokenizerVmAppendU32V1
-	bra.w tkpkgTokenizerVmFinishStatusBufferV1
+	bsr.w appendU32
+	bra.w finishStatusBuffer
 
-tkpkgTokenizerStatusVmDiagBudgetExceeded
-	bsr.w tkpkgTokenizerVmBeginStatusBufferV1
+statusVmDiagBudgetExceeded
+	bsr.w beginStatusBuffer
 	moveq #5, d0
-	bsr.w tkpkgTokenizerVmGetDiagCodeV1
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w getDiagCode
+	bsr.w appendBytes
 	lea VmDiagBudgetExceededText, a1
 	moveq #VM_DIAG_BUDGET_EXCEEDED_LEN, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
-	bra.w tkpkgTokenizerVmFinishStatusBufferV1
+	bsr.w appendBytes
+	bra.w finishStatusBuffer
 
-tkpkgTokenizerStatusInvalidArgument
+statusInvalidArgument
 	lea InvalidArgumentText, a1
 	moveq #INVALID_ARGUMENT_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	rts
+	.bend  ; statusMessage
 
-tkpkgTokenizerVmBeginStatusBufferV1
+beginStatusBuffer	.block
 	move.l (sp)+, d0
 	suba.l #LOCAL_SIZE, sp
 	move.l d0, -(sp)
@@ -681,125 +693,129 @@ tkpkgTokenizerVmBeginStatusBufferV1
 	clr.l LOCAL_OUTPUT_OVERFLOW(a4)
 	clr.b LastErrorBuffer
 	rts
+	.bend  ; beginStatusBuffer
 
-tkpkgTokenizerVmFinishStatusBufferV1
+finishStatusBuffer	.block
 	tst.l LOCAL_OUTPUT_OVERFLOW(a4)
-	bne.s tkpkgTokenizerFinishStatusOverflow
+	bne.s finishStatusOverflow
 	lea LastErrorBuffer, a1
 	move.l LOCAL_OUTPUT_LEN(a4), d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	adda.l #LOCAL_SIZE, sp
 	rts
 
-tkpkgTokenizerFinishStatusOverflow
+finishStatusOverflow
 	lea OutputOverflowText, a1
 	moveq #OUTPUT_OVERFLOW_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	adda.l #LOCAL_SIZE, sp
 	rts
+	.bend  ; finishStatusBuffer
 
-tkpkgTokenizerVmGetDiagCodeV1
+getDiagCode	.block
 	cmpi.b #1, d0
-	beq.s tkpkgTokenizerDiagUnterminatedString
+	beq.s diagUnterminatedString
 	cmpi.b #2, d0
-	beq.s tkpkgTokenizerDiagStepLimit
+	beq.s diagStepLimit
 	cmpi.b #3, d0
-	beq.s tkpkgTokenizerDiagTokenLimit
+	beq.s diagTokenLimit
 	cmpi.b #4, d0
-	beq.s tkpkgTokenizerDiagLexemeLimit
+	beq.s diagLexemeLimit
 	cmpi.b #5, d0
-	beq.s tkpkgTokenizerDiagErrorLimit
+	beq.s diagErrorLimit
 	lea ActiveTokenizerVmInvalidCharDiagCode, a1
 	moveq #0, d2
 	move.b ActiveTokenizerVmInvalidCharDiagLen, d2
 	rts
 
-tkpkgTokenizerDiagUnterminatedString
+diagUnterminatedString
 	lea ActiveTokenizerVmUnterminatedStringDiagCode, a1
 	moveq #0, d2
 	move.b ActiveTokenizerVmUnterminatedStringDiagLen, d2
 	rts
 
-tkpkgTokenizerDiagStepLimit
+diagStepLimit
 	lea ActiveTokenizerVmStepLimitDiagCode, a1
 	moveq #0, d2
 	move.b ActiveTokenizerVmStepLimitDiagLen, d2
 	rts
 
-tkpkgTokenizerDiagTokenLimit
+diagTokenLimit
 	lea ActiveTokenizerVmTokenLimitDiagCode, a1
 	moveq #0, d2
 	move.b ActiveTokenizerVmTokenLimitDiagLen, d2
 	rts
 
-tkpkgTokenizerDiagLexemeLimit
+diagLexemeLimit
 	lea ActiveTokenizerVmLexemeLimitDiagCode, a1
 	moveq #0, d2
 	move.b ActiveTokenizerVmLexemeLimitDiagLen, d2
 	rts
 
-tkpkgTokenizerDiagErrorLimit
+diagErrorLimit
 	lea ActiveTokenizerVmErrorLimitDiagCode, a1
 	moveq #0, d2
 	move.b ActiveTokenizerVmErrorLimitDiagLen, d2
 	rts
+	.bend  ; getDiagCode
 
 ; Validate tokvm output counts and spans before rendering report bytes.
-tkpkgTokenizerVmValidateResultV1
+validateResult	.block
 	movem.l d1-d7/a0, -(sp)
 	cmp.l #TOKEN_BUFFER_CAPACITY, d1
-	bhi.s tkpkgTokenizerValidateInvalid
+	bhi.s validateInvalid
 	cmp.l d4, d2
-	bhi.s tkpkgTokenizerValidateInvalid
+	bhi.s validateInvalid
 	cmp.l #TOKEN_SCRATCH_CAPACITY, d3
-	bhi.s tkpkgTokenizerValidateInvalid
+	bhi.s validateInvalid
 	lea TokenRecordBuffer, a0
 	moveq #0, d5
 
-tkpkgTokenizerValidateLoop
+validateLoop
 	cmp.l d1, d5
-	bcc.s tkpkgTokenizerValidateOk
+	bcc.s validateOk
 	moveq #0, d0
 	move.w (a0), d0
 	cmpi.l #TK_KIND_OP_LT, d0
-	bgt.s tkpkgTokenizerValidateInvalid
+	bgt.s validateInvalid
 	move.l 4(a0), d6
 	tst.l d6
-	beq.s tkpkgTokenizerValidateInvalid
+	beq.s validateInvalid
 	move.l d4, d7
 	addq.l #1, d7
 	cmp.l d7, d6
-	bhi.s tkpkgTokenizerValidateInvalid
+	bhi.s validateInvalid
 	move.l 8(a0), d6
 	tst.l d6
-	beq.s tkpkgTokenizerValidateInvalid
+	beq.s validateInvalid
 	cmp.l d7, d6
-	bhi.s tkpkgTokenizerValidateInvalid
+	bhi.s validateInvalid
 	cmp.l 4(a0), d6
-	blt.s tkpkgTokenizerValidateInvalid
+	blt.s validateInvalid
 	move.l 12(a0), d6
 	cmp.l d3, d6
-	bhi.s tkpkgTokenizerValidateInvalid
+	bhi.s validateInvalid
 	move.l 16(a0), d7
 	add.l d6, d7
 	cmp.l d3, d7
-	bhi.s tkpkgTokenizerValidateInvalid
+	bhi.s validateInvalid
 	adda.l #TOKEN_RECORD_SIZE, a0
 	addq.l #1, d5
-	bra.s tkpkgTokenizerValidateLoop
+	bra.s validateLoop
 
-tkpkgTokenizerValidateOk
+validateOk
 	moveq #0, d0
 	movem.l (sp)+, d1-d7/a0
 	rts
 
-tkpkgTokenizerValidateInvalid
+validateInvalid
 	moveq #1, d0
 	movem.l (sp)+, d1-d7/a0
 	rts
+	.bend  ; validateResult
 
 ; Render token records into the line-oriented tkpkg tokenizer service output.
-tkpkgTokenizerVmRenderOutputV1
+renderOutput	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	suba.l #LOCAL_SIZE, sp
 	lea 0(sp), a4
@@ -810,11 +826,11 @@ tkpkgTokenizerVmRenderOutputV1
 	clr.b LastErrorBuffer
 	moveq #0, d6
 
-tkpkgTokenizerRenderLoop
+renderLoop
 	cmp.l d7, d6
-	bcc.s tkpkgTokenizerRenderDone
+	bcc.s renderDone
 	move.l d6, d0
-	bsr.w tkpkgTokenizerVmRecordPtrV1
+	bsr.w recordPtr
 	movea.l a0, a5
 	moveq #0, d0
 	move.w (a5), d0
@@ -822,549 +838,558 @@ tkpkgTokenizerRenderLoop
 	move.l 16(a5), d3
 	lea TokenScratchBuffer, a6
 	adda.l d2, a6
-	bsr.w tkpkgTokenizerVmAppendKindDebugV1
-	bsr.w tkpkgTokenizerVmAppendLiteralAtV1
+	bsr.w appendKindDebug
+	bsr.w appendLiteralAt
 	move.l LOCAL_RENDER_LINE(a4), d0
-	bsr.w tkpkgTokenizerVmAppendU32V1
-	bsr.w tkpkgTokenizerVmAppendLiteralColonV1
+	bsr.w appendU32
+	bsr.w appendLiteralColon
 	move.l 4(a5), d0
-	bsr.w tkpkgTokenizerVmAppendU32V1
-	bsr.w tkpkgTokenizerVmAppendLiteralDashV1
+	bsr.w appendU32
+	bsr.w appendLiteralDash
 	move.l 8(a5), d0
-	bsr.w tkpkgTokenizerVmAppendU32V1
-	bsr.w tkpkgTokenizerVmAppendLiteralNewlineV1
+	bsr.w appendU32
+	bsr.w appendLiteralNewline
 	tst.l LOCAL_OUTPUT_OVERFLOW(a4)
-	bne.s tkpkgTokenizerRenderOverflow
+	bne.s renderOverflow
 	addq.l #1, d6
-	bra.s tkpkgTokenizerRenderLoop
+	bra.s renderLoop
 
-tkpkgTokenizerRenderDone
+renderDone
 	move.l LOCAL_OUTPUT_LEN(a4), d1
 	moveq #0, d0
 	adda.l #LOCAL_SIZE, sp
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 
-tkpkgTokenizerRenderOverflow
+renderOverflow
 	lea OutputOverflowText, a1
 	moveq #OUTPUT_OVERFLOW_TEXT_LEN, d1
 	moveq #STATUS_RUNTIME_ERROR_V1, d0
 	adda.l #LOCAL_SIZE, sp
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
+	.bend  ; renderOutput
 
-tkpkgTokenizerVmAppendKindDebugV1
+appendKindDebug	.block
 	cmpi.w #TK_KIND_IDENTIFIER, d0
-	beq.w tkpkgTokenizerAppendIdentifier
+	beq.w appendIdentifier
 	cmpi.w #TK_KIND_NUMBER, d0
-	beq.w tkpkgTokenizerAppendNumber
+	beq.w appendNumber
 	cmpi.w #TK_KIND_STRING, d0
-	beq.w tkpkgTokenizerAppendString
+	beq.w appendString
 	cmpi.w #TK_KIND_COMMA, d0
-	beq.w tkpkgTokenizerAppendBareComma
+	beq.w appendBareComma
 	cmpi.w #TK_KIND_COLON, d0
-	beq.w tkpkgTokenizerAppendBareColon
+	beq.w appendBareColon
 	cmpi.w #TK_KIND_DOLLAR, d0
-	beq.w tkpkgTokenizerAppendBareDollar
+	beq.w appendBareDollar
 	cmpi.w #TK_KIND_DOT, d0
-	beq.w tkpkgTokenizerAppendBareDot
+	beq.w appendBareDot
 	cmpi.w #TK_KIND_HASH, d0
-	beq.w tkpkgTokenizerAppendBareHash
+	beq.w appendBareHash
 	cmpi.w #TK_KIND_QUESTION, d0
-	beq.w tkpkgTokenizerAppendBareQuestion
+	beq.w appendBareQuestion
 	cmpi.w #TK_KIND_OPEN_BRACKET, d0
-	beq.w tkpkgTokenizerAppendBareOpenBracket
+	beq.w appendBareOpenBracket
 	cmpi.w #TK_KIND_CLOSE_BRACKET, d0
-	beq.w tkpkgTokenizerAppendBareCloseBracket
+	beq.w appendBareCloseBracket
 	cmpi.w #TK_KIND_OPEN_BRACE, d0
-	beq.w tkpkgTokenizerAppendBareOpenBrace
+	beq.w appendBareOpenBrace
 	cmpi.w #TK_KIND_CLOSE_BRACE, d0
-	beq.w tkpkgTokenizerAppendBareCloseBrace
+	beq.w appendBareCloseBrace
 	cmpi.w #TK_KIND_OPEN_PAREN, d0
-	beq.w tkpkgTokenizerAppendBareOpenParen
+	beq.w appendBareOpenParen
 	cmpi.w #TK_KIND_CLOSE_PAREN, d0
-	beq.w tkpkgTokenizerAppendBareCloseParen
-	bra.w tkpkgTokenizerAppendOperator
+	beq.w appendBareCloseParen
+	bra.w appendOperator
 
-tkpkgTokenizerAppendIdentifier
+appendIdentifier
 	lea IdentifierPrefix, a1
 	moveq #11, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	movea.l a6, a1
-	bsr.w tkpkgTokenizerVmAppendQuotedV1
-	bra.w tkpkgTokenizerVmAppendLiteralCloseParenV1
+	bsr.w appendQuoted
+	bra.w appendLiteralCloseParen
 
-tkpkgTokenizerAppendNumber
+appendNumber
 	lea NumberPrefix, a1
 	moveq #15, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	movea.l a6, a1
-	bsr.w tkpkgTokenizerVmAppendUpperQuotedV1
+	bsr.w appendUpperQuoted
 	lea NumberBasePrefix, a1
 	moveq #8, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	moveq #10, d0
 	tst.l d3
-	beq.s tkpkgTokenizerAppendNumberBaseDone
+	beq.s appendNumberBaseDone
 	moveq #0, d1
 	move.b (a6), d1
 	cmpi.b #'$', d1
-	beq.s tkpkgTokenizerAppendNumberHex
+	beq.s appendNumberHex
 	cmpi.b #'%', d1
-	beq.s tkpkgTokenizerAppendNumberBin
+	beq.s appendNumberBin
 	moveq #0, d2
 	movea.l a6, a1
 	adda.l d3, a1
 	subq.l #1, a1
 	move.b (a1), d2
 	cmpi.b #'a', d2
-	blo.s tkpkgTokenizerAppendNumberSuffix
+	blo.s appendNumberSuffix
 	cmpi.b #'z', d2
-	bhi.s tkpkgTokenizerAppendNumberSuffix
+	bhi.s appendNumberSuffix
 	andi.b #$DF, d2
-tkpkgTokenizerAppendNumberSuffix
+appendNumberSuffix
 	cmpi.b #'H', d2
-	beq.s tkpkgTokenizerAppendNumberHex
+	beq.s appendNumberHex
 	cmpi.b #'B', d2
-	beq.s tkpkgTokenizerAppendNumberBin
+	beq.s appendNumberBin
 	cmpi.b #'O', d2
-	beq.s tkpkgTokenizerAppendNumberOct
+	beq.s appendNumberOct
 	cmpi.b #'Q', d2
-	bne.s tkpkgTokenizerAppendNumberBaseDone
-tkpkgTokenizerAppendNumberOct
+	bne.s appendNumberBaseDone
+appendNumberOct
 	moveq #8, d0
-	bra.s tkpkgTokenizerAppendNumberBaseDone
-tkpkgTokenizerAppendNumberHex
+	bra.s appendNumberBaseDone
+appendNumberHex
 	moveq #16, d0
-	bra.s tkpkgTokenizerAppendNumberBaseDone
-tkpkgTokenizerAppendNumberBin
+	bra.s appendNumberBaseDone
+appendNumberBin
 	moveq #2, d0
-tkpkgTokenizerAppendNumberBaseDone
-	bsr.w tkpkgTokenizerVmAppendU32V1
+appendNumberBaseDone
+	bsr.w appendU32
 	lea StringSuffix, a1
 	addq.l #1, a1
 	moveq #2, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	rts
 
-tkpkgTokenizerAppendString
+appendString
 	lea StringPrefix, a1
 	moveq #14, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	movea.l a6, a1
-	bsr.w tkpkgTokenizerVmAppendStringRawV1
+	bsr.w appendStringRaw
 	lea StringBytesPrefix, a1
 	moveq #10, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	movea.l a6, a1
-	bsr.w tkpkgTokenizerVmAppendByteListV1
+	bsr.w appendByteList
 	lea StringSuffix, a1
 	moveq #3, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	rts
 
-tkpkgTokenizerAppendBareComma
+appendBareComma
 	lea KindCommaText, a1
 	moveq #5, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareColon
+	bra.w appendBytes
+appendBareColon
 	lea KindColonText, a1
 	moveq #5, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareDollar
+	bra.w appendBytes
+appendBareDollar
 	lea KindDollarText, a1
 	moveq #6, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareDot
+	bra.w appendBytes
+appendBareDot
 	lea KindDotText, a1
 	moveq #3, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareHash
+	bra.w appendBytes
+appendBareHash
 	lea KindHashText, a1
 	moveq #4, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareQuestion
+	bra.w appendBytes
+appendBareQuestion
 	lea KindQuestionText, a1
 	moveq #8, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareOpenBracket
+	bra.w appendBytes
+appendBareOpenBracket
 	lea KindOpenBracketText, a1
 	moveq #11, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareCloseBracket
+	bra.w appendBytes
+appendBareCloseBracket
 	lea KindCloseBracketText, a1
 	moveq #12, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareOpenBrace
+	bra.w appendBytes
+appendBareOpenBrace
 	lea KindOpenBraceText, a1
 	moveq #9, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareCloseBrace
+	bra.w appendBytes
+appendBareCloseBrace
 	lea KindCloseBraceText, a1
 	moveq #10, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareOpenParen
+	bra.w appendBytes
+appendBareOpenParen
 	lea KindOpenParenText, a1
 	moveq #9, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerAppendBareCloseParen
+	bra.w appendBytes
+appendBareCloseParen
 	lea KindCloseParenText, a1
 	moveq #10, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
+	bra.w appendBytes
 
-tkpkgTokenizerAppendOperator
+appendOperator
 	move.l d0, -(sp)
 	lea OperatorPrefix, a1
 	moveq #9, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	move.l (sp)+, d0
-	bsr.w tkpkgTokenizerVmAppendOperatorNameV1
-	bra.w tkpkgTokenizerVmAppendLiteralCloseParenV1
+	bsr.w appendOperatorName
+	bra.w appendLiteralCloseParen
 
-tkpkgTokenizerVmAppendOperatorNameV1
+appendOperatorName
 	cmpi.w #TK_KIND_OP_RANGE, d0
-	beq.w tkpkgTokenizerOpRange
+	beq.w opRange
 	cmpi.w #TK_KIND_OP_RANGE_INCLUSIVE, d0
-	beq.w tkpkgTokenizerOpRangeInclusive
+	beq.w opRangeInclusive
 	cmpi.w #TK_KIND_OP_PLUS, d0
-	beq.w tkpkgTokenizerOpPlus
+	beq.w opPlus
 	cmpi.w #TK_KIND_OP_MINUS, d0
-	beq.w tkpkgTokenizerOpMinus
+	beq.w opMinus
 	cmpi.w #TK_KIND_OP_MULTIPLY, d0
-	beq.w tkpkgTokenizerOpMultiply
+	beq.w opMultiply
 	cmpi.w #TK_KIND_OP_POWER, d0
-	beq.w tkpkgTokenizerOpPower
+	beq.w opPower
 	cmpi.w #TK_KIND_OP_DIVIDE, d0
-	beq.w tkpkgTokenizerOpDivide
+	beq.w opDivide
 	cmpi.w #TK_KIND_OP_MOD, d0
-	beq.w tkpkgTokenizerOpMod
+	beq.w opMod
 	cmpi.w #TK_KIND_OP_SHL, d0
-	beq.w tkpkgTokenizerOpShl
+	beq.w opShl
 	cmpi.w #TK_KIND_OP_SHR, d0
-	beq.w tkpkgTokenizerOpShr
+	beq.w opShr
 	cmpi.w #TK_KIND_OP_BIT_NOT, d0
-	beq.w tkpkgTokenizerOpBitNot
+	beq.w opBitNot
 	cmpi.w #TK_KIND_OP_LOGIC_NOT, d0
-	beq.w tkpkgTokenizerOpLogicNot
+	beq.w opLogicNot
 	cmpi.w #TK_KIND_OP_BIT_AND, d0
-	beq.w tkpkgTokenizerOpBitAnd
+	beq.w opBitAnd
 	cmpi.w #TK_KIND_OP_BIT_OR, d0
-	beq.w tkpkgTokenizerOpBitOr
+	beq.w opBitOr
 	cmpi.w #TK_KIND_OP_BIT_XOR, d0
-	beq.w tkpkgTokenizerOpBitXor
+	beq.w opBitXor
 	cmpi.w #TK_KIND_OP_LOGIC_AND, d0
-	beq.w tkpkgTokenizerOpLogicAnd
+	beq.w opLogicAnd
 	cmpi.w #TK_KIND_OP_LOGIC_OR, d0
-	beq.w tkpkgTokenizerOpLogicOr
+	beq.w opLogicOr
 	cmpi.w #TK_KIND_OP_LOGIC_XOR, d0
-	beq.w tkpkgTokenizerOpLogicXor
+	beq.w opLogicXor
 	cmpi.w #TK_KIND_OP_EQ, d0
-	beq.w tkpkgTokenizerOpEq
+	beq.w opEq
 	cmpi.w #TK_KIND_OP_NE, d0
-	beq.w tkpkgTokenizerOpNe
+	beq.w opNe
 	cmpi.w #TK_KIND_OP_GE, d0
-	beq.w tkpkgTokenizerOpGe
+	beq.w opGe
 	cmpi.w #TK_KIND_OP_GT, d0
-	beq.w tkpkgTokenizerOpGt
+	beq.w opGt
 	cmpi.w #TK_KIND_OP_LE, d0
-	beq.w tkpkgTokenizerOpLe
+	beq.w opLe
 	lea OpLtText, a1
 	moveq #2, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpRange
+	bra.w appendBytes
+opRange
 	lea OpRangeText, a1
 	moveq #5, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpRangeInclusive
+	bra.w appendBytes
+opRangeInclusive
 	lea OpRangeInclusiveText, a1
 	moveq #14, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpPlus
+	bra.w appendBytes
+opPlus
 	lea OpPlusText, a1
 	moveq #4, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpMinus
+	bra.w appendBytes
+opMinus
 	lea OpMinusText, a1
 	moveq #5, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpMultiply
+	bra.w appendBytes
+opMultiply
 	lea OpMultiplyText, a1
 	moveq #8, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpPower
+	bra.w appendBytes
+opPower
 	lea OpPowerText, a1
 	moveq #5, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpDivide
+	bra.w appendBytes
+opDivide
 	lea OpDivideText, a1
 	moveq #6, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpMod
+	bra.w appendBytes
+opMod
 	lea OpModText, a1
 	moveq #3, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpShl
+	bra.w appendBytes
+opShl
 	lea OpShlText, a1
 	moveq #3, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpShr
+	bra.w appendBytes
+opShr
 	lea OpShrText, a1
 	moveq #3, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpBitNot
+	bra.w appendBytes
+opBitNot
 	lea OpBitNotText, a1
 	moveq #6, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpLogicNot
+	bra.w appendBytes
+opLogicNot
 	lea OpLogicNotText, a1
 	moveq #8, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpBitAnd
+	bra.w appendBytes
+opBitAnd
 	lea OpBitAndText, a1
 	moveq #6, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpBitOr
+	bra.w appendBytes
+opBitOr
 	lea OpBitOrText, a1
 	moveq #5, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpBitXor
+	bra.w appendBytes
+opBitXor
 	lea OpBitXorText, a1
 	moveq #6, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpLogicAnd
+	bra.w appendBytes
+opLogicAnd
 	lea OpLogicAndText, a1
 	moveq #8, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpLogicOr
+	bra.w appendBytes
+opLogicOr
 	lea OpLogicOrText, a1
 	moveq #7, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpLogicXor
+	bra.w appendBytes
+opLogicXor
 	lea OpLogicXorText, a1
 	moveq #8, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpEq
+	bra.w appendBytes
+opEq
 	lea OpEqText, a1
 	moveq #2, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpNe
+	bra.w appendBytes
+opNe
 	lea OpNeText, a1
 	moveq #2, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpGe
+	bra.w appendBytes
+opGe
 	lea OpGeText, a1
 	moveq #2, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpGt
+	bra.w appendBytes
+opGt
 	lea OpGtText, a1
 	moveq #2, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
-tkpkgTokenizerOpLe
+	bra.w appendBytes
+opLe
 	lea OpLeText, a1
 	moveq #2, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
+	bra.w appendBytes
+	.bend  ; appendKindDebug
 
-tkpkgTokenizerVmAppendQuotedV1
+appendQuoted	.block
 	movem.l d0-d1/d5, -(sp)
 	moveq #'"', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	move.l d3, d5
-	beq.s tkpkgTokenizerQuotedClose
+	beq.s quotedClose
 
-tkpkgTokenizerQuotedLoop
+quotedLoop
 	moveq #0, d0
 	move.b (a1)+, d0
-	bsr.w tkpkgTokenizerVmAppendEscapedCharV1
+	bsr.w appendEscapedChar
 	subq.l #1, d5
-	bne.s tkpkgTokenizerQuotedLoop
+	bne.s quotedLoop
 
-tkpkgTokenizerQuotedClose
+quotedClose
 	moveq #'"', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	movem.l (sp)+, d0-d1/d5
 	rts
+	.bend  ; appendQuoted
 
-tkpkgTokenizerVmAppendUpperQuotedV1
+appendUpperQuoted	.block
 	movem.l d0-d1/d5, -(sp)
 	moveq #'"', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	move.l d3, d5
-	beq.s tkpkgTokenizerUpperQuotedClose
+	beq.s upperQuotedClose
 
-tkpkgTokenizerUpperQuotedLoop
+upperQuotedLoop
 	moveq #0, d0
 	move.b (a1)+, d0
 	cmpi.b #'a', d0
-	blo.s tkpkgTokenizerUpperQuotedEmit
+	blo.s upperQuotedEmit
 	cmpi.b #'z', d0
-	bhi.s tkpkgTokenizerUpperQuotedEmit
+	bhi.s upperQuotedEmit
 	andi.b #$DF, d0
-tkpkgTokenizerUpperQuotedEmit
-	bsr.w tkpkgTokenizerVmAppendEscapedCharV1
+upperQuotedEmit
+	bsr.w appendEscapedChar
 	subq.l #1, d5
-	bne.s tkpkgTokenizerUpperQuotedLoop
+	bne.s upperQuotedLoop
 
-tkpkgTokenizerUpperQuotedClose
+upperQuotedClose
 	moveq #'"', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	movem.l (sp)+, d0-d1/d5
 	rts
+	.bend  ; appendUpperQuoted
 
-tkpkgTokenizerVmAppendStringRawV1
+appendStringRaw	.block
 	movem.l d0-d1/d5/a1, -(sp)
 	moveq #'"', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	moveq #'"', d0
-	bsr.w tkpkgTokenizerVmAppendEscapedCharV1
+	bsr.w appendEscapedChar
 	move.l d3, d5
-	beq.s tkpkgTokenizerStringRawClose
+	beq.s stringRawClose
 
-tkpkgTokenizerStringRawLoop
+stringRawLoop
 	moveq #0, d0
 	move.b (a1)+, d0
-	bsr.w tkpkgTokenizerVmAppendEscapedCharV1
+	bsr.w appendEscapedChar
 	subq.l #1, d5
-	bne.s tkpkgTokenizerStringRawLoop
+	bne.s stringRawLoop
 
-tkpkgTokenizerStringRawClose
+stringRawClose
 	moveq #'"', d0
-	bsr.w tkpkgTokenizerVmAppendEscapedCharV1
+	bsr.w appendEscapedChar
 	moveq #'"', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	movem.l (sp)+, d0-d1/d5/a1
 	rts
+	.bend  ; appendStringRaw
 
-tkpkgTokenizerVmAppendByteListV1
+appendByteList	.block
 	movem.l d0-d1/d5/a1, -(sp)
 	move.l d3, d5
-	beq.s tkpkgTokenizerByteListDone
+	beq.s byteListDone
 
-tkpkgTokenizerByteListLoop
+byteListLoop
 	moveq #0, d0
 	move.b (a1)+, d0
-	bsr.w tkpkgTokenizerVmAppendU32V1
+	bsr.w appendU32
 	subq.l #1, d5
-	beq.s tkpkgTokenizerByteListDone
+	beq.s byteListDone
 	move.l a1, -(sp)
 	lea CommaSpaceText, a1
 	moveq #2, d2
-	bsr.w tkpkgTokenizerVmAppendBytesV1
+	bsr.w appendBytes
 	movea.l (sp)+, a1
-	bra.s tkpkgTokenizerByteListLoop
+	bra.s byteListLoop
 
-tkpkgTokenizerByteListDone
+byteListDone
 	movem.l (sp)+, d0-d1/d5/a1
 	rts
+	.bend  ; appendByteList
 
-tkpkgTokenizerVmAppendEscapedCharV1
+appendEscapedChar	.block
 	cmpi.b #'\\', d0
-	beq.s tkpkgTokenizerEscapeBackslash
+	beq.s escapeBackslash
 	cmpi.b #'"', d0
-	beq.s tkpkgTokenizerEscapeQuote
+	beq.s escapeQuote
 	cmpi.b #10, d0
-	beq.s tkpkgTokenizerEscapeLf
+	beq.s escapeLf
 	cmpi.b #13, d0
-	beq.s tkpkgTokenizerEscapeCr
+	beq.s escapeCr
 	cmpi.b #9, d0
-	beq.s tkpkgTokenizerEscapeTab
-	bra.w tkpkgTokenizerVmAppendCharV1
+	beq.s escapeTab
+	bra.w appendChar
 
-tkpkgTokenizerEscapeBackslash
+escapeBackslash
 	moveq #'\\', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	moveq #'\\', d0
-	bra.w tkpkgTokenizerVmAppendCharV1
+	bra.w appendChar
 
-tkpkgTokenizerEscapeQuote
+escapeQuote
 	moveq #'\\', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	moveq #'"', d0
-	bra.w tkpkgTokenizerVmAppendCharV1
+	bra.w appendChar
 
-tkpkgTokenizerEscapeLf
+escapeLf
 	moveq #'\\', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	moveq #'n', d0
-	bra.w tkpkgTokenizerVmAppendCharV1
+	bra.w appendChar
 
-tkpkgTokenizerEscapeCr
+escapeCr
 	moveq #'\\', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	moveq #'r', d0
-	bra.w tkpkgTokenizerVmAppendCharV1
+	bra.w appendChar
 
-tkpkgTokenizerEscapeTab
+escapeTab
 	moveq #'\\', d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	moveq #'t', d0
-	bra.w tkpkgTokenizerVmAppendCharV1
+	bra.w appendChar
+	.bend  ; appendEscapedChar
 
-tkpkgTokenizerVmAppendU32V1
+appendU32	.block
 	movem.l d1-d5/a1, -(sp)
 	lea DecimalPowers, a1
 	clr.l d4
 	moveq #9, d5
 
-tkpkgTokenizerAppendU32Loop
+appendU32Loop
 	move.l (a1)+, d2
 	moveq #0, d3
 
-tkpkgTokenizerAppendDigitCount
+appendDigitCount
 	cmp.l d2, d0
-	blo.s tkpkgTokenizerAppendDigitReady
+	blo.s appendDigitReady
 	sub.l d2, d0
 	addq.b #1, d3
-	bra.s tkpkgTokenizerAppendDigitCount
+	bra.s appendDigitCount
 
-tkpkgTokenizerAppendDigitReady
+appendDigitReady
 	tst.l d4
-	bne.s tkpkgTokenizerAppendDigitEmit
+	bne.s appendDigitEmit
 	tst.b d3
-	bne.s tkpkgTokenizerAppendDigitStart
+	bne.s appendDigitStart
 	tst.w d5
-	bne.s tkpkgTokenizerAppendDigitSkip
+	bne.s appendDigitSkip
 
-tkpkgTokenizerAppendDigitStart
+appendDigitStart
 	moveq #1, d4
 
-tkpkgTokenizerAppendDigitEmit
+appendDigitEmit
 	move.l d0, -(sp)
 	moveq #'0', d4
 	add.b d3, d4
 	move.l d4, d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	move.l (sp)+, d0
 
-tkpkgTokenizerAppendDigitSkip
-	dbf d5, tkpkgTokenizerAppendU32Loop
+appendDigitSkip
+	dbf d5, appendU32Loop
 	movem.l (sp)+, d1-d5/a1
 	rts
+	.bend  ; appendU32
 
-tkpkgTokenizerVmAppendBytesV1
+appendBytes	.block
 	tst.w d2
-	beq.s tkpkgTokenizerAppendBytesDone
+	beq.s appendBytesDone
 
-tkpkgTokenizerAppendBytesLoop
+appendBytesLoop
 	moveq #0, d0
 	move.b (a1)+, d0
-	bsr.w tkpkgTokenizerVmAppendCharV1
+	bsr.w appendChar
 	subq.w #1, d2
-	bne.s tkpkgTokenizerAppendBytesLoop
+	bne.s appendBytesLoop
 
-tkpkgTokenizerAppendBytesDone
+appendBytesDone
 	rts
+	.bend  ; appendBytes
 
-tkpkgTokenizerVmAppendCharV1
+appendChar	.block
 	move.l a1, -(sp)
 	move.l LOCAL_OUTPUT_LEN(a4), d1
 	cmpi.l #LAST_ERROR_BUFFER_CAPACITY - 1, d1
-	bcs.s tkpkgTokenizerAppendCharStore
+	bcs.s appendCharStore
 	moveq #1, d1
 	move.l d1, LOCAL_OUTPUT_OVERFLOW(a4)
 	movea.l (sp)+, a1
 	rts
 
-tkpkgTokenizerAppendCharStore
+appendCharStore
 	lea LastErrorBuffer, a1
 	move.b d0, 0(a1, d1.l)
 	addq.l #1, d1
@@ -1372,51 +1397,53 @@ tkpkgTokenizerAppendCharStore
 	clr.b 0(a1, d1.l)
 	movea.l (sp)+, a1
 	rts
+	.bend  ; appendChar
 
-tkpkgTokenizerVmNumberBaseV1
+numberBase	.block
 	moveq #10, d0
 	tst.l d3
-	beq.s tkpkgTokenizerNumberBaseDone
+	beq.s numberBaseDone
 	moveq #0, d1
 	move.b (a1), d1
 	cmpi.b #'$', d1
-	beq.s tkpkgTokenizerNumberBaseHex
+	beq.s numberBaseHex
 	cmpi.b #'%', d1
-	beq.s tkpkgTokenizerNumberBaseBin
+	beq.s numberBaseBin
 	moveq #0, d2
 	movea.l a1, a0
 	adda.l d3, a0
 	subq.l #1, a0
 	move.b (a0), d2
 	cmpi.b #'a', d2
-	blo.s tkpkgTokenizerNumberBaseSuffix
+	blo.s numberBaseSuffix
 	cmpi.b #'z', d2
-	bhi.s tkpkgTokenizerNumberBaseSuffix
+	bhi.s numberBaseSuffix
 	andi.b #$DF, d2
 
-tkpkgTokenizerNumberBaseSuffix
+numberBaseSuffix
 	cmpi.b #'H', d2
-	beq.s tkpkgTokenizerNumberBaseHex
+	beq.s numberBaseHex
 	cmpi.b #'B', d2
-	beq.s tkpkgTokenizerNumberBaseBin
+	beq.s numberBaseBin
 	cmpi.b #'O', d2
-	beq.s tkpkgTokenizerNumberBaseOct
+	beq.s numberBaseOct
 	cmpi.b #'Q', d2
-	beq.s tkpkgTokenizerNumberBaseOct
-	bra.s tkpkgTokenizerNumberBaseDone
+	beq.s numberBaseOct
+	bra.s numberBaseDone
 
-tkpkgTokenizerNumberBaseHex
+numberBaseHex
 	moveq #16, d0
 	rts
-tkpkgTokenizerNumberBaseBin
+numberBaseBin
 	moveq #2, d0
 	rts
-tkpkgTokenizerNumberBaseOct
+numberBaseOct
 	moveq #8, d0
-tkpkgTokenizerNumberBaseDone
+numberBaseDone
 	rts
+	.bend  ; numberBase
 
-tkpkgTokenizerVmRecordPtrV1
+recordPtr	.block
 	move.l d0, d1
 	add.l d1, d1
 	movea.l d1, a0
@@ -1431,90 +1458,99 @@ tkpkgTokenizerVmRecordPtrV1
 	adda.l a0, a1
 	movea.l a1, a0
 	rts
+	.bend  ; recordPtr
 
-tkpkgTokenizerVmAppendLiteralAtV1
+appendLiteralAt	.block
 	lea AtSep, a1
 	moveq #1, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
+	bra.w appendBytes
+	.bend  ; appendLiteralAt
 
-tkpkgTokenizerVmAppendLiteralColonV1
+appendLiteralColon	.block
 	lea ColonSep, a1
 	moveq #1, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
+	bra.w appendBytes
+	.bend  ; appendLiteralColon
 
-tkpkgTokenizerVmAppendLiteralDashV1
+appendLiteralDash	.block
 	lea DashSep, a1
 	moveq #1, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
+	bra.w appendBytes
+	.bend  ; appendLiteralDash
 
-tkpkgTokenizerVmAppendLiteralNewlineV1
+appendLiteralNewline	.block
 	lea NewlineSep, a1
 	moveq #1, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
+	bra.w appendBytes
+	.bend  ; appendLiteralNewline
 
-tkpkgTokenizerVmAppendLiteralCloseParenV1
+appendLiteralCloseParen	.block
 	lea CloseParenText, a1
 	moveq #1, d2
-	bra.w tkpkgTokenizerVmAppendBytesV1
+	bra.w appendBytes
+	.bend  ; appendLiteralCloseParen
 
-tkpkgTokenizerVmSkipStringV1
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+skipString	.block
+	bsr.w readU32Le
 	tst.b d1
-	bne.s tkpkgTokenizerSkipStringDone
-	bsr.w tkpkgTokenizerVmRequireBytesV1
+	bne.s skipStringDone
+	bsr.w requireBytes
 	tst.b d1
-	bne.s tkpkgTokenizerSkipStringDone
+	bne.s skipStringDone
 	adda.l d0, a2
-tkpkgTokenizerSkipStringDone
+skipStringDone
 	rts
+	.bend  ; skipString
 
-tkpkgTokenizerVmReadStringIntoSlotV1
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+readStringIntoSlot	.block
+	bsr.w readU32Le
 	tst.b d1
-	bne.s tkpkgTokenizerReadStringDone
-	bsr.w tkpkgTokenizerVmRequireBytesV1
+	bne.s readStringDone
+	bsr.w requireBytes
 	tst.b d1
-	bne.s tkpkgTokenizerReadStringDone
+	bne.s readStringDone
 	move.l d0, d2
 	cmpi.l #31, d2
-	bls.s tkpkgTokenizerReadStringLenReady
+	bls.s readStringLenReady
 	moveq #31, d2
-tkpkgTokenizerReadStringLenReady
+readStringLenReady
 	move.b d2, (a1)
 	move.l d2, d1
 	movea.l a2, a0
-tkpkgTokenizerReadStringCopyLoop
+readStringCopyLoop
 	tst.l d1
-	beq.s tkpkgTokenizerReadStringCopyDone
+	beq.s readStringCopyDone
 	move.b (a0)+, (a3)+
 	subq.l #1, d1
-	bra.s tkpkgTokenizerReadStringCopyLoop
-tkpkgTokenizerReadStringCopyDone
+	bra.s readStringCopyLoop
+readStringCopyDone
 	clr.b (a3)
 	adda.l d0, a2
 	moveq #0, d1
-tkpkgTokenizerReadStringDone
+readStringDone
 	rts
+	.bend  ; readStringIntoSlot
 
-tkpkgTokenizerVmReadBytesFieldV1
-	bsr.w tkpkgTokenizerVmReadU32LeV1
+readBytesField	.block
+	bsr.w readU32Le
 	tst.b d1
-	bne.s tkpkgTokenizerReadBytesDone
-	bsr.w tkpkgTokenizerVmRequireBytesV1
+	bne.s readBytesDone
+	bsr.w requireBytes
 	tst.b d1
-	bne.s tkpkgTokenizerReadBytesDone
+	bne.s readBytesDone
 	movea.l a2, a3
 	move.l d0, d3
 	adda.l d0, a2
 	moveq #0, d1
-tkpkgTokenizerReadBytesDone
+readBytesDone
 	rts
+	.bend  ; readBytesField
 
-tkpkgTokenizerVmReadU16LeV1
+readU16Le	.block
 	moveq #2, d0
-	bsr.w tkpkgTokenizerVmRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.s tkpkgTokenizerReadU16Done
+	bne.s readU16Done
 	moveq #0, d0
 	move.b (a2)+, d0
 	moveq #0, d1
@@ -1522,14 +1558,15 @@ tkpkgTokenizerVmReadU16LeV1
 	lsl.w #8, d1
 	or.w d1, d0
 	moveq #0, d1
-tkpkgTokenizerReadU16Done
+readU16Done
 	rts
+	.bend  ; readU16Le
 
-tkpkgTokenizerVmReadU32LeV1
+readU32Le	.block
 	moveq #4, d0
-	bsr.w tkpkgTokenizerVmRequireBytesV1
+	bsr.w requireBytes
 	tst.b d1
-	bne.s tkpkgTokenizerReadU32Done
+	bne.s readU32Done
 	moveq #0, d0
 	move.b (a2)+, d0
 	moveq #0, d1
@@ -1548,22 +1585,25 @@ tkpkgTokenizerVmReadU32LeV1
 	lsl.l #8, d1
 	or.l d1, d0
 	moveq #0, d1
-tkpkgTokenizerReadU32Done
+readU32Done
 	rts
+	.bend  ; readU32Le
 
-tkpkgTokenizerVmRequireBytesV1
+requireBytes	.block
 	cmpa.l a6, a2
-	bhi.s tkpkgTokenizerRequireBytesFail
+	bhi.s requireBytesFail
 	move.l a6, d1
 	sub.l a2, d1
 	cmp.l d1, d0
-	bhi.s tkpkgTokenizerRequireBytesFail
+	bhi.s requireBytesFail
 	moveq #0, d1
 	rts
 
-tkpkgTokenizerRequireBytesFail
+requireBytesFail
 	moveq #1, d1
 	rts
+	.bend  ; requireBytes
+	.priv
 
 	.endsection
 	.endmodule

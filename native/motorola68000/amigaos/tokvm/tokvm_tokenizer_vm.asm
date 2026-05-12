@@ -163,6 +163,8 @@ TokvmLastFailureOperand
 
 	.section code, kind=code
 
+	.pub
+
 ; ---------------------------------------------------------------------------
 ; Native tokenizer VM interpreter.
 ;
@@ -177,36 +179,39 @@ TokvmLastFailureOperand
 ; ---------------------------------------------------------------------------
 
 ; Override the tokenizer VM step budget for the next runs; nonpositive restores default.
-tokvmSetStepBudget68000
+tokvmSetStepBudget68000	.block
 	tst.l d0
-	bgt.s tokvmSetStepBudgetStore
+	bgt.s store
 	move.l #TOKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
-tokvmSetStepBudgetStore
+store
 	move.l d0, TokvmStepBudget
 	rts
+	.bend  ; tokvmSetStepBudget68000
 
 ; Install a package-provided state table; invalid counts fall back to demo state 0.
-tokvmSetProgramStateTable68000
+tokvmSetProgramStateTable68000	.block
 	tst.l d0
-	bgt.s tokvmSetProgramStateStore
+	bgt.s store
 	lea DemoStateEntryOffsets, a0
 	moveq #1, d0
 	moveq #0, d1
-tokvmSetProgramStateStore
+store
 	move.l a0, TokvmProgramStateTablePtr
 	move.l d0, TokvmProgramStateCount
 	move.w d1, TokvmProgramStartState
 	rts
+	.bend  ; tokvmSetProgramStateTable68000
 
 ; Return the last explicit VM failure kind/operand captured by tokvm_run_68000.
-tokvmReadLastFailure68000
+tokvmReadLastFailure68000	.block
 	moveq #0, d0
 	move.w TokvmLastFailureKind, d0
 	moveq #0, d1
 	move.w TokvmLastFailureOperand, d1
 	rts
+	.bend  ; tokvmReadLastFailure68000
 
-tokvmRun68000
+tokvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
 	movea.l a2, a6  ; preserve scratch base separately so A2 can become the interpreter-local frame pointer
 	movea.l a0, a4  ; source bytes base, equivalent to VmTokenizerInputStream.bytes
@@ -230,69 +235,69 @@ tokvmRun68000
 	clr.w TokvmLastFailureOperand
 
 	tst.l d4  ; reject negative lengths/capacities before dereferencing any caller pointers
-	bmi tokvmInvalidArgument
+	bmi invalidArgument
 	tst.l d5
-	bmi tokvmInvalidArgument
+	bmi invalidArgument
 	tst.l d6
-	bmi tokvmInvalidArgument
+	bmi invalidArgument
 	tst.l d7
-	bmi tokvmInvalidArgument
+	bmi invalidArgument
 
 	tst.l d4  ; non-empty source requires a non-null source pointer
-	beq tokvmCheckTokenPointer
+	beq checkTokenPointer
 	move.l a4, d0
 	tst.l d0
-	beq tokvmInvalidArgument
+	beq invalidArgument
 
-tokvmCheckTokenPointer
+checkTokenPointer
 	tst.l d5  ; non-zero token capacity requires a writable token buffer
-	beq tokvmCheckScratchPointer
+	beq checkScratchPointer
 	move.l a5, d0
 	tst.l d0
-	beq tokvmInvalidArgument
+	beq invalidArgument
 
-tokvmCheckScratchPointer
+checkScratchPointer
 	tst.l d6  ; non-zero scratch capacity requires a writable scratch buffer
-	beq tokvmCheckProgramPointer
+	beq checkProgramPointer
 	move.l a6, d0
 	tst.l d0
-	beq tokvmInvalidArgument
+	beq invalidArgument
 
-tokvmCheckProgramPointer
+checkProgramPointer
 	tst.l d7  ; bytecode length 0 cannot encode a valid tokenizer program
-	beq tokvmInvalidProgramAtCursor
+	beq invalidProgramAtCursor
 	move.l a3, d0
 	tst.l d0
-	beq tokvmInvalidArgument
+	beq invalidArgument
 
 	moveq #0, d0  ; proactively reject CR/LF because this slice models one line-input stream only
-tokvmNewlineScanLoop
+newlineScanLoop
 	cmp.l d4, d0
-	bcc tokvmNewlineScanDone
+	bcc newlineScanDone
 	cmpi.b #10, 0(a4, d0.l)
-	beq tokvmNewlineUnsupported
+	beq newlineUnsupported
 	cmpi.b #13, 0(a4, d0.l)
-	beq tokvmNewlineUnsupported
+	beq newlineUnsupported
 	addq.l #1, d0
-	bra tokvmNewlineScanLoop
+	bra newlineScanLoop
 
-tokvmNewlineUnsupported
+newlineUnsupported
 	move.l d0, d2
 	moveq #TK_STATUS_NEWLINE_UNSUPPORTED, d0
-	bra tokvmReturn
+	bra return
 
-tokvmNewlineScanDone
+newlineScanDone
 	moveq #0, d0
 	move.w TokvmProgramStartState, d0
 	cmp.l TokvmProgramStateCount, d0
-	bcc tokvmInvalidProgramAtCursor
+	bcc invalidProgramAtCursor
 	move.l TokvmProgramStateTablePtr, d1
 	tst.l d1
-	beq tokvmInvalidProgramAtCursor
+	beq invalidProgramAtCursor
 	movea.l d1, a1
 	move.l 0.W(a1, d0.l*4), d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
 	lea 0(a3, d7.l), a1
 	clr.l d1  ; token count must still enter the first loop iteration as 0
@@ -301,19 +306,19 @@ tokvmNewlineScanDone
 ; A0 is the native program counter, A1 is the bytecode end pointer, D2 is the
 ; source cursor, and LOCAL_CURRENT_BYTE stores the last ReadChar result. This
 ; corresponds directly to the Rust match over TokenizerVmOpcode.
-tokvmProgramLoop
+programLoop
 	move.l LOCAL_STEP_COUNT(a2), d0
 	addq.l #1, d0
 	move.l d0, LOCAL_STEP_COUNT(a2)
 	cmp.l LOCAL_STEP_LIMIT(a2), d0
-	bhi tokvmStepLimitExceeded
+	bhi stepLimitExceeded
 	lea 0(a3, d7.l), a1
 	cmp.l d4, d2
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	cmpa.l a1, a0
-	bcc tokvmInvalidProgramAtCursor
+	bcc invalidProgramAtCursor
 
-tokvmProgramLoopDispatchOpcode
+dispatchOpcode
 	moveq #0, d0
 	move.b (a0)+, d0
 
@@ -321,7 +326,7 @@ tokvmProgramLoopDispatchOpcode
 	; Unsupported shared VM slots still get explicit table entries so the
 	; opcode-to-handler mapping stays visible and future additions stay local.
 	cmpi.b #TK_OPCODE_SCAN_SYMBOL, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	add.w d0, d0
 	add.w d0, d0
 	lea TokvmOpcodeDispatchTable(PC), a1
@@ -329,68 +334,68 @@ tokvmProgramLoopDispatchOpcode
 	jmp (a1)
 
 TokvmOpcodeDispatchTable
-	.long tokvmOpcodeEnd
-	.long tokvmOpcodeReadChar
-	.long tokvmOpcodeAdvance
-	.long tokvmOpcodeStartLexeme
-	.long tokvmOpcodePushChar
-	.long tokvmOpcodeEmitToken
-	.long tokvmOpcodeSetState
-	.long tokvmOpcodeJump
-	.long tokvmOpcodeJumpIfEol
-	.long tokvmOpcodeJumpIfByteEq
-	.long tokvmOpcodeJumpIfClass
-	.long tokvmOpcodeFail
-	.long tokvmOpcodeEmitDiag
-	.long tokvmInvalidProgramAtCursor
-	.long tokvmInvalidProgramAtCursor
-	.long tokvmOpcodeScanIdentifier
-	.long tokvmOpcodeScanNumber
-	.long tokvmOpcodeScanString
-	.long tokvmOpcodeScanSymbol
+	.long opcodeEnd
+	.long opcodeReadChar
+	.long opcodeAdvance
+	.long opcodeStartLexeme
+	.long opcodePushChar
+	.long opcodeEmitToken
+	.long opcodeSetState
+	.long opcodeJump
+	.long opcodeJumpIfEol
+	.long opcodeJumpIfByteEq
+	.long opcodeJumpIfClass
+	.long opcodeFail
+	.long opcodeEmitDiag
+	.long invalidProgramAtCursor
+	.long invalidProgramAtCursor
+	.long opcodeScanIdentifier
+	.long opcodeScanNumber
+	.long opcodeScanString
+	.long opcodeScanSymbol
 
-tokvmOpcodeEnd
+opcodeEnd
 	cmp.l d4, d2  ; Rust runtime also only accepts END when the source cursor is at EOL
-	bne tokvmInvalidProgramAtCursor
+	bne invalidProgramAtCursor
 	moveq #TK_STATUS_SUCCESS, d0
-	bra tokvmReturn
+	bra return
 
 	; ReadChar mirrors VmTokenizerInputStream.current_byte(): live bytes are zero-extended
 	; into D0 and only EOF uses the -1 sentinel stored in LOCAL_CURRENT_BYTE.
-tokvmOpcodeReadChar
+opcodeReadChar
 	moveq #0, d0
 	cmp.l d4, d2
-	bcc tokvmStoreEofByte
+	bcc storeEofByte
 	move.b 0(a4, d2.l), d0
-	bra tokvmStoreCurrentByte
-tokvmStoreEofByte
+	bra storeCurrentByte
+storeEofByte
 	moveq #-1, d0
-tokvmStoreCurrentByte
+storeCurrentByte
 	move.l d0, LOCAL_CURRENT_BYTE(a2)
 
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeAdvance
+opcodeAdvance
 	cmp.l d4, d2  ; advance saturates at EOL, same as VmTokenizerInputStream.advance()
-	bcc tokvmProgramLoop
+	bcc programLoop
 	addq.l #1, d2
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeStartLexeme
+opcodeStartLexeme
 	clr.l LOCAL_PENDING_LEX_LEN(a2)
 	move.l d2, LOCAL_PENDING_START(a2)
 	move.l d2, LOCAL_PENDING_END(a2)
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodePushChar
+opcodePushChar
 	move.l LOCAL_CURRENT_BYTE(a2), d0
 	tst.l d0
-	bmi tokvmInvalidProgramAtCursor
+	bmi invalidProgramAtCursor
 	move.l d1, LOCAL_TEMP_U32(a2)
 	move.l d3, d1
 	add.l LOCAL_PENDING_LEX_LEN(a2), d1
 	cmp.l d6, d1
-	bcc tokvmPendingLexemeOverflow
+	bcc lexemeOverflowAtCursor
 	movea.l a6, a1
 	adda.l d1, a1
 	move.b d0, (a1)
@@ -399,26 +404,26 @@ tokvmOpcodePushChar
 	addq.l #1, d1
 	move.l d1, LOCAL_PENDING_END(a2)
 	move.l LOCAL_TEMP_U32(a2), d1
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeEmitToken
+opcodeEmitToken
 	lea 0(a3, d7.l), a1
 	cmpa.l a1, a0
-	bcc tokvmInvalidProgramAtCursor
+	bcc invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0
 	move.w d0, LOCAL_PENDING_KIND(a2)
-	jsr tokvmCommitPendingToken
+	jsr commitPendingToken
 	tst.l d0
-	bne tokvmReturn
-	bra tokvmProgramLoop
+	bne return
+	bra programLoop
 
-tokvmOpcodeSetState
+opcodeSetState
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #2, d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	move.l d1, LOCAL_TEMP_U32(a2)
 	moveq #0, d0
 	move.b (a0)+, d0
@@ -427,82 +432,82 @@ tokvmOpcodeSetState
 	lsl.w #8, d1
 	or.w d1, d0
 	cmp.l TokvmProgramStateCount, d0
-	bcc tokvmInvalidProgramAtCursor
+	bcc invalidProgramAtCursor
 	move.l TokvmProgramStateTablePtr, d1
 	tst.l d1
-	beq tokvmInvalidProgramAtCursor
+	beq invalidProgramAtCursor
 	movea.l d1, a1
 	move.l 0.W(a1, d0.l*4), d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
 	move.l LOCAL_TEMP_U32(a2), d1
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeFail
+opcodeFail
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #1, d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0
 	move.w #TK_VM_FAILURE_KIND_FAIL, TokvmLastFailureKind
 	move.w d0, TokvmLastFailureOperand
-	bra tokvmVmFailureAtCursor
+	bra vmFailureAtCursor
 
-tokvmOpcodeEmitDiag
+opcodeEmitDiag
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #1, d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0
 	move.w #TK_VM_FAILURE_KIND_EMIT_DIAG, TokvmLastFailureKind
 	move.w d0, TokvmLastFailureOperand
-	bra tokvmVmFailureAtCursor
+	bra vmFailureAtCursor
 
-tokvmOpcodeJump
+opcodeJump
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #4, d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	move.l (a0), d0
 	ror.w #8, d0
 	swap d0
 	ror.w #8, d0
 	adda.l #4, a0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeJumpIfEol
+opcodeJumpIfEol
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #4, d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	move.l (a0), d0
 	ror.w #8, d0
 	swap d0
 	ror.w #8, d0
 	adda.l #4, a0
 	cmp.l d4, d2
-	bne tokvmProgramLoop
+	bne programLoop
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeJumpIfByteEq
+opcodeJumpIfByteEq
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #5, d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0  ; operand 0 = byte literal to compare against LOCAL_CURRENT_BYTE
 	move.w d0, LOCAL_PENDING_KIND(a2)
@@ -514,21 +519,21 @@ tokvmOpcodeJumpIfByteEq
 	move.l d0, LOCAL_TEMP_U32(a2)
 	move.l LOCAL_CURRENT_BYTE(a2), d0  ; no jump fires at EOF, matching Rust's Option<u8>-based predicate path
 	tst.l d0
-	bmi tokvmProgramLoop
+	bmi programLoop
 	cmp.w LOCAL_PENDING_KIND(a2), d0
-	bne tokvmProgramLoop
+	bne programLoop
 	move.l LOCAL_TEMP_U32(a2), d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeJumpIfClass
+opcodeJumpIfClass
 	move.l a0, d0
 	sub.l a3, d0
 	addq.l #5, d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0  ; operand 0 = compact character-class id from builder.rs default demo loop
 	move.w d0, LOCAL_PENDING_KIND(a2)
@@ -540,132 +545,140 @@ tokvmOpcodeJumpIfClass
 	move.l d0, LOCAL_TEMP_U32(a2)
 	move.l LOCAL_CURRENT_BYTE(a2), d0  ; EOF never matches a class, same as vm_char_class_matches(None, ...)
 	tst.l d0
-	bmi tokvmProgramLoop
+	bmi programLoop
 	moveq #0, d0
 	move.w LOCAL_PENDING_KIND(a2), d0
 	cmpi.b #1, d0
-	beq.w tokvmClassWhitespace
+	beq.w classWhitespace
 	cmpi.b #2, d0
-	beq.w tokvmClassIdentStart
+	beq.w classIdentStart
 	cmpi.b #3, d0
-	beq.w tokvmClassIdentContinue
+	beq.w classIdentContinue
 	cmpi.b #4, d0
-	beq.w tokvmClassDigit
+	beq.w classDigit
 	cmpi.b #5, d0
-	beq.w tokvmClassQuote
-	bra tokvmProgramLoop
+	beq.w classQuote
+	bra programLoop
 
-tokvmClassWhitespace
+classWhitespace
 	; Class 1 is intentionally tiny in this first slice: only inline space
 	; and tab are skipped by the demo loop because CR/LF are rejected up front.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
 	jsr tokvmIsWhitespace
 	tst.l d0
-	beq tokvmProgramLoop
-	bra tokvmApplyClassJump
+	beq programLoop
+	bra applyClassJump
 
-tokvmClassIdentStart
+classIdentStart
 	; Class 2 mirrors the Rust identifier-start mask used by the default
 	; tokenizer VM policy for ASCII letters, underscore, and dot.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
 	jsr tokvmIsIdentifierStart
 	tst.l d0
-	beq tokvmProgramLoop
-	bra tokvmApplyClassJump
+	beq programLoop
+	bra applyClassJump
 
-tokvmClassIdentContinue
+classIdentContinue
 	; Class 3 is wider than the start class so identifiers can continue with
 	; digits and assembler-flavored suffix bytes such as '$' and '@'.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
 	jsr tokvmIsIdentifierContinue
 	tst.l d0
-	beq tokvmProgramLoop
-	bra tokvmApplyClassJump
+	beq programLoop
+	bra applyClassJump
 
-tokvmClassDigit
+classDigit
 	; Class 4 is kept inline because the Rust helper ultimately reduces to an
 	; ASCII digit check for the default family tokenizer program.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
 	cmpi.b #'0', d0
-	blo tokvmProgramLoop
+	blo programLoop
 	cmpi.b #'9', d0
-	bhi tokvmProgramLoop
-	bra tokvmApplyClassJump
+	bhi programLoop
+	bra applyClassJump
 
-tokvmClassQuote
+classQuote
 	; Class 5 delegates to the same quote-set logic reused by string scanning.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
 	jsr tokvmIsQuoteChar
 	tst.l d0
-	beq tokvmProgramLoop
+	beq programLoop
 
-tokvmApplyClassJump
+applyClassJump
 	move.l LOCAL_TEMP_U32(a2), d0
 	cmp.l d7, d0
-	bhi tokvmInvalidProgramAtCursor
+	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
-	bra tokvmProgramLoop
+	bra programLoop
 
 ; The scan helpers below mirror vm_scan_identifier_token,
 ; vm_scan_number_token, vm_scan_string_token, and vm_scan_symbol_token in
 ; tokenizer_runtime_utils.rs. The helper bodies reuse A0, so the interpreter
 ; saves and restores the native program counter around each call.
-tokvmOpcodeScanIdentifier
+opcodeScanIdentifier
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr tokvmScanIdentifierToken
+	jsr scanIdentifierToken
 	tst.l d0
-	bne tokvmReturn
+	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeScanNumber
+opcodeScanNumber
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr tokvmScanNumberToken
+	jsr scanNumberToken
 	tst.l d0
-	bne tokvmReturn
+	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeScanString
+opcodeScanString
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr tokvmScanStringToken
+	jsr scanStringToken
 	tst.l d0
-	bne tokvmReturn
+	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmOpcodeScanSymbol
+opcodeScanSymbol
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr tokvmScanSymbolToken
+	jsr scanSymbolToken
 	tst.l d0
-	bne tokvmReturn
+	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
-	bra tokvmProgramLoop
+	bra programLoop
 
-tokvmInvalidArgument
+invalidArgument
 	clr.l d1
 	clr.l d2
 	clr.l d3
 	moveq #TK_STATUS_INVALID_ARGUMENT, d0
-	bra tokvmReturn
+	bra return
 
-tokvmVmFailureAtCursor
+vmFailureAtCursor
 	moveq #TK_STATUS_VM_FAILURE, d0
-	bra tokvmReturn
+	bra return
 
-tokvmStepLimitExceeded
+stepLimitExceeded
 	moveq #TK_STATUS_STEP_LIMIT_EXCEEDED, d0
-	bra tokvmReturn
+	bra return
+
+lexemeOverflowAtCursor
+	move.l LOCAL_PENDING_START(a2), d2
+	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
+	bra return
 
 ; Invalid program is reserved for truncated bytecode, bad jump targets, or
 ; opcode/operand combinations that the native interpreter refuses to execute.
-tokvmInvalidProgramAtCursor
+invalidProgramAtCursor
 	moveq #TK_STATUS_INVALID_PROGRAM, d0
 
-tokvmReturn
+return
 	adda.l #LOCAL_SIZE, sp
 	movem.l (sp)+, d4-d7/a4-a6
 	rts
+	.bend  ; tokvmRun68000
+
+	.priv
 
 ; ---------------------------------------------------------------------------
 ; Native token record staging and commit.
@@ -681,13 +694,13 @@ tokvmReturn
 ; OPFORGE-TOKVM 1 report format.
 ; ---------------------------------------------------------------------------
 
-tokvmCommitPendingToken
+commitPendingToken	.block
 	cmp.l d5, d1  ; token_count < token_capacity
-	bcc tokvmPendingTokenOverflow
+	bcc pendingTokenOverflow
 	move.l d3, d0  ; scratch_used + pending_len must stay within scratch_capacity
 	add.l LOCAL_PENDING_LEX_LEN(a2), d0
 	cmp.l d6, d0
-	bhi tokvmPendingLexemeOverflow
+	bhi pendingLexemeOverflow
 	move.l d1, d0  ; compute record_index * TOKEN_RECORD_SIZE without a MUL dependency
 	add.l d0, d0  ; *2
 	movea.l d0, a0
@@ -718,38 +731,45 @@ tokvmCommitPendingToken
 ; Overflow exits report the start column of the token that could not be fully
 ; materialized. This matches the Rust-side behavior of attributing capacity
 ; failures to the token currently being scanned rather than the following byte.
-tokvmPendingTokenOverflow
+pendingTokenOverflow
 	move.l LOCAL_PENDING_START(a2), d2
 	moveq #TK_STATUS_TOKEN_OVERFLOW, d0
 	rts
 
-tokvmPendingLexemeOverflow
+pendingLexemeOverflow
 	move.l LOCAL_PENDING_START(a2), d2
 	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
 	rts
+	.bend  ; commitPendingToken
 
 ; Stage a fixed lexeme literal from the static data table into scratch.
 ; This is used for punctuation and operator tokens whose lexeme spelling is
 ; known upfront and does not need to be copied from the source buffer.
-tokvmStageFixedLexeme
+stageFixedLexeme	.block
 	move.l d0, LOCAL_PENDING_LEX_LEN(a2)  ; fixed operator/punctuation lexeme length from the inline template string
 	move.l d3, d0
 	add.l LOCAL_PENDING_LEX_LEN(a2), d0
 	cmp.l d6, d0
-	bhi tokvmPendingLexemeOverflow
+	bhi lexemeOverflow
 	movea.l a6, a1
 	adda.l d3, a1
 	move.l LOCAL_PENDING_LEX_LEN(a2), d0
-tokvmStageFixedLexemeLoop
+stageFixedLexemeLoop
 	tst.l d0
-	beq tokvmStageFixedLexemeDone
+	beq stageFixedLexemeDone
 	move.b (a0)+, (a1)+  ; copy the canonical lexeme bytes that Rust would expose in PortableToken text/raw
 	subq.l #1, d0
-	bra tokvmStageFixedLexemeLoop
+	bra stageFixedLexemeLoop
 
-tokvmStageFixedLexemeDone
+stageFixedLexemeDone
 	moveq #TK_STATUS_SUCCESS, d0
 	rts
+
+lexemeOverflow
+	move.l LOCAL_PENDING_START(a2), d2
+	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
+	rts
+	.bend  ; stageFixedLexeme
 
 ; ---------------------------------------------------------------------------
 ; Scanner helpers.
@@ -759,8 +779,7 @@ tokvmStageFixedLexemeDone
 ; populates LOCAL_PENDING_* metadata, stages lexeme bytes into the scratch
 ; buffer, then commits a token record.
 ; ---------------------------------------------------------------------------
-
-tokvmScanIdentifierToken
+scanIdentifierToken	.block
 	; Identifier scan is the native mirror of vm_scan_identifier_token():
 	; walk identifier-continue bytes, lowercase ASCII letters for the demo
 	; policy, then emit one identifier record backed by scratch bytes.
@@ -769,58 +788,59 @@ tokvmScanIdentifierToken
 	movea.l a6, a0
 	adda.l d3, a0
 
-tokvmScanIdentifierLoop
+scanIdentifierLoop
 	; D2 stays as the source cursor, A0 walks the next free scratch byte,
 	; and LOCAL_PENDING_LEX_LEN grows in lockstep so commit can later write
 	; both the source span and scratch payload length into the token record.
 	cmp.l d4, d2
-	bcc tokvmScanIdentifierDone
+	bcc scanIdentifierDone
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	jsr tokvmIsIdentifierContinue  ; mirrors vm_matches_identifier_continue_class()
 	tst.l d0
-	beq tokvmScanIdentifierDone
+	beq scanIdentifierDone
 	move.l d3, d0
 	add.l LOCAL_PENDING_LEX_LEN(a2), d0
 	cmp.l d6, d0
-	bcc tokvmPendingLexemeOverflowFromScan
+	bcc pendingLexemeOverflowFromScan
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	cmpi.b #'A', d0
-	blo tokvmCopyIdentifierByte
+	blo copyIdentifierByte
 	cmpi.b #'Z', d0
-	bhi tokvmCopyIdentifierByte
+	bhi copyIdentifierByte
 	ori.b #$20, d0  ; native demo bakes in ASCII-lower identifier normalization used by the Rust bridge tests
-tokvmCopyIdentifierByte
+copyIdentifierByte
 	move.b d0, (a0)+
 	addq.l #1, d2
 	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
-	bra tokvmScanIdentifierLoop
+	bra scanIdentifierLoop
 
-tokvmScanIdentifierDone
+scanIdentifierDone
 	; Match vm_scan_identifier_token(): a trailing prime belongs to the
 	; identifier/register lexeme for Z80 alternate-register spellings like AF'.
 	cmp.l d4, d2
-	bcc tokvmScanIdentifierCommit
+	bcc scanIdentifierCommit
 	cmpi.b #39, 0(a4, d2.l)
-	bne tokvmScanIdentifierCommit
+	bne scanIdentifierCommit
 	move.l d3, d0
 	add.l LOCAL_PENDING_LEX_LEN(a2), d0
 	cmp.l d6, d0
-	bcc tokvmPendingLexemeOverflowFromScan
+	bcc pendingLexemeOverflowFromScan
 	move.b #39, (a0)+
 	addq.l #1, d2
 	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
 
-tokvmScanIdentifierCommit
+scanIdentifierCommit
 	; Identifier spans are half-open in cursor space and become 1-based only
-	; when tokvmCommitPendingToken serializes them into the native record.
+	; when commitPendingToken serializes them into the native record.
 	move.w #TK_KIND_IDENTIFIER, LOCAL_PENDING_KIND(a2)
 	move.l d2, LOCAL_PENDING_END(a2)
-	jsr tokvmCommitPendingToken
+	jsr commitPendingToken
 	rts
+	.bend  ; scanIdentifierToken
 
-tokvmScanNumberToken
+scanNumberToken	.block
 	; Number scan accepts the same permissive body bytes as the Rust helper,
 	; leaving base interpretation to downstream token consumers/report logic.
 	move.l d2, LOCAL_PENDING_START(a2)
@@ -828,39 +848,40 @@ tokvmScanNumberToken
 	movea.l a6, a0
 	adda.l d3, a0
 
-tokvmScanNumberLoop
+scanNumberLoop
 	; Number scanning intentionally keeps the raw source spelling, including
 	; prefixes/suffixes/underscores, so later consumers can decide how to
 	; interpret base markers just like the Rust runtime does.
 	cmp.l d4, d2
-	bcc tokvmScanNumberDone
+	bcc scanNumberDone
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	cmpi.b #'%', d0
-	bne tokvmScanNumberCheckBody
+	bne scanNumberCheckBody
 	cmp.l LOCAL_PENDING_START(a2), d2
-	beq tokvmScanNumberAcceptByte
-tokvmScanNumberCheckBody
+	beq scanNumberAcceptByte
+scanNumberCheckBody
 	jsr tokvmIsNumberBody  ; same permissive number-body walk as vm_scan_number_token()
 	tst.l d0
-	beq tokvmScanNumberDone
-tokvmScanNumberAcceptByte
+	beq scanNumberDone
+scanNumberAcceptByte
 	move.l d3, d0
 	add.l LOCAL_PENDING_LEX_LEN(a2), d0
 	cmp.l d6, d0
-	bcc tokvmPendingLexemeOverflowFromScan
+	bcc pendingLexemeOverflowFromScan
 	move.b 0(a4, d2.l), (a0)+
 	addq.l #1, d2
 	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
-	bra tokvmScanNumberLoop
+	bra scanNumberLoop
 
-tokvmScanNumberDone
+scanNumberDone
 	move.w #TK_KIND_NUMBER, LOCAL_PENDING_KIND(a2)
 	move.l d2, LOCAL_PENDING_END(a2)
-	jsr tokvmCommitPendingToken
+	jsr commitPendingToken
 	rts
+	.bend  ; scanNumberToken
 
-tokvmScanStringToken
+scanStringToken	.block
 	; Strings keep their raw delimiter choice for closing rules, but only the
 	; decoded payload bytes are staged into scratch and exposed in LEXHEX.
 	move.l d2, LOCAL_PENDING_START(a2)
@@ -872,116 +893,117 @@ tokvmScanStringToken
 	movea.l a6, a0
 	adda.l d3, a0
 
-tokvmScanStringLoop
+scanStringLoop
 	; Strings advance one payload unit at a time. Plain bytes copy through,
 	; while escape sequences normalize into their decoded payload bytes so
 	; LEXHEX reflects runtime string contents rather than source spelling.
 	cmp.l d4, d2
-	bcc tokvmScanStringFailure
+	bcc scanStringFailure
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	cmp.l LOCAL_CURRENT_BYTE(a2), d0
-	beq tokvmScanStringClose
+	beq scanStringClose
 	cmpi.b #'\\', d0  ; decode the same escape surface exercised by vm_scan_string_token()
-	bne tokvmScanStringCopyLiteral
+	bne scanStringCopyLiteral
 	addq.l #1, d2
 	cmp.l d4, d2
-	bcc tokvmVmFailureAtCursor
+	bcc scanStringFailure
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	cmpi.b #'n', d0
-	beq tokvmStringEscapeNewline
+	beq stringEscapeNewline
 	cmpi.b #'r', d0
-	beq tokvmStringEscapeReturn
+	beq stringEscapeReturn
 	cmpi.b #'t', d0
-	beq tokvmStringEscapeTab
+	beq stringEscapeTab
 	cmpi.b #'x', d0  ; \xHH is decoded into one payload byte, just like the Rust helper
-	beq tokvmStringEscapeHex
-	bra tokvmScanStringEmitDecoded
+	beq stringEscapeHex
+	bra scanStringEmitDecoded
 
-tokvmStringEscapeNewline
+stringEscapeNewline
 	; The decoded escape value remains in D0 and falls through the shared
 	; emit path that appends one payload byte to scratch.
 	moveq #10, d0
-	bra tokvmScanStringEmitDecoded
+	bra scanStringEmitDecoded
 
-tokvmStringEscapeReturn
+stringEscapeReturn
 	moveq #13, d0
-	bra tokvmScanStringEmitDecoded
+	bra scanStringEmitDecoded
 
-tokvmStringEscapeTab
+stringEscapeTab
 	moveq #9, d0
-	bra tokvmScanStringEmitDecoded
+	bra scanStringEmitDecoded
 
-tokvmStringEscapeHex
+stringEscapeHex
 	; Parse exactly two hex digits after \x and combine them into one byte,
 	; mirroring tokenizer_runtime_utils::vm_scan_string_token().
 	addq.l #1, d2
 	cmp.l d4, d2
-	bcc tokvmScanStringFailure
+	bcc scanStringFailure
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	jsr tokvmHexDigitValue
 	tst.l d0
-	bmi tokvmScanStringFailure
+	bmi scanStringFailure
 	move.l d0, LOCAL_TEMP_U32(a2)
 	addq.l #1, d2
 	cmp.l d4, d2
-	bcc tokvmScanStringFailure
+	bcc scanStringFailure
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	jsr tokvmHexDigitValue
 	tst.l d0
-	bmi tokvmScanStringFailure
+	bmi scanStringFailure
 	move.l d1, -(sp)
 	move.l LOCAL_TEMP_U32(a2), d1
 	lsl.l #4, d1
 	or.l d1, d0
 	move.l (sp)+, d1
 
-	bra tokvmScanStringEmitDecoded
+	bra scanStringEmitDecoded
 
-tokvmScanStringCopyLiteral
+scanStringCopyLiteral
 	; Literal non-escape bytes use the same capacity accounting as decoded
 	; escapes so both paths feed one consistent scratch payload stream.
 	move.l d1, -(sp)
 	move.l d3, d1
 	add.l LOCAL_PENDING_LEX_LEN(a2), d1
 	cmp.l d6, d1
-	bcc tokvmScanStringLiteralOverflow
+	bcc scanStringLiteralOverflow
 	move.l (sp)+, d1
-	bra tokvmScanStringEmitDecoded
+	bra scanStringEmitDecoded
 
-tokvmScanStringLiteralOverflow
+scanStringLiteralOverflow
 	move.l (sp)+, d1
-	bra tokvmPendingLexemeOverflowFromScan
+	bra pendingLexemeOverflowFromScan
 
-tokvmScanStringEmitDecoded
+scanStringEmitDecoded
 	move.b d0, (a0)+
 	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
 	addq.l #1, d2
-	bra tokvmScanStringLoop
+	bra scanStringLoop
 
-tokvmScanStringClose
+scanStringClose
 	; D2 is advanced past the closing delimiter before commit so the source
 	; span matches the Rust token span semantics for quoted strings.
 	addq.l #1, d2
 	move.w #TK_KIND_STRING, LOCAL_PENDING_KIND(a2)
 	move.l d2, LOCAL_PENDING_END(a2)
-	jsr tokvmCommitPendingToken
+	jsr commitPendingToken
 	rts
 
 ; Unterminated strings and malformed escape sequences both collapse to the same
 ; VM failure status in this first native slice.
-tokvmScanStringFailure
+scanStringFailure
 	moveq #TK_STATUS_VM_FAILURE, d0
 	rts
+	.bend  ; scanStringToken
 
 ; Symbol scan covers punctuation, operators, comments, and prefixed numeric
 ; forms. The structure intentionally parallels vm_scan_symbol_token() in Rust:
 ; dispatch by lead byte, optionally consume a longer form, then commit the
 ; canonical lexeme bytes through tokvmStageAndCommitSymbol.
-tokvmScanSymbolToken
+scanSymbolToken	.block
 	; The dispatch order matters. More syntactically specific lead bytes are
 	; tested before generic operator fallbacks so multi-byte forms get the
 	; same precedence as in the Rust helper.
@@ -1095,7 +1117,7 @@ tokvmScanDollarOrPrefixedNumber
 	tst.l d0
 	beq tokvmStageDollar
 	move.l LOCAL_PENDING_START(a2), d2
-	jsr tokvmScanNumberToken
+	jsr scanNumberToken
 	rts
 
 tokvmStageDollar
@@ -1121,7 +1143,7 @@ tokvmScanPercentAsNumber
 	tst.l d0
 	beq tokvmStagePercent
 	move.l LOCAL_PENDING_START(a2), d2  ; rewind so the number scanner sees the leading '%', like Rust prefixed-number handling
-	jsr tokvmScanNumberToken
+	jsr scanNumberToken
 	rts
 
 tokvmStagePercent
@@ -1426,11 +1448,11 @@ tokvmStageAndCommitSymbol
 	; At this point LOCAL_PENDING_START already marks the source span start,
 	; D2 already points just past the consumed source bytes, and A0/D0 name
 	; the canonical lexeme bytes to materialize into scratch.
-	jsr tokvmStageFixedLexeme  ; stage the canonical lexeme bytes before committing the token metadata
+	jsr stageFixedLexeme  ; stage the canonical lexeme bytes before committing the token metadata
 	tst.l d0
 	bne tokvmStageAndCommitSymbolDone
 	move.l d2, LOCAL_PENDING_END(a2)
-	jsr tokvmCommitPendingToken
+	jsr commitPendingToken
 tokvmStageAndCommitSymbolDone
 	rts
 
@@ -1440,9 +1462,10 @@ tokvmScanSymbolInvalidProgram
 	move.l LOCAL_PENDING_START(a2), d2
 	moveq #TK_STATUS_INVALID_PROGRAM, d0
 	rts
+	.bend  ; scanSymbolToken
 
 ; Shared overflow exit for any scanner that would exceed scratch capacity.
-tokvmPendingLexemeOverflowFromScan
+pendingLexemeOverflowFromScan
 	move.l LOCAL_PENDING_START(a2), d2
 	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
 	rts
@@ -1455,16 +1478,16 @@ tokvmPendingLexemeOverflowFromScan
 ; calls them through JumpIfClass and the scan helpers reuse them while walking
 ; identifiers, number bodies, strings, and prefixed constants.
 ; ---------------------------------------------------------------------------
-
-tokvmIsWhitespace
+tokvmIsWhitespace	.block
 	cmpi.b #' ', d0  ; this line-input slice only treats space and tab as intra-line whitespace
 	beq tokvmPredicateTrue
 	cmpi.b #9, d0
 	beq tokvmPredicateTrue
 	moveq #0, d0
 	rts
+	.bend  ; tokvmIsWhitespace
 
-tokvmIsIdentifierStart
+tokvmIsIdentifierStart	.block
 	; These predicate chains intentionally avoid lookup tables so the native
 	; implementation stays easy to audit against the Rust helper masks.
 	cmpi.b #'A', d0
@@ -1483,8 +1506,9 @@ tokvmCheckIdentStartPunct
 	beq tokvmPredicateTrue
 	moveq #0, d0
 	rts
+	.bend  ; tokvmIsIdentifierStart
 
-tokvmIsIdentifierContinue
+tokvmIsIdentifierContinue	.block
 	cmpi.b #'A', d0
 	blo tokvmCheckIdentContinueLower
 	cmpi.b #'Z', d0
@@ -1510,16 +1534,18 @@ tokvmCheckIdentExtra
 	beq tokvmPredicateTrue
 	moveq #0, d0
 	rts
+	.bend  ; tokvmIsIdentifierContinue
 
-tokvmIsQuoteChar
+tokvmIsQuoteChar	.block
 	cmpi.b #'"', d0  ; demo program accepts both quote styles, matching the Rust helper's quote-char set
 	beq tokvmPredicateTrue
 	cmpi.b #39, d0
 	beq tokvmPredicateTrue
 	moveq #0, d0
 	rts
+	.bend  ; tokvmIsQuoteChar
 
-tokvmIsNumberBody
+tokvmIsNumberBody	.block
 	; Number bodies are deliberately permissive at scan time. Validation of
 	; bases and suffix meaning is deferred to later consumers, matching the
 	; Rust tokenizer helper contract.
@@ -1548,8 +1574,9 @@ tokvmCheckNumberExtra
 	beq tokvmPredicateTrue
 	moveq #0, d0
 	rts
+	.bend  ; tokvmIsNumberBody
 
-tokvmIsHexDigitOrUnderscore
+tokvmIsHexDigitOrUnderscore	.block
 	; Used only as a fast probe for deciding whether '$' begins a number or
 	; remains a standalone token.
 	cmpi.b #'_', d0
@@ -1557,6 +1584,9 @@ tokvmIsHexDigitOrUnderscore
 	jsr tokvmHexDigitValue
 	tst.l d0
 	bmi tokvmPredicateFalse
+	bra tokvmPredicateTrue
+	.bend  ; tokvmIsHexDigitOrUnderscore
+
 tokvmPredicateTrue
 	moveq #1, d0
 	rts
@@ -1567,7 +1597,7 @@ tokvmPredicateFalse
 
 ; Shared hex nibble decoder for both string escape parsing and '$'-prefixed
 ; number probing. Returns -1 for non-hex input so callers can branch cleanly.
-tokvmHexDigitValue
+tokvmHexDigitValue	.block
 	cmpi.b #'0', d0  ; shared nibble decoder for \xHH strings and '$'-prefixed number probing
 	blo tokvmHexUpper
 	cmpi.b #'9', d0
@@ -1599,10 +1629,11 @@ tokvmHexLower
 tokvmHexInvalid
 	moveq #-1, d0
 	rts
+	.bend  ; tokvmHexDigitValue
 
 ; Rust treats '%' as a binary-number prefix only when the byte appears where an
 ; expression can start. Without that context, % remains the modulo operator.
-tokvmPercentHasPrefixContext
+tokvmPercentHasPrefixContext	.block
 	move.l LOCAL_PENDING_START(a2), d0
 	beq tokvmPercentPrefixTrue
 
@@ -1685,9 +1716,11 @@ tokvmPercentPrefixFalse
 tokvmPercentPrefixTrue
 	moveq #1, d0
 	rts
+	.bend  ; tokvmPercentHasPrefixContext
 
 	.endsection
 	.section data, kind=data
+	.pub
 
 ; Data section: ABI marker, bytecode macros, demo bytecode, and fixed lexeme
 ; templates used by the symbol scanner.

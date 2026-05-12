@@ -47,14 +47,14 @@ const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE: &str = "OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE: &str = "opforge_6502_native_cli_smoke.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT: &str =
-    "start   lda #$42\n        sta $0200\ndone    jmp done\n";
+    "start   lda #$42\n        sta $20\n        lda $20,x\n        sta $0200\n        lda $0200,x\n        lda $0200,y\ndone    jmp done\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE: &str = "opforge_native_out.bin";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC_FILE: &str =
     "opforge_6502_unknown_mnemonic.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC_TEXT: &str = "start   wat #$42\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING_FILE: &str =
     "opforge_6502_unsupported_addressing.asm";
-const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING_TEXT: &str = "start   lda $0200\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING_TEXT: &str = "start   jmp $20,x\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNRESOLVED_LABEL_FILE: &str =
     "opforge_6502_unresolved_label.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNRESOLVED_LABEL_TEXT: &str = "start   jmp missing\n";
@@ -461,6 +461,8 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("tokvm"),
             amigaos_dir.join("prvm"),
+            amigaos_dir.join("opcore"),
+            amigaos_dir.join("opasm"),
         ];
     }
 
@@ -1496,13 +1498,18 @@ fn materialize_tkpkg_debug_cli_package_override_source(
     let source = fs::read_to_string(source_path)
         .map_err(|err| format!("read source {}: {err}", source_path.display()))?;
     let default_incbin = format!(".incbin \"{FS_UAE_TKPKG_DEBUG_CLI_PACKAGE_NAME}\"");
+    let formatted_relative_incbin =
+        format!(".incbin \"../../tkpkg/{FS_UAE_TKPKG_DEBUG_CLI_PACKAGE_NAME}\"");
     let override_incbin = format!(".incbin \"{}\"", package_path.display());
-    let overridden = source.replace(default_incbin.as_str(), override_incbin.as_str());
+    let overridden = source
+        .replace(default_incbin.as_str(), override_incbin.as_str())
+        .replace(formatted_relative_incbin.as_str(), override_incbin.as_str());
     if overridden == source {
         return Err(format!(
-            "source {} does not contain expected package incbin '{}'",
+            "source {} does not contain expected package incbin '{}' or '{}'",
             source_path.display(),
-            default_incbin
+            default_incbin,
+            formatted_relative_incbin
         ));
     }
 

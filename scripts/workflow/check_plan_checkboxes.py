@@ -8,7 +8,9 @@ from pathlib import Path
 
 
 CHECKBOX_RE = re.compile(r"^\s*-\s\[( |x|X)\]\s+")
+CHECKBOX_STATE_RE = re.compile(r"^\s*-\s\[( |x|X)\]\s+")
 WORK_ITEMS_HEADER = "## Work Items"
+COMPLETED_DIR_RE = re.compile(r"(^|/)documentation/plans/completed/")
 REQUIRED_HEADINGS = [
     "## Metadata",
     "## Objective",
@@ -47,6 +49,8 @@ def analyze_plan(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     errors: list[str] = []
+    path_text = path.as_posix()
+    is_completed_path = bool(COMPLETED_DIR_RE.search(path_text))
 
     for heading in REQUIRED_HEADINGS:
         if heading not in text:
@@ -75,28 +79,44 @@ def analyze_plan(path: Path) -> list[str]:
         errors.append("no checkbox work items found")
         return errors
 
-    for checkbox_number, index in enumerate(checkbox_indices):
-        next_checkbox = (
-            checkbox_indices[checkbox_number + 1]
-            if checkbox_number + 1 < len(checkbox_indices)
-            else len(lines)
-        )
-        block_end = next_checkbox
-        for line_index in range(index + 1, next_checkbox):
-            if lines[line_index].startswith("## "):
-                block_end = line_index
-                break
-        block = lines[index + 1 : block_end]
+    if not is_completed_path:
+        for checkbox_number, index in enumerate(checkbox_indices):
+            next_checkbox = (
+                checkbox_indices[checkbox_number + 1]
+                if checkbox_number + 1 < len(checkbox_indices)
+                else len(lines)
+            )
+            block_end = next_checkbox
+            for line_index in range(index + 1, next_checkbox):
+                if lines[line_index].startswith("## "):
+                    block_end = line_index
+                    break
+            block = lines[index + 1 : block_end]
 
-        for field_name in REQUIRED_WORK_ITEM_FIELDS:
-            if not block_has_field(block, field_name):
-                errors.append(
-                    f"checkbox at line {index + 1} missing `{field_name}` in work item block"
-                )
+            for field_name in REQUIRED_WORK_ITEM_FIELDS:
+                if not block_has_field(block, field_name):
+                    errors.append(
+                        f"checkbox at line {index + 1} missing `{field_name}` in work item block"
+                    )
 
     checked = [i for i in checkbox_indices if "[x]" in lines[i].lower()]
     if checked and "## Milestones" not in text and "## Work Items" not in text:
         errors.append("checked work exists but expected plan sections are missing")
+
+    checkbox_states = [CHECKBOX_STATE_RE.match(lines[i]).group(1).lower() for i in checkbox_indices]
+    all_checkboxes_complete = bool(checkbox_states) and all(state == "x" for state in checkbox_states)
+
+    if all_checkboxes_complete and not is_completed_path:
+        errors.append(
+            "fully completed plans must be archived under "
+            "`documentation/plans/completed/`; use `scripts/workflow/archive_completed_plan.sh` "
+            "to apply the required timestamped filename convention"
+        )
+
+    if is_completed_path and not all_checkboxes_complete:
+        errors.append(
+            "plans archived under `documentation/plans/completed/` must have every checkbox completed"
+        )
 
     return errors
 

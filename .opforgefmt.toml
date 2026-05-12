@@ -1,0 +1,13 @@
+[formatter]
+profile = "safe-preserve"
+indent_char = "tab"
+label_alignment_column = 1
+align_unlabeled_instructions = true
+split_long_label_instructions = false
+label_colon_style = "without"
+label_case = "keep"
+routine_label_case = "lower_camel"
+data_label_case = "upper_camel"
+constant_label_case = "upper_snake"
+mnemonic_case = "lower"
+register_case = "lower"

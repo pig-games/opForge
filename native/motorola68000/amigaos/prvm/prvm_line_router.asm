@@ -9,6 +9,7 @@ PRVM_REQUEST_FRAME_SIZE             = 112
 PRVM_MAGIC_OPRP                     = $4F505250
 PRVM_ABI_VERSION_V1                 = 1
 PRVM_CALL_MODE_START                = 0
+PRVM_CALL_MODE_RESUME               = 1
 PRVM_ENTRY_KIND_OPASM_STATEMENT     = 1
 
 PRVM_STATUS_OK                      = 0
@@ -53,6 +54,8 @@ ROUTE_FRAME_FLAGS                   = 112
 
 	.section code, kind=code
 
+	.pub
+
 ; ---------------------------------------------------------------------------
 ; Native opcore-style one-line router.
 ;
@@ -64,116 +67,125 @@ ROUTE_FRAME_FLAGS                   = 112
 ; - forwards D0-D3 from prvm_run_68000 on success
 ; - returns deterministic nonzero status with D1-D3 cleared on route failure
 ; ---------------------------------------------------------------------------
-
-prvmRouteLine68000
+prvmRouteLine68000	.block
 	movem.l d4-d7/a2-a4, -(sp)
 	movea.l a0, a4
 
 	cmpi.l #PRVM_ROUTE_FRAME_SIZE, d0
-	bne.w prvmRouteInvalidArgument
+	bne.w invalidArgument
 	cmpi.l #PRVM_ROUTE_MAGIC_OPLR, ROUTE_FRAME_MAGIC(a4)
-	bne.w prvmRouteInvalidArgument
+	bne.w invalidArgument
 	cmpi.w #PRVM_ROUTE_ABI_VERSION_V1, ROUTE_FRAME_ABI_VERSION(a4)
-	bne.w prvmRouteInvalidArgument
+	bne.w invalidArgument
 	cmpi.w #PRVM_ROUTE_FRAME_SIZE, ROUTE_FRAME_FRAME_SIZE(a4)
-	bne.w prvmRouteInvalidArgument
+	bne.w invalidArgument
 
 	movea.l ROUTE_FRAME_PROCESSOR_PTR(a4), a0
 	move.l ROUTE_FRAME_PROCESSOR_LEN(a4), d0
 	lea ProcessorAsmText(PC), a1
 	moveq #3, d1
-	bsr.w prvmRouteCompareText
+	bsr.w compareText
 	tst.l d0
-	bne.w prvmRouteUnsupported
+	bne.w unsupported
 
 	movea.l ROUTE_FRAME_KIND_PTR(a4), a0
 	move.l ROUTE_FRAME_KIND_LEN(a4), d0
 	lea KindStatementText(PC), a1
 	moveq #9, d1
-	bsr.w prvmRouteCompareText
+	bsr.w compareText
 	tst.l d0
-	bne.w prvmRouteUnsupported
+	bne.w unsupported
 
 	movea.l ROUTE_FRAME_SOURCE_PTR(a4), a0
 	move.l ROUTE_FRAME_SOURCE_LEN(a4), d0
-	bsr.w prvmRouteRejectNewline
+	bsr.w rejectNewline
 	tst.l d0
-	bne.w prvmRouteNewlineUnsupported
+	bne.w newlineUnsupported
 
-	bsr.w prvmRouteBuildRequestFrame
+	bsr.w buildRequestFrame
 	lea PrvmRouteRequestFrame(PC), a0
 	move.l #PRVM_REQUEST_FRAME_SIZE, d0
 	movea.l PrvmRouteInterpreterEntryPtr(PC), a1
 	jsr (a1)
-	bra.s prvmRouteDone
+	bra.s done
 
-prvmRouteInvalidArgument
+invalidArgument
 	move.l #PRVM_STATUS_INVALID_ARGUMENT, d0
-	bra.s prvmRouteClearTail
+	bra.s clearTail
 
-prvmRouteUnsupported
+unsupported
 	move.l #PRVM_STATUS_UNSUPPORTED_ROUTE, d0
-	bra.s prvmRouteClearTail
+	bra.s clearTail
 
-prvmRouteNewlineUnsupported
+newlineUnsupported
 	move.l #PRVM_STATUS_NEWLINE_UNSUPPORTED, d0
 
-prvmRouteClearTail
+clearTail
 	clr.l d1
 	clr.l d2
 	clr.l d3
 
-prvmRouteDone
+done
 	movem.l (sp)+, d4-d7/a2-a4
 	rts
+	.bend  ; prvmRouteLine68000
+	
+	.priv
 
-prvmRouteCompareText
+compareText	.block
 	cmp.l d1, d0
-	bne.s prvmRouteCompareMismatch
+	bne.s mismatch
 	subq.l #1, d1
-	bmi.s prvmRouteCompareMatch
+	bmi.s match
 
-prvmRouteCompareLoop
+loop
 	move.b (a0)+, d2
 	cmp.b (a1)+, d2
-	bne.s prvmRouteCompareMismatch
-	dbra d1, prvmRouteCompareLoop
+	bne.s mismatch
+	dbra d1, loop
 
-prvmRouteCompareMatch
+match
 	clr.l d0
 	rts
 
-prvmRouteCompareMismatch
+mismatch
 	moveq #1, d0
 	rts
+	.bend  ; compareText
 
-prvmRouteRejectNewline
+rejectNewline	.block
 	tst.l d0
-	beq.s prvmRouteNoNewline
+	beq.s noNewline
 	subq.l #1, d0
 
-prvmRouteNewlineLoop
+loop
 	move.b (a0)+, d1
 	cmpi.b #10, d1
-	beq.s prvmRouteFoundNewline
+	beq.s found
 	cmpi.b #13, d1
-	beq.s prvmRouteFoundNewline
-	dbra d0, prvmRouteNewlineLoop
+	beq.s found
+	dbra d0, loop
 
-prvmRouteNoNewline
+noNewline
 	clr.l d0
 	rts
 
-prvmRouteFoundNewline
+found
 	moveq #1, d0
 	rts
+	.bend  ; rejectNewline
 
-prvmRouteBuildRequestFrame
+buildRequestFrame	.block
 	lea PrvmRouteRequestFrame(PC), a0
 	move.l #PRVM_MAGIC_OPRP, 0(a0)
 	move.w #PRVM_ABI_VERSION_V1, 4(a0)
 	move.w #PRVM_REQUEST_FRAME_SIZE, 6(a0)
 	move.w #PRVM_CALL_MODE_START, 8(a0)
+	tst.l ROUTE_FRAME_EXPR_RESULT_COUNT(a4)
+	beq.s haveCallMode
+	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
+
+haveCallMode
 	move.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
 	move.l ROUTE_FRAME_LINE_NUM(a4), 12(a0)
 	move.l ROUTE_FRAME_SOURCE_PTR(a4), 16(a0)
@@ -202,6 +214,7 @@ prvmRouteBuildRequestFrame
 	clr.l 104(a0)
 	clr.l 108(a0)
 	rts
+	.bend  ; buildRequestFrame
 
 ProcessorAsmText
 	.byte "asm"

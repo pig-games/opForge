@@ -657,33 +657,24 @@ impl<'a> AsmLine<'a> {
 /// and symbol lookup to family and CPU handlers.
 impl<'a> AssemblerContext for AsmLine<'a> {
     fn eval_expr(&self, expr: &Expr) -> Result<i64, String> {
-        if Self::expr_requires_host_eval(expr) {
+        if self.expr_requires_host_eval(expr) {
             return self
                 .eval_expr_ast(expr)
                 .map(|v| v as i64)
                 .map_err(|e| e.error.message().to_string());
         }
 
-        if matches!(expr, Expr::Identifier(_, _) | Expr::Register(_, _)) {
-            return self
-                .eval_expr_ast(expr)
-                .map(|v| v as i64)
-                .map_err(|e| e.error.message().to_string());
+        if let Expr::String(bytes, span) = expr {
+            return self.eval_string_leaf_for_vm_bridge(bytes, *span);
         }
 
-        if matches!(expr, Expr::String(_, _)) {
-            return self
-                .eval_expr_ast(expr)
-                .map(|v| v as i64)
-                .map_err(|e| e.error.message().to_string());
+        if let Expr::Identifier(name, span) | Expr::Register(name, span) = expr {
+            return self.eval_symbol_leaf_for_vm_bridge(name, *span);
         }
 
         if let Some(model) = self.opthread_execution_model.as_ref() {
             if let Ok(pipeline) = Self::resolve_pipeline_for_cpu(self.registry, self.cpu) {
-                if vm::rollout::package_runtime_default_enabled_for_family(
-                    pipeline.family_id.as_str(),
-                ) && self.portable_expr_runtime_enabled_for_family(pipeline.family_id.as_str())
-                {
+                if self.portable_expr_runtime_enabled_for_family(pipeline.family_id.as_str()) {
                     match vm::vm_opcore::evaluate_expression_for_assembler(
                         model,
                         self.cpu.as_str(),
@@ -694,13 +685,14 @@ impl<'a> AssemblerContext for AsmLine<'a> {
                         Ok(value) => return Ok(value),
                         Err(err) => {
                             let message = err.to_string();
-                            let is_unknown_symbol = {
-                                let trimmed = message.trim_start();
-                                trimmed == "ope004" || trimmed.starts_with("ope004:")
-                            };
-                            if !is_unknown_symbol {
-                                return Err(message);
+                            if self.pass <= 1 && Self::is_vm_unknown_symbol_error(&message) {
+                                return self
+                                    .eval_expr_ast(expr)
+                                    .map(|v| v as i64)
+                                    .map_err(|e| e.error.message().to_string());
                             }
+
+                            return Err(Self::normalize_vm_eval_error_message(&message));
                         }
                     }
                 }
@@ -738,39 +730,199 @@ impl<'a> AssemblerContext for AsmLine<'a> {
             .map(|entry| i64::from(entry.val))
     }
 
+    fn value_symbol(&self, name: &str) -> Option<AsmValue> {
+        if let Some(value) = self.lookup_loop_var(name) {
+            return Some(AsmValue::Scalar(i64::from(value)));
+        }
+
+        if let Some(full_name) = self.resolve_scoped_value_name(name) {
+            if let Some(value) = self.lookup_value_symbol(&full_name) {
+                return Some(value.clone());
+            }
+        }
+
+        let scoped_name = match self.resolve_scoped_name(name) {
+            Ok(Some(full)) => full,
+            Ok(None) => name.to_string(),
+            Err(_) => return None,
+        };
+        if let Some(def) = self.struct_table.get(&scoped_name) {
+            return Some(AsmValue::Struct(def.clone()));
+        }
+        if let Some(AsmValue::Struct(def)) = self.lookup_value_symbol(&scoped_name) {
+            return Some(AsmValue::Struct(def.clone()));
+        }
+
+        self.scalar_value_symbol(name).map(AsmValue::Scalar)
+    }
+
     fn cpu_state_flag(&self, key: &str) -> Option<u32> {
         self.cpu_mode.state_flags.get(key).copied()
     }
 }
 
 impl<'a> AsmLine<'a> {
-    fn expr_requires_host_eval(expr: &Expr) -> bool {
+    fn eval_string_leaf_for_vm_bridge(&self, bytes: &[u8], span: Span) -> Result<i64, String> {
+        let encoded_bytes = self
+            .encode_text_bytes(bytes, span, "String expression", AsmErrorKind::Expression)
+            .map_err(|e| e.error.message().to_string())?;
+
+        if encoded_bytes.len() == 1 {
+            Ok(i64::from(encoded_bytes[0]))
+        } else if encoded_bytes.len() == 2 {
+            Ok(i64::from(
+                ((encoded_bytes[0] as u32) << 8) | (encoded_bytes[1] as u32),
+            ))
+        } else {
+            Err("Multi-character string not allowed in expression.".to_string())
+        }
+    }
+
+    fn eval_symbol_leaf_for_vm_bridge(&self, name: &str, span: Span) -> Result<i64, String> {
+        if let Some(value) = self.lookup_loop_var(name) {
+            return Ok(i64::from(value));
+        }
+
+        if let Some(full_name) = self.resolve_scoped_value_name(name) {
+            let message = match self.lookup_value_symbol(&full_name) {
+                Some(AsmValue::List(_)) => "List cannot be evaluated as scalar expression",
+                Some(AsmValue::Range { .. }) => "Range cannot be evaluated as scalar expression",
+                Some(AsmValue::Struct(_)) => "Struct cannot be evaluated as scalar expression",
+                Some(AsmValue::StructInstance(_)) => {
+                    "Struct instance cannot be evaluated as scalar expression"
+                }
+                _ => "List cannot be evaluated as scalar expression",
+            };
+            return Err(message.to_string());
+        }
+
+        match self.lookup_scoped_entry(name) {
+            Some(entry) => {
+                if !self.entry_is_visible(entry) {
+                    return Err(self.visibility_error(name).message().to_string());
+                }
+                Ok(i64::from(entry.val))
+            }
+            None => {
+                if let Some(result) = self.eval_dotted_identifier_scalar(name, span) {
+                    return result
+                        .map(i64::from)
+                        .map_err(|err| err.error.message().to_string());
+                }
+
+                if self.pass > 1 {
+                    Err(format!("Label not found: {name}"))
+                } else {
+                    Ok(0)
+                }
+            }
+        }
+    }
+
+    fn normalize_vm_eval_error_message(message: &str) -> String {
+        if let Some(name) = Self::vm_unknown_symbol_name(message) {
+            return format!("Label not found: {name}");
+        }
+
+        let trimmed = message.trim_start();
+        let Some((code, payload)) = trimmed.split_once(':') else {
+            return message.to_string();
+        };
+        let code = code.trim();
+        if !code.starts_with("ope")
+            || code.len() != 6
+            || !code[3..].chars().all(|ch| ch.is_ascii_digit())
+        {
+            return message.to_string();
+        }
+
+        let payload = payload.trim_start();
+        if Self::vm_eval_message_uses_host_contract(payload) {
+            payload.to_string()
+        } else {
+            message.to_string()
+        }
+    }
+
+    fn is_vm_unknown_symbol_error(message: &str) -> bool {
+        let trimmed = message.trim_start();
+        trimmed == "ope004"
+            || trimmed.starts_with("ope004:")
+            || Self::vm_unknown_symbol_name(message).is_some()
+    }
+
+    fn vm_unknown_symbol_name(message: &str) -> Option<&str> {
+        let trimmed = message.trim_start();
+        let payload = match trimmed.split_once(':') {
+            Some((code, payload)) => {
+                let code = code.trim();
+                if code.starts_with("ope")
+                    && code.len() == 6
+                    && code[3..].chars().all(|ch| ch.is_ascii_digit())
+                {
+                    payload.trim_start()
+                } else {
+                    trimmed
+                }
+            }
+            None => trimmed,
+        };
+
+        payload.strip_prefix("undefined symbol: ").map(str::trim)
+    }
+
+    fn vm_eval_message_uses_host_contract(message: &str) -> bool {
+        matches!(
+            message,
+            "Index cannot be negative"
+                | "Index out of range"
+                | "Index out of bounds"
+                | "List cannot be evaluated as scalar expression"
+                | "Range cannot be evaluated as scalar expression"
+                | "Struct cannot be evaluated as scalar expression"
+                | "Struct instance cannot be evaluated as scalar expression"
+                | "Member expression requires struct base value"
+                | "Placeholder cannot be evaluated as scalar expression"
+                | "expression value cannot be reduced to scalar expression"
+                | "range step must be non-zero"
+                | "range step direction conflicts with start..end"
+                | "range end overflows supported integer range"
+        ) || message.starts_with("struct '")
+            || message.starts_with("no struct type associated with '")
+            || message.starts_with("unknown field '")
+            || message.starts_with("duplicate field '")
+            || message.starts_with("missing required field '")
+    }
+
+    fn expr_requires_host_eval(&self, expr: &Expr) -> bool {
         match expr {
-            Expr::List(_, _)
-            | Expr::Index { .. }
-            | Expr::Member { .. }
-            | Expr::StructLiteral { .. }
-            | Expr::Call { .. } => true,
-            Expr::Range { .. } => true,
+            Expr::Call { .. } => true,
             Expr::Indirect(inner, _)
             | Expr::IndirectLong(inner, _)
             | Expr::Immediate(inner, _)
-            | Expr::Unary { expr: inner, .. } => Self::expr_requires_host_eval(inner),
-            Expr::Tuple(items, _) => items.iter().any(Self::expr_requires_host_eval),
+            | Expr::Unary { expr: inner, .. } => self.expr_requires_host_eval(inner),
+            Expr::Tuple(items, _) => items.iter().any(|item| self.expr_requires_host_eval(item)),
             Expr::Ternary {
                 cond,
                 then_expr,
                 else_expr,
                 ..
             } => {
-                Self::expr_requires_host_eval(cond)
-                    || Self::expr_requires_host_eval(then_expr)
-                    || Self::expr_requires_host_eval(else_expr)
+                self.expr_requires_host_eval(cond)
+                    || self.expr_requires_host_eval(then_expr)
+                    || self.expr_requires_host_eval(else_expr)
             }
             Expr::Binary { left, right, .. } => {
-                Self::expr_requires_host_eval(left) || Self::expr_requires_host_eval(right)
+                self.expr_requires_host_eval(left) || self.expr_requires_host_eval(right)
             }
-            Expr::Error(_, _)
+            Expr::Member { base, .. } => {
+                self.expr_is_repeat_member_index(base) || self.expr_requires_host_eval(base)
+            }
+            Expr::List(_, _)
+            | Expr::Index { .. }
+            | Expr::StructLiteral { .. }
+            | Expr::Range { .. }
+            | Expr::Error(_, _)
             | Expr::Number(_, _)
             | Expr::Identifier(_, _)
             | Expr::Register(_, _)
@@ -778,5 +930,17 @@ impl<'a> AsmLine<'a> {
             | Expr::Dollar(_)
             | Expr::String(_, _) => false,
         }
+    }
+
+    fn expr_is_repeat_member_index(&self, expr: &Expr) -> bool {
+        let Expr::Index { base, .. } = expr else {
+            return false;
+        };
+        let (Expr::Identifier(name, _) | Expr::Register(name, _)) = &**base else {
+            return false;
+        };
+        self.resolve_scoped_value_name(name)
+            .and_then(|full_name| self.lookup_repeat_iteration_scopes(&full_name))
+            .is_some()
     }
 }

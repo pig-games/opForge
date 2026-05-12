@@ -152,8 +152,8 @@ pub const FAMILY_EXPR_EVAL_ROLLOUT: &[FamilyExprEvalRollout] = &[
     },
     FamilyExprEvalRollout {
         family_id: "motorola68000",
-        mode: FamilyExprEvalMode::StagedVerification,
-        migration_checklist: "phase7-motorola68000-expr-vm-staged-verification",
+        mode: FamilyExprEvalMode::Authoritative,
+        migration_checklist: "phase7-motorola68000-expr-vm-authoritative",
     },
 ];
 
@@ -227,8 +227,8 @@ pub const FAMILY_EXPR_PARSER_ROLLOUT: &[FamilyExprParserRollout] = &[
     },
     FamilyExprParserRollout {
         family_id: "motorola68000",
-        mode: FamilyExprParserMode::StagedVerification,
-        migration_checklist: "phase8-motorola68000-expr-parser-vm-staged-verification",
+        mode: FamilyExprParserMode::Authoritative,
+        migration_checklist: "phase8-motorola68000-expr-parser-vm-authoritative",
     },
 ];
 
@@ -373,6 +373,13 @@ mod tests {
         assert!(portable_expr_runtime_default_enabled_for_family(
             "motorola6800"
         ));
+        assert_eq!(
+            family_expr_eval_mode("motorola68000"),
+            FamilyExprEvalMode::Authoritative
+        );
+        assert!(portable_expr_runtime_default_enabled_for_family(
+            "motorola68000"
+        ));
     }
 
     #[test]
@@ -473,6 +480,13 @@ mod tests {
         );
         assert!(portable_expr_parser_runtime_default_enabled_for_family(
             "motorola6800"
+        ));
+        assert_eq!(
+            family_expr_parser_mode("motorola68000"),
+            FamilyExprParserMode::Authoritative
+        );
+        assert!(portable_expr_parser_runtime_default_enabled_for_family(
+            "motorola68000"
         ));
     }
 

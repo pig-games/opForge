@@ -57,10 +57,15 @@ pub use tokenizer_bridge::apply_token_policy_to_token;
 
 thread_local! {
     pub static CORE_EXPR_PARSER_FAILPOINT: Cell<bool> = const { Cell::new(false) };
+    pub static RUNTIME_EXPR_COMPATIBILITY_FAILPOINT: Cell<bool> = const { Cell::new(false) };
 }
 
 pub fn set_core_expr_parser_failpoint_for_tests(enabled: bool) {
     CORE_EXPR_PARSER_FAILPOINT.with(|flag| flag.set(enabled));
+}
+
+pub fn set_runtime_expr_compatibility_failpoint_for_tests(enabled: bool) {
+    RUNTIME_EXPR_COMPATIBILITY_FAILPOINT.with(|flag| flag.set(enabled));
 }
 
 /// Family-keyed operand parse/resolve adapter used by expr-based runtime encode.

@@ -4,17 +4,18 @@
 ; context with session pointers and host callbacks for the currently supported
 ; smoke semantics while opasm owns pass ordering and statement iteration.
 
-        .module opasm.amigaos.engine
-        .cpu 68020
-        .pub
+	.module opasm.amigaos.engine
+	.cpu 68020
+	.pub
 
 TOKEN_BUFFER_CAPACITY           = 64
+SOURCE_LINE_BUFFER_CAPACITY     = 512
 NATIVE_SOURCE_RECORD_CAPACITY   = 512
 NATIVE_STATEMENT_TABLE_CAPACITY = 16
 NATIVE_LABEL_TABLE_CAPACITY     = 16
 NATIVE_IMAGE_BUFFER_CAPACITY    = 4096
 
-        .section code
+	.section code
 
 OPASM_ENGINE_CTX_SESSION_PASS_PTR = 0
 OPASM_ENGINE_CTX_STMT_COUNT_PTR   = 4
@@ -29,146 +30,175 @@ OPASM_ENGINE_CTX_EMIT_IMAGE_CB    = 36
 
 ; A4: opasm engine context pointer.
 ; Returns D0=0 on success, non-zero on failure.
-opasm_engine_run_two_pass_v1:
-        MOVEM.L D1-D7/A0-A5,-(SP)
-        MOVEA.L A4,A5
-        BSR.W opasmEngineRunPassOne
-        TST.L D0
-        BNE.S opasmEngineRunTwoPassDone
-        BSR.W opasmEngineRunPassTwo
+	.pub
+opasmEngineRunTwoPassV1	.block
+	movem.l d1-d7/a0-a5, -(sp)
+	movea.l a4, a5
+	bsr.w runPassOne
+	tst.l d0
+	bne.s done
+	bsr.w runPassTwo
 
-opasmEngineRunTwoPassDone:
-        MOVEM.L (SP)+,D1-D7/A0-A5
-        RTS
+done
+	movem.l (sp)+, d1-d7/a0-a5
+	rts
+	.bend  ; opasmEngineRunTwoPassV1
+	.priv
 
-opasmEngineRunPassOne:
-        MOVEA.L OPASM_ENGINE_CTX_SESSION_PASS_PTR(A5),A0
-        MOVE.W #1,(A0)
-        MOVEA.L OPASM_ENGINE_CTX_PASS1_BEGIN_CB(A5),A0
-        JSR (A0)
-        TST.L D0
-        BNE.S opasmEngineRunPassOneReturn
-        CLR.W D7
+runPassOne	.block
+	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0
+	move.w #1, (a0)
+	movea.l OPASM_ENGINE_CTX_PASS1_BEGIN_CB(a5), a0
+	jsr (a0)
+	tst.l d0
+	bne.s return
+	clr.w d7
 
-opasmEnginePassOneLoop:
-        MOVEA.L OPASM_ENGINE_CTX_STMT_COUNT_PTR(A5),A0
-        MOVE.W (A0),D0
-        CMP.W D0,D7
-        BHS.S opasmEnginePassOneOk
-        MOVEQ #0,D0
-        MOVE.W D7,D0
-        MOVEA.L OPASM_ENGINE_CTX_RECORD_LABEL_CB(A5),A0
-        JSR (A0)
-        TST.L D0
-        BNE.S opasmEngineRunPassOneReturn
-        MOVEQ #0,D0
-        MOVE.W D7,D0
-        MOVEA.L OPASM_ENGINE_CTX_ADVANCE_PC_CB(A5),A0
-        JSR (A0)
-        TST.L D0
-        BNE.S opasmEngineRunPassOneReturn
-        ADDQ.W #1,D7
-        BRA.S opasmEnginePassOneLoop
+loop
+	movea.l OPASM_ENGINE_CTX_STMT_COUNT_PTR(a5), a0
+	move.w (a0), d0
+	cmp.w d0, d7
+	bhs.s ok
+	moveq #0, d0
+	move.w d7, d0
+	movea.l OPASM_ENGINE_CTX_RECORD_LABEL_CB(a5), a0
+	jsr (a0)
+	tst.l d0
+	bne.s return
+	moveq #0, d0
+	move.w d7, d0
+	movea.l OPASM_ENGINE_CTX_ADVANCE_PC_CB(a5), a0
+	jsr (a0)
+	tst.l d0
+	bne.s return
+	addq.w #1, d7
+	bra.s loop
 
-opasmEnginePassOneOk:
-        MOVEA.L OPASM_ENGINE_CTX_PASS1_OK_CB(A5),A0
-        JSR (A0)
+ok
+	movea.l OPASM_ENGINE_CTX_PASS1_OK_CB(a5), a0
+	jsr (a0)
 
-opasmEngineRunPassOneReturn:
-        RTS
+return
+	rts
+	.bend  ; runPassOne
 
-opasmEngineRunPassTwo:
-        MOVEA.L OPASM_ENGINE_CTX_SESSION_PASS_PTR(A5),A0
-        MOVE.W #2,(A0)
-        MOVEA.L OPASM_ENGINE_CTX_PASS2_BEGIN_CB(A5),A0
-        JSR (A0)
-        TST.L D0
-        BNE.S opasmEngineRunPassTwoReturn
-        CLR.W D7
+runPassTwo	.block
+	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0
+	move.w #2, (a0)
+	movea.l OPASM_ENGINE_CTX_PASS2_BEGIN_CB(a5), a0
+	jsr (a0)
+	tst.l d0
+	bne.s return
+	clr.w d7
 
-opasmEnginePassTwoLoop:
-        MOVEA.L OPASM_ENGINE_CTX_STMT_COUNT_PTR(A5),A0
-        MOVE.W (A0),D0
-        CMP.W D0,D7
-        BHS.S opasmEnginePassTwoOk
-        MOVEA.L OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(A5),A0
-        TST.W (A0)
-        BEQ.S opasmEnginePassTwoAdvanceOnly
-        MOVEQ #0,D0
-        MOVE.W D7,D0
-        MOVEA.L OPASM_ENGINE_CTX_EMIT_IMAGE_CB(A5),A0
-        JSR (A0)
-        TST.L D0
-        BNE.S opasmEngineRunPassTwoReturn
+loop
+	movea.l OPASM_ENGINE_CTX_STMT_COUNT_PTR(a5), a0
+	move.w (a0), d0
+	cmp.w d0, d7
+	bhs.s ok
+	movea.l OPASM_ENGINE_CTX_BIN_REQUESTED_PTR(a5), a0
+	tst.w (a0)
+	beq.s advanceOnly
+	moveq #0, d0
+	move.w d7, d0
+	movea.l OPASM_ENGINE_CTX_EMIT_IMAGE_CB(a5), a0
+	jsr (a0)
+	tst.l d0
+	bne.s return
 
-opasmEnginePassTwoAdvanceOnly:
-        MOVEQ #0,D0
-        MOVE.W D7,D0
-        MOVEA.L OPASM_ENGINE_CTX_ADVANCE_PC_CB(A5),A0
-        JSR (A0)
-        TST.L D0
-        BNE.S opasmEngineRunPassTwoReturn
-        ADDQ.W #1,D7
-        BRA.S opasmEnginePassTwoLoop
+advanceOnly
+	moveq #0, d0
+	move.w d7, d0
+	movea.l OPASM_ENGINE_CTX_ADVANCE_PC_CB(a5), a0
+	jsr (a0)
+	tst.l d0
+	bne.s return
+	addq.w #1, d7
+	bra.s loop
 
-opasmEnginePassTwoOk:
-        MOVEA.L OPASM_ENGINE_CTX_PASS2_OK_CB(A5),A0
-        JSR (A0)
+ok
+	movea.l OPASM_ENGINE_CTX_PASS2_OK_CB(a5), a0
+	jsr (a0)
 
-opasmEngineRunPassTwoReturn:
-        RTS
+return
+	rts
+	.bend  ; runPassTwo
 
-        .endsection
+	.endsection
 
-        .section bss, kind=bss
-        .align 4
+	.pub
+	
+	.section bss, kind=bss
+	.align 4
 
-opasmEngineAssemblySessionStart:
-opasmEngineStmtCount:
-        .res word,1
-opasmEngineSessionPass:
-        .res word,1
-opasmEngineSourceRecordCount:
-        .res word,1
-opasmEngineLabelCount:
-        .res word,1
-opasmEngineImageByteCount:
-        .res word,1
-opasmEngineSessionCpuName:
-        .res byte,TOKEN_BUFFER_CAPACITY
-opasmEngineSessionOrigin:
-        .res long,1
-opasmEngineSessionCurrentPc:
-        .res long,1
-opasmEngineSourceLineNumTable:
-        .res long,NATIVE_SOURCE_RECORD_CAPACITY
-opasmEngineSourceLineLenTable:
-        .res word,NATIVE_SOURCE_RECORD_CAPACITY
-opasmEngineStmtLineTable:
-        .res long,NATIVE_STATEMENT_TABLE_CAPACITY
-opasmEngineStmtLabelLenTable:
-        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
-opasmEngineStmtMnemLenTable:
-        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
-opasmEngineStmtOperandLenTable:
-        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
-opasmEngineStmtDirectiveKindTable:
-        .res word,NATIVE_STATEMENT_TABLE_CAPACITY
-opasmEngineStmtMnemOffTable:
-        .res long,NATIVE_STATEMENT_TABLE_CAPACITY
-opasmEngineStmtLabelNameTable:
-        .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-opasmEngineStmtMnemNameTable:
-        .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-opasmEngineStmtOperandNameTable:
-        .res byte,NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-opasmEngineLabelValueTable:
-        .res long,NATIVE_LABEL_TABLE_CAPACITY
-opasmEngineLabelNameTable:
-        .res byte,NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-opasmEngineImageBuffer:
-        .res byte,NATIVE_IMAGE_BUFFER_CAPACITY
-opasmEngineAssemblySessionEnd:
+OpasmEngineAssemblySessionStart
+OpasmEngineStmtCount
+	.res word, 1
+OpasmEngineSessionPass
+	.res word, 1
+OpasmEngineSourceRecordCount
+	.res word, 1
+OpasmEngineLabelCount
+	.res word, 1
+OpasmEngineImageByteCount
+	.res word, 1
+OpasmEngineSessionCpuName
+	.res byte, TOKEN_BUFFER_CAPACITY
+OpasmEngineSessionOrigin
+	.res long, 1
+OpasmEngineSessionCurrentPc
+	.res long, 1
+OpasmEngineSourceLineNumTable
+	.res long, NATIVE_SOURCE_RECORD_CAPACITY
+OpasmEngineSourceLineLenTable
+	.res word, NATIVE_SOURCE_RECORD_CAPACITY
+OpasmEngineStmtLineTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtSourceLineLenTable
+	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtSourceLineTextTable
+	.res byte, NATIVE_STATEMENT_TABLE_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY
+OpasmEngineStmtLabelLenTable
+	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtMnemLenTable
+	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtOperandLenTable
+	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtDirectiveKindTable
+	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtMnemOffTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtLabelNameTable
+	.res byte, NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+OpasmEngineStmtMnemNameTable
+	.res byte, NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+OpasmEngineStmtOperandNameTable
+	.res byte, NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+OpasmEngineStmtExprFlagsTable
+	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtExprOperandIndexTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtExprSlotIndexTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtExprStartTokenTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtExprEndTokenTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtExprSpanLineTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtExprSpanStartTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtExprSpanEndTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineLabelValueTable
+	.res long, NATIVE_LABEL_TABLE_CAPACITY
+OpasmEngineLabelNameTable
+	.res byte, NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+OpasmEngineLabelFinalizedTable
+	.res byte, NATIVE_LABEL_TABLE_CAPACITY
+OpasmEngineImageBuffer
+	.res byte, NATIVE_IMAGE_BUFFER_CAPACITY
+opasmEngineAssemblySessionEnd
 
-        .endsection
-        .endmodule
+	.endsection
+	.endmodule

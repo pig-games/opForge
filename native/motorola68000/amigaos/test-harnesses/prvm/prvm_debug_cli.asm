@@ -1,16 +1,16 @@
 ; Optional AmigaOS PRVM report demo for the parity-locked interpreter.
 
-        .module main
-        .cpu 68020
-        .use prvm.amigaos.interpreter (prvmRun68000)
+	.module main
+	.cpu 68020
+	.use prvm.amigaos.interpreter (prvmRun68000)
 
-SysBase                         = 4
+SYS_BASE                        = 4
 RETURN_OK                       = 0
 RETURN_FAIL                     = 20
 
-OpenLibrary                     = -552
-CloseLibrary                    = -414
-PutStr                          = -948
+OPEN_LIBRARY                    = -552
+CLOSE_LIBRARY                   = -414
+PUT_STR                         = -948
 
 PRVM_REQUEST_FRAME_SIZE         = 112
 PRVM_MAGIC_OPRP                 = $4F505250
@@ -48,255 +48,263 @@ PRVM_OPCODE_SET_DOT_MNEMONIC    = $65
 PRVM_OPCODE_FINISH_ASSIGNMENT   = $66
 PRVM_DEBUG_PROGRAM_LEN          = 59
 
-        .section entry, kind=code
+	.section entry, kind=code
 
-start:
-        MOVEQ #RETURN_FAIL, D7
+	.pub
+	
+start	.block
+	moveq #RETURN_FAIL, d7
 
-        LEA dosName(PC), A1
-        MOVEQ #36, D0
-        MOVEA.L SysBase.W, A6
-        JSR OpenLibrary(A6)
+	lea DosName(PC), a1
+	moveq #36, d0
+	movea.l SYS_BASE.W, a6
+	jsr OPEN_LIBRARY(a6)
 
-        TST.L D0
-        BNE.S prvmDebugCliHaveDos
+	tst.l d0
+	bne.s haveDos
 
-        LEA dosName(PC), A1
-        MOVEQ #0, D0
-        MOVEA.L SysBase.W, A6
-        JSR OpenLibrary(A6)
-        TST.L D0
-        BEQ.W prvmDebugCliDone
+	lea DosName(PC), a1
+	moveq #0, d0
+	movea.l SYS_BASE.W, a6
+	jsr OPEN_LIBRARY(a6)
+	tst.l d0
+	beq.w done
 
-prvmDebugCliHaveDos:
-        MOVEA.L D0, A5
-        BSR.W prvmDebugCliBuildRequestFrame
-        LEA requestFrame(PC), A0
-        MOVE.L #PRVM_REQUEST_FRAME_SIZE, D0
-        JSR prvmRun68000.L
+haveDos
+	movea.l d0, a5
+	bsr.w buildRequestFrame
+	lea RequestFrame(PC), a0
+	move.l #PRVM_REQUEST_FRAME_SIZE, d0
+	jsr prvmRun68000.l
 
-        LEA prvmStatus(PC), A0
-        MOVE.L D0, 0(A0)
-        MOVE.L D1, 4(A0)
-        MOVE.L D2, 8(A0)
-        MOVE.L D3, 12(A0)
+	lea PrvmStatus(PC), a0
+	move.l d0, 0(a0)
+	move.l d1, 4(a0)
+	move.l d2, 8(a0)
+	move.l d3, 12(a0)
 
-        BSR.W prvmDebugCliValidateResult
-        TST.L D0
-        BNE.S prvmDebugCliReportFailure
+	bsr.w validateResult
+	tst.l d0
+	bne.s reportFailure
 
-        LEA reportSuccessText(PC), A1
-        MOVE.L A1, D1
-        BSR.W prvmDebugCliPutStr
-        MOVEQ #RETURN_OK, D7
-        BRA.S prvmDebugCliCloseDos
+	lea ReportSuccessText(PC), a1
+	move.l a1, d1
+	bsr.w putStr
+	moveq #RETURN_OK, d7
+	bra.s closeDos
 
-prvmDebugCliReportFailure:
-        BSR.W prvmDebugCliFormatStatus
-        LEA reportFailureText(PC), A1
-        MOVE.L A1, D1
-        BSR.W prvmDebugCliPutStr
+reportFailure
+	bsr.w formatStatus
+	lea ReportFailureText(PC), a1
+	move.l a1, d1
+	bsr.w putStr
 
-prvmDebugCliCloseDos:
-        MOVEA.L A5, A1
-        MOVEA.L SysBase.W, A6
-        JSR CloseLibrary(A6)
+closeDos
+	movea.l a5, a1
+	movea.l SYS_BASE.W, a6
+	jsr CLOSE_LIBRARY(a6)
 
-prvmDebugCliDone:
-        MOVE.L D7, D0
-        RTS
+done
+	move.l d7, d0
+	rts
+	.bend  ; start
+	.priv
 
-prvmDebugCliPutStr:
-        MOVEA.L A5, A6
-        JSR PutStr(A6)
-        RTS
+putStr	.block
+	movea.l a5, a6
+	jsr PUT_STR(a6)
+	rts
+	.bend  ; putStr
 
-prvmDebugCliBuildRequestFrame:
-        LEA requestFrame(PC), A0
-        MOVE.L #PRVM_MAGIC_OPRP, 0(A0)
-        MOVE.W #PRVM_ABI_VERSION_V1, 4(A0)
-        MOVE.W #PRVM_REQUEST_FRAME_SIZE, 6(A0)
-        MOVE.W #PRVM_CALL_MODE_START, 8(A0)
-        MOVE.W #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(A0)
-        MOVE.L #1, 12(A0)
-        LEA sourceLine(PC), A1
-        MOVE.L A1, 16(A0)
-        MOVE.L #10, 20(A0)
-        LEA tokenRecord(PC), A1
-        MOVE.L A1, 24(A0)
-        MOVE.L #3, 28(A0)
-        MOVE.W #PRVM_TOKEN_RECORD_SIZE, 32(A0)
-        CLR.W 34(A0)
-        LEA lexemeBytes(PC), A1
-        MOVE.L A1, 36(A0)
-        MOVE.L #8, 40(A0)
-        LEA parserProgram(PC), A1
-        MOVE.L A1, 44(A0)
-        MOVE.L #PRVM_DEBUG_PROGRAM_LEN, 48(A0)
-        LEA resultBuffer(PC), A1
-        MOVE.L A1, 52(A0)
-        MOVE.L #128, 56(A0)
-        LEA diagnosticBuffer(PC), A1
-        MOVE.L A1, 60(A0)
-        MOVE.L #32, 64(A0)
-        LEA resumeBuffer(PC), A1
-        MOVE.L A1, 68(A0)
-        MOVE.L #40, 72(A0)
-        LEA exprRequestBuffer(PC), A1
-        MOVE.L A1, 76(A0)
-        MOVE.L #32, 80(A0)
-        LEA exprResultBuffer(PC), A1
-        MOVE.L A1, 84(A0)
-        MOVE.L #0, 88(A0)
-        MOVE.L #PRVM_PARSER_CONTRACT_VERSION_V2, 92(A0)
-        MOVE.L #64, 96(A0)
-        CLR.L 100(A0)
-        CLR.L 104(A0)
-        CLR.L 108(A0)
-        RTS
+buildRequestFrame	.block
+	lea RequestFrame(PC), a0
+	move.l #PRVM_MAGIC_OPRP, 0(a0)
+	move.w #PRVM_ABI_VERSION_V1, 4(a0)
+	move.w #PRVM_REQUEST_FRAME_SIZE, 6(a0)
+	move.w #PRVM_CALL_MODE_START, 8(a0)
+	move.w #PRVM_ENTRY_KIND_OPASM_STATEMENT, 10(a0)
+	move.l #1, 12(a0)
+	lea SourceLine(PC), a1
+	move.l a1, 16(a0)
+	move.l #10, 20(a0)
+	lea TokenRecord(PC), a1
+	move.l a1, 24(a0)
+	move.l #3, 28(a0)
+	move.w #PRVM_TOKEN_RECORD_SIZE, 32(a0)
+	clr.w 34(a0)
+	lea LexemeBytes(PC), a1
+	move.l a1, 36(a0)
+	move.l #8, 40(a0)
+	lea ParserProgram(PC), a1
+	move.l a1, 44(a0)
+	move.l #PRVM_DEBUG_PROGRAM_LEN, 48(a0)
+	lea ResultBuffer(PC), a1
+	move.l a1, 52(a0)
+	move.l #128, 56(a0)
+	lea DiagnosticBuffer(PC), a1
+	move.l a1, 60(a0)
+	move.l #32, 64(a0)
+	lea ResumeBuffer(PC), a1
+	move.l a1, 68(a0)
+	move.l #40, 72(a0)
+	lea ExprRequestBuffer(PC), a1
+	move.l a1, 76(a0)
+	move.l #32, 80(a0)
+	lea ExprResultBuffer(PC), a1
+	move.l a1, 84(a0)
+	move.l #0, 88(a0)
+	move.l #PRVM_PARSER_CONTRACT_VERSION_V2, 92(a0)
+	move.l #64, 96(a0)
+	clr.l 100(a0)
+	clr.l 104(a0)
+	clr.l 108(a0)
+	rts
+	.bend  ; buildRequestFrame
 
-prvmDebugCliValidateResult:
-        LEA prvmStatus(PC), A1
-        LEA resultBuffer(PC), A0
-        CMPI.L #PRVM_STATUS_OK, 0(A1)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #4, 4(A1)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #3, 8(A1)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #128, 12(A1)
-        BNE.W prvmDebugCliInvalid
-        CMPI.W #PRVM_RESULT_BEGIN_STATEMENT, 0(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.W #PRVM_RESULT_LABEL_TEXT, 32(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #1, 40(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #6, 44(A0)
-        BNE.W prvmDebugCliInvalid
-        TST.L 48(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #5, 52(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 64(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #8, 72(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #11, 76(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #5, 80(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.L #3, 84(A0)
-        BNE.W prvmDebugCliInvalid
-        CMPI.W #PRVM_RESULT_FINISH_LINE, 96(A0)
-        BNE.W prvmDebugCliInvalid
-        CLR.L D0
-        RTS
+validateResult	.block
+	lea PrvmStatus(PC), a1
+	lea ResultBuffer(PC), a0
+	cmpi.l #PRVM_STATUS_OK, 0(a1)
+	bne.w invalid
+	cmpi.l #4, 4(a1)
+	bne.w invalid
+	cmpi.l #3, 8(a1)
+	bne.w invalid
+	cmpi.l #128, 12(a1)
+	bne.w invalid
+	cmpi.w #PRVM_RESULT_BEGIN_STATEMENT, 0(a0)
+	bne.w invalid
+	cmpi.w #PRVM_RESULT_LABEL_TEXT, 32(a0)
+	bne.w invalid
+	cmpi.l #1, 40(a0)
+	bne.w invalid
+	cmpi.l #6, 44(a0)
+	bne.w invalid
+	tst.l 48(a0)
+	bne.w invalid
+	cmpi.l #5, 52(a0)
+	bne.w invalid
+	cmpi.w #PRVM_RESULT_MNEMONIC_TEXT, 64(a0)
+	bne.w invalid
+	cmpi.l #8, 72(a0)
+	bne.w invalid
+	cmpi.l #11, 76(a0)
+	bne.w invalid
+	cmpi.l #5, 80(a0)
+	bne.w invalid
+	cmpi.l #3, 84(a0)
+	bne.w invalid
+	cmpi.w #PRVM_RESULT_FINISH_LINE, 96(a0)
+	bne.w invalid
+	clr.l d0
+	rts
 
-prvmDebugCliInvalid:
-        MOVEQ #1, D0
-        RTS
+invalid
+	moveq #1, d0
+	rts
+	.bend  ; validateResult
 
-prvmDebugCliFormatStatus:
-        LEA prvmStatus(PC), A1
-        MOVE.L 0(A1), D0
-        LEA reportFailureStatusHexDigits(PC), A0
-        MOVEQ #7, D2
+formatStatus	.block
+	lea PrvmStatus(PC), a1
+	move.l 0(a1), d0
+	lea ReportFailureStatusHexDigits(PC), a0
+	moveq #7, d2
 
-prvmDebugCliFormatStatusLoop:
-        ROL.L #4, D0
-        MOVE.L D0, D3
-        ANDI.B #$0F, D3
-        CMPI.B #10, D3
-        BCS.S prvmDebugCliFormatStatusDigit
-        ADDI.B #7, D3
+loop
+	rol.l #4, d0
+	move.l d0, d3
+	andi.b #$0F, d3
+	cmpi.b #10, d3
+	bcs.s digit
+	addi.b #7, d3
 
-prvmDebugCliFormatStatusDigit:
-        ADDI.B #"0", D3
-        MOVE.B D3, (A0)+
-        DBRA D2, prvmDebugCliFormatStatusLoop
-        RTS
+digit
+	addi.b #"0", d3
+	move.b d3, (a0)+
+	dbra d2, loop
+	rts
+	.bend  ; formatStatus
 
-dosName:
-        .byte "dos.library",0
-reportSuccessText:
-        .byte "OPFORGE-PRVM 1",10
-        .byte "STATUS 0",10
-        .byte "RESULTS 4",10
-        .byte "CURSOR 3",10
-        .byte "BYTES 128",10
-        .byte "RESULT 0 KIND begin_statement",10
-        .byte "RESULT 1 KIND label_text START 1 END 6 LEN 5 LEXHEX 7374617274",10
-        .byte "RESULT 2 KIND mnemonic_text START 8 END 11 LEN 3 LEXHEX 4E4F50",10
-        .byte "RESULT 3 KIND finish_line",10
-        .byte "END",10,0
-reportFailureText:
-        .byte "OPFORGE-PRVM 1",10
-        .byte "STATUS $"
-reportFailureStatusHexDigits:
-        .byte "00000000",10
-        .byte "RESULTS 0",10
-        .byte "CURSOR 0",10
-        .byte "BYTES 0",10
-        .byte "END",10,0
+DosName
+	.byte "dos.library", 0
+ReportSuccessText
+	.byte "OPFORGE-PRVM 1", 10
+	.byte "STATUS 0", 10
+	.byte "RESULTS 4", 10
+	.byte "CURSOR 3", 10
+	.byte "BYTES 128", 10
+	.byte "RESULT 0 KIND begin_statement", 10
+	.byte "RESULT 1 KIND label_text START 1 END 6 LEN 5 LEXHEX 7374617274", 10
+	.byte "RESULT 2 KIND mnemonic_text START 8 END 11 LEN 3 LEXHEX 4E4F50", 10
+	.byte "RESULT 3 KIND finish_line", 10
+	.byte "END", 10, 0
+ReportFailureText
+	.byte "OPFORGE-PRVM 1", 10
+	.byte "STATUS $"
+ReportFailureStatusHexDigits
+	.byte "00000000", 10
+	.byte "RESULTS 0", 10
+	.byte "CURSOR 0", 10
+	.byte "BYTES 0", 10
+	.byte "END", 10, 0
 
-sourceLine:
-        .byte "start: NOP"
+SourceLine
+	.byte "start: NOP"
 
-lexemeBytes:
-        .byte "startNOP"
+LexemeBytes
+	.byte "startNOP"
 
-parserProgram:
-        .byte $60,$40,$13,$03,$08,$00,$64,$00
-        .byte $14,$03,$0E,$00,$66,$00
-        .byte $15,$03,$24,$00
-        .byte $33,$04,".","o","r","g",$62,$20,$22,$02,$41,$50
-        .byte $FF,$FF,$FF,$FF,$64,$00
-        .byte $10,$03,$03,$30,$00,$20,$30,$65,$20,$01,$33,$00
-        .byte $30,$62,$20,$41,$50,$FF,$FF,$FF,$FF,$64,$00
+ParserProgram
+	.byte $60, $40, $13, $03, $08, $00, $64, $00
+	.byte $14, $03, $0E, $00, $66, $00
+	.byte $15, $03, $24, $00
+	.byte $33, $04, ".", "o", "r", "g", $62, $20, $22, $02, $41, $50
+	.byte $FF, $FF, $FF, $FF, $64, $00
+	.byte $10, $03, $03, $30, $00, $20, $30, $65, $20, $01, $33, $00
+	.byte $30, $62, $20, $41, $50, $FF, $FF, $FF, $FF, $64, $00
 
-tokenRecord:
-        .word 0
-        .word 0
-        .long 1
-        .long 6
-        .long 0
-        .long 5
-        .word 5
-        .word 0
-        .long 6
-        .long 7
-        .long 0
-        .long 0
-        .word 0
-        .word 0
-        .long 8
-        .long 11
-        .long 5
-        .long 3
+TokenRecord
+	.word 0
+	.word 0
+	.long 1
+	.long 6
+	.long 0
+	.long 5
+	.word 5
+	.word 0
+	.long 6
+	.long 7
+	.long 0
+	.long 0
+	.word 0
+	.word 0
+	.long 8
+	.long 11
+	.long 5
+	.long 3
 
-prvmStatus:
-        .long 0
-prvmResultCount:
-        .long 0
-prvmCursor:
-        .long 0
-prvmResultBytes:
-        .long 0
+PrvmStatus
+	.long 0
+PrvmResultCount
+	.long 0
+PrvmCursor
+	.long 0
+PrvmResultBytes
+	.long 0
 
-requestFrame:
-        .fill byte, 112, 0
-resultBuffer:
-        .fill byte, 128, 0
-diagnosticBuffer:
-        .fill byte, 32, 0
-resumeBuffer:
-        .fill byte, 40, 0
-exprRequestBuffer:
-        .fill byte, 32, 0
-exprResultBuffer:
-        .fill byte, 32, 0
+RequestFrame
+	.fill byte, 112, 0
+ResultBuffer
+	.fill byte, 128, 0
+DiagnosticBuffer
+	.fill byte, 32, 0
+ResumeBuffer
+	.fill byte, 40, 0
+ExprRequestBuffer
+	.fill byte, 32, 0
+ExprResultBuffer
+	.fill byte, 32, 0
 
-        .endsection
-        .output "build/prvm_debug_cli.hunk", format=hunk, sections=entry,code
-        .endmodule
+	.endsection
+	.output "build/prvm_debug_cli.hunk", format=hunk, sections=entry, code
+	.endmodule

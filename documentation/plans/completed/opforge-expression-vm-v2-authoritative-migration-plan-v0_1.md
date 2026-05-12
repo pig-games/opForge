@@ -277,10 +277,12 @@ this migration lands and proves parity.
     - Ternary parsing executes real `EXVM v2` bytecode.
     - Out-of-scope calls and placeholders remain explicit.
 
-- [ ] Item 6 - Add range and list parsing to `EXVM v2`
+- [x] Item 6 - Add range and list parsing to `EXVM v2`
   - Source requirement or finding IDs: `SR-EXPR-VM-AUTHORITY`,
     `SR-NO-AST-AUTHORITY`, `SR-DETERMINISM`.
   - Expected files:
+    - `crates/opforge-package/src/package.rs`
+    - `crates/opforge-package/src/package/tests.rs`
     - `crates/opforge-vm/src/vm_opcore.rs`
     - `crates/opforge-vm/src/runtime_expr_parser.rs` or the focused `EXVM v2`
       runtime module introduced earlier
@@ -302,10 +304,12 @@ this migration lands and proves parity.
     - Range and list parsing execute real `EXVM v2` bytecode.
     - Aggregate parsing scope remains narrow and testable.
 
-- [ ] Item 7 - Add struct, member, and index parsing to `EXVM v2`
+- [x] Item 7 - Add struct, member, and index parsing to `EXVM v2`
   - Source requirement or finding IDs: `SR-EXPR-VM-AUTHORITY`,
     `SR-NO-AST-AUTHORITY`, `SR-DETERMINISM`.
   - Expected files:
+    - `crates/opforge-package/src/package.rs`
+    - `crates/opforge-package/src/package/tests.rs`
     - `crates/opforge-vm/src/vm_opcore.rs`
     - `crates/opforge-vm/src/runtime_expr_parser.rs` or the focused `EXVM v2`
       runtime module introduced earlier
@@ -327,7 +331,7 @@ this migration lands and proves parity.
     - Struct, member, and index parsing execute real `EXVM v2` bytecode.
     - The slice stays limited to these three access or aggregate forms.
 
-- [ ] Item 8 - Lock explicit out-of-scope failures and retire legacy parser authority for covered grammar
+- [x] Item 8 - Lock explicit out-of-scope failures and retire legacy parser authority for covered grammar
   - Source requirement or finding IDs: `SR-EXPR-VM-AUTHORITY`,
     `SR-NO-AST-AUTHORITY`, `SR-PRVM-BOUNDARY`, `SR-ROLLOUT-DISCIPLINE`.
   - Expected files:
@@ -358,7 +362,7 @@ this migration lands and proves parity.
       opaque host parsing.
     - Operand-shape ownership remains in PRVM/opasm.
 
-- [ ] Item 9 - Add `EXPR v2` scalar evaluation for leaf, unary, and arithmetic forms
+- [x] Item 9 - Add `EXPR v2` scalar evaluation for leaf, unary, and arithmetic forms
   - Source requirement or finding IDs: `SR-EXPR-V2`, `SR-NO-AST-AUTHORITY`,
     `SR-DETERMINISM`, `SR-ROLLOUT-DISCIPLINE`.
   - Expected files:
@@ -390,7 +394,7 @@ this migration lands and proves parity.
       current-address behavior.
     - Legacy `EXPR v1` remains explicit and version-gated for broader grammar.
 
-- [ ] Item 10 - Extend `EXPR v2` scalar evaluation to the full covered scalar grammar
+- [x] Item 10 - Extend `EXPR v2` scalar evaluation to the full covered scalar grammar
   - Source requirement or finding IDs: `SR-EXPR-V2`, `SR-NO-AST-AUTHORITY`,
     `SR-DETERMINISM`, `SR-ROLLOUT-DISCIPLINE`.
   - Expected files:
@@ -419,7 +423,7 @@ this migration lands and proves parity.
     - Covered scalar families no longer depend on legacy `EXPR v1` authority.
     - Full scalar grammar uses `EXPR v2` with deterministic parity.
 
-- [ ] Item 11 - Add `EXPR v2` structural values and explicit scalar-boundary enforcement
+- [x] Item 11 - Add `EXPR v2` structural values and explicit scalar-boundary enforcement
   - Source requirement or finding IDs: `SR-EXPR-V2`, `SR-PRVM-BOUNDARY`,
     `SR-DETERMINISM`.
   - Expected files:
@@ -453,7 +457,7 @@ this migration lands and proves parity.
       invalid.
     - Boundary ownership between opcore and opasm remains explicit.
 
-- [ ] Item 12 - Refresh documentation, rollout evidence, and final quality gates
+- [x] Item 12 - Refresh documentation, rollout evidence, and final quality gates
   - Source requirement or finding IDs: `SR-ROLLOUT-DISCIPLINE`,
     `SR-DETERMINISM`, `SR-EXPR-VM-AUTHORITY`.
   - Expected files:
@@ -499,20 +503,20 @@ this migration lands and proves parity.
   - Evidence: scalar leaf, operator, and ternary parsing no longer use opaque
     `ParseExpression` delegation.
 
-- [ ] Milestone 3 - Covered parser grammar no longer depends on legacy Rust
+- [x] Milestone 3 - Covered parser grammar no longer depends on legacy Rust
   parser authority
   - Items required: 6-8.
   - Evidence: aggregate and access grammar is bytecode-backed; out-of-scope
     behavior stays explicit; legacy parser authority is retired from covered
     grammar.
 
-- [ ] Milestone 4 - Covered evaluation no longer depends on Rust `Expr` to
+- [x] Milestone 4 - Covered evaluation no longer depends on Rust `Expr` to
   `EXPR v1` authority
   - Items required: 9-11.
   - Evidence: scalar and structural covered evaluation run through versioned
     `EXPR v2` with explicit scalar-boundary checks.
 
-- [ ] Milestone 5 - Covered families use the full v2 expression path end to end
+- [x] Milestone 5 - Covered families use the full v2 expression path end to end
   - Items required: 12.
   - Evidence: documentation plus quality-gate evidence are aligned with the
     landed v2 path.

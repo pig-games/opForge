@@ -23,6 +23,7 @@ use package::{
 };
 use registry::family::AssemblerContext;
 use registry::registry::{ModuleRegistry, OperandSet, VmEncodeCandidate};
+use registry::syntax::RegisterChecker;
 use types::hierarchy::ResolvedHierarchy;
 
 use crate::portable_contract::{PortableLineAst, PortableToken};
@@ -269,6 +270,10 @@ impl HierarchyExecutionModel {
         dialect_override: Option<&str>,
     ) -> Result<ResolvedHierarchy, RuntimeBridgeError> {
         Ok(self.core.resolve_pipeline(cpu_id, dialect_override)?)
+    }
+
+    pub fn register_checker_for_resolved(&self, resolved: &ResolvedHierarchy) -> RegisterChecker {
+        self.core.register_checker_for_resolved(resolved)
     }
 
     pub fn supports_mnemonic(

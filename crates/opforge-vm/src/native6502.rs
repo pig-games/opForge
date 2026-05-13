@@ -35,7 +35,6 @@ use opcore::parser::Expr;
 use opcore::tokenizer::Span;
 use registry::family::AssemblerContext;
 use registry::registry::VmEncodeCandidate;
-use registry::syntax::register_checker_none;
 
 pub const NATIVE_6502_STATUS_OK_V1: u16 = 0;
 pub const NATIVE_6502_STATUS_BAD_CONTROL_BLOCK_V1: u16 = 1;
@@ -732,7 +731,10 @@ impl Native6502Harness {
             return Err("native expression request has invalid operand span".to_string());
         }
         let (model, active_cpu, dialect_override) = self.require_active_model()?;
-        let register_checker = register_checker_none();
+        let resolved = model
+            .resolve_pipeline(active_cpu, dialect_override)
+            .map_err(runtime_error_to_string)?;
+        let register_checker = model.register_checker_for_resolved(&resolved);
         let (tokens, _, _) = tokenize_parser_tokens_with_model(
             model,
             active_cpu,
@@ -835,7 +837,10 @@ impl Native6502Harness {
             return Err("native selector request has invalid operand span".to_string());
         }
         let (model, active_cpu, dialect_override) = self.require_active_model()?;
-        let register_checker = register_checker_none();
+        let resolved = model
+            .resolve_pipeline(active_cpu, dialect_override)
+            .map_err(runtime_error_to_string)?;
+        let register_checker = model.register_checker_for_resolved(&resolved);
         let (tokens, _, _) = tokenize_parser_tokens_with_model(
             model,
             active_cpu,

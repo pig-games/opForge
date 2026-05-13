@@ -11300,6 +11300,132 @@ fn motorola68020_item6_1_locks_mos_fixture_byte_parity_harness() {
     }
 }
 
+fn item6_required_selector_shape(row: &Item6MosFixtureRow) -> Option<&'static str> {
+    let statement = row
+        .source_line
+        .split_once(';')
+        .map_or(row.source_line.as_str(), |(statement, _)| statement)
+        .trim()
+        .to_ascii_lowercase();
+    match statement.as_str() {
+        "nop" => Some("implied"),
+        "asl a" | "lsr a" | "rol a" | "ror a" | "inc a" | "dec a" => Some("accumulator"),
+        "lda #$42" => Some("immediate"),
+        "lda $20" => Some("direct"),
+        "lda $20,x" => Some("direct_x"),
+        "ldx $20,y" => Some("direct_y"),
+        "jmp ($1234)" => Some("indirect"),
+        "lda ($20,x)" => Some("indexed_indirect_x"),
+        "lda ($20),y" => Some("indirect_indexed_y"),
+        _ => None,
+    }
+}
+
+#[test]
+fn motorola68020_item6_2_preserves_package_selector_shapes_for_smoke_and_required_shapes() {
+    let repo_root = workspace_root();
+    let rust_package_bytes = item6_mos_package_bytes();
+    let native_package_bytes = rust_package_bytes.clone();
+    assert_eq!(native_package_bytes, rust_package_bytes);
+    let model = load_opasm_model_from_package_bytes(rust_package_bytes.as_slice());
+    let mut required_shapes_checked = HashSet::new();
+
+    for (fixture, cpu_id) in item6_mos_fixture_allowlist() {
+        let source = fs::read_to_string(repo_root.join(fixture)).expect("read Item 6 MOS fixture");
+        let fixture_plan = item6_collect_fixture_rows(&model, fixture, cpu_id, source.as_str());
+        let rows = if fixture == "examples/mos6502/6502_native_cli_smoke.asm" {
+            fixture_plan.rows.clone()
+        } else {
+            fixture_plan
+                .rows
+                .iter()
+                .filter(|row| item6_required_selector_shape(row).is_some())
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        if rows.is_empty() {
+            continue;
+        }
+        assert_eq!(
+            native_package_bytes, rust_package_bytes,
+            "same-package identity check before Item 6.2 fixture comparison {fixture}"
+        );
+        let rust_rows =
+            item6_rust_fixture_bytes(&model, cpu_id, rows.as_slice(), &fixture_plan.labels);
+        let native_rows = item6_native_fixture_bytes(
+            native_package_bytes.as_slice(),
+            cpu_id,
+            rows.as_slice(),
+            &fixture_plan.labels,
+        );
+        for ((row, rust_bytes), (native_row, native_result)) in
+            rust_rows.into_iter().zip(native_rows)
+        {
+            assert_eq!(row.fixture, native_row.fixture);
+            assert_eq!(row.line_num, native_row.line_num);
+            let native_bytes = native_result.unwrap_or_else(|message| {
+                panic!(
+                    "native Item 6.2 encode {}:{} failed: {message}",
+                    row.fixture, row.line_num
+                )
+            });
+            println!(
+                "Item 6.2 {}:{} {}\nrust: {}\nnative: {}",
+                row.fixture,
+                row.line_num,
+                row.source_line.trim(),
+                item6_hex_bytes(rust_bytes.as_slice()),
+                item6_hex_bytes(native_bytes.as_slice())
+            );
+            assert_eq!(
+                native_bytes, rust_bytes,
+                "Item 6.2 package selector shape handoff mismatch for {}:{}",
+                row.fixture, row.line_num
+            );
+            if let Some(shape) = item6_required_selector_shape(&row) {
+                required_shapes_checked.insert(shape);
+            }
+        }
+    }
+
+    for shape in [
+        "implied",
+        "accumulator",
+        "immediate",
+        "direct",
+        "direct_x",
+        "direct_y",
+        "indirect",
+        "indexed_indirect_x",
+        "indirect_indexed_y",
+    ] {
+        assert!(
+            required_shapes_checked.contains(shape),
+            "Item 6.2 must check selector shape {shape}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item6_2_native_cli_preserves_parser_spans_for_selected_requests() {
+    let source = opforge_amigaos_source("opforge_cli.asm");
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliPrepareEncodeSelectedBuildRequest:",
+            "BSR.W opforgeNativeCliLoadStatementExprMetadata",
+            "TST.W nativeCliStmtExprFound",
+            "BNE.S opforgeNativeCliPrepareEncodeSelectedSourceLineRequest",
+            "BSR.W opforgeNativeCliClearStatementExprSpanForSyntheticRequest",
+            "BSR.W opforgeNativeCliPrepareEvaluateExpressionRequest",
+            "opforgeNativeCliPrepareEncodeSelectedSourceLineRequest:",
+            "BSR.W opforgeNativeCliLoadStatementSourceLineText",
+            "BSR.W opforgeNativeCliPrepareEvaluateExpressionRequest",
+        ],
+    ));
+}
+
 fn native_cli_6502_contract_encode(
     model: &vm::vm_opasm::HierarchyExecutionModel,
     addr: u32,

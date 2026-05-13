@@ -4,9 +4,10 @@
 //! Shared runtime model state and package/chunk loading.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use opcore::expr_vm::PortableExprBudgets;
-use opcore::tokenizer::Tokenizer;
+use opcore::tokenizer::{RegisterChecker, Tokenizer};
 use package::{
     decode_hierarchy_chunks, HierarchyChunks, ModeSelectorDescriptor, OpcpuCodecError,
     TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
@@ -18,7 +19,9 @@ use package::{
 };
 use registry::registry::ModuleRegistry;
 use registry::registry::VmEncodeCandidate;
-use types::hierarchy::{HierarchyError, HierarchyPackage, ResolvedHierarchy, ScopedOwner};
+use types::hierarchy::{
+    HierarchyError, HierarchyPackage, ResolvedHierarchy, ScopedOwner, ScopedRegisterDescriptor,
+};
 
 use crate::builder::{build_hierarchy_package_from_registry, HierarchyBuildError};
 use crate::bytecode::execute_program;
@@ -48,6 +51,8 @@ pub type TokenPolicyKey = (u8, u32);
 pub type ParserContractKey = (u8, u32);
 pub type ParserVmProgramKey = (u8, u32);
 pub type ExprContractKey = (u8, u32);
+type ScopedSymbolMap = HashMap<String, HashSet<String>>;
+type ScopedSymbolMaps = (ScopedSymbolMap, ScopedSymbolMap, ScopedSymbolMap);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeModelLoadError {
@@ -92,6 +97,9 @@ pub struct RuntimeModelCore {
     pub family_forms: HashMap<String, HashSet<String>>,
     pub cpu_forms: HashMap<String, HashSet<String>>,
     pub dialect_forms: HashMap<String, HashSet<String>>,
+    pub family_registers: ScopedSymbolMap,
+    pub cpu_registers: ScopedSymbolMap,
+    pub dialect_registers: ScopedSymbolMap,
     pub vm_programs: HashMap<VmProgramKey, Vec<u8>>,
     pub mode_selectors: HashMap<ModeSelectorKey, Vec<ModeSelectorDescriptor>>,
     pub token_policies: HashMap<TokenPolicyKey, RuntimeTokenPolicy>,
@@ -133,7 +141,7 @@ impl RuntimeModelCore {
             families,
             cpus,
             dialects,
-            registers: _,
+            registers,
             forms,
             tables,
             selectors,
@@ -313,6 +321,8 @@ impl RuntimeModelCore {
                 }
             }
         }
+        let (family_registers, cpu_registers, dialect_registers) =
+            collect_scoped_registers(registers);
 
         let mut diag_templates = HashMap::new();
         for entry in diagnostics {
@@ -327,6 +337,9 @@ impl RuntimeModelCore {
             family_forms,
             cpu_forms,
             dialect_forms,
+            family_registers,
+            cpu_registers,
+            dialect_registers,
             vm_programs,
             mode_selectors,
             token_policies: scoped_token_policies,
@@ -380,6 +393,15 @@ impl RuntimeModelCore {
             &resolved.family_id,
             &needle,
         ))
+    }
+
+    pub fn register_checker_for_resolved(&self, resolved: &ResolvedHierarchy) -> RegisterChecker {
+        let mut names = HashSet::new();
+        extend_scoped_symbols(&mut names, &self.family_registers, &resolved.family_id);
+        extend_scoped_symbols(&mut names, &self.cpu_registers, &resolved.cpu_id);
+        extend_scoped_symbols(&mut names, &self.dialect_registers, &resolved.dialect_id);
+        let names = Arc::new(names);
+        Arc::new(move |ident: &str| names.contains(&ident.to_ascii_lowercase()))
     }
 
     pub fn supported_family_ids(&self) -> Vec<String> {
@@ -1431,6 +1453,42 @@ fn owner_key_parts(owner: &ScopedOwner) -> (u8, String) {
 fn contains_form(map: &HashMap<String, HashSet<String>>, owner_id: &str, mnemonic: &str) -> bool {
     map.get(&owner_id.to_ascii_lowercase())
         .is_some_and(|forms| forms.contains(mnemonic))
+}
+
+fn collect_scoped_registers(registers: Vec<ScopedRegisterDescriptor>) -> ScopedSymbolMaps {
+    let mut family_registers = HashMap::new();
+    let mut cpu_registers = HashMap::new();
+    let mut dialect_registers = HashMap::new();
+    for register in registers {
+        let name = register.id.to_ascii_lowercase();
+        match register.owner {
+            ScopedOwner::Family(owner) => {
+                family_registers
+                    .entry(owner.to_ascii_lowercase())
+                    .or_insert_with(HashSet::new)
+                    .insert(name);
+            }
+            ScopedOwner::Cpu(owner) => {
+                cpu_registers
+                    .entry(owner.to_ascii_lowercase())
+                    .or_insert_with(HashSet::new)
+                    .insert(name);
+            }
+            ScopedOwner::Dialect(owner) => {
+                dialect_registers
+                    .entry(owner.to_ascii_lowercase())
+                    .or_insert_with(HashSet::new)
+                    .insert(name);
+            }
+        }
+    }
+    (family_registers, cpu_registers, dialect_registers)
+}
+
+fn extend_scoped_symbols(symbols: &mut HashSet<String>, map: &ScopedSymbolMap, owner_id: &str) {
+    if let Some(scoped) = map.get(&owner_id.to_ascii_lowercase()) {
+        symbols.extend(scoped.iter().cloned());
+    }
 }
 
 fn tokenizer_vm_parity_checklist_for_family(family_id: &str) -> Option<&'static str> {

@@ -524,7 +524,7 @@ The intended native shape mirrors the Rust path:
       `SESSION-IMAGE-BYTES 0`. This is accepted for Item 6.1 because the slice
       locks the byte-parity measurement harness and does not claim native CLI
       output parity; full FS-UAE exact-byte parity remains Item 6.7.
-  - [ ] Item 6.2: Wire parser/request selector-shape handoff into native
+  - [x] Item 6.2: Wire parser/request selector-shape handoff into native
     selected encode
     - Source requirement or finding IDs: `SR-6502-SELECTOR`,
       `SR-TKPKG-SERVICE`, `SR-RUST-VM-ARCH`; expected to unblock `MSEL` lookup
@@ -550,6 +550,22 @@ The intended native shape mirrors the Rust path:
     - Definition of done: `tkpkgBuildSelectedEnvelopeFromMselV1` no longer sees
       missing shape metadata for the smoke and simple fixture forms, and native
       code still contains no MOS-specific shape classifier.
+    - Validation evidence, 2026-05-13: `cargo test -p asm
+      motorola68020_item6_2_preserves_package_selector_shapes_for_smoke_and_required_shapes
+      -- --nocapture` passed and printed labeled `rust:`/`native:` hexadecimal
+      byte evidence for `6502_native_cli_smoke.asm` plus the required
+      selector-shape matrix: `implied`, `accumulator`, `immediate`, `direct`,
+      `direct_x`, `direct_y`, `indirect`, `indexed_indirect_x`, and
+      `indirect_indexed_y`, with same-package byte identity asserted before
+      each fixture comparison. `cargo test -p asm
+      motorola68020_item6_2_native_cli_preserves_parser_spans_for_selected_requests
+      -- --nocapture` passed, proving selected requests preserve parser span
+      metadata and use source-line text when metadata exists. `cargo test -p
+      asm motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed; `cargo test -p asm
+      motorola68020_item6_1_locks_mos_fixture_byte_parity_harness --
+      --nocapture` passed; `scripts/workflow/run_native_68000_format_gate.sh`
+      passed; `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
   - [ ] Item 6.3: Complete generic single-operand selected emission plans
     - Source requirement or finding IDs: `SR-6502-ENCODER`,
       `SR-TKPKG-SERVICE`; expected to cover package-backed `none`, `u8`, `u16`,

@@ -858,7 +858,21 @@ opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
 	move.l d1, d0
 
 opforgeNativeCliPrepareEncodeSelectedBuildRequest
+	move.l a0, d3
+	move.l d1, d4
+	bsr.w opforgeNativeCliLoadStatementExprMetadata
+	tst.w NativeCliStmtExprFound
+	bne.s opforgeNativeCliPrepareEncodeSelectedSourceLineRequest
 	bsr.w opforgeNativeCliClearStatementExprSpanForSyntheticRequest
+	movea.l d3, a0
+	move.l d4, d0
+	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
+	bra.s opforgeNativeCliPrepareEncodeSelectedReturn
+
+opforgeNativeCliPrepareEncodeSelectedSourceLineRequest
+	bsr.w opforgeNativeCliLoadStatementSourceLineText
+	tst.l d0
+	beq.s opforgeNativeCliPrepareEncodeSelectedFail
 	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
 	bra.s opforgeNativeCliPrepareEncodeSelectedReturn
 

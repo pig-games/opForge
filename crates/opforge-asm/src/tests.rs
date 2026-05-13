@@ -13662,6 +13662,16 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
     assert!(loader.contains("PACKAGE_CHUNK_TOKS"));
     assert!(loader.contains("TkvmChunkOffsetLo"));
     assert!(loader.contains("PACKAGE_CHUNK_TKVM"));
+    assert!(loader.contains("MselChunkOffsetLo"));
+    assert!(loader.contains("PACKAGE_CHUNK_MSEL"));
+    assert!(loader.contains("PackageChunkFlagsHi"));
+    assert!(source_contains_in_order(
+        &loader,
+        &["checkTabl", "checkMsel", "checkExpr"]
+    ));
+    assert!(loader.contains("bne.w checkMsel"));
+    assert!(loader.contains("lea MselChunkOffsetLo, a3"));
+    assert!(loader.contains("ori.b #PACKAGE_CHUNK_MSEL, PackageChunkFlagsHi"));
     assert!(loader.contains("ExprChunkOffsetLo"));
     assert!(loader.contains("PACKAGE_CHUNK_EXPR"));
     assert!(loader.contains("ExvmChunkOffsetLo"));
@@ -13675,6 +13685,10 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
     assert!(tkpkg_source_contains(
         &buffers,
         "PackageChunkFlags:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
+        "PackageChunkFlagsHi:\n        .res byte,1"
     ));
     assert!(tkpkg_source_contains(
         &buffers,
@@ -13694,11 +13708,83 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
     ));
     assert!(tkpkg_source_contains(
         &buffers,
+        "MselChunkOffsetLo:\n        .res byte,1"
+    ));
+    assert!(tkpkg_source_contains(
+        &buffers,
         "ExprChunkOffsetLo:\n        .res byte,1"
     ));
     assert!(tkpkg_source_contains(
         &buffers,
         "ExvmChunkOffsetLo:\n        .res byte,1"
+    ));
+}
+
+#[test]
+fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
+    let selector = opasm_amigaos_source("opasm_selector_stage.asm");
+    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+
+    for forbidden in [
+        "OpasmSelectorIndexedIndirectXText",
+        "OpasmSelectorIndirectIndexedYText",
+        "OpasmSelectorRelativeText",
+        "OpasmSelectorAccumulatorText",
+        "TkpkgDirectIndexedIndirectXText",
+        "TkpkgDirectIndirectIndexedYText",
+        "TkpkgDirectRelativeText",
+        "TkpkgDirectAccumulatorText",
+        "MOVE.W #$00F0,D5",
+        "MOVE.W #$00D0,D5",
+        "MOVE.W #$00A1,D5",
+        "MOVE.W #$00B1,D5",
+    ] {
+        assert!(
+            !selector.contains(forbidden) && !service.contains(forbidden),
+            "Item 6 must stay package-backed and not add native m6502 hardcode `{forbidden}`"
+        );
+    }
+
+    assert!(service.contains("tkpkgEncodeFindAndExecuteTableProgram"));
+    assert!(service.contains("TablChunkOffsetLo"));
+    assert!(service.contains("tkpkgBuildSelectedEnvelopeFromMselV1"));
+    assert!(service.contains("tkpkgMselClassifyOperandV1"));
+    assert!(service.contains("tkpkgMselTryBuildCandidateV1"));
+    assert!(service.contains("TkpkgMselPlanU8Text"));
+    assert!(service.contains("TkpkgMselPlanU16Text"));
+    assert!(service.contains("tkpkgSelectedEnvelopeAllowedByMselV1"));
+    assert!(service.contains("MselChunkOffsetLo"));
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "bsr.w tkpkgBuildSelectedEnvelopeFromMselV1",
+            "jsr opasmSelectorStageBuildEncodeRequestV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "jsr opasmSelectorStageBuildEncodeRequestV1",
+            "bsr.w tkpkgSelectedEnvelopeAllowedByMselV1",
+            "haveOutput",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "tkpkgSelectedEnvelopeAllowedByMselV1",
+            "lea MselChunkOffsetLo, a3",
+            "tkpkgServiceChunkPtrFromLocatorV1",
+            "tkpkgServiceStringEqAsciiCasefoldV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "encodeCandidate",
+            "bsr.w tkpkgEncodeFindAndExecuteTableProgram",
+            "bsr.w tkpkgEncodeDirect6502EnvelopeV1",
+        ]
     ));
 }
 

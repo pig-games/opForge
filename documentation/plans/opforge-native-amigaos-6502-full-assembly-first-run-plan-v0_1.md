@@ -398,24 +398,67 @@ The intended native shape mirrors the Rust path:
     zero-page, zero-page indexed, absolute, and absolute indexed addressing
     families without hard-coded CLI acceptance logic.
 
-- [ ] Item 6: Implement remaining `m6502` selector and encoder edge modes
+- [ ] Item 6: Complete package-backed `m6502` selector and encoder parity
   - Source requirement or finding IDs: `SR-6502-SELECTOR`,
-    `SR-6502-ENCODER`; expected to finish the first-run instruction matrix.
+    `SR-6502-ENCODER`, `SR-RUST-VM-ARCH`, `SR-TKPKG-SERVICE`; expected to
+    finish the first-run instruction matrix by routing native selection and
+    byte emission through package-backed runtime data rather than native
+    CPU-specific tables.
+  - Scope boundary: Item 6 completeness means the native selector and encoder
+    path is package backed end to end for the first-run `m6502` matrix. Do not
+    add or expand native hard-coded `m6502` mnemonic dispatch, addressing-mode
+    acceptance tables, opcode tables, branch-offset opcode logic, or CLI-side
+    CPU-specific selection rules. Any transitional direct subset from earlier
+    items may remain only as compatibility scaffolding until replaced, but Item
+    6 must move completion evidence toward package/chunk/VM-driven lookup and
+    must not deepen that scaffolding.
   - Expected files: `native/motorola68000/amigaos/opasm/*`,
     `native/motorola68000/amigaos/tkpkg/*`, package fixture references as
-    needed, and focused tests in `crates/opforge-asm/src/tests.rs`.
+    needed, and focused tests in `crates/opforge-asm/src/tests.rs`. Expected
+    native production changes should primarily teach the tkpkg/opasm service
+    boundary to consume package selector/encoding records and selected operand
+    bytes; CLI changes are allowed only for request/response wiring, not for
+    selector or encoder semantics.
+  - Intermediate execution slices are allowed only when each slice moves native
+    behavior closer to package-backed selection or encoding without expanding
+    direct native `m6502` logic. The first allowed slice is the MSEL locator and
+    selected-envelope guard bridge: native package loading records the `MSEL`
+    chunk, selected encode envelopes are checked against active-owner `MSEL`
+    mnemonic/mode records when selector records are present, existing selected
+    CLI outputs stay byte-compatible, and tests assert that no new native
+    `m6502` edge-mode hardcodes were introduced. The next allowed slice is
+    MSEL candidate construction for selected simple forms: native selected
+    encoding classifies package selector shapes, chooses mode keys from active
+    `MSEL` records, applies package operand plans for `none`, `u8`, and `u16`,
+    emits the compact envelope from package data before falling back to the
+    transitional selector stage, prefers package `TABL` programs for byte
+    emission before any transitional direct encoder fallback, and keeps existing
+    selected CLI bytes stable.
+    Later slices must broaden MSEL operand-shape and operand-plan execution to
+    the remaining edge forms, then broaden the package-backed parity corpus to
+    those forms.
   - Full quality gates: focused selector/encoder tests for implied,
     accumulator, indirect, indexed-indirect, indirect-indexed, relative branch,
-    and jump-indirect forms; `cargo test -p vm vm_runtime_mos6502_ --
-    --nocapture`; `cargo test -p asm motorola68020_opforge_native_cli_ --
-    --nocapture`; plus `scripts/workflow/run_rust_quality_gate.sh`.
+    and jump-indirect forms that prove those forms are selected and encoded
+    from package/chunk/VM data, plus guard assertions that no new native
+    `m6502` opcode or addressing-mode hard-code path was introduced; `cargo
+    test -p vm vm_runtime_mos6502_ -- --nocapture`; `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture`; plus
+    `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6 slice
     summary, changed files, and validation output; require `PASS`.
-  - Commit outcome: exactly one commit that completes first-run `m6502`
-    selector and encoder parity through package-backed runtime behavior.
+  - Final Item 6 commit outcome: complete first-run `m6502` selector and
+    encoder parity through package-backed runtime behavior and either remove or
+    clearly bypass any previous direct native `m6502` selector/encoder fallback
+    for the completed forms. Intermediate commits must use the slice evidence
+    above and must not claim full Item 6 completion until the definition of done
+    below is met.
   - Definition of done: native output bytes for the selected full first-run
-    `m6502` corpus match Rust bytes without hard-coded CLI acceptance logic.
+    `m6502` corpus match Rust bytes, selected-form diagnostics come from the
+    package-backed service path, and inspection/tests show no new native
+    CPU-specific mnemonic, addressing-mode, opcode, or relative-branch encoding
+    tables were added outside the package-backed runtime/VM data path.
 
 - [ ] Item 7: Implement layout-control directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,

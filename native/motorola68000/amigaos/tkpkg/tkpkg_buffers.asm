@@ -24,6 +24,7 @@ PACKAGE_CHUNK_TKVM                   = 16
 PACKAGE_CHUNK_TABL                   = 32
 PACKAGE_CHUNK_EXPR                   = 64
 PACKAGE_CHUNK_EXVM                   = 128
+PACKAGE_CHUNK_MSEL                   = 1
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
 PACKAGE_STATE_CLEAR_LONGWORD_COUNT   = 40
 SCOPED_OWNER_FAMILY                  = 0
@@ -81,6 +82,9 @@ PackageStateFlags
 	.res byte, 1
 
 PackageChunkFlags
+	.res byte, 1
+
+PackageChunkFlagsHi
 	.res byte, 1
 
 PackageStorageLen
@@ -159,6 +163,18 @@ TablChunkLenLo
 	.res byte, 1
 
 TablChunkLenHi
+	.res byte, 1
+
+MselChunkOffsetLo
+	.res byte, 1
+
+MselChunkOffsetHi
+	.res byte, 1
+
+MselChunkLenLo
+	.res byte, 1
+
+MselChunkLenHi
 	.res byte, 1
 
 ExprChunkOffsetLo

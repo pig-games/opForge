@@ -32,6 +32,7 @@
 	.use tkpkg.amigaos.buffers (StoredLastErrorLenHi)
 	.use tkpkg.amigaos.buffers (LastErrorBuffer, PackageStorage, TokenScratchBuffer)
 	.use tkpkg.amigaos.buffers (TablChunkOffsetLo, TablChunkOffsetHi)
+	.use tkpkg.amigaos.buffers (MselChunkOffsetLo)
 	.use tkpkg.amigaos.buffers (ExprChunkOffsetLo, ExprChunkOffsetHi)
 	.use tkpkg.amigaos.buffers (ExvmChunkOffsetLo, ExvmChunkOffsetHi)
 	.use tkpkg.amigaos.buffers (ActiveCpuBuffer, ActiveDialectBuffer)
@@ -181,6 +182,23 @@ TkpkgDirectAbsoluteXText
 TkpkgDirectAbsoluteYText
 	.byte "absolutey", 0
 
+TkpkgMselShapeImmediateText
+	.byte "immediate", 0
+TkpkgMselShapeDirectText
+	.byte "direct", 0
+TkpkgMselShapeDirectXText
+	.byte "direct_x", 0
+TkpkgMselShapeDirectYText
+	.byte "direct_y", 0
+TkpkgMselShapeAccumulatorText
+	.byte "accumulator", 0
+TkpkgMselPlanNoneText
+	.byte "none", 0
+TkpkgMselPlanU8Text
+	.byte "u8", 0
+TkpkgMselPlanU16Text
+	.byte "u16", 0
+
 ExprVmMissingEndText
 	.byte "OTR901: exprvm missing end", 0
 
@@ -248,6 +266,26 @@ EncodeSelectedExprOpcodeVersion
 	.res word, 1
 EncodeSelectedOperandDiag
 	.res word, 1
+EncodeSelectedMselShapePtr
+	.res long, 1
+EncodeSelectedMselShapeLen
+	.res word, 1
+EncodeSelectedMselExprPtr
+	.res long, 1
+EncodeSelectedMselExprLen
+	.res word, 1
+EncodeSelectedMselModePtr
+	.res long, 1
+EncodeSelectedMselModeLen
+	.res word, 1
+EncodeSelectedMselPlanPtr
+	.res long, 1
+EncodeSelectedMselPlanLen
+	.res word, 1
+EncodeSelectedMselValue
+	.res long, 1
+EncodeSelectedMselUnstable
+	.res byte, 1
 
 	.endsection
 
@@ -900,6 +938,17 @@ resolveVersions
 	adda.w d0, a1
 	move.l d4, d1
 	sub.l d2, d1
+	move.l a1, -(sp)
+	move.l d1, -(sp)
+	movea.l EncodeSelectedMnemonicPtr, a0
+	move.w d6, d0
+	bsr.w tkpkgBuildSelectedEnvelopeFromMselV1
+	move.l (sp)+, d1
+	movea.l (sp)+, a1
+	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	beq.w haveOutput
+	cmpi.l #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	beq.w operandError
 	lea EncodeSelectedSelectorContext, a4
 	lea TokenScratchBuffer, a0
 	move.l a0, (a4)+
@@ -909,7 +958,16 @@ resolveVersions
 	lea EncodeSelectedSelectorContext, a4
 	jsr opasmSelectorStageBuildEncodeRequestV1
 	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	bne.s selectedStageNotOk
+	move.l d1, -(sp)
+	lea TokenScratchBuffer, a4
+	move.w d1, d0
+	bsr.w tkpkgSelectedEnvelopeAllowedByMselV1
+	move.l (sp)+, d1
+	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
 	beq.w haveOutput
+
+selectedStageNotOk
 	cmpi.l #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
 	beq.w noOutput
 	cmpi.l #OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC, d0
@@ -1115,6 +1173,610 @@ resolveFail
 return
 	rts
 	.bend  ; buildSelectedEnvelopeV1
+
+tkpkgBuildSelectedEnvelopeFromMselV1	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	move.w d0, d2
+	tst.w d2
+	beq.w noOutput
+	bsr.w tkpkgMselClassifyOperandV1
+	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	bne.w return
+	lea MselChunkOffsetLo, a3
+	bsr.w tkpkgServiceChunkPtrFromLocatorV1
+	tst.b d1
+	bne.w noOutput
+	bsr.w tkpkgServiceReadU32LeLow16V1
+	tst.b d1
+	bne.w noOutput
+	tst.w d0
+	beq.w noOutput
+	move.w d0, d7
+	subq.w #1, d7
+	lea 4(a2), a2
+
+entryLoop
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	tst.b d1
+	bne.w unsupported
+	move.b (a2)+, d6
+	bsr.w tkpkgServiceLocateStringV1
+	tst.b d1
+	bne.w unsupported
+	bsr.w tkpkgSelectedMselOwnerMatchesV1
+	move.b d0, d5
+	bsr.w tkpkgServiceLocateStringV1
+	tst.b d1
+	bne.w unsupported
+	tst.b d5
+	beq.s skipMnemonicCompare
+	move.l a2, -(sp)
+	move.w d2, d1
+	movea.l a5, a2
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	and.b d0, d5
+
+skipMnemonicCompare
+	bsr.w tkpkgServiceLocateStringV1
+	tst.b d1
+	bne.w unsupported
+	tst.b d5
+	beq.s skipShapeCompare
+	move.l a2, -(sp)
+	move.w EncodeSelectedMselShapeLen, d1
+	movea.l EncodeSelectedMselShapePtr, a2
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	and.b d0, d5
+
+skipShapeCompare
+	bsr.w tkpkgServiceLocateStringV1
+	tst.b d1
+	bne.w unsupported
+	tst.b d5
+	beq.s skipModeStore
+	move.l a1, EncodeSelectedMselModePtr
+	move.w d0, EncodeSelectedMselModeLen
+
+skipModeStore
+	bsr.w tkpkgServiceLocateStringV1
+	tst.b d1
+	bne.w unsupported
+	tst.b d5
+	beq.s skipPlanStore
+	move.l a1, EncodeSelectedMselPlanPtr
+	move.w d0, EncodeSelectedMselPlanLen
+	move.l a2, -(sp)
+	move.w d7, -(sp)
+	bsr.w tkpkgMselTryBuildCandidateV1
+	move.w (sp)+, d7
+	movea.l (sp)+, a2
+	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	beq.s return
+	cmpi.l #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	beq.s return
+
+skipPlanStore
+	moveq #4, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	tst.b d1
+	bne.w unsupported
+	lea 4(a2), a2
+	dbf d7, entryLoop
+
+noOutput
+	moveq #0, d1
+	moveq #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
+	bra.s return
+
+unsupported
+	moveq #0, d1
+	moveq #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
+
+return
+	movem.l (sp)+, d2-d7/a0-a6
+	rts
+	.bend  ; tkpkgBuildSelectedEnvelopeFromMselV1
+
+tkpkgMselClassifyOperandV1	.block
+	movem.l d2-d7/a0-a3, -(sp)
+	movea.l a1, a0
+	move.w d1, d0
+
+trimHead
+	tst.w d0
+	beq.w unsupported
+	moveq #0, d2
+	move.b (a0), d2
+	cmpi.b #' ', d2
+	beq.s trimHeadOne
+	cmpi.b #9, d2
+	bne.s trimTailStart
+
+trimHeadOne
+	addq.l #1, a0
+	subq.w #1, d0
+	bra.s trimHead
+
+trimTailStart
+	move.w d0, d1
+
+trimTail
+	tst.w d1
+	beq.w unsupported
+	movea.l a0, a2
+	adda.w d1, a2
+	subq.l #1, a2
+	moveq #0, d2
+	move.b (a2), d2
+	cmpi.b #' ', d2
+	beq.s trimTailOne
+	cmpi.b #9, d2
+	bne.s classify
+
+trimTailOne
+	subq.w #1, d1
+	bra.s trimTail
+
+classify
+	move.l a0, EncodeSelectedMselExprPtr
+	move.w d1, EncodeSelectedMselExprLen
+	cmpi.b #'#', (a0)
+	bne.s checkAccumulator
+	addq.l #1, a0
+	subq.w #1, d1
+
+trimImmediateHead
+	tst.w d1
+	beq.w unsupported
+	moveq #0, d2
+	move.b (a0), d2
+	cmpi.b #' ', d2
+	beq.s trimImmediateOne
+	cmpi.b #9, d2
+	bne.s immediate
+
+trimImmediateOne
+	addq.l #1, a0
+	subq.w #1, d1
+	bra.s trimImmediateHead
+
+immediate
+	move.l a0, EncodeSelectedMselExprPtr
+	move.w d1, EncodeSelectedMselExprLen
+	lea TkpkgMselShapeImmediateText, a2
+	move.l a2, EncodeSelectedMselShapePtr
+	move.w #9, EncodeSelectedMselShapeLen
+	bra.w ok
+
+checkAccumulator
+	cmpi.w #1, d1
+	bne.s checkIndexed
+	moveq #0, d2
+	move.b (a0), d2
+	cmpi.b #'A', d2
+	beq.s accumulator
+	cmpi.b #'a', d2
+	bne.s checkIndexed
+
+accumulator
+	clr.l EncodeSelectedMselExprPtr
+	clr.w EncodeSelectedMselExprLen
+	lea TkpkgMselShapeAccumulatorText, a2
+	move.l a2, EncodeSelectedMselShapePtr
+	move.w #11, EncodeSelectedMselShapeLen
+	bra.w ok
+
+checkIndexed
+	move.w d1, d3
+	subq.w #1, d3
+	bmi.w direct
+	movea.l a0, a2
+	adda.w d3, a2
+	moveq #0, d2
+	move.b (a2), d2
+	cmpi.b #'X', d2
+	beq.s maybeX
+	cmpi.b #'x', d2
+	beq.s maybeX
+	cmpi.b #'Y', d2
+	beq.s maybeY
+	cmpi.b #'y', d2
+	beq.s maybeY
+	bra.w direct
+
+maybeX
+	lea TkpkgMselShapeDirectXText, a3
+	moveq #8, d7
+	bra.s findIndexComma
+
+maybeY
+	lea TkpkgMselShapeDirectYText, a3
+	moveq #8, d7
+
+findIndexComma
+	move.w d3, d4
+
+trimBeforeIndex
+	tst.w d4
+	beq.w direct
+	movea.l a0, a2
+	adda.w d4, a2
+	subq.l #1, a2
+	moveq #0, d2
+	move.b (a2), d2
+	cmpi.b #' ', d2
+	beq.s trimBeforeIndexOne
+	cmpi.b #9, d2
+	beq.s trimBeforeIndexOne
+	cmpi.b #',', d2
+	beq.s indexed
+	bra.w direct
+
+trimBeforeIndexOne
+	subq.w #1, d4
+	bra.s trimBeforeIndex
+
+indexed
+	tst.w d4
+	beq.w unsupported
+	subq.w #1, d4
+
+trimIndexedExpr
+	tst.w d4
+	beq.w unsupported
+	movea.l a0, a2
+	adda.w d4, a2
+	subq.l #1, a2
+	moveq #0, d2
+	move.b (a2), d2
+	cmpi.b #' ', d2
+	beq.s trimIndexedExprOne
+	cmpi.b #9, d2
+	bne.s indexedReady
+
+trimIndexedExprOne
+	subq.w #1, d4
+	bra.s trimIndexedExpr
+
+indexedReady
+	move.l a0, EncodeSelectedMselExprPtr
+	move.w d4, EncodeSelectedMselExprLen
+	move.l a3, EncodeSelectedMselShapePtr
+	move.w d7, EncodeSelectedMselShapeLen
+	bra.w ok
+
+direct
+	move.l a0, EncodeSelectedMselExprPtr
+	move.w d1, EncodeSelectedMselExprLen
+	lea TkpkgMselShapeDirectText, a2
+	move.l a2, EncodeSelectedMselShapePtr
+	move.w #6, EncodeSelectedMselShapeLen
+
+ok
+	moveq #OPASM_SELECTOR_STATUS_OK, d0
+	bra.s return
+
+unsupported
+	moveq #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
+
+return
+	movem.l (sp)+, d2-d7/a0-a3
+	rts
+	.bend  ; tkpkgMselClassifyOperandV1
+
+tkpkgMselTryBuildCandidateV1	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	lea TkpkgMselPlanNoneText, a2
+	moveq #4, d1
+	bsr.w tkpkgMselPlanEqualsV1
+	tst.b d0
+	bne.w buildNone
+	lea TkpkgMselPlanU8Text, a2
+	moveq #2, d1
+	bsr.w tkpkgMselPlanEqualsV1
+	tst.b d0
+	bne.s tryU8
+	lea TkpkgMselPlanU16Text, a2
+	moveq #3, d1
+	bsr.w tkpkgMselPlanEqualsV1
+	tst.b d0
+	bne.s tryU16
+	moveq #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
+	bra.w return
+
+tryU8
+	bsr.w tkpkgMselEvalOperandV1
+	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	bne.w return
+	tst.b EncodeSelectedMselUnstable
+	bne.w noOutput
+	move.l EncodeSelectedMselValue, d3
+	tst.l d3
+	bmi.w operandError
+	cmpi.l #$000000FF, d3
+	bhi.w noOutput
+	moveq #1, d6
+	bra.s buildOperand
+
+tryU16
+	bsr.w tkpkgMselEvalOperandV1
+	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	bne.w return
+	move.l EncodeSelectedMselValue, d3
+	tst.l d3
+	bmi.w operandError
+	cmpi.l #$0000FFFF, d3
+	bhi.w operandError
+	moveq #2, d6
+	bra.s buildOperand
+
+buildNone
+	moveq #0, d6
+	bra.s buildOperand
+
+noOutput
+	moveq #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
+	bra.s return
+
+operandError
+	moveq #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	bra.s return
+
+buildOperand
+	bsr.w tkpkgMselWriteCandidateEnvelopeV1
+
+return
+	movem.l (sp)+, d2-d7/a0-a6
+	rts
+	.bend  ; tkpkgMselTryBuildCandidateV1
+
+tkpkgMselPlanEqualsV1	.block
+	move.l a2, -(sp)
+	move.w d1, -(sp)
+	movea.l EncodeSelectedMselPlanPtr, a1
+	move.w EncodeSelectedMselPlanLen, d0
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	move.w (sp)+, d1
+	movea.l (sp)+, a2
+	rts
+	.bend  ; tkpkgMselPlanEqualsV1
+
+tkpkgMselEvalOperandV1	.block
+	movea.l EncodeSelectedMselExprPtr, a0
+	moveq #0, d0
+	move.w EncodeSelectedMselExprLen, d0
+	bsr.w encodeSelectedOperandV1
+	tst.l d0
+	bne.s operandError
+	move.l d3, EncodeSelectedMselValue
+	clr.b EncodeSelectedMselUnstable
+	tst.l d5
+	beq.s ok
+	move.b #1, EncodeSelectedMselUnstable
+
+ok
+	moveq #OPASM_SELECTOR_STATUS_OK, d0
+	rts
+
+operandError
+	moveq #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	rts
+	.bend  ; tkpkgMselEvalOperandV1
+
+tkpkgMselWriteCandidateEnvelopeV1	.block
+	lea TokenScratchBuffer, a4
+	move.w d2, d0
+	cmpi.w #255, d0
+	bhi.w operandError
+	move.b d0, (a4)+
+	movea.l a5, a0
+	bsr.w tkpkgMselCopyBytesV1
+	move.b #1, (a4)+
+	move.w EncodeSelectedMselModeLen, d0
+	cmpi.w #255, d0
+	bhi.w operandError
+	move.b d0, (a4)+
+	movea.l EncodeSelectedMselModePtr, a0
+	bsr.w tkpkgMselCopyBytesV1
+	tst.w d6
+	beq.s writeNoOperands
+	move.b #1, (a4)+
+	move.b d6, (a4)+
+	move.l EncodeSelectedMselValue, d3
+	move.b d3, (a4)+
+	cmpi.w #2, d6
+	bne.s done
+	lsr.l #8, d3
+	move.b d3, (a4)+
+	bra.s done
+
+writeNoOperands
+	move.b #0, (a4)+
+
+done
+	move.l a4, d1
+	lea TokenScratchBuffer, a0
+	sub.l a0, d1
+	moveq #OPASM_SELECTOR_STATUS_OK, d0
+	rts
+
+operandError
+	moveq #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	rts
+	.bend  ; tkpkgMselWriteCandidateEnvelopeV1
+
+tkpkgMselCopyBytesV1	.block
+	tst.w d0
+	beq.s done
+	subq.w #1, d0
+
+loop
+	move.b (a0)+, (a4)+
+	dbf d0, loop
+
+done
+	rts
+	.bend  ; tkpkgMselCopyBytesV1
+
+tkpkgSelectedEnvelopeAllowedByMselV1	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a4, a0
+	move.w d0, d7
+	cmpi.w #4, d7
+	bcs.w unsupported
+	moveq #0, d2
+	move.b (a0)+, d2
+	subq.w #1, d7
+	tst.w d2
+	beq.w unsupported
+	cmp.w d7, d2
+	bhi.w unsupported
+	movea.l a0, a5
+	adda.w d2, a0
+	sub.w d2, d7
+	tst.w d7
+	beq.w unsupported
+	moveq #0, d3
+	move.b (a0)+, d3
+	subq.w #1, d7
+	tst.w d3
+	beq.w ok
+	tst.w d7
+	beq.w unsupported
+	moveq #0, d4
+	move.b (a0)+, d4
+	subq.w #1, d7
+	tst.w d4
+	beq.w unsupported
+	cmp.w d7, d4
+	bhi.w unsupported
+	movea.l a0, a4
+	adda.w d4, a0
+	sub.w d4, d7
+	tst.w d7
+	beq.w unsupported
+	moveq #0, d5
+	move.b (a0)+, d5
+	subq.w #1, d7
+	cmp.w d7, d5
+	bhi.w unsupported
+
+	lea MselChunkOffsetLo, a3
+	bsr.w tkpkgServiceChunkPtrFromLocatorV1
+	tst.b d1
+	bne.w ok
+	bsr.w tkpkgServiceReadU32LeLow16V1
+	tst.b d1
+	bne.w ok
+	tst.w d0
+	beq.w ok
+	move.w d0, d7
+	subq.w #1, d7
+	lea 4(a2), a2
+
+entryLoop
+	moveq #1, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	tst.b d1
+	bne.w unsupported
+	move.b (a2)+, d6
+	bsr.w tkpkgServiceLocateStringV1
+	tst.b d1
+	bne.w unsupported
+	bsr.w tkpkgSelectedMselOwnerMatchesV1
+	move.b d0, d5
+	bsr.w tkpkgServiceLocateStringV1
+	tst.b d1
+	bne.w unsupported
+	tst.b d5
+	beq.s skipMnemonicCompare
+	move.l a2, -(sp)
+	move.w d2, d1
+	movea.l a5, a2
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	and.b d0, d5
+
+skipMnemonicCompare
+	bsr.w tkpkgServiceSkipStringV1
+	tst.b d1
+	bne.w unsupported
+	bsr.w tkpkgServiceLocateStringV1
+	tst.b d1
+	bne.w unsupported
+	tst.b d5
+	beq.s skipModeCompare
+	move.l a2, -(sp)
+	move.w d4, d1
+	movea.l a4, a2
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	tst.b d0
+	bne.s ok
+
+skipModeCompare
+	bsr.w tkpkgServiceSkipStringV1
+	tst.b d1
+	bne.w unsupported
+	moveq #4, d0
+	bsr.w tkpkgServiceRequireBytesV1
+	tst.b d1
+	bne.w unsupported
+	lea 4(a2), a2
+	dbf d7, entryLoop
+
+unsupported
+	moveq #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
+	bra.s return
+
+ok
+	moveq #OPASM_SELECTOR_STATUS_OK, d0
+
+return
+	movem.l (sp)+, d2-d7/a0-a6
+	rts
+	.bend  ; tkpkgSelectedEnvelopeAllowedByMselV1
+
+tkpkgSelectedMselOwnerMatchesV1	.block
+	movem.l d2-d4/a2-a4, -(sp)
+	move.w d0, d3
+	movea.l a1, a3
+	cmpi.b #SCOPED_OWNER_DIALECT, d6
+	bne.s checkCpu
+	lea ActiveDialectBuffer.l, a2
+	tst.b (a2)
+	beq.s noMatch
+	bra.s compare
+
+checkCpu
+	cmpi.b #SCOPED_OWNER_CPU, d6
+	bne.s checkFamily
+	lea ActiveCpuBuffer.l, a2
+	bra.s compare
+
+checkFamily
+	cmpi.b #SCOPED_OWNER_FAMILY, d6
+	bne.s noMatch
+	lea ActiveFamilyBuffer.l, a2
+
+compare
+	bsr.w tkpkgServiceActiveOwnerLenV1
+	move.w d3, d0
+	movea.l a3, a1
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	bra.s return
+
+noMatch
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d2-d4/a2-a4
+	rts
+	.bend  ; tkpkgSelectedMselOwnerMatchesV1
 
 writeCandidateOutputV1	.block
 	movem.l d2-d7/a2-a4, -(sp)
@@ -2054,7 +2716,7 @@ tkpkgEncodeInstructionEnvelopeV1	.block
 	move.b (a4)+, d5
 	subq.w #1, d7
 	tst.w d5
-	beq.w fail
+	beq.s noOperandRecord
 	tst.w d7
 	beq.w fail
 	moveq #0, d6
@@ -2063,17 +2725,28 @@ tkpkgEncodeInstructionEnvelopeV1	.block
 	cmp.w d7, d6
 	bhi.w fail
 	movea.l a4, a3
-	bsr.w tkpkgEncodeDirect6502EnvelopeV1
+	bra.s encodeCandidate
+
+noOperandRecord
+	moveq #0, d6
+	movea.l a4, a3
+
+encodeCandidate
+	bsr.w tkpkgEncodeFindAndExecuteTableProgram
 	tst.b d0
 	beq.s return
 	cmpi.b #2, d0
 	bne.s return
-	bsr.w tkpkgEncodeFindAndExecuteTableProgram
+	bsr.w tkpkgEncodeDirect6502EnvelopeV1
+	cmpi.b #2, d0
+	bne.s return
+	moveq #0, d1
+	moveq #0, d0
 	bra.s return
 
 noMatch
 	moveq #0, d1
-	moveq #0, d0
+	moveq #2, d0
 	bra.s return
 
 fail

@@ -194,6 +194,8 @@ TkpkgMselShapeAccumulatorText
 	.byte "accumulator", 0
 TkpkgMselShapeImpliedText
 	.byte "implied", 0
+TkpkgMselShapeIndirectText
+	.byte "indirect", 0
 TkpkgMselPlanNoneText
 	.byte "none", 0
 TkpkgMselPlanU8Text
@@ -1356,13 +1358,13 @@ immediate
 
 checkAccumulator
 	cmpi.w #1, d1
-	bne.s checkIndexed
+	bne.s checkIndirect
 	moveq #0, d2
 	move.b (a0), d2
 	cmpi.b #'A', d2
 	beq.s accumulator
 	cmpi.b #'a', d2
-	bne.s checkIndexed
+	bne.s checkIndirect
 
 accumulator
 	clr.l EncodeSelectedMselExprPtr
@@ -1378,6 +1380,73 @@ implied
 	lea TkpkgMselShapeImpliedText, a2
 	move.l a2, EncodeSelectedMselShapePtr
 	move.w #7, EncodeSelectedMselShapeLen
+	bra.w ok
+
+checkIndirect
+	cmpi.w #3, d1
+	bcs.w checkIndexed
+	cmpi.b #'(', (a0)
+	bne.w checkIndexed
+	move.w d1, d3
+	subq.w #1, d3
+	movea.l a0, a2
+	adda.w d3, a2
+	cmpi.b #')', (a2)
+	bne.w checkIndexed
+	movea.l a0, a2
+	addq.l #1, a2
+	move.w d1, d4
+	subq.w #2, d4
+	beq.w unsupported
+	movea.l a2, a3
+	move.w d4, d5
+	subq.w #1, d5
+
+scanIndirectComma
+	moveq #0, d2
+	move.b (a3)+, d2
+	cmpi.b #',', d2
+	beq.w unsupported
+	dbf d5, scanIndirectComma
+
+trimIndirectHead
+	tst.w d4
+	beq.w unsupported
+	moveq #0, d2
+	move.b (a2), d2
+	cmpi.b #' ', d2
+	beq.s trimIndirectHeadOne
+	cmpi.b #9, d2
+	bne.s trimIndirectTail
+
+trimIndirectHeadOne
+	addq.l #1, a2
+	subq.w #1, d4
+	bra.s trimIndirectHead
+
+trimIndirectTail
+	tst.w d4
+	beq.w unsupported
+	movea.l a2, a3
+	adda.w d4, a3
+	subq.l #1, a3
+	moveq #0, d2
+	move.b (a3), d2
+	cmpi.b #' ', d2
+	beq.s trimIndirectTailOne
+	cmpi.b #9, d2
+	bne.s indirectReady
+
+trimIndirectTailOne
+	subq.w #1, d4
+	bra.s trimIndirectTail
+
+indirectReady
+	move.l a2, EncodeSelectedMselExprPtr
+	move.w d4, EncodeSelectedMselExprLen
+	lea TkpkgMselShapeIndirectText, a2
+	move.l a2, EncodeSelectedMselShapePtr
+	move.w #8, EncodeSelectedMselShapeLen
 	bra.w ok
 
 checkIndexed

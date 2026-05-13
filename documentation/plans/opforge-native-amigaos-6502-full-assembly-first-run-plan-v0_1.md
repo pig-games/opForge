@@ -438,6 +438,10 @@ The intended native shape mirrors the Rust path:
     zero-operand selected instructions, use the existing `none` operand plan,
     and prove the native path selects the `implied` package shape before any
     selector-stage fallback, without adding opcode or mnemonic tables.
+    The next parenthesized-indirect slice is allowed to classify clean `(expr)`
+    operands as the package `indirect` shape while leaving comma-bearing
+    indexed-indirect forms to later slices, and must reuse package operand
+    plans plus `TABL` emission rather than adding direct opcode logic.
     Later slices must broaden MSEL operand-shape and operand-plan execution to
     the remaining edge forms, then broaden the package-backed parity corpus to
     those forms.

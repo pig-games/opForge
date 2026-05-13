@@ -80,7 +80,10 @@ use vm::intel8080_vm::mode_key_for_instruction_entry;
 use vm::output_model::{
     BinOutputSpec, BinRange, OutputFixupRecord, IMPLICIT_HUNK_CODE_SECTION_NAME,
 };
-use vm::portable_contract::{PortableOperatorKind, PortableSpan, PortableToken, PortableTokenKind};
+use vm::portable_contract::{
+    PortableAstExpr, PortableLineAst, PortableOperatorKind, PortableSpan, PortableToken,
+    PortableTokenKind,
+};
 use vm::rollout::{
     family_runtime_mode, family_runtime_rollout_policy, package_runtime_default_enabled_for_family,
     FamilyRuntimeMode,
@@ -10820,6 +10823,481 @@ fn native_cli_6502_contract_expr_immediate(text: &str) -> opcore::parser::Expr {
 
 fn native_cli_6502_contract_expr_register(text: &str) -> opcore::parser::Expr {
     opcore::parser::Expr::Identifier(text.to_string(), opcore::tokenizer::Span::default())
+}
+
+fn item6_mos_fixture_allowlist() -> [(&'static str, &'static str); 5] {
+    [
+        (
+            "examples/mos6502/6502_native_cli_smoke.asm",
+            m6502_cpu_id.as_str(),
+        ),
+        ("examples/mos6502/6502_simple.asm", m6502_cpu_id.as_str()),
+        ("examples/mos6502/6502_allmodes.asm", m6502_cpu_id.as_str()),
+        ("examples/mos6502/65c02_simple.asm", m65c02_cpu_id.as_str()),
+        (
+            "examples/mos6502/65c02_allmodes.asm",
+            m65c02_cpu_id.as_str(),
+        ),
+    ]
+}
+
+#[derive(Clone, Debug)]
+struct Item6MosFixtureRow {
+    fixture: String,
+    line_num: u32,
+    source_line: String,
+    mnemonic: String,
+    operands: Vec<opcore::parser::Expr>,
+    operand_span: Option<(u16, u16)>,
+    address: u32,
+}
+
+struct Item6MosFixturePlan {
+    rows: Vec<Item6MosFixtureRow>,
+    labels: HashMap<String, i64>,
+}
+
+struct Item6MosParityContext {
+    values: HashMap<String, i64>,
+    finalized: HashMap<String, bool>,
+    symbols: SymbolTable,
+    addr: u32,
+    pass: u8,
+}
+
+impl Item6MosParityContext {
+    fn with_values(values: &HashMap<String, i64>, addr: u32, pass: u8) -> Self {
+        Self {
+            values: values.clone(),
+            finalized: values.keys().map(|name| (name.clone(), true)).collect(),
+            symbols: SymbolTable::new(),
+            addr,
+            pass,
+        }
+    }
+
+    fn parse_number(text: &str) -> Result<i64, String> {
+        let trimmed = text.trim();
+        if let Some(hex) = trimmed.strip_prefix('$') {
+            i64::from_str_radix(hex, 16).map_err(|_| format!("invalid test number '{text}'"))
+        } else if let Some(hex) = trimmed.strip_prefix("0x") {
+            i64::from_str_radix(hex, 16).map_err(|_| format!("invalid test number '{text}'"))
+        } else {
+            trimmed
+                .parse::<i64>()
+                .map_err(|_| format!("invalid test number '{text}'"))
+        }
+    }
+}
+
+impl AssemblerContext for Item6MosParityContext {
+    fn eval_expr(&self, expr: &opcore::parser::Expr) -> Result<i64, String> {
+        match expr {
+            opcore::parser::Expr::Number(text, _) => Self::parse_number(text),
+            opcore::parser::Expr::Identifier(name, _) | opcore::parser::Expr::Register(name, _) => {
+                if matches!(name.to_ascii_lowercase().as_str(), "a" | "x" | "y" | "s") {
+                    return Ok(0);
+                }
+                self.values.get(name).copied().map(Ok).unwrap_or_else(|| {
+                    if self.pass == 1 {
+                        Ok(self.addr as i64)
+                    } else {
+                        Err(format!("Label not found: {name}"))
+                    }
+                })
+            }
+            opcore::parser::Expr::Dollar(_) => Ok(self.addr as i64),
+            opcore::parser::Expr::String(bytes, _) => match bytes.as_slice() {
+                [single] => Ok(*single as i64),
+                [hi, lo] => Ok(((*hi as i64) << 8) | (*lo as i64)),
+                _ => Err("Multi-character string not allowed in expression.".to_string()),
+            },
+            opcore::parser::Expr::Immediate(inner, _)
+            | opcore::parser::Expr::Indirect(inner, _)
+            | opcore::parser::Expr::IndirectLong(inner, _) => self.eval_expr(inner),
+            opcore::parser::Expr::Unary { op, expr, .. } => {
+                let value = self.eval_expr(expr)?;
+                match op {
+                    opcore::parser::UnaryOp::Plus => Ok(value),
+                    opcore::parser::UnaryOp::Minus => Ok(-value),
+                    opcore::parser::UnaryOp::BitNot => Ok(!value),
+                    opcore::parser::UnaryOp::LogicNot => Ok((value == 0) as i64),
+                    opcore::parser::UnaryOp::High => Ok((value >> 8) & 0xff),
+                    opcore::parser::UnaryOp::Low => Ok(value & 0xff),
+                }
+            }
+            opcore::parser::Expr::Binary {
+                op, left, right, ..
+            } => {
+                let left = self.eval_expr(left)?;
+                let right = self.eval_expr(right)?;
+                match op {
+                    BinaryOp::Add => Ok(left + right),
+                    BinaryOp::Subtract => Ok(left - right),
+                    BinaryOp::Multiply => Ok(left * right),
+                    BinaryOp::Divide => Ok(left / right),
+                    BinaryOp::Mod => Ok(left % right),
+                    BinaryOp::Shl => Ok(left << right),
+                    BinaryOp::Shr => Ok(((left as u64) >> right) as i64),
+                    BinaryOp::BitAnd => Ok(left & right),
+                    BinaryOp::BitOr => Ok(left | right),
+                    BinaryOp::BitXor => Ok(left ^ right),
+                    BinaryOp::Eq => Ok((left == right) as i64),
+                    BinaryOp::Ne => Ok((left != right) as i64),
+                    BinaryOp::Ge => Ok((left >= right) as i64),
+                    BinaryOp::Gt => Ok((left > right) as i64),
+                    BinaryOp::Le => Ok((left <= right) as i64),
+                    BinaryOp::Lt => Ok((left < right) as i64),
+                    BinaryOp::LogicAnd => Ok((left != 0 && right != 0) as i64),
+                    BinaryOp::LogicOr => Ok((left != 0 || right != 0) as i64),
+                    BinaryOp::LogicXor => Ok(((left != 0) ^ (right != 0)) as i64),
+                    BinaryOp::Power => Ok(left.pow(u32::try_from(right).unwrap_or(0))),
+                }
+            }
+            other => Err(format!(
+                "unsupported Item 6 MOS parity expression: {other:?}"
+            )),
+        }
+    }
+
+    fn symbols(&self) -> &SymbolTable {
+        &self.symbols
+    }
+
+    fn has_symbol(&self, name: &str) -> bool {
+        self.values.contains_key(name)
+    }
+
+    fn symbol_is_finalized(&self, name: &str) -> Option<bool> {
+        self.finalized.get(name).copied()
+    }
+
+    fn current_address(&self) -> u32 {
+        self.addr
+    }
+
+    fn pass(&self) -> u8 {
+        self.pass
+    }
+
+    fn scalar_value_symbol(&self, name: &str) -> Option<i64> {
+        self.values.get(name).copied()
+    }
+}
+
+fn item6_hex_bytes(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn item6_expr_span(expr: &PortableAstExpr) -> PortableSpan {
+    match expr {
+        PortableAstExpr::Number(_, span)
+        | PortableAstExpr::Identifier(_, span)
+        | PortableAstExpr::Register(_, span)
+        | PortableAstExpr::List(_, span)
+        | PortableAstExpr::Placeholder(span)
+        | PortableAstExpr::Indirect(_, span)
+        | PortableAstExpr::Dollar(span)
+        | PortableAstExpr::String(_, span)
+        | PortableAstExpr::Immediate(_, span)
+        | PortableAstExpr::IndirectLong(_, span)
+        | PortableAstExpr::Tuple(_, span)
+        | PortableAstExpr::Error(_, span)
+        | PortableAstExpr::Range { span, .. }
+        | PortableAstExpr::Index { span, .. }
+        | PortableAstExpr::Member { span, .. }
+        | PortableAstExpr::StructLiteral { span, .. }
+        | PortableAstExpr::Call { span, .. }
+        | PortableAstExpr::Ternary { span, .. }
+        | PortableAstExpr::Unary { span, .. }
+        | PortableAstExpr::Binary { span, .. } => *span,
+    }
+}
+
+fn item6_operand_span(operands: &[PortableAstExpr]) -> Option<(u16, u16)> {
+    let first = operands.first().map(item6_expr_span)?;
+    let last = operands.last().map(item6_expr_span)?;
+    Some((first.col_start as u16, last.col_end as u16))
+}
+
+fn item6_normalize_mos_operand_exprs(operands: &[PortableAstExpr]) -> Vec<opcore::parser::Expr> {
+    let mut core_operands = operands
+        .iter()
+        .map(PortableAstExpr::to_core_expr)
+        .collect::<Vec<_>>();
+    if let [opcore::parser::Expr::Identifier(name, span)] = core_operands.as_slice() {
+        if name.eq_ignore_ascii_case("a") {
+            core_operands[0] = opcore::parser::Expr::Register("A".to_string(), *span);
+        }
+    }
+    core_operands
+}
+
+fn item6_parse_org_address(line: &str) -> Option<u32> {
+    let trimmed = line.trim();
+    if !trimmed.to_ascii_lowercase().starts_with(".org") {
+        return None;
+    }
+    let value = trimmed[4..]
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches('$');
+    u32::from_str_radix(value, 16).ok()
+}
+
+fn item6_mos_package_bytes() -> Vec<u8> {
+    let mut registry = ModuleRegistry::new();
+    registry.register_family(Box::new(
+        families::families::mos6502::module::MOS6502FamilyModule,
+    ));
+    registry.register_cpu(Box::new(
+        families::families::mos6502::module::M6502CpuModule,
+    ));
+    registry.register_cpu(Box::new(families::m65c02::module::M65C02CpuModule));
+    build_hierarchy_package_from_registry(&registry).expect("build focused Item 6 MOS package")
+}
+
+fn item6_collect_fixture_rows(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    fixture: &str,
+    cpu_id: &str,
+    source: &str,
+) -> Item6MosFixturePlan {
+    let mut rows = Vec::new();
+    let mut labels = HashMap::new();
+    let mut pc = 0u32;
+
+    for (idx, line) in source.lines().enumerate() {
+        let line_num = u32::try_from(idx + 1).expect("fixture line number fits u32");
+        if let Some(origin) = item6_parse_org_address(line) {
+            pc = origin;
+            continue;
+        }
+        let ast =
+            vm::vm_opasm::parse_portable_line_for_assembler(model, cpu_id, None, line, line_num)
+                .unwrap_or_else(|err| panic!("parse {fixture}:{line_num}: {}", err.message));
+        let PortableLineAst::Statement {
+            label,
+            mnemonic,
+            operands,
+        } = ast
+        else {
+            continue;
+        };
+        if let Some(label) = label {
+            labels.insert(label.name, pc as i64);
+        }
+        let Some(mnemonic) = mnemonic else {
+            continue;
+        };
+        if mnemonic.starts_with('.') {
+            continue;
+        }
+        let operand_span = item6_operand_span(operands.as_slice());
+        let core_operands = item6_normalize_mos_operand_exprs(operands.as_slice());
+        let ctx = Item6MosParityContext::with_values(&labels, pc, 1);
+        let bytes = vm::vm_opasm::encode_instruction_from_exprs(
+            model,
+            cpu_id,
+            None,
+            mnemonic.as_str(),
+            core_operands.as_slice(),
+            &ctx,
+        )
+        .unwrap_or_else(|err| panic!("size {fixture}:{line_num}: {err}"))
+        .unwrap_or_else(|| panic!("size {fixture}:{line_num} emitted no bytes"));
+        rows.push(Item6MosFixtureRow {
+            fixture: fixture.to_string(),
+            line_num,
+            source_line: line.to_string(),
+            mnemonic,
+            operands: core_operands,
+            operand_span,
+            address: pc,
+        });
+        pc = pc.saturating_add(u32::try_from(bytes.len()).expect("instruction size fits u32"));
+    }
+
+    Item6MosFixturePlan { rows, labels }
+}
+
+fn item6_rust_fixture_bytes(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    cpu_id: &str,
+    rows: &[Item6MosFixtureRow],
+    labels: &HashMap<String, i64>,
+) -> Vec<(Item6MosFixtureRow, Vec<u8>)> {
+    rows.iter()
+        .map(|row| {
+            let ctx = Item6MosParityContext::with_values(&labels, row.address, 2);
+            let bytes = vm::vm_opasm::encode_instruction_from_exprs(
+                model,
+                cpu_id,
+                None,
+                row.mnemonic.as_str(),
+                row.operands.as_slice(),
+                &ctx,
+            )
+            .unwrap_or_else(|err| panic!("rust encode {}:{}: {err}", row.fixture, row.line_num))
+            .unwrap_or_else(|| {
+                panic!(
+                    "rust encode {}:{} emitted no bytes",
+                    row.fixture, row.line_num
+                )
+            });
+            (row.clone(), bytes)
+        })
+        .collect()
+}
+
+fn item6_native_fixture_bytes(
+    package_bytes: &[u8],
+    cpu_id: &str,
+    rows: &[Item6MosFixtureRow],
+    labels: &HashMap<String, i64>,
+) -> Vec<(Item6MosFixtureRow, Result<Vec<u8>, String>)> {
+    let mut harness = vm::native6502::Native6502Harness::new();
+    let mut control_block = vm::native6502::Native6502ControlBlockV1::new_v1();
+    let init = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_INIT_V1,
+        vm::native6502::Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, vm::native6502::NATIVE_6502_STATUS_OK_V1);
+    let load = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        vm::native6502::Native6502HarnessRequest::LoadPackage { package_bytes },
+    );
+    assert_eq!(
+        load.status_code,
+        vm::native6502::NATIVE_6502_STATUS_OK_V1,
+        "load Item 6 native package: {:?}",
+        load.output
+    );
+    let set_pipeline = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        vm::native6502::Native6502HarnessRequest::SetPipeline {
+            cpu_id,
+            dialect_override: None,
+        },
+    );
+    assert_eq!(
+        set_pipeline.status_code,
+        vm::native6502::NATIVE_6502_STATUS_OK_V1
+    );
+    rows.iter()
+        .map(|row| {
+            let ctx = Item6MosParityContext::with_values(&labels, row.address, 2);
+            let encode = harness.invoke_v1(
+                &mut control_block,
+                vm::native6502_abi::NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1,
+                vm::native6502::Native6502HarnessRequest::EncodeSelectedInstruction {
+                    mnemonic: row.mnemonic.as_str(),
+                    source_line: row.source_line.as_str(),
+                    line_num: row.line_num,
+                    address: row.address,
+                    operand_span: row.operand_span,
+                    assembler_ctx: &ctx,
+                },
+            );
+            let bytes = if encode.status_code == vm::native6502::NATIVE_6502_STATUS_OK_V1 {
+                match encode.output {
+                    vm::native6502::Native6502HarnessOutput::EncodedBytes(Some(bytes)) => Ok(bytes),
+                    other => Err(format!("unexpected native output: {other:?}")),
+                }
+            } else {
+                Err(format!("status {} {:?}", encode.status_code, encode.output))
+            };
+            (row.clone(), bytes)
+        })
+        .collect()
+}
+
+#[test]
+fn motorola68020_item6_1_locks_mos_fixture_byte_parity_harness() {
+    let repo_root = workspace_root();
+    let rust_package_bytes = item6_mos_package_bytes();
+    let native_package_bytes = rust_package_bytes.clone();
+    assert_eq!(
+        native_package_bytes, rust_package_bytes,
+        "Item 6.1 native and Rust paths must consume identical serialized package bytes"
+    );
+    let model = load_opasm_model_from_package_bytes(rust_package_bytes.as_slice());
+    let fixture_allowlist = item6_mos_fixture_allowlist();
+    let allowlist = fixture_allowlist
+        .iter()
+        .map(|(path, _)| *path)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        allowlist,
+        vec![
+            "examples/mos6502/6502_native_cli_smoke.asm",
+            "examples/mos6502/6502_simple.asm",
+            "examples/mos6502/6502_allmodes.asm",
+            "examples/mos6502/65c02_simple.asm",
+            "examples/mos6502/65c02_allmodes.asm",
+        ]
+    );
+
+    for (fixture, cpu_id) in fixture_allowlist {
+        assert_eq!(
+            native_package_bytes, rust_package_bytes,
+            "same-package identity check before fixture comparison {fixture}"
+        );
+        let source = fs::read_to_string(repo_root.join(fixture)).expect("read Item 6 MOS fixture");
+        let fixture_plan = item6_collect_fixture_rows(&model, fixture, cpu_id, source.as_str());
+        let rows = fixture_plan.rows.as_slice();
+        assert!(
+            !rows.is_empty(),
+            "Item 6.1 fixture {fixture} must contain instruction rows"
+        );
+        let rust_rows = item6_rust_fixture_bytes(&model, cpu_id, rows, &fixture_plan.labels);
+        let native_rows = item6_native_fixture_bytes(
+            native_package_bytes.as_slice(),
+            cpu_id,
+            rows,
+            &fixture_plan.labels,
+        );
+        assert_eq!(rust_rows.len(), native_rows.len());
+
+        for ((row, rust_bytes), (native_row, native_result)) in
+            rust_rows.into_iter().zip(native_rows)
+        {
+            assert_eq!(
+                native_package_bytes, rust_package_bytes,
+                "same-package identity check before row comparison {}:{}",
+                row.fixture, row.line_num
+            );
+            assert_eq!(row.fixture, native_row.fixture);
+            assert_eq!(row.line_num, native_row.line_num);
+            let native_label = match native_result {
+                Ok(bytes) => item6_hex_bytes(bytes.as_slice()),
+                Err(message) => format!("<error: {message}>"),
+            };
+            println!(
+                "Item 6.1 {}:{} {}\nrust: {}\nnative: {}",
+                row.fixture,
+                row.line_num,
+                row.source_line.trim(),
+                item6_hex_bytes(rust_bytes.as_slice()),
+                native_label
+            );
+            assert!(
+                !rust_bytes.is_empty(),
+                "Rust oracle must render exact bytes for {}:{}",
+                row.fixture,
+                row.line_num
+            );
+        }
+    }
 }
 
 fn native_cli_6502_contract_encode(

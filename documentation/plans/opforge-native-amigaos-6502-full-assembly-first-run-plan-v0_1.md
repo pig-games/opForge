@@ -163,9 +163,16 @@ match this Rust-reference contract before expanding the matrix.
   context unless the user explicitly directs otherwise.
 - Do not install, import, add, recommend, vendor, execute, or otherwise touch
   `litellm`.
-- Keep the first implementation target `m6502`; 65C02, 65816, 45GS02, and other
-  family variants remain out of scope except where package data is shared and
-  not broadened by native logic.
+- Keep the first implementation target focused on the attached MOS package
+  fixture set: base `m6502` plus the attached 65C02 parity fixtures. 65C02
+  support in this plan is included only through package/Rust-VM-backed selector
+  and encoder data; it must not introduce 65C02-specific native selector or
+  encoder code. 65816, 45GS02, and other family variants remain out of scope
+  except where package data is shared and not broadened by native logic.
+- `.cpu` and `.org` may be replaced by hard-coded test harness setup while Item
+  6 is being completed. This exception does not authorize hard-coded native
+  CPU-specific mnemonic, addressing-mode, selector, operand-plan, relative
+  branch, or opcode logic.
 - Do not implement `.srec`, Amiga Hunk, map files, labels files, dependency
   files, or export-section outputs in this first run, but do not design the
   first-run output code in a way that blocks them.
@@ -398,96 +405,296 @@ The intended native shape mirrors the Rust path:
     zero-page, zero-page indexed, absolute, and absolute indexed addressing
     families without hard-coded CLI acceptance logic.
 
-- [x] Item 6: Complete package-backed `m6502` selector and encoder parity
+- [ ] Item 6: Complete package-backed MOS 6502/65C02 selector and encoder
+  parity
   - Source requirement or finding IDs: `SR-6502-SELECTOR`,
     `SR-6502-ENCODER`, `SR-RUST-VM-ARCH`, `SR-TKPKG-SERVICE`; expected to
-    finish the first-run instruction matrix by routing native selection and
-    byte emission through package-backed runtime data rather than native
-    CPU-specific tables.
+    finish the attached MOS instruction/addressing fixture matrix by routing
+    native selection and byte emission through package-backed runtime data
+    rather than native CPU-specific tables.
+  - Status correction, 2026-05-13: the earlier Item 6 completion note proved
+    fallback removal and partial package-backed plumbing only. It did not prove
+    that native opForge can assemble the full attached 6502/65C02 instruction
+    and addressing-mode fixtures through package-backed processing. Item 6 is
+    therefore reopened and decomposed into the subitems below.
   - Scope boundary: Item 6 completeness means the native selector and encoder
-    path is package backed end to end for the first-run `m6502` matrix. Do not
-    add or expand native hard-coded `m6502` mnemonic dispatch, addressing-mode
-    acceptance tables, opcode tables, branch-offset opcode logic, or CLI-side
-    CPU-specific selection rules. Any transitional direct subset from earlier
-    items may remain only as compatibility scaffolding until replaced, but Item
-    6 must move completion evidence toward package/chunk/VM-driven lookup and
-    must not deepen that scaffolding.
+    path is package backed end to end for the attached fixture set:
+    `examples/mos6502/6502_native_cli_smoke.asm`,
+    `examples/mos6502/6502_simple.asm`,
+    `examples/mos6502/6502_allmodes.asm`,
+    `examples/mos6502/65c02_simple.asm`, and
+    `examples/mos6502/65c02_allmodes.asm`. Do not add or expand native
+    hard-coded MOS mnemonic dispatch, addressing-mode acceptance tables, opcode
+    tables, operand-plan tables, branch-offset opcode logic, or CLI-side
+    CPU-specific selection rules. If native CPU-specific selector or encoder
+    logic appears necessary in any area other than hard-coded `.cpu`/`.org` test
+    setup, stop and ask the user for approval before implementing it.
   - Expected files: `native/motorola68000/amigaos/opasm/*`,
     `native/motorola68000/amigaos/tkpkg/*`, package fixture references as
     needed, and focused tests in `crates/opforge-asm/src/tests.rs`. Expected
     native production changes should primarily teach the tkpkg/opasm service
     boundary to consume package selector/encoding records and selected operand
-    bytes; CLI changes are allowed only for request/response wiring, not for
-    selector or encoder semantics.
-  - Intermediate execution slices are allowed only when each slice moves native
-    behavior closer to package-backed selection or encoding without expanding
-    direct native `m6502` logic. The first allowed slice is the MSEL locator and
-    selected-envelope guard bridge: native package loading records the `MSEL`
-    chunk, selected encode envelopes are checked against active-owner `MSEL`
-    mnemonic/mode records when selector records are present, existing selected
-    CLI outputs stay byte-compatible, and tests assert that no new native
-    `m6502` edge-mode hardcodes were introduced. The next allowed slice is
-    MSEL candidate construction for selected simple forms: native selected
-    encoding consumes normalized selector shape metadata supplied by the
-    parser/package request boundary, chooses mode keys from active `MSEL`
-    records, applies package operand plans for `none`, `u8`, and `u16`, emits
-    the compact envelope from package data before falling back to the
-    transitional selector stage, emits selected bytes through package `TABL`
-    programs only, and keeps existing selected CLI bytes stable. Native `tkpkg`
-    must not infer selector shape from raw operand spelling such as immediate
-    prefixes, accumulator aliases, parentheses, index suffixes, or branch
-    mnemonics, and must not retain native `m6502` opcode/mode emission fallbacks.
-    Later slices must extend the parser/request boundary so it supplies package
-    selector shape and inner expression spans for the remaining edge forms, then
-    broaden operand-plan execution and the package-backed parity corpus to those
-    forms.
-  - Completion note, 2026-05-13: Item 6 closes the native `tkpkg`
-    selected-encode fallback by requiring normalized selector-shape metadata for
-    the `MSEL` selected-envelope path, removing raw native operand-shape
-    classification, and making selected byte emission depend on package `TABL`
-    programs rather than direct native opcode bytes. The Rust/package/VM side is
-    now authoritative for MOS 6502 operand-shape selection and operand-plan
-    metadata, so the native service can stay package backed instead of
-    reintroducing MOS6502-specific mnemonic, operand spelling, addressing-mode,
-    branch, or opcode logic.
-  - Validation evidence, 2026-05-13: `cargo test -p asm
-    motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
-    --nocapture` passed; `cargo test -p vm
-    vm_runtime_mos6502_native6502_harness_encodes_selected_instructions_into_session_image
-    -- --nocapture` passed; `cargo test -p vm
-    mos6502_vm_expr_selector_is_package_backed_for_source_operand_shapes --
-    --nocapture` passed; and `cargo test -p asm
-    motorola68020_opforge_native_cli_ -- --nocapture` passed. Final slice
-    checks also passed: `cargo test -p vm vm_runtime_mos6502_ --
-    --nocapture`, `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`,
-    `scripts/workflow/run_native_68000_format_gate.sh`, `cargo fmt --all
-    --check`, `python3 scripts/workflow/check_workflow_artifact_bundle.py
-    --root . plan
-    documentation/plans/opforge-native-amigaos-6502-full-assembly-first-run-plan-v0_1.md`,
-    and `scripts/workflow/run_rust_quality_gate_summary.sh`.
+    bytes; CLI changes are allowed only for request/response wiring and the
+    explicitly allowed `.cpu`/`.org` test setup, not for selector or encoder
+    semantics.
+  - Same-package-bytecode validation rule: every Item 6 byte-parity test must
+    feed native execution and Rust golden generation from the exact same
+    serialized package bytecode payload in the same test run. The tests must
+    record or assert the package identity, such as a byte-for-byte equality or
+    hash check, before comparing output bytes. Native tests must not use a
+    separately generated, independently embedded, stale, or hand-edited package
+    when the Rust golden bytes come from a different package payload.
+  - Human-readable byte evidence rule: every Item 6 parity gate must emit or
+    record clear hexadecimal byte output showing both sides for each checked
+    source row or fixture. The evidence must label the source row or fixture,
+    the Rust VM bytes, and the native bytes, for example `rust: A9 42` and
+    `native: A9 42`. A boolean equality assertion alone is not sufficient
+    evidence for completing an Item 6 subitem.
   - Full quality gates: focused selector/encoder tests for implied,
     accumulator, indirect, indexed-indirect, indirect-indexed, relative branch,
     and jump-indirect forms that prove those forms are selected and encoded
-    from package/chunk/VM data, plus guard assertions that no new native
-    `m6502` opcode or addressing-mode hard-code path was introduced; `cargo
-    test -p vm vm_runtime_mos6502_ -- --nocapture`; `cargo test -p asm
+    from the same package bytecode consumed by the Rust golden path and print
+    labeled Rust/native hex bytes, plus guard assertions that no new native MOS
+    opcode or addressing-mode hard-code path was introduced; `cargo test -p vm
+    vm_runtime_mos6502_ -- --nocapture`; `cargo test -p asm
     motorola68020_opforge_native_cli_ -- --nocapture`; plus
     `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6 slice
     summary, changed files, and validation output; require `PASS`.
-  - Final Item 6 commit outcome: complete first-run `m6502` selector and
-    encoder parity through package-backed runtime behavior and either remove or
-    clearly bypass any previous direct native `m6502` selector/encoder fallback
-    for the completed forms. Intermediate commits must use the slice evidence
-    above and must not claim full Item 6 completion until the definition of done
-    below is met.
-  - Definition of done: native output bytes for the selected full first-run
-    `m6502` corpus match Rust bytes, selected-form diagnostics come from the
-    package-backed service path, and inspection/tests show no new native
-    CPU-specific mnemonic, addressing-mode, opcode, or relative-branch encoding
-    tables were added outside the package-backed runtime/VM data path.
-
+  - Final Item 6 commit outcome: complete attached MOS fixture selector and
+    encoder parity through package-backed runtime behavior and remove or prove
+    unreachable any previous direct native MOS selector/encoder fallback for the
+    completed forms. Intermediate commits must use the subitem evidence below
+    and must not claim full Item 6 completion until every subitem definition of
+    done is met.
+  - Definition of done: native output bytes for all indicated 6502 and 65C02
+    fixture rows match Rust VM bytes while using the exact same serialized
+    package bytecode payload as the Rust golden generator, selected-form
+    diagnostics come from the package-backed service path, and inspection/tests
+    show no native CPU-specific mnemonic, addressing-mode, opcode,
+    operand-plan, or relative-branch encoding tables exist outside
+    package-backed runtime/VM data and the explicitly approved `.cpu`/`.org`
+    test setup.
+  - Subitem execution rule: each Item 6 subitem below is a commit-sized slice.
+    Execute one subitem at a time, run plan-compliance review before its commit,
+    and do not advance to the next subitem while its focused validation is red.
+  - [x] Item 6.1: Lock native-vs-Rust byte parity harness for the indicated MOS
+    fixtures
+    - Source requirement or finding IDs: `SR-6502-SELECTOR`,
+      `SR-6502-ENCODER`, `SR-FS-UAE-PARITY`; expected to create the executable
+      measurement target for the rest of Item 6.
+    - Expected files: `crates/opforge-asm/src/tests.rs`, FS-UAE/native CLI
+      manifest helpers if needed, same-package byte identity checks, and fixture
+      allowlists that name only the five indicated MOS fixtures.
+    - Full quality gates: focused Rust oracle test that renders exact bytes for
+      `6502_native_cli_smoke.asm`, `6502_simple.asm`, `6502_allmodes.asm`,
+      `65c02_simple.asm`, and `65c02_allmodes.asm`; focused native harness test
+      that can run the same sources with hard-coded `.cpu`/`.org` setup where
+      needed and report per-line native byte mismatches; required human-readable
+      evidence that prints each checked source row or fixture with `rust:` and
+      `native:` hexadecimal byte sequences; a required assertion that native
+      execution and Rust golden generation use the exact same serialized package
+      bytes; existing guard test that rejects native MOS selector/encoder
+      hardcodes; plus `scripts/workflow/run_rust_quality_gate.sh` before commit.
+    - Plan-compliance review evidence: before commit, run
+      `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.1
+      slice summary, changed files, and validation output; require `PASS`.
+    - Commit outcome: exactly one commit that makes the attached fixture matrix
+      measurable against Rust VM bytes without claiming full native pass status.
+    - Definition of done: the harness reports exact expected byte sequences for
+      every instruction row in the five indicated fixtures, prints labeled
+      Rust/native hexadecimal bytes for human review, proves the native and Rust
+      oracle paths consumed the same package bytecode payload, and clearly
+      separates allowed `.cpu`/`.org` setup from selector/encoder behavior.
+    - Validation evidence, 2026-05-13: `cargo test -p asm
+      motorola68020_item6_1_locks_mos_fixture_byte_parity_harness --
+      --nocapture` passed and printed per-row `rust:`/`native:` byte evidence
+      for all five allowed fixtures with row-level same-package byte identity
+      assertions; `cargo test -p asm
+      motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed; `scripts/workflow/run_rust_quality_gate_summary.sh`
+      passed. The evidence harness intentionally reports current native byte
+      mismatches without claiming full Item 6 parity completion.
+    - FS-UAE evidence, 2026-05-13: `OPFORGE_FS_UAE_SMOKE=1 ... cargo test
+      -p asm external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin
+      -- --nocapture --test-threads=1` executed the native AmigaOS CLI through
+      tokenizer, parser, pass1, pass2, and session reporting, then failed at
+      `ERROR OPC-NCLI009: native emitter VM not implemented` with
+      `SESSION-IMAGE-BYTES 0`. This is accepted for Item 6.1 because the slice
+      locks the byte-parity measurement harness and does not claim native CLI
+      output parity; full FS-UAE exact-byte parity remains Item 6.7.
+  - [ ] Item 6.2: Wire parser/request selector-shape handoff into native
+    selected encode
+    - Source requirement or finding IDs: `SR-6502-SELECTOR`,
+      `SR-TKPKG-SERVICE`, `SR-RUST-VM-ARCH`; expected to unblock `MSEL` lookup
+      without native operand spelling classification.
+    - Expected files: native PRVM/opasm request records,
+      `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm` only for
+      request-window wiring, `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`,
+      and focused tests.
+    - Full quality gates: focused native selected-request tests proving the
+      service receives package selector shapes from the same serialized package
+      bytecode payload used by the Rust golden generator for `implied`,
+      `accumulator`, `immediate`, `direct`, `direct_x`, `direct_y`, `indirect`,
+      `indexed_indirect_x`, and `indirect_indexed_y`; exact-byte parity for the
+      current smoke fixture with labeled Rust/native hex evidence; hardcode
+      guard test; native 68000 formatter check if supported ASM changes; plus
+      `scripts/workflow/run_rust_quality_gate.sh`.
+    - Plan-compliance review evidence: before commit, run
+      `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.2
+      slice summary, changed files, and validation output; require `PASS`.
+    - Commit outcome: exactly one commit that extends the native selected
+      request extension or equivalent service envelope so `tkpkg` can consume
+      Rust/package selector shapes and expression spans.
+    - Definition of done: `tkpkgBuildSelectedEnvelopeFromMselV1` no longer sees
+      missing shape metadata for the smoke and simple fixture forms, and native
+      code still contains no MOS-specific shape classifier.
+  - [ ] Item 6.3: Complete generic single-operand selected emission plans
+    - Source requirement or finding IDs: `SR-6502-ENCODER`,
+      `SR-TKPKG-SERVICE`; expected to cover package-backed `none`, `u8`, `u16`,
+      and `rel8` selected forms.
+    - Expected files: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`,
+      native expression/current-PC bridge code only if required, and focused
+      tests.
+    - Full quality gates: focused selected-encode tests for implied,
+      accumulator, immediate, zero-page, zero-page indexed, absolute, absolute
+      indexed, indirect, indexed-indirect, indirect-indexed, and relative branch
+      rows using the same package bytecode payload for native and Rust golden
+      execution; branch tests must compare signed offsets against Rust VM
+      output and print labeled Rust/native hex bytes for each checked row;
+      hardcode guard test; native formatter check; plus
+      `scripts/workflow/run_rust_quality_gate.sh`.
+    - Plan-compliance review evidence: before commit, run
+      `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.3
+      slice summary, changed files, and validation output; require `PASS`.
+    - Commit outcome: exactly one commit that teaches native `tkpkg` to execute
+      the package operand plans needed by base 6502 single-operand rows without
+      opcode or mnemonic special cases.
+    - Definition of done: native selected bytes match Rust VM bytes for all
+      base-6502 rows in `6502_simple.asm` and the non-branch plus branch rows
+      selected from `6502_allmodes.asm`.
+  - [ ] Item 6.4: Execute package `TABL` bytecode with operand-index parity
+    - Source requirement or finding IDs: `SR-6502-ENCODER`,
+      `SR-RUST-VM-ARCH`; expected to make native byte emission obey package
+      programs rather than an operand-zero shortcut.
+    - Expected files: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`
+      and focused tests.
+    - Full quality gates: tests proving `OP_EMIT_U8`, `OP_EMIT_OPERAND index`,
+      and `OP_END` behavior matches Rust VM for operand index 0 and later
+      operand indexes when both paths use the same package bytecode payload,
+      with labeled Rust/native hex evidence for representative programs;
+      negative tests for malformed program/index references;
+      existing 6502 smoke parity; native formatter check; plus
+      `scripts/workflow/run_rust_quality_gate.sh`.
+    - Plan-compliance review evidence: before commit, run
+      `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.4
+      slice summary, changed files, and validation output; require `PASS`.
+    - Commit outcome: exactly one commit that makes native `TABL` execution
+      consume the package bytecode operand index field generically.
+    - Definition of done: native `TABL` execution can emit every operand byte
+      requested by package bytecode programs needed by the attached base 6502
+      and 65C02 fixture rows.
+  - [ ] Item 6.5: Pass base 6502 simple and all-modes exact-byte fixture parity
+    - Source requirement or finding IDs: `SR-6502-SELECTOR`,
+      `SR-6502-ENCODER`, `SR-NATIVE-6502-FULL`; expected to complete base 6502
+      package-backed selector/encoder coverage for the attached fixtures.
+    - Expected files: native opasm/tkpkg implementation files and focused
+      parity tests only.
+    - Full quality gates: exact native-vs-Rust byte parity for
+      `6502_native_cli_smoke.asm`, `6502_simple.asm`, and `6502_allmodes.asm`;
+      mandatory same-package byte identity check before every parity comparison;
+      required human-readable evidence listing each fixture or row with `rust:`
+      and `native:` hexadecimal bytes; guard tests that reject native MOS
+      opcode/mode/mnemonic/branch tables;
+      `cargo test -p vm vm_runtime_mos6502_ -- --nocapture`; native formatter
+      check if applicable; plus `scripts/workflow/run_rust_quality_gate.sh`.
+    - Plan-compliance review evidence: before commit, run
+      `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.5
+      slice summary, changed files, and validation output; require `PASS`.
+    - Commit outcome: exactly one commit that makes all attached base 6502
+      instruction/addressing rows emit Rust-matching bytes through package
+      selection and `TABL` execution.
+    - Definition of done: the three attached base 6502 fixtures pass exact byte
+      parity with native and Rust golden paths consuming the same serialized
+      package bytecode payload, the validation evidence includes labeled
+      Rust/native hexadecimal output, and there is no native CPU-specific
+      selector or encoder logic.
+  - [ ] Item 6.6: Add generic two-operand and 65C02 package-plan support
+    - Source requirement or finding IDs: `SR-6502-SELECTOR`,
+      `SR-6502-ENCODER`, `SR-RUST-VM-ARCH`; expected to cover the attached
+      65C02 fixture rows while keeping native logic CPU-neutral.
+    - Expected files: native parser/request boundary, `tkpkg` operand-plan
+      interpreter, and focused tests.
+    - Full quality gates: package-backed selected-encode tests for 65C02-only
+      forms in `65c02_simple.asm` and `65c02_allmodes.asm`, including `BRA`,
+      `BBR`/`BBS` pair operands, zero-page indirect, and absolute indexed
+      indirect; exact branch-offset parity against Rust VM with the same package
+      bytecode payload on both paths; labeled Rust/native hex evidence for each
+      checked 65C02-only row; hardcode guard test; native formatter check; plus
+      `scripts/workflow/run_rust_quality_gate.sh`.
+    - Plan-compliance review evidence: before commit, run
+      `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.6
+      slice summary, changed files, and validation output; require `PASS`.
+    - Commit outcome: exactly one commit that implements package operand plans
+      such as two-operand byte/relative forms generically, not as 65C02-native
+      special cases.
+    - Definition of done: native selected encode emits Rust-matching bytes for
+      all 65C02-only rows in the attached simple and all-modes fixtures while
+      consuming the same serialized package bytecode payload as the Rust golden
+      path, validation evidence includes labeled Rust/native hexadecimal output,
+      and there are no native 65C02 mnemonic/opcode/addressing tables.
+  - [ ] Item 6.7: Prove native CLI/FS-UAE exact byte parity for the full
+    indicated fixture set
+    - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,
+      `SR-NATIVE-6502-FULL`, `SR-6502-ENCODER`; expected to promote row-level
+      selected parity into native CLI end-to-end evidence.
+    - Expected files: FS-UAE/native CLI tests, fixture manifests, and native CLI
+      request wiring only if needed for `.cpu`/`.org` test setup.
+    - Full quality gates: opt-in FS-UAE native CLI exact-byte parity for all
+      five indicated fixtures when host FS-UAE access is available; non-FS-UAE
+      deterministic harness parity for the same fixture set; both gates must
+      assert that the native package payload is byte-identical to the package
+      payload used by the Rust golden generator and print labeled Rust/native
+      hexadecimal bytes for each fixture; `cargo test -p asm
+      motorola68020_opforge_native_cli_ -- --nocapture`; native formatter check
+      if applicable; plus `scripts/workflow/run_rust_quality_gate.sh`.
+    - Plan-compliance review evidence: before commit, run
+      `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.7
+      slice summary, changed files, and validation output; require `PASS`.
+    - Commit outcome: exactly one commit that records full indicated-fixture
+      native CLI parity evidence and keeps `.cpu`/`.org` hardcoded setup limited
+      to the approved test exception.
+    - Definition of done: native CLI output bytes match Rust VM bytes for the
+      full indicated fixture set while using the exact same serialized package
+      bytecode payload as the Rust golden path, validation evidence includes
+      labeled Rust/native hexadecimal output, and any FS-UAE skip is reported as
+      host-access skip rather than a project pass.
+  - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
+    - Source requirement or finding IDs: `SR-CLI-BOUNDARY`,
+      `SR-RUST-VM-ARCH`, `SR-6502-SELECTOR`, `SR-6502-ENCODER`; expected to
+      close Item 6 without native MOS-specific selector or encoder residue.
+    - Expected files: native opasm/tkpkg/opforge-cli sources and guard tests.
+    - Full quality gates: source-inspection guard tests rejecting active native
+      MOS mnemonic tables, addressing-mode tables, opcode tables, relative
+      branch opcode logic, selector-stage fallback calls, and raw operand
+      spelling classifiers outside package/VM data; exact-byte parity tests
+      from Items 6.5 through 6.7, including their same-package-bytecode identity
+      checks and labeled Rust/native hexadecimal byte evidence; `cargo test -p
+      asm motorola68020_tkpkg_ -- --nocapture`; native formatter check; plus
+      `scripts/workflow/run_rust_quality_gate.sh`.
+    - Plan-compliance review evidence: before commit, run
+      `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.8
+      slice summary, changed files, validation output, and a statement that no
+      unapproved native CPU-specific selector/encoder code remains; require
+      `PASS`.
+    - Commit outcome: exactly one commit that removes or proves unreachable any
+      remaining native MOS selector/encoder fallback and records the no
+      CPU-specific-native-code audit evidence.
+    - Definition of done: Item 6 may be marked complete only after all Item 6
+      subitems pass, the full indicated fixture set emits Rust-matching bytes,
+      and inspection/tests show no native CPU-specific selector/encoder code
+      remains except user-approved `.cpu`/`.org` test setup.
 - [ ] Item 7: Implement layout-control directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,
     `SR-OPASM-ENGINE`; expected to support the directives that directly shape
@@ -723,8 +930,9 @@ The intended native shape mirrors the Rust path:
 - [x] Milestone 1: first-run 6502 acceptance matrix is locked.
 - [x] Milestone 2: CLI no longer owns assembly semantics; native opasm owns
   engine/pass/session behavior.
-- [x] Milestone 3: native `m6502` selector and encoder parity lands in two
-  commit-sized slices covering baseline and edge addressing modes.
+- [ ] Milestone 3: native MOS 6502/65C02 selector and encoder parity lands in
+  package-backed commit-sized slices covering the indicated simple, smoke, and
+  all-modes fixtures.
 - [ ] Milestone 4: first-run directive support lands in three commit-sized
   slices covering layout control, data/text emission, and
   symbol/configuration directives.
@@ -743,7 +951,8 @@ The intended native shape mirrors the Rust path:
 - labels files and JSON label output.
 - dependency files.
 - export-section outputs.
-- 65C02, 65816, 45GS02, and broader MOS-family native completion.
+- 65816, 45GS02, and broader MOS-family native completion beyond the indicated
+  base 6502 and 65C02 fixture set.
 - LSP/fixit/editor-specific surfaces.
 - broader optimizer or performance work beyond keeping the first-run native
   implementation practical on AmigaOS.

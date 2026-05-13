@@ -13750,10 +13750,20 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
     assert!(service.contains("tkpkgBuildSelectedEnvelopeFromMselV1"));
     assert!(service.contains("tkpkgMselClassifyOperandV1"));
     assert!(service.contains("tkpkgMselTryBuildCandidateV1"));
+    assert!(service.contains("TkpkgMselShapeImpliedText"));
     assert!(service.contains("TkpkgMselPlanU8Text"));
     assert!(service.contains("TkpkgMselPlanU16Text"));
     assert!(service.contains("tkpkgSelectedEnvelopeAllowedByMselV1"));
     assert!(service.contains("MselChunkOffsetLo"));
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "tkpkgMselClassifyOperandV1",
+            "tst.w d0",
+            "beq.w implied",
+            "lea TkpkgMselShapeImpliedText, a2",
+        ]
+    ));
     assert!(source_contains_in_order(
         &service,
         &[

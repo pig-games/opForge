@@ -434,6 +434,10 @@ The intended native shape mirrors the Rust path:
     transitional selector stage, prefers package `TABL` programs for byte
     emission before any transitional direct encoder fallback, and keeps existing
     selected CLI bytes stable.
+    The next implied-form slice is allowed to add package shape recognition for
+    zero-operand selected instructions, use the existing `none` operand plan,
+    and prove the native path selects the `implied` package shape before any
+    selector-stage fallback, without adding opcode or mnemonic tables.
     Later slices must broaden MSEL operand-shape and operand-plan execution to
     the remaining edge forms, then broaden the package-backed parity corpus to
     those forms.

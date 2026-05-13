@@ -192,6 +192,8 @@ TkpkgMselShapeDirectYText
 	.byte "direct_y", 0
 TkpkgMselShapeAccumulatorText
 	.byte "accumulator", 0
+TkpkgMselShapeImpliedText
+	.byte "implied", 0
 TkpkgMselPlanNoneText
 	.byte "none", 0
 TkpkgMselPlanU8Text
@@ -1288,7 +1290,7 @@ tkpkgMselClassifyOperandV1	.block
 
 trimHead
 	tst.w d0
-	beq.w unsupported
+	beq.w implied
 	moveq #0, d2
 	move.b (a0), d2
 	cmpi.b #' ', d2
@@ -1368,6 +1370,14 @@ accumulator
 	lea TkpkgMselShapeAccumulatorText, a2
 	move.l a2, EncodeSelectedMselShapePtr
 	move.w #11, EncodeSelectedMselShapeLen
+	bra.w ok
+
+implied
+	clr.l EncodeSelectedMselExprPtr
+	clr.w EncodeSelectedMselExprLen
+	lea TkpkgMselShapeImpliedText, a2
+	move.l a2, EncodeSelectedMselShapePtr
+	move.w #7, EncodeSelectedMselShapeLen
 	bra.w ok
 
 checkIndexed

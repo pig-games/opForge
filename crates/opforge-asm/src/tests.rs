@@ -10841,6 +10841,17 @@ fn item6_mos_fixture_allowlist() -> [(&'static str, &'static str); 5] {
     ]
 }
 
+fn item6_base6502_fixture_allowlist() -> [(&'static str, &'static str); 3] {
+    [
+        (
+            "examples/mos6502/6502_native_cli_smoke.asm",
+            m6502_cpu_id.as_str(),
+        ),
+        ("examples/mos6502/6502_simple.asm", m6502_cpu_id.as_str()),
+        ("examples/mos6502/6502_allmodes.asm", m6502_cpu_id.as_str()),
+    ]
+}
+
 #[derive(Clone, Debug)]
 struct Item6MosFixtureRow {
     fixture: String,
@@ -11752,6 +11763,75 @@ fn motorola68020_item6_4_native_tkpkg_walks_tabl_operand_records_by_index() {
         &service,
         &["emitOperand", "tst.b d0", "bne.s fail"]
     ));
+}
+
+#[test]
+fn motorola68020_item6_5_base_6502_fixtures_match_exact_native_and_rust_bytes() {
+    let repo_root = workspace_root();
+    let rust_package_bytes = item6_mos_package_bytes();
+    let native_package_bytes = rust_package_bytes.clone();
+    assert_eq!(
+        native_package_bytes, rust_package_bytes,
+        "Item 6.5 native and Rust paths must consume identical serialized package bytes"
+    );
+    let model = load_opasm_model_from_package_bytes(rust_package_bytes.as_slice());
+
+    for (fixture, cpu_id) in item6_base6502_fixture_allowlist() {
+        assert_eq!(
+            native_package_bytes, rust_package_bytes,
+            "same-package identity check before Item 6.5 fixture comparison {fixture}"
+        );
+        let source = fs::read_to_string(repo_root.join(fixture)).expect("read Item 6.5 fixture");
+        let fixture_plan = item6_collect_fixture_rows(&model, fixture, cpu_id, source.as_str());
+        assert!(
+            !fixture_plan.rows.is_empty(),
+            "Item 6.5 fixture {fixture} must contain instruction rows"
+        );
+        let rust_rows = item6_rust_fixture_bytes(
+            &model,
+            cpu_id,
+            fixture_plan.rows.as_slice(),
+            &fixture_plan.labels,
+        );
+        let native_rows = item6_native_fixture_bytes(
+            native_package_bytes.as_slice(),
+            cpu_id,
+            fixture_plan.rows.as_slice(),
+            &fixture_plan.labels,
+        );
+        assert_eq!(rust_rows.len(), native_rows.len());
+
+        for ((row, rust_bytes), (native_row, native_result)) in
+            rust_rows.into_iter().zip(native_rows)
+        {
+            assert_eq!(
+                native_package_bytes, rust_package_bytes,
+                "same-package identity check before Item 6.5 row comparison {}:{}",
+                row.fixture, row.line_num
+            );
+            assert_eq!(row.fixture, native_row.fixture);
+            assert_eq!(row.line_num, native_row.line_num);
+            let native_bytes = native_result.unwrap_or_else(|message| {
+                panic!(
+                    "native Item 6.5 encode {}:{} failed: {message}",
+                    row.fixture, row.line_num
+                )
+            });
+            println!(
+                "Item 6.5 {}:{} {}\nrust: {}\nnative: {}",
+                row.fixture,
+                row.line_num,
+                row.source_line.trim(),
+                item6_hex_bytes(rust_bytes.as_slice()),
+                item6_hex_bytes(native_bytes.as_slice())
+            );
+            assert_eq!(
+                native_bytes, rust_bytes,
+                "Item 6.5 exact base-6502 byte mismatch at {}:{}",
+                row.fixture, row.line_num
+            );
+        }
+    }
 }
 
 fn native_cli_6502_contract_encode(

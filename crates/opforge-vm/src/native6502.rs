@@ -31,8 +31,8 @@ use crate::vm_opasm::{
     OperandExprParseHints,
 };
 use crate::vm_opasm_parse::{tokenize_parser_tokens_with_model, VmExprParseContext};
-use opcore::parser::Expr;
-use opcore::tokenizer::Span;
+use opcore::parser::{BinaryOp, Expr};
+use opcore::tokenizer::{OperatorKind, Span, Token, TokenKind};
 use registry::family::AssemblerContext;
 use registry::registry::VmEncodeCandidate;
 
@@ -865,12 +865,13 @@ impl Native6502Harness {
             col_start: operand_start_col,
             col_end: operand_end_col,
         };
+        let expr_parser_opt_in_families = vec![resolved.family_id.clone()];
         let mut operands = Vec::new();
         let expr_parse_ctx = VmExprParseContext {
             model,
             cpu_id: active_cpu,
             dialect_override,
-            expr_parser_opt_in_families: &[],
+            expr_parser_opt_in_families: expr_parser_opt_in_families.as_slice(),
             expr_parser_force_host_families: &[],
             expr_handler: None,
         };
@@ -879,6 +880,7 @@ impl Native6502Harness {
                 .into_iter()
                 .enumerate()
         {
+            let operand_output_index = operands.len();
             parse_operand_expr_range(
                 tokens.as_slice(),
                 start,
@@ -895,6 +897,15 @@ impl Native6502Harness {
                 &mut operands,
             )
             .map_err(|err| format!("native selector expression parse failed: {err:?}"))?;
+            if matches!(operands.get(operand_output_index), Some(Expr::Error(_, _))) {
+                if let Some(expr) = parse_native_current_pc_additive_operand(&tokens[start..end]) {
+                    operands[operand_output_index] = expr;
+                } else if let Some(expr) =
+                    parse_native_current_pc_additive_text(source_line, tokens[start].span.col_start)
+                {
+                    operands[operand_output_index] = expr;
+                }
+            }
         }
         Ok(operands)
     }
@@ -954,6 +965,92 @@ impl Native6502Harness {
             output: Native6502HarnessOutput::ErrorMessage(message),
         }
     }
+}
+
+fn parse_native_current_pc_additive_operand(tokens: &[Token]) -> Option<Expr> {
+    let [dollar, operator, value] = tokens else {
+        return None;
+    };
+    if !matches!(dollar.kind, TokenKind::Dollar) {
+        return None;
+    }
+    let op = match operator.kind {
+        TokenKind::Operator(OperatorKind::Plus) => BinaryOp::Add,
+        TokenKind::Operator(OperatorKind::Minus) => BinaryOp::Subtract,
+        _ => return None,
+    };
+    let right = match &value.kind {
+        TokenKind::Number(number) => Expr::Number(number.text.clone(), value.span),
+        TokenKind::Identifier(name) => Expr::Identifier(name.clone(), value.span),
+        _ => return None,
+    };
+    let span = Span {
+        line: dollar.span.line,
+        col_start: dollar.span.col_start,
+        col_end: value.span.col_end,
+    };
+    Some(Expr::Binary {
+        op,
+        left: Box::new(Expr::Dollar(dollar.span)),
+        right: Box::new(right),
+        span,
+    })
+}
+
+fn parse_native_current_pc_additive_text(source_line: &str, start_col: usize) -> Option<Expr> {
+    let mut start_index = start_col.checked_sub(1)?;
+    if !source_line.get(start_index..)?.starts_with('$')
+        && start_index > 0
+        && source_line.get(start_index - 1..)?.starts_with('$')
+    {
+        start_index -= 1;
+    }
+    let text = source_line.get(start_index..)?;
+    let text = text.trim_start();
+    let skipped = source_line.get(start_index..)?.len() - text.len();
+    let expr_start = start_col + skipped;
+    let mut chars = text.char_indices();
+    let (_, first) = chars.next()?;
+    if first != '$' {
+        return None;
+    }
+    let (_, operator) = chars.next()?;
+    let op = match operator {
+        '+' => BinaryOp::Add,
+        '-' => BinaryOp::Subtract,
+        _ => return None,
+    };
+    let value_start = '$'.len_utf8() + operator.len_utf8();
+    let value_len = text[value_start..]
+        .char_indices()
+        .take_while(|(_, ch)| !ch.is_whitespace() && *ch != ',' && *ch != ';')
+        .map(|(_, ch)| ch.len_utf8())
+        .sum::<usize>();
+    if value_len == 0 {
+        return None;
+    }
+    let value_text = &text[value_start..value_start + value_len];
+    let dollar_span = Span {
+        line: 0,
+        col_start: expr_start,
+        col_end: expr_start + 1,
+    };
+    let value_span = Span {
+        line: 0,
+        col_start: expr_start + value_start,
+        col_end: expr_start + value_start + value_len,
+    };
+    let span = Span {
+        line: 0,
+        col_start: expr_start,
+        col_end: value_span.col_end,
+    };
+    Some(Expr::Binary {
+        op,
+        left: Box::new(Expr::Dollar(dollar_span)),
+        right: Box::new(Expr::Number(value_text.to_string(), value_span)),
+        span,
+    })
 }
 
 fn request_input_len(request: &Native6502HarnessRequest<'_>) -> Result<u16, String> {

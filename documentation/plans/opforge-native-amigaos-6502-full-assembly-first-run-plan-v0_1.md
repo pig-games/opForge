@@ -646,7 +646,7 @@ The intended native shape mirrors the Rust path:
       run_native_68000_format_gate.sh --write` reported 0 changed files after
       formatting; `scripts/workflow/run_native_68000_format_gate.sh` passed;
       `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
-  - [ ] Item 6.5: Pass base 6502 simple and all-modes exact-byte fixture parity
+  - [x] Item 6.5: Pass base 6502 simple and all-modes exact-byte fixture parity
     - Source requirement or finding IDs: `SR-6502-SELECTOR`,
       `SR-6502-ENCODER`, `SR-NATIVE-6502-FULL`; expected to complete base 6502
       package-backed selector/encoder coverage for the attached fixtures.
@@ -671,6 +671,22 @@ The intended native shape mirrors the Rust path:
       package bytecode payload, the validation evidence includes labeled
       Rust/native hexadecimal output, and there is no native CPU-specific
       selector or encoder logic.
+    - Validation evidence, 2026-05-13: `cargo test -p asm
+      motorola68020_item6_5_base_6502_fixtures_match_exact_native_and_rust_bytes
+      -- --nocapture` passed and printed labeled `rust:`/`native:` hex bytes
+      for every instruction row in `6502_native_cli_smoke.asm`,
+      `6502_simple.asm`, and `6502_allmodes.asm`, with same-package byte
+      identity asserted before every fixture and row comparison. Representative
+      exact branch evidence included `bcs $+2` as `rust: B0 00` / `native: B0
+      00`, `beq $+4` as `rust: F0 02` / `native: F0 02`, `bne forward` as
+      `rust: D0 08` / `native: D0 08`, and the other `$+2` base-6502 branch
+      rows as matching `30 00`, `10 00`, `50 00`, and `70 00` bytes. `cargo
+      test -p vm vm_runtime_mos6502_ -- --nocapture` passed with 10 VM MOS6502
+      tests. `cargo test -p asm
+      motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed. `scripts/workflow/run_native_68000_format_gate.sh`
+      passed with 35 checked files, 0 would change, and 0 warnings.
+      `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
   - [ ] Item 6.6: Add generic two-operand and 65C02 package-plan support
     - Source requirement or finding IDs: `SR-6502-SELECTOR`,
       `SR-6502-ENCODER`, `SR-RUST-VM-ARCH`; expected to cover the attached

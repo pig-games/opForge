@@ -690,6 +690,9 @@ impl<'a> SelectorExprContext<'a> {
             Ok(value) => Ok(value),
             Err(err) => {
                 let message = err.to_string();
+                if expr_uses_current_address(expr) {
+                    return self.assembler_ctx.eval_expr(expr);
+                }
                 if Self::allows_host_eval_compat_fallback(message.as_str()) {
                     return self.assembler_ctx.eval_expr(expr);
                 }
@@ -712,12 +715,60 @@ impl<'a> SelectorExprContext<'a> {
             Ok(value) => Ok(value),
             Err(err) => {
                 let message = err.to_string();
+                if expr_uses_current_address(expr) {
+                    return Ok(expr_has_unstable_symbols(expr, self.assembler_ctx));
+                }
                 if Self::allows_host_eval_compat_fallback(message.as_str()) {
                     return Ok(expr_has_unstable_symbols(expr, self.assembler_ctx));
                 }
                 Err(message)
             }
         }
+    }
+}
+
+fn expr_uses_current_address(expr: &Expr) -> bool {
+    match expr {
+        Expr::Dollar(_) => true,
+        Expr::List(items, _) | Expr::Tuple(items, _) => items.iter().any(expr_uses_current_address),
+        Expr::Index { base, index, .. } => {
+            expr_uses_current_address(base) || expr_uses_current_address(index)
+        }
+        Expr::Member { base, .. } => expr_uses_current_address(base),
+        Expr::StructLiteral { fields, .. } => fields
+            .iter()
+            .any(|(_, field_expr)| expr_uses_current_address(field_expr)),
+        Expr::Call { args, .. } => args.iter().any(expr_uses_current_address),
+        Expr::Immediate(inner, _) | Expr::Indirect(inner, _) | Expr::IndirectLong(inner, _) => {
+            expr_uses_current_address(inner)
+        }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+            ..
+        } => {
+            expr_uses_current_address(cond)
+                || expr_uses_current_address(then_expr)
+                || expr_uses_current_address(else_expr)
+        }
+        Expr::Unary { expr, .. } => expr_uses_current_address(expr),
+        Expr::Binary { left, right, .. } => {
+            expr_uses_current_address(left) || expr_uses_current_address(right)
+        }
+        Expr::Range {
+            start, end, step, ..
+        } => {
+            expr_uses_current_address(start)
+                || expr_uses_current_address(end)
+                || step.as_deref().is_some_and(expr_uses_current_address)
+        }
+        Expr::Number(_, _)
+        | Expr::Identifier(_, _)
+        | Expr::Register(_, _)
+        | Expr::Placeholder(_)
+        | Expr::String(_, _)
+        | Expr::Error(_, _) => false,
     }
 }
 

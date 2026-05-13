@@ -5,36 +5,30 @@ description: Write implementation-ready opForge specifications with explicit goa
 
 # opForge Spec Authoring
 
-## Overview
+## Use when
 
-Write specs that reduce implementation drift and support direct plan derivation.
+- behavior needs design before planning or coding
+- scope, invariants, or acceptance criteria are unclear
+- later plan derivation should be mechanical
 
-## Workflow
+## Required output
 
-1. Define the problem and intended outcome.
-2. State goals and non-goals.
-3. Record invariants and boundary behavior.
-4. Define acceptance criteria.
-5. Define validation expectations and unresolved questions.
+Use `templates/spec-template.md` without changing its validator-facing headings.
 
-## Required structure
+A valid spec states:
 
-Use [templates/spec-template.md](/Users/erik/Code/Retro/opForge/templates/spec-template.md).
+- summary, problem, goals, non-goals, invariants, behavioral contract, boundary cases, acceptance criteria, validation expectations, and open questions
+- checkbox goals and checkbox acceptance criteria
+- unresolved decisions explicitly, without hidden assumptions
 
 ## Guardrails
 
 - Non-goals are mandatory.
-- Acceptance criteria must be testable.
-- Call out unresolved decisions explicitly.
+- Acceptance criteria must be concrete and testable.
 - Do not smuggle implementation plans into the spec.
+- Do not broaden scope beyond the user request.
 
-## References
+## Validate with
 
-- `../../references/workflow/spec-quality-checklist.md`
-- `../../templates/spec-template.md`
-
-## Helper scripts
-
-- `../../scripts/workflow/start_artifact.py`
-- `../../scripts/workflow/check_workflow_artifact_bundle.py`
-- `../../scripts/workflow/run_spec_workflow.sh`
+- `scripts/workflow/check_workflow_artifact_bundle.py`
+- `scripts/workflow/run_spec_workflow.sh`

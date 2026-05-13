@@ -5,44 +5,32 @@ description: Verify and document that claimed review fixes actually close the or
 
 # opForge Review Closure
 
-## Overview
+## Use when
 
-Track review findings through implementation so follow-up reviews can tell the
-difference between:
+- remediation work claims to close review findings
+- closure evidence must be recorded
+- follow-up review needs fixed, partial, deferred, superseded, or not-fixed status
 
-- fixed,
-- partially fixed,
-- not fixed,
-- superseded,
-- deferred.
+## Required output
 
-## Workflow
+Use `templates/finding-closure-report-template.md` without changing its validator-facing headings.
 
-1. Start from the original review finding ID.
-2. Identify the plan item and implementation slice that claim closure.
-3. Record the targeted validation evidence.
-4. Assign a closure status.
-5. Note residual risk if closure is partial or deferred.
+Each closure report includes:
 
-## Required structure
-
-Use [templates/finding-closure-report-template.md](/Users/erik/Code/Retro/opForge/templates/finding-closure-report-template.md).
+- original finding ID and summary
+- plan item, implementation slice or commit, and changed files
+- validation command/check and result
+- closure status, residual risk, and closure rationale
 
 ## Guardrails
 
 - Stable finding ID is mandatory.
-- “Looks fixed” is not evidence.
-- Closure must be tied to a validation result or a reproduction check.
+- "Looks fixed" is not evidence.
+- Closure must tie to validation, reproduction, or direct code inspection.
 - If the original issue still reproduces, status is not `fixed`.
 
-## References
+## Validate with
 
-- `../../references/workflow/finding-closure-rules.md`
-- `../../templates/finding-closure-report-template.md`
-
-## Helper scripts
-
-- `../../scripts/workflow/start_artifact.py`
-- `../../scripts/workflow/check_closure_report.py`
-- `../../scripts/workflow/check_workflow_artifact_bundle.py`
-- `../../scripts/workflow/run_closure_workflow.sh`
+- `scripts/workflow/check_closure_report.py`
+- `scripts/workflow/check_workflow_artifact_bundle.py`
+- `scripts/workflow/run_closure_workflow.sh`

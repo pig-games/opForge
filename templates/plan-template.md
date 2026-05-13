@@ -1,17 +1,13 @@
-# Plan Title
+# Plan: <title>
 
 ## Metadata
 
 - Source:
 - Mode:
 - Owner:
+- AGENTS binding: The active worktree `AGENTS.md` rules remain binding during execution.
 
-## Objective
-
-## Constraints
-
-- The active worktree `AGENTS.md` workflow and execution rules remain binding at
-  all times during plan execution.
+## Goal
 
 ## Version Impact
 
@@ -22,7 +18,7 @@
 
 ## Work Items
 
-- [ ] Item 1
+- [ ] Item 1: <commit-sized slice>
   - Source requirement or finding IDs:
   - Expected files:
   - Full quality gates:
@@ -30,25 +26,12 @@
   - Commit outcome:
   - Definition of done:
 
-## Milestones
-
-- [ ] Milestone 1
-
-## Completion Archive
-
-- When every checkbox in this plan is complete and the plan is no longer the
-  active execution artifact, archive it with
-  `scripts/workflow/archive_completed_plan.sh`.
-- The archived filename must move to `documentation/plans/completed/` and end
-  in `-completed-YYYY-MM-DDTHHMMSSZ.md`.
-- Move the companion quality-gate sidecar with the same timestamped basename.
-
 ## Blocking Rules
 
-- the active worktree `AGENTS.md` rules must be followed throughout execution
 - no commit before all quality gates pass
-- no commit before `plan-compliance-reviewer` returns `PASS`
+- `plan-compliance-reviewer` must return `PASS` before commit
 - each work item or phase must end in exactly one new commit before the next
   item starts
 - no advancing to the next item on failed validation
 - checkbox updates are mandatory bookkeeping
+- archive completed plans with `scripts/workflow/archive_completed_plan.sh`

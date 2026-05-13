@@ -1,4 +1,4 @@
-# Title
+# Specification: <title>
 
 ## Summary
 
@@ -25,4 +25,3 @@
 ## Validation Expectations
 
 ## Open Questions
-

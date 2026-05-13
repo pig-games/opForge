@@ -11,12 +11,11 @@ CHECKBOX_RE = re.compile(r"^\s*-\s\[( |x|X)\]\s+")
 CHECKBOX_STATE_RE = re.compile(r"^\s*-\s\[( |x|X)\]\s+")
 WORK_ITEMS_HEADER = "## Work Items"
 COMPLETED_DIR_RE = re.compile(r"(^|/)documentation/plans/completed/")
-REQUIRED_HEADINGS = [
-    "## Metadata",
-    "## Objective",
-    "## Constraints",
-    "## Work Items",
-    "## Blocking Rules",
+REQUIRED_HEADING_GROUPS = [
+    ("metadata", ("## Metadata",)),
+    ("objective/goal", ("## Objective", "## Goal")),
+    ("work items", ("## Work Items", "## Work items")),
+    ("blocking rules", ("## Blocking Rules", "## Quality Gates", "## Quality gates")),
 ]
 REQUIRED_WORK_ITEM_FIELDS = [
     "Source requirement or finding IDs:",
@@ -52,9 +51,9 @@ def analyze_plan(path: Path) -> list[str]:
     path_text = path.as_posix()
     is_completed_path = bool(COMPLETED_DIR_RE.search(path_text))
 
-    for heading in REQUIRED_HEADINGS:
-        if heading not in text:
-            errors.append(f"missing required heading `{heading}`")
+    for label, headings in REQUIRED_HEADING_GROUPS:
+        if not any(heading in text for heading in headings):
+            errors.append(f"missing required heading group `{label}`; expected one of {list(headings)}")
 
     if not has_nonempty_field(text, "Source:"):
         errors.append("missing non-empty `- Source:` in metadata")

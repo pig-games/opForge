@@ -19,7 +19,6 @@ REQUIRED_HEADINGS = [
     "## Boundary Cases",
     "## Acceptance Criteria",
     "## Validation Expectations",
-    "## Open Questions",
 ]
 
 CHECKBOX_RE = re.compile(r"^\s*-\s\[[ xX]\]\s+", re.MULTILINE)

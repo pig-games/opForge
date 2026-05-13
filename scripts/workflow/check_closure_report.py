@@ -25,7 +25,7 @@ VALID_STATUSES = {
 
 
 def field_value(text: str, field_name: str) -> str | None:
-    pattern = re.compile(rf"^\s*-\s*{re.escape(field_name)}\s*(.*?)\s*$", re.MULTILINE)
+    pattern = re.compile(rf"^[ \t]*-[ \t]*{re.escape(field_name)}[ \t]*([^\n]*)$", re.MULTILINE)
     match = pattern.search(text)
     if not match:
         return None

@@ -1,4 +1,4 @@
-# Review Report
+# Review Report: <title>
 
 ## Scope
 
@@ -13,14 +13,20 @@
 
 ### RVW-YYYY-MM-DD-001
 
-- Severity:
-- File:
-- Issue:
-- Why it matters:
-- Fix direction (one direction only; resolve competing options before finalizing):
+- Severity: low
+- File: <path:line>
+- Issue: <summary>
+- Why it matters: <impact>
+- Fix direction: <one concrete direction>
 
 ## Testing Gaps
 
+- <gap or none>
+
 ## Residual Risks
 
+- <risk or none>
+
 ## Brief Summary
+
+<short summary>

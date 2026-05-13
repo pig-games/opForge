@@ -5,77 +5,37 @@ description: Create execution-ready opForge plans from specs, reviews, or explic
 
 # opForge Plan Authoring
 
-## Overview
+## Use when
 
-Write one kind of plan for all executable work. The input may differ, but the
-plan quality bar stays the same.
+- creating an implementation, remediation, migration, or explicitly approved cleanup plan
+- converting a spec or review into executable work items
+- preparing plan-driven commits
 
-## Plan modes
+## Required output
 
-Valid plan modes:
+Use `templates/plan-template.md` without changing its validator-facing headings.
 
-- `implementation`
-- `remediation`
-- `migration`
-- `cleanup-only` when explicitly approved
+A valid plan includes:
 
-## Workflow
+- source, mode, objective, constraints, version impact, work items, milestones, and blocking rules
+- an explicit statement that active `AGENTS.md` rules remain binding
+- ordered commit-sized checkbox work items
+- source requirements or finding IDs per work item
+- expected files, full gates, plan-compliance evidence, commit outcome, and done criteria per item
 
-1. Identify the plan source.
-2. Record the plan mode.
-3. Convert the source into ordered work items.
-4. Keep each item commit-sized.
-5. Require each item or phase to end in a new commit.
-6. Define full quality-gate validation, plan-compliance evidence, and done
-   criteria per item.
-7. Add progress checkboxes.
-8. State explicitly that the active worktree `AGENTS.md` rules remain binding
-   throughout execution.
-
-## Required structure
-
-Use [templates/plan-template.md](/Users/erik/Code/Retro/opForge/templates/plan-template.md).
-
-For remediation plans, each work item must also list:
-
-- the finding IDs it addresses,
-- whether it is expected to fully or partially close them.
+For remediation plans, list finding IDs and whether each item fully or partially closes them.
 
 ## Guardrails
 
-- One active work item at a time.
-- Small commits only.
-- Every work item or phase must produce a new commit before the next item
-  begins.
-- Full quality gates are mandatory before each commit.
-- Rust code changes should list `scripts/workflow/run_rust_quality_gate.sh` (or
-  `make quality-gate`) as the full Rust gate, plus any focused tests required
-  by the specific slice.
-- Slices that change `native/motorola68000/**/*.asm` should also name
-  `scripts/workflow/run_native_68000_format_gate.sh` (or
-  `make native-68000-format-check`) when the 68000 formatter pass is the
-  slice-specific gate being called out explicitly.
-- `plan-compliance-reviewer` must pass before each commit.
-- Checkbox updates are mandatory bookkeeping.
-- Every generated plan must state that the active worktree `AGENTS.md`
-  workflow and execution rules remain binding at all times.
-- If the plan is derived from a spec or review, do not silently widen scope.
+- One active item at a time.
+- Do not silently widen scope beyond the source.
+- Each work item or phase must end in a new commit before the next begins.
+- Full quality gates and `plan-compliance-reviewer` are mandatory before plan-driven commits.
+- Rust items should name `scripts/workflow/run_rust_quality_gate.sh` or `make quality-gate`.
+- Native 68000 items should load `agents/rules/native-68000.md` and name the native formatter gate.
 
-## References
+## Validate with
 
-- `../../references/workflow/plan-slice-rules.md`
-- `../../references/workflow/definition-of-done-matrix.md`
-- `../../references/workflow/plan-modes-guide.md`
-- `../../references/workflow/traceability-guide.md`
-- `../../templates/plan-template.md`
-
-## Helper scripts
-
-- `../../scripts/workflow/new_artifact_from_template.sh`
-- `../../scripts/workflow/start_artifact.py`
-- `../../scripts/workflow/derive_plan_from_artifact.py`
-- `../../scripts/workflow/render_quality_gate_preset.py`
-- `../../scripts/workflow/check_plan_checkboxes.py`
-- `../../scripts/workflow/check_workflow_artifact_bundle.py`
-- `../../scripts/workflow/run_rust_quality_gate.sh`
-- `../../scripts/workflow/run_native_68000_format_gate.sh`
+- `scripts/workflow/check_plan_checkboxes.py`
+- `scripts/workflow/check_workflow_artifact_bundle.py`
+- `scripts/workflow/run_plan_workflow.sh`

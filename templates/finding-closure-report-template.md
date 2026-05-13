@@ -1,26 +1,23 @@
-# Finding Closure Report
+# Finding Closure Report: <title>
 
 ## Finding
 
-- ID:
-- Original summary:
+- ID: RVW-YYYY-MM-DD-001
+- Original summary: <summary>
 
 ## Claimed Fix
 
-- Plan item:
-- Implementation slice or commit:
-- Changed files:
+- Plan item: <item>
+- Implementation slice or commit: <commit or slice>
+- Changed files: <paths>
 
 ## Validation Evidence
 
-- Command or check:
-- Result:
+- Command or check: <command>
+- Result: <result>
 
 ## Closure Status
 
-- Status:
-- Residual risk:
-- Closure rationale:
-
-## Notes
-
+- Status: deferred
+- Residual risk: <risk or none>
+- Closure rationale: <rationale>

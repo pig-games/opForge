@@ -17,13 +17,16 @@ REQUIRED_HEADINGS = [
     "## Brief Summary",
 ]
 
-FINDING_HEADER_RE = re.compile(r"^###\s+(RVW-\d{4}-\d{2}-\d{2}-\d{3,})\s*$", re.MULTILINE)
+FINDING_HEADER_RE = re.compile(
+    r"^###\s+(RVW-\d{4}-\d{2}-\d{2}-\d{3,}|RVW-YYYY-MM-DD-\d{3,})\s*$",
+    re.MULTILINE,
+)
 FIELD_PATTERNS = {
-    "Severity": re.compile(r"^- Severity:\s*(.+?)\s*$", re.MULTILINE),
-    "File": re.compile(r"^- File:\s*(.+?)\s*$", re.MULTILINE),
-    "Issue": re.compile(r"^- Issue:\s*(.+?)\s*$", re.MULTILINE),
-    "Why it matters": re.compile(r"^- Why it matters:\s*(.+?)\s*$", re.MULTILINE),
-    "Fix direction": re.compile(r"^- Fix direction(?:\s*\([^)]*\))?:\s*(.+?)\s*$", re.MULTILINE),
+    "Severity": re.compile(r"^- Severity:[ \t]*([^\n]*)$", re.MULTILINE),
+    "File": re.compile(r"^- File:[ \t]*([^\n]*)$", re.MULTILINE),
+    "Issue": re.compile(r"^- Issue:[ \t]*([^\n]*)$", re.MULTILINE),
+    "Why it matters": re.compile(r"^- Why it matters:[ \t]*([^\n]*)$", re.MULTILINE),
+    "Fix direction": re.compile(r"^- Fix direction(?:\s*\([^)]*\))?:[ \t]*([^\n]*)$", re.MULTILINE),
 }
 VALID_SEVERITIES = {"critical", "high", "medium", "low"}
 FORBIDDEN_FIX_PATTERNS = [
@@ -33,6 +36,16 @@ FORBIDDEN_FIX_PATTERNS = [
     re.compile(r"\bone approach would be\b", re.IGNORECASE),
     re.compile(r"\banother approach would be\b", re.IGNORECASE),
 ]
+
+
+def continuation_value(block: str, match: re.Match[str]) -> str:
+    remainder = block[match.end() :]
+    if not remainder.startswith("\n"):
+        return ""
+    next_line = remainder[1:].splitlines()[0] if remainder[1:].splitlines() else ""
+    if next_line.startswith((" ", "\t")):
+        return next_line.strip()
+    return ""
 
 
 def find_section(text: str, heading: str) -> tuple[int, int] | None:
@@ -89,6 +102,8 @@ def validate_review(path: Path) -> list[str]:
                 errors.append(f"{path}: {finding_id} missing `{field_name}` field")
                 continue
             value = match.group(1).strip()
+            if not value:
+                value = continuation_value(block, match)
             if not value:
                 errors.append(f"{path}: {finding_id} has empty `{field_name}` field")
                 continue

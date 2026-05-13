@@ -442,6 +442,9 @@ The intended native shape mirrors the Rust path:
     operands as the package `indirect` shape while leaving comma-bearing
     indexed-indirect forms to later slices, and must reuse package operand
     plans plus `TABL` emission rather than adding direct opcode logic.
+    The next indexed-indirect-X slice is allowed to classify `($expr,X)` as the
+    package `indexed_indirect_x` shape, preserving the inner expression as the
+    operand value and reusing package `u8` plans plus `TABL` emission.
     Later slices must broaden MSEL operand-shape and operand-plan execution to
     the remaining edge forms, then broaden the package-backed parity corpus to
     those forms.

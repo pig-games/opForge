@@ -196,6 +196,8 @@ TkpkgMselShapeImpliedText
 	.byte "implied", 0
 TkpkgMselShapeIndirectText
 	.byte "indirect", 0
+TkpkgMselShapeIndexedIndirectXText
+	.byte "indexed_indirect_x", 0
 TkpkgMselPlanNoneText
 	.byte "none", 0
 TkpkgMselPlanU8Text
@@ -1401,12 +1403,14 @@ checkIndirect
 	movea.l a2, a3
 	move.w d4, d5
 	subq.w #1, d5
+	moveq #0, d6
 
 scanIndirectComma
 	moveq #0, d2
 	move.b (a3)+, d2
 	cmpi.b #',', d2
-	beq.w unsupported
+	beq.w indexedIndirectX
+	addq.w #1, d6
 	dbf d5, scanIndirectComma
 
 trimIndirectHead
@@ -1447,6 +1451,94 @@ indirectReady
 	lea TkpkgMselShapeIndirectText, a2
 	move.l a2, EncodeSelectedMselShapePtr
 	move.w #8, EncodeSelectedMselShapeLen
+	bra.w ok
+
+indexedIndirectX
+	tst.w d6
+	beq.w unsupported
+	tst.w d5
+	beq.w unsupported
+
+trimIndexedIndirectExprHead
+	tst.w d6
+	beq.w unsupported
+	moveq #0, d2
+	move.b (a2), d2
+	cmpi.b #' ', d2
+	beq.s trimIndexedIndirectExprHeadOne
+	cmpi.b #9, d2
+	bne.s trimIndexedIndirectExprTail
+
+trimIndexedIndirectExprHeadOne
+	addq.l #1, a2
+	subq.w #1, d6
+	bra.s trimIndexedIndirectExprHead
+
+trimIndexedIndirectExprTail
+	tst.w d6
+	beq.w unsupported
+	movea.l a2, a0
+	adda.w d6, a0
+	subq.l #1, a0
+	moveq #0, d2
+	move.b (a0), d2
+	cmpi.b #' ', d2
+	beq.s trimIndexedIndirectExprTailOne
+	cmpi.b #9, d2
+	bne.s trimIndexedIndirectIndexHead
+
+trimIndexedIndirectExprTailOne
+	subq.w #1, d6
+	bra.s trimIndexedIndirectExprTail
+
+trimIndexedIndirectIndexHead
+	tst.w d5
+	beq.w unsupported
+	moveq #0, d2
+	move.b (a3), d2
+	cmpi.b #' ', d2
+	beq.s trimIndexedIndirectIndexHeadOne
+	cmpi.b #9, d2
+	bne.s trimIndexedIndirectIndexTail
+
+trimIndexedIndirectIndexHeadOne
+	addq.l #1, a3
+	subq.w #1, d5
+	bra.s trimIndexedIndirectIndexHead
+
+trimIndexedIndirectIndexTail
+	tst.w d5
+	beq.w unsupported
+	movea.l a3, a0
+	adda.w d5, a0
+	subq.l #1, a0
+	moveq #0, d2
+	move.b (a0), d2
+	cmpi.b #' ', d2
+	beq.s trimIndexedIndirectIndexTailOne
+	cmpi.b #9, d2
+	bne.s indexedIndirectIndexReady
+
+trimIndexedIndirectIndexTailOne
+	subq.w #1, d5
+	bra.s trimIndexedIndirectIndexTail
+
+indexedIndirectIndexReady
+	cmpi.w #1, d5
+	bne.w unsupported
+	moveq #0, d2
+	move.b (a3), d2
+	cmpi.b #'X', d2
+	beq.s indexedIndirectReady
+	cmpi.b #'x', d2
+	bne.w unsupported
+
+indexedIndirectReady
+	move.l a2, EncodeSelectedMselExprPtr
+	move.w d6, EncodeSelectedMselExprLen
+	lea TkpkgMselShapeIndexedIndirectXText, a2
+	move.l a2, EncodeSelectedMselShapePtr
+	move.w #18, EncodeSelectedMselShapeLen
 	bra.w ok
 
 checkIndexed

@@ -13753,6 +13753,7 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
     assert!(service.contains("tkpkgMselTryBuildCandidateV1"));
     assert!(service.contains("TkpkgMselShapeImpliedText"));
     assert!(service.contains("TkpkgMselShapeIndirectText"));
+    assert!(service.contains("TkpkgMselShapeIndexedIndirectXText"));
     assert!(service.contains("TkpkgMselPlanU8Text"));
     assert!(service.contains("TkpkgMselPlanU16Text"));
     assert!(service.contains("tkpkgSelectedEnvelopeAllowedByMselV1"));
@@ -13773,6 +13774,15 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
             "cmpi.b #'(', (a0)",
             "scanIndirectComma",
             "lea TkpkgMselShapeIndirectText, a2",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "indexedIndirectX",
+            "cmpi.b #'X', d2",
+            "indexedIndirectReady",
+            "lea TkpkgMselShapeIndexedIndirectXText, a2",
         ]
     ));
     assert!(source_contains_in_order(

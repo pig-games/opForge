@@ -726,7 +726,7 @@ The intended native shape mirrors the Rust path:
       --nocapture` passed. `scripts/workflow/run_native_68000_format_gate.sh`
       passed with 35 checked files, 0 would change, and 0 warnings.
       `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
-  - [ ] Item 6.7: Prove native CLI/FS-UAE exact byte parity for the full
+  - [x] Item 6.7: Prove native CLI/FS-UAE exact byte parity for the full
     indicated fixture set
     - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,
       `SR-NATIVE-6502-FULL`, `SR-6502-ENCODER`; expected to promote row-level
@@ -752,6 +752,33 @@ The intended native shape mirrors the Rust path:
       bytecode payload as the Rust golden path, validation evidence includes
       labeled Rust/native hexadecimal output, and any FS-UAE skip is reported as
       host-access skip rather than a project pass.
+    - Validation evidence, 2026-05-13: `cargo test -p asm
+      motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_bytes
+      -- --nocapture` passed and printed per-fixture labeled native CLI bin
+      payload evidence for `6502_native_cli_smoke.asm`, `6502_simple.asm`,
+      `6502_allmodes.asm`, `65c02_simple.asm`, and `65c02_allmodes.asm`. The
+      deterministic native path initializes the native package service, consumes
+      the same package bytes as the Rust golden path, parses each source line
+      through the native line parser, runs native selected encode in first and
+      second pass, stores bytes in a CLI-style image, and compares the resulting
+      flat `.bin` payload against the Rust payload. Representative bin evidence
+      included `6502_native_cli_smoke.asm` as `rust bin: A9 42 85 20 B5 20 8D
+      00 02 BD 00 02 B9 00 02 4C 0F 08 FF` / matching `native bin: ...`,
+      `65c02_simple.asm` as `rust bin: 64 20 9C 34 12 80 02 EA EA DA 5A FA 7A
+      1A 3A 14 30 04 40 90 0E B0 0C F0 0A D0 08 30 06 10 04 50 02 70 00 A9
+      42 A2 10 A0 20 89 55 69 01 29 0F 09 F0 49 AA A5 50 85 60 60 FF` /
+      matching `native bin: ...`, and `65c02_allmodes.asm` as matching bin
+      bytes including `0F 20 01`, `FF 21 01`, `B2 20`, `7C 34 12`, and the
+      trailing fill byte `FF`. `cargo test -p asm motorola68020_opforge_native_cli_
+      -- --nocapture` passed with 5 tests.
+      `cargo test -p asm
+      external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin --
+      --nocapture --test-threads=1` passed as a clean opt-in skip with `SKIP:
+      set OPFORGE_FS_UAE_SMOKE=1 to enable the opt-in FS-UAE smoke test`, so
+      no host FS-UAE execution was claimed. `scripts/workflow/
+      run_native_68000_format_gate.sh` passed with 35 checked files, 0 would
+      change, and 0 warnings. `scripts/workflow/run_rust_quality_gate_summary.sh`
+      passed.
   - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
     - Source requirement or finding IDs: `SR-CLI-BOUNDARY`,
       `SR-RUST-VM-ARCH`, `SR-6502-SELECTOR`, `SR-6502-ENCODER`; expected to

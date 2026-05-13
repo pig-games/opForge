@@ -11275,6 +11275,212 @@ fn item6_native_fixture_bytes(
         .collect()
 }
 
+fn item6_native_cli_parse_line(
+    harness: &mut vm::native6502::Native6502Harness,
+    control_block: &mut vm::native6502::Native6502ControlBlockV1,
+    source_line: &str,
+    line_num: u32,
+) -> PortableLineAst {
+    let parse = harness.invoke_v1(
+        control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_PARSE_LINE_V1,
+        vm::native6502::Native6502HarnessRequest::ParseLine {
+            source_line,
+            line_num,
+        },
+    );
+    assert_eq!(
+        parse.status_code,
+        vm::native6502::NATIVE_6502_STATUS_OK_V1,
+        "native CLI parse {line_num}: {:?}",
+        parse.output
+    );
+    match parse.output {
+        vm::native6502::Native6502HarnessOutput::LineAst(ast) => ast,
+        other => panic!("native CLI parse {line_num} returned unexpected output: {other:?}"),
+    }
+}
+
+fn item6_native_cli_encode_selected(
+    harness: &mut vm::native6502::Native6502Harness,
+    control_block: &mut vm::native6502::Native6502ControlBlockV1,
+    row: &Item6MosFixtureRow,
+    labels: &HashMap<String, i64>,
+    pass: u8,
+) -> Result<Vec<u8>, String> {
+    let ctx = Item6MosParityContext::with_values(labels, row.address, pass);
+    let encode = harness.invoke_v1(
+        control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1,
+        vm::native6502::Native6502HarnessRequest::EncodeSelectedInstruction {
+            mnemonic: row.mnemonic.as_str(),
+            source_line: row.source_line.as_str(),
+            line_num: row.line_num,
+            address: row.address,
+            operand_span: row.operand_span,
+            assembler_ctx: &ctx,
+        },
+    );
+    if encode.status_code == vm::native6502::NATIVE_6502_STATUS_OK_V1 {
+        match encode.output {
+            vm::native6502::Native6502HarnessOutput::EncodedBytes(Some(bytes)) => Ok(bytes),
+            other => Err(format!("unexpected native CLI output: {other:?}")),
+        }
+    } else {
+        Err(format!("status {} {:?}", encode.status_code, encode.output))
+    }
+}
+
+fn item6_rust_fixture_bin_bytes(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    cpu_id: &str,
+    fixture: &str,
+    source: &str,
+) -> Vec<u8> {
+    let fixture_plan = item6_collect_fixture_rows(model, fixture, cpu_id, source);
+    assert!(
+        !fixture_plan.rows.is_empty(),
+        "Item 6.7 Rust fixture {fixture} must contain instruction rows"
+    );
+    let rust_rows = item6_rust_fixture_bytes(
+        model,
+        cpu_id,
+        fixture_plan.rows.as_slice(),
+        &fixture_plan.labels,
+    );
+    let start = fixture_plan
+        .rows
+        .iter()
+        .map(|row| row.address)
+        .min()
+        .expect("Item 6.7 Rust rows include a start address");
+    let mut end = start;
+    let mut image = ImageStore::new();
+    for (row, bytes) in rust_rows {
+        image.store_slice(row.address, bytes.as_slice());
+        end = end.max(row.address + u32::try_from(bytes.len()).expect("instruction size fits u32"));
+    }
+    vm::vm_opasm::build_bin_output_payload(&image, start, end, 0xff)
+        .unwrap_or_else(|err| panic!("build Rust Item 6.7 bin payload for {fixture}: {err}"))
+}
+
+fn item6_native_cli_fixture_bin_bytes(
+    package_bytes: &[u8],
+    fixture: &str,
+    cpu_id: &str,
+    source: &str,
+) -> Vec<u8> {
+    let mut harness = vm::native6502::Native6502Harness::new();
+    let mut control_block = vm::native6502::Native6502ControlBlockV1::new_v1();
+    let init = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_INIT_V1,
+        vm::native6502::Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, vm::native6502::NATIVE_6502_STATUS_OK_V1);
+    let load = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        vm::native6502::Native6502HarnessRequest::LoadPackage { package_bytes },
+    );
+    assert_eq!(
+        load.status_code,
+        vm::native6502::NATIVE_6502_STATUS_OK_V1,
+        "native CLI load Item 6.7 package for {fixture}: {:?}",
+        load.output
+    );
+    let set_pipeline = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        vm::native6502::Native6502HarnessRequest::SetPipeline {
+            cpu_id,
+            dialect_override: None,
+        },
+    );
+    assert_eq!(
+        set_pipeline.status_code,
+        vm::native6502::NATIVE_6502_STATUS_OK_V1,
+        "native CLI set Item 6.7 pipeline for {fixture}: {:?}",
+        set_pipeline.output
+    );
+
+    let mut labels = HashMap::new();
+    let mut rows = Vec::new();
+    let mut pc = 0u32;
+    for (idx, line) in source.lines().enumerate() {
+        let line_num = u32::try_from(idx + 1).expect("fixture line number fits u32");
+        if let Some(origin) = item6_parse_org_address(line) {
+            pc = origin;
+            continue;
+        }
+        let ast = item6_native_cli_parse_line(&mut harness, &mut control_block, line, line_num);
+        let PortableLineAst::Statement {
+            label,
+            mnemonic,
+            operands,
+        } = ast
+        else {
+            continue;
+        };
+        if let Some(label) = label {
+            labels.insert(label.name, pc as i64);
+        }
+        let Some(mnemonic) = mnemonic else {
+            continue;
+        };
+        if mnemonic.starts_with('.') {
+            continue;
+        }
+        let row = Item6MosFixtureRow {
+            fixture: fixture.to_string(),
+            line_num,
+            source_line: line.to_string(),
+            mnemonic,
+            operands: item6_normalize_mos_operand_exprs(operands.as_slice()),
+            operand_span: item6_operand_span(operands.as_slice()),
+            address: pc,
+        };
+        let pass_one_bytes =
+            item6_native_cli_encode_selected(&mut harness, &mut control_block, &row, &labels, 1)
+                .unwrap_or_else(|message| {
+                    panic!(
+                        "native CLI Item 6.7 pass-one encode {}:{} failed: {message}",
+                        row.fixture, row.line_num
+                    )
+                });
+        pc = pc.saturating_add(
+            u32::try_from(pass_one_bytes.len()).expect("native CLI instruction size fits u32"),
+        );
+        rows.push(row);
+    }
+    assert!(
+        !rows.is_empty(),
+        "Item 6.7 native CLI fixture {fixture} must contain instruction rows"
+    );
+
+    let start = rows
+        .iter()
+        .map(|row| row.address)
+        .min()
+        .expect("Item 6.7 native CLI rows include a start address");
+    let mut end = start;
+    let mut image = ImageStore::new();
+    for row in &rows {
+        let bytes =
+            item6_native_cli_encode_selected(&mut harness, &mut control_block, row, &labels, 2)
+                .unwrap_or_else(|message| {
+                    panic!(
+                        "native CLI Item 6.7 pass-two encode {}:{} failed: {message}",
+                        row.fixture, row.line_num
+                    )
+                });
+        image.store_slice(row.address, bytes.as_slice());
+        end = end.max(row.address + u32::try_from(bytes.len()).expect("instruction size fits u32"));
+    }
+    vm::vm_opasm::build_bin_output_payload(&image, start, end, 0xff)
+        .unwrap_or_else(|err| panic!("build native CLI Item 6.7 bin payload for {fixture}: {err}"))
+}
+
 fn item6_native_encode_instruction_bytes(
     package_bytes: &[u8],
     cpu_id: &str,
@@ -11948,6 +12154,44 @@ fn motorola68020_item6_6_65c02_package_plans_match_exact_native_and_rust_bytes()
         assert!(
             required_rows.contains(required),
             "Item 6.6 must cover required 65C02-only row category {required}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_bytes() {
+    let repo_root = workspace_root();
+    let rust_package_bytes = item6_mos_package_bytes();
+    let native_package_bytes = rust_package_bytes.clone();
+    assert_eq!(
+        native_package_bytes, rust_package_bytes,
+        "Item 6.7 native and Rust paths must consume identical serialized package bytes"
+    );
+    let model = load_opasm_model_from_package_bytes(rust_package_bytes.as_slice());
+
+    for (fixture, cpu_id) in item6_mos_fixture_allowlist() {
+        assert_eq!(
+            native_package_bytes, rust_package_bytes,
+            "same-package identity check before Item 6.7 fixture comparison {fixture}"
+        );
+        let source = fs::read_to_string(repo_root.join(fixture)).expect("read Item 6.7 fixture");
+        let rust_fixture_bytes =
+            item6_rust_fixture_bin_bytes(&model, cpu_id, fixture, source.as_str());
+        let native_fixture_bytes = item6_native_cli_fixture_bin_bytes(
+            native_package_bytes.as_slice(),
+            fixture,
+            cpu_id,
+            source.as_str(),
+        );
+
+        println!(
+            "Item 6.7 native CLI fixture {fixture}\nrust bin: {}\nnative bin: {}",
+            item6_hex_bytes(rust_fixture_bytes.as_slice()),
+            item6_hex_bytes(native_fixture_bytes.as_slice())
+        );
+        assert_eq!(
+            native_fixture_bytes, rust_fixture_bytes,
+            "Item 6.7 full indicated fixture byte mismatch for {fixture}"
         );
     }
 }

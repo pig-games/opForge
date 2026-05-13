@@ -566,7 +566,7 @@ The intended native shape mirrors the Rust path:
       motorola68020_item6_1_locks_mos_fixture_byte_parity_harness --
       --nocapture` passed; `scripts/workflow/run_native_68000_format_gate.sh`
       passed; `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
-  - [ ] Item 6.3: Complete generic single-operand selected emission plans
+  - [x] Item 6.3: Complete generic single-operand selected emission plans
     - Source requirement or finding IDs: `SR-6502-ENCODER`,
       `SR-TKPKG-SERVICE`; expected to cover package-backed `none`, `u8`, `u16`,
       and `rel8` selected forms.
@@ -590,6 +590,22 @@ The intended native shape mirrors the Rust path:
     - Definition of done: native selected bytes match Rust VM bytes for all
       base-6502 rows in `6502_simple.asm` and the non-branch plus branch rows
       selected from `6502_allmodes.asm`.
+    - Validation evidence, 2026-05-13: `cargo test -p asm
+      motorola68020_item6_3_covers_generic_single_operand_selected_emission_plans
+      -- --nocapture` passed and printed labeled `rust:`/`native:` hex bytes
+      for package-backed `none`, `u8`, `u16`, and `rel8` selected emission
+      plans across implied/accumulator, immediate, zero-page, zero-page indexed,
+      absolute, absolute indexed, indirect, indexed-indirect,
+      indirect-indexed, and relative branch rows. Branch evidence included
+      `bcc branch_test` as `rust: 90 FE` / `native: 90 FE` and `bne forward`
+      as `rust: D0 08` / `native: D0 08`, with same-package byte identity
+      asserted before each fixture comparison. `cargo test -p asm
+      motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan --
+      --nocapture` passed, proving native `tkpkg` handles `rel8` as a generic
+      package plan using `EncodeSelectedCurrentPc`. `cargo test -p asm
+      motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed; `scripts/workflow/run_native_68000_format_gate.sh`
+      passed; `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
   - [ ] Item 6.4: Execute package `TABL` bytecode with operand-index parity
     - Source requirement or finding IDs: `SR-6502-ENCODER`,
       `SR-RUST-VM-ARCH`; expected to make native byte emission obey package

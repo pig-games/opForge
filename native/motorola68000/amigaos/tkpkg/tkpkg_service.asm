@@ -169,6 +169,8 @@ TkpkgMselPlanU8Text
 	.byte "u8", 0
 TkpkgMselPlanU16Text
 	.byte "u16", 0
+TkpkgMselPlanBranch8Text
+	.byte "rel8", 0
 
 ExprVmMissingEndText
 	.byte "OTR901: exprvm missing end", 0
@@ -1261,6 +1263,11 @@ tkpkgMselTryBuildCandidateV1	.block
 	bsr.w tkpkgMselPlanEqualsV1
 	tst.b d0
 	bne.s tryU16
+	lea TkpkgMselPlanBranch8Text, a2
+	moveq #4, d1
+	bsr.w tkpkgMselPlanEqualsV1
+	tst.b d0
+	bne.s tryBranchOffset8
 	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 	bra.w return
 
@@ -1288,6 +1295,23 @@ tryU16
 	cmpi.l #$0000FFFF, d3
 	bhi.w operandError
 	moveq #2, d6
+	bra.s buildOperand
+
+tryBranchOffset8
+	bsr.w tkpkgMselEvalOperandV1
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.w return
+	tst.b EncodeSelectedMselUnstable
+	bne.w noOutput
+	move.l EncodeSelectedMselValue, d3
+	move.l EncodeSelectedCurrentPc, d4
+	addq.l #2, d4
+	sub.l d4, d3
+	cmpi.l #-128, d3
+	blt.w operandError
+	cmpi.l #127, d3
+	bgt.w operandError
+	moveq #1, d6
 	bra.s buildOperand
 
 buildNone

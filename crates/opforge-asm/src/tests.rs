@@ -10852,6 +10852,16 @@ fn item6_base6502_fixture_allowlist() -> [(&'static str, &'static str); 3] {
     ]
 }
 
+fn item6_65c02_fixture_allowlist() -> [(&'static str, &'static str); 2] {
+    [
+        ("examples/mos6502/65c02_simple.asm", m65c02_cpu_id.as_str()),
+        (
+            "examples/mos6502/65c02_allmodes.asm",
+            m65c02_cpu_id.as_str(),
+        ),
+    ]
+}
+
 #[derive(Clone, Debug)]
 struct Item6MosFixtureRow {
     fixture: String,
@@ -11831,6 +11841,114 @@ fn motorola68020_item6_5_base_6502_fixtures_match_exact_native_and_rust_bytes() 
                 row.fixture, row.line_num
             );
         }
+    }
+}
+
+#[test]
+fn motorola68020_item6_6_65c02_package_plans_match_exact_native_and_rust_bytes() {
+    let repo_root = workspace_root();
+    let rust_package_bytes = item6_mos_package_bytes();
+    let native_package_bytes = rust_package_bytes.clone();
+    assert_eq!(
+        native_package_bytes, rust_package_bytes,
+        "Item 6.6 native and Rust paths must consume identical serialized package bytes"
+    );
+    let model = load_opasm_model_from_package_bytes(rust_package_bytes.as_slice());
+    let mut required_rows = HashSet::new();
+
+    for (fixture, cpu_id) in item6_65c02_fixture_allowlist() {
+        assert_eq!(
+            native_package_bytes, rust_package_bytes,
+            "same-package identity check before Item 6.6 fixture comparison {fixture}"
+        );
+        let source = fs::read_to_string(repo_root.join(fixture)).expect("read Item 6.6 fixture");
+        let fixture_plan = item6_collect_fixture_rows(&model, fixture, cpu_id, source.as_str());
+        assert!(
+            !fixture_plan.rows.is_empty(),
+            "Item 6.6 fixture {fixture} must contain instruction rows"
+        );
+        let rust_rows = item6_rust_fixture_bytes(
+            &model,
+            cpu_id,
+            fixture_plan.rows.as_slice(),
+            &fixture_plan.labels,
+        );
+        let native_rows = item6_native_fixture_bytes(
+            native_package_bytes.as_slice(),
+            cpu_id,
+            fixture_plan.rows.as_slice(),
+            &fixture_plan.labels,
+        );
+        assert_eq!(rust_rows.len(), native_rows.len());
+
+        for ((row, rust_bytes), (native_row, native_result)) in
+            rust_rows.into_iter().zip(native_rows)
+        {
+            assert_eq!(
+                native_package_bytes, rust_package_bytes,
+                "same-package identity check before Item 6.6 row comparison {}:{}",
+                row.fixture, row.line_num
+            );
+            assert_eq!(row.fixture, native_row.fixture);
+            assert_eq!(row.line_num, native_row.line_num);
+            let native_bytes = native_result.unwrap_or_else(|message| {
+                panic!(
+                    "native Item 6.6 encode {}:{} failed: {message}",
+                    row.fixture, row.line_num
+                )
+            });
+            println!(
+                "Item 6.6 {}:{} {}\nrust: {}\nnative: {}",
+                row.fixture,
+                row.line_num,
+                row.source_line.trim(),
+                item6_hex_bytes(rust_bytes.as_slice()),
+                item6_hex_bytes(native_bytes.as_slice())
+            );
+            assert_eq!(
+                native_bytes, rust_bytes,
+                "Item 6.6 exact 65C02 byte mismatch at {}:{}",
+                row.fixture, row.line_num
+            );
+
+            let statement = row
+                .source_line
+                .split_once(';')
+                .map_or(row.source_line.as_str(), |(statement, _)| statement)
+                .trim()
+                .to_ascii_lowercase();
+            match statement.as_str() {
+                "bra skip" | "bra skip1" => {
+                    required_rows.insert("bra");
+                }
+                "bbr0 $20, bbr_target" => {
+                    required_rows.insert("bbr_pair");
+                }
+                "bbs7 $21, bbs_target" => {
+                    required_rows.insert("bbs_pair");
+                }
+                "lda ($20)" => {
+                    required_rows.insert("zero_page_indirect");
+                }
+                "jmp ($1234,x)" => {
+                    required_rows.insert("absolute_indexed_indirect");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    for required in [
+        "bra",
+        "bbr_pair",
+        "bbs_pair",
+        "zero_page_indirect",
+        "absolute_indexed_indirect",
+    ] {
+        assert!(
+            required_rows.contains(required),
+            "Item 6.6 must cover required 65C02-only row category {required}"
+        );
     }
 }
 

@@ -687,7 +687,7 @@ The intended native shape mirrors the Rust path:
       --nocapture` passed. `scripts/workflow/run_native_68000_format_gate.sh`
       passed with 35 checked files, 0 would change, and 0 warnings.
       `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
-  - [ ] Item 6.6: Add generic two-operand and 65C02 package-plan support
+  - [x] Item 6.6: Add generic two-operand and 65C02 package-plan support
     - Source requirement or finding IDs: `SR-6502-SELECTOR`,
       `SR-6502-ENCODER`, `SR-RUST-VM-ARCH`; expected to cover the attached
       65C02 fixture rows while keeping native logic CPU-neutral.
@@ -711,6 +711,21 @@ The intended native shape mirrors the Rust path:
       consuming the same serialized package bytecode payload as the Rust golden
       path, validation evidence includes labeled Rust/native hexadecimal output,
       and there are no native 65C02 mnemonic/opcode/addressing tables.
+    - Validation evidence, 2026-05-13: `cargo test -p asm
+      motorola68020_item6_6_65c02_package_plans_match_exact_native_and_rust_bytes
+      -- --nocapture` passed and printed labeled `rust:`/`native:` hex bytes
+      for every row in `65c02_simple.asm` and `65c02_allmodes.asm`, with
+      same-package byte identity asserted before every fixture and row
+      comparison. Required 65C02-only evidence included `bra skip` as `rust: 80
+      02` / `native: 80 02`, `bbr0 $20, bbr_target` as `rust: 0F 20 01` /
+      `native: 0F 20 01`, `bbs7 $21, bbs_target` as `rust: FF 21 01` /
+      `native: FF 21 01`, zero-page indirect `lda ($20)` as `rust: B2 20` /
+      `native: B2 20`, and absolute indexed indirect `jmp ($1234,x)` as
+      `rust: 7C 34 12` / `native: 7C 34 12`. `cargo test -p asm
+      motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed. `scripts/workflow/run_native_68000_format_gate.sh`
+      passed with 35 checked files, 0 would change, and 0 warnings.
+      `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
   - [ ] Item 6.7: Prove native CLI/FS-UAE exact byte parity for the full
     indicated fixture set
     - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,

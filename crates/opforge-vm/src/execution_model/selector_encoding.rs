@@ -5,14 +5,13 @@ use crate::selector_encoding_utils::{
     prefer_long_decision, should_defer_abs16_decision,
 };
 use families::m65816::state;
-use families::mos6502::OperandForce;
 use opcore::parser::Expr;
 use package::ModeSelectorDescriptor;
 use registry::family::AssemblerContext;
 use registry::registry::VmEncodeCandidate;
 
-use super::force_suffix;
 use super::selector_bridge::{SelectorExprContext, SelectorInput};
+use super::{force_suffix, SelectorOperandForce};
 
 pub(super) use crate::selector_encoding_utils::input_shape_requires_m65816;
 
@@ -131,7 +130,7 @@ pub(super) fn selector_to_candidate(
                     .expr0
                     .ok_or_else(|| "missing force-b operand".to_string())?,
                 false,
-                OperandForce::DataBank,
+                SelectorOperandForce::DataBank,
                 upper_mnemonic,
                 expr_ctx,
             )?]
@@ -145,7 +144,7 @@ pub(super) fn selector_to_candidate(
                     .expr0
                     .ok_or_else(|| "missing force-k operand".to_string())?,
                 true,
-                OperandForce::ProgramBank,
+                SelectorOperandForce::ProgramBank,
                 upper_mnemonic,
                 expr_ctx,
             )?]
@@ -291,7 +290,7 @@ fn assumed_bank_state(upper_mnemonic: &str, ctx: &dyn AssemblerContext) -> (u8, 
 fn encode_expr_force_abs16(
     expr: &Expr,
     use_program_bank: bool,
-    force: OperandForce,
+    force: SelectorOperandForce,
     upper_mnemonic: &str,
     expr_ctx: &SelectorExprContext<'_>,
 ) -> Result<Vec<u8>, String> {

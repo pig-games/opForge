@@ -35,6 +35,8 @@ use families::intel8080::{
 use families::m68k::module::{M68KFamilyOperands, M68KOperands, FAMILY_ID as M68K_FAMILY_ID};
 #[cfg(not(feature = "vm-runtime-only"))]
 use families::m68k::FamilyOperand as M68KFamilyOperand;
+#[cfg(not(feature = "vm-runtime-only"))]
+use families::mos6502::module::FAMILY_ID as MOS6502_FAMILY_ID;
 use opcore::conditional::{ConditionalBlockKind, ConditionalSubType};
 use opcore::conditional::{ConditionalContext, ConditionalStack};
 use opcore::expression::{

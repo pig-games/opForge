@@ -13,14 +13,16 @@ use families::intel8080::{Intel8080FamilyHandler, Operand as IntelOperand};
 use families::m6800::module::vm_encode_candidates_for_operands as vm_candidates_m6800;
 use families::m6800::M6800FamilyHandler;
 use families::m6809::M6809CpuHandler;
-use families::mos6502::{FamilyOperand, MOS6502FamilyHandler, OperandForce};
 use families::z80::{lookup_extension as lookup_z80_extension, Z80CpuHandler};
 use opcore::parser::Expr;
 use registry::family::{expr_has_unstable_symbols, AssemblerContext, CpuHandler, FamilyHandler};
 use registry::registry::VmEncodeCandidate;
 
 use super::selector_encoding::{input_shape_requires_m65816, selector_to_candidate};
-use super::{force_suffix, HierarchyExecutionModel, ResolvedHierarchy, RuntimeBridgeError};
+use super::{
+    force_suffix, HierarchyExecutionModel, ResolvedHierarchy, RuntimeBridgeError,
+    SelectorOperandForce,
+};
 
 pub fn intel8080_candidate_from_resolved(
     mnemonic: &str,
@@ -639,7 +641,7 @@ pub(super) struct SelectorInput<'a> {
     pub(super) shape_key: String,
     pub(super) expr0: Option<&'a Expr>,
     pub(super) expr1: Option<&'a Expr>,
-    pub(super) force: Option<OperandForce>,
+    pub(super) force: Option<SelectorOperandForce>,
 }
 
 pub(super) struct SelectorExprContext<'a> {
@@ -719,9 +721,10 @@ impl<'a> SelectorExprContext<'a> {
     }
 }
 
-pub(super) fn selector_input_from_family_operands(
-    operands: &[FamilyOperand],
-) -> Option<SelectorInput<'_>> {
+pub(super) fn selector_input_from_expr_operands<'a>(
+    mnemonic: &str,
+    operands: &'a [Expr],
+) -> Option<SelectorInput<'a>> {
     match operands {
         [] => Some(SelectorInput {
             shape_key: "implied".to_string(),
@@ -729,114 +732,192 @@ pub(super) fn selector_input_from_family_operands(
             expr1: None,
             force: None,
         }),
-        [FamilyOperand::Accumulator(_)] => Some(SelectorInput {
-            shape_key: "accumulator".to_string(),
-            expr0: None,
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::Immediate(expr)] => Some(SelectorInput {
-            shape_key: "immediate".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::Direct(expr)] => Some(SelectorInput {
-            shape_key: "direct".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::DirectX(expr)] => Some(SelectorInput {
-            shape_key: "direct_x".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::DirectY(expr)] => Some(SelectorInput {
-            shape_key: "direct_y".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::IndexedIndirectX(expr) | FamilyOperand::IndirectX(expr)] => {
-            Some(SelectorInput {
-                shape_key: "indexed_indirect_x".to_string(),
-                expr0: Some(expr),
-                expr1: None,
-                force: None,
-            })
-        }
-        [FamilyOperand::IndirectIndexedY(expr)] => Some(SelectorInput {
-            shape_key: "indirect_indexed_y".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::IndirectIndexedZ(expr)] => Some(SelectorInput {
-            shape_key: "indirect_indexed_z".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::Indirect(expr)] => Some(SelectorInput {
-            shape_key: "indirect".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::IndirectLong(expr)] => Some(SelectorInput {
-            shape_key: "indirect_long".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::IndirectLongY(expr)] => Some(SelectorInput {
-            shape_key: "indirect_long_y".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::IndirectLongZ(expr)] => Some(SelectorInput {
-            shape_key: "indirect_long_z".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::StackRelative(expr)] => Some(SelectorInput {
-            shape_key: "stack_relative".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::StackRelativeIndirectIndexedY(expr)] => Some(SelectorInput {
-            shape_key: "stack_relative_indirect_y".to_string(),
-            expr0: Some(expr),
-            expr1: None,
-            force: None,
-        }),
-        [FamilyOperand::BlockMove { src, dst, .. }] => Some(SelectorInput {
-            shape_key: "pair_direct".to_string(),
-            expr0: Some(src),
-            expr1: Some(dst),
-            force: None,
-        }),
-        [FamilyOperand::Forced { inner, force, .. }] => {
-            let nested = selector_input_from_family_operands(std::slice::from_ref(inner.as_ref()))?;
-            Some(SelectorInput {
-                shape_key: format!("{}:force_{}", nested.shape_key, force_suffix(*force)),
-                force: Some(*force),
-                ..nested
-            })
-        }
-        [FamilyOperand::Direct(first), FamilyOperand::Direct(second)] => Some(SelectorInput {
+        [expr] => selector_input_from_single_expr(expr),
+        [first, second] if is_mos6502_pair_direct_mnemonic(mnemonic) => Some(SelectorInput {
             shape_key: "pair_direct".to_string(),
             expr0: Some(first),
             expr1: Some(second),
             force: None,
         }),
+        [first, second] => selector_input_from_expr_pair(first, second),
         _ => None,
     }
+}
+
+fn selector_input_from_single_expr(expr: &Expr) -> Option<SelectorInput<'_>> {
+    match expr {
+        Expr::Register(name, _) if name.eq_ignore_ascii_case("A") => Some(SelectorInput {
+            shape_key: "accumulator".to_string(),
+            expr0: None,
+            expr1: None,
+            force: None,
+        }),
+        Expr::Immediate(inner, _) => Some(SelectorInput {
+            shape_key: "immediate".to_string(),
+            expr0: Some(inner.as_ref()),
+            expr1: None,
+            force: None,
+        }),
+        Expr::Indirect(inner, _) => selector_input_from_indirect_inner(inner.as_ref()),
+        Expr::IndirectLong(inner, _) => Some(SelectorInput {
+            shape_key: "indirect_long".to_string(),
+            expr0: Some(inner.as_ref()),
+            expr1: None,
+            force: None,
+        }),
+        _ => Some(SelectorInput {
+            shape_key: "direct".to_string(),
+            expr0: Some(expr),
+            expr1: None,
+            force: None,
+        }),
+    }
+}
+
+fn selector_input_from_indirect_inner(inner: &Expr) -> Option<SelectorInput<'_>> {
+    if let Expr::Tuple(elements, _) = inner {
+        let [first, second] = elements.as_slice() else {
+            return None;
+        };
+        if expr_name_eq(second, "X") {
+            return Some(SelectorInput {
+                shape_key: "indexed_indirect_x".to_string(),
+                expr0: Some(first),
+                expr1: None,
+                force: None,
+            });
+        }
+        return None;
+    }
+    Some(SelectorInput {
+        shape_key: "indirect".to_string(),
+        expr0: Some(inner),
+        expr1: None,
+        force: None,
+    })
+}
+
+fn selector_input_from_expr_pair<'a>(first: &'a Expr, second: &Expr) -> Option<SelectorInput<'a>> {
+    if expr_name_eq(second, "X") {
+        return Some(SelectorInput {
+            shape_key: "direct_x".to_string(),
+            expr0: Some(first),
+            expr1: None,
+            force: None,
+        });
+    }
+    if expr_name_eq(second, "Y") {
+        return selector_input_from_y_indexed_expr(first);
+    }
+    if expr_name_eq(second, "Z") {
+        return selector_input_from_z_indexed_expr(first);
+    }
+    if expr_name_eq(second, "S") {
+        return Some(SelectorInput {
+            shape_key: "stack_relative".to_string(),
+            expr0: Some(first),
+            expr1: None,
+            force: None,
+        });
+    }
+    if let Some(force) = selector_operand_force(second) {
+        let nested = selector_input_from_single_expr(first)?;
+        return Some(SelectorInput {
+            shape_key: format!("{}:force_{}", nested.shape_key, force_suffix(force)),
+            force: Some(force),
+            ..nested
+        });
+    }
+    None
+}
+
+fn selector_input_from_y_indexed_expr(expr: &Expr) -> Option<SelectorInput<'_>> {
+    match expr {
+        Expr::Indirect(inner, _) => {
+            if let Expr::Tuple(elements, _) = inner.as_ref() {
+                let [first, second] = elements.as_slice() else {
+                    return None;
+                };
+                if expr_name_eq(second, "S") {
+                    return Some(SelectorInput {
+                        shape_key: "stack_relative_indirect_y".to_string(),
+                        expr0: Some(first),
+                        expr1: None,
+                        force: None,
+                    });
+                }
+                return None;
+            }
+            Some(SelectorInput {
+                shape_key: "indirect_indexed_y".to_string(),
+                expr0: Some(inner.as_ref()),
+                expr1: None,
+                force: None,
+            })
+        }
+        Expr::IndirectLong(inner, _) => Some(SelectorInput {
+            shape_key: "indirect_long_y".to_string(),
+            expr0: Some(inner.as_ref()),
+            expr1: None,
+            force: None,
+        }),
+        _ => Some(SelectorInput {
+            shape_key: "direct_y".to_string(),
+            expr0: Some(expr),
+            expr1: None,
+            force: None,
+        }),
+    }
+}
+
+fn selector_input_from_z_indexed_expr(expr: &Expr) -> Option<SelectorInput<'_>> {
+    match expr {
+        Expr::Indirect(inner, _) => Some(SelectorInput {
+            shape_key: "indirect_indexed_z".to_string(),
+            expr0: Some(inner.as_ref()),
+            expr1: None,
+            force: None,
+        }),
+        Expr::IndirectLong(inner, _) => Some(SelectorInput {
+            shape_key: "indirect_long_z".to_string(),
+            expr0: Some(inner.as_ref()),
+            expr1: None,
+            force: None,
+        }),
+        _ => Some(SelectorInput {
+            shape_key: "direct".to_string(),
+            expr0: Some(expr),
+            expr1: None,
+            force: None,
+        }),
+    }
+}
+
+fn selector_operand_force(expr: &Expr) -> Option<SelectorOperandForce> {
+    let text = expr_name(expr)?;
+    match text.to_ascii_lowercase().as_str() {
+        "d" => Some(SelectorOperandForce::DirectPage),
+        "b" => Some(SelectorOperandForce::DataBank),
+        "k" => Some(SelectorOperandForce::ProgramBank),
+        "l" => Some(SelectorOperandForce::Long),
+        _ => None,
+    }
+}
+
+fn expr_name(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Identifier(name, _) | Expr::Register(name, _) => Some(name),
+        _ => None,
+    }
+}
+
+fn expr_name_eq(expr: &Expr, expected: &str) -> bool {
+    expr_name(expr).is_some_and(|name| name.eq_ignore_ascii_case(expected))
+}
+
+fn is_mos6502_pair_direct_mnemonic(mnemonic: &str) -> bool {
+    let upper = mnemonic.to_ascii_uppercase();
+    matches!(upper.as_str(), "MVN" | "MVP") || upper.starts_with("BBR") || upper.starts_with("BBS")
 }
 
 impl HierarchyExecutionModel {
@@ -896,12 +977,7 @@ impl HierarchyExecutionModel {
         ctx: &dyn AssemblerContext,
     ) -> Result<Option<Vec<VmEncodeCandidate>>, RuntimeBridgeError> {
         let expr_ctx = SelectorExprContext::new(self, resolved, ctx);
-        let family = MOS6502FamilyHandler::new();
-        let parsed = family.parse_operands(mnemonic, operands).ok();
-        let Some(input) = parsed
-            .as_ref()
-            .and_then(|operands| selector_input_from_family_operands(operands))
-        else {
+        let Some(input) = selector_input_from_expr_operands(mnemonic, operands) else {
             return Ok(None);
         };
 

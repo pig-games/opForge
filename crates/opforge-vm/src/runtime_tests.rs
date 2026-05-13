@@ -6191,6 +6191,65 @@ fn execution_model_encodes_m6502_instruction_from_expr_operands() {
 }
 
 #[test]
+fn mos6502_vm_expr_selector_is_package_backed_for_source_operand_shapes() {
+    let registry = mos6502_family_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let span = Span::default();
+    let n = |text: &str| Expr::Number(text.to_string(), span);
+    let r = |name: &str| Expr::Register(name.to_string(), span);
+    let indirect = |expr: Expr| Expr::Indirect(Box::new(expr), span);
+    let tuple = |items: Vec<Expr>| Expr::Tuple(items, span);
+    let immediate = |expr: Expr| Expr::Immediate(Box::new(expr), span);
+    let ctx = TestAssemblerContext::new();
+
+    for (cpu, mnemonic, operands, expected) in [
+        ("m6502", "NOP", vec![], vec![0xEA]),
+        ("m6502", "ASL", vec![r("A")], vec![0x0A]),
+        ("m6502", "LDA", vec![immediate(n("66"))], vec![0xA9, 0x42]),
+        ("m6502", "LDA", vec![n("32")], vec![0xA5, 0x20]),
+        ("m6502", "LDA", vec![n("8192")], vec![0xAD, 0x00, 0x20]),
+        ("m6502", "LDA", vec![n("32"), r("X")], vec![0xB5, 0x20]),
+        (
+            "m6502",
+            "LDA",
+            vec![indirect(tuple(vec![n("32"), r("X")]))],
+            vec![0xA1, 0x20],
+        ),
+        (
+            "m6502",
+            "LDA",
+            vec![indirect(n("32")), r("Y")],
+            vec![0xB1, 0x20],
+        ),
+        (
+            "m6502",
+            "JMP",
+            vec![indirect(n("4660"))],
+            vec![0x6C, 0x34, 0x12],
+        ),
+        ("65816", "MVN", vec![n("1"), n("2")], vec![0x54, 0x01, 0x02]),
+    ] {
+        let bytes = model
+            .encode_instruction_from_exprs(cpu, None, mnemonic, operands.as_slice(), &ctx)
+            .expect("VM expr selector should resolve source operand shape");
+        assert_eq!(bytes, Some(expected), "{cpu} {mnemonic}");
+    }
+}
+
+#[test]
+fn mos6502_vm_expr_selector_has_no_family_operand_shortcut_guardrail() {
+    for source in [
+        include_str!("execution_model.rs"),
+        include_str!("execution_model/selector_bridge.rs"),
+        include_str!("execution_model/selector_encoding.rs"),
+    ] {
+        assert!(!source.contains("families::mos6502"));
+        assert!(!source.contains("MOS6502FamilyHandler"));
+        assert!(!source.contains("FamilyOperand"));
+    }
+}
+
+#[test]
 fn execution_model_encodes_m65c02_instruction_from_expr_operands() {
     let registry = mos6502_family_registry();
 

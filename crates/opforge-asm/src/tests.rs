@@ -2702,9 +2702,10 @@ fn run_with_cli_rejects_45gs02_flat_z_form_on_m6502_override() {
         Err(other) => panic!("expected assembler failure, got {other:?}"),
     };
     assert!(
-        err.diagnostics()
-            .iter()
-            .any(|diag| { diag.message().contains("No instruction found for LDA") }),
+        err.diagnostics().iter().any(|diag| {
+            diag.message()
+                .contains("VM runtime selector missing for LDA")
+        }),
         "unexpected diagnostics: {:?}",
         err.diagnostics()
             .iter()
@@ -2735,9 +2736,10 @@ fn run_with_cli_rejects_45gs02_flat_z_form_on_m65c02_override() {
         Err(other) => panic!("expected assembler failure, got {other:?}"),
     };
     assert!(
-        err.diagnostics()
-            .iter()
-            .any(|diag| { diag.message().contains("No instruction found for LDA") }),
+        err.diagnostics().iter().any(|diag| {
+            diag.message()
+                .contains("VM runtime selector missing for LDA")
+        }),
         "unexpected diagnostics: {:?}",
         err.diagnostics()
             .iter()
@@ -28273,7 +28275,7 @@ fn vm_runtime_m6502_missing_selector_errors_instead_of_resolve_fallback() {
         process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    LDA $1234", 1, 0, 2);
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
-    assert!(message.contains("No instruction found for LDA"));
+    assert!(message.contains("VM runtime selector missing for LDA"));
 }
 
 #[test]
@@ -28299,7 +28301,7 @@ fn vm_runtime_m65c02_missing_selector_errors_instead_of_resolve_fallback() {
         process_asmline_with_execution_mode(&mut asm, ExecutionMode::Vm, "    LDA $1234", 1, 0, 2);
     let message = asm.error().map(|err| err.to_string()).unwrap_or_default();
     assert_eq!(status, LineStatus::Error);
-    assert!(message.contains("No instruction found for LDA"));
+    assert!(message.contains("VM runtime selector missing for LDA"));
 }
 
 #[test]

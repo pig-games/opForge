@@ -1,0 +1,1 @@
+PASS: plan states source, migration mode, binding AGENTS rules, ordered commit-sized items, per-item quality gates, compliance-review requirements, and concrete done criteria.

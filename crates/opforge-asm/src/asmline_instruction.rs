@@ -55,6 +55,12 @@ impl<'a> AsmLine<'a> {
                 }
             };
 
+            if let Some(status) = self.try_encode_mos6502_instruction_via_runtime_expr_first(
+                &pipeline, mnemonic, operands,
+            ) {
+                return status;
+            }
+
             let mut rewritten_operands = None;
             let family_operands = match pipeline.family.parse_operands(mnemonic, operands) {
                 Ok(ops) => {
@@ -405,6 +411,99 @@ impl<'a> AsmLine<'a> {
                     ),
                 },
             }
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn try_encode_mos6502_instruction_via_runtime_expr_first(
+        &mut self,
+        pipeline: &ResolvedPipeline<'_>,
+        mnemonic: &str,
+        operands: &[Expr],
+    ) -> Option<LineStatus> {
+        if pipeline.family_id != MOS6502_FAMILY_ID
+            || self.cpu.as_str().eq_ignore_ascii_case("45gs02")
+            || self.cpu.as_str().eq_ignore_ascii_case("65816")
+            || !vm::rollout::package_runtime_default_enabled_for_family(pipeline.family_id.as_str())
+            || self.portable_expr_runtime_force_host_for_family(pipeline.family_id.as_str())
+        {
+            return None;
+        }
+
+        let allow = match self.opthread_form_allows_mnemonic(pipeline, mnemonic) {
+            Ok(allow) => allow,
+            Err(message) => {
+                return Some(self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    &message,
+                    None,
+                ))
+            }
+        };
+        if !allow {
+            return Some(self.failure(
+                LineStatus::Error,
+                AsmErrorKind::Instruction,
+                &format!("No instruction found for {}", mnemonic.to_ascii_uppercase()),
+                None,
+            ));
+        }
+
+        let Some(model) = self.opthread_execution_model.as_ref() else {
+            return Some(self.failure(
+                LineStatus::Error,
+                AsmErrorKind::Instruction,
+                &format!(
+                    "VM runtime model unavailable for authoritative family '{}'",
+                    pipeline.family_id.as_str()
+                ),
+                None,
+            ));
+        };
+
+        match vm::vm_opasm::encode_instruction_from_exprs(
+            model,
+            self.cpu.as_str(),
+            None,
+            mnemonic,
+            operands,
+            self,
+        ) {
+            Ok(Some(bytes)) => {
+                if bytes.is_empty() {
+                    return Some(self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        &format!(
+                            "VM program emitted no bytes for {}",
+                            mnemonic.to_ascii_uppercase()
+                        ),
+                        None,
+                    ));
+                }
+                if let Some(status) =
+                    self.emit_instruction_bytes_checked(mnemonic, operands, bytes.as_slice())
+                {
+                    return Some(status);
+                }
+                Some(LineStatus::Ok)
+            }
+            Ok(None) => Some(self.failure(
+                LineStatus::Error,
+                AsmErrorKind::Instruction,
+                &format!(
+                    "VM runtime selector missing for {}",
+                    mnemonic.to_ascii_uppercase()
+                ),
+                None,
+            )),
+            Err(err) => Some(self.failure(
+                LineStatus::Error,
+                AsmErrorKind::Instruction,
+                &err.to_string(),
+                None,
+            )),
         }
     }
 

@@ -14,7 +14,6 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 
-use families::mos6502::OperandForce;
 use opcore::expr_vm::PortableExprBudgets;
 use opcore::parser::{Expr, ParseError};
 use package::{
@@ -88,6 +87,14 @@ pub trait FamilyExprResolver: std::fmt::Debug + Send + Sync {
         operands: &[Expr],
         ctx: &dyn AssemblerContext,
     ) -> Result<Option<Vec<VmEncodeCandidate>>, RuntimeBridgeError>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SelectorOperandForce {
+    DirectPage,
+    DataBank,
+    ProgramBank,
+    Long,
 }
 
 #[derive(Debug)]
@@ -434,7 +441,7 @@ impl HierarchyExecutionModel {
         self.core.diag_message(code, fallback, args)
     }
 
-    fn invalid_force_error(&self, force: OperandForce, context: &str) -> String {
+    fn invalid_force_error(&self, force: SelectorOperandForce, context: &str) -> String {
         let force_token = force_suffix(force);
         let fallback = format!(
             "Explicit addressing override ',{}' is not valid for {}",
@@ -458,11 +465,11 @@ impl HierarchyExecutionModel {
     }
 }
 
-fn force_suffix(force: OperandForce) -> &'static str {
+fn force_suffix(force: SelectorOperandForce) -> &'static str {
     match force {
-        OperandForce::DirectPage => "d",
-        OperandForce::DataBank => "b",
-        OperandForce::ProgramBank => "k",
-        OperandForce::Long => "l",
+        SelectorOperandForce::DirectPage => "d",
+        SelectorOperandForce::DataBank => "b",
+        SelectorOperandForce::ProgramBank => "k",
+        SelectorOperandForce::Long => "l",
     }
 }

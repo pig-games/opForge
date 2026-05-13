@@ -11063,6 +11063,39 @@ fn item6_mos_package_bytes() -> Vec<u8> {
     build_hierarchy_package_from_registry(&registry).expect("build focused Item 6 MOS package")
 }
 
+fn item6_mos_package_bytes_with_tabl_program(
+    mnemonic: &str,
+    mode_key: &str,
+    program: Vec<u8>,
+) -> Vec<u8> {
+    let mut registry = ModuleRegistry::new();
+    registry.register_family(Box::new(
+        families::families::mos6502::module::MOS6502FamilyModule,
+    ));
+    registry.register_cpu(Box::new(
+        families::families::mos6502::module::M6502CpuModule,
+    ));
+    registry.register_cpu(Box::new(families::m65c02::module::M65C02CpuModule));
+    let mut chunks =
+        build_hierarchy_chunks_from_registry(&registry).expect("build Item 6 MOS chunks");
+    let mut patched = false;
+    for table in &mut chunks.tables {
+        let is_mos_owner = matches!(&table.owner, ScopedOwner::Family(owner) if owner.eq_ignore_ascii_case("mos6502"));
+        if is_mos_owner
+            && table.mnemonic.eq_ignore_ascii_case(mnemonic)
+            && table.mode_key.eq_ignore_ascii_case(mode_key)
+        {
+            table.program = program.clone();
+            patched = true;
+        }
+    }
+    assert!(
+        patched,
+        "expected to patch Item 6 MOS TABL program {mnemonic}/{mode_key}"
+    );
+    encode_hierarchy_chunks_from_chunks(&chunks).expect("encode patched Item 6 MOS package")
+}
+
 fn item6_collect_fixture_rows(
     model: &vm::vm_opasm::HierarchyExecutionModel,
     fixture: &str,
@@ -11219,6 +11252,56 @@ fn item6_native_fixture_bytes(
             (row.clone(), bytes)
         })
         .collect()
+}
+
+fn item6_native_encode_instruction_bytes(
+    package_bytes: &[u8],
+    cpu_id: &str,
+    mnemonic: &str,
+    candidates: &[registry::registry::VmEncodeCandidate],
+) -> Result<Vec<u8>, String> {
+    let mut harness = vm::native6502::Native6502Harness::new();
+    let mut control_block = vm::native6502::Native6502ControlBlockV1::new_v1();
+    let init = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_INIT_V1,
+        vm::native6502::Native6502HarnessRequest::Init,
+    );
+    assert_eq!(init.status_code, vm::native6502::NATIVE_6502_STATUS_OK_V1);
+    let load = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_LOAD_PACKAGE_V1,
+        vm::native6502::Native6502HarnessRequest::LoadPackage { package_bytes },
+    );
+    assert_eq!(load.status_code, vm::native6502::NATIVE_6502_STATUS_OK_V1);
+    let set_pipeline = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_SET_PIPELINE_V1,
+        vm::native6502::Native6502HarnessRequest::SetPipeline {
+            cpu_id,
+            dialect_override: None,
+        },
+    );
+    assert_eq!(
+        set_pipeline.status_code,
+        vm::native6502::NATIVE_6502_STATUS_OK_V1
+    );
+    let encode = harness.invoke_v1(
+        &mut control_block,
+        vm::native6502_abi::NATIVE_6502_ENTRYPOINT_ENCODE_INSTRUCTION_V1,
+        vm::native6502::Native6502HarnessRequest::EncodeInstruction {
+            mnemonic,
+            candidates,
+        },
+    );
+    if encode.status_code == vm::native6502::NATIVE_6502_STATUS_OK_V1 {
+        match encode.output {
+            vm::native6502::Native6502HarnessOutput::EncodedBytes(Some(bytes)) => Ok(bytes),
+            other => Err(format!("unexpected native Item 6.4 output: {other:?}")),
+        }
+    } else {
+        Err(format!("status {} {:?}", encode.status_code, encode.output))
+    }
 }
 
 #[test]
@@ -11537,6 +11620,137 @@ fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
             "moveq #1, d6",
             "bra.s buildOperand",
         ],
+    ));
+}
+
+#[test]
+fn motorola68020_item6_4_tabl_operand_indexes_match_rust_and_native_harness() {
+    let package_bytes = item6_mos_package_bytes_with_tabl_program(
+        "lda",
+        "immediate",
+        vec![
+            OP_EMIT_U8,
+            0xA9,
+            OP_EMIT_OPERAND,
+            0x00,
+            OP_EMIT_U8,
+            0x2C,
+            OP_EMIT_OPERAND,
+            0x01,
+            OP_END,
+        ],
+    );
+    let model = load_opasm_model_from_package_bytes(package_bytes.as_slice());
+    let candidates = vec![registry::registry::VmEncodeCandidate {
+        mode_key: "immediate".to_string(),
+        operand_bytes: vec![vec![0x11], vec![0x22, 0x33]],
+    }];
+    let request = vm::runtime_portable_types::PortableInstructionRequest {
+        cpu_id: m6502_cpu_id.as_str().to_string(),
+        dialect_override: None,
+        mnemonic: "LDA".to_string(),
+        candidates: candidates.clone(),
+    };
+    let rust_bytes = model
+        .encode_portable_instruction(&request)
+        .expect("Rust Item 6.4 TABL program should execute")
+        .expect("Rust Item 6.4 TABL program should match LDA immediate");
+    let native_bytes = item6_native_encode_instruction_bytes(
+        package_bytes.as_slice(),
+        m6502_cpu_id.as_str(),
+        "LDA",
+        candidates.as_slice(),
+    )
+    .expect("native Item 6.4 TABL program should execute");
+
+    println!(
+        "Item 6.4 TABL operand-index parity\nprogram: A9 operand0 2C operand1\nrust: {}\nnative: {}",
+        item6_hex_bytes(rust_bytes.as_slice()),
+        item6_hex_bytes(native_bytes.as_slice())
+    );
+    assert_eq!(rust_bytes, vec![0xA9, 0x11, 0x2C, 0x22, 0x33]);
+    assert_eq!(native_bytes, rust_bytes);
+}
+
+#[test]
+fn motorola68020_item6_4_rejects_malformed_tabl_programs_and_operand_indexes() {
+    let candidates = vec![registry::registry::VmEncodeCandidate {
+        mode_key: "immediate".to_string(),
+        operand_bytes: vec![vec![0x42]],
+    }];
+    for (label, program, expected) in [
+        (
+            "missing literal byte",
+            vec![OP_EMIT_U8],
+            "truncated VM program",
+        ),
+        (
+            "missing operand index",
+            vec![OP_EMIT_OPERAND],
+            "truncated VM program",
+        ),
+        (
+            "operand index one with one operand",
+            vec![OP_EMIT_OPERAND, 0x01, OP_END],
+            "VM operand index out of range",
+        ),
+        ("invalid opcode", vec![0x7E], "invalid VM opcode"),
+    ] {
+        let package_bytes =
+            item6_mos_package_bytes_with_tabl_program("lda", "immediate", program.clone());
+        let model = load_opasm_model_from_package_bytes(package_bytes.as_slice());
+        let request = vm::runtime_portable_types::PortableInstructionRequest {
+            cpu_id: m6502_cpu_id.as_str().to_string(),
+            dialect_override: None,
+            mnemonic: "LDA".to_string(),
+            candidates: candidates.clone(),
+        };
+        let rust_message = model
+            .encode_portable_instruction(&request)
+            .expect_err("Rust Item 6.4 malformed TABL program should fail")
+            .to_string();
+        let native_message = item6_native_encode_instruction_bytes(
+            package_bytes.as_slice(),
+            m6502_cpu_id.as_str(),
+            "LDA",
+            candidates.as_slice(),
+        )
+        .expect_err("native Item 6.4 malformed TABL program should fail");
+        println!("Item 6.4 negative {label}\nrust: {rust_message}\nnative: {native_message}");
+        assert!(
+            rust_message.contains(expected),
+            "Rust negative case {label} should mention {expected}: {rust_message}"
+        );
+        assert!(
+            native_message.contains(expected),
+            "native negative case {label} should mention {expected}: {native_message}"
+        );
+    }
+}
+
+#[test]
+fn motorola68020_item6_4_native_tkpkg_walks_tabl_operand_records_by_index() {
+    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "validateOperandRecord",
+            "cmp.w d1, d6",
+            "move.b (a2)+, d6",
+            "emitOperand",
+            "moveq #0, d3",
+            "move.b (a0)+, d3",
+            "cmp.w d5, d3",
+            "bhs.s fail",
+            "operandSelectLoop",
+            "move.b (a4)+, d2",
+            "operandCopyStart",
+        ],
+    ));
+    assert!(!source_contains_in_order(
+        &service,
+        &["emitOperand", "tst.b d0", "bne.s fail"]
     ));
 }
 

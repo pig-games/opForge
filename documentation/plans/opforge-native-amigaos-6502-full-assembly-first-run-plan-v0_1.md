@@ -606,7 +606,7 @@ The intended native shape mirrors the Rust path:
       motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
       --nocapture` passed; `scripts/workflow/run_native_68000_format_gate.sh`
       passed; `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
-  - [ ] Item 6.4: Execute package `TABL` bytecode with operand-index parity
+  - [x] Item 6.4: Execute package `TABL` bytecode with operand-index parity
     - Source requirement or finding IDs: `SR-6502-ENCODER`,
       `SR-RUST-VM-ARCH`; expected to make native byte emission obey package
       programs rather than an operand-zero shortcut.
@@ -627,6 +627,25 @@ The intended native shape mirrors the Rust path:
     - Definition of done: native `TABL` execution can emit every operand byte
       requested by package bytecode programs needed by the attached base 6502
       and 65C02 fixture rows.
+    - Validation evidence, 2026-05-13: `cargo test -p asm
+      motorola68020_item6_4 -- --nocapture` passed. It printed labeled
+      same-package Rust/native TABL evidence for a patched MOS package program
+      using `OP_EMIT_U8`, `OP_EMIT_OPERAND 0`, `OP_EMIT_OPERAND 1`, and
+      `OP_END`: `rust: A9 11 2C 22 33` / `native: A9 11 2C 22 33`. The same
+      focused run passed negative malformed/index cases for missing literal
+      byte, missing operand index, operand index 1 with one operand, and an
+      invalid opcode, with matching Rust/native error text. The native source
+      contract test proved `tkpkgEncodeExecuteProgram` now walks candidate
+      operand records by bytecode index instead of rejecting nonzero indexes.
+      `cargo test -p asm
+      motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed. `cargo test -p asm
+      motorola68020_item6_1_locks_mos_fixture_byte_parity_harness --
+      --nocapture` passed and retained existing 6502/65C02 smoke parity,
+      including two-operand 65C02 bit-branch rows. `scripts/workflow/
+      run_native_68000_format_gate.sh --write` reported 0 changed files after
+      formatting; `scripts/workflow/run_native_68000_format_gate.sh` passed;
+      `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
   - [ ] Item 6.5: Pass base 6502 simple and all-modes exact-byte fixture parity
     - Source requirement or finding IDs: `SR-6502-SELECTOR`,
       `SR-6502-ENCODER`, `SR-NATIVE-6502-FULL`; expected to complete base 6502

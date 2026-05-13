@@ -2406,6 +2406,31 @@ tkpkgEncodeInstructionEnvelopeV1	.block
 	cmp.w d7, d6
 	bhi.w fail
 	movea.l a4, a3
+	move.w d6, -(sp)
+	move.w d5, d0
+	move.w d7, d1
+	movea.l a4, a2
+
+validateOperandRecord
+	cmp.w d1, d6
+	bhi.s validateOperandFail
+	adda.w d6, a2
+	sub.w d6, d1
+	subq.w #1, d0
+	beq.s validateOperandDone
+	tst.w d1
+	beq.s validateOperandFail
+	moveq #0, d6
+	move.b (a2)+, d6
+	subq.w #1, d1
+	bra.s validateOperandRecord
+
+validateOperandFail
+	addq.l #2, sp
+	bra.w fail
+
+validateOperandDone
+	move.w (sp)+, d6
 	bra.s encodeCandidate
 
 noOperandRecord
@@ -2530,13 +2555,26 @@ emitU8
 emitOperand
 	tst.w d7
 	beq.s fail
-	move.b (a0)+, d0
+	moveq #0, d3
+	move.b (a0)+, d3
 	subq.w #1, d7
-	tst.b d0
-	bne.s fail
-	move.w d6, d0
-	beq.s loop
+	cmp.w d5, d3
+	bhs.s fail
 	movea.l a3, a4
+	move.w d6, d2
+	tst.w d3
+	beq.s operandCopyStart
+
+operandSelectLoop
+	adda.w d2, a4
+	moveq #0, d2
+	move.b (a4)+, d2
+	subq.w #1, d3
+	bne.s operandSelectLoop
+
+operandCopyStart
+	move.w d2, d0
+	beq.s loop
 
 operandLoop
 	move.b (a4)+, (a2)+

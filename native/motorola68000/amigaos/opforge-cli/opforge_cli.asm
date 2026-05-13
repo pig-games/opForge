@@ -20,12 +20,6 @@
 	.use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
-	.use opasm.amigaos.selector_stage (opasmSelectorStageBuildEncodeRequestV1)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_OK)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_NO_OUTPUT)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_OPERAND_ERROR)
 	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1)
 	.use opasm.amigaos.engine (opasmEngineAssemblySessionStart, opasmEngineStmtCount)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineSourceRecordCount)
@@ -88,7 +82,6 @@ NATIVE_STATEMENT_TABLE_CAPACITY = 16
 NATIVE_LABEL_TABLE_CAPACITY     = 16
 NATIVE_IMAGE_BUFFER_CAPACITY    = 4096
 NATIVE_OPASM_ENGINE_CONTEXT_LONGS = 10
-NATIVE_SELECTOR_STAGE_CONTEXT_LONGS = 2
 NATIVE_MODULE_USE_STATE_BYTES   = (7 * 2) + (NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_MODULE_TABLE_CAPACITY * 4) + (NATIVE_MODULE_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 2) + (NATIVE_IMPORT_TABLE_CAPACITY * 4) + (NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_IMPORT_SELECT_CAPACITY * 2) + (NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY)
 NATIVE_ASSEMBLY_SESSION_BYTES   = (5 * 2) + TOKEN_BUFFER_CAPACITY + (2 * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 4) + (NATIVE_SOURCE_RECORD_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * SOURCE_LINE_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + (NATIVE_STATEMENT_TABLE_CAPACITY * 2) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_STATEMENT_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * 4) + (NATIVE_LABEL_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY) + NATIVE_IMAGE_BUFFER_CAPACITY
 PACKAGE_INPUT_PTR_V1            = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
@@ -976,40 +969,6 @@ opforgeNativeCliReadEvaluateExpressionValue
 	lea ControlBlockV1, a0
 	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a0
 	move.l 16(a0), d3
-	rts
-
-; Selector-stage callback that resolves one operand through tkpkg evaluate_expression.
-opforgeNativeCliSelectorEvaluateOperandV1
-	movem.l d1-d2/d4/d6-d7/a1-a2, -(sp)
-	moveq #0, d5
-	movea.l a0, a2
-	move.l d0, d6
-	moveq #0, d7
-	move.w NativeCliSelectorStmtIndex, d7
-	movea.l a2, a0
-	move.l d6, d0
-
-opforgeNativeCliSelectorHaveOperand
-	bsr.w opforgeNativeCliClearStatementExprSpanForSyntheticRequest
-	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
-	tst.l d0
-	bne.s opforgeNativeCliSelectorEvaluateOperandReturn
-	bsr.w opforgeNativeCliPrepareEvaluateExpressionExtension
-	lea controlBlockV1, a0
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
-	move.w NativeCliEvalRequestLen, d1
-	bsr.w opforgeNativeCliWriteInputWindow
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, d0
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_BYTES, d1
-	bsr.w opforgeNativeCliWriteExtensionWindow
-	moveq #ENTRY_ORD_EVALUATE_EXPRESSION, d0
-	jsr tkpkgServiceDispatchV1
-	bsr.w opforgeNativeCliReadStatus
-	bne.s opforgeNativeCliSelectorEvaluateOperandReturn
-	bsr.w opforgeNativeCliReadEvaluateExpressionValue
-
-opforgeNativeCliSelectorEvaluateOperandReturn
-	movem.l (sp)+, d1-d2/d4/d6-d7/a1-a2
 	rts
 
 opforgeNativeCliClearStatementExprSpanForSyntheticRequest
@@ -3686,93 +3645,6 @@ opforgeNativeCliPassTwoEmitOperandError
 	moveq #1, d0
 	rts
 
-; Build a package encode request for statement index D6 via opasm selector stage.
-opforgeNativeCliBuildEncodeRequestForStatement
-	movem.l d1-d7/a0-a5, -(sp)
-	clr.w NativeCliEncodeRequestLen.l
-	move.w d6, d7
-	moveq #0, d0
-	move.w d7, d0
-	lsl.l #6, d0
-	lea opasmEngineStmtMnemNameTable.l, a0
-	adda.l d0, a0
-	movea.l a0, a4
-	moveq #0, d0
-	move.w d7, d0
-	add.w d0, d0
-	lea opasmEngineStmtMnemLenTable.l, a1
-	moveq #0, d6
-	move.w 0(a1, d0.l), d6
-	bne.s opforgeNativeCliBuildEncodeHaveMlen
-	movea.l a4, a0
-	bsr.w opforgeNativeCliTokenLen
-	move.w d0, d6
-
-opforgeNativeCliBuildEncodeHaveMlen
-	beq.w opforgeNativeCliBuildEncodeNoOutput
-	move.l a4, NativeCliStmtMnemStart
-	move.l d6, NativeCliStmtMnemLen
-	move.w d7, NativeCliSelectorStmtIndex
-	moveq #0, d1
-	move.w d7, d1
-	add.w d1, d1
-	lea opasmEngineStmtOperandLenTable.l, a1
-	move.w 0(a1, d1.l), d1
-	moveq #0, d0
-	move.w d7, d0
-	lsl.l #6, d0
-	lea opasmEngineStmtOperandNameTable.l, a1
-	adda.l d0, a1
-	movea.l a4, a0
-	move.w d6, d0
-	lea NativeCliSelectorStageContext.l, a4
-	lea lastErrorBuffer, a5
-	move.l a5, (a4)+  ; selector context[0]: output request buffer
-	move.l #opforgeNativeCliSelectorEvaluateOperandV1, (a4)  ; selector context[1]: tkpkg-backed eval callback
-	lea NativeCliSelectorStageContext.l, a4
-	jsr opasmSelectorStageBuildEncodeRequestV1
-	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
-	beq.s opforgeNativeCliBuildEncodeStageOk
-	cmpi.l #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
-	beq.s opforgeNativeCliBuildEncodeNoOutput
-	cmpi.l #OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC, d0
-	beq.w opforgeNativeCliBuildEncodeUnknownMnemonic
-	cmpi.l #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
-	beq.w opforgeNativeCliBuildEncodeUnsupportedAddressing
-	cmpi.l #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
-	beq.w opforgeNativeCliBuildEncodeOperandError
-	bra.w opforgeNativeCliBuildEncodeFail
-
-opforgeNativeCliBuildEncodeStageOk
-	move.w d1, NativeCliEncodeRequestLen.l
-	moveq #0, d0
-	bra.w opforgeNativeCliBuildEncodeReturn
-
-opforgeNativeCliBuildEncodeNoOutput
-	moveq #0, d0
-	bra.w opforgeNativeCliBuildEncodeReturn
-
-opforgeNativeCliBuildEncodeUnknownMnemonic
-	move.l #NativeUnknownMnemonicText, d1
-	bsr.w opforgeNativeCliPutStr
-	bra.w opforgeNativeCliBuildEncodeFail
-
-opforgeNativeCliBuildEncodeUnsupportedAddressing
-	move.l #NativeUnsupportedAddressingText, d1
-	bsr.w opforgeNativeCliPutStr
-	bra.w opforgeNativeCliBuildEncodeFail
-
-opforgeNativeCliBuildEncodeOperandError
-	move.l #NativeUnresolvedLabelText, d1
-	bsr.w opforgeNativeCliPutStr
-
-opforgeNativeCliBuildEncodeFail
-	moveq #1, d0
-
-opforgeNativeCliBuildEncodeReturn
-	movem.l (sp)+, d1-d7/a0-a5
-	rts
-
 ; Resolve one statement operand through tkpkg evaluate_expression.
 opforgeNativeCliReadOperandValueForStatement
 	movem.l d1-d2/d4-d7/a0-a2, -(sp)
@@ -5249,14 +5121,10 @@ NativeCliEvalRequestLen
 NativeCliEncodeRequestLen
 	.res word, 1
 	.align 4
-NativeCliSelectorStageContext
-	.res long, NATIVE_SELECTOR_STAGE_CONTEXT_LONGS
 NativeCliOpasmEngineContext
 	.res long, NATIVE_OPASM_ENGINE_CONTEXT_LONGS
 NativeCliSourceLineNum
 	.res long, 1
-NativeCliSelectorStmtIndex
-	.res word, 1
 NativeCliSawCr
 	.res word, 1
 NativeCliIncludeDepth

@@ -10201,8 +10201,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("opforgeNativeCliDispatchEncodeInstructionEnvelope"));
     assert!(source.contains("ENTRY_ORD_SELECT_INSTRUCTION"));
     assert!(source.contains("ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION"));
-    assert!(source
-        .contains(".use opasm.amigaos.selector_stage (opasmSelectorStageBuildEncodeRequestV1)"));
+    assert!(!source.contains(".use opasm.amigaos.selector_stage"));
     assert!(source.contains(".use opasm.amigaos.engine (opasmEngineRunTwoPassV1)"));
     assert!(source.contains(
         ".use opasm.amigaos.engine (opasmEngineAssemblySessionStart, opasmEngineStmtCount)"
@@ -10265,8 +10264,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("NATIVE_OUTPUT_FORMAT_HUNK"));
     assert!(source.contains("opforgeNativeCliWriteFlatOutput"));
     assert!(source.contains("opforgeNativeCliPassTwoEmitImageBytes"));
-    assert!(source.contains("opforgeNativeCliBuildEncodeRequestForStatement"));
-    assert!(source.contains("jsr opasmSelectorStageBuildEncodeRequestV1"));
+    assert!(!source.contains("opforgeNativeCliBuildEncodeRequestForStatement"));
+    assert!(!source.contains("jsr opasmSelectorStageBuildEncodeRequestV1"));
     assert!(source.contains("jsr opasmEngineRunTwoPassV1"));
     assert!(source.contains("NativeCliOpasmEngineContext"));
     assert!(!source.contains("opforgeNativeCliStatementOperandHasImmediatePrefix"));
@@ -10595,35 +10594,9 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "JSR tkpkgServiceDispatchV1",
         ]
     ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliBuildEncodeRequestForStatement:",
-            "LEA opasmEngineStmtMnemNameTable.L, A0",
-            "LEA opasmEngineStmtOperandNameTable.L, A1",
-            "LEA nativeCliSelectorStageContext.L, A4",
-            "LEA lastErrorBuffer, A5",
-            "MOVE.L #opforgeNativeCliSelectorEvaluateOperandV1, (A4)",
-            "LEA nativeCliSelectorStageContext.L, A4",
-            "JSR opasmSelectorStageBuildEncodeRequestV1",
-            "MOVE.W D1, nativeCliEncodeRequestLen.L",
-        ]
-    ));
-    assert!(source.contains("opforgeNativeCliSelectorEvaluateOperandV1"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliSelectorEvaluateOperandV1:",
-            "MOVEA.L A0, A2",
-            "MOVE.L D0, D6",
-            "MOVE.W nativeCliSelectorStmtIndex, D7",
-            "MOVEA.L A2, A0",
-            "MOVE.L D6, D0",
-            "opforgeNativeCliSelectorHaveOperand:",
-            "BSR.W opforgeNativeCliClearStatementExprSpanForSyntheticRequest",
-            "BSR.W opforgeNativeCliPrepareEvaluateExpressionRequest",
-        ]
-    ));
+    assert!(!source.contains("opforgeNativeCliSelectorEvaluateOperandV1"));
+    assert!(!source.contains("nativeCliSelectorStageContext"));
+    assert!(!source.contains("nativeCliSelectorStmtIndex"));
     assert!(source_contains_in_order(
         &source,
         &[
@@ -11509,7 +11482,7 @@ fn motorola68020_opasm_selector_stage_module_owns_native_subset_policy() {
 }
 
 #[test]
-fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
+fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallback() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
     let out_dir = create_temp_dir("m68000-opforge-native-cli");
@@ -11588,8 +11561,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_with_stage_stub() {
     assert!(listing.contains("opforgeNativeCliPrepareLineServiceRequest"));
     assert!(listing.contains("opforgeNativeCliDispatchParseLineEnvelope"));
     assert!(listing.contains("opforgeNativeCliPrepareEncodeInstructionRequest"));
-    assert!(listing.contains("opasm.amigaos.selector_stage.opasmSelectorStageBuildEncodeRequestV1"));
-    assert!(listing.contains("opasm.amigaos.selector_stage.opasmSelectorStageInstructionSizeV1"));
+    assert!(
+        !listing.contains("opasm.amigaos.selector_stage.opasmSelectorStageBuildEncodeRequestV1")
+    );
+    assert!(!listing.contains("opasm.amigaos.selector_stage.opasmSelectorStageInstructionSizeV1"));
     assert!(listing.contains("opforgeNativeCliDispatchEncodeInstructionEnvelope"));
     assert!(listing.contains("opforgeNativeCliRunTwoPassEngine"));
     assert!(listing.contains("opasm.amigaos.engine.opasmEngineRunTwoPassV1"));
@@ -13435,10 +13410,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
         &source,
         ".use prvm.amigaos.line_router (prvmRouteLine68000)"
     ));
-    assert!(tkpkg_source_contains(
-        &source,
-        ".use opasm.amigaos.selector_stage (opasmSelectorStageBuildEncodeRequestV1)"
-    ));
+    assert!(!source.contains(".use opasm.amigaos.selector_stage"));
     assert!(tkpkg_source_contains(
         &source,
         ".use opcore.amigaos.expr_bridge (opcoreExvmEvalOperandV1)"
@@ -13724,8 +13696,8 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
 
 #[test]
 fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
-    let selector = opasm_amigaos_source("opasm_selector_stage.asm");
     let service = tkpkg_amigaos_source("tkpkg_service.asm");
+    let cli = opforge_amigaos_source("opforge_cli.asm");
 
     for forbidden in [
         "OpasmSelectorIndexedIndirectXText",
@@ -13737,13 +13709,27 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         "TkpkgDirectRelativeText",
         "TkpkgDirectAccumulatorText",
         "TkpkgDirectIndirectText",
+        "TkpkgDirect",
+        "tkpkgEncodeDirect6502EnvelopeV1",
+        "TkpkgMselShape",
+        "tkpkgMselClassifyOperandV1",
+        "trimIndexedIndirect",
+        "checkIndirectIndexedY",
+        "PlanRel8",
+        "tryRel8",
+        "opasmSelectorStageBuildEncodeRequestV1",
+        "tkpkgSelectedEnvelopeAllowedByMselV1",
+        "opforgeNativeCliBuildEncodeRequestForStatement",
+        "opforgeNativeCliSelectorEvaluateOperandV1",
+        "NativeCliSelectorStageContext",
+        "NativeCliSelectorStmtIndex",
         "MOVE.W #$00F0,D5",
         "MOVE.W #$00D0,D5",
         "MOVE.W #$00A1,D5",
         "MOVE.W #$00B1,D5",
     ] {
         assert!(
-            !selector.contains(forbidden) && !service.contains(forbidden),
+            !service.contains(forbidden) && !cli.contains(forbidden),
             "Item 6 must stay package-backed and not add native m6502 hardcode `{forbidden}`"
         );
     }
@@ -13751,64 +13737,38 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
     assert!(service.contains("tkpkgEncodeFindAndExecuteTableProgram"));
     assert!(service.contains("TablChunkOffsetLo"));
     assert!(service.contains("tkpkgBuildSelectedEnvelopeFromMselV1"));
-    assert!(service.contains("tkpkgMselClassifyOperandV1"));
     assert!(service.contains("tkpkgMselTryBuildCandidateV1"));
-    assert!(service.contains("TkpkgMselShapeImpliedText"));
-    assert!(service.contains("TkpkgMselShapeIndirectText"));
-    assert!(service.contains("TkpkgMselShapeIndexedIndirectXText"));
     assert!(service.contains("TkpkgMselPlanU8Text"));
     assert!(service.contains("TkpkgMselPlanU16Text"));
-    assert!(service.contains("tkpkgSelectedEnvelopeAllowedByMselV1"));
+    assert!(service.contains("TKPKG_SELECTED_EXTENSION_INPUT_SIZE"));
+    assert!(service.contains("TKPKG_SELECTED_STATUS_OK"));
+    assert!(service.contains("TKPKG_SELECTED_STATUS_NO_OUTPUT"));
     assert!(service.contains("MselChunkOffsetLo"));
     assert!(source_contains_in_order(
         &service,
         &[
-            "tkpkgMselClassifyOperandV1",
-            "tst.w d0",
-            "beq.w implied",
-            "lea TkpkgMselShapeImpliedText, a2",
+            "cmpi.w #TKPKG_SELECTED_EXTENSION_INPUT_SIZE, d5",
+            "move.l a1, EncodeSelectedMselShapePtr",
+            "move.w d0, EncodeSelectedMselShapeLen",
         ]
     ));
     assert!(source_contains_in_order(
         &service,
         &[
-            "checkIndirect",
-            "cmpi.b #'(', (a0)",
-            "scanIndirectComma",
-            "lea TkpkgMselShapeIndirectText, a2",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &service,
-        &[
-            "indexedIndirectX",
-            "cmpi.b #'X', d2",
-            "indexedIndirectReady",
-            "lea TkpkgMselShapeIndexedIndirectXText, a2",
+            "tst.w EncodeSelectedMselShapeLen",
+            "beq.w noOutput",
+            "tst.l EncodeSelectedMselShapePtr",
+            "lea MselChunkOffsetLo, a3",
         ]
     ));
     assert!(source_contains_in_order(
         &service,
         &[
             "bsr.w tkpkgBuildSelectedEnvelopeFromMselV1",
-            "jsr opasmSelectorStageBuildEncodeRequestV1",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &service,
-        &[
-            "jsr opasmSelectorStageBuildEncodeRequestV1",
-            "bsr.w tkpkgSelectedEnvelopeAllowedByMselV1",
+            "cmpi.l #TKPKG_SELECTED_STATUS_OK, d0",
             "haveOutput",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &service,
-        &[
-            "tkpkgSelectedEnvelopeAllowedByMselV1",
-            "lea MselChunkOffsetLo, a3",
-            "tkpkgServiceChunkPtrFromLocatorV1",
-            "tkpkgServiceStringEqAsciiCasefoldV1",
+            "cmpi.l #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0",
+            "noOutput",
         ]
     ));
     assert!(source_contains_in_order(
@@ -13816,7 +13776,7 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         &[
             "encodeCandidate",
             "bsr.w tkpkgEncodeFindAndExecuteTableProgram",
-            "bsr.w tkpkgEncodeDirect6502EnvelopeV1",
+            "bra.s return",
         ]
     ));
 }

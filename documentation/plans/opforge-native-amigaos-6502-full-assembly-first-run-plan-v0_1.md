@@ -398,7 +398,7 @@ The intended native shape mirrors the Rust path:
     zero-page, zero-page indexed, absolute, and absolute indexed addressing
     families without hard-coded CLI acceptance logic.
 
-- [ ] Item 6: Complete package-backed `m6502` selector and encoder parity
+- [x] Item 6: Complete package-backed `m6502` selector and encoder parity
   - Source requirement or finding IDs: `SR-6502-SELECTOR`,
     `SR-6502-ENCODER`, `SR-RUST-VM-ARCH`, `SR-TKPKG-SERVICE`; expected to
     finish the first-run instruction matrix by routing native selection and
@@ -428,26 +428,43 @@ The intended native shape mirrors the Rust path:
     CLI outputs stay byte-compatible, and tests assert that no new native
     `m6502` edge-mode hardcodes were introduced. The next allowed slice is
     MSEL candidate construction for selected simple forms: native selected
-    encoding classifies package selector shapes, chooses mode keys from active
-    `MSEL` records, applies package operand plans for `none`, `u8`, and `u16`,
-    emits the compact envelope from package data before falling back to the
-    transitional selector stage, prefers package `TABL` programs for byte
-    emission before any transitional direct encoder fallback, and keeps existing
-    selected CLI bytes stable.
-    The next implied-form slice is allowed to add package shape recognition for
-    zero-operand selected instructions, use the existing `none` operand plan,
-    and prove the native path selects the `implied` package shape before any
-    selector-stage fallback, without adding opcode or mnemonic tables.
-    The next parenthesized-indirect slice is allowed to classify clean `(expr)`
-    operands as the package `indirect` shape while leaving comma-bearing
-    indexed-indirect forms to later slices, and must reuse package operand
-    plans plus `TABL` emission rather than adding direct opcode logic.
-    The next indexed-indirect-X slice is allowed to classify `($expr,X)` as the
-    package `indexed_indirect_x` shape, preserving the inner expression as the
-    operand value and reusing package `u8` plans plus `TABL` emission.
-    Later slices must broaden MSEL operand-shape and operand-plan execution to
-    the remaining edge forms, then broaden the package-backed parity corpus to
-    those forms.
+    encoding consumes normalized selector shape metadata supplied by the
+    parser/package request boundary, chooses mode keys from active `MSEL`
+    records, applies package operand plans for `none`, `u8`, and `u16`, emits
+    the compact envelope from package data before falling back to the
+    transitional selector stage, emits selected bytes through package `TABL`
+    programs only, and keeps existing selected CLI bytes stable. Native `tkpkg`
+    must not infer selector shape from raw operand spelling such as immediate
+    prefixes, accumulator aliases, parentheses, index suffixes, or branch
+    mnemonics, and must not retain native `m6502` opcode/mode emission fallbacks.
+    Later slices must extend the parser/request boundary so it supplies package
+    selector shape and inner expression spans for the remaining edge forms, then
+    broaden operand-plan execution and the package-backed parity corpus to those
+    forms.
+  - Completion note, 2026-05-13: Item 6 closes the native `tkpkg`
+    selected-encode fallback by requiring normalized selector-shape metadata for
+    the `MSEL` selected-envelope path, removing raw native operand-shape
+    classification, and making selected byte emission depend on package `TABL`
+    programs rather than direct native opcode bytes. The Rust/package/VM side is
+    now authoritative for MOS 6502 operand-shape selection and operand-plan
+    metadata, so the native service can stay package backed instead of
+    reintroducing MOS6502-specific mnemonic, operand spelling, addressing-mode,
+    branch, or opcode logic.
+  - Validation evidence, 2026-05-13: `cargo test -p asm
+    motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+    --nocapture` passed; `cargo test -p vm
+    vm_runtime_mos6502_native6502_harness_encodes_selected_instructions_into_session_image
+    -- --nocapture` passed; `cargo test -p vm
+    mos6502_vm_expr_selector_is_package_backed_for_source_operand_shapes --
+    --nocapture` passed; and `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture` passed. Final slice
+    checks also passed: `cargo test -p vm vm_runtime_mos6502_ --
+    --nocapture`, `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`,
+    `scripts/workflow/run_native_68000_format_gate.sh`, `cargo fmt --all
+    --check`, `python3 scripts/workflow/check_workflow_artifact_bundle.py
+    --root . plan
+    documentation/plans/opforge-native-amigaos-6502-full-assembly-first-run-plan-v0_1.md`,
+    and `scripts/workflow/run_rust_quality_gate_summary.sh`.
   - Full quality gates: focused selector/encoder tests for implied,
     accumulator, indirect, indexed-indirect, indirect-indexed, relative branch,
     and jump-indirect forms that prove those forms are selected and encoded
@@ -706,7 +723,7 @@ The intended native shape mirrors the Rust path:
 - [x] Milestone 1: first-run 6502 acceptance matrix is locked.
 - [x] Milestone 2: CLI no longer owns assembly semantics; native opasm owns
   engine/pass/session behavior.
-- [ ] Milestone 3: native `m6502` selector and encoder parity lands in two
+- [x] Milestone 3: native `m6502` selector and encoder parity lands in two
   commit-sized slices covering baseline and edge addressing modes.
 - [ ] Milestone 4: first-run directive support lands in three commit-sized
   slices covering layout control, data/text emission, and

@@ -39,12 +39,6 @@
 	.use tkpkg.amigaos.buffers (ActiveFamilyBuffer)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineLabelFinalizedTable)
 	.use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineLabelValueTable, opasmEngineLabelCount)
-	.use opasm.amigaos.selector_stage (opasmSelectorStageBuildEncodeRequestV1)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_OK)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_NO_OUTPUT)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS)
-	.use opasm.amigaos.selector_stage (OPASM_SELECTOR_STATUS_OPERAND_ERROR)
 	.use opcore.amigaos.expr_bridge (opcoreExvmEvalOperandV1)
 	.use tkpkg.amigaos.package_loader (tkpkgPackageLoaderLoadV1)
 	.use tkpkg.amigaos.pipeline (tkpkgPipelineSetActiveV1)
@@ -54,6 +48,12 @@
 TKPKG_PARSE_ROUTE_FRAME_SIZE         = 116
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE   = 9
 TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
+TKPKG_SELECTED_EXTENSION_INPUT_SIZE  = 24
+TKPKG_SELECTED_STATUS_OK             = 0
+TKPKG_SELECTED_STATUS_NO_OUTPUT      = 1
+TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC = 2
+TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS = 3
+TKPKG_SELECTED_STATUS_OPERAND_ERROR  = 4
 TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF = 16
 TKPKG_EVAL_EXPR_EXTENSION_TOTAL_SIZE = 20
 EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN    = 45
@@ -163,41 +163,6 @@ SelectedOperandTrailingText
 SelectedOperandSingleText
 	.byte "OTR901: selected operand single failed", 0
 
-TkpkgDirectLdaText
-	.byte "lda", 0
-TkpkgDirectStaText
-	.byte "sta", 0
-TkpkgDirectJmpText
-	.byte "jmp", 0
-TkpkgDirectImmediateText
-	.byte "immediate", 0
-TkpkgDirectZeroPageText
-	.byte "zeropage", 0
-TkpkgDirectZeroPageXText
-	.byte "zeropagex", 0
-TkpkgDirectAbsoluteText
-	.byte "absolute", 0
-TkpkgDirectAbsoluteXText
-	.byte "absolutex", 0
-TkpkgDirectAbsoluteYText
-	.byte "absolutey", 0
-
-TkpkgMselShapeImmediateText
-	.byte "immediate", 0
-TkpkgMselShapeDirectText
-	.byte "direct", 0
-TkpkgMselShapeDirectXText
-	.byte "direct_x", 0
-TkpkgMselShapeDirectYText
-	.byte "direct_y", 0
-TkpkgMselShapeAccumulatorText
-	.byte "accumulator", 0
-TkpkgMselShapeImpliedText
-	.byte "implied", 0
-TkpkgMselShapeIndirectText
-	.byte "indirect", 0
-TkpkgMselShapeIndexedIndirectXText
-	.byte "indexed_indirect_x", 0
 TkpkgMselPlanNoneText
 	.byte "none", 0
 TkpkgMselPlanU8Text
@@ -888,7 +853,7 @@ buildSelectedEnvelopeV1	.block
 	move.b 27(a0), d5
 	lsl.w #8, d5
 	or.w d5, d1
-	moveq #0, d5
+	move.w d1, d5
 	move.l d4, -(sp)
 	move.l d2, -(sp)
 	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d1
@@ -903,6 +868,14 @@ buildSelectedEnvelopeV1	.block
 	move.l d1, EncodeSelectedLabelCount
 	move.l d2, EncodeSelectedCurrentPc
 	bset #0, d6
+	clr.l EncodeSelectedMselShapePtr
+	clr.w EncodeSelectedMselShapeLen
+	cmpi.w #TKPKG_SELECTED_EXTENSION_INPUT_SIZE, d5
+	bcs.s resolveVersions
+	movea.l (a5)+, a1
+	move.l (a5)+, d0
+	move.l a1, EncodeSelectedMselShapePtr
+	move.w d0, EncodeSelectedMselShapeLen
 	bra.s resolveVersions
 
 noExtension
@@ -910,6 +883,8 @@ noExtension
 	clr.l EncodeSelectedLabelValuePtr
 	clr.l EncodeSelectedLabelCount
 	clr.l EncodeSelectedCurrentPc
+	clr.l EncodeSelectedMselShapePtr
+	clr.w EncodeSelectedMselShapeLen
 
 resolveVersions
 	move.l d7, -(sp)
@@ -944,6 +919,8 @@ resolveVersions
 	adda.w d0, a1
 	move.l d4, d1
 	sub.l d2, d1
+	move.l a1, EncodeSelectedMselExprPtr
+	move.w d1, EncodeSelectedMselExprLen
 	move.l a1, -(sp)
 	move.l d1, -(sp)
 	movea.l EncodeSelectedMnemonicPtr, a0
@@ -951,36 +928,15 @@ resolveVersions
 	bsr.w tkpkgBuildSelectedEnvelopeFromMselV1
 	move.l (sp)+, d1
 	movea.l (sp)+, a1
-	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	beq.w haveOutput
-	cmpi.l #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
-	beq.w operandError
-	lea EncodeSelectedSelectorContext, a4
-	lea TokenScratchBuffer, a0
-	move.l a0, (a4)+
-	move.l #encodeSelectedOperandV1, (a4)
-	movea.l EncodeSelectedMnemonicPtr, a0
-	move.w d6, d0
-	lea EncodeSelectedSelectorContext, a4
-	jsr opasmSelectorStageBuildEncodeRequestV1
-	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
-	bne.s selectedStageNotOk
-	move.l d1, -(sp)
-	lea TokenScratchBuffer, a4
-	move.w d1, d0
-	bsr.w tkpkgSelectedEnvelopeAllowedByMselV1
-	move.l (sp)+, d1
-	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
-	beq.w haveOutput
-
-selectedStageNotOk
-	cmpi.l #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 	beq.w noOutput
-	cmpi.l #OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC, d0
 	beq.w unknownMnemonic
-	cmpi.l #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS, d0
 	beq.w unsupportedAddress
-	cmpi.l #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	beq.w operandError
 	lea RuntimeErrorText, a1
 	moveq #RUNTIME_ERROR_TEXT_LEN, d1
@@ -1186,9 +1142,10 @@ tkpkgBuildSelectedEnvelopeFromMselV1	.block
 	move.w d0, d2
 	tst.w d2
 	beq.w noOutput
-	bsr.w tkpkgMselClassifyOperandV1
-	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
-	bne.w return
+	tst.w EncodeSelectedMselShapeLen
+	beq.w noOutput
+	tst.l EncodeSelectedMselShapePtr
+	beq.w noOutput
 	lea MselChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
 	tst.b d1
@@ -1260,9 +1217,9 @@ skipModeStore
 	bsr.w tkpkgMselTryBuildCandidateV1
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
-	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	beq.s return
-	cmpi.l #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	beq.s return
 
 skipPlanStore
@@ -1275,369 +1232,17 @@ skipPlanStore
 
 noOutput
 	moveq #0, d1
-	moveq #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 	bra.s return
 
 unsupported
 	moveq #0, d1
-	moveq #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
+	moveq #TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS, d0
 
 return
 	movem.l (sp)+, d2-d7/a0-a6
 	rts
 	.bend  ; tkpkgBuildSelectedEnvelopeFromMselV1
-
-tkpkgMselClassifyOperandV1	.block
-	movem.l d2-d7/a0-a3, -(sp)
-	movea.l a1, a0
-	move.w d1, d0
-
-trimHead
-	tst.w d0
-	beq.w implied
-	moveq #0, d2
-	move.b (a0), d2
-	cmpi.b #' ', d2
-	beq.s trimHeadOne
-	cmpi.b #9, d2
-	bne.s trimTailStart
-
-trimHeadOne
-	addq.l #1, a0
-	subq.w #1, d0
-	bra.s trimHead
-
-trimTailStart
-	move.w d0, d1
-
-trimTail
-	tst.w d1
-	beq.w unsupported
-	movea.l a0, a2
-	adda.w d1, a2
-	subq.l #1, a2
-	moveq #0, d2
-	move.b (a2), d2
-	cmpi.b #' ', d2
-	beq.s trimTailOne
-	cmpi.b #9, d2
-	bne.s classify
-
-trimTailOne
-	subq.w #1, d1
-	bra.s trimTail
-
-classify
-	move.l a0, EncodeSelectedMselExprPtr
-	move.w d1, EncodeSelectedMselExprLen
-	cmpi.b #'#', (a0)
-	bne.s checkAccumulator
-	addq.l #1, a0
-	subq.w #1, d1
-
-trimImmediateHead
-	tst.w d1
-	beq.w unsupported
-	moveq #0, d2
-	move.b (a0), d2
-	cmpi.b #' ', d2
-	beq.s trimImmediateOne
-	cmpi.b #9, d2
-	bne.s immediate
-
-trimImmediateOne
-	addq.l #1, a0
-	subq.w #1, d1
-	bra.s trimImmediateHead
-
-immediate
-	move.l a0, EncodeSelectedMselExprPtr
-	move.w d1, EncodeSelectedMselExprLen
-	lea TkpkgMselShapeImmediateText, a2
-	move.l a2, EncodeSelectedMselShapePtr
-	move.w #9, EncodeSelectedMselShapeLen
-	bra.w ok
-
-checkAccumulator
-	cmpi.w #1, d1
-	bne.s checkIndirect
-	moveq #0, d2
-	move.b (a0), d2
-	cmpi.b #'A', d2
-	beq.s accumulator
-	cmpi.b #'a', d2
-	bne.s checkIndirect
-
-accumulator
-	clr.l EncodeSelectedMselExprPtr
-	clr.w EncodeSelectedMselExprLen
-	lea TkpkgMselShapeAccumulatorText, a2
-	move.l a2, EncodeSelectedMselShapePtr
-	move.w #11, EncodeSelectedMselShapeLen
-	bra.w ok
-
-implied
-	clr.l EncodeSelectedMselExprPtr
-	clr.w EncodeSelectedMselExprLen
-	lea TkpkgMselShapeImpliedText, a2
-	move.l a2, EncodeSelectedMselShapePtr
-	move.w #7, EncodeSelectedMselShapeLen
-	bra.w ok
-
-checkIndirect
-	cmpi.w #3, d1
-	bcs.w checkIndexed
-	cmpi.b #'(', (a0)
-	bne.w checkIndexed
-	move.w d1, d3
-	subq.w #1, d3
-	movea.l a0, a2
-	adda.w d3, a2
-	cmpi.b #')', (a2)
-	bne.w checkIndexed
-	movea.l a0, a2
-	addq.l #1, a2
-	move.w d1, d4
-	subq.w #2, d4
-	beq.w unsupported
-	movea.l a2, a3
-	move.w d4, d5
-	subq.w #1, d5
-	moveq #0, d6
-
-scanIndirectComma
-	moveq #0, d2
-	move.b (a3)+, d2
-	cmpi.b #',', d2
-	beq.w indexedIndirectX
-	addq.w #1, d6
-	dbf d5, scanIndirectComma
-
-trimIndirectHead
-	tst.w d4
-	beq.w unsupported
-	moveq #0, d2
-	move.b (a2), d2
-	cmpi.b #' ', d2
-	beq.s trimIndirectHeadOne
-	cmpi.b #9, d2
-	bne.s trimIndirectTail
-
-trimIndirectHeadOne
-	addq.l #1, a2
-	subq.w #1, d4
-	bra.s trimIndirectHead
-
-trimIndirectTail
-	tst.w d4
-	beq.w unsupported
-	movea.l a2, a3
-	adda.w d4, a3
-	subq.l #1, a3
-	moveq #0, d2
-	move.b (a3), d2
-	cmpi.b #' ', d2
-	beq.s trimIndirectTailOne
-	cmpi.b #9, d2
-	bne.s indirectReady
-
-trimIndirectTailOne
-	subq.w #1, d4
-	bra.s trimIndirectTail
-
-indirectReady
-	move.l a2, EncodeSelectedMselExprPtr
-	move.w d4, EncodeSelectedMselExprLen
-	lea TkpkgMselShapeIndirectText, a2
-	move.l a2, EncodeSelectedMselShapePtr
-	move.w #8, EncodeSelectedMselShapeLen
-	bra.w ok
-
-indexedIndirectX
-	tst.w d6
-	beq.w unsupported
-	tst.w d5
-	beq.w unsupported
-
-trimIndexedIndirectExprHead
-	tst.w d6
-	beq.w unsupported
-	moveq #0, d2
-	move.b (a2), d2
-	cmpi.b #' ', d2
-	beq.s trimIndexedIndirectExprHeadOne
-	cmpi.b #9, d2
-	bne.s trimIndexedIndirectExprTail
-
-trimIndexedIndirectExprHeadOne
-	addq.l #1, a2
-	subq.w #1, d6
-	bra.s trimIndexedIndirectExprHead
-
-trimIndexedIndirectExprTail
-	tst.w d6
-	beq.w unsupported
-	movea.l a2, a0
-	adda.w d6, a0
-	subq.l #1, a0
-	moveq #0, d2
-	move.b (a0), d2
-	cmpi.b #' ', d2
-	beq.s trimIndexedIndirectExprTailOne
-	cmpi.b #9, d2
-	bne.s trimIndexedIndirectIndexHead
-
-trimIndexedIndirectExprTailOne
-	subq.w #1, d6
-	bra.s trimIndexedIndirectExprTail
-
-trimIndexedIndirectIndexHead
-	tst.w d5
-	beq.w unsupported
-	moveq #0, d2
-	move.b (a3), d2
-	cmpi.b #' ', d2
-	beq.s trimIndexedIndirectIndexHeadOne
-	cmpi.b #9, d2
-	bne.s trimIndexedIndirectIndexTail
-
-trimIndexedIndirectIndexHeadOne
-	addq.l #1, a3
-	subq.w #1, d5
-	bra.s trimIndexedIndirectIndexHead
-
-trimIndexedIndirectIndexTail
-	tst.w d5
-	beq.w unsupported
-	movea.l a3, a0
-	adda.w d5, a0
-	subq.l #1, a0
-	moveq #0, d2
-	move.b (a0), d2
-	cmpi.b #' ', d2
-	beq.s trimIndexedIndirectIndexTailOne
-	cmpi.b #9, d2
-	bne.s indexedIndirectIndexReady
-
-trimIndexedIndirectIndexTailOne
-	subq.w #1, d5
-	bra.s trimIndexedIndirectIndexTail
-
-indexedIndirectIndexReady
-	cmpi.w #1, d5
-	bne.w unsupported
-	moveq #0, d2
-	move.b (a3), d2
-	cmpi.b #'X', d2
-	beq.s indexedIndirectReady
-	cmpi.b #'x', d2
-	bne.w unsupported
-
-indexedIndirectReady
-	move.l a2, EncodeSelectedMselExprPtr
-	move.w d6, EncodeSelectedMselExprLen
-	lea TkpkgMselShapeIndexedIndirectXText, a2
-	move.l a2, EncodeSelectedMselShapePtr
-	move.w #18, EncodeSelectedMselShapeLen
-	bra.w ok
-
-checkIndexed
-	move.w d1, d3
-	subq.w #1, d3
-	bmi.w direct
-	movea.l a0, a2
-	adda.w d3, a2
-	moveq #0, d2
-	move.b (a2), d2
-	cmpi.b #'X', d2
-	beq.s maybeX
-	cmpi.b #'x', d2
-	beq.s maybeX
-	cmpi.b #'Y', d2
-	beq.s maybeY
-	cmpi.b #'y', d2
-	beq.s maybeY
-	bra.w direct
-
-maybeX
-	lea TkpkgMselShapeDirectXText, a3
-	moveq #8, d7
-	bra.s findIndexComma
-
-maybeY
-	lea TkpkgMselShapeDirectYText, a3
-	moveq #8, d7
-
-findIndexComma
-	move.w d3, d4
-
-trimBeforeIndex
-	tst.w d4
-	beq.w direct
-	movea.l a0, a2
-	adda.w d4, a2
-	subq.l #1, a2
-	moveq #0, d2
-	move.b (a2), d2
-	cmpi.b #' ', d2
-	beq.s trimBeforeIndexOne
-	cmpi.b #9, d2
-	beq.s trimBeforeIndexOne
-	cmpi.b #',', d2
-	beq.s indexed
-	bra.w direct
-
-trimBeforeIndexOne
-	subq.w #1, d4
-	bra.s trimBeforeIndex
-
-indexed
-	tst.w d4
-	beq.w unsupported
-	subq.w #1, d4
-
-trimIndexedExpr
-	tst.w d4
-	beq.w unsupported
-	movea.l a0, a2
-	adda.w d4, a2
-	subq.l #1, a2
-	moveq #0, d2
-	move.b (a2), d2
-	cmpi.b #' ', d2
-	beq.s trimIndexedExprOne
-	cmpi.b #9, d2
-	bne.s indexedReady
-
-trimIndexedExprOne
-	subq.w #1, d4
-	bra.s trimIndexedExpr
-
-indexedReady
-	move.l a0, EncodeSelectedMselExprPtr
-	move.w d4, EncodeSelectedMselExprLen
-	move.l a3, EncodeSelectedMselShapePtr
-	move.w d7, EncodeSelectedMselShapeLen
-	bra.w ok
-
-direct
-	move.l a0, EncodeSelectedMselExprPtr
-	move.w d1, EncodeSelectedMselExprLen
-	lea TkpkgMselShapeDirectText, a2
-	move.l a2, EncodeSelectedMselShapePtr
-	move.w #6, EncodeSelectedMselShapeLen
-
-ok
-	moveq #OPASM_SELECTOR_STATUS_OK, d0
-	bra.s return
-
-unsupported
-	moveq #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
-
-return
-	movem.l (sp)+, d2-d7/a0-a3
-	rts
-	.bend  ; tkpkgMselClassifyOperandV1
 
 tkpkgMselTryBuildCandidateV1	.block
 	movem.l d2-d7/a0-a6, -(sp)
@@ -1656,12 +1261,12 @@ tkpkgMselTryBuildCandidateV1	.block
 	bsr.w tkpkgMselPlanEqualsV1
 	tst.b d0
 	bne.s tryU16
-	moveq #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 	bra.w return
 
 tryU8
 	bsr.w tkpkgMselEvalOperandV1
-	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w return
 	tst.b EncodeSelectedMselUnstable
 	bne.w noOutput
@@ -1675,7 +1280,7 @@ tryU8
 
 tryU16
 	bsr.w tkpkgMselEvalOperandV1
-	cmpi.l #OPASM_SELECTOR_STATUS_OK, d0
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w return
 	move.l EncodeSelectedMselValue, d3
 	tst.l d3
@@ -1690,11 +1295,11 @@ buildNone
 	bra.s buildOperand
 
 noOutput
-	moveq #OPASM_SELECTOR_STATUS_NO_OUTPUT, d0
+	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 	bra.s return
 
 operandError
-	moveq #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	moveq #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	bra.s return
 
 buildOperand
@@ -1730,11 +1335,11 @@ tkpkgMselEvalOperandV1	.block
 	move.b #1, EncodeSelectedMselUnstable
 
 ok
-	moveq #OPASM_SELECTOR_STATUS_OK, d0
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
 	rts
 
 operandError
-	moveq #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	moveq #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	rts
 	.bend  ; tkpkgMselEvalOperandV1
 
@@ -1772,11 +1377,11 @@ done
 	move.l a4, d1
 	lea TokenScratchBuffer, a0
 	sub.l a0, d1
-	moveq #OPASM_SELECTOR_STATUS_OK, d0
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
 	rts
 
 operandError
-	moveq #OPASM_SELECTOR_STATUS_OPERAND_ERROR, d0
+	moveq #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	rts
 	.bend  ; tkpkgMselWriteCandidateEnvelopeV1
 
@@ -1792,125 +1397,6 @@ loop
 done
 	rts
 	.bend  ; tkpkgMselCopyBytesV1
-
-tkpkgSelectedEnvelopeAllowedByMselV1	.block
-	movem.l d2-d7/a0-a6, -(sp)
-	movea.l a4, a0
-	move.w d0, d7
-	cmpi.w #4, d7
-	bcs.w unsupported
-	moveq #0, d2
-	move.b (a0)+, d2
-	subq.w #1, d7
-	tst.w d2
-	beq.w unsupported
-	cmp.w d7, d2
-	bhi.w unsupported
-	movea.l a0, a5
-	adda.w d2, a0
-	sub.w d2, d7
-	tst.w d7
-	beq.w unsupported
-	moveq #0, d3
-	move.b (a0)+, d3
-	subq.w #1, d7
-	tst.w d3
-	beq.w ok
-	tst.w d7
-	beq.w unsupported
-	moveq #0, d4
-	move.b (a0)+, d4
-	subq.w #1, d7
-	tst.w d4
-	beq.w unsupported
-	cmp.w d7, d4
-	bhi.w unsupported
-	movea.l a0, a4
-	adda.w d4, a0
-	sub.w d4, d7
-	tst.w d7
-	beq.w unsupported
-	moveq #0, d5
-	move.b (a0)+, d5
-	subq.w #1, d7
-	cmp.w d7, d5
-	bhi.w unsupported
-
-	lea MselChunkOffsetLo, a3
-	bsr.w tkpkgServiceChunkPtrFromLocatorV1
-	tst.b d1
-	bne.w ok
-	bsr.w tkpkgServiceReadU32LeLow16V1
-	tst.b d1
-	bne.w ok
-	tst.w d0
-	beq.w ok
-	move.w d0, d7
-	subq.w #1, d7
-	lea 4(a2), a2
-
-entryLoop
-	moveq #1, d0
-	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
-	bne.w unsupported
-	move.b (a2)+, d6
-	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
-	bne.w unsupported
-	bsr.w tkpkgSelectedMselOwnerMatchesV1
-	move.b d0, d5
-	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
-	bne.w unsupported
-	tst.b d5
-	beq.s skipMnemonicCompare
-	move.l a2, -(sp)
-	move.w d2, d1
-	movea.l a5, a2
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	movea.l (sp)+, a2
-	and.b d0, d5
-
-skipMnemonicCompare
-	bsr.w tkpkgServiceSkipStringV1
-	tst.b d1
-	bne.w unsupported
-	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
-	bne.w unsupported
-	tst.b d5
-	beq.s skipModeCompare
-	move.l a2, -(sp)
-	move.w d4, d1
-	movea.l a4, a2
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	movea.l (sp)+, a2
-	tst.b d0
-	bne.s ok
-
-skipModeCompare
-	bsr.w tkpkgServiceSkipStringV1
-	tst.b d1
-	bne.w unsupported
-	moveq #4, d0
-	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
-	bne.w unsupported
-	lea 4(a2), a2
-	dbf d7, entryLoop
-
-unsupported
-	moveq #OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS, d0
-	bra.s return
-
-ok
-	moveq #OPASM_SELECTOR_STATUS_OK, d0
-
-return
-	movem.l (sp)+, d2-d7/a0-a6
-	rts
-	.bend  ; tkpkgSelectedEnvelopeAllowedByMselV1
 
 tkpkgSelectedMselOwnerMatchesV1	.block
 	movem.l d2-d4/a2-a4, -(sp)
@@ -2904,15 +2390,6 @@ noOperandRecord
 
 encodeCandidate
 	bsr.w tkpkgEncodeFindAndExecuteTableProgram
-	tst.b d0
-	beq.s return
-	cmpi.b #2, d0
-	bne.s return
-	bsr.w tkpkgEncodeDirect6502EnvelopeV1
-	cmpi.b #2, d0
-	bne.s return
-	moveq #0, d1
-	moveq #0, d0
 	bra.s return
 
 noMatch
@@ -2929,141 +2406,6 @@ return
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 	.bend  ; tkpkgEncodeInstructionEnvelopeV1
-
-tkpkgEncodeDirect6502EnvelopeV1	.block
-	movem.l d2-d7/a0-a6, -(sp)
-	movea.l a5, a1
-	lea TkpkgDirectLdaText, a2
-	move.w d2, d0
-	moveq #3, d1
-	bsr.w tkpkgEncodeStringEqIgnoreCase
-	tst.b d0
-	bne.w lda
-	movea.l a5, a1
-	lea TkpkgDirectStaText, a2
-	move.w d2, d0
-	moveq #3, d1
-	bsr.w tkpkgEncodeStringEqIgnoreCase
-	tst.b d0
-	bne.w sta
-	movea.l a5, a1
-	lea TkpkgDirectJmpText, a2
-	move.w d2, d0
-	moveq #3, d1
-	bsr.w tkpkgEncodeStringEqIgnoreCase
-	tst.b d0
-	bne.w jmp
-	moveq #2, d0
-	bra.w return
-
-lda
-	lea TkpkgDirectImmediateText, a2
-	moveq #9, d0
-	move.w #$00A9, d5
-	moveq #1, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	lea TkpkgDirectZeroPageText, a2
-	moveq #8, d0
-	move.w #$00a5, d5
-	moveq #1, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	lea TkpkgDirectZeroPageXText, a2
-	moveq #9, d0
-	move.w #$00B5, d5
-	moveq #1, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	lea TkpkgDirectAbsoluteText, a2
-	moveq #8, d0
-	move.w #$00AD, d5
-	moveq #2, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	lea TkpkgDirectAbsoluteXText, a2
-	moveq #9, d0
-	move.w #$00BD, d5
-	moveq #2, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	lea TkpkgDirectAbsoluteYText, a2
-	moveq #9, d0
-	move.w #$00B9, d5
-	moveq #2, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	moveq #2, d0
-	bra.w return
-
-sta
-	lea TkpkgDirectZeroPageText, a2
-	moveq #8, d0
-	move.w #$0085, d5
-	moveq #1, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	lea TkpkgDirectAbsoluteText, a2
-	moveq #8, d0
-	move.w #$008d, d5
-	moveq #2, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	moveq #2, d0
-	bra.w return
-
-jmp
-	lea TkpkgDirectAbsoluteText, a2
-	moveq #8, d0
-	moveq #$4c, d5
-	moveq #2, d7
-	bsr.w modeEq
-	tst.b d0
-	bne.w emit
-	moveq #2, d0
-	bra.w return
-
-modeEq
-	movea.l a6, a1
-	move.w d4, d1
-	bsr.w tkpkgEncodeStringEqIgnoreCase
-	rts
-
-emit
-	cmp.w d7, d6
-	bne.s fail
-	lea LastErrorBuffer, a2
-	move.b d5, (a2)+
-	movea.l a3, a0
-	move.w d6, d1
-	beq.s emitDone
-
-operandLoop
-	move.b (a0)+, (a2)+
-	subq.w #1, d1
-	bne.s operandLoop
-
-emitDone
-	move.w d6, d1
-	addq.w #1, d1
-	moveq #0, d0
-	bra.s return
-
-fail
-	moveq #1, d0
-
-return
-	movem.l (sp)+, d2-d7/a0-a6
-	rts
-	.bend  ; tkpkgEncodeDirect6502EnvelopeV1
 
 tkpkgEncodeFindAndExecuteTableProgram	.block
 	movem.l d2-d7/a0-a6, -(sp)

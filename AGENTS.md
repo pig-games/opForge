@@ -57,8 +57,11 @@ architectural elegance unless required to unblock the requested slice.
 - Tests support implemented behavior; they do not replace implementation
   progress.
 - Report blockers precisely instead of hiding them with peripheral cleanup.
-- Prefer a host-specific, family-specific, CPU-specific, or platform-specific
-  first implementation when that gets the feature working faster.
+- Prefer a host-specific or platform-specific first implementation when that
+  gets the feature working faster, but do not place target
+  CPU/family/dialect-specific semantics in generic VM/native implementation
+  paths. CPU-specific behavior belongs in package VM/family/dialect
+  definitions.
 
 ## Required execution header
 
@@ -106,6 +109,36 @@ At the end of each work block, report:
 - For workflow, agent, skill, plan, spec, review, closure, CI, or template
   changes, run `make workflow-gate` or the relevant `scripts/workflow/check_*.py`
   validator and record the result.
+
+## CPU-specific architecture boundary
+
+Generic opForge Rust VM, Native VM, workflow, and CLI implementation paths must
+not grow CPU/family/dialect/register/addressing-mode/instruction-specific logic.
+
+CPU-specific behavior belongs in package VM definitions, family/dialect
+packages, fixtures, examples, tests, or documentation.
+
+Current deterministic enforcement is scoped to architecture-neutral core,
+shared type, root `src/`, workflow implementation paths, and `native/**`.
+Native assembly is scanned structurally for implementation-owned identifiers and
+metadata such as labels, macro names, constant names, and section/module names.
+The guard intentionally does not treat assembler instruction syntax or ordinary
+directives as violations. The workflow also reports a warning-only scan over
+selected broader Rust implementation crates so future promotion candidates stay
+visible without failing the gate. Rust test files are excluded from both scopes.
+
+The deterministic guard is:
+
+```sh
+python3 scripts/workflow/check_cpu_specific_arch_boundary.py
+```
+
+This guard is run by the Rust quality gate and workflow gate. If it fails,
+prefer:
+
+1. moving the logic into package VM/family/dialect definitions,
+2. renaming accidental generic identifiers,
+3. adding a narrow reviewed allowlist entry with a concrete reason.
 
 ## Workflow skills
 

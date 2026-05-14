@@ -1,0 +1,32 @@
+# CPU-specific architecture boundary allowlist.
+#
+# Format:
+# path-glob | comma,separated,terms-or-* | reason
+#
+# Keep entries narrow. Do not use broad wildcards unless the path category is
+# intentionally CPU/package/test/doc owned.
+
+documentation/** | * | Documentation may discuss CPU-specific examples and architecture boundaries.
+dev-docs/** | * | Review/planning documents may discuss CPU-specific examples.
+examples/** | * | Examples intentionally contain CPU-specific source code.
+tests/** | * | Tests may contain CPU-specific source snippets and expectations.
+fixtures/** | * | Fixtures may contain CPU-specific source snippets and expectations.
+reference/** | * | Reference outputs may contain CPU-specific source snippets and expectations.
+
+# CLI metadata is user-facing capability text. This does not implement CPU behavior.
+crates/opforge-cli-core/src/cli.rs | 8080,8085,z80,6809,6309,6502,65c02,65816,45gs02,68020,intel8080,intel8085,mos6502,wdc65c02,wdc65816,csg45gs02 | CLI help/capability metadata lists supported CPUs but does not implement CPU semantics.
+
+# The native formatter wrapper must name the host/native CPU and native module roots.
+scripts/workflow/run_native_68000_format_gate.sh | 68000,68020,motorola68000,m68000,m68020 | Native 68000 formatter gate must invoke opForge with the native host CPU profile.
+
+# The checker sources intentionally enumerate CPU-specific vocabulary and reviewed exceptions.
+scripts/workflow/check_cpu_specific_arch_boundary.py | * | The checker implementation documents protected neutral paths and low-signal CPU vocabulary suppressions.
+scripts/workflow/cpu_specific_terms.txt | * | The checker term list intentionally enumerates CPU-specific vocabulary.
+scripts/workflow/cpu_specific_arch_boundary_allowlist.txt | * | The checker allowlist intentionally documents reviewed exceptions.
+
+# These parser-surface files intentionally enumerate target mnemonics as syntax or compatibility data without owning runtime semantics.
+crates/opforge-core/src/parser_compat_mixed.rs | * | Mixed parser compatibility helpers intentionally recognize target-specific syntactic forms.
+crates/opforge-core/src/macro_processor.rs | lda,sta | Inline parser-surface examples mention instruction mnemonics without implementing CPU semantics.
+crates/opforge-core/src/report.rs | lda | Inline diagnostic/reporting examples mention instruction mnemonics without implementing CPU semantics.
+crates/opforge-core/src/parser_reporter.rs | lda | Inline parser-reporting examples mention instruction mnemonics without implementing CPU semantics.
+crates/opforge-core/src/parser.rs | lda,sta,postincrement,abcd | Generic parser surface owns syntax-shape vocabulary but not target runtime semantics.

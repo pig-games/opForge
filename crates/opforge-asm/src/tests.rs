@@ -10088,7 +10088,7 @@ fn motorola68020_prvm_line_iterator_smoke_example_assembles_with_native_call_sur
 
 #[test]
 fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
-    let source = opforge_amigaos_source("opforge_cli.asm");
+    let strings_source = opforge_amigaos_source("strings.asm");
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
     let out_dir = create_temp_dir("m68000-opforge-native-cli-surface");
@@ -10101,117 +10101,105 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
         .expect("read opforge native CLI surface listing");
 
-    assert!(source.contains("Usage: opForge [OPTIONS] [INPUT]"));
+    assert!(listing.contains("Usage: opForge [OPTIONS] [INPUT]"));
 
     for expected in [
-        ".byte \"-i\",0",
-        ".byte \"--infile\",0",
-        ".byte \"--hunk\",0",
-        ".byte \"-o\",0",
-        ".byte \"--outfile\",0",
-        ".byte \"--cpu\",0",
-        ".byte \"--opasm-package\",0",
-        ".byte \"-l\",0",
-        ".byte \"--list\",0",
-        ".byte \"-x\",0",
-        ".byte \"--hex\",0",
-        ".byte \"-s\",0",
-        ".byte \"--srec\",0",
-        ".byte \"-b\",0",
-        ".byte \"--bin\",0",
-        ".byte \"-D\",0",
-        ".byte \"--define\",0",
-        ".byte \"-I\",0",
-        ".byte \"--include-path\",0",
-        ".byte \"-M\",0",
-        ".byte \"--module-path\",0",
+        "-i",
+        "--infile",
+        "--hunk",
+        "-o",
+        "--outfile",
+        "--cpu",
+        "--opasm-package",
+        "-l",
+        "--list",
+        "-x",
+        "--hex",
+        "-s",
+        "--srec",
+        "-b",
+        "--bin",
+        "-D",
+        "--define",
+        "-I",
+        "--include-path",
+        "-M",
+        "--module-path",
     ] {
         assert!(
-            tokvm_source_contains(&source, expected),
+            listing.contains(expected),
             "native CLI surface should contain Rust CLI flag literal {expected}"
         );
     }
-    assert!(source
+    assert!(listing
         .contains("OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin"));
     assert!(
-        source.contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style")
+        listing.contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style")
     );
-    assert!(source.contains(
+    assert!(listing.contains(
         "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile"
     ));
-    assert!(source.contains("OPC-NCLI017: native module path capacity exceeded"));
+    assert!(listing.contains("OPC-NCLI017: native module path capacity exceeded"));
     assert!(
-        source.contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity")
+        listing.contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity")
     );
-    assert!(source.contains("OPC-NCLI008: Input source file not found"));
-    assert!(source.contains(
+    assert!(listing.contains("OPC-NCLI008: Input source file not found"));
+    assert!(listing.contains(
         "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path; --hunk is not implemented yet."
     ));
-    assert!(source.contains("OPC-NCLI010: native tokenizer stage failed"));
-    assert!(source.contains("STATUS parser-module-use-ok"));
-    assert!(source.contains("OPC-NCLI009: native emitter VM not implemented"));
-    assert!(source.contains("STATUS output-ok"));
-    assert!(source.contains("STATUS selector-status-ok"));
-    assert!(source.contains("OPC-NCLI023: native flat output write failed"));
-    assert!(source.contains("OPC-NCLI024: native image buffer capacity exceeded"));
-    assert!(source.contains("OPC-NCLI025: unknown native mnemonic"));
-    assert!(source.contains("OPC-NCLI026: unsupported native addressing mode"));
-    assert!(source.contains("OPC-NCLI027: invalid native .org expression"));
-    assert!(source
+    assert!(listing.contains("OPC-NCLI010: native tokenizer stage failed"));
+    assert!(listing.contains("STATUS parser-module-use-ok"));
+    assert!(listing.contains("OPC-NCLI009: native emitter VM not implemented"));
+    assert!(listing.contains("STATUS output-ok"));
+    assert!(listing.contains("STATUS selector-status-ok"));
+    assert!(listing.contains("OPC-NCLI023: native flat output write failed"));
+    assert!(listing.contains("OPC-NCLI024: native image buffer capacity exceeded"));
+    assert!(listing.contains("OPC-NCLI025: unknown native mnemonic"));
+    assert!(listing.contains("OPC-NCLI026: unsupported native addressing mode"));
+    assert!(listing.contains("OPC-NCLI027: invalid native .org expression"));
+    assert!(listing
         .contains("OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output"));
-    assert!(source.contains("OPC-NCLI013: native module/use parser stage failed"));
-    assert!(source.contains("OPC-NCLI014: native include expansion failed"));
-    assert!(source.contains("OPC-NCLI015: native conditional preprocessing not implemented"));
-    assert!(source.contains("OPC-NCLI018: native module resolution failed"));
-    assert!(source.contains("STATUS include-ok"));
-    assert!(tokvm_source_contains(&source, ".byte \"MODULE \",0"));
-    assert!(tokvm_source_contains(
-        &source,
-        ".byte \"INCLUDE-ROOT 1 \",0"
-    ));
-    assert!(tokvm_source_contains(
-        &source,
-        ".byte \"INCLUDE-FILE 1 \",0"
-    ));
-    assert!(tokvm_source_contains(&source, ".byte \"INCLUDE-LINE \",0"));
-    assert!(source.contains("--opasm-package Work:opforge_cli_package.opasm"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW"));
-    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT"));
-    assert!(source.contains("--cpu 65c02"));
-    assert!(source.contains("Work:opforge_native_out.bin"));
-    assert!(tokvm_source_contains(&source, ".byte \"SESSION-CPU \",0"));
-    assert!(tokvm_source_contains(
-        &source,
-        ".byte \"STATUS session-ready\",10,0"
-    ));
-    assert!(tokvm_source_contains(&source, ".byte \"STMT \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"STMT-EXPR \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"MOD-ROOT \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"MOD-DEF \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"MOD-END \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"MOD-PATH \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"USE-IMPORT \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"USE-SELECT \",0"));
-    assert!(tokvm_source_contains(&source, ".byte \"USE-WILDCARD \",0"));
-    assert!(tokvm_source_contains(
-        &source,
-        ".byte \"ERROR OPC-NCLI016: native module depth mismatch\",10,0"
-    ));
+    assert!(listing.contains("OPC-NCLI013: native module/use parser stage failed"));
+    assert!(listing.contains("OPC-NCLI014: native include expansion failed"));
+    assert!(listing.contains("OPC-NCLI015: native conditional preprocessing not implemented"));
+    assert!(listing.contains("OPC-NCLI018: native module resolution failed"));
+    assert!(listing.contains("STATUS include-ok"));
+    assert!(listing.contains("MODULE "));
+    assert!(listing.contains("INCLUDE-ROOT 1 "));
+    assert!(listing.contains("INCLUDE-FILE 1 "));
+    assert!(listing.contains("INCLUDE-LINE "));
+    assert!(strings_source.contains("opforge_cli_package.opasm"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW"));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT"));
+    assert!(strings_source.contains("--cpu 65c02"));
+    assert!(strings_source.contains("Work:opforge_native_out.bin"));
+    assert!(listing.contains("SESSION-CPU "));
+    assert!(listing.contains("STATUS session-ready"));
+    assert!(listing.contains("STMT "));
+    assert!(listing.contains("STMT-EXPR "));
+    assert!(listing.contains("MOD-ROOT "));
+    assert!(listing.contains("MOD-DEF "));
+    assert!(listing.contains("MOD-END "));
+    assert!(listing.contains("MOD-PATH "));
+    assert!(listing.contains("USE-IMPORT "));
+    assert!(listing.contains("USE-SELECT "));
+    assert!(listing.contains("USE-WILDCARD "));
+    assert!(listing.contains("ERROR OPC-NCLI016: native module depth mismatch"));
 
     for expected in [
         ".cpu 68020",
@@ -12159,7 +12147,18 @@ fn motorola68020_opforge_native_cli_6502_small_assembly_contract_matches_rust_vm
 
 #[test]
 fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label_layout() {
+    let repo_root = workspace_root();
     let source = opforge_amigaos_source("opforge_cli.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
+    let out_dir = create_temp_dir("m68000-opforge-native-cli-two-pass-surface");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble opforge native cli two-pass surface example: {detail}");
+    }
+
+    let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
+        .expect("read opforge native CLI two-pass surface listing");
 
     assert!(source_contains_in_order(
         &source,
@@ -12237,12 +12236,12 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
     assert!(source.contains("moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0"));
     assert!(source.contains("opasmEngineStmtLabelNameTable"));
     assert!(source.contains("opasmEngineStmtMnemNameTable"));
-    assert!(source.contains("STAGE pass1"));
-    assert!(source.contains("STATUS pass1-ok"));
-    assert!(source.contains("STAGE pass2"));
-    assert!(source.contains("STATUS pass2-ok"));
-    assert!(source.contains("LABEL"));
-    assert!(source.contains("OPC-NCLI021: duplicate native label"));
+    assert!(listing.contains("STAGE pass1"));
+    assert!(listing.contains("STATUS pass1-ok"));
+    assert!(listing.contains("STAGE pass2"));
+    assert!(listing.contains("STATUS pass2-ok"));
+    assert!(listing.contains("LABEL"));
+    assert!(listing.contains("OPC-NCLI021: duplicate native label"));
 }
 
 #[test]

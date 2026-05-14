@@ -10,7 +10,7 @@
 	.use tkpkg.amigaos.buffers (SCOPED_OWNER_CPU, SCOPED_OWNER_FAMILY)
 	.use tkpkg.amigaos.buffers (PackageStateFlags, PackageStorage, FamsChunkOffsetLo)
 	.use tkpkg.amigaos.buffers (CpusChunkOffsetLo, DialChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (TkvmChunkOffsetLo, ActiveCpuBuffer)
+	.use tkpkg.amigaos.buffers (TkvmChunkOffsetLo, PrvmChunkOffsetLo, ActiveCpuBuffer)
 	.use tkpkg.amigaos.buffers (ActiveDialectBuffer, ActiveFamilyBuffer)
 	.use tkpkg.amigaos.buffers (ActiveTokenPolicyOffsetLo, ActiveTokenPolicyOwnerTag)
 	.use tkpkg.amigaos.buffers (ActiveTokenizerVmOffsetLo, ActiveTokenizerVmOwnerTag)
@@ -21,6 +21,8 @@
 	.use tkpkg.amigaos.buffers (PendingTokenPolicyOwnerTag)
 	.use tkpkg.amigaos.buffers (PendingTokenizerVmOffsetLo)
 	.use tkpkg.amigaos.buffers (PendingTokenizerVmOwnerTag)
+	.use tkpkg.amigaos.buffers (ActiveParserVmOffsetLo, ActiveParserVmOwnerTag)
+	.use tkpkg.amigaos.buffers (PendingParserVmOffsetLo, PendingParserVmOwnerTag)
 	.use tkpkg.amigaos.token_policy (tkpkgTokenPolicyResolveLocatorV1)
 
 NO_PACKAGE_TEXT_LEN                  = 41
@@ -28,6 +30,7 @@ UNRESOLVED_CPU_TEXT_LEN              = 33
 UNRESOLVED_FAMILY_TEXT_LEN           = 33
 UNRESOLVED_DIALECT_TEXT_LEN          = 34
 MISSING_PROGRAM_TEXT_LEN             = 36
+MISSING_PARSER_PROGRAM_TEXT_LEN      = 33
 IDENTIFIER_TOO_LONG_TEXT_LEN         = 35
 TOKENIZER_VM_ENTRY_PREFIX_SIZE      = 4
 TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE  = 19
@@ -48,6 +51,9 @@ UnresolvedDialectText
 
 MissingProgramText
 	.byte "OTR001: missing tokenizer VM program", 0
+
+MissingParserProgramText
+	.byte "OTR001: missing parser VM program", 0
 
 IdentifierTooLongText
 	.byte "OTR004: package identifier too long", 0
@@ -94,6 +100,9 @@ parseRequest
 	bsr.w resolveTokenizerVmLocatorV1
 	tst.b d0
 	bne.w done
+	bsr.w resolveParserVmLocatorV1
+	tst.b d0
+	bne.w done
 	bsr.w commitActiveSelectionV1
 	tst.b d0
 	bne.w done
@@ -109,7 +118,7 @@ done
 
 parseRequestV1	.block
 	lea PendingFamilyOffsetLo, a3
-	moveq #29, d0
+	moveq #36, d0
 
 clearPendingLoop
 	clr.b (a3)+
@@ -551,6 +560,33 @@ vmResolved
 	rts
 	.bend  ; resolveTokenizerVmLocatorV1
 
+; Resolve parser VM program with dialect -> CPU -> family owner precedence.
+resolveParserVmLocatorV1	.block
+	moveq #SCOPED_OWNER_DIALECT, d0
+	lea PendingDialectOffsetLo, a3
+	bsr.w findParserVmOwnerV1
+	tst.b d0
+	beq.s parserVmResolved
+	moveq #SCOPED_OWNER_CPU, d0
+	lea PendingCpuOffsetLo, a3
+	bsr.w findParserVmOwnerV1
+	tst.b d0
+	beq.s parserVmResolved
+	moveq #SCOPED_OWNER_FAMILY, d0
+	lea PendingFamilyOffsetLo, a3
+	bsr.w findParserVmOwnerV1
+	tst.b d0
+	beq.s parserVmResolved
+	lea MissingParserProgramText, a1
+	moveq #MISSING_PARSER_PROGRAM_TEXT_LEN, d1
+	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	rts
+
+parserVmResolved
+	moveq #0, d0
+	rts
+	.bend  ; resolveParserVmLocatorV1
+
 ; Find a TKVM record matching the scoped owner locator in A3/D0.
 findTokenizerVmOwnerV1	.block
 	move.b d0, d6
@@ -614,6 +650,70 @@ vmFound
 	moveq #0, d0
 	rts
 	.bend  ; findTokenizerVmOwnerV1
+
+; Find a PRVM record matching the scoped owner locator in A3/D0.
+findParserVmOwnerV1	.block
+	move.b d0, d6
+	lea PackageStorage, a6
+	bsr.w readLocatorPtrLenV1
+	move.w d3, d5
+	movea.l a1, a5
+	lea PrvmChunkOffsetLo, a3
+	bsr.w chunkPtrFromLocatorV1
+	bsr.w readU32LeLow16V1
+	tst.b d1
+	bne.w parserOwnerMissing
+	tst.w d0
+	beq.w parserOwnerMissing
+	move.w d0, d7
+	subq.w #1, d7
+	lea 4(a2), a2
+
+parserLoop
+	movea.l a2, a4
+	moveq #1, d0
+	bsr.w requireBytesV1
+	tst.b d1
+	bne.w parserOwnerMissing
+	move.b (a2)+, d4
+	bsr.w locateStringV1
+	tst.b d1
+	bne.w parserOwnerMissing
+	cmp.b d6, d4
+	bne.w parserSkipEntry
+	move.w d0, d2
+	move.l a2, -(sp)
+	move.w d2, d0
+	move.w d5, d1
+	movea.l a5, a2
+	bsr.w stringEqAsciiCasefoldV1
+	movea.l (sp)+, a2
+	tst.b d0
+	bne.w parserFound
+
+parserSkipEntry
+	bsr.w skipParserVmEntryV1
+	tst.b d1
+	bne.w parserOwnerMissing
+	dbf d7, parserLoop
+
+parserOwnerMissing
+	moveq #1, d0
+	rts
+
+parserFound
+	bsr.w skipParserVmEntryV1
+	tst.b d1
+	bne.w parserOwnerMissing
+	lea PendingParserVmOffsetLo, a3
+	movea.l a4, a1
+	move.l a2, d0
+	sub.l a4, d0
+	bsr.w storeRecordLocatorV1
+	move.b d6, PendingParserVmOwnerTag
+	moveq #0, d0
+	rts
+	.bend  ; findParserVmOwnerV1
 
 ; Skip one TKVM chunk entry while preserving the package cursor invariants.
 skipTokenizerVmEntryV1	.block
@@ -688,23 +788,48 @@ vmSkipBoundsFail
 	rts
 	.bend  ; skipTokenizerVmEntryV1
 
+; Skip one PRVM chunk entry while preserving the package cursor invariants.
+skipParserVmEntryV1	.block
+	moveq #2, d0
+	bsr.w requireBytesV1
+	tst.b d1
+	bne.w parserSkipBoundsFail
+	lea 2(a2), a2
+	bsr.w readU32LeLow16V1
+	tst.b d1
+	bne.w parserSkipBoundsFail
+	move.l d0, d3
+	addq.l #4, d0
+	bsr.w requireBytesV1
+	tst.b d1
+	bne.w parserSkipBoundsFail
+	lea 4(a2), a2
+	adda.l d3, a2
+	moveq #0, d1
+	rts
+
+parserSkipBoundsFail
+	moveq #1, d1
+	rts
+	.bend  ; skipParserVmEntryV1
+
 ; Commit fully resolved pending locators into active service state.
 commitActiveSelectionV1	.block
 	lea PendingCpuOffsetLo, a3
 	lea ActiveCpuBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
 	tst.b d0
-	bne.s commitDone
+	bne.w commitDone
 	lea PendingDialectOffsetLo, a3
 	lea ActiveDialectBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
 	tst.b d0
-	bne.s commitDone
+	bne.w commitDone
 	lea PendingFamilyOffsetLo, a3
 	lea ActiveFamilyBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
 	tst.b d0
-	bne.s commitDone
+	bne.w commitDone
 	lea PendingTokenPolicyOffsetLo, a3
 	lea ActiveTokenPolicyOffsetLo.l, a2
 	bsr.w copyRecordLocatorV1
@@ -715,6 +840,11 @@ commitActiveSelectionV1	.block
 	bsr.w copyRecordLocatorV1
 	move.b PendingTokenizerVmOwnerTag, d0
 	move.b d0, ActiveTokenizerVmOwnerTag
+	lea PendingParserVmOffsetLo, a3
+	lea ActiveParserVmOffsetLo.l, a2
+	bsr.w copyRecordLocatorV1
+	move.b PendingParserVmOwnerTag, d0
+	move.b d0, ActiveParserVmOwnerTag
 	ori.b #PACKAGE_STATE_PIPELINE_ACTIVE, PackageStateFlags
 	moveq #0, d0
 

@@ -9,6 +9,7 @@ PRVM_REQUEST_FRAME_SIZE             = 112
 PRVM_TOKEN_RECORD_SIZE              = 20
 PRVM_RESULT_RECORD_SIZE             = 32
 PRVM_DEFAULT_STEP_BUDGET            = 256
+PRVM_LEXEME_SCRATCH_CAPACITY        = 256
 
 PRVM_FRAME_MAGIC                    = 0
 PRVM_FRAME_ABI_VERSION              = 4
@@ -61,6 +62,20 @@ PRVM_TOKEN_KIND_IDENTIFIER          = 0
 PRVM_TOKEN_KIND_DOT                 = 7
 PRVM_TOKEN_KIND_COMMA               = 4
 PRVM_TOKEN_KIND_COLON               = 5
+PRVM_TOKEN_KIND_OP_PLUS             = 18
+PRVM_TOKEN_KIND_OP_MULTIPLY         = 20
+PRVM_TOKEN_KIND_OP_EQ               = 34
+
+PRVM_PARSER_KIND_IDENTIFIER         = 1
+PRVM_PARSER_KIND_DOT                = 3
+PRVM_PARSER_KIND_COLON              = 4
+PRVM_PARSER_KIND_OPERATOR           = 5
+PRVM_PARSER_KIND_QUESTION           = 6
+PRVM_PARSER_KIND_COMMA              = 7
+
+PRVM_OPERATOR_PLUS                  = 1
+PRVM_OPERATOR_EQ                    = 2
+PRVM_OPERATOR_MULTIPLY              = 3
 
 PRVM_RESULT_BEGIN_STATEMENT         = 1
 PRVM_RESULT_LABEL_TEXT              = 2
@@ -90,7 +105,9 @@ PRVM_OPCODE_IS_EOL                  = $13
 PRVM_OPCODE_PEEK_ASSIGNMENT         = $14
 PRVM_OPCODE_PEEK_STAR_ORG           = $15
 PRVM_OPCODE_ADVANCE                 = $20
+PRVM_OPCODE_CONSUME_OPERATOR        = $22
 PRVM_OPCODE_LOAD_IDENTIFIER         = $30
+PRVM_OPCODE_LOAD_INLINE_TEXT        = $33
 PRVM_OPCODE_PARSE_OPTIONAL_LABEL    = $40
 PRVM_OPCODE_SCAN_COMMA_BOUNDARIES   = $41
 PRVM_OPCODE_PARSE_OPERAND_EXPR      = $50
@@ -98,6 +115,7 @@ PRVM_OPCODE_BEGIN_STATEMENT         = $60
 PRVM_OPCODE_SET_MNEMONIC            = $62
 PRVM_OPCODE_FINISH_LINE             = $64
 PRVM_OPCODE_SET_DOT_MNEMONIC        = $65
+PRVM_OPCODE_FINISH_ASSIGNMENT       = $66
 
 LOCAL_LOADED_FLAG                   = 0
 LOCAL_LOADED_COL_START              = 4
@@ -312,8 +330,12 @@ programLoop
 	beq opcodePeekStarOrg
 	cmpi.b #PRVM_OPCODE_ADVANCE, d7
 	beq opcodeAdvance
+	cmpi.b #PRVM_OPCODE_CONSUME_OPERATOR, d7
+	beq opcodeConsumeOperator
 	cmpi.b #PRVM_OPCODE_LOAD_IDENTIFIER, d7
 	beq opcodeLoadIdentifier
+	cmpi.b #PRVM_OPCODE_LOAD_INLINE_TEXT, d7
+	beq opcodeLoadInlineText
 	cmpi.b #PRVM_OPCODE_PARSE_OPTIONAL_LABEL, d7
 	beq opcodeParseOptionalLabel
 	cmpi.b #PRVM_OPCODE_SCAN_COMMA_BOUNDARIES, d7
@@ -328,6 +350,8 @@ programLoop
 	beq opcodeFinishLine
 	cmpi.b #PRVM_OPCODE_SET_DOT_MNEMONIC, d7
 	beq opcodeSetDotMnemonic
+	cmpi.b #PRVM_OPCODE_FINISH_ASSIGNMENT, d7
+	beq opcodeFinishAssignment
 	bra unsupportedOpcode
 
 opcodeEnd
@@ -395,15 +419,78 @@ opcodeIsEol
 
 opcodePeekAssignment
 	clr.l LOCAL_BOOL_VALUE(a3)
+	tst.l LOCAL_LABEL_FLAG(a3)
+	beq programLoop
+	cmp.l d4, d2
+	bcc programLoop
+	bsr.w currentTokenPtr
+	tst.l d0
+	bne returnWithLocals
+	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, 0(a1)
+	bne programLoop
+	move.l #1, LOCAL_BOOL_VALUE(a3)
 	bra programLoop
 
 opcodePeekStarOrg
 	clr.l LOCAL_BOOL_VALUE(a3)
+	tst.l LOCAL_LABEL_FLAG(a3)
+	bne programLoop
+	move.l d2, d0
+	bsr.w tokenPtrByIndex
+	tst.l d0
+	bne returnWithLocals
+	cmpi.w #PRVM_TOKEN_KIND_OP_MULTIPLY, 0(a1)
+	bne programLoop
+	move.l d2, d0
+	addq.l #1, d0
+	cmp.l d4, d0
+	bcc programLoop
+	bsr.w tokenPtrByIndex
+	tst.l d0
+	bne returnWithLocals
+	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, 0(a1)
+	bne programLoop
+	move.l #1, LOCAL_BOOL_VALUE(a3)
 	bra programLoop
 
 opcodeAdvance
 	cmp.l d4, d2
 	bcc programLoop
+	addq.l #1, d2
+	bra programLoop
+
+opcodeConsumeOperator
+	cmpa.l a6, a5
+	bcc invalidProgramAtCursor
+	moveq #0, d0
+	move.b (a5)+, d0
+	bsr.w currentTokenPtr
+	tst.l d0
+	bne returnWithLocals
+	move.w 0(a1), d7
+	cmpi.b #PRVM_OPERATOR_PLUS, -1(a5)
+	beq consumePlus
+	cmpi.b #PRVM_OPERATOR_EQ, -1(a5)
+	beq consumeEq
+	cmpi.b #PRVM_OPERATOR_MULTIPLY, -1(a5)
+	beq consumeMultiply
+	bra invalidTokenAtCursor
+
+consumePlus
+	cmpi.w #PRVM_TOKEN_KIND_OP_PLUS, d7
+	bne invalidTokenAtCursor
+	addq.l #1, d2
+	bra programLoop
+
+consumeEq
+	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, d7
+	bne invalidTokenAtCursor
+	addq.l #1, d2
+	bra programLoop
+
+consumeMultiply
+	cmpi.w #PRVM_TOKEN_KIND_OP_MULTIPLY, d7
+	bne invalidTokenAtCursor
 	addq.l #1, d2
 	bra programLoop
 
@@ -430,6 +517,41 @@ opcodeLoadIdentifier
 	move.l 8(a1), LOCAL_LOADED_COL_END(a3)
 	move.l 12(a1), LOCAL_LOADED_LEXEME_OFFSET(a3)
 	move.l 16(a1), LOCAL_LOADED_LEXEME_LEN(a3)
+	move.l #1, LOCAL_LOADED_FLAG(a3)
+	bra programLoop
+
+opcodeLoadInlineText
+	cmpa.l a6, a5
+	bcc invalidProgramAtCursor
+	moveq #0, d0
+	move.b (a5)+, d0
+	move.l d0, d7
+	movea.l a5, a0
+	adda.l d7, a0
+	cmpa.l a6, a0
+	bhi invalidProgramAtCursor
+	move.l PRVM_FRAME_LEXEME_LEN(a4), d5
+	move.l d5, d0
+	add.l d7, d0
+	bcs invalidProgramAtCursor
+	cmpi.l #PRVM_LEXEME_SCRATCH_CAPACITY, d0
+	bhi invalidProgramAtCursor
+	move.l d5, LOCAL_LOADED_LEXEME_OFFSET(a3)
+	move.l d7, LOCAL_LOADED_LEXEME_LEN(a3)
+	clr.l LOCAL_LOADED_COL_START(a3)
+	move.l d7, LOCAL_LOADED_COL_END(a3)
+	move.l d0, PRVM_FRAME_LEXEME_LEN(a4)
+	movea.l PRVM_FRAME_LEXEME_PTR(a4), a0
+	adda.l d5, a0
+	tst.l d7
+	beq loadInlineDone
+
+loadInlineCopyLoop
+	move.b (a5)+, (a0)+
+	subq.l #1, d7
+	bne loadInlineCopyLoop
+
+loadInlineDone
 	move.l #1, LOCAL_LOADED_FLAG(a3)
 	bra programLoop
 
@@ -508,6 +630,16 @@ opcodeSetDotMnemonic
 	bra programLoop
 
 opcodeFinishLine
+	bsr.w emitFinishLine
+	tst.l d0
+	bne returnWithLocals
+	move.l #1, LOCAL_FINISHED_FLAG(a3)
+	bra programLoop
+
+opcodeFinishAssignment
+	tst.l LOCAL_LABEL_FLAG(a3)
+	beq invalidProgramAtCursor
+	move.l d4, d2
 	bsr.w emitFinishLine
 	tst.l d0
 	bne returnWithLocals
@@ -785,12 +917,52 @@ peekKind	.block
 	add.l d7, d5
 	movea.l PRVM_FRAME_TOKEN_PTR(a4), a1
 	adda.l d5, a1
-	cmpi.b #$03, d0
+	cmpi.b #PRVM_PARSER_KIND_IDENTIFIER, d0
+	beq identifier
+	cmpi.b #PRVM_PARSER_KIND_DOT, d0
 	beq dot
+	cmpi.b #PRVM_PARSER_KIND_COLON, d0
+	beq colon
+	cmpi.b #PRVM_PARSER_KIND_OPERATOR, d0
+	beq operator
+	cmpi.b #PRVM_PARSER_KIND_QUESTION, d0
+	beq question
+	cmpi.b #PRVM_PARSER_KIND_COMMA, d0
+	beq comma
 	bra false
+
+identifier
+	cmpi.w #PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
+	bne false
+	moveq #1, d0
+	rts
 
 dot
 	cmpi.w #PRVM_TOKEN_KIND_DOT, 0(a1)
+	bne false
+	moveq #1, d0
+	rts
+
+colon
+	cmpi.w #PRVM_TOKEN_KIND_COLON, 0(a1)
+	bne false
+	moveq #1, d0
+	rts
+
+operator
+	cmpi.w #PRVM_TOKEN_KIND_OP_PLUS, 0(a1)
+	blt false
+	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, 0(a1)
+	bgt false
+	moveq #1, d0
+	rts
+
+question
+	clr.l d0
+	rts
+
+comma
+	cmpi.w #PRVM_TOKEN_KIND_COMMA, 0(a1)
 	bne false
 	moveq #1, d0
 	rts
@@ -942,14 +1114,31 @@ return
 	.bend  ; emitOperandTextSpan
 
 emitOperandExprSlot	.block
+	move.l LOCAL_EXPR_START_TOKEN(a3), d0
+	cmp.l LOCAL_EXPR_END_TOKEN(a3), d0
+	bcc return
+	bsr.w tokenPtrByIndex
+	tst.l d0
+	bne return
+	move.l 4(a1), d5
+	move.l LOCAL_EXPR_END_TOKEN(a3), d0
+	subq.l #1, d0
+	bsr.w tokenPtrByIndex
+	tst.l d0
+	bne return
+	move.l 8(a1), d7
+	move.l d5, -(sp)
+	move.l d7, -(sp)
 	bsr.w resultRecordPtr
+	move.l (sp)+, d7
+	move.l (sp)+, d5
 	tst.l d0
 	bne return
 	move.w #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(a2)
 	clr.w 2(a2)
-	move.l 8(a1), 4(a2)
-	move.l 12(a1), 8(a2)
-	move.l 16(a1), 12(a2)
+	move.l PRVM_FRAME_LINE_NUM(a4), 4(a2)
+	move.l d5, 8(a2)
+	move.l d7, 12(a2)
 	move.l LOCAL_OPERAND_COUNT(a3), 16(a2)
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), 20(a2)
 	move.l LOCAL_EXPR_START_TOKEN(a3), 24(a2)

@@ -1693,14 +1693,6 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
 }
 
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
-    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opasm_selector_stage") {
-        let amigaos_dir = asm_path
-            .parent()
-            .and_then(Path::parent)
-            .expect("opasm_selector_stage should live under amigaos/opasm");
-        return vec![amigaos_dir.join("opcore")];
-    }
-
     if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opforge_cli") {
         let amigaos_dir = asm_path
             .parent()
@@ -1826,7 +1818,6 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
                 | "tkpkg_pipeline.asm"
                 | "tkpkg_token_policy.asm"
                 | "tkpkg_tokenizer_vm.asm"
-                | "opasm_selector_stage.asm"
                 | "opcore_expr_bridge.asm"
                 | "prvm_interpreter.asm"
                 | "prvm_line_router.asm"
@@ -10178,6 +10169,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(tokvm_source_contains(&source, ".byte \"INCLUDE-LINE \",0"));
     assert!(source.contains("--opasm-package Work:opforge_cli_package.opasm"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT"));
+    assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"));
@@ -10267,6 +10259,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("NATIVE_OUTPUT_FORMAT_HUNK"));
     assert!(source.contains("opforgeNativeCliWriteFlatOutput"));
     assert!(source.contains("opforgeNativeCliPassTwoEmitImageBytes"));
+    assert!(source.contains("EndMnemonicText"));
     assert!(!source.contains("opforgeNativeCliBuildEncodeRequestForStatement"));
     assert!(!source.contains("jsr opasmSelectorStageBuildEncodeRequestV1"));
     assert!(source.contains("jsr opasmEngineRunTwoPassV1"));
@@ -10276,8 +10269,10 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(!source.contains("opforgeNativeCliWriteResolvedOperandHex"));
     assert!(!source.contains("opforgeNativeCliPassTwoEmitBinSmokeFallback"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT"));
+    assert!(source.contains("--cpu 65c02"));
     assert!(source.contains("Work:opforge_native_out.bin"));
     assert!(source.contains("NATIVE_SOURCE_RECORD_CAPACITY   = 512"));
+    assert!(source.contains("NATIVE_STATEMENT_TABLE_CAPACITY = 160"));
     assert!(source.contains("NATIVE_LABEL_TABLE_CAPACITY     = 16"));
     assert!(source.contains("NATIVE_IMAGE_BUFFER_CAPACITY    = 4096"));
     assert!(source.contains("NATIVE_ASSEMBLY_SESSION_BYTES"));
@@ -10308,10 +10303,10 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         &source,
         "PRVM_RESULT_OPERAND_TEXT        = 7"
     ));
-    assert!(tokvm_source_contains(
-        &source,
-        "OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 46"
-    ));
+    assert!(!source.contains("OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN"));
+    assert!(!source.contains("OpforgeNativeCliPrvmParserProgram"));
+    assert!(source.contains("ActiveParserVmOffsetLo"));
+    assert!(source.contains("opforgeNativeCliLoadActivePrvmProgram"));
     assert!(source.contains("lastTokenCount"));
     assert!(source.contains("lastLexemeLen"));
     assert!(source.contains("opforgeNativeCliExpandIncludeTarget"));
@@ -10591,10 +10586,11 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "BSR.W opforgeNativeCliPrepareEncodeSelectedRequestForStatement",
             "TST.W nativeCliEvalRequestLen.L",
             "BSR.W opforgeNativeCliPrepareEvaluateExpressionExtension",
-            "MOVEQ #ENTRY_ORD_SELECT_INSTRUCTION, D0",
-            "JSR tkpkgServiceDispatchV1",
             "MOVEQ #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, D0",
             "JSR tkpkgServiceDispatchV1",
+            "opforgeNativeCliPassTwoEmitServiceFail:",
+            "BSR.W opforgeNativeCliStatementLooksBareColumnOne",
+            "BNE.W opforgeNativeCliPassTwoEmitOk",
         ]
     ));
     assert!(!source.contains("opforgeNativeCliSelectorEvaluateOperandV1"));
@@ -11123,9 +11119,19 @@ fn item6_collect_fixture_rows(
     cpu_id: &str,
     source: &str,
 ) -> Item6MosFixturePlan {
+    item6_collect_fixture_rows_with_initial_pc(model, fixture, cpu_id, source, 0)
+}
+
+fn item6_collect_fixture_rows_with_initial_pc(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    fixture: &str,
+    cpu_id: &str,
+    source: &str,
+    initial_pc: u32,
+) -> Item6MosFixturePlan {
     let mut rows = Vec::new();
     let mut labels = HashMap::new();
-    let mut pc = 0u32;
+    let mut pc = initial_pc;
 
     for (idx, line) in source.lines().enumerate() {
         let line_num = u32::try_from(idx + 1).expect("fixture line number fits u32");
@@ -11337,7 +11343,18 @@ fn item6_rust_fixture_bin_bytes(
     fixture: &str,
     source: &str,
 ) -> Vec<u8> {
-    let fixture_plan = item6_collect_fixture_rows(model, fixture, cpu_id, source);
+    item6_rust_fixture_bin_bytes_with_initial_pc(model, cpu_id, fixture, source, 0)
+}
+
+fn item6_rust_fixture_bin_bytes_with_initial_pc(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    cpu_id: &str,
+    fixture: &str,
+    source: &str,
+    initial_pc: u32,
+) -> Vec<u8> {
+    let fixture_plan =
+        item6_collect_fixture_rows_with_initial_pc(model, fixture, cpu_id, source, initial_pc);
     assert!(
         !fixture_plan.rows.is_empty(),
         "Item 6.7 Rust fixture {fixture} must contain instruction rows"
@@ -11362,6 +11379,51 @@ fn item6_rust_fixture_bin_bytes(
     }
     vm::vm_opasm::build_bin_output_payload(&image, start, end, 0xff)
         .unwrap_or_else(|err| panic!("build Rust Item 6.7 bin payload for {fixture}: {err}"))
+}
+
+fn item6_rust_fixture_native_cli_flat_bytes_with_initial_pc(
+    model: &vm::vm_opasm::HierarchyExecutionModel,
+    cpu_id: &str,
+    fixture: &str,
+    source: &str,
+    initial_pc: u32,
+) -> Vec<u8> {
+    let fixture_plan =
+        item6_collect_fixture_rows_with_initial_pc(model, fixture, cpu_id, source, initial_pc);
+    assert!(
+        !fixture_plan.rows.is_empty(),
+        "Item 6 FS-UAE fixture {fixture} must contain instruction rows"
+    );
+    item6_rust_fixture_bytes(
+        model,
+        cpu_id,
+        fixture_plan.rows.as_slice(),
+        &fixture_plan.labels,
+    )
+    .into_iter()
+    .flat_map(|(_row, bytes)| bytes)
+    .collect()
+}
+
+fn item6_source_without_native_cli_setup_directives(source: &str) -> String {
+    let mut stripped = String::new();
+    for line in source.lines() {
+        let statement = line
+            .split_once(';')
+            .map_or(line, |(statement, _)| statement)
+            .trim_start()
+            .to_ascii_lowercase();
+        let is_native_setup = [".cpu", ".org"].iter().any(|directive| {
+            statement.strip_prefix(directive).is_some_and(|rest| {
+                rest.is_empty() || rest.chars().next().is_some_and(char::is_whitespace)
+            })
+        });
+        if !is_native_setup {
+            stripped.push_str(line);
+            stripped.push('\n');
+        }
+    }
+    stripped
 }
 
 fn item6_native_cli_fixture_bin_bytes(
@@ -11744,11 +11806,21 @@ fn motorola68020_item6_2_native_cli_preserves_parser_spans_for_selected_requests
             "opforgeNativeCliPrepareEncodeSelectedBuildRequest:",
             "BSR.W opforgeNativeCliLoadStatementExprMetadata",
             "TST.W nativeCliStmtExprFound",
-            "BNE.S opforgeNativeCliPrepareEncodeSelectedSourceLineRequest",
+            "BNE.W opforgeNativeCliPrepareEncodeSelectedMaybeSourceLineRequest",
+            "opforgeNativeCliPrepareEncodeSelectedSyntheticRequest:",
             "BSR.W opforgeNativeCliClearStatementExprSpanForSyntheticRequest",
             "BSR.W opforgeNativeCliPrepareEvaluateExpressionRequest",
+            "opforgeNativeCliPrepareEncodeSelectedMaybeSourceLineRequest:",
+            "TST.L D4",
+            "BNE.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
+            "CMP.L D2, D3",
+            "BLS.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
             "opforgeNativeCliPrepareEncodeSelectedSourceLineRequest:",
             "BSR.W opforgeNativeCliLoadStatementSourceLineText",
+            "TST.L D0",
+            "BEQ.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
+            "BHS.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
+            "BHI.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
             "BSR.W opforgeNativeCliPrepareEvaluateExpressionRequest",
         ],
     ));
@@ -11845,7 +11917,7 @@ fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
             "cmpi.l #-128, d3",
             "cmpi.l #127, d3",
             "moveq #1, d6",
-            "bra.s buildOperand",
+            "bra.w buildOperand",
         ],
     ));
 }
@@ -12572,6 +12644,7 @@ fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
     );
 
     assert!(source.contains(".module opasm.amigaos.engine"));
+    assert!(source.contains("NATIVE_STATEMENT_TABLE_CAPACITY = 160"));
     assert!(source.contains("opasmEngineRunTwoPassV1\t.block"));
     assert!(source_contains_in_order(
         &source,
@@ -12779,80 +12852,18 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
 }
 
 #[test]
-fn motorola68020_opasm_selector_stage_module_owns_native_subset_policy() {
+fn motorola68020_opasm_selector_stage_module_removed_after_package_backed_cli() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_selector_stage.asm");
-    let source = opasm_amigaos_source("opasm_selector_stage.asm");
+    let cli = opforge_amigaos_source("opforge_cli.asm");
 
-    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
-        .expect("opasm selector stage module should parse");
     assert!(
-        entries.is_empty(),
-        "opasm selector stage module should not emit output entries"
+        !asm_path.exists(),
+        "obsolete native opasm selector-stage module must stay removed"
     );
-    assert!(
-        diagnostics.is_empty(),
-        "unexpected diagnostics while parsing opasm selector stage: {diagnostics:?}"
-    );
-
-    assert!(source.contains(".module opasm.amigaos.selector_stage"));
-    assert!(source.contains("opasmSelectorStageBuildEncodeRequestV1"));
-    assert!(source.contains("opasmSelectorStageInstructionSizeV1"));
-    assert!(
-        source.contains("long 1: operand-evaluation callback pointer returning D3=value and D5=1")
-    );
-    assert!(source.contains("movea.l (a0), a3"));
-    assert!(source.contains("jsr (a3)"));
-    assert!(!source.contains("opasmSelectorParseHex:"));
-    assert!(!source.contains("opasmSelectorParseDecimal:"));
-    assert!(source.contains("OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC"));
-    assert!(source.contains("OPASM_SELECTOR_STATUS_UNSUPPORTED_ADDRESS"));
-    assert!(source.contains("OPASM_SELECTOR_STATUS_OPERAND_ERROR"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opasmSelectorStageBuildEncodeRequestV1",
-            "LEA opasmSelectorLdaText, A1",
-            "BNE.W buildLda",
-            "LEA opasmSelectorStaText, A1",
-            "BNE.W buildSta",
-            "LEA opasmSelectorJmpText, A1",
-            "BNE.W buildJmp",
-            "MOVEQ #OPASM_SELECTOR_STATUS_UNKNOWN_MNEMONIC, D0",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &["splitIndexedOperand", ".block"]
-    ));
-    assert!(source_contains_in_order(&source, &["textEquals", ".block"]));
-    assert!(source_contains_in_order(
-        &source,
-        &["copyFixedString", ".block"]
-    ));
-    assert!(!source.contains("opasmSelectorSplitIndexedOperand"));
-    assert!(source.contains("OpasmSelectorZeroPageText"));
-    assert!(source.contains("OpasmSelectorZeroPageXText"));
-    assert!(source.contains("OpasmSelectorAbsoluteXText"));
-    assert!(source.contains("OpasmSelectorAbsoluteYText"));
-    assert!(source.contains("operand-evaluation callback pointer returning D3=value and D5=1"));
-    assert!(source.contains("tst.l d5"));
-    assert!(source_contains_in_order(
-        &source,
-        &["trimTailLoop", "tailReady", "findComma", "MOVEA.L A1, A0",]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "buildPayload",
-            "MOVE.B D6, (A2)+",
-            "MOVE.B #1, (A2)+",
-            "MOVE.B D4, (A2)+",
-            "MOVE.B #1, (A2)+",
-            "MOVE.B D5, (A2)+",
-            "MOVE.B D3, (A2)+",
-        ]
-    ));
+    assert!(!cli.contains(".use opasm.amigaos.selector_stage"));
+    assert!(!cli.contains("opasmSelectorStageBuildEncodeRequestV1"));
+    assert!(!cli.contains("opasmSelectorStageInstructionSizeV1"));
 }
 
 #[test]
@@ -13111,13 +13122,6 @@ fn opforge_amigaos_source(file_name: &str) -> String {
         "native/motorola68000/amigaos/opforge-cli/{file_name}"
     ));
     let source = fs::read_to_string(&asm_path).expect("read opForge AmigaOS source");
-    format_tokvm_asm_fragment(&source)
-}
-
-fn opasm_amigaos_source(file_name: &str) -> String {
-    let repo_root = workspace_root();
-    let asm_path = repo_root.join(format!("native/motorola68000/amigaos/opasm/{file_name}"));
-    let source = fs::read_to_string(&asm_path).expect("read opasm AmigaOS source");
     format_tokvm_asm_fragment(&source)
 }
 
@@ -14838,7 +14842,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "move.l d6, -(sp)\n\tmoveq #0, d4\n\tmove.w d6, d4\n\tmoveq #0, d5\n\tmove.w d7, d5\n\tmoveq #0, d6\n\tmove.w opasmEngineSessionPass, d6\n\tlea opasmEngineLabelFinalizedTable.l, a6\n\tjsr opcoreExvmEvalOperandV1"
+        "move.l d6, -(sp)\n\tmoveq #0, d4\n\tmove.w d6, d4\n\tmoveq #0, d5\n\tmove.w d7, d5\n\tmoveq #0, d6\n\tmove.w opasmEngineSessionPass.l, d6\n\tlea opasmEngineLabelFinalizedTable.l, a6\n\tjsr opcoreExvmEvalOperandV1"
     ));
     assert!(source.contains("movea.l a3, a5"));
     assert!(source.contains("move.l d3, TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF(a5)"));
@@ -15070,8 +15074,29 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
 
 #[test]
 fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
-    let service = tkpkg_amigaos_source("tkpkg_service.asm");
-    let cli = opforge_amigaos_source("opforge_cli.asm");
+    fn collect_asm_sources(root: &Path, sources: &mut Vec<(PathBuf, String)>) {
+        for entry in fs::read_dir(root)
+            .unwrap_or_else(|err| panic!("read native source directory {}: {err}", root.display()))
+            .filter_map(Result::ok)
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_asm_sources(path.as_path(), sources);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("asm") {
+                let source = fs::read_to_string(path.as_path())
+                    .unwrap_or_else(|err| panic!("read native source {}: {err}", path.display()));
+                sources.push((path, source));
+            }
+        }
+    }
+
+    let native_root = workspace_root().join("native/motorola68000/amigaos");
+    let mut native_sources = Vec::new();
+    collect_asm_sources(native_root.as_path(), &mut native_sources);
+    assert!(
+        !native_sources.is_empty(),
+        "Item 6 native hardcode audit must scan native AmigaOS assembly sources"
+    );
 
     for forbidden in [
         "OpasmSelectorIndexedIndirectXText",
@@ -15085,7 +15110,6 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         "TkpkgDirectIndirectText",
         "TkpkgDirect",
         "tkpkgEncodeDirect6502EnvelopeV1",
-        "TkpkgMselShape",
         "tkpkgMselClassifyOperandV1",
         "trimIndexedIndirect",
         "checkIndirectIndexedY",
@@ -15102,11 +15126,16 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         "MOVE.W #$00A1,D5",
         "MOVE.W #$00B1,D5",
     ] {
-        assert!(
-            !service.contains(forbidden) && !cli.contains(forbidden),
-            "Item 6 must stay package-backed and not add native m6502 hardcode `{forbidden}`"
-        );
+        for (path, source) in &native_sources {
+            assert!(
+                !source.contains(forbidden),
+                "Item 6 must stay package-backed and not add native m6502 hardcode `{forbidden}` in {}",
+                path.display()
+            );
+        }
     }
+
+    let service = tkpkg_amigaos_source("tkpkg_service.asm");
 
     assert!(service.contains("tkpkgEncodeFindAndExecuteTableProgram"));
     assert!(service.contains("TablChunkOffsetLo"));
@@ -15129,10 +15158,11 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
     assert!(source_contains_in_order(
         &service,
         &[
-            "tst.w EncodeSelectedMselShapeLen",
-            "beq.w noOutput",
-            "tst.l EncodeSelectedMselShapePtr",
             "lea MselChunkOffsetLo, a3",
+            "move.l a1, EncodeSelectedCurrentShapePtr",
+            "tst.w EncodeSelectedMselShapeLen",
+            "beq.s skipShapeCompare",
+            "bsr.w tkpkgMselTryBuildCandidateV1",
         ]
     ));
     assert!(source_contains_in_order(
@@ -15224,7 +15254,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "parseRequestV1\t.block\n        LEA PendingFamilyOffsetLo, A3\n        MOVEQ #29, D0"
+        "parseRequestV1\t.block\n        LEA PendingFamilyOffsetLo, A3\n        MOVEQ #36, D0"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -15438,18 +15468,18 @@ fn motorola68020_tkpkg_rejects_over_capacity_active_identifiers_before_copying()
             "lea ActiveCpuBuffer.l, a2",
             "bsr.w copyLocatorToBufferV1",
             "tst.b d0",
-            "bne.s commitDone",
+            "bne.w commitDone",
         ]
     ));
     assert!(normalized_pipeline.contains(
         normalize_tkpkg_fragment(
-            "lea PendingDialectOffsetLo, a3\n        lea ActiveDialectBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.s commitDone"
+            "lea PendingDialectOffsetLo, a3\n        lea ActiveDialectBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.w commitDone"
         )
         .as_str()
     ));
     assert!(normalized_pipeline.contains(
         normalize_tkpkg_fragment(
-            "lea PendingFamilyOffsetLo, a3\n        lea ActiveFamilyBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.s commitDone"
+            "lea PendingFamilyOffsetLo, a3\n        lea ActiveFamilyBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.w commitDone"
         )
         .as_str()
     ));
@@ -30961,6 +30991,95 @@ fn external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin() {
                 output_path.display(),
                 run.artifact_dir.display()
             );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let model = load_opasm_model_from_package_bytes(package_bytes.as_slice());
+    let mut staged_fixtures = Vec::new();
+    for (fixture, cpu_id) in item6_mos_fixture_allowlist() {
+        let source =
+            fs::read_to_string(repo_root.join(fixture)).expect("read Item 6 FS-UAE MOS fixture");
+        let stripped_source = item6_source_without_native_cli_setup_directives(source.as_str());
+        let rust_bin = item6_rust_fixture_native_cli_flat_bytes_with_initial_pc(
+            &model,
+            cpu_id,
+            fixture,
+            stripped_source.as_str(),
+            0x0800,
+        );
+        staged_fixtures.push((fixture, cpu_id, stripped_source, rust_bin));
+    }
+
+    let cases = staged_fixtures
+        .iter()
+        .map(|(fixture, cpu_id, stripped_source, _rust_bin)| {
+            crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+                name: fixture,
+                cpu_id,
+                source: stripped_source.as_bytes(),
+                package_bytes: package_bytes.as_slice(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("native opForge CLI Item 6 fixture FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                staged_fixtures.len(),
+                "expected one native opForge CLI output run per Item 6 fixture"
+            );
+            for ((fixture, cpu_id, _stripped_source, rust_bin), run) in
+                staged_fixtures.iter().zip(runs.iter())
+            {
+                assert!(
+                    run.success,
+                    "native opForge CLI Item 6 fixture {fixture} failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr,
+                );
+                assert!(
+                    run.stdout.contains("STATUS output-ok"),
+                    "native opForge CLI Item 6 fixture {fixture} did not report flat-output success\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr,
+                );
+                let output_path = run
+                    .artifact_dir
+                    .join("Work")
+                    .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+                let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                    panic!(
+                        "read native CLI Item 6 output {}: {err}",
+                        output_path.display()
+                    )
+                });
+                println!(
+                    "FS-UAE Item 6 stripped fixture {fixture} ({cpu_id})\nrust bin: {}\nnative bin: {}",
+                    item6_hex_bytes(rust_bin.as_slice()),
+                    item6_hex_bytes(native_bin.as_slice())
+                );
+                assert_eq!(
+                    native_bin, *rust_bin,
+                    "FS-UAE Item 6 stripped fixture byte mismatch for {fixture}"
+                );
+            }
         }
     }
 }

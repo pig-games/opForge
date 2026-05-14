@@ -34,43 +34,7 @@ EXPRVM_BINARY_SUBTRACT          = 7
 OPCORE_EXPRVM_STACK_CAPACITY    = 8
 
 	.section code, kind=code
-
-; ---------------------------------------------------------------------------
-; Evaluate one scalar operand expression through the native EXVM default path.
-;
-; opcoreExprEvalOperandV1 is the compatibility entry used by the current
-; native selector/pass code. It now runs the same EXVM default program shape as
-; the Rust path (`ParseExpression`, `End`) by compiling the current native
-; scalar subset into ExprVM bytecode and then executing the ExprVM evaluator.
-;
-; Supported input forms:
-; - optional immediate prefix '#'
-; - '$' and '0x' prefixed hexadecimal numbers
-; - '%' prefixed binary numbers
-; - decimal numbers
-; - unary '+' and '-'
-; - additive/subtractive expressions over scalar terms
-; - '$' current-address terms matching the portable VM syntax
-; - '*' current-address terms accepted as compatibility syntax
-; - labels resolved through the caller-supplied label tables
-;
-; Inputs:
-; - A0/D0: operand text pointer and byte length.
-; - A1: fixed-width label-name table pointer.
-; - A2: label-value table pointer parallel to A1.
-; - D1: number of label entries.
-; - D2: current assembly PC for '$' current-address terms.
-; - D4: EXVM parser opcode version.
-; - D5: expression evaluator opcode version (1 or 2).
-; - D6: current assembler pass number.
-;
-; Outputs:
-; - D0: 0 on success, 1 on parse/lookup failure.
-; - D3: resolved scalar value on success.
-; - D4: nonzero when the evaluated program referenced at least one symbol.
-; - D5: nonzero when the evaluated program referenced a symbol that is
-;   unstable for the current pass.
-; ---------------------------------------------------------------------------
+	.pub
 
 ; ---------------------------------------------------------------------------
 ; Evaluate one portable ExprVM bytecode program for the native 6502 scalar
@@ -90,8 +54,6 @@ OPCORE_EXPRVM_STACK_CAPACITY    = 8
 ; - D5: nonzero when the program referenced a symbol that is unstable for the
 ;   current pass.
 ; ---------------------------------------------------------------------------
-
-	.pub
 opcoreExprvmEvalProgramV1	.block
 	movem.l d1-d2/d6-d7/a0-a6, -(sp)
 	movea.l a1, a3
@@ -430,6 +392,42 @@ fail
 	rts
 	.bend  ; readI64Low32
 
+; ---------------------------------------------------------------------------
+; Evaluate one scalar operand expression through the native EXVM default path.
+;
+; opcoreExprEvalOperandV1 is the compatibility entry used by the current
+; native selector/pass code. It now runs the same EXVM default program shape as
+; the Rust path (`ParseExpression`, `End`) by compiling the current native
+; scalar subset into ExprVM bytecode and then executing the ExprVM evaluator.
+;
+; Supported input forms:
+; - optional immediate prefix '#'
+; - '$' and '0x' prefixed hexadecimal numbers
+; - '%' prefixed binary numbers
+; - decimal numbers
+; - unary '+' and '-'
+; - additive/subtractive expressions over scalar terms
+; - '$' current-address terms matching the portable VM syntax
+; - '*' current-address terms accepted as compatibility syntax
+; - labels resolved through the caller-supplied label tables
+;
+; Inputs:
+; - A0/D0: operand text pointer and byte length.
+; - A1: fixed-width label-name table pointer.
+; - A2: label-value table pointer parallel to A1.
+; - D1: number of label entries.
+; - D2: current assembly PC for '$' current-address terms.
+; - D4: EXVM parser opcode version.
+; - D5: expression evaluator opcode version (1 or 2).
+; - D6: current assembler pass number.
+;
+; Outputs:
+; - D0: 0 on success, 1 on parse/lookup failure.
+; - D3: resolved scalar value on success.
+; - D4: nonzero when the evaluated program referenced at least one symbol.
+; - D5: nonzero when the evaluated program referenced a symbol that is
+;   unstable for the current pass.
+; ---------------------------------------------------------------------------
 opcoreExprEvalOperandV1	.block
 	moveq #1, d4
 	bra.w opcoreExvmEvalOperandV1
@@ -444,6 +442,7 @@ opcoreExvmEvalOperandV1	.block
 
 selectedVersionReady
 	move.w d5, OpcoreExprVmSelectedOpcodeVersion
+	clr.l d5
 	move.w d6, OpcoreExprVmCurrentPass
 	movea.l a1, a3  ; label-name table base kept stable across parse helpers
 	movea.l a2, a4  ; label-value table base kept stable across parse helpers

@@ -17,6 +17,7 @@
 	.use tkpkg.amigaos.buffers (controlBlockV1, lastErrorBuffer, packageStorage)
 	.use tkpkg.amigaos.buffers (tokenRecordBuffer, tokenScratchBuffer)
 	.use tkpkg.amigaos.buffers (lastTokenCount, lastLexemeLen, TOKEN_RECORD_SIZE)
+	.use tkpkg.amigaos.buffers (ActiveParserVmOffsetLo)
 	.use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
@@ -78,7 +79,7 @@ NATIVE_MODULE_TABLE_CAPACITY    = 16
 NATIVE_IMPORT_TABLE_CAPACITY    = 32
 NATIVE_MODULE_PATH_CAPACITY     = 8
 NATIVE_IMPORT_SELECT_CAPACITY   = 64
-NATIVE_STATEMENT_TABLE_CAPACITY = 16
+NATIVE_STATEMENT_TABLE_CAPACITY = 160
 NATIVE_LABEL_TABLE_CAPACITY     = 16
 NATIVE_IMAGE_BUFFER_CAPACITY    = 4096
 NATIVE_OPASM_ENGINE_CONTEXT_LONGS = 10
@@ -108,9 +109,8 @@ PRVM_RESULT_MNEMONIC_TEXT       = 3
 PRVM_RESULT_OPERAND_EXPR_SLOT   = 4
 PRVM_RESULT_DIRECTIVE_TEXT      = 6
 PRVM_RESULT_OPERAND_TEXT        = 7
-OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN = 46
 NATIVE_TOKEN_RECORD_SIZE        = 20
-NATIVE_EVAL_EXPR_EXTENSION_BYTES = 20
+NATIVE_EVAL_EXPR_EXTENSION_BYTES = 24
 NATIVE_EVAL_EXPR_EXTENSION_PTR_V1 = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY - NATIVE_EVAL_EXPR_EXTENSION_BYTES
 TK_KIND_IDENTIFIER              = 0
 NCLI_PARSER_DIRECTIVE_NONE      = 0
@@ -777,6 +777,8 @@ opforgeNativeCliDispatchParseLineUntilReadyDone
 ; Copy the PRVM route frame into the tkpkg control-block input window.
 opforgeNativeCliPrepareParseLineServiceRequest
 	bsr.w opforgeNativeCliBuildPrvmRouteFrame
+	tst.l d0
+	bne.s opforgeNativeCliPrepareParseLineServiceRequestDone
 
 opforgeNativeCliWritePrvmRouteFrameInput
 	lea OpforgeNativeCliPrvmRouteFrame, a1
@@ -785,6 +787,8 @@ opforgeNativeCliWritePrvmRouteFrameInput
 	bsr.w opforgeNativeCliCopyBytes
 	move.w #PRVM_ROUTE_FRAME_SIZE, NativeCliLineRequestLen
 	moveq #0, d0
+
+opforgeNativeCliPrepareParseLineServiceRequestDone
 	rts
 
 ; Build the minimal encode request envelope used by the early tkpkg encoder.
@@ -833,14 +837,14 @@ opforgeNativeCliPrepareEncodeSelectedRequestForStatement
 	lea opasmEngineStmtMnemLenTable.l, a1
 	moveq #0, d6
 	move.w 0(a1, d0.l), d6
-	bne.s opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
+	bne.w opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
 	movea.l a2, a0
 	bsr.w opforgeNativeCliTokenLen
 	move.w d0, d6
 
 opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
 	tst.w d6
-	beq.s opforgeNativeCliPrepareEncodeSelectedFail
+	beq.w opforgeNativeCliPrepareEncodeSelectedFail
 	move.l a2, NativeCliStmtMnemStart
 	move.l d6, NativeCliStmtMnemLen
 	moveq #0, d0
@@ -849,7 +853,6 @@ opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
 	lea opasmEngineStmtOperandLenTable.l, a0
 	moveq #0, d1
 	move.w 0(a0, d0.l), d1
-	beq.s opforgeNativeCliPrepareEncodeSelectedFail
 	moveq #0, d0
 	move.w d7, d0
 	lsl.l #6, d0
@@ -862,19 +865,39 @@ opforgeNativeCliPrepareEncodeSelectedBuildRequest
 	move.l d1, d4
 	bsr.w opforgeNativeCliLoadStatementExprMetadata
 	tst.w NativeCliStmtExprFound
-	bne.s opforgeNativeCliPrepareEncodeSelectedSourceLineRequest
+	bne.w opforgeNativeCliPrepareEncodeSelectedMaybeSourceLineRequest
+
+opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
 	bsr.w opforgeNativeCliClearStatementExprSpanForSyntheticRequest
 	movea.l d3, a0
 	move.l d4, d0
 	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
-	bra.s opforgeNativeCliPrepareEncodeSelectedReturn
+	bra.w opforgeNativeCliPrepareEncodeSelectedReturn
+
+opforgeNativeCliPrepareEncodeSelectedMaybeSourceLineRequest
+	tst.l d4
+	bne.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	move.l NativeCliStmtExprSpanStart, d2
+	move.l NativeCliStmtExprSpanEnd, d3
+	cmp.l d2, d3
+	bls.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
 
 opforgeNativeCliPrepareEncodeSelectedSourceLineRequest
 	bsr.w opforgeNativeCliLoadStatementSourceLineText
 	tst.l d0
-	beq.s opforgeNativeCliPrepareEncodeSelectedFail
+	beq.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	move.l d0, d1
+	move.l d2, d0
+	subq.l #1, d0
+	cmp.l d1, d0
+	bhs.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	move.l d3, d0
+	subq.l #1, d0
+	cmp.l d1, d0
+	bhi.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	move.l d1, d0
 	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
-	bra.s opforgeNativeCliPrepareEncodeSelectedReturn
+	bra.w opforgeNativeCliPrepareEncodeSelectedReturn
 
 opforgeNativeCliPrepareEncodeSelectedFail
 	moveq #1, d0
@@ -923,6 +946,13 @@ opforgeNativeCliPrepareEvalHaveLineNum
 	bra.s opforgeNativeCliPrepareEvalWriteSpan
 
 opforgeNativeCliPrepareEvalSyntheticSpan
+	tst.l d6
+	bne.s opforgeNativeCliPrepareEvalSyntheticNonEmptySpan
+	clr.l d2
+	clr.l d3
+	bra.s opforgeNativeCliPrepareEvalWriteSpan
+
+opforgeNativeCliPrepareEvalSyntheticNonEmptySpan
 	moveq #1, d2
 	move.l d6, d3
 	addq.l #1, d3
@@ -966,6 +996,7 @@ opforgeNativeCliPrepareEvalReturn
 
 ; Write optional label/PC context for tkpkg evaluate-expression requests.
 opforgeNativeCliPrepareEvaluateExpressionExtension
+	movem.l d1-d7/a0-a2, -(sp)
 	lea ControlBlockV1, a1
 	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a1
 	move.l #opasmEngineLabelNameTable, (a1)+
@@ -975,7 +1006,268 @@ opforgeNativeCliPrepareEvaluateExpressionExtension
 	move.l d0, (a1)+
 	move.l opasmEngineSessionCurrentPc.l, (a1)+
 	clr.l (a1)
+	clr.l 4(a1)
+	bsr.w opforgeNativeCliInferSelectedShapeForEvalRequest
+	tst.w d0
+	beq.s opforgeNativeCliPrepareEvaluateExpressionExtensionDone
+	move.l a0, (a1)
+	move.l d0, 4(a1)
+
+opforgeNativeCliPrepareEvaluateExpressionExtensionDone
 	moveq #0, d0
+	movem.l (sp)+, d1-d7/a0-a2
+	rts
+
+opforgeNativeCliInferSelectedShapeForEvalRequest
+	movem.l d1-d7/a1-a2, -(sp)
+	lea lastErrorBuffer, a0
+	moveq #0, d0
+	move.b 8(a0), d0
+	movea.l a0, a2
+	bsr.w opforgeNativeCliInferSelectedShapeBranchMnemonic
+	tst.l d0
+	bne.w opforgeNativeCliInferSelectedShapeDirect
+	movea.l a2, a0
+	moveq #0, d0
+	move.b 8(a0), d0
+	moveq #0, d2
+	move.w NativeCliEvalRequestLen.l, d2
+	subi.w #9, d2
+	bcs.w opforgeNativeCliInferSelectedShapeNone
+	sub.w d0, d2
+	bcs.w opforgeNativeCliInferSelectedShapeNone
+	lea 9(a0, d0.w), a0
+
+opforgeNativeCliInferSelectedShapeTrimLeading
+	tst.w d2
+	beq.w opforgeNativeCliInferSelectedShapeNone
+	move.b (a0), d3
+	cmpi.b #' ', d3
+	beq.s opforgeNativeCliInferSelectedShapeTrimLeadingOne
+	cmpi.b #9, d3
+	bne.s opforgeNativeCliInferSelectedShapeTrimTrailing
+
+opforgeNativeCliInferSelectedShapeTrimLeadingOne
+	addq.l #1, a0
+	subq.w #1, d2
+	bra.s opforgeNativeCliInferSelectedShapeTrimLeading
+
+opforgeNativeCliInferSelectedShapeTrimTrailing
+	tst.w d2
+	beq.w opforgeNativeCliInferSelectedShapeNone
+	move.w d2, d4
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	cmpi.b #' ', d3
+	beq.s opforgeNativeCliInferSelectedShapeTrimTrailingOne
+	cmpi.b #9, d3
+	bne.s opforgeNativeCliInferSelectedShapeReady
+
+opforgeNativeCliInferSelectedShapeTrimTrailingOne
+	subq.w #1, d2
+	bra.s opforgeNativeCliInferSelectedShapeTrimTrailing
+
+opforgeNativeCliInferSelectedShapeReady
+	cmpi.w #1, d2
+	bne.s opforgeNativeCliInferSelectedShapeCheckPrefix
+	move.b (a0), d3
+	ori.b #$20, d3
+	cmpi.b #'a', d3
+	beq.w opforgeNativeCliInferSelectedShapeAccumulator
+
+opforgeNativeCliInferSelectedShapeCheckPrefix
+	move.b (a0), d3
+	cmpi.b #'#', d3
+	beq.w opforgeNativeCliInferSelectedShapeImmediate
+	cmpi.b #'(', d3
+	beq.w opforgeNativeCliInferSelectedShapeParen
+	bsr.w opforgeNativeCliInferSelectedShapeSuffix
+	cmpi.b #'x', d0
+	beq.w opforgeNativeCliInferSelectedShapeDirectX
+	cmpi.b #'y', d0
+	beq.w opforgeNativeCliInferSelectedShapeDirectY
+	bra.w opforgeNativeCliInferSelectedShapeDirect
+
+opforgeNativeCliInferSelectedShapeParen
+	bsr.w opforgeNativeCliInferSelectedShapeSuffix
+	cmpi.b #'y', d0
+	beq.w opforgeNativeCliInferSelectedShapeIndirectIndexedY
+	move.w d2, d4
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	cmpi.b #')', d3
+	bne.w opforgeNativeCliInferSelectedShapeIndirect
+	cmpi.w #4, d2
+	bcs.w opforgeNativeCliInferSelectedShapeIndirect
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	ori.b #$20, d3
+	cmpi.b #'x', d3
+	bne.w opforgeNativeCliInferSelectedShapeIndirect
+	tst.w d4
+	beq.w opforgeNativeCliInferSelectedShapeIndirect
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	cmpi.b #',', d3
+	beq.w opforgeNativeCliInferSelectedShapeIndexedIndirectX
+	bra.w opforgeNativeCliInferSelectedShapeIndirect
+
+opforgeNativeCliInferSelectedShapeSuffix
+	moveq #0, d0
+	cmpi.w #3, d2
+	bcs.s opforgeNativeCliInferSelectedShapeSuffixReturn
+	move.w d2, d4
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	ori.b #$20, d3
+	cmpi.b #'x', d3
+	beq.s opforgeNativeCliInferSelectedShapeSuffixMaybe
+	cmpi.b #'y', d3
+	bne.s opforgeNativeCliInferSelectedShapeSuffixReturn
+
+opforgeNativeCliInferSelectedShapeSuffixMaybe
+	move.b d3, d0
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	cmpi.b #',', d3
+	beq.s opforgeNativeCliInferSelectedShapeSuffixReturn
+	moveq #0, d0
+
+opforgeNativeCliInferSelectedShapeSuffixReturn
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchMnemonic
+	cmpi.w #3, d0
+	beq.s opforgeNativeCliInferSelectedShapeBranchLenOk
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchLenOk
+	lea 9(a2), a1
+	move.b (a1)+, d1
+	ori.b #$20, d1
+	cmpi.b #'b', d1
+	beq.s opforgeNativeCliInferSelectedShapeBranchHaveB
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchHaveB
+	move.b (a1)+, d1
+	move.b (a1), d2
+	ori.b #$20, d1
+	ori.b #$20, d2
+	cmpi.b #'c', d1
+	beq.s opforgeNativeCliInferSelectedShapeBranchCheckC
+	cmpi.b #'e', d1
+	beq.s opforgeNativeCliInferSelectedShapeBranchCheckEq
+	cmpi.b #'n', d1
+	beq.s opforgeNativeCliInferSelectedShapeBranchCheckNe
+	cmpi.b #'m', d1
+	beq.s opforgeNativeCliInferSelectedShapeBranchCheckMi
+	cmpi.b #'p', d1
+	beq.s opforgeNativeCliInferSelectedShapeBranchCheckPl
+	cmpi.b #'v', d1
+	beq.s opforgeNativeCliInferSelectedShapeBranchCheckV
+	cmpi.b #'r', d1
+	beq.s opforgeNativeCliInferSelectedShapeBranchCheckRa
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchCheckC
+	cmpi.b #'c', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	cmpi.b #'s', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchCheckEq
+	cmpi.b #'q', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchCheckNe
+	cmpi.b #'e', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchCheckMi
+	cmpi.b #'i', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchCheckPl
+	cmpi.b #'l', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchCheckV
+	cmpi.b #'c', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	cmpi.b #'s', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchCheckRa
+	cmpi.b #'a', d2
+	beq.s opforgeNativeCliInferSelectedShapeBranchYes
+	moveq #0, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeBranchYes
+	moveq #1, d0
+	rts
+
+opforgeNativeCliInferSelectedShapeAccumulator
+	lea NativeCliSelectedShapeAccumulatorText, a0
+	moveq #11, d0
+	bra.s opforgeNativeCliInferSelectedShapeReturn
+
+opforgeNativeCliInferSelectedShapeImmediate
+	lea NativeCliSelectedShapeImmediateText, a0
+	moveq #9, d0
+	bra.s opforgeNativeCliInferSelectedShapeReturn
+
+opforgeNativeCliInferSelectedShapeDirect
+	lea NativeCliSelectedShapeDirectText, a0
+	moveq #6, d0
+	bra.s opforgeNativeCliInferSelectedShapeReturn
+
+opforgeNativeCliInferSelectedShapeDirectX
+	lea NativeCliSelectedShapeDirectXText, a0
+	moveq #8, d0
+	bra.s opforgeNativeCliInferSelectedShapeReturn
+
+opforgeNativeCliInferSelectedShapeDirectY
+	lea NativeCliSelectedShapeDirectYText, a0
+	moveq #8, d0
+	bra.s opforgeNativeCliInferSelectedShapeReturn
+
+opforgeNativeCliInferSelectedShapeIndirect
+	lea NativeCliSelectedShapeIndirectText, a0
+	moveq #8, d0
+	bra.s opforgeNativeCliInferSelectedShapeReturn
+
+opforgeNativeCliInferSelectedShapeIndexedIndirectX
+	lea NativeCliSelectedShapeIndexedIndirectXText, a0
+	moveq #18, d0
+	bra.s opforgeNativeCliInferSelectedShapeReturn
+
+opforgeNativeCliInferSelectedShapeIndirectIndexedY
+	lea NativeCliSelectedShapeIndirectIndexedYText, a0
+	moveq #18, d0
+	bra.s opforgeNativeCliInferSelectedShapeReturn
+
+opforgeNativeCliInferSelectedShapeNone
+	moveq #0, d0
+
+opforgeNativeCliInferSelectedShapeReturn
+	movem.l (sp)+, d1-d7/a1-a2
 	rts
 
 ; Read the signed 32-bit result written by tkpkg evaluate-expression.
@@ -1257,9 +1549,9 @@ opforgeNativeCliBuildPrvmRouteFrame
 	clr.l d0
 	move.w lastLexemeLen, d0
 	move.l d0, 52(a0)
-	lea OpforgeNativeCliPrvmParserProgram, a1
-	move.l a1, 56(a0)
-	move.l #OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN, 60(a0)
+	bsr.w opforgeNativeCliLoadActivePrvmProgram
+	tst.l d0
+	bne.w opforgeNativeCliBuildPrvmRouteFrameDone
 	lea OpforgeNativeCliPrvmResultBuffer, a1
 	movea.l a1, a0
 	move.l #PRVM_ROUTE_RESULT_CAPACITY, d0
@@ -1282,6 +1574,118 @@ opforgeNativeCliBuildPrvmRouteFrame
 	move.l #PRVM_PARSER_CONTRACT_VERSION_V2, 104(a0)
 	move.l #PRVM_ROUTE_STEP_BUDGET, 108(a0)
 	clr.l 112(a0)
+	moveq #0, d0
+
+opforgeNativeCliBuildPrvmRouteFrameDone
+	rts
+
+opforgeNativeCliLoadActivePrvmProgram
+	movem.l d1-d4/a1-a4, -(sp)
+	movea.l a0, a4
+	lea ActiveParserVmOffsetLo, a1
+	moveq #0, d0
+	move.b (a1)+, d0
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.w #8, d1
+	or.w d1, d0
+	moveq #0, d2
+	move.b (a1)+, d2
+	moveq #0, d1
+	move.b (a1)+, d1
+	lsl.w #8, d1
+	or.w d1, d2
+	tst.w d2
+	beq.w opforgeNativeCliLoadActivePrvmProgramFail
+	lea packageStorage, a2
+	lea 0(a2, d0.W), a2
+	movea.l a2, a3
+	adda.l d2, a3
+	moveq #1, d0
+	bsr.w opforgeNativeCliActivePrvmRequireBytes
+	tst.l d0
+	bne.s opforgeNativeCliLoadActivePrvmProgramFail
+	addq.w #1, a2
+	bsr.w opforgeNativeCliActivePrvmReadU32
+	tst.l d1
+	bne.s opforgeNativeCliLoadActivePrvmProgramFail
+	move.l d0, d3
+	bsr.w opforgeNativeCliActivePrvmRequireBytes
+	tst.l d0
+	bne.s opforgeNativeCliLoadActivePrvmProgramFail
+	adda.l d3, a2
+	moveq #2, d0
+	bsr.w opforgeNativeCliActivePrvmRequireBytes
+	tst.l d0
+	bne.s opforgeNativeCliLoadActivePrvmProgramFail
+	moveq #0, d0
+	move.b (a2)+, d0
+	moveq #0, d1
+	move.b (a2)+, d1
+	lsl.w #8, d1
+	or.w d1, d0
+	cmpi.w #PRVM_PARSER_CONTRACT_VERSION_V2, d0
+	bne.s opforgeNativeCliLoadActivePrvmProgramFail
+	bsr.w opforgeNativeCliActivePrvmReadU32
+	tst.l d1
+	bne.s opforgeNativeCliLoadActivePrvmProgramFail
+	tst.l d0
+	beq.s opforgeNativeCliLoadActivePrvmProgramFail
+	move.l d0, d3
+	bsr.w opforgeNativeCliActivePrvmRequireBytes
+	tst.l d0
+	bne.s opforgeNativeCliLoadActivePrvmProgramFail
+	move.l a2, 56(a4)
+	move.l d3, 60(a4)
+	moveq #0, d0
+	bra.s opforgeNativeCliLoadActivePrvmProgramReturn
+
+opforgeNativeCliLoadActivePrvmProgramFail
+	moveq #1, d0
+
+opforgeNativeCliLoadActivePrvmProgramReturn
+	movem.l (sp)+, d1-d4/a1-a4
+	rts
+
+opforgeNativeCliActivePrvmReadU32
+	moveq #4, d0
+	bsr.w opforgeNativeCliActivePrvmRequireBytes
+	tst.l d0
+	bne.s opforgeNativeCliActivePrvmReadU32Fail
+	moveq #0, d0
+	move.b (a2)+, d0
+	moveq #0, d1
+	move.b (a2)+, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a2)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	move.b (a2)+, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	lsl.l #8, d1
+	or.l d1, d0
+	moveq #0, d1
+	rts
+
+opforgeNativeCliActivePrvmReadU32Fail
+	moveq #1, d1
+	rts
+
+opforgeNativeCliActivePrvmRequireBytes
+	movea.l a2, a1
+	adda.l d0, a1
+	cmpa.l a3, a1
+	bhi.s opforgeNativeCliActivePrvmRequireBytesFail
+	moveq #0, d0
+	rts
+
+opforgeNativeCliActivePrvmRequireBytesFail
+	moveq #1, d0
 	rts
 
 opforgeNativeCliParserDirectiveKind
@@ -1371,7 +1775,7 @@ opforgeNativeCliRecordPrvmStatementLine
 	tst.l NativeCliPrvmRouteStatus
 	beq.s opforgeNativeCliRecordPrvmStatementRouteOk
 	cmpi.l #PRVM_STATUS_EXPR_REQUEST, NativeCliPrvmRouteStatus
-	bne.w opforgeNativeCliRecordPrvmStatementDone
+	bne.w opforgeNativeCliRecordPrvmStatementSourceOnly
 
 opforgeNativeCliRecordPrvmStatementRouteOk
 	clr.l NativeCliStmtLabelStart
@@ -1429,8 +1833,54 @@ opforgeNativeCliRecordPrvmStatementFinalize
 	bsr.w opforgeNativeCliRecordPrvmExpressionRequest
 
 opforgeNativeCliRecordPrvmStatementCheckMnemonic
+	tst.l NativeCliStmtLabelLen
+	beq.s opforgeNativeCliRecordPrvmStatementCheckMnemonicFound
 	tst.w NativeCliStmtMnemFound
+	beq.w opforgeNativeCliRecordPrvmStatementMaybeLabelOnly
+	tst.l NativeCliStmtOperandStart
+	bne.s opforgeNativeCliRecordPrvmStatementCheckMnemonicFound
+	move.l NativeCliStmtLabelLen, d0
+	cmp.l NativeCliStmtMnemLen, d0
+	beq.s opforgeNativeCliRecordPrvmStatementClearBareMnem
+	move.l NativeCliStmtLabelStart, d0
+	cmp.l NativeCliStmtMnemStart, d0
+	bne.s opforgeNativeCliRecordPrvmStatementCheckMnemonicFound
+	move.l NativeCliStmtLabelEnd, d0
+	cmp.l NativeCliStmtMnemEnd, d0
+	bne.s opforgeNativeCliRecordPrvmStatementCheckMnemonicFound
+
+opforgeNativeCliRecordPrvmStatementClearBareMnem
+	clr.l NativeCliStmtMnemStart
+	clr.l NativeCliStmtMnemEnd
+	clr.l NativeCliStmtMnemOff
+	clr.l NativeCliStmtMnemLen
+	clr.w NativeCliStmtMnemFound
+	bra.s opforgeNativeCliRecordPrvmStatementMaybeLabelOnly
+
+opforgeNativeCliRecordPrvmStatementCheckMnemonicFound
+	tst.w NativeCliStmtMnemFound
+	beq.s opforgeNativeCliRecordPrvmStatementMaybeLabelOnly
+	tst.l NativeCliStmtOperandStart
+	bne.s opforgeNativeCliRecordPrvmStatementCheckStore
+	tst.l NativeCliStmtLabelLen
+	bne.s opforgeNativeCliRecordPrvmStatementCheckStore
+	clr.l NativeCliStmtMnemStart
+	clr.l NativeCliStmtMnemEnd
+	clr.l NativeCliStmtMnemOff
+	clr.l NativeCliStmtMnemLen
+	clr.w NativeCliStmtMnemFound
+	bra.w opforgeNativeCliRecordPrvmStatementTrySourceFallback
+
+opforgeNativeCliRecordPrvmStatementMaybeLabelOnly
+	tst.l NativeCliStmtLabelLen
+	bne.s opforgeNativeCliRecordPrvmStatementCheckStore
+opforgeNativeCliRecordPrvmStatementTrySourceFallback
+	bsr.w opforgeNativeCliRecordSourceStatementFallback
+	tst.w NativeCliStmtMnemFound
+	bne.s opforgeNativeCliRecordPrvmStatementCheckStore
+	tst.l NativeCliStmtLabelLen
 	beq.w opforgeNativeCliRecordPrvmStatementDone
+opforgeNativeCliRecordPrvmStatementCheckStore
 	move.l NativeCliStmtMnemLen, d0
 	cmp.l #TOKEN_BUFFER_CAPACITY - 1, d0
 	bhi.w opforgeNativeCliRecordPrvmStatementFail
@@ -1448,6 +1898,30 @@ opforgeNativeCliRecordPrvmStatementSkipEmit
 opforgeNativeCliRecordPrvmStatementDone
 	moveq #0, d0
 	bra.w opforgeNativeCliRecordPrvmStatementReturn
+
+opforgeNativeCliRecordPrvmStatementSourceOnly
+	clr.l NativeCliStmtLabelStart
+	clr.l NativeCliStmtLabelEnd
+	clr.l NativeCliStmtLabelOff
+	clr.l NativeCliStmtLabelLen
+	clr.l NativeCliStmtMnemStart
+	clr.l NativeCliStmtMnemEnd
+	clr.l NativeCliStmtMnemOff
+	clr.l NativeCliStmtMnemLen
+	clr.l NativeCliStmtOperandStart
+	clr.l NativeCliStmtOperandEnd
+	clr.l NativeCliStmtExprOperandIndex
+	clr.l NativeCliStmtExprSlotIndex
+	clr.l NativeCliStmtExprStartToken
+	clr.l NativeCliStmtExprEndToken
+	clr.l NativeCliStmtExprSpanLine
+	clr.l NativeCliStmtExprSpanStart
+	clr.l NativeCliStmtExprSpanEnd
+	clr.w NativeCliStmtMnemFound
+	clr.w NativeCliStmtExprFound
+	moveq #NCLI_PARSER_DIRECTIVE_NONE, d0
+	move.w d0, NativeCliStmtDirectiveKind
+	bra.w opforgeNativeCliRecordPrvmStatementTrySourceFallback
 
 opforgeNativeCliRecordPrvmStatementHaveLabel
 	move.l 8(a2), NativeCliStmtLabelStart
@@ -1498,6 +1972,203 @@ opforgeNativeCliRecordPrvmExpressionRequest
 	move.w #1, NativeCliStmtExprFound
 
 opforgeNativeCliRecordPrvmExpressionRequestDone
+	rts
+
+opforgeNativeCliRecordSourceStatementFallback
+	movem.l d0-d7/a0-a3, -(sp)
+	lea NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w NativeCliSourceLineLen, d0
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	tst.l d0
+	beq.w opforgeNativeCliRecordSourceStatementFallbackReturn
+	movea.l a0, a2
+	move.l d0, d2
+	bsr.w opforgeNativeCliFallbackTokenLen
+	tst.w d0
+	beq.w opforgeNativeCliRecordSourceStatementFallbackReturn
+	move.w d0, d3
+	moveq #0, d4
+	move.w NativeCliSourceLineLen, d4
+	sub.w d2, d4
+	addq.w #1, d4
+	movea.l a2, a3
+	adda.w d3, a3
+	move.l d2, d5
+	sub.w d3, d5
+	tst.l d5
+	beq.s opforgeNativeCliRecordSourceStatementFirstToken
+	cmpi.b #':', (a3)
+	beq.s opforgeNativeCliRecordSourceStatementLabelToken
+
+opforgeNativeCliRecordSourceStatementFirstToken
+	cmpi.l #1, d4
+	bne.s opforgeNativeCliRecordSourceStatementFirstTokenMnemonic
+	tst.l d5
+	beq.s opforgeNativeCliRecordSourceStatementBareLabel
+	movea.l a3, a0
+	move.l d5, d0
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	tst.l d0
+	beq.s opforgeNativeCliRecordSourceStatementBareLabel
+	tst.b (a0)
+	beq.s opforgeNativeCliRecordSourceStatementBareLabel
+	cmpi.b #10, (a0)
+	beq.s opforgeNativeCliRecordSourceStatementBareLabel
+	cmpi.b #13, (a0)
+	beq.s opforgeNativeCliRecordSourceStatementBareLabel
+	cmpi.b #';', (a0)
+	beq.s opforgeNativeCliRecordSourceStatementBareLabel
+
+opforgeNativeCliRecordSourceStatementFirstTokenMnemonic
+	bsr.w opforgeNativeCliRecordSourceStatementMnemonic
+	bra.w opforgeNativeCliRecordSourceStatementFallbackReturn
+
+opforgeNativeCliRecordSourceStatementBareLabel
+	move.l d4, NativeCliStmtLabelStart
+	move.l d4, d0
+	add.w d3, d0
+	move.l d0, NativeCliStmtLabelEnd
+	move.l d3, NativeCliStmtLabelLen
+	clr.l NativeCliStmtLabelOff
+	bra.w opforgeNativeCliRecordSourceStatementFallbackReturn
+
+opforgeNativeCliRecordSourceStatementLabelToken
+	move.l d4, NativeCliStmtLabelStart
+	move.l d4, d0
+	add.w d3, d0
+	move.l d0, NativeCliStmtLabelEnd
+	move.l d3, NativeCliStmtLabelLen
+	clr.l NativeCliStmtLabelOff
+	addq.l #1, a3
+	subq.l #1, d5
+	movea.l a3, a0
+	move.l d5, d0
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	tst.l d0
+	beq.w opforgeNativeCliRecordSourceStatementFallbackReturn
+	movea.l a0, a2
+	move.l d0, d2
+	bsr.w opforgeNativeCliFallbackTokenLen
+	tst.w d0
+	beq.w opforgeNativeCliRecordSourceStatementFallbackReturn
+	move.w d0, d3
+	moveq #0, d4
+	move.w NativeCliSourceLineLen, d4
+	sub.w d2, d4
+	addq.w #1, d4
+	bsr.w opforgeNativeCliRecordSourceStatementMnemonic
+	bra.w opforgeNativeCliRecordSourceStatementFallbackReturn
+
+opforgeNativeCliRecordSourceStatementMnemonic
+	move.l d4, NativeCliStmtMnemStart
+	move.l d4, d0
+	add.w d3, d0
+	move.l d0, NativeCliStmtMnemEnd
+	clr.l NativeCliStmtMnemOff
+	move.l d3, NativeCliStmtMnemLen
+	lea tokenScratchBuffer, a1
+	movea.l a2, a0
+	move.w d3, d0
+	bsr.w opforgeNativeCliCopyFixedString
+	clr.b (a1)
+	move.w #1, NativeCliStmtMnemFound
+	movea.l a2, a0
+	adda.w d3, a0
+	move.l d2, d0
+	sub.w d3, d0
+	bsr.w opforgeNativeCliSkipLineWhitespace
+	tst.l d0
+	beq.s opforgeNativeCliRecordSourceStatementMnemonicDone
+	tst.b (a0)
+	beq.s opforgeNativeCliRecordSourceStatementMnemonicDone
+	cmpi.b #10, (a0)
+	beq.s opforgeNativeCliRecordSourceStatementMnemonicDone
+	cmpi.b #13, (a0)
+	beq.s opforgeNativeCliRecordSourceStatementMnemonicDone
+	cmpi.b #';', (a0)
+	beq.s opforgeNativeCliRecordSourceStatementMnemonicDone
+	moveq #0, d5
+	move.w NativeCliSourceLineLen, d5
+	sub.w d0, d5
+	addq.w #1, d5
+	move.l d5, NativeCliStmtOperandStart
+	bsr.w opforgeNativeCliFallbackOperandLen
+	tst.w d0
+	beq.s opforgeNativeCliRecordSourceStatementMnemonicDone
+	add.w d0, d5
+	move.l d5, NativeCliStmtOperandEnd
+
+opforgeNativeCliRecordSourceStatementMnemonicDone
+	rts
+
+opforgeNativeCliFallbackTokenLen
+	movem.l d1-d2/a0, -(sp)
+	moveq #0, d1
+
+opforgeNativeCliFallbackTokenLenLoop
+	tst.l d0
+	beq.s opforgeNativeCliFallbackTokenLenDone
+	move.b (a0), d2
+	tst.b d2
+	beq.s opforgeNativeCliFallbackTokenLenDone
+	cmpi.b #10, d2
+	beq.s opforgeNativeCliFallbackTokenLenDone
+	cmpi.b #13, d2
+	beq.s opforgeNativeCliFallbackTokenLenDone
+	cmpi.b #' ', d2
+	beq.s opforgeNativeCliFallbackTokenLenDone
+	cmpi.b #9, d2
+	beq.s opforgeNativeCliFallbackTokenLenDone
+	cmpi.b #':', d2
+	beq.s opforgeNativeCliFallbackTokenLenDone
+	cmpi.b #';', d2
+	beq.s opforgeNativeCliFallbackTokenLenDone
+	addq.l #1, a0
+	subq.l #1, d0
+	addq.w #1, d1
+	bra.s opforgeNativeCliFallbackTokenLenLoop
+
+opforgeNativeCliFallbackTokenLenDone
+	move.w d1, d0
+	movem.l (sp)+, d1-d2/a0
+	rts
+
+opforgeNativeCliFallbackOperandLen
+	movem.l d1-d3/a0, -(sp)
+	moveq #0, d1
+	moveq #0, d2
+
+opforgeNativeCliFallbackOperandLenLoop
+	tst.l d0
+	beq.s opforgeNativeCliFallbackOperandLenDone
+	move.b (a0)+, d3
+	tst.b d3
+	beq.s opforgeNativeCliFallbackOperandLenDone
+	cmpi.b #10, d3
+	beq.s opforgeNativeCliFallbackOperandLenDone
+	cmpi.b #13, d3
+	beq.s opforgeNativeCliFallbackOperandLenDone
+	cmpi.b #';', d3
+	beq.s opforgeNativeCliFallbackOperandLenDone
+	addq.w #1, d1
+	cmpi.b #' ', d3
+	beq.s opforgeNativeCliFallbackOperandLenNext
+	cmpi.b #9, d3
+	beq.s opforgeNativeCliFallbackOperandLenNext
+	move.w d1, d2
+
+opforgeNativeCliFallbackOperandLenNext
+	subq.l #1, d0
+	bra.s opforgeNativeCliFallbackOperandLenLoop
+
+opforgeNativeCliFallbackOperandLenDone
+	move.w d2, d0
+	movem.l (sp)+, d1-d3/a0
+	rts
+
+opforgeNativeCliRecordSourceStatementFallbackReturn
+	movem.l (sp)+, d0-d7/a0-a3
 	rts
 
 opforgeNativeCliRecordPrvmStatementFail
@@ -1564,7 +2235,9 @@ opforgeNativeCliStoreStatementRecord
 
 opforgeNativeCliStoreStatementSourceLineLenOk
 	lea NativeCliSourceLine, a0
+	move.l d2, -(sp)
 	bsr.w opforgeNativeCliCopyFixedString
+	move.l (sp)+, d2
 	clr.b (a1)
 	lea opasmEngineStmtSourceLineLenTable.l, a0
 	move.w d0, 0(a0, d2.l)
@@ -1699,8 +2372,36 @@ opforgeNativeCliCopyOperandTextLoop
 	bra.s opforgeNativeCliCopyOperandTextLoop
 
 opforgeNativeCliCopyOperandTextDone
+	bsr.w opforgeNativeCliTrimCopiedOperandText
 	clr.b (a1)
 	movem.l (sp)+, d0-d4/a0-a1
+	rts
+
+opforgeNativeCliTrimCopiedOperandText
+	tst.w d5
+	beq.s opforgeNativeCliTrimCopiedOperandTextDone
+	movea.l a1, a0
+
+opforgeNativeCliTrimCopiedOperandTextLoop
+	tst.w d5
+	beq.s opforgeNativeCliTrimCopiedOperandTextSetEnd
+	subq.l #1, a0
+	move.b (a0), d0
+	cmpi.b #' ', d0
+	beq.s opforgeNativeCliTrimCopiedOperandTextOne
+	cmpi.b #9, d0
+	beq.s opforgeNativeCliTrimCopiedOperandTextOne
+	bra.s opforgeNativeCliTrimCopiedOperandTextSetEnd
+
+opforgeNativeCliTrimCopiedOperandTextOne
+	subq.w #1, d5
+	bra.s opforgeNativeCliTrimCopiedOperandTextLoop
+
+opforgeNativeCliTrimCopiedOperandTextSetEnd
+	movea.l a0, a1
+	addq.l #1, a1
+
+opforgeNativeCliTrimCopiedOperandTextDone
 	rts
 
 opforgeNativeCliEmitStatementRecord
@@ -3313,7 +4014,7 @@ opforgeNativeCliEmitAssemblySessionSummary
 	move.l #SessionStmtCountText, d1
 	bsr.w opforgeNativeCliPutStr
 	moveq #0, d0
-	move.w opasmEngineStmtCount, d0
+	move.w opasmEngineStmtCount.l, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
 	bsr.w opforgeNativeCliPutStr
@@ -3524,6 +4225,52 @@ opforgeNativeCliPassOneRecordLabelReturn
 opforgeNativeCliPassTwoEmitImageBytes
 	movem.l d1-d6/a0-a4, -(sp)
 	move.w d0, d6
+	moveq #0, d0
+	move.w d6, d0
+	lsl.l #6, d0
+	lea opasmEngineStmtMnemNameTable.l, a0
+	adda.l d0, a0
+	move.l a0, d5
+	moveq #0, d3
+	move.w d6, d3
+	add.w d3, d3
+	lea opasmEngineStmtMnemLenTable.l, a1
+	moveq #0, d0
+	move.w 0(a1, d3.l), d0
+	bne.s opforgeNativeCliPassTwoEmitHaveMlen
+	movea.l d5, a0
+	bsr.w opforgeNativeCliTokenLen
+
+opforgeNativeCliPassTwoEmitHaveMlen
+	move.w d0, d4
+	beq.w opforgeNativeCliPassTwoEmitOk
+	move.w d6, d0
+	move.w d4, d1
+	movea.l d5, a0
+	bsr.w opforgeNativeCliStatementMnemDuplicatesLabel
+	tst.l d0
+	bne.w opforgeNativeCliPassTwoEmitOk
+	movea.l d5, a0
+	move.w d4, d0
+	lea OrgMnemonicText, a1
+	moveq #4, d1
+	bsr.w opforgeNativeCliLineStartsWith
+	tst.l d0
+	bne.w opforgeNativeCliPassTwoEmitOk
+	movea.l d5, a0
+	move.w d4, d0
+	lea CpuMnemonicText, a1
+	moveq #4, d1
+	bsr.w opforgeNativeCliLineStartsWith
+	tst.l d0
+	bne.w opforgeNativeCliPassTwoEmitOk
+	movea.l d5, a0
+	move.w d4, d0
+	lea EndMnemonicText, a1
+	moveq #4, d1
+	bsr.w opforgeNativeCliLineStartsWith
+	tst.l d0
+	bne.w opforgeNativeCliPassTwoEmitOk
 	bsr.w opforgeNativeCliPrepareEncodeSelectedRequestForStatement
 	tst.l d0
 	bne.w opforgeNativeCliPassTwoEmitReturn
@@ -3537,36 +4284,19 @@ opforgeNativeCliPassTwoEmitImageBytes
 	move.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, d0
 	move.w #NATIVE_EVAL_EXPR_EXTENSION_BYTES, d1
 	bsr.w opforgeNativeCliWriteExtensionWindow
-	moveq #ENTRY_ORD_SELECT_INSTRUCTION, d0
-	jsr tkpkgServiceDispatchV1
-	lea controlBlockV1, a0
-	bsr.w opforgeNativeCliReadStatus
-	tst.b d0
-	bne.w opforgeNativeCliPassTwoEmitServiceFail
-	lea controlBlockV1, a0
-	bsr.w opforgeNativeCliReadOutputLen
-	tst.w d0
-	beq.w opforgeNativeCliPassTwoEmitOk
-	lea controlBlockV1, a0
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
-	move.w NativeCliEvalRequestLen.l, d1
-	bsr.w opforgeNativeCliWriteInputWindow
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, d0
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_BYTES, d1
-	bsr.w opforgeNativeCliWriteExtensionWindow
 	moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
 	jsr tkpkgServiceDispatchV1
 	lea controlBlockV1, a0
 	bsr.w opforgeNativeCliReadStatus
 	tst.b d0
 	bne.w opforgeNativeCliPassTwoEmitServiceFail
-	move.l #NativeSelectorStatusOkText, d1
-	bsr.w opforgeNativeCliPutStr
 	lea controlBlockV1, a0
 	bsr.w opforgeNativeCliReadOutputLen
 	tst.w d0
 	beq.w opforgeNativeCliPassTwoEmitOk
 	move.w d0, d6
+	move.l #NativeSelectorStatusOkText, d1
+	bsr.w opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineImageByteCount.l, d0
 	add.w d6, d0
@@ -3596,6 +4326,10 @@ opforgeNativeCliPassTwoEmitFail
 	bra.s opforgeNativeCliPassTwoEmitReturn
 
 opforgeNativeCliPassTwoEmitServiceFail
+	move.w d6, d0
+	bsr.w opforgeNativeCliStatementLooksBareColumnOne
+	tst.l d0
+	bne.w opforgeNativeCliPassTwoEmitOk
 	lea controlBlockV1, a0
 	bsr.w opforgeNativeCliReadLastErrorLen
 	tst.w d0
@@ -3856,6 +4590,13 @@ opforgeNativeCliPassAdvancePc
 
 opforgeNativeCliPassAdvanceHaveMlen
 	move.w d0, d6
+	beq.w opforgeNativeCliPassAdvanceDone
+	move.w d7, d0
+	move.w d6, d1
+	movea.l d5, a0
+	bsr.w opforgeNativeCliStatementMnemDuplicatesLabel
+	tst.l d0
+	bne.w opforgeNativeCliPassAdvanceDone
 	lea OrgMnemonicText, a1
 	moveq #4, d1
 	bsr.w opforgeNativeCliLineStartsWith
@@ -3864,6 +4605,13 @@ opforgeNativeCliPassAdvanceHaveMlen
 	movea.l d5, a0
 	move.w d6, d0
 	lea CpuMnemonicText, a1
+	moveq #4, d1
+	bsr.w opforgeNativeCliLineStartsWith
+	tst.l d0
+	bne.w opforgeNativeCliPassAdvanceDone
+	movea.l d5, a0
+	move.w d6, d0
+	lea EndMnemonicText, a1
 	moveq #4, d1
 	bsr.w opforgeNativeCliLineStartsWith
 	tst.l d0
@@ -3912,6 +4660,10 @@ opforgeNativeCliPassAdvanceThree
 	bra.w opforgeNativeCliPassAdvanceDone
 
 opforgeNativeCliPassAdvanceFail
+	move.w d7, d0
+	bsr.w opforgeNativeCliStatementLooksBareColumnOne
+	tst.l d0
+	bne.w opforgeNativeCliPassAdvanceDone
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #1, d0
 	rts
@@ -3977,6 +4729,122 @@ opforgeNativeCliTrySelectedEncodeSizeFailReturn
 opforgeNativeCliTrySelectedEncodeSizeReturn
 	movem.l (sp)+, d2-d7/a0-a2
 	rts
+
+; D0: statement index, D1: mnemonic length, A0: mnemonic text.
+; Returns D0=1 when the statement mnemonic duplicates its label text.
+opforgeNativeCliStatementMnemDuplicatesLabel	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	move.l d0, d2
+	add.w d2, d2
+	lea opasmEngineStmtLabelLenTable.l, a2
+	moveq #0, d3
+	move.w 0(a2, d2.l), d3
+	beq.s no
+	cmp.w d1, d3
+	bne.s no
+	move.l d0, d4
+	lsl.l #6, d4
+	lea opasmEngineStmtLabelNameTable.l, a1
+	adda.l d4, a1
+	move.l d1, d0
+	bsr.w opforgeNativeCliLabelEquals
+	bra.s return
+
+no
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d4/a0-a2
+	rts
+	.bend  ; opforgeNativeCliStatementMnemDuplicatesLabel
+
+; D0: statement index. Returns D0=1 for no-operand column-one bare symbols.
+opforgeNativeCliStatementLooksBareColumnOne	.block
+	movem.l d1-d4/a0, -(sp)
+	move.l d0, d1
+	add.w d1, d1
+	lea opasmEngineStmtOperandLenTable.l, a0
+	tst.w 0(a0, d1.l)
+	bne.w no
+	lea opasmEngineStmtSourceLineLenTable.l, a0
+	moveq #0, d4
+	move.w 0(a0, d1.l), d4
+	beq.w no
+	move.l d0, d2
+	lsl.l #8, d2
+	add.l d2, d2
+	lea opasmEngineStmtSourceLineTextTable.l, a0
+	adda.l d2, a0
+	move.b (a0), d3
+	tst.b d3
+	beq.w no
+	cmpi.b #10, d3
+	beq.w no
+	cmpi.b #13, d3
+	beq.w no
+	cmpi.b #' ', d3
+	beq.w no
+	cmpi.b #9, d3
+	beq.w no
+	cmpi.b #'.', d3
+	beq.w no
+	cmpi.b #';', d3
+	beq.w no
+
+tokenLoop
+	tst.l d4
+	beq.w yes
+	move.b (a0), d3
+	tst.b d3
+	beq.w yes
+	cmpi.b #10, d3
+	beq.w yes
+	cmpi.b #13, d3
+	beq.w yes
+	cmpi.b #';', d3
+	beq.w yes
+	cmpi.b #' ', d3
+	beq.w trailingLoop
+	cmpi.b #9, d3
+	beq.w trailingLoop
+	addq.l #1, a0
+	subq.l #1, d4
+	bra.w tokenLoop
+
+trailingLoop
+	tst.l d4
+	beq.w yes
+	move.b (a0), d3
+	tst.b d3
+	beq.w yes
+	cmpi.b #10, d3
+	beq.w yes
+	cmpi.b #13, d3
+	beq.w yes
+	cmpi.b #';', d3
+	beq.w yes
+	cmpi.b #' ', d3
+	beq.w trailingOne
+	cmpi.b #9, d3
+	beq.w trailingOne
+	bra.w no
+
+trailingOne
+	addq.l #1, a0
+	subq.l #1, d4
+	bra.w trailingLoop
+
+yes
+	moveq #1, d0
+	bra.w return
+
+no
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d4/a0
+	rts
+	.bend  ; opforgeNativeCliStatementLooksBareColumnOne
 
 ; Compare a fixed-length statement label to a stored zero-terminated label.
 opforgeNativeCliLabelEquals
@@ -4879,13 +5747,6 @@ ProcessorAsmText
 	.byte "asm"
 KindStatementText
 	.byte "statement"
-OpforgeNativeCliPrvmParserProgram
-	.byte $60, $40, $13, $03, $08, $00, $64, $00
-	.byte $10, $07, $03, $1D, $00, $20, $30, $65
-	.byte $13, $03, $16, $00, $64, $00, $50, $FF
-	.byte $FF, $FF, $FF, $64, $00, $30, $62, $13
-	.byte $03, $25, $00, $64, $00, $50, $FF, $FF
-	.byte $FF, $FF, $64, $00
 ModuleMnemonicText
 	.byte "module"
 EndmoduleMnemonicText
@@ -4896,6 +5757,24 @@ OrgMnemonicText
 	.byte ".org"
 CpuMnemonicText
 	.byte ".cpu"
+EndMnemonicText
+	.byte ".end"
+NativeCliSelectedShapeAccumulatorText
+	.byte "accumulator", 0
+NativeCliSelectedShapeImmediateText
+	.byte "immediate", 0
+NativeCliSelectedShapeDirectText
+	.byte "direct", 0
+NativeCliSelectedShapeDirectXText
+	.byte "direct_x", 0
+NativeCliSelectedShapeDirectYText
+	.byte "direct_y", 0
+NativeCliSelectedShapeIndirectText
+	.byte "indirect", 0
+NativeCliSelectedShapeIndexedIndirectXText
+	.byte "indexed_indirect_x", 0
+NativeCliSelectedShapeIndirectIndexedYText
+	.byte "indirect_indexed_y", 0
 LdaMnemonicText
 	.byte "lda"
 StaMnemonicText
@@ -4932,6 +5811,9 @@ EndifDirectiveText
 defaultFsUaeArgTail
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT
 	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 65c02 --opasm-package Work:opforge_cli_package.opasm", 0
 .else
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC
 	.byte "Work:opforge_6502_unknown_mnemonic.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
@@ -4985,6 +5867,7 @@ defaultFsUaeArgTail
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8", 0
 .else
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
+.endif
 .endif
 .endif
 .endif

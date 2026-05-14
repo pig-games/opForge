@@ -10,7 +10,7 @@
 	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_DIAL, PACKAGE_CHUNK_TOKS)
 	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_TKVM, PACKAGE_CHUNK_TABL)
 	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_EXPR, PACKAGE_CHUNK_EXVM)
-	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_MSEL)
+	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_MSEL, PACKAGE_CHUNK_PRVM)
 	.use tkpkg.amigaos.buffers (PACKAGE_REQUIRED_CHUNK_FLAGS)
 	.use tkpkg.amigaos.buffers (PackageStorage, PackageStateFlags)
 	.use tkpkg.amigaos.buffers (PackageChunkFlags, PackageChunkFlagsHi, PackageStorageLen)
@@ -18,7 +18,7 @@
 	.use tkpkg.amigaos.buffers (CpusChunkOffsetLo, DialChunkOffsetLo)
 	.use tkpkg.amigaos.buffers (ToksChunkOffsetLo, TkvmChunkOffsetLo)
 	.use tkpkg.amigaos.buffers (TablChunkOffsetLo, MselChunkOffsetLo, ExprChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (ExvmChunkOffsetLo)
+	.use tkpkg.amigaos.buffers (ExvmChunkOffsetLo, PrvmChunkOffsetLo)
 	.use tkpkg.amigaos.buffers (ActiveCpuBuffer, ActiveDialectBuffer)
 
 OPASM_HEADER_SIZE                    = 12
@@ -332,18 +332,34 @@ checkTabl
 
 checkMsel
 	cmpi.b #'M', (a2)
-	bne.w checkExpr
+	bne.w checkPrvm
 	cmpi.b #'S', 1(a2)
-	bne.w checkExpr
+	bne.w checkPrvm
 	cmpi.b #'E', 2(a2)
-	bne.w checkExpr
+	bne.w checkPrvm
 	cmpi.b #'L', 3(a2)
-	bne.w checkExpr
+	bne.w checkPrvm
 	btst #0, PackageChunkFlagsHi
 	bne.w duplicateChunk
 	lea MselChunkOffsetLo, a3
 	bsr.w storeLocator
 	ori.b #PACKAGE_CHUNK_MSEL, PackageChunkFlagsHi
+	bra.w nextTocEntry
+
+checkPrvm
+	cmpi.b #'P', (a2)
+	bne.w checkExpr
+	cmpi.b #'R', 1(a2)
+	bne.w checkExpr
+	cmpi.b #'V', 2(a2)
+	bne.w checkExpr
+	cmpi.b #'M', 3(a2)
+	bne.w checkExpr
+	btst #1, PackageChunkFlagsHi
+	bne.w duplicateChunk
+	lea PrvmChunkOffsetLo, a3
+	bsr.w storeLocator
+	ori.b #PACKAGE_CHUNK_PRVM, PackageChunkFlagsHi
 	bra.w nextTocEntry
 
 checkExpr

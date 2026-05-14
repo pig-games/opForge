@@ -25,8 +25,9 @@ PACKAGE_CHUNK_TABL                   = 32
 PACKAGE_CHUNK_EXPR                   = 64
 PACKAGE_CHUNK_EXVM                   = 128
 PACKAGE_CHUNK_MSEL                   = 1
+PACKAGE_CHUNK_PRVM                   = 2
 PACKAGE_REQUIRED_CHUNK_FLAGS         = 31
-PACKAGE_STATE_CLEAR_LONGWORD_COUNT   = 40
+PACKAGE_STATE_CLEAR_LONGWORD_COUNT   = 44
 SCOPED_OWNER_FAMILY                  = 0
 SCOPED_OWNER_CPU                     = 1
 SCOPED_OWNER_DIALECT                 = 2
@@ -201,6 +202,18 @@ ExvmChunkLenLo
 ExvmChunkLenHi
 	.res byte, 1
 
+PrvmChunkOffsetLo
+	.res byte, 1
+
+PrvmChunkOffsetHi
+	.res byte, 1
+
+PrvmChunkLenLo
+	.res byte, 1
+
+PrvmChunkLenHi
+	.res byte, 1
+
 ActiveCpuBuffer
 	.res byte, PIPELINE_ID_BUFFER_CAPACITY
 
@@ -240,6 +253,22 @@ ActiveTokenizerVmLenHi
 	.res byte, 1
 
 ActiveTokenizerVmOwnerTag
+	.res byte, 1
+
+	.align 2
+ActiveParserVmOffsetLo
+	.res byte, 1
+
+ActiveParserVmOffsetHi
+	.res byte, 1
+
+ActiveParserVmLenLo
+	.res byte, 1
+
+ActiveParserVmLenHi
+	.res byte, 1
+
+ActiveParserVmOwnerTag
 	.res byte, 1
 
 ActiveTokenizerVmStartStateLo
@@ -386,6 +415,22 @@ PendingTokenizerVmLenHi
 	.res byte, 1
 
 PendingTokenizerVmOwnerTag
+	.res byte, 1
+
+	.align 2
+PendingParserVmOffsetLo
+	.res byte, 1
+
+PendingParserVmOffsetHi
+	.res byte, 1
+
+PendingParserVmLenLo
+	.res byte, 1
+
+PendingParserVmLenHi
+	.res byte, 1
+
+PendingParserVmOwnerTag
 	.res byte, 1
 
 StoredLastErrorLen

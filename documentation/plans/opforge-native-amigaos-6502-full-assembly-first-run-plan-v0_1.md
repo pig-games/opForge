@@ -726,7 +726,7 @@ The intended native shape mirrors the Rust path:
       --nocapture` passed. `scripts/workflow/run_native_68000_format_gate.sh`
       passed with 35 checked files, 0 would change, and 0 warnings.
       `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
-  - [x] Item 6.7: Prove native CLI/FS-UAE exact byte parity for the full
+  - [ ] Item 6.7: Prove native CLI/FS-UAE exact byte parity for the full
     indicated fixture set
     - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,
       `SR-NATIVE-6502-FULL`, `SR-6502-ENCODER`; expected to promote row-level
@@ -752,7 +752,7 @@ The intended native shape mirrors the Rust path:
       bytecode payload as the Rust golden path, validation evidence includes
       labeled Rust/native hexadecimal output, and any FS-UAE skip is reported as
       host-access skip rather than a project pass.
-    - Validation evidence, 2026-05-13: `cargo test -p asm
+    - Interim host evidence, 2026-05-13: `cargo test -p asm
       motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_bytes
       -- --nocapture` passed and printed per-fixture labeled native CLI bin
       payload evidence for `6502_native_cli_smoke.asm`, `6502_simple.asm`,
@@ -779,7 +779,10 @@ The intended native shape mirrors the Rust path:
       run_native_68000_format_gate.sh` passed with 35 checked files, 0 would
       change, and 0 warnings. `scripts/workflow/run_rust_quality_gate_summary.sh`
       passed.
-  - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
+      - Blocking status, 2026-05-14: Item 6.7 remains incomplete until the
+        required host FS-UAE exact-byte proof also runs and passes. Host-only
+        deterministic parity is not sufficient completion evidence for this item.
+      - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
     - Source requirement or finding IDs: `SR-CLI-BOUNDARY`,
       `SR-RUST-VM-ARCH`, `SR-6502-SELECTOR`, `SR-6502-ENCODER`; expected to
       close Item 6 without native MOS-specific selector or encoder residue.
@@ -804,6 +807,56 @@ The intended native shape mirrors the Rust path:
       subitems pass, the full indicated fixture set emits Rust-matching bytes,
       and inspection/tests show no native CPU-specific selector/encoder code
       remains except user-approved `.cpu`/`.org` test setup.
+    - Interim implementation evidence: the active implementation consumes Rust-generated
+      package chunks for parser routing and selected encoding: PRVM records are
+      located by `tkpkgPipelineSetActiveV1`, the CLI loads active PRVM bytecode
+      from package storage, MSEL records are scanned without a caller-supplied
+      native shape requirement, and TABL bytecode executes selected candidates.
+      The obsolete native selector-stage fallback module
+      `native/motorola68000/amigaos/opasm/opasm_selector_stage.asm` is deleted.
+      The native service retains only generic package-shape consumption for
+      candidate operand preprocessing (`immediate`, `direct_x`, `direct_y`) and
+      does not add a native MOS mnemonic table, addressing-mode table, opcode
+      table, relative-branch opcode table, selector-stage fallback call, or raw
+      operand spelling classifier outside package/VM data.
+    - Interim host validation evidence: `cargo test -p asm
+      motorola68020_item6_5_base_6502_fixtures_match_exact_native_and_rust_bytes
+      -- --nocapture` passed with labeled Rust/native hexadecimal byte parity
+      for the base 6502 fixture corpus. `cargo test -p asm
+      motorola68020_item6_6_65c02_package_plans_match_exact_native_and_rust_bytes
+      -- --nocapture` passed with labeled Rust/native hexadecimal byte parity
+      for the 65C02 fixture corpus. `cargo test -p asm
+      motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_bytes
+      -- --nocapture` passed and printed matching full `.bin` payloads for
+      `6502_native_cli_smoke.asm`, `6502_simple.asm`, `6502_allmodes.asm`,
+      `65c02_simple.asm`, and `65c02_allmodes.asm`. `cargo test -p asm
+      motorola68020_tkpkg_ -- --nocapture` passed with 31 tests. `cargo test
+      -p asm motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed. `scripts/workflow/run_native_68000_format_gate.sh`
+      passed with 35 checked files, 0 would change, and 0 warnings. A direct
+      `scripts/workflow/run_rust_quality_gate.sh` invocation could not return
+      readable terminal output in this VS Code session, so the repository-
+      approved summary wrapper was used; `scripts/workflow/
+      run_rust_quality_gate_summary.sh` completed successfully and reported
+      `PASS: Rust quality gate complete.` after logging the full gate to
+      `target/workflow-logs/rust-quality-gate.log`.
+    - Blocking status, 2026-05-14: Item 6.8 remains incomplete because Item 6.7
+      has not passed its required host FS-UAE proof. The checkpointed Item 6
+      native/host path is green for the focused host gates below, but the
+      opt-in stripped-fixture FS-UAE proof still has one known red case for
+      follow-up cleanup. Command:
+      `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/
+      Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/
+      Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+      OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+      external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins
+      -- --nocapture --test-threads=1`. Current result: the first two stripped
+      fixtures pass with matching Rust/native bins
+      (`6502_native_cli_smoke.asm` and `6502_simple.asm`), then
+      `examples/mos6502/6502_allmodes.asm` fails during native pass1 after
+      `LABEL branch_test $00000918` and the bare source line `branch_test`,
+      reporting `ERROR OPC-NCLI020: native pass engine failed`; the launcher
+      stderr ends with `FS-UAE launcher exit status: signal: 9 (SIGKILL)`.
 - [ ] Item 7: Implement layout-control directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,
     `SR-OPASM-ENGINE`; expected to support the directives that directly shape

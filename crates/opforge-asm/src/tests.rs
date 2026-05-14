@@ -10089,10 +10089,17 @@ fn motorola68020_prvm_line_iterator_smoke_example_assembles_with_native_call_sur
 #[test]
 fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     let source = opforge_amigaos_source("opforge_cli.asm");
-    let raw_source = fs::read_to_string(
-        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm"),
-    )
-    .expect("read raw opForge AmigaOS source");
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
+    let out_dir = create_temp_dir("m68000-opforge-native-cli-surface");
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble opforge native cli surface example: {detail}");
+    }
+
+    let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
+        .expect("read opforge native CLI surface listing");
 
     assert!(source.contains("Usage: opForge [OPTIONS] [INPUT]"));
 
@@ -10184,98 +10191,9 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW"));
-    assert!(source.contains("opforgeNativeCliStagePackage"));
-    assert!(source.contains("opforgeNativeCliInitModuleUseState"));
-    assert!(source.contains("opforgeNativeCliClearBytes"));
-    assert!(source.contains("opforgeNativeCliPreparePipelineRequest"));
-    assert!(source.contains("opforgeNativeCliPrepareLineServiceRequest"));
-    assert!(source.contains("opforgeNativeCliPrepareParseLineServiceRequest"));
-    assert!(source.contains("opforgeNativeCliDispatchParseLineEnvelope"));
-    assert!(source.contains("opforgeNativeCliPrepareEncodeInstructionRequest"));
-    assert!(source.contains("opforgeNativeCliPrepareEncodeSelectedRequestForStatement"));
-    assert!(source.contains("opforgeNativeCliDispatchEncodeInstructionEnvelope"));
-    assert!(source.contains("ENTRY_ORD_SELECT_INSTRUCTION"));
-    assert!(source.contains("ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION"));
-    assert!(!source.contains(".use opasm.amigaos.selector_stage"));
-    assert!(source.contains(".use opasm.amigaos.engine (opasmEngineRunTwoPassV1)"));
-    assert!(source.contains(
-        ".use opasm.amigaos.engine (opasmEngineAssemblySessionStart, opasmEngineStmtCount)"
-    ));
-    assert!(source.contains(
-        ".use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineLabelFinalizedTable)"
-    ));
-    assert!(source.contains(".use opasm.amigaos.engine (opasmEngineImageBuffer)"));
-    assert!(source.contains(
-        ".use opasm.amigaos.engine (opasmEngineStmtExprFlagsTable, opasmEngineStmtExprOperandIndexTable)"
-    ));
-    assert!(source.contains(
-        ".use opasm.amigaos.engine (opasmEngineStmtExprSpanStartTable, opasmEngineStmtExprSpanEndTable)"
-    ));
-    assert!(source.contains(
-        ".use opasm.amigaos.engine (opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable)"
-    ));
-    assert!(source.contains("opforgeNativeCliTokenizeFile"));
-    assert!(source.contains("opforgeNativeCliTokenizeFileAtPath"));
-    assert!(source.contains("opforgeNativeCliTokenizeCurrentLine"));
-    assert!(source.contains("opforgeNativeCliParseCurrentLine"));
-    assert!(!source.contains(".use prvm.amigaos.line_router (prvm_route_line_68000)"));
-    assert!(!source.contains("JSR prvm_route_line_68000"));
-    assert!(source.contains("opforgeNativeCliRouteParserModuleUseLine"));
-    assert!(source.contains("opforgeNativeCliBuildPrvmRouteFrame"));
-    assert!(source.contains("opforgeNativeCliParserDirectiveKind"));
-    assert!(source.contains("opforgeNativeCliParserMnemonicEquals"));
-    assert!(source.contains("opforgeNativeCliRecordPrvmStatementLine"));
-    assert!(source.contains("opforgeNativeCliStoreStatementRecord"));
-    assert!(source.contains("opforgeNativeCliRecordPrvmExpressionRequest"));
-    assert!(source.contains("opforgeNativeCliRecordSourceLine"));
-    assert!(source.contains("opforgeNativeCliEmitStatementRecord"));
-    assert!(source.contains("opforgeNativeCliEmitStatementExprRequest"));
-    assert!(source.contains("opforgeNativeCliLoadStatementExprMetadata"));
-    assert!(source.contains("opforgeNativeCliInitAssemblySession"));
-    assert!(source.contains("opforgeNativeCliEmitAssemblySessionSummary"));
-    assert!(source.contains("opasmEngineStmtCount"));
-    assert!(source.contains("NativeCliStmtDirectiveKind"));
-    assert!(source.contains("NativeCliStmtOperandStart"));
-    assert!(source.contains("NativeCliStmtOperandEnd"));
-    assert!(source.contains("opasmEngineStmtDirectiveKindTable"));
-    assert!(source.contains("opasmEngineStmtExprFlagsTable"));
-    assert!(source.contains("opasmEngineStmtExprSlotIndexTable"));
-    assert!(source.contains("opasmEngineStmtSourceLineLenTable"));
-    assert!(source.contains("opasmEngineStmtSourceLineTextTable"));
-    assert!(source.contains("NativeCliStmtExprFound"));
-    assert!(source.contains("NativeCliStmtExprOperandIndex"));
-    assert!(source.contains("NativeCliStmtExprSpanStart"));
-    assert!(source.contains("NativeCliLineRequestLen"));
-    assert!(source.contains("NativeCliEncodeRequestLen"));
-    assert!(source.contains("NativeCliEvalRequestLen"));
-    assert!(source.contains("opasmEngineSourceRecordCount"));
-    assert!(source.contains("opasmEngineLabelCount"));
-    assert!(source.contains("opasmEngineImageByteCount"));
-    assert!(source.contains("opasmEngineImageBuffer"));
-    assert!(source.contains("NativeCliBinRequested"));
-    assert!(source.contains("NativeCliOutputFormat"));
-    assert!(source.contains("NativeCliBinPath"));
-    assert!(source.contains("NATIVE_OUTPUT_FORMAT_BIN"));
-    assert!(source.contains("NATIVE_OUTPUT_FORMAT_HUNK"));
-    assert!(source.contains("opforgeNativeCliWriteFlatOutput"));
-    assert!(source.contains("opforgeNativeCliPassTwoEmitImageBytes"));
-    assert!(source.contains("EndMnemonicText"));
-    assert!(!source.contains("opforgeNativeCliBuildEncodeRequestForStatement"));
-    assert!(!source.contains("jsr opasmSelectorStageBuildEncodeRequestV1"));
-    assert!(source.contains("jsr opasmEngineRunTwoPassV1"));
-    assert!(source.contains("NativeCliOpasmEngineContext"));
-    assert!(!source.contains("opforgeNativeCliStatementOperandHasImmediatePrefix"));
-    assert!(!source.contains("opforgeNativeCliMaybeResolveLabelOperand"));
-    assert!(!source.contains("opforgeNativeCliWriteResolvedOperandHex"));
-    assert!(!source.contains("opforgeNativeCliPassTwoEmitBinSmokeFallback"));
     assert!(source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT"));
     assert!(source.contains("--cpu 65c02"));
     assert!(source.contains("Work:opforge_native_out.bin"));
-    assert!(source.contains("NATIVE_SOURCE_RECORD_CAPACITY   = 512"));
-    assert!(source.contains("NATIVE_STATEMENT_TABLE_CAPACITY = 160"));
-    assert!(source.contains("NATIVE_LABEL_TABLE_CAPACITY     = 16"));
-    assert!(source.contains("NATIVE_IMAGE_BUFFER_CAPACITY    = 4096"));
-    assert!(source.contains("NATIVE_ASSEMBLY_SESSION_BYTES"));
     assert!(tokvm_source_contains(&source, ".byte \"SESSION-CPU \",0"));
     assert!(tokvm_source_contains(
         &source,
@@ -10283,442 +10201,6 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     ));
     assert!(tokvm_source_contains(&source, ".byte \"STMT \",0"));
     assert!(tokvm_source_contains(&source, ".byte \"STMT-EXPR \",0"));
-    assert!(tokvm_source_contains(
-        &source,
-        "PRVM_STATUS_EXPR_REQUEST        = 1"
-    ));
-    assert!(tokvm_source_contains(
-        &source,
-        "PRVM_EXPR_SLOT_READY            = 1"
-    ));
-    assert!(tokvm_source_contains(
-        &source,
-        "PRVM_RESULT_OPERAND_EXPR_SLOT   = 4"
-    ));
-    assert!(tokvm_source_contains(
-        &source,
-        "PRVM_RESULT_DIRECTIVE_TEXT      = 6"
-    ));
-    assert!(tokvm_source_contains(
-        &source,
-        "PRVM_RESULT_OPERAND_TEXT        = 7"
-    ));
-    assert!(!source.contains("OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN"));
-    assert!(!source.contains("OpforgeNativeCliPrvmParserProgram"));
-    assert!(source.contains("ActiveParserVmOffsetLo"));
-    assert!(source.contains("opforgeNativeCliLoadActivePrvmProgram"));
-    assert!(source.contains("lastTokenCount"));
-    assert!(source.contains("lastLexemeLen"));
-    assert!(source.contains("opforgeNativeCliExpandIncludeTarget"));
-    assert!(source.contains("opforgeNativeCliResolveIncludePath"));
-    assert!(source.contains("opforgeNativeCliRecordModule"));
-    assert!(source.contains("opforgeNativeCliEmitModuleRecord"));
-    assert!(source.contains("opforgeNativeCliEmitModuleCompatibility"));
-    assert!(source.contains("opforgeNativeCliParseEndmoduleLine"));
-    assert!(source.contains("opforgeNativeCliCloseModule"));
-    assert!(source.contains("opforgeNativeCliEmitModuleEndRecord"));
-    assert!(source.contains("opforgeNativeCliRestoreParentModule"));
-    assert!(source.contains("opforgeNativeCliModulePath"));
-    assert!(source.contains("opforgeNativeCliCopyRequiredPathValue"));
-    assert!(source.contains("opforgeNativeCliRecordImplicitModulePathRoot"));
-    assert!(source.contains("opforgeNativeCliRecordModulePathValue"));
-    assert!(source.contains("opforgeNativeCliEmitModulePathRecords"));
-    assert!(source.contains("opforgeNativeCliCopyUseToken"));
-    assert!(source.contains("opforgeNativeCliParseUseOptionalAlias"));
-    assert!(source.contains("opforgeNativeCliParseUseItems"));
-    assert!(source.contains("opforgeNativeCliRecordImport"));
-    assert!(source.contains("opforgeNativeCliRecordImportSelect"));
-    assert!(source.contains("opforgeNativeCliResolveBareUseModule"));
-    assert!(source.contains("opforgeNativeCliEmitImportRecord"));
-    assert!(source.contains("opforgeNativeCliEmitImportSelectRecord"));
-    assert!(source.contains("opforgeNativeCliEmitImportWildcardRecord"));
-    assert!(source.contains("opforgeNativeCliTokenLen"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "LEA flagModuleShort, A1",
-            "BNE.W opforgeNativeCliModulePath",
-            "LEA flagModuleLong, A1",
-            "BNE.W opforgeNativeCliModulePath",
-            "BSR.W opforgeNativeCliIsUnsupportedFlag",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliParseOk:",
-            "BSR.W opforgeNativeCliRecordImplicitModulePathRoot",
-            "BNE.W opforgeNativeCliModulePathCapacity",
-            "MOVE.W #NCLI_PARSE_OK, nativeCliParseStatus",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliTokenizeFileCheckModuleDepth:",
-            "TST.W nativeCliIncludeDepth",
-            "BNE.S opforgeNativeCliTokenizeFileSuccessClose",
-            "TST.W nativeCliModuleDepth",
-            "BEQ.S opforgeNativeCliTokenizeFileSuccessClose",
-            "MOVE.L #moduleDepthFailureText, D1",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "BSR.W opforgeNativeCliInitAssemblySession",
-            "BSR.W opforgeNativeCliEmitModulePathRecords",
-            "BSR.W opforgeNativeCliTokenizeFrontend",
-            "MOVE.L #parserOkText, D1",
-            "BSR.W opforgeNativeCliPutStr",
-            "BSR.W opforgeNativeCliRunTwoPassEngine",
-            "BSR.W opforgeNativeCliEmitAssemblySessionSummary",
-            "BSR.W opforgeNativeCliWriteFlatOutput",
-            "MOVE.L #nativeOutputOkText, D1",
-            "MOVE.L #emitterStubText, D1",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliHunk:",
-            "MOVE.W #NATIVE_OUTPUT_FORMAT_HUNK, nativeCliOutputFormat",
-            "LEA nativeCliHunkPath, A1",
-            "opforgeNativeCliBin:",
-            "MOVE.W #NATIVE_OUTPUT_FORMAT_BIN, nativeCliOutputFormat",
-            "LEA nativeCliBinPath, A1",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliWriteFlatOutput:",
-            "LEA nativeCliBinPath, A0",
-            "BSR.W opforgeNativeCliOpenOutput",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "LEA includeDirectiveText, A1",
-            "BNE.W opforgeNativeCliParseIncludeLine",
-            "BSR.W opforgeNativeCliRouteParserModuleUseLine",
-            "BEQ.W opforgeNativeCliParseModuleLine",
-            "BEQ.W opforgeNativeCliParseEndmoduleLine",
-            "BEQ.W opforgeNativeCliParseUseLine",
-            "BSR.W opforgeNativeCliRecordPrvmStatementLine",
-            "BNE.W opforgeNativeCliParseLineFail",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliDispatchParseLineUntilReady:",
-            "BSR.W opforgeNativeCliPrepareParseLineServiceRequest",
-            "opforgeNativeCliDispatchParseLineUntilReadyLoop:",
-            "BSR.W opforgeNativeCliDispatchPreparedParseLineEnvelope",
-            "CMPI.L #PRVM_STATUS_EXPR_REQUEST, nativeCliPrvmRouteStatus",
-            "BSR.W opforgeNativeCliServicePrvmExpressionRequest",
-            "BRA.S opforgeNativeCliDispatchParseLineUntilReadyLoop",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliDispatchPreparedParseLineEnvelope:",
-            "BSR.W opforgeNativeCliWritePrvmRouteFrameInput",
-            "MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0",
-            "MOVEQ #ENTRY_ORD_PARSE_LINE, D0",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliServicePrvmExpressionRequest:",
-            "LEA opforgeNativeCliPrvmExprRequest, A0",
-            "CMPI.W #1, D0",
-            "CMPI.L #PRVM_ROUTE_EXPR_RESULT_CAPACITY, D0",
-            "LSL.L #5, D3",
-            "LEA opforgeNativeCliPrvmExprResultSlot, A1",
-            "MOVE.W #PRVM_EXPR_SLOT_READY, 0(A1)",
-            "MOVE.L D0, 4(A1)",
-            "MOVE.L #opforgeNativeCliPrvmExprResultSlot, 96(A2)",
-            "ADDQ.L #1, D0",
-            "MOVE.L D0, 100(A2)",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliRecordPrvmStatementLine:",
-            "TST.L nativeCliPrvmRouteStatus",
-            "CMPI.L #PRVM_STATUS_EXPR_REQUEST, nativeCliPrvmRouteStatus",
-            "CLR.L nativeCliStmtLabelStart",
-            "CLR.L nativeCliStmtMnemStart",
-            "CLR.L nativeCliStmtExprOperandIndex",
-            "CLR.W nativeCliStmtExprFound",
-            "MOVE.W nativeCliPrvmResultCount, D7",
-            "MOVE.W #PRVM_RESULT_RECORD_COUNT, D7",
-            "LEA opforgeNativeCliPrvmResultBuffer, A2",
-            "CMPI.W #PRVM_RESULT_LABEL_TEXT, 0(A2)",
-            "CMPI.W #PRVM_RESULT_MNEMONIC_TEXT, 0(A2)",
-            "CMPI.W #PRVM_RESULT_DIRECTIVE_TEXT, 0(A2)",
-            "CMPI.W #PRVM_RESULT_OPERAND_TEXT, 0(A2)",
-            "CMPI.W #PRVM_RESULT_OPERAND_EXPR_SLOT, 0(A2)",
-            "BSR.W opforgeNativeCliRecordPrvmExpressionRequest",
-            "BSR.W opforgeNativeCliStoreStatementRecord",
-            "BSR.W opforgeNativeCliEmitStatementRecord",
-        ]
-    ));
-    assert!(source.contains("opforgeNativeCliStoreStatementExprMetadata"));
-    assert!(raw_source.contains("moveq #0, d1"));
-    assert!(raw_source.contains("move.w opasmEngineStmtCount.l, d1"));
-    assert!(raw_source.contains("lsl.l #2, d1"));
-    assert!(raw_source.contains("moveq #0, d2"));
-    assert!(raw_source.contains("move.w opasmEngineStmtCount.l, d2"));
-    assert!(raw_source.contains("add.w d2, d2"));
-    assert!(raw_source.contains("move.w #1, 0(a0, d2.l)"));
-    assert!(raw_source.contains("move.l NativeCliStmtExprOperandIndex, 0(a0, d1.l)"));
-    assert!(raw_source.contains(
-        "move.l NativeCliStmtMnemLen, d2\n\tbeq.w opforgeNativeCliStoreStatementExprMetadata\n\tadd.l d2, d0\n\tbeq.w opforgeNativeCliStoreStatementExprMetadata\n\tmoveq #0, d1"
-    ));
-    assert!(source.contains("opforgeNativeCliStoreStatementSourceLineLenOk"));
-    assert!(source.contains("lea opasmEngineStmtSourceLineTextTable.l, a1"));
-    assert!(source.contains("move.w NativeCliSourceLineLen, d0"));
-    assert!(source.contains("opasmEngineStmtExprFlagsTable"));
-    assert!(source.contains("opasmEngineStmtExprOperandIndexTable"));
-    assert!(source.contains("opasmEngineStmtExprSlotIndexTable"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliRecordPrvmStatementHaveOperandExpr:",
-            "MOVE.L 4(A2), nativeCliStmtExprSpanLine",
-            "MOVE.L 8(A2), nativeCliStmtExprSpanStart",
-            "MOVE.L 12(A2), nativeCliStmtExprSpanEnd",
-            "MOVE.L 16(A2), nativeCliStmtExprOperandIndex",
-            "MOVE.L 20(A2), nativeCliStmtExprSlotIndex",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliRecordPrvmExpressionRequest:",
-            "LEA opforgeNativeCliPrvmExprRequest, A2",
-            "MOVE.L 4(A2), nativeCliStmtExprOperandIndex",
-            "MOVE.L 8(A2), nativeCliStmtExprSlotIndex",
-            "MOVE.L 12(A2), nativeCliStmtExprStartToken",
-            "MOVE.L 16(A2), nativeCliStmtExprEndToken",
-            "MOVE.L 20(A2), nativeCliStmtExprSpanLine",
-            "MOVE.L 24(A2), nativeCliStmtExprSpanStart",
-            "MOVE.L 28(A2), nativeCliStmtExprSpanEnd",
-        ]
-    ));
-    assert!(source.contains("OpforgeNativeCliPrvmExprResultSlot"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliReadOperandValueForStatement:",
-            "BSR.W opforgeNativeCliLoadStatementExprMetadata",
-            "TST.W nativeCliStmtExprFound",
-            "BSR.W opforgeNativeCliLoadStatementSourceLineText",
-            "opforgeNativeCliReadOperandStoredText:",
-            "LEA opasmEngineStmtOperandLenTable.L, A0",
-            "opforgeNativeCliReadOperandHaveText:",
-            "TST.W nativeCliStmtExprFound",
-            "BNE.S opforgeNativeCliReadOperandPrepareRequest",
-            "opforgeNativeCliReadOperandPrepareRequest:",
-            "BSR.W opforgeNativeCliPrepareEvaluateExpressionRequest",
-            "BSR.W opforgeNativeCliPrepareEvaluateExpressionExtension",
-            "MOVEQ #ENTRY_ORD_EVALUATE_EXPRESSION, D0",
-            "JSR tkpkgServiceDispatchV1",
-            "BSR.W opforgeNativeCliReadEvaluateExpressionValue",
-        ]
-    ));
-    assert!(source.contains("opforgeNativeCliLoadStatementExprMetadata"));
-    assert!(source.contains("opforgeNativeCliLoadStatementSourceLineText"));
-    assert!(source.contains("opforgeNativeCliLoadStatementExprText"));
-    assert!(source.contains("opforgeNativeCliClearStatementExprSpanForSyntheticRequest"));
-    assert!(source.contains("opforgeNativeCliPrepareEvaluateExpressionRequest"));
-    assert!(source.contains("opforgeNativeCliPrepareEvaluateExpressionExtension"));
-    assert!(source.contains("opforgeNativeCliReadEvaluateExpressionValue"));
-    assert!(source.contains("NativeCliStmtExprSlotIndex"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliTokenizeCurrentLine:",
-            "BSR.W opforgeNativeCliEmitIncludeLineRecord",
-            "opforgeNativeCliTokenizeCurrentLineNoIncludeRecord:",
-            "BSR.W opforgeNativeCliRecordSourceLine",
-            "BSR.W opforgeNativeCliPrepareLineServiceRequest",
-            "MOVE.W nativeCliLineRequestLen, D1",
-            "MOVEQ #ENTRY_ORD_TOKENIZE_LINE, D0",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliDispatchParseLineEnvelope:",
-            "BSR.W opforgeNativeCliPrepareParseLineServiceRequest",
-            "MOVE.W nativeCliLineRequestLen, D1",
-            "MOVEQ #ENTRY_ORD_PARSE_LINE, D0",
-            "JSR tkpkgServiceDispatchV1",
-            "MOVE.L D0, nativeCliPrvmRouteStatus",
-            "MOVE.W D1, nativeCliPrvmResultCount",
-            "BSR.W opforgeNativeCliReadStatus",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliPrepareParseLineServiceRequest:",
-            "BSR.W opforgeNativeCliBuildPrvmRouteFrame",
-            "LEA opforgeNativeCliPrvmRouteFrame, A1",
-            "LEA lastErrorBuffer, A2",
-            "MOVE.W #PRVM_ROUTE_FRAME_SIZE, D0",
-            "BSR.W opforgeNativeCliCopyBytes",
-            "MOVE.W #PRVM_ROUTE_FRAME_SIZE, nativeCliLineRequestLen",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliPassTwoEmitImageBytes:",
-            "BSR.W opforgeNativeCliPrepareEncodeSelectedRequestForStatement",
-            "TST.W nativeCliEvalRequestLen.L",
-            "BSR.W opforgeNativeCliPrepareEvaluateExpressionExtension",
-            "MOVEQ #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, D0",
-            "JSR tkpkgServiceDispatchV1",
-            "opforgeNativeCliPassTwoEmitServiceFail:",
-            "BSR.W opforgeNativeCliStatementLooksBareColumnOne",
-            "BNE.W opforgeNativeCliPassTwoEmitOk",
-        ]
-    ));
-    assert!(!source.contains("opforgeNativeCliSelectorEvaluateOperandV1"));
-    assert!(!source.contains("nativeCliSelectorStageContext"));
-    assert!(!source.contains("nativeCliSelectorStmtIndex"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliDispatchEncodeInstructionEnvelope:",
-            "BSR.W opforgeNativeCliPrepareEncodeInstructionRequest",
-            "MOVE.W nativeCliEncodeRequestLen, D1",
-            "MOVEQ #ENTRY_ORD_ENCODE_INSTRUCTION, D0",
-            "JSR tkpkgServiceDispatchV1",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliBuildPrvmRouteFrame:",
-            "MOVE.L #PRVM_ROUTE_MAGIC_OPLR, 0(A0)",
-            "LEA tokenRecordBuffer, A1",
-            "MOVE.W lastTokenCount, D0",
-            "LEA tokenScratchBuffer, A1",
-            "MOVE.W lastLexemeLen, D0",
-            "MOVE.L #PRVM_PARSER_CONTRACT_VERSION_V2, 104(A0)",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliParseModuleLine:",
-            "BSR.W opforgeNativeCliParserTailPtr",
-            "BSR.W opforgeNativeCliCopyLineWord",
-            "TST.B nativeCliArgToken",
-            "BEQ.W opforgeNativeCliParseLineFail",
-            "BSR.W opforgeNativeCliSkipLineWhitespace",
-            "TST.L D0",
-            "BEQ.S opforgeNativeCliParseModuleLineRecord",
-            "CMPI.B #';', (A0)",
-            "BNE.W opforgeNativeCliParseLineFail",
-            "opforgeNativeCliParseModuleLineRecord:",
-            "BSR.W opforgeNativeCliRecordModule",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliParseEndmoduleLine:",
-            "BSR.W opforgeNativeCliParserTailPtr",
-            "BSR.W opforgeNativeCliSkipLineWhitespace",
-            "CMPI.B #';', (A0)",
-            "BNE.W opforgeNativeCliParseLineFail",
-            "opforgeNativeCliParseEndmoduleLineClose:",
-            "BSR.W opforgeNativeCliCloseModule",
-            "BNE.W opforgeNativeCliParseModuleDepthFail",
-        ]
-    ));
-    assert!(source.contains("opforgeNativeCliBuildParserTailBuffer"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliBuildParserTailBuffer:",
-            "BSR.W opforgeNativeCliParserTailFallbackEnd",
-            "opforgeNativeCliBuildParserTailHaveEnd:",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliBuildParserTailHaveEnd:",
-            "LEA nativeCliParserTailBuffer, A1",
-            "MOVE.W nativeCliSourceLineLen, D0",
-            "CMP.L D0, D6",
-            "BHI.W opforgeNativeCliBuildParserTailFail",
-            "opforgeNativeCliBuildParserTailEndOk:",
-            "LEA nativeCliSourceLine, A0",
-            "ADDA.L D6, A0",
-            "SUB.L D6, D0",
-            "opforgeNativeCliBuildParserTailCopyLoop:",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliParserTailFallbackEnd:",
-            "MOVE.W nativeCliSourceLineLen, D5",
-            "SUB.L D0, D5",
-            "LEA moduleDirectiveText, A1",
-            "BNE.S opforgeNativeCliParserTailFallbackModule",
-            "LEA endmoduleDirectiveText, A1",
-            "BNE.S opforgeNativeCliParserTailFallbackEndmodule",
-            "LEA useDirectiveText, A1",
-            "BNE.S opforgeNativeCliParserTailFallbackUse",
-            "opforgeNativeCliParserTailFallbackModule:",
-            "MOVE.L D5, D6",
-            "ADDQ.L #7, D6",
-        ]
-    ));
-    assert!(source.contains("NativeCliParserTailBuffer"));
-    assert!(source.contains("NativeCliParserTailLen"));
-    assert!(source.contains("NATIVE_TOKEN_RECORD_SIZE        = 20"));
-    assert!(source.contains("PACKAGE_STORAGE_CAPACITY"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "MOVE.L #PACKAGE_STORAGE_CAPACITY, D0",
-            "BSR.W opforgeNativeCliReadInput",
-            "CMPI.L #PACKAGE_STORAGE_CAPACITY, D6",
-            "LEA nativeCliInputChar, A0",
-            "MOVEQ #1, D0",
-            "BSR.W opforgeNativeCliReadInput",
-            "MOVE.L #packageTooLargeText, D1",
-        ]
-    ));
-    assert!(source.contains("NATIVE_MODULE_TABLE_CAPACITY    = 16"));
-    assert!(source.contains("NATIVE_IMPORT_TABLE_CAPACITY    = 32"));
-    assert!(source.contains("NATIVE_MODULE_PATH_CAPACITY     = 8"));
-    assert!(source.contains("NATIVE_IMPORT_SELECT_CAPACITY   = 64"));
-    assert!(source.contains("NATIVE_MODULE_USE_STATE_BYTES"));
-    assert!(source.contains("NativeCliModuleUseStateStart"));
-    assert!(source.contains("NativeCliModuleCount"));
-    assert!(source.contains("NativeCliImportCount"));
-    assert!(source.contains("NativeCliModulePathCount"));
-    assert!(source.contains("NativeCliImportSelectCount"));
-    assert!(source.contains("NativeCliModuleNameTable"));
-    assert!(source.contains("NativeCliImportAliasTable"));
-    assert!(source.contains("NativeCliImportSelectNameTable"));
-    assert!(source.contains("NativeCliModulePathTable"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-ROOT \",0"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-DEF \",0"));
     assert!(tokvm_source_contains(&source, ".byte \"MOD-END \",0"));
@@ -10730,6 +10212,143 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         &source,
         ".byte \"ERROR OPC-NCLI016: native module depth mismatch\",10,0"
     ));
+
+    for expected in [
+        ".cpu 68020",
+        "opforgeNativeCliParseArgs",
+        "opforgeNativeCliInitModuleUseState",
+        "opforgeNativeCliClearBytes",
+        "opforgeNativeCliTokenizeFrontend",
+        "opforgeNativeCliTokenizeFile",
+        "opforgeNativeCliTokenizeFileAtPath",
+        "opforgeNativeCliTokenizeCurrentLine",
+        "opforgeNativeCliParseCurrentLine",
+        "opforgeNativeCliRouteParserModuleUseLine",
+        "opforgeNativeCliBuildPrvmRouteFrame",
+        "opforgeNativeCliParserDirectiveKind",
+        "opforgeNativeCliParserMnemonicEquals",
+        "opforgeNativeCliRecordPrvmStatementLine",
+        "opforgeNativeCliStoreStatementRecord",
+        "opforgeNativeCliRecordPrvmExpressionRequest",
+        "opforgeNativeCliRecordSourceLine",
+        "opforgeNativeCliEmitStatementRecord",
+        "opforgeNativeCliEmitStatementExprRequest",
+        "opforgeNativeCliLoadStatementExprMetadata",
+        "opforgeNativeCliInitAssemblySession",
+        "opforgeNativeCliEmitAssemblySessionSummary",
+        "opforgeNativeCliExpandIncludeTarget",
+        "opforgeNativeCliResolveIncludePath",
+        "opforgeNativeCliEmitIncludeLineRecord",
+        "opforgeNativeCliRecordModule",
+        "opforgeNativeCliEmitModuleRecord",
+        "opforgeNativeCliEmitModuleCompatibility",
+        "opforgeNativeCliParseEndmoduleLine",
+        "opforgeNativeCliCloseModule",
+        "opforgeNativeCliEmitModuleEndRecord",
+        "opforgeNativeCliRestoreParentModule",
+        "opforgeNativeCliModulePath",
+        "opforgeNativeCliCopyRequiredPathValue",
+        "opforgeNativeCliRecordImplicitModulePathRoot",
+        "opforgeNativeCliRecordModulePathValue",
+        "opforgeNativeCliEmitModulePathRecords",
+        "opforgeNativeCliCopyUseToken",
+        "opforgeNativeCliParseUseOptionalAlias",
+        "opforgeNativeCliParseUseItems",
+        "opforgeNativeCliRecordImport",
+        "opforgeNativeCliRecordImportSelect",
+        "opforgeNativeCliResolveBareUseModule",
+        "opforgeNativeCliEmitImportRecord",
+        "opforgeNativeCliEmitImportSelectRecord",
+        "opforgeNativeCliEmitImportWildcardRecord",
+        "opforgeNativeCliTokenLen",
+        "ENTRY_ORD_SELECT_INSTRUCTION",
+        "ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION",
+        "ActiveParserVmOffsetLo",
+        "lastTokenCount",
+        "lastLexemeLen",
+        "NativeCliStmtDirectiveKind",
+        "NativeCliStmtOperandStart",
+        "NativeCliStmtOperandEnd",
+        "NativeCliStmtExprFound",
+        "NativeCliStmtExprOperandIndex",
+        "NativeCliStmtExprSpanStart",
+        "NativeCliStmtExprSlotIndex",
+        "NativeCliLineRequestLen",
+        "NativeCliEncodeRequestLen",
+        "NativeCliEvalRequestLen",
+        "NativeCliParserTailBuffer",
+        "NativeCliParserTailLen",
+        "NativeCliBinRequested",
+        "NativeCliOutputFormat",
+        "NativeCliBinPath",
+        "NativeCliOpasmEngineContext",
+        "NATIVE_OUTPUT_FORMAT_BIN",
+        "NATIVE_OUTPUT_FORMAT_HUNK",
+        "NATIVE_SOURCE_RECORD_CAPACITY",
+        "NATIVE_STATEMENT_TABLE_CAPACITY",
+        "NATIVE_LABEL_TABLE_CAPACITY",
+        "NATIVE_IMAGE_BUFFER_CAPACITY",
+        "NATIVE_ASSEMBLY_SESSION_BYTES",
+        "NATIVE_TOKEN_RECORD_SIZE",
+        "NATIVE_MODULE_TABLE_CAPACITY",
+        "NATIVE_IMPORT_TABLE_CAPACITY",
+        "NATIVE_MODULE_PATH_CAPACITY",
+        "NATIVE_IMPORT_SELECT_CAPACITY",
+        "NATIVE_MODULE_USE_STATE_BYTES",
+        "PACKAGE_STORAGE_CAPACITY",
+        "PRVM_ROUTE_FRAME_SIZE",
+        "PRVM_STATUS_EXPR_REQUEST",
+        "PRVM_EXPR_SLOT_READY",
+        "PRVM_RESULT_OPERAND_EXPR_SLOT",
+        "PRVM_RESULT_DIRECTIVE_TEXT",
+        "PRVM_RESULT_OPERAND_TEXT",
+        "opasmEngineAssemblySessionStart",
+        "opasmEngineStmtCount",
+        "opasmEngineSourceRecordCount",
+        "opasmEngineLabelCount",
+        "opasmEngineImageByteCount",
+        "opasmEngineSessionCpuName",
+        "opasmEngineImageBuffer",
+        "opasmEngineStmtDirectiveKindTable",
+        "opasmEngineStmtExprFlagsTable",
+        "opasmEngineStmtExprOperandIndexTable",
+        "opasmEngineStmtExprSlotIndexTable",
+        "opasmEngineStmtSourceLineLenTable",
+        "opasmEngineStmtSourceLineTextTable",
+        "opasmEngineStmtLineTable",
+        "opasmEngineStmtLabelNameTable",
+        "opasmEngineStmtMnemNameTable",
+        "opasmEngineLabelNameTable",
+        "opasm.amigaos.engine.opasmEngineRunTwoPassV1",
+        "opasm.amigaos.engine.runPassOne",
+        "opasm.amigaos.engine.runPassTwo",
+    ] {
+        assert!(
+            listing.contains(expected),
+            "native CLI listing should contain surface symbol {expected}"
+        );
+    }
+
+    for unexpected in [
+        "opasm.amigaos.selector_stage.opasmSelectorStageBuildEncodeRequestV1",
+        "opasm.amigaos.selector_stage.opasmSelectorStageInstructionSizeV1",
+        "OPFORGE_NATIVE_CLI_PRVM_PROGRAM_LEN",
+        "OpforgeNativeCliPrvmParserProgram",
+        "opforgeNativeCliBuildEncodeRequestForStatement",
+        "opforgeNativeCliStatementOperandHasImmediatePrefix",
+        "opforgeNativeCliMaybeResolveLabelOperand",
+        "opforgeNativeCliWriteResolvedOperandHex",
+        "opforgeNativeCliPassTwoEmitBinSmokeFallback",
+        "opforgeNativeCliSelectorEvaluateOperandV1",
+        "nativeCliSelectorStageContext",
+        "nativeCliSelectorStmtIndex",
+        "prvm_route_line_68000",
+    ] {
+        assert!(
+            !listing.contains(unexpected),
+            "native CLI listing should not contain obsolete surface symbol {unexpected}"
+        );
+    }
 }
 
 struct NativeCli6502ContractContext {

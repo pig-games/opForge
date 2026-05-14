@@ -75,7 +75,7 @@ haveDos
 	bsr.w buildRequestFrame
 	lea RequestFrame(PC), a0
 	move.l #PRVM_REQUEST_FRAME_SIZE, d0
-	jsr prvmRun68000.l
+	jsr prvmRun68000
 
 	lea PrvmStatus(PC), a0
 	move.l d0, 0(a0)

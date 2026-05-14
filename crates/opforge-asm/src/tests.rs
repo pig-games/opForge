@@ -10088,7 +10088,6 @@ fn motorola68020_prvm_line_iterator_smoke_example_assembles_with_native_call_sur
 
 #[test]
 fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
-    let strings_source = opforge_amigaos_source("strings.asm");
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
     let out_dir = create_temp_dir("m68000-opforge-native-cli-surface");
@@ -10100,6 +10099,23 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
 
     let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
         .expect("read opforge native CLI surface listing");
+    let strings_source = fs::read_to_string(
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/strings.asm"),
+    )
+    .expect("read native CLI strings source");
+    let package_path =
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let package_bytes = fs::read(&package_path).expect("read native CLI package payload");
+    assert!(
+        package_bytes.len() >= 16,
+        "native CLI package payload should provide at least 16 bytes for listing validation"
+    );
+    let first_package_bytes = package_bytes[..16]
+        .iter()
+        .map(|byte| format!("${byte:02X}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let first_package_listing = format!(".byte {first_package_bytes}");
 
     assert!(listing.contains("Usage: opForge [OPTIONS] [INPUT]"));
 
@@ -10168,26 +10184,37 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     assert!(listing.contains("INCLUDE-ROOT 1 "));
     assert!(listing.contains("INCLUDE-FILE 1 "));
     assert!(listing.contains("INCLUDE-LINE "));
-    assert!(strings_source.contains("opforge_cli_package.opasm"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW"));
-    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT"));
-    assert!(strings_source.contains("--cpu 65c02"));
-    assert!(strings_source.contains("Work:opforge_native_out.bin"));
+    assert!(listing.contains("opforgeNativeCliPackageData"));
+    assert!(
+        listing.contains(&first_package_listing),
+        "native CLI listing should contain the first 16 package bytes {first_package_bytes}"
+    );
+    for expected in [
+        "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT",
+        "OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT",
+        "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC",
+        "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING",
+        "OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL",
+        "OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG",
+        "OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT",
+        "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK",
+        "OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT",
+        "OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT",
+        "OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE",
+        "OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE",
+        "OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE",
+        "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE",
+        "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH",
+        "OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW",
+        "OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT",
+        "--cpu 65c02",
+        "Work:opforge_native_out.bin",
+    ] {
+        assert!(
+            strings_source.contains(expected),
+            "native CLI strings source should contain sample literal {expected}"
+        );
+    }
     assert!(listing.contains("SESSION-CPU "));
     assert!(listing.contains("STATUS session-ready"));
     assert!(listing.contains("STMT "));

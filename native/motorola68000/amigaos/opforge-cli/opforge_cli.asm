@@ -42,8 +42,13 @@
 	.use opasm.amigaos.engine (opasmEngineImageBuffer)
 
 	.use opforge.cli.constants (*)
+	.use opforge.cli.state (*)
+	.use opforge.cli.strings (*)
+	.use opforge.cli.dos (*)
 
 	.section entry, kind=code
+
+	.pub
 
 ; ---------------------------------------------------------------------------
 ; AmigaOS process entry for the native opForge CLI.
@@ -59,8 +64,6 @@
 ; Outputs:
 ; - D0: AmigaDOS return code.
 ; ---------------------------------------------------------------------------
-
-	.pub
 start	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	clr.l d2  ; no Workbench startup message is pending until GetMsg succeeds
@@ -82,7 +85,7 @@ start	.block
 	bra.w opforgeStartReply
 
 opforgeStartCli
-	bsr.w opforgeNativeCliRun  ; run the Shell-native CLI host path
+	jsr opforgeNativeCliRun  ; run the Shell-native CLI host path
 	move.l d0, d7  ; keep return code stable across optional Workbench reply path
 
 opforgeStartReply
@@ -97,6 +100,9 @@ opforgeStartDone
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 
+	.endsection
+
+	.section code, kind=code
 ; ---------------------------------------------------------------------------
 ; Run one native opForge CLI invocation.
 ;
@@ -114,7 +120,6 @@ opforgeStartDone
 ; - textual OPFORGE-NATIVE report is written to stdout.
 ; - flat `.bin` output is written when selected and image bytes exist.
 ; ---------------------------------------------------------------------------
-
 opforgeNativeCliRun
 	movem.l d2-d7/a2-a6, -(sp)
 	move.l #RETURN_USAGE, NativeCliReturnCode
@@ -158,73 +163,73 @@ opforgeNativeCliHaveDos
 
 opforgeNativeCliHelp
 	move.l #HelpText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_OK, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
 opforgeNativeCliVersion
 	move.l #VersionText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_OK, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
 opforgeNativeCliParsed
 	lea NativeCliInputPath, a0
-	bsr.w opforgeNativeCliOpenInput
+	jsr opforgeNativeCliOpenInput
 	tst.l d0
 	bne.s opforgeNativeCliInputOpened
 	move.l #InputOpenErrorText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliInputPath, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_FILE_FAILURE, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
 opforgeNativeCliInputOpened
 	move.l d0, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 	cmpi.w #NATIVE_OUTPUT_FORMAT_HUNK, NativeCliOutputFormat
 	bne.s opforgeNativeCliOutputFormatReady
 	move.l #NativeHunkNotImplementedText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_NOT_IMPLEMENTED, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
 opforgeNativeCliOutputFormatReady
 	move.l #StubHeaderText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #InputLabelText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliInputPath, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #BinLabelText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliBinPath, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	bsr.w opforgeNativeCliInitAssemblySession
 	bsr.w opforgeNativeCliEmitModulePathRecords
 	bsr.w opforgeNativeCliTokenizeFrontend
 	tst.l d0
 	beq.s opforgeNativeCliTokenizerOk
 	move.l #TokenizerFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_RUNTIME_FAILURE, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
 opforgeNativeCliTokenizerOk
 	move.l #ParserOkText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	bsr.w opforgeNativeCliRunTwoPassEngine
 	tst.l d0
 	beq.s opforgeNativeCliPassesOk
 	move.l #NativePassFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_RUNTIME_FAILURE, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
@@ -236,19 +241,19 @@ opforgeNativeCliPassesOk
 	tst.l d0
 	beq.s opforgeNativeCliOutputOk
 	move.l #NativeOutputFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_FILE_FAILURE, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
 opforgeNativeCliOutputOk
 	move.l #NativeOutputOkText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_OK, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
 opforgeNativeCliEmitStub
 	move.l #EmitterStubText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #RETURN_NOT_IMPLEMENTED, NativeCliReturnCode
 
 opforgeNativeCliCloseDos
@@ -262,50 +267,6 @@ opforgeNativeCliCloseDos
 opforgeNativeCliDone
 	move.l NativeCliReturnCode, d0
 	movem.l (sp)+, d2-d7/a2-a6
-	rts
-
-; Write a zero-terminated string through dos.library/PutStr.
-opforgeNativeCliPutStr
-	movea.l NativeCliDosBase, a6
-	jsr PUT_STR(a6)
-	rts
-
-; Open an existing AmigaDOS input file.
-opforgeNativeCliOpenInput
-	move.l a0, d1
-	move.l #MODE_OLDFILE, d2
-	movea.l NativeCliDosBase, a6
-	jsr OPEN(a6)
-	rts
-
-; Close an AmigaDOS file handle in D1.
-opforgeNativeCliClose
-	movea.l NativeCliDosBase, a6
-	jsr CLOSE(a6)
-	rts
-
-; Read D0 bytes from file handle D1 into buffer A0.
-opforgeNativeCliReadInput
-	move.l a0, d2
-	move.l d0, d3
-	movea.l NativeCliDosBase, a6
-	jsr READ(a6)
-	rts
-
-; Open or create an AmigaDOS output file.
-opforgeNativeCliOpenOutput
-	move.l a0, d1
-	move.l #MODE_NEWFILE, d2
-	movea.l NativeCliDosBase, a6
-	jsr OPEN(a6)
-	rts
-
-; Write D0 bytes from buffer A0 to file handle D1.
-opforgeNativeCliWriteOutput
-	move.l a0, d2
-	move.l d0, d3
-	movea.l NativeCliDosBase, a6
-	jsr WRITE(a6)
 	rts
 
 ; Copy D0 bytes from A1 to A2.
@@ -401,7 +362,7 @@ opforgeNativeCliTokenizeFrontend
 	tst.l d0
 	bne.w opforgeNativeCliTokenizeReturn
 	move.l #TokenizerOkText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	bsr.w opforgeNativeCliTokenizeFile
 	tst.l d0
 	bne.w opforgeNativeCliTokenizeReturn
@@ -430,7 +391,7 @@ opforgeNativeCliTokenizeFilePathFail
 
 ; Read and tokenize one AmigaDOS text file at A0, preserving logical line state.
 opforgeNativeCliTokenizeFileAtPath
-	bsr.w opforgeNativeCliOpenInput
+	jsr opforgeNativeCliOpenInput
 	tst.l d0
 	bne.s opforgeNativeCliTokenizeFileOpenOk
 	moveq #1, d0
@@ -446,7 +407,7 @@ opforgeNativeCliTokenizeFileReadLoop
 	lea NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
-	bsr.w opforgeNativeCliReadInput
+	jsr opforgeNativeCliReadInput
 	cmp.l #-1, d0
 	beq.w opforgeNativeCliTokenizeFileFailClose
 	tst.l d0
@@ -502,18 +463,18 @@ opforgeNativeCliTokenizeFileCheckModuleDepth
 	tst.w NativeCliModuleDepth
 	beq.s opforgeNativeCliTokenizeFileSuccessClose
 	move.l #ModuleDepthFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	bra.s opforgeNativeCliTokenizeFileFailClose
 
 opforgeNativeCliTokenizeFileSuccessClose
 	move.l d5, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 	moveq #0, d0
 	rts
 
 opforgeNativeCliTokenizeFileFailClose
 	move.l d5, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 	moveq #1, d0
 	rts
 
@@ -575,7 +536,7 @@ opforgeNativeCliStagePackage
 
 opforgeNativeCliStageExternalPackage
 	lea NativeCliPackagePath, a0
-	bsr.w opforgeNativeCliOpenInput
+	jsr opforgeNativeCliOpenInput
 	tst.l d0
 	bne.s opforgeNativeCliStageExternalOpenOk
 	moveq #1, d0
@@ -586,7 +547,7 @@ opforgeNativeCliStageExternalOpenOk
 	lea packageStorage, a0
 	move.l #PACKAGE_STORAGE_CAPACITY, d0
 	move.l d5, d1
-	bsr.w opforgeNativeCliReadInput
+	jsr opforgeNativeCliReadInput
 	move.l d0, d6
 	cmp.l #-1, d6
 	beq.w opforgeNativeCliStageExternalReadFail
@@ -595,29 +556,29 @@ opforgeNativeCliStageExternalOpenOk
 	lea NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
-	bsr.w opforgeNativeCliReadInput
+	jsr opforgeNativeCliReadInput
 	move.l d0, d7
 	cmp.l #-1, d7
 	beq.w opforgeNativeCliStageExternalReadFail
 	tst.l d7
 	beq.s opforgeNativeCliStageExternalReadOk
 	move.l d5, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 	move.l #PackageTooLargeText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
 
 opforgeNativeCliStageExternalReadOk
 	move.l d5, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 	move.w d6, NativeCliPackageLenActive
 	moveq #0, d0
 	rts
 
 opforgeNativeCliStageExternalReadFail
 	move.l d5, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 	moveq #1, d0
 	rts
 
@@ -1251,7 +1212,7 @@ opforgeNativeCliTokenizeCurrentLineNoIncludeRecord
 	lea lastErrorBuffer, a1
 	clr.b 0(a1, d0.w)
 	move.l #lastErrorBuffer, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliTokenizeCurrentLineOk
 	bsr.w opforgeNativeCliParseCurrentLine
@@ -1268,9 +1229,9 @@ opforgeNativeCliTokenizeCurrentLineFail
 	lea lastErrorBuffer, a1
 	clr.b 0(a1, d0.W)
 	move.l #lastErrorBuffer, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliTokenizeCurrentLineFailReturn
 	moveq #1, d0
@@ -1279,19 +1240,19 @@ opforgeNativeCliTokenizeCurrentLineFailReturn
 opforgeNativeCliEmitIncludeLineRecord
 	movem.l d0-d1, -(sp)
 	move.l #IncludeLineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.w NativeCliIncludeDepth, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #SpaceText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l NativeCliSourceLineNum, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #SpaceText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliCurrentPath, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d1
 	rts
 
@@ -1385,13 +1346,13 @@ opforgeNativeCliParseLineDone
 
 opforgeNativeCliParseConditionalLine
 	move.l #ConditionalFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	bra.w opforgeNativeCliParseLineReturn
 
 opforgeNativeCliParseBadOrgLine
 	move.l #NativeBadOrgText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	bra.w opforgeNativeCliParseLineReturn
 
@@ -2331,7 +2292,7 @@ opforgeNativeCliTrimCopiedOperandTextDone
 opforgeNativeCliEmitStatementRecord
 	movem.l d0-d7/a0-a1, -(sp)
 	move.l #StatementText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineStmtCount.l, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -2368,9 +2329,9 @@ opforgeNativeCliEmitStatementRecord
 	bsr.w opforgeNativeCliCopyFixedString
 	clr.b (a1)
 	move.l #NativeCliArgToken, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	tst.w NativeCliStmtExprFound
 	beq.s opforgeNativeCliEmitStatementRecordDone
 	bsr.w opforgeNativeCliEmitStatementExprRequest
@@ -2381,7 +2342,7 @@ opforgeNativeCliEmitStatementRecordDone
 
 opforgeNativeCliEmitStatementExprRequest
 	move.l #StatementExprText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineStmtCount.l, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -2407,7 +2368,7 @@ opforgeNativeCliEmitStatementExprRequest
 	move.l NativeCliStmtExprSpanEnd, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	rts
 
 opforgeNativeCliBuildParserTailBuffer
@@ -2640,29 +2601,29 @@ opforgeNativeCliParseIncludeLine
 
 opforgeNativeCliParseIncludeFail
 	move.l #IncludeFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	bra.w opforgeNativeCliParseLineReturn
 
 opforgeNativeCliParseModuleDepthFail
 	move.l #ModuleDepthFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	bra.w opforgeNativeCliParseLineReturn
 
 opforgeNativeCliParseUseResolveFail
 	move.l #ModuleResolveFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliArgToken, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	bra.w opforgeNativeCliParseLineReturn
 
 opforgeNativeCliParseLineFail
 	move.l #ParserFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 
 opforgeNativeCliParseLineReturn
@@ -3072,7 +3033,7 @@ opforgeNativeCliRecordImportSelectReturn
 opforgeNativeCliEmitImportRecord
 	movem.l d0-d4/a0-a1, -(sp)
 	move.l #UseImportText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -3119,18 +3080,18 @@ opforgeNativeCliEmitImportRecord
 	bsr.w opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportAliasPtr
 	move.l a0, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliEmitImportRecordNewline
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 
 opforgeNativeCliEmitImportSelectRecord
 	movem.l d0-d4/d6-d7/a0-a1, -(sp)
 	move.l #UseSelectText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -3147,7 +3108,7 @@ opforgeNativeCliEmitImportSelectRecord
 	bsr.w opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportSelectNamePtr
 	move.l a0, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	bsr.w opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliImportSelectAliasPtr
@@ -3159,7 +3120,7 @@ opforgeNativeCliEmitImportSelectRecord
 	bsr.w opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportSelectAliasPtr
 	move.l a0, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliEmitImportSelectFlags
 	bsr.w opforgeNativeCliPutSpace
@@ -3170,14 +3131,14 @@ opforgeNativeCliEmitImportSelectFlags
 	move.w 0(a0, d0.l), d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/d6-d7/a0-a1
 	rts
 
 opforgeNativeCliEmitImportWildcardRecord
 	movem.l d0-d4, -(sp)
 	move.l #UseWildcardText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -3185,7 +3146,7 @@ opforgeNativeCliEmitImportWildcardRecord
 	moveq #0, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4
 	rts
 
@@ -3217,7 +3178,7 @@ opforgeNativeCliResolveBareUseLoop
 	tst.l d0
 	bne.w opforgeNativeCliResolveBareUseFail
 	lea NativeCliIncludePath, a0
-	bsr.w opforgeNativeCliOpenInput
+	jsr opforgeNativeCliOpenInput
 	tst.l d0
 	bne.s opforgeNativeCliResolveBareUseFound
 	addq.w #1, d7
@@ -3225,7 +3186,7 @@ opforgeNativeCliResolveBareUseLoop
 
 opforgeNativeCliResolveBareUseFound
 	move.l d0, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 	move.w NativeCliModuleCount, d6
 	move.w d6, NativeCliResolvedModuleId
 	move.w NativeCliSourceLineLen, d0
@@ -3290,16 +3251,16 @@ opforgeNativeCliEmitModuleRecord
 	cmp.w NativeCliRootModuleId, d4
 	bne.s opforgeNativeCliEmitModuleRecordDef
 	move.l #ModRootText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliEmitModuleRecordDef
 	move.l #ModDefText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -3335,9 +3296,9 @@ opforgeNativeCliEmitModuleRecordDef
 	bsr.w opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliModuleNamePtr
 	move.l a0, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 
@@ -3345,12 +3306,12 @@ opforgeNativeCliEmitModuleCompatibility
 	movem.l d0/d4/a0, -(sp)
 	move.w d0, d4
 	move.l #ModuleFoundText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	bsr.w opforgeNativeCliModuleNamePtr
 	move.l a0, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0/d4/a0
 	rts
 
@@ -3380,7 +3341,7 @@ opforgeNativeCliEmitModuleEndRecord
 	movem.l d0-d4/a0-a1, -(sp)
 	move.w d0, d4
 	move.l #ModEndText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -3395,7 +3356,7 @@ opforgeNativeCliEmitModuleEndRecord
 	move.w NativeCliModuleDepth, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 
@@ -3436,7 +3397,7 @@ opforgeNativeCliRestoreParentModuleReturn
 
 opforgeNativeCliPutSpace
 	move.l #SpaceText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	rts
 
 opforgeNativeCliModuleNamePtr
@@ -3573,29 +3534,29 @@ opforgeNativeCliExpandIncludeTarget
 	bne.w opforgeNativeCliExpandIncludeFail
 
 	move.l #IncludeStageText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #IncludeRootText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliIncludeRootPath, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #IncludeFileText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliIncludePath, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #IncludeEnterText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliCurrentPath, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SpaceText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliIncludePath, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 	move.w #NATIVE_INCLUDE_DEPTH_LIMIT, NativeCliIncludeDepth
 	lea NativeCliIncludePath, a0
@@ -3609,15 +3570,15 @@ opforgeNativeCliExpandIncludeTarget
 	bne.s opforgeNativeCliExpandIncludeRestoreFail
 
 	move.l #IncludeLeaveText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #IncludeOkText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	bra.s opforgeNativeCliExpandIncludeRestore
 
 opforgeNativeCliExpandIncludeRestoreFail
 	move.l #IncludeFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 
 opforgeNativeCliExpandIncludeRestore
@@ -3635,7 +3596,7 @@ opforgeNativeCliExpandIncludeRestore
 
 opforgeNativeCliExpandIncludeFail
 	move.l #IncludeFailureText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
 
@@ -3812,7 +3773,7 @@ opforgeNativeCliPutDecEmit
 	move.b d3, (a1)
 	clr.b 1(a1)
 	move.l #NativeCliDecimalChar, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliPutDecNext
 	dbra d6, opforgeNativeCliPutDecPowerLoop
@@ -3841,7 +3802,7 @@ opforgeNativeCliPutHexLoop
 	clr.b (a1)
 	addq.l #4, sp
 	move.l #NativeCliHexBuffer, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/a0-a2
 	rts
 
@@ -3902,62 +3863,62 @@ opforgeNativeCliRecordSourceLineDone
 opforgeNativeCliEmitAssemblySessionSummary
 	movem.l d0-d2/a0-a1, -(sp)
 	move.l #SessionStageText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionCpuText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #opasmEngineSessionCpuName, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionPassText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineSessionPass.l, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionOriginText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l opasmEngineSessionOrigin.l, d0
 	bsr.w opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionPcText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l opasmEngineSessionCurrentPc.l, d0
 	bsr.w opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionSourceCountText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineSourceRecordCount.l, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionStmtCountText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineStmtCount.l, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionLabelCountText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineLabelCount.l, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionImageBytesText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineImageByteCount.l, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #SessionReadyText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d2/a0-a1
 	rts
 
@@ -3985,7 +3946,7 @@ opforgeNativeCliBuildOpasmEngineContext
 opforgeNativeCliOpasmPassOneBegin
 	movem.l d0-d1, -(sp)
 	move.l #NativePassOneText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	clr.w opasmEngineLabelCount.l
 	lea opasmEngineLabelFinalizedTable.l, a0
 	moveq #NATIVE_LABEL_TABLE_CAPACITY - 1, d0
@@ -4004,7 +3965,7 @@ opforgeNativeCliPassOneClearLabelFinalizedLoop
 opforgeNativeCliOpasmPassOneOk
 	movem.l d1, -(sp)
 	move.l #NativePassOneOkText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d1
 	moveq #0, d0
 	rts
@@ -4012,7 +3973,7 @@ opforgeNativeCliOpasmPassOneOk
 opforgeNativeCliOpasmPassTwoBegin
 	movem.l d0-d1, -(sp)
 	move.l #NativePassTwoText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineLabelCount.l, d0
 	subq.w #1, d0
@@ -4034,7 +3995,7 @@ opforgeNativeCliPassTwoFinalizeLabelsDone
 opforgeNativeCliOpasmPassTwoOk
 	movem.l d1, -(sp)
 	move.l #NativePassTwoOkText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d1
 	moveq #0, d0
 	rts
@@ -4116,23 +4077,23 @@ opforgeNativeCliPassOneStoreHaveLabelLen
 	clr.b (a1)
 	addq.w #1, opasmEngineLabelCount.l
 	move.l #NativeLabelText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l d4, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	bsr.w opforgeNativeCliPutSpace
 	move.l opasmEngineSessionCurrentPc.l, d0
 	bsr.w opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	bra.s opforgeNativeCliPassOneRecordLabelOk
 
 opforgeNativeCliPassOneDuplicate
 	move.l #NativeDuplicateLabelText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l a1, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliPassOneRecordLabelFail
 	moveq #1, d0
@@ -4220,7 +4181,7 @@ opforgeNativeCliPassTwoEmitHaveMlen
 	beq.w opforgeNativeCliPassTwoEmitOk
 	move.w d0, d6
 	move.l #NativeSelectorStatusOkText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w opasmEngineImageByteCount.l, d0
 	add.w d6, d0
@@ -4245,7 +4206,7 @@ opforgeNativeCliPassTwoEmitOk
 
 opforgeNativeCliPassTwoEmitFail
 	move.l #NativeImageCapacityText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	bra.s opforgeNativeCliPassTwoEmitReturn
 
@@ -4264,9 +4225,9 @@ opforgeNativeCliPassTwoEmitServiceFail
 	tst.l d0
 	bne.s opforgeNativeCliPassTwoEmitServiceFailReturn
 	move.l #lastErrorBuffer, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliPassTwoEmitServiceFailReturn
 	moveq #1, d0
@@ -4301,19 +4262,19 @@ opforgeNativeCliPassTwoEmitSelectorDiagnostic
 
 opforgeNativeCliPassTwoEmitUnknownMnemonic
 	move.l #NativeUnknownMnemonicText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
 
 opforgeNativeCliPassTwoEmitUnsupportedAddressing
 	move.l #NativeUnsupportedAddressingText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
 
 opforgeNativeCliPassTwoEmitOperandError
 	move.l #NativeUnresolvedLabelText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
 
@@ -4388,7 +4349,7 @@ opforgeNativeCliReadOperandReadValue
 
 opforgeNativeCliReadOperandFail
 	move.l #NativeUnresolvedLabelText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	bra.s opforgeNativeCliReadOperandReturn
 
@@ -4560,7 +4521,7 @@ opforgeNativeCliPassAdvanceOrg
 	tst.l d0
 	beq.s opforgeNativeCliPassAdvanceOrgOk
 	move.l #NativeBadOrgText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #1, d0
 	rts
@@ -4643,9 +4604,9 @@ opforgeNativeCliTrySelectedEncodeSizeFail
 	tst.l d0
 	bne.s opforgeNativeCliTrySelectedEncodeSizeFailReturn
 	move.l #lastErrorBuffer, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 
 opforgeNativeCliTrySelectedEncodeSizeFailReturn
 	moveq #1, d0
@@ -4717,50 +4678,50 @@ opforgeNativeCliStatementLooksBareColumnOne	.block
 
 tokenLoop
 	tst.l d4
-	beq.w yes
+	beq.s yes
 	move.b (a0), d3
 	tst.b d3
-	beq.w yes
+	beq.s yes
 	cmpi.b #10, d3
-	beq.w yes
+	beq.s yes
 	cmpi.b #13, d3
-	beq.w yes
+	beq.s yes
 	cmpi.b #';', d3
-	beq.w yes
+	beq.s yes
 	cmpi.b #' ', d3
-	beq.w trailingLoop
+	beq.s trailingLoop
 	cmpi.b #9, d3
-	beq.w trailingLoop
+	beq.s trailingLoop
 	addq.l #1, a0
 	subq.l #1, d4
-	bra.w tokenLoop
+	bra.s tokenLoop
 
 trailingLoop
 	tst.l d4
-	beq.w yes
+	beq.s yes
 	move.b (a0), d3
 	tst.b d3
-	beq.w yes
+	beq.s yes
 	cmpi.b #10, d3
-	beq.w yes
+	beq.s yes
 	cmpi.b #13, d3
-	beq.w yes
+	beq.s yes
 	cmpi.b #';', d3
-	beq.w yes
+	beq.s yes
 	cmpi.b #' ', d3
-	beq.w trailingOne
+	beq.s trailingOne
 	cmpi.b #9, d3
-	beq.w trailingOne
-	bra.w no
+	beq.s trailingOne
+	bra.s no
 
 trailingOne
 	addq.l #1, a0
 	subq.l #1, d4
-	bra.w trailingLoop
+	bra.s trailingLoop
 
 yes
 	moveq #1, d0
-	bra.w return
+	bra.s return
 
 no
 	moveq #0, d0
@@ -4799,7 +4760,7 @@ opforgeNativeCliLabelEqualsReturn
 opforgeNativeCliWriteFlatOutput
 	movem.l d1-d4/a0-a1, -(sp)
 	lea NativeCliBinPath, a0
-	bsr.w opforgeNativeCliOpenOutput
+	jsr opforgeNativeCliOpenOutput
 	tst.l d0
 	beq.s opforgeNativeCliWriteFlatFail
 	move.l d0, d4
@@ -4808,17 +4769,17 @@ opforgeNativeCliWriteFlatOutput
 	move.w opasmEngineImageByteCount.l, d0
 	move.l d0, d3
 	move.l d4, d1
-	bsr.w opforgeNativeCliWriteOutput
+	jsr opforgeNativeCliWriteOutput
 	cmp.l d3, d0
 	bne.s opforgeNativeCliWriteFlatCloseFail
 	move.l d4, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 	moveq #0, d0
 	bra.s opforgeNativeCliWriteFlatReturn
 
 opforgeNativeCliWriteFlatCloseFail
 	move.l d4, d1
-	bsr.w opforgeNativeCliClose
+	jsr opforgeNativeCliClose
 
 opforgeNativeCliWriteFlatFail
 	moveq #1, d0
@@ -5387,25 +5348,25 @@ opforgeNativeCliReportQuoted
 
 opforgeNativeCliReportUnsupported
 	move.l #UnsupportedText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliArgToken, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeSubsetHelpText, d1
 	bra.s opforgeNativeCliReportText
 
 opforgeNativeCliReportUnknown
 	move.l #UnknownFlagText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliArgToken, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
 	bra.s opforgeNativeCliReportText
 
 opforgeNativeCliReportMissing
 	move.l #MissingValueText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NativeCliArgToken, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
 	bra.s opforgeNativeCliReportText
 
@@ -5429,7 +5390,7 @@ opforgeNativeCliReportModulePathCapacity
 	move.l #ModulePathCapacityText, d1
 
 opforgeNativeCliReportText
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	rts
 
 opforgeNativeCliRecordImplicitModulePathRoot
@@ -5474,7 +5435,7 @@ opforgeNativeCliEmitModulePathLoop
 	cmp.w d0, d4
 	bhs.s opforgeNativeCliEmitModulePathDone
 	move.l #ModPathText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -5485,9 +5446,9 @@ opforgeNativeCliEmitModulePathLoop
 	lea NativeCliModulePathTable, a0
 	adda.l d0, a0
 	move.l a0, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bsr.w opforgeNativeCliPutStr
+	jsr opforgeNativeCliPutStr
 	addq.w #1, d4
 	bra.s opforgeNativeCliEmitModulePathLoop
 
@@ -5501,368 +5462,6 @@ opforgeNativeCliEmitModulePathDone
 
 	.section data, kind=data
 
-DosName
-	.byte "dos.library", 0
-NewlineText
-	.byte 10, 0
-VersionText
-	.byte "opForge native AmigaOS CLI 0.1", 10, 0
-HelpText
-	.byte "Usage: opForge [OPTIONS] [INPUT]", 10
-	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -M/--module-path", 10, 0
-UsageText
-	.byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]", 10, 0
-QuotedText
-	.byte "OPC-NCLI002: quoted arguments are not supported by the native CLI subset", 10, 0
-UnsupportedText
-	.byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ", 0
-NativeSubsetHelpText
-	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path; --hunk is not implemented yet.", 10, 0
-UnknownFlagText
-	.byte "OPC-NCLI004: unknown CLI flag: ", 0
-MissingValueText
-	.byte "OPC-NCLI005: option requires a value: ", 0
-NoInputText
-	.byte "OPC-NCLI006: No input files specified. Use -i/--infile", 10, 0
-HunkRequiredText
-	.byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin", 10, 0
-MixedInputText
-	.byte "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style", 10, 0
-MultiplePositionalText
-	.byte "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile", 10, 0
-ModulePathCapacityText
-	.byte "OPC-NCLI017: native module path capacity exceeded", 10, 0
-PackageTooLargeText
-	.byte "ERROR OPC-NCLI019: opasm package exceeds native package storage capacity", 10, 0
-InputOpenErrorText
-	.byte "OPC-NCLI008: Input source file not found: ", 0
-StubHeaderText
-	.byte "OPFORGE-NATIVE 1", 10
-	.byte "STATUS emitter-not-implemented", 10, 0
-InputLabelText
-	.byte "INPUT ", 0
-HunkLabelText
-	.byte "HUNK ", 0
-BinLabelText
-	.byte "BIN ", 0
-TokenizerOkText
-	.byte "STATUS tokenizer-ok", 10, 0
-TokenizerFailureText
-	.byte "ERROR OPC-NCLI010: native tokenizer stage failed", 10, 0
-ParserOkText
-	.byte "STAGE parser", 10
-	.byte "STATUS parser-module-use-ok", 10, 0
-SessionStageText
-	.byte "STAGE session", 10, 0
-SessionCpuText
-	.byte "SESSION-CPU ", 0
-SessionPassText
-	.byte "SESSION-PASS ", 0
-SessionOriginText
-	.byte "SESSION-ORIGIN ", 0
-SessionPcText
-	.byte "SESSION-PC ", 0
-SessionSourceCountText
-	.byte "SESSION-SOURCE-COUNT ", 0
-SessionStmtCountText
-	.byte "SESSION-STMT-COUNT ", 0
-SessionLabelCountText
-	.byte "SESSION-LABEL-COUNT ", 0
-SessionImageBytesText
-	.byte "SESSION-IMAGE-BYTES ", 0
-SessionReadyText
-	.byte "STATUS session-ready", 10, 0
-NativePassOneText
-	.byte "STAGE pass1", 10, 0
-NativePassOneOkText
-	.byte "STATUS pass1-ok", 10, 0
-NativePassTwoText
-	.byte "STAGE pass2", 10, 0
-NativePassTwoOkText
-	.byte "STATUS pass2-ok", 10, 0
-NativeSelectorStatusOkText
-	.byte "STATUS selector-status-ok", 10, 0
-NativePassFailureText
-	.byte "ERROR OPC-NCLI020: native pass engine failed", 10, 0
-NativeDuplicateLabelText
-	.byte "ERROR OPC-NCLI021: duplicate native label: ", 0
-NativeUnresolvedLabelText
-	.byte "ERROR OPC-NCLI022: unresolved native label", 10, 0
-NativeOutputOkText
-	.byte "STATUS output-ok", 10, 0
-NativeOutputFailureText
-	.byte "ERROR OPC-NCLI023: native flat output write failed", 10, 0
-NativeImageCapacityText
-	.byte "ERROR OPC-NCLI024: native image buffer capacity exceeded", 10, 0
-NativeUnknownMnemonicText
-	.byte "ERROR OPC-NCLI025: unknown native mnemonic", 10, 0
-NativeUnsupportedAddressingText
-	.byte "ERROR OPC-NCLI026: unsupported native addressing mode", 10, 0
-NativeBadOrgText
-	.byte "ERROR OPC-NCLI027: invalid native .org expression", 10, 0
-NativeHunkNotImplementedText
-	.byte "ERROR OPC-NCLI028: native Hunk output is not implemented; use --bin for flat output", 10, 0
-NativeSelectorUnknownRawText
-	.byte "OTR901: selector unknown mnemonic", 0
-NativeSelectorUnsupportedRawText
-	.byte "OTR901: selector unsupported address", 0
-NativeSelectorOperandRawText
-	.byte "OTR901: selector operand error", 0
-NativeSelectedOperandCompileRawText
-	.byte "OTR901: selected operand compile failed", 0
-NativeLabelText
-	.byte "LABEL ", 0
-EmitterStubText
-	.byte "STAGE emitter", 10
-	.byte "ERROR OPC-NCLI009: native emitter VM not implemented", 10, 0
-ParserFailureText
-	.byte "ERROR OPC-NCLI013: native module/use parser stage failed", 10, 0
-ModuleDepthFailureText
-	.byte "ERROR OPC-NCLI016: native module depth mismatch", 10, 0
-IncludeStageText
-	.byte "STAGE include", 10, 0
-IncludeOkText
-	.byte "STATUS include-ok", 10, 0
-IncludeFailureText
-	.byte "ERROR OPC-NCLI014: native include expansion failed", 10, 0
-ConditionalFailureText
-	.byte "ERROR OPC-NCLI015: native conditional preprocessing not implemented", 10, 0
-ModuleResolveFailureText
-	.byte "ERROR OPC-NCLI018: native module resolution failed: ", 0
-IncludeRootText
-	.byte "INCLUDE-ROOT 1 ", 0
-IncludeFileText
-	.byte "INCLUDE-FILE 1 ", 0
-IncludeEnterText
-	.byte "INCLUDE-ENTER 1 ", 0
-IncludeLineText
-	.byte "INCLUDE-LINE ", 0
-IncludeLeaveText
-	.byte "INCLUDE-LEAVE 1", 10, 0
-ModRootText
-	.byte "MOD-ROOT ", 0
-ModDefText
-	.byte "MOD-DEF ", 0
-ModEndText
-	.byte "MOD-END ", 0
-ModPathText
-	.byte "MOD-PATH ", 0
-UseImportText
-	.byte "USE-IMPORT ", 0
-UseSelectText
-	.byte "USE-SELECT ", 0
-UseWildcardText
-	.byte "USE-WILDCARD ", 0
-StatementText
-	.byte "STMT ", 0
-StatementExprText
-	.byte "STMT-EXPR ", 0
-ModuleFoundText
-	.byte "MODULE ", 0
-SpaceText
-	.byte " ", 0
-HexDigitsText
-	.byte "0123456789ABCDEF"
-AsKeywordText
-	.byte "as"
-ModuleSourceExtensionText
-	.byte ".asm", 0
-ProcessorAsmText
-	.byte "asm"
-KindStatementText
-	.byte "statement"
-ModuleMnemonicText
-	.byte "module"
-EndmoduleMnemonicText
-	.byte "endmodule"
-UseMnemonicText
-	.byte "use"
-OrgMnemonicText
-	.byte ".org"
-CpuMnemonicText
-	.byte ".cpu"
-EndMnemonicText
-	.byte ".end"
-NativeCliSelectedShapeAccumulatorText
-	.byte "accumulator", 0
-NativeCliSelectedShapeImmediateText
-	.byte "immediate", 0
-NativeCliSelectedShapeDirectText
-	.byte "direct", 0
-NativeCliSelectedShapeDirectXText
-	.byte "direct_x", 0
-NativeCliSelectedShapeDirectYText
-	.byte "direct_y", 0
-NativeCliSelectedShapeIndirectText
-	.byte "indirect", 0
-NativeCliSelectedShapeIndexedIndirectXText
-	.byte "indexed_indirect_x", 0
-NativeCliSelectedShapeIndirectIndexedYText
-	.byte "indirect_indexed_y", 0
-LdaMnemonicText
-	.byte "lda"
-StaMnemonicText
-	.byte "sta"
-JmpMnemonicText
-	.byte "jmp"
-NopMnemonicText
-	.byte "nop"
-ImmediateModeText
-	.byte "immediate"
-AbsoluteModeText
-	.byte "absolute"
-ModuleDirectiveText
-	.byte ".module"
-EndmoduleDirectiveText
-	.byte ".endmodule"
-UseDirectiveText
-	.byte ".use"
-IncludeDirectiveText
-	.byte ".include"
-IfDirectiveText
-	.byte ".if"
-IfdefDirectiveText
-	.byte ".ifdef"
-IfndefDirectiveText
-	.byte ".ifndef"
-ElseDirectiveText
-	.byte ".else"
-ElseifDirectiveText
-	.byte ".elseif"
-EndifDirectiveText
-	.byte ".endif"
-.ifdef OPFORGE_FS_UAE_SMOKE
-defaultFsUaeArgTail
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu 65c02 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC
-	.byte "Work:opforge_6502_unknown_mnemonic.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNSUPPORTED_ADDRESSING
-	.byte "Work:opforge_6502_unsupported_addressing.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_UNRESOLVED_LABEL
-	.byte "Work:opforge_6502_unresolved_label.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_6502_BAD_ORG
-	.byte "Work:opforge_6502_bad_org.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNSUPPORTED_OUTPUT
-	.byte "Work:opforge_6502_native_cli_smoke.asm --srec Work:opforge_native_out.srec --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INPUT
-	.byte "Work:opforge_missing_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_HUNK
-	.byte "Work:opforge_fsuae_smoke_input.asm --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_HUNK_OUTPUT
-	.byte "Work:opforge_fsuae_smoke_input.asm --hunk Work:opforge_native_out.hunk --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MIXED_INPUT
-	.byte "Work:opforge_fsuae_smoke_input.asm --infile Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_PACKAGE
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_missing_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_PACKAGE_TOO_LARGE
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package_oversized.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNMATCHED_ENDMODULE
-	.byte "Work:opforge_fsuae_unmatched_endmodule.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_UNTERMINATED_MODULE
-	.byte "Work:opforge_fsuae_unterminated_module.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_BAD_USE
-	.byte "Work:opforge_fsuae_bad_use.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE
-	.byte "Work:opforge_fsuae_missing_module.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M", 0
-.else
-.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8", 0
-.else
-	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-.endif
-
-FlagHelpLong
-	.byte "--help", 0
-FlagHelpShort
-	.byte "-h", 0
-FlagVersionLong
-	.byte "--version", 0
-FlagVersionShort
-	.byte "-V", 0
-FlagInfileShort
-	.byte "-i", 0
-FlagInfileLong
-	.byte "--infile", 0
-FlagHunkLong
-	.byte "--hunk", 0
-FlagOutfileShort
-	.byte "-o", 0
-FlagOutfileLong
-	.byte "--outfile", 0
-FlagCpuLong
-	.byte "--cpu", 0
-FlagPackageLong
-	.byte "--opasm-package", 0
-FlagListShort
-	.byte "-l", 0
-FlagListLong
-	.byte "--list", 0
-FlagHexShort
-	.byte "-x", 0
-FlagHexLong
-	.byte "--hex", 0
-FlagSrecShort
-	.byte "-s", 0
-FlagSrecLong
-	.byte "--srec", 0
-FlagBinShort
-	.byte "-b", 0
-FlagBinLong
-	.byte "--bin", 0
-FlagDefineShort
-	.byte "-D", 0
-FlagDefineLong
-	.byte "--define", 0
-FlagIncludeShort
-	.byte "-I", 0
-FlagIncludeLong
-	.byte "--include-path", 0
-FlagModuleShort
-	.byte "-M", 0
-FlagModuleLong
-	.byte "--module-path", 0
-
 	.align 2
 
 DecimalPowers
@@ -5873,17 +5472,6 @@ DecimalPowers
 OpforgeNativeCliPackageLen
 	.word OPFORGE_NATIVE_CLI_PACKAGE_LEN
 
-DefaultCpuName
-	.byte "m68020", 0
-DefaultFamilyName
-	.byte "motorola68k"
-DefaultFamilyNameEnd
-M6502CpuNameText
-	.byte "m6502", 0
-Mos6502FamilyName
-	.byte "mos6502"
-mos6502FamilyNameEnd
-
 	.align 2
 opforgeNativeCliPackageData
 	.incbin "opforge_cli_package.opasm"
@@ -5892,203 +5480,6 @@ OPFORGE_NATIVE_CLI_PACKAGE_DATA_END
 DEFAULT_FAMILY_NAME_LEN = DefaultFamilyNameEnd - DefaultFamilyName
 MOS6502_FAMILY_NAME_LEN = mos6502FamilyNameEnd - Mos6502FamilyName
 OPFORGE_NATIVE_CLI_PACKAGE_LEN = OPFORGE_NATIVE_CLI_PACKAGE_DATA_END - opforgeNativeCliPackageData
-
-	.endsection
-
-	.section bss, kind=bss
-	.align 4
-
-NativeCliDosBase
-	.res long, 1
-NativeCliReturnCode
-	.res long, 1
-NativeCliInputStyle
-	.res word, 1
-NativeCliHunkRequested
-	.res word, 1
-NativeCliBinRequested
-	.res word, 1
-NativeCliOutputFormat
-	.res word, 1
-NativeCliParseStatus
-	.res word, 1
-
-NativeCliArgToken
-	.res byte, TOKEN_BUFFER_CAPACITY
-NativeCliInputPath
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliHunkPath
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliBinPath
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliOutfileBase
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliCpuName
-	.res byte, TOKEN_BUFFER_CAPACITY
-NativeCliPackagePath
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliSourceLineLen
-	.res word, 1
-NativeCliParserTailLen
-	.res word, 1
-NativeCliPackageLenActive
-	.res word, 1
-NativeCliPipelineRequestLen
-	.res word, 1
-NativeCliLineRequestLen
-	.res word, 1
-NativeCliEvalRequestLen
-	.res word, 1
-NativeCliEncodeRequestLen
-	.res word, 1
-	.align 4
-NativeCliOpasmEngineContext
-	.res long, NATIVE_OPASM_ENGINE_CONTEXT_LONGS
-NativeCliSourceLineNum
-	.res long, 1
-NativeCliSawCr
-	.res word, 1
-NativeCliIncludeDepth
-	.res word, 1
-NativeCliModuleResolveDepth
-	.res word, 1
-NativeCliResolvedModuleId
-	.res word, 1
-NativeCliSavedLineLen
-	.res word, 1
-NativeCliSavedSawCr
-	.res word, 1
-NativeCliSavedLineNum
-	.res long, 1
-NativeCliModuleSavedLineLen
-	.res word, 1
-NativeCliModuleSavedSawCr
-	.res word, 1
-NativeCliModuleSavedLineNum
-	.res long, 1
-NativeCliStmtMnemFound
-	.res word, 1
-NativeCliStmtExprFound
-	.res word, 1
-NativeCliStmtDirectiveKind
-	.res word, 1
-NativeCliInputChar
-	.res byte, 1
-NativeCliDecimalChar
-	.res byte, 2
-NativeCliHexBuffer
-	.res byte, 10
-NativeCliStmtLabelStart
-	.res long, 1
-NativeCliStmtLabelEnd
-	.res long, 1
-NativeCliStmtLabelOff
-	.res long, 1
-NativeCliStmtLabelLen
-	.res long, 1
-NativeCliStmtMnemStart
-	.res long, 1
-NativeCliStmtMnemEnd
-	.res long, 1
-NativeCliStmtMnemOff
-	.res long, 1
-NativeCliStmtMnemLen
-	.res long, 1
-NativeCliStmtOperandStart
-	.res long, 1
-NativeCliStmtOperandEnd
-	.res long, 1
-NativeCliStmtExprOperandIndex
-	.res long, 1
-NativeCliStmtExprSlotIndex
-	.res long, 1
-NativeCliStmtExprStartToken
-	.res long, 1
-NativeCliStmtExprEndToken
-	.res long, 1
-NativeCliStmtExprSpanLine
-	.res long, 1
-NativeCliStmtExprSpanStart
-	.res long, 1
-NativeCliStmtExprSpanEnd
-	.res long, 1
-NativeCliSourceLine
-	.res byte, SOURCE_LINE_BUFFER_CAPACITY
-NativeCliParserTailBuffer
-	.res byte, SOURCE_LINE_BUFFER_CAPACITY
-NativeCliCurrentPath
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliSavedPath
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliModuleSavedPath
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliIncludeTarget
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliIncludePath
-	.res byte, PATH_BUFFER_CAPACITY
-NativeCliIncludeRootPath
-	.res byte, PATH_BUFFER_CAPACITY
-OpforgeNativeCliPrvmRouteFrame
-	.res byte, PRVM_ROUTE_FRAME_SIZE
-NativeCliPrvmRouteStatus
-	.res long, 1
-NativeCliPrvmResultCount
-	.res word, 1
-OpforgeNativeCliPrvmResultBuffer
-	.res byte, PRVM_ROUTE_RESULT_CAPACITY
-OpforgeNativeCliPrvmDiagBuffer
-	.res byte, PRVM_ROUTE_DIAG_CAPACITY
-OpforgeNativeCliPrvmResumeBuffer
-	.res byte, PRVM_ROUTE_RESUME_CAPACITY
-OpforgeNativeCliPrvmExprRequest
-	.res byte, PRVM_ROUTE_EXPR_REQUEST_SIZE
-OpforgeNativeCliPrvmExprResultSlot
-	.res byte, PRVM_ROUTE_EXPR_RESULT_SIZE * PRVM_ROUTE_EXPR_RESULT_CAPACITY
-
-NativeCliModuleUseStateStart
-NativeCliModuleCount
-	.res word, 1
-NativeCliImportCount
-	.res word, 1
-NativeCliModulePathCount
-	.res word, 1
-NativeCliImportSelectCount
-	.res word, 1
-NativeCliRootModuleId
-	.res word, 1
-NativeCliCurrentModuleId
-	.res word, 1
-NativeCliModuleDepth
-	.res word, 1
-NativeCliModuleNameTable
-	.res byte, NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-NativeCliModuleFileIdTable
-	.res word, NATIVE_MODULE_TABLE_CAPACITY
-NativeCliModuleLineTable
-	.res long, NATIVE_MODULE_TABLE_CAPACITY
-NativeCliModuleDepthTable
-	.res word, NATIVE_MODULE_TABLE_CAPACITY
-NativeCliImportOwnerModuleTable
-	.res word, NATIVE_IMPORT_TABLE_CAPACITY
-NativeCliImportModuleTable
-	.res word, NATIVE_IMPORT_TABLE_CAPACITY
-NativeCliImportFileIdTable
-	.res word, NATIVE_IMPORT_TABLE_CAPACITY
-NativeCliImportLineTable
-	.res long, NATIVE_IMPORT_TABLE_CAPACITY
-NativeCliImportAliasTable
-	.res byte, NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
-NativeCliImportSelectImportTable
-	.res word, NATIVE_IMPORT_SELECT_CAPACITY
-NativeCliImportSelectNameTable
-	.res byte, NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY
-NativeCliImportSelectAliasTable
-	.res byte, NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY
-NativeCliImportSelectFlagsTable
-	.res word, NATIVE_IMPORT_SELECT_CAPACITY
-NativeCliModulePathTable
-	.res byte, NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY
-nativeCliModuleUseStateEnd
 
 	.endsection
 

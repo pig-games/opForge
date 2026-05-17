@@ -1508,6 +1508,14 @@ impl<'a> AsmLine<'a> {
             .is_some()
     }
 
+    fn defer_outer_lookup_for_active_block_pass1(&self) -> bool {
+        self.pass == 1
+            && self
+                .symbol_scope
+                .scope_stack
+                .has_block_deeper_than(self.symbol_scope.module_scope_depth)
+    }
+
     fn resolve_scoped_name(&self, name: &str) -> Result<Option<String>, AsmError> {
         if name.contains('.') {
             let candidate = self
@@ -1521,8 +1529,14 @@ impl<'a> AsmLine<'a> {
             }
             return Ok(None);
         }
+        let block_local_only = self.defer_outer_lookup_for_active_block_pass1();
+        let stop_depth = if block_local_only {
+            self.symbol_scope.module_scope_depth
+        } else {
+            0
+        };
         let mut depth = self.symbol_scope.scope_stack.depth();
-        while depth > 0 {
+        while depth > stop_depth {
             let prefix = self.symbol_scope.scope_stack.prefix(depth);
             let candidate = format!("{prefix}.{name}");
             if let Some(entry) = self.symbols.entry(&candidate) {
@@ -1532,6 +1546,9 @@ impl<'a> AsmLine<'a> {
                 return Ok(Some(entry.name.clone()));
             }
             depth = depth.saturating_sub(1);
+        }
+        if block_local_only {
+            return Ok(None);
         }
         if let Some(entry) = self.symbols.entry(name) {
             if !self.entry_is_visible(entry) {
@@ -1559,14 +1576,23 @@ impl<'a> AsmLine<'a> {
                 .unwrap_or_else(|| name.to_string());
             return self.symbols.entry(&candidate);
         }
+        let block_local_only = self.defer_outer_lookup_for_active_block_pass1();
+        let stop_depth = if block_local_only {
+            self.symbol_scope.module_scope_depth
+        } else {
+            0
+        };
         let mut depth = self.symbol_scope.scope_stack.depth();
-        while depth > 0 {
+        while depth > stop_depth {
             let prefix = self.symbol_scope.scope_stack.prefix(depth);
             let candidate = format!("{prefix}.{name}");
             if let Some(entry) = self.symbols.entry(&candidate) {
                 return Some(entry);
             }
             depth = depth.saturating_sub(1);
+        }
+        if block_local_only {
+            return None;
         }
         if let Some(entry) = self.symbols.entry(name) {
             return Some(entry);

@@ -10,7 +10,7 @@ use opcore::expr::{eval_expr as eval_core_expr, EvalContext};
 use opcore::macro_processor::CompileTimeVisibility;
 use opcore::modules::{expr_to_ident, extract_module_block, UseDirectiveSpec};
 use opcore::parser::{Expr, LineAst, Parser};
-use opcore::tokenizer::ConditionalKind;
+use opcore::tokenizer::{ConditionalKind, Span};
 use types::path_display::stable_path_string;
 use types::processing::ProcessingOutcome;
 use types::source_map::{SourceMap, SourceOrigin};
@@ -43,6 +43,12 @@ struct ModuleLoadContext<'a> {
     dependency_files: &'a mut HashSet<PathBuf>,
     pp_macro_depth: usize,
     source_provider: &'a dyn SourceProvider,
+}
+
+#[derive(Debug, Clone)]
+struct ModuleUseRef {
+    module_id: String,
+    span: Span,
 }
 
 fn canonical_module_id(module_id: &str) -> String {
@@ -284,13 +290,16 @@ pub(crate) fn scan_module_ids_from_processing(lines: &[String]) -> Vec<String> {
     modules
 }
 
-fn collect_use_directives_from_processing(lines: &[String]) -> Vec<String> {
+fn collect_use_directives_from_processing(lines: &[String]) -> Vec<ModuleUseRef> {
     let mut uses = Vec::new();
     for ast in scan_active_module_items(lines) {
         let LineAst::Use(use_ast) = ast else {
             continue;
         };
-        uses.push(use_ast.module_id);
+        uses.push(ModuleUseRef {
+            module_id: use_ast.module_id,
+            span: use_ast.span,
+        });
     }
     uses
 }
@@ -400,23 +409,44 @@ fn build_module_index(
 }
 
 fn load_module_recursive(
-    module_id: &str,
+    import: &ModuleUseRef,
     ctx: &mut ModuleLoadContext<'_>,
+    importing_path: &Path,
+    importing_lines: &[String],
 ) -> Result<(), AsmRunError> {
+    let module_id = import.module_id.as_str();
     let canonical = canonical_module_id(module_id);
+    if let Some(pos) = ctx
+        .stack
+        .iter()
+        .position(|name| canonical_module_id(name) == canonical)
+    {
+        let mut cycle: Vec<String> = ctx.stack[pos..].to_vec();
+        cycle.push(module_id.to_string());
+        let message = format!("cyclic module import: {}", cycle.join(" -> "));
+        return Err(module_import_error(
+            &message,
+            Some(module_id),
+            import,
+            importing_path,
+            importing_lines,
+        ));
+    }
     if ctx.loaded.contains(&canonical) || ctx.preloaded.contains(&canonical) {
         return Ok(());
     }
     let infos = ctx.index.modules.get(&canonical).ok_or_else(|| {
-        let mut message = format!("Missing module: {module_id}");
+        let mut message = format!("unknown module: {module_id}");
         if !ctx.stack.is_empty() {
             let chain = ctx.stack.join(" -> ");
             message.push_str(&format!(" (import stack: {chain})"));
         }
-        AsmRunError::new(
-            AsmError::new(AsmErrorKind::Directive, &message, None),
-            vec![],
-            vec![],
+        module_import_error(
+            &message,
+            Some(module_id),
+            import,
+            importing_path,
+            importing_lines,
         )
     })?;
     if infos.len() > 1 {
@@ -474,7 +504,7 @@ fn load_module_recursive(
     };
 
     for dep in collect_use_directives_from_processing(&module_lines) {
-        load_module_recursive(&dep, ctx)?;
+        load_module_recursive(&dep, ctx, &info.path, &module_lines)?;
     }
 
     ctx.loaded.insert(canonical);
@@ -482,6 +512,21 @@ fn load_module_recursive(
         .push((module_id.to_string(), info.path.clone(), module_lines));
     ctx.stack.pop();
     Ok(())
+}
+
+fn module_import_error(
+    message: &str,
+    param: Option<&str>,
+    import: &ModuleUseRef,
+    importing_path: &Path,
+    importing_lines: &[String],
+) -> AsmRunError {
+    let error = AsmError::new(AsmErrorKind::Directive, message, param);
+    let diagnostic = Diagnostic::new(import.span.line, Severity::Error, error.clone())
+        .with_column(Some(import.span.col_start))
+        .with_col_end(Some(import.span.col_end))
+        .with_file(Some(stable_path_string(importing_path)));
+    AsmRunError::new(error, vec![diagnostic], importing_lines.to_vec())
 }
 
 #[derive(Debug)]
@@ -568,7 +613,7 @@ pub fn load_module_graph_with_provider(
         source_provider,
     };
     for dep in collect_use_directives_from_processing(&root_module_lines) {
-        load_module_recursive(&dep, &mut ctx)?;
+        load_module_recursive(&dep, &mut ctx, root_path, &root_module_lines)?;
     }
 
     let mut module_exports: HashMap<String, AsmMacroExports> = HashMap::new();

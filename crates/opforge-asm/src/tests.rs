@@ -2282,7 +2282,7 @@ fn module_loader_reports_missing_module() {
     let err = load_module_graph(&root_path, root_lines, &[], &[], &[], 32)
         .expect_err("expected missing module error");
     assert!(
-        err.to_string().contains("Missing module"),
+        err.to_string().contains("unknown module: missing.mod"),
         "unexpected error: {err}"
     );
 }
@@ -2303,6 +2303,10 @@ fn module_loader_missing_module_includes_import_stack() {
     assert!(
         message.contains("import stack"),
         "missing import stack: {message}"
+    );
+    assert!(
+        message.contains("unknown module: missing"),
+        "missing unknown module diagnostic: {message}"
     );
     assert!(message.contains("lib"), "missing lib in stack: {message}");
 }
@@ -18776,6 +18780,104 @@ fn scoped_symbol_shadowing_prefers_inner_scope() {
     let status = process_line(&mut asm, "    .word VAL", 0, 1);
     assert_eq!(status, LineStatus::Ok);
     assert_eq!(asm.bytes(), &[1, 0]);
+}
+
+#[test]
+fn block_forward_branches_prefer_local_duplicate_labels() {
+    fn run_pass(asm: &mut AsmLine<'_>, pass: u8) {
+        let duplicate_names = ["close", "done", "fail", "return", "next"];
+
+        assert_eq!(process_line(asm, ".module main", 0, pass), LineStatus::Ok);
+        for (index, name) in duplicate_names.iter().enumerate() {
+            let line = format!("{name} NOP");
+            assert_eq!(
+                process_line(asm, &line, (index as u32) * 2, pass),
+                LineStatus::Ok,
+                "module-scope duplicate `{name}` should assemble on pass {pass}"
+            );
+        }
+
+        for block_repeat in 0..2u32 {
+            for (index, name) in duplicate_names.iter().enumerate() {
+                let base = 0x0200 + block_repeat * 0x0100 + (index as u32) * 0x10;
+                let block_name = format!("block_{block_repeat}_{name}");
+                let block_line = format!("{block_name} .block");
+                assert_eq!(
+                    process_line(asm, &block_line, base, pass),
+                    LineStatus::Ok,
+                    "opening block `{block_name}` should succeed on pass {pass}"
+                );
+
+                let forward_branch = format!("    BRA.S {name}");
+                assert_eq!(
+                    process_line(asm, &forward_branch, base, pass),
+                    LineStatus::Ok,
+                    "forward branch to block-local `{name}` should not use the module duplicate on pass {pass}: {:?}",
+                    asm.error().map(|err| err.to_string())
+                );
+                if pass == 2 {
+                    assert_eq!(
+                        asm.bytes(),
+                        &[0x60, 0x02],
+                        "forward branch to `{name}` in `{block_name}` should target the block-local label"
+                    );
+                }
+
+                assert_eq!(process_line(asm, "    NOP", base + 2, pass), LineStatus::Ok);
+
+                let local_label = format!("{name} NOP");
+                assert_eq!(
+                    process_line(asm, &local_label, base + 4, pass),
+                    LineStatus::Ok,
+                    "block-local duplicate `{name}` should assemble on pass {pass}"
+                );
+
+                let backward_branch = format!("    BNE.S {name}");
+                assert_eq!(
+                    process_line(asm, &backward_branch, base + 6, pass),
+                    LineStatus::Ok,
+                    "backward short branch to block-local `{name}` should range-check against the local target on pass {pass}: {:?}",
+                    asm.error().map(|err| err.to_string())
+                );
+                if pass == 2 {
+                    assert_eq!(
+                        asm.bytes(),
+                        &[0x66, 0xFC],
+                        "backward branch to `{name}` in `{block_name}` should use the block-local target"
+                    );
+                }
+
+                assert_eq!(process_line(asm, ".bend", base + 8, pass), LineStatus::Ok);
+            }
+        }
+        assert_eq!(process_line(asm, ".endmodule", 0, pass), LineStatus::Ok);
+    }
+
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = AsmLine::with_cpu(&mut symbols, m68000_cpu_id, &registry);
+
+    run_pass(&mut asm, 1);
+    for name in ["close", "done", "fail", "return", "next"] {
+        assert!(
+            asm.symbols()
+                .lookup(&format!("main.block_0_{name}.{name}"))
+                .is_some(),
+            "first block-local `{name}` should be recorded"
+        );
+        assert!(
+            asm.symbols()
+                .lookup(&format!("main.block_1_{name}.{name}"))
+                .is_some(),
+            "second block-local `{name}` should be recorded"
+        );
+        assert!(
+            asm.symbols().lookup(&format!("main.{name}")).is_some(),
+            "module-scope duplicate `{name}` should be recorded"
+        );
+    }
+
+    run_pass(&mut asm, 2);
 }
 
 #[test]

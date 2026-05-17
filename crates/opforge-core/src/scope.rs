@@ -118,6 +118,17 @@ impl ScopeStack {
         self.frames.last().map(|frame| frame.kind)
     }
 
+    pub fn has_block_deeper_than(&self, depth: usize) -> bool {
+        let mut frame_depth = 0usize;
+        for frame in &self.frames {
+            frame_depth = frame_depth.saturating_add(frame.segment_count);
+            if frame.kind == ScopeKind::Block && frame_depth > depth {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn pop(&mut self) -> bool {
         let Some(frame) = self.frames.pop() else {
             return false;

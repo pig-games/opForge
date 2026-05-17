@@ -188,4 +188,105 @@ mod tests {
             "helper module import should not be treated as root dependency"
         );
     }
+
+    #[test]
+    fn load_module_graph_unknown_dotted_module_reports_use_site_error() {
+        let project = temp_dir();
+        let src = project.join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        let root = src.join("main.asm");
+        fs::write(
+            &root,
+            ".module main\n.use opforge.cli.missing (foo)\n.endmodule\n",
+        )
+        .unwrap();
+
+        let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
+        let err = load_module_graph(&root, root_lines, &[], &[], &[], 64)
+            .expect_err("missing module should be a normal graph error");
+        let message = err.to_string();
+        assert!(
+            message.contains("unknown module: opforge.cli.missing"),
+            "unexpected error: {message}"
+        );
+        let diag = err
+            .diagnostics()
+            .first()
+            .expect("missing module should include .use-site diagnostic");
+        assert_eq!(diag.line, 2);
+        assert_eq!(diag.column, Some(2));
+    }
+
+    #[test]
+    fn load_module_graph_direct_cycle_reports_import_chain() {
+        let project = temp_dir();
+        let src = project.join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        let root = src.join("main.asm");
+        fs::write(&root, ".module main\n.use a\n.endmodule\n").unwrap();
+        fs::write(src.join("a.asm"), ".module a\n.use a\n.endmodule\n").unwrap();
+
+        let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
+        let err = load_module_graph(&root, root_lines, &[], &[], &[], 64)
+            .expect_err("direct import cycle should be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("cyclic module import: a -> a"),
+            "unexpected error: {message}"
+        );
+    }
+
+    #[test]
+    fn load_module_graph_indirect_cycle_reports_import_chain() {
+        let project = temp_dir();
+        let src = project.join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        let root = src.join("main.asm");
+        fs::write(&root, ".module main\n.use a\n.endmodule\n").unwrap();
+        fs::write(src.join("a.asm"), ".module a\n.use b\n.endmodule\n").unwrap();
+        fs::write(src.join("b.asm"), ".module b\n.use c\n.endmodule\n").unwrap();
+        fs::write(src.join("c.asm"), ".module c\n.use a\n.endmodule\n").unwrap();
+
+        let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
+        let err = load_module_graph(&root, root_lines, &[], &[], &[], 64)
+            .expect_err("indirect import cycle should be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("cyclic module import: a -> b -> c -> a"),
+            "unexpected error: {message}"
+        );
+    }
+
+    #[test]
+    fn load_module_graph_allows_importing_available_main() {
+        let project = temp_dir();
+        let src = project.join("src");
+        fs::create_dir_all(&src).unwrap();
+
+        let root = src.join("main.asm");
+        fs::write(
+            &root,
+            ".module main\n.use main\n.use helper\nmain: nop\n.endmodule\n",
+        )
+        .unwrap();
+        fs::write(
+            src.join("helper.asm"),
+            ".module helper\n.use main\nhelper_label: nop\n.endmodule\n",
+        )
+        .unwrap();
+
+        let (root_lines, _) = expand_source_file_with_dependencies(&root, &[], &[], 64).unwrap();
+        let graph = load_module_graph(&root, root_lines, &[], &[], &[], 64)
+            .expect("available root module imports should not be treated as cycles");
+        assert!(
+            graph
+                .lines
+                .iter()
+                .any(|line| line.trim().eq_ignore_ascii_case(".module helper")),
+            "helper module should still load"
+        );
+    }
 }

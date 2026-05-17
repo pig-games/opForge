@@ -297,10 +297,10 @@ EncodeSelectedMselUnstable
 ; external calls so the initialized control block matches the public ABI.
 ;
 ; Inputs:
-; - none; uses the shared controlBlockV1 buffer.
+; - none; uses the shared ControlBlockV1 buffer.
 ;
 ; Outputs:
-; - controlBlockV1 contains ABI magic/version/capability fields.
+; - ControlBlockV1 contains ABI magic/version/capability fields.
 ; - D0/D1 follow tkpkg_service_dispatch_v1 for ENTRY_ORD_INIT.
 ; ---------------------------------------------------------------------------
 tkpkgServiceBootstrapV1	.block

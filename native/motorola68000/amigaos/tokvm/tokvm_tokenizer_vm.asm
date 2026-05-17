@@ -293,7 +293,7 @@ newlineScanDone
 	bcc invalidProgramAtCursor
 	move.l TokvmProgramStateTablePtr, d1
 	tst.l d1
-	beq invalidProgramAtCursor
+	beq.w invalidProgramAtCursor
 	movea.l d1, a1
 	move.l 0.W(a1, d0.l*4), d0
 	cmp.l d7, d0
@@ -435,7 +435,7 @@ opcodeSetState
 	bcc invalidProgramAtCursor
 	move.l TokvmProgramStateTablePtr, d1
 	tst.l d1
-	beq invalidProgramAtCursor
+	beq.w invalidProgramAtCursor
 	movea.l d1, a1
 	move.l 0.W(a1, d0.l*4), d0
 	cmp.l d7, d0

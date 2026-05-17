@@ -83,7 +83,6 @@ GLOBALS_SIZE                    = 16
 ; 4. invoke tokvm_run_68000 with caller-owned buffers and demoProgram
 ; 5. render the OPFORGE-TOKVM 1 report from the native token buffer
 ; ---------------------------------------------------------------------------
-
 tokvmAmigaosCliHarnessRun	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	lea Globals, a4  ; shared host state block: DOS base, stdout, output handle, last IoErr

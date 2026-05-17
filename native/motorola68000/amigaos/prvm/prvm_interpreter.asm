@@ -168,7 +168,7 @@ prvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
 	move.l a0, d1  ; null-check the frame before touching any offset fields
 	tst.l d1
-	beq invalidArgument
+	beq.w invalidArgument
 	cmpi.l #PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgument
 

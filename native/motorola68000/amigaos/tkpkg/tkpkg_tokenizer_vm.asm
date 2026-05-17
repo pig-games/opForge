@@ -1443,6 +1443,7 @@ numberBaseDone
 	rts
 	.bend  ; numberBase
 
+
 recordPtr	.block
 	move.l d0, d1
 	add.l d1, d1
@@ -1603,7 +1604,6 @@ requireBytesFail
 	moveq #1, d1
 	rts
 	.bend  ; requireBytes
-	.priv
 
 	.endsection
 	.endmodule

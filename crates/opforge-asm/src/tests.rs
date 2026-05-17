@@ -10103,10 +10103,9 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
 
     let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
         .expect("read opforge native CLI surface listing");
-    let strings_source = fs::read_to_string(
-        repo_root.join("native/motorola68000/amigaos/opforge-cli/strings.asm"),
-    )
-    .expect("read native CLI strings source");
+    let strings_source =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opforge-cli/strings.asm"))
+            .expect("read native CLI strings source");
     let package_path =
         repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
     let package_bytes = fs::read(&package_path).expect("read native CLI package payload");
@@ -10153,16 +10152,14 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     }
     assert!(listing
         .contains("OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin"));
-    assert!(
-        listing.contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style")
-    );
+    assert!(listing
+        .contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style"));
     assert!(listing.contains(
         "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile"
     ));
     assert!(listing.contains("OPC-NCLI017: native module path capacity exceeded"));
-    assert!(
-        listing.contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity")
-    );
+    assert!(listing
+        .contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity"));
     assert!(listing.contains("OPC-NCLI008: Input source file not found"));
     assert!(listing.contains(
         "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path; --hunk is not implemented yet."
@@ -16238,15 +16235,15 @@ fn motorola68020_tkpkg_debug_cli_locks_package_selection_contract() {
 
     let init_idx = tkpkg_source_snippet_index(
         &source,
-        "LEA controlBlockV1, A0\n        MOVEQ #ENTRY_ORD_INIT, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+        "LEA ControlBlockV1, A0\n        MOVEQ #ENTRY_ORD_INIT, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
     );
     let load_idx = tkpkg_source_snippet_index(
         &source,
-        "LEA tkpkgDebugCliPackageData, A1\n        LEA packageStorage, A2\n        MOVE.W tkpkgDebugCliPackageLen, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA controlBlockV1, A0\n        MOVE.W #PACKAGE_INPUT_PTR_V1, D0\n        MOVE.W tkpkgDebugCliPackageLen, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+        "LEA tkpkgDebugCliPackageData, A1\n        LEA packageStorage, A2\n        MOVE.W tkpkgDebugCliPackageLen, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA ControlBlockV1, A0\n        MOVE.W #PACKAGE_INPUT_PTR_V1, D0\n        MOVE.W tkpkgDebugCliPackageLen, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
     );
     let set_pipeline_idx = tkpkg_source_snippet_index(
         &source,
-        "LEA setPipelineRequest, A1\n        LEA lastErrorBuffer, A2\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA controlBlockV1, A0\n        MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #ENTRY_ORD_SET_PIPELINE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+        "LEA setPipelineRequest, A1\n        LEA lastErrorBuffer, A2\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA ControlBlockV1, A0\n        MOVE.W #LAST_ERROR_BUFFER_PTR_V1, D0\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #ENTRY_ORD_SET_PIPELINE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
     );
     let line_mode_idx = tkpkg_source_snippet_index(
         &source,
@@ -16254,7 +16251,7 @@ fn motorola68020_tkpkg_debug_cli_locks_package_selection_contract() {
     );
     let last_error_idx = tkpkg_source_snippet_index(
         &source,
-        "tkpkgDebugCliCheckLastErrorClear:\n\n        LEA controlBlockV1, A0\n        BSR.W tkpkgDebugCliRunLastErrorV1\n        TST.B D0\n        BNE.W tkpkgDebugCliCloseDos\n        BSR.W tkpkgDebugCliReadOutputLenV1\n        TST.W D0\n        BNE.W tkpkgDebugCliReportLastErrorBuffer",
+        "tkpkgDebugCliCheckLastErrorClear:\n\n        LEA ControlBlockV1, A0\n        BSR.W tkpkgDebugCliRunLastErrorV1\n        TST.B D0\n        BNE.W tkpkgDebugCliCloseDos\n        BSR.W tkpkgDebugCliReadOutputLenV1\n        TST.W D0\n        BNE.W tkpkgDebugCliReportLastErrorBuffer",
     );
 
     assert!(

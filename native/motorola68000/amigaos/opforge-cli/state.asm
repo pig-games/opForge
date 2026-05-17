@@ -66,6 +66,8 @@ NativeCliSawCr
 	.res word, 1
 NativeCliIncludeDepth
 	.res word, 1
+NativeCliIncludePending
+	.res word, 1
 NativeCliModuleResolveDepth
 	.res word, 1
 NativeCliResolvedModuleId

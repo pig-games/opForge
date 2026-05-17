@@ -9,7 +9,7 @@
 	.use tkpkg.amigaos.abi (ENTRY_ORD_SET_PIPELINE, ENTRY_ORD_TOKENIZE_LINE)
 	.use tkpkg.amigaos.abi (ENTRY_ORD_LAST_ERROR, TOKENIZE_LINE_SAMPLE_LINE_NUM)
 	.use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN, CB_OUTPUT_LEN, CB_STATUS_CODE)
-	.use tkpkg.amigaos.buffers (controlBlockV1, lastErrorBuffer, packageStorage)
+	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, packageStorage)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
@@ -67,7 +67,7 @@ tkpkgDebugCliHaveDos
 	move.l #StartedText, d1
 	bsr.w tkpkgDebugCliPutStrV1
 
-	lea controlBlockV1, a0
+	lea ControlBlockV1, a0
 	moveq #ENTRY_ORD_INIT, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
@@ -79,7 +79,7 @@ tkpkgDebugCliHaveDos
 	move.w TkpkgDebugCliPackageLen, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
 
-	lea controlBlockV1, a0
+	lea ControlBlockV1, a0
 	move.w #PACKAGE_INPUT_PTR_V1, d0
 	move.w TkpkgDebugCliPackageLen, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
@@ -119,7 +119,7 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	moveq #SET_PIPELINE_REQUEST_LEN, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
 
-	lea controlBlockV1, a0
+	lea ControlBlockV1, a0
 	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
 	moveq #SET_PIPELINE_REQUEST_LEN, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
@@ -143,7 +143,7 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	moveq #TOKENIZE_LINE_REQUEST_LEN, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
 
-	lea controlBlockV1, a0
+	lea ControlBlockV1, a0
 	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
 	moveq #TOKENIZE_LINE_REQUEST_LEN, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
@@ -183,7 +183,7 @@ tkpkgDebugCliPipelineFileMode
 
 tkpkgDebugCliCheckLastErrorClear
 
-	lea controlBlockV1, a0
+	lea ControlBlockV1, a0
 	bsr.w tkpkgDebugCliRunLastErrorV1
 	tst.b d0
 	bne.w tkpkgDebugCliCloseDos
@@ -197,7 +197,7 @@ tkpkgDebugCliCheckLastErrorClear
 	bra.w tkpkgDebugCliCloseDos
 
 tkpkgDebugCliReportFailure
-	lea controlBlockV1, a0
+	lea ControlBlockV1, a0
 	bsr.w tkpkgDebugCliRunLastErrorV1
 	tst.b d0
 	bne.w tkpkgDebugCliCloseDos
@@ -594,7 +594,7 @@ tkpkgDebugCliManifestCopyDone
 
 tkpkgDebugCliSetPipelineFromLastErrorV1
 	movem.l d1/a0, -(sp)
-	lea controlBlockV1, a0
+	lea ControlBlockV1, a0
 	move.w d0, d1
 	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
 	bsr.w tkpkgDebugCliWriteInputWindowV1
@@ -739,7 +739,7 @@ tkpkgDebugCliSliceFits
 	move.l d7, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
 
-	lea controlBlockV1, a0
+	lea ControlBlockV1, a0
 	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
 	move.w d7, d1
 	addq.w #4, d1

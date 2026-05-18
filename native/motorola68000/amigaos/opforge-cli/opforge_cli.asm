@@ -7,10 +7,7 @@
 	.module main
 	.cpu 68020
 	.use opasm.amigaos.engine (opasmEngineAssemblySessionStart, opasmEngineStmtCount)
-	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineSourceRecordCount)
-	.use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineImageByteCount)
-	.use opasm.amigaos.engine (opasmEngineSessionCpuName, opasmEngineSessionOrigin)
-	.use opasm.amigaos.engine (opasmEngineSessionCurrentPc)
+	.use opasm.amigaos.engine (opasmEngineImageByteCount, opasmEngineSessionCpuName)
 
 	.use opforge.cli.constants (*)
 	.use opforge.cli.state (*)
@@ -23,6 +20,7 @@
 	.use opforge.cli.token_util (*)
 	.use opforge.cli.line_text (*)
 	.use opforge.cli.text_output (*)
+	.use opforge.cli.report (*)
 	.use opforge.cli.encode_eval_bridge (*)
 	.use opforge.cli.output (*)
 	.use opforge.cli.engine_callbacks (*)
@@ -138,7 +136,7 @@ opforgeNativeCliHaveDos
 	tst.w d0
 	beq.w opforgeNativeCliParsed
 
-	bsr.w opforgeNativeCliReportParseError
+	jsr opforgeNativeCliReportParseError
 	move.l #RETURN_USAGE, NativeCliReturnCode
 	bra.w opforgeNativeCliCloseDos
 
@@ -215,7 +213,7 @@ opforgeNativeCliTokenizerOk
 	bra.w opforgeNativeCliCloseDos
 
 opforgeNativeCliPassesOk
-	bsr.w opforgeNativeCliEmitAssemblySessionSummary
+	jsr opforgeNativeCliEmitAssemblySessionSummary
 	tst.w opasmEngineImageByteCount.l
 	beq.s opforgeNativeCliEmitStub
 	jsr opforgeNativeCliWriteFlatOutput
@@ -555,69 +553,6 @@ opforgeNativeCliCopySessionCpuNameLoop
 opforgeNativeCliCopySessionCpuNameDone
 	rts
 
-; Emit the current session summary records into the OPFORGE-NATIVE report.
-opforgeNativeCliEmitAssemblySessionSummary
-	movem.l d0-d2/a0-a1, -(sp)
-	move.l #SessionStageText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionCpuText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #opasmEngineSessionCpuName, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionPassText, d1
-	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineSessionPass.l, d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionOriginText, d1
-	jsr opforgeNativeCliPutStr
-	move.l opasmEngineSessionOrigin.l, d0
-	bsr.w opforgeNativeCliPutHexU32
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionPcText, d1
-	jsr opforgeNativeCliPutStr
-	move.l opasmEngineSessionCurrentPc.l, d0
-	bsr.w opforgeNativeCliPutHexU32
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionSourceCountText, d1
-	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineSourceRecordCount.l, d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionStmtCountText, d1
-	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineStmtCount.l, d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionLabelCountText, d1
-	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineLabelCount.l, d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionImageBytesText, d1
-	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineImageByteCount.l, d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #SessionReadyText, d1
-	jsr opforgeNativeCliPutStr
-	movem.l (sp)+, d0-d2/a0-a1
-	rts
-
 ; Clear module/use and statement collection state before parsing input.
 opforgeNativeCliInitModuleUseState
 	movem.l d0-d1/a0, -(sp)
@@ -641,24 +576,6 @@ opforgeNativeCliClearBytesLoop
 
 opforgeNativeCliClearBytesDone
 	rts
-
-NCLI_PARSE_OK                   = 0
-NCLI_PARSE_HELP                 = 1
-NCLI_PARSE_VERSION              = 2
-NCLI_PARSE_USAGE                = -1
-NCLI_PARSE_QUOTED               = -2
-NCLI_PARSE_UNSUPPORTED          = -3
-NCLI_PARSE_UNKNOWN_FLAG         = -4
-NCLI_PARSE_MISSING_VALUE        = -5
-NCLI_PARSE_NO_INPUT             = -6
-NCLI_PARSE_HUNK_REQUIRED        = -7
-NCLI_PARSE_MIXED_INPUT          = -8
-NCLI_PARSE_MULTIPLE_POSITIONAL  = -9
-NCLI_PARSE_MODULE_PATH_CAPACITY = -10
-
-NATIVE_OUTPUT_FORMAT_NONE       = 0
-NATIVE_OUTPUT_FORMAT_BIN        = 1
-NATIVE_OUTPUT_FORMAT_HUNK       = 2
 
 ; Parse the native CLI argument tail into fixed buffers and request flags.
 opforgeNativeCliParseArgs
@@ -1122,81 +1039,6 @@ opforgeNativeCliIsUnsupportedFlag
 
 opforgeNativeCliUnsupportedYes
 	moveq #1, d0
-	rts
-
-; Print the deterministic diagnostic for the current argument-parse status.
-opforgeNativeCliReportParseError
-	move.w NativeCliParseStatus, d0
-	cmpi.w #NCLI_PARSE_QUOTED, d0
-	beq.s opforgeNativeCliReportQuoted
-	cmpi.w #NCLI_PARSE_UNSUPPORTED, d0
-	beq.s opforgeNativeCliReportUnsupported
-	cmpi.w #NCLI_PARSE_UNKNOWN_FLAG, d0
-	beq.s opforgeNativeCliReportUnknown
-	cmpi.w #NCLI_PARSE_MISSING_VALUE, d0
-	beq.s opforgeNativeCliReportMissing
-	cmpi.w #NCLI_PARSE_NO_INPUT, d0
-	beq.w opforgeNativeCliReportNoInput
-	cmpi.w #NCLI_PARSE_HUNK_REQUIRED, d0
-	beq.w opforgeNativeCliReportHunkRequired
-	cmpi.w #NCLI_PARSE_MIXED_INPUT, d0
-	beq.w opforgeNativeCliReportMixedInput
-	cmpi.w #NCLI_PARSE_MULTIPLE_POSITIONAL, d0
-	beq.w opforgeNativeCliReportMultiplePositional
-	cmpi.w #NCLI_PARSE_MODULE_PATH_CAPACITY, d0
-	beq.w opforgeNativeCliReportModulePathCapacity
-	move.l #UsageText, d1
-	bra.w opforgeNativeCliReportText
-
-opforgeNativeCliReportQuoted
-	move.l #QuotedText, d1
-	bra.w opforgeNativeCliReportText
-
-opforgeNativeCliReportUnsupported
-	move.l #UnsupportedText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NativeCliArgToken, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NativeSubsetHelpText, d1
-	bra.s opforgeNativeCliReportText
-
-opforgeNativeCliReportUnknown
-	move.l #UnknownFlagText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NativeCliArgToken, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NewlineText, d1
-	bra.s opforgeNativeCliReportText
-
-opforgeNativeCliReportMissing
-	move.l #MissingValueText, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NativeCliArgToken, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NewlineText, d1
-	bra.s opforgeNativeCliReportText
-
-opforgeNativeCliReportNoInput
-	move.l #NoInputText, d1
-	bra.s opforgeNativeCliReportText
-
-opforgeNativeCliReportHunkRequired
-	move.l #HunkRequiredText, d1
-	bra.s opforgeNativeCliReportText
-
-opforgeNativeCliReportMixedInput
-	move.l #MixedInputText, d1
-	bra.s opforgeNativeCliReportText
-
-opforgeNativeCliReportMultiplePositional
-	move.l #MultiplePositionalText, d1
-	bra.s opforgeNativeCliReportText
-
-opforgeNativeCliReportModulePathCapacity
-	move.l #ModulePathCapacityText, d1
-
-opforgeNativeCliReportText
-	jsr opforgeNativeCliPutStr
 	rts
 
 opforgeNativeCliRecordImplicitModulePathRoot

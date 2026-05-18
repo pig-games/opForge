@@ -50,12 +50,13 @@ fi
 
 args=(
   --cpu 68020
+  -M native/motorola68000/amigaos/opforge-cli
   -M native/motorola68000/amigaos/tkpkg
   -M native/motorola68000/amigaos/tokvm
   -M native/motorola68000/amigaos/prvm
   -M native/motorola68000/amigaos/opcore
   -M native/motorola68000/amigaos/opasm
-  -i native/motorola68000/amigaos/opforge-cli/opforge_cli.asm
+  -i native/motorola68000/amigaos/main.asm
   -i native/motorola68000/amigaos/test-harnesses/prvm/prvm_debug_cli.asm
   -i native/motorola68000/amigaos/test-harnesses/prvm/prvm_line_iterator_smoke.asm
   -i native/motorola68000/amigaos/test-harnesses/prvm/prvm_smoke.asm

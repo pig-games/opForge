@@ -89,8 +89,7 @@ const FS_UAE_TKPKG_DEBUG_CLI_EXAMPLE_NAME: &str = "tkpkg_debug_cli";
 const FS_UAE_TKPKG_DEBUG_CLI_SOURCE_PATH: &str =
     "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME: &str = "opforge_cli";
-const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str =
-    "native/motorola68000/amigaos/opforge-cli/opforge_cli.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH: &str = "native/motorola68000/amigaos/main.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_PATH: &str =
     "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm";
 const FS_UAE_OPFORGE_NATIVE_CLI_PACKAGE_GUEST_FILE: &str = "opforge_cli_package.opasm";

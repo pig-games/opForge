@@ -32,7 +32,7 @@ flat `.bin` output, and deterministic diagnostics for known unsupported cases.
 
 The production-facing native deliverable is:
 
-- `motorola68000/amigaos/opforge-cli/opforge_cli.asm`
+- `motorola68000/amigaos/main.asm`
 
 The runtime modules it depends on are deliverable support code:
 
@@ -200,7 +200,7 @@ cargo run -p cli --bin opforge -- \
   -M native/motorola68000/amigaos/prvm \
   -M native/motorola68000/amigaos/opcore \
   -M native/motorola68000/amigaos/opasm \
-  native/motorola68000/amigaos/opforge-cli/opforge_cli.asm
+  native/motorola68000/amigaos/main.asm
 ```
 
 The repository-native formatter path for supported Motorola 68000 AmigaOS

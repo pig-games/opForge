@@ -1,11 +1,8 @@
-; Native AmigaOS opForge CLI shell.
-;
-; This first slice mirrors the Rust CLI argument names for a strict native
-; subset and provides deterministic stage stubs until parser/emitter VMs exist
-; on AmigaOS.
+; Native AmigaOS opForge CLI run orchestration.
 
-	.module main
+	.module opforge.cli.run
 	.cpu 68020
+
 	.use opasm.amigaos.engine (opasmEngineImageByteCount)
 
 	.use opforge.cli.constants (*)
@@ -19,63 +16,9 @@
 	.use opforge.cli.output (*)
 	.use opforge.cli.engine_callbacks (*)
 
-	.section entry, kind=code
-
+	.section code, kind=code
 	.pub
 
-; ---------------------------------------------------------------------------
-; AmigaOS process entry for the native opForge CLI.
-;
-; Workbench launches are rejected for this deliverable slice because the native
-; host contract is currently Shell/file based. Shell launches hand off to
-; opforge_native_cli_run, which mirrors the Rust CLI orchestration surface for
-; the supported native subset.
-;
-; Inputs:
-; - AmigaOS process context; no explicit arguments.
-;
-; Outputs:
-; - D0: AmigaDOS return code.
-; ---------------------------------------------------------------------------
-start	.block
-	movem.l d2-d7/a2-a6, -(sp)
-	clr.l d2  ; no Workbench startup message is pending until GetMsg succeeds
-
-	suba.l a1, a1  ; Exec FindTask(NULL) => current process
-	movea.l SYS_BASE.W, a6  ; Exec base for process and Workbench-message calls
-	jsr FIND_TASK(a6)
-
-	movea.l d0, a2
-	tst.l PR_CLI(a2)  ; nonzero means Shell launch; zero means Workbench activation
-	bne.w opforgeStartCli
-
-	lea PR_MSG_PORT(a2), a0
-	jsr WAIT_PORT(a6)
-	lea PR_MSG_PORT(a2), a0
-	jsr GET_MSG(a6)
-	move.l d0, d2  ; preserve startup message so ReplyMsg can be sent before exit
-	moveq #RETURN_WORKBENCH_UNSUPPORTED, d7
-	bra.w opforgeStartReply
-
-opforgeStartCli
-	jsr opforgeNativeCliRun  ; run the Shell-native CLI host path
-	move.l d0, d7  ; keep return code stable across optional Workbench reply path
-
-opforgeStartReply
-	tst.l d2
-	beq.w opforgeStartDone
-	jsr FORBID(a6)
-	movea.l d2, a1
-	jsr REPLY_MSG(a6)
-
-opforgeStartDone
-	move.l d7, d0
-	movem.l (sp)+, d2-d7/a2-a6
-	rts
-
-	.endsection
-
-	.section code, kind=code
 ; ---------------------------------------------------------------------------
 ; Run one native opForge CLI invocation.
 ;
@@ -93,7 +36,7 @@ opforgeStartDone
 ; - textual OPFORGE-NATIVE report is written to stdout.
 ; - flat `.bin` output is written when selected and image bytes exist.
 ; ---------------------------------------------------------------------------
-opforgeNativeCliRun
+opforgeNativeCliRun	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	move.l #RETURN_USAGE, NativeCliReturnCode
 
@@ -102,16 +45,16 @@ opforgeNativeCliRun
 	movea.l SYS_BASE.W, a6  ; first try the AmigaOS 2.x+ dos.library version expected by tests
 	jsr OPEN_LIBRARY(a6)
 	tst.l d0
-	bne.s opforgeNativeCliHaveDos
+	bne.s haveDos
 
 	lea DosName, a1
 	moveq #0, d0
 	movea.l SYS_BASE.W, a6  ; fallback keeps older emulator images usable for smoke runs
 	jsr OPEN_LIBRARY(a6)
 	tst.l d0
-	beq.w opforgeNativeCliDone
+	beq.w done
 
-opforgeNativeCliHaveDos
+haveDos
 	move.l d0, NativeCliDosBase  ; all file/console calls below dispatch through dos.library base
 	jsr opforgeNativeCliInitModuleUseState
 	movea.l d0, a6
@@ -124,33 +67,33 @@ opforgeNativeCliHaveDos
 	jsr opforgeNativeCliParseArgs
 
 	cmpi.w #NCLI_PARSE_HELP, d0
-	beq.w opforgeNativeCliHelp
+	beq.w help
 	cmpi.w #NCLI_PARSE_VERSION, d0
-	beq.w opforgeNativeCliVersion
+	beq.w version
 	tst.w d0
-	beq.w opforgeNativeCliParsed
+	beq.w parsed
 
 	jsr opforgeNativeCliReportParseError
 	move.l #RETURN_USAGE, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliHelp
+help
 	move.l #HelpText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_OK, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliVersion
+version
 	move.l #VersionText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_OK, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliParsed
+parsed
 	lea NativeCliInputPath, a0
 	jsr opforgeNativeCliOpenInput
 	tst.l d0
-	bne.s opforgeNativeCliInputOpened
+	bne.s inputOpened
 	move.l #InputOpenErrorText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NativeCliInputPath, d1
@@ -158,19 +101,19 @@ opforgeNativeCliParsed
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_FILE_FAILURE, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliInputOpened
+inputOpened
 	move.l d0, d1
 	jsr opforgeNativeCliClose
 	cmpi.w #NATIVE_OUTPUT_FORMAT_HUNK, NativeCliOutputFormat
-	bne.s opforgeNativeCliOutputFormatReady
+	bne.s outputFormatReady
 	move.l #NativeHunkNotImplementedText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_NOT_IMPLEMENTED, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliOutputFormatReady
+outputFormatReady
 	move.l #StubHeaderText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #InputLabelText, d1
@@ -187,65 +130,61 @@ opforgeNativeCliOutputFormatReady
 	jsr opforgeNativeCliPutStr
 	jsr opforgeNativeCliInitAssemblySession
 	jsr opforgeNativeCliEmitModulePathRecords
-	bsr.w opforgeNativeCliTokenizeFrontend
+	jsr opforgeNativeCliTokenizeFrontend
 	tst.l d0
-	beq.s opforgeNativeCliTokenizerOk
+	beq.s tokenizerOk
 	move.l #TokenizerFailureText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_RUNTIME_FAILURE, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliTokenizerOk
+tokenizerOk
 	move.l #ParserOkText, d1
 	jsr opforgeNativeCliPutStr
 	jsr opforgeNativeCliRunTwoPassEngine
 	tst.l d0
-	beq.s opforgeNativeCliPassesOk
+	beq.s passesOk
 	move.l #NativePassFailureText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_RUNTIME_FAILURE, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliPassesOk
+passesOk
 	jsr opforgeNativeCliEmitAssemblySessionSummary
 	tst.w opasmEngineImageByteCount.l
-	beq.s opforgeNativeCliEmitStub
+	beq.s emitStub
 	jsr opforgeNativeCliWriteFlatOutput
 	tst.l d0
-	beq.s opforgeNativeCliOutputOk
+	beq.s outputOk
 	move.l #NativeOutputFailureText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_FILE_FAILURE, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliOutputOk
+outputOk
 	move.l #NativeOutputOkText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_OK, NativeCliReturnCode
-	bra.w opforgeNativeCliCloseDos
+	bra.w closeDos
 
-opforgeNativeCliEmitStub
+emitStub
 	move.l #EmitterStubText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #RETURN_NOT_IMPLEMENTED, NativeCliReturnCode
 
-opforgeNativeCliCloseDos
+closeDos
 	move.l NativeCliDosBase, d0
-	beq.s opforgeNativeCliDone
+	beq.s done
 	movea.l SYS_BASE.W, a6
 	movea.l d0, a1
 	jsr CLOSE_LIBRARY(a6)
 	clr.l NativeCliDosBase
 
-opforgeNativeCliDone
+done
 	move.l NativeCliReturnCode, d0
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-
-	.bend  ; start
-	.priv
+	.bend  ; opforgeNativeCliRun
 
 	.endsection
-
-	.output "build/opforge_cli", format=hunk, sections=entry, code, data, bss
 	.endmodule

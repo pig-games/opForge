@@ -22,7 +22,7 @@ Example:
   scripts/workflow/stage_and_commit.sh \
     --message "Persist native PRVM expression metadata" \
     native/motorola68000/amigaos/opasm/opasm_engine.asm \
-    native/motorola68000/amigaos/opforge-cli/opforge_cli.asm \
+    native/motorola68000/amigaos/main.asm \
     crates/opforge-asm/src/tests.rs
 EOF
 }

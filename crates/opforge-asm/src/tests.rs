@@ -1693,12 +1693,10 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
 }
 
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
-    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opforge_cli") {
-        let amigaos_dir = asm_path
-            .parent()
-            .and_then(Path::parent)
-            .expect("opforge_cli should live under amigaos/opforge-cli");
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("main") {
+        let amigaos_dir = asm_path.parent().expect("main should live under amigaos");
         return vec![
+            amigaos_dir.join("opforge-cli"),
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("tokvm"),
             amigaos_dir.join("prvm"),
@@ -10093,7 +10091,7 @@ fn motorola68020_prvm_line_iterator_smoke_example_assembles_with_native_call_sur
 #[test]
 fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/main.asm");
     let out_dir = create_temp_dir("m68000-opforge-native-cli-surface");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -10101,7 +10099,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         panic!("assemble opforge native cli surface example: {detail}");
     }
 
-    let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
+    let listing = fs::read_to_string(out_dir.join("main.lst"))
         .expect("read opforge native CLI surface listing");
     let strings_source =
         fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opforge-cli/strings.asm"))
@@ -12175,7 +12173,7 @@ fn motorola68020_opforge_native_cli_6502_small_assembly_contract_matches_rust_vm
 fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label_layout() {
     let repo_root = workspace_root();
     let source = opforge_amigaos_source("engine_callbacks.asm");
-    let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/main.asm");
     let out_dir = create_temp_dir("m68000-opforge-native-cli-two-pass-surface");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -12183,7 +12181,7 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
         panic!("assemble opforge native cli two-pass surface example: {detail}");
     }
 
-    let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
+    let listing = fs::read_to_string(out_dir.join("main.lst"))
         .expect("read opforge native CLI two-pass surface listing");
 
     assert!(source.contains("opforgeNativeCliRunTwoPassEngine"));
@@ -12494,7 +12492,7 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
 fn motorola68020_opasm_selector_stage_module_removed_after_package_backed_cli() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_selector_stage.asm");
-    let cli = opforge_amigaos_source("opforge_cli.asm");
+    let cli = opforge_amigaos_source("main.asm");
 
     assert!(
         !asm_path.exists(),
@@ -12508,7 +12506,7 @@ fn motorola68020_opasm_selector_stage_module_removed_after_package_backed_cli() 
 #[test]
 fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallback() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/main.asm");
     let out_dir = create_temp_dir("m68000-opforge-native-cli");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -12516,8 +12514,8 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
         panic!("assemble opforge native cli example: {detail}");
     }
 
-    let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
-        .expect("read opforge native CLI listing");
+    let listing =
+        fs::read_to_string(out_dir.join("main.lst")).expect("read opforge native CLI listing");
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("opforgeNativeCliParseArgs"));
     assert!(listing.contains("opforgeNativeCliInitModuleUseState"));
@@ -12755,9 +12753,13 @@ fn tokvm_amigaos_source(file_name: &str) -> String {
 
 fn opforge_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join(format!(
-        "native/motorola68000/amigaos/opforge-cli/{file_name}"
-    ));
+    let asm_path = if file_name == "main.asm" {
+        repo_root.join("native/motorola68000/amigaos/main.asm")
+    } else {
+        repo_root.join(format!(
+            "native/motorola68000/amigaos/opforge-cli/{file_name}"
+        ))
+    };
     let source = fs::read_to_string(&asm_path).expect("read opForge AmigaOS source");
     format_tokvm_asm_fragment(&source)
 }

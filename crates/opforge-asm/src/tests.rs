@@ -11433,7 +11433,7 @@ fn motorola68020_item6_2_preserves_package_selector_shapes_for_smoke_and_require
 
 #[test]
 fn motorola68020_item6_2_native_cli_preserves_parser_spans_for_selected_requests() {
-    let source = opforge_amigaos_source("opforge_cli.asm");
+    let source = opforge_amigaos_source("engine_callbacks.asm");
 
     assert!(source_contains_in_order(
         &source,
@@ -12176,7 +12176,7 @@ fn motorola68020_opforge_native_cli_6502_small_assembly_contract_matches_rust_vm
 #[test]
 fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label_layout() {
     let repo_root = workspace_root();
-    let source = opforge_amigaos_source("opforge_cli.asm");
+    let source = opforge_amigaos_source("engine_callbacks.asm");
     let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli.asm");
     let out_dir = create_temp_dir("m68000-opforge-native-cli-two-pass-surface");
 
@@ -12188,43 +12188,38 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
     let listing = fs::read_to_string(out_dir.join("opforge_cli.lst"))
         .expect("read opforge native CLI two-pass surface listing");
 
+    assert!(source.contains("opforgeNativeCliRunTwoPassEngine"));
+    assert!(source.contains("opforgeNativeCliBuildOpasmEngineContext"));
+    assert!(source.contains("opasmEngineRunTwoPassV1"));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforgeNativeCliRunTwoPassEngine:",
-            "BSR.W opforgeNativeCliBuildOpasmEngineContext",
-            "JSR opasmEngineRunTwoPassV1",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliOpasmPassOneBegin:",
+            "opforgeNativeCliOpasmPassOneBegin .block",
             "CLR.W opasmEngineLabelCount.L",
             "LEA opasmEngineLabelFinalizedTable.L, A0",
             "opforgeNativeCliPassOneClearLabelFinalizedLoop:",
             "MOVE.L #$00000800, opasmEngineSessionOrigin.L",
-            "opforgeNativeCliOpasmPassOneOk:",
+            "opforgeNativeCliOpasmPassOneOk .block",
             "MOVE.L #nativePassOneOkText, D1",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforgeNativeCliOpasmPassTwoBegin:",
+            "opforgeNativeCliOpasmPassTwoBegin .block",
             "MOVE.W opasmEngineLabelCount.L, D0",
             "LEA opasmEngineLabelFinalizedTable.L, A0",
             "opforgeNativeCliPassTwoFinalizeLabelLoop:",
             "MOVE.L opasmEngineSessionOrigin.L, D0",
             "MOVE.L D0, opasmEngineSessionCurrentPc.L",
-            "opforgeNativeCliOpasmPassTwoOk:",
+            "opforgeNativeCliOpasmPassTwoOk .block",
             "MOVE.L #nativePassTwoOkText, D1",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforgeNativeCliBuildOpasmEngineContext:",
+            "opforgeNativeCliBuildOpasmEngineContext .block",
             "MOVE.L #opasmEngineSessionPass, (A4)+",
             "MOVE.L #opasmEngineStmtCount, (A4)+",
             "MOVE.L #nativeCliBinRequested, (A4)+",
@@ -12246,12 +12241,12 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
     assert!(source.contains("lea opasmEngineLabelFinalizedTable.l, a0"));
     assert!(source.contains("opasmEngineSessionCurrentPc"));
     assert!(source.contains("lea opasmEngineLabelNameTable.l, a0"));
-    assert!(source.contains("bsr.w opforgeNativeCliCopyFixedString"));
+    assert!(source.contains("jsr opforgeNativeCliCopyFixedString"));
     assert!(source.contains("addq.w #1, opasmEngineLabelCount.l"));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforgeNativeCliPassAdvancePc:",
+            "opforgeNativeCliPassAdvancePc .block",
             "LEA orgMnemonicText, A1",
             "LEA cpuMnemonicText, A1",
             "BSR.W opforgeNativeCliTrySelectedEncodeSizeForStatement",

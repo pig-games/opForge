@@ -44,7 +44,7 @@ opforgeNativeCliPrepareEncodeInstructionRequest	.block
 	tst.l d0
 	beq.s opforgeNativeCliPrepareEncodeCandidateCount
 	movea.l NativeCliStmtMnemStart, a1
-	bsr.w opforgeNativeCliCopyBytes
+	jsr opforgeNativeCliCopyBytes
 
 opforgeNativeCliPrepareEncodeCandidateCount
 	clr.b (a2)+
@@ -75,7 +75,7 @@ opforgeNativeCliPrepareEncodeSelectedRequestForStatement	.block
 	move.w 0(a1, d0.l), d6
 	bne.w opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
 	movea.l a2, a0
-	bsr.w opforgeNativeCliTokenLen
+	jsr opforgeNativeCliTokenLen
 	move.w d0, d6
 
 opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
@@ -201,12 +201,12 @@ opforgeNativeCliPrepareEvalWriteSpan
 	beq.s opforgeNativeCliPrepareEvalCopyOperand
 	movea.l NativeCliStmtMnemStart, a0
 	move.w d5, d0
-	bsr.w opforgeNativeCliCopyFixedString
+	jsr opforgeNativeCliCopyFixedString
 
 opforgeNativeCliPrepareEvalCopyOperand
 	movea.l a2, a0
 	move.w d6, d0
-	bsr.w opforgeNativeCliCopyFixedString
+	jsr opforgeNativeCliCopyFixedString
 	move.w d6, d0
 	add.w d5, d0
 	addi.w #9, d0
@@ -521,10 +521,10 @@ opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 	lea ControlBlockV1, a0
 	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
 	move.w NativeCliEncodeRequestLen, d1
-	bsr.w opforgeNativeCliWriteInputWindow
+	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_ENCODE_INSTRUCTION, d0
 	jsr tkpkgServiceDispatchV1
-	bsr.w opforgeNativeCliReadStatus
+	jsr opforgeNativeCliReadStatus
 
 opforgeNativeCliDispatchEncodeDone
 	rts

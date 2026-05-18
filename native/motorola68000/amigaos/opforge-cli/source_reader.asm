@@ -206,12 +206,12 @@ opforgeNativeCliTokenizeResolvedUseModule	.block
 	move.l d0, NativeCliModuleSavedLineNum
 	lea NativeCliCurrentPath, a0
 	lea NativeCliModuleSavedPath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.w fail
 	lea NativeCliIncludePath, a0
 	lea NativeCliCurrentPath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.w fail
 	lea NativeCliIncludePath, a0
@@ -235,7 +235,7 @@ restore
 	move.l d2, NativeCliSourceLineNum
 	lea NativeCliModuleSavedPath, a0
 	lea NativeCliCurrentPath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
 	tst.l d1

@@ -36,5 +36,23 @@ done
 	rts
 	.bend  ; opforgeNativeCliTokenLen
 
+opforgeNativeCliTokenEquals	.block
+	moveq #0, d2
+
+loop
+	move.b (a0)+, d0
+	move.b (a1)+, d1
+	cmp.b d1, d0
+	bne.s notEqual
+	tst.b d0
+	bne.s loop
+	moveq #1, d0
+	rts
+
+notEqual
+	moveq #0, d0
+	rts
+	.bend  ; opforgeNativeCliTokenEquals
+
 	.endsection
 	.endmodule

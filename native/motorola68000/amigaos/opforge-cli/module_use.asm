@@ -296,17 +296,17 @@ loop
 	lea NativeCliModulePathTable, a0
 	adda.l d0, a0
 	lea NativeCliIncludePath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.w fail
 	lea NativeCliArgToken, a0
 	lea NativeCliIncludePath, a1
-	bsr.w opforgeNativeCliAppendPathBuffer
+	jsr opforgeNativeCliAppendPathBuffer
 	tst.l d0
 	bne.w fail
 	lea ModuleSourceExtensionText, a0
 	lea NativeCliIncludePath, a1
-	bsr.w opforgeNativeCliAppendPathBuffer
+	jsr opforgeNativeCliAppendPathBuffer
 	tst.l d0
 	bne.w fail
 	lea NativeCliIncludePath, a0

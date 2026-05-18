@@ -67,7 +67,7 @@ opforgeNativeCliPreparePendingInclude	.block
 	move.l d0, NativeCliSavedLineNum
 	lea NativeCliCurrentPath, a0
 	lea NativeCliSavedPath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.w fail
 
@@ -99,7 +99,7 @@ opforgeNativeCliPreparePendingInclude	.block
 	move.w #NATIVE_INCLUDE_DEPTH_LIMIT, NativeCliIncludeDepth
 	lea NativeCliIncludePath, a0
 	lea NativeCliCurrentPath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
 	moveq #1, d1
@@ -143,7 +143,7 @@ restore
 	move.l d0, NativeCliSourceLineNum
 	lea NativeCliSavedPath, a0
 	lea NativeCliCurrentPath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
 	clr.w NativeCliIncludeDepth
@@ -162,27 +162,27 @@ return
 opforgeNativeCliResolveIncludePath	.block
 	lea NativeCliCurrentPath, a0
 	lea NativeCliIncludeRootPath, a1
-	bsr.w opforgeNativeCliCopyPathRoot
+	jsr opforgeNativeCliCopyPathRoot
 	tst.l d0
 	bne.w fail
 	lea NativeCliIncludeTarget, a0
-	bsr.w opforgeNativeCliPathIsAbsolute
+	jsr opforgeNativeCliPathIsAbsolute
 	tst.l d0
 	beq.s relative
 	lea NativeCliIncludeTarget, a0
 	lea NativeCliIncludePath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	rts
 
 relative
 	lea NativeCliIncludeRootPath, a0
 	lea NativeCliIncludePath, a1
-	bsr.w opforgeNativeCliCopyPathBuffer
+	jsr opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
 	lea NativeCliIncludeTarget, a0
 	lea NativeCliIncludePath, a1
-	bsr.w opforgeNativeCliAppendPathBuffer
+	jsr opforgeNativeCliAppendPathBuffer
 	rts
 
 fail

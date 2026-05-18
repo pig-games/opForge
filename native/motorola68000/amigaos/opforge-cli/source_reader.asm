@@ -51,6 +51,8 @@ return
 	rts
 	.bend  ; opforgeNativeCliTokenizeFrontend
 
+	.priv
+
 ; Tokenize the primary input file path recorded by argument parsing.
 opforgeNativeCliTokenizeFile	.block
 	lea NativeCliInputPath, a0

@@ -440,6 +440,8 @@ return
 	rts
 	.bend  ; opforgeNativeCliCloseModule
 
+	.priv
+
 opforgeNativeCliEmitModuleEndRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	move.w d0, d4

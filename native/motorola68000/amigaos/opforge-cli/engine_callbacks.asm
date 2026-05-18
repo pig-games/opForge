@@ -52,6 +52,8 @@ opforgeNativeCliRunTwoPassEngine	.block
 	rts
 	.bend  ; opforgeNativeCliRunTwoPassEngine
 
+	.priv
+
 opforgeNativeCliBuildOpasmEngineContext	.block
 	lea NativeCliOpasmEngineContext.l, a4
 	move.l #opasmEngineSessionPass, (a4)+

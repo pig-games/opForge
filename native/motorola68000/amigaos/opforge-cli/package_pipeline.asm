@@ -67,6 +67,8 @@ fail
 	rts
 	.bend  ; opforgeNativeCliInitPackagePipeline
 
+	.priv
+
 ; Stage either the embedded package or an external --opasm-package file.
 opforgeNativeCliStagePackage	.block
 	tst.b NativeCliPackagePath

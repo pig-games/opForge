@@ -4,7 +4,7 @@
 ; subset and provides deterministic stage stubs until parser/emitter VMs exist
 ; on AmigaOS.
 
-	.module opforge.cli.parser_route
+	.module opforge.cli.prvm_bridge
 	.cpu 68020
 
 	.use tkpkg.amigaos.abi (ENTRY_ORD_PARSE_LINE)
@@ -34,7 +34,17 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliDispatchParseLineUntilReady .block
+opforgeNativeCliDispatchParseLineEnvelope	.block
+	bsr.w opforgeNativeCliPrepareParseLineServiceRequest
+	tst.l d0
+	bne.s done
+	bsr.w opforgeNativeCliDispatchPreparedParseLineEnvelope
+
+done
+	rts
+	.bend  ; opforgeNativeCliDispatchParseLineEnvelope
+
+opforgeNativeCliDispatchParseLineUntilReady	.block
 	bsr.w opforgeNativeCliPrepareParseLineServiceRequest
 	tst.l d0
 	bne.s done
@@ -52,9 +62,9 @@ loop
 
 done
 	rts
-	.bend ; opforgeNativeCliDispatchParseLineUntilReady
+	.bend  ; opforgeNativeCliDispatchParseLineUntilReady
 
-opforgeNativeCliParserDirectiveKind .block
+opforgeNativeCliParserDirectiveKind	.block
 	lea OpforgeNativeCliPrvmResultBuffer, a2
 	cmpi.w #PRVM_RESULT_MNEMONIC_TEXT, 32(a2)
 	beq.s haveText
@@ -132,11 +142,11 @@ endmodule
 use
 	moveq #NCLI_PARSER_DIRECTIVE_USE, d0
 	rts
-	.bend ; opforgeNativeCliParserDirectiveKind
+	.bend  ; opforgeNativeCliParserDirectiveKind
 
 	.priv
 
-opforgeNativeCliDispatchPreparedParseLineEnvelope .block
+opforgeNativeCliDispatchPreparedParseLineEnvelope	.block
 	bsr.w opforgeNativeCliWritePrvmRouteFrameInput
 	tst.l d0
 	bne.s done
@@ -153,9 +163,9 @@ opforgeNativeCliDispatchPreparedParseLineEnvelope .block
 
 done
 	rts
-	.bend ; opforgeNativeCliDispatchPreparedParseLineEnvelope
+	.bend  ; opforgeNativeCliDispatchPreparedParseLineEnvelope
 
-opforgeNativeCliPrepareParseLineServiceRequest .block
+opforgeNativeCliPrepareParseLineServiceRequest	.block
 	bsr.w opforgeNativeCliBuildPrvmRouteFrame
 	tst.l d0
 	bne.s done
@@ -163,9 +173,9 @@ opforgeNativeCliPrepareParseLineServiceRequest .block
 
 done
 	rts
-	.bend ; opforgeNativeCliPrepareParseLineServiceRequest
+	.bend  ; opforgeNativeCliPrepareParseLineServiceRequest
 
-opforgeNativeCliWritePrvmRouteFrameInput .block
+opforgeNativeCliWritePrvmRouteFrameInput	.block
 	lea OpforgeNativeCliPrvmRouteFrame, a1
 	lea lastErrorBuffer, a2
 	move.w #PRVM_ROUTE_FRAME_SIZE, d0
@@ -173,9 +183,9 @@ opforgeNativeCliWritePrvmRouteFrameInput .block
 	move.w #PRVM_ROUTE_FRAME_SIZE, NativeCliLineRequestLen
 	moveq #0, d0
 	rts
-	.bend ; opforgeNativeCliWritePrvmRouteFrameInput
+	.bend  ; opforgeNativeCliWritePrvmRouteFrameInput
 
-opforgeNativeCliServicePrvmExpressionRequest .block
+opforgeNativeCliServicePrvmExpressionRequest	.block
 	movem.l d1-d4/a0-a2, -(sp)
 	lea OpforgeNativeCliPrvmExprRequest, a0
 	lea OpforgeNativeCliPrvmExprResultSlot, a1
@@ -214,9 +224,9 @@ fail
 return
 	movem.l (sp)+, d1-d4/a0-a2
 	rts
-	.bend ; opforgeNativeCliServicePrvmExpressionRequest
+	.bend  ; opforgeNativeCliServicePrvmExpressionRequest
 
-opforgeNativeCliBuildPrvmRouteFrame .block
+opforgeNativeCliBuildPrvmRouteFrame	.block
 	lea OpforgeNativeCliPrvmRouteFrame, a0
 	move.l #PRVM_ROUTE_MAGIC_OPLR, 0(a0)
 	move.w #PRVM_ROUTE_ABI_VERSION_V1, 4(a0)
@@ -274,9 +284,9 @@ opforgeNativeCliBuildPrvmRouteFrame .block
 
 done
 	rts
-	.bend ; opforgeNativeCliBuildPrvmRouteFrame
+	.bend  ; opforgeNativeCliBuildPrvmRouteFrame
 
-opforgeNativeCliLoadActivePrvmProgram .block
+opforgeNativeCliLoadActivePrvmProgram	.block
 	movem.l d1-d4/a1-a4, -(sp)
 	movea.l a0, a4
 	lea ActiveParserVmOffsetLo, a1
@@ -343,9 +353,9 @@ fail
 return
 	movem.l (sp)+, d1-d4/a1-a4
 	rts
-	.bend ; opforgeNativeCliLoadActivePrvmProgram
+	.bend  ; opforgeNativeCliLoadActivePrvmProgram
 
-opforgeNativeCliActivePrvmReadU32 .block
+opforgeNativeCliActivePrvmReadU32	.block
 	moveq #4, d0
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
 	tst.l d0
@@ -373,9 +383,9 @@ opforgeNativeCliActivePrvmReadU32 .block
 fail
 	moveq #1, d1
 	rts
-	.bend ; opforgeNativeCliActivePrvmReadU32
+	.bend  ; opforgeNativeCliActivePrvmReadU32
 
-opforgeNativeCliActivePrvmRequireBytes .block
+opforgeNativeCliActivePrvmRequireBytes	.block
 	movea.l a2, a1
 	adda.l d0, a1
 	cmpa.l a3, a1
@@ -386,12 +396,12 @@ opforgeNativeCliActivePrvmRequireBytes .block
 fail
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliActivePrvmRequireBytes
+	.bend  ; opforgeNativeCliActivePrvmRequireBytes
 
-opforgeNativeCliParserMnemonicEquals .block
+opforgeNativeCliParserMnemonicEquals	.block
 	bsr.w opforgeNativeCliLineStartsWith
 	rts
-	.bend ; opforgeNativeCliParserMnemonicEquals
+	.bend  ; opforgeNativeCliParserMnemonicEquals
 
 	.endsection
 	.endmodule

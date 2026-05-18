@@ -20,7 +20,7 @@
 
 	.use opforge.cli.include_use (opforgeNativeCliParseIncludeLine)
 	.use opforge.cli.directive_handlers (opforgeNativeCliParseModuleLine, opforgeNativeCliParseEndmoduleLine, opforgeNativeCliParseUseLine)
-	.use opforge.cli.parser_route (opforgeNativeCliDispatchParseLineUntilReady, opforgeNativeCliParserDirectiveKind)
+	.use opforge.cli.prvm_bridge (opforgeNativeCliDispatchParseLineUntilReady, opforgeNativeCliParserDirectiveKind)
 
 	.use opforge.cli.assembly_session (opforgeNativeCliRecordSourceLine, opforgeNativeCliRecordPrvmStatementLine)
 

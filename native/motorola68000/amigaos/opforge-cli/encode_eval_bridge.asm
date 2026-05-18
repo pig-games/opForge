@@ -39,21 +39,21 @@ opforgeNativeCliPrepareEncodeInstructionRequest	.block
 	lea lastErrorBuffer, a2
 	move.l NativeCliStmtMnemLen, d0
 	cmpi.l #255, d0
-	bhi.s opforgeNativeCliPrepareEncodeFail
+	bhi.s fail
 	move.b d0, (a2)+
 	tst.l d0
-	beq.s opforgeNativeCliPrepareEncodeCandidateCount
+	beq.s candidateCount
 	movea.l NativeCliStmtMnemStart, a1
 	jsr opforgeNativeCliCopyBytes
 
-opforgeNativeCliPrepareEncodeCandidateCount
+candidateCount
 	clr.b (a2)+
 	addq.w #2, d0
 	move.w d0, NativeCliEncodeRequestLen
 	moveq #0, d0
 	rts
 
-opforgeNativeCliPrepareEncodeFail
+fail
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliPrepareEncodeInstructionRequest
@@ -73,14 +73,14 @@ opforgeNativeCliPrepareEncodeSelectedRequestForStatement	.block
 	lea opasmEngineStmtMnemLenTable.l, a1
 	moveq #0, d6
 	move.w 0(a1, d0.l), d6
-	bne.w opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
+	bne.w haveMnemLen
 	movea.l a2, a0
 	jsr opforgeNativeCliTokenLen
 	move.w d0, d6
 
-opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
+haveMnemLen
 	tst.w d6
-	beq.w opforgeNativeCliPrepareEncodeSelectedFail
+	beq.w fail
 	move.l a2, NativeCliStmtMnemStart
 	move.l d6, NativeCliStmtMnemLen
 	moveq #0, d0
@@ -96,49 +96,49 @@ opforgeNativeCliPrepareEncodeSelectedHaveMnemLen
 	adda.l d0, a0
 	move.l d1, d0
 
-opforgeNativeCliPrepareEncodeSelectedBuildRequest
+buildRequest
 	move.l a0, d3
 	move.l d1, d4
 	bsr.w opforgeNativeCliLoadStatementExprMetadata
 	tst.w NativeCliStmtExprFound
-	bne.w opforgeNativeCliPrepareEncodeSelectedMaybeSourceLineRequest
+	bne.w maybeSourceLineRequest
 
-opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+syntheticRequest
 	bsr.w opforgeNativeCliClearStatementExprSpanForSyntheticRequest
 	movea.l d3, a0
 	move.l d4, d0
 	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
-	bra.w opforgeNativeCliPrepareEncodeSelectedReturn
+	bra.w return
 
-opforgeNativeCliPrepareEncodeSelectedMaybeSourceLineRequest
+maybeSourceLineRequest
 	tst.l d4
-	bne.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	bne.w syntheticRequest
 	move.l NativeCliStmtExprSpanStart, d2
 	move.l NativeCliStmtExprSpanEnd, d3
 	cmp.l d2, d3
-	bls.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	bls.w syntheticRequest
 
-opforgeNativeCliPrepareEncodeSelectedSourceLineRequest
+sourceLineRequest
 	bsr.w opforgeNativeCliLoadStatementSourceLineText
 	tst.l d0
-	beq.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	beq.w syntheticRequest
 	move.l d0, d1
 	move.l d2, d0
 	subq.l #1, d0
 	cmp.l d1, d0
-	bhs.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	bhs.w syntheticRequest
 	move.l d3, d0
 	subq.l #1, d0
 	cmp.l d1, d0
-	bhi.w opforgeNativeCliPrepareEncodeSelectedSyntheticRequest
+	bhi.w syntheticRequest
 	move.l d1, d0
 	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
-	bra.w opforgeNativeCliPrepareEncodeSelectedReturn
+	bra.w return
 
-opforgeNativeCliPrepareEncodeSelectedFail
+fail
 	moveq #1, d0
 
-opforgeNativeCliPrepareEncodeSelectedReturn
+return
 	movem.l (sp)+, d1-d7/a0-a2
 	rts
 	.bend  ; opforgeNativeCliPrepareEncodeSelectedRequestForStatement
@@ -150,14 +150,14 @@ opforgeNativeCliPrepareEvaluateExpressionRequest	.block
 	lea lastErrorBuffer, a1
 	move.l NativeCliStmtExprSpanLine, d2
 	tst.l d2
-	bne.s opforgeNativeCliPrepareEvalHaveLineNum
+	bne.s haveLineNum
 	moveq #0, d0
 	move.w d7, d0
 	lsl.l #2, d0
 	lea opasmEngineStmtLineTable.l, a0
 	move.l 0(a0, d0.l), d2
 
-opforgeNativeCliPrepareEvalHaveLineNum
+haveLineNum
 	move.l d2, d3
 	move.b d3, (a1)+
 	lsr.l #8, d3
@@ -167,24 +167,24 @@ opforgeNativeCliPrepareEvalHaveLineNum
 	lsr.l #8, d3
 	move.b d3, (a1)+
 	tst.w NativeCliStmtExprFound
-	beq.s opforgeNativeCliPrepareEvalSyntheticSpan
+	beq.s syntheticSpan
 	move.l NativeCliStmtExprSpanStart, d2
 	move.l NativeCliStmtExprSpanEnd, d3
-	bra.s opforgeNativeCliPrepareEvalWriteSpan
+	bra.s writeSpan
 
-opforgeNativeCliPrepareEvalSyntheticSpan
+syntheticSpan
 	tst.l d6
-	bne.s opforgeNativeCliPrepareEvalSyntheticNonEmptySpan
+	bne.s syntheticNonEmptySpan
 	clr.l d2
 	clr.l d3
-	bra.s opforgeNativeCliPrepareEvalWriteSpan
+	bra.s writeSpan
 
-opforgeNativeCliPrepareEvalSyntheticNonEmptySpan
+syntheticNonEmptySpan
 	moveq #1, d2
 	move.l d6, d3
 	addq.l #1, d3
 
-opforgeNativeCliPrepareEvalWriteSpan
+writeSpan
 	move.w d2, d4
 	move.b d4, (a1)+
 	lsr.w #8, d4
@@ -195,15 +195,15 @@ opforgeNativeCliPrepareEvalWriteSpan
 	move.b d4, (a1)+
 	move.l NativeCliStmtMnemLen, d5
 	cmpi.l #255, d5
-	bhi.w opforgeNativeCliPrepareEvalFail
+	bhi.w fail
 	move.b d5, (a1)+
 	tst.l d5
-	beq.s opforgeNativeCliPrepareEvalCopyOperand
+	beq.s copyOperand
 	movea.l NativeCliStmtMnemStart, a0
 	move.w d5, d0
 	jsr opforgeNativeCliCopyFixedString
 
-opforgeNativeCliPrepareEvalCopyOperand
+copyOperand
 	movea.l a2, a0
 	move.w d6, d0
 	jsr opforgeNativeCliCopyFixedString
@@ -212,12 +212,12 @@ opforgeNativeCliPrepareEvalCopyOperand
 	addi.w #9, d0
 	move.w d0, NativeCliEvalRequestLen
 	moveq #0, d0
-	bra.s opforgeNativeCliPrepareEvalReturn
+	bra.s return
 
-opforgeNativeCliPrepareEvalFail
+fail
 	moveq #1, d0
 
-opforgeNativeCliPrepareEvalReturn
+return
 	movem.l (sp)+, d1-d7/a1-a2
 	rts
 	.bend  ; opforgeNativeCliPrepareEvaluateExpressionRequest
@@ -236,11 +236,11 @@ opforgeNativeCliPrepareEvaluateExpressionExtension	.block
 	clr.l 4(a1)
 	bsr.w opforgeNativeCliInferSelectedShapeForEvalRequest
 	tst.w d0
-	beq.s opforgeNativeCliPrepareEvaluateExpressionExtensionDone
+	beq.s done
 	move.l a0, (a1)
 	move.l d0, 4(a1)
 
-opforgeNativeCliPrepareEvaluateExpressionExtensionDone
+done
 	moveq #0, d0
 	movem.l (sp)+, d1-d7/a0-a2
 	rts
@@ -517,7 +517,7 @@ opforgeNativeCliClearStatementExprSpanForSyntheticRequest	.block
 opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 	bsr.w opforgeNativeCliPrepareEncodeInstructionRequest
 	tst.l d0
-	bne.s opforgeNativeCliDispatchEncodeDone
+	bne.s done
 	lea ControlBlockV1, a0
 	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
 	move.w NativeCliEncodeRequestLen, d1
@@ -526,7 +526,7 @@ opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 	jsr tkpkgServiceDispatchV1
 	jsr opforgeNativeCliReadStatus
 
-opforgeNativeCliDispatchEncodeDone
+done
 	rts
 	.bend  ; opforgeNativeCliDispatchEncodeInstructionEnvelope
 
@@ -537,7 +537,7 @@ opforgeNativeCliLoadStatementSourceLineText	.block
 	lea opasmEngineStmtSourceLineLenTable.l, a0
 	moveq #0, d1
 	move.w 0(a0, d0.l), d1
-	beq.s opforgeNativeCliLoadStatementSourceLineTextFail
+	beq.s fail
 	moveq #0, d0
 	move.w d7, d0
 	lsl.l #8, d0
@@ -547,7 +547,7 @@ opforgeNativeCliLoadStatementSourceLineText	.block
 	move.l d1, d0
 	rts
 
-opforgeNativeCliLoadStatementSourceLineTextFail
+fail
 	clr.l d0
 	rts
 	.bend  ; opforgeNativeCliLoadStatementSourceLineText
@@ -558,7 +558,7 @@ opforgeNativeCliLoadStatementExprMetadata	.block
 	add.w d0, d0
 	lea opasmEngineStmtExprFlagsTable.l, a0
 	tst.w 0(a0, d0.l)
-	beq.s opforgeNativeCliLoadStatementExprMetadataEmpty
+	beq.s empty
 	lsr.w #1, d0
 	lsl.l #2, d0
 	lea opasmEngineStmtExprOperandIndexTable.l, a0
@@ -578,7 +578,7 @@ opforgeNativeCliLoadStatementExprMetadata	.block
 	move.w #1, NativeCliStmtExprFound
 	rts
 
-opforgeNativeCliLoadStatementExprMetadataEmpty
+empty
 	clr.l NativeCliStmtExprOperandIndex
 	clr.l NativeCliStmtExprSlotIndex
 	clr.l NativeCliStmtExprStartToken

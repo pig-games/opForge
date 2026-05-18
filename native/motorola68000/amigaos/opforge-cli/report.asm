@@ -117,74 +117,74 @@ opforgeNativeCliEmitAssemblySessionSummary	.block
 opforgeNativeCliReportParseError	.block
 	move.w NativeCliParseStatus, d0
 	cmpi.w #NCLI_PARSE_QUOTED, d0
-	beq.s opforgeNativeCliReportQuoted
+	beq.s quoted
 	cmpi.w #NCLI_PARSE_UNSUPPORTED, d0
-	beq.s opforgeNativeCliReportUnsupported
+	beq.s unsupported
 	cmpi.w #NCLI_PARSE_UNKNOWN_FLAG, d0
-	beq.s opforgeNativeCliReportUnknown
+	beq.s unknown
 	cmpi.w #NCLI_PARSE_MISSING_VALUE, d0
-	beq.s opforgeNativeCliReportMissing
+	beq.s missing
 	cmpi.w #NCLI_PARSE_NO_INPUT, d0
-	beq.w opforgeNativeCliReportNoInput
+	beq.w noInput
 	cmpi.w #NCLI_PARSE_HUNK_REQUIRED, d0
-	beq.w opforgeNativeCliReportHunkRequired
+	beq.w hunkRequired
 	cmpi.w #NCLI_PARSE_MIXED_INPUT, d0
-	beq.w opforgeNativeCliReportMixedInput
+	beq.w mixedInput
 	cmpi.w #NCLI_PARSE_MULTIPLE_POSITIONAL, d0
-	beq.w opforgeNativeCliReportMultiplePositional
+	beq.w multiplePositional
 	cmpi.w #NCLI_PARSE_MODULE_PATH_CAPACITY, d0
-	beq.w opforgeNativeCliReportModulePathCapacity
+	beq.w modulePathCapacity
 	move.l #UsageText, d1
-	bra.w opforgeNativeCliReportText
+	bra.w reportText
 
-opforgeNativeCliReportQuoted
+quoted
 	move.l #QuotedText, d1
-	bra.w opforgeNativeCliReportText
+	bra.w reportText
 
-opforgeNativeCliReportUnsupported
+unsupported
 	move.l #UnsupportedText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NativeCliArgToken, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NativeSubsetHelpText, d1
-	bra.s opforgeNativeCliReportText
+	bra.s reportText
 
-opforgeNativeCliReportUnknown
+unknown
 	move.l #UnknownFlagText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NativeCliArgToken, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bra.s opforgeNativeCliReportText
+	bra.s reportText
 
-opforgeNativeCliReportMissing
+missing
 	move.l #MissingValueText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NativeCliArgToken, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
-	bra.s opforgeNativeCliReportText
+	bra.s reportText
 
-opforgeNativeCliReportNoInput
+noInput
 	move.l #NoInputText, d1
-	bra.s opforgeNativeCliReportText
+	bra.s reportText
 
-opforgeNativeCliReportHunkRequired
+hunkRequired
 	move.l #HunkRequiredText, d1
-	bra.s opforgeNativeCliReportText
+	bra.s reportText
 
-opforgeNativeCliReportMixedInput
+mixedInput
 	move.l #MixedInputText, d1
-	bra.s opforgeNativeCliReportText
+	bra.s reportText
 
-opforgeNativeCliReportMultiplePositional
+multiplePositional
 	move.l #MultiplePositionalText, d1
-	bra.s opforgeNativeCliReportText
+	bra.s reportText
 
-opforgeNativeCliReportModulePathCapacity
+modulePathCapacity
 	move.l #ModulePathCapacityText, d1
 
-opforgeNativeCliReportText
+reportText
 	jsr opforgeNativeCliPutStr
 	rts
 	.bend  ; opforgeNativeCliReportParseError

@@ -76,9 +76,9 @@ opforgeNativeCliOpasmPassOneBegin	.block
 	lea opasmEngineLabelFinalizedTable.l, a0
 	moveq #NATIVE_LABEL_TABLE_CAPACITY - 1, d0
 
-opforgeNativeCliPassOneClearLabelFinalizedLoop
+clearLoop
 	clr.b (a0)+
-	dbf d0, opforgeNativeCliPassOneClearLabelFinalizedLoop
+	dbf d0, clearLoop
 	clr.w opasmEngineImageByteCount.l
 	move.l #$00000800, opasmEngineSessionOrigin.l
 	move.l opasmEngineSessionOrigin.l, d0
@@ -104,14 +104,14 @@ opforgeNativeCliOpasmPassTwoBegin	.block
 	moveq #0, d0
 	move.w opasmEngineLabelCount.l, d0
 	subq.w #1, d0
-	bmi.s opforgeNativeCliPassTwoFinalizeLabelsDone
+	bmi.s finalizeDone
 	lea opasmEngineLabelFinalizedTable.l, a0
 
-opforgeNativeCliPassTwoFinalizeLabelLoop
+finalizeLoop
 	move.b #1, (a0)+
-	dbf d0, opforgeNativeCliPassTwoFinalizeLabelLoop
+	dbf d0, finalizeLoop
 
-opforgeNativeCliPassTwoFinalizeLabelsDone
+finalizeDone
 	clr.w opasmEngineImageByteCount.l
 	move.l opasmEngineSessionOrigin.l, d0
 	move.l d0, opasmEngineSessionCurrentPc.l
@@ -136,17 +136,17 @@ opforgeNativeCliPassOneRecordLabel	.block
 	lea opasmEngineStmtLabelNameTable.l, a1
 	adda.l d7, a1
 	tst.b (a1)
-	beq.w opforgeNativeCliPassOneRecordLabelOk
+	beq.w ok
 	moveq #0, d0
 	move.w opasmEngineLabelCount.l, d0
 	cmpi.w #NATIVE_LABEL_TABLE_CAPACITY, d0
-	bhs.w opforgeNativeCliPassOneRecordLabelFail
+	bhs.w fail
 	moveq #0, d6
 
-opforgeNativeCliPassOneDuplicateLoop
+duplicateLoop
 	move.w opasmEngineLabelCount.l, d0
 	cmp.w d0, d6
-	bhs.s opforgeNativeCliPassOneStoreLabel
+	bhs.s storeLabel
 	moveq #0, d5
 	move.w d6, d5
 	lsl.l #6, d5
@@ -158,20 +158,20 @@ opforgeNativeCliPassOneDuplicateLoop
 	add.w d5, d5
 	lea opasmEngineStmtLabelLenTable.l, a2
 	move.w 0(a2, d5.l), d0
-	bne.s opforgeNativeCliPassOneDuplicateHaveLabelLen
+	bne.s haveExistingLabelLen
 	move.l a0, d3
 	movea.l a1, a0
 	jsr opforgeNativeCliTokenLen
 	movea.l d3, a0
 
-opforgeNativeCliPassOneDuplicateHaveLabelLen
+haveExistingLabelLen
 	bsr.w opforgeNativeCliLabelEquals
 	tst.l d0
-	bne.w opforgeNativeCliPassOneDuplicate
+	bne.w duplicate
 	addq.w #1, d6
-	bra.s opforgeNativeCliPassOneDuplicateLoop
+	bra.s duplicateLoop
 
-opforgeNativeCliPassOneStoreLabel
+storeLabel
 	moveq #0, d6
 	move.w opasmEngineLabelCount.l, d6
 	move.l d6, d5
@@ -196,11 +196,11 @@ opforgeNativeCliPassOneStoreLabel
 	add.w d5, d5
 	lea opasmEngineStmtLabelLenTable.l, a2
 	move.w 0(a2, d5.l), d0
-	bne.s opforgeNativeCliPassOneStoreHaveLabelLen
+	bne.s haveStoreLabelLen
 	movea.l d3, a0
 	jsr opforgeNativeCliTokenLen
 
-opforgeNativeCliPassOneStoreHaveLabelLen
+haveStoreLabelLen
 	jsr opforgeNativeCliCopyFixedString
 	clr.b (a1)
 	addq.w #1, opasmEngineLabelCount.l
@@ -213,9 +213,9 @@ opforgeNativeCliPassOneStoreHaveLabelLen
 	jsr opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
-	bra.s opforgeNativeCliPassOneRecordLabelOk
+	bra.s ok
 
-opforgeNativeCliPassOneDuplicate
+duplicate
 	move.l #NativeDuplicateLabelText, d1
 	jsr opforgeNativeCliPutStr
 	move.l a1, d1
@@ -223,14 +223,14 @@ opforgeNativeCliPassOneDuplicate
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 
-opforgeNativeCliPassOneRecordLabelFail
+fail
 	moveq #1, d0
-	bra.s opforgeNativeCliPassOneRecordLabelReturn
+	bra.s return
 
-opforgeNativeCliPassOneRecordLabelOk
+ok
 	moveq #0, d0
 
-opforgeNativeCliPassOneRecordLabelReturn
+return
 	movem.l (sp)+, d1-d7/a0-a2
 	rts
 	.bend  ; opforgeNativeCliPassOneRecordLabel
@@ -250,45 +250,45 @@ opforgeNativeCliPassTwoEmitImageBytes	.block
 	lea opasmEngineStmtMnemLenTable.l, a1
 	moveq #0, d0
 	move.w 0(a1, d3.l), d0
-	bne.s opforgeNativeCliPassTwoEmitHaveMlen
+	bne.s haveMlen
 	movea.l d5, a0
 	jsr opforgeNativeCliTokenLen
 
-opforgeNativeCliPassTwoEmitHaveMlen
+haveMlen
 	move.w d0, d4
-	beq.w opforgeNativeCliPassTwoEmitOk
+	beq.w ok
 	move.w d6, d0
 	move.w d4, d1
 	movea.l d5, a0
 	bsr.w opforgeNativeCliStatementMnemDuplicatesLabel
 	tst.l d0
-	bne.w opforgeNativeCliPassTwoEmitOk
+	bne.w ok
 	movea.l d5, a0
 	move.w d4, d0
 	lea OrgMnemonicText, a1
 	moveq #4, d1
 	jsr opforgeNativeCliLineStartsWith
 	tst.l d0
-	bne.w opforgeNativeCliPassTwoEmitOk
+	bne.w ok
 	movea.l d5, a0
 	move.w d4, d0
 	lea CpuMnemonicText, a1
 	moveq #4, d1
 	jsr opforgeNativeCliLineStartsWith
 	tst.l d0
-	bne.w opforgeNativeCliPassTwoEmitOk
+	bne.w ok
 	movea.l d5, a0
 	move.w d4, d0
 	lea EndMnemonicText, a1
 	moveq #4, d1
 	jsr opforgeNativeCliLineStartsWith
 	tst.l d0
-	bne.w opforgeNativeCliPassTwoEmitOk
+	bne.w ok
 	jsr opforgeNativeCliPrepareEncodeSelectedRequestForStatement
 	tst.l d0
-	bne.w opforgeNativeCliPassTwoEmitReturn
+	bne.w return
 	tst.w NativeCliEvalRequestLen.l
-	beq.w opforgeNativeCliPassTwoEmitOk
+	beq.w ok
 	jsr opforgeNativeCliPrepareEvaluateExpressionExtension
 	lea ControlBlockV1, a0
 	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
@@ -302,11 +302,11 @@ opforgeNativeCliPassTwoEmitHaveMlen
 	lea ControlBlockV1, a0
 	jsr opforgeNativeCliReadStatus
 	tst.b d0
-	bne.w opforgeNativeCliPassTwoEmitServiceFail
+	bne.w serviceFail
 	lea ControlBlockV1, a0
 	jsr opforgeNativeCliReadOutputLen
 	tst.w d0
-	beq.w opforgeNativeCliPassTwoEmitOk
+	beq.w ok
 	move.w d0, d6
 	move.l #NativeSelectorStatusOkText, d1
 	jsr opforgeNativeCliPutStr
@@ -314,7 +314,7 @@ opforgeNativeCliPassTwoEmitHaveMlen
 	move.w opasmEngineImageByteCount.l, d0
 	add.w d6, d0
 	cmpi.w #NATIVE_IMAGE_BUFFER_CAPACITY, d0
-	bhi.w opforgeNativeCliPassTwoEmitFail
+	bhi.w fail
 	moveq #0, d0
 	move.w opasmEngineImageByteCount.l, d0
 	lea opasmEngineImageBuffer.l, a0
@@ -322,45 +322,45 @@ opforgeNativeCliPassTwoEmitHaveMlen
 	lea lastErrorBuffer, a1
 	move.w d6, d1
 
-opforgeNativeCliPassTwoCopyEncodedLoop
+copyEncodedLoop
 	move.b (a1)+, (a0)+
 	subq.w #1, d1
-	bne.s opforgeNativeCliPassTwoCopyEncodedLoop
+	bne.s copyEncodedLoop
 	add.w d6, opasmEngineImageByteCount.l
 
-opforgeNativeCliPassTwoEmitOk
+ok
 	moveq #0, d0
-	bra.s opforgeNativeCliPassTwoEmitReturn
+	bra.s return
 
-opforgeNativeCliPassTwoEmitFail
+fail
 	move.l #NativeImageCapacityText, d1
 	jsr opforgeNativeCliPutStr
 	moveq #1, d0
-	bra.s opforgeNativeCliPassTwoEmitReturn
+	bra.s return
 
-opforgeNativeCliPassTwoEmitServiceFail
+serviceFail
 	move.w d6, d0
 	bsr.w opforgeNativeCliStatementLooksBareColumnOne
 	tst.l d0
-	bne.w opforgeNativeCliPassTwoEmitOk
+	bne.w ok
 	lea ControlBlockV1, a0
 	jsr opforgeNativeCliReadLastErrorLen
 	tst.w d0
-	beq.s opforgeNativeCliPassTwoEmitServiceFailReturn
+	beq.s serviceFailReturn
 	lea lastErrorBuffer, a1
 	clr.b 0(a1, d0.W)
 	bsr.w opforgeNativeCliPassTwoEmitSelectorDiagnostic
 	tst.l d0
-	bne.s opforgeNativeCliPassTwoEmitServiceFailReturn
+	bne.s serviceFailReturn
 	move.l #lastErrorBuffer, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 
-opforgeNativeCliPassTwoEmitServiceFailReturn
+serviceFailReturn
 	moveq #1, d0
 
-opforgeNativeCliPassTwoEmitReturn
+return
 	movem.l (sp)+, d1-d6/a0-a4
 	rts
 	.bend  ; opforgeNativeCliPassTwoEmitImageBytes
@@ -541,91 +541,91 @@ opforgeNativeCliPassAdvancePc	.block
 	lea opasmEngineStmtMnemLenTable.l, a1
 	moveq #0, d0
 	move.w 0(a1, d4.l), d0
-	bne.s opforgeNativeCliPassAdvanceHaveMlen
+	bne.s haveMlen
 	movea.l d5, a0
 	jsr opforgeNativeCliTokenLen
 
-opforgeNativeCliPassAdvanceHaveMlen
+haveMlen
 	move.w d0, d6
-	beq.w opforgeNativeCliPassAdvanceDone
+	beq.w done
 	move.w d7, d0
 	move.w d6, d1
 	movea.l d5, a0
 	bsr.w opforgeNativeCliStatementMnemDuplicatesLabel
 	tst.l d0
-	bne.w opforgeNativeCliPassAdvanceDone
+	bne.w done
 	lea OrgMnemonicText, a1
 	moveq #4, d1
 	jsr opforgeNativeCliLineStartsWith
 	tst.l d0
-	bne.w opforgeNativeCliPassAdvanceOrg
+	bne.w org
 	movea.l d5, a0
 	move.w d6, d0
 	lea CpuMnemonicText, a1
 	moveq #4, d1
 	jsr opforgeNativeCliLineStartsWith
 	tst.l d0
-	bne.w opforgeNativeCliPassAdvanceDone
+	bne.w done
 	movea.l d5, a0
 	move.w d6, d0
 	lea EndMnemonicText, a1
 	moveq #4, d1
 	jsr opforgeNativeCliLineStartsWith
 	tst.l d0
-	bne.w opforgeNativeCliPassAdvanceDone
+	bne.w done
 	moveq #0, d0
 	move.w d7, d0
 	bsr.w opforgeNativeCliTrySelectedEncodeSizeForStatement
 	tst.l d0
-	bne.w opforgeNativeCliPassAdvanceFail
+	bne.w fail
 	cmpi.w #1, d1
-	beq.w opforgeNativeCliPassAdvanceOne
+	beq.w advanceOne
 	cmpi.w #2, d1
-	beq.w opforgeNativeCliPassAdvanceTwo
+	beq.w advanceTwo
 	cmpi.w #3, d1
-	beq.w opforgeNativeCliPassAdvanceThree
-	bra.w opforgeNativeCliPassAdvanceDone
+	beq.w advanceThree
+	bra.w done
 
-opforgeNativeCliPassAdvanceOrg
+org
 	move.w d4, d7
 	moveq #2, d5
 	bsr.w opforgeNativeCliReadOperandValueForStatement
 	tst.l d0
-	beq.s opforgeNativeCliPassAdvanceOrgOk
+	beq.s orgOk
 	move.l #NativeBadOrgText, d1
 	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #1, d0
 	rts
 
-opforgeNativeCliPassAdvanceOrgOk
+orgOk
 	move.l d3, opasmEngineSessionOrigin.l
 	move.l opasmEngineSessionOrigin.l, d0
 	move.l d0, opasmEngineSessionCurrentPc.l
-	bra.w opforgeNativeCliPassAdvanceDone
+	bra.w done
 
-opforgeNativeCliPassAdvanceOne
+advanceOne
 	addq.l #1, opasmEngineSessionCurrentPc.l
-	bra.w opforgeNativeCliPassAdvanceDone
+	bra.w done
 
-opforgeNativeCliPassAdvanceTwo
+advanceTwo
 	addq.l #2, opasmEngineSessionCurrentPc.l
-	bra.w opforgeNativeCliPassAdvanceDone
+	bra.w done
 
-opforgeNativeCliPassAdvanceThree
+advanceThree
 	addq.l #3, opasmEngineSessionCurrentPc.l
-	bra.w opforgeNativeCliPassAdvanceDone
+	bra.w done
 
-opforgeNativeCliPassAdvanceFail
+fail
 	move.w d7, d0
 	bsr.w opforgeNativeCliStatementLooksBareColumnOne
 	tst.l d0
-	bne.w opforgeNativeCliPassAdvanceDone
+	bne.w done
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #1, d0
 	rts
 
-opforgeNativeCliPassAdvanceDone
+done
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #0, d0
 	rts

@@ -53,6 +53,7 @@
 	.use opforge.cli.line_text (*)
 	.use opforge.cli.text_output (*)
 	.use opforge.cli.encode_eval_bridge (*)
+	.use opforge.cli.output (*)
 
 	.section entry, kind=code
 
@@ -245,7 +246,7 @@ opforgeNativeCliPassesOk
 	bsr.w opforgeNativeCliEmitAssemblySessionSummary
 	tst.w opasmEngineImageByteCount.l
 	beq.s opforgeNativeCliEmitStub
-	bsr.w opforgeNativeCliWriteFlatOutput
+	jsr opforgeNativeCliWriteFlatOutput
 	tst.l d0
 	beq.s opforgeNativeCliOutputOk
 	move.l #NativeOutputFailureText, d1
@@ -1419,38 +1420,6 @@ opforgeNativeCliLabelEqualsNo
 
 opforgeNativeCliLabelEqualsReturn
 	movem.l (sp)+, d1-d3/a0-a1
-	rts
-
-; Write the current native image buffer as flat `.bin` output.
-opforgeNativeCliWriteFlatOutput
-	movem.l d1-d4/a0-a1, -(sp)
-	lea NativeCliBinPath, a0
-	jsr opforgeNativeCliOpenOutput
-	tst.l d0
-	beq.s opforgeNativeCliWriteFlatFail
-	move.l d0, d4
-	lea opasmEngineImageBuffer.l, a0
-	moveq #0, d0
-	move.w opasmEngineImageByteCount.l, d0
-	move.l d0, d3
-	move.l d4, d1
-	jsr opforgeNativeCliWriteOutput
-	cmp.l d3, d0
-	bne.s opforgeNativeCliWriteFlatCloseFail
-	move.l d4, d1
-	jsr opforgeNativeCliClose
-	moveq #0, d0
-	bra.s opforgeNativeCliWriteFlatReturn
-
-opforgeNativeCliWriteFlatCloseFail
-	move.l d4, d1
-	jsr opforgeNativeCliClose
-
-opforgeNativeCliWriteFlatFail
-	moveq #1, d0
-
-opforgeNativeCliWriteFlatReturn
-	movem.l (sp)+, d1-d4/a0-a1
 	rts
 
 ; Clear module/use and statement collection state before parsing input.

@@ -518,7 +518,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             .join("amigaos");
         return vec![
             amigaos_dir.join("tkpkg"),
-            amigaos_dir.join("tokvm"),
+            amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
@@ -532,7 +532,7 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             .join("amigaos");
         return vec![
             amigaos_dir.join("tkpkg"),
-            amigaos_dir.join("tokvm"),
+            amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
@@ -556,7 +556,7 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
             .join("native")
             .join("motorola68000")
             .join("amigaos");
-        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("tokvm")];
+        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("tkvm")];
     }
 
     Vec::new()

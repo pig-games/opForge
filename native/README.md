@@ -24,7 +24,7 @@ flat `.bin` output, and deterministic diagnostics for known unsupported cases.
 - `motorola68000/amigaos/prvm/`: native parser VM runtime modules.
 - `motorola68000/amigaos/tkpkg/`: native package-backed tokenizer/runtime
   modules and package fixtures.
-- `motorola68000/amigaos/tokvm/`: native tokenizer VM runtime modules.
+- `motorola68000/amigaos/tkvm/`: native tokenizer VM runtime modules.
 - `motorola68000/amigaos/test-harnesses/`: non-deliverable AmigaOS debug,
   smoke, and sample entrypoints used by tests and FS-UAE validation.
 
@@ -37,7 +37,7 @@ The production-facing native deliverable is:
 The runtime modules it depends on are deliverable support code:
 
 - `motorola68000/amigaos/tkpkg/*.asm`
-- `motorola68000/amigaos/tokvm/*.asm`
+- `motorola68000/amigaos/tkvm/*.asm`
 - `motorola68000/amigaos/prvm/*.asm`
 - `motorola68000/amigaos/opcore/*.asm`
 - `motorola68000/amigaos/opasm/*.asm`
@@ -196,7 +196,7 @@ cargo run -p cli --bin opforge -- \
   --cpu 68020 \
   -l target/native-amigaos/opforge_cli.lst \
   -M native/motorola68000/amigaos/tkpkg \
-  -M native/motorola68000/amigaos/tokvm \
+  -M native/motorola68000/amigaos/tkvm \
   -M native/motorola68000/amigaos/prvm \
   -M native/motorola68000/amigaos/opcore \
   -M native/motorola68000/amigaos/opasm \

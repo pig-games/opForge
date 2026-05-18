@@ -1,16 +1,16 @@
 ; Host-facing CLI harness module.
 ;
 ; Owns the AmigaOS Shell bridge, report formatting surface, and caller-owned
-; buffers. Imports the tokenizer VM contract from tokvm.amigaos.tokenizer_vm.
+; buffers. Imports the tokenizer VM contract from tkvm.amigaos.runtime.
 
 	.module tokvm.amigaos.cli_harness
 	.cpu 68020
 	.pub
-	.use tokvm.amigaos.tokenizer_vm (tokvmRun68000, tokvmSetStepBudget68000)
-	.use tokvm.amigaos.tokenizer_vm (DemoProgram, DemoProgramLen, TOKVM_DEFAULT_MAX_STEPS_PER_LINE)
-	.use tokvm.amigaos.tokenizer_vm (TOKEN_BUFFER_CAPACITY, TOKEN_RECORD_SIZE)
-	.use tokvm.amigaos.tokenizer_vm (SOURCE_BUFFER_CAPACITY, SCRATCH_BUFFER_CAPACITY)
-	.use tokvm.amigaos.tokenizer_vm (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_PROGRAM, TK_KIND_OP_LT)
+	.use tkvm.amigaos.runtime (tokvmRun68000, tokvmSetStepBudget68000)
+	.use tkvm.amigaos.runtime (DemoProgram, DemoProgramLen, TOKVM_DEFAULT_MAX_STEPS_PER_LINE)
+	.use tkvm.amigaos.runtime (TOKEN_BUFFER_CAPACITY, TOKEN_RECORD_SIZE)
+	.use tkvm.amigaos.runtime (SOURCE_BUFFER_CAPACITY, SCRATCH_BUFFER_CAPACITY)
+	.use tkvm.amigaos.runtime (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_PROGRAM, TK_KIND_OP_LT)
 
 ; ---------------------------------------------------------------------------
 ; AmigaOS Exec/DOS offsets used by the CLI harness layer.
@@ -200,7 +200,7 @@ invokeVm
 	; Register ABI for tokvm_run_68000:
 	; A0/D0 source slice, A1/D1 token buffer+capacity, A2/D2 scratch buffer+capacity,
 	; A3/D3 demo bytecode pointer+length. This mirrors the native contract documented
-	; in tokvm_tokenizer_vm.asm and used by the Rust-side bridge tests.
+	; in tkvm_runtime.asm and used by the Rust-side bridge tests.
 	move.l #TOKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
 	jsr tokvmSetStepBudget68000
 	lea SourceBuffer, a0
@@ -243,12 +243,12 @@ shutdown
 	move.l d7, d0
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; tokvmAmigaosCliHarnessRun
+	.bend  ; tokvmAmigaosCliHarnessRun
 
 ; Parse exactly two unquoted Shell paths from DOS GetArgStr output.
 ; This stays intentionally narrower than a full command-line parser because the
 ; harness spec defines a fixed tokvm <input-path> <output-path> contract.
-parseArgs .block
+parseArgs	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l a0, a3  ; A3 walks the raw DOS argument tail in-place
 	bsr.s skipWhitespace  ; align with the Rust test helper that trims surrounding Shell whitespace
@@ -285,9 +285,9 @@ argsQuoted
 argsDone
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; parseArgs
+	.bend  ; parseArgs
 
-skipWhitespace .block
+skipWhitespace	.block
 	cmpi.b #' ', (a3)
 	beq.s skipOne
 	cmpi.b #9, (a3)
@@ -302,12 +302,12 @@ skipOne
 
 skipDone
 	rts
-	.bend ; skipWhitespace
+	.bend  ; skipWhitespace
 
 ; Copy one CLI path token into the caller-selected buffer.
 ; This intentionally implements a narrow Shell token grammar rather than full
 ; quote/escape handling because the tokvm host spec only accepts raw paths.
-copyToken .block
+copyToken	.block
 	move.l #PATH_BUFFER_CAPACITY - 1, d6  ; reserve space for the trailing NUL DOS expects
 copyLoop
 	moveq #0, d0
@@ -342,18 +342,18 @@ copyQuoted
 copyOverflow
 	move.l #HARNESS_STATUS_USAGE, d0
 	rts
-	.bend ; copyToken
+	.bend  ; copyToken
 
 ; Failure reports reuse the same report writer as success reports so the file
 ; format stays identical across success and host/VM failure paths.
-writeFailureReport .block
+writeFailureReport	.block
 	clr.l d1
 	clr.l d2
 	clr.l d3
 	bra.w writeReport
-	.bend ; writeFailureReport
+	.bend  ; writeFailureReport
 
-writeReport .block
+writeReport	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	move.l d0, d4
 	move.l d1, d5
@@ -546,13 +546,13 @@ reportFail
 reportDone
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; writeReport
+	.bend  ; writeReport
 
 ; Defensive validation in front of report formatting.
 ; The Rust runtime validates token shapes before exposing PortableToken output;
 ; this native harness mirrors that expectation so malformed native state falls
 ; back to TK_STATUS_VM_FAILURE instead of emitting invalid token metadata.
-validateVmResult .block
+validateVmResult	.block
 	tst.l d4  ; non-negative statuses are TK_STATUS_* VM results, negative are harness failures
 	bmi validateNegativeStatus
 	cmpi.l #TK_STATUS_INVALID_PROGRAM, d4
@@ -623,11 +623,11 @@ validateOk
 validateInvalid
 	moveq #1, d0
 	rts
-	.bend ; validateVmResult
+	.bend  ; validateVmResult
 
 ; Signed report writer used for STATUS fields so host failures can emit their
 ; negative HARNESS_STATUS_* values without special formatting logic.
-writeI32 .block
+writeI32	.block
 	tst.l d0
 	bpl.s writeI32Unsigned
 	move.l d2, -(sp)
@@ -648,11 +648,11 @@ writeI32Unsigned
 	bsr.w writeU32
 writeI32Done
 	rts
-	.bend ; writeI32
+	.bend  ; writeI32
 
 ; Minimal decimal formatter. Values are accumulated right-to-left in a scratch
 ; buffer and then flushed in one exact DOS write.
-writeU32 .block
+writeU32	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	lea DecimalBufferEnd, a0  ; emit backwards into scratch, then flush the exact decimal slice once
 	moveq #0, d2
@@ -679,11 +679,11 @@ emit
 	bsr.w amigaosCliFileioWriteExact
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; writeU32
+	.bend  ; writeU32
 
 ; Render a lexeme payload as uppercase hexadecimal bytes. This matches the
 ; LEXHEX field expected by the native report rendering tests.
-writeHexBytes .block
+writeHexBytes	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l a0, a6
 	move.l d0, d5  ; remaining byte count for the report's LEXHEX field
@@ -713,12 +713,12 @@ loop
 done
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; writeHexBytes
+	.bend  ; writeHexBytes
 
 ; Token kind name lookup for report emission.
 ; The table order is locked to the TK_KIND_* numeric encoding exported by the
 ; native tokenizer VM module.
-kindName .block
+kindName	.block
 	cmp.l #TK_KIND_OP_LT, d0
 	bhi.s kindUnknown
 	add.l d0, d0
@@ -730,7 +730,7 @@ kindName .block
 kindUnknown
 	lea KindNameUnknown, a0
 	rts
-	.bend ; kindName
+	.bend  ; kindName
 
 ; ---------------------------------------------------------------------------
 ; Minimal DOS helper layer used by the harness.
@@ -739,7 +739,7 @@ kindUnknown
 ; VM below, while this layer only handles DOS open/read/write/close concerns.
 ; ---------------------------------------------------------------------------
 
-amigaosCliFileioInit .block
+amigaosCliFileioInit	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	; Reset host globals first so every early-exit path can safely call the
 	; shared shutdown/cleanup logic.
@@ -766,10 +766,10 @@ fail
 done
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioInit
+	.bend  ; amigaosCliFileioInit
 
 ; Release DOS library state once the harness is finished with all host I/O.
-amigaosCliFileioShutdown .block
+amigaosCliFileioShutdown	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	move.l GLOBALS_DOS_BASE(a4), d0
 	beq.s done
@@ -781,19 +781,19 @@ amigaosCliFileioShutdown .block
 done
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioShutdown
+	.bend  ; amigaosCliFileioShutdown
 
 ; DOS GetArgStr returns the raw argument tail for the current Shell process.
-amigaosCliFileioGetArgStr .block
+amigaosCliFileioGetArgStr	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l GLOBALS_DOS_BASE(a4), a6
 	jsr GET_ARG_STR(a6)
 	movea.l d0, a0
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioGetArgStr
+	.bend  ; amigaosCliFileioGetArgStr
 
-amigaosCliFileioOpenInput .block	
+amigaosCliFileioOpenInput	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	; Open the source file in read-only mode and cache IoErr on failure so
 	; later diagnostics or debugging can inspect the DOS reason code.
@@ -808,11 +808,11 @@ amigaosCliFileioOpenInput .block
 done
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioOpenInput
+	.bend  ; amigaosCliFileioOpenInput
 
 ; Create/truncate the report target before any input work happens so all later
 ; failure paths can still emit a report file instead of only returning a code.
-amigaosCliFileioOpenOutput .block
+amigaosCliFileioOpenOutput	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	move.l a0, d1
 	move.l #MODE_NEWFILE, d2
@@ -825,11 +825,11 @@ amigaosCliFileioOpenOutput .block
 done
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioOpenOutput
+	.bend  ; amigaosCliFileioOpenOutput
 
 ; Thin DOS Read wrapper. The harness uses it both for the bounded source read
 ; and the one-byte overflow probe that enforces the single-line capacity rule.
-amigaosCliFileioRead .block
+amigaosCliFileioRead	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	move.l a0, d2  ; DOS Read uses D2=buffer, D3=len in the helper's stable calling convention
 	move.l d0, d3
@@ -842,10 +842,10 @@ amigaosCliFileioRead .block
 done
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioRead
+	.bend  ; amigaosCliFileioRead
 
 ; Count a NUL-terminated string and forward it to the exact-byte write helper.
-amigaosCliFileioWriteCstr .block
+amigaosCliFileioWriteCstr	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l a0, a2
 	moveq #0, d0
@@ -860,11 +860,11 @@ emit
 	bsr.w amigaosCliFileioWriteExact
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioWriteCstr
+	.bend  ; amigaosCliFileioWriteCstr
 
 ; Preserve D1 across DOS Write calls because the report writer keeps the output handle
 ; in D1 while emitting decimal fields and repeated LEXHEX byte pairs.
-amigaosCliFileioWriteExact .block
+amigaosCliFileioWriteExact	.block
 	movem.l d1-d7/a2-a6, -(sp)
 	move.l d0, d3
 	move.l a0, d2
@@ -889,10 +889,10 @@ short
 done
 	movem.l (sp)+, d1-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioWriteExact
+	.bend  ; amigaosCliFileioWriteExact
 
 ; Close a DOS file handle and preserve IoErr if the close itself fails.
-amigaosCliFileioClose .block
+amigaosCliFileioClose	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l GLOBALS_DOS_BASE(a4), a6
 	jsr CLOSE(a6)
@@ -908,16 +908,16 @@ ok
 done
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; amigaosCliFileioClose
+	.bend  ; amigaosCliFileioClose
 
 ; Cache the last DOS IoErr in globals so callers do not need to immediately
 ; inspect D0 after every failed host I/O operation.
-amigaosCliFileioCaptureIoerr .block
+amigaosCliFileioCaptureIoerr	.block
 	movea.l GLOBALS_DOS_BASE(a4), a6
 	jsr IO_ERR(a6)
 	move.l d0, GLOBALS_LAST_IOERR(a4)
 	rts
-	.bend ; amigaosCliFileioCaptureIoerr
+	.bend  ; amigaosCliFileioCaptureIoerr
 
 	.endsection
 	.section data, kind=data

@@ -719,23 +719,23 @@ fn overlay_uses_workspace_root_and_rebased_module_paths_for_sibling_files() {
 #[test]
 fn overlay_stages_transitive_explicit_modules_by_declared_module_id() {
     let temp_dir = unique_temp_dir();
-    let nested_dir = temp_dir.join("examples").join("tokvm");
+    let nested_dir = temp_dir.join("examples").join("tkvm");
     fs::create_dir_all(&nested_dir).expect("create nested dir");
 
     let root_file = nested_dir.join("tokvm_interpreter.asm");
     let harness_file = nested_dir.join("tokvm_cli_harness.asm");
-    let tokenizer_file = nested_dir.join("tokvm_tokenizer_vm.asm");
+    let tokenizer_file = nested_dir.join("tkvm_runtime.asm");
     let root_uri = path_to_file_uri(&root_file);
     let tokenizer_uri = path_to_file_uri(&tokenizer_file);
 
     write_text(&root_file, ".use tokvm.amigaos.cli_harness\n");
     write_text(
         &harness_file,
-        ".module tokvm.amigaos.cli_harness\n.use tokvm.amigaos.tokenizer_vm\n.endmodule\n",
+        ".module tokvm.amigaos.cli_harness\n.use tkvm.amigaos.runtime\n.endmodule\n",
     );
     write_text(
         &tokenizer_file,
-        ".module tokvm.amigaos.tokenizer_vm\n@\n.endmodule\n",
+        ".module tkvm.amigaos.runtime\n@\n.endmodule\n",
     );
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
@@ -797,23 +797,23 @@ fn overlay_stages_transitive_explicit_modules_by_declared_module_id() {
 #[test]
 fn overlay_stages_transitive_explicit_modules_without_configured_roots() {
     let temp_dir = unique_temp_dir();
-    let nested_dir = temp_dir.join("examples").join("tokvm");
+    let nested_dir = temp_dir.join("examples").join("tkvm");
     fs::create_dir_all(&nested_dir).expect("create nested dir");
 
     let root_file = nested_dir.join("tokvm_interpreter.asm");
     let harness_file = nested_dir.join("tokvm_cli_harness.asm");
-    let tokenizer_file = nested_dir.join("tokvm_tokenizer_vm.asm");
+    let tokenizer_file = nested_dir.join("tkvm_runtime.asm");
     let root_uri = path_to_file_uri(&root_file);
     let tokenizer_uri = path_to_file_uri(&tokenizer_file);
 
     write_text(&root_file, ".use tokvm.amigaos.cli_harness\n");
     write_text(
         &harness_file,
-        ".module tokvm.amigaos.cli_harness\n.use tokvm.amigaos.tokenizer_vm\n.endmodule\n",
+        ".module tokvm.amigaos.cli_harness\n.use tkvm.amigaos.runtime\n.endmodule\n",
     );
     write_text(
         &tokenizer_file,
-        ".module tokvm.amigaos.tokenizer_vm\n@\n.endmodule\n",
+        ".module tkvm.amigaos.runtime\n@\n.endmodule\n",
     );
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");

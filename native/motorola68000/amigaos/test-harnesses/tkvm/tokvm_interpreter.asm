@@ -8,7 +8,7 @@
 	.use tokvm.amigaos.cli_harness (SYS_BASE, PR_CLI, PR_MSG_PORT)
 	.use tokvm.amigaos.cli_harness (FIND_TASK, WAIT_PORT, GET_MSG, REPLY_MSG, FORBID)
 	.use tokvm.amigaos.cli_harness (RETURN_WORKBENCH_UNSUPPORTED, tokvmAmigaosCliHarnessRun)
-	.use tokvm.amigaos.tokenizer_vm (tokvmRun68000)
+	.use tkvm.amigaos.runtime (tokvmRun68000)
 
 	.section entry, kind=code
 
@@ -57,7 +57,7 @@ done
 	move.l d7, d0  ; Amiga return register carries the harness/native VM outcome
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; start
+	.bend  ; start
 
 	.endsection
 	.output "build/tokvm", format=hunk, sections=entry, code, data, bss

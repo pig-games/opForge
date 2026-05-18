@@ -1183,7 +1183,7 @@ register_case = "lower"
 One practical invocation for the Motorola 68000 AmigaOS tree is:
 
 ```text
-opforge -i native/motorola68000/amigaos/tokvm/tokvm_interpreter.asm \
+opforge -i native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter.asm \
   --fmt-check \
   --fmt-config .opforgefmt.toml
 ```

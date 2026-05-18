@@ -1698,7 +1698,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
         return vec![
             amigaos_dir.join("opforge-cli"),
             amigaos_dir.join("tkpkg"),
-            amigaos_dir.join("tokvm"),
+            amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
@@ -1712,10 +1712,21 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             .join("amigaos");
         return vec![
             amigaos_dir.join("tkpkg"),
-            amigaos_dir.join("tokvm"),
+            amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
+        ];
+    }
+
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("tokvm_interpreter") {
+        let amigaos_dir = workspace_root()
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos");
+        return vec![
+            amigaos_dir.join("tkvm"),
+            amigaos_dir.join("test-harnesses").join("tkvm"),
         ];
     }
 
@@ -1737,7 +1748,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             .join("amigaos");
         return vec![
             amigaos_dir.join("tkpkg"),
-            amigaos_dir.join("tokvm"),
+            amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
@@ -1753,7 +1764,7 @@ fn example_include_paths(asm_path: &Path) -> Vec<PathBuf> {
             .join("native")
             .join("motorola68000")
             .join("amigaos");
-        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("tokvm")];
+        return vec![amigaos_dir.join("tkpkg"), amigaos_dir.join("tkvm")];
     }
 
     Vec::new()
@@ -1805,7 +1816,7 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
         Some(
             "tokvm_cli_harness.asm"
                 | "tokvm_test_input.asm"
-                | "tokvm_tokenizer_vm.asm"
+                | "tkvm_runtime.asm"
                 | "opforge_cli.asm"
                 | "tkpkg_debug_cli.asm"
                 | "tkpkg_entry.asm"
@@ -1869,8 +1880,8 @@ fn example_relative_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
 
 fn example_reference_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
     let relative_stem = example_relative_stem(examples_dir, asm_path);
-    if relative_stem == Path::new("motorola68000/amigaos/tokvm/tokvm_interpreter") {
-        PathBuf::from("motorola68000/amigaos/tokvm_interpreter")
+    if relative_stem == Path::new("motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter") {
+        PathBuf::from("motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter")
     } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_interpreter") {
         PathBuf::from("motorola68000/amigaos/prvm_interpreter")
     } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_smoke") {
@@ -9734,7 +9745,8 @@ fn motorola68020_tokvm_amigaos_failure_report_renders_input_too_large() {
 #[test]
 fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/tokvm/tokvm_interpreter.asm");
+    let asm_path =
+        repo_root.join("native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter.asm");
     let out_dir = create_temp_dir("m68000-tokvm-interpreter");
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
@@ -9747,8 +9759,8 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("tokvm.amigaos.cli_harness.tokvmAmigaosCliHarnessRun"));
     assert!(listing.contains("tokvm.amigaos.cli_harness.amigaosCliFileioInit"));
-    assert!(listing.contains("tokvm.amigaos.tokenizer_vm.tokvmRun68000"));
-    assert!(listing.contains("tokvm.amigaos.tokenizer_vm.DemoProgramLen"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tokvmRun68000"));
+    assert!(listing.contains("tkvm.amigaos.runtime.DemoProgramLen"));
 
     let payload_path = example_output_payload_path(&out_dir, "tokvm_interpreter", "hunk");
     let payload = fs::read(payload_path).expect("read tokvm hunk payload");
@@ -12746,7 +12758,13 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
 
 fn tokvm_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join(format!("native/motorola68000/amigaos/tokvm/{file_name}"));
+    let asm_path = if file_name == "tkvm_runtime.asm" {
+        repo_root.join(format!("native/motorola68000/amigaos/tkvm/{file_name}"))
+    } else {
+        repo_root.join(format!(
+            "native/motorola68000/amigaos/test-harnesses/tkvm/{file_name}"
+        ))
+    };
     let source = fs::read_to_string(&asm_path).expect("read tokvm AmigaOS source");
     format_tokvm_amigaos_fragment(&source)
 }
@@ -13886,7 +13904,7 @@ fn motorola68020_tkpkg_native_parity_corpus_small_nested_scope_adds_fit_sources(
         "examples/motorola68000/amigaos/workbench_startup_alert.asm",
         "native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm",
         "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_entry.asm",
-        "native/motorola68000/amigaos/tokvm/tokvm_interpreter.asm",
+        "native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter.asm",
     ] {
         assert!(
             paths.contains(&expected),
@@ -13897,7 +13915,7 @@ fn motorola68020_tkpkg_native_parity_corpus_small_nested_scope_adds_fit_sources(
         "examples/motorola68000/amigaos/helloworld.asm",
         "examples/motorola68000/amigaos/timer_device_benchmark.asm",
         "native/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm",
-        "native/motorola68000/amigaos/tokvm/tokvm_tokenizer_vm.asm",
+        "native/motorola68000/amigaos/tkvm/tkvm_runtime.asm",
     ] {
         assert!(
             !paths.contains(&excluded),
@@ -15415,7 +15433,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     assert!(listing.contains("tkpkg.amigaos.pipeline.resolveTokenizerVmLocatorV1"));
     assert!(listing.contains("tkpkg.amigaos.token_policy.tkpkgTokenPolicyResolveLocatorV1"));
     assert!(listing.contains("tkpkg.amigaos.tokenizer_vm.tkpkgTokenizerVmTokenizeLineV1"));
-    assert!(listing.contains("tokvm.amigaos.tokenizer_vm.tokvmRun68000"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tokvmRun68000"));
 
     let payload_path = example_output_payload_path(&out_dir, "tkpkg_entry", "hunk");
     let payload = fs::read(payload_path).expect("read tkpkg hunk payload");
@@ -15503,7 +15521,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
 fn motorola68020_tkpkg_tokenize_line_module_surface_routes_entrypoint_into_package_vm() {
     let service_source = tkpkg_amigaos_source("tkpkg_service.asm");
     let tokenizer_source = tkpkg_amigaos_source("tkpkg_tokenizer_vm.asm");
-    let local_tokvm_source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let local_tokvm_source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(tkpkg_source_contains(
         &service_source,
@@ -15519,15 +15537,15 @@ fn motorola68020_tkpkg_tokenize_line_module_surface_routes_entrypoint_into_packa
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tokvm.amigaos.tokenizer_vm (tokvmRun68000, tokvmSetStepBudget68000)"
+        ".use tkvm.amigaos.runtime (tokvmRun68000, tokvmSetStepBudget68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tokvm.amigaos.tokenizer_vm (tokvmSetProgramStateTable68000)"
+        ".use tkvm.amigaos.runtime (tokvmSetProgramStateTable68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tokvm.amigaos.tokenizer_vm (tokvmReadLastFailure68000)"
+        ".use tkvm.amigaos.runtime (tokvmReadLastFailure68000)"
     ));
     assert!(tokenizer_source.contains("jsr tokvmSetStepBudget68000"));
     assert!(tokenizer_source.contains("ActiveTokenizerVmStateTable"));
@@ -15571,7 +15589,7 @@ fn motorola68020_tkpkg_tokenizer_vm_bounds_selected_tkvm_record_decode() {
 fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime() {
     let buffers_source = tkpkg_amigaos_source("tkpkg_buffers.asm");
     let tokenizer_source = tkpkg_amigaos_source("tkpkg_tokenizer_vm.asm");
-    let local_tokvm_source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let local_tokvm_source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(tkpkg_source_contains(
         &buffers_source,
@@ -15583,7 +15601,7 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tokvm.amigaos.tokenizer_vm (tokvmRun68000, tokvmSetStepBudget68000)"
+        ".use tkvm.amigaos.runtime (tokvmRun68000, tokvmSetStepBudget68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
@@ -15658,7 +15676,7 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_locks_number_and_operator
 
 #[test]
 fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
     let harness_source = tokvm_amigaos_source("tokvm_cli_harness.asm");
 
     assert!(source.contains("TK_KIND_OP_POWER                = 21"));
@@ -15694,7 +15712,7 @@ fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
 
 #[test]
 fn motorola68020_tokvm_native_percent_scanner_checks_rust_prefix_context() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(tokvm_source_contains(
         &source,
@@ -15715,8 +15733,8 @@ fn motorola68020_tokvm_native_percent_scanner_checks_rust_prefix_context() {
 
 #[test]
 fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
-    let local_tkpkg_source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let local_tkpkg_source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(tokvm_source_contains(
         &source,
@@ -15746,7 +15764,7 @@ fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
 
 #[test]
 fn motorola68020_tokvm_interpreter_supports_configured_state_table_entrypoints() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(
         tokvm_source_contains(
@@ -16334,7 +16352,7 @@ fn motorola68020_tkpkg_debug_cli_locks_cpu_selectable_pipeline_payloads() {
 
 #[test]
 fn motorola68020_tokvm_interpreter_read_char_zero_extends_ascii_bytes() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(
         tokvm_source_contains(
@@ -16476,7 +16494,7 @@ fn motorola68020_tokvm_interpreter_treats_crlf_as_arg_terminators() {
 #[test]
 fn motorola68020_tokvm_interpreter_restores_program_counter_after_scan_opcodes() {
     let root_source = tokvm_amigaos_source("tokvm_interpreter.asm");
-    let tokenizer_source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let tokenizer_source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(
         tokvm_source_contains(
@@ -16487,7 +16505,7 @@ fn motorola68020_tokvm_interpreter_restores_program_counter_after_scan_opcodes()
     );
     assert!(
         tokvm_source_contains(&root_source, ".use tokvm.amigaos.cli_harness")
-            && tokvm_source_contains(&root_source, ".use tokvm.amigaos.tokenizer_vm"),
+            && tokvm_source_contains(&root_source, ".use tkvm.amigaos.runtime"),
         "expected the tokvm root file to compose the harness and tokenizer modules via .use"
     );
     assert!(
@@ -16508,7 +16526,7 @@ fn motorola68020_tokvm_interpreter_restores_program_counter_after_scan_opcodes()
 
 #[test]
 fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(
         tokvm_source_contains(
@@ -16549,7 +16567,7 @@ fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
 
 #[test]
 fn motorola68020_tokvm_interpreter_locks_jump_bounds_and_hex_escape_emit() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(
         tokvm_source_contains(
@@ -16604,7 +16622,7 @@ fn motorola68020_tokvm_interpreter_locks_jump_bounds_and_hex_escape_emit() {
 
 #[test]
 fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(
         tokvm_source_contains(
@@ -16672,7 +16690,7 @@ fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
 
 #[test]
 fn motorola68020_tokvm_interpreter_demo_program_uses_symbolic_bytecode_labels() {
-    let source = tokvm_amigaos_source("tokvm_tokenizer_vm.asm");
+    let source = tokvm_amigaos_source("tkvm_runtime.asm");
 
     assert!(
         tokvm_source_contains(&source, "TK_CLASS_IDENTIFIER_START       = 2"),
@@ -16709,7 +16727,7 @@ fn motorola68020_tokvm_interpreter_demo_program_uses_symbolic_bytecode_labels() 
 fn motorola68020_tokvm_sample_input_is_single_line_for_cli_harness() {
     let repo_root = workspace_root();
     let sample_path =
-        repo_root.join("native/motorola68000/amigaos/test-harnesses/tokvm/tokvm_test_input.asm");
+        repo_root.join("native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_test_input.asm");
     let sample = fs::read(&sample_path).expect("read tokvm sample input");
 
     assert_eq!(sample, b"LABEL==42");

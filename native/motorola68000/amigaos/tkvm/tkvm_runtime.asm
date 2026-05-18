@@ -1,9 +1,9 @@
-; Native tokenizer VM module for the AmigaOS tokvm example.
+; Native tokenizer VM runtime used by tkpkg and test harnesses.
 ;
 ; Owns the runtime-model constants, interpreter loop, demo bytecode, and
 ; token-shape metadata that the CLI harness imports through `.use`.
 
-	.module tokvm.amigaos.tokenizer_vm
+	.module tkvm.amigaos.runtime
 	.cpu 68020
 	.pub
 

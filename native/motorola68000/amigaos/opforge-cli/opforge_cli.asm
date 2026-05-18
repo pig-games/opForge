@@ -6,21 +6,18 @@
 
 	.module main
 	.cpu 68020
-	.use opasm.amigaos.engine (opasmEngineAssemblySessionStart, opasmEngineStmtCount)
-	.use opasm.amigaos.engine (opasmEngineImageByteCount, opasmEngineSessionCpuName)
+	.use opasm.amigaos.engine (opasmEngineStmtCount, opasmEngineImageByteCount)
 
 	.use opforge.cli.constants (*)
 	.use opforge.cli.state (*)
 	.use opforge.cli.strings (*)
 	.use opforge.cli.dos (*)
-	.use opforge.cli.tkpkg_control_block (*)
 	.use opforge.cli.source_reader (*)
-	.use opforge.cli.copy (*)
 	.use opforge.cli.path (*)
 	.use opforge.cli.text_output (*)
 	.use opforge.cli.report (*)
 	.use opforge.cli.args (*)
-	.use opforge.cli.encode_eval_bridge (*)
+	.use opforge.cli.session_init (*)
 	.use opforge.cli.output (*)
 	.use opforge.cli.engine_callbacks (*)
 
@@ -118,7 +115,7 @@ opforgeNativeCliRun
 
 opforgeNativeCliHaveDos
 	move.l d0, NativeCliDosBase  ; all file/console calls below dispatch through dos.library base
-	bsr.w opforgeNativeCliInitModuleUseState
+	jsr opforgeNativeCliInitModuleUseState
 	movea.l d0, a6
 	jsr GET_ARG_STR(a6)
 .ifdef OPFORGE_FS_UAE_SMOKE
@@ -190,7 +187,7 @@ opforgeNativeCliOutputFormatReady
 	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
-	bsr.w opforgeNativeCliInitAssemblySession
+	jsr opforgeNativeCliInitAssemblySession
 	jsr opforgeNativeCliEmitModulePathRecords
 	bsr.w opforgeNativeCliTokenizeFrontend
 	tst.l d0
@@ -518,62 +515,6 @@ opforgeNativeCliResolveIncludeRelative
 
 opforgeNativeCliResolveIncludeFail
 	moveq #1, d0
-	rts
-
-; Initialize transitional native assembly-session state for the current CLI run.
-opforgeNativeCliInitAssemblySession
-	movem.l d0-d1/a0-a1, -(sp)
-	lea opasmEngineAssemblySessionStart.l, a0
-	move.l #NATIVE_ASSEMBLY_SESSION_BYTES, d0
-	bsr.w opforgeNativeCliClearBytes
-	lea NativeCliCpuName, a0
-	tst.b (a0)
-	bne.s opforgeNativeCliInitAssemblySessionHaveCpu
-	lea DefaultCpuName, a0
-
-opforgeNativeCliInitAssemblySessionHaveCpu
-	lea opasmEngineSessionCpuName, a1
-	bsr.w opforgeNativeCliCopySessionCpuName
-	movem.l (sp)+, d0-d1/a0-a1
-	moveq #0, d0
-	rts
-
-opforgeNativeCliCopySessionCpuName
-	move.l #TOKEN_BUFFER_CAPACITY - 1, d0
-
-opforgeNativeCliCopySessionCpuNameLoop
-	move.b (a0)+, d1
-	move.b d1, (a1)+
-	beq.s opforgeNativeCliCopySessionCpuNameDone
-	subq.l #1, d0
-	bne.s opforgeNativeCliCopySessionCpuNameLoop
-	clr.b -(a1)
-
-opforgeNativeCliCopySessionCpuNameDone
-	rts
-
-; Clear module/use and statement collection state before parsing input.
-opforgeNativeCliInitModuleUseState
-	movem.l d0-d1/a0, -(sp)
-	lea NativeCliModuleUseStateStart, a0
-	move.l #NATIVE_MODULE_USE_STATE_BYTES, d0
-	bsr.w opforgeNativeCliClearBytes
-	clr.w opasmEngineStmtCount.l
-	movem.l (sp)+, d0-d1/a0
-	rts
-
-; Clear D0 bytes at A0.
-opforgeNativeCliClearBytes
-	tst.l d0
-	beq.s opforgeNativeCliClearBytesDone
-	moveq #0, d1
-
-opforgeNativeCliClearBytesLoop
-	move.b d1, (a0)+
-	subq.l #1, d0
-	bne.s opforgeNativeCliClearBytesLoop
-
-opforgeNativeCliClearBytesDone
 	rts
 
 	.bend  ; start

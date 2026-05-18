@@ -22,10 +22,10 @@
 	.use tkpkg.amigaos.buffers (ActiveTokenizerVmErrorLimitDiagLen, ActiveTokenizerVmErrorLimitDiagCode)
 	.use tkpkg.amigaos.buffers (TokenRecordBuffer, TokenScratchBuffer)
 	.use tkpkg.amigaos.buffers (LastTokenCount, LastLexemeLen)
-	.use tkvm.amigaos.runtime (tokvmRun68000, tokvmSetStepBudget68000)
-	.use tkvm.amigaos.runtime (tokvmSetProgramStateTable68000)
-	.use tkvm.amigaos.runtime (tokvmReadLastFailure68000)
-	.use tkvm.amigaos.runtime (TOKVM_DEFAULT_MAX_STEPS_PER_LINE)
+	.use tkvm.amigaos.runtime (tkvmRun68000, tkvmSetStepBudget68000)
+	.use tkvm.amigaos.runtime (tkvmSetProgramStateTable68000)
+	.use tkvm.amigaos.runtime (tkvmReadLastFailure68000)
+	.use tkvm.amigaos.runtime (TKVM_DEFAULT_MAX_STEPS_PER_LINE)
 	.use tkvm.amigaos.runtime (TK_STATUS_SUCCESS, TK_STATUS_NEWLINE_UNSUPPORTED)
 	.use tkvm.amigaos.runtime (TK_STATUS_TOKEN_OVERFLOW, TK_STATUS_LEXEME_OVERFLOW)
 	.use tkvm.amigaos.runtime (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_ARGUMENT)
@@ -269,9 +269,9 @@ OpLtText
 ; ---------------------------------------------------------------------------
 ; Tokenize one source line through the active package-backed tokenizer VM.
 ;
-; This entry bridges a selected tkpkg runtime pipeline to the lower-level tokvm
+; This entry bridges a selected tkpkg runtime pipeline to the lower-level tkvm
 ; interpreter. It reads the line payload from the control block, decodes the
-; active TKVM package record, executes tokvm, then renders compact token records
+; active TKVM package record, executes tkvm, then renders compact token records
 ; into the service output buffer.
 ;
 ; Inputs:
@@ -303,9 +303,9 @@ pipelineReady
 	bsr.w readProgram
 	tst.b d0
 	bne.w tokenizeDone
-	move.l #TOKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
-	jsr tokvmSetStepBudget68000  ; keep tkpkg-driven tokenizer runs under the bounded VM budget
-	movea.l a3, a5  ; A5 keeps program bytes while A3 is reused for tokvm call ABI
+	move.l #TKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
+	jsr tkvmSetStepBudget68000  ; keep tkpkg-driven tokenizer runs under the bounded VM budget
+	movea.l a3, a5  ; A5 keeps program bytes while A3 is reused for tkvm call ABI
 	move.l d3, d7  ; D7 keeps program length while record metadata is decoded
 	cmpi.b #1, (a5)
 	bne.w badProgramHeader
@@ -325,18 +325,18 @@ pipelineReady
 	move.b ActiveTokenizerVmStartStateHi, d2
 	lsl.w #8, d2
 	or.w d2, d1
-	jsr tokvmSetProgramStateTable68000  ; install package state table into shared tokvm core
-	movea.l a4, a0  ; tokvm input pointer: source bytes after line-number prefix
-	move.l d4, d0  ; tokvm input length: source byte count
-	lea TokenRecordBuffer, a1  ; tokvm output token records
+	jsr tkvmSetProgramStateTable68000  ; install package state table into shared tkvm core
+	movea.l a4, a0  ; tkvm input pointer: source bytes after line-number prefix
+	move.l d4, d0  ; tkvm input length: source byte count
+	lea TokenRecordBuffer, a1  ; tkvm output token records
 	moveq #0, d1
 	move.w #TOKEN_BUFFER_CAPACITY, d1
 	lea TokenScratchBuffer, a2  ; lexeme scratch mirrors Rust portable-token lexeme storage
 	moveq #0, d2
 	move.w #TOKEN_SCRATCH_CAPACITY, d2
-	movea.l a5, a3  ; tokvm program pointer
-	move.l d7, d3  ; tokvm program length
-	jsr tokvmRun68000
+	movea.l a5, a3  ; tkvm program pointer
+	move.l d7, d3  ; tkvm program length
+	jsr tkvmRun68000
 	move.l (sp)+, d6
 	cmpi.b #TK_STATUS_SUCCESS, d0
 	beq.s render
@@ -569,7 +569,7 @@ invalidProgram
 	rts
 	.bend  ; readProgram
 
-; Convert a tokvm status/failure code into the tkpkg runtime diagnostic string.
+; Convert a tkvm status/failure code into the tkpkg runtime diagnostic string.
 statusMessage	.block
 	cmpi.b #TK_STATUS_NEWLINE_UNSUPPORTED, d0
 	beq.s statusNewline
@@ -629,7 +629,7 @@ statusLexemeOverflow
 	bra.w finishStatusBuffer
 
 statusVmFailure
-	jsr tokvmReadLastFailure68000
+	jsr tkvmReadLastFailure68000
 	cmpi.w #TK_VM_FAILURE_KIND_FAIL, d0
 	beq.w statusVmFailReason
 	cmpi.w #TK_VM_FAILURE_KIND_EMIT_DIAG, d0
@@ -759,7 +759,7 @@ diagErrorLimit
 	rts
 	.bend  ; getDiagCode
 
-; Validate tokvm output counts and spans before rendering report bytes.
+; Validate tkvm output counts and spans before rendering report bytes.
 validateResult	.block
 	movem.l d1-d7/a0, -(sp)
 	cmp.l #TOKEN_BUFFER_CAPACITY, d1

@@ -9759,7 +9759,7 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("tokvm.amigaos.cli_harness.tokvmAmigaosCliHarnessRun"));
     assert!(listing.contains("tokvm.amigaos.cli_harness.amigaosCliFileioInit"));
-    assert!(listing.contains("tkvm.amigaos.runtime.tokvmRun68000"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000"));
     assert!(listing.contains("tkvm.amigaos.runtime.DemoProgramLen"));
 
     let payload_path = example_output_payload_path(&out_dir, "tokvm_interpreter", "hunk");
@@ -9778,7 +9778,7 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
     assert_eq!(
         first_code_bytes,
         &[0x48, 0xE7, 0x3F, 0x3E],
-        "expected the Hunk to start with the AmigaOS entry stub rather than tokvm_run_68000"
+        "expected the Hunk to start with the AmigaOS entry stub rather than tkvm_run_68000"
     );
     assert!(
         payload
@@ -15433,7 +15433,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     assert!(listing.contains("tkpkg.amigaos.pipeline.resolveTokenizerVmLocatorV1"));
     assert!(listing.contains("tkpkg.amigaos.token_policy.tkpkgTokenPolicyResolveLocatorV1"));
     assert!(listing.contains("tkpkg.amigaos.tokenizer_vm.tkpkgTokenizerVmTokenizeLineV1"));
-    assert!(listing.contains("tkvm.amigaos.runtime.tokvmRun68000"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000"));
 
     let payload_path = example_output_payload_path(&out_dir, "tkpkg_entry", "hunk");
     let payload = fs::read(payload_path).expect("read tkpkg hunk payload");
@@ -15537,25 +15537,25 @@ fn motorola68020_tkpkg_tokenize_line_module_surface_routes_entrypoint_into_packa
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tokvmRun68000, tokvmSetStepBudget68000)"
+        ".use tkvm.amigaos.runtime (tkvmRun68000, tkvmSetStepBudget68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tokvmSetProgramStateTable68000)"
+        ".use tkvm.amigaos.runtime (tkvmSetProgramStateTable68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tokvmReadLastFailure68000)"
+        ".use tkvm.amigaos.runtime (tkvmReadLastFailure68000)"
     ));
-    assert!(tokenizer_source.contains("jsr tokvmSetStepBudget68000"));
+    assert!(tokenizer_source.contains("jsr tkvmSetStepBudget68000"));
     assert!(tokenizer_source.contains("ActiveTokenizerVmStateTable"));
     assert!(tokenizer_source.contains("ActiveTokenizerVmStateCountLo"));
     assert!(tokenizer_source.contains("ActiveTokenizerVmInvalidCharDiagCode"));
-    assert!(tokenizer_source.contains("jsr tokvmSetProgramStateTable68000"));
-    assert!(tokenizer_source.contains("jsr tokvmRun68000"));
+    assert!(tokenizer_source.contains("jsr tkvmSetProgramStateTable68000"));
+    assert!(tokenizer_source.contains("jsr tkvmRun68000"));
     assert!(tokvm_source_contains(
         &local_tokvm_source,
-        "tokvm_run_68000:"
+        "tkvm_run_68000:"
     ));
 }
 
@@ -15601,7 +15601,7 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tokvmRun68000, tokvmSetStepBudget68000)"
+        ".use tkvm.amigaos.runtime (tkvmRun68000, tkvmSetStepBudget68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
@@ -15638,7 +15638,7 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     ));
     assert!(tokvm_source_contains(
         &local_tokvm_source,
-        "tokvmSetProgramStateTable68000"
+        "tkvmSetProgramStateTable68000"
     ));
     assert!(tokvm_source_contains(&local_tokvm_source, "opcodeSetState"));
     assert!(tokvm_source_contains(
@@ -15647,7 +15647,7 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     ));
     assert!(tokvm_source_contains(
         &local_tokvm_source,
-        "tokvmReadLastFailure68000"
+        "tkvmReadLastFailure68000"
     ));
 }
 
@@ -15686,11 +15686,11 @@ fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
     assert!(source.contains("TK_KIND_OP_LOGIC_AND            = 31"));
     assert!(tokvm_source_contains(
         &source,
-        "tokvmStagePower:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_OP_POWER,LOCAL_PENDING_KIND(A2)\n        LEA LexPower,A0\n        MOVEQ #2,D0"
+        "tkvmStagePower:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_OP_POWER,LOCAL_PENDING_KIND(A2)\n        LEA LexPower,A0\n        MOVEQ #2,D0"
     ));
     assert!(tokvm_source_contains(
         &source,
-        "tokvmStageBitXor:\n        MOVE.W #TK_KIND_OP_BIT_XOR,LOCAL_PENDING_KIND(A2)\n        LEA LexBitXor,A0\n        MOVEQ #1,D0"
+        "tkvmStageBitXor:\n        MOVE.W #TK_KIND_OP_BIT_XOR,LOCAL_PENDING_KIND(A2)\n        LEA LexBitXor,A0\n        MOVEQ #1,D0"
     ));
     assert!(tokvm_source_contains(
         &source,
@@ -15716,19 +15716,19 @@ fn motorola68020_tokvm_native_percent_scanner_checks_rust_prefix_context() {
 
     assert!(tokvm_source_contains(
         &source,
-        "tokvmScanPercentAsNumber:\n        JSR tokvmPercentHasPrefixContext\n        TST.L D0\n        BEQ tokvmStagePercent"
+        "tkvmScanPercentAsNumber:\n        JSR tkvmPercentHasPrefixContext\n        TST.L D0\n        BEQ tkvmStagePercent"
     ));
     assert!(tokvm_source_contains(
         &source,
-        "tokvmPercentHasPrefixContext:"
+        "tkvmPercentHasPrefixContext:"
     ));
     assert!(source.contains("tst.l d0"));
     assert!(tokvm_source_contains(
         &source,
         "LEA 0(A4, D0.L), A1\n        MOVEQ #0, D0\n        MOVE.B (A1), D0"
     ));
-    assert!(source.contains("beq tokvmPercentPrefixFalse"));
-    assert!(source.contains("jsr tokvmIsIdentifierContinue"));
+    assert!(source.contains("beq tkvmPercentPrefixFalse"));
+    assert!(source.contains("jsr tkvmIsIdentifierContinue"));
 }
 
 #[test]
@@ -15738,11 +15738,11 @@ fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
 
     assert!(tokvm_source_contains(
         &source,
-        "CMPI.B #'#',D0\n        BEQ tokvmStageHash"
+        "CMPI.B #'#',D0\n        BEQ tkvmStageHash"
     ));
     assert!(tokvm_source_contains(
         &source,
-        "tokvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA LexHash,A0\n        MOVEQ #1,D0"
+        "tkvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA LexHash,A0\n        MOVEQ #1,D0"
     ));
     assert!(tokvm_source_contains(
         &source,
@@ -15750,11 +15750,11 @@ fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
     ));
     assert!(tokvm_source_contains(
         &local_tkpkg_source,
-        "CMPI.B #'#',D0\n        BEQ tokvmStageHash"
+        "CMPI.B #'#',D0\n        BEQ tkvmStageHash"
     ));
     assert!(tokvm_source_contains(
         &local_tkpkg_source,
-        "tokvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA LexHash,A0\n        MOVEQ #1,D0"
+        "tkvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA LexHash,A0\n        MOVEQ #1,D0"
     ));
     assert!(tokvm_source_contains(
         &local_tkpkg_source,
@@ -15769,7 +15769,7 @@ fn motorola68020_tokvm_interpreter_supports_configured_state_table_entrypoints()
     assert!(
         tokvm_source_contains(
             &source,
-            "demoStateEntryOffsets:\n        .long DEMO_PC_READ_CHAR\n\ntokvmProgramStateTablePtr:\n        .long DemoStateEntryOffsets\n\ntokvmProgramStateCount:\n        .long 1\n\ntokvmProgramStartState:\n        .word 0"
+            "demoStateEntryOffsets:\n        .long DEMO_PC_READ_CHAR\n\nTkvmProgramStateTablePtr:\n        .long DemoStateEntryOffsets\n\nTkvmProgramStateCount:\n        .long 1\n\nTkvmProgramStartState:\n        .word 0"
         ),
         "expected tokvm to keep a default state-table configuration for the demo interpreter path"
     );
@@ -15777,7 +15777,7 @@ fn motorola68020_tokvm_interpreter_supports_configured_state_table_entrypoints()
         source_contains_in_order(
             &source,
             &[
-                "tokvmSetProgramStateTable68000",
+                "tkvmSetProgramStateTable68000",
                 ".block",
                 "tst.l d0",
                 "bgt.s store",
@@ -15786,14 +15786,14 @@ fn motorola68020_tokvm_interpreter_supports_configured_state_table_entrypoints()
                 "moveq #0, d1",
             ]
         ),
-        "expected tokvm to expose a stable state-table configuration hook without changing tokvmRun68000"
+        "expected tokvm to expose a stable state-table configuration hook without changing tkvmRun68000"
     );
     assert!(
         tokvm_source_contains(
             &source,
-            "newlineScanDone:\n        MOVEQ #0,D0\n        MOVE.W TokvmProgramStartState,D0\n        CMP.L TokvmProgramStateCount,D0\n        BCC invalidProgramAtCursor"
+            "newlineScanDone:\n        MOVEQ #0,D0\n        MOVE.W TkvmProgramStartState,D0\n        CMP.L TkvmProgramStateCount,D0\n        BCC invalidProgramAtCursor"
         ),
-        "expected tokvmRun68000 to start execution from the configured start state offset"
+        "expected tkvmRun68000 to start execution from the configured start state offset"
     );
     assert!(
         tokvm_source_contains(
@@ -16359,7 +16359,7 @@ fn motorola68020_tokvm_interpreter_read_char_zero_extends_ascii_bytes() {
             &source,
             "opcodeReadChar:\n        MOVEQ #0,D0\n        CMP.L D4,D2\n        BCC storeEofByte\n        MOVE.B 0(A4,D2.L),D0\n        BRA storeCurrentByte\nstoreEofByte:\n        MOVEQ #-1,D0"
         ),
-        "expected tokvmOpcodeReadChar to zero-extend live bytes and reserve -1 only for EOF"
+        "expected tkvmOpcodeReadChar to zero-extend live bytes and reserve -1 only for EOF"
     );
 }
 
@@ -16370,16 +16370,16 @@ fn motorola68020_tokvm_interpreter_uses_demo_program_length_value() {
     assert!(
         tokvm_source_contains(
             &source,
-            "        MOVE.L #TOKVM_DEFAULT_MAX_STEPS_PER_LINE,D0\n        JSR tokvmSetStepBudget68000\n        LEA SourceBuffer,A0"
+            "        MOVE.L #TKVM_DEFAULT_MAX_STEPS_PER_LINE,D0\n        JSR tkvmSetStepBudget68000\n        LEA SourceBuffer,A0"
         ),
         "expected tokvm harness to set an explicit native step budget before invoking the interpreter"
     );
     assert!(
         tokvm_source_contains(
             &source,
-            "        LEA DemoProgram,A3\n        MOVE.L DemoProgramLen,D3\n        JSR tokvmRun68000"
+            "        LEA DemoProgram,A3\n        MOVE.L DemoProgramLen,D3\n        JSR tkvmRun68000"
         ),
-        "expected tokvm harness to pass the stored demo program length value into tokvmRun68000"
+        "expected tokvm harness to pass the stored demo program length value into tkvmRun68000"
     );
     assert!(
         !tokvm_source_contains(&source, "MOVE.L #demoProgramLen,D3"),
@@ -16538,7 +16538,7 @@ fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
     assert!(
         tokvm_source_contains(
             &source,
-            "TokvmOpcodeDispatchTable:\n        .long opcodeEnd\n        .long opcodeReadChar\n        .long opcodeAdvance\n        .long opcodeStartLexeme\n        .long opcodePushChar\n        .long opcodeEmitToken\n        .long opcodeSetState"
+            "TkvmOpcodeDispatchTable:\n        .long opcodeEnd\n        .long opcodeReadChar\n        .long opcodeAdvance\n        .long opcodeStartLexeme\n        .long opcodePushChar\n        .long opcodeEmitToken\n        .long opcodeSetState"
         ),
         "expected the native dispatch table to route StartLexeme, PushChar, EmitToken, and SetState"
     );
@@ -16635,15 +16635,15 @@ fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
         source_contains_in_order(
             &source,
             &[
-                "tokvmReadLastFailure68000",
+                "tkvmReadLastFailure68000",
                 ".block",
                 "moveq #0, d0",
-                "move.w TokvmLastFailureKind, d0",
+                "move.w TkvmLastFailureKind, d0",
                 "moveq #0, d1",
-                "move.w TokvmLastFailureOperand, d1",
+                "move.w TkvmLastFailureOperand, d1",
             ]
         ),
-        "expected tokvm to expose the last VM failure kind and operand without widening tokvmRun68000"
+        "expected tokvm to expose the last VM failure kind and operand without widening tkvmRun68000"
     );
     assert!(
         tokvm_source_contains(
@@ -16669,22 +16669,22 @@ fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
     assert!(
         source_contains_in_order(
             &source,
-            &["tokvmRun68000", ".block", "movem.l d4-d7/a4-a6, -(sp)"]
+            &["tkvmRun68000", ".block", "movem.l d4-d7/a4-a6, -(sp)"]
         ),
-        "expected tokvmRun68000 to remain the stable entrypoint for the failure-recording path"
+        "expected tkvmRun68000 to remain the stable entrypoint for the failure-recording path"
     );
     assert!(
-        source.contains("TokvmLastFailureKind"),
+        source.contains("TkvmLastFailureKind"),
         "expected tokvm to retain a dedicated last-failure kind slot"
     );
     assert!(
-        source.contains("TokvmLastFailureOperand"),
+        source.contains("TkvmLastFailureOperand"),
         "expected tokvm to retain a dedicated last-failure operand slot"
     );
     assert!(
-        source.contains("clr.w TokvmLastFailureKind")
-            && source.contains("clr.w TokvmLastFailureOperand"),
-        "expected tokvmRun68000 to clear stale failure metadata before each execution"
+        source.contains("clr.w TkvmLastFailureKind")
+            && source.contains("clr.w TkvmLastFailureOperand"),
+        "expected tkvmRun68000 to clear stale failure metadata before each execution"
     );
 }
 

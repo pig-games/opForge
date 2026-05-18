@@ -8,7 +8,7 @@
 	.use tokvm.amigaos.cli_harness (SYS_BASE, PR_CLI, PR_MSG_PORT)
 	.use tokvm.amigaos.cli_harness (FIND_TASK, WAIT_PORT, GET_MSG, REPLY_MSG, FORBID)
 	.use tokvm.amigaos.cli_harness (RETURN_WORKBENCH_UNSUPPORTED, tokvmAmigaosCliHarnessRun)
-	.use tkvm.amigaos.runtime (tokvmRun68000)
+	.use tkvm.amigaos.runtime (tkvmRun68000)
 
 	.section entry, kind=code
 

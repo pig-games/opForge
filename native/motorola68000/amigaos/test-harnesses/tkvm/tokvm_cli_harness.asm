@@ -6,8 +6,8 @@
 	.module tokvm.amigaos.cli_harness
 	.cpu 68020
 	.pub
-	.use tkvm.amigaos.runtime (tokvmRun68000, tokvmSetStepBudget68000)
-	.use tkvm.amigaos.runtime (DemoProgram, DemoProgramLen, TOKVM_DEFAULT_MAX_STEPS_PER_LINE)
+	.use tkvm.amigaos.runtime (tkvmRun68000, tkvmSetStepBudget68000)
+	.use tkvm.amigaos.runtime (DemoProgram, DemoProgramLen, TKVM_DEFAULT_MAX_STEPS_PER_LINE)
 	.use tkvm.amigaos.runtime (TOKEN_BUFFER_CAPACITY, TOKEN_RECORD_SIZE)
 	.use tkvm.amigaos.runtime (SOURCE_BUFFER_CAPACITY, SCRATCH_BUFFER_CAPACITY)
 	.use tkvm.amigaos.runtime (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_PROGRAM, TK_KIND_OP_LT)
@@ -80,7 +80,7 @@ GLOBALS_SIZE                    = 16
 ; 1. initialize DOS access
 ; 2. obtain and parse CLI arguments
 ; 3. read exactly one single-line source buffer plus a one-byte overflow probe
-; 4. invoke tokvm_run_68000 with caller-owned buffers and demoProgram
+; 4. invoke tkvmRun68000 with caller-owned buffers and demoProgram
 ; 5. render the OPFORGE-TOKVM 1 report from the native token buffer
 ; ---------------------------------------------------------------------------
 tokvmAmigaosCliHarnessRun	.block
@@ -154,7 +154,7 @@ inputOpened
 	bra.w cleanup
 
 readOk
-	move.l d0, d4  ; D4 becomes source byte length, matching tokvm_run_68000 input ABI
+	move.l d0, d4  ; D4 becomes source byte length, matching tkvmRun68000 input ABI
 	lea InputProbeByte, a0
 	moveq #1, d0  ; one-byte overflow probe enforces the spec's bounded single-line input rule
 	move.l d5, d1
@@ -197,12 +197,12 @@ probeClosed
 	bra.w cleanup
 
 invokeVm
-	; Register ABI for tokvm_run_68000:
+	; Register ABI for tkvmRun68000:
 	; A0/D0 source slice, A1/D1 token buffer+capacity, A2/D2 scratch buffer+capacity,
 	; A3/D3 demo bytecode pointer+length. This mirrors the native contract documented
 	; in tkvm_runtime.asm and used by the Rust-side bridge tests.
-	move.l #TOKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
-	jsr tokvmSetStepBudget68000
+	move.l #TKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
+	jsr tkvmSetStepBudget68000
 	lea SourceBuffer, a0
 	move.l d4, d0
 	lea TokenBuffer, a1
@@ -211,7 +211,7 @@ invokeVm
 	move.l #SCRATCH_BUFFER_CAPACITY, d2
 	lea DemoProgram, a3
 	move.l DemoProgramLen, d3
-	jsr tokvmRun68000
+	jsr tkvmRun68000
 
 	move.l d0, d4  ; status
 	move.l d1, d5  ; emitted token count

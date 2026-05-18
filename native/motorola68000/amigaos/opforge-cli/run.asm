@@ -12,7 +12,15 @@
 	.use opforge.cli.constants (NATIVE_OUTPUT_FORMAT_HUNK)
 	.use opforge.cli.state (NativeCliReturnCode, NativeCliDosBase)
 	.use opforge.cli.state (NativeCliInputPath, NativeCliOutputFormat, NativeCliBinPath)
-	.use opforge.cli.strings (*)
+.ifdef OPFORGE_FS_UAE_SMOKE
+	.use opforge.cli.strings (DosName, defaultFsUaeArgTail, HelpText, VersionText)
+.else
+	.use opforge.cli.strings (DosName, HelpText, VersionText)
+.endif
+	.use opforge.cli.strings (InputOpenErrorText, NewlineText, NativeHunkNotImplementedText)
+	.use opforge.cli.strings (StubHeaderText, InputLabelText, BinLabelText)
+	.use opforge.cli.strings (TokenizerFailureText, ParserOkText, NativePassFailureText)
+	.use opforge.cli.strings (NativeOutputFailureText, NativeOutputOkText, EmitterStubText)
 	.use opforge.cli.dos (opforgeNativeCliPutStr, opforgeNativeCliOpenInput, opforgeNativeCliClose)
 	.use opforge.cli.source_reader (opforgeNativeCliTokenizeFrontend)
 	.use opforge.cli.report (opforgeNativeCliReportParseError, opforgeNativeCliEmitAssemblySessionSummary)

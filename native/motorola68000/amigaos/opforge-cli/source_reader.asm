@@ -16,7 +16,6 @@
 	.use opforge.cli.strings (TokenizerOkText, ModuleDepthFailureText)
 	.use opforge.cli.dos (opforgeNativeCliPutStr, opforgeNativeCliOpenInput)
 	.use opforge.cli.dos (opforgeNativeCliReadInput, opforgeNativeCliClose)
-	.use opforge.cli.copy (*)
 	.use opforge.cli.path (opforgeNativeCliCopyPathBuffer)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1)

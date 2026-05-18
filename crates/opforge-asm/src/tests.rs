@@ -10252,7 +10252,6 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "opforgeNativeCliLoadStatementExprMetadata",
         "opforgeNativeCliInitAssemblySession",
         "opforgeNativeCliEmitAssemblySessionSummary",
-        "opforgeNativeCliExpandIncludeTarget",
         "opforgeNativeCliResolveIncludePath",
         "opforgeNativeCliEmitIncludeLineRecord",
         "opforgeNativeCliRecordModule",
@@ -12540,7 +12539,6 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("opforgeNativeCliEmitStatementExprRequest"));
     assert!(listing.contains("opforgeNativeCliInitAssemblySession"));
     assert!(listing.contains("opforgeNativeCliEmitAssemblySessionSummary"));
-    assert!(listing.contains("opforgeNativeCliExpandIncludeTarget"));
     assert!(listing.contains("opforgeNativeCliEmitIncludeLineRecord"));
     assert!(listing.contains("opforgeNativeCliRecordModule"));
     assert!(listing.contains("opforgeNativeCliEmitModuleRecord"));

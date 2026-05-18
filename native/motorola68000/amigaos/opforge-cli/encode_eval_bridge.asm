@@ -35,29 +35,6 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliPrepareEncodeInstructionRequest	.block
-	lea lastErrorBuffer, a2
-	move.l NativeCliStmtMnemLen, d0
-	cmpi.l #255, d0
-	bhi.s fail
-	move.b d0, (a2)+
-	tst.l d0
-	beq.s candidateCount
-	movea.l NativeCliStmtMnemStart, a1
-	jsr opforgeNativeCliCopyBytes
-
-candidateCount
-	clr.b (a2)+
-	addq.w #2, d0
-	move.w d0, NativeCliEncodeRequestLen
-	moveq #0, d0
-	rts
-
-fail
-	moveq #1, d0
-	rts
-	.bend  ; opforgeNativeCliPrepareEncodeInstructionRequest
-
 opforgeNativeCliPrepareEncodeSelectedRequestForStatement	.block
 	movem.l d1-d7/a0-a2, -(sp)
 	move.w d6, d7
@@ -245,6 +222,98 @@ done
 	movem.l (sp)+, d1-d7/a0-a2
 	rts
 	.bend  ; opforgeNativeCliPrepareEvaluateExpressionExtension
+
+opforgeNativeCliReadEvaluateExpressionValue	.block
+	lea ControlBlockV1, a0
+	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a0
+	move.l 16(a0), d3
+	rts
+	.bend  ; opforgeNativeCliReadEvaluateExpressionValue
+
+opforgeNativeCliLoadStatementSourceLineText	.block
+	moveq #0, d0
+	move.w d7, d0
+	add.w d0, d0
+	lea opasmEngineStmtSourceLineLenTable.l, a0
+	moveq #0, d1
+	move.w 0(a0, d0.l), d1
+	beq.s fail
+	moveq #0, d0
+	move.w d7, d0
+	lsl.l #8, d0
+	add.l d0, d0
+	lea opasmEngineStmtSourceLineTextTable.l, a0
+	adda.l d0, a0
+	move.l d1, d0
+	rts
+
+fail
+	clr.l d0
+	rts
+	.bend  ; opforgeNativeCliLoadStatementSourceLineText
+
+opforgeNativeCliLoadStatementExprMetadata	.block
+	moveq #0, d0
+	move.w d7, d0
+	add.w d0, d0
+	lea opasmEngineStmtExprFlagsTable.l, a0
+	tst.w 0(a0, d0.l)
+	beq.s empty
+	lsr.w #1, d0
+	lsl.l #2, d0
+	lea opasmEngineStmtExprOperandIndexTable.l, a0
+	move.l 0(a0, d0.l), NativeCliStmtExprOperandIndex
+	lea opasmEngineStmtExprSlotIndexTable.l, a0
+	move.l 0(a0, d0.l), NativeCliStmtExprSlotIndex
+	lea opasmEngineStmtExprStartTokenTable.l, a0
+	move.l 0(a0, d0.l), NativeCliStmtExprStartToken
+	lea opasmEngineStmtExprEndTokenTable.l, a0
+	move.l 0(a0, d0.l), NativeCliStmtExprEndToken
+	lea opasmEngineStmtExprSpanLineTable.l, a0
+	move.l 0(a0, d0.l), NativeCliStmtExprSpanLine
+	lea opasmEngineStmtExprSpanStartTable.l, a0
+	move.l 0(a0, d0.l), NativeCliStmtExprSpanStart
+	lea opasmEngineStmtExprSpanEndTable.l, a0
+	move.l 0(a0, d0.l), NativeCliStmtExprSpanEnd
+	move.w #1, NativeCliStmtExprFound
+	rts
+
+empty
+	clr.l NativeCliStmtExprOperandIndex
+	clr.l NativeCliStmtExprSlotIndex
+	clr.l NativeCliStmtExprStartToken
+	clr.l NativeCliStmtExprEndToken
+	clr.l NativeCliStmtExprSpanLine
+	clr.l NativeCliStmtExprSpanStart
+	clr.l NativeCliStmtExprSpanEnd
+	clr.w NativeCliStmtExprFound
+	rts
+	.bend  ; opforgeNativeCliLoadStatementExprMetadata
+
+	.priv
+
+opforgeNativeCliPrepareEncodeInstructionRequest	.block
+	lea lastErrorBuffer, a2
+	move.l NativeCliStmtMnemLen, d0
+	cmpi.l #255, d0
+	bhi.s fail
+	move.b d0, (a2)+
+	tst.l d0
+	beq.s candidateCount
+	movea.l NativeCliStmtMnemStart, a1
+	jsr opforgeNativeCliCopyBytes
+
+candidateCount
+	clr.b (a2)+
+	addq.w #2, d0
+	move.w d0, NativeCliEncodeRequestLen
+	moveq #0, d0
+	rts
+
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliPrepareEncodeInstructionRequest
 
 opforgeNativeCliInferSelectedShapeForEvalRequest	.block
 	movem.l d1-d7/a1-a2, -(sp)
@@ -499,13 +568,6 @@ opforgeNativeCliInferSelectedShapeReturn
 	rts
 	.bend  ; opforgeNativeCliInferSelectedShapeForEvalRequest
 
-opforgeNativeCliReadEvaluateExpressionValue	.block
-	lea ControlBlockV1, a0
-	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a0
-	move.l 16(a0), d3
-	rts
-	.bend  ; opforgeNativeCliReadEvaluateExpressionValue
-
 opforgeNativeCliClearStatementExprSpanForSyntheticRequest	.block
 	clr.w NativeCliStmtExprFound
 	clr.l NativeCliStmtExprSpanLine
@@ -529,66 +591,6 @@ opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 done
 	rts
 	.bend  ; opforgeNativeCliDispatchEncodeInstructionEnvelope
-
-opforgeNativeCliLoadStatementSourceLineText	.block
-	moveq #0, d0
-	move.w d7, d0
-	add.w d0, d0
-	lea opasmEngineStmtSourceLineLenTable.l, a0
-	moveq #0, d1
-	move.w 0(a0, d0.l), d1
-	beq.s fail
-	moveq #0, d0
-	move.w d7, d0
-	lsl.l #8, d0
-	add.l d0, d0
-	lea opasmEngineStmtSourceLineTextTable.l, a0
-	adda.l d0, a0
-	move.l d1, d0
-	rts
-
-fail
-	clr.l d0
-	rts
-	.bend  ; opforgeNativeCliLoadStatementSourceLineText
-
-opforgeNativeCliLoadStatementExprMetadata	.block
-	moveq #0, d0
-	move.w d7, d0
-	add.w d0, d0
-	lea opasmEngineStmtExprFlagsTable.l, a0
-	tst.w 0(a0, d0.l)
-	beq.s empty
-	lsr.w #1, d0
-	lsl.l #2, d0
-	lea opasmEngineStmtExprOperandIndexTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprOperandIndex
-	lea opasmEngineStmtExprSlotIndexTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprSlotIndex
-	lea opasmEngineStmtExprStartTokenTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprStartToken
-	lea opasmEngineStmtExprEndTokenTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprEndToken
-	lea opasmEngineStmtExprSpanLineTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprSpanLine
-	lea opasmEngineStmtExprSpanStartTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprSpanStart
-	lea opasmEngineStmtExprSpanEndTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprSpanEnd
-	move.w #1, NativeCliStmtExprFound
-	rts
-
-empty
-	clr.l NativeCliStmtExprOperandIndex
-	clr.l NativeCliStmtExprSlotIndex
-	clr.l NativeCliStmtExprStartToken
-	clr.l NativeCliStmtExprEndToken
-	clr.l NativeCliStmtExprSpanLine
-	clr.l NativeCliStmtExprSpanStart
-	clr.l NativeCliStmtExprSpanEnd
-	clr.w NativeCliStmtExprFound
-	rts
-	.bend  ; opforgeNativeCliLoadStatementExprMetadata
 
 	.endsection
 	.endmodule

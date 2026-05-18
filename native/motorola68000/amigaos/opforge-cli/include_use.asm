@@ -23,7 +23,7 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliParseIncludeLine .block
+opforgeNativeCliParseIncludeLine	.block
 	clr.w NativeCliIncludePending
 	lea NativeCliSourceLine, a0
 	moveq #0, d0
@@ -47,9 +47,9 @@ fail
 	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliParseIncludeLine
+	.bend  ; opforgeNativeCliParseIncludeLine
 
-opforgeNativeCliPreparePendingInclude .block
+opforgeNativeCliPreparePendingInclude	.block
 	tst.w NativeCliIncludePending
 	beq.w none
 	clr.w NativeCliIncludePending
@@ -116,9 +116,9 @@ fail
 	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliPreparePendingInclude
+	.bend  ; opforgeNativeCliPreparePendingInclude
 
-opforgeNativeCliFinishPendingInclude .block
+opforgeNativeCliFinishPendingInclude	.block
 	movem.l d1/a0-a1, -(sp)
 	tst.l d0
 	bne.s restoreFail
@@ -157,9 +157,9 @@ fail
 return
 	movem.l (sp)+, d1/a0-a1
 	rts
-	.bend ; opforgeNativeCliFinishPendingInclude
+	.bend  ; opforgeNativeCliFinishPendingInclude
 
-opforgeNativeCliResolveIncludePath .block
+opforgeNativeCliResolveIncludePath	.block
 	lea NativeCliCurrentPath, a0
 	lea NativeCliIncludeRootPath, a1
 	bsr.w opforgeNativeCliCopyPathRoot
@@ -188,9 +188,9 @@ relative
 fail
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliResolveIncludePath
+	.bend  ; opforgeNativeCliResolveIncludePath
 
-opforgeNativeCliCopyIncludeTarget .block
+opforgeNativeCliCopyIncludeTarget	.block
 	tst.l d0
 	beq.w fail
 	moveq #0, d2
@@ -255,7 +255,7 @@ done
 fail
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliCopyIncludeTarget
+	.bend  ; opforgeNativeCliCopyIncludeTarget
 
 	.endsection
 	.endmodule

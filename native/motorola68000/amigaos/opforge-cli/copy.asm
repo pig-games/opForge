@@ -11,7 +11,7 @@
 	.pub
 
 ; Copy D0 bytes from A1 to A2.
-opforgeNativeCliCopyBytes .block
+opforgeNativeCliCopyBytes	.block
 	move.w d0, d2
 	tst.w d2
 	beq.s done
@@ -23,10 +23,10 @@ loop
 
 done
 	rts
-	.bend ; opforgeNativeCliCopyBytes
+	.bend  ; opforgeNativeCliCopyBytes
 
 ; Copy a C string from A0 to A1 and return copied byte count, including NUL.
-opforgeNativeCliCopyCString .block
+opforgeNativeCliCopyCString	.block
 	moveq #0, d0
 
 loop
@@ -39,7 +39,7 @@ loop
 	.bend
 
 ; Copy exactly D0 bytes from A0 to A1.
-opforgeNativeCliCopyFixedString .block
+opforgeNativeCliCopyFixedString	.block
 	move.w d0, d2
 	tst.w d2
 	beq.s done
@@ -51,10 +51,10 @@ loop
 
 done
 	rts
-	.bend ; opforgeNativeCliCopyFixedString
+	.bend  ; opforgeNativeCliCopyFixedString
 
 ; Clear D0 bytes at A0.
-opforgeNativeCliClearBytes .block
+opforgeNativeCliClearBytes	.block
 	tst.l d0
 	beq.s done
 	moveq #0, d1
@@ -66,7 +66,7 @@ loop
 
 done
 	rts
-	.bend ; opforgeNativeCliClearBytes
+	.bend  ; opforgeNativeCliClearBytes
 
 	.endsection
 	.endmodule

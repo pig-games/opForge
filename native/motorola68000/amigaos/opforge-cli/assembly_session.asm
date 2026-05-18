@@ -11,9 +11,9 @@
 	.use opasm.amigaos.engine (opasmEngineStmtCount, opasmEngineStmtLineTable, opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable, opasmEngineStmtLabelLenTable, opasmEngineStmtMnemLenTable, opasmEngineStmtOperandLenTable, opasmEngineStmtDirectiveKindTable, opasmEngineStmtMnemOffTable, opasmEngineStmtLabelNameTable, opasmEngineStmtMnemNameTable, opasmEngineStmtOperandNameTable, opasmEngineStmtExprFlagsTable, opasmEngineStmtExprOperandIndexTable, opasmEngineStmtExprSlotIndexTable, opasmEngineStmtExprStartTokenTable, opasmEngineStmtExprEndTokenTable, opasmEngineStmtExprSpanLineTable, opasmEngineStmtExprSpanStartTable, opasmEngineStmtExprSpanEndTable)
 	.use tkpkg.amigaos.buffers (tokenScratchBuffer)
 
-	.use opforge.cli.state (OpforgeNativeCliPrvmResultBuffer, OpforgeNativeCliPrvmExprRequest, NativeCliSourceLine, NativeCliSourceLineNum, NativeCliSourceLineLen, NativeCliPrvmRouteStatus, NativeCliPrvmResultCount, NativeCliStmtLabelStart, NativeCliStmtLabelEnd, NativeCliStmtLabelOff, NativeCliStmtLabelLen, NativeCliStmtMnemStart, NativeCliStmtMnemEnd, NativeCliStmtMnemOff, NativeCliStmtMnemLen, NativeCliStmtOperandStart, NativeCliStmtOperandEnd, NativeCliStmtExprOperandIndex, NativeCliStmtExprSlotIndex,NativeCliStmtExprStartToken,NativeCliStmtExprEndToken, NativeCliStmtExprSpanLine, NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd, NativeCliStmtMnemFound, NativeCliStmtExprFound, NativeCliStmtDirectiveKind, NativeCliArgToken)
+	.use opforge.cli.state (OpforgeNativeCliPrvmResultBuffer, OpforgeNativeCliPrvmExprRequest, NativeCliSourceLine, NativeCliSourceLineNum, NativeCliSourceLineLen, NativeCliPrvmRouteStatus, NativeCliPrvmResultCount, NativeCliStmtLabelStart, NativeCliStmtLabelEnd, NativeCliStmtLabelOff, NativeCliStmtLabelLen, NativeCliStmtMnemStart, NativeCliStmtMnemEnd, NativeCliStmtMnemOff, NativeCliStmtMnemLen, NativeCliStmtOperandStart, NativeCliStmtOperandEnd, NativeCliStmtExprOperandIndex, NativeCliStmtExprSlotIndex, NativeCliStmtExprStartToken, NativeCliStmtExprEndToken, NativeCliStmtExprSpanLine, NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd, NativeCliStmtMnemFound, NativeCliStmtExprFound, NativeCliStmtDirectiveKind, NativeCliArgToken)
 
-	.use opforge.cli.constants (NATIVE_SOURCE_RECORD_CAPACITY, NATIVE_STATEMENT_TABLE_CAPACITY, TOKEN_BUFFER_CAPACITY, SOURCE_LINE_BUFFER_CAPACITY, NCLI_PARSER_DIRECTIVE_NONE,NCLI_PARSER_DIRECTIVE_GENERIC, PRVM_STATUS_EXPR_REQUEST, PRVM_RESULT_RECORD_COUNT,PRVM_RESULT_RECORD_SIZE,PRVM_RESULT_LABEL_TEXT, PRVM_RESULT_MNEMONIC_TEXT, PRVM_RESULT_DIRECTIVE_TEXT, PRVM_RESULT_OPERAND_TEXT, PRVM_RESULT_OPERAND_EXPR_SLOT)
+	.use opforge.cli.constants (NATIVE_SOURCE_RECORD_CAPACITY, NATIVE_STATEMENT_TABLE_CAPACITY, TOKEN_BUFFER_CAPACITY, SOURCE_LINE_BUFFER_CAPACITY, NCLI_PARSER_DIRECTIVE_NONE, NCLI_PARSER_DIRECTIVE_GENERIC, PRVM_STATUS_EXPR_REQUEST, PRVM_RESULT_RECORD_COUNT, PRVM_RESULT_RECORD_SIZE, PRVM_RESULT_LABEL_TEXT, PRVM_RESULT_MNEMONIC_TEXT, PRVM_RESULT_DIRECTIVE_TEXT, PRVM_RESULT_OPERAND_TEXT, PRVM_RESULT_OPERAND_EXPR_SLOT)
 
 	.use opforge.cli.strings (StatementText, StatementExprText, NewlineText)
 	.use opforge.cli.dos (opforgeNativeCliPutStr)
@@ -25,7 +25,7 @@
 	.pub
 
 ; Record the current logical source line in the session tables.
-opforgeNativeCliRecordSourceLine .block
+opforgeNativeCliRecordSourceLine	.block
 	movem.l d0/a0, -(sp)
 	moveq #0, d0
 	move.w opasmEngineSourceRecordCount.l, d0
@@ -44,10 +44,9 @@ opforgeNativeCliRecordSourceLine .block
 done
 	movem.l (sp)+, d0/a0
 	rts
-	.bend ; opforgeNativeCliRecordSourceLine
+	.bend  ; opforgeNativeCliRecordSourceLine
 
-
-opforgeNativeCliRecordPrvmStatementLine .block
+opforgeNativeCliRecordPrvmStatementLine	.block
 	movem.l d1-d7/a0-a2, -(sp)
 	tst.l NativeCliPrvmRouteStatus
 	beq.s routeOk
@@ -242,11 +241,11 @@ fail
 return
 	movem.l (sp)+, d1-d7/a0-a2
 	rts
-	.bend ; opforgeNativeCliRecordPrvmStatementLine
+	.bend  ; opforgeNativeCliRecordPrvmStatementLine
 
-	.priv 
+	.priv
 
-opforgeNativeCliEmitStatementRecord .block
+opforgeNativeCliEmitStatementRecord	.block
 	movem.l d0-d7/a0-a1, -(sp)
 	move.l #StatementText, d1
 	jsr opforgeNativeCliPutStr
@@ -296,9 +295,9 @@ opforgeNativeCliEmitStatementRecord .block
 done
 	movem.l (sp)+, d0-d7/a0-a1
 	rts
-	.bend ; opforgeNativeCliEmitStatementRecord
+	.bend  ; opforgeNativeCliEmitStatementRecord
 
-opforgeNativeCliRecordPrvmExpressionRequest .block
+opforgeNativeCliRecordPrvmExpressionRequest	.block
 	lea OpforgeNativeCliPrvmExprRequest, a2
 	cmpi.w #1, 0(a2)
 	bne.s done
@@ -313,9 +312,9 @@ opforgeNativeCliRecordPrvmExpressionRequest .block
 
 done
 	rts
-	.bend ; opforgeNativeCliRecordPrvmExpressionRequest
+	.bend  ; opforgeNativeCliRecordPrvmExpressionRequest
 
-opforgeNativeCliEmitStatementExprRequest .block
+opforgeNativeCliEmitStatementExprRequest	.block
 	move.l #StatementExprText, d1
 	jsr opforgeNativeCliPutStr
 	moveq #0, d0
@@ -345,9 +344,9 @@ opforgeNativeCliEmitStatementExprRequest .block
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 	rts
-	.bend ; opforgeNativeCliEmitStatementExprRequest
+	.bend  ; opforgeNativeCliEmitStatementExprRequest
 
-opforgeNativeCliRecordSourceStatementFallback .block
+opforgeNativeCliRecordSourceStatementFallback	.block
 	movem.l d0-d7/a0-a3, -(sp)
 	lea NativeCliSourceLine, a0
 	moveq #0, d0
@@ -434,10 +433,10 @@ labelToken
 
 return
 	movem.l (sp)+, d0-d7/a0-a3
-    rts
-	.bend ; opforgeNativeCliRecordSourceStatementFallback
+	rts
+	.bend  ; opforgeNativeCliRecordSourceStatementFallback
 	
-opforgeNativeCliRecordSourceStatementMnemonic .block
+opforgeNativeCliRecordSourceStatementMnemonic	.block
 	move.l d4, NativeCliStmtMnemStart
 	move.l d4, d0
 	add.w d3, d0
@@ -478,9 +477,9 @@ opforgeNativeCliRecordSourceStatementMnemonic .block
 
 done
 	rts
-	.bend ; opforgeNativeCliRecordSourceStatementMnemonic
+	.bend  ; opforgeNativeCliRecordSourceStatementMnemonic
 
-opforgeNativeCliFallbackTokenLen .block
+opforgeNativeCliFallbackTokenLen	.block
 	movem.l d1-d2/a0, -(sp)
 	moveq #0, d1
 
@@ -511,9 +510,9 @@ done
 	move.w d1, d0
 	movem.l (sp)+, d1-d2/a0
 	rts
-	.bend ; opforgeNativeCliFallbackTokenLen
+	.bend  ; opforgeNativeCliFallbackTokenLen
 
-opforgeNativeCliFallbackOperandLen .block
+opforgeNativeCliFallbackOperandLen	.block
 	movem.l d1-d3/a0, -(sp)
 	moveq #0, d1
 	moveq #0, d2
@@ -545,9 +544,9 @@ done
 	move.w d2, d0
 	movem.l (sp)+, d1-d3/a0
 	rts
-	.bend ; opforgeNativeCliFallbackOperandLen
+	.bend  ; opforgeNativeCliFallbackOperandLen
 
-opforgeNativeCliStoreStatementRecord .block
+opforgeNativeCliStoreStatementRecord	.block
 	movem.l d1-d4/a0-a1, -(sp)
 	moveq #0, d1
 	move.w opasmEngineStmtCount.l, d1
@@ -713,7 +712,7 @@ exprMetadata
 done
 	movem.l (sp)+, d1-d4/a0-a1
 	rts
-	.bend ; opforgeNativeCliStoreStatementRecord
+	.bend  ; opforgeNativeCliStoreStatementRecord
 
 	.endsection
 	.endmodule

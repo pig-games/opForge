@@ -17,7 +17,7 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliEmitIncludeLineRecord .block
+opforgeNativeCliEmitIncludeLineRecord	.block
 	movem.l d0-d1, -(sp)
 	move.l #IncludeLineText, d1
 	jsr opforgeNativeCliPutStr
@@ -35,7 +35,7 @@ opforgeNativeCliEmitIncludeLineRecord .block
 	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d1
 	rts
-	.bend ; opforgeNativeCliEmitIncludeLineRecord
+	.bend  ; opforgeNativeCliEmitIncludeLineRecord
 
 	.endsection
 	.endmodule

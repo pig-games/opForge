@@ -17,7 +17,7 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliRecordModule .block
+opforgeNativeCliRecordModule	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0
 	move.w NativeCliModuleCount, d0
@@ -67,9 +67,9 @@ fail
 return
 	movem.l (sp)+, d1-d3/a0-a1
 	rts
-	.bend ; opforgeNativeCliRecordModule
+	.bend  ; opforgeNativeCliRecordModule
 
-opforgeNativeCliRecordImport .block
+opforgeNativeCliRecordImport	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0
 	move.w NativeCliImportCount, d0
@@ -112,9 +112,9 @@ fail
 return
 	movem.l (sp)+, d1-d3/a0-a1
 	rts
-	.bend ; opforgeNativeCliRecordImport
+	.bend  ; opforgeNativeCliRecordImport
 
-opforgeNativeCliRecordImportSelect .block
+opforgeNativeCliRecordImportSelect	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0
 	move.w NativeCliImportSelectCount, d0
@@ -157,9 +157,9 @@ fail
 return
 	movem.l (sp)+, d1-d3/a0-a1
 	rts
-	.bend ; opforgeNativeCliRecordImportSelect
+	.bend  ; opforgeNativeCliRecordImportSelect
 
-opforgeNativeCliEmitImportRecord .block
+opforgeNativeCliEmitImportRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	move.l #UseImportText, d1
 	jsr opforgeNativeCliPutStr
@@ -216,9 +216,9 @@ newline
 	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
-	.bend ; opforgeNativeCliEmitImportRecord
+	.bend  ; opforgeNativeCliEmitImportRecord
 
-opforgeNativeCliEmitImportSelectRecord .block
+opforgeNativeCliEmitImportSelectRecord	.block
 	movem.l d0-d4/d6-d7/a0-a1, -(sp)
 	move.l #UseSelectText, d1
 	jsr opforgeNativeCliPutStr
@@ -264,9 +264,9 @@ flags
 	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/d6-d7/a0-a1
 	rts
-	.bend ; opforgeNativeCliEmitImportSelectRecord
+	.bend  ; opforgeNativeCliEmitImportSelectRecord
 
-opforgeNativeCliEmitImportWildcardRecord .block
+opforgeNativeCliEmitImportWildcardRecord	.block
 	movem.l d0-d4, -(sp)
 	move.l #UseWildcardText, d1
 	jsr opforgeNativeCliPutStr
@@ -280,9 +280,9 @@ opforgeNativeCliEmitImportWildcardRecord .block
 	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4
 	rts
-	.bend ; opforgeNativeCliEmitImportWildcardRecord
+	.bend  ; opforgeNativeCliEmitImportWildcardRecord
 
-opforgeNativeCliResolveBareUseModule .block
+opforgeNativeCliResolveBareUseModule	.block
 	movem.l d2-d7/a0-a1, -(sp)
 	clr.w d7
 
@@ -332,9 +332,9 @@ fail
 return
 	movem.l (sp)+, d2-d7/a0-a1
 	rts
-	.bend ; opforgeNativeCliResolveBareUseModule
+	.bend  ; opforgeNativeCliResolveBareUseModule
 
-opforgeNativeCliEmitModuleRecord .block
+opforgeNativeCliEmitModuleRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	move.w d0, d4
 	cmp.w NativeCliRootModuleId, d4
@@ -390,9 +390,9 @@ def
 	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
-	.bend ; opforgeNativeCliEmitModuleRecord
+	.bend  ; opforgeNativeCliEmitModuleRecord
 
-opforgeNativeCliEmitModuleCompatibility .block
+opforgeNativeCliEmitModuleCompatibility	.block
 	movem.l d0/d4/a0, -(sp)
 	move.w d0, d4
 	move.l #ModuleFoundText, d1
@@ -404,9 +404,9 @@ opforgeNativeCliEmitModuleCompatibility .block
 	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0/d4/a0
 	rts
-	.bend ; opforgeNativeCliEmitModuleCompatibility
+	.bend  ; opforgeNativeCliEmitModuleCompatibility
 
-opforgeNativeCliCloseModule .block
+opforgeNativeCliCloseModule	.block
 	movem.l d1-d4/a0-a1, -(sp)
 	tst.w NativeCliModuleDepth
 	beq.s fail
@@ -427,9 +427,9 @@ fail
 return
 	movem.l (sp)+, d1-d4/a0-a1
 	rts
-	.bend ; opforgeNativeCliCloseModule
+	.bend  ; opforgeNativeCliCloseModule
 
-opforgeNativeCliEmitModuleEndRecord .block
+opforgeNativeCliEmitModuleEndRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	move.w d0, d4
 	move.l #ModEndText, d1
@@ -451,9 +451,9 @@ opforgeNativeCliEmitModuleEndRecord .block
 	jsr opforgeNativeCliPutStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
-	.bend ; opforgeNativeCliEmitModuleEndRecord
+	.bend  ; opforgeNativeCliEmitModuleEndRecord
 
-opforgeNativeCliRestoreParentModule .block
+opforgeNativeCliRestoreParentModule	.block
 	movem.l d1-d3/a0, -(sp)
 	tst.w NativeCliModuleDepth
 	bne.s find
@@ -487,43 +487,43 @@ found
 return
 	movem.l (sp)+, d1-d3/a0
 	rts
-	.bend ; opforgeNativeCliRestoreParentModule
+	.bend  ; opforgeNativeCliRestoreParentModule
 
-opforgeNativeCliModuleNamePtr .block	
+opforgeNativeCliModuleNamePtr	.block
 	moveq #0, d0
 	move.w d4, d0
 	lsl.l #6, d0
 	lea NativeCliModuleNameTable, a0
 	adda.l d0, a0
 	rts
-	.bend ; opforgeNativeCliModuleNamePtr
+	.bend  ; opforgeNativeCliModuleNamePtr
 
-opforgeNativeCliImportAliasPtr .block
+opforgeNativeCliImportAliasPtr	.block
 	moveq #0, d0
 	move.w d4, d0
 	lsl.l #6, d0
 	lea NativeCliImportAliasTable, a0
 	adda.l d0, a0
 	rts
-	.bend ; opforgeNativeCliImportAliasPtr
+	.bend  ; opforgeNativeCliImportAliasPtr
 
-opforgeNativeCliImportSelectNamePtr .block
+opforgeNativeCliImportSelectNamePtr	.block
 	moveq #0, d0
 	move.w d6, d0
 	lsl.l #6, d0
 	lea NativeCliImportSelectNameTable, a0
 	adda.l d0, a0
 	rts
-	.bend ; opforgeNativeCliImportSelectNamePtr
+	.bend  ; opforgeNativeCliImportSelectNamePtr
 
-opforgeNativeCliImportSelectAliasPtr .block
+opforgeNativeCliImportSelectAliasPtr	.block
 	moveq #0, d0
 	move.w d6, d0
 	lsl.l #6, d0
 	lea NativeCliImportSelectAliasTable, a0
 	adda.l d0, a0
 	rts
-	.bend ; opforgeNativeCliImportSelectAliasPtr
+	.bend  ; opforgeNativeCliImportSelectAliasPtr
 
 	.endsection
 	.endmodule

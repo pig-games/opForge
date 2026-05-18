@@ -20,7 +20,7 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliBuildParserTailBuffer .block
+opforgeNativeCliBuildParserTailBuffer	.block
 	movem.l d1-d7/a0-a3, -(sp)
 	bsr.w opforgeNativeCliParserTailFallbackEnd
 
@@ -62,9 +62,9 @@ fail
 return
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
-	.bend ;  opforgeNativeCliBuildParserTailBuffer
+	.bend  ;  opforgeNativeCliBuildParserTailBuffer
 
-opforgeNativeCliParserTailFallbackEnd .block
+opforgeNativeCliParserTailFallbackEnd	.block
 	lea NativeCliSourceLine, a0
 	moveq #0, d0
 	move.w NativeCliSourceLineLen, d0
@@ -112,9 +112,9 @@ use
 	move.l d5, d6
 	addq.l #4, d6
 	rts
-	.bend ; opforgeNativeCliParserTailFallbackEnd
+	.bend  ; opforgeNativeCliParserTailFallbackEnd
 
-opforgeNativeCliParserTailPtr .block
+opforgeNativeCliParserTailPtr	.block
 	bsr.w opforgeNativeCliBuildParserTailBuffer
 	move.l d0, d1
 	tst.l d1
@@ -126,9 +126,9 @@ opforgeNativeCliParserTailPtr .block
 
 return
 	rts
-	.bend ; opforgeNativeCliParserTailPtr
+	.bend  ; opforgeNativeCliParserTailPtr
 
-opforgeNativeCliParseModuleLine .block
+opforgeNativeCliParseModuleLine	.block
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
 	bne.w fail
@@ -163,9 +163,9 @@ fail
 	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliParseModuleLine
+	.bend  ; opforgeNativeCliParseModuleLine
 
-opforgeNativeCliParseEndmoduleLine .block
+opforgeNativeCliParseEndmoduleLine	.block
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
 	bne.w fail
@@ -193,9 +193,9 @@ fail
 	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliParseEndmoduleLine
+	.bend  ; opforgeNativeCliParseEndmoduleLine
 
-opforgeNativeCliParseUseLine .block
+opforgeNativeCliParseUseLine	.block
 	move.w #-1, NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
@@ -273,7 +273,7 @@ fail
 	jsr opforgeNativeCliPutStr
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliParseUseLine
+	.bend  ; opforgeNativeCliParseUseLine
 
 	.endsection
 	.endmodule

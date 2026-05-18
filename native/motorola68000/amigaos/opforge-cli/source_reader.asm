@@ -32,7 +32,7 @@
 	.pub
 
 ; Initialize package state, tokenize every source line, and run parser routing.
-opforgeNativeCliTokenizeFrontend .block
+opforgeNativeCliTokenizeFrontend	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	bsr.w opforgeNativeCliInitPackagePipeline
 	tst.l d0
@@ -50,10 +50,10 @@ success
 return
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
-	.bend ; opforgeNativeCliTokenizeFrontend
+	.bend  ; opforgeNativeCliTokenizeFrontend
 
 ; Tokenize the primary input file path recorded by argument parsing.
-opforgeNativeCliTokenizeFile .block
+opforgeNativeCliTokenizeFile	.block
 	lea NativeCliInputPath, a0
 	lea NativeCliCurrentPath, a1
 	jsr opforgeNativeCliCopyPathBuffer
@@ -66,10 +66,10 @@ opforgeNativeCliTokenizeFile .block
 fail
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliTokenizeFile
+	.bend  ; opforgeNativeCliTokenizeFile
 
 ; Read and tokenize one AmigaDOS text file at A0, preserving logical line state.
-opforgeNativeCliTokenizeFileAtPath .block
+opforgeNativeCliTokenizeFileAtPath	.block
 	jsr opforgeNativeCliOpenInput
 	tst.l d0
 	bne.s openOk
@@ -168,9 +168,9 @@ close
 	jsr opforgeNativeCliClose
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliTokenizeFileAtPath
+	.bend  ; opforgeNativeCliTokenizeFileAtPath
 
-opforgeNativeCliTokenizePendingInclude .block
+opforgeNativeCliTokenizePendingInclude	.block
 	bsr.w opforgeNativeCliPreparePendingInclude
 	tst.l d0
 	bne.s return
@@ -182,9 +182,9 @@ opforgeNativeCliTokenizePendingInclude .block
 
 return
 	rts
-	.bend ; opforgeNativeCliTokenizePendingInclude
+	.bend  ; opforgeNativeCliTokenizePendingInclude
 
-opforgeNativeCliTokenizePendingUseModule .block
+opforgeNativeCliTokenizePendingUseModule	.block
 	cmpi.w #-1, NativeCliResolvedModuleId
 	beq.s ok
 	move.w #-1, NativeCliResolvedModuleId
@@ -194,9 +194,9 @@ opforgeNativeCliTokenizePendingUseModule .block
 ok
 	moveq #0, d0
 	rts
-	.bend ; opforgeNativeCliTokenizePendingUseModule
+	.bend  ; opforgeNativeCliTokenizePendingUseModule
 
-opforgeNativeCliTokenizeResolvedUseModule .block
+opforgeNativeCliTokenizeResolvedUseModule	.block
 	movem.l d1-d2/a0-a1, -(sp)
 	move.w NativeCliSourceLineLen, d0
 	move.w d0, NativeCliModuleSavedLineLen
@@ -249,7 +249,7 @@ fail
 return
 	movem.l (sp)+, d1-d2/a0-a1
 	rts
-	.bend ; opforgeNativeCliTokenizeResolvedUseModule
+	.bend  ; opforgeNativeCliTokenizeResolvedUseModule
 
 	.endsection
 	.endmodule

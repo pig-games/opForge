@@ -7,7 +7,7 @@
 	.module opforge.cli.package_pipeline
 	.cpu 68020
 
-	.use opforge.cli.constants (PACKAGE_INPUT_PTR_V1) 
+	.use opforge.cli.constants (PACKAGE_INPUT_PTR_V1)
 	.use opforge.cli.copy (*)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, ControlBlockV1, packageStorage, PACKAGE_STORAGE_CAPACITY, lastErrorBuffer)
@@ -24,7 +24,7 @@
 	.pub
 
 ; Initialize tkpkg, stage/load package bytes, and select the requested pipeline.
-opforgeNativeCliInitPackagePipeline .block
+opforgeNativeCliInitPackagePipeline	.block
 	lea ControlBlockV1, a0
 	moveq #ENTRY_ORD_INIT, d0
 	jsr tkpkgServiceDispatchV1
@@ -65,11 +65,10 @@ opforgeNativeCliInitPackagePipeline .block
 fail
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliInitPackagePipeline
-
+	.bend  ; opforgeNativeCliInitPackagePipeline
 
 ; Stage either the embedded package or an external --opasm-package file.
-opforgeNativeCliStagePackage .block
+opforgeNativeCliStagePackage	.block
 	tst.b NativeCliPackagePath
 	bne.s externalPackage
 
@@ -128,10 +127,10 @@ externalReadFail
 	jsr opforgeNativeCliClose
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliStagePackage
+	.bend  ; opforgeNativeCliStagePackage
 
 ; Build the tkpkg set-pipeline request payload from --cpu or the default CPU.
-opforgeNativeCliPreparePipelineRequest .block
+opforgeNativeCliPreparePipelineRequest	.block
 	lea NativeCliCpuName, a0
 	tst.b (a0)
 	bne.s haveCpu
@@ -143,7 +142,7 @@ haveCpu
 	move.w d0, NativeCliPipelineRequestLen
 	moveq #0, d0
 	rts
-	.bend ; opforgeNativeCliPreparePipelineRequest
+	.bend  ; opforgeNativeCliPreparePipelineRequest
 
 	.endsection
 

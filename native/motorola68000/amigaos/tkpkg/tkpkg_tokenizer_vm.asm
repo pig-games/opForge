@@ -1443,7 +1443,6 @@ numberBaseDone
 	rts
 	.bend  ; numberBase
 
-
 recordPtr	.block
 	move.l d0, d1
 	add.l d1, d1

@@ -12,15 +12,15 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliCopyTokenBuffer .block
+opforgeNativeCliCopyTokenBuffer	.block
 	moveq #0, d0
 	move.b (a0)+, d0
 	move.b d0, (a1)+
 	bne.s opforgeNativeCliCopyTokenBuffer
 	rts
-	.bend ; opforgeNativeCliCopyTokenBuffer
+	.bend  ; opforgeNativeCliCopyTokenBuffer
 
-opforgeNativeCliTokenLen .block
+opforgeNativeCliTokenLen	.block
 	movem.l d1/a0, -(sp)
 	moveq #0, d0
 	move.l #TOKEN_BUFFER_CAPACITY - 1, d1
@@ -34,7 +34,7 @@ loop
 done
 	movem.l (sp)+, d1/a0
 	rts
-	.bend ; opforgeNativeCliTokenLen
+	.bend  ; opforgeNativeCliTokenLen
 
 	.endsection
 	.endmodule

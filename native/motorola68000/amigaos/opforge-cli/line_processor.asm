@@ -13,7 +13,7 @@
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 	.use opforge.cli.dos (opforgeNativeCliPutStr)
 
-	.use opforge.cli.strings (NewlineText, ConditionalFailureText, NativeBadOrgText, ParserFailureText, IfdefDirectiveText, IfndefDirectiveText, ElseifDirectiveText,ElseDirectiveText, EndifDirectiveText,IfDirectiveText, IncludeDirectiveText, OrgMnemonicText)
+	.use opforge.cli.strings (NewlineText, ConditionalFailureText, NativeBadOrgText, ParserFailureText, IfdefDirectiveText, IfndefDirectiveText, ElseifDirectiveText, ElseDirectiveText, EndifDirectiveText, IfDirectiveText, IncludeDirectiveText, OrgMnemonicText)
 	.use opforge.cli.constants (NCLI_PARSER_DIRECTIVE_MODULE, NCLI_PARSER_DIRECTIVE_ENDMODULE, NCLI_PARSER_DIRECTIVE_USE)
 
 	.use opforge.cli.state (NativeCliSourceLine, NativeCliSourceLineLen, NativeCliSourceLineNum, NativeCliIncludeDepth, NativeCliLineRequestLen, NativeCliPrvmRouteStatus, NativeCliPrvmResultCount)
@@ -31,7 +31,7 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliTokenizeCurrentLine .block
+opforgeNativeCliTokenizeCurrentLine	.block
 	tst.w NativeCliIncludeDepth
 	beq.s record
 	jsr opforgeNativeCliEmitIncludeLineRecord
@@ -83,10 +83,9 @@ fail
 return
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliTokenizeCurrentLine
+	.bend  ; opforgeNativeCliTokenizeCurrentLine
 
-
-opforgeNativeCliParseCurrentLine .block
+opforgeNativeCliParseCurrentLine	.block
 	movem.l d2-d7/a2-a4, -(sp)
 	lea NativeCliSourceLine, a0
 	moveq #0, d0
@@ -209,9 +208,9 @@ fail
 return
 	movem.l (sp)+, d2-d7/a2-a4
 	rts
-	.bend ; opforgeNativeCliParseCurrentLine
+	.bend  ; opforgeNativeCliParseCurrentLine
 
-opforgeNativeCliRouteParserModuleUseLine .block
+opforgeNativeCliRouteParserModuleUseLine	.block
 	movem.l d1-d7/a0-a3, -(sp)
 	clr.l NativeCliPrvmRouteStatus
 	clr.w NativeCliPrvmResultCount
@@ -221,11 +220,10 @@ opforgeNativeCliRouteParserModuleUseLine .block
 return
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
-	.bend ; opforgeNativeCliRouteParserModuleUseLine
-
+	.bend  ; opforgeNativeCliRouteParserModuleUseLine
 
 ; Build the tokenizer request payload: u32 line number plus source bytes.
-opforgeNativeCliPrepareLineServiceRequest .block
+opforgeNativeCliPrepareLineServiceRequest	.block
 	lea lastErrorBuffer, a2
 	move.l NativeCliSourceLineNum, d2  ; line number is little-endian to match package fixtures
 	move.b d2, (a2)+
@@ -243,8 +241,7 @@ opforgeNativeCliPrepareLineServiceRequest .block
 	move.w d1, NativeCliLineRequestLen
 	moveq #0, d0
 	rts
-	.bend ; opforgeNativeCliPrepareLineServiceRequest
-
+	.bend  ; opforgeNativeCliPrepareLineServiceRequest
 
 	.endsection
 	.endmodule

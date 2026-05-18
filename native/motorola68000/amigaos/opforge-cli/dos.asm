@@ -14,54 +14,54 @@
 	.pub
 
 ; Write a zero-terminated string through dos.library/PutStr.
-opforgeNativeCliPutStr .block
+opforgeNativeCliPutStr	.block
 	movea.l NativeCliDosBase, a6
 	jsr PUT_STR(a6)
 	rts
-	.bend ; opforgeNativeCliPutStr
+	.bend  ; opforgeNativeCliPutStr
 
 ; Open an existing AmigaDOS input file.
-opforgeNativeCliOpenInput .block
+opforgeNativeCliOpenInput	.block
 	move.l a0, d1
 	move.l #MODE_OLDFILE, d2
 	movea.l NativeCliDosBase, a6
 	jsr OPEN(a6)
 	rts
-	.bend ; opforgeNativeCliOpenInput
+	.bend  ; opforgeNativeCliOpenInput
 
 ; Close an AmigaDOS file handle in D1.
-opforgeNativeCliClose .block
+opforgeNativeCliClose	.block
 	movea.l NativeCliDosBase, a6
 	jsr CLOSE(a6)
 	rts
-	.bend ; opforgeNativeCliClose
+	.bend  ; opforgeNativeCliClose
 
 ; Read D0 bytes from file handle D1 into buffer A0.
-opforgeNativeCliReadInput .block
+opforgeNativeCliReadInput	.block
 	move.l a0, d2
 	move.l d0, d3
 	movea.l NativeCliDosBase, a6
 	jsr READ(a6)
 	rts
-	.bend ; opforgeNativeCliReadInput
+	.bend  ; opforgeNativeCliReadInput
 
 ; Open or create an AmigaDOS output file.
-opforgeNativeCliOpenOutput .block
+opforgeNativeCliOpenOutput	.block
 	move.l a0, d1
 	move.l #MODE_NEWFILE, d2
 	movea.l NativeCliDosBase, a6
 	jsr OPEN(a6)
 	rts
-	.bend ; opforgeNativeCliOpenOutput
+	.bend  ; opforgeNativeCliOpenOutput
 
 ; Write D0 bytes from buffer A0 to file handle D1.
-opforgeNativeCliWriteOutput .block
+opforgeNativeCliWriteOutput	.block
 	move.l a0, d2
 	move.l d0, d3
 	movea.l NativeCliDosBase, a6
 	jsr WRITE(a6)
 	rts
-	.bend ; opforgeNativeCliWriteOutput
+	.bend  ; opforgeNativeCliWriteOutput
 
 	.endsection
 	.endmodule

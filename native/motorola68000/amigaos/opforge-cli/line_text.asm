@@ -16,7 +16,7 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliSkipLineWhitespace .block
+opforgeNativeCliSkipLineWhitespace	.block
 	tst.l d0
 	beq.s done
 	cmpi.b #' ', (a0)
@@ -31,9 +31,9 @@ one
 
 done
 	rts
-	.bend ; opforgeNativeCliSkipLineWhitespace
+	.bend  ; opforgeNativeCliSkipLineWhitespace
 
-opforgeNativeCliLineStartsWith .block
+opforgeNativeCliLineStartsWith	.block
 	cmp.l d1, d0
 	bcs.s no
 	movea.l a0, a2
@@ -76,9 +76,9 @@ yes
 no
 	moveq #0, d0
 	rts
-	.bend ; opforgeNativeCliLineStartsWith
+	.bend  ; opforgeNativeCliLineStartsWith
 
-opforgeNativeCliCopyLineWord .block
+opforgeNativeCliCopyLineWord	.block
 	move.l #TOKEN_BUFFER_CAPACITY - 1, d6
 	clr.l d5
 
@@ -114,9 +114,9 @@ done
 fail
 	moveq #1, d0
 	rts
-	.bend ; opforgeNativeCliCopyLineWord
+	.bend  ; opforgeNativeCliCopyLineWord
 
-opforgeNativeCliCopyOperandText .block
+opforgeNativeCliCopyOperandText	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	clr.w d5
 	move.l #TOKEN_BUFFER_CAPACITY - 1, d4
@@ -174,10 +174,9 @@ trimSetEnd
 
 trimDone
 	rts
-	.bend ; opforgeNativeCliCopyOperandText
+	.bend  ; opforgeNativeCliCopyOperandText
 
-
-opforgeNativeCliCopyUseToken .block
+opforgeNativeCliCopyUseToken	.block
 	move.l #TOKEN_BUFFER_CAPACITY - 1, d6
 
 loop
@@ -214,9 +213,9 @@ fail
 	clr.b (a1)
 	moveq #1, d1
 	rts
-	.bend ; opforgeNativeCliCopyUseToken
+	.bend  ; opforgeNativeCliCopyUseToken
 
-opforgeNativeCliParseUseOptionalAlias .block
+opforgeNativeCliParseUseOptionalAlias	.block
 	movem.l d6/a1, -(sp)
 	move.l d0, d6
 	lea AsKeywordText, a1
@@ -249,7 +248,7 @@ return
 	movem.l (sp)+, d6/a1
 	addq.l #4, sp
 	rts
-	.bend ; opforgeNativeCliParseUseOptionalAlias
+	.bend  ; opforgeNativeCliParseUseOptionalAlias
 
 opforgeNativeCliParseUseItems
 	move.w d4, d5

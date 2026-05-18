@@ -12,7 +12,7 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliPathIsAbsolute .block
+opforgeNativeCliPathIsAbsolute	.block
 	moveq #0, d0
 
 loop
@@ -29,10 +29,9 @@ yes
 no
 	moveq #0, d0
 	rts
-	.bend ; opforgeNativeCliPathIsAbso
+	.bend  ; opforgeNativeCliPathIsAbso
 
-
-opforgeNativeCliCopyPathRoot .block
+opforgeNativeCliCopyPathRoot	.block
 	movem.l d2-d6/a2, -(sp)
 	movea.l a0, a2
 	clr.l d5
@@ -78,9 +77,9 @@ fail
 return
 	movem.l (sp)+, d2-d6/a2
 	rts
-	.bend ; opforgeNativeCliCopyPathRoot
+	.bend  ; opforgeNativeCliCopyPathRoot
 
-opforgeNativeCliCopyPathBuffer .block
+opforgeNativeCliCopyPathBuffer	.block
 	move.l #PATH_BUFFER_CAPACITY - 1, d6
 
 loop
@@ -96,10 +95,9 @@ loop
 ok
 	moveq #0, d0
 	rts
-	.bend ; opforgeNativeCliCopyPathBuffer
+	.bend  ; opforgeNativeCliCopyPathBuffer
 
-
-opforgeNativeCliAppendPathBuffer .block
+opforgeNativeCliAppendPathBuffer	.block
 	move.l #PATH_BUFFER_CAPACITY - 1, d6
 
 end
@@ -125,7 +123,7 @@ fail
 ok
 	moveq #0, d0
 	rts
-	.bend ; opforgeNativeCliAppendPathBuffer
+	.bend  ; opforgeNativeCliAppendPathBuffer
 
 	.endsection
 	.endmodule

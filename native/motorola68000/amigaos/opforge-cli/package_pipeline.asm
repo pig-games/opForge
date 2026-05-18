@@ -8,7 +8,7 @@
 	.cpu 68020
 
 	.use opforge.cli.constants (PACKAGE_INPUT_PTR_V1)
-	.use opforge.cli.copy (*)
+	.use opforge.cli.copy (opforgeNativeCliCopyBytes, opforgeNativeCliCopyCString)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, ControlBlockV1, packageStorage, PACKAGE_STORAGE_CAPACITY, lastErrorBuffer)
 

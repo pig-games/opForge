@@ -7,7 +7,14 @@
 	.module opforge.cli.state
 	.cpu 68020
 
-	.use opforge.cli.constants (*)
+	.use opforge.cli.constants (TOKEN_BUFFER_CAPACITY, PATH_BUFFER_CAPACITY, SOURCE_LINE_BUFFER_CAPACITY)
+	.use opforge.cli.constants (NATIVE_OPASM_ENGINE_CONTEXT_LONGS)
+	.use opforge.cli.constants (PRVM_ROUTE_FRAME_SIZE, PRVM_ROUTE_RESULT_CAPACITY)
+	.use opforge.cli.constants (PRVM_ROUTE_DIAG_CAPACITY, PRVM_ROUTE_RESUME_CAPACITY)
+	.use opforge.cli.constants (PRVM_ROUTE_EXPR_REQUEST_SIZE, PRVM_ROUTE_EXPR_RESULT_SIZE)
+	.use opforge.cli.constants (PRVM_ROUTE_EXPR_RESULT_CAPACITY)
+	.use opforge.cli.constants (NATIVE_MODULE_TABLE_CAPACITY, NATIVE_IMPORT_TABLE_CAPACITY)
+	.use opforge.cli.constants (NATIVE_IMPORT_SELECT_CAPACITY, NATIVE_MODULE_PATH_CAPACITY)
 
 	.pub
 

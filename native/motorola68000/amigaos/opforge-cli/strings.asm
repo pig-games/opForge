@@ -6,7 +6,6 @@
 
 	.module opforge.cli.strings
 	.cpu 68020
-	.use opforge.cli.constants (*)
 	.pub
 	.section data, kind=data
 

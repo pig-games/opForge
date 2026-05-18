@@ -7,8 +7,19 @@
 	.module opforge.cli.args
 	.cpu 68020
 
-	.use opforge.cli.constants (*)
-	.use opforge.cli.state (*)
+	.use opforge.cli.constants (TOKEN_BUFFER_CAPACITY, PATH_BUFFER_CAPACITY, NATIVE_MODULE_PATH_CAPACITY)
+	.use opforge.cli.constants (NATIVE_OUTPUT_FORMAT_BIN, NATIVE_OUTPUT_FORMAT_HUNK)
+	.use opforge.cli.constants (NCLI_PARSE_OK, NCLI_PARSE_HELP, NCLI_PARSE_VERSION)
+	.use opforge.cli.constants (NCLI_PARSE_USAGE, NCLI_PARSE_QUOTED, NCLI_PARSE_UNSUPPORTED)
+	.use opforge.cli.constants (NCLI_PARSE_UNKNOWN_FLAG, NCLI_PARSE_MISSING_VALUE)
+	.use opforge.cli.constants (NCLI_PARSE_NO_INPUT, NCLI_PARSE_HUNK_REQUIRED)
+	.use opforge.cli.constants (NCLI_PARSE_MIXED_INPUT, NCLI_PARSE_MULTIPLE_POSITIONAL)
+	.use opforge.cli.constants (NCLI_PARSE_MODULE_PATH_CAPACITY)
+	.use opforge.cli.state (NativeCliInputStyle, NativeCliHunkRequested, NativeCliBinRequested)
+	.use opforge.cli.state (NativeCliOutputFormat, NativeCliParseStatus, NativeCliArgToken)
+	.use opforge.cli.state (NativeCliInputPath, NativeCliHunkPath, NativeCliBinPath)
+	.use opforge.cli.state (NativeCliOutfileBase, NativeCliCpuName, NativeCliPackagePath)
+	.use opforge.cli.state (NativeCliIncludeTarget, NativeCliModulePathCount, NativeCliModulePathTable)
 	.use opforge.cli.strings (FlagHelpLong, FlagHelpShort, FlagVersionLong, FlagVersionShort)
 	.use opforge.cli.strings (FlagInfileShort, FlagInfileLong, FlagHunkLong)
 	.use opforge.cli.strings (FlagBinShort, FlagBinLong, FlagOutfileShort, FlagOutfileLong)

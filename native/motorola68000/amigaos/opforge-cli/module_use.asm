@@ -6,7 +6,18 @@
 
 	.module opforge.cli.module_use
 	.cpu 68020
-	.use opforge.cli.state (*)
+	.use opforge.cli.state (NativeCliArgToken, NativeCliSourceLineNum, NativeCliIncludeTarget)
+	.use opforge.cli.state (NativeCliIncludePath, NativeCliResolvedModuleId)
+	.use opforge.cli.state (NativeCliModuleCount, NativeCliModulePathCount, NativeCliRootModuleId)
+	.use opforge.cli.state (NativeCliCurrentModuleId, NativeCliModuleDepth)
+	.use opforge.cli.state (NativeCliModuleNameTable, NativeCliModuleFileIdTable)
+	.use opforge.cli.state (NativeCliModuleLineTable, NativeCliModuleDepthTable)
+	.use opforge.cli.state (NativeCliImportCount, NativeCliImportOwnerModuleTable)
+	.use opforge.cli.state (NativeCliImportModuleTable, NativeCliImportFileIdTable)
+	.use opforge.cli.state (NativeCliImportLineTable, NativeCliImportAliasTable)
+	.use opforge.cli.state (NativeCliImportSelectCount, NativeCliImportSelectImportTable)
+	.use opforge.cli.state (NativeCliImportSelectNameTable, NativeCliImportSelectAliasTable)
+	.use opforge.cli.state (NativeCliImportSelectFlagsTable, NativeCliModulePathTable)
 	.use opforge.cli.constants (NATIVE_MODULE_TABLE_CAPACITY, NATIVE_IMPORT_TABLE_CAPACITY, NATIVE_IMPORT_SELECT_CAPACITY)
 	.use opforge.cli.token_util (opforgeNativeCliCopyTokenBuffer, opforgeNativeCliTokenLen)
 	.use opforge.cli.text_output (opforgeNativeCliPutDecU16, opforgeNativeCliPutSpace)

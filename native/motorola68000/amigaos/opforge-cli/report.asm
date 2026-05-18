@@ -12,7 +12,11 @@
 	.use opasm.amigaos.engine (opasmEngineImageByteCount, opasmEngineSessionCpuName)
 	.use opasm.amigaos.engine (opasmEngineSessionOrigin, opasmEngineSessionCurrentPc)
 
-	.use opforge.cli.constants (*)
+	.use opforge.cli.constants (NCLI_PARSE_QUOTED, NCLI_PARSE_UNSUPPORTED)
+	.use opforge.cli.constants (NCLI_PARSE_UNKNOWN_FLAG, NCLI_PARSE_MISSING_VALUE)
+	.use opforge.cli.constants (NCLI_PARSE_NO_INPUT, NCLI_PARSE_HUNK_REQUIRED)
+	.use opforge.cli.constants (NCLI_PARSE_MIXED_INPUT, NCLI_PARSE_MULTIPLE_POSITIONAL)
+	.use opforge.cli.constants (NCLI_PARSE_MODULE_PATH_CAPACITY)
 	.use opforge.cli.state (NativeCliSourceLineNum, NativeCliCurrentPath)
 	.use opforge.cli.state (NativeCliIncludeDepth, NativeCliParseStatus)
 	.use opforge.cli.state (NativeCliArgToken)

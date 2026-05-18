@@ -5,16 +5,21 @@
 
 	.use opasm.amigaos.engine (opasmEngineImageByteCount)
 
-	.use opforge.cli.constants (*)
-	.use opforge.cli.state (*)
+	.use opforge.cli.constants (SYS_BASE, OPEN_LIBRARY, CLOSE_LIBRARY, GET_ARG_STR)
+	.use opforge.cli.constants (RETURN_OK, RETURN_USAGE, RETURN_FILE_FAILURE)
+	.use opforge.cli.constants (RETURN_RUNTIME_FAILURE, RETURN_NOT_IMPLEMENTED)
+	.use opforge.cli.constants (NCLI_PARSE_HELP, NCLI_PARSE_VERSION)
+	.use opforge.cli.constants (NATIVE_OUTPUT_FORMAT_HUNK)
+	.use opforge.cli.state (NativeCliReturnCode, NativeCliDosBase)
+	.use opforge.cli.state (NativeCliInputPath, NativeCliOutputFormat, NativeCliBinPath)
 	.use opforge.cli.strings (*)
-	.use opforge.cli.dos (*)
-	.use opforge.cli.source_reader (*)
-	.use opforge.cli.report (*)
-	.use opforge.cli.args (*)
-	.use opforge.cli.session_init (*)
-	.use opforge.cli.output (*)
-	.use opforge.cli.engine_callbacks (*)
+	.use opforge.cli.dos (opforgeNativeCliPutStr, opforgeNativeCliOpenInput, opforgeNativeCliClose)
+	.use opforge.cli.source_reader (opforgeNativeCliTokenizeFrontend)
+	.use opforge.cli.report (opforgeNativeCliReportParseError, opforgeNativeCliEmitAssemblySessionSummary)
+	.use opforge.cli.args (opforgeNativeCliParseArgs, opforgeNativeCliEmitModulePathRecords)
+	.use opforge.cli.session_init (opforgeNativeCliInitModuleUseState, opforgeNativeCliInitAssemblySession)
+	.use opforge.cli.output (opforgeNativeCliWriteFlatOutput)
+	.use opforge.cli.engine_callbacks (opforgeNativeCliRunTwoPassEngine)
 
 	.section code, kind=code
 	.pub

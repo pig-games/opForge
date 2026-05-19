@@ -15596,15 +15596,15 @@ fn motorola68020_tkpkg_tokenize_line_module_surface_routes_entrypoint_into_packa
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tkvmRun68000, tkvmSetStepBudget68000)"
+        ".use tkvm.amigaos.runtime (tkvmRun68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tkvmSetProgramStateTable68000)"
+        ".use tkvm.amigaos.control (tkvmSetStepBudget68000, tkvmSetProgramStateTable68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tkvmReadLastFailure68000)"
+        ".use tkvm.amigaos.control (tkvmReadLastFailure68000)"
     ));
     assert!(tokenizer_source.contains("jsr tkvmSetStepBudget68000"));
     assert!(tokenizer_source.contains("ActiveTokenizerVmStateTable"));
@@ -15660,7 +15660,11 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tkvmRun68000, tkvmSetStepBudget68000)"
+        ".use tkvm.amigaos.runtime (tkvmRun68000)"
+    ));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        ".use tkvm.amigaos.control (tkvmSetStepBudget68000, tkvmSetProgramStateTable68000)"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
@@ -15780,7 +15784,7 @@ fn motorola68020_tokvm_interpreter_supports_configured_state_table_entrypoints()
     assert!(listing.contains("tkvm.amigaos.state.TkvmProgramStateTablePtr"));
     assert!(listing.contains("tkvm.amigaos.state.TkvmProgramStateCount"));
     assert!(listing.contains("tkvm.amigaos.state.TkvmProgramStartState"));
-    assert!(listing.contains("tkvm.amigaos.runtime.tkvmSetProgramStateTable68000"));
+    assert!(listing.contains("tkvm.amigaos.control.tkvmSetProgramStateTable68000"));
     assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.newlineScanDone"));
     assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeSetState"));
 }
@@ -16564,6 +16568,7 @@ fn motorola68020_tokvm_interpreter_locks_jump_bounds_and_hex_escape_emit() {
 #[test]
 fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
     let source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let listing = tokvm_interpreter_listing("m68000-tokvm-failure-record-surface");
 
     assert!(
         tokvm_source_contains(
@@ -16572,20 +16577,9 @@ fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
         ),
         "expected tokvm to publish symbolic failure-kind ids for tkpkg-side error formatting"
     );
-    assert!(
-        source_contains_in_order(
-            &source,
-            &[
-                "tkvmReadLastFailure68000",
-                ".block",
-                "moveq #0, d0",
-                "move.w TkvmLastFailureKind, d0",
-                "moveq #0, d1",
-                "move.w TkvmLastFailureOperand, d1",
-            ]
-        ),
-        "expected tokvm to expose the last VM failure kind and operand without widening tkvmRun68000"
-    );
+    assert!(listing.contains("tkvm.amigaos.control.tkvmReadLastFailure68000"));
+    assert!(listing.contains("tkvm.amigaos.state.TkvmLastFailureKind"));
+    assert!(listing.contains("tkvm.amigaos.state.TkvmLastFailureOperand"));
     assert!(
         tokvm_source_contains(
             &source,

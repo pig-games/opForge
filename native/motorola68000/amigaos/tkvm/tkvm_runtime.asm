@@ -5,7 +5,6 @@
 	.module tkvm.amigaos.runtime
 	.cpu 68020
 	.pub
-	.use tkvm.amigaos.demo_program (DemoStateEntryOffsets)
 	.use tkvm.amigaos.state (TkvmStepBudget, TkvmProgramStateTablePtr, TkvmProgramStateCount)
 	.use tkvm.amigaos.state (TkvmProgramStartState, TkvmLastFailureKind, TkvmLastFailureOperand)
 	.use tkvm.amigaos.char_predicates (tkvmIsWhitespace, tkvmIsIdentifierStart, tkvmIsIdentifierContinue)
@@ -102,7 +101,6 @@ TOKEN_RECORD_SIZE               = 20
 SOURCE_BUFFER_CAPACITY          = 1024
 TOKEN_BUFFER_CAPACITY           = 64
 SCRATCH_BUFFER_CAPACITY         = 1024
-TKVM_DEFAULT_MAX_STEPS_PER_LINE = 2048
 
 ; The fixed capacities above intentionally match the AmigaOS host harness so the
 ; native VM and the CLI/report layer agree on how much source, token, and scratch
@@ -136,52 +134,7 @@ LOCAL_SIZE                      = 36
 
 	.pub
 
-; ---------------------------------------------------------------------------
 ; Native tokenizer VM interpreter.
-;
-; This interpreter executes the tokenizer bytecode against one line-buffer-backed
-; input stream. Its control flow mirrors the Rust tokenizer VM loop in
-; crates/opforge-vm/src/runtime_model_core.rs:
-; - validate arguments and stream constraints
-; - keep source cursor in D2 and program counter in A0
-; - decode opcodes from the bytecode stream in A3..A3+D7
-; - dispatch scan/predicate helpers that mirror tokenizer_runtime_utils.rs
-; - emit compact native token records into the caller-provided token buffer
-; ---------------------------------------------------------------------------
-
-; Override the tokenizer VM step budget for the next runs; nonpositive restores default.
-tkvmSetStepBudget68000	.block
-	tst.l d0
-	bgt.s store
-	move.l #TKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
-store
-	move.l d0, TkvmStepBudget
-	rts
-	.bend  ; tkvmSetStepBudget68000
-
-; Install a package-provided state table; invalid counts fall back to demo state 0.
-tkvmSetProgramStateTable68000	.block
-	tst.l d0
-	bgt.s store
-	lea DemoStateEntryOffsets, a0
-	moveq #1, d0
-	moveq #0, d1
-store
-	move.l a0, TkvmProgramStateTablePtr
-	move.l d0, TkvmProgramStateCount
-	move.w d1, TkvmProgramStartState
-	rts
-	.bend  ; tkvmSetProgramStateTable68000
-
-; Return the last explicit VM failure kind/operand captured by tkvm_run_68000.
-tkvmReadLastFailure68000	.block
-	moveq #0, d0
-	move.w TkvmLastFailureKind, d0
-	moveq #0, d1
-	move.w TkvmLastFailureOperand, d1
-	rts
-	.bend  ; tkvmReadLastFailure68000
-
 tkvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
 	movea.l a2, a6  ; preserve scratch base separately so A2 can become the interpreter-local frame pointer

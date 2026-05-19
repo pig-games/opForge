@@ -379,6 +379,7 @@ readLinePayload	.block
 	or.w d1, d0
 	cmpi.w #4, d0
 	blo.s badPayload
+	moveq #0, d4
 	move.w d0, d4
 	subq.w #4, d4
 	moveq #0, d0

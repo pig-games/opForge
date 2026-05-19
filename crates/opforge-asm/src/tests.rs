@@ -15612,6 +15612,10 @@ fn motorola68020_tkpkg_tokenize_line_module_surface_routes_entrypoint_into_packa
     assert!(tokenizer_source.contains("ActiveTokenizerVmInvalidCharDiagCode"));
     assert!(tokenizer_source.contains("jsr tkvmSetProgramStateTable68000"));
     assert!(tokenizer_source.contains("jsr tkvmRun68000"));
+    assert!(tkpkg_source_contains(
+        &tokenizer_source,
+        "MOVEQ #0,D4\n        MOVE.W D0,D4\n        SUBQ.W #4,D4"
+    ));
     assert!(tokvm_source_contains(
         &local_tokvm_source,
         "tkvm_run_68000:"
@@ -15649,6 +15653,8 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     let buffers_source = tkpkg_amigaos_source("tkpkg_buffers.asm");
     let tokenizer_source = tkpkg_amigaos_source("tkpkg_tokenizer_vm.asm");
     let local_tokvm_source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let char_predicates_source = tokvm_amigaos_source("tkvm_char_predicates.asm");
+    let listing = tokvm_interpreter_listing("m68000-tkpkg-tokenizer-runtime-surface");
 
     assert!(tkpkg_source_contains(
         &buffers_source,
@@ -15699,19 +15705,17 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
         &local_tokvm_source,
         "opcodeScanIdentifier"
     ));
-    assert!(tokvm_source_contains(
-        &local_tokvm_source,
-        "tkvmSetProgramStateTable68000"
-    ));
+    assert!(listing.contains("tkvm.amigaos.control.tkvmSetProgramStateTable68000"));
     assert!(tokvm_source_contains(&local_tokvm_source, "opcodeSetState"));
-    assert!(tokvm_source_contains(
-        &local_tokvm_source,
-        "CMPI.B #39,0(A4,D2.L)\n        BNE scanIdentifierCommit"
+    assert!(local_tokvm_source.contains(
+        "move.l TkvmProgramStateTablePtr, d1\n\ttst.l d1\n\tbeq.w invalidProgramAtCursor\n\tmovea.l d1, a1\n\tadd.l d0, d0\n\tadd.l d0, d0\n\tadda.l d0, a1\n\tmove.l (a1), d0"
     ));
     assert!(tokvm_source_contains(
-        &local_tokvm_source,
-        "tkvmReadLastFailure68000"
+        &char_predicates_source,
+        ".section code, kind=code\n\ntkvmIsWhitespace\t.block"
     ));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanIdentifierToken.scanIdentifierCommit"));
+    assert!(listing.contains("tkvm.amigaos.control.tkvmReadLastFailure68000"));
 }
 
 #[test]
@@ -16544,9 +16548,15 @@ fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
     assert!(
         tokvm_source_contains(
             &source,
-            "opcodeEmitToken:\n        LEA 0(A3,D7.L),A1\n        CMPA.L A1,A0\n        BCC invalidProgramAtCursor\n        MOVEQ #0,D0\n        MOVE.B (A0)+,D0\n        MOVE.W D0,LOCAL_PENDING_KIND(A2)\n        JSR commitPendingToken"
+            "opcodeEmitToken:\n        LEA 0(A3,D7.L),A1\n        CMPA.L A1,A0\n        BCC invalidProgramAtCursor\n        MOVEQ #0,D0\n        MOVE.B (A0)+,D0\n        MOVE.W D0,LOCAL_PENDING_KIND(A2)\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR commitPendingToken"
         ),
         "expected EmitToken to read the inline kind operand and commit the pending native token"
+    );
+    assert!(
+        source.contains(
+            "move.w d0, LOCAL_PENDING_KIND(a2)\n\tmove.l a0, LOCAL_PROGRAM_COUNTER(a2)\n\tjsr commitPendingToken\n\ttst.l d0\n\tbne return\n\tmovea.l LOCAL_PROGRAM_COUNTER(a2), a0\n\tbra programLoop"
+        ),
+        "expected EmitToken to preserve the bytecode PC across native token commit"
     );
 }
 

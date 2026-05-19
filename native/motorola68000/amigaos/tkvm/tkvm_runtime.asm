@@ -219,7 +219,10 @@ newlineScanDone
 	tst.l d1
 	beq.w invalidProgramAtCursor
 	movea.l d1, a1
-	move.l 0.W(a1, d0.l*4), d0
+	add.l d0, d0
+	add.l d0, d0
+	adda.l d0, a1
+	move.l (a1), d0
 	cmp.l d7, d0
 	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0
@@ -337,9 +340,11 @@ opcodeEmitToken
 	moveq #0, d0
 	move.b (a0)+, d0
 	move.w d0, LOCAL_PENDING_KIND(a2)
+	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
 	jsr commitPendingToken
 	tst.l d0
 	bne return
+	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
 	bra programLoop
 
 opcodeSetState
@@ -361,7 +366,10 @@ opcodeSetState
 	tst.l d1
 	beq.w invalidProgramAtCursor
 	movea.l d1, a1
-	move.l 0.W(a1, d0.l*4), d0
+	add.l d0, d0
+	add.l d0, d0
+	adda.l d0, a1
+	move.l (a1), d0
 	cmp.l d7, d0
 	bhi invalidProgramAtCursor
 	lea 0(a3, d0.l), a0

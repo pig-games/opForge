@@ -12,6 +12,8 @@
 ; calls them through JumpIfClass and the scan helpers reuse them while walking
 ; identifiers, number bodies, strings, and prefixed constants.
 ; ---------------------------------------------------------------------------
+	.section code, kind=code
+
 tkvmIsWhitespace	.block
 	cmpi.b #' ', d0  ; this line-input slice only treats space and tab as intra-line whitespace
 	beq tkvmPredicateTrue
@@ -165,4 +167,5 @@ tkvmPredicateFalse
 	moveq #0, d0
 	rts
 
+	.endsection
 	.endmodule

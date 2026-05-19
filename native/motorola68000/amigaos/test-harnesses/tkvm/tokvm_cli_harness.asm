@@ -7,7 +7,8 @@
 	.cpu 68020
 	.pub
 	.use tkvm.amigaos.runtime (tkvmRun68000, tkvmSetStepBudget68000)
-	.use tkvm.amigaos.runtime (DemoProgram, DemoProgramLen, TKVM_DEFAULT_MAX_STEPS_PER_LINE)
+	.use tkvm.amigaos.demo_program (DemoProgram, DemoProgramLen)
+	.use tkvm.amigaos.runtime (TKVM_DEFAULT_MAX_STEPS_PER_LINE)
 	.use tkvm.amigaos.runtime (TOKEN_BUFFER_CAPACITY, TOKEN_RECORD_SIZE)
 	.use tkvm.amigaos.runtime (SOURCE_BUFFER_CAPACITY, SCRATCH_BUFFER_CAPACITY)
 	.use tkvm.amigaos.runtime (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_PROGRAM, TK_KIND_OP_LT)

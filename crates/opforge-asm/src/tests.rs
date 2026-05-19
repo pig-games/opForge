@@ -9771,7 +9771,7 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
     assert!(listing.contains("tokvm.amigaos.cli_harness.tokvmAmigaosCliHarnessRun"));
     assert!(listing.contains("tokvm.amigaos.cli_harness.amigaosCliFileioInit"));
     assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000"));
-    assert!(listing.contains("tkvm.amigaos.runtime.DemoProgramLen"));
+    assert!(listing.contains("tkvm.amigaos.demo_program.DemoProgramLen"));
 
     let payload_path = example_output_payload_path(&out_dir, "tokvm_interpreter", "hunk");
     let payload = fs::read(payload_path).expect("read tokvm hunk payload");
@@ -12796,7 +12796,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
 
 fn tokvm_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
-    let asm_path = if file_name == "tkvm_runtime.asm" {
+    let asm_path = if matches!(file_name, "tkvm_runtime.asm" | "tkvm_demo_program.asm") {
         repo_root.join(format!("native/motorola68000/amigaos/tkvm/{file_name}"))
     } else {
         repo_root.join(format!(
@@ -15715,6 +15715,7 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_locks_number_and_operator
 #[test]
 fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
     let source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let demo_source = tokvm_amigaos_source("tkvm_demo_program.asm");
     let harness_source = tokvm_amigaos_source("tokvm_cli_harness.asm");
 
     assert!(source.contains("TK_KIND_OP_POWER                = 21"));
@@ -15731,11 +15732,11 @@ fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
         "tkvmStageBitXor:\n        MOVE.W #TK_KIND_OP_BIT_XOR,LOCAL_PENDING_KIND(A2)\n        LEA LexBitXor,A0\n        MOVEQ #1,D0"
     ));
     assert!(tokvm_source_contains(
-        &source,
+        &demo_source,
         "lexPower:\n        .byte \"**\""
     ));
     assert!(tokvm_source_contains(
-        &source,
+        &demo_source,
         "lexBitXor:\n        .byte \"^\""
     ));
     assert!(tokvm_source_contains(
@@ -15772,7 +15773,7 @@ fn motorola68020_tokvm_native_percent_scanner_checks_rust_prefix_context() {
 #[test]
 fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
     let source = tokvm_amigaos_source("tkvm_runtime.asm");
-    let local_tkpkg_source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let demo_source = tokvm_amigaos_source("tkvm_demo_program.asm");
 
     assert!(tokvm_source_contains(
         &source,
@@ -15783,19 +15784,7 @@ fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
         "tkvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA LexHash,A0\n        MOVEQ #1,D0"
     ));
     assert!(tokvm_source_contains(
-        &source,
-        "lexHash:\n        .byte \"#\""
-    ));
-    assert!(tokvm_source_contains(
-        &local_tkpkg_source,
-        "CMPI.B #'#',D0\n        BEQ tkvmStageHash"
-    ));
-    assert!(tokvm_source_contains(
-        &local_tkpkg_source,
-        "tkvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA LexHash,A0\n        MOVEQ #1,D0"
-    ));
-    assert!(tokvm_source_contains(
-        &local_tkpkg_source,
+        &demo_source,
         "lexHash:\n        .byte \"#\""
     ));
 }
@@ -15803,14 +15792,19 @@ fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
 #[test]
 fn motorola68020_tokvm_interpreter_supports_configured_state_table_entrypoints() {
     let source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let demo_source = tokvm_amigaos_source("tkvm_demo_program.asm");
 
     assert!(
         tokvm_source_contains(
-            &source,
-            "demoStateEntryOffsets:\n        .long DEMO_PC_READ_CHAR\n\nTkvmProgramStateTablePtr:\n        .long DemoStateEntryOffsets\n\nTkvmProgramStateCount:\n        .long 1\n\nTkvmProgramStartState:\n        .word 0"
+            &demo_source,
+            "demoStateEntryOffsets:\n        .long DEMO_PC_READ_CHAR"
         ),
         "expected tokvm to keep a default state-table configuration for the demo interpreter path"
     );
+    assert!(tokvm_source_contains(
+        &source,
+        "TkvmProgramStateTablePtr:\n        .long DemoStateEntryOffsets\n\nTkvmProgramStateCount:\n        .long 1\n\nTkvmProgramStartState:\n        .word 0"
+    ));
     assert!(
         source_contains_in_order(
             &source,
@@ -16728,7 +16722,7 @@ fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
 
 #[test]
 fn motorola68020_tokvm_interpreter_demo_program_uses_symbolic_bytecode_labels() {
-    let source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let source = tokvm_amigaos_source("tkvm_demo_program.asm");
 
     assert!(
         tokvm_source_contains(&source, "TK_CLASS_IDENTIFIER_START       = 2"),

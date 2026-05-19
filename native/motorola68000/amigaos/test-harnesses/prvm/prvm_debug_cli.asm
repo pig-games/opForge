@@ -1,8 +1,8 @@
-; Optional AmigaOS PRVM report demo for the parity-locked interpreter.
+; Optional AmigaOS PRVM report demo for the parity-locked runtime.
 
 	.module main
 	.cpu 68020
-	.use prvm.amigaos.interpreter (prvmRun68000)
+	.use prvm.amigaos.runtime (prvmRun68000)
 
 SYS_BASE                        = 4
 RETURN_OK                       = 0

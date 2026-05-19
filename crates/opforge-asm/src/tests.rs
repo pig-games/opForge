@@ -1689,7 +1689,7 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
         || asm_path
             .components()
             .any(|component| component.as_os_str() == "amigaos")
-            && asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("prvm_interpreter")
+            && asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("prvm_runtime")
 }
 
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
@@ -1791,8 +1791,8 @@ fn example_output_payload_path(
                 return tokvm;
             }
         }
-        if base == "prvm_interpreter" {
-            let prvm = build_dir.join("prvm_interpreter.hunk");
+        if base == "prvm_runtime" {
+            let prvm = build_dir.join("prvm_runtime.hunk");
             if prvm.exists() {
                 return prvm;
             }
@@ -1828,7 +1828,7 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
                 | "tkpkg_token_policy.asm"
                 | "tkpkg_tokenizer_vm.asm"
                 | "opcore_expr_bridge.asm"
-                | "prvm_interpreter.asm"
+                | "prvm_runtime.asm"
                 | "prvm_line_router.asm"
                 | "prvm_line_iterator.asm"
                 | "prvm_line_iterator_smoke.asm"
@@ -1882,8 +1882,8 @@ fn example_reference_stem(examples_dir: &Path, asm_path: &Path) -> PathBuf {
     let relative_stem = example_relative_stem(examples_dir, asm_path);
     if relative_stem == Path::new("motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter") {
         PathBuf::from("motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter")
-    } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_interpreter") {
-        PathBuf::from("motorola68000/amigaos/prvm_interpreter")
+    } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_runtime") {
+        PathBuf::from("motorola68000/amigaos/prvm_runtime")
     } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_smoke") {
         PathBuf::from("motorola68000/amigaos/prvm_smoke")
     } else if relative_stem == Path::new("motorola68000/amigaos/prvm/prvm_debug_cli") {
@@ -9751,7 +9751,7 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
 
     if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
         let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
-        panic!("assemble tokvm interpreter example: {detail}");
+        panic!("assemble tokvm runtime example: {detail}");
     }
 
     let listing =
@@ -9784,23 +9784,23 @@ fn motorola68020_tokvm_interpreter_example_assembles_with_cli_harness_surface() 
         payload
             .windows("OPFORGE-TOKVM-ABI-V1".len())
             .any(|window| window == b"OPFORGE-TOKVM-ABI-V1"),
-        "expected ABI marker string in tokvm interpreter Hunk payload"
+        "expected ABI marker string in tokvm runtime Hunk payload"
     );
     assert!(
         payload
             .windows("Usage: tokvm <input-path> <output-path>".len())
             .any(|window| window == b"Usage: tokvm <input-path> <output-path>"),
-        "expected CLI usage string in tokvm interpreter Hunk payload"
+        "expected CLI usage string in tokvm runtime Hunk payload"
     );
 }
 
 #[test]
-fn motorola68020_prvm_interpreter_example_assembles_first_native_slice() {
+fn motorola68020_prvm_runtime_example_assembles_first_native_slice() {
     let repo_root = workspace_root();
-    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_interpreter.asm");
-    let source = fs::read_to_string(asm_path).expect("read prvm interpreter module source");
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_runtime.asm");
+    let source = fs::read_to_string(asm_path).expect("read prvm runtime module source");
 
-    assert!(source.contains(".module prvm.amigaos.interpreter"));
+    assert!(source.contains(".module prvm.amigaos.runtime"));
     assert!(source.contains(".cpu 68020"));
     assert!(source.contains("prvmRun68000"));
     assert!(source.contains("PRVM_OPCODE_LOAD_IDENTIFIER"));
@@ -9838,7 +9838,7 @@ fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() 
 
     assert!(source.contains(".module prvm.amigaos.line_router"));
     assert!(source.contains(".cpu 68020"));
-    assert!(source.contains(".use prvm.amigaos.interpreter (prvmRun68000)"));
+    assert!(source.contains(".use prvm.amigaos.runtime (prvmRun68000)"));
     assert!(source.contains("prvmRouteLine68000\t.block"));
     assert!(source.contains("PRVM_ROUTE_MAGIC_OPLR"));
     assert!(source.contains("PRVM_STATUS_UNSUPPORTED_ROUTE"));
@@ -9868,12 +9868,12 @@ fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() 
 }
 
 #[test]
-fn motorola68020_prvm_line_router_module_parses_with_interpreter_import() {
+fn motorola68020_prvm_line_router_module_parses_with_runtime_import() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_line_router.asm");
 
     let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
-        .expect("line router module should parse with interpreter import");
+        .expect("line router module should parse with runtime import");
     assert!(
         entries.is_empty(),
         "import-only line router should not emit output entries"
@@ -9951,7 +9951,7 @@ fn motorola68020_prvm_smoke_example_assembles_with_native_call_surface() {
         fs::read_to_string(out_dir.join("prvm_smoke.lst")).expect("read prvm smoke listing");
     let source = fs::read_to_string(&asm_path).expect("read prvm smoke source");
     assert!(listing.contains(".cpu 68020"));
-    assert!(listing.contains("prvm.amigaos.interpreter.prvmRun68000"));
+    assert!(listing.contains("prvm.amigaos.runtime.prvmRun68000"));
     assert!(listing.contains("PRVM_OPCODE_PARSE_OPERAND_EXPR"));
     assert!(listing.contains("PRVM_OPCODE_PARSE_OPTIONAL_LABEL"));
     assert!(listing.contains("PRVM_OPCODE_JUMP_IF_FALSE"));
@@ -10010,7 +10010,7 @@ fn motorola68020_prvm_debug_cli_example_assembles_with_report_surface() {
     let listing = fs::read_to_string(out_dir.join("prvm_debug_cli.lst"))
         .expect("read prvm debug cli listing");
     assert!(listing.contains(".cpu 68020"));
-    assert!(listing.contains("prvm.amigaos.interpreter.prvmRun68000"));
+    assert!(listing.contains("prvm.amigaos.runtime.prvmRun68000"));
     assert!(listing.contains("PRVM_DEBUG_PROGRAM_LEN"));
     assert!(listing.contains("ReportSuccessText"));
     assert!(listing.contains("OPFORGE-PRVM 1"));

@@ -1,6 +1,6 @@
-; Native parser VM module for the first AmigaOS PRVM interpreter slice.
+; Native parser VM module for the AmigaOS PRVM runtime.
 
-	.module prvm.amigaos.interpreter
+	.module prvm.amigaos.runtime
 	.cpu 68020
 	.pub
 
@@ -172,7 +172,7 @@ prvmRun68000	.block
 	cmpi.l #PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgument
 
-	movea.l a0, a4  ; A4 is the stable request-frame base for the interpreter run
+	movea.l a0, a4  ; A4 is the stable request-frame base for the runtime run
 	suba.l #LOCAL_SIZE, sp  ; fixed native frame mirrors Rust parser VM execution state
 	lea 0(sp), a3  ; A3 addresses LOCAL_* slots while opcodes consume A0-A2/D0-D3
 	clr.l LOCAL_LOADED_FLAG(a3)

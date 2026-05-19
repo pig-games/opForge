@@ -370,7 +370,7 @@ and diagnostics should remain distinct.
   - Definition of done: See detailed criteria below for this work item.
   - Expected files:
     - `examples/motorola68000/amigaos/opforge/opforge_cli.asm`
-    - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
+    - `examples/motorola68000/amigaos/prvm/prvm_runtime.asm`
     - `crates/opforge-asm/src/tests.rs`
     - `examples/reference/motorola68000/amigaos/opforge/opforge_cli.hunk`
     - `examples/reference/motorola68000/amigaos/opforge/opforge_cli.lst`
@@ -414,7 +414,7 @@ and diagnostics should remain distinct.
   - Validation: See Full quality gates for this work item.
   - Definition of done: See detailed criteria below for this work item.
   - Expected files:
-    - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
+    - `examples/motorola68000/amigaos/prvm/prvm_runtime.asm`
     - `examples/motorola68000/amigaos/opforge/opforge_cli.asm`
     - `crates/opforge-vm/tests/parser_vm_native_abi.rs`
     - `crates/opforge-asm/src/tests.rs`
@@ -525,7 +525,7 @@ and diagnostics should remain distinct.
   - Definition of done: See detailed criteria below for this work item.
   - Expected files:
     - `examples/motorola68000/amigaos/opforge/opforge_cli.asm`
-    - `examples/motorola68000/amigaos/prvm/prvm_interpreter.asm`
+    - `examples/motorola68000/amigaos/prvm/prvm_runtime.asm`
     - `examples/motorola68000/amigaos/exvm/exvm_interpreter.asm`
     - `crates/opforge-asm/src/tests.rs`
     - reference Hunk/listing artifacts for changed examples

@@ -3,7 +3,7 @@
 	.module prvm.amigaos.line_router
 	.cpu 68020
 	.pub
-	.use prvm.amigaos.interpreter (prvmRun68000)
+	.use prvm.amigaos.runtime (prvmRun68000)
 
 PRVM_REQUEST_FRAME_SIZE             = 112
 PRVM_MAGIC_OPRP                     = $4F505250

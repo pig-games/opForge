@@ -1,8 +1,8 @@
-; FS-UAE-friendly native smoke executable for the PRVM interpreter.
+; FS-UAE-friendly native smoke executable for the PRVM runtime.
 
 	.module main
 	.cpu 68020
-	.use prvm.amigaos.interpreter (prvmRun68000)
+	.use prvm.amigaos.runtime (prvmRun68000)
 
 SYS_BASE                        = 4
 RETURN_OK                       = 0

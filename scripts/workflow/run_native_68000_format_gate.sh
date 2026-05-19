@@ -55,6 +55,7 @@ args=(
   -M native/motorola68000/amigaos/tkvm
   -M native/motorola68000/amigaos/test-harnesses/tkvm
   -M native/motorola68000/amigaos/prvm
+  -M native/motorola68000/amigaos/exprvm
   -M native/motorola68000/amigaos/opcore
   -M native/motorola68000/amigaos/opasm
   -i native/motorola68000/amigaos/main.asm

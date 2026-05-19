@@ -1700,6 +1700,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
+            amigaos_dir.join("exprvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
         ];
@@ -1714,6 +1715,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
+            amigaos_dir.join("exprvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
         ];
@@ -1741,6 +1743,14 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
         return vec![amigaos_dir.join("prvm")];
     }
 
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("opcore_expr_bridge") {
+        let amigaos_dir = workspace_root()
+            .join("native")
+            .join("motorola68000")
+            .join("amigaos");
+        return vec![amigaos_dir.join("exprvm")];
+    }
+
     if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("tkpkg_entry") {
         let amigaos_dir = workspace_root()
             .join("native")
@@ -1750,6 +1760,7 @@ fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
             amigaos_dir.join("tkpkg"),
             amigaos_dir.join("tkvm"),
             amigaos_dir.join("prvm"),
+            amigaos_dir.join("exprvm"),
             amigaos_dir.join("opcore"),
             amigaos_dir.join("opasm"),
         ];
@@ -12379,8 +12390,8 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
     assert!(source.contains("D2: current assembly PC for '$' current-address terms."));
     assert!(source.contains("OPCORE_EXPRVM_PROGRAM_CAPACITY"));
     assert!(source.contains("OpcoreExvmSelectedOpcodeVersion"));
-    assert!(source.contains("OpcoreExprVmSelectedOpcodeVersion"));
-    assert!(source.contains("OpcoreExprVmCurrentPass"));
+    assert!(source.contains("ExprvmSelectedOpcodeVersion"));
+    assert!(source.contains("ExprvmCurrentPass"));
     assert!(source_contains_in_order(
         &source,
         &["compileAdditive", ".block"]
@@ -12429,7 +12440,7 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
             "opcodeParseExpression:",
             "BSR.W compileAdditive",
             "BSR.W finalizeProgram",
-            "JSR opcoreExprvmEvalProgramV1",
+            "JSR exprvmEvalProgramV1",
             "opcodeEnd:",
             "CMPI.L #1, D4",
         ]
@@ -12472,20 +12483,9 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
             "opcoreExvmEvalOperandV1:",
             "MOVE.W D4, OpcoreExvmSelectedOpcodeVersion",
             "CMPI.W #2, D5",
-            "MOVE.W D5, OpcoreExprVmSelectedOpcodeVersion",
-            "MOVE.W D6, OpcoreExprVmCurrentPass",
+            "MOVE.W D5, ExprvmSelectedOpcodeVersion",
+            "MOVE.W D6, ExprvmCurrentPass",
             "BSR.W selectProgram",
-        ]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opcoreExprVmOpcodePushSymbol:",
-            "MOVE.W opcoreExprVmCurrentPass, D6",
-            "CMPI.W #1, D6",
-            "BEQ.S opcoreExprVmPushSymbolUnstable",
-            "opcoreExprVmPushSymbolUnstable:",
-            "MOVEQ #1, D5",
         ]
     ));
     assert!(source_contains_in_order(
@@ -12493,9 +12493,47 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
         &[
             "label:",
             "BSR.W resolveLabelIndex",
-            "MOVE.W opcoreExprVmCurrentPass, D3",
+            "MOVE.W ExprvmCurrentPass, D3",
             "CMPI.W #1, D3",
             "BSR.W emitPushLiteralD3",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_exprvm_runtime_owns_bytecode_evaluator() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/exprvm/exprvm_runtime.asm");
+    let source = fs::read_to_string(&asm_path).expect("read exprvm runtime source");
+    let formatted = format_tokvm_asm_fragment(&source);
+
+    let (entries, diagnostics) = assemble_example_entries_with_runtime_mode(&asm_path, true)
+        .expect("exprvm runtime module should parse");
+    assert!(
+        entries.is_empty(),
+        "exprvm runtime module should not emit output entries"
+    );
+    assert!(
+        diagnostics.is_empty(),
+        "unexpected diagnostics while parsing exprvm runtime: {diagnostics:?}"
+    );
+
+    assert!(source.contains(".module exprvm.amigaos.runtime"));
+    assert!(source.contains("exprvmEvalProgramV1"));
+    assert!(source.contains("EXPRVM_V2_OPCODE_REQUIRE_SCALAR"));
+    assert!(source.contains("ExprvmSelectedOpcodeVersion"));
+    assert!(source.contains("ExprvmCurrentPass"));
+    assert!(!source.contains("opcoreExvmEvalOperandV1"));
+    assert!(!source.contains("OPCORE_EXPRVM_PROGRAM_CAPACITY"));
+    assert!(source_contains_in_order(
+        &formatted,
+        &[
+            "opcodePushSymbol:",
+            "MOVE.W ExprvmCurrentPass, D6",
+            "CMPI.W #1, D6",
+            "BEQ.S pushSymbolUnstable",
+            "pushSymbolUnstable:",
+            "MOVEQ #1, D5",
         ]
     ));
 }

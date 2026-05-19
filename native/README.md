@@ -18,6 +18,7 @@ flat `.bin` output, and deterministic diagnostics for known unsupported cases.
 
 - `motorola68000/amigaos/opforge-cli/`: native AmigaOS opForge CLI entry point
   and package fixture.
+- `motorola68000/amigaos/exprvm/`: native expression VM runtime modules.
 - `motorola68000/amigaos/opcore/`: native opCore support modules.
 - `motorola68000/amigaos/opasm/`: native opasm staging modules currently used
   for the first selector/encode request bridge.
@@ -39,6 +40,7 @@ The runtime modules it depends on are deliverable support code:
 - `motorola68000/amigaos/tkpkg/*.asm`
 - `motorola68000/amigaos/tkvm/*.asm`
 - `motorola68000/amigaos/prvm/*.asm`
+- `motorola68000/amigaos/exprvm/*.asm`
 - `motorola68000/amigaos/opcore/*.asm`
 - `motorola68000/amigaos/opasm/*.asm`
 
@@ -198,6 +200,7 @@ cargo run -p cli --bin opforge -- \
   -M native/motorola68000/amigaos/tkpkg \
   -M native/motorola68000/amigaos/tkvm \
   -M native/motorola68000/amigaos/prvm \
+  -M native/motorola68000/amigaos/exprvm \
   -M native/motorola68000/amigaos/opcore \
   -M native/motorola68000/amigaos/opasm \
   native/motorola68000/amigaos/main.asm

@@ -1,0 +1,955 @@
+; Native tokenizer VM token staging and scanner helpers.
+
+	.module tkvm.amigaos.scanner
+	.cpu 68020
+	.pub
+	.use tkvm.amigaos.demo_program (LexDot, LexDollar, LexHash, LexQuestion)
+	.use tkvm.amigaos.demo_program (LexOpenBracket, LexCloseBracket, LexOpenBrace, LexCloseBrace)
+	.use tkvm.amigaos.demo_program (LexComma, LexColon, LexOpenParen, LexCloseParen)
+	.use tkvm.amigaos.demo_program (LexPlus, LexMinus, LexMultiply, LexPower)
+	.use tkvm.amigaos.demo_program (LexDivide, LexBitNot, LexEq, LexNe)
+	.use tkvm.amigaos.demo_program (LexLogicNot, LexBitAnd, LexBitOr, LexLogicAnd)
+	.use tkvm.amigaos.demo_program (LexLogicOr, LexBitXor, LexLogicXor)
+	.use tkvm.amigaos.demo_program (LexLt, LexLe, LexGt, LexGe)
+	.use tkvm.amigaos.demo_program (LexShl, LexShr, LexMod, LexRange, LexRangeInclusive)
+	.use tkvm.amigaos.char_predicates (tkvmIsIdentifierContinue, tkvmIsNumberBody)
+	.use tkvm.amigaos.char_predicates (tkvmIsHexDigitOrUnderscore, tkvmHexDigitValue)
+	.use tkvm.amigaos.state (TkvmLastFailureKind, TkvmLastFailureOperand)
+
+TK_STATUS_SUCCESS               = 0
+TK_STATUS_TOKEN_OVERFLOW        = 2
+TK_STATUS_LEXEME_OVERFLOW       = 3
+TK_STATUS_VM_FAILURE            = 4
+TK_STATUS_INVALID_PROGRAM       = 6
+
+TK_VM_FAILURE_KIND_FAIL         = 1
+
+TK_KIND_IDENTIFIER              = 0
+TK_KIND_NUMBER                  = 2
+TK_KIND_STRING                  = 3
+TK_KIND_COMMA                   = 4
+TK_KIND_COLON                   = 5
+TK_KIND_DOLLAR                  = 6
+TK_KIND_DOT                     = 7
+TK_KIND_HASH                    = 8
+TK_KIND_QUESTION                = 9
+TK_KIND_OPEN_BRACKET            = 10
+TK_KIND_CLOSE_BRACKET           = 11
+TK_KIND_OPEN_BRACE              = 12
+TK_KIND_CLOSE_BRACE             = 13
+TK_KIND_OPEN_PAREN              = 14
+TK_KIND_CLOSE_PAREN             = 15
+TK_KIND_OP_RANGE                = 16
+TK_KIND_OP_RANGE_INCLUSIVE      = 17
+TK_KIND_OP_PLUS                 = 18
+TK_KIND_OP_MINUS                = 19
+TK_KIND_OP_MULTIPLY             = 20
+TK_KIND_OP_POWER                = 21
+TK_KIND_OP_DIVIDE               = 22
+TK_KIND_OP_MOD                  = 23
+TK_KIND_OP_SHL                  = 24
+TK_KIND_OP_SHR                  = 25
+TK_KIND_OP_BIT_NOT              = 26
+TK_KIND_OP_LOGIC_NOT            = 27
+TK_KIND_OP_BIT_AND              = 28
+TK_KIND_OP_BIT_OR               = 29
+TK_KIND_OP_BIT_XOR              = 30
+TK_KIND_OP_LOGIC_AND            = 31
+TK_KIND_OP_LOGIC_OR             = 32
+TK_KIND_OP_LOGIC_XOR            = 33
+TK_KIND_OP_EQ                   = 34
+TK_KIND_OP_NE                   = 35
+TK_KIND_OP_GE                   = 36
+TK_KIND_OP_GT                   = 37
+TK_KIND_OP_LE                   = 38
+TK_KIND_OP_LT                   = 39
+
+LOCAL_CURRENT_BYTE              = 0
+LOCAL_PENDING_KIND              = 4
+LOCAL_PENDING_START             = 8
+LOCAL_PENDING_END               = 12
+LOCAL_PENDING_LEX_LEN           = 16
+LOCAL_TEMP_U32                  = 20
+
+	.section code, kind=code
+	.pub
+
+; ---------------------------------------------------------------------------
+; Native token record staging and commit.
+;
+; Each committed record is 20 bytes in tokenBuffer:
+; - word 0: token kind code
+; - long 4: 1-based start column
+; - long 8: 1-based end column
+; - long 12: lexemeScratch offset
+; - long 16: lexeme length in bytes
+;
+; This is the compact native surface that the asm tests decode back into the
+; OPFORGE-TOKVM 1 report format.
+; ---------------------------------------------------------------------------
+
+commitPendingToken	.block
+	cmp.l d5, d1  ; token_count < token_capacity
+	bcc pendingTokenOverflow
+	move.l d3, d0  ; scratch_used + pending_len must stay within scratch_capacity
+	add.l LOCAL_PENDING_LEX_LEN(a2), d0
+	cmp.l d6, d0
+	bhi pendingLexemeOverflow
+	move.l d1, d0  ; compute record_index * TOKEN_RECORD_SIZE without a MUL dependency
+	add.l d0, d0  ; *2
+	movea.l d0, a0
+	add.l d0, d0  ; *4
+	add.l d0, d0  ; *8
+	add.l d0, d0  ; *16
+	adda.l d0, a0  ; *18
+	move.l d1, d0
+	add.l d0, d0  ; +2 => *20 byte stride
+	adda.l d0, a0
+	movea.l a5, a1
+	adda.l a0, a1
+	move.w LOCAL_PENDING_KIND(a2), (a1)  ; field 0: token kind code
+	clr.w 2(a1)
+	move.l LOCAL_PENDING_START(a2), d0  ; field 4: 1-based start column
+	addq.l #1, d0
+	move.l d0, 4(a1)
+	move.l LOCAL_PENDING_END(a2), d0  ; field 8: 1-based end column
+	addq.l #1, d0
+	move.l d0, 8(a1)
+	move.l d3, 12(a1)  ; field 12: lexeme offset into scratch
+	move.l LOCAL_PENDING_LEX_LEN(a2), 16(a1)  ; field 16: lexeme length in bytes
+	addq.l #1, d1
+	add.l LOCAL_PENDING_LEX_LEN(a2), d3
+	moveq #TK_STATUS_SUCCESS, d0
+	rts
+
+; Overflow exits report the start column of the token that could not be fully
+; materialized. This matches the Rust-side behavior of attributing capacity
+; failures to the token currently being scanned rather than the following byte.
+pendingTokenOverflow
+	move.l LOCAL_PENDING_START(a2), d2
+	moveq #TK_STATUS_TOKEN_OVERFLOW, d0
+	rts
+
+pendingLexemeOverflow
+	move.l LOCAL_PENDING_START(a2), d2
+	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
+	rts
+	.bend  ; commitPendingToken
+
+; Stage a fixed lexeme literal from the static data table into scratch.
+; This is used for punctuation and operator tokens whose lexeme spelling is
+; known upfront and does not need to be copied from the source buffer.
+stageFixedLexeme	.block
+	move.l d0, LOCAL_PENDING_LEX_LEN(a2)  ; fixed operator/punctuation lexeme length from the inline template string
+	move.l d3, d0
+	add.l LOCAL_PENDING_LEX_LEN(a2), d0
+	cmp.l d6, d0
+	bhi lexemeOverflow
+	movea.l a6, a1
+	adda.l d3, a1
+	move.l LOCAL_PENDING_LEX_LEN(a2), d0
+stageFixedLexemeLoop
+	tst.l d0
+	beq stageFixedLexemeDone
+	move.b (a0)+, (a1)+  ; copy the canonical lexeme bytes that Rust would expose in PortableToken text/raw
+	subq.l #1, d0
+	bra stageFixedLexemeLoop
+
+stageFixedLexemeDone
+	moveq #TK_STATUS_SUCCESS, d0
+	rts
+
+lexemeOverflow
+	move.l LOCAL_PENDING_START(a2), d2
+	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
+	rts
+	.bend  ; stageFixedLexeme
+
+; ---------------------------------------------------------------------------
+; Scanner helpers.
+;
+; These are the native counterparts of the Rust tokenizer helper routines in
+; tokenizer_runtime_utils.rs. Each helper advances D2 as the live source cursor,
+; populates LOCAL_PENDING_* metadata, stages lexeme bytes into the scratch
+; buffer, then commits a token record.
+; ---------------------------------------------------------------------------
+scanIdentifierToken	.block
+	; Identifier scan is the native mirror of vm_scan_identifier_token():
+	; walk identifier-continue bytes, lowercase ASCII letters for the demo
+	; policy, then emit one identifier record backed by scratch bytes.
+	move.l d2, LOCAL_PENDING_START(a2)
+	clr.l LOCAL_PENDING_LEX_LEN(a2)
+	movea.l a6, a0
+	adda.l d3, a0
+
+scanIdentifierLoop
+	; D2 stays as the source cursor, A0 walks the next free scratch byte,
+	; and LOCAL_PENDING_LEX_LEN grows in lockstep so commit can later write
+	; both the source span and scratch payload length into the token record.
+	cmp.l d4, d2
+	bcc scanIdentifierDone
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	jsr tkvmIsIdentifierContinue  ; mirrors vm_matches_identifier_continue_class()
+	tst.l d0
+	beq scanIdentifierDone
+	move.l d3, d0
+	add.l LOCAL_PENDING_LEX_LEN(a2), d0
+	cmp.l d6, d0
+	bcc pendingLexemeOverflowFromScan
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	cmpi.b #'A', d0
+	blo copyIdentifierByte
+	cmpi.b #'Z', d0
+	bhi copyIdentifierByte
+	ori.b #$20, d0  ; native demo bakes in ASCII-lower identifier normalization used by the Rust bridge tests
+copyIdentifierByte
+	move.b d0, (a0)+
+	addq.l #1, d2
+	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
+	bra scanIdentifierLoop
+
+scanIdentifierDone
+	; Match vm_scan_identifier_token(): a trailing prime belongs to the
+	; identifier/register lexeme for Z80 alternate-register spellings like AF'.
+	cmp.l d4, d2
+	bcc scanIdentifierCommit
+	cmpi.b #39, 0(a4, d2.l)
+	bne scanIdentifierCommit
+	move.l d3, d0
+	add.l LOCAL_PENDING_LEX_LEN(a2), d0
+	cmp.l d6, d0
+	bcc pendingLexemeOverflowFromScan
+	move.b #39, (a0)+
+	addq.l #1, d2
+	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
+
+scanIdentifierCommit
+	; Identifier spans are half-open in cursor space and become 1-based only
+	; when commitPendingToken serializes them into the native record.
+	move.w #TK_KIND_IDENTIFIER, LOCAL_PENDING_KIND(a2)
+	move.l d2, LOCAL_PENDING_END(a2)
+	jsr commitPendingToken
+	rts
+	.bend  ; scanIdentifierToken
+
+scanNumberToken	.block
+	; Number scan accepts the same permissive body bytes as the Rust helper,
+	; leaving base interpretation to downstream token consumers/report logic.
+	move.l d2, LOCAL_PENDING_START(a2)
+	clr.l LOCAL_PENDING_LEX_LEN(a2)
+	movea.l a6, a0
+	adda.l d3, a0
+
+scanNumberLoop
+	; Number scanning intentionally keeps the raw source spelling, including
+	; prefixes/suffixes/underscores, so later consumers can decide how to
+	; interpret base markers just like the Rust runtime does.
+	cmp.l d4, d2
+	bcc scanNumberDone
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	cmpi.b #'%', d0
+	bne scanNumberCheckBody
+	cmp.l LOCAL_PENDING_START(a2), d2
+	beq scanNumberAcceptByte
+scanNumberCheckBody
+	jsr tkvmIsNumberBody  ; same permissive number-body walk as vm_scan_number_token()
+	tst.l d0
+	beq scanNumberDone
+scanNumberAcceptByte
+	move.l d3, d0
+	add.l LOCAL_PENDING_LEX_LEN(a2), d0
+	cmp.l d6, d0
+	bcc pendingLexemeOverflowFromScan
+	move.b 0(a4, d2.l), (a0)+
+	addq.l #1, d2
+	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
+	bra scanNumberLoop
+
+scanNumberDone
+	move.w #TK_KIND_NUMBER, LOCAL_PENDING_KIND(a2)
+	move.l d2, LOCAL_PENDING_END(a2)
+	jsr commitPendingToken
+	rts
+	.bend  ; scanNumberToken
+
+scanStringToken	.block
+	; Strings keep their raw delimiter choice for closing rules, but only the
+	; decoded payload bytes are staged into scratch and exposed in LEXHEX.
+	move.l d2, LOCAL_PENDING_START(a2)
+	clr.l LOCAL_PENDING_LEX_LEN(a2)
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0  ; remember whether the string opened with ' or " so we can require the same closer
+	move.l d0, LOCAL_CURRENT_BYTE(a2)
+	addq.l #1, d2
+	movea.l a6, a0
+	adda.l d3, a0
+
+scanStringLoop
+	; Strings advance one payload unit at a time. Plain bytes copy through,
+	; while escape sequences normalize into their decoded payload bytes so
+	; LEXHEX reflects runtime string contents rather than source spelling.
+	cmp.l d4, d2
+	bcc scanStringFailure
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	cmp.l LOCAL_CURRENT_BYTE(a2), d0
+	beq scanStringClose
+	cmpi.b #'\\', d0  ; decode the same escape surface exercised by vm_scan_string_token()
+	bne scanStringCopyLiteral
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc scanStringFailure
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	cmpi.b #'n', d0
+	beq stringEscapeNewline
+	cmpi.b #'r', d0
+	beq stringEscapeReturn
+	cmpi.b #'t', d0
+	beq stringEscapeTab
+	cmpi.b #'x', d0  ; \xHH is decoded into one payload byte, just like the Rust helper
+	beq stringEscapeHex
+	bra scanStringEmitDecoded
+
+stringEscapeNewline
+	; The decoded escape value remains in D0 and falls through the shared
+	; emit path that appends one payload byte to scratch.
+	moveq #10, d0
+	bra scanStringEmitDecoded
+
+stringEscapeReturn
+	moveq #13, d0
+	bra scanStringEmitDecoded
+
+stringEscapeTab
+	moveq #9, d0
+	bra scanStringEmitDecoded
+
+stringEscapeHex
+	; Parse exactly two hex digits after \x and combine them into one byte,
+	; mirroring tokenizer_runtime_utils::vm_scan_string_token().
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc scanStringFailure
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	jsr tkvmHexDigitValue
+	tst.l d0
+	bmi scanStringFailure
+	move.l d0, LOCAL_TEMP_U32(a2)
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc scanStringFailure
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	jsr tkvmHexDigitValue
+	tst.l d0
+	bmi scanStringFailure
+	move.l d1, -(sp)
+	move.l LOCAL_TEMP_U32(a2), d1
+	lsl.l #4, d1
+	or.l d1, d0
+	move.l (sp)+, d1
+
+	bra scanStringEmitDecoded
+
+scanStringCopyLiteral
+	; Literal non-escape bytes use the same capacity accounting as decoded
+	; escapes so both paths feed one consistent scratch payload stream.
+	move.l d1, -(sp)
+	move.l d3, d1
+	add.l LOCAL_PENDING_LEX_LEN(a2), d1
+	cmp.l d6, d1
+	bcc scanStringLiteralOverflow
+	move.l (sp)+, d1
+	bra scanStringEmitDecoded
+
+scanStringLiteralOverflow
+	move.l (sp)+, d1
+	bra pendingLexemeOverflowFromScan
+
+scanStringEmitDecoded
+	move.b d0, (a0)+
+	addq.l #1, LOCAL_PENDING_LEX_LEN(a2)
+	addq.l #1, d2
+	bra scanStringLoop
+
+scanStringClose
+	; D2 is advanced past the closing delimiter before commit so the source
+	; span matches the Rust token span semantics for quoted strings.
+	addq.l #1, d2
+	move.w #TK_KIND_STRING, LOCAL_PENDING_KIND(a2)
+	move.l d2, LOCAL_PENDING_END(a2)
+	jsr commitPendingToken
+	rts
+
+; Unterminated strings and malformed escape sequences both collapse to the same
+; VM failure status in this first native slice.
+scanStringFailure
+	moveq #TK_STATUS_VM_FAILURE, d0
+	rts
+	.bend  ; scanStringToken
+
+; Symbol scan covers punctuation, operators, comments, and prefixed numeric
+; forms. The structure intentionally parallels vm_scan_symbol_token() in Rust:
+; dispatch by lead byte, optionally consume a longer form, then commit the
+; canonical lexeme bytes through tkvmStageAndCommitSymbol.
+scanSymbolToken	.block
+	; The dispatch order matters. More syntactically specific lead bytes are
+	; tested before generic operator fallbacks so multi-byte forms get the
+	; same precedence as in the Rust helper.
+	move.l d2, LOCAL_PENDING_START(a2)
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	cmpi.b #';', d0
+	beq tkvmScanCommentToEol
+	cmpi.b #'.', d0
+	beq tkvmScanDotLike
+	cmpi.b #'$', d0
+	beq tkvmScanDollarOrPrefixedNumber
+	cmpi.b #'%', d0
+	beq tkvmScanPercentOrPrefixedNumber
+	cmpi.b #'#', d0
+	beq tkvmStageHash
+	cmpi.b #'?', d0
+	beq tkvmStageQuestion
+	cmpi.b #'[', d0
+	beq tkvmStageOpenBracket
+	cmpi.b #']', d0
+	beq tkvmStageCloseBracket
+	cmpi.b #'{', d0
+	beq tkvmStageOpenBrace
+	cmpi.b #'}', d0
+	beq tkvmStageCloseBrace
+	cmpi.b #',', d0
+	beq tkvmStageComma
+	cmpi.b #':', d0
+	beq tkvmStageColon
+	cmpi.b #'(', d0
+	beq tkvmStageOpenParen
+	cmpi.b #')', d0
+	beq tkvmStageCloseParen
+	cmpi.b #'+', d0
+	beq tkvmStagePlus
+	cmpi.b #'-', d0
+	beq tkvmStageMinus
+	cmpi.b #'*', d0
+	beq tkvmScanStarLike
+	cmpi.b #'/', d0
+	beq tkvmStageDivide
+	cmpi.b #'~', d0
+	beq tkvmStageBitNot
+	cmpi.b #'=', d0
+	beq tkvmScanEqualLike
+	cmpi.b #'!', d0
+	beq tkvmScanBangLike
+	cmpi.b #'&', d0
+	beq tkvmScanAndLike
+	cmpi.b #'|', d0
+	beq tkvmScanOrLike
+	cmpi.b #'^', d0
+	beq tkvmScanCaretLike
+	cmpi.b #'<', d0
+	beq tkvmScanLessLike
+	cmpi.b #'>', d0
+	beq tkvmScanGreaterLike
+	move.w #TK_VM_FAILURE_KIND_FAIL, TkvmLastFailureKind
+	move.w d0, TkvmLastFailureOperand
+	moveq #TK_STATUS_VM_FAILURE, d0
+	rts
+
+tkvmScanCommentToEol
+	move.l d4, d2  ; comments consume the rest of the line and emit no token, matching vm_scan_symbol_token()
+	moveq #TK_STATUS_SUCCESS, d0
+	rts
+
+tkvmScanDotLike
+	; '.', '..', and '..=' are grouped together so the operator family stays
+	; adjacent in both the native and Rust scanner implementations.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageDot
+	cmpi.b #'.', 0(a4, d2.l)
+	bne tkvmStageDot
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageRange
+	cmpi.b #'=', 0(a4, d2.l)
+	bne tkvmStageRange
+	addq.l #1, d2
+	move.w #TK_KIND_OP_RANGE_INCLUSIVE, LOCAL_PENDING_KIND(a2)
+	lea LexRangeInclusive, a0
+	moveq #3, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageRange
+	; '..' and '..=' share the same entry path so the inclusive form only
+	; needs one extra lookahead byte and a different fixed lexeme template.
+	move.w #TK_KIND_OP_RANGE, LOCAL_PENDING_KIND(a2)
+	lea LexRange, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageDot
+	move.w #TK_KIND_DOT, LOCAL_PENDING_KIND(a2)
+	lea LexDot, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanDollarOrPrefixedNumber
+	; '$' is ambiguous by design: either a standalone dollar token or the
+	; prefix for a hex-like number literal if a valid body byte follows.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageDollar
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	jsr tkvmIsHexDigitOrUnderscore  ; '$' starts either a hex literal or a standalone dollar token
+	tst.l d0
+	beq tkvmStageDollar
+	move.l LOCAL_PENDING_START(a2), d2
+	jsr scanNumberToken
+	rts
+
+tkvmStageDollar
+	move.w #TK_KIND_DOLLAR, LOCAL_PENDING_KIND(a2)
+	lea LexDollar, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanPercentOrPrefixedNumber
+	; '%' is likewise split between modulo and binary-prefixed number forms.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStagePercent
+	moveq #0, d0
+	move.b 0(a4, d2.l), d0
+	cmpi.b #'0', d0
+	beq tkvmScanPercentAsNumber
+	cmpi.b #'1', d0
+	bne tkvmStagePercent
+
+tkvmScanPercentAsNumber
+	jsr tkvmPercentHasPrefixContext
+	tst.l d0
+	beq tkvmStagePercent
+	move.l LOCAL_PENDING_START(a2), d2  ; rewind so the number scanner sees the leading '%', like Rust prefixed-number handling
+	jsr scanNumberToken
+	rts
+
+tkvmStagePercent
+	move.w #TK_KIND_OP_MOD, LOCAL_PENDING_KIND(a2)
+	lea LexMod, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageHash
+	addq.l #1, d2
+	move.w #TK_KIND_HASH, LOCAL_PENDING_KIND(a2)
+	lea LexHash, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageQuestion
+	; The single-byte staging labels below follow one repeated pattern:
+	; advance the source cursor, choose a token kind, point at the canonical
+	; lexeme bytes, set the lexeme length, then funnel through the shared
+	; stage-and-commit tail.
+	addq.l #1, d2
+	move.w #TK_KIND_QUESTION, LOCAL_PENDING_KIND(a2)
+	lea LexQuestion, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageOpenBracket
+	addq.l #1, d2
+	move.w #TK_KIND_OPEN_BRACKET, LOCAL_PENDING_KIND(a2)
+	lea LexOpenBracket, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageCloseBracket
+	addq.l #1, d2
+	move.w #TK_KIND_CLOSE_BRACKET, LOCAL_PENDING_KIND(a2)
+	lea LexCloseBracket, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageOpenBrace
+	addq.l #1, d2
+	move.w #TK_KIND_OPEN_BRACE, LOCAL_PENDING_KIND(a2)
+	lea LexOpenBrace, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageCloseBrace
+	addq.l #1, d2
+	move.w #TK_KIND_CLOSE_BRACE, LOCAL_PENDING_KIND(a2)
+	lea LexCloseBrace, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageComma
+	addq.l #1, d2
+	move.w #TK_KIND_COMMA, LOCAL_PENDING_KIND(a2)
+	lea LexComma, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageColon
+	addq.l #1, d2
+	move.w #TK_KIND_COLON, LOCAL_PENDING_KIND(a2)
+	lea LexColon, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageOpenParen
+	addq.l #1, d2
+	move.w #TK_KIND_OPEN_PAREN, LOCAL_PENDING_KIND(a2)
+	lea LexOpenParen, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageCloseParen
+	addq.l #1, d2
+	move.w #TK_KIND_CLOSE_PAREN, LOCAL_PENDING_KIND(a2)
+	lea LexCloseParen, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStagePlus
+	addq.l #1, d2
+	move.w #TK_KIND_OP_PLUS, LOCAL_PENDING_KIND(a2)
+	lea LexPlus, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageMinus
+	addq.l #1, d2
+	move.w #TK_KIND_OP_MINUS, LOCAL_PENDING_KIND(a2)
+	lea LexMinus, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanStarLike
+	; '*' and '**' match the Rust tokenizer's multiply/power split.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageMultiply
+	cmpi.b #'*', 0(a4, d2.l)
+	beq tkvmStagePower
+
+tkvmStageMultiply
+	move.w #TK_KIND_OP_MULTIPLY, LOCAL_PENDING_KIND(a2)
+	lea LexMultiply, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStagePower
+	addq.l #1, d2
+	move.w #TK_KIND_OP_POWER, LOCAL_PENDING_KIND(a2)
+	lea LexPower, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageDivide
+	addq.l #1, d2
+	move.w #TK_KIND_OP_DIVIDE, LOCAL_PENDING_KIND(a2)
+	lea LexDivide, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageBitNot
+	addq.l #1, d2
+	move.w #TK_KIND_OP_BIT_NOT, LOCAL_PENDING_KIND(a2)
+	lea LexBitNot, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanEqualLike
+	; '=' and '==' both normalize to the same equality token kind, matching
+	; the Rust tokenizer helper's forgiving equality parsing.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageEq
+	cmpi.b #'=', 0(a4, d2.l)
+	bne tkvmStageEq
+	addq.l #1, d2
+
+tkvmStageEq
+	; The canonical fixed lexeme is always "==" for equality so report output
+	; normalizes '=' and '==' into one operator surface.
+	move.w #TK_KIND_OP_EQ, LOCAL_PENDING_KIND(a2)
+	lea LexEq, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanBangLike
+	; '!' stands for logical-not, while '!=' upgrades to not-equal.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageLogicNot
+	cmpi.b #'=', 0(a4, d2.l)
+	bne tkvmStageLogicNot
+	addq.l #1, d2
+	move.w #TK_KIND_OP_NE, LOCAL_PENDING_KIND(a2)
+	lea LexNe, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageLogicNot
+	; Unlike equality, logical-not preserves its single-byte spelling in the
+	; report/output surface because '!' and '!=' are distinct token kinds.
+	move.w #TK_KIND_OP_LOGIC_NOT, LOCAL_PENDING_KIND(a2)
+	lea LexLogicNot, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanAndLike
+	; '&' / '&&' map to bitwise and logical forms respectively.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageBitAnd
+	cmpi.b #'&', 0(a4, d2.l)
+	bne tkvmStageBitAnd
+	addq.l #1, d2
+	move.w #TK_KIND_OP_LOGIC_AND, LOCAL_PENDING_KIND(a2)
+	lea LexLogicAnd, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageBitAnd
+	move.w #TK_KIND_OP_BIT_AND, LOCAL_PENDING_KIND(a2)
+	lea LexBitAnd, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanOrLike
+	; '|' / '||' map to bitwise and logical forms respectively.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageBitOr
+	cmpi.b #'|', 0(a4, d2.l)
+	bne tkvmStageBitOr
+	addq.l #1, d2
+	move.w #TK_KIND_OP_LOGIC_OR, LOCAL_PENDING_KIND(a2)
+	lea LexLogicOr, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageBitOr
+	move.w #TK_KIND_OP_BIT_OR, LOCAL_PENDING_KIND(a2)
+	lea LexBitOr, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanCaretLike
+	; '^' is bitwise xor, while '^^' is promoted to the logical xor
+	; token used by the native report-name table.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageBitXor
+	cmpi.b #'^', 0(a4, d2.l)
+	bne tkvmStageBitXor
+	addq.l #1, d2
+	move.w #TK_KIND_OP_LOGIC_XOR, LOCAL_PENDING_KIND(a2)
+	lea LexLogicXor, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageBitXor
+	move.w #TK_KIND_OP_BIT_XOR, LOCAL_PENDING_KIND(a2)
+	lea LexBitXor, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanLessLike
+	; '<' expands into four related operators: <, <<, <=, and <>/!=.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageLt
+	cmpi.b #'<', 0(a4, d2.l)
+	beq tkvmStageShl
+	cmpi.b #'=', 0(a4, d2.l)
+	beq tkvmStageLe
+	cmpi.b #'>', 0(a4, d2.l)
+	beq tkvmStageAltNe
+	bra tkvmStageLt
+
+tkvmStageShl
+	addq.l #1, d2
+	move.w #TK_KIND_OP_SHL, LOCAL_PENDING_KIND(a2)
+	lea LexShl, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageLe
+	addq.l #1, d2
+	move.w #TK_KIND_OP_LE, LOCAL_PENDING_KIND(a2)
+	lea LexLe, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageAltNe
+	addq.l #1, d2
+	move.w #TK_KIND_OP_NE, LOCAL_PENDING_KIND(a2)
+	lea LexNe, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageLt
+	; The family labels above all converge here with a fully-chosen token
+	; kind and lexeme template, so the commit tail can stay generic.
+	move.w #TK_KIND_OP_LT, LOCAL_PENDING_KIND(a2)
+	lea LexLt, a0
+	moveq #1, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmScanGreaterLike
+	; '>' expands into >, >>, and >=.
+	addq.l #1, d2
+	cmp.l d4, d2
+	bcc tkvmStageGt
+	cmpi.b #'>', 0(a4, d2.l)
+	beq tkvmStageShr
+	cmpi.b #'=', 0(a4, d2.l)
+	beq tkvmStageGe
+	bra tkvmStageGt
+
+tkvmStageShr
+	addq.l #1, d2
+	move.w #TK_KIND_OP_SHR, LOCAL_PENDING_KIND(a2)
+	lea LexShr, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageGe
+	addq.l #1, d2
+	move.w #TK_KIND_OP_GE, LOCAL_PENDING_KIND(a2)
+	lea LexGe, a0
+	moveq #2, d0
+	bra tkvmStageAndCommitSymbol
+
+tkvmStageGt
+	move.w #TK_KIND_OP_GT, LOCAL_PENDING_KIND(a2)
+	lea LexGt, a0
+	moveq #1, d0
+
+tkvmStageAndCommitSymbol
+	; At this point LOCAL_PENDING_START already marks the source span start,
+	; D2 already points just past the consumed source bytes, and A0/D0 name
+	; the canonical lexeme bytes to materialize into scratch.
+	jsr stageFixedLexeme  ; stage the canonical lexeme bytes before committing the token metadata
+	tst.l d0
+	bne tkvmStageAndCommitSymbolDone
+	move.l d2, LOCAL_PENDING_END(a2)
+	jsr commitPendingToken
+tkvmStageAndCommitSymbolDone
+	rts
+
+; Used when symbol lookahead discovers a shape the native bytecode contract does
+; not allow, such as the unsupported '**' power operator.
+tkvmScanSymbolInvalidProgram
+	move.l LOCAL_PENDING_START(a2), d2
+	moveq #TK_STATUS_INVALID_PROGRAM, d0
+	rts
+	.bend  ; scanSymbolToken
+
+; Shared overflow exit for any scanner that would exceed scratch capacity.
+pendingLexemeOverflowFromScan
+	move.l LOCAL_PENDING_START(a2), d2
+	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
+	rts
+
+; Rust treats '%' as a binary-number prefix only when the byte appears where an
+; expression can start. Without that context, % remains the modulo operator.
+tkvmPercentHasPrefixContext	.block
+	move.l LOCAL_PENDING_START(a2), d0
+	beq tkvmPercentPrefixTrue
+
+	clr.w LOCAL_PENDING_KIND(a2)
+	clr.l LOCAL_TEMP_U32(a2)
+	subq.l #1, d0
+	move.l d0, LOCAL_TEMP_U32(a2)
+	lea 0(a4, d0.l), a1
+	moveq #0, d0
+	move.b (a1), d0
+	cmpi.b #' ', d0
+	beq tkvmPercentMarkLeadingSpace
+	cmpi.b #9, d0
+	bne tkvmPercentCheckPrevNonSpaceByte
+
+tkvmPercentMarkLeadingSpace
+	moveq #1, d0
+	move.w d0, LOCAL_PENDING_KIND(a2)
+
+tkvmPercentPrevNonSpaceLoop
+	move.l LOCAL_TEMP_U32(a2), d0
+	tst.l d0
+	beq tkvmPercentPrefixTrue
+	subq.l #1, d0
+	move.l d0, LOCAL_TEMP_U32(a2)
+	lea 0(a4, d0.l), a1
+	moveq #0, d0
+	move.b (a1), d0
+
+tkvmPercentCheckPrevNonSpaceByte
+	cmpi.b #' ', d0
+	beq tkvmPercentPrevNonSpaceLoop
+	cmpi.b #9, d0
+	beq tkvmPercentPrevNonSpaceLoop
+	cmpi.b #'(', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #',', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'+', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'-', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'*', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'/', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'%', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'&', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'|', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'^', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'~', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'!', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'<', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'>', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'=', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #'?', d0
+	beq tkvmPercentPrefixTrue
+	cmpi.b #':', d0
+	beq tkvmPercentPrefixTrue
+
+	tst.w LOCAL_PENDING_KIND(a2)
+	beq tkvmPercentPrefixFalse
+	jsr tkvmIsIdentifierContinue
+	tst.l d0
+	bne tkvmPercentPrefixTrue
+
+tkvmPercentPrefixFalse
+	moveq #0, d0
+	rts
+
+tkvmPercentPrefixTrue
+	moveq #1, d0
+	rts
+	.bend  ; tkvmPercentHasPrefixContext
+
+	.endsection
+	.endmodule

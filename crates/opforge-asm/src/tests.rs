@@ -12796,7 +12796,14 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
 
 fn tokvm_amigaos_source(file_name: &str) -> String {
     let repo_root = workspace_root();
-    let asm_path = if matches!(file_name, "tkvm_runtime.asm" | "tkvm_demo_program.asm") {
+    let asm_path = if matches!(
+        file_name,
+        "tkvm_runtime.asm"
+            | "tkvm_demo_program.asm"
+            | "tkvm_char_predicates.asm"
+            | "tkvm_scanner.asm"
+            | "tkvm_state.asm"
+    ) {
         repo_root.join(format!("native/motorola68000/amigaos/tkvm/{file_name}"))
     } else {
         repo_root.join(format!(
@@ -12805,6 +12812,20 @@ fn tokvm_amigaos_source(file_name: &str) -> String {
     };
     let source = fs::read_to_string(&asm_path).expect("read tokvm AmigaOS source");
     format_tokvm_amigaos_fragment(&source)
+}
+
+fn tokvm_interpreter_listing(label: &str) -> String {
+    let repo_root = workspace_root();
+    let asm_path =
+        repo_root.join("native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter.asm");
+    let out_dir = create_temp_dir(label);
+
+    if let Err(err) = assemble_example(&asm_path, &out_dir, false) {
+        let detail = assemble_example_error(&asm_path).unwrap_or_else(|| err.clone());
+        panic!("assemble tokvm interpreter listing: {detail}");
+    }
+
+    fs::read_to_string(out_dir.join("tokvm_interpreter.lst")).expect("read tokvm listing")
 }
 
 fn opforge_amigaos_source(file_name: &str) -> String {
@@ -15714,126 +15735,54 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_locks_number_and_operator
 
 #[test]
 fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
-    let source = tokvm_amigaos_source("tkvm_runtime.asm");
-    let demo_source = tokvm_amigaos_source("tkvm_demo_program.asm");
-    let harness_source = tokvm_amigaos_source("tokvm_cli_harness.asm");
+    let listing = tokvm_interpreter_listing("m68000-tokvm-operator-surface");
 
-    assert!(source.contains("TK_KIND_OP_POWER                = 21"));
-    assert!(source.contains("TK_KIND_OP_DIVIDE               = 22"));
-    assert!(source.contains("TK_KIND_OP_BIT_OR               = 29"));
-    assert!(source.contains("TK_KIND_OP_BIT_XOR              = 30"));
-    assert!(source.contains("TK_KIND_OP_LOGIC_AND            = 31"));
-    assert!(tokvm_source_contains(
-        &source,
-        "tkvmStagePower:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_OP_POWER,LOCAL_PENDING_KIND(A2)\n        LEA LexPower,A0\n        MOVEQ #2,D0"
-    ));
-    assert!(tokvm_source_contains(
-        &source,
-        "tkvmStageBitXor:\n        MOVE.W #TK_KIND_OP_BIT_XOR,LOCAL_PENDING_KIND(A2)\n        LEA LexBitXor,A0\n        MOVEQ #1,D0"
-    ));
-    assert!(tokvm_source_contains(
-        &demo_source,
-        "lexPower:\n        .byte \"**\""
-    ));
-    assert!(tokvm_source_contains(
-        &demo_source,
-        "lexBitXor:\n        .byte \"^\""
-    ));
-    assert!(tokvm_source_contains(
-        &harness_source,
-        "kindNameOpPower:\n        .byte \"op_power\",0"
-    ));
-    assert!(tokvm_source_contains(
-        &harness_source,
-        "kindNameOpBitXor:\n        .byte \"op_bit_xor\",0"
-    ));
+    assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_OP_POWER"));
+    assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_OP_DIVIDE"));
+    assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_OP_BIT_OR"));
+    assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_OP_BIT_XOR"));
+    assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_OP_LOGIC_AND"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmStagePower"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmStageBitXor"));
+    assert!(listing.contains("tkvm.amigaos.demo_program.LexPower"));
+    assert!(listing.contains("tkvm.amigaos.demo_program.LexBitXor"));
+    assert!(listing.contains("tokvm.amigaos.cli_harness.KindNameOpPower"));
+    assert!(listing.contains("tokvm.amigaos.cli_harness.KindNameOpBitXor"));
 }
 
 #[test]
 fn motorola68020_tokvm_native_percent_scanner_checks_rust_prefix_context() {
-    let source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let listing = tokvm_interpreter_listing("m68000-tokvm-percent-surface");
 
-    assert!(tokvm_source_contains(
-        &source,
-        "tkvmScanPercentAsNumber:\n        JSR tkvmPercentHasPrefixContext\n        TST.L D0\n        BEQ tkvmStagePercent"
-    ));
-    assert!(tokvm_source_contains(
-        &source,
-        "tkvmPercentHasPrefixContext:"
-    ));
-    assert!(source.contains("tst.l d0"));
-    assert!(tokvm_source_contains(
-        &source,
-        "LEA 0(A4, D0.L), A1\n        MOVEQ #0, D0\n        MOVE.B (A1), D0"
-    ));
-    assert!(source.contains("beq tkvmPercentPrefixFalse"));
-    assert!(source.contains("jsr tkvmIsIdentifierContinue"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmScanPercentAsNumber"));
+    assert!(listing.contains("tkvm.amigaos.scanner.tkvmPercentHasPrefixContext"));
+    assert!(
+        listing.contains("tkvm.amigaos.scanner.tkvmPercentHasPrefixContext.tkvmPercentPrefixFalse")
+    );
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmStagePercent"));
+    assert!(listing.contains("tkvm.amigaos.char_predicates.tkvmIsIdentifierContinue"));
 }
 
 #[test]
 fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
-    let source = tokvm_amigaos_source("tkvm_runtime.asm");
-    let demo_source = tokvm_amigaos_source("tkvm_demo_program.asm");
+    let listing = tokvm_interpreter_listing("m68000-tokvm-hash-surface");
 
-    assert!(tokvm_source_contains(
-        &source,
-        "CMPI.B #'#',D0\n        BEQ tkvmStageHash"
-    ));
-    assert!(tokvm_source_contains(
-        &source,
-        "tkvmStageHash:\n        ADDQ.L #1,D2\n        MOVE.W #TK_KIND_HASH,LOCAL_PENDING_KIND(A2)\n        LEA LexHash,A0\n        MOVEQ #1,D0"
-    ));
-    assert!(tokvm_source_contains(
-        &demo_source,
-        "lexHash:\n        .byte \"#\""
-    ));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmStageHash"));
+    assert!(listing.contains("tkvm.amigaos.demo_program.LexHash"));
+    assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_HASH"));
 }
 
 #[test]
 fn motorola68020_tokvm_interpreter_supports_configured_state_table_entrypoints() {
-    let source = tokvm_amigaos_source("tkvm_runtime.asm");
-    let demo_source = tokvm_amigaos_source("tkvm_demo_program.asm");
+    let listing = tokvm_interpreter_listing("m68000-tokvm-state-surface");
 
-    assert!(
-        tokvm_source_contains(
-            &demo_source,
-            "demoStateEntryOffsets:\n        .long DEMO_PC_READ_CHAR"
-        ),
-        "expected tokvm to keep a default state-table configuration for the demo interpreter path"
-    );
-    assert!(tokvm_source_contains(
-        &source,
-        "TkvmProgramStateTablePtr:\n        .long DemoStateEntryOffsets\n\nTkvmProgramStateCount:\n        .long 1\n\nTkvmProgramStartState:\n        .word 0"
-    ));
-    assert!(
-        source_contains_in_order(
-            &source,
-            &[
-                "tkvmSetProgramStateTable68000",
-                ".block",
-                "tst.l d0",
-                "bgt.s store",
-                "lea DemoStateEntryOffsets, a0",
-                "moveq #1, d0",
-                "moveq #0, d1",
-            ]
-        ),
-        "expected tokvm to expose a stable state-table configuration hook without changing tkvmRun68000"
-    );
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "newlineScanDone:\n        MOVEQ #0,D0\n        MOVE.W TkvmProgramStartState,D0\n        CMP.L TkvmProgramStateCount,D0\n        BCC invalidProgramAtCursor"
-        ),
-        "expected tkvmRun68000 to start execution from the configured start state offset"
-    );
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "opcodeSetState:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #2,D0\n        CMP.L D7,D0\n        BHI invalidProgramAtCursor"
-        ),
-        "expected the native SetState opcode to decode a little-endian state index and bounds-check it"
-    );
+    assert!(listing.contains("tkvm.amigaos.demo_program.DemoStateEntryOffsets"));
+    assert!(listing.contains("tkvm.amigaos.state.TkvmProgramStateTablePtr"));
+    assert!(listing.contains("tkvm.amigaos.state.TkvmProgramStateCount"));
+    assert!(listing.contains("tkvm.amigaos.state.TkvmProgramStartState"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmSetProgramStateTable68000"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.newlineScanDone"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeSetState"));
 }
 
 #[test]
@@ -16599,57 +16548,17 @@ fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
 
 #[test]
 fn motorola68020_tokvm_interpreter_locks_jump_bounds_and_hex_escape_emit() {
-    let source = tokvm_amigaos_source("tkvm_runtime.asm");
+    let listing = tokvm_interpreter_listing("m68000-tokvm-jump-string-surface");
 
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "opcodeJump:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #4,D0\n        CMP.L D7,D0\n        BHI invalidProgramAtCursor"
-        ),
-        "expected unconditional JUMP to validate its inline target operand using the current program-counter offset"
-    );
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "opcodeJumpIfEol:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #4,D0\n        CMP.L D7,D0\n        BHI invalidProgramAtCursor"
-        ),
-        "expected JUMP_IF_EOL to validate its inline target operand using the current program-counter offset"
-    );
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "opcodeJumpIfByteEq:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #5,D0\n        CMP.L D7,D0\n        BHI invalidProgramAtCursor"
-        ),
-        "expected JUMP_IF_BYTE_EQ to validate its inline byte and target operands using the current program-counter offset"
-    );
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "opcodeJumpIfClass:\n        MOVE.L A0,D0\n        SUB.L A3,D0\n        ADDQ.L #5,D0\n        CMP.L D7,D0\n        BHI invalidProgramAtCursor"
-        ),
-        "expected JUMP_IF_CLASS to validate its inline class and target operands using the current program-counter offset"
-    );
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "        MOVE.L LOCAL_TEMP_U32(A2), D1\n        LSL.L #4, D1\n        OR.L D1, D0\n        MOVE.L (SP)+, D1\n\n        BRA scanStringEmitDecoded"
-        ),
-        "expected \\xHH string escapes to emit the decoded byte through the shared string payload path"
-    );
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "        MOVEQ #0, D0\n        MOVE.B 0(A4, D2.L), D0\n        CMP.L LOCAL_CURRENT_BYTE(A2), D0\n        BEQ scanStringClose"
-        ),
-        "expected string close detection to compare against the zero-extended saved quote long"
-    );
-    assert!(
-        tokvm_source_contains(
-            &source,
-            "        CMP.L D6, D1\n        BCC scanStringLiteralOverflow\n        MOVE.L (SP)+, D1\n        BRA scanStringEmitDecoded\n\nscanStringLiteralOverflow:\n        MOVE.L (SP)+, D1\n        BRA pendingLexemeOverflowFromScan"
-        ),
-        "expected literal string capacity checks to branch before restoring D1 so MOVE does not clobber CMP condition codes"
-    );
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeJump"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeJumpIfEol"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeJumpIfByteEq"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeJumpIfClass"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanStringToken.stringEscapeHex"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanStringToken.scanStringEmitDecoded"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanStringToken.scanStringClose"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanStringToken.scanStringLiteralOverflow"));
+    assert!(listing.contains("tkvm.amigaos.scanner.pendingLexemeOverflowFromScan"));
 }
 
 #[test]

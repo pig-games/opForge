@@ -8,8 +8,8 @@
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
 	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1, opasmEngineGetStatementExprMetadataV1)
-	.use opasm.amigaos.engine (opasmEngineGetStatementLineNumberV1)
 	.use opasm.amigaos.engine (opasmEngineWriteEvaluateExpressionExtensionBaseV1)
+	.use opasm.amigaos.engine (opasmEnginePrepareEvaluateExpressionRequestV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareSelectedEvaluateRequestV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareEncodeInstructionRequestV1)
 	.use opasm.amigaos.engine (opasmEngineInferSelectedShapeForEvalRequestV1)
@@ -24,7 +24,6 @@
 	.use opforge.cli.state (NativeCliStmtExprFound, NativeCliStmtExprOperandIndex, NativeCliStmtExprSlotIndex)
 	.use opforge.cli.state (NativeCliStmtExprStartToken, NativeCliStmtExprEndToken)
 	.use opforge.cli.state (NativeCliStmtExprSpanLine, NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd)
-	.use opforge.cli.copy (opforgeNativeCliCopyFixedString)
 	.use opforge.cli.tkpkg_control_block (opforgeNativeCliWriteInputWindow, opforgeNativeCliReadStatus)
 
 	.section code, kind=code
@@ -46,80 +45,16 @@ return
 	.bend  ; opforgeNativeCliPrepareEncodeSelectedRequestForStatement
 
 opforgeNativeCliPrepareEvaluateExpressionRequest	.block
-	movem.l d1-d7/a1-a2, -(sp)
-	movea.l a0, a2
-	move.l d0, d6
+	movem.l d1/a0-a1, -(sp)
 	lea lastErrorBuffer, a1
-	move.l NativeCliStmtExprSpanLine, d2
-	tst.l d2
-	bne.s haveLineNum
-	moveq #0, d0
-	move.w d7, d0
-	jsr opasmEngineGetStatementLineNumberV1
-	move.l d0, d2
-
-haveLineNum
-	move.l d2, d3
-	move.b d3, (a1)+
-	lsr.l #8, d3
-	move.b d3, (a1)+
-	lsr.l #8, d3
-	move.b d3, (a1)+
-	lsr.l #8, d3
-	move.b d3, (a1)+
-	tst.w NativeCliStmtExprFound
-	beq.s syntheticSpan
-	move.l NativeCliStmtExprSpanStart, d2
-	move.l NativeCliStmtExprSpanEnd, d3
-	bra.s writeSpan
-
-syntheticSpan
-	tst.l d6
-	bne.s syntheticNonEmptySpan
-	clr.l d2
-	clr.l d3
-	bra.s writeSpan
-
-syntheticNonEmptySpan
-	moveq #1, d2
-	move.l d6, d3
-	addq.l #1, d3
-
-writeSpan
-	move.w d2, d4
-	move.b d4, (a1)+
-	lsr.w #8, d4
-	move.b d4, (a1)+
-	move.w d3, d4
-	move.b d4, (a1)+
-	lsr.w #8, d4
-	move.b d4, (a1)+
-	move.l NativeCliStmtMnemLen, d5
-	cmpi.l #255, d5
-	bhi.w fail
-	move.b d5, (a1)+
-	tst.l d5
-	beq.s copyOperand
-	movea.l NativeCliStmtMnemStart, a0
-	move.w d5, d0
-	jsr opforgeNativeCliCopyFixedString
-
-copyOperand
-	movea.l a2, a0
-	move.w d6, d0
-	jsr opforgeNativeCliCopyFixedString
-	move.w d6, d0
-	add.w d5, d0
-	addi.w #9, d0
-	move.w d0, NativeCliEvalRequestLen
-	moveq #0, d0
-	bra.s return
-
-fail
-	moveq #1, d0
+	move.w d7, d1
+	jsr opasmEnginePrepareEvaluateExpressionRequestV1
+	tst.l d0
+	bne.s return
+	move.w d1, NativeCliEvalRequestLen
 
 return
-	movem.l (sp)+, d1-d7/a1-a2
+	movem.l (sp)+, d1/a0-a1
 	rts
 	.bend  ; opforgeNativeCliPrepareEvaluateExpressionRequest
 

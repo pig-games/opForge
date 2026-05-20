@@ -90,6 +90,12 @@ OPASM_ENGINE_SELECTED_REQ_EXPR_END_TOKEN = 28
 OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_LINE = 32
 OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_START = 36
 OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_END = 40
+OPASM_ENGINE_EVAL_REQ_TEXT_META  = 0
+OPASM_ENGINE_EVAL_REQ_EXPR_META  = OPASM_ENGINE_STMT_TEXT_BYTES
+OPASM_ENGINE_EVAL_REQ_SCRATCH_BYTES = OPASM_ENGINE_STMT_TEXT_BYTES + OPASM_ENGINE_EXPR_META_BYTES
+OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_LINE  = OPASM_ENGINE_EVAL_REQ_EXPR_META + OPASM_ENGINE_EXPR_META_SPAN_LINE
+OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_START = OPASM_ENGINE_EVAL_REQ_EXPR_META + OPASM_ENGINE_EXPR_META_SPAN_START
+OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_END   = OPASM_ENGINE_EVAL_REQ_EXPR_META + OPASM_ENGINE_EXPR_META_SPAN_END
 
 ; A4: opasm engine context pointer.
 ; Returns D0=0 on success, non-zero on failure.
@@ -770,6 +776,114 @@ fail
 	moveq #1, d0
 	rts
 	.bend  ; opasmEngineGetStatementTextMetadataV1
+
+; Prepare an evaluate-expression request for statement text.
+;
+; Inputs:
+; - A0: operand/expression text.
+; - D0: operand/expression text length.
+; - D1: statement index.
+; - A1: output request buffer.
+;
+; Outputs:
+; - D0: 0 on success, non-zero on failure.
+; - D1: request byte length when successful.
+opasmEnginePrepareEvaluateExpressionRequestV1	.block
+	movem.l d2-d7/a0-a5, -(sp)
+	suba.l #OPASM_ENGINE_EVAL_REQ_SCRATCH_BYTES, sp
+	movea.l a0, a2
+	move.l d0, d4
+	move.w d1, d7
+	movea.l a1, a5
+	lea OPASM_ENGINE_EVAL_REQ_TEXT_META(sp), a0
+	moveq #0, d0
+	move.w d7, d0
+	jsr opasmEngineGetStatementTextMetadataV1
+	tst.l d0
+	bne.w fail
+	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d6
+	cmpi.l #255, d6
+	bhi.w fail
+	lea OPASM_ENGINE_EVAL_REQ_EXPR_META(sp), a0
+	moveq #0, d0
+	move.w d7, d0
+	jsr opasmEngineGetStatementExprMetadataV1
+	move.l d0, d5
+	movea.l a5, a1
+	tst.l d5
+	beq.s useStatementLine
+	move.l OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_LINE(sp), d2
+	tst.l d2
+	bne.s writeLine
+
+useStatementLine
+	moveq #0, d0
+	move.w d7, d0
+	jsr opasmEngineGetStatementLineNumberV1
+	move.l d0, d2
+
+writeLine
+	move.l d2, d3
+	move.b d3, (a1)+
+	lsr.l #8, d3
+	move.b d3, (a1)+
+	lsr.l #8, d3
+	move.b d3, (a1)+
+	lsr.l #8, d3
+	move.b d3, (a1)+
+	tst.l d5
+	beq.s syntheticSpan
+	move.l OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_START(sp), d2
+	move.l OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_END(sp), d3
+	bra.s writeSpan
+
+syntheticSpan
+	tst.l d4
+	bne.s syntheticNonEmptySpan
+	clr.l d2
+	clr.l d3
+	bra.s writeSpan
+
+syntheticNonEmptySpan
+	moveq #1, d2
+	move.l d4, d3
+	addq.l #1, d3
+
+writeSpan
+	move.w d2, d0
+	move.b d0, (a1)+
+	lsr.w #8, d0
+	move.b d0, (a1)+
+	move.w d3, d0
+	move.b d0, (a1)+
+	lsr.w #8, d0
+	move.b d0, (a1)+
+	move.l d6, d3
+	move.b d6, (a1)+
+	tst.l d6
+	beq.s copyOperand
+	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(sp), a0
+	move.w d6, d0
+	bsr.w copyFixedString
+
+copyOperand
+	movea.l a2, a0
+	move.w d4, d0
+	bsr.w copyFixedString
+	move.w d4, d1
+	add.w d3, d1
+	addi.w #9, d1
+	adda.l #OPASM_ENGINE_EVAL_REQ_SCRATCH_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a5
+	moveq #0, d0
+	rts
+
+fail
+	adda.l #OPASM_ENGINE_EVAL_REQ_SCRATCH_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a5
+	moveq #1, d0
+	rts
+	.bend  ; opasmEnginePrepareEvaluateExpressionRequestV1
 
 ; Prepare an evaluate-expression request for a selected statement.
 ;

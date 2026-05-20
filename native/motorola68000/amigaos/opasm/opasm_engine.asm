@@ -34,9 +34,11 @@ OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN = 4
 OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND  = 6
 OPASM_ENGINE_STMT_REQ_LABEL_START     = 8
 OPASM_ENGINE_STMT_REQ_LABEL_LEN       = 12
+OPASM_ENGINE_STMT_REQ_LABEL_LEN_WORD  = 14
 OPASM_ENGINE_STMT_REQ_MNEM_START      = 16
 OPASM_ENGINE_STMT_REQ_MNEM_OFF        = 20
 OPASM_ENGINE_STMT_REQ_MNEM_LEN        = 24
+OPASM_ENGINE_STMT_REQ_MNEM_LEN_WORD   = 26
 OPASM_ENGINE_STMT_REQ_OPERAND_START   = 28
 OPASM_ENGINE_STMT_REQ_OPERAND_END     = 32
 OPASM_ENGINE_STMT_REQ_EXPR_FOUND      = 36
@@ -52,6 +54,14 @@ OPASM_ENGINE_LABEL_EVENT_NONE      = 0
 OPASM_ENGINE_LABEL_EVENT_STORED    = 1
 OPASM_ENGINE_LABEL_EVENT_DUPLICATE = 2
 OPASM_ENGINE_LABEL_EVENT_CAPACITY  = 3
+OPASM_ENGINE_EXPR_META_OPERAND_INDEX = 0
+OPASM_ENGINE_EXPR_META_SLOT_INDEX    = 4
+OPASM_ENGINE_EXPR_META_START_TOKEN   = 8
+OPASM_ENGINE_EXPR_META_END_TOKEN     = 12
+OPASM_ENGINE_EXPR_META_SPAN_LINE     = 16
+OPASM_ENGINE_EXPR_META_SPAN_START    = 20
+OPASM_ENGINE_EXPR_META_SPAN_END      = 24
+OPASM_ENGINE_EXPR_META_BYTES         = 28
 
 ; A4: opasm engine context pointer.
 ; Returns D0=0 on success, non-zero on failure.
@@ -415,6 +425,86 @@ opasmEngineGetImageBufferPtrV1	.block
 	rts
 	.bend  ; opasmEngineGetImageBufferPtrV1
 
+; Return stored source-line text for one statement.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: source-line text length, or 0 when absent.
+; - A0: source-line text pointer when D0 is non-zero.
+opasmEngineGetStatementSourceLineTextV1	.block
+	movem.l d1-d2, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	move.l d1, d2
+	add.w d2, d2
+	lea OpasmEngineStmtSourceLineLenTable.l, a0
+	moveq #0, d0
+	move.w 0(a0, d2.l), d0
+	beq.s fail
+	lsl.l #8, d1
+	add.l d1, d1
+	lea OpasmEngineStmtSourceLineTextTable.l, a0
+	adda.l d1, a0
+	movem.l (sp)+, d1-d2
+	rts
+
+fail
+	suba.l a0, a0
+	movem.l (sp)+, d1-d2
+	rts
+	.bend  ; opasmEngineGetStatementSourceLineTextV1
+
+; Return stored expression metadata for one statement.
+;
+; Inputs:
+; - D0: statement index.
+; - A0: OPASM_ENGINE_EXPR_META_* output buffer.
+;
+; Outputs:
+; - D0: 1 when expression metadata exists, 0 when absent.
+opasmEngineGetStatementExprMetadataV1	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	move.w d0, d1
+	add.w d1, d1
+	lea OpasmEngineStmtExprFlagsTable.l, a1
+	tst.w 0(a1, d1.l)
+	beq.s empty
+	lsr.w #1, d1
+	lsl.l #2, d1
+	lea OpasmEngineStmtExprOperandIndexTable.l, a1
+	move.l 0(a1, d1.l), OPASM_ENGINE_EXPR_META_OPERAND_INDEX(a0)
+	lea OpasmEngineStmtExprSlotIndexTable.l, a1
+	move.l 0(a1, d1.l), OPASM_ENGINE_EXPR_META_SLOT_INDEX(a0)
+	lea OpasmEngineStmtExprStartTokenTable.l, a1
+	move.l 0(a1, d1.l), OPASM_ENGINE_EXPR_META_START_TOKEN(a0)
+	lea OpasmEngineStmtExprEndTokenTable.l, a1
+	move.l 0(a1, d1.l), OPASM_ENGINE_EXPR_META_END_TOKEN(a0)
+	lea OpasmEngineStmtExprSpanLineTable.l, a1
+	move.l 0(a1, d1.l), OPASM_ENGINE_EXPR_META_SPAN_LINE(a0)
+	lea OpasmEngineStmtExprSpanStartTable.l, a1
+	move.l 0(a1, d1.l), OPASM_ENGINE_EXPR_META_SPAN_START(a0)
+	lea OpasmEngineStmtExprSpanEndTable.l, a1
+	move.l 0(a1, d1.l), OPASM_ENGINE_EXPR_META_SPAN_END(a0)
+	movem.l (sp)+, d1-d2/a0-a1
+	moveq #1, d0
+	rts
+
+empty
+	moveq #0, d2
+	move.l d2, OPASM_ENGINE_EXPR_META_OPERAND_INDEX(a0)
+	move.l d2, OPASM_ENGINE_EXPR_META_SLOT_INDEX(a0)
+	move.l d2, OPASM_ENGINE_EXPR_META_START_TOKEN(a0)
+	move.l d2, OPASM_ENGINE_EXPR_META_END_TOKEN(a0)
+	move.l d2, OPASM_ENGINE_EXPR_META_SPAN_LINE(a0)
+	move.l d2, OPASM_ENGINE_EXPR_META_SPAN_START(a0)
+	move.l d2, OPASM_ENGINE_EXPR_META_SPAN_END(a0)
+	movem.l (sp)+, d1-d2/a0-a1
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineGetStatementExprMetadataV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5
@@ -590,9 +680,9 @@ storeStatementRecord	.block
 	lea OpasmEngineStmtSourceLineLenTable.l, a0
 	clr.w 0(a0, d2.l)
 	lea OpasmEngineStmtLabelLenTable.l, a0
-	move.w OPASM_ENGINE_STMT_REQ_LABEL_LEN+2(a5), 0(a0, d2.l)
+	move.w OPASM_ENGINE_STMT_REQ_LABEL_LEN_WORD(a5), 0(a0, d2.l)
 	lea OpasmEngineStmtMnemLenTable.l, a0
-	move.w OPASM_ENGINE_STMT_REQ_MNEM_LEN+2(a5), 0(a0, d2.l)
+	move.w OPASM_ENGINE_STMT_REQ_MNEM_LEN_WORD(a5), 0(a0, d2.l)
 	lea OpasmEngineStmtOperandLenTable.l, a0
 	clr.w 0(a0, d2.l)
 	lea OpasmEngineStmtDirectiveKindTable.l, a0

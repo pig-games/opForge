@@ -10316,7 +10316,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "NativeCliBinRequested",
         "NativeCliOutputFormat",
         "NativeCliBinPath",
-        "NativeCliOpasmEngineContext",
+        "OpasmEngineContext",
         "NATIVE_OUTPUT_FORMAT_BIN",
         "NATIVE_OUTPUT_FORMAT_HUNK",
         "NATIVE_SOURCE_RECORD_CAPACITY",
@@ -10337,23 +10337,23 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "PRVM_RESULT_OPERAND_EXPR_SLOT",
         "PRVM_RESULT_DIRECTIVE_TEXT",
         "PRVM_RESULT_OPERAND_TEXT",
-        "opasmEngineAssemblySessionStart",
-        "opasmEngineStmtCount",
-        "opasmEngineSourceRecordCount",
-        "opasmEngineLabelCount",
-        "opasmEngineImageByteCount",
-        "opasmEngineSessionCpuName",
-        "opasmEngineImageBuffer",
-        "opasmEngineStmtDirectiveKindTable",
-        "opasmEngineStmtExprFlagsTable",
-        "opasmEngineStmtExprOperandIndexTable",
-        "opasmEngineStmtExprSlotIndexTable",
-        "opasmEngineStmtSourceLineLenTable",
-        "opasmEngineStmtSourceLineTextTable",
-        "opasmEngineStmtLineTable",
-        "opasmEngineStmtLabelNameTable",
-        "opasmEngineStmtMnemNameTable",
-        "opasmEngineLabelNameTable",
+        "OpasmEngineAssemblySessionStart",
+        "OpasmEngineStmtCount",
+        "OpasmEngineSourceRecordCount",
+        "OpasmEngineLabelCount",
+        "opasmEngineGetImageByteCountV1",
+        "OpasmEngineSessionCpuName",
+        "opasmEngineGetImageBufferPtrV1",
+        "OpasmEngineStmtDirectiveKindTable",
+        "OpasmEngineStmtExprFlagsTable",
+        "OpasmEngineStmtExprOperandIndexTable",
+        "OpasmEngineStmtExprSlotIndexTable",
+        "OpasmEngineStmtSourceLineLenTable",
+        "OpasmEngineStmtSourceLineTextTable",
+        "OpasmEngineStmtLineTable",
+        "OpasmEngineStmtLabelNameTable",
+        "OpasmEngineStmtMnemNameTable",
+        "OpasmEngineLabelNameTable",
         "opasm.amigaos.engine.opasmEngineRunTwoPassV1",
         "opasm.amigaos.engine.runPassOne",
         "opasm.amigaos.engine.runPassTwo",
@@ -12214,10 +12214,8 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
         &source,
         &[
             "opforgeNativeCliOpasmPassOneBegin .block",
-            "CLR.W opasmEngineLabelCount.L",
-            "LEA opasmEngineLabelFinalizedTable.L, A0",
-            "clearLoop:",
-            "MOVE.L #$00000800, opasmEngineSessionOrigin.L",
+            "MOVE.L #nativePassOneText, D1",
+            "JSR opasmEngineBeginPassOneV1",
             "opforgeNativeCliOpasmPassOneOk .block",
             "MOVE.L #nativePassOneOkText, D1",
         ]
@@ -12226,11 +12224,8 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
         &source,
         &[
             "opforgeNativeCliOpasmPassTwoBegin .block",
-            "MOVE.W opasmEngineLabelCount.L, D0",
-            "LEA opasmEngineLabelFinalizedTable.L, A0",
-            "finalizeLoop:",
-            "MOVE.L opasmEngineSessionOrigin.L, D0",
-            "MOVE.L D0, opasmEngineSessionCurrentPc.L",
+            "MOVE.L #nativePassTwoText, D1",
+            "JSR opasmEngineBeginPassTwoV1",
             "opforgeNativeCliOpasmPassTwoOk .block",
             "MOVE.L #nativePassTwoOkText, D1",
         ]
@@ -12254,14 +12249,9 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
     assert!(!source.contains("opforge_native_cli_run_pass_one:"));
     assert!(!source.contains("opforge_native_cli_run_pass_two:"));
     assert!(source.contains("opforgeNativeCliPassOneRecordLabel"));
-    assert!(source.contains("lea opasmEngineStmtLabelNameTable.l, a1"));
-    assert!(source.contains("storeLabel"));
-    assert!(source.contains("lea opasmEngineLabelValueTable.l, a0"));
-    assert!(source.contains("lea opasmEngineLabelFinalizedTable.l, a0"));
-    assert!(source.contains("opasmEngineSessionCurrentPc"));
-    assert!(source.contains("lea opasmEngineLabelNameTable.l, a0"));
-    assert!(source.contains("jsr opforgeNativeCliCopyFixedString"));
-    assert!(source.contains("addq.w #1, opasmEngineLabelCount.l"));
+    assert!(source.contains("jsr opasmEngineRecordStatementLabelV1"));
+    assert!(source.contains("OPASM_ENGINE_LABEL_EVENT_STORED"));
+    assert!(source.contains("OPASM_ENGINE_LABEL_EVENT_DUPLICATE"));
     assert!(source_contains_in_order(
         &source,
         &[
@@ -12270,7 +12260,7 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
             "LEA cpuMnemonicText, A1",
             "BSR.W opforgeNativeCliTrySelectedEncodeSizeForStatement",
             "advanceThree:",
-            "ADDQ.L #3, opasmEngineSessionCurrentPc.L",
+            "JSR opasmEngineAdvancePcBySizeV1",
         ]
     ));
     assert!(!source.contains("opforgeNativeCliPassAdvanceFallbackSize:"));
@@ -12330,25 +12320,26 @@ fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
         &source,
         &[
             ".section bss, kind=bss",
-            "opasmEngineAssemblySessionStart:",
-            "opasmEngineStmtCount:",
-            "opasmEngineSessionPass:",
-            "opasmEngineSourceRecordCount:",
-            "opasmEngineLabelCount:",
-            "opasmEngineImageByteCount:",
-            "opasmEngineSessionCpuName:",
-            "opasmEngineSessionOrigin:",
-            "opasmEngineSessionCurrentPc:",
-            "opasmEngineSourceLineNumTable:",
-            "opasmEngineStmtLineTable:",
-            "opasmEngineStmtSourceLineLenTable:",
-            "opasmEngineStmtSourceLineTextTable:",
-            "opasmEngineStmtDirectiveKindTable:",
-            "opasmEngineStmtExprFlagsTable:",
-            "opasmEngineStmtExprSlotIndexTable:",
-            "opasmEngineLabelValueTable:",
-            "opasmEngineLabelFinalizedTable:",
-            "opasmEngineImageBuffer:",
+            "OpasmEngineContext:",
+            "OpasmEngineAssemblySessionStart:",
+            "OpasmEngineStmtCount:",
+            "OpasmEngineSessionPass:",
+            "OpasmEngineSourceRecordCount:",
+            "OpasmEngineLabelCount:",
+            "OpasmEngineImageByteCount:",
+            "OpasmEngineSessionCpuName:",
+            "OpasmEngineSessionOrigin:",
+            "OpasmEngineSessionCurrentPc:",
+            "OpasmEngineSourceLineNumTable:",
+            "OpasmEngineStmtLineTable:",
+            "OpasmEngineStmtSourceLineLenTable:",
+            "OpasmEngineStmtSourceLineTextTable:",
+            "OpasmEngineStmtDirectiveKindTable:",
+            "OpasmEngineStmtExprFlagsTable:",
+            "OpasmEngineStmtExprSlotIndexTable:",
+            "OpasmEngineLabelValueTable:",
+            "OpasmEngineLabelFinalizedTable:",
+            "OpasmEngineImageBuffer:",
             "opasmEngineAssemblySessionEnd:",
         ]
     ));
@@ -12616,16 +12607,16 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("NativeCliImportAliasTable"));
     assert!(listing.contains("NativeCliImportSelectNameTable"));
     assert!(listing.contains("NativeCliModulePathTable"));
-    assert!(listing.contains("opasmEngineAssemblySessionStart"));
+    assert!(listing.contains("OpasmEngineAssemblySessionStart"));
     assert!(listing.contains("opasmEngineSessionCpuName"));
     assert!(listing.contains("NativeCliLineRequestLen"));
     assert!(listing.contains("NativeCliEncodeRequestLen"));
     assert!(listing.contains("opasmEngineSourceRecordCount"));
-    assert!(listing.contains("opasmEngineStmtLineTable"));
-    assert!(listing.contains("opasmEngineStmtLabelNameTable"));
-    assert!(listing.contains("opasmEngineStmtMnemNameTable"));
-    assert!(listing.contains("opasmEngineLabelNameTable"));
-    assert!(listing.contains("opasmEngineImageBuffer"));
+    assert!(listing.contains("OpasmEngineStmtLineTable"));
+    assert!(listing.contains("OpasmEngineStmtLabelNameTable"));
+    assert!(listing.contains("OpasmEngineStmtMnemNameTable"));
+    assert!(listing.contains("OpasmEngineLabelNameTable"));
+    assert!(listing.contains("opasmEngineGetImageBufferPtrV1"));
     assert!(listing.contains("opforgeNativeCliStagePackage"));
     assert!(listing.contains("opforgeNativeCliPreparePipelineRequest"));
     assert!(listing.contains("opforgeNativeCliPrepareLineServiceRequest"));

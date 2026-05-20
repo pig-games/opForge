@@ -7,14 +7,14 @@
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_PTR_V1)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
+	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1, opasmEngineGetStatementExprMetadataV1)
+	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_OPERAND_INDEX, OPASM_ENGINE_EXPR_META_SLOT_INDEX)
+	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_START_TOKEN, OPASM_ENGINE_EXPR_META_END_TOKEN)
+	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_LINE, OPASM_ENGINE_EXPR_META_SPAN_START)
+	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_END, OPASM_ENGINE_EXPR_META_BYTES)
 	.use opasm.amigaos.engine (opasmEngineStmtLineTable)
-	.use opasm.amigaos.engine (opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable)
 	.use opasm.amigaos.engine (opasmEngineStmtMnemLenTable, opasmEngineStmtMnemNameTable)
 	.use opasm.amigaos.engine (opasmEngineStmtOperandLenTable, opasmEngineStmtOperandNameTable)
-	.use opasm.amigaos.engine (opasmEngineStmtExprFlagsTable, opasmEngineStmtExprOperandIndexTable)
-	.use opasm.amigaos.engine (opasmEngineStmtExprSlotIndexTable, opasmEngineStmtExprStartTokenTable)
-	.use opasm.amigaos.engine (opasmEngineStmtExprEndTokenTable, opasmEngineStmtExprSpanLineTable)
-	.use opasm.amigaos.engine (opasmEngineStmtExprSpanStartTable, opasmEngineStmtExprSpanEndTable)
 	.use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineLabelValueTable)
 	.use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineSessionCurrentPc)
 
@@ -233,60 +233,32 @@ opforgeNativeCliReadEvaluateExpressionValue	.block
 opforgeNativeCliLoadStatementSourceLineText	.block
 	moveq #0, d0
 	move.w d7, d0
-	add.w d0, d0
-	lea opasmEngineStmtSourceLineLenTable.l, a0
-	moveq #0, d1
-	move.w 0(a0, d0.l), d1
-	beq.s fail
-	moveq #0, d0
-	move.w d7, d0
-	lsl.l #8, d0
-	add.l d0, d0
-	lea opasmEngineStmtSourceLineTextTable.l, a0
-	adda.l d0, a0
-	move.l d1, d0
-	rts
-
-fail
-	clr.l d0
+	jsr opasmEngineGetStatementSourceLineTextV1
 	rts
 	.bend  ; opforgeNativeCliLoadStatementSourceLineText
 
 opforgeNativeCliLoadStatementExprMetadata	.block
+	suba.l #OPASM_ENGINE_EXPR_META_BYTES, sp
+	movea.l sp, a0
 	moveq #0, d0
 	move.w d7, d0
-	add.w d0, d0
-	lea opasmEngineStmtExprFlagsTable.l, a0
-	tst.w 0(a0, d0.l)
+	jsr opasmEngineGetStatementExprMetadataV1
+	move.l OPASM_ENGINE_EXPR_META_OPERAND_INDEX(a0), NativeCliStmtExprOperandIndex
+	move.l OPASM_ENGINE_EXPR_META_SLOT_INDEX(a0), NativeCliStmtExprSlotIndex
+	move.l OPASM_ENGINE_EXPR_META_START_TOKEN(a0), NativeCliStmtExprStartToken
+	move.l OPASM_ENGINE_EXPR_META_END_TOKEN(a0), NativeCliStmtExprEndToken
+	move.l OPASM_ENGINE_EXPR_META_SPAN_LINE(a0), NativeCliStmtExprSpanLine
+	move.l OPASM_ENGINE_EXPR_META_SPAN_START(a0), NativeCliStmtExprSpanStart
+	move.l OPASM_ENGINE_EXPR_META_SPAN_END(a0), NativeCliStmtExprSpanEnd
+	tst.l d0
 	beq.s empty
-	lsr.w #1, d0
-	lsl.l #2, d0
-	lea opasmEngineStmtExprOperandIndexTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprOperandIndex
-	lea opasmEngineStmtExprSlotIndexTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprSlotIndex
-	lea opasmEngineStmtExprStartTokenTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprStartToken
-	lea opasmEngineStmtExprEndTokenTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprEndToken
-	lea opasmEngineStmtExprSpanLineTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprSpanLine
-	lea opasmEngineStmtExprSpanStartTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprSpanStart
-	lea opasmEngineStmtExprSpanEndTable.l, a0
-	move.l 0(a0, d0.l), NativeCliStmtExprSpanEnd
 	move.w #1, NativeCliStmtExprFound
+	adda.l #OPASM_ENGINE_EXPR_META_BYTES, sp
 	rts
 
 empty
-	clr.l NativeCliStmtExprOperandIndex
-	clr.l NativeCliStmtExprSlotIndex
-	clr.l NativeCliStmtExprStartToken
-	clr.l NativeCliStmtExprEndToken
-	clr.l NativeCliStmtExprSpanLine
-	clr.l NativeCliStmtExprSpanStart
-	clr.l NativeCliStmtExprSpanEnd
 	clr.w NativeCliStmtExprFound
+	adda.l #OPASM_ENGINE_EXPR_META_BYTES, sp
 	rts
 	.bend  ; opforgeNativeCliLoadStatementExprMetadata
 

@@ -8,6 +8,7 @@
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
 	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1)
+	.use opasm.amigaos.engine (OpasmEngineContext)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
 	.use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineImageByteCount)
 	.use opasm.amigaos.engine (opasmEngineSessionOrigin, opasmEngineSessionCurrentPc)
@@ -20,7 +21,7 @@
 
 	.use opforge.cli.constants (NATIVE_LABEL_TABLE_CAPACITY, NATIVE_IMAGE_BUFFER_CAPACITY)
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
-	.use opforge.cli.state (NativeCliBinRequested, NativeCliOpasmEngineContext)
+	.use opforge.cli.state (NativeCliBinRequested)
 	.use opforge.cli.state (NativeCliEvalRequestLen, NativeCliStmtExprFound)
 	.use opforge.cli.state (NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd)
 	.use opforge.cli.strings (NativePassOneText, NativePassTwoText, NativePassOneOkText, NativePassTwoOkText)
@@ -55,7 +56,7 @@ opforgeNativeCliRunTwoPassEngine	.block
 	.priv
 
 opforgeNativeCliBuildOpasmEngineContext	.block
-	lea NativeCliOpasmEngineContext.l, a4
+	lea OpasmEngineContext.l, a4
 	move.l #opasmEngineSessionPass, (a4)+
 	move.l #opasmEngineStmtCount, (a4)+
 	move.l #NativeCliBinRequested, (a4)+
@@ -66,7 +67,7 @@ opforgeNativeCliBuildOpasmEngineContext	.block
 	move.l #opforgeNativeCliPassOneRecordLabel, (a4)+
 	move.l #opforgeNativeCliPassAdvancePc, (a4)+
 	move.l #opforgeNativeCliPassTwoEmitImageBytes, (a4)+
-	lea NativeCliOpasmEngineContext.l, a4
+	lea OpasmEngineContext.l, a4
 	rts
 	.bend  ; opforgeNativeCliBuildOpasmEngineContext
 

@@ -8,7 +8,6 @@
 	.cpu 68020
 
 	.use opforge.cli.constants (TOKEN_BUFFER_CAPACITY, PATH_BUFFER_CAPACITY, SOURCE_LINE_BUFFER_CAPACITY)
-	.use opforge.cli.constants (NATIVE_OPASM_ENGINE_CONTEXT_LONGS)
 	.use opforge.cli.constants (PRVM_ROUTE_FRAME_SIZE, PRVM_ROUTE_RESULT_CAPACITY)
 	.use opforge.cli.constants (PRVM_ROUTE_DIAG_CAPACITY, PRVM_ROUTE_RESUME_CAPACITY)
 	.use opforge.cli.constants (PRVM_ROUTE_EXPR_REQUEST_SIZE, PRVM_ROUTE_EXPR_RESULT_SIZE)
@@ -65,8 +64,6 @@ NativeCliEvalRequestLen
 NativeCliEncodeRequestLen
 	.res word, 1
 	.align 4
-NativeCliOpasmEngineContext
-	.res long, NATIVE_OPASM_ENGINE_CONTEXT_LONGS
 NativeCliSourceLineNum
 	.res long, 1
 NativeCliSawCr

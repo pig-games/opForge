@@ -28,6 +28,25 @@ OPASM_ENGINE_CTX_PASS2_OK_CB      = 24
 OPASM_ENGINE_CTX_RECORD_LABEL_CB  = 28
 OPASM_ENGINE_CTX_ADVANCE_PC_CB    = 32
 OPASM_ENGINE_CTX_EMIT_IMAGE_CB    = 36
+OPASM_ENGINE_STMT_REQ_SOURCE_LINE_NUM = 0
+OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN = 4
+OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND  = 6
+OPASM_ENGINE_STMT_REQ_LABEL_START     = 8
+OPASM_ENGINE_STMT_REQ_LABEL_LEN       = 12
+OPASM_ENGINE_STMT_REQ_MNEM_START      = 16
+OPASM_ENGINE_STMT_REQ_MNEM_OFF        = 20
+OPASM_ENGINE_STMT_REQ_MNEM_LEN        = 24
+OPASM_ENGINE_STMT_REQ_OPERAND_START   = 28
+OPASM_ENGINE_STMT_REQ_OPERAND_END     = 32
+OPASM_ENGINE_STMT_REQ_EXPR_FOUND      = 36
+OPASM_ENGINE_STMT_REQ_EXPR_OPERAND_INDEX = 40
+OPASM_ENGINE_STMT_REQ_EXPR_SLOT_INDEX = 44
+OPASM_ENGINE_STMT_REQ_EXPR_START_TOKEN = 48
+OPASM_ENGINE_STMT_REQ_EXPR_END_TOKEN  = 52
+OPASM_ENGINE_STMT_REQ_EXPR_SPAN_LINE  = 56
+OPASM_ENGINE_STMT_REQ_EXPR_SPAN_START = 60
+OPASM_ENGINE_STMT_REQ_EXPR_SPAN_END   = 64
+OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES = 68
 
 ; A4: opasm engine context pointer.
 ; Returns D0=0 on success, non-zero on failure.
@@ -101,6 +120,48 @@ done
 	rts
 	.bend  ; opasmEngineRecordSourceLineV1
 
+; Store one parsed statement into opasm-owned statement tables.
+;
+; Inputs:
+; - A0: source-line bytes.
+; - A1: mnemonic/token scratch bytes.
+; - A2: statement-record request using OPASM_ENGINE_STMT_REQ_* offsets.
+;
+; Outputs:
+; - D0: 0 on success, non-zero on capacity or field failure.
+opasmEngineStoreStatementRecordV1	.block
+	movem.l d1-d7/a0-a5, -(sp)
+	movea.l a0, a3
+	movea.l a1, a4
+	movea.l a2, a5
+	move.l OPASM_ENGINE_STMT_REQ_MNEM_LEN(a5), d0
+	cmp.l #TOKEN_BUFFER_CAPACITY - 1, d0
+	bhi.w fail
+	move.w OpasmEngineStmtCount.l, d0
+	cmpi.w #NATIVE_STATEMENT_TABLE_CAPACITY, d0
+	bhs.w fail
+	bsr.w storeStatementRecord
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d7/a0-a5
+	rts
+	.bend  ; opasmEngineStoreStatementRecordV1
+
+; Commit a successfully stored statement record.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineCommitStatementRecordV1	.block
+	addq.w #1, OpasmEngineStmtCount.l
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineCommitStatementRecordV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5
@@ -127,6 +188,264 @@ loop
 done
 	rts
 	.bend  ; clearBytes
+
+copyFixedString	.block
+	move.w d0, d6
+	tst.w d6
+	beq.s done
+
+loop
+	move.b (a0)+, (a1)+
+	subq.w #1, d6
+	bne.s loop
+
+done
+	rts
+	.bend  ; copyFixedString
+
+skipLineWhitespace	.block
+	tst.l d0
+	beq.s done
+	cmpi.b #' ', (a0)
+	beq.s one
+	cmpi.b #9, (a0)
+	bne.s done
+
+one
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.s skipLineWhitespace
+
+done
+	rts
+	.bend  ; skipLineWhitespace
+
+copyOperandText	.block
+	movem.l d0-d4/a0-a1, -(sp)
+	clr.w d5
+	move.l #TOKEN_BUFFER_CAPACITY - 1, d4
+
+loop
+	tst.l d0
+	beq.s done
+	moveq #0, d2
+	move.b (a0), d2
+	beq.s done
+	cmpi.b #';', d2
+	beq.s done
+	cmpi.b #10, d2
+	beq.s done
+	cmpi.b #13, d2
+	beq.s done
+	tst.l d4
+	beq.s done
+	move.b d2, (a1)+
+	addq.l #1, a0
+	subq.l #1, d0
+	addq.w #1, d5
+	subq.l #1, d4
+	bra.s loop
+
+done
+	bsr.w trimOperandText
+	clr.b (a1)
+	movem.l (sp)+, d0-d4/a0-a1
+	rts
+	.bend  ; copyOperandText
+
+trimOperandText	.block
+	tst.w d5
+	beq.s done
+	movea.l a1, a0
+
+loop
+	tst.w d5
+	beq.s setEnd
+	subq.l #1, a0
+	move.b (a0), d0
+	cmpi.b #' ', d0
+	beq.s trimOne
+	cmpi.b #9, d0
+	beq.s trimOne
+	bra.s setEnd
+
+trimOne
+	subq.w #1, d5
+	bra.s loop
+
+setEnd
+	movea.l a0, a1
+	addq.l #1, a1
+
+done
+	rts
+	.bend  ; trimOperandText
+
+storeStatementRecord	.block
+	moveq #0, d1
+	move.w OpasmEngineStmtCount.l, d1
+	lsl.l #2, d1
+	lea OpasmEngineStmtLineTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_SOURCE_LINE_NUM(a5), 0(a0, d1.l)
+	lea OpasmEngineStmtMnemOffTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_MNEM_OFF(a5), 0(a0, d1.l)
+	moveq #0, d2
+	move.w OpasmEngineStmtCount.l, d2
+	add.w d2, d2
+	lea OpasmEngineStmtSourceLineLenTable.l, a0
+	clr.w 0(a0, d2.l)
+	lea OpasmEngineStmtLabelLenTable.l, a0
+	move.w OPASM_ENGINE_STMT_REQ_LABEL_LEN+2(a5), 0(a0, d2.l)
+	lea OpasmEngineStmtMnemLenTable.l, a0
+	move.w OPASM_ENGINE_STMT_REQ_MNEM_LEN+2(a5), 0(a0, d2.l)
+	lea OpasmEngineStmtOperandLenTable.l, a0
+	clr.w 0(a0, d2.l)
+	lea OpasmEngineStmtDirectiveKindTable.l, a0
+	move.w OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND(a5), 0(a0, d2.l)
+	lea OpasmEngineStmtExprFlagsTable.l, a0
+	clr.w 0(a0, d2.l)
+	lea OpasmEngineStmtExprOperandIndexTable.l, a0
+	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtExprSlotIndexTable.l, a0
+	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtExprStartTokenTable.l, a0
+	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtExprEndTokenTable.l, a0
+	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtExprSpanLineTable.l, a0
+	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtExprSpanStartTable.l, a0
+	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtExprSpanEndTable.l, a0
+	clr.l 0(a0, d1.l)
+	moveq #0, d3
+	move.w OpasmEngineStmtCount.l, d3
+	lsl.l #6, d3
+	moveq #0, d4
+	move.w OpasmEngineStmtCount.l, d4
+	lsl.l #8, d4
+	add.l d4, d4
+	lea OpasmEngineStmtSourceLineTextTable.l, a1
+	adda.l d4, a1
+	clr.b (a1)
+	moveq #0, d0
+	move.w OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN(a5), d0
+	beq.s sourceLineDone
+	cmp.l #SOURCE_LINE_BUFFER_CAPACITY - 1, d0
+	bls.s sourceLineLenOk
+	move.l #SOURCE_LINE_BUFFER_CAPACITY - 1, d0
+
+sourceLineLenOk
+	movea.l a3, a0
+	move.l d2, -(sp)
+	bsr.w copyFixedString
+	move.l (sp)+, d2
+	clr.b (a1)
+	lea OpasmEngineStmtSourceLineLenTable.l, a0
+	move.w d0, 0(a0, d2.l)
+
+sourceLineDone
+	lea OpasmEngineStmtLabelNameTable.l, a1
+	adda.l d3, a1
+	clr.b (a1)
+	move.l OPASM_ENGINE_STMT_REQ_LABEL_LEN(a5), d0
+	beq.s mnemText
+	move.l OPASM_ENGINE_STMT_REQ_LABEL_START(a5), d1
+	beq.s mnemText
+	subq.l #1, d1
+	movea.l a3, a0
+	adda.l d1, a0
+	bsr.w copyFixedString
+	clr.b (a1)
+
+mnemText
+	lea OpasmEngineStmtMnemNameTable.l, a1
+	adda.l d3, a1
+	clr.b (a1)
+	move.l OPASM_ENGINE_STMT_REQ_MNEM_LEN(a5), d0
+	beq.w done
+	movea.l a4, a0
+	adda.l OPASM_ENGINE_STMT_REQ_MNEM_OFF(a5), a0
+	bsr.w copyFixedString
+	clr.b (a1)
+
+operandText
+	lea OpasmEngineStmtOperandNameTable.l, a1
+	adda.l d3, a1
+	clr.b (a1)
+	move.l OPASM_ENGINE_STMT_REQ_MNEM_START(a5), d0
+	bne.s operandFallback
+	move.l OPASM_ENGINE_STMT_REQ_OPERAND_START(a5), d0
+	beq.s operandFallback
+	move.l OPASM_ENGINE_STMT_REQ_OPERAND_END(a5), d1
+	cmp.l d0, d1
+	bls.s operandFallback
+	move.l d0, d2
+	subq.l #1, d2
+	sub.l d0, d1
+	movea.l a3, a0
+	adda.l d2, a0
+	move.l d1, d0
+	bsr.w copyOperandText
+	moveq #0, d0
+	move.w OpasmEngineStmtCount.l, d0
+	add.w d0, d0
+	lea OpasmEngineStmtOperandLenTable.l, a0
+	move.w d5, 0(a0, d0.l)
+	bra.s exprMetadata
+
+operandFallback
+	move.l OPASM_ENGINE_STMT_REQ_MNEM_START(a5), d0
+	beq.w exprMetadata
+	move.l OPASM_ENGINE_STMT_REQ_MNEM_LEN(a5), d2
+	beq.w exprMetadata
+	add.l d2, d0
+	beq.w exprMetadata
+	moveq #0, d1
+	move.w OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN(a5), d1
+	cmp.l d1, d0
+	bhs.w exprMetadata
+	movea.l a3, a0
+	adda.l d0, a0
+	sub.l d0, d1
+	move.l d1, d0
+	bsr.w skipLineWhitespace
+	bsr.w copyOperandText
+	moveq #0, d0
+	move.w OpasmEngineStmtCount.l, d0
+	add.w d0, d0
+	lea OpasmEngineStmtOperandLenTable.l, a0
+	move.w d5, 0(a0, d0.l)
+
+exprMetadata
+	tst.w OPASM_ENGINE_STMT_REQ_EXPR_FOUND(a5)
+	beq.w done
+	moveq #0, d1
+	move.w OpasmEngineStmtCount.l, d1
+	lsl.l #2, d1
+	moveq #0, d2
+	move.w OpasmEngineStmtCount.l, d2
+	add.w d2, d2
+	lea OpasmEngineStmtExprFlagsTable.l, a0
+	move.w #1, 0(a0, d2.l)
+	lea OpasmEngineStmtExprOperandIndexTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_EXPR_OPERAND_INDEX(a5), 0(a0, d1.l)
+	lea OpasmEngineStmtExprSlotIndexTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_EXPR_SLOT_INDEX(a5), 0(a0, d1.l)
+	lea OpasmEngineStmtExprStartTokenTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_EXPR_START_TOKEN(a5), 0(a0, d1.l)
+	lea OpasmEngineStmtExprEndTokenTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_EXPR_END_TOKEN(a5), 0(a0, d1.l)
+	lea OpasmEngineStmtExprSpanLineTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_EXPR_SPAN_LINE(a5), 0(a0, d1.l)
+	lea OpasmEngineStmtExprSpanStartTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_EXPR_SPAN_START(a5), 0(a0, d1.l)
+	lea OpasmEngineStmtExprSpanEndTable.l, a0
+	move.l OPASM_ENGINE_STMT_REQ_EXPR_SPAN_END(a5), 0(a0, d1.l)
+
+done
+	rts
+	.bend  ; storeStatementRecord
 
 runPassOne	.block
 	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0

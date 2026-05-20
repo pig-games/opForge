@@ -7,19 +7,21 @@
 	.module opforge.cli.assembly_session
 	.cpu 68020
 
-	.use opasm.amigaos.engine (opasmEngineRecordSourceLineV1)
-	.use opasm.amigaos.engine (opasmEngineStmtCount, opasmEngineStmtLineTable, opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable, opasmEngineStmtLabelLenTable, opasmEngineStmtMnemLenTable, opasmEngineStmtOperandLenTable, opasmEngineStmtDirectiveKindTable, opasmEngineStmtMnemOffTable, opasmEngineStmtLabelNameTable, opasmEngineStmtMnemNameTable, opasmEngineStmtOperandNameTable, opasmEngineStmtExprFlagsTable, opasmEngineStmtExprOperandIndexTable, opasmEngineStmtExprSlotIndexTable, opasmEngineStmtExprStartTokenTable, opasmEngineStmtExprEndTokenTable, opasmEngineStmtExprSpanLineTable, opasmEngineStmtExprSpanStartTable, opasmEngineStmtExprSpanEndTable)
+	.use opasm.amigaos.engine (opasmEngineRecordSourceLineV1, opasmEngineStoreStatementRecordV1, opasmEngineCommitStatementRecordV1)
+	.use opasm.amigaos.engine (opasmEngineStmtCount, OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES)
+	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_REQ_SOURCE_LINE_NUM, OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN, OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND, OPASM_ENGINE_STMT_REQ_LABEL_START, OPASM_ENGINE_STMT_REQ_LABEL_LEN, OPASM_ENGINE_STMT_REQ_MNEM_START, OPASM_ENGINE_STMT_REQ_MNEM_OFF, OPASM_ENGINE_STMT_REQ_MNEM_LEN, OPASM_ENGINE_STMT_REQ_OPERAND_START, OPASM_ENGINE_STMT_REQ_OPERAND_END, OPASM_ENGINE_STMT_REQ_EXPR_FOUND)
+	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_REQ_EXPR_OPERAND_INDEX, OPASM_ENGINE_STMT_REQ_EXPR_SLOT_INDEX, OPASM_ENGINE_STMT_REQ_EXPR_START_TOKEN, OPASM_ENGINE_STMT_REQ_EXPR_END_TOKEN, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_LINE, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_START, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_END)
 	.use tkpkg.amigaos.buffers (tokenScratchBuffer)
 
 	.use opforge.cli.state (OpforgeNativeCliPrvmResultBuffer, OpforgeNativeCliPrvmExprRequest, NativeCliSourceLine, NativeCliSourceLineNum, NativeCliSourceLineLen, NativeCliPrvmRouteStatus, NativeCliPrvmResultCount, NativeCliStmtLabelStart, NativeCliStmtLabelEnd, NativeCliStmtLabelOff, NativeCliStmtLabelLen, NativeCliStmtMnemStart, NativeCliStmtMnemEnd, NativeCliStmtMnemOff, NativeCliStmtMnemLen, NativeCliStmtOperandStart, NativeCliStmtOperandEnd, NativeCliStmtExprOperandIndex, NativeCliStmtExprSlotIndex, NativeCliStmtExprStartToken, NativeCliStmtExprEndToken, NativeCliStmtExprSpanLine, NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd, NativeCliStmtMnemFound, NativeCliStmtExprFound, NativeCliStmtDirectiveKind, NativeCliArgToken)
 
-	.use opforge.cli.constants (NATIVE_STATEMENT_TABLE_CAPACITY, TOKEN_BUFFER_CAPACITY, SOURCE_LINE_BUFFER_CAPACITY, NCLI_PARSER_DIRECTIVE_NONE, NCLI_PARSER_DIRECTIVE_GENERIC, PRVM_STATUS_EXPR_REQUEST, PRVM_RESULT_RECORD_COUNT, PRVM_RESULT_RECORD_SIZE, PRVM_RESULT_LABEL_TEXT, PRVM_RESULT_MNEMONIC_TEXT, PRVM_RESULT_DIRECTIVE_TEXT, PRVM_RESULT_OPERAND_TEXT, PRVM_RESULT_OPERAND_EXPR_SLOT)
+	.use opforge.cli.constants (NCLI_PARSER_DIRECTIVE_NONE, NCLI_PARSER_DIRECTIVE_GENERIC, PRVM_STATUS_EXPR_REQUEST, PRVM_RESULT_RECORD_COUNT, PRVM_RESULT_RECORD_SIZE, PRVM_RESULT_LABEL_TEXT, PRVM_RESULT_MNEMONIC_TEXT, PRVM_RESULT_DIRECTIVE_TEXT, PRVM_RESULT_OPERAND_TEXT, PRVM_RESULT_OPERAND_EXPR_SLOT)
 
 	.use opforge.cli.strings (StatementText, StatementExprText, NewlineText)
 	.use opforge.cli.dos (opforgeNativeCliPutStr)
 	.use opforge.cli.text_output (opforgeNativeCliPutDecU16, opforgeNativeCliPutSpace)
 	.use opforge.cli.copy (opforgeNativeCliCopyFixedString)
-	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace, opforgeNativeCliCopyOperandText)
+	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace)
 
 	.section code, kind=code
 	.pub
@@ -146,19 +148,15 @@ trySourceFallback
 	tst.l NativeCliStmtLabelLen
 	beq.w done
 checkStore
-	move.l NativeCliStmtMnemLen, d0
-	cmp.l #TOKEN_BUFFER_CAPACITY - 1, d0
-	bhi.w fail
-	move.w opasmEngineStmtCount.l, d0
-	cmpi.w #NATIVE_STATEMENT_TABLE_CAPACITY, d0
-	bhs.w fail
 	bsr.w opforgeNativeCliStoreStatementRecord
+	tst.l d0
+	bne.w fail
 	tst.w opasmEngineStmtCount.l
 	bpl.s skipEmit
 	bsr.w opforgeNativeCliEmitStatementRecord
 
 skipEmit
-	addq.w #1, opasmEngineStmtCount.l
+	jsr opasmEngineCommitStatementRecordV1
 	bra.w done
 	
 sourceOnly
@@ -536,170 +534,30 @@ done
 	.bend  ; opforgeNativeCliFallbackOperandLen
 
 opforgeNativeCliStoreStatementRecord	.block
-	movem.l d1-d4/a0-a1, -(sp)
-	moveq #0, d1
-	move.w opasmEngineStmtCount.l, d1
-	lsl.l #2, d1
-	lea opasmEngineStmtLineTable.l, a0
-	move.l NativeCliSourceLineNum, 0(a0, d1.l)
-	lea opasmEngineStmtMnemOffTable.l, a0
-	move.l NativeCliStmtMnemOff, 0(a0, d1.l)
-	moveq #0, d2
-	move.w opasmEngineStmtCount.l, d2
-	add.w d2, d2
-	lea opasmEngineStmtSourceLineLenTable.l, a0
-	clr.w 0(a0, d2.l)
-	lea opasmEngineStmtLabelLenTable.l, a0
-	move.w NativeCliStmtLabelLen, 0(a0, d2.l)
-	lea opasmEngineStmtMnemLenTable.l, a0
-	move.w NativeCliStmtMnemLen, 0(a0, d2.l)
-	lea opasmEngineStmtOperandLenTable.l, a0
-	clr.w 0(a0, d2.l)
-	lea opasmEngineStmtDirectiveKindTable.l, a0
-	move.w NativeCliStmtDirectiveKind, 0(a0, d2.l)
-	lea opasmEngineStmtExprFlagsTable.l, a0
-	clr.w 0(a0, d2.l)
-	lea opasmEngineStmtExprOperandIndexTable.l, a0
-	clr.l 0(a0, d1.l)
-	lea opasmEngineStmtExprSlotIndexTable.l, a0
-	clr.l 0(a0, d1.l)
-	lea opasmEngineStmtExprStartTokenTable.l, a0
-	clr.l 0(a0, d1.l)
-	lea opasmEngineStmtExprEndTokenTable.l, a0
-	clr.l 0(a0, d1.l)
-	lea opasmEngineStmtExprSpanLineTable.l, a0
-	clr.l 0(a0, d1.l)
-	lea opasmEngineStmtExprSpanStartTable.l, a0
-	clr.l 0(a0, d1.l)
-	lea opasmEngineStmtExprSpanEndTable.l, a0
-	clr.l 0(a0, d1.l)
-	moveq #0, d3
-	move.w opasmEngineStmtCount.l, d3
-	lsl.l #6, d3
-	moveq #0, d4
-	move.w opasmEngineStmtCount.l, d4
-	lsl.l #8, d4
-	add.l d4, d4
-	lea opasmEngineStmtSourceLineTextTable.l, a1
-	adda.l d4, a1
-	clr.b (a1)
-	moveq #0, d0
-	move.w NativeCliSourceLineLen, d0
-	beq.s sourceLineDone
-	cmp.l #SOURCE_LINE_BUFFER_CAPACITY - 1, d0
-	bls.s sourceLineLenOk
-	move.l #SOURCE_LINE_BUFFER_CAPACITY - 1, d0
-
-sourceLineLenOk
+	suba.l #OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES, sp
+	movea.l sp, a2
+	move.l NativeCliSourceLineNum, OPASM_ENGINE_STMT_REQ_SOURCE_LINE_NUM(a2)
+	move.w NativeCliSourceLineLen, OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN(a2)
+	move.w NativeCliStmtDirectiveKind, OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND(a2)
+	move.l NativeCliStmtLabelStart, OPASM_ENGINE_STMT_REQ_LABEL_START(a2)
+	move.l NativeCliStmtLabelLen, OPASM_ENGINE_STMT_REQ_LABEL_LEN(a2)
+	move.l NativeCliStmtMnemStart, OPASM_ENGINE_STMT_REQ_MNEM_START(a2)
+	move.l NativeCliStmtMnemOff, OPASM_ENGINE_STMT_REQ_MNEM_OFF(a2)
+	move.l NativeCliStmtMnemLen, OPASM_ENGINE_STMT_REQ_MNEM_LEN(a2)
+	move.l NativeCliStmtOperandStart, OPASM_ENGINE_STMT_REQ_OPERAND_START(a2)
+	move.l NativeCliStmtOperandEnd, OPASM_ENGINE_STMT_REQ_OPERAND_END(a2)
+	move.w NativeCliStmtExprFound, OPASM_ENGINE_STMT_REQ_EXPR_FOUND(a2)
+	move.l NativeCliStmtExprOperandIndex, OPASM_ENGINE_STMT_REQ_EXPR_OPERAND_INDEX(a2)
+	move.l NativeCliStmtExprSlotIndex, OPASM_ENGINE_STMT_REQ_EXPR_SLOT_INDEX(a2)
+	move.l NativeCliStmtExprStartToken, OPASM_ENGINE_STMT_REQ_EXPR_START_TOKEN(a2)
+	move.l NativeCliStmtExprEndToken, OPASM_ENGINE_STMT_REQ_EXPR_END_TOKEN(a2)
+	move.l NativeCliStmtExprSpanLine, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_LINE(a2)
+	move.l NativeCliStmtExprSpanStart, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_START(a2)
+	move.l NativeCliStmtExprSpanEnd, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_END(a2)
 	lea NativeCliSourceLine, a0
-	move.l d2, -(sp)
-	jsr opforgeNativeCliCopyFixedString
-	move.l (sp)+, d2
-	clr.b (a1)
-	lea opasmEngineStmtSourceLineLenTable.l, a0
-	move.w d0, 0(a0, d2.l)
-
-sourceLineDone
-	lea opasmEngineStmtLabelNameTable.l, a1
-	adda.l d3, a1
-	clr.b (a1)
-	move.l NativeCliStmtLabelLen, d0
-	beq.s mnemText
-	move.l NativeCliStmtLabelStart, d1
-	beq.s mnemText
-	subq.l #1, d1
-	lea NativeCliSourceLine, a0
-	adda.l d1, a0
-	jsr opforgeNativeCliCopyFixedString
-	clr.b (a1)
-
-mnemText
-	lea opasmEngineStmtMnemNameTable.l, a1
-	adda.l d3, a1
-	clr.b (a1)
-	move.l NativeCliStmtMnemLen, d0
-	beq.w done
-	lea tokenScratchBuffer, a0
-	adda.l NativeCliStmtMnemOff, a0
-	jsr opforgeNativeCliCopyFixedString
-	clr.b (a1)
-
-operandText
-	lea opasmEngineStmtOperandNameTable.l, a1
-	adda.l d3, a1
-	clr.b (a1)
-	move.l NativeCliStmtMnemStart, d0
-	bne.s operandFallback
-	move.l NativeCliStmtOperandStart, d0
-	beq.s operandFallback
-	move.l NativeCliStmtOperandEnd, d1
-	cmp.l d0, d1
-	bls.s operandFallback
-	move.l d0, d2
-	subq.l #1, d2
-	sub.l d0, d1
-	lea NativeCliSourceLine, a0
-	adda.l d2, a0
-	move.l d1, d0
-	jsr opforgeNativeCliCopyOperandText
-	moveq #0, d0
-	move.w opasmEngineStmtCount.l, d0
-	add.w d0, d0
-	lea opasmEngineStmtOperandLenTable.l, a0
-	move.w d5, 0(a0, d0.l)
-	bra.s exprMetadata
-
-operandFallback
-	move.l NativeCliStmtMnemStart, d0
-	beq.w exprMetadata
-	move.l NativeCliStmtMnemLen, d2
-	beq.w exprMetadata
-	add.l d2, d0
-	beq.w exprMetadata
-	moveq #0, d1
-	move.w NativeCliSourceLineLen, d1
-	cmp.l d1, d0
-	bhs.w exprMetadata
-	lea NativeCliSourceLine, a0
-	adda.l d0, a0
-	sub.l d0, d1
-	move.l d1, d0
-	jsr opforgeNativeCliSkipLineWhitespace
-	jsr opforgeNativeCliCopyOperandText
-	moveq #0, d0
-	move.w opasmEngineStmtCount.l, d0
-	add.w d0, d0
-	lea opasmEngineStmtOperandLenTable.l, a0
-	move.w d5, 0(a0, d0.l)
-
-exprMetadata
-	tst.w NativeCliStmtExprFound
-	beq.w done
-	moveq #0, d1
-	move.w opasmEngineStmtCount.l, d1
-	lsl.l #2, d1
-	moveq #0, d2
-	move.w opasmEngineStmtCount.l, d2
-	add.w d2, d2
-	lea opasmEngineStmtExprFlagsTable.l, a0
-	move.w #1, 0(a0, d2.l)
-	lea opasmEngineStmtExprOperandIndexTable.l, a0
-	move.l NativeCliStmtExprOperandIndex, 0(a0, d1.l)
-	lea opasmEngineStmtExprSlotIndexTable.l, a0
-	move.l NativeCliStmtExprSlotIndex, 0(a0, d1.l)
-	lea opasmEngineStmtExprStartTokenTable.l, a0
-	move.l NativeCliStmtExprStartToken, 0(a0, d1.l)
-	lea opasmEngineStmtExprEndTokenTable.l, a0
-	move.l NativeCliStmtExprEndToken, 0(a0, d1.l)
-	lea opasmEngineStmtExprSpanLineTable.l, a0
-	move.l NativeCliStmtExprSpanLine, 0(a0, d1.l)
-	lea opasmEngineStmtExprSpanStartTable.l, a0
-	move.l NativeCliStmtExprSpanStart, 0(a0, d1.l)
-	lea opasmEngineStmtExprSpanEndTable.l, a0
-	move.l NativeCliStmtExprSpanEnd, 0(a0, d1.l)
-
-done
-	movem.l (sp)+, d1-d4/a0-a1
+	lea tokenScratchBuffer, a1
+	jsr opasmEngineStoreStatementRecordV1
+	adda.l #OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES, sp
 	rts
 	.bend  ; opforgeNativeCliStoreStatementRecord
 

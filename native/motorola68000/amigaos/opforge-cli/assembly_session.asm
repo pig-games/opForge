@@ -8,7 +8,7 @@
 	.cpu 68020
 
 	.use opasm.amigaos.engine (opasmEngineRecordSourceLineV1, opasmEngineStoreStatementRecordV1, opasmEngineCommitStatementRecordV1)
-	.use opasm.amigaos.engine (opasmEngineStmtCount, OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES)
+	.use opasm.amigaos.engine (opasmEngineGetStatementCountV1, OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_REQ_SOURCE_LINE_NUM, OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN, OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND, OPASM_ENGINE_STMT_REQ_LABEL_START, OPASM_ENGINE_STMT_REQ_LABEL_LEN, OPASM_ENGINE_STMT_REQ_MNEM_START, OPASM_ENGINE_STMT_REQ_MNEM_OFF, OPASM_ENGINE_STMT_REQ_MNEM_LEN, OPASM_ENGINE_STMT_REQ_OPERAND_START, OPASM_ENGINE_STMT_REQ_OPERAND_END, OPASM_ENGINE_STMT_REQ_EXPR_FOUND)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_REQ_EXPR_OPERAND_INDEX, OPASM_ENGINE_STMT_REQ_EXPR_SLOT_INDEX, OPASM_ENGINE_STMT_REQ_EXPR_START_TOKEN, OPASM_ENGINE_STMT_REQ_EXPR_END_TOKEN, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_LINE, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_START, OPASM_ENGINE_STMT_REQ_EXPR_SPAN_END)
 	.use tkpkg.amigaos.buffers (tokenScratchBuffer)
@@ -151,7 +151,8 @@ checkStore
 	bsr.w opforgeNativeCliStoreStatementRecord
 	tst.l d0
 	bne.w fail
-	tst.w opasmEngineStmtCount.l
+	jsr opasmEngineGetStatementCountV1
+	tst.w d0
 	bpl.s skipEmit
 	bsr.w opforgeNativeCliEmitStatementRecord
 
@@ -236,8 +237,7 @@ opforgeNativeCliEmitStatementRecord	.block
 	movem.l d0-d7/a0-a1, -(sp)
 	move.l #StatementText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineStmtCount.l, d0
+	jsr opasmEngineGetStatementCountV1
 	jsr opforgeNativeCliPutDecU16
 	jsr opforgeNativeCliPutSpace
 	move.l NativeCliSourceLineNum, d0
@@ -304,8 +304,7 @@ done
 opforgeNativeCliEmitStatementExprRequest	.block
 	move.l #StatementExprText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineStmtCount.l, d0
+	jsr opasmEngineGetStatementCountV1
 	bsr.w opforgeNativeCliPutDecU16
 	bsr.w opforgeNativeCliPutSpace
 	move.l NativeCliStmtExprOperandIndex, d0

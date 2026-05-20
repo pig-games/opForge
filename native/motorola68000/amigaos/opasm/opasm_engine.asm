@@ -430,6 +430,73 @@ opasmEngineGetImageBufferPtrV1	.block
 	rts
 	.bend  ; opasmEngineGetImageBufferPtrV1
 
+; Return a pointer to the opasm-owned session CPU name.
+;
+; Outputs:
+; - A0: CPU name pointer.
+opasmEngineGetSessionCpuNamePtrV1	.block
+	lea OpasmEngineSessionCpuName.l, a0
+	rts
+	.bend  ; opasmEngineGetSessionCpuNamePtrV1
+
+; Return the current opasm pass number.
+;
+; Outputs:
+; - D0: pass number.
+opasmEngineGetSessionPassV1	.block
+	moveq #0, d0
+	move.w OpasmEngineSessionPass.l, d0
+	rts
+	.bend  ; opasmEngineGetSessionPassV1
+
+; Return the current opasm session origin.
+;
+; Outputs:
+; - D0: origin.
+opasmEngineGetSessionOriginV1	.block
+	move.l OpasmEngineSessionOrigin.l, d0
+	rts
+	.bend  ; opasmEngineGetSessionOriginV1
+
+; Return the current opasm session PC.
+;
+; Outputs:
+; - D0: current PC.
+opasmEngineGetSessionCurrentPcV1	.block
+	move.l OpasmEngineSessionCurrentPc.l, d0
+	rts
+	.bend  ; opasmEngineGetSessionCurrentPcV1
+
+; Return the source record count.
+;
+; Outputs:
+; - D0: source record count.
+opasmEngineGetSourceRecordCountV1	.block
+	moveq #0, d0
+	move.w OpasmEngineSourceRecordCount.l, d0
+	rts
+	.bend  ; opasmEngineGetSourceRecordCountV1
+
+; Return the statement count.
+;
+; Outputs:
+; - D0: statement count.
+opasmEngineGetStatementCountV1	.block
+	moveq #0, d0
+	move.w OpasmEngineStmtCount.l, d0
+	rts
+	.bend  ; opasmEngineGetStatementCountV1
+
+; Return the label count.
+;
+; Outputs:
+; - D0: label count.
+opasmEngineGetLabelCountV1	.block
+	moveq #0, d0
+	move.w OpasmEngineLabelCount.l, d0
+	rts
+	.bend  ; opasmEngineGetLabelCountV1
+
 ; Write the opasm-owned expression-evaluation environment extension fields.
 ;
 ; Inputs:

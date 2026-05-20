@@ -7,10 +7,10 @@
 	.module opforge.cli.report
 	.cpu 68020
 
-	.use opasm.amigaos.engine (opasmEngineStmtCount, opasmEngineSessionPass)
-	.use opasm.amigaos.engine (opasmEngineSourceRecordCount, opasmEngineLabelCount)
-	.use opasm.amigaos.engine (opasmEngineGetImageByteCountV1, opasmEngineSessionCpuName)
-	.use opasm.amigaos.engine (opasmEngineSessionOrigin, opasmEngineSessionCurrentPc)
+	.use opasm.amigaos.engine (opasmEngineGetImageByteCountV1, opasmEngineGetSessionCpuNamePtrV1)
+	.use opasm.amigaos.engine (opasmEngineGetSessionPassV1, opasmEngineGetSessionOriginV1)
+	.use opasm.amigaos.engine (opasmEngineGetSessionCurrentPcV1, opasmEngineGetSourceRecordCountV1)
+	.use opasm.amigaos.engine (opasmEngineGetStatementCountV1, opasmEngineGetLabelCountV1)
 
 	.use opforge.cli.constants (NCLI_PARSE_QUOTED, NCLI_PARSE_UNSUPPORTED)
 	.use opforge.cli.constants (NCLI_PARSE_UNKNOWN_FLAG, NCLI_PARSE_MISSING_VALUE)
@@ -61,47 +61,44 @@ opforgeNativeCliEmitAssemblySessionSummary	.block
 	jsr opforgeNativeCliPutStr
 	move.l #SessionCpuText, d1
 	jsr opforgeNativeCliPutStr
-	move.l #opasmEngineSessionCpuName, d1
+	jsr opasmEngineGetSessionCpuNamePtrV1
+	move.l a0, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #SessionPassText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineSessionPass.l, d0
+	jsr opasmEngineGetSessionPassV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #SessionOriginText, d1
 	jsr opforgeNativeCliPutStr
-	move.l opasmEngineSessionOrigin.l, d0
+	jsr opasmEngineGetSessionOriginV1
 	jsr opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #SessionPcText, d1
 	jsr opforgeNativeCliPutStr
-	move.l opasmEngineSessionCurrentPc.l, d0
+	jsr opasmEngineGetSessionCurrentPcV1
 	jsr opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #SessionSourceCountText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineSourceRecordCount.l, d0
+	jsr opasmEngineGetSourceRecordCountV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #SessionStmtCountText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineStmtCount.l, d0
+	jsr opasmEngineGetStatementCountV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
 	move.l #SessionLabelCountText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineLabelCount.l, d0
+	jsr opasmEngineGetLabelCountV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr

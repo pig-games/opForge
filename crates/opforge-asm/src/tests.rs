@@ -12608,10 +12608,10 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("NativeCliImportSelectNameTable"));
     assert!(listing.contains("NativeCliModulePathTable"));
     assert!(listing.contains("OpasmEngineAssemblySessionStart"));
-    assert!(listing.contains("opasmEngineSessionCpuName"));
+    assert!(listing.contains("opasmEngineGetSessionCpuNamePtrV1"));
     assert!(listing.contains("NativeCliLineRequestLen"));
     assert!(listing.contains("NativeCliEncodeRequestLen"));
-    assert!(listing.contains("opasmEngineSourceRecordCount"));
+    assert!(listing.contains("opasmEngineGetSourceRecordCountV1"));
     assert!(listing.contains("OpasmEngineStmtLineTable"));
     assert!(listing.contains("OpasmEngineStmtLabelNameTable"));
     assert!(listing.contains("OpasmEngineStmtMnemNameTable"));

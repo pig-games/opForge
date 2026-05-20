@@ -23122,6 +23122,66 @@ fn linker_output_unknown_format_rejects_at_registry_boundary() {
     assert!(err.message().contains("supported formats: bin, prg, hunk"));
 }
 
+#[test]
+fn linker_output_rejects_unsupported_library_object_policies() {
+    for format_id in ["hunklib", "hunk-object", "c64os-library"] {
+        let assembler = run_passes(&[
+            ".module main",
+            ".region ram, $1000, $10ff",
+            ".section code",
+            ".byte $aa",
+            ".endsection",
+            ".place code in ram",
+            &format!(".output \"build/out.bin\", format={format_id}, sections=code"),
+            ".endmodule",
+        ]);
+        let output = assembler
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive");
+        let err = build_linker_output_payload(output, assembler.sections())
+            .expect_err("unsupported library/object policy should fail");
+
+        assert_eq!(err.kind(), AsmErrorKind::Directive);
+        assert!(
+            err.message().contains("library/object packaging")
+                && err.message().contains("not implemented in v0.1"),
+            "unexpected message for {format_id}: {}",
+            err.message()
+        );
+    }
+}
+
+#[test]
+fn integrated_output_emits_only_reachable_mapped_units() {
+    let assembler = run_passes(&[
+        ".module dep",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry: .byte $11",
+        "unused: .byte $22",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".region rom, $1000, $10ff",
+        ".section app_code, kind=code",
+        ".endsection",
+        ".place app_code in rom",
+        ".use dep (entry) as d map { code -> app_code }",
+        ".output \"build/app.bin\", format=bin, sections=app_code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("bin payload");
+
+    assert_eq!(payload, vec![0x11]);
+}
+
 fn hunk_output_directive(
     path: &str,
     section_names: &[&str],

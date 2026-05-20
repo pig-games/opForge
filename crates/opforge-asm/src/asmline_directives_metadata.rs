@@ -391,6 +391,16 @@ impl<'a> AsmLine<'a> {
                 Some(value.clone())
             }
             Expr::String(bytes, _) => Some(String::from_utf8_lossy(bytes).to_string()),
+            Expr::Binary {
+                op: asm_parser::BinaryOp::Subtract,
+                left,
+                right,
+                ..
+            } => Some(format!(
+                "{}-{}",
+                self.expr_text_value(left)?,
+                self.expr_text_value(right)?
+            )),
             _ => None,
         }
     }

@@ -202,7 +202,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
     from selected roots and references, excludes public but unused material from
     that set, and reports missing explicit maps for reachable logical sections.
 
-- [ ] Item 8: Integrate executable output policy and unsupported library diagnostics
+- [x] Item 8: Integrate executable output policy and unsupported library diagnostics
   - Source requirement or finding IDs: Spec output-policy contract for integrated
     executables, unresolved symbols, and explicit diagnostics for unsupported
     library/object output policies in v0.1.

@@ -7,6 +7,7 @@ use crate::output_model::{LinkerOutputDirective, LinkerOutputFormat, SectionStat
 use types::artifacts::format_addr;
 
 const BUILTIN_OUTPUT_FORMAT_IDS: &[&str] = &["bin", "prg", "hunk"];
+const UNSUPPORTED_LIBRARY_OUTPUT_FORMAT_IDS: &[&str] = &["hunklib", "hunk-object", "c64os-library"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BuiltinOutputComponent {
@@ -65,6 +66,19 @@ pub(crate) fn resolve_output_component(
         if component.format_id().eq_ignore_ascii_case(format_id) {
             return Ok(component);
         }
+    }
+
+    if UNSUPPORTED_LIBRARY_OUTPUT_FORMAT_IDS
+        .iter()
+        .any(|unsupported| unsupported.eq_ignore_ascii_case(format_id))
+    {
+        return Err(ArtifactBuildError::new(
+            format!(
+                ".output format '{}' requests library/object packaging over the module graph, which is not implemented in v0.1",
+                format_id
+            ),
+            None::<String>,
+        ));
     }
 
     Err(ArtifactBuildError::new(

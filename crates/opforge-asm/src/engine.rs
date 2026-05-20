@@ -582,6 +582,10 @@ impl Assembler {
             counts.errors += 1;
         }
 
+        if counts.errors == 0 {
+            self.apply_reachable_section_maps();
+        }
+
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
         counts
     }
@@ -963,6 +967,9 @@ impl Assembler {
         self.cpu = asm_line.cpu;
         self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
         self.sections = sections;
+        if counts.errors == 0 {
+            self.apply_reachable_section_maps();
+        }
         self.refresh_hunk_output_relocation_dispositions();
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
         self.dedup_current_diagnostics();
@@ -1015,6 +1022,83 @@ impl Assembler {
             output.relocation_disposition =
                 Self::hunk_output_relocation_disposition(output, &self.sections);
         }
+    }
+
+    fn apply_reachable_section_maps(&mut self) {
+        let reachable_units = self.symbols.reachable_units_from_selected_roots();
+        let mut copied_units = HashSet::new();
+        for module in self.symbols.modules() {
+            for import in &module.imports {
+                for unit in reachable_units.iter().filter(|unit| {
+                    unit.importing_module.eq_ignore_ascii_case(&module.name)
+                        && unit.module_id.eq_ignore_ascii_case(&import.module_id)
+                }) {
+                    if !copied_units.insert(unit.full_name.to_ascii_uppercase()) {
+                        continue;
+                    }
+                    let Some(source_section_name) =
+                        self.section_symbol_sections.get(&unit.full_name).cloned()
+                    else {
+                        continue;
+                    };
+                    let Some(map) = import
+                        .section_maps
+                        .iter()
+                        .find(|map| map.logical.eq_ignore_ascii_case(&source_section_name))
+                    else {
+                        continue;
+                    };
+                    let Some((start, end)) =
+                        self.reachable_unit_section_range(&unit.full_name, &source_section_name)
+                    else {
+                        continue;
+                    };
+                    let Some(source_section) = self.sections.get(&source_section_name) else {
+                        continue;
+                    };
+                    let start = start.min(source_section.bytes.len());
+                    let end = end.min(source_section.bytes.len());
+                    if start > end {
+                        continue;
+                    }
+                    let bytes = source_section.bytes[start..end].to_vec();
+                    let Some(target_section) = self.sections.get_mut(&map.concrete) else {
+                        continue;
+                    };
+                    target_section.bytes.extend_from_slice(&bytes);
+                    target_section.max_pc = target_section
+                        .max_pc
+                        .max(u32::try_from(target_section.bytes.len()).unwrap_or(u32::MAX));
+                    target_section.pc = target_section.max_pc;
+                }
+            }
+        }
+    }
+
+    fn reachable_unit_section_range(
+        &self,
+        full_name: &str,
+        section_name: &str,
+    ) -> Option<(usize, usize)> {
+        let entry = self.symbols.entry(full_name)?;
+        let section = self.sections.get(section_name)?;
+        let start = entry.val.checked_sub(section.start_pc)? as usize;
+        let end = self
+            .symbols
+            .entries()
+            .iter()
+            .filter(|candidate| candidate.name != entry.name && candidate.val > entry.val)
+            .filter(|candidate| {
+                self.section_symbol_sections
+                    .get(&candidate.name)
+                    .is_some_and(|candidate_section| {
+                        candidate_section.eq_ignore_ascii_case(section_name)
+                    })
+            })
+            .map(|candidate| candidate.val.saturating_sub(section.start_pc) as usize)
+            .min()
+            .unwrap_or(section.bytes.len());
+        Some((start, end))
     }
 
     pub fn hunk_output_relocation_disposition_for(

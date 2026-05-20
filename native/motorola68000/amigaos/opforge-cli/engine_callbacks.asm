@@ -12,7 +12,6 @@
 	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
 	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
-	.use opasm.amigaos.engine (opasmEngineGetStatementExprTextSliceV1)
 	.use opasm.amigaos.engine (opasmEngineStatementMnemonicDuplicatesLabelV1)
 	.use opasm.amigaos.engine (opasmEngineStatementLooksBareColumnOneV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
@@ -28,7 +27,6 @@
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
 	.use opforge.cli.state (NativeCliEvalRequestLen, NativeCliStmtExprFound)
-	.use opforge.cli.state (NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd)
 	.use opforge.cli.strings (NativePassOneText, NativePassTwoText, NativePassOneOkText, NativePassTwoOkText)
 	.use opforge.cli.strings (NativeLabelText, NativeDuplicateLabelText, NativeImageCapacityText)
 	.use opforge.cli.strings (NativeSelectorStatusOkText, NativeUnknownMnemonicText, NativeUnsupportedAddressingText)
@@ -384,15 +382,6 @@ return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a2
 	rts
 	.bend  ; opforgeNativeCliReadOperandValueForStatement
-
-opforgeNativeCliLoadStatementExprText	.block
-	moveq #0, d0
-	move.w d7, d0
-	move.l NativeCliStmtExprSpanStart, d1
-	move.l NativeCliStmtExprSpanEnd, d2
-	jsr opasmEngineGetStatementExprTextSliceV1
-	rts
-	.bend  ; opforgeNativeCliLoadStatementExprText
 
 opforgeNativeCliPassAdvancePc	.block
 	movem.l d0-d7/a0-a3, -(sp)

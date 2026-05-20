@@ -21,6 +21,7 @@
 	.use opforge.cli.state (NativeCliIncludeDepth, NativeCliParseStatus)
 	.use opforge.cli.state (NativeCliArgToken)
 	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.opasm_event_report (opforgeNativeCliRenderOpasmEventsV1)
 	.use opforge.cli.text_output (opforgeNativeCliPutDecU16, opforgeNativeCliPutHexU32)
 	.use opforge.cli.strings (IncludeLineText, SpaceText, NewlineText)
 	.use opforge.cli.strings (SessionStageText, SessionCpuText, SessionPassText)

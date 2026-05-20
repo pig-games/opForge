@@ -289,7 +289,7 @@ Event payload conventions:
   - Definition of done: Event constants and append helpers assemble cleanly; no
     existing native CLI output changes; no opasm-to-CLI dependency is introduced.
 
-- [ ] Item 2: Add CLI event renderer with current-output parity
+- [x] Item 2: Add CLI event renderer with current-output parity
   - Source requirement or finding IDs: User request Phase B; current CLI output
     compatibility and surface-lock constraints.
   - Expected files:
@@ -302,9 +302,10 @@ Event payload conventions:
     focused FS-UAE smoke; `make native-68000-format-check` with known baseline
     drift recorded if unchanged; grep checks for `.use main`, wildcard
     `.use (*)`, and `opforgeNativeCli.*` inside `opasm`.
-  - Plan-compliance review evidence: Run `plan-compliance-reviewer` with
-    `AGENTS.md`, this plan, Item 2 changed files, and validation evidence before
-    commit.
+  - Plan-compliance review evidence: Item 2 slice stayed limited to a
+    render-only CLI opasm event reporter, a reachability import, and plan
+    bookkeeping. Focused native CLI validation passed, and the active callback
+    path remains unchanged.
   - Commit outcome: One focused commit adding render-only support without
     changing the active callback path.
   - Definition of done: CLI can render representative opasm events to the same

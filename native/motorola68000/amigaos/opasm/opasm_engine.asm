@@ -31,6 +31,45 @@ OPASM_ENGINE_CTX_EMIT_IMAGE_CB    = 36
 ; A4: opasm engine context pointer.
 ; Returns D0=0 on success, non-zero on failure.
 	.pub
+; Initialize opasm-owned assembly-session state.
+;
+; Inputs:
+; - A0: null-terminated CPU name to copy into the session.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineInitSessionV1	.block
+	movem.l d1/a0-a1, -(sp)
+	lea OpasmEngineAssemblySessionStart.l, a1
+	move.l #opasmEngineAssemblySessionEnd - OpasmEngineAssemblySessionStart, d0
+	bsr.w clearBytes
+	lea OpasmEngineSessionCpuName.l, a1
+	move.l #TOKEN_BUFFER_CAPACITY - 1, d0
+
+copyCpuLoop
+	move.b (a0)+, d1
+	move.b d1, (a1)+
+	beq.s copyCpuDone
+	subq.l #1, d0
+	bne.s copyCpuLoop
+	clr.b -(a1)
+
+copyCpuDone
+	movem.l (sp)+, d1/a0-a1
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineInitSessionV1
+
+; Reset statement collection state before parsing input.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineResetStatementCollectionV1	.block
+	clr.w OpasmEngineStmtCount.l
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineResetStatementCollectionV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5
@@ -44,6 +83,19 @@ done
 	rts
 	.bend  ; opasmEngineRunTwoPassV1
 	.priv
+
+clearBytes	.block
+	tst.l d0
+	beq.s done
+
+loop
+	clr.b (a1)+
+	subq.l #1, d0
+	bne.s loop
+
+done
+	rts
+	.bend  ; clearBytes
 
 runPassOne	.block
 	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0

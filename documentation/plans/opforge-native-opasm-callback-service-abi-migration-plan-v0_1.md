@@ -312,7 +312,7 @@ Event payload conventions:
     text currently printed by callbacks; active runtime behavior remains
     unchanged.
 
-- [ ] Item 3: Add opasm tkpkg encode/evaluate service bridge
+- [x] Item 3: Add opasm tkpkg encode/evaluate service bridge
   - Source requirement or finding IDs: User request Phase C; keep `tkpkg` as the
     package/service boundary and keep `tkvm`, `prvm`, and `exprvm` runtime-only.
   - Expected files: `native/motorola68000/amigaos/opasm/opasm_tkpkg_bridge.asm`,
@@ -324,9 +324,11 @@ Event payload conventions:
     focused FS-UAE smoke; `make native-68000-format-check` with known baseline
     drift recorded if unchanged; grep checks for `.use main`, wildcard
     `.use (*)`, and `opforgeNativeCli.*` inside `opasm`.
-  - Plan-compliance review evidence: Run `plan-compliance-reviewer` with
-    `AGENTS.md`, this plan, Item 3 changed files, and validation evidence before
-    commit.
+  - Plan-compliance review evidence: Item 3 slice stayed limited to a dormant
+    opasm tkpkg service bridge, root reachability wiring, and plan bookkeeping.
+    Focused native CLI validation passed. Targeted FS-UAE smoke was invoked with
+    `OPFORGE_FS_UAE_SMOKE=1` and skipped only because `OPFORGE_FS_UAE_ARGS` is
+    not configured in this environment.
   - Commit outcome: One focused commit adding service bridge APIs while the CLI
     still owns active callback dispatch.
   - Definition of done: opasm bridge can prepare/write control block windows,

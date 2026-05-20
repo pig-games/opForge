@@ -380,7 +380,6 @@ pendingLexemeOverflow
 
 	.bend  ; scanStringToken
 
-
 ; Symbol scan covers punctuation, operators, comments, and prefixed numeric
 ; forms. The structure intentionally parallels vm_scan_symbol_token() in Rust:
 ; dispatch by lead byte, optionally consume a longer form, then commit the
@@ -876,7 +875,6 @@ pendingLexemeOverflow
 	moveq #TK_STATUS_LEXEME_OVERFLOW, d0
 	rts
 	.bend  ; stageFixedLexeme
-
 
 ; Rust treats '%' as a binary-number prefix only when the byte appears where an
 ; expression can start. Without that context, % remains the modulo operator.

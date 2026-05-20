@@ -12,6 +12,7 @@
 	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
 	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
+	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1)
 	.use opasm.amigaos.engine (opasmEngineStatementHasExprMetadataV1)
 	.use opasm.amigaos.engine (opasmEngineStatementMnemonicDuplicatesLabelV1)
 	.use opasm.amigaos.engine (opasmEngineStatementLooksBareColumnOneV1)
@@ -45,7 +46,6 @@
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliPrepareEvaluateExpressionExtension)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliPrepareEvaluateExpressionRequest)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliReadEvaluateExpressionValue)
-	.use opforge.cli.encode_eval_bridge (opforgeNativeCliLoadStatementSourceLineText)
 
 	.section code, kind=code
 	.pub
@@ -315,7 +315,9 @@ opforgeNativeCliReadOperandValueForStatement	.block
 	bra.w storedText
 
 loadSourceLine
-	jsr opforgeNativeCliLoadStatementSourceLineText
+	moveq #0, d0
+	move.w d7, d0
+	jsr opasmEngineGetStatementSourceLineTextV1
 	tst.l d0
 	bne.s haveText
 	bra.w fail

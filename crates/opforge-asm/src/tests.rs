@@ -24158,6 +24158,68 @@ fn m68k_family_parser_accepts_datareg_binary_absolute_long_destination_ast() {
 }
 
 #[test]
+fn m68k_jsr_accepts_qualified_imported_symbol_operand() {
+    let assembler = run_passes(&[
+        ".module opasm.amigaos.engine",
+        ".cpu 68000",
+        ".section code, kind=code",
+        ".pub",
+        "sessionPass:",
+        " RTS",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".use opasm.amigaos.engine",
+        ".region ram, $1000, $10ff",
+        ".section code, kind=code",
+        "start: JSR engine.sessionPass",
+        " RTS",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+
+    assert!(
+        assembler.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn m68k_lea_accepts_qualified_imported_absolute_long_symbol_operand() {
+    let assembler = run_passes(&[
+        ".module opasm.amigaos.engine",
+        ".cpu 68000",
+        ".section code, kind=code",
+        ".pub",
+        "sessionPass:",
+        " RTS",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".use opasm.amigaos.engine",
+        ".region ram, $1000, $10ff",
+        ".section code, kind=code",
+        "start: LEA engine.sessionPass.L,A0",
+        " RTS",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+
+    assert!(
+        assembler.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
 fn linker_output_hunk_live_path_rejects_non_matrix_bare_symbolic_instruction_forms() {
     for source in [
         "start: MOVE.B target1,target2",

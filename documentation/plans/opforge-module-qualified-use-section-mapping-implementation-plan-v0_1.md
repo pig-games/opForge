@@ -87,7 +87,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
     where selectively imported, and wildcard-compatible forms resolve
     consistently while private symbols remain inaccessible.
 
-- [ ] Item 3: Unblock M68K qualified imported symbol operands
+- [x] Item 3: Unblock M68K qualified imported symbol operands
   - Source requirement or finding IDs: Spec acceptance criterion that public
     qualified imported symbols work as operands, with prior observed
     `jsr engine.sessionPass` failure as the first concrete M68K case.

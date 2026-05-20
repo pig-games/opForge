@@ -15,6 +15,21 @@ impl M68KFamilyHandler {
         }
     }
 
+    fn dotted_symbol_name(expr: &Expr) -> Option<(String, opcore::tokenizer::Span)> {
+        match expr {
+            Expr::Identifier(name, span) if !is_register(&name.to_ascii_uppercase()) => {
+                Some((name.clone(), *span))
+            }
+            Expr::Member { base, field, span }
+                if !field.eq_ignore_ascii_case("W") && !field.eq_ignore_ascii_case("L") =>
+            {
+                let (base, _) = Self::dotted_symbol_name(base)?;
+                Some((format!("{base}.{field}"), *span))
+            }
+            _ => None,
+        }
+    }
+
     pub(super) fn parse_register_name(expr: &Expr) -> Option<(String, opcore::tokenizer::Span)> {
         match expr {
             Expr::Register(name, span) | Expr::Identifier(name, span) if is_register(name) => {
@@ -1353,6 +1368,13 @@ impl M68KFamilyHandler {
             }
             Expr::Identifier(name, span) => {
                 let Some((base, size)) = Self::strip_absolute_size_suffix(name) else {
+                    if name.contains('.') {
+                        return Ok(FamilyOperand::Absolute {
+                            expr: Expr::Identifier(name.clone(), *span),
+                            size: AbsoluteSize::Long,
+                            span: *span,
+                        });
+                    }
                     return Err(FamilyParseError::new(
                         "unsupported Motorola 68000 operand form",
                         *span,
@@ -1366,6 +1388,13 @@ impl M68KFamilyHandler {
                 })
             }
             Expr::Member { base, field, span } => {
+                if let Some((name, _)) = Self::dotted_symbol_name(expr) {
+                    return Ok(FamilyOperand::Absolute {
+                        expr: Expr::Identifier(name, *span),
+                        size: AbsoluteSize::Long,
+                        span: *span,
+                    });
+                }
                 let size = match field.to_ascii_uppercase().as_str() {
                     "W" => AbsoluteSize::Word,
                     "L" => AbsoluteSize::Long,

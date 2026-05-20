@@ -165,7 +165,7 @@ opforgeNativeCliPassTwoEmitImageBytes	.block
 	move.w d6, d0
 	move.w d4, d1
 	movea.l d5, a0
-	bsr.w opforgeNativeCliStatementMnemDuplicatesLabel
+	jsr opasmEngineStatementMnemonicDuplicatesLabelV1
 	tst.l d0
 	bne.w ok
 	movea.l d5, a0
@@ -234,7 +234,7 @@ fail
 
 serviceFail
 	move.w d6, d0
-	bsr.w opforgeNativeCliStatementLooksBareColumnOne
+	jsr opasmEngineStatementLooksBareColumnOneV1
 	tst.l d0
 	bne.w ok
 	lea ControlBlockV1, a0
@@ -408,7 +408,7 @@ opforgeNativeCliPassAdvancePc	.block
 	move.w d7, d0
 	move.w d6, d1
 	movea.l d5, a0
-	bsr.w opforgeNativeCliStatementMnemDuplicatesLabel
+	jsr opasmEngineStatementMnemonicDuplicatesLabelV1
 	tst.l d0
 	bne.w done
 	lea OrgMnemonicText, a1
@@ -478,7 +478,7 @@ advanceThree
 
 fail
 	move.w d7, d0
-	bsr.w opforgeNativeCliStatementLooksBareColumnOne
+	jsr opasmEngineStatementLooksBareColumnOneV1
 	tst.l d0
 	bne.w done
 	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp

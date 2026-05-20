@@ -211,6 +211,7 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn section_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        self.current_unit_symbol = None;
         if operands.is_empty() {
             return self.failure(
                 LineStatus::Error,
@@ -334,6 +335,7 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn endsection_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        self.current_unit_symbol = None;
         if !operands.is_empty() {
             return self.failure(
                 LineStatus::Error,

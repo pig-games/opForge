@@ -178,7 +178,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
     fail with deterministic diagnostics. Reachability-backed missing-map
     diagnostics are deferred to Item 7.
 
-- [ ] Item 7: Build reachable-unit inclusion over the module graph
+- [x] Item 7: Build reachable-unit inclusion over the module graph
   - Source requirement or finding IDs: Spec invariant that module availability is
     separate from binary inclusion and acceptance criteria for dependency-driven
     selective inclusion, selected roots, v0.1 unit granularity, and explicit

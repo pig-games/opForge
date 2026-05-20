@@ -426,8 +426,87 @@ impl Assembler {
             self.regions = asm_line.take_regions();
         }
 
+        let reachable_units = self.symbols.reachable_units_from_selected_roots();
         for module in self.symbols.modules() {
             for import in &module.imports {
+                for unit in reachable_units.iter().filter(|unit| {
+                    unit.importing_module.eq_ignore_ascii_case(&module.name)
+                        && unit.module_id.eq_ignore_ascii_case(&import.module_id)
+                }) {
+                    let Some(section_name) = self.section_symbol_sections.get(&unit.full_name)
+                    else {
+                        continue;
+                    };
+                    let Some(dep) = self
+                        .symbols
+                        .modules()
+                        .iter()
+                        .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
+                    else {
+                        continue;
+                    };
+                    let Some(section) = dep
+                        .logical_sections
+                        .iter()
+                        .find(|section| section.name.eq_ignore_ascii_case(section_name))
+                    else {
+                        continue;
+                    };
+                    if !import
+                        .section_maps
+                        .iter()
+                        .any(|map| map.logical.eq_ignore_ascii_case(&section.name))
+                    {
+                        let err = AsmError::new(
+                            AsmErrorKind::Directive,
+                            &format!(
+                                "Reachable logical section '{}' from module '{}' requires an explicit import section map",
+                                section.name, import.module_id
+                            ),
+                            Some(&section.name),
+                        );
+                        diagnostics.push(
+                            Diagnostic::new(import.span.line, Severity::Error, err)
+                                .with_column(Some(import.span.col_start)),
+                        );
+                        counts.errors += 1;
+                    }
+                }
+                for section in self
+                    .symbols
+                    .modules()
+                    .iter()
+                    .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
+                    .into_iter()
+                    .flat_map(|dep| dep.logical_sections.iter())
+                    .filter(|section| {
+                        import.selected_roots.iter().any(|root| {
+                            root.name != "*"
+                                && root.alias.is_none()
+                                && !self
+                                    .section_symbol_sections
+                                    .contains_key(&format!("{}.{}", import.module_id, root.name))
+                                && !import
+                                    .section_maps
+                                    .iter()
+                                    .any(|map| map.logical.eq_ignore_ascii_case(&section.name))
+                        })
+                    })
+                {
+                    let err = AsmError::new(
+                        AsmErrorKind::Directive,
+                        &format!(
+                            "Reachable logical section '{}' from module '{}' requires an explicit import section map",
+                            section.name, import.module_id
+                        ),
+                        Some(&section.name),
+                    );
+                    diagnostics.push(
+                        Diagnostic::new(import.span.line, Severity::Error, err)
+                            .with_column(Some(import.span.col_start)),
+                    );
+                    counts.errors += 1;
+                }
                 for map in &import.section_maps {
                     let Some(target) = self.sections.get(&map.concrete) else {
                         let err = AsmError::new(

@@ -101,6 +101,15 @@ pub struct ModuleInfo {
     pub name: String,
     pub imports: Vec<ModuleImport>,
     pub logical_sections: Vec<LogicalSectionContract>,
+    pub symbol_references: HashMap<String, HashSet<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReachableUnit {
+    pub importing_module: String,
+    pub module_id: String,
+    pub symbol_name: String,
+    pub full_name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,6 +194,7 @@ impl SymbolTable {
             name: name.to_string(),
             imports: Vec::new(),
             logical_sections: Vec::new(),
+            symbol_references: HashMap::new(),
         });
         self.module_index.insert(key, idx);
         SymbolTableResult::Ok
@@ -270,6 +280,125 @@ impl SymbolTable {
     #[must_use]
     pub fn modules(&self) -> &[ModuleInfo] {
         &self.module_info
+    }
+
+    pub fn record_symbol_reference(&mut self, source_full_name: &str, target_full_name: &str) {
+        if source_full_name.eq_ignore_ascii_case(target_full_name) {
+            return;
+        }
+        let module_name = self
+            .entry(source_full_name)
+            .and_then(|entry| entry.module_id.clone())
+            .or_else(|| {
+                self.module_symbol_for_full_name(source_full_name)
+                    .map(|(module, _)| module)
+            });
+        let Some(module_name) = module_name else {
+            return;
+        };
+        let Some(info) = self.module_info_mut(&module_name) else {
+            return;
+        };
+        info.symbol_references
+            .entry(source_full_name.to_string())
+            .or_default()
+            .insert(target_full_name.to_string());
+    }
+
+    #[must_use]
+    pub fn reachable_units_from_selected_roots(&self) -> Vec<ReachableUnit> {
+        let mut reachable = HashMap::new();
+        let mut seen = HashSet::new();
+        let mut queue = Vec::new();
+        for module in &self.module_info {
+            for import in &module.imports {
+                for root in &import.selected_roots {
+                    if root.name == "*" && root.alias.is_none() {
+                        continue;
+                    }
+                    let full_name = format!("{}.{}", import.module_id, root.name);
+                    queue.push(ReachableUnit {
+                        importing_module: module.name.clone(),
+                        module_id: import.module_id.clone(),
+                        symbol_name: root.name.clone(),
+                        full_name,
+                    });
+                }
+            }
+        }
+        let imported_modules: HashSet<_> = self
+            .module_info
+            .iter()
+            .flat_map(|module| module.imports.iter())
+            .map(|import| normalized_ascii_upper_lookup_key(&import.module_id).into_owned())
+            .collect();
+        for module in &self.module_info {
+            if imported_modules.contains(normalized_ascii_upper_lookup_key(&module.name).as_ref()) {
+                continue;
+            }
+            for reference in module
+                .symbol_references
+                .values()
+                .flat_map(|references| references.iter())
+            {
+                if let Some((module_id, symbol_name)) = self.module_symbol_for_full_name(reference)
+                {
+                    queue.push(ReachableUnit {
+                        importing_module: module.name.clone(),
+                        module_id,
+                        symbol_name,
+                        full_name: reference.clone(),
+                    });
+                }
+            }
+        }
+        queue.sort_by(|left, right| {
+            normalized_ascii_upper_lookup_key(&left.full_name)
+                .cmp(&normalized_ascii_upper_lookup_key(&right.full_name))
+        });
+        while let Some(unit) = queue.pop() {
+            let key = normalized_ascii_upper_lookup_key(&unit.full_name).into_owned();
+            if !seen.insert(key.clone()) {
+                continue;
+            }
+            if let Some(info) = self.module_info(&unit.module_id) {
+                if let Some(references) = info.symbol_references.get(&unit.full_name) {
+                    let mut references: Vec<_> = references.iter().cloned().collect();
+                    references
+                        .sort_by_key(|name| normalized_ascii_upper_lookup_key(name).into_owned());
+                    for reference in references.into_iter().rev() {
+                        if let Some((module_id, symbol_name)) =
+                            self.module_symbol_for_full_name(&reference)
+                        {
+                            queue.push(ReachableUnit {
+                                importing_module: unit.module_id.clone(),
+                                module_id,
+                                symbol_name,
+                                full_name: reference,
+                            });
+                        }
+                    }
+                }
+            }
+            reachable.insert(key, unit);
+        }
+        let mut reachable: Vec<_> = reachable.into_values().collect();
+        reachable.sort_by(|left, right| {
+            normalized_ascii_upper_lookup_key(&left.full_name)
+                .cmp(&normalized_ascii_upper_lookup_key(&right.full_name))
+        });
+        reachable
+    }
+
+    fn module_symbol_for_full_name(&self, full_name: &str) -> Option<(String, String)> {
+        self.module_info
+            .iter()
+            .filter_map(|module| {
+                full_name
+                    .strip_prefix(&format!("{}.", module.name))
+                    .map(|symbol| (module.name.clone(), symbol.to_string()))
+            })
+            .max_by_key(|(module, _)| module.len())
     }
 
     fn module_info(&self, name: &str) -> Option<&ModuleInfo> {
@@ -856,6 +985,157 @@ mod tests {
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].message, "Missing imported symbol");
         assert_eq!(issues[0].param.as_deref(), Some("sessionPass"));
+    }
+
+    #[test]
+    fn reachable_units_start_from_selected_roots() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        let import = ModuleImport {
+            module_id: "dep".to_string(),
+            alias: Some("d".to_string()),
+            qualifier: Some("d".to_string()),
+            items: Vec::new(),
+            selected_roots: vec![ImportItem {
+                name: "entry".to_string(),
+                alias: None,
+                span,
+            }],
+            params: Vec::new(),
+            section_maps: Vec::new(),
+            span,
+        };
+        assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
+
+        let reachable = table.reachable_units_from_selected_roots();
+
+        assert_eq!(reachable.len(), 1);
+        assert_eq!(reachable[0].importing_module, "alpha");
+        assert_eq!(reachable[0].module_id, "dep");
+        assert_eq!(reachable[0].symbol_name, "entry");
+        assert_eq!(reachable[0].full_name, "dep.entry");
+    }
+
+    #[test]
+    fn reachable_units_include_recorded_dependencies_and_cycles_once() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
+        assert_eq!(table.register_module("dep"), SymbolTableResult::Ok);
+        assert_eq!(table.register_module("util"), SymbolTableResult::Ok);
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        assert_eq!(
+            table.add_import(
+                "alpha",
+                ModuleImport {
+                    module_id: "dep".to_string(),
+                    alias: Some("d".to_string()),
+                    qualifier: Some("d".to_string()),
+                    items: Vec::new(),
+                    selected_roots: vec![ImportItem {
+                        name: "entry".to_string(),
+                        alias: None,
+                        span,
+                    }],
+                    params: Vec::new(),
+                    section_maps: Vec::new(),
+                    span,
+                },
+            ),
+            ImportResult::Ok
+        );
+        table.record_symbol_reference("dep.entry", "util.helper");
+        table.record_symbol_reference("util.helper", "dep.entry");
+
+        let reachable = table.reachable_units_from_selected_roots();
+        let names: Vec<_> = reachable
+            .iter()
+            .map(|unit| unit.full_name.as_str())
+            .collect();
+
+        assert_eq!(names, vec!["dep.entry", "util.helper"]);
+    }
+
+    #[test]
+    fn reachable_units_start_from_root_module_references() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("main"), SymbolTableResult::Ok);
+        assert_eq!(table.register_module("dep"), SymbolTableResult::Ok);
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        assert_eq!(
+            table.add_import(
+                "main",
+                ModuleImport {
+                    module_id: "dep".to_string(),
+                    alias: Some("d".to_string()),
+                    qualifier: Some("d".to_string()),
+                    items: Vec::new(),
+                    selected_roots: Vec::new(),
+                    params: Vec::new(),
+                    section_maps: Vec::new(),
+                    span,
+                },
+            ),
+            ImportResult::Ok
+        );
+        table.record_symbol_reference("main.entry", "dep.entry");
+
+        let reachable = table.reachable_units_from_selected_roots();
+
+        assert_eq!(reachable.len(), 1);
+        assert_eq!(reachable[0].full_name, "dep.entry");
+    }
+
+    #[test]
+    fn reachable_units_exclude_unreferenced_public_exports() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("main"), SymbolTableResult::Ok);
+        assert_eq!(table.register_module("dep"), SymbolTableResult::Ok);
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        assert_eq!(
+            table.add_import(
+                "main",
+                ModuleImport {
+                    module_id: "dep".to_string(),
+                    alias: Some("d".to_string()),
+                    qualifier: Some("d".to_string()),
+                    items: Vec::new(),
+                    selected_roots: vec![ImportItem {
+                        name: "entry".to_string(),
+                        alias: None,
+                        span,
+                    }],
+                    params: Vec::new(),
+                    section_maps: Vec::new(),
+                    span,
+                },
+            ),
+            ImportResult::Ok
+        );
+
+        let reachable = table.reachable_units_from_selected_roots();
+        let names: Vec<_> = reachable
+            .iter()
+            .map(|unit| unit.full_name.as_str())
+            .collect();
+
+        assert_eq!(names, vec!["dep.entry"]);
     }
 
     #[test]

@@ -18621,6 +18621,177 @@ fn use_section_map_rejects_incompatible_kind() {
 }
 
 #[test]
+fn selected_root_requires_explicit_map_for_logical_section() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: nop".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".use dep (entry) as d".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Reachable logical section 'code' from module 'dep' requires an explicit import section map")
+    }));
+}
+
+#[test]
+fn selected_root_reachability_follows_qualified_symbol_references() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module util".to_string(),
+        ".pub".to_string(),
+        ".section tables, kind=data, logical".to_string(),
+        "helper: .long 1".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module dep".to_string(),
+        ".use util as u".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: .long u.helper".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep (entry) as d map { code -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .iter()
+        .any(|unit| unit.full_name == "util.helper"));
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error.message().contains(
+            "Reachable logical section 'tables' from module 'util' requires an explicit import section map",
+        )
+    }));
+}
+
+#[test]
+fn root_qualified_reference_requires_explicit_map_for_logical_section() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: .long 1".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".use dep as d".to_string(),
+        ".section app_code, kind=code".to_string(),
+        "start: .long d.entry".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .iter()
+        .any(|unit| unit.full_name == "dep.entry"));
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error.message().contains(
+            "Reachable logical section 'code' from module 'dep' requires an explicit import section map",
+        )
+    }));
+}
+
+#[test]
+fn reachable_map_diagnostic_uses_actual_importing_module() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module util".to_string(),
+        ".pub".to_string(),
+        ".section tables, kind=data, logical".to_string(),
+        "helper: .long 1".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module dep1".to_string(),
+        ".use util as u".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: .long u.helper".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module dep2".to_string(),
+        ".use util as u".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "other: .long 0".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep1 (entry) as d1 map { code -> app_code }".to_string(),
+        ".use dep2 (other) as d2 map { code -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    let util_missing_map_count = assembler
+        .diagnostics
+        .iter()
+        .filter(|diag| {
+            diag.error.message().contains(
+                "Reachable logical section 'tables' from module 'util' requires an explicit import section map",
+            )
+        })
+        .count();
+    assert_eq!(util_missing_map_count, 1);
+}
+
+#[test]
+fn top_level_unit_boundary_excludes_later_unselected_references() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module util".to_string(),
+        ".pub".to_string(),
+        ".section tables, kind=data, logical".to_string(),
+        "helper: .long 1".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module dep".to_string(),
+        ".use util as u".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: .long 1".to_string(),
+        "unused: .long u.helper".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep (entry) as d map { code -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert_eq!(pass1.errors, 0);
+    let reachable: Vec<_> = assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .into_iter()
+        .map(|unit| unit.full_name)
+        .collect();
+    assert_eq!(reachable, vec!["dep.entry"]);
+}
+
+#[test]
 fn section_option_accepts_slow_hunk_memory_alias() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();

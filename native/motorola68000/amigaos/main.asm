@@ -4,6 +4,7 @@
 	.cpu 68020
 
 	.use opforge.cli.entry (start)
+	.use opasm.amigaos.assembly_driver (opasmNativeAssembleSessionV1)
 	.use opasm.amigaos.tkpkg_bridge (opasmTkpkgBridgeDispatchEncodeSelectedV1)
 	.use opasm.amigaos.tkpkg_bridge (opasmTkpkgBridgeDispatchEvaluateExpressionV1)
 

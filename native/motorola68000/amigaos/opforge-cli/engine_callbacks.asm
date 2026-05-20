@@ -7,6 +7,9 @@
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_PTR_V1)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
+	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR)
+	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR, OPASM_ASSEMBLE_REQ_BYTES)
+	.use opasm.amigaos.assembly_driver (opasmNativeAssembleSessionV1)
 	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1, opasmEngineBuildCallbackContextV1)
 	.use opasm.amigaos.engine (opasmEngineBeginPassOneV1, opasmEngineBeginPassTwoV1)
 	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
@@ -52,7 +55,13 @@
 
 opforgeNativeCliRunTwoPassEngine	.block
 	bsr.w opforgeNativeCliBuildOpasmEngineContext
-	jsr opasmEngineRunTwoPassV1
+	suba.l #OPASM_ASSEMBLE_REQ_BYTES + 2, sp
+	movea.l sp, a0
+	move.l #NativeCliBinRequested, OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR(a0)
+	lea OPASM_ASSEMBLE_REQ_BYTES(a0), a1
+	move.l a1, OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a0)
+	jsr opasmNativeAssembleSessionV1
+	adda.l #OPASM_ASSEMBLE_REQ_BYTES + 2, sp
 	rts
 	.bend  ; opforgeNativeCliRunTwoPassEngine
 

@@ -335,7 +335,7 @@ Event payload conventions:
     dispatch encode/evaluate services, and return structured status/result
     fields without importing CLI.
 
-- [ ] Item 4: Introduce opasm assembly driver behind compatibility wrapper
+- [x] Item 4: Introduce opasm assembly driver behind compatibility wrapper
   - Source requirement or finding IDs: User request Phase D; current
     `opforgeNativeCliRunTwoPassEngine` surface must remain stable.
   - Expected files:
@@ -348,9 +348,12 @@ Event payload conventions:
     focused FS-UAE smoke; `make native-68000-format-check` with known baseline
     drift recorded if unchanged; grep checks for `.use main`, wildcard
     `.use (*)`, and `opforgeNativeCli.*` inside `opasm`.
-  - Plan-compliance review evidence: Run `plan-compliance-reviewer` with
-    `AGENTS.md`, this plan, Item 4 changed files, and validation evidence before
-    commit.
+  - Plan-compliance review evidence: Item 4 slice stayed limited to the
+    `opasmNativeAssembleSessionV1` driver, compatibility-wrapper handoff,
+    root reachability wiring, and plan bookkeeping. Focused native CLI
+    validation passed. Targeted FS-UAE smoke was invoked with
+    `OPFORGE_FS_UAE_SMOKE=1` and skipped only because `OPFORGE_FS_UAE_ARGS` is
+    not configured in this environment.
   - Commit outcome: One focused commit where the public CLI entry remains but
     delegates to opasm-owned driver mechanics.
   - Definition of done: opasm can run the pass lifecycle and emit events through

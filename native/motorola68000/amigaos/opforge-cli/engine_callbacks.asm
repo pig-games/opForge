@@ -13,6 +13,7 @@
 	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
 	.use opasm.amigaos.engine (opasmEngineStatementMnemonicDuplicatesLabelV1)
+	.use opasm.amigaos.engine (opasmEngineStatementLooksBareColumnOneV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_OPERAND_PTR, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_BYTES)
@@ -20,7 +21,6 @@
 	.use opasm.amigaos.engine (OpasmEngineContext)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
 	.use opasm.amigaos.engine (opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable)
-	.use opasm.amigaos.engine (opasmEngineStmtOperandLenTable)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
@@ -588,89 +588,7 @@ opforgeNativeCliStatementMnemDuplicatesLabel	.block
 	.bend  ; opforgeNativeCliStatementMnemDuplicatesLabel
 
 opforgeNativeCliStatementLooksBareColumnOne	.block
-	movem.l d1-d4/a0, -(sp)
-	move.l d0, d1
-	add.w d1, d1
-	lea opasmEngineStmtOperandLenTable.l, a0
-	tst.w 0(a0, d1.l)
-	bne.w no
-	lea opasmEngineStmtSourceLineLenTable.l, a0
-	moveq #0, d4
-	move.w 0(a0, d1.l), d4
-	beq.w no
-	move.l d0, d2
-	lsl.l #8, d2
-	add.l d2, d2
-	lea opasmEngineStmtSourceLineTextTable.l, a0
-	adda.l d2, a0
-	move.b (a0), d3
-	tst.b d3
-	beq.w no
-	cmpi.b #10, d3
-	beq.w no
-	cmpi.b #13, d3
-	beq.w no
-	cmpi.b #' ', d3
-	beq.w no
-	cmpi.b #9, d3
-	beq.w no
-	cmpi.b #'.', d3
-	beq.w no
-	cmpi.b #';', d3
-	beq.w no
-
-tokenLoop
-	tst.l d4
-	beq.s yes
-	move.b (a0), d3
-	tst.b d3
-	beq.s yes
-	cmpi.b #10, d3
-	beq.s yes
-	cmpi.b #13, d3
-	beq.s yes
-	cmpi.b #';', d3
-	beq.s yes
-	cmpi.b #' ', d3
-	beq.s trailingLoop
-	cmpi.b #9, d3
-	beq.s trailingLoop
-	addq.l #1, a0
-	subq.l #1, d4
-	bra.s tokenLoop
-
-trailingLoop
-	tst.l d4
-	beq.s yes
-	move.b (a0), d3
-	tst.b d3
-	beq.s yes
-	cmpi.b #10, d3
-	beq.s yes
-	cmpi.b #13, d3
-	beq.s yes
-	cmpi.b #';', d3
-	beq.s yes
-	cmpi.b #' ', d3
-	beq.s trailingOne
-	cmpi.b #9, d3
-	beq.s trailingOne
-	bra.s no
-
-trailingOne
-	addq.l #1, a0
-	subq.l #1, d4
-	bra.s trailingLoop
-
-yes
-	moveq #1, d0
-	bra.s return
-
-no
-	moveq #0, d0
-
-return
-	movem.l (sp)+, d1-d4/a0
+	jsr opasmEngineStatementLooksBareColumnOneV1
 	rts
 	.bend  ; opforgeNativeCliStatementLooksBareColumnOne
 

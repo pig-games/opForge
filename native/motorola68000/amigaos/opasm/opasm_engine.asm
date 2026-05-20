@@ -614,6 +614,100 @@ return
 	rts
 	.bend  ; opasmEngineStatementMnemonicDuplicatesLabelV1
 
+; Check whether a statement looks like a bare column-one token.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: 1 when the source text is a bare column-one token, else 0.
+opasmEngineStatementLooksBareColumnOneV1	.block
+	movem.l d1-d4/a0, -(sp)
+	move.l d0, d1
+	add.w d1, d1
+	lea OpasmEngineStmtOperandLenTable.l, a0
+	tst.w 0(a0, d1.l)
+	bne.w no
+	lea OpasmEngineStmtSourceLineLenTable.l, a0
+	moveq #0, d4
+	move.w 0(a0, d1.l), d4
+	beq.w no
+	move.l d0, d2
+	lsl.l #8, d2
+	add.l d2, d2
+	lea OpasmEngineStmtSourceLineTextTable.l, a0
+	adda.l d2, a0
+	move.b (a0), d3
+	tst.b d3
+	beq.w no
+	cmpi.b #10, d3
+	beq.w no
+	cmpi.b #13, d3
+	beq.w no
+	cmpi.b #' ', d3
+	beq.w no
+	cmpi.b #9, d3
+	beq.w no
+	cmpi.b #'.', d3
+	beq.w no
+	cmpi.b #';', d3
+	beq.w no
+
+tokenLoop
+	tst.l d4
+	beq.s yes
+	move.b (a0), d3
+	tst.b d3
+	beq.s yes
+	cmpi.b #10, d3
+	beq.s yes
+	cmpi.b #13, d3
+	beq.s yes
+	cmpi.b #';', d3
+	beq.s yes
+	cmpi.b #' ', d3
+	beq.s trailingLoop
+	cmpi.b #9, d3
+	beq.s trailingLoop
+	addq.l #1, a0
+	subq.l #1, d4
+	bra.s tokenLoop
+
+trailingLoop
+	tst.l d4
+	beq.s yes
+	move.b (a0), d3
+	tst.b d3
+	beq.s yes
+	cmpi.b #10, d3
+	beq.s yes
+	cmpi.b #13, d3
+	beq.s yes
+	cmpi.b #';', d3
+	beq.s yes
+	cmpi.b #' ', d3
+	beq.s trailingOne
+	cmpi.b #9, d3
+	beq.s trailingOne
+	bra.s no
+
+trailingOne
+	addq.l #1, a0
+	subq.l #1, d4
+	bra.s trailingLoop
+
+yes
+	moveq #1, d0
+	bra.s return
+
+no
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d4/a0
+	rts
+	.bend  ; opasmEngineStatementLooksBareColumnOneV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5

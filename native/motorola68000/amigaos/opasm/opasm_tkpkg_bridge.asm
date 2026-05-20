@@ -23,6 +23,7 @@
 ; - D0: tkpkg status byte.
 ; - D1: tkpkg output byte length.
 ; - D2: tkpkg last-error byte length.
+; - Clobbers D3-D5.
 opasmTkpkgBridgeDispatchEncodeSelectedV1	.block
 	move.w d0, d1
 	moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
@@ -39,6 +40,7 @@ opasmTkpkgBridgeDispatchEncodeSelectedV1	.block
 ; - D0: tkpkg status byte.
 ; - D1: tkpkg output byte length.
 ; - D2: tkpkg last-error byte length.
+; - Clobbers D3-D5.
 opasmTkpkgBridgeDispatchEvaluateExpressionV1	.block
 	move.w d0, d1
 	moveq #ENTRY_ORD_EVALUATE_EXPRESSION, d0
@@ -56,8 +58,9 @@ opasmTkpkgBridgeDispatchEvaluateExpressionV1	.block
 ; - D0: tkpkg status byte.
 ; - D1: tkpkg output byte length.
 ; - D2: tkpkg last-error byte length.
+; - Clobbers D3-D5.
 opasmTkpkgBridgeDispatchServiceV1	.block
-	movem.l d3-d5/a0-a2, -(sp)
+	movem.l a0-a2, -(sp)
 	movea.l a0, a2
 	move.w d0, d4
 	move.w d1, d5
@@ -71,12 +74,14 @@ opasmTkpkgBridgeDispatchServiceV1	.block
 	move.w d0, d3
 	movea.l a2, a0
 	bsr.w opasmTkpkgBridgeReadOutputLenV1
-	move.w d0, d1
+	move.w d0, d4
 	movea.l a2, a0
 	bsr.w opasmTkpkgBridgeReadLastErrorLenV1
-	move.w d0, d2
+	move.w d0, d5
 	move.w d3, d0
-	movem.l (sp)+, d3-d5/a0-a2
+	move.w d4, d1
+	move.w d5, d2
+	movem.l (sp)+, a0-a2
 	rts
 	.bend  ; opasmTkpkgBridgeDispatchServiceV1
 

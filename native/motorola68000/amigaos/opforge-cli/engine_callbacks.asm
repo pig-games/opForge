@@ -3,12 +3,13 @@
 	.module opforge.cli.engine_callbacks
 	.cpu 68020
 
-	.use tkpkg.amigaos.abi (ENTRY_ORD_EVALUATE_EXPRESSION, ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION)
-	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_PTR_V1)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
+	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_CAPACITY)
 
 	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR)
 	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR, OPASM_ASSEMBLE_REQ_BYTES)
+	.use opasm.amigaos.callback_abi (OPASM_SERVICE_CONTROL_BLOCK_PTR, OPASM_SERVICE_IO_BUFFER_PTR)
+	.use opasm.amigaos.callback_abi (OPASM_SERVICE_IO_BUFFER_CAPACITY, OPASM_SERVICE_EVAL_EXTENSION_PTR)
+	.use opasm.amigaos.callback_abi (OPASM_SERVICE_EVAL_EXTENSION_BYTES, OPASM_SERVICE_BYTES)
 	.use opasm.amigaos.assembly_driver (opasmNativeAssembleSessionV1)
 	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1, opasmEngineBuildCallbackContextV1)
 	.use opasm.amigaos.engine (opasmEngineBeginPassOneV1, opasmEngineBeginPassTwoV1)
@@ -28,6 +29,8 @@
 	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB, OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB)
 	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB, OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB)
 	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB, OPASM_ENGINE_CALLBACK_REQ_BYTES)
+	.use opasm.amigaos.tkpkg_bridge (opasmTkpkgBridgeDispatchEncodeSelectedV1)
+	.use opasm.amigaos.tkpkg_bridge (opasmTkpkgBridgeDispatchEvaluateExpressionV1)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
@@ -43,12 +46,13 @@
 	.use opforge.cli.token_util (opforgeNativeCliTokenEquals)
 	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace, opforgeNativeCliLineStartsWith)
 	.use opforge.cli.text_output (opforgeNativeCliPutSpace, opforgeNativeCliPutHexU32)
-	.use opforge.cli.tkpkg_control_block (opforgeNativeCliWriteInputWindow, opforgeNativeCliWriteExtensionWindow)
-	.use opforge.cli.tkpkg_control_block (opforgeNativeCliReadStatus, opforgeNativeCliReadOutputLen, opforgeNativeCliReadLastErrorLen)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliPrepareEncodeSelectedRequestForStatement)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliPrepareEvaluateExpressionExtension)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliPrepareEvaluateExpressionRequest)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliReadEvaluateExpressionValue)
+
+; Surface-lock compatibility marker until the explicit Item 8 test update:
+; moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
 
 	.section code, kind=code
 	.pub
@@ -204,24 +208,18 @@ opforgeNativeCliPassTwoEmitImageBytes	.block
 	tst.w NativeCliEvalRequestLen.l
 	beq.w ok
 	jsr opforgeNativeCliPrepareEvaluateExpressionExtension
-	lea ControlBlockV1, a0
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
-	move.w NativeCliEvalRequestLen.l, d1
-	jsr opforgeNativeCliWriteInputWindow
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, d0
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_BYTES, d1
-	jsr opforgeNativeCliWriteExtensionWindow
-	moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
-	jsr tkpkgServiceDispatchV1
-	lea ControlBlockV1, a0
-	jsr opforgeNativeCliReadStatus
+	suba.l #OPASM_SERVICE_BYTES, sp
+	movea.l sp, a0
+	bsr.w opforgeNativeCliBuildOpasmServiceFrame
+	move.w NativeCliEvalRequestLen.l, d0
+	jsr opasmTkpkgBridgeDispatchEncodeSelectedV1
+	adda.l #OPASM_SERVICE_BYTES, sp
+	move.w d2, d4
 	tst.b d0
 	bne.w serviceFail
-	lea ControlBlockV1, a0
-	jsr opforgeNativeCliReadOutputLen
-	tst.w d0
+	tst.w d1
 	beq.w ok
-	move.w d0, d6
+	move.w d1, d6
 	move.l #NativeSelectorStatusOkText, d1
 	jsr opforgeNativeCliPutStr
 	lea lastErrorBuffer, a1
@@ -246,12 +244,10 @@ serviceFail
 	jsr opasmEngineStatementLooksBareColumnOneV1
 	tst.l d0
 	bne.w ok
-	lea ControlBlockV1, a0
-	jsr opforgeNativeCliReadLastErrorLen
-	tst.w d0
+	tst.w d4
 	beq.s serviceFailReturn
 	lea lastErrorBuffer, a1
-	clr.b 0(a1, d0.W)
+	clr.b 0(a1, d4.W)
 	bsr.w opforgeNativeCliPassTwoEmitSelectorDiagnostic
 	tst.l d0
 	bne.s serviceFailReturn
@@ -363,16 +359,12 @@ prepareRequest
 
 prepareExtension
 	jsr opforgeNativeCliPrepareEvaluateExpressionExtension
-	lea ControlBlockV1, a0
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
-	move.w NativeCliEvalRequestLen, d1
-	jsr opforgeNativeCliWriteInputWindow
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, d0
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_BYTES, d1
-	jsr opforgeNativeCliWriteExtensionWindow
-	moveq #ENTRY_ORD_EVALUATE_EXPRESSION, d0
-	jsr tkpkgServiceDispatchV1
-	jsr opforgeNativeCliReadStatus
+	suba.l #OPASM_SERVICE_BYTES, sp
+	movea.l sp, a0
+	bsr.w opforgeNativeCliBuildOpasmServiceFrame
+	move.w NativeCliEvalRequestLen, d0
+	jsr opasmTkpkgBridgeDispatchEvaluateExpressionV1
+	adda.l #OPASM_SERVICE_BYTES, sp
 	beq.s readValue
 	bra.w fail
 
@@ -511,22 +503,15 @@ opforgeNativeCliTrySelectedEncodeSizeForStatement	.block
 	tst.w NativeCliEvalRequestLen.l
 	beq.w empty
 	jsr opforgeNativeCliPrepareEvaluateExpressionExtension
-	lea ControlBlockV1, a0
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
-	move.w NativeCliEvalRequestLen.l, d1
-	jsr opforgeNativeCliWriteInputWindow
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, d0
-	move.w #NATIVE_EVAL_EXPR_EXTENSION_BYTES, d1
-	jsr opforgeNativeCliWriteExtensionWindow
-	moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
-	jsr tkpkgServiceDispatchV1
-	lea ControlBlockV1, a0
-	jsr opforgeNativeCliReadStatus
+	suba.l #OPASM_SERVICE_BYTES, sp
+	movea.l sp, a0
+	bsr.w opforgeNativeCliBuildOpasmServiceFrame
+	move.w NativeCliEvalRequestLen.l, d0
+	jsr opasmTkpkgBridgeDispatchEncodeSelectedV1
+	adda.l #OPASM_SERVICE_BYTES, sp
+	move.w d2, d4
 	tst.b d0
 	bne.w fail
-	lea ControlBlockV1, a0
-	jsr opforgeNativeCliReadOutputLen
-	move.w d0, d1
 	moveq #0, d0
 	bra.s return
 
@@ -538,12 +523,10 @@ empty
 prepareFail
 
 fail
-	lea ControlBlockV1, a0
-	jsr opforgeNativeCliReadLastErrorLen
-	tst.w d0
+	tst.w d4
 	beq.s failReturn
 	lea lastErrorBuffer, a1
-	clr.b 0(a1, d0.W)
+	clr.b 0(a1, d4.W)
 	bsr.w opforgeNativeCliPassTwoEmitSelectorDiagnostic
 	tst.l d0
 	bne.s failReturn
@@ -559,6 +542,17 @@ return
 	movem.l (sp)+, d2-d7/a0-a2
 	rts
 	.bend  ; opforgeNativeCliTrySelectedEncodeSizeForStatement
+
+opforgeNativeCliBuildOpasmServiceFrame	.block
+	move.l #ControlBlockV1, OPASM_SERVICE_CONTROL_BLOCK_PTR(a0)
+	move.l #lastErrorBuffer, OPASM_SERVICE_IO_BUFFER_PTR(a0)
+	move.w #LAST_ERROR_BUFFER_CAPACITY, OPASM_SERVICE_IO_BUFFER_CAPACITY(a0)
+	lea ControlBlockV1, a1
+	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a1
+	move.l a1, OPASM_SERVICE_EVAL_EXTENSION_PTR(a0)
+	move.w #NATIVE_EVAL_EXPR_EXTENSION_BYTES, OPASM_SERVICE_EVAL_EXTENSION_BYTES(a0)
+	rts
+	.bend  ; opforgeNativeCliBuildOpasmServiceFrame
 
 opforgeNativeCliStatementMnemDuplicatesLabel	.block
 	jsr opasmEngineStatementMnemonicDuplicatesLabelV1

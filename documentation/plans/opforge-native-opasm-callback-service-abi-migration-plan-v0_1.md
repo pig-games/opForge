@@ -359,7 +359,7 @@ Event payload conventions:
   - Definition of done: opasm can run the pass lifecycle and emit events through
     the new ABI while CLI still preserves existing textual output.
 
-- [ ] Item 5: Move active encode/evaluate dispatch out of CLI callbacks
+- [x] Item 5: Move active encode/evaluate dispatch out of CLI callbacks
   - Source requirement or finding IDs: User request Phase C/D transition; no
     unsupported-instruction or item-6 behavior changes.
   - Expected files:
@@ -373,9 +373,14 @@ Event payload conventions:
     focused FS-UAE smoke; `make native-68000-format-check` with known baseline
     drift recorded if unchanged; grep checks for `.use main`, wildcard
     `.use (*)`, and `opforgeNativeCli.*` inside `opasm`.
-  - Plan-compliance review evidence: Run `plan-compliance-reviewer` with
-    `AGENTS.md`, this plan, Item 5 changed files, and validation evidence before
-    commit.
+  - Plan-compliance review evidence: Item 5 slice stayed limited to routing the
+    active pass encode/evaluate service dispatch through the opasm tkpkg bridge,
+    preserving the existing CLI request-preparation helpers and compatibility
+    surface markers until Item 8. Focused native CLI validation passed. Targeted
+    FS-UAE smoke passed with `OPFORGE_FS_UAE_SMOKE=1`,
+    `OPFORGE_FS_UAE_BIN=/Applications/FS-UAE.app/Contents/MacOS/fs-uae`,
+    `OPFORGE_FS_UAE_CONFIG_TEMPLATE=/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae`,
+    and `OPFORGE_FS_UAE_ARGS={fsuae_config}`.
   - Commit outcome: One focused commit moving active encode/evaluate service
     dispatch used by assembly passes into opasm.
   - Definition of done: CLI no longer manipulates encode/evaluate control block

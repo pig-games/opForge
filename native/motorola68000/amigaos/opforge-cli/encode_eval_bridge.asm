@@ -7,13 +7,13 @@
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_PTR_V1)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
-	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1, opasmEngineGetStatementExprMetadataV1)
+	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1)
 	.use opasm.amigaos.engine (opasmEngineWriteEvaluateExpressionExtensionBaseV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareEvaluateExpressionRequestV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareSelectedEvaluateRequestV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareEncodeInstructionRequestV1)
 	.use opasm.amigaos.engine (opasmEngineInferSelectedShapeForEvalRequestV1)
-	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_BYTES)
+	.use opasm.amigaos.engine (opasmEngineStatementHasExprMetadataV1)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1)
 	.use opforge.cli.state (NativeCliEncodeRequestLen, NativeCliEvalRequestLen)
@@ -90,20 +90,16 @@ opforgeNativeCliLoadStatementSourceLineText	.block
 	.bend  ; opforgeNativeCliLoadStatementSourceLineText
 
 opforgeNativeCliLoadStatementExprMetadata	.block
-	suba.l #OPASM_ENGINE_EXPR_META_BYTES, sp
-	movea.l sp, a0
 	moveq #0, d0
 	move.w d7, d0
-	jsr opasmEngineGetStatementExprMetadataV1
+	jsr opasmEngineStatementHasExprMetadataV1
 	tst.l d0
 	beq.s empty
 	move.w #1, NativeCliStmtExprFound
-	adda.l #OPASM_ENGINE_EXPR_META_BYTES, sp
 	rts
 
 empty
 	clr.w NativeCliStmtExprFound
-	adda.l #OPASM_ENGINE_EXPR_META_BYTES, sp
 	rts
 	.bend  ; opforgeNativeCliLoadStatementExprMetadata
 

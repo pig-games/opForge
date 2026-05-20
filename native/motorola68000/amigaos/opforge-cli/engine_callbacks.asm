@@ -12,6 +12,7 @@
 	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
 	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
+	.use opasm.amigaos.engine (opasmEngineStatementHasExprMetadataV1)
 	.use opasm.amigaos.engine (opasmEngineStatementMnemonicDuplicatesLabelV1)
 	.use opasm.amigaos.engine (opasmEngineStatementLooksBareColumnOneV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
@@ -26,7 +27,7 @@
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
-	.use opforge.cli.state (NativeCliEvalRequestLen, NativeCliStmtExprFound)
+	.use opforge.cli.state (NativeCliEvalRequestLen)
 	.use opforge.cli.strings (NativePassOneText, NativePassTwoText, NativePassOneOkText, NativePassTwoOkText)
 	.use opforge.cli.strings (NativeLabelText, NativeDuplicateLabelText, NativeImageCapacityText)
 	.use opforge.cli.strings (NativeSelectorStatusOkText, NativeUnknownMnemonicText, NativeUnsupportedAddressingText)
@@ -44,7 +45,7 @@
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliPrepareEvaluateExpressionExtension)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliPrepareEvaluateExpressionRequest)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliReadEvaluateExpressionValue)
-	.use opforge.cli.encode_eval_bridge (opforgeNativeCliLoadStatementExprMetadata, opforgeNativeCliLoadStatementSourceLineText)
+	.use opforge.cli.encode_eval_bridge (opforgeNativeCliLoadStatementSourceLineText)
 
 	.section code, kind=code
 	.pub
@@ -305,8 +306,11 @@ operandError
 opforgeNativeCliReadOperandValueForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a2, -(sp)
 	suba.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	jsr opforgeNativeCliLoadStatementExprMetadata
-	tst.w NativeCliStmtExprFound
+	moveq #0, d0
+	move.w d7, d0
+	jsr opasmEngineStatementHasExprMetadataV1
+	move.w d0, d6
+	tst.w d6
 	bne.s loadSourceLine
 	bra.w storedText
 
@@ -333,7 +337,7 @@ storedTextReady
 	move.l d1, d0
 
 haveText
-	tst.w NativeCliStmtExprFound
+	tst.w d6
 	bne.s prepareRequest
 	jsr opforgeNativeCliSkipLineWhitespace
 	tst.l d0

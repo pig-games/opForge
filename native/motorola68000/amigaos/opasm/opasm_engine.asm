@@ -726,6 +726,21 @@ empty
 	rts
 	.bend  ; opasmEngineGetStatementExprMetadataV1
 
+; Return whether a statement has stored expression metadata.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: 1 when expression metadata exists, 0 when absent.
+opasmEngineStatementHasExprMetadataV1	.block
+	suba.l #OPASM_ENGINE_EXPR_META_BYTES, sp
+	movea.l sp, a0
+	jsr opasmEngineGetStatementExprMetadataV1
+	adda.l #OPASM_ENGINE_EXPR_META_BYTES, sp
+	rts
+	.bend  ; opasmEngineStatementHasExprMetadataV1
+
 ; Return stored mnemonic and operand text metadata for one statement.
 ;
 ; Inputs:

@@ -12267,7 +12267,7 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
     assert!(source.contains("opforgeNativeCliTrySelectedEncodeSizeForStatement"));
     assert!(source.contains("moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0"));
     assert!(source.contains("opasmEngineStmtLabelNameTable"));
-    assert!(source.contains("opasmEngineStmtMnemNameTable"));
+    assert!(source.contains("opasmEngineGetStatementTextMetadataV1"));
     assert!(listing.contains("STAGE pass1"));
     assert!(listing.contains("STATUS pass1-ok"));
     assert!(listing.contains("STAGE pass2"));

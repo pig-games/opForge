@@ -1,0 +1,1 @@
+PASS: The artifact-creation slice is focused on the requested governed migration plan, changes only the new plan file, records AGENTS binding and commit-sized phases, and has checkbox validation passing.

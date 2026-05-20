@@ -6,6 +6,9 @@
 
 	.module opasm.amigaos.engine
 	.cpu 68020
+
+	.use opasm.amigaos.events (opasmEventAppendV1, opasmEventResetCountV1)
+
 	.pub
 
 TOKEN_BUFFER_CAPACITY           = 64

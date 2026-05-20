@@ -942,6 +942,157 @@ fail
 	rts
 	.bend  ; opasmEnginePrepareEncodeInstructionRequestV1
 
+; Infer the selected-shape text for an evaluate request.
+;
+; Inputs:
+; - A0: evaluate request buffer.
+; - D0: evaluate request byte length.
+;
+; Outputs:
+; - A0: selected-shape text when D0 is non-zero.
+; - D0: selected-shape text length, or 0 when none applies.
+opasmEngineInferSelectedShapeForEvalRequestV1	.block
+	movem.l d1-d7/a1-a2, -(sp)
+	movea.l a0, a2
+	move.w d0, d7
+	moveq #0, d0
+	move.b 8(a2), d0
+	bsr.w inferSelectedShapeBranchMnemonic
+	tst.l d0
+	bne.w direct
+	movea.l a2, a0
+	moveq #0, d0
+	move.b 8(a0), d0
+	moveq #0, d2
+	move.w d7, d2
+	subi.w #9, d2
+	bcs.w none
+	sub.w d0, d2
+	bcs.w none
+	lea 9(a0, d0.w), a0
+
+trimLeading
+	tst.w d2
+	beq.w none
+	move.b (a0), d3
+	cmpi.b #' ', d3
+	beq.s trimLeadingOne
+	cmpi.b #9, d3
+	bne.s trimTrailing
+
+trimLeadingOne
+	addq.l #1, a0
+	subq.w #1, d2
+	bra.s trimLeading
+
+trimTrailing
+	tst.w d2
+	beq.w none
+	move.w d2, d4
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	cmpi.b #' ', d3
+	beq.s trimTrailingOne
+	cmpi.b #9, d3
+	bne.s ready
+
+trimTrailingOne
+	subq.w #1, d2
+	bra.s trimTrailing
+
+ready
+	cmpi.w #1, d2
+	bne.s checkPrefix
+	move.b (a0), d3
+	ori.b #$20, d3
+	cmpi.b #'a', d3
+	beq.w accumulator
+
+checkPrefix
+	move.b (a0), d3
+	cmpi.b #'#', d3
+	beq.w immediate
+	cmpi.b #'(', d3
+	beq.w paren
+	bsr.w inferSelectedShapeSuffix
+	cmpi.b #'x', d0
+	beq.w directX
+	cmpi.b #'y', d0
+	beq.w directY
+	bra.w direct
+
+paren
+	bsr.w inferSelectedShapeSuffix
+	cmpi.b #'y', d0
+	beq.w indirectIndexedY
+	move.w d2, d4
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	cmpi.b #')', d3
+	bne.w indirect
+	cmpi.w #4, d2
+	bcs.w indirect
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	ori.b #$20, d3
+	cmpi.b #'x', d3
+	bne.w indirect
+	tst.w d4
+	beq.w indirect
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	cmpi.b #',', d3
+	beq.w indexedIndirectX
+	bra.w indirect
+
+accumulator
+	lea OpasmEngineSelectedShapeAccumulatorText, a0
+	moveq #11, d0
+	bra.s return
+
+immediate
+	lea OpasmEngineSelectedShapeImmediateText, a0
+	moveq #9, d0
+	bra.s return
+
+direct
+	lea OpasmEngineSelectedShapeDirectText, a0
+	moveq #6, d0
+	bra.s return
+
+directX
+	lea OpasmEngineSelectedShapeDirectXText, a0
+	moveq #8, d0
+	bra.s return
+
+directY
+	lea OpasmEngineSelectedShapeDirectYText, a0
+	moveq #8, d0
+	bra.s return
+
+indirect
+	lea OpasmEngineSelectedShapeIndirectText, a0
+	moveq #8, d0
+	bra.s return
+
+indexedIndirectX
+	lea OpasmEngineSelectedShapeIndexedIndirectXText, a0
+	moveq #18, d0
+	bra.s return
+
+indirectIndexedY
+	lea OpasmEngineSelectedShapeIndirectIndexedYText, a0
+	moveq #18, d0
+	bra.s return
+
+none
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d7/a1-a2
+	rts
+	.bend  ; opasmEngineInferSelectedShapeForEvalRequestV1
+
 ; Check whether a statement mnemonic duplicates that statement's label.
 ;
 ; Inputs:
@@ -1111,6 +1262,136 @@ loop
 done
 	rts
 	.bend  ; copyFixedString
+
+inferSelectedShapeSuffix	.block
+	moveq #0, d0
+	cmpi.w #3, d2
+	bcs.s return
+	move.w d2, d4
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	ori.b #$20, d3
+	cmpi.b #'x', d3
+	beq.s maybe
+	cmpi.b #'y', d3
+	bne.s return
+
+maybe
+	move.b d3, d0
+	subq.w #1, d4
+	move.b 0(a0, d4.w), d3
+	cmpi.b #',', d3
+	beq.s return
+	moveq #0, d0
+
+return
+	rts
+	.bend  ; inferSelectedShapeSuffix
+
+inferSelectedShapeBranchMnemonic	.block
+	cmpi.w #3, d0
+	beq.s lenOk
+	moveq #0, d0
+	rts
+
+lenOk
+	lea 9(a2), a1
+	move.b (a1)+, d1
+	ori.b #$20, d1
+	cmpi.b #'b', d1
+	beq.s haveB
+	moveq #0, d0
+	rts
+
+haveB
+	move.b (a1)+, d1
+	move.b (a1), d2
+	ori.b #$20, d1
+	ori.b #$20, d2
+	cmpi.b #'c', d1
+	beq.s checkC
+	cmpi.b #'e', d1
+	beq.s checkEq
+	cmpi.b #'n', d1
+	beq.s checkNe
+	cmpi.b #'m', d1
+	beq.s checkMi
+	cmpi.b #'p', d1
+	beq.s checkPl
+	cmpi.b #'v', d1
+	beq.s checkV
+	cmpi.b #'r', d1
+	beq.s checkRa
+	moveq #0, d0
+	rts
+
+checkC
+	cmpi.b #'c', d2
+	beq.s yes
+	cmpi.b #'s', d2
+	beq.s yes
+	moveq #0, d0
+	rts
+
+checkEq
+	cmpi.b #'q', d2
+	beq.s yes
+	moveq #0, d0
+	rts
+
+checkNe
+	cmpi.b #'e', d2
+	beq.s yes
+	moveq #0, d0
+	rts
+
+checkMi
+	cmpi.b #'i', d2
+	beq.s yes
+	moveq #0, d0
+	rts
+
+checkPl
+	cmpi.b #'l', d2
+	beq.s yes
+	moveq #0, d0
+	rts
+
+checkV
+	cmpi.b #'c', d2
+	beq.s yes
+	cmpi.b #'s', d2
+	beq.s yes
+	moveq #0, d0
+	rts
+
+checkRa
+	cmpi.b #'a', d2
+	beq.s yes
+	moveq #0, d0
+	rts
+
+yes
+	moveq #1, d0
+	rts
+	.bend  ; inferSelectedShapeBranchMnemonic
+
+OpasmEngineSelectedShapeAccumulatorText
+	.byte "accumulator", 0
+OpasmEngineSelectedShapeImmediateText
+	.byte "immediate", 0
+OpasmEngineSelectedShapeDirectText
+	.byte "direct", 0
+OpasmEngineSelectedShapeDirectXText
+	.byte "direct_x", 0
+OpasmEngineSelectedShapeDirectYText
+	.byte "direct_y", 0
+OpasmEngineSelectedShapeIndirectText
+	.byte "indirect", 0
+OpasmEngineSelectedShapeIndexedIndirectXText
+	.byte "indexed_indirect_x", 0
+OpasmEngineSelectedShapeIndirectIndexedYText
+	.byte "indirect_indexed_y", 0
 
 tokenLen	.block
 	movem.l d1/a0, -(sp)

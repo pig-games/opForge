@@ -12,6 +12,7 @@
 	.use opasm.amigaos.engine (opasmEngineWriteEvaluateExpressionExtensionBaseV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareSelectedEvaluateRequestV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareEncodeInstructionRequestV1)
+	.use opasm.amigaos.engine (opasmEngineInferSelectedShapeForEvalRequestV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_OPERAND_INDEX, OPASM_ENGINE_EXPR_META_SLOT_INDEX)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_START_TOKEN, OPASM_ENGINE_EXPR_META_END_TOKEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_LINE, OPASM_ENGINE_EXPR_META_SPAN_START)
@@ -23,10 +24,6 @@
 	.use opforge.cli.state (NativeCliStmtExprFound, NativeCliStmtExprOperandIndex, NativeCliStmtExprSlotIndex)
 	.use opforge.cli.state (NativeCliStmtExprStartToken, NativeCliStmtExprEndToken)
 	.use opforge.cli.state (NativeCliStmtExprSpanLine, NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd)
-	.use opforge.cli.strings (NativeCliSelectedShapeAccumulatorText, NativeCliSelectedShapeImmediateText)
-	.use opforge.cli.strings (NativeCliSelectedShapeDirectText, NativeCliSelectedShapeDirectXText, NativeCliSelectedShapeDirectYText)
-	.use opforge.cli.strings (NativeCliSelectedShapeIndirectText, NativeCliSelectedShapeIndexedIndirectXText)
-	.use opforge.cli.strings (NativeCliSelectedShapeIndirectIndexedYText)
 	.use opforge.cli.copy (opforgeNativeCliCopyFixedString)
 	.use opforge.cli.tkpkg_control_block (opforgeNativeCliWriteInputWindow, opforgeNativeCliReadStatus)
 
@@ -131,7 +128,10 @@ opforgeNativeCliPrepareEvaluateExpressionExtension	.block
 	lea ControlBlockV1, a1
 	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a1
 	jsr opasmEngineWriteEvaluateExpressionExtensionBaseV1
-	bsr.w opforgeNativeCliInferSelectedShapeForEvalRequest
+	lea lastErrorBuffer, a0
+	moveq #0, d0
+	move.w NativeCliEvalRequestLen, d0
+	jsr opasmEngineInferSelectedShapeForEvalRequestV1
 	tst.w d0
 	beq.s done
 	lea ControlBlockV1, a1
@@ -200,259 +200,6 @@ return
 	movem.l (sp)+, d1/a0-a1
 	rts
 	.bend  ; opforgeNativeCliPrepareEncodeInstructionRequest
-
-opforgeNativeCliInferSelectedShapeForEvalRequest	.block
-	movem.l d1-d7/a1-a2, -(sp)
-	lea lastErrorBuffer, a0
-	moveq #0, d0
-	move.b 8(a0), d0
-	movea.l a0, a2
-	bsr.w opforgeNativeCliInferSelectedShapeBranchMnemonic
-	tst.l d0
-	bne.w opforgeNativeCliInferSelectedShapeDirect
-	movea.l a2, a0
-	moveq #0, d0
-	move.b 8(a0), d0
-	moveq #0, d2
-	move.w NativeCliEvalRequestLen.l, d2
-	subi.w #9, d2
-	bcs.w opforgeNativeCliInferSelectedShapeNone
-	sub.w d0, d2
-	bcs.w opforgeNativeCliInferSelectedShapeNone
-	lea 9(a0, d0.w), a0
-
-opforgeNativeCliInferSelectedShapeTrimLeading
-	tst.w d2
-	beq.w opforgeNativeCliInferSelectedShapeNone
-	move.b (a0), d3
-	cmpi.b #' ', d3
-	beq.s opforgeNativeCliInferSelectedShapeTrimLeadingOne
-	cmpi.b #9, d3
-	bne.s opforgeNativeCliInferSelectedShapeTrimTrailing
-
-opforgeNativeCliInferSelectedShapeTrimLeadingOne
-	addq.l #1, a0
-	subq.w #1, d2
-	bra.s opforgeNativeCliInferSelectedShapeTrimLeading
-
-opforgeNativeCliInferSelectedShapeTrimTrailing
-	tst.w d2
-	beq.w opforgeNativeCliInferSelectedShapeNone
-	move.w d2, d4
-	subq.w #1, d4
-	move.b 0(a0, d4.w), d3
-	cmpi.b #' ', d3
-	beq.s opforgeNativeCliInferSelectedShapeTrimTrailingOne
-	cmpi.b #9, d3
-	bne.s opforgeNativeCliInferSelectedShapeReady
-
-opforgeNativeCliInferSelectedShapeTrimTrailingOne
-	subq.w #1, d2
-	bra.s opforgeNativeCliInferSelectedShapeTrimTrailing
-
-opforgeNativeCliInferSelectedShapeReady
-	cmpi.w #1, d2
-	bne.s opforgeNativeCliInferSelectedShapeCheckPrefix
-	move.b (a0), d3
-	ori.b #$20, d3
-	cmpi.b #'a', d3
-	beq.w opforgeNativeCliInferSelectedShapeAccumulator
-
-opforgeNativeCliInferSelectedShapeCheckPrefix
-	move.b (a0), d3
-	cmpi.b #'#', d3
-	beq.w opforgeNativeCliInferSelectedShapeImmediate
-	cmpi.b #'(', d3
-	beq.w opforgeNativeCliInferSelectedShapeParen
-	bsr.w opforgeNativeCliInferSelectedShapeSuffix
-	cmpi.b #'x', d0
-	beq.w opforgeNativeCliInferSelectedShapeDirectX
-	cmpi.b #'y', d0
-	beq.w opforgeNativeCliInferSelectedShapeDirectY
-	bra.w opforgeNativeCliInferSelectedShapeDirect
-
-opforgeNativeCliInferSelectedShapeParen
-	bsr.w opforgeNativeCliInferSelectedShapeSuffix
-	cmpi.b #'y', d0
-	beq.w opforgeNativeCliInferSelectedShapeIndirectIndexedY
-	move.w d2, d4
-	subq.w #1, d4
-	move.b 0(a0, d4.w), d3
-	cmpi.b #')', d3
-	bne.w opforgeNativeCliInferSelectedShapeIndirect
-	cmpi.w #4, d2
-	bcs.w opforgeNativeCliInferSelectedShapeIndirect
-	subq.w #1, d4
-	move.b 0(a0, d4.w), d3
-	ori.b #$20, d3
-	cmpi.b #'x', d3
-	bne.w opforgeNativeCliInferSelectedShapeIndirect
-	tst.w d4
-	beq.w opforgeNativeCliInferSelectedShapeIndirect
-	subq.w #1, d4
-	move.b 0(a0, d4.w), d3
-	cmpi.b #',', d3
-	beq.w opforgeNativeCliInferSelectedShapeIndexedIndirectX
-	bra.w opforgeNativeCliInferSelectedShapeIndirect
-
-opforgeNativeCliInferSelectedShapeSuffix
-	moveq #0, d0
-	cmpi.w #3, d2
-	bcs.s opforgeNativeCliInferSelectedShapeSuffixReturn
-	move.w d2, d4
-	subq.w #1, d4
-	move.b 0(a0, d4.w), d3
-	ori.b #$20, d3
-	cmpi.b #'x', d3
-	beq.s opforgeNativeCliInferSelectedShapeSuffixMaybe
-	cmpi.b #'y', d3
-	bne.s opforgeNativeCliInferSelectedShapeSuffixReturn
-
-opforgeNativeCliInferSelectedShapeSuffixMaybe
-	move.b d3, d0
-	subq.w #1, d4
-	move.b 0(a0, d4.w), d3
-	cmpi.b #',', d3
-	beq.s opforgeNativeCliInferSelectedShapeSuffixReturn
-	moveq #0, d0
-
-opforgeNativeCliInferSelectedShapeSuffixReturn
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchMnemonic
-	cmpi.w #3, d0
-	beq.s opforgeNativeCliInferSelectedShapeBranchLenOk
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchLenOk
-	lea 9(a2), a1
-	move.b (a1)+, d1
-	ori.b #$20, d1
-	cmpi.b #'b', d1
-	beq.s opforgeNativeCliInferSelectedShapeBranchHaveB
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchHaveB
-	move.b (a1)+, d1
-	move.b (a1), d2
-	ori.b #$20, d1
-	ori.b #$20, d2
-	cmpi.b #'c', d1
-	beq.s opforgeNativeCliInferSelectedShapeBranchCheckC
-	cmpi.b #'e', d1
-	beq.s opforgeNativeCliInferSelectedShapeBranchCheckEq
-	cmpi.b #'n', d1
-	beq.s opforgeNativeCliInferSelectedShapeBranchCheckNe
-	cmpi.b #'m', d1
-	beq.s opforgeNativeCliInferSelectedShapeBranchCheckMi
-	cmpi.b #'p', d1
-	beq.s opforgeNativeCliInferSelectedShapeBranchCheckPl
-	cmpi.b #'v', d1
-	beq.s opforgeNativeCliInferSelectedShapeBranchCheckV
-	cmpi.b #'r', d1
-	beq.s opforgeNativeCliInferSelectedShapeBranchCheckRa
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchCheckC
-	cmpi.b #'c', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	cmpi.b #'s', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchCheckEq
-	cmpi.b #'q', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchCheckNe
-	cmpi.b #'e', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchCheckMi
-	cmpi.b #'i', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchCheckPl
-	cmpi.b #'l', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchCheckV
-	cmpi.b #'c', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	cmpi.b #'s', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchCheckRa
-	cmpi.b #'a', d2
-	beq.s opforgeNativeCliInferSelectedShapeBranchYes
-	moveq #0, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeBranchYes
-	moveq #1, d0
-	rts
-
-opforgeNativeCliInferSelectedShapeAccumulator
-	lea NativeCliSelectedShapeAccumulatorText, a0
-	moveq #11, d0
-	bra.s opforgeNativeCliInferSelectedShapeReturn
-
-opforgeNativeCliInferSelectedShapeImmediate
-	lea NativeCliSelectedShapeImmediateText, a0
-	moveq #9, d0
-	bra.s opforgeNativeCliInferSelectedShapeReturn
-
-opforgeNativeCliInferSelectedShapeDirect
-	lea NativeCliSelectedShapeDirectText, a0
-	moveq #6, d0
-	bra.s opforgeNativeCliInferSelectedShapeReturn
-
-opforgeNativeCliInferSelectedShapeDirectX
-	lea NativeCliSelectedShapeDirectXText, a0
-	moveq #8, d0
-	bra.s opforgeNativeCliInferSelectedShapeReturn
-
-opforgeNativeCliInferSelectedShapeDirectY
-	lea NativeCliSelectedShapeDirectYText, a0
-	moveq #8, d0
-	bra.s opforgeNativeCliInferSelectedShapeReturn
-
-opforgeNativeCliInferSelectedShapeIndirect
-	lea NativeCliSelectedShapeIndirectText, a0
-	moveq #8, d0
-	bra.s opforgeNativeCliInferSelectedShapeReturn
-
-opforgeNativeCliInferSelectedShapeIndexedIndirectX
-	lea NativeCliSelectedShapeIndexedIndirectXText, a0
-	moveq #18, d0
-	bra.s opforgeNativeCliInferSelectedShapeReturn
-
-opforgeNativeCliInferSelectedShapeIndirectIndexedY
-	lea NativeCliSelectedShapeIndirectIndexedYText, a0
-	moveq #18, d0
-	bra.s opforgeNativeCliInferSelectedShapeReturn
-
-opforgeNativeCliInferSelectedShapeNone
-	moveq #0, d0
-
-opforgeNativeCliInferSelectedShapeReturn
-	movem.l (sp)+, d1-d7/a1-a2
-	rts
-	.bend  ; opforgeNativeCliInferSelectedShapeForEvalRequest
 
 opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 	bsr.w opforgeNativeCliPrepareEncodeInstructionRequest

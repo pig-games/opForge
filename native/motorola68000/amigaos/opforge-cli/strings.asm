@@ -191,22 +191,6 @@ CpuMnemonicText
 	.byte ".cpu"
 EndMnemonicText
 	.byte ".end"
-NativeCliSelectedShapeAccumulatorText
-	.byte "accumulator", 0
-NativeCliSelectedShapeImmediateText
-	.byte "immediate", 0
-NativeCliSelectedShapeDirectText
-	.byte "direct", 0
-NativeCliSelectedShapeDirectXText
-	.byte "direct_x", 0
-NativeCliSelectedShapeDirectYText
-	.byte "direct_y", 0
-NativeCliSelectedShapeIndirectText
-	.byte "indirect", 0
-NativeCliSelectedShapeIndexedIndirectXText
-	.byte "indexed_indirect_x", 0
-NativeCliSelectedShapeIndirectIndexedYText
-	.byte "indirect_indexed_y", 0
 LdaMnemonicText
 	.byte "lda"
 StaMnemonicText

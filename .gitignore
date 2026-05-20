@@ -64,3 +64,7 @@ Icon?
 /clients/vscode/node_modules/
 /clients/vscode/out/
 /clients/vscode/package-lock.json
+tools/68080-testgen.zip
+tools/68080-testgen/gen_68080_forwarding_tests.py
+tools/68080-testgen/README.md
+tools/68080-testgen/tests/test_generator.py

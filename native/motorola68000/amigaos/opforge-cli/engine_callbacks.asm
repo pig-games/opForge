@@ -14,7 +14,6 @@
 	.use opasm.amigaos.engine (OPASM_ENGINE_LABEL_EVENT_STORED, OPASM_ENGINE_LABEL_EVENT_DUPLICATE)
 	.use opasm.amigaos.engine (OpasmEngineContext)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
-	.use opasm.amigaos.engine (opasmEngineImageByteCount)
 	.use opasm.amigaos.engine (opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable)
 	.use opasm.amigaos.engine (opasmEngineStmtLabelLenTable, opasmEngineStmtMnemLenTable)
 	.use opasm.amigaos.engine (opasmEngineStmtOperandLenTable, opasmEngineStmtMnemNameTable)

@@ -9,7 +9,7 @@
 
 	.use opasm.amigaos.engine (opasmEngineStmtCount, opasmEngineSessionPass)
 	.use opasm.amigaos.engine (opasmEngineSourceRecordCount, opasmEngineLabelCount)
-	.use opasm.amigaos.engine (opasmEngineImageByteCount, opasmEngineSessionCpuName)
+	.use opasm.amigaos.engine (opasmEngineGetImageByteCountV1, opasmEngineSessionCpuName)
 	.use opasm.amigaos.engine (opasmEngineSessionOrigin, opasmEngineSessionCurrentPc)
 
 	.use opforge.cli.constants (NCLI_PARSE_QUOTED, NCLI_PARSE_UNSUPPORTED)
@@ -107,8 +107,7 @@ opforgeNativeCliEmitAssemblySessionSummary	.block
 	jsr opforgeNativeCliPutStr
 	move.l #SessionImageBytesText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineImageByteCount.l, d0
+	jsr opasmEngineGetImageByteCountV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr

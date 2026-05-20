@@ -8,6 +8,7 @@
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
 	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1)
+	.use opasm.amigaos.engine (opasmEngineBeginPassOneV1, opasmEngineBeginPassTwoV1)
 	.use opasm.amigaos.engine (OpasmEngineContext)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
 	.use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineImageByteCount)
@@ -72,22 +73,11 @@ opforgeNativeCliBuildOpasmEngineContext	.block
 	.bend  ; opforgeNativeCliBuildOpasmEngineContext
 
 opforgeNativeCliOpasmPassOneBegin	.block
-	movem.l d0-d1, -(sp)
+	movem.l d1, -(sp)
 	move.l #NativePassOneText, d1
 	jsr opforgeNativeCliPutStr
-	clr.w opasmEngineLabelCount.l
-	lea opasmEngineLabelFinalizedTable.l, a0
-	moveq #NATIVE_LABEL_TABLE_CAPACITY - 1, d0
-
-clearLoop
-	clr.b (a0)+
-	dbf d0, clearLoop
-	clr.w opasmEngineImageByteCount.l
-	move.l #$00000800, opasmEngineSessionOrigin.l
-	move.l opasmEngineSessionOrigin.l, d0
-	move.l d0, opasmEngineSessionCurrentPc.l
-	movem.l (sp)+, d0-d1
-	moveq #0, d0
+	jsr opasmEngineBeginPassOneV1
+	movem.l (sp)+, d1
 	rts
 	.bend  ; opforgeNativeCliOpasmPassOneBegin
 
@@ -101,25 +91,11 @@ opforgeNativeCliOpasmPassOneOk	.block
 	.bend  ; opforgeNativeCliOpasmPassOneOk
 
 opforgeNativeCliOpasmPassTwoBegin	.block
-	movem.l d0-d1, -(sp)
+	movem.l d1, -(sp)
 	move.l #NativePassTwoText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineLabelCount.l, d0
-	subq.w #1, d0
-	bmi.s finalizeDone
-	lea opasmEngineLabelFinalizedTable.l, a0
-
-finalizeLoop
-	move.b #1, (a0)+
-	dbf d0, finalizeLoop
-
-finalizeDone
-	clr.w opasmEngineImageByteCount.l
-	move.l opasmEngineSessionOrigin.l, d0
-	move.l d0, opasmEngineSessionCurrentPc.l
-	movem.l (sp)+, d0-d1
-	moveq #0, d0
+	jsr opasmEngineBeginPassTwoV1
+	movem.l (sp)+, d1
 	rts
 	.bend  ; opforgeNativeCliOpasmPassTwoBegin
 

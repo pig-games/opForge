@@ -163,6 +163,53 @@ opasmEngineCommitStatementRecordV1	.block
 	rts
 	.bend  ; opasmEngineCommitStatementRecordV1
 
+; Initialize opasm-owned pass-one state.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineBeginPassOneV1	.block
+	movem.l d1/a0, -(sp)
+	clr.w OpasmEngineLabelCount.l
+	lea OpasmEngineLabelFinalizedTable.l, a0
+	moveq #NATIVE_LABEL_TABLE_CAPACITY - 1, d0
+
+clearLoop
+	clr.b (a0)+
+	dbf d0, clearLoop
+	clr.w OpasmEngineImageByteCount.l
+	move.l #$00000800, OpasmEngineSessionOrigin.l
+	move.l OpasmEngineSessionOrigin.l, d1
+	move.l d1, OpasmEngineSessionCurrentPc.l
+	movem.l (sp)+, d1/a0
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineBeginPassOneV1
+
+; Initialize opasm-owned pass-two state.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineBeginPassTwoV1	.block
+	movem.l d1/a0, -(sp)
+	moveq #0, d0
+	move.w OpasmEngineLabelCount.l, d0
+	subq.w #1, d0
+	bmi.s finalizeDone
+	lea OpasmEngineLabelFinalizedTable.l, a0
+
+finalizeLoop
+	move.b #1, (a0)+
+	dbf d0, finalizeLoop
+
+finalizeDone
+	clr.w OpasmEngineImageByteCount.l
+	move.l OpasmEngineSessionOrigin.l, d1
+	move.l d1, OpasmEngineSessionCurrentPc.l
+	movem.l (sp)+, d1/a0
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineBeginPassTwoV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5

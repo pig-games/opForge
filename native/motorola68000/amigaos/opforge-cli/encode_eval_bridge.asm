@@ -10,6 +10,7 @@
 	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1, opasmEngineGetStatementExprMetadataV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementLineNumberV1)
+	.use opasm.amigaos.engine (opasmEngineWriteEvaluateExpressionExtensionBaseV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_OPERAND_INDEX, OPASM_ENGINE_EXPR_META_SLOT_INDEX)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_START_TOKEN, OPASM_ENGINE_EXPR_META_END_TOKEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_LINE, OPASM_ENGINE_EXPR_META_SPAN_START)
@@ -17,8 +18,6 @@
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_OPERAND_PTR, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_BYTES)
-	.use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineLabelValueTable)
-	.use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineSessionCurrentPc)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1)
 	.use opforge.cli.state (NativeCliEncodeRequestLen, NativeCliEvalRequestLen)
@@ -183,17 +182,12 @@ opforgeNativeCliPrepareEvaluateExpressionExtension	.block
 	movem.l d1-d7/a0-a2, -(sp)
 	lea ControlBlockV1, a1
 	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a1
-	move.l #opasmEngineLabelNameTable, (a1)+
-	move.l #opasmEngineLabelValueTable, (a1)+
-	moveq #0, d0
-	move.w opasmEngineLabelCount.l, d0
-	move.l d0, (a1)+
-	move.l opasmEngineSessionCurrentPc.l, (a1)+
-	clr.l (a1)
-	clr.l 4(a1)
+	jsr opasmEngineWriteEvaluateExpressionExtensionBaseV1
 	bsr.w opforgeNativeCliInferSelectedShapeForEvalRequest
 	tst.w d0
 	beq.s done
+	lea ControlBlockV1, a1
+	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1 + 16, a1
 	move.l a0, (a1)
 	move.l d0, 4(a1)
 

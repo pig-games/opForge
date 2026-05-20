@@ -430,6 +430,28 @@ opasmEngineGetImageBufferPtrV1	.block
 	rts
 	.bend  ; opasmEngineGetImageBufferPtrV1
 
+; Write the opasm-owned expression-evaluation environment extension fields.
+;
+; Inputs:
+; - A1: extension buffer base.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineWriteEvaluateExpressionExtensionBaseV1	.block
+	movem.l d1/a1, -(sp)
+	move.l #OpasmEngineLabelNameTable, (a1)+
+	move.l #OpasmEngineLabelValueTable, (a1)+
+	moveq #0, d1
+	move.w OpasmEngineLabelCount.l, d1
+	move.l d1, (a1)+
+	move.l OpasmEngineSessionCurrentPc.l, (a1)+
+	clr.l (a1)+
+	clr.l (a1)
+	movem.l (sp)+, d1/a1
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineWriteEvaluateExpressionExtensionBaseV1
+
 ; Return the stored source line number for one statement.
 ;
 ; Inputs:

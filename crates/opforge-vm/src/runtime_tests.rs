@@ -1596,6 +1596,7 @@ fn portable_line_ast_contract_round_trips_core_line_model() {
                 value: num_expr.clone(),
                 span,
             }],
+            section_maps: Vec::new(),
             span,
         }),
         LineAst::StatementDef(types::line_ast::StatementDefAst {

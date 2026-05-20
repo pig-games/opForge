@@ -18541,6 +18541,86 @@ fn section_option_accepts_hunk_memory_attribute() {
 }
 
 #[test]
+fn section_option_accepts_logical_contract() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    let status = process_line(&mut asm, ".section code, kind=code, logical", 0, 1);
+
+    assert_eq!(status, LineStatus::Ok);
+    let section = asm.layout.sections.get("code").expect("code section");
+    assert!(section.logical);
+}
+
+#[test]
+fn use_section_map_validates_target_exists() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".use dep as d map { code -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Import section map target 'app_code' is not a declared concrete section")
+    }));
+}
+
+#[test]
+fn use_section_map_rejects_unknown_logical_section() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep as d map { tables -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Unknown logical section 'tables' in module 'dep'")
+    }));
+}
+
+#[test]
+fn use_section_map_rejects_incompatible_kind() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".section state, kind=bss, logical".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep as d map { state -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Import section map kind is incompatible")
+    }));
+}
+
+#[test]
 fn section_option_accepts_slow_hunk_memory_alias() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();

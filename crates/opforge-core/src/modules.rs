@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn collect_use_directives_with_items_keeps_alias_and_items() {
-        let lines = vec![".use mforth.kernel as kern (foo, bar)".to_string()];
+        let lines = vec![".use mforth.kernel (foo, bar) as kern".to_string()];
         assert_eq!(
             collect_use_directives_with_items(&lines),
             vec![UseDirectiveSpec {

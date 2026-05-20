@@ -25,6 +25,7 @@ pub struct SectionState {
     pub kind: SectionKind,
     pub hunk_memory_type: HunkMemoryType,
     pub default_region: Option<String>,
+    pub logical: bool,
     pub base_addr: Option<u32>,
     pub relocation_free_certified: bool,
     pub hunk_relocation_compatible: bool,
@@ -45,6 +46,7 @@ impl Default for SectionState {
             kind: SectionKind::Code,
             hunk_memory_type: HunkMemoryType::Any,
             default_region: None,
+            logical: false,
             base_addr: None,
             relocation_free_certified: true,
             hunk_relocation_compatible: true,
@@ -72,6 +74,7 @@ pub struct SectionOptions {
     pub kind: Option<SectionKind>,
     pub hunk_memory_type: Option<HunkMemoryType>,
     pub region: Option<String>,
+    pub logical: bool,
 }
 
 #[derive(Debug, Clone)]

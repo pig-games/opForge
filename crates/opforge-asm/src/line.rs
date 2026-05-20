@@ -1854,6 +1854,7 @@ impl<'a> AsmLine<'a> {
                         use_ast.alias,
                         use_ast.items,
                         use_ast.params,
+                        use_ast.section_maps,
                         use_ast.span,
                     );
                     let module_name = self

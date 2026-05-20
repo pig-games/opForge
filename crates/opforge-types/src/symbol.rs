@@ -64,6 +64,27 @@ pub struct ImportParam {
 }
 
 #[derive(Debug, Clone)]
+pub struct ImportSectionMap {
+    pub logical: String,
+    pub concrete: String,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogicalSectionKind {
+    Code,
+    Data,
+    Bss,
+}
+
+#[derive(Debug, Clone)]
+pub struct LogicalSectionContract {
+    pub name: String,
+    pub kind: LogicalSectionKind,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
 pub struct ModuleImport {
     pub module_id: String,
     pub alias: Option<String>,
@@ -71,6 +92,7 @@ pub struct ModuleImport {
     pub items: Vec<ImportItem>,
     pub selected_roots: Vec<ImportItem>,
     pub params: Vec<ImportParam>,
+    pub section_maps: Vec<ImportSectionMap>,
     pub span: SourceSpan,
 }
 
@@ -78,6 +100,7 @@ pub struct ModuleImport {
 pub struct ModuleInfo {
     pub name: String,
     pub imports: Vec<ModuleImport>,
+    pub logical_sections: Vec<LogicalSectionContract>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,9 +184,34 @@ impl SymbolTable {
         self.module_info.push(ModuleInfo {
             name: name.to_string(),
             imports: Vec::new(),
+            logical_sections: Vec::new(),
         });
         self.module_index.insert(key, idx);
         SymbolTableResult::Ok
+    }
+
+    pub fn add_logical_section(
+        &mut self,
+        module: &str,
+        name: String,
+        kind: LogicalSectionKind,
+        span: SourceSpan,
+    ) {
+        if self.module_info_mut(module).is_none() {
+            let _ = self.register_module(module);
+        }
+        let info = self.module_info_mut(module).expect("module info");
+        if let Some(existing) = info
+            .logical_sections
+            .iter_mut()
+            .find(|section| section.name.eq_ignore_ascii_case(&name))
+        {
+            existing.kind = kind;
+            existing.span = span;
+            return;
+        }
+        info.logical_sections
+            .push(LogicalSectionContract { name, kind, span });
     }
 
     #[must_use]
@@ -217,6 +265,11 @@ impl SymbolTable {
     #[must_use]
     pub fn module_imports(&self, name: &str) -> Option<&[ModuleImport]> {
         self.module_info(name).map(|info| info.imports.as_slice())
+    }
+
+    #[must_use]
+    pub fn modules(&self) -> &[ModuleInfo] {
+        &self.module_info
     }
 
     fn module_info(&self, name: &str) -> Option<&ModuleInfo> {
@@ -359,6 +412,40 @@ impl SymbolTable {
                         param: Some(import.module_id.clone()),
                     });
                     continue;
+                }
+                let dep_info = self.module_info(&import.module_id);
+                let mut checked_maps = HashSet::new();
+                for map in &import.section_maps {
+                    let map_key = normalized_ascii_upper_lookup_key(&map.logical).into_owned();
+                    if !checked_maps.insert(map_key) {
+                        issues.push(ImportIssue {
+                            line: map.span.line,
+                            column: Some(map.span.col_start),
+                            kind: ImportIssueKind::Directive,
+                            message: "Duplicate import section map entry".to_string(),
+                            param: Some(map.logical.clone()),
+                        });
+                        continue;
+                    }
+                    let Some(dep_info) = dep_info else {
+                        continue;
+                    };
+                    if !dep_info
+                        .logical_sections
+                        .iter()
+                        .any(|section| section.name.eq_ignore_ascii_case(&map.logical))
+                    {
+                        issues.push(ImportIssue {
+                            line: map.span.line,
+                            column: Some(map.span.col_start),
+                            kind: ImportIssueKind::Directive,
+                            message: format!(
+                                "Unknown logical section '{}' in module '{}'",
+                                map.logical, import.module_id
+                            ),
+                            param: Some(map.logical.clone()),
+                        });
+                    }
                 }
                 let mut checked_import_items = HashSet::new();
                 for item in import.items.iter().chain(import.selected_roots.iter()) {
@@ -597,6 +684,7 @@ mod tests {
             items: Vec::new(),
             selected_roots: Vec::new(),
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
@@ -608,6 +696,7 @@ mod tests {
             items: Vec::new(),
             selected_roots: Vec::new(),
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(
@@ -632,6 +721,7 @@ mod tests {
             items: Vec::new(),
             selected_roots: Vec::new(),
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
@@ -643,6 +733,7 @@ mod tests {
             items: Vec::new(),
             selected_roots: Vec::new(),
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(
@@ -667,6 +758,7 @@ mod tests {
             items: Vec::new(),
             selected_roots: Vec::new(),
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
@@ -678,6 +770,7 @@ mod tests {
             items: Vec::new(),
             selected_roots: Vec::new(),
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(
@@ -710,6 +803,7 @@ mod tests {
                 span,
             }],
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
@@ -721,6 +815,7 @@ mod tests {
             items: Vec::new(),
             selected_roots: Vec::new(),
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
@@ -751,6 +846,7 @@ mod tests {
             items: vec![item.clone()],
             selected_roots: vec![item],
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
@@ -800,6 +896,7 @@ mod tests {
                     items: Vec::new(),
                     selected_roots: Vec::new(),
                     params: Vec::new(),
+                    section_maps: Vec::new(),
                     span,
                 }
             ),
@@ -823,6 +920,7 @@ mod tests {
                         span,
                     }],
                     params: Vec::new(),
+                    section_maps: Vec::new(),
                     span,
                 }
             ),
@@ -887,6 +985,7 @@ mod tests {
                     items: Vec::new(),
                     selected_roots: Vec::new(),
                     params: Vec::new(),
+                    section_maps: Vec::new(),
                     span,
                 }
             ),
@@ -902,6 +1001,7 @@ mod tests {
                     items: Vec::new(),
                     selected_roots: Vec::new(),
                     params: Vec::new(),
+                    section_maps: Vec::new(),
                     span,
                 }
             ),
@@ -942,6 +1042,7 @@ mod tests {
                 span,
             }],
             params: Vec::new(),
+            section_maps: Vec::new(),
             span,
         };
         assert_eq!(table.add_import("core.utils", import), ImportResult::Ok);

@@ -148,7 +148,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
     `.use opforge.cli.entry (start)` and the selected-root set is available to a
     later reachability pass.
 
-- [ ] Item 6: Parse and validate logical section contracts and maps
+- [x] Item 6: Parse and validate logical section contracts and maps
   - Source requirement or finding IDs: Spec behavioral contract for
     `.section ..., logical`, `.use ... map { logical -> concrete }`, missing-map
     diagnostics, and kind/capability compatibility.

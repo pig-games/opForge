@@ -9,7 +9,7 @@ use crate::tokenizer::{
 };
 use types::line_ast::{
     AssignmentAst, ConditionalAst, PackAst, PlaceAst, StatementAst, StatementDefAst,
-    StatementEndAst, UseAst, UseItemAst, UseParamAst,
+    StatementEndAst, UseAst, UseItemAst, UseParamAst, UseSectionMapAst,
 };
 use types::processing::{ProcessingOutcome, ProcessingRequestKind, ProcessingReturn};
 
@@ -636,11 +636,7 @@ impl Parser {
         let mut alias = None;
         let mut items = Vec::new();
         let mut params = Vec::new();
-
-        if self.match_keyword("as") {
-            let (name, _span) = self.parse_ident_like("Expected alias identifier after 'as'")?;
-            alias = Some(name);
-        }
+        let mut section_maps = Vec::new();
 
         if self.consume_kind(TokenKind::OpenParen) {
             if self.consume_kind(TokenKind::CloseParen) {
@@ -696,6 +692,22 @@ impl Parser {
             }
         }
 
+        if self.match_keyword("as") {
+            let (name, _span) = self.parse_ident_like("Expected alias identifier after 'as'")?;
+            alias = Some(name);
+            if items
+                .iter()
+                .any(|item: &UseItemAst<Span>| item.alias.is_some() || item.name == "*")
+            {
+                return Err(ParseError {
+                    message:
+                        "Qualified selective imports cannot use per-item aliases or wildcard selections"
+                            .to_string(),
+                    span: self.prev_span(),
+                });
+            }
+        }
+
         if self.match_keyword("with") {
             if !self.consume_kind(TokenKind::OpenParen) {
                 return Err(ParseError {
@@ -732,6 +744,52 @@ impl Parser {
             }
         }
 
+        if self.match_keyword("map") {
+            if !self.consume_kind(TokenKind::OpenBrace) {
+                return Err(ParseError {
+                    message: "Expected '{' after 'map'".to_string(),
+                    span: self.current_span(),
+                });
+            }
+            if self.consume_kind(TokenKind::CloseBrace) {
+                return Err(ParseError {
+                    message: "Section map cannot be empty".to_string(),
+                    span: self.prev_span(),
+                });
+            }
+            loop {
+                let (logical, span) =
+                    self.parse_ident_like("Expected logical section name in map")?;
+                if !self.match_operator(OperatorKind::Minus)
+                    || !self.match_operator(OperatorKind::Gt)
+                {
+                    return Err(ParseError {
+                        message: "Expected '->' in section map entry".to_string(),
+                        span: self.current_span(),
+                    });
+                }
+                let (concrete, _) =
+                    self.parse_ident_like("Expected concrete section name in map")?;
+                section_maps.push(UseSectionMapAst {
+                    logical,
+                    concrete,
+                    span,
+                });
+                if self.consume_kind(TokenKind::CloseBrace) {
+                    break;
+                }
+                let _ = self.consume_comma();
+            }
+            if alias.is_none()
+                && (!items.is_empty() || module_id.rsplit('.').all(|segment| segment.is_empty()))
+            {
+                return Err(ParseError {
+                    message: "Section maps require a module namespace qualifier".to_string(),
+                    span: self.prev_span(),
+                });
+            }
+        }
+
         if self.index < self.tokens.len() {
             return Err(ParseError {
                 message: "Unexpected trailing tokens after .use".to_string(),
@@ -755,6 +813,7 @@ impl Parser {
             alias,
             items,
             params,
+            section_maps,
             span,
         }))
     }
@@ -2052,11 +2111,8 @@ mod tests {
 
     #[test]
     fn parses_use_with_alias_selective_params() {
-        let mut parser = Parser::from_line(
-            ".use std.math as M (add16, sub16 as sub) with (FEATURE=1)",
-            1,
-        )
-        .unwrap();
+        let mut parser =
+            Parser::from_line(".use std.math (add16, sub16 as sub) with (FEATURE=1)", 1).unwrap();
         let line = parser.parse_compat_mixed_line().unwrap();
         match line {
             LineAst::Use(UseAst {
@@ -2067,7 +2123,7 @@ mod tests {
                 ..
             }) => {
                 assert_eq!(module_id, "std.math");
-                assert_eq!(alias.as_deref(), Some("M"));
+                assert!(alias.is_none());
                 assert_eq!(items.len(), 2);
                 assert_eq!(items[0].name, "add16");
                 assert_eq!(items[1].alias.as_deref(), Some("sub"));
@@ -2076,6 +2132,47 @@ mod tests {
             }
             _ => panic!("Expected use directive"),
         }
+    }
+
+    #[test]
+    fn parses_use_with_selection_alias_and_section_map() {
+        let mut parser =
+            Parser::from_line(".use std.math (add16) as M map { code -> app_code }", 1).unwrap();
+        let line = parser.parse_compat_mixed_line().unwrap();
+        match line {
+            LineAst::Use(UseAst {
+                alias,
+                items,
+                section_maps,
+                ..
+            }) => {
+                assert_eq!(alias.as_deref(), Some("M"));
+                assert_eq!(items[0].name, "add16");
+                assert_eq!(section_maps.len(), 1);
+                assert_eq!(section_maps[0].logical, "code");
+                assert_eq!(section_maps[0].concrete, "app_code");
+            }
+            _ => panic!("Expected use directive"),
+        }
+    }
+
+    #[test]
+    fn rejects_alias_before_selection_for_use() {
+        let mut parser = Parser::from_line(".use std.math as M (add16)", 1).unwrap();
+        assert!(parser.parse_compat_mixed_line().is_err());
+    }
+
+    #[test]
+    fn rejects_qualified_selective_item_alias() {
+        let mut parser = Parser::from_line(".use std.math (add16 as add) as M", 1).unwrap();
+        assert!(parser.parse_compat_mixed_line().is_err());
+    }
+
+    #[test]
+    fn rejects_section_map_without_namespace_binding() {
+        let mut parser =
+            Parser::from_line(".use std.math (add16) map { code -> app_code }", 1).unwrap();
+        assert!(parser.parse_compat_mixed_line().is_err());
     }
 
     #[test]

@@ -4,7 +4,8 @@
 
 use crate::parser::{UseItem, UseParam};
 use crate::tokenizer::Span;
-use types::symbol::{ImportItem, ImportParam, ModuleImport, SourceSpan};
+use types::line_ast::UseSectionMapAst;
+use types::symbol::{ImportItem, ImportParam, ImportSectionMap, ModuleImport, SourceSpan};
 
 #[must_use]
 pub fn span_to_source_span(span: Span) -> SourceSpan {
@@ -34,6 +35,15 @@ pub fn import_param_from_use_param(param: UseParam) -> ImportParam {
 }
 
 #[must_use]
+pub fn import_section_map_from_use_section_map(map: UseSectionMapAst<Span>) -> ImportSectionMap {
+    ImportSectionMap {
+        logical: map.logical,
+        concrete: map.concrete,
+        span: span_to_source_span(map.span),
+    }
+}
+
+#[must_use]
 pub fn implicit_qualifier(module_id: &str) -> Option<String> {
     module_id
         .rsplit('.')
@@ -47,6 +57,7 @@ pub fn module_import_from_parser(
     alias: Option<String>,
     items: Vec<UseItem>,
     params: Vec<UseParam>,
+    section_maps: Vec<UseSectionMapAst<Span>>,
     span: Span,
 ) -> ModuleImport {
     let parsed_items: Vec<ImportItem> = items.into_iter().map(import_item_from_use_item).collect();
@@ -76,6 +87,10 @@ pub fn module_import_from_parser(
             .into_iter()
             .map(import_param_from_use_param)
             .collect(),
+        section_maps: section_maps
+            .into_iter()
+            .map(import_section_map_from_use_section_map)
+            .collect(),
         span: span_to_source_span(span),
     }
 }
@@ -101,6 +116,7 @@ mod tests {
             None,
             Vec::new(),
             Vec::new(),
+            Vec::new(),
             span(),
         );
 
@@ -113,6 +129,7 @@ mod tests {
         let import = module_import_from_parser(
             "opasm.amigaos.engine".to_string(),
             Some("eng".to_string()),
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             span(),
@@ -134,6 +151,7 @@ mod tests {
                 span: item_span,
             }],
             Vec::new(),
+            Vec::new(),
             span(),
         );
 
@@ -154,6 +172,7 @@ mod tests {
                 alias: None,
                 span: item_span,
             }],
+            Vec::new(),
             Vec::new(),
             span(),
         );

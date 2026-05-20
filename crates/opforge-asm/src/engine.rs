@@ -8,7 +8,7 @@ use crate::repetition_driver::{
 };
 use asm::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, PassCounts, Severity};
 use asm::listing::{ListingLine, ListingWriter};
-use asm::output::{LinkerOutputDirective, RegionState, RootMetadata, SectionState};
+use asm::output::{LinkerOutputDirective, RegionState, RootMetadata, SectionKind, SectionState};
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
@@ -424,6 +424,72 @@ impl Assembler {
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
+        }
+
+        for module in self.symbols.modules() {
+            for import in &module.imports {
+                for map in &import.section_maps {
+                    let Some(target) = self.sections.get(&map.concrete) else {
+                        let err = AsmError::new(
+                            AsmErrorKind::Directive,
+                            &format!(
+                                "Import section map target '{}' is not a declared concrete section",
+                                map.concrete
+                            ),
+                            Some(&map.logical),
+                        );
+                        diagnostics.push(
+                            Diagnostic::new(map.span.line, Severity::Error, err)
+                                .with_column(Some(map.span.col_start)),
+                        );
+                        counts.errors += 1;
+                        continue;
+                    };
+                    if target.logical {
+                        let err = AsmError::new(
+                            AsmErrorKind::Directive,
+                            "Import section map target must be a concrete section",
+                            Some(&map.concrete),
+                        );
+                        diagnostics.push(
+                            Diagnostic::new(map.span.line, Severity::Error, err)
+                                .with_column(Some(map.span.col_start)),
+                        );
+                        counts.errors += 1;
+                    }
+                    let source_kind = self
+                        .symbols
+                        .modules()
+                        .iter()
+                        .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
+                        .and_then(|dep| {
+                            dep.logical_sections
+                                .iter()
+                                .find(|section| section.name.eq_ignore_ascii_case(&map.logical))
+                        })
+                        .map(|section| section.kind);
+                    if let Some(source_kind) = source_kind {
+                        let compatible = matches!(
+                            (source_kind, target.kind),
+                            (types::symbol::LogicalSectionKind::Code, SectionKind::Code)
+                                | (types::symbol::LogicalSectionKind::Data, SectionKind::Data)
+                                | (types::symbol::LogicalSectionKind::Bss, SectionKind::Bss)
+                        );
+                        if !compatible {
+                            let err = AsmError::new(
+                                AsmErrorKind::Directive,
+                                "Import section map kind is incompatible with target section kind",
+                                Some(&map.logical),
+                            );
+                            diagnostics.push(
+                                Diagnostic::new(map.span.line, Severity::Error, err)
+                                    .with_column(Some(map.span.col_start)),
+                            );
+                            counts.errors += 1;
+                        }
+                    }
+                }
+            }
         }
 
         for issue in self.symbols.validate_imports(&self.module_macro_names) {

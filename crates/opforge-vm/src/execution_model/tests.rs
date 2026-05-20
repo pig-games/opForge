@@ -363,6 +363,47 @@ fn parse_use_directive_from_tokens_rejects_wildcard_alias() {
 }
 
 #[test]
+fn parse_use_directive_from_tokens_rejects_map_without_namespace_binding() {
+    let model = default_runtime_model().expect("default runtime model should be available");
+    let register_checker = register_checker_none();
+    let source = "    .use math(foo) map { code -> app_code }";
+    let (tokens, end_span, end_token_text) = tokenize_parser_tokens_with_model(
+        model,
+        DEFAULT_TOKENIZER_CPU_ID,
+        None,
+        source,
+        1,
+        &register_checker,
+    )
+    .expect("tokenization should succeed");
+    let mut cursor = 2;
+    let expr_parse_ctx = VmExprParseContext {
+        model,
+        cpu_id: DEFAULT_TOKENIZER_CPU_ID,
+        dialect_override: None,
+        expr_parser_opt_in_families: &[],
+        expr_parser_force_host_families: &[],
+        expr_handler: None,
+    };
+
+    let err = parse_use_directive_from_tokens(
+        &tokens,
+        &mut cursor,
+        tokens[1].span,
+        end_span,
+        end_token_text,
+        &expr_parse_ctx,
+    )
+    .expect_err("map without namespace binding should be rejected");
+
+    assert!(
+        err.message
+            .contains("Section maps require a module namespace qualifier"),
+        "unexpected error: {err:?}"
+    );
+}
+
+#[test]
 fn parse_place_directive_from_tokens_rejects_unknown_option_key() {
     let model = default_runtime_model().expect("default runtime model should be available");
     let register_checker = register_checker_none();

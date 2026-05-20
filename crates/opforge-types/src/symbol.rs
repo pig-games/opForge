@@ -67,6 +67,7 @@ pub struct ImportParam {
 pub struct ModuleImport {
     pub module_id: String,
     pub alias: Option<String>,
+    pub qualifier: Option<String>,
     pub items: Vec<ImportItem>,
     pub params: Vec<ImportParam>,
     pub span: SourceSpan,
@@ -165,12 +166,12 @@ impl SymbolTable {
         }
         let info = self.module_info_mut(module).expect("module info");
 
-        if let Some(alias) = &import.alias {
+        if let Some(qualifier) = &import.qualifier {
             if info
                 .imports
                 .iter()
-                .filter_map(|existing| existing.alias.as_ref())
-                .any(|existing| existing.eq_ignore_ascii_case(alias))
+                .filter_map(|existing| existing.qualifier.as_ref())
+                .any(|existing| existing.eq_ignore_ascii_case(qualifier))
             {
                 return ImportResult::AliasCollision;
             }
@@ -225,7 +226,7 @@ impl SymbolTable {
     pub fn resolve_import_alias(&self, module: &str, alias: &str) -> Option<&str> {
         self.module_info(module).and_then(|info| {
             info.imports.iter().find_map(|import| {
-                import.alias.as_ref().and_then(|candidate| {
+                import.qualifier.as_ref().and_then(|candidate| {
                     if candidate.eq_ignore_ascii_case(alias) {
                         Some(import.module_id.as_str())
                     } else {
@@ -507,6 +508,7 @@ mod tests {
         let import = ModuleImport {
             module_id: "beta".to_string(),
             alias: Some("M".to_string()),
+            qualifier: Some("M".to_string()),
             items: Vec::new(),
             params: Vec::new(),
             span,
@@ -516,6 +518,7 @@ mod tests {
         let import = ModuleImport {
             module_id: "gamma".to_string(),
             alias: Some("m".to_string()),
+            qualifier: Some("m".to_string()),
             items: Vec::new(),
             params: Vec::new(),
             span,
@@ -524,6 +527,106 @@ mod tests {
             table.add_import("alpha", import),
             ImportResult::AliasCollision
         );
+    }
+
+    #[test]
+    fn add_import_detects_implicit_qualifier_collision() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        let import = ModuleImport {
+            module_id: "opasm.amigaos.engine".to_string(),
+            alias: None,
+            qualifier: Some("engine".to_string()),
+            items: Vec::new(),
+            params: Vec::new(),
+            span,
+        };
+        assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
+
+        let import = ModuleImport {
+            module_id: "example.engine".to_string(),
+            alias: None,
+            qualifier: Some("ENGINE".to_string()),
+            items: Vec::new(),
+            params: Vec::new(),
+            span,
+        };
+        assert_eq!(
+            table.add_import("alpha", import),
+            ImportResult::AliasCollision
+        );
+    }
+
+    #[test]
+    fn add_import_detects_explicit_implicit_qualifier_collision() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        let import = ModuleImport {
+            module_id: "opasm.amigaos.engine".to_string(),
+            alias: None,
+            qualifier: Some("engine".to_string()),
+            items: Vec::new(),
+            params: Vec::new(),
+            span,
+        };
+        assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
+
+        let import = ModuleImport {
+            module_id: "example.runtime".to_string(),
+            alias: Some("Engine".to_string()),
+            qualifier: Some("Engine".to_string()),
+            items: Vec::new(),
+            params: Vec::new(),
+            span,
+        };
+        assert_eq!(
+            table.add_import("alpha", import),
+            ImportResult::AliasCollision
+        );
+    }
+
+    #[test]
+    fn direct_selective_import_does_not_claim_implicit_qualifier() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        let import = ModuleImport {
+            module_id: "opasm.amigaos.engine".to_string(),
+            alias: None,
+            qualifier: None,
+            items: vec![ImportItem {
+                name: "sessionPass".to_string(),
+                alias: None,
+                span,
+            }],
+            params: Vec::new(),
+            span,
+        };
+        assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
+
+        let import = ModuleImport {
+            module_id: "example.engine".to_string(),
+            alias: None,
+            qualifier: Some("engine".to_string()),
+            items: Vec::new(),
+            params: Vec::new(),
+            span,
+        };
+        assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
     }
 
     #[test]
@@ -538,6 +641,7 @@ mod tests {
         let import = ModuleImport {
             module_id: "math".to_string(),
             alias: Some("M".to_string()),
+            qualifier: Some("M".to_string()),
             items: vec![ImportItem {
                 name: "add".to_string(),
                 alias: None,
@@ -554,5 +658,6 @@ mod tests {
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0].module_id, "math");
         assert_eq!(imports[0].alias.as_deref(), Some("M"));
+        assert_eq!(imports[0].qualifier.as_deref(), Some("M"));
     }
 }

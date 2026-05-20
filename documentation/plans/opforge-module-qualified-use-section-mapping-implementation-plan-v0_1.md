@@ -42,7 +42,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
 
 ## Work Items
 
-- [ ] Item 1: Finalize import namespace metadata
+- [x] Item 1: Finalize import namespace metadata
   - Source requirement or finding IDs: Spec goals for explicit aliases, implicit
     final-segment qualifiers, direct selective imports, duplicate diagnostics,
     and `.pub` / `.priv` preservation.

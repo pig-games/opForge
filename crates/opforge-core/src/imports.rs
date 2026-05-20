@@ -34,6 +34,14 @@ pub fn import_param_from_use_param(param: UseParam) -> ImportParam {
 }
 
 #[must_use]
+pub fn implicit_qualifier(module_id: &str) -> Option<String> {
+    module_id
+        .rsplit('.')
+        .find(|segment| !segment.is_empty())
+        .map(str::to_string)
+}
+
+#[must_use]
 pub fn module_import_from_parser(
     module_id: String,
     alias: Option<String>,
@@ -41,14 +49,94 @@ pub fn module_import_from_parser(
     params: Vec<UseParam>,
     span: Span,
 ) -> ModuleImport {
+    let qualifier = alias.clone().or_else(|| {
+        items
+            .is_empty()
+            .then(|| implicit_qualifier(&module_id))
+            .flatten()
+    });
     ModuleImport {
         module_id,
         alias,
+        qualifier,
         items: items.into_iter().map(import_item_from_use_item).collect(),
         params: params
             .into_iter()
             .map(import_param_from_use_param)
             .collect(),
         span: span_to_source_span(span),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{implicit_qualifier, module_import_from_parser};
+    use crate::parser::UseItem;
+    use crate::tokenizer::Span;
+
+    fn span() -> Span {
+        Span {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        }
+    }
+
+    #[test]
+    fn bare_import_uses_final_segment_as_implicit_qualifier() {
+        let import = module_import_from_parser(
+            "opasm.amigaos.engine".to_string(),
+            None,
+            Vec::new(),
+            Vec::new(),
+            span(),
+        );
+
+        assert_eq!(import.alias, None);
+        assert_eq!(import.qualifier.as_deref(), Some("engine"));
+    }
+
+    #[test]
+    fn explicit_alias_is_the_only_qualifier() {
+        let import = module_import_from_parser(
+            "opasm.amigaos.engine".to_string(),
+            Some("eng".to_string()),
+            Vec::new(),
+            Vec::new(),
+            span(),
+        );
+
+        assert_eq!(import.alias.as_deref(), Some("eng"));
+        assert_eq!(import.qualifier.as_deref(), Some("eng"));
+    }
+
+    #[test]
+    fn direct_selective_import_preserves_unqualified_metadata() {
+        let item_span = span();
+        let import = module_import_from_parser(
+            "opasm.amigaos.engine".to_string(),
+            None,
+            vec![UseItem {
+                name: "sessionPass".to_string(),
+                alias: None,
+                span: item_span,
+            }],
+            Vec::new(),
+            span(),
+        );
+
+        assert_eq!(import.alias, None);
+        assert_eq!(import.qualifier, None);
+        assert_eq!(import.items[0].name, "sessionPass");
+    }
+
+    #[test]
+    fn implicit_qualifier_ignores_empty_path_segments() {
+        assert_eq!(
+            implicit_qualifier("opasm.amigaos.engine").as_deref(),
+            Some("engine")
+        );
+        assert_eq!(implicit_qualifier("engine").as_deref(), Some("engine"));
+        assert_eq!(implicit_qualifier("engine.").as_deref(), Some("engine"));
     }
 }

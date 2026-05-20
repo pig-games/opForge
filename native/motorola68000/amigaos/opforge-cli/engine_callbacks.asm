@@ -12,6 +12,7 @@
 	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
 	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
+	.use opasm.amigaos.engine (opasmEngineGetStatementExprTextSliceV1)
 	.use opasm.amigaos.engine (opasmEngineStatementMnemonicDuplicatesLabelV1)
 	.use opasm.amigaos.engine (opasmEngineStatementLooksBareColumnOneV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
@@ -20,7 +21,6 @@
 	.use opasm.amigaos.engine (OPASM_ENGINE_LABEL_EVENT_STORED, OPASM_ENGINE_LABEL_EVENT_DUPLICATE)
 	.use opasm.amigaos.engine (OpasmEngineContext)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
-	.use opasm.amigaos.engine (opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
@@ -385,38 +385,9 @@ return
 opforgeNativeCliLoadStatementExprText	.block
 	moveq #0, d0
 	move.w d7, d0
-	add.w d0, d0
-	lea opasmEngineStmtSourceLineLenTable.l, a0
-	moveq #0, d1
-	move.w 0(a0, d0.l), d1
-	beq.s fail
-	moveq #0, d0
-	move.w d7, d0
-	lsl.l #8, d0
-	add.l d0, d0
-	lea opasmEngineStmtSourceLineTextTable.l, a0
-	adda.l d0, a0
-	move.l NativeCliStmtExprSpanStart, d2
-	beq.s fail
-	move.l NativeCliStmtExprSpanEnd, d0
-	cmp.l d2, d0
-	bls.s fail
-	subq.l #1, d2
-	cmp.l d1, d2
-	bhs.s fail
-	adda.l d2, a0
-	sub.l d2, d1
-	move.l NativeCliStmtExprSpanEnd, d0
-	sub.l NativeCliStmtExprSpanStart, d0
-	cmp.l d1, d0
-	bls.s done
-	move.l d1, d0
-
-done
-	rts
-
-fail
-	clr.l d0
+	move.l NativeCliStmtExprSpanStart, d1
+	move.l NativeCliStmtExprSpanEnd, d2
+	jsr opasmEngineGetStatementExprTextSliceV1
 	rts
 	.bend  ; opforgeNativeCliLoadStatementExprText
 

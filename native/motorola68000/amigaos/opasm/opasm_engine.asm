@@ -479,6 +479,59 @@ fail
 	rts
 	.bend  ; opasmEngineGetStatementSourceLineTextV1
 
+; Return a source-line slice for a stored statement expression span.
+;
+; Inputs:
+; - D0: statement index.
+; - D1: expression span start column, one-based.
+; - D2: expression span end column, one-based exclusive.
+;
+; Outputs:
+; - D0: slice length, or 0 when invalid/unavailable.
+; - A0: slice pointer when D0 is non-zero.
+opasmEngineGetStatementExprTextSliceV1	.block
+	movem.l d1-d4, -(sp)
+	moveq #0, d3
+	move.w d0, d3
+	move.l d3, d4
+	add.w d4, d4
+	lea OpasmEngineStmtSourceLineLenTable.l, a0
+	moveq #0, d0
+	move.w 0(a0, d4.l), d0
+	beq.s fail
+	tst.l d1
+	beq.s fail
+	cmp.l d1, d2
+	bls.s fail
+	move.l d1, d4
+	subq.l #1, d4
+	cmp.l d0, d4
+	bhs.s fail
+	lsl.l #8, d3
+	add.l d3, d3
+	lea OpasmEngineStmtSourceLineTextTable.l, a0
+	adda.l d3, a0
+	adda.l d4, a0
+	sub.l d4, d0
+	move.l d2, d3
+	sub.l d1, d3
+	cmp.l d0, d3
+	bls.s useDesired
+	movem.l (sp)+, d1-d4
+	rts
+
+useDesired
+	move.l d3, d0
+	movem.l (sp)+, d1-d4
+	rts
+
+fail
+	clr.l d0
+	suba.l a0, a0
+	movem.l (sp)+, d1-d4
+	rts
+	.bend  ; opasmEngineGetStatementExprTextSliceV1
+
 ; Return stored expression metadata for one statement.
 ;
 ; Inputs:

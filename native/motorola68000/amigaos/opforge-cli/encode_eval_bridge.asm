@@ -8,16 +8,13 @@
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
 	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1, opasmEngineGetStatementExprMetadataV1)
-	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementLineNumberV1)
 	.use opasm.amigaos.engine (opasmEngineWriteEvaluateExpressionExtensionBaseV1)
+	.use opasm.amigaos.engine (opasmEnginePrepareSelectedEvaluateRequestV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_OPERAND_INDEX, OPASM_ENGINE_EXPR_META_SLOT_INDEX)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_START_TOKEN, OPASM_ENGINE_EXPR_META_END_TOKEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_LINE, OPASM_ENGINE_EXPR_META_SPAN_START)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_END, OPASM_ENGINE_EXPR_META_BYTES)
-	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
-	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_OPERAND_PTR, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN)
-	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_BYTES)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1)
 	.use opforge.cli.state (NativeCliEncodeRequestLen, NativeCliEvalRequestLen)
@@ -36,67 +33,17 @@
 	.pub
 
 opforgeNativeCliPrepareEncodeSelectedRequestForStatement	.block
-	movem.l d1-d7/a0-a2, -(sp)
-	move.w d6, d7
-	suba.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movea.l sp, a0
+	movem.l d1/d6/a1, -(sp)
 	moveq #0, d0
-	move.w d7, d0
-	jsr opasmEngineGetStatementTextMetadataV1
+	move.w d6, d0
+	lea lastErrorBuffer, a1
+	jsr opasmEnginePrepareSelectedEvaluateRequestV1
 	tst.l d0
-	bne.w fail
-	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a2
-	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d6
-	move.l a2, NativeCliStmtMnemStart
-	move.l d6, NativeCliStmtMnemLen
-	move.l OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a0), d1
-	movea.l OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a0), a0
-
-buildRequest
-	move.l a0, d3
-	move.l d1, d4
-	bsr.w opforgeNativeCliLoadStatementExprMetadata
-	tst.w NativeCliStmtExprFound
-	bne.w maybeSourceLineRequest
-
-syntheticRequest
-	bsr.w opforgeNativeCliClearStatementExprSpanForSyntheticRequest
-	movea.l d3, a0
-	move.l d4, d0
-	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
-	bra.w return
-
-maybeSourceLineRequest
-	tst.l d4
-	bne.w syntheticRequest
-	move.l NativeCliStmtExprSpanStart, d2
-	move.l NativeCliStmtExprSpanEnd, d3
-	cmp.l d2, d3
-	bls.w syntheticRequest
-
-sourceLineRequest
-	bsr.w opforgeNativeCliLoadStatementSourceLineText
-	tst.l d0
-	beq.w syntheticRequest
-	move.l d0, d1
-	move.l d2, d0
-	subq.l #1, d0
-	cmp.l d1, d0
-	bhs.w syntheticRequest
-	move.l d3, d0
-	subq.l #1, d0
-	cmp.l d1, d0
-	bhi.w syntheticRequest
-	move.l d1, d0
-	bsr.w opforgeNativeCliPrepareEvaluateExpressionRequest
-	bra.w return
-
-fail
-	moveq #1, d0
+	bne.s return
+	move.w d1, NativeCliEvalRequestLen
 
 return
-	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
-	movem.l (sp)+, d1-d7/a0-a2
+	movem.l (sp)+, d1/d6/a1
 	rts
 	.bend  ; opforgeNativeCliPrepareEncodeSelectedRequestForStatement
 
@@ -513,14 +460,6 @@ opforgeNativeCliInferSelectedShapeReturn
 	movem.l (sp)+, d1-d7/a1-a2
 	rts
 	.bend  ; opforgeNativeCliInferSelectedShapeForEvalRequest
-
-opforgeNativeCliClearStatementExprSpanForSyntheticRequest	.block
-	clr.w NativeCliStmtExprFound
-	clr.l NativeCliStmtExprSpanLine
-	clr.l NativeCliStmtExprSpanStart
-	clr.l NativeCliStmtExprSpanEnd
-	rts
-	.bend  ; opforgeNativeCliClearStatementExprSpanForSyntheticRequest
 
 opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 	bsr.w opforgeNativeCliPrepareEncodeInstructionRequest

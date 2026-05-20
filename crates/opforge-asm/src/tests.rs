@@ -11452,30 +11452,15 @@ fn motorola68020_item6_2_preserves_package_selector_shapes_for_smoke_and_require
 
 #[test]
 fn motorola68020_item6_2_native_cli_preserves_parser_spans_for_selected_requests() {
-    let source = opforge_amigaos_source("engine_callbacks.asm");
+    let source = opforge_amigaos_source("encode_eval_bridge.asm");
 
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforgeNativeCliPrepareEncodeSelectedBuildRequest:",
-            "BSR.W opforgeNativeCliLoadStatementExprMetadata",
-            "TST.W nativeCliStmtExprFound",
-            "BNE.W opforgeNativeCliPrepareEncodeSelectedMaybeSourceLineRequest",
-            "opforgeNativeCliPrepareEncodeSelectedSyntheticRequest:",
-            "BSR.W opforgeNativeCliClearStatementExprSpanForSyntheticRequest",
-            "BSR.W opforgeNativeCliPrepareEvaluateExpressionRequest",
-            "opforgeNativeCliPrepareEncodeSelectedMaybeSourceLineRequest:",
-            "TST.L D4",
-            "BNE.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
-            "CMP.L D2, D3",
-            "BLS.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
-            "opforgeNativeCliPrepareEncodeSelectedSourceLineRequest:",
-            "BSR.W opforgeNativeCliLoadStatementSourceLineText",
-            "TST.L D0",
-            "BEQ.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
-            "BHS.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
-            "BHI.W opforgeNativeCliPrepareEncodeSelectedSyntheticRequest",
-            "BSR.W opforgeNativeCliPrepareEvaluateExpressionRequest",
+            "opforgeNativeCliPrepareEncodeSelectedRequestForStatement .block",
+            "LEA lastErrorBuffer, A1",
+            "JSR opasmEnginePrepareSelectedEvaluateRequestV1",
+            "MOVE.W D1, nativeCliEvalRequestLen",
         ],
     ));
 }

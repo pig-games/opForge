@@ -907,6 +907,41 @@ fail
 	rts
 	.bend  ; opasmEnginePrepareSelectedEvaluateRequestV1
 
+; Prepare an encode-instruction request for a mnemonic.
+;
+; Inputs:
+; - A0: mnemonic text.
+; - D0: mnemonic length.
+; - A1: output request buffer.
+;
+; Outputs:
+; - D0: 0 on success, non-zero on failure.
+; - D1: request byte length when successful.
+opasmEnginePrepareEncodeInstructionRequestV1	.block
+	movem.l d2/a0-a1, -(sp)
+	move.l d0, d2
+	cmpi.l #255, d2
+	bhi.s fail
+	move.b d2, (a1)+
+	tst.l d2
+	beq.s candidateCount
+	move.w d2, d0
+	bsr.w copyFixedString
+
+candidateCount
+	clr.b (a1)+
+	move.w d2, d1
+	addq.w #2, d1
+	movem.l (sp)+, d2/a0-a1
+	moveq #0, d0
+	rts
+
+fail
+	movem.l (sp)+, d2/a0-a1
+	moveq #1, d0
+	rts
+	.bend  ; opasmEnginePrepareEncodeInstructionRequestV1
+
 ; Check whether a statement mnemonic duplicates that statement's label.
 ;
 ; Inputs:

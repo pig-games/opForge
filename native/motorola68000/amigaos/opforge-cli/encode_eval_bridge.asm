@@ -11,6 +11,7 @@
 	.use opasm.amigaos.engine (opasmEngineGetStatementLineNumberV1)
 	.use opasm.amigaos.engine (opasmEngineWriteEvaluateExpressionExtensionBaseV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareSelectedEvaluateRequestV1)
+	.use opasm.amigaos.engine (opasmEnginePrepareEncodeInstructionRequestV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_OPERAND_INDEX, OPASM_ENGINE_EXPR_META_SLOT_INDEX)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_START_TOKEN, OPASM_ENGINE_EXPR_META_END_TOKEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_LINE, OPASM_ENGINE_EXPR_META_SPAN_START)
@@ -26,7 +27,7 @@
 	.use opforge.cli.strings (NativeCliSelectedShapeDirectText, NativeCliSelectedShapeDirectXText, NativeCliSelectedShapeDirectYText)
 	.use opforge.cli.strings (NativeCliSelectedShapeIndirectText, NativeCliSelectedShapeIndexedIndirectXText)
 	.use opforge.cli.strings (NativeCliSelectedShapeIndirectIndexedYText)
-	.use opforge.cli.copy (opforgeNativeCliCopyBytes, opforgeNativeCliCopyFixedString)
+	.use opforge.cli.copy (opforgeNativeCliCopyFixedString)
 	.use opforge.cli.tkpkg_control_block (opforgeNativeCliWriteInputWindow, opforgeNativeCliReadStatus)
 
 	.section code, kind=code
@@ -186,25 +187,17 @@ empty
 	.priv
 
 opforgeNativeCliPrepareEncodeInstructionRequest	.block
-	lea lastErrorBuffer, a2
+	movem.l d1/a0-a1, -(sp)
+	lea lastErrorBuffer, a1
+	movea.l NativeCliStmtMnemStart, a0
 	move.l NativeCliStmtMnemLen, d0
-	cmpi.l #255, d0
-	bhi.s fail
-	move.b d0, (a2)+
+	jsr opasmEnginePrepareEncodeInstructionRequestV1
 	tst.l d0
-	beq.s candidateCount
-	movea.l NativeCliStmtMnemStart, a1
-	jsr opforgeNativeCliCopyBytes
+	bne.s return
+	move.w d1, NativeCliEncodeRequestLen
 
-candidateCount
-	clr.b (a2)+
-	addq.w #2, d0
-	move.w d0, NativeCliEncodeRequestLen
-	moveq #0, d0
-	rts
-
-fail
-	moveq #1, d0
+return
+	movem.l (sp)+, d1/a0-a1
 	rts
 	.bend  ; opforgeNativeCliPrepareEncodeInstructionRequest
 

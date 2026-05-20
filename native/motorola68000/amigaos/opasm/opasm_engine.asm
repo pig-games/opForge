@@ -430,6 +430,24 @@ opasmEngineGetImageBufferPtrV1	.block
 	rts
 	.bend  ; opasmEngineGetImageBufferPtrV1
 
+; Return the stored source line number for one statement.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: source line number.
+opasmEngineGetStatementLineNumberV1	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	lsl.l #2, d1
+	lea OpasmEngineStmtLineTable.l, a0
+	move.l 0(a0, d1.l), d0
+	move.l (sp)+, d1
+	rts
+	.bend  ; opasmEngineGetStatementLineNumberV1
+
 ; Return stored source-line text for one statement.
 ;
 ; Inputs:

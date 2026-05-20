@@ -9,6 +9,7 @@
 
 	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1, opasmEngineGetStatementExprMetadataV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
+	.use opasm.amigaos.engine (opasmEngineGetStatementLineNumberV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_OPERAND_INDEX, OPASM_ENGINE_EXPR_META_SLOT_INDEX)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_START_TOKEN, OPASM_ENGINE_EXPR_META_END_TOKEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_LINE, OPASM_ENGINE_EXPR_META_SPAN_START)
@@ -16,7 +17,6 @@
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_OPERAND_PTR, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_BYTES)
-	.use opasm.amigaos.engine (opasmEngineStmtLineTable)
 	.use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineLabelValueTable)
 	.use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineSessionCurrentPc)
 
@@ -111,9 +111,8 @@ opforgeNativeCliPrepareEvaluateExpressionRequest	.block
 	bne.s haveLineNum
 	moveq #0, d0
 	move.w d7, d0
-	lsl.l #2, d0
-	lea opasmEngineStmtLineTable.l, a0
-	move.l 0(a0, d0.l), d2
+	jsr opasmEngineGetStatementLineNumberV1
+	move.l d0, d2
 
 haveLineNum
 	move.l d2, d3

@@ -10270,7 +10270,6 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "opforgeNativeCliRecordSourceLine",
         "opforgeNativeCliEmitStatementRecord",
         "opforgeNativeCliEmitStatementExprRequest",
-        "opforgeNativeCliLoadStatementExprMetadata",
         "opforgeNativeCliInitAssemblySession",
         "opforgeNativeCliEmitAssemblySessionSummary",
         "opforgeNativeCliResolveIncludePath",
@@ -12193,65 +12192,50 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
         .expect("read opforge native CLI two-pass surface listing");
 
     assert!(source.contains("opforgeNativeCliRunTwoPassEngine"));
-    assert!(source.contains("opforgeNativeCliBuildOpasmEngineContext"));
-    assert!(source.contains("opasmEngineRunTwoPassV1"));
+    assert!(source.contains("opasmNativeAssembleSessionV1"));
+    assert!(source.contains("opforgeNativeCliRenderOpasmEventsV1"));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforgeNativeCliOpasmPassOneBegin .block",
-            "MOVE.L #nativePassOneText, D1",
-            "JSR opasmEngineBeginPassOneV1",
-            "opforgeNativeCliOpasmPassOneOk .block",
-            "MOVE.L #nativePassOneOkText, D1",
+            "MOVE.L #nativeCliBinRequested, OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR(A0)",
+            "MOVE.L #nativeCliOpasmEventBuffer, OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(A0)",
+            "MOVE.W #NATIVE_CLI_OPASM_EVENT_CAPACITY, OPASM_ASSEMBLE_REQ_EVENT_CAPACITY(A0)",
+            "MOVE.L #nativeCliOpasmEventCount, OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(A0)",
+            "MOVE.L A2, OPASM_ASSEMBLE_REQ_SERVICE_FRAME_PTR(A0)",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforgeNativeCliOpasmPassTwoBegin .block",
-            "MOVE.L #nativePassTwoText, D1",
-            "JSR opasmEngineBeginPassTwoV1",
-            "opforgeNativeCliOpasmPassTwoOk .block",
-            "MOVE.L #nativePassTwoOkText, D1",
+            "MOVE.L #controlBlockV1, OPASM_SERVICE_CONTROL_BLOCK_PTR(A1)",
+            "MOVE.L #lastErrorBuffer, OPASM_SERVICE_IO_BUFFER_PTR(A1)",
+            "MOVE.W #LAST_ERROR_BUFFER_CAPACITY, OPASM_SERVICE_IO_BUFFER_CAPACITY(A1)",
+            "MOVE.L A2, OPASM_SERVICE_EVAL_EXTENSION_PTR(A1)",
+            "MOVE.W #NATIVE_EVAL_EXPR_EXTENSION_BYTES, OPASM_SERVICE_EVAL_EXTENSION_BYTES(A1)",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "opforgeNativeCliBuildOpasmEngineContext .block",
-            "MOVE.L #nativeCliBinRequested, OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR(A0)",
-            "MOVE.L #opforgeNativeCliOpasmPassOneBegin, OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB(A0)",
-            "MOVE.L #opforgeNativeCliOpasmPassTwoBegin, OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB(A0)",
-            "MOVE.L #opforgeNativeCliOpasmPassOneOk, OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB(A0)",
-            "MOVE.L #opforgeNativeCliOpasmPassTwoOk, OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(A0)",
-            "MOVE.L #opforgeNativeCliPassOneRecordLabel, OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(A0)",
-            "MOVE.L #opforgeNativeCliPassAdvancePc, OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(A0)",
-            "MOVE.L #opforgeNativeCliPassTwoEmitImageBytes, OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(A0)",
-            "JSR opasmEngineBuildCallbackContextV1",
+            "JSR opasmNativeAssembleSessionV1",
+            "LEA nativeCliOpasmEventBuffer, A0",
+            "MOVE.W nativeCliOpasmEventCount, D0",
+            "JSR opforgeNativeCliRenderOpasmEventsV1",
         ]
     ));
     assert!(!source.contains("opforge_native_cli_run_pass_one:"));
     assert!(!source.contains("opforge_native_cli_run_pass_two:"));
-    assert!(source.contains("opforgeNativeCliPassOneRecordLabel"));
-    assert!(source.contains("jsr opasmEngineRecordStatementLabelV1"));
-    assert!(source.contains("OPASM_ENGINE_LABEL_EVENT_STORED"));
-    assert!(source.contains("OPASM_ENGINE_LABEL_EVENT_DUPLICATE"));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opforgeNativeCliPassAdvancePc .block",
-            "LEA orgMnemonicText, A1",
-            "LEA cpuMnemonicText, A1",
-            "BSR.W opforgeNativeCliTrySelectedEncodeSizeForStatement",
-            "advanceThree:",
-            "JSR opasmEngineAdvancePcBySizeV1",
-        ]
-    ));
-    assert!(!source.contains("opforgeNativeCliPassAdvanceFallbackSize:"));
-    assert!(source.contains("opforgeNativeCliTrySelectedEncodeSizeForStatement"));
-    assert!(source.contains("moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0"));
-    assert!(source.contains("opasmEngineStatementMnemonicDuplicatesLabelV1"));
-    assert!(source.contains("opasmEngineGetStatementTextMetadataV1"));
+    assert!(!source.contains("opforgeNativeCliBuildOpasmEngineContext"));
+    assert!(!source.contains("opforgeNativeCliPassOneRecordLabel"));
+    assert!(!source.contains("opforgeNativeCliPassAdvancePc"));
+    assert!(!source.contains("opforgeNativeCliPassTwoEmitImageBytes"));
+    assert!(!source.contains("opforgeNativeCliTrySelectedEncodeSizeForStatement"));
+    assert!(!source.contains("ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION"));
+    assert!(listing.contains("opasmNativeAssembleSessionV1"));
+    assert!(listing.contains("opforgeNativeCliRenderOpasmEventsV1"));
+    assert!(listing.contains("opasmDriverRecordLabel"));
+    assert!(listing.contains("opasmDriverAdvancePc"));
+    assert!(listing.contains("opasmDriverEmitImageBytes"));
     assert!(listing.contains("STAGE pass1"));
     assert!(listing.contains("STATUS pass1-ok"));
     assert!(listing.contains("STAGE pass2"));
@@ -12605,19 +12589,21 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("opforgeNativeCliPreparePipelineRequest"));
     assert!(listing.contains("opforgeNativeCliPrepareLineServiceRequest"));
     assert!(listing.contains("opforgeNativeCliDispatchParseLineEnvelope"));
-    assert!(listing.contains("opforgeNativeCliPrepareEncodeInstructionRequest"));
     assert!(
         !listing.contains("opasm.amigaos.selector_stage.opasmSelectorStageBuildEncodeRequestV1")
     );
     assert!(!listing.contains("opasm.amigaos.selector_stage.opasmSelectorStageInstructionSizeV1"));
-    assert!(listing.contains("opforgeNativeCliDispatchEncodeInstructionEnvelope"));
     assert!(listing.contains("opforgeNativeCliRunTwoPassEngine"));
     assert!(listing.contains("opasm.amigaos.engine.opasmEngineRunTwoPassV1"));
     assert!(listing.contains("opasm.amigaos.engine.runPassOne"));
     assert!(listing.contains("opasm.amigaos.engine.runPassTwo"));
-    assert!(listing.contains("opforgeNativeCliBuildOpasmEngineContext"));
-    assert!(listing.contains("opforgeNativeCliPassOneRecordLabel"));
-    assert!(listing.contains("opforgeNativeCliPassAdvancePc"));
+    assert!(listing.contains("opasmNativeAssembleSessionV1"));
+    assert!(listing.contains("opasmDriverRecordLabel"));
+    assert!(listing.contains("opasmDriverAdvancePc"));
+    assert!(listing.contains("opasmDriverEmitImageBytes"));
+    assert!(!listing.contains("opforgeNativeCliBuildOpasmEngineContext"));
+    assert!(!listing.contains("opforgeNativeCliPassOneRecordLabel"));
+    assert!(!listing.contains("opforgeNativeCliPassAdvancePc"));
     assert!(listing.contains("opforgeNativeCliRun"));
     assert!(listing.contains("STATUS tokenizer-ok"));
     assert!(listing.contains("STATUS parser-module-use-ok"));

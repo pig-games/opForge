@@ -454,12 +454,12 @@ Event payload conventions:
     with 122 enforced-scope leaks, which the user accepted as non-blocking
     during this refactor.
 
-- [ ] Item 8: Intentionally update native CLI surface-lock expectations
+- [x] Item 8: Intentionally update native CLI surface-lock expectations
   - Source requirement or finding IDs: User request Phase F; only after
     compatibility wrappers are no longer needed by active code.
   - Expected files: native CLI surface-lock tests in Rust, reference/listing
-    fixtures if explicitly required by the test suite, and this plan for
-    bookkeeping only.
+    fixtures if explicitly required by the test suite, active CLI callback
+    wrapper cleanup, and this plan for bookkeeping only.
   - Full quality gates: `cargo test -p asm motorola68020_opforge_native_cli_ --
     --nocapture`; focused FS-UAE smoke if native output path is touched;
     `scripts/workflow/run_rust_quality_gate.sh` or `make quality-gate` if Rust
@@ -468,12 +468,32 @@ Event payload conventions:
     main`, wildcard `.use (*)`, and `opforgeNativeCli.*` inside `opasm`.
   - Plan-compliance review evidence: Run `plan-compliance-reviewer` with
     `AGENTS.md`, this plan, Item 8 changed files, and validation evidence before
-    commit.
+    commit. In this Codex environment the reviewer is not exposed as a callable
+    tool, so the plan bundle validator was run with pending-gate allowance after
+    focused native CLI and FS-UAE validation.
   - Commit outcome: One focused commit that updates public surface expectations
     only after behavior is already migrated.
   - Definition of done: Surface-lock tests expect opasm-owned driver/event
     symbols instead of obsolete CLI callback internals; no behavior change is
     bundled with the test expectation update.
+  - Implementation evidence: `engine_callbacks.asm` now contains only
+    `opforgeNativeCliRunTwoPassEngine`, the opasm assemble request/service-frame
+    setup, event rendering handoff, and event buffer storage. Retired CLI
+    callback-table builders, pass callbacks, label/PC/image callbacks, and
+    selector/evaluate compatibility helpers were removed. Rust surface-lock
+    assertions now require the opasm assembly driver symbols and assert the old
+    CLI callback symbols are absent.
+  - Validation evidence:
+    `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture` passed.
+    The targeted FS-UAE command requested by the user passed:
+    `external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin`.
+    `make native-68000-format-check` passed with 87 checked files and 0
+    would-change files. The opasm grep check for `.use main`, wildcard `.use
+    (*)`, and `opforgeNativeCli` references returned no matches.
+    `scripts/workflow/run_rust_quality_gate.sh` passed formatter enforcement and
+    stopped at the known transitional CPU-specific architecture boundary scan
+    with 122 enforced-scope leaks, which the user accepted as non-blocking
+    during this refactor.
 
 ## Blocking Rules
 

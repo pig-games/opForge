@@ -579,6 +579,41 @@ fail
 	rts
 	.bend  ; opasmEngineGetStatementTextMetadataV1
 
+; Check whether a statement mnemonic duplicates that statement's label.
+;
+; Inputs:
+; - D0: statement index.
+; - D1: mnemonic length.
+; - A0: mnemonic text.
+;
+; Outputs:
+; - D0: 1 when mnemonic text equals the statement label, else 0.
+opasmEngineStatementMnemonicDuplicatesLabelV1	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	move.l d0, d2
+	add.w d2, d2
+	lea OpasmEngineStmtLabelLenTable.l, a2
+	moveq #0, d3
+	move.w 0(a2, d2.l), d3
+	beq.s no
+	cmp.w d1, d3
+	bne.s no
+	move.l d0, d4
+	lsl.l #6, d4
+	lea OpasmEngineStmtLabelNameTable.l, a1
+	adda.l d4, a1
+	move.l d1, d0
+	bsr.w labelEquals
+	bra.s return
+
+no
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d4/a0-a2
+	rts
+	.bend  ; opasmEngineStatementMnemonicDuplicatesLabelV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5

@@ -12,6 +12,7 @@
 	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
 	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
 	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
+	.use opasm.amigaos.engine (opasmEngineStatementMnemonicDuplicatesLabelV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_OPERAND_PTR, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_BYTES)
@@ -19,9 +20,7 @@
 	.use opasm.amigaos.engine (OpasmEngineContext)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
 	.use opasm.amigaos.engine (opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable)
-	.use opasm.amigaos.engine (opasmEngineStmtLabelLenTable)
 	.use opasm.amigaos.engine (opasmEngineStmtOperandLenTable)
-	.use opasm.amigaos.engine (opasmEngineStmtLabelNameTable)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
@@ -584,28 +583,7 @@ return
 	.bend  ; opforgeNativeCliTrySelectedEncodeSizeForStatement
 
 opforgeNativeCliStatementMnemDuplicatesLabel	.block
-	movem.l d1-d4/a0-a2, -(sp)
-	move.l d0, d2
-	add.w d2, d2
-	lea opasmEngineStmtLabelLenTable.l, a2
-	moveq #0, d3
-	move.w 0(a2, d2.l), d3
-	beq.s no
-	cmp.w d1, d3
-	bne.s no
-	move.l d0, d4
-	lsl.l #6, d4
-	lea opasmEngineStmtLabelNameTable.l, a1
-	adda.l d4, a1
-	move.l d1, d0
-	bsr.w opforgeNativeCliLabelEquals
-	bra.s return
-
-no
-	moveq #0, d0
-
-return
-	movem.l (sp)+, d1-d4/a0-a2
+	jsr opasmEngineStatementMnemonicDuplicatesLabelV1
 	rts
 	.bend  ; opforgeNativeCliStatementMnemDuplicatesLabel
 
@@ -695,31 +673,6 @@ return
 	movem.l (sp)+, d1-d4/a0
 	rts
 	.bend  ; opforgeNativeCliStatementLooksBareColumnOne
-
-opforgeNativeCliLabelEquals	.block
-	movem.l d1-d3/a0-a1, -(sp)
-	move.l d0, d3
-	beq.s no
-
-loop
-	move.b (a0)+, d1
-	move.b (a1)+, d2
-	cmp.b d2, d1
-	bne.s no
-	subq.l #1, d3
-	bne.s loop
-	tst.b (a0)
-	bne.s no
-	moveq #1, d0
-	bra.s return
-
-no
-	moveq #0, d0
-
-return
-	movem.l (sp)+, d1-d3/a0-a1
-	rts
-	.bend  ; opforgeNativeCliLabelEquals
 
 	.endsection
 	.endmodule

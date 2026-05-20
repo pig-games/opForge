@@ -7,7 +7,7 @@
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_PTR_V1)
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
-	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1)
+	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1, opasmEngineBuildCallbackContextV1)
 	.use opasm.amigaos.engine (opasmEngineBeginPassOneV1, opasmEngineBeginPassTwoV1)
 	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
 	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
@@ -19,8 +19,11 @@
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_OPERAND_PTR, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_BYTES)
 	.use opasm.amigaos.engine (OPASM_ENGINE_LABEL_EVENT_STORED, OPASM_ENGINE_LABEL_EVENT_DUPLICATE)
-	.use opasm.amigaos.engine (OpasmEngineContext)
-	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
+	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR)
+	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB, OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB)
+	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB, OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB)
+	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB, OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB)
+	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB, OPASM_ENGINE_CALLBACK_REQ_BYTES)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
@@ -57,18 +60,18 @@ opforgeNativeCliRunTwoPassEngine	.block
 	.priv
 
 opforgeNativeCliBuildOpasmEngineContext	.block
-	lea OpasmEngineContext.l, a4
-	move.l #opasmEngineSessionPass, (a4)+
-	move.l #opasmEngineStmtCount, (a4)+
-	move.l #NativeCliBinRequested, (a4)+
-	move.l #opforgeNativeCliOpasmPassOneBegin, (a4)+
-	move.l #opforgeNativeCliOpasmPassTwoBegin, (a4)+
-	move.l #opforgeNativeCliOpasmPassOneOk, (a4)+
-	move.l #opforgeNativeCliOpasmPassTwoOk, (a4)+
-	move.l #opforgeNativeCliPassOneRecordLabel, (a4)+
-	move.l #opforgeNativeCliPassAdvancePc, (a4)+
-	move.l #opforgeNativeCliPassTwoEmitImageBytes, (a4)+
-	lea OpasmEngineContext.l, a4
+	suba.l #OPASM_ENGINE_CALLBACK_REQ_BYTES, sp
+	movea.l sp, a0
+	move.l #NativeCliBinRequested, OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR(a0)
+	move.l #opforgeNativeCliOpasmPassOneBegin, OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB(a0)
+	move.l #opforgeNativeCliOpasmPassTwoBegin, OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB(a0)
+	move.l #opforgeNativeCliOpasmPassOneOk, OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB(a0)
+	move.l #opforgeNativeCliOpasmPassTwoOk, OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(a0)
+	move.l #opforgeNativeCliPassOneRecordLabel, OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(a0)
+	move.l #opforgeNativeCliPassAdvancePc, OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(a0)
+	move.l #opforgeNativeCliPassTwoEmitImageBytes, OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(a0)
+	jsr opasmEngineBuildCallbackContextV1
+	adda.l #OPASM_ENGINE_CALLBACK_REQ_BYTES, sp
 	rts
 	.bend  ; opforgeNativeCliBuildOpasmEngineContext
 

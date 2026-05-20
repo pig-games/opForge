@@ -29,6 +29,15 @@ OPASM_ENGINE_CTX_PASS2_OK_CB      = 24
 OPASM_ENGINE_CTX_RECORD_LABEL_CB  = 28
 OPASM_ENGINE_CTX_ADVANCE_PC_CB    = 32
 OPASM_ENGINE_CTX_EMIT_IMAGE_CB    = 36
+OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR = 0
+OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB = 4
+OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB = 8
+OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB = 12
+OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB = 16
+OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB = 20
+OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB = 24
+OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB = 28
+OPASM_ENGINE_CALLBACK_REQ_BYTES = 32
 OPASM_ENGINE_STMT_REQ_SOURCE_LINE_NUM = 0
 OPASM_ENGINE_STMT_REQ_SOURCE_LINE_LEN = 4
 OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND  = 6
@@ -181,6 +190,33 @@ opasmEngineCommitStatementRecordV1	.block
 	moveq #0, d0
 	rts
 	.bend  ; opasmEngineCommitStatementRecordV1
+
+; Build the opasm-owned two-pass engine context from host callbacks.
+;
+; Inputs:
+; - A0: OPASM_ENGINE_CALLBACK_REQ_* request buffer.
+;
+; Outputs:
+; - A4: opasm engine context pointer.
+; - D0: 0 on success.
+opasmEngineBuildCallbackContextV1	.block
+	movem.l d1/a0-a1, -(sp)
+	lea OpasmEngineContext.l, a1
+	move.l #OpasmEngineSessionPass, (a1)+
+	move.l #OpasmEngineStmtCount, (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR(a0), (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB(a0), (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB(a0), (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB(a0), (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(a0), (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(a0), (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(a0), (a1)+
+	move.l OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(a0), (a1)+
+	lea OpasmEngineContext.l, a4
+	movem.l (sp)+, d1/a0-a1
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineBuildCallbackContextV1
 
 ; Initialize opasm-owned pass-one state.
 ;

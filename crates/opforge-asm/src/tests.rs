@@ -12234,16 +12234,15 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
         &source,
         &[
             "opforgeNativeCliBuildOpasmEngineContext .block",
-            "MOVE.L #opasmEngineSessionPass, (A4)+",
-            "MOVE.L #opasmEngineStmtCount, (A4)+",
-            "MOVE.L #nativeCliBinRequested, (A4)+",
-            "MOVE.L #opforgeNativeCliOpasmPassOneBegin, (A4)+",
-            "MOVE.L #opforgeNativeCliOpasmPassTwoBegin, (A4)+",
-            "MOVE.L #opforgeNativeCliOpasmPassOneOk, (A4)+",
-            "MOVE.L #opforgeNativeCliOpasmPassTwoOk, (A4)+",
-            "MOVE.L #opforgeNativeCliPassOneRecordLabel, (A4)+",
-            "MOVE.L #opforgeNativeCliPassAdvancePc, (A4)+",
-            "MOVE.L #opforgeNativeCliPassTwoEmitImageBytes, (A4)+",
+            "MOVE.L #nativeCliBinRequested, OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR(A0)",
+            "MOVE.L #opforgeNativeCliOpasmPassOneBegin, OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB(A0)",
+            "MOVE.L #opforgeNativeCliOpasmPassTwoBegin, OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB(A0)",
+            "MOVE.L #opforgeNativeCliOpasmPassOneOk, OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB(A0)",
+            "MOVE.L #opforgeNativeCliOpasmPassTwoOk, OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(A0)",
+            "MOVE.L #opforgeNativeCliPassOneRecordLabel, OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(A0)",
+            "MOVE.L #opforgeNativeCliPassAdvancePc, OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(A0)",
+            "MOVE.L #opforgeNativeCliPassTwoEmitImageBytes, OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(A0)",
+            "JSR opasmEngineBuildCallbackContextV1",
         ]
     ));
     assert!(!source.contains("opforge_native_cli_run_pass_one:"));

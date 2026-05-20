@@ -22240,6 +22240,162 @@ fn use_alias_import_resolves_qualified_name() {
 }
 
 #[test]
+fn use_bare_import_resolves_implicit_qualified_name() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let lines = vec![
+        ".module opasm.amigaos.engine".to_string(),
+        ".pub".to_string(),
+        "sessionPass .const 3".to_string(),
+        ".endmodule".to_string(),
+        ".module beta".to_string(),
+        ".use opasm.amigaos.engine".to_string(),
+        "    .word engine.sessionPass".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut asm_pass1 = make_asm_line(&mut symbols, &registry);
+    for line in &lines {
+        let _ = process_line(&mut asm_pass1, line, 0, 1);
+    }
+
+    let mut asm_pass2 = make_asm_line(&mut symbols, &registry);
+    let mut status = LineStatus::Ok;
+    for line in &lines {
+        status = process_line(&mut asm_pass2, line, 0, 2);
+        if line.contains(".word") {
+            break;
+        }
+    }
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm_pass2.bytes(), &[3, 0]);
+}
+
+#[test]
+fn use_import_resolves_full_module_path_name() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let lines = vec![
+        ".module opasm.amigaos.engine".to_string(),
+        ".pub".to_string(),
+        "sessionPass .const 4".to_string(),
+        ".endmodule".to_string(),
+        ".module beta".to_string(),
+        ".use opasm.amigaos.engine".to_string(),
+        "    .word opasm.amigaos.engine.sessionPass".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut asm_pass1 = make_asm_line(&mut symbols, &registry);
+    for line in &lines {
+        let _ = process_line(&mut asm_pass1, line, 0, 1);
+    }
+
+    let mut asm_pass2 = make_asm_line(&mut symbols, &registry);
+    let mut status = LineStatus::Ok;
+    for line in &lines {
+        status = process_line(&mut asm_pass2, line, 0, 2);
+        if line.contains(".word") {
+            break;
+        }
+    }
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm_pass2.bytes(), &[4, 0]);
+}
+
+#[test]
+fn use_import_rejects_private_qualified_name() {
+    let assembler = run_pass1(&[
+        ".module opasm.amigaos.engine",
+        "sessionPass .const 5",
+        ".endmodule",
+        ".module beta",
+        ".use opasm.amigaos.engine",
+        "    .word engine.sessionPass",
+        ".endmodule",
+    ]);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error.kind() == AsmErrorKind::Symbol
+            && diag.error.message().contains("Symbol is private")
+    }));
+}
+
+#[test]
+fn use_full_module_path_ambiguity_errors() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let lines = vec![
+        ".module pkg.core".to_string(),
+        ".pub".to_string(),
+        "pkg.core.util.entry .const 6".to_string(),
+        ".endmodule".to_string(),
+        ".module pkg.core.util".to_string(),
+        ".pub".to_string(),
+        "entry .const 7".to_string(),
+        ".endmodule".to_string(),
+        ".module beta".to_string(),
+        ".use pkg.core as core".to_string(),
+        ".use pkg.core.util as util".to_string(),
+        "    .word pkg.core.util.entry".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut asm_pass1 = make_asm_line(&mut symbols, &registry);
+    for line in &lines {
+        let _ = process_line(&mut asm_pass1, line, 0, 1);
+    }
+
+    let mut asm_pass2 = make_asm_line(&mut symbols, &registry);
+    let mut status = LineStatus::Ok;
+    for line in &lines {
+        status = process_line(&mut asm_pass2, line, 0, 2);
+        if line.contains(".word") {
+            break;
+        }
+    }
+    assert_eq!(status, LineStatus::Error);
+    let error = asm_pass2.error().expect("ambiguous import path error");
+    assert_eq!(error.kind(), AsmErrorKind::Expression);
+    assert!(error.message().contains("Ambiguous imported module path"));
+}
+
+#[test]
+fn use_full_module_path_without_import_reports_unresolved_symbol() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let lines = vec![
+        ".module opasm.amigaos.engine".to_string(),
+        ".pub".to_string(),
+        "sessionPass .const 8".to_string(),
+        ".endmodule".to_string(),
+        ".module beta".to_string(),
+        ".use opasm.amigaos.engine".to_string(),
+        "    .word missing.module.sessionPass".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut asm_pass1 = make_asm_line(&mut symbols, &registry);
+    for line in &lines {
+        let _ = process_line(&mut asm_pass1, line, 0, 1);
+    }
+
+    let mut asm_pass2 = make_asm_line(&mut symbols, &registry);
+    let mut status = LineStatus::Ok;
+    for line in &lines {
+        status = process_line(&mut asm_pass2, line, 0, 2);
+        if line.contains(".word") {
+            break;
+        }
+    }
+    assert_eq!(status, LineStatus::Error);
+    let error = asm_pass2.error().expect("unresolved import path error");
+    assert_eq!(error.kind(), AsmErrorKind::Expression);
+    assert!(error
+        .message()
+        .contains("Label not found: missing.module.sessionPass"));
+}
+
+#[test]
 fn use_missing_module_emits_diagnostic() {
     let assembler = run_pass1(&[".module alpha", ".use missing.mod", ".endmodule"]);
     assert!(assembler

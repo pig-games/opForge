@@ -101,6 +101,17 @@ pub enum ImportResult {
     SelectiveCollision,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportedSymbolResolution {
+    Resolved {
+        module_id: String,
+        symbol_name: String,
+        full_name: String,
+    },
+    Unresolved,
+    Ambiguous,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub enum SymbolTableResult {
@@ -262,6 +273,71 @@ impl SymbolTable {
                 })
             })
         })
+    }
+
+    #[must_use]
+    pub fn resolve_imported_symbol(&self, module: &str, name: &str) -> ImportedSymbolResolution {
+        let Some(info) = self.module_info(module) else {
+            return ImportedSymbolResolution::Unresolved;
+        };
+
+        if !name.contains('.') {
+            if let Some((target_module, target_name)) = self.resolve_selective_import(module, name)
+            {
+                return self.resolved_import_name(target_module, target_name);
+            }
+            return ImportedSymbolResolution::Unresolved;
+        }
+
+        if let Some((prefix, rest)) = name.split_once('.') {
+            if let Some(import) = info.imports.iter().find(|import| {
+                import
+                    .qualifier
+                    .as_ref()
+                    .is_some_and(|qualifier| qualifier.eq_ignore_ascii_case(prefix))
+            }) {
+                return self.resolved_import_name(import.module_id.as_str(), rest);
+            }
+        }
+
+        let mut matches = info.imports.iter().filter_map(|import| {
+            let module_id = import.module_id.as_str();
+            let separator_index = module_id.len();
+            if name.len() <= separator_index || !name.is_char_boundary(separator_index) {
+                return None;
+            }
+            let (candidate_module, rest_with_dot) = name.split_at(separator_index);
+            if !candidate_module.eq_ignore_ascii_case(module_id) || !rest_with_dot.starts_with('.')
+            {
+                return None;
+            }
+            let target_name = &rest_with_dot[1..];
+            if target_name.is_empty() {
+                return None;
+            }
+            Some(self.resolved_import_name(module_id, target_name))
+        });
+
+        let Some(first) = matches.next() else {
+            return ImportedSymbolResolution::Unresolved;
+        };
+        if matches.next().is_some() {
+            return ImportedSymbolResolution::Ambiguous;
+        }
+        first
+    }
+
+    fn resolved_import_name(&self, module_id: &str, symbol_name: &str) -> ImportedSymbolResolution {
+        let full_name = format!("{module_id}.{symbol_name}");
+        let full_name = self
+            .entry(&full_name)
+            .map(|entry| entry.name.clone())
+            .unwrap_or(full_name);
+        ImportedSymbolResolution::Resolved {
+            module_id: module_id.to_string(),
+            symbol_name: symbol_name.to_string(),
+            full_name,
+        }
     }
 
     #[must_use]
@@ -481,8 +557,8 @@ impl SymbolTable {
 #[cfg(test)]
 mod tests {
     use super::{
-        ImportItem, ImportResult, ModuleImport, SourceSpan, SymbolTable, SymbolTableResult,
-        SymbolVisibility,
+        ImportItem, ImportResult, ImportedSymbolResolution, ModuleImport, SourceSpan, SymbolTable,
+        SymbolTableResult, SymbolVisibility,
     };
 
     #[test]
@@ -627,6 +703,154 @@ mod tests {
             span,
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
+    }
+
+    #[test]
+    fn resolve_imported_symbol_handles_alias_implicit_full_path_and_selective() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
+        assert_eq!(
+            table.register_module("opasm.amigaos.engine"),
+            SymbolTableResult::Ok
+        );
+        assert_eq!(table.register_module("math"), SymbolTableResult::Ok);
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        assert_eq!(
+            table.add(
+                "opasm.amigaos.engine.sessionPass",
+                1,
+                false,
+                SymbolVisibility::Public,
+                Some("opasm.amigaos.engine")
+            ),
+            SymbolTableResult::Ok
+        );
+        assert_eq!(
+            table.add("math.sum", 2, false, SymbolVisibility::Public, Some("math")),
+            SymbolTableResult::Ok
+        );
+        assert_eq!(
+            table.add_import(
+                "alpha",
+                ModuleImport {
+                    module_id: "opasm.amigaos.engine".to_string(),
+                    alias: None,
+                    qualifier: Some("engine".to_string()),
+                    items: Vec::new(),
+                    params: Vec::new(),
+                    span,
+                }
+            ),
+            ImportResult::Ok
+        );
+        assert_eq!(
+            table.add_import(
+                "alpha",
+                ModuleImport {
+                    module_id: "math".to_string(),
+                    alias: Some("m".to_string()),
+                    qualifier: Some("m".to_string()),
+                    items: vec![ImportItem {
+                        name: "sum".to_string(),
+                        alias: Some("total".to_string()),
+                        span,
+                    }],
+                    params: Vec::new(),
+                    span,
+                }
+            ),
+            ImportResult::Ok
+        );
+
+        assert_eq!(
+            table.resolve_imported_symbol("alpha", "engine.sessionPass"),
+            ImportedSymbolResolution::Resolved {
+                module_id: "opasm.amigaos.engine".to_string(),
+                symbol_name: "sessionPass".to_string(),
+                full_name: "opasm.amigaos.engine.sessionPass".to_string(),
+            }
+        );
+        assert_eq!(
+            table.resolve_imported_symbol("alpha", "opasm.amigaos.engine.sessionPass"),
+            ImportedSymbolResolution::Resolved {
+                module_id: "opasm.amigaos.engine".to_string(),
+                symbol_name: "sessionPass".to_string(),
+                full_name: "opasm.amigaos.engine.sessionPass".to_string(),
+            }
+        );
+        assert_eq!(
+            table.resolve_imported_symbol("alpha", "m.sum"),
+            ImportedSymbolResolution::Resolved {
+                module_id: "math".to_string(),
+                symbol_name: "sum".to_string(),
+                full_name: "math.sum".to_string(),
+            }
+        );
+        assert_eq!(
+            table.resolve_imported_symbol("alpha", "total"),
+            ImportedSymbolResolution::Resolved {
+                module_id: "math".to_string(),
+                symbol_name: "sum".to_string(),
+                full_name: "math.sum".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_imported_symbol_reports_ambiguous_full_module_path() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
+        assert_eq!(table.register_module("pkg.core"), SymbolTableResult::Ok);
+        assert_eq!(
+            table.register_module("pkg.core.util"),
+            SymbolTableResult::Ok
+        );
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        assert_eq!(
+            table.add_import(
+                "alpha",
+                ModuleImport {
+                    module_id: "pkg.core".to_string(),
+                    alias: Some("core".to_string()),
+                    qualifier: Some("core".to_string()),
+                    items: Vec::new(),
+                    params: Vec::new(),
+                    span,
+                }
+            ),
+            ImportResult::Ok
+        );
+        assert_eq!(
+            table.add_import(
+                "alpha",
+                ModuleImport {
+                    module_id: "pkg.core.util".to_string(),
+                    alias: Some("util".to_string()),
+                    qualifier: Some("util".to_string()),
+                    items: Vec::new(),
+                    params: Vec::new(),
+                    span,
+                }
+            ),
+            ImportResult::Ok
+        );
+
+        assert_eq!(
+            table.resolve_imported_symbol("alpha", "pkg.core.util.entry"),
+            ImportedSymbolResolution::Ambiguous
+        );
+        assert_eq!(
+            table.resolve_imported_symbol("alpha", "pkg.missing.entry"),
+            ImportedSymbolResolution::Unresolved
+        );
     }
 
     #[test]

@@ -476,17 +476,14 @@ impl<'a> AsmLine<'a> {
                     };
                     return Err(AstEvalError::expression(message, *span));
                 }
-                match self.lookup_scoped_entry(name) {
-                    Some(entry) => {
-                        if !self.entry_is_visible(entry) {
-                            return Err(ast_eval_from_asm_error(
-                                self.visibility_error(name),
-                                *span,
-                            ));
-                        }
+                match self.resolve_scoped_name(name) {
+                    Ok(Some(full_name)) => {
+                        let Some(entry) = self.symbols.entry(&full_name) else {
+                            return Ok(0);
+                        };
                         Ok(entry.val)
                     }
-                    None => {
+                    Ok(None) => {
                         if let Some(result) = self.eval_dotted_identifier_scalar(name, *span) {
                             return result;
                         }
@@ -499,6 +496,7 @@ impl<'a> AsmLine<'a> {
                             Ok(0)
                         }
                     }
+                    Err(err) => Err(ast_eval_from_asm_error(err, *span)),
                 }
             }
             Expr::List(_, span) => Err(AstEvalError::expression(
@@ -796,14 +794,14 @@ impl<'a> AsmLine<'a> {
             return Err(message.to_string());
         }
 
-        match self.lookup_scoped_entry(name) {
-            Some(entry) => {
-                if !self.entry_is_visible(entry) {
-                    return Err(self.visibility_error(name).message().to_string());
-                }
+        match self.resolve_scoped_name(name) {
+            Ok(Some(full_name)) => {
+                let Some(entry) = self.symbols.entry(&full_name) else {
+                    return Ok(0);
+                };
                 Ok(i64::from(entry.val))
             }
-            None => {
+            Ok(None) => {
                 if let Some(result) = self.eval_dotted_identifier_scalar(name, span) {
                     return result
                         .map(i64::from)
@@ -816,6 +814,7 @@ impl<'a> AsmLine<'a> {
                     Ok(0)
                 }
             }
+            Err(err) => Err(err.message().to_string()),
         }
     }
 

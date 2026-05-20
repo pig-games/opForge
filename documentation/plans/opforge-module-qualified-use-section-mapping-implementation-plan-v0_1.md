@@ -62,7 +62,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
     still bind selected names directly, and duplicate qualifiers diagnose
     deterministically.
 
-- [ ] Item 2: Centralize qualified imported symbol resolution
+- [x] Item 2: Centralize qualified imported symbol resolution
   - Source requirement or finding IDs: Spec behavioral contract for alias,
     implicit qualifier, full module-path, selective, wildcard, and private-symbol
     lookup forms.

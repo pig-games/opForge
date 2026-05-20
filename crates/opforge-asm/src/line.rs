@@ -66,7 +66,8 @@ use types::asm_value::{AsmValue, StructField};
 use types::lockstep::{ExecutionMode, LockstepReport};
 use types::processing::{LineProcessingTrace, ProcessingRequestKind};
 use types::symbol::{
-    ImportResult, SymbolTable, SymbolTableEntry, SymbolTableResult, SymbolVisibility,
+    ImportResult, ImportedSymbolResolution, SymbolTable, SymbolTableEntry, SymbolTableResult,
+    SymbolVisibility,
 };
 use types::text_encoding::TextEncodingRegistry;
 use vm::output_model::{OutputFixupRecord, IMPLICIT_HUNK_CODE_SECTION_NAME};
@@ -669,7 +670,9 @@ impl<'a> AsmLine<'a> {
     fn resolve_scoped_value_name(&self, name: &str) -> Option<String> {
         if name.contains('.') {
             let candidate = self
-                .resolve_import_alias(name)
+                .resolve_qualified_imported_name(name)
+                .ok()
+                .flatten()
                 .unwrap_or_else(|| name.to_string());
             if self.lookup_value_symbol(&candidate).is_some() {
                 return Some(candidate);
@@ -702,7 +705,9 @@ impl<'a> AsmLine<'a> {
     fn resolve_scoped_scalar_value_name(&self, name: &str) -> Option<String> {
         if name.contains('.') {
             let candidate = self
-                .resolve_import_alias(name)
+                .resolve_qualified_imported_name(name)
+                .ok()
+                .flatten()
                 .unwrap_or_else(|| name.to_string());
             if self.has_scalar_value_symbol(&candidate) {
                 return Some(candidate);
@@ -1468,28 +1473,25 @@ impl<'a> AsmLine<'a> {
 
     fn resolve_imported_name(&self, name: &str) -> Option<String> {
         let module_id = self.symbol_scope.module_active.as_deref()?;
-        let (target_module, target_name) =
-            self.symbols.resolve_selective_import(module_id, name)?;
-        let full_name = format!("{target_module}.{target_name}");
-        Some(
-            self.symbols
-                .entry(&full_name)
-                .map(|entry| entry.name.clone())
-                .unwrap_or(full_name),
-        )
+        match self.symbols.resolve_imported_symbol(module_id, name) {
+            ImportedSymbolResolution::Resolved { full_name, .. } => Some(full_name),
+            ImportedSymbolResolution::Unresolved | ImportedSymbolResolution::Ambiguous => None,
+        }
     }
 
-    fn resolve_import_alias(&self, name: &str) -> Option<String> {
-        let module_id = self.symbol_scope.module_active.as_deref()?;
-        let (prefix, rest) = name.split_once('.')?;
-        let target_module = self.symbols.resolve_import_alias(module_id, prefix)?;
-        let full_name = format!("{target_module}.{rest}");
-        Some(
-            self.symbols
-                .entry(&full_name)
-                .map(|entry| entry.name.clone())
-                .unwrap_or(full_name),
-        )
+    fn resolve_qualified_imported_name(&self, name: &str) -> Result<Option<String>, AsmError> {
+        let Some(module_id) = self.symbol_scope.module_active.as_deref() else {
+            return Ok(None);
+        };
+        match self.symbols.resolve_imported_symbol(module_id, name) {
+            ImportedSymbolResolution::Resolved { full_name, .. } => Ok(Some(full_name)),
+            ImportedSymbolResolution::Unresolved => Ok(None),
+            ImportedSymbolResolution::Ambiguous => Err(AsmError::new(
+                AsmErrorKind::Symbol,
+                "Ambiguous imported module path",
+                Some(name),
+            )),
+        }
     }
 
     fn selective_import_conflict(&self, name: &str) -> bool {
@@ -1519,7 +1521,7 @@ impl<'a> AsmLine<'a> {
     fn resolve_scoped_name(&self, name: &str) -> Result<Option<String>, AsmError> {
         if name.contains('.') {
             let candidate = self
-                .resolve_import_alias(name)
+                .resolve_qualified_imported_name(name)?
                 .unwrap_or_else(|| name.to_string());
             if let Some(entry) = self.symbols.entry(&candidate) {
                 if !self.entry_is_visible(entry) {
@@ -1572,7 +1574,9 @@ impl<'a> AsmLine<'a> {
     fn lookup_scoped_entry(&self, name: &str) -> Option<&SymbolTableEntry> {
         if name.contains('.') {
             let candidate = self
-                .resolve_import_alias(name)
+                .resolve_qualified_imported_name(name)
+                .ok()
+                .flatten()
                 .unwrap_or_else(|| name.to_string());
             return self.symbols.entry(&candidate);
         }

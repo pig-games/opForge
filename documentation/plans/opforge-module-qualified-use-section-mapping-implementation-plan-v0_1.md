@@ -108,7 +108,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
     call/absolute operand and all existing dotted M68K operand fixtures still
     pass.
 
-- [ ] Item 4: Prove cross-family qualified symbol operands
+- [x] Item 4: Prove cross-family qualified symbol operands
   - Source requirement or finding IDs: Spec acceptance criterion that public
     qualified imported symbols work as operands for every supported CPU family.
   - Expected files: focused tests in `crates/opforge-asm/src/tests.rs`; family

@@ -24219,6 +24219,43 @@ fn m68k_lea_accepts_qualified_imported_absolute_long_symbol_operand() {
     );
 }
 
+fn assert_qualified_import_call_operand_assembles(cpu: &str, call_line: &str) {
+    let assembler = run_passes(&[
+        ".module lib.service",
+        cpu,
+        ".pub",
+        "entry:",
+        " NOP",
+        ".endmodule",
+        ".module main",
+        cpu,
+        ".use lib.service",
+        call_line,
+        ".endmodule",
+    ]);
+
+    assert!(
+        assembler.diagnostics.is_empty(),
+        "unexpected diagnostics for {cpu} `{call_line}`: {:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn qualified_import_call_operands_assemble_across_non_m68k_families() {
+    for (cpu, call_line) in [
+        (".cpu 8080", " CALL service.entry"),
+        (".cpu 8085", " CALL service.entry"),
+        (".cpu z80", " CALL service.entry"),
+        (".cpu m6502", " JSR service.entry"),
+        (".cpu 65c02", " JSR service.entry"),
+        (".cpu m6809", " JSR service.entry"),
+        (".cpu hd6309", " JSR service.entry"),
+    ] {
+        assert_qualified_import_call_operand_assembles(cpu, call_line);
+    }
+}
+
 #[test]
 fn linker_output_hunk_live_path_rejects_non_matrix_bare_symbolic_instruction_forms() {
     for source in [

@@ -69,6 +69,7 @@ pub struct ModuleImport {
     pub alias: Option<String>,
     pub qualifier: Option<String>,
     pub items: Vec<ImportItem>,
+    pub selected_roots: Vec<ImportItem>,
     pub params: Vec<ImportParam>,
     pub span: SourceSpan,
 }
@@ -359,8 +360,14 @@ impl SymbolTable {
                     });
                     continue;
                 }
-                for item in &import.items {
+                let mut checked_import_items = HashSet::new();
+                for item in import.items.iter().chain(import.selected_roots.iter()) {
                     if item.name == "*" && item.alias.is_none() {
+                        continue;
+                    }
+                    if !checked_import_items
+                        .insert(normalized_ascii_upper_lookup_key(&item.name).into_owned())
+                    {
                         continue;
                     }
                     let full_name = format!("{}.{}", import.module_id, item.name);
@@ -556,6 +563,8 @@ impl SymbolTable {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::{
         ImportItem, ImportResult, ImportedSymbolResolution, ModuleImport, SourceSpan, SymbolTable,
         SymbolTableResult, SymbolVisibility,
@@ -586,6 +595,7 @@ mod tests {
             alias: Some("M".to_string()),
             qualifier: Some("M".to_string()),
             items: Vec::new(),
+            selected_roots: Vec::new(),
             params: Vec::new(),
             span,
         };
@@ -596,6 +606,7 @@ mod tests {
             alias: Some("m".to_string()),
             qualifier: Some("m".to_string()),
             items: Vec::new(),
+            selected_roots: Vec::new(),
             params: Vec::new(),
             span,
         };
@@ -619,6 +630,7 @@ mod tests {
             alias: None,
             qualifier: Some("engine".to_string()),
             items: Vec::new(),
+            selected_roots: Vec::new(),
             params: Vec::new(),
             span,
         };
@@ -629,6 +641,7 @@ mod tests {
             alias: None,
             qualifier: Some("ENGINE".to_string()),
             items: Vec::new(),
+            selected_roots: Vec::new(),
             params: Vec::new(),
             span,
         };
@@ -652,6 +665,7 @@ mod tests {
             alias: None,
             qualifier: Some("engine".to_string()),
             items: Vec::new(),
+            selected_roots: Vec::new(),
             params: Vec::new(),
             span,
         };
@@ -662,6 +676,7 @@ mod tests {
             alias: Some("Engine".to_string()),
             qualifier: Some("Engine".to_string()),
             items: Vec::new(),
+            selected_roots: Vec::new(),
             params: Vec::new(),
             span,
         };
@@ -689,6 +704,11 @@ mod tests {
                 alias: None,
                 span,
             }],
+            selected_roots: vec![ImportItem {
+                name: "sessionPass".to_string(),
+                alias: None,
+                span,
+            }],
             params: Vec::new(),
             span,
         };
@@ -699,10 +719,47 @@ mod tests {
             alias: None,
             qualifier: Some("engine".to_string()),
             items: Vec::new(),
+            selected_roots: Vec::new(),
             params: Vec::new(),
             span,
         };
         assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
+    }
+
+    #[test]
+    fn validate_imports_deduplicates_direct_items_that_are_selected_roots() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("alpha"), SymbolTableResult::Ok);
+        assert_eq!(
+            table.register_module("opasm.amigaos.engine"),
+            SymbolTableResult::Ok
+        );
+        let span = SourceSpan {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        let item = ImportItem {
+            name: "sessionPass".to_string(),
+            alias: None,
+            span,
+        };
+        let import = ModuleImport {
+            module_id: "opasm.amigaos.engine".to_string(),
+            alias: None,
+            qualifier: None,
+            items: vec![item.clone()],
+            selected_roots: vec![item],
+            params: Vec::new(),
+            span,
+        };
+        assert_eq!(table.add_import("alpha", import), ImportResult::Ok);
+
+        let issues = table.validate_imports(&HashMap::new());
+
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].message, "Missing imported symbol");
+        assert_eq!(issues[0].param.as_deref(), Some("sessionPass"));
     }
 
     #[test]
@@ -741,6 +798,7 @@ mod tests {
                     alias: None,
                     qualifier: Some("engine".to_string()),
                     items: Vec::new(),
+                    selected_roots: Vec::new(),
                     params: Vec::new(),
                     span,
                 }
@@ -755,6 +813,11 @@ mod tests {
                     alias: Some("m".to_string()),
                     qualifier: Some("m".to_string()),
                     items: vec![ImportItem {
+                        name: "sum".to_string(),
+                        alias: Some("total".to_string()),
+                        span,
+                    }],
+                    selected_roots: vec![ImportItem {
                         name: "sum".to_string(),
                         alias: Some("total".to_string()),
                         span,
@@ -822,6 +885,7 @@ mod tests {
                     alias: Some("core".to_string()),
                     qualifier: Some("core".to_string()),
                     items: Vec::new(),
+                    selected_roots: Vec::new(),
                     params: Vec::new(),
                     span,
                 }
@@ -836,6 +900,7 @@ mod tests {
                     alias: Some("util".to_string()),
                     qualifier: Some("util".to_string()),
                     items: Vec::new(),
+                    selected_roots: Vec::new(),
                     params: Vec::new(),
                     span,
                 }
@@ -867,6 +932,11 @@ mod tests {
             alias: Some("M".to_string()),
             qualifier: Some("M".to_string()),
             items: vec![ImportItem {
+                name: "add".to_string(),
+                alias: None,
+                span,
+            }],
+            selected_roots: vec![ImportItem {
                 name: "add".to_string(),
                 alias: None,
                 span,

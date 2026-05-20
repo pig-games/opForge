@@ -127,7 +127,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
     qualified imported public symbol can be used in at least one
     family-appropriate operand form.
 
-- [ ] Item 5: Store selected-root metadata
+- [x] Item 5: Store selected-root metadata
   - Source requirement or finding IDs: Spec goals for `.use module (symbol)` and
     `.use module (symbol) as alias` selecting roots independently from direct
     source references.

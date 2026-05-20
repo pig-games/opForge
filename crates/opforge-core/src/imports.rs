@@ -49,17 +49,29 @@ pub fn module_import_from_parser(
     params: Vec<UseParam>,
     span: Span,
 ) -> ModuleImport {
+    let parsed_items: Vec<ImportItem> = items.into_iter().map(import_item_from_use_item).collect();
+    let has_selection = !parsed_items.is_empty();
+    let selected_roots: Vec<ImportItem> = parsed_items
+        .iter()
+        .filter(|item| item.name != "*" || item.alias.is_some())
+        .cloned()
+        .collect();
     let qualifier = alias.clone().or_else(|| {
-        items
-            .is_empty()
+        (!has_selection)
             .then(|| implicit_qualifier(&module_id))
             .flatten()
     });
+    let direct_items = if alias.is_some() {
+        Vec::new()
+    } else {
+        parsed_items
+    };
     ModuleImport {
         module_id,
         alias,
         qualifier,
-        items: items.into_iter().map(import_item_from_use_item).collect(),
+        items: direct_items,
+        selected_roots,
         params: params
             .into_iter()
             .map(import_param_from_use_param)
@@ -128,6 +140,28 @@ mod tests {
         assert_eq!(import.alias, None);
         assert_eq!(import.qualifier, None);
         assert_eq!(import.items[0].name, "sessionPass");
+        assert_eq!(import.selected_roots[0].name, "sessionPass");
+    }
+
+    #[test]
+    fn qualified_selective_import_records_root_without_direct_item() {
+        let item_span = span();
+        let import = module_import_from_parser(
+            "opasm.amigaos.engine".to_string(),
+            Some("engine".to_string()),
+            vec![UseItem {
+                name: "sessionPass".to_string(),
+                alias: None,
+                span: item_span,
+            }],
+            Vec::new(),
+            span(),
+        );
+
+        assert_eq!(import.alias.as_deref(), Some("engine"));
+        assert_eq!(import.qualifier.as_deref(), Some("engine"));
+        assert!(import.items.is_empty());
+        assert_eq!(import.selected_roots[0].name, "sessionPass");
     }
 
     #[test]

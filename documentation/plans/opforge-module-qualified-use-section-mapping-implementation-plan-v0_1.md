@@ -224,7 +224,7 @@ ports are explicitly out of scope until the Rust behavior is complete.
     reachable mapped units, and unsupported library/object output requests fail
     with deterministic diagnostics instead of silently changing policy.
 
-- [ ] Item 9: Document the qualified module composition model
+- [x] Item 9: Document the qualified module composition model
   - Source requirement or finding IDs: Spec goals and acceptance criteria for
     user-facing qualified imports, selected roots, section mapping, selective
     inclusion, and output policy.

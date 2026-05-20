@@ -9,18 +9,18 @@
 
 	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1)
 	.use opasm.amigaos.engine (opasmEngineBeginPassOneV1, opasmEngineBeginPassTwoV1)
+	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
+	.use opasm.amigaos.engine (OPASM_ENGINE_LABEL_EVENT_STORED, OPASM_ENGINE_LABEL_EVENT_DUPLICATE)
 	.use opasm.amigaos.engine (OpasmEngineContext)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
-	.use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineImageByteCount)
-	.use opasm.amigaos.engine (opasmEngineSessionOrigin, opasmEngineSessionCurrentPc)
+	.use opasm.amigaos.engine (opasmEngineImageByteCount)
 	.use opasm.amigaos.engine (opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable)
 	.use opasm.amigaos.engine (opasmEngineStmtLabelLenTable, opasmEngineStmtMnemLenTable)
 	.use opasm.amigaos.engine (opasmEngineStmtOperandLenTable, opasmEngineStmtMnemNameTable)
 	.use opasm.amigaos.engine (opasmEngineStmtLabelNameTable, opasmEngineStmtOperandNameTable)
-	.use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineLabelValueTable)
-	.use opasm.amigaos.engine (opasmEngineLabelFinalizedTable, opasmEngineImageBuffer)
+	.use opasm.amigaos.engine (opasmEngineImageBuffer)
 
-	.use opforge.cli.constants (NATIVE_LABEL_TABLE_CAPACITY, NATIVE_IMAGE_BUFFER_CAPACITY)
+	.use opforge.cli.constants (NATIVE_IMAGE_BUFFER_CAPACITY)
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
 	.use opforge.cli.state (NativeCliEvalRequestLen, NativeCliStmtExprFound)
@@ -33,7 +33,6 @@
 	.use opforge.cli.strings (NativeSelectorUnknownRawText, NativeSelectorUnsupportedRawText)
 	.use opforge.cli.strings (NativeSelectorOperandRawText, NativeSelectedOperandCompileRawText)
 	.use opforge.cli.dos (opforgeNativeCliPutStr)
-	.use opforge.cli.copy (opforgeNativeCliCopyFixedString)
 	.use opforge.cli.token_util (opforgeNativeCliTokenLen, opforgeNativeCliTokenEquals)
 	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace, opforgeNativeCliLineStartsWith)
 	.use opforge.cli.text_output (opforgeNativeCliPutSpace, opforgeNativeCliPutHexU32)
@@ -109,108 +108,40 @@ opforgeNativeCliOpasmPassTwoOk	.block
 	.bend  ; opforgeNativeCliOpasmPassTwoOk
 
 opforgeNativeCliPassOneRecordLabel	.block
-	movem.l d1-d7/a0-a2, -(sp)
-	move.l d0, d7
-	lsl.l #6, d7
-	lea opasmEngineStmtLabelNameTable.l, a1
-	adda.l d7, a1
-	tst.b (a1)
-	beq.w ok
-	moveq #0, d0
-	move.w opasmEngineLabelCount.l, d0
-	cmpi.w #NATIVE_LABEL_TABLE_CAPACITY, d0
-	bhs.w fail
-	moveq #0, d6
-
-duplicateLoop
-	move.w opasmEngineLabelCount.l, d0
-	cmp.w d0, d6
-	bhs.s storeLabel
-	moveq #0, d5
-	move.w d6, d5
-	lsl.l #6, d5
-	lea opasmEngineLabelNameTable.l, a0
-	adda.l d5, a0
-	moveq #0, d0
-	move.l d7, d5
-	lsr.l #6, d5
-	add.w d5, d5
-	lea opasmEngineStmtLabelLenTable.l, a2
-	move.w 0(a2, d5.l), d0
-	bne.s haveExistingLabelLen
-	move.l a0, d3
-	movea.l a1, a0
-	jsr opforgeNativeCliTokenLen
-	movea.l d3, a0
-
-haveExistingLabelLen
-	bsr.w opforgeNativeCliLabelEquals
-	tst.l d0
-	bne.w duplicate
-	addq.w #1, d6
-	bra.s duplicateLoop
-
-storeLabel
-	moveq #0, d6
-	move.w opasmEngineLabelCount.l, d6
-	move.l d6, d5
-	lsl.l #2, d5
-	lea opasmEngineLabelValueTable.l, a0
-	move.l opasmEngineSessionCurrentPc.l, 0(a0, d5.l)
-	lea opasmEngineLabelFinalizedTable.l, a0
-	clr.b 0(a0, d6.l)
-	move.l d6, d5
-	lsl.l #6, d5
-	lea opasmEngineLabelNameTable.l, a0
-	adda.l d5, a0
-	move.l a0, d2
+	movem.l d1-d5/a0, -(sp)
+	jsr opasmEngineRecordStatementLabelV1
 	move.l a0, d4
-	move.l a1, d3
-	movea.l a1, a2
-	movea.l a0, a1
-	movea.l a2, a0
-	moveq #0, d0
-	move.l d7, d5
-	lsr.l #6, d5
-	add.w d5, d5
-	lea opasmEngineStmtLabelLenTable.l, a2
-	move.w 0(a2, d5.l), d0
-	bne.s haveStoreLabelLen
-	movea.l d3, a0
-	jsr opforgeNativeCliTokenLen
+	move.l d2, d5
+	cmpi.w #OPASM_ENGINE_LABEL_EVENT_STORED, d1
+	beq.s stored
+	cmpi.w #OPASM_ENGINE_LABEL_EVENT_DUPLICATE, d1
+	beq.s duplicate
+	bra.s return
 
-haveStoreLabelLen
-	jsr opforgeNativeCliCopyFixedString
-	clr.b (a1)
-	addq.w #1, opasmEngineLabelCount.l
+stored
 	move.l #NativeLabelText, d1
 	jsr opforgeNativeCliPutStr
 	move.l d4, d1
 	jsr opforgeNativeCliPutStr
 	jsr opforgeNativeCliPutSpace
-	move.l opasmEngineSessionCurrentPc.l, d0
+	move.l d5, d0
 	jsr opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
-	bra.s ok
+	moveq #0, d0
+	bra.s return
 
 duplicate
 	move.l #NativeDuplicateLabelText, d1
 	jsr opforgeNativeCliPutStr
-	move.l a1, d1
+	move.l d4, d1
 	jsr opforgeNativeCliPutStr
 	move.l #NewlineText, d1
 	jsr opforgeNativeCliPutStr
-
-fail
 	moveq #1, d0
-	bra.s return
-
-ok
-	moveq #0, d0
 
 return
-	movem.l (sp)+, d1-d7/a0-a2
+	movem.l (sp)+, d1-d5/a0
 	rts
 	.bend  ; opforgeNativeCliPassOneRecordLabel
 
@@ -578,21 +509,23 @@ org
 	rts
 
 orgOk
-	move.l d3, opasmEngineSessionOrigin.l
-	move.l opasmEngineSessionOrigin.l, d0
-	move.l d0, opasmEngineSessionCurrentPc.l
+	move.l d3, d0
+	jsr opasmEngineSetOriginV1
 	bra.w done
 
 advanceOne
-	addq.l #1, opasmEngineSessionCurrentPc.l
+	moveq #1, d0
+	jsr opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 advanceTwo
-	addq.l #2, opasmEngineSessionCurrentPc.l
+	moveq #2, d0
+	jsr opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 advanceThree
-	addq.l #3, opasmEngineSessionCurrentPc.l
+	moveq #3, d0
+	jsr opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 fail

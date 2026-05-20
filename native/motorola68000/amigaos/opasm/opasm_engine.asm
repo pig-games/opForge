@@ -48,6 +48,10 @@ OPASM_ENGINE_STMT_REQ_EXPR_SPAN_LINE  = 56
 OPASM_ENGINE_STMT_REQ_EXPR_SPAN_START = 60
 OPASM_ENGINE_STMT_REQ_EXPR_SPAN_END   = 64
 OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES = 68
+OPASM_ENGINE_LABEL_EVENT_NONE      = 0
+OPASM_ENGINE_LABEL_EVENT_STORED    = 1
+OPASM_ENGINE_LABEL_EVENT_DUPLICATE = 2
+OPASM_ENGINE_LABEL_EVENT_CAPACITY  = 3
 
 ; A4: opasm engine context pointer.
 ; Returns D0=0 on success, non-zero on failure.
@@ -210,6 +214,148 @@ finalizeDone
 	rts
 	.bend  ; opasmEngineBeginPassTwoV1
 
+; Record the label attached to one statement during pass one.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: 0 on success/no label, non-zero on duplicate/capacity failure.
+; - D1: OPASM_ENGINE_LABEL_EVENT_*.
+; - D2: current PC for stored-label diagnostics.
+; - A0: label text for stored/duplicate diagnostics.
+opasmEngineRecordStatementLabelV1	.block
+	movem.l d3-d7/a1-a3, -(sp)
+	move.l d0, d7
+	lsl.l #6, d7
+	lea OpasmEngineStmtLabelNameTable.l, a1
+	adda.l d7, a1
+	tst.b (a1)
+	beq.w noLabel
+	moveq #0, d0
+	move.w OpasmEngineLabelCount.l, d0
+	cmpi.w #NATIVE_LABEL_TABLE_CAPACITY, d0
+	bhs.w capacity
+	moveq #0, d6
+
+duplicateLoop
+	move.w OpasmEngineLabelCount.l, d0
+	cmp.w d0, d6
+	bhs.s storeLabel
+	moveq #0, d5
+	move.w d6, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+	moveq #0, d0
+	move.l d7, d5
+	lsr.l #6, d5
+	add.w d5, d5
+	lea OpasmEngineStmtLabelLenTable.l, a2
+	move.w 0(a2, d5.l), d0
+	bne.s haveExistingLabelLen
+	movea.l a1, a0
+	bsr.w tokenLen
+	moveq #0, d5
+	move.w d6, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+
+haveExistingLabelLen
+	bsr.w labelEquals
+	tst.l d0
+	bne.w duplicate
+	addq.w #1, d6
+	bra.s duplicateLoop
+
+storeLabel
+	moveq #0, d6
+	move.w OpasmEngineLabelCount.l, d6
+	move.l d6, d5
+	lsl.l #2, d5
+	lea OpasmEngineLabelValueTable.l, a0
+	move.l OpasmEngineSessionCurrentPc.l, 0(a0, d5.l)
+	lea OpasmEngineLabelFinalizedTable.l, a0
+	clr.b 0(a0, d6.l)
+	move.l d6, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+	move.l a0, d4
+	movea.l a1, a3
+	movea.l a0, a1
+	movea.l a3, a0
+	moveq #0, d0
+	move.l d7, d5
+	lsr.l #6, d5
+	add.w d5, d5
+	lea OpasmEngineStmtLabelLenTable.l, a2
+	move.w 0(a2, d5.l), d0
+	bne.s haveStoreLabelLen
+	movea.l a3, a0
+	bsr.w tokenLen
+	movea.l a3, a0
+
+haveStoreLabelLen
+	bsr.w copyFixedString
+	clr.b (a1)
+	addq.w #1, OpasmEngineLabelCount.l
+	moveq #0, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_STORED, d1
+	move.l OpasmEngineSessionCurrentPc.l, d2
+	movea.l d4, a0
+	bra.s return
+
+duplicate
+	moveq #1, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_DUPLICATE, d1
+	movea.l a1, a0
+	bra.s return
+
+capacity
+	moveq #1, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_CAPACITY, d1
+	movea.l a1, a0
+	bra.s return
+
+noLabel
+	moveq #0, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_NONE, d1
+	suba.l a0, a0
+
+return
+	movem.l (sp)+, d3-d7/a1-a3
+	rts
+	.bend  ; opasmEngineRecordStatementLabelV1
+
+; Set origin and current PC.
+;
+; Inputs:
+; - D0: new origin/current PC.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineSetOriginV1	.block
+	move.l d0, OpasmEngineSessionOrigin.l
+	move.l d0, OpasmEngineSessionCurrentPc.l
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineSetOriginV1
+
+; Advance current PC by an encoded byte size.
+;
+; Inputs:
+; - D0: encoded byte size.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineAdvancePcBySizeV1	.block
+	add.l d0, OpasmEngineSessionCurrentPc.l
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineAdvancePcBySizeV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5
@@ -250,6 +396,48 @@ loop
 done
 	rts
 	.bend  ; copyFixedString
+
+tokenLen	.block
+	movem.l d1/a0, -(sp)
+	moveq #0, d0
+
+loop
+	move.b (a0)+, d1
+	beq.s done
+	addq.w #1, d0
+	cmpi.w #TOKEN_BUFFER_CAPACITY, d0
+	bhs.s done
+	bra.s loop
+
+done
+	movem.l (sp)+, d1/a0
+	rts
+	.bend  ; tokenLen
+
+labelEquals	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	move.w d0, d3
+	beq.s no
+
+loop
+	move.b (a0)+, d1
+	move.b (a1)+, d2
+	cmp.b d1, d2
+	bne.s no
+	subq.w #1, d3
+	bne.s loop
+	tst.b (a0)
+	bne.s no
+	moveq #1, d0
+	bra.s done
+
+no
+	moveq #0, d0
+
+done
+	movem.l (sp)+, d1-d3/a0-a1
+	rts
+	.bend  ; labelEquals
 
 skipLineWhitespace	.block
 	tst.l d0

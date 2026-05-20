@@ -3,7 +3,7 @@
 	.module opforge.cli.run
 	.cpu 68020
 
-	.use opasm.amigaos.engine (opasmEngineImageByteCount)
+	.use opasm.amigaos.engine (opasmEngineGetImageByteCountV1)
 
 	.use opforge.cli.constants (SYS_BASE, OPEN_LIBRARY, CLOSE_LIBRARY, GET_ARG_STR)
 	.use opforge.cli.constants (RETURN_OK, RETURN_USAGE, RETURN_FILE_FAILURE)
@@ -164,7 +164,8 @@ tokenizerOk
 
 passesOk
 	jsr opforgeNativeCliEmitAssemblySessionSummary
-	tst.w opasmEngineImageByteCount.l
+	jsr opasmEngineGetImageByteCountV1
+	tst.l d0
 	beq.s emitStub
 	jsr opforgeNativeCliWriteFlatOutput
 	tst.l d0

@@ -396,6 +396,25 @@ fail
 	rts
 	.bend  ; opasmEngineAppendImageBytesV1
 
+; Return the current opasm-owned image byte count.
+;
+; Outputs:
+; - D0: image byte count.
+opasmEngineGetImageByteCountV1	.block
+	moveq #0, d0
+	move.w OpasmEngineImageByteCount.l, d0
+	rts
+	.bend  ; opasmEngineGetImageByteCountV1
+
+; Return a pointer to the opasm-owned image buffer.
+;
+; Outputs:
+; - A0: image buffer pointer.
+opasmEngineGetImageBufferPtrV1	.block
+	lea OpasmEngineImageBuffer.l, a0
+	rts
+	.bend  ; opasmEngineGetImageBufferPtrV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5

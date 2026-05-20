@@ -3,7 +3,7 @@
 	.module opforge.cli.output
 	.cpu 68020
 
-	.use opasm.amigaos.engine (opasmEngineImageBuffer, opasmEngineImageByteCount)
+	.use opasm.amigaos.engine (opasmEngineGetImageByteCountV1, opasmEngineGetImageBufferPtrV1)
 	.use opforge.cli.state (NativeCliBinPath)
 	.use opforge.cli.dos (opforgeNativeCliOpenOutput, opforgeNativeCliWriteOutput, opforgeNativeCliClose)
 
@@ -17,9 +17,8 @@ opforgeNativeCliWriteFlatOutput	.block
 	tst.l d0
 	beq.s fail
 	move.l d0, d4
-	lea opasmEngineImageBuffer.l, a0
-	moveq #0, d0
-	move.w opasmEngineImageByteCount.l, d0
+	jsr opasmEngineGetImageBufferPtrV1
+	jsr opasmEngineGetImageByteCountV1
 	move.l d0, d3
 	move.l d4, d1
 	jsr opforgeNativeCliWriteOutput

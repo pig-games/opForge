@@ -7,13 +7,13 @@
 	.module opforge.cli.assembly_session
 	.cpu 68020
 
-	.use opasm.amigaos.engine (opasmEngineSourceRecordCount, opasmEngineSourceLineNumTable, opasmEngineSourceLineLenTable)
+	.use opasm.amigaos.engine (opasmEngineRecordSourceLineV1)
 	.use opasm.amigaos.engine (opasmEngineStmtCount, opasmEngineStmtLineTable, opasmEngineStmtSourceLineLenTable, opasmEngineStmtSourceLineTextTable, opasmEngineStmtLabelLenTable, opasmEngineStmtMnemLenTable, opasmEngineStmtOperandLenTable, opasmEngineStmtDirectiveKindTable, opasmEngineStmtMnemOffTable, opasmEngineStmtLabelNameTable, opasmEngineStmtMnemNameTable, opasmEngineStmtOperandNameTable, opasmEngineStmtExprFlagsTable, opasmEngineStmtExprOperandIndexTable, opasmEngineStmtExprSlotIndexTable, opasmEngineStmtExprStartTokenTable, opasmEngineStmtExprEndTokenTable, opasmEngineStmtExprSpanLineTable, opasmEngineStmtExprSpanStartTable, opasmEngineStmtExprSpanEndTable)
 	.use tkpkg.amigaos.buffers (tokenScratchBuffer)
 
 	.use opforge.cli.state (OpforgeNativeCliPrvmResultBuffer, OpforgeNativeCliPrvmExprRequest, NativeCliSourceLine, NativeCliSourceLineNum, NativeCliSourceLineLen, NativeCliPrvmRouteStatus, NativeCliPrvmResultCount, NativeCliStmtLabelStart, NativeCliStmtLabelEnd, NativeCliStmtLabelOff, NativeCliStmtLabelLen, NativeCliStmtMnemStart, NativeCliStmtMnemEnd, NativeCliStmtMnemOff, NativeCliStmtMnemLen, NativeCliStmtOperandStart, NativeCliStmtOperandEnd, NativeCliStmtExprOperandIndex, NativeCliStmtExprSlotIndex, NativeCliStmtExprStartToken, NativeCliStmtExprEndToken, NativeCliStmtExprSpanLine, NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd, NativeCliStmtMnemFound, NativeCliStmtExprFound, NativeCliStmtDirectiveKind, NativeCliArgToken)
 
-	.use opforge.cli.constants (NATIVE_SOURCE_RECORD_CAPACITY, NATIVE_STATEMENT_TABLE_CAPACITY, TOKEN_BUFFER_CAPACITY, SOURCE_LINE_BUFFER_CAPACITY, NCLI_PARSER_DIRECTIVE_NONE, NCLI_PARSER_DIRECTIVE_GENERIC, PRVM_STATUS_EXPR_REQUEST, PRVM_RESULT_RECORD_COUNT, PRVM_RESULT_RECORD_SIZE, PRVM_RESULT_LABEL_TEXT, PRVM_RESULT_MNEMONIC_TEXT, PRVM_RESULT_DIRECTIVE_TEXT, PRVM_RESULT_OPERAND_TEXT, PRVM_RESULT_OPERAND_EXPR_SLOT)
+	.use opforge.cli.constants (NATIVE_STATEMENT_TABLE_CAPACITY, TOKEN_BUFFER_CAPACITY, SOURCE_LINE_BUFFER_CAPACITY, NCLI_PARSER_DIRECTIVE_NONE, NCLI_PARSER_DIRECTIVE_GENERIC, PRVM_STATUS_EXPR_REQUEST, PRVM_RESULT_RECORD_COUNT, PRVM_RESULT_RECORD_SIZE, PRVM_RESULT_LABEL_TEXT, PRVM_RESULT_MNEMONIC_TEXT, PRVM_RESULT_DIRECTIVE_TEXT, PRVM_RESULT_OPERAND_TEXT, PRVM_RESULT_OPERAND_EXPR_SLOT)
 
 	.use opforge.cli.strings (StatementText, StatementExprText, NewlineText)
 	.use opforge.cli.dos (opforgeNativeCliPutStr)
@@ -26,23 +26,12 @@
 
 ; Record the current logical source line in the session tables.
 opforgeNativeCliRecordSourceLine	.block
-	movem.l d0/a0, -(sp)
-	moveq #0, d0
-	move.w opasmEngineSourceRecordCount.l, d0
-	cmpi.w #NATIVE_SOURCE_RECORD_CAPACITY, d0
-	bhs.s done
-	lsl.l #2, d0
-	lea opasmEngineSourceLineNumTable.l, a0
-	move.l NativeCliSourceLineNum, 0(a0, d0.l)
-	moveq #0, d0
-	move.w opasmEngineSourceRecordCount.l, d0
-	add.w d0, d0
-	lea opasmEngineSourceLineLenTable.l, a0
-	move.w NativeCliSourceLineLen, 0(a0, d0.l)
-	addq.w #1, opasmEngineSourceRecordCount.l
-
-done
-	movem.l (sp)+, d0/a0
+	movem.l d0-d1, -(sp)
+	move.l NativeCliSourceLineNum, d0
+	moveq #0, d1
+	move.w NativeCliSourceLineLen, d1
+	jsr opasmEngineRecordSourceLineV1
+	movem.l (sp)+, d0-d1
 	rts
 	.bend  ; opforgeNativeCliRecordSourceLine
 

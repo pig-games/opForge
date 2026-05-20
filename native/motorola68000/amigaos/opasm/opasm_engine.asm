@@ -70,6 +70,36 @@ opasmEngineResetStatementCollectionV1	.block
 	rts
 	.bend  ; opasmEngineResetStatementCollectionV1
 
+; Record one logical source line in opasm-owned session tables.
+;
+; Inputs:
+; - D0: source line number.
+; - D1: source line length.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineRecordSourceLineV1	.block
+	movem.l d2/a0, -(sp)
+	moveq #0, d2
+	move.w OpasmEngineSourceRecordCount.l, d2
+	cmpi.w #NATIVE_SOURCE_RECORD_CAPACITY, d2
+	bhs.s done
+	lsl.l #2, d2
+	lea OpasmEngineSourceLineNumTable.l, a0
+	move.l d0, 0(a0, d2.l)
+	moveq #0, d2
+	move.w OpasmEngineSourceRecordCount.l, d2
+	add.w d2, d2
+	lea OpasmEngineSourceLineLenTable.l, a0
+	move.w d1, 0(a0, d2.l)
+	addq.w #1, OpasmEngineSourceRecordCount.l
+
+done
+	movem.l (sp)+, d2/a0
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineRecordSourceLineV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5

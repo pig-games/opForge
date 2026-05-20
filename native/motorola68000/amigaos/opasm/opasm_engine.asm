@@ -575,6 +575,31 @@ opasmEngineWriteEvaluateExpressionExtensionBaseV1	.block
 	rts
 	.bend  ; opasmEngineWriteEvaluateExpressionExtensionBaseV1
 
+; Prepare the expression-evaluation environment extension.
+;
+; Inputs:
+; - A0: evaluate request buffer.
+; - D0: evaluate request byte length.
+; - A1: extension buffer base.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEnginePrepareEvaluateExpressionExtensionV1	.block
+	movem.l d1/a0-a1, -(sp)
+	jsr opasmEngineWriteEvaluateExpressionExtensionBaseV1
+	jsr opasmEngineInferSelectedShapeForEvalRequestV1
+	tst.w d0
+	beq.s done
+	adda.w #16, a1
+	move.l a0, (a1)
+	move.l d0, 4(a1)
+
+done
+	movem.l (sp)+, d1/a0-a1
+	moveq #0, d0
+	rts
+	.bend  ; opasmEnginePrepareEvaluateExpressionExtensionV1
+
 ; Return the stored source line number for one statement.
 ;
 ; Inputs:

@@ -8,11 +8,10 @@
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
 	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1)
-	.use opasm.amigaos.engine (opasmEngineWriteEvaluateExpressionExtensionBaseV1)
+	.use opasm.amigaos.engine (opasmEnginePrepareEvaluateExpressionExtensionV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareEvaluateExpressionRequestV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareSelectedEvaluateRequestV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareEncodeInstructionRequestV1)
-	.use opasm.amigaos.engine (opasmEngineInferSelectedShapeForEvalRequestV1)
 	.use opasm.amigaos.engine (opasmEngineStatementHasExprMetadataV1)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1)
@@ -54,24 +53,14 @@ return
 	.bend  ; opforgeNativeCliPrepareEvaluateExpressionRequest
 
 opforgeNativeCliPrepareEvaluateExpressionExtension	.block
-	movem.l d1-d7/a0-a2, -(sp)
-	lea ControlBlockV1, a1
-	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a1
-	jsr opasmEngineWriteEvaluateExpressionExtensionBaseV1
+	movem.l d1/a0-a1, -(sp)
 	lea lastErrorBuffer, a0
 	moveq #0, d0
 	move.w NativeCliEvalRequestLen, d0
-	jsr opasmEngineInferSelectedShapeForEvalRequestV1
-	tst.w d0
-	beq.s done
 	lea ControlBlockV1, a1
-	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1 + 16, a1
-	move.l a0, (a1)
-	move.l d0, 4(a1)
-
-done
-	moveq #0, d0
-	movem.l (sp)+, d1-d7/a0-a2
+	adda.w #NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, a1
+	jsr opasmEnginePrepareEvaluateExpressionExtensionV1
+	movem.l (sp)+, d1/a0-a1
 	rts
 	.bend  ; opforgeNativeCliPrepareEvaluateExpressionExtension
 

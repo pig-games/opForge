@@ -13,17 +13,12 @@
 	.use opasm.amigaos.engine (opasmEnginePrepareSelectedEvaluateRequestV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareEncodeInstructionRequestV1)
 	.use opasm.amigaos.engine (opasmEngineInferSelectedShapeForEvalRequestV1)
-	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_OPERAND_INDEX, OPASM_ENGINE_EXPR_META_SLOT_INDEX)
-	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_START_TOKEN, OPASM_ENGINE_EXPR_META_END_TOKEN)
-	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_LINE, OPASM_ENGINE_EXPR_META_SPAN_START)
-	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_END, OPASM_ENGINE_EXPR_META_BYTES)
+	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_BYTES)
 
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1)
 	.use opforge.cli.state (NativeCliEncodeRequestLen, NativeCliEvalRequestLen)
 	.use opforge.cli.state (NativeCliStmtMnemStart, NativeCliStmtMnemLen)
-	.use opforge.cli.state (NativeCliStmtExprFound, NativeCliStmtExprOperandIndex, NativeCliStmtExprSlotIndex)
-	.use opforge.cli.state (NativeCliStmtExprStartToken, NativeCliStmtExprEndToken)
-	.use opforge.cli.state (NativeCliStmtExprSpanLine, NativeCliStmtExprSpanStart, NativeCliStmtExprSpanEnd)
+	.use opforge.cli.state (NativeCliStmtExprFound)
 	.use opforge.cli.tkpkg_control_block (opforgeNativeCliWriteInputWindow, opforgeNativeCliReadStatus)
 
 	.section code, kind=code
@@ -100,13 +95,6 @@ opforgeNativeCliLoadStatementExprMetadata	.block
 	moveq #0, d0
 	move.w d7, d0
 	jsr opasmEngineGetStatementExprMetadataV1
-	move.l OPASM_ENGINE_EXPR_META_OPERAND_INDEX(a0), NativeCliStmtExprOperandIndex
-	move.l OPASM_ENGINE_EXPR_META_SLOT_INDEX(a0), NativeCliStmtExprSlotIndex
-	move.l OPASM_ENGINE_EXPR_META_START_TOKEN(a0), NativeCliStmtExprStartToken
-	move.l OPASM_ENGINE_EXPR_META_END_TOKEN(a0), NativeCliStmtExprEndToken
-	move.l OPASM_ENGINE_EXPR_META_SPAN_LINE(a0), NativeCliStmtExprSpanLine
-	move.l OPASM_ENGINE_EXPR_META_SPAN_START(a0), NativeCliStmtExprSpanStart
-	move.l OPASM_ENGINE_EXPR_META_SPAN_END(a0), NativeCliStmtExprSpanEnd
 	tst.l d0
 	beq.s empty
 	move.w #1, NativeCliStmtExprFound

@@ -356,6 +356,46 @@ opasmEngineAdvancePcBySizeV1	.block
 	rts
 	.bend  ; opasmEngineAdvancePcBySizeV1
 
+; Append encoded bytes to the opasm-owned image buffer.
+;
+; Inputs:
+; - A0: encoded byte source.
+; - D0: encoded byte count.
+;
+; Outputs:
+; - D0: 0 on success, non-zero on image capacity failure.
+opasmEngineAppendImageBytesV1	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	move.w d0, d3
+	moveq #0, d1
+	move.w OpasmEngineImageByteCount.l, d1
+	add.w d3, d1
+	cmpi.w #NATIVE_IMAGE_BUFFER_CAPACITY, d1
+	bhi.s fail
+	moveq #0, d1
+	move.w OpasmEngineImageByteCount.l, d1
+	lea OpasmEngineImageBuffer.l, a1
+	adda.l d1, a1
+	move.w d3, d1
+	beq.s done
+
+copyLoop
+	move.b (a0)+, (a1)+
+	subq.w #1, d1
+	bne.s copyLoop
+
+done
+	add.w d3, OpasmEngineImageByteCount.l
+	movem.l (sp)+, d1-d3/a0-a1
+	moveq #0, d0
+	rts
+
+fail
+	movem.l (sp)+, d1-d3/a0-a1
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineAppendImageBytesV1
+
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5

@@ -10,6 +10,7 @@
 	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1)
 	.use opasm.amigaos.engine (opasmEngineBeginPassOneV1, opasmEngineBeginPassTwoV1)
 	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
+	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_LABEL_EVENT_STORED, OPASM_ENGINE_LABEL_EVENT_DUPLICATE)
 	.use opasm.amigaos.engine (OpasmEngineContext)
 	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineStmtCount)
@@ -18,9 +19,7 @@
 	.use opasm.amigaos.engine (opasmEngineStmtLabelLenTable, opasmEngineStmtMnemLenTable)
 	.use opasm.amigaos.engine (opasmEngineStmtOperandLenTable, opasmEngineStmtMnemNameTable)
 	.use opasm.amigaos.engine (opasmEngineStmtLabelNameTable, opasmEngineStmtOperandNameTable)
-	.use opasm.amigaos.engine (opasmEngineImageBuffer)
 
-	.use opforge.cli.constants (NATIVE_IMAGE_BUFFER_CAPACITY)
 	.use opforge.cli.constants (NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, NATIVE_EVAL_EXPR_EXTENSION_BYTES)
 	.use opforge.cli.state (NativeCliBinRequested)
 	.use opforge.cli.state (NativeCliEvalRequestLen, NativeCliStmtExprFound)
@@ -220,23 +219,12 @@ haveMlen
 	move.w d0, d6
 	move.l #NativeSelectorStatusOkText, d1
 	jsr opforgeNativeCliPutStr
-	moveq #0, d0
-	move.w opasmEngineImageByteCount.l, d0
-	add.w d6, d0
-	cmpi.w #NATIVE_IMAGE_BUFFER_CAPACITY, d0
-	bhi.w fail
-	moveq #0, d0
-	move.w opasmEngineImageByteCount.l, d0
-	lea opasmEngineImageBuffer.l, a0
-	adda.l d0, a0
 	lea lastErrorBuffer, a1
-	move.w d6, d1
-
-copyEncodedLoop
-	move.b (a1)+, (a0)+
-	subq.w #1, d1
-	bne.s copyEncodedLoop
-	add.w d6, opasmEngineImageByteCount.l
+	movea.l a1, a0
+	move.w d6, d0
+	jsr opasmEngineAppendImageBytesV1
+	tst.l d0
+	bne.w fail
 
 ok
 	moveq #0, d0

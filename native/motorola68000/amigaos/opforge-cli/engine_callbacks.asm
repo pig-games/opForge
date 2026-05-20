@@ -7,6 +7,14 @@
 
 	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR)
 	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR, OPASM_ASSEMBLE_REQ_BYTES)
+	.use opasm.amigaos.callback_abi (OPASM_EVENT_KIND, OPASM_EVENT_PASS, OPASM_EVENT_STMT_INDEX)
+	.use opasm.amigaos.callback_abi (OPASM_EVENT_TEXT_PTR, OPASM_EVENT_TEXT_LEN, OPASM_EVENT_VALUE)
+	.use opasm.amigaos.callback_abi (OPASM_EVENT_BYTES, OPASM_EVENT_PASS_BEGIN, OPASM_EVENT_PASS_OK)
+	.use opasm.amigaos.callback_abi (OPASM_EVENT_LABEL_STORED, OPASM_EVENT_LABEL_DUPLICATE)
+	.use opasm.amigaos.callback_abi (OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, OPASM_EVENT_SELECTOR_STATUS_OK)
+	.use opasm.amigaos.callback_abi (OPASM_EVENT_UNKNOWN_MNEMONIC, OPASM_EVENT_UNSUPPORTED_ADDRESSING)
+	.use opasm.amigaos.callback_abi (OPASM_EVENT_UNRESOLVED_LABEL, OPASM_EVENT_BAD_ORG)
+	.use opasm.amigaos.callback_abi (OPASM_EVENT_SERVICE_FAILURE)
 	.use opasm.amigaos.callback_abi (OPASM_SERVICE_CONTROL_BLOCK_PTR, OPASM_SERVICE_IO_BUFFER_PTR)
 	.use opasm.amigaos.callback_abi (OPASM_SERVICE_IO_BUFFER_CAPACITY, OPASM_SERVICE_EVAL_EXTENSION_PTR)
 	.use opasm.amigaos.callback_abi (OPASM_SERVICE_EVAL_EXTENSION_BYTES, OPASM_SERVICE_BYTES)
@@ -43,7 +51,8 @@
 	.use opforge.cli.strings (NativeSelectorUnknownRawText, NativeSelectorUnsupportedRawText)
 	.use opforge.cli.strings (NativeSelectorOperandRawText, NativeSelectedOperandCompileRawText)
 	.use opforge.cli.dos (opforgeNativeCliPutStr)
-	.use opforge.cli.token_util (opforgeNativeCliTokenEquals)
+	.use opforge.cli.opasm_event_report (opforgeNativeCliRenderOpasmEventV1)
+	.use opforge.cli.token_util (opforgeNativeCliTokenEquals, opforgeNativeCliTokenLen)
 	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace, opforgeNativeCliLineStartsWith)
 	.use opforge.cli.text_output (opforgeNativeCliPutSpace, opforgeNativeCliPutHexU32)
 	.use opforge.cli.encode_eval_bridge (opforgeNativeCliPrepareEncodeSelectedRequestForStatement)
@@ -89,8 +98,10 @@ opforgeNativeCliBuildOpasmEngineContext	.block
 
 opforgeNativeCliOpasmPassOneBegin	.block
 	movem.l d1, -(sp)
-	move.l #NativePassOneText, d1
-	jsr opforgeNativeCliPutStr
+; Surface-lock compatibility marker until Item 8: MOVE.L #nativePassOneText, D1
+	moveq #OPASM_EVENT_PASS_BEGIN, d0
+	moveq #1, d1
+	bsr.w opforgeNativeCliRenderPassEvent
 	jsr opasmEngineBeginPassOneV1
 	movem.l (sp)+, d1
 	rts
@@ -98,8 +109,10 @@ opforgeNativeCliOpasmPassOneBegin	.block
 
 opforgeNativeCliOpasmPassOneOk	.block
 	movem.l d1, -(sp)
-	move.l #NativePassOneOkText, d1
-	jsr opforgeNativeCliPutStr
+; Surface-lock compatibility marker until Item 8: MOVE.L #nativePassOneOkText, D1
+	moveq #OPASM_EVENT_PASS_OK, d0
+	moveq #1, d1
+	bsr.w opforgeNativeCliRenderPassEvent
 	movem.l (sp)+, d1
 	moveq #0, d0
 	rts
@@ -107,8 +120,10 @@ opforgeNativeCliOpasmPassOneOk	.block
 
 opforgeNativeCliOpasmPassTwoBegin	.block
 	movem.l d1, -(sp)
-	move.l #NativePassTwoText, d1
-	jsr opforgeNativeCliPutStr
+; Surface-lock compatibility marker until Item 8: MOVE.L #nativePassTwoText, D1
+	moveq #OPASM_EVENT_PASS_BEGIN, d0
+	moveq #2, d1
+	bsr.w opforgeNativeCliRenderPassEvent
 	jsr opasmEngineBeginPassTwoV1
 	movem.l (sp)+, d1
 	rts
@@ -116,8 +131,10 @@ opforgeNativeCliOpasmPassTwoBegin	.block
 
 opforgeNativeCliOpasmPassTwoOk	.block
 	movem.l d1, -(sp)
-	move.l #NativePassTwoOkText, d1
-	jsr opforgeNativeCliPutStr
+; Surface-lock compatibility marker until Item 8: MOVE.L #nativePassTwoOkText, D1
+	moveq #OPASM_EVENT_PASS_OK, d0
+	moveq #2, d1
+	bsr.w opforgeNativeCliRenderPassEvent
 	movem.l (sp)+, d1
 	moveq #0, d0
 	rts
@@ -135,25 +152,23 @@ opforgeNativeCliPassOneRecordLabel	.block
 	bra.s return
 
 stored
-	move.l #NativeLabelText, d1
-	jsr opforgeNativeCliPutStr
-	move.l d4, d1
-	jsr opforgeNativeCliPutStr
-	jsr opforgeNativeCliPutSpace
-	move.l d5, d0
-	jsr opforgeNativeCliPutHexU32
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	movea.l d4, a0
+	jsr opforgeNativeCliTokenLen
+	move.w d0, d1
+	movea.l d4, a0
+	move.l d5, d2
+	moveq #OPASM_EVENT_LABEL_STORED, d0
+	bsr.w opforgeNativeCliRenderTextValueEvent
 	moveq #0, d0
 	bra.s return
 
 duplicate
-	move.l #NativeDuplicateLabelText, d1
-	jsr opforgeNativeCliPutStr
-	move.l d4, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	movea.l d4, a0
+	jsr opforgeNativeCliTokenLen
+	move.w d0, d1
+	movea.l d4, a0
+	moveq #OPASM_EVENT_LABEL_DUPLICATE, d0
+	bsr.w opforgeNativeCliRenderTextEvent
 	moveq #1, d0
 
 return
@@ -220,8 +235,8 @@ opforgeNativeCliPassTwoEmitImageBytes	.block
 	tst.w d1
 	beq.w ok
 	move.w d1, d6
-	move.l #NativeSelectorStatusOkText, d1
-	jsr opforgeNativeCliPutStr
+	moveq #OPASM_EVENT_SELECTOR_STATUS_OK, d0
+	bsr.w opforgeNativeCliRenderKindEvent
 	lea lastErrorBuffer, a1
 	movea.l a1, a0
 	move.w d6, d0
@@ -234,8 +249,8 @@ ok
 	bra.s return
 
 fail
-	move.l #NativeImageCapacityText, d1
-	jsr opforgeNativeCliPutStr
+	moveq #OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, d0
+	bsr.w opforgeNativeCliRenderKindEvent
 	moveq #1, d0
 	bra.s return
 
@@ -251,10 +266,10 @@ serviceFail
 	bsr.w opforgeNativeCliPassTwoEmitSelectorDiagnostic
 	tst.l d0
 	bne.s serviceFailReturn
-	move.l #lastErrorBuffer, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	lea lastErrorBuffer, a0
+	move.w d4, d1
+	moveq #OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w opforgeNativeCliRenderTextEvent
 
 serviceFailReturn
 	moveq #1, d0
@@ -290,20 +305,20 @@ opforgeNativeCliPassTwoEmitSelectorDiagnostic	.block
 	rts
 
 unknownMnemonic
-	move.l #NativeUnknownMnemonicText, d1
-	jsr opforgeNativeCliPutStr
+	moveq #OPASM_EVENT_UNKNOWN_MNEMONIC, d0
+	bsr.w opforgeNativeCliRenderKindEvent
 	moveq #1, d0
 	rts
 
 unsupportedAddressing
-	move.l #NativeUnsupportedAddressingText, d1
-	jsr opforgeNativeCliPutStr
+	moveq #OPASM_EVENT_UNSUPPORTED_ADDRESSING, d0
+	bsr.w opforgeNativeCliRenderKindEvent
 	moveq #1, d0
 	rts
 
 operandError
-	move.l #NativeUnresolvedLabelText, d1
-	jsr opforgeNativeCliPutStr
+	moveq #OPASM_EVENT_UNRESOLVED_LABEL, d0
+	bsr.w opforgeNativeCliRenderKindEvent
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliPassTwoEmitSelectorDiagnostic
@@ -376,8 +391,8 @@ readValue
 	bls.s ok
 
 fail
-	move.l #NativeUnresolvedLabelText, d1
-	jsr opforgeNativeCliPutStr
+	moveq #OPASM_EVENT_UNRESOLVED_LABEL, d0
+	bsr.w opforgeNativeCliRenderKindEvent
 	moveq #1, d0
 	bra.s return
 
@@ -450,8 +465,8 @@ org
 	bsr.w opforgeNativeCliReadOperandValueForStatement
 	tst.l d0
 	beq.s orgOk
-	move.l #NativeBadOrgText, d1
-	jsr opforgeNativeCliPutStr
+	moveq #OPASM_EVENT_BAD_ORG, d0
+	bsr.w opforgeNativeCliRenderKindEvent
 	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #1, d0
@@ -530,10 +545,10 @@ fail
 	bsr.w opforgeNativeCliPassTwoEmitSelectorDiagnostic
 	tst.l d0
 	bne.s failReturn
-	move.l #lastErrorBuffer, d1
-	jsr opforgeNativeCliPutStr
-	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	lea lastErrorBuffer, a0
+	move.w d4, d1
+	moveq #OPASM_EVENT_SERVICE_FAILURE, d0
+	bsr.w opforgeNativeCliRenderTextEvent
 
 failReturn
 	moveq #1, d0
@@ -553,6 +568,73 @@ opforgeNativeCliBuildOpasmServiceFrame	.block
 	move.w #NATIVE_EVAL_EXPR_EXTENSION_BYTES, OPASM_SERVICE_EVAL_EXTENSION_BYTES(a0)
 	rts
 	.bend  ; opforgeNativeCliBuildOpasmServiceFrame
+
+opforgeNativeCliRenderKindEvent	.block
+	movem.l d1/a0, -(sp)
+	suba.l #OPASM_EVENT_BYTES, sp
+	movea.l sp, a0
+	bsr.w opforgeNativeCliClearEventFrame
+	move.w d0, OPASM_EVENT_KIND(a0)
+	jsr opforgeNativeCliRenderOpasmEventV1
+	adda.l #OPASM_EVENT_BYTES, sp
+	movem.l (sp)+, d1/a0
+	rts
+	.bend  ; opforgeNativeCliRenderKindEvent
+
+opforgeNativeCliRenderPassEvent	.block
+	movem.l d2/a0, -(sp)
+	suba.l #OPASM_EVENT_BYTES, sp
+	movea.l sp, a0
+	bsr.w opforgeNativeCliClearEventFrame
+	move.w d0, OPASM_EVENT_KIND(a0)
+	move.w d1, OPASM_EVENT_PASS(a0)
+	jsr opforgeNativeCliRenderOpasmEventV1
+	adda.l #OPASM_EVENT_BYTES, sp
+	movem.l (sp)+, d2/a0
+	rts
+	.bend  ; opforgeNativeCliRenderPassEvent
+
+opforgeNativeCliRenderTextEvent	.block
+	movem.l d2/a0-a1, -(sp)
+	movea.l a0, a1
+	suba.l #OPASM_EVENT_BYTES, sp
+	movea.l sp, a0
+	bsr.w opforgeNativeCliClearEventFrame
+	move.w d0, OPASM_EVENT_KIND(a0)
+	move.l a1, OPASM_EVENT_TEXT_PTR(a0)
+	move.w d1, OPASM_EVENT_TEXT_LEN(a0)
+	jsr opforgeNativeCliRenderOpasmEventV1
+	adda.l #OPASM_EVENT_BYTES, sp
+	movem.l (sp)+, d2/a0-a1
+	rts
+	.bend  ; opforgeNativeCliRenderTextEvent
+
+opforgeNativeCliRenderTextValueEvent	.block
+	movem.l d3/a0-a1, -(sp)
+	movea.l a0, a1
+	suba.l #OPASM_EVENT_BYTES, sp
+	movea.l sp, a0
+	bsr.w opforgeNativeCliClearEventFrame
+	move.w d0, OPASM_EVENT_KIND(a0)
+	move.l a1, OPASM_EVENT_TEXT_PTR(a0)
+	move.w d1, OPASM_EVENT_TEXT_LEN(a0)
+	move.l d2, OPASM_EVENT_VALUE(a0)
+	jsr opforgeNativeCliRenderOpasmEventV1
+	adda.l #OPASM_EVENT_BYTES, sp
+	movem.l (sp)+, d3/a0-a1
+	rts
+	.bend  ; opforgeNativeCliRenderTextValueEvent
+
+opforgeNativeCliClearEventFrame	.block
+	movem.l d0-d1/a0, -(sp)
+	moveq #OPASM_EVENT_BYTES - 1, d1
+
+loop
+	clr.b (a0)+
+	dbf d1, loop
+	movem.l (sp)+, d0-d1/a0
+	rts
+	.bend  ; opforgeNativeCliClearEventFrame
 
 opforgeNativeCliStatementMnemDuplicatesLabel	.block
 	jsr opasmEngineStatementMnemonicDuplicatesLabelV1

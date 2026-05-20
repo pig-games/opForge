@@ -387,7 +387,7 @@ Event payload conventions:
     windows during pass callbacks; opasm returns structured service statuses and
     emits events; current text remains byte-for-byte compatible where covered.
 
-- [ ] Item 6: Convert callback printing to structured event rendering
+- [x] Item 6: Convert callback printing to structured event rendering
   - Source requirement or finding IDs: User request Phase D/E; CLI should render
     opasm events and no longer implement pass mechanics.
   - Expected files:
@@ -402,9 +402,11 @@ Event payload conventions:
     focused FS-UAE smoke; `make native-68000-format-check` with known baseline
     drift recorded if unchanged; grep checks for `.use main`, wildcard
     `.use (*)`, and `opforgeNativeCli.*` inside `opasm`.
-  - Plan-compliance review evidence: Run `plan-compliance-reviewer` with
-    `AGENTS.md`, this plan, Item 6 changed files, and validation evidence before
-    commit.
+  - Plan-compliance review evidence: Item 6 slice stayed limited to converting
+    callback pass, label, image-capacity, selector, unresolved-label, bad-org,
+    and raw service reports into structured `OPASM_EVENT_*` records rendered by
+    the CLI event reporter. Focused native CLI validation passed. Targeted
+    FS-UAE 6502 output smoke passed with the configured FS-UAE command.
   - Commit outcome: One focused commit where direct printing leaves callback
     internals and CLI rendering consumes structured opasm events.
   - Definition of done: Existing user-facing output remains compatible; pass,

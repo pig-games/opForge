@@ -62,6 +62,11 @@ OPASM_ENGINE_EXPR_META_SPAN_LINE     = 16
 OPASM_ENGINE_EXPR_META_SPAN_START    = 20
 OPASM_ENGINE_EXPR_META_SPAN_END      = 24
 OPASM_ENGINE_EXPR_META_BYTES         = 28
+OPASM_ENGINE_STMT_TEXT_MNEM_PTR      = 0
+OPASM_ENGINE_STMT_TEXT_MNEM_LEN      = 4
+OPASM_ENGINE_STMT_TEXT_OPERAND_PTR   = 8
+OPASM_ENGINE_STMT_TEXT_OPERAND_LEN   = 12
+OPASM_ENGINE_STMT_TEXT_BYTES         = 16
 
 ; A4: opasm engine context pointer.
 ; Returns D0=0 on success, non-zero on failure.
@@ -504,6 +509,57 @@ empty
 	moveq #0, d0
 	rts
 	.bend  ; opasmEngineGetStatementExprMetadataV1
+
+; Return stored mnemonic and operand text metadata for one statement.
+;
+; Inputs:
+; - D0: statement index.
+; - A0: OPASM_ENGINE_STMT_TEXT_* output buffer.
+;
+; Outputs:
+; - D0: 0 on success, non-zero when the statement has no mnemonic text.
+opasmEngineGetStatementTextMetadataV1	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	moveq #0, d1
+	move.w d0, d1
+	move.l d1, d2
+	lsl.l #6, d2
+	lea OpasmEngineStmtMnemNameTable.l, a1
+	adda.l d2, a1
+	move.l a1, d0
+	move.l d0, OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a2)
+	move.l d1, d3
+	add.w d3, d3
+	lea OpasmEngineStmtMnemLenTable.l, a1
+	moveq #0, d0
+	move.w 0(a1, d3.l), d0
+	bne.s haveMnemLen
+	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a2), a1
+	movea.l a1, a0
+	bsr.w tokenLen
+
+haveMnemLen
+	tst.w d0
+	beq.s fail
+	move.l d0, OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a2)
+	lea OpasmEngineStmtOperandLenTable.l, a1
+	moveq #0, d0
+	move.w 0(a1, d3.l), d0
+	move.l d0, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a2)
+	lea OpasmEngineStmtOperandNameTable.l, a1
+	adda.l d2, a1
+	move.l a1, d0
+	move.l d0, OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a2)
+	movem.l (sp)+, d1-d3/a0-a2
+	moveq #0, d0
+	rts
+
+fail
+	movem.l (sp)+, d1-d3/a0-a2
+	moveq #1, d0
+	rts
+	.bend  ; opasmEngineGetStatementTextMetadataV1
 
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)

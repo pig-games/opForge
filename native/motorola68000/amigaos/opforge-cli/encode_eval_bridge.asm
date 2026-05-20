@@ -8,13 +8,15 @@
 	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 
 	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1, opasmEngineGetStatementExprMetadataV1)
+	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_OPERAND_INDEX, OPASM_ENGINE_EXPR_META_SLOT_INDEX)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_START_TOKEN, OPASM_ENGINE_EXPR_META_END_TOKEN)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_LINE, OPASM_ENGINE_EXPR_META_SPAN_START)
 	.use opasm.amigaos.engine (OPASM_ENGINE_EXPR_META_SPAN_END, OPASM_ENGINE_EXPR_META_BYTES)
+	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
+	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_OPERAND_PTR, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN)
+	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_BYTES)
 	.use opasm.amigaos.engine (opasmEngineStmtLineTable)
-	.use opasm.amigaos.engine (opasmEngineStmtMnemLenTable, opasmEngineStmtMnemNameTable)
-	.use opasm.amigaos.engine (opasmEngineStmtOperandLenTable, opasmEngineStmtOperandNameTable)
 	.use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineLabelValueTable)
 	.use opasm.amigaos.engine (opasmEngineLabelCount, opasmEngineSessionCurrentPc)
 
@@ -29,7 +31,6 @@
 	.use opforge.cli.strings (NativeCliSelectedShapeIndirectText, NativeCliSelectedShapeIndexedIndirectXText)
 	.use opforge.cli.strings (NativeCliSelectedShapeIndirectIndexedYText)
 	.use opforge.cli.copy (opforgeNativeCliCopyBytes, opforgeNativeCliCopyFixedString)
-	.use opforge.cli.token_util (opforgeNativeCliTokenLen)
 	.use opforge.cli.tkpkg_control_block (opforgeNativeCliWriteInputWindow, opforgeNativeCliReadStatus)
 
 	.section code, kind=code
@@ -38,40 +39,19 @@
 opforgeNativeCliPrepareEncodeSelectedRequestForStatement	.block
 	movem.l d1-d7/a0-a2, -(sp)
 	move.w d6, d7
+	suba.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
 	moveq #0, d0
 	move.w d7, d0
-	lsl.l #6, d0
-	lea opasmEngineStmtMnemNameTable.l, a0
-	adda.l d0, a0
-	movea.l a0, a2
-	moveq #0, d0
-	move.w d7, d0
-	add.w d0, d0
-	lea opasmEngineStmtMnemLenTable.l, a1
-	moveq #0, d6
-	move.w 0(a1, d0.l), d6
-	bne.w haveMnemLen
-	movea.l a2, a0
-	jsr opforgeNativeCliTokenLen
-	move.w d0, d6
-
-haveMnemLen
-	tst.w d6
-	beq.w fail
+	jsr opasmEngineGetStatementTextMetadataV1
+	tst.l d0
+	bne.w fail
+	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a2
+	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d6
 	move.l a2, NativeCliStmtMnemStart
 	move.l d6, NativeCliStmtMnemLen
-	moveq #0, d0
-	move.w d7, d0
-	add.w d0, d0
-	lea opasmEngineStmtOperandLenTable.l, a0
-	moveq #0, d1
-	move.w 0(a0, d0.l), d1
-	moveq #0, d0
-	move.w d7, d0
-	lsl.l #6, d0
-	lea opasmEngineStmtOperandNameTable.l, a0
-	adda.l d0, a0
-	move.l d1, d0
+	move.l OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a0), d1
+	movea.l OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a0), a0
 
 buildRequest
 	move.l a0, d3
@@ -116,6 +96,7 @@ fail
 	moveq #1, d0
 
 return
+	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a2
 	rts
 	.bend  ; opforgeNativeCliPrepareEncodeSelectedRequestForStatement

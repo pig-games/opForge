@@ -5,7 +5,7 @@
 
 	.use opasm.amigaos.callback_abi as abi
 	.use opasm.amigaos.engine as eng
-	.use opasm.amigaos.events as events
+	.use opasm.amigaos.events
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 
 	.section code, kind=code

@@ -28,7 +28,7 @@
 	.use opforge.cli.strings (FlagSrecShort, FlagSrecLong, FlagDefineShort, FlagDefineLong)
 	.use opforge.cli.strings (FlagIncludeShort, FlagIncludeLong, ModPathText)
 	.use opforge.cli.strings (NewlineText)
-	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.dos
 	.use opforge.cli.path (opforgeNativeCliCopyPathRoot, opforgeNativeCliCopyPathBuffer)
 	.use opforge.cli.text_output (opforgeNativeCliPutDecU16, opforgeNativeCliPutSpace)
 	.use opforge.cli.token_util (opforgeNativeCliTokenEquals, opforgeNativeCliCopyTokenBuffer)
@@ -327,7 +327,7 @@ emitLoop
 	cmp.w d0, d4
 	bhs.s emitDone
 	move.l #ModPathText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
 	jsr opforgeNativeCliPutDecU16
@@ -338,9 +338,9 @@ emitLoop
 	lea NativeCliModulePathTable, a0
 	adda.l d0, a0
 	move.l a0, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	addq.w #1, d4
 	bra.s emitLoop
 

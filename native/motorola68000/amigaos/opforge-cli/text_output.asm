@@ -9,7 +9,7 @@
 
 	.use opforge.cli.state (NativeCliDecimalChar, NativeCliHexBuffer)
 	.use opforge.cli.strings (HexDigitsText, SpaceText)
-	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.dos
 
 	.section code, kind=code
 	.pub
@@ -48,7 +48,7 @@ emit
 	move.b d3, (a1)
 	clr.b 1(a1)
 	move.l #NativeCliDecimalChar, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 
 next
 	dbra d6, powerLoop
@@ -78,14 +78,14 @@ loop
 	clr.b (a1)
 	addq.l #4, sp
 	move.l #NativeCliHexBuffer, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a2
 	rts
 	.bend  ; opforgeNativeCliPutHexU32
 
 opforgeNativeCliPutSpace	.block
 	move.l #SpaceText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	rts
 	.bend  ; opforgeNativeCliPutSpace
 

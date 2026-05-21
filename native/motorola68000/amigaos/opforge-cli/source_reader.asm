@@ -14,8 +14,7 @@
 	.use opforge.cli.state (NativeCliModuleSavedLineLen, NativeCliModuleSavedSawCr, NativeCliModuleSavedLineNum, NativeCliModuleSavedPath, NativeCliIncludePath)
 	.use opforge.cli.constants (PACKAGE_INPUT_PTR_V1, SOURCE_LINE_BUFFER_CAPACITY)
 	.use opforge.cli.strings (TokenizerOkText, ModuleDepthFailureText)
-	.use opforge.cli.dos (opforgeNativeCliPutStr, opforgeNativeCliOpenInput)
-	.use opforge.cli.dos (opforgeNativeCliReadInput, opforgeNativeCliClose)
+	.use opforge.cli.dos
 	.use opforge.cli.path (opforgeNativeCliCopyPathBuffer)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1)
 
@@ -36,7 +35,7 @@ opforgeNativeCliTokenizeFrontend	.block
 	tst.l d0
 	bne.b return
 	move.l #TokenizerOkText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.w #-1, NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliTokenizeFile
 	tst.l d0
@@ -70,7 +69,7 @@ fail
 
 ; Read and tokenize one AmigaDOS text file at A0, preserving logical line state.
 opforgeNativeCliTokenizeFileAtPath	.block
-	jsr opforgeNativeCliOpenInput
+	jsr dos.openInput
 	tst.l d0
 	bne.s openOk
 	moveq #1, d0
@@ -86,7 +85,7 @@ loop
 	lea NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
-	jsr opforgeNativeCliReadInput
+	jsr dos.readInput
 	cmp.l #-1, d0
 	beq.w close
 	tst.l d0
@@ -154,18 +153,18 @@ checkModuleDepth
 	tst.w NativeCliModuleDepth
 	beq.s successClose
 	move.l #ModuleDepthFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	bra.s close
 
 successClose
 	move.l d5, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 	moveq #0, d0
 	rts
 
 close
 	move.l d5, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliTokenizeFileAtPath

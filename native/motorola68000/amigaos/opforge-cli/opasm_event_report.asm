@@ -12,7 +12,7 @@
 	.use opasm.amigaos.callback_abi (OPASM_EVENT_UNRESOLVED_LABEL, OPASM_EVENT_BAD_ORG)
 	.use opasm.amigaos.callback_abi (OPASM_EVENT_SERVICE_FAILURE)
 
-	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.dos
 	.use opforge.cli.text_output (opforgeNativeCliPutHexU32, opforgeNativeCliPutSpace)
 	.use opforge.cli.strings (NativePassOneText, NativePassTwoText, NativePassOneOkText, NativePassTwoOkText)
 	.use opforge.cli.strings (NativeLabelText, NativeDuplicateLabelText, NativeImageCapacityText)
@@ -119,7 +119,7 @@ passTwoOk
 
 labelStored
 	move.l #NativeLabelText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	bsr.w reportEventText
 	jsr opforgeNativeCliPutSpace
 	move.l OPASM_EVENT_VALUE(a1), d0
@@ -129,7 +129,7 @@ labelStored
 
 labelDuplicate
 	move.l #NativeDuplicateLabelText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	bsr.w reportEventText
 	move.l #NewlineText, d1
 	bra.s reportText
@@ -163,7 +163,7 @@ serviceFailure
 	move.l #NewlineText, d1
 
 reportText
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 
 done
 	movem.l (sp)+, d1-d2/a0-a1
@@ -184,7 +184,7 @@ loop
 	move.b (a0)+, (a2)
 	clr.b 1(a2)
 	move.l #EventCharBuffer, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	subq.w #1, d2
 	bne.s loop
 

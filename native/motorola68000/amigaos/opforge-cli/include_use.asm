@@ -15,7 +15,7 @@
 	.use opforge.cli.constants (NATIVE_INCLUDE_DEPTH_LIMIT, PATH_BUFFER_CAPACITY)
 	.use opforge.cli.strings (IncludeStageText, IncludeRootText, IncludeFileText, IncludeEnterText)
 	.use opforge.cli.strings (IncludeLeaveText, IncludeOkText, IncludeFailureText, SpaceText, NewlineText)
-	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.dos
 	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace)
 	.use opforge.cli.path (opforgeNativeCliCopyPathBuffer, opforgeNativeCliCopyPathRoot)
 	.use opforge.cli.path (opforgeNativeCliPathIsAbsolute, opforgeNativeCliAppendPathBuffer)
@@ -44,7 +44,7 @@ opforgeNativeCliParseIncludeLine	.block
 
 fail
 	move.l #IncludeFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseIncludeLine
@@ -72,29 +72,29 @@ opforgeNativeCliPreparePendingInclude	.block
 	bne.w fail
 
 	move.l #IncludeStageText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #IncludeRootText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliIncludeRootPath, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #IncludeFileText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliIncludePath, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #IncludeEnterText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliCurrentPath, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SpaceText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliIncludePath, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 
 	move.w #NATIVE_INCLUDE_DEPTH_LIMIT, NativeCliIncludeDepth
 	lea NativeCliIncludePath, a0
@@ -113,7 +113,7 @@ none
 
 fail
 	move.l #IncludeFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliPreparePendingInclude
@@ -123,15 +123,15 @@ opforgeNativeCliFinishPendingInclude	.block
 	tst.l d0
 	bne.s restoreFail
 	move.l #IncludeLeaveText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #IncludeOkText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #0, d1
 	bra.s restore
 
 restoreFail
 	move.l #IncludeFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d1
 
 restore

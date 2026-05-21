@@ -110,7 +110,7 @@ OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_END   = OPASM_ENGINE_EVAL_REQ_EXPR_META + OPASM_
 ;
 ; Outputs:
 ; - D0: 0 on success.
-opasmEngineInitSessionV1	.block
+initSessionV1	.block
 	movem.l d1/a0-a1, -(sp)
 	lea OpasmEngineAssemblySessionStart.l, a1
 	move.l #OPASM_ENGINE_ASSEMBLY_SESSION_BYTES, d0
@@ -130,17 +130,17 @@ copyCpuDone
 	movem.l (sp)+, d1/a0-a1
 	moveq #0, d0
 	rts
-	.bend  ; opasmEngineInitSessionV1
+	.bend  ; initSessionV1
 
 ; Reset statement collection state before parsing input.
 ;
 ; Outputs:
 ; - D0: 0 on success.
-opasmEngineResetStatementCollectionV1	.block
+resetStatementCollectionV1	.block
 	clr.w OpasmEngineStmtCount.l
 	moveq #0, d0
 	rts
-	.bend  ; opasmEngineResetStatementCollectionV1
+	.bend  ; resetStatementCollectionV1
 
 ; Record one logical source line in opasm-owned session tables.
 ;

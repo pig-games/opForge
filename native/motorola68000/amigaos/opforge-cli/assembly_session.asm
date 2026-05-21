@@ -18,9 +18,9 @@
 	.use opforge.cli.constants (NCLI_PARSER_DIRECTIVE_NONE, NCLI_PARSER_DIRECTIVE_GENERIC, PRVM_STATUS_EXPR_REQUEST, PRVM_RESULT_RECORD_COUNT, PRVM_RESULT_RECORD_SIZE, PRVM_RESULT_LABEL_TEXT, PRVM_RESULT_MNEMONIC_TEXT, PRVM_RESULT_DIRECTIVE_TEXT, PRVM_RESULT_OPERAND_TEXT, PRVM_RESULT_OPERAND_EXPR_SLOT)
 
 	.use opforge.cli.strings (StatementText, StatementExprText, NewlineText)
-	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.dos
 	.use opforge.cli.text_output (opforgeNativeCliPutDecU16, opforgeNativeCliPutSpace)
-	.use opforge.cli.copy (opforgeNativeCliCopyFixedString)
+	.use opforge.cli.copy
 	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace)
 
 	.section code, kind=code
@@ -236,7 +236,7 @@ return
 opforgeNativeCliEmitStatementRecord	.block
 	movem.l d0-d7/a0-a1, -(sp)
 	move.l #StatementText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetStatementCountV1
 	jsr opforgeNativeCliPutDecU16
 	jsr opforgeNativeCliPutSpace
@@ -269,12 +269,12 @@ opforgeNativeCliEmitStatementRecord	.block
 	adda.l d0, a0
 	lea NativeCliArgToken, a1
 	move.l NativeCliStmtMnemLen, d0
-	jsr opforgeNativeCliCopyFixedString
+	jsr copy.copyFixedString
 	clr.b (a1)
 	move.l #NativeCliArgToken, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	tst.w NativeCliStmtExprFound
 	beq.s done
 	jsr opforgeNativeCliEmitStatementExprRequest
@@ -303,7 +303,7 @@ done
 
 opforgeNativeCliEmitStatementExprRequest	.block
 	move.l #StatementExprText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetStatementCountV1
 	bsr.w opforgeNativeCliPutDecU16
 	bsr.w opforgeNativeCliPutSpace
@@ -328,7 +328,7 @@ opforgeNativeCliEmitStatementExprRequest	.block
 	move.l NativeCliStmtExprSpanEnd, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	rts
 	.bend  ; opforgeNativeCliEmitStatementExprRequest
 
@@ -432,7 +432,7 @@ opforgeNativeCliRecordSourceStatementMnemonic	.block
 	lea tokenScratchBuffer, a1
 	movea.l a2, a0
 	move.w d3, d0
-	jsr opforgeNativeCliCopyFixedString
+	jsr copy.copyFixedString
 	clr.b (a1)
 	move.w #1, NativeCliStmtMnemFound
 	movea.l a2, a0

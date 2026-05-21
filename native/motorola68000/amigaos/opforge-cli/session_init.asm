@@ -3,11 +3,11 @@
 	.module opforge.cli.session_init
 	.cpu 68020
 
-	.use opasm.amigaos.engine (opasmEngineInitSessionV1, opasmEngineResetStatementCollectionV1)
+	.use opasm.amigaos.engine as eng
 	.use opforge.cli.constants (NATIVE_MODULE_USE_STATE_BYTES)
 	.use opforge.cli.state (NativeCliCpuName, NativeCliModuleUseStateStart)
 	.use opforge.cli.strings (DefaultCpuName)
-	.use opforge.cli.copy (opforgeNativeCliClearBytes)
+	.use opforge.cli.copy
 
 	.section code, kind=code
 	.pub
@@ -20,7 +20,7 @@ opforgeNativeCliInitAssemblySession	.block
 	lea DefaultCpuName, a0
 
 haveCpu
-	jsr opasmEngineInitSessionV1
+	jsr eng.initSessionV1
 	rts
 	.bend  ; opforgeNativeCliInitAssemblySession
 
@@ -29,8 +29,8 @@ opforgeNativeCliInitModuleUseState	.block
 	movem.l d0-d1/a0, -(sp)
 	lea NativeCliModuleUseStateStart, a0
 	move.l #NATIVE_MODULE_USE_STATE_BYTES, d0
-	jsr opforgeNativeCliClearBytes
-	jsr opasmEngineResetStatementCollectionV1
+	jsr copy.clearBytes
+	jsr eng.resetStatementCollectionV1
 	movem.l (sp)+, d0-d1/a0
 	rts
 	.bend  ; opforgeNativeCliInitModuleUseState

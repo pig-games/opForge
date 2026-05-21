@@ -8,7 +8,7 @@
 	.cpu 68020
 
 	.use opforge.cli.constants (PACKAGE_INPUT_PTR_V1)
-	.use opforge.cli.copy (opforgeNativeCliCopyBytes, opforgeNativeCliCopyCString)
+	.use opforge.cli.copy
 	.use tkpkg.amigaos.service as svc
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, ControlBlockV1, packageStorage, PACKAGE_STORAGE_CAPACITY, lastErrorBuffer)
 
@@ -17,7 +17,7 @@
 
 	.use opforge.cli.tkpkg_control_block (opforgeNativeCliReadStatus, opforgeNativeCliWriteInputWindow)
 	.use opforge.cli.strings (PackageTooLargeText, DefaultCpuName, DefaultFamilyName, DefaultFamilyNameEnd, Mos6502FamilyName, Mos6502FamilyNameEnd)
-	.use opforge.cli.dos (opforgeNativeCliPutStr, opforgeNativeCliOpenInput, opforgeNativeCliReadInput, opforgeNativeCliClose)
+	.use opforge.cli.dos
 	.use opforge.cli.state (NativeCliPackageLenActive, NativeCliPipelineRequestLen, NativeCliPackagePath, NativeCliCpuName, NativeCliCurrentPath, NativeCliInputChar)
 
 	.section code, kind=code
@@ -27,7 +27,7 @@
 opforgeNativeCliInitPackagePipeline	.block
 	lea ControlBlockV1, a0
 	moveq #ENTRY_ORD_INIT, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	jsr opforgeNativeCliReadStatus
 	tst.b d0
 	bne.w fail
@@ -41,7 +41,7 @@ opforgeNativeCliInitPackagePipeline	.block
 	move.w NativeCliPackageLenActive, d1
 	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_LOAD_PACKAGE, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	jsr opforgeNativeCliReadStatus
 	tst.b d0
 	bne.s fail
@@ -55,7 +55,7 @@ opforgeNativeCliInitPackagePipeline	.block
 	move.w NativeCliPipelineRequestLen, d1
 	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_SET_PIPELINE, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	jsr opforgeNativeCliReadStatus
 	tst.b d0
 	bne.s fail
@@ -78,13 +78,13 @@ opforgeNativeCliStagePackage	.block
 	lea packageStorage, a2
 	move.w OpforgeNativeCliPackageLen, d0
 	move.w d0, NativeCliPackageLenActive
-	jsr opforgeNativeCliCopyBytes
+	jsr copy.copyBytes
 	moveq #0, d0
 	rts
 
 externalPackage
 	lea NativeCliPackagePath, a0
-	jsr opforgeNativeCliOpenInput
+	jsr dos.openInput
 	tst.l d0
 	bne.s externalOpenOk
 	moveq #1, d0
@@ -95,7 +95,7 @@ externalOpenOk
 	lea packageStorage, a0
 	move.l #PACKAGE_STORAGE_CAPACITY, d0
 	move.l d5, d1
-	jsr opforgeNativeCliReadInput
+	jsr dos.readInput
 	move.l d0, d6
 	cmp.l #-1, d6
 	beq.w externalReadFail
@@ -104,29 +104,29 @@ externalOpenOk
 	lea NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
-	jsr opforgeNativeCliReadInput
+	jsr dos.readInput
 	move.l d0, d7
 	cmp.l #-1, d7
 	beq.w externalReadFail
 	tst.l d7
 	beq.s externalReadOk
 	move.l d5, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 	move.l #PackageTooLargeText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	rts
 
 externalReadOk
 	move.l d5, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 	move.w d6, NativeCliPackageLenActive
 	moveq #0, d0
 	rts
 
 externalReadFail
 	move.l d5, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliStagePackage
@@ -140,7 +140,7 @@ opforgeNativeCliPreparePipelineRequest	.block
 
 haveCpu
 	lea lastErrorBuffer, a1
-	jsr opforgeNativeCliCopyCString
+	jsr copy.copyCString
 	move.w d0, NativeCliPipelineRequestLen
 	moveq #0, d0
 	rts

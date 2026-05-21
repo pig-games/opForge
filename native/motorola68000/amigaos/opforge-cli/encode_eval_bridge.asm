@@ -118,7 +118,7 @@ opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 	move.w NativeCliEncodeRequestLen, d1
 	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_ENCODE_INSTRUCTION, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	jsr opforgeNativeCliReadStatus
 
 done

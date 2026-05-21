@@ -27,7 +27,7 @@
 	.use opforge.cli.constants (NCLI_PARSER_DIRECTIVE_ENDMODULE, NCLI_PARSER_DIRECTIVE_USE)
 	.use opforge.cli.strings (ProcessorAsmText, KindStatementText, ModuleMnemonicText, EndmoduleMnemonicText, UseMnemonicText)
 	.use opforge.cli.strings (ModuleDirectiveText, EndmoduleDirectiveText, UseDirectiveText)
-	.use opforge.cli.copy (opforgeNativeCliCopyBytes, opforgeNativeCliClearBytes)
+	.use opforge.cli.copy
 	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace, opforgeNativeCliLineStartsWith)
 	.use opforge.cli.tkpkg_control_block (opforgeNativeCliWriteInputWindow, opforgeNativeCliReadStatus)
 
@@ -155,7 +155,7 @@ opforgeNativeCliDispatchPreparedParseLineEnvelope	.block
 	move.w NativeCliLineRequestLen, d1
 	bsr.w opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_PARSE_LINE, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	move.l d0, NativeCliPrvmRouteStatus
 	move.w d1, NativeCliPrvmResultCount
 	lea ControlBlockV1, a0
@@ -179,7 +179,7 @@ opforgeNativeCliWritePrvmRouteFrameInput	.block
 	lea OpforgeNativeCliPrvmRouteFrame, a1
 	lea lastErrorBuffer, a2
 	move.w #PRVM_ROUTE_FRAME_SIZE, d0
-	bsr.w opforgeNativeCliCopyBytes
+	bsr.w copy.copyBytes
 	move.w #PRVM_ROUTE_FRAME_SIZE, NativeCliLineRequestLen
 	moveq #0, d0
 	rts
@@ -261,7 +261,7 @@ opforgeNativeCliBuildPrvmRouteFrame	.block
 	lea OpforgeNativeCliPrvmResultBuffer, a1
 	movea.l a1, a0
 	move.l #PRVM_ROUTE_RESULT_CAPACITY, d0
-	bsr.w opforgeNativeCliClearBytes
+	bsr.w copy.clearBytes
 	lea OpforgeNativeCliPrvmRouteFrame, a0
 	lea OpforgeNativeCliPrvmResultBuffer, a1
 	move.l a1, 64(a0)

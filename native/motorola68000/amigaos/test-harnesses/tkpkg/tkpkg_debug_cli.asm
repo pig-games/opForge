@@ -841,7 +841,7 @@ tkpkgDebugCliReadOutputLenV1
 tkpkgDebugCliRunLastErrorV1
 	bsr.w tkpkgDebugCliClearInputWindowV1
 	moveq #ENTRY_ORD_LAST_ERROR, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	rts
 	.bend ; start

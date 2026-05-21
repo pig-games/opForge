@@ -5,7 +5,7 @@
 
 	.use opasm.amigaos.engine (opasmEngineGetImageByteCountV1, opasmEngineGetImageBufferPtrV1)
 	.use opforge.cli.state (NativeCliBinPath)
-	.use opforge.cli.dos (opforgeNativeCliOpenOutput, opforgeNativeCliWriteOutput, opforgeNativeCliClose)
+	.use opforge.cli.dos
 
 	.section code, kind=code
 	.pub
@@ -13,7 +13,7 @@
 opforgeNativeCliWriteFlatOutput	.block
 	movem.l d1-d4/a0-a1, -(sp)
 	lea NativeCliBinPath, a0
-	jsr opforgeNativeCliOpenOutput
+	jsr dos.openOutput
 	tst.l d0
 	beq.s fail
 	move.l d0, d4
@@ -21,17 +21,17 @@ opforgeNativeCliWriteFlatOutput	.block
 	jsr opasmEngineGetImageByteCountV1
 	move.l d0, d3
 	move.l d4, d1
-	jsr opforgeNativeCliWriteOutput
+	jsr dos.writeOutput
 	cmp.l d3, d0
 	bne.s closeFail
 	move.l d4, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 	moveq #0, d0
 	bra.s return
 
 closeFail
 	move.l d4, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 
 fail
 	moveq #1, d0

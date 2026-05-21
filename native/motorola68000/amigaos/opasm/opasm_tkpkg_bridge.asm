@@ -7,7 +7,6 @@
 	.use tkpkg.amigaos.abi as tkabi
 	.use tkpkg.amigaos.service as svc
 
-
 	.section code, kind=code
 	.pub
 
@@ -66,7 +65,7 @@ dispatchServiceV1	.block
 	bsr.w writeExtensionWindow
 	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), a0
 	move.w d4, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	movea.l a2, a0
 	bsr.w readStatusV1
 	move.w d0, d3

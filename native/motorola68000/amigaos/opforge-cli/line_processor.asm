@@ -11,7 +11,7 @@
 	.use tkpkg.amigaos.abi (ENTRY_ORD_TOKENIZE_LINE)
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_PTR_V1)
 	.use tkpkg.amigaos.service as svc
-	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.dos
 
 	.use opforge.cli.strings (NewlineText, ConditionalFailureText, NativeBadOrgText, ParserFailureText, IfdefDirectiveText, IfndefDirectiveText, ElseifDirectiveText, ElseDirectiveText, EndifDirectiveText, IfDirectiveText, IncludeDirectiveText, OrgMnemonicText)
 	.use opforge.cli.constants (NCLI_PARSER_DIRECTIVE_MODULE, NCLI_PARSER_DIRECTIVE_ENDMODULE, NCLI_PARSER_DIRECTIVE_USE)
@@ -26,7 +26,7 @@
 
 	.use opforge.cli.report (opforgeNativeCliEmitIncludeLineRecord)
 	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace, opforgeNativeCliLineStartsWith)
-	.use opforge.cli.copy (opforgeNativeCliCopyBytes)
+	.use opforge.cli.copy
 
 	.section code, kind=code
 	.pub
@@ -47,7 +47,7 @@ record
 	move.w NativeCliLineRequestLen, d1
 	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_TOKENIZE_LINE, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	lea ControlBlockV1, a0
 	jsr opforgeNativeCliReadStatus
 	tst.b d0
@@ -59,7 +59,7 @@ record
 	lea lastErrorBuffer, a1
 	clr.b 0(a1, d0.w)
 	move.l #lastErrorBuffer, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 
 ok
 	bsr.w opforgeNativeCliParseCurrentLine
@@ -76,9 +76,9 @@ fail
 	lea lastErrorBuffer, a1
 	clr.b 0(a1, d0.W)
 	move.l #lastErrorBuffer, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 
 return
 	moveq #1, d0
@@ -190,19 +190,19 @@ done
 
 conditionalLine
 	move.l #ConditionalFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	bra.w return
 
 badOrgLine
 	move.l #NativeBadOrgText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	bra.w return
 
 fail
 	move.l #ParserFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 
 return
@@ -235,7 +235,7 @@ opforgeNativeCliPrepareLineServiceRequest	.block
 	move.b d2, (a2)+
 	lea NativeCliSourceLine, a1
 	move.w NativeCliSourceLineLen, d0
-	jsr opforgeNativeCliCopyBytes
+	jsr copy.copyBytes
 	move.w NativeCliSourceLineLen, d1
 	addq.w #4, d1
 	move.w d1, NativeCliLineRequestLen

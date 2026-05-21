@@ -21,7 +21,7 @@
 	.use opforge.cli.strings (StubHeaderText, InputLabelText, BinLabelText)
 	.use opforge.cli.strings (TokenizerFailureText, ParserOkText, NativePassFailureText)
 	.use opforge.cli.strings (NativeOutputFailureText, NativeOutputOkText, EmitterStubText)
-	.use opforge.cli.dos (opforgeNativeCliPutStr, opforgeNativeCliOpenInput, opforgeNativeCliClose)
+	.use opforge.cli.dos
 	.use opforge.cli.source_reader (opforgeNativeCliTokenizeFrontend)
 	.use opforge.cli.report (opforgeNativeCliReportParseError, opforgeNativeCliEmitAssemblySessionSummary)
 	.use opforge.cli.args (opforgeNativeCliParseArgs, opforgeNativeCliEmitModulePathRecords)
@@ -92,73 +92,73 @@ haveDos
 
 help
 	move.l #HelpText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_OK, NativeCliReturnCode
 	bra.w closeDos
 
 version
 	move.l #VersionText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_OK, NativeCliReturnCode
 	bra.w closeDos
 
 parsed
 	lea NativeCliInputPath, a0
-	jsr opforgeNativeCliOpenInput
+	jsr dos.openInput
 	tst.l d0
 	bne.s inputOpened
 	move.l #InputOpenErrorText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliInputPath, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_FILE_FAILURE, NativeCliReturnCode
 	bra.w closeDos
 
 inputOpened
 	move.l d0, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 	cmpi.w #NATIVE_OUTPUT_FORMAT_HUNK, NativeCliOutputFormat
 	bne.s outputFormatReady
 	move.l #NativeHunkNotImplementedText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_NOT_IMPLEMENTED, NativeCliReturnCode
 	bra.w closeDos
 
 outputFormatReady
 	move.l #StubHeaderText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #InputLabelText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliInputPath, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #BinLabelText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliBinPath, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opforgeNativeCliInitAssemblySession
 	jsr opforgeNativeCliEmitModulePathRecords
 	jsr opforgeNativeCliTokenizeFrontend
 	tst.l d0
 	beq.s tokenizerOk
 	move.l #TokenizerFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_RUNTIME_FAILURE, NativeCliReturnCode
 	bra.w closeDos
 
 tokenizerOk
 	move.l #ParserOkText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opforgeNativeCliRunTwoPassEngine
 	tst.l d0
 	beq.s passesOk
 	move.l #NativePassFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_RUNTIME_FAILURE, NativeCliReturnCode
 	bra.w closeDos
 
@@ -171,19 +171,19 @@ passesOk
 	tst.l d0
 	beq.s outputOk
 	move.l #NativeOutputFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_FILE_FAILURE, NativeCliReturnCode
 	bra.w closeDos
 
 outputOk
 	move.l #NativeOutputOkText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_OK, NativeCliReturnCode
 	bra.w closeDos
 
 emitStub
 	move.l #EmitterStubText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #RETURN_NOT_IMPLEMENTED, NativeCliReturnCode
 
 closeDos

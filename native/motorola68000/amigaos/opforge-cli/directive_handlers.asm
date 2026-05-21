@@ -13,9 +13,9 @@
 	.use opforge.cli.state (NativeCliParserTailBuffer, NativeCliParserTailLen)
 	.use opforge.cli.constants (SOURCE_LINE_BUFFER_CAPACITY)
 	.use opforge.cli.strings (ParserFailureText, ModuleDirectiveText, EndmoduleDirectiveText, UseDirectiveText, NewlineText, ModuleResolveFailureText, ModuleDepthFailureText)
-	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.dos
 	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace, opforgeNativeCliLineStartsWith, opforgeNativeCliCopyLineWord, opforgeNativeCliCopyUseToken, opforgeNativeCliParseUseOptionalAlias, opforgeNativeCliParseUseItems)
-	.use opforge.cli.module_use (opforgeNativeCliRecordModule, opforgeNativeCliEmitModuleRecord, opforgeNativeCliEmitModuleCompatibility, opforgeNativeCliCloseModule, opforgeNativeCliRecordImport, opforgeNativeCliEmitImportRecord, opforgeNativeCliResolveBareUseModule)
+	.use opforge.cli.module_use (opforgeNativeCliRecordModule, opforgeNativeCliEmitModuleRecord, opforgeNativeCliEmitModuleCompatibility, opforgeNativeCliEmitCloseModule, opforgeNativeCliRecordImport, opforgeNativeCliEmitImportRecord, opforgeNativeCliResolveBareUseModule)
 
 	.section code, kind=code
 	.pub
@@ -160,7 +160,7 @@ record
 
 fail
 	move.l #ParserFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseModuleLine
@@ -176,7 +176,7 @@ opforgeNativeCliParseEndmoduleLine	.block
 	bne.w fail
 
 close
-	bsr.w opforgeNativeCliCloseModule
+	bsr.w opforgeNativeCliEmitCloseModule
 	tst.l d0
 	bne.w moduleDepthFail
 	moveq #0, d0
@@ -184,13 +184,13 @@ close
 
 moduleDepthFail
 	move.l #ModuleDepthFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	rts
 
 fail
 	move.l #ParserFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseEndmoduleLine
@@ -260,17 +260,17 @@ done
 
 resolveFail
 	move.l #ModuleResolveFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliArgToken, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	rts
 
 fail
 	move.l #ParserFailureText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseUseLine

@@ -20,7 +20,7 @@
 	.use opforge.cli.state (NativeCliSourceLineNum, NativeCliCurrentPath)
 	.use opforge.cli.state (NativeCliIncludeDepth, NativeCliParseStatus)
 	.use opforge.cli.state (NativeCliArgToken)
-	.use opforge.cli.dos (opforgeNativeCliPutStr)
+	.use opforge.cli.dos
 	.use opforge.cli.opasm_event_report (opforgeNativeCliRenderOpasmEventsV1)
 	.use opforge.cli.text_output (opforgeNativeCliPutDecU16, opforgeNativeCliPutHexU32)
 	.use opforge.cli.strings (IncludeLineText, SpaceText, NewlineText)
@@ -39,19 +39,19 @@
 opforgeNativeCliEmitIncludeLineRecord	.block
 	movem.l d0-d1, -(sp)
 	move.l #IncludeLineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.w NativeCliIncludeDepth, d0
 	jsr opforgeNativeCliPutDecU16
 	move.l #SpaceText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l NativeCliSourceLineNum, d0
 	jsr opforgeNativeCliPutDecU16
 	move.l #SpaceText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliCurrentPath, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0-d1
 	rts
 	.bend  ; opforgeNativeCliEmitIncludeLineRecord
@@ -59,58 +59,58 @@ opforgeNativeCliEmitIncludeLineRecord	.block
 opforgeNativeCliEmitAssemblySessionSummary	.block
 	movem.l d0-d2/a0-a1, -(sp)
 	move.l #SessionStageText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionCpuText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetSessionCpuNamePtrV1
 	move.l a0, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionPassText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetSessionPassV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionOriginText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetSessionOriginV1
 	jsr opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionPcText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetSessionCurrentPcV1
 	jsr opforgeNativeCliPutHexU32
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionSourceCountText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetSourceRecordCountV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionStmtCountText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetStatementCountV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionLabelCountText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetLabelCountV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionImageBytesText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	jsr opasmEngineGetImageByteCountV1
 	jsr opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #SessionReadyText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0-d2/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitAssemblySessionSummary
@@ -144,25 +144,25 @@ quoted
 
 unsupported
 	move.l #UnsupportedText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliArgToken, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeSubsetHelpText, d1
 	bra.s reportText
 
 unknown
 	move.l #UnknownFlagText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliArgToken, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
 	bra.s reportText
 
 missing
 	move.l #MissingValueText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NativeCliArgToken, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
 	bra.s reportText
 
@@ -186,7 +186,7 @@ modulePathCapacity
 	move.l #ModulePathCapacityText, d1
 
 reportText
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	rts
 	.bend  ; opforgeNativeCliReportParseError
 

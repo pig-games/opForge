@@ -10254,7 +10254,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         ".cpu 68020",
         "opforgeNativeCliParseArgs",
         "opforgeNativeCliInitModuleUseState",
-        "opforgeNativeCliClearBytes",
+        "clearBytes",
         "opforgeNativeCliTokenizeFrontend",
         "opforgeNativeCliTokenizeFile",
         "opforgeNativeCliTokenizeFileAtPath",
@@ -10278,7 +10278,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "opforgeNativeCliEmitModuleRecord",
         "opforgeNativeCliEmitModuleCompatibility",
         "opforgeNativeCliParseEndmoduleLine",
-        "opforgeNativeCliCloseModule",
+        "dos.closeModule",
         "opforgeNativeCliEmitModuleEndRecord",
         "opforgeNativeCliRestoreParentModule",
         "opforgeNativeCliCopyRequiredPathValue",
@@ -12528,7 +12528,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("opforgeNativeCliParseArgs"));
     assert!(listing.contains("opforgeNativeCliInitModuleUseState"));
-    assert!(listing.contains("opforgeNativeCliClearBytes"));
+    assert!(listing.contains("clearBytes"));
     assert!(listing.contains("opforgeNativeCliTokenizeFrontend"));
     assert!(listing.contains("opforgeNativeCliTokenizeFile"));
     assert!(listing.contains("opforgeNativeCliTokenizeFileAtPath"));
@@ -12551,7 +12551,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("opforgeNativeCliEmitModuleRecord"));
     assert!(listing.contains("opforgeNativeCliEmitModuleCompatibility"));
     assert!(listing.contains("opforgeNativeCliParseEndmoduleLine"));
-    assert!(listing.contains("opforgeNativeCliCloseModule"));
+    assert!(listing.contains("dos.closeModule"));
     assert!(listing.contains("opforgeNativeCliEmitModuleEndRecord"));
     assert!(listing.contains("opforgeNativeCliRestoreParentModule"));
     assert!(listing.contains("opforgeNativeCliRecordImplicitModulePathRoot"));

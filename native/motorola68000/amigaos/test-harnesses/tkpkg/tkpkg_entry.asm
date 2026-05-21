@@ -26,7 +26,7 @@ start	.block
 
 ; Forward an already prepared request to the shared tkpkg service dispatcher.
 tkpkgEntryDispatchV1	.block
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	rts
 	.bend  ; tkpkgEntryDispatchV1
 
@@ -34,7 +34,7 @@ tkpkgEntryDispatchV1	.block
 tkpkgEntryBootstrapV1	.block
 	lea ControlBlockV1, a0
 	moveq #ENTRY_ORD_INIT, d0
-	jsr svc.serviceDispatchV1
+	jsr svc.dispatchV1
 	rts
 	.bend  ; tkpkgEntryBootstrapV1
 

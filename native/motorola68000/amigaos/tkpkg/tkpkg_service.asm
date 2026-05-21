@@ -303,12 +303,12 @@ EncodeSelectedMselUnstable
 ; - ControlBlockV1 contains ABI magic/version/capability fields.
 ; - D0/D1 follow tkpkg_service_dispatch_v1 for ENTRY_ORD_INIT.
 ; ---------------------------------------------------------------------------
-tkpkgServiceBootstrapV1	.block
+bootstrapV1	.block
 	lea ControlBlockV1, a0  ; shared in-module CB used by the direct native bootstrap
 	moveq #ENTRY_ORD_INIT, d0  ; exercise the public init ordinal, not a private initializer
-	bsr.w serviceDispatchV1  ; keep bootstrap behavior identical to an external init call
+	bsr.w dispatchV1  ; keep bootstrap behavior identical to an external init call
 	rts
-	.bend  ; tkpkgServiceBootstrapV1
+	.bend  ; bootstrapV1
 
 ; ---------------------------------------------------------------------------
 ; Public tkpkg service dispatcher.
@@ -329,7 +329,7 @@ tkpkgServiceBootstrapV1	.block
 ; - Last-error fields are updated for bad-control, bad-request, and runtime
 ;   error paths.
 ; ---------------------------------------------------------------------------
-serviceDispatchV1	.block
+dispatchV1	.block
 	cmpi.b #ENTRY_ORD_INIT, d0
 	beq.s handleInitEntry
 	bsr.w tkpkgServicePrepareRequestV1  ; assign a request id before validation/status reporting
@@ -604,7 +604,7 @@ evaluateExpressionOk
 
 evaluateExpressionDone
 	rts
-	.bend  ; serviceDispatchV1
+	.bend  ; dispatchV1
 
 	.priv
 

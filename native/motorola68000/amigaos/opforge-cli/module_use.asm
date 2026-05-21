@@ -22,7 +22,7 @@
 	.use opforge.cli.token_util (opforgeNativeCliCopyTokenBuffer, opforgeNativeCliTokenLen)
 	.use opforge.cli.text_output (opforgeNativeCliPutDecU16, opforgeNativeCliPutSpace)
 	.use opforge.cli.strings (ModRootText, ModDefText, ModEndText, ModuleFoundText, UseImportText, UseSelectText, UseWildcardText, NewlineText, ModuleSourceExtensionText)
-	.use opforge.cli.dos (opforgeNativeCliPutStr, opforgeNativeCliOpenInput, opforgeNativeCliClose)
+	.use opforge.cli.dos
 	.use opforge.cli.path (opforgeNativeCliCopyPathBuffer, opforgeNativeCliAppendPathBuffer)
 
 	.section code, kind=code
@@ -173,7 +173,7 @@ return
 opforgeNativeCliEmitImportRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	move.l #UseImportText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -220,11 +220,11 @@ opforgeNativeCliEmitImportRecord	.block
 	bsr.w opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportAliasPtr
 	move.l a0, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 
 newline
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitImportRecord
@@ -232,7 +232,7 @@ newline
 opforgeNativeCliEmitImportSelectRecord	.block
 	movem.l d0-d4/d6-d7/a0-a1, -(sp)
 	move.l #UseSelectText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -249,7 +249,7 @@ opforgeNativeCliEmitImportSelectRecord	.block
 	bsr.w opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportSelectNamePtr
 	move.l a0, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	bsr.w opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliImportSelectAliasPtr
@@ -261,7 +261,7 @@ opforgeNativeCliEmitImportSelectRecord	.block
 	bsr.w opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportSelectAliasPtr
 	move.l a0, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 
 flags
 	bsr.w opforgeNativeCliPutSpace
@@ -272,7 +272,7 @@ flags
 	move.w 0(a0, d0.l), d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0-d4/d6-d7/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitImportSelectRecord
@@ -280,7 +280,7 @@ flags
 opforgeNativeCliEmitImportWildcardRecord	.block
 	movem.l d0-d4, -(sp)
 	move.l #UseWildcardText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -288,7 +288,7 @@ opforgeNativeCliEmitImportWildcardRecord	.block
 	moveq #0, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0-d4
 	rts
 	.bend  ; opforgeNativeCliEmitImportWildcardRecord
@@ -321,7 +321,7 @@ loop
 	tst.l d0
 	bne.w fail
 	lea NativeCliIncludePath, a0
-	jsr opforgeNativeCliOpenInput
+	jsr dos.openInput
 	tst.l d0
 	bne.s found
 	addq.w #1, d7
@@ -329,7 +329,7 @@ loop
 
 found
 	move.l d0, d1
-	jsr opforgeNativeCliClose
+	jsr dos.close
 	move.w NativeCliModuleCount, d6
 	move.w d6, NativeCliResolvedModuleId
 	moveq #0, d0
@@ -351,16 +351,16 @@ opforgeNativeCliEmitModuleRecord	.block
 	cmp.w NativeCliRootModuleId, d4
 	bne.s def
 	move.l #ModRootText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 
 def
 	move.l #ModDefText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -396,9 +396,9 @@ def
 	bsr.w opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliModuleNamePtr
 	move.l a0, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitModuleRecord
@@ -407,17 +407,17 @@ opforgeNativeCliEmitModuleCompatibility	.block
 	movem.l d0/d4/a0, -(sp)
 	move.w d0, d4
 	move.l #ModuleFoundText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	bsr.w opforgeNativeCliModuleNamePtr
 	move.l a0, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0/d4/a0
 	rts
 	.bend  ; opforgeNativeCliEmitModuleCompatibility
 
-opforgeNativeCliCloseModule	.block
+opforgeNativeCliEmitCloseModule	.block
 	movem.l d1-d4/a0-a1, -(sp)
 	tst.w NativeCliModuleDepth
 	beq.s fail
@@ -438,7 +438,7 @@ fail
 return
 	movem.l (sp)+, d1-d4/a0-a1
 	rts
-	.bend  ; opforgeNativeCliCloseModule
+	.bend  ; dos.closeModule
 
 	.priv
 
@@ -446,7 +446,7 @@ opforgeNativeCliEmitModuleEndRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	move.w d0, d4
 	move.l #ModEndText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
 	bsr.w opforgeNativeCliPutDecU16
@@ -461,7 +461,7 @@ opforgeNativeCliEmitModuleEndRecord	.block
 	move.w NativeCliModuleDepth, d0
 	bsr.w opforgeNativeCliPutDecU16
 	move.l #NewlineText, d1
-	jsr opforgeNativeCliPutStr
+	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
 	.bend  ; opforgeNativeCliEmitModuleEndRecord

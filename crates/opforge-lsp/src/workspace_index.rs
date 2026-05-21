@@ -15,6 +15,8 @@ use crate::lsp::session::{
 };
 use libopforge::registry::{default_asm_registry, AsmRegistry};
 
+const MAX_IMPLICIT_ANCESTOR_MODULE_ROOTS: usize = 2;
+
 #[derive(Debug, Clone)]
 pub struct IndexedSymbol {
     pub name: String,
@@ -244,6 +246,7 @@ impl WorkspaceIndex {
 
     pub fn imported_symbols_named(
         &self,
+        config: &LspConfig,
         current_uri: &str,
         current_doc: Option<&DocumentState>,
         word: &str,
@@ -262,7 +265,7 @@ impl WorkspaceIndex {
                 if !import_matches_qualifier(import, qualified) {
                     continue;
                 }
-                for symbol in self.module_export_symbols(import.module_id.as_str()) {
+                for symbol in self.qualified_import_symbols_for_request(import, config, current_uri) {
                     if symbol.name.eq_ignore_ascii_case(leaf) {
                         out.push(symbol);
                     }
@@ -273,7 +276,9 @@ impl WorkspaceIndex {
                 continue;
             }
             if import.wildcard {
-                for symbol in self.module_export_symbols(import.module_id.as_str()) {
+                for symbol in
+                    self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri)
+                {
                     if symbol.name.eq_ignore_ascii_case(leaf) {
                         out.push(symbol);
                     }
@@ -284,7 +289,9 @@ impl WorkspaceIndex {
                 if !item.local_name.eq_ignore_ascii_case(leaf) {
                     continue;
                 }
-                for symbol in self.module_export_symbols(import.module_id.as_str()) {
+                for symbol in
+                    self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri)
+                {
                     if symbol.name.eq_ignore_ascii_case(&item.source_name) {
                         out.push(symbol);
                     }
@@ -296,6 +303,7 @@ impl WorkspaceIndex {
 
     pub fn imported_symbols_starting_with(
         &self,
+        config: &LspConfig,
         current_uri: &str,
         current_doc: Option<&DocumentState>,
         prefix: &str,
@@ -316,8 +324,10 @@ impl WorkspaceIndex {
                 if !import_matches_qualifier(import, qualified) {
                     continue;
                 }
-                let qualifier_label = import.alias.as_deref().unwrap_or(&import.module_id);
-                for symbol in self.module_export_symbols(import.module_id.as_str()) {
+                let qualifier_label = import.qualifier.as_deref().unwrap_or(&import.module_id);
+                for symbol in
+                    self.qualified_import_symbols_for_request(import, config, current_uri)
+                {
                     if !symbol
                         .name
                         .to_ascii_lowercase()
@@ -334,7 +344,9 @@ impl WorkspaceIndex {
             }
 
             if import.wildcard {
-                for symbol in self.module_export_symbols(import.module_id.as_str()) {
+                for symbol in
+                    self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri)
+                {
                     if !symbol
                         .name
                         .to_ascii_lowercase()
@@ -358,7 +370,9 @@ impl WorkspaceIndex {
                 {
                     continue;
                 }
-                for symbol in self.module_export_symbols(import.module_id.as_str()) {
+                for symbol in
+                    self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri)
+                {
                     if !symbol.name.eq_ignore_ascii_case(&item.source_name) {
                         continue;
                     }
@@ -383,6 +397,7 @@ impl WorkspaceIndex {
 
     pub fn member_fields_for_symbol(
         &self,
+        config: &LspConfig,
         current_uri: &str,
         current_doc: Option<&DocumentState>,
         request_line: u32,
@@ -391,10 +406,20 @@ impl WorkspaceIndex {
         if base_symbol.is_empty() {
             return Vec::new();
         }
-        let mut out =
-            self.repetition_fields_for_symbol(current_uri, current_doc, request_line, base_symbol);
-        if let Some(type_name) =
-            self.resolve_struct_type_for_symbol(current_uri, current_doc, request_line, base_symbol)
+        let mut out = self.repetition_fields_for_symbol(
+            config,
+            current_uri,
+            current_doc,
+            request_line,
+            base_symbol,
+        );
+        if let Some(type_name) = self.resolve_struct_type_for_symbol(
+            config,
+            current_uri,
+            current_doc,
+            request_line,
+            base_symbol,
+        )
         {
             out.extend(self.struct_fields_for_type(current_uri, current_doc, &type_name));
         }
@@ -403,6 +428,7 @@ impl WorkspaceIndex {
 
     fn repetition_fields_for_symbol(
         &self,
+        config: &LspConfig,
         current_uri: &str,
         current_doc: Option<&DocumentState>,
         request_line: u32,
@@ -422,7 +448,7 @@ impl WorkspaceIndex {
             );
         }
 
-        for imported in self.imported_symbols_named(current_uri, current_doc, base_symbol) {
+        for imported in self.imported_symbols_named(config, current_uri, current_doc, base_symbol) {
             if let Some(repeats) = self.repetition_structs_by_uri.get(&imported.uri) {
                 if let Some(repeat) =
                     find_repetition_struct_in_set(repeats, &imported.name, request_line)
@@ -457,6 +483,7 @@ impl WorkspaceIndex {
 
     fn resolve_struct_type_for_symbol(
         &self,
+        config: &LspConfig,
         current_uri: &str,
         current_doc: Option<&DocumentState>,
         request_line: u32,
@@ -470,7 +497,7 @@ impl WorkspaceIndex {
             return Some(typed.type_name.clone());
         }
 
-        for imported in self.imported_symbols_named(current_uri, current_doc, base_symbol) {
+        for imported in self.imported_symbols_named(config, current_uri, current_doc, base_symbol) {
             let Some(typed) = self
                 .typed_symbols_by_uri
                 .get(&imported.uri)
@@ -750,6 +777,74 @@ impl WorkspaceIndex {
         });
         dedup_indexed_symbols(out)
     }
+
+    fn qualified_import_symbols_for_request(
+        &self,
+        import: &UseImportDecl,
+        config: &LspConfig,
+        current_uri: &str,
+    ) -> Vec<IndexedSymbol> {
+        let symbols =
+            self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri);
+        if import.selected_roots.is_empty() {
+            return symbols;
+        }
+        symbols
+            .into_iter()
+            .filter(|symbol| {
+                import
+                    .selected_roots
+                    .iter()
+                    .any(|root| root.source_name.eq_ignore_ascii_case(&symbol.name))
+            })
+            .collect()
+    }
+
+    fn module_export_symbols_for_request(
+        &self,
+        module_id: &str,
+        config: &LspConfig,
+        current_uri: &str,
+    ) -> Vec<IndexedSymbol> {
+        let indexed = self.module_export_symbols(module_id);
+        if !indexed.is_empty() {
+            return indexed;
+        }
+
+        let registry = default_asm_registry();
+        let mut out = Vec::new();
+        for path in resolve_module_target(module_id, config, current_uri) {
+            let Some(doc) = build_document_state_from_file(&registry, &path) else {
+                continue;
+            };
+            for symbol in &doc.symbols {
+                if !is_module_export_symbol_decl(symbol) {
+                    continue;
+                }
+                out.push(IndexedSymbol {
+                    name: symbol.name.clone(),
+                    kind: symbol.kind.clone(),
+                    uri: doc.uri.clone(),
+                    line: symbol.line,
+                    col_start: symbol.col_start,
+                    col_end: symbol.col_end,
+                    scope_path: symbol.scope_path.clone(),
+                    owner_module: symbol.owner_module.clone(),
+                    visibility: symbol.visibility.clone(),
+                    detail: symbol.detail.clone(),
+                    declaration: symbol.declaration.clone(),
+                    value_excerpt: symbol.value_excerpt.clone(),
+                });
+            }
+        }
+        out.sort_by(|a, b| {
+            a.uri
+                .cmp(&b.uri)
+                .then(a.line.cmp(&b.line))
+                .then(a.col_start.cmp(&b.col_start))
+        });
+        dedup_indexed_symbols(out)
+    }
 }
 
 pub fn local_definition_candidates(
@@ -813,6 +908,9 @@ pub fn resolve_module_target(word: &str, config: &LspConfig, current_uri: &str) 
                     results.push(path);
                 }
             }
+            if !results.is_empty() {
+                break;
+            }
         }
     }
 
@@ -833,8 +931,17 @@ pub(crate) fn module_search_roots_for_request(
 
     if let Some(path) = current_path.as_deref() {
         if let Some(parent) = path.parent() {
-            if !candidates.iter().any(|candidate| candidate == parent) {
-                candidates.push(parent.to_path_buf());
+            let mut cursor = Some(parent);
+            let mut added = 0usize;
+            while let Some(dir) = cursor {
+                if !candidates.iter().any(|candidate| candidate == dir) {
+                    candidates.push(dir.to_path_buf());
+                    added += 1;
+                    if added >= MAX_IMPLICIT_ANCESTOR_MODULE_ROOTS {
+                        break;
+                    }
+                }
+                cursor = dir.parent();
             }
         }
     }
@@ -885,10 +992,9 @@ fn split_qualified_prefix(prefix: &str) -> (Option<&str>, &str) {
 
 fn import_matches_qualifier(import: &UseImportDecl, qualifier: &str) -> bool {
     import
-        .alias
+        .qualifier
         .as_deref()
-        .is_some_and(|alias| alias.eq_ignore_ascii_case(qualifier))
-        || import.module_id.eq_ignore_ascii_case(qualifier)
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(qualifier))
 }
 
 fn canonical_module_id(module_id: &str) -> String {
@@ -896,6 +1002,16 @@ fn canonical_module_id(module_id: &str) -> String {
 }
 
 fn is_module_export_symbol(symbol: &IndexedSymbol) -> bool {
+    if symbol.visibility != SymbolVisibility::Public {
+        return false;
+    }
+    !matches!(
+        symbol.kind,
+        SymbolKind::Module | SymbolKind::UseImport | SymbolKind::Section
+    )
+}
+
+fn is_module_export_symbol_decl(symbol: &SymbolDecl) -> bool {
     if symbol.visibility != SymbolVisibility::Public {
         return false;
     }

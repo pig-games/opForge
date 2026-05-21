@@ -29,6 +29,7 @@ pub fn definition_locations(
     {
         let mut field_out = Vec::new();
         for field in workspace.member_fields_for_symbol(
+            config,
             current_uri,
             doc,
             request_line,
@@ -67,7 +68,7 @@ pub fn definition_locations(
         }
     }
 
-    for symbol in workspace.imported_symbols_named(current_uri, doc, word) {
+    for symbol in workspace.imported_symbols_named(config, current_uri, doc, word) {
         out.push(json!({
             "uri": symbol.uri,
             "range": {

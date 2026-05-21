@@ -12192,32 +12192,32 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
         .expect("read opforge native CLI two-pass surface listing");
 
     assert!(source.contains("opforgeNativeCliRunTwoPassEngine"));
-    assert!(source.contains("opasmNativeAssembleSessionV1"));
+    assert!(source.contains("driver.assembleSessionV1"));
     assert!(source.contains("opforgeNativeCliRenderOpasmEventsV1"));
     assert!(source_contains_in_order(
         &source,
         &[
-            "MOVE.L #nativeCliBinRequested, OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR(A0)",
-            "MOVE.L #nativeCliOpasmEventBuffer, OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(A0)",
-            "MOVE.W #NATIVE_CLI_OPASM_EVENT_CAPACITY, OPASM_ASSEMBLE_REQ_EVENT_CAPACITY(A0)",
-            "MOVE.L #nativeCliOpasmEventCount, OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(A0)",
-            "MOVE.L A2, OPASM_ASSEMBLE_REQ_SERVICE_FRAME_PTR(A0)",
+            "MOVE.L #nativeCliBinRequested, abi.OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR(A0)",
+            "MOVE.L #nativeCliOpasmEventBuffer, abi.OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(A0)",
+            "MOVE.W #NATIVE_CLI_OPASM_EVENT_CAPACITY, abi.OPASM_ASSEMBLE_REQ_EVENT_CAPACITY(A0)",
+            "MOVE.L #nativeCliOpasmEventCount, abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(A0)",
+            "MOVE.L A2, abi.OPASM_ASSEMBLE_REQ_SERVICE_FRAME_PTR(A0)",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "MOVE.L #controlBlockV1, OPASM_SERVICE_CONTROL_BLOCK_PTR(A1)",
-            "MOVE.L #lastErrorBuffer, OPASM_SERVICE_IO_BUFFER_PTR(A1)",
-            "MOVE.W #LAST_ERROR_BUFFER_CAPACITY, OPASM_SERVICE_IO_BUFFER_CAPACITY(A1)",
-            "MOVE.L A2, OPASM_SERVICE_EVAL_EXTENSION_PTR(A1)",
-            "MOVE.W #NATIVE_EVAL_EXPR_EXTENSION_BYTES, OPASM_SERVICE_EVAL_EXTENSION_BYTES(A1)",
+            "MOVE.L #controlBlockV1, abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(A1)",
+            "MOVE.L #lastErrorBuffer, abi.OPASM_SERVICE_IO_BUFFER_PTR(A1)",
+            "MOVE.W #LAST_ERROR_BUFFER_CAPACITY, abi.OPASM_SERVICE_IO_BUFFER_CAPACITY(A1)",
+            "MOVE.L A2, abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(A1)",
+            "MOVE.W #NATIVE_EVAL_EXPR_EXTENSION_BYTES, abi.OPASM_SERVICE_EVAL_EXTENSION_BYTES(A1)",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "JSR opasmNativeAssembleSessionV1",
+            "JSR driver.assembleSessionV1",
             "LEA nativeCliOpasmEventBuffer, A0",
             "MOVE.W nativeCliOpasmEventCount, D0",
             "JSR opforgeNativeCliRenderOpasmEventsV1",
@@ -12231,7 +12231,7 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
     assert!(!source.contains("opforgeNativeCliPassTwoEmitImageBytes"));
     assert!(!source.contains("opforgeNativeCliTrySelectedEncodeSizeForStatement"));
     assert!(!source.contains("ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION"));
-    assert!(listing.contains("opasmNativeAssembleSessionV1"));
+    assert!(listing.contains("opasm.amigaos.assembly_driver.assembleSessionV1"));
     assert!(listing.contains("opforgeNativeCliRenderOpasmEventsV1"));
     assert!(listing.contains("opasmDriverRecordLabel"));
     assert!(listing.contains("opasmDriverAdvancePc"));
@@ -12597,7 +12597,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("opasm.amigaos.engine.opasmEngineRunTwoPassV1"));
     assert!(listing.contains("opasm.amigaos.engine.runPassOne"));
     assert!(listing.contains("opasm.amigaos.engine.runPassTwo"));
-    assert!(listing.contains("opasmNativeAssembleSessionV1"));
+    assert!(listing.contains("opasm.amigaos.assembly_driver.assembleSessionV1"));
     assert!(listing.contains("opasmDriverRecordLabel"));
     assert!(listing.contains("opasmDriverAdvancePc"));
     assert!(listing.contains("opasmDriverEmitImageBytes"));
@@ -15421,7 +15421,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
         &[
             "tkpkgEntryDispatchV1",
             ".block",
-            "JSR tkpkgServiceDispatchV1",
+            "JSR serviceDispatchV1",
             "RTS"
         ]
     ));
@@ -15432,7 +15432,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
             ".block",
             "lea ControlBlockV1, a0",
             "moveq #ENTRY_ORD_INIT, d0",
-            "jsr tkpkgServiceDispatchV1",
+            "jsr serviceDispatchV1",
             "rts",
         ]
     ));
@@ -15441,7 +15441,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("main.tkpkgEntryDispatchV1"));
     assert!(listing.contains("main.tkpkgEntryBootstrapV1"));
-    assert!(listing.contains("tkpkg.amigaos.service.tkpkgServiceDispatchV1"));
+    assert!(listing.contains("tkpkg.amigaos.service.serviceDispatchV1"));
     assert!(listing.contains("tkpkg.amigaos.service.tkpkgServicePrepareRequestV1"));
     assert!(listing.contains("tkpkg.amigaos.service.tkpkgServiceSetRuntimeErrorV1"));
     assert!(listing.contains("tkpkg.amigaos.buffers.ControlBlockV1"));
@@ -16121,7 +16121,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     assert!(listing.contains("main.start.tkpkgDebugCliRunLastErrorV1"));
     assert!(listing.contains("main.start.tkpkgDebugCliWriteInputWindowV1"));
     assert!(listing.contains("main.start.tkpkgDebugCliReportEmptyTokenizeOutput"));
-    assert!(listing.contains("tkpkg.amigaos.service.tkpkgServiceDispatchV1"));
+    assert!(listing.contains("tkpkg.amigaos.service.serviceDispatchV1"));
     assert!(listing.contains("tkpkg.amigaos.buffers.ControlBlockV1"));
     assert!(listing.contains("tkpkg.amigaos.buffers.PackageStorage"));
     assert!(listing.contains("tkpkg.amigaos.buffers.LastErrorBuffer"));

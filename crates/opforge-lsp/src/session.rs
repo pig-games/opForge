@@ -373,6 +373,7 @@ impl LspSession {
             doc,
             cpu,
             CompletionRequestContext {
+                config: &self.config,
                 current_uri: uri,
                 cursor_line: line + 1,
                 prefix: prefix.as_str(),
@@ -413,6 +414,7 @@ impl LspSession {
             doc,
             cpu,
             HoverRequestContext {
+                config: &self.config,
                 current_uri: uri,
                 request_line: line + 1,
                 word: word.as_str(),
@@ -840,9 +842,12 @@ impl LspSession {
                 if !import.module_id.eq_ignore_ascii_case(module_id) {
                     continue;
                 }
-                if let Some(alias) = &import.alias {
-                    let old = format!("{alias}.{}", target.name);
-                    let new = format!("{alias}.{new_name}");
+                if !qualified_import_includes_symbol(&import, &target.name) {
+                    continue;
+                }
+                if let Some(qualifier) = &import.qualifier {
+                    let old = format!("{qualifier}.{}", target.name);
+                    let new = format!("{qualifier}.{new_name}");
                     rules.insert(old.to_ascii_lowercase(), new);
                 }
             }
@@ -864,8 +869,10 @@ impl LspSession {
                 if !import.module_id.eq_ignore_ascii_case(module_id) {
                     continue;
                 }
-                if let Some(alias) = &import.alias {
-                    out.insert(format!("{alias}.{}", target.name));
+                if qualified_import_includes_symbol(&import, &target.name) {
+                    if let Some(qualifier) = &import.qualifier {
+                        out.insert(format!("{qualifier}.{}", target.name));
+                    }
                 }
                 if import.wildcard {
                     out.insert(target.name.clone());
@@ -1393,10 +1400,8 @@ fn remap_overlay_diagnostics(
 
 fn overlay_root_for_active_file(config: &LspConfig, original_file: &Path) -> PathBuf {
     preferred_workspace_root_for_path(config, original_file).unwrap_or_else(|| {
-        original_file
-            .parent()
-            .unwrap_or(Path::new("."))
-            .to_path_buf()
+        let parent = original_file.parent().unwrap_or(Path::new("."));
+        parent.parent().unwrap_or(parent).to_path_buf()
     })
 }
 
@@ -1872,6 +1877,17 @@ fn is_valid_rename_identifier(name: &str) -> bool {
         return false;
     }
     chars.all(is_symbol_char)
+}
+
+fn qualified_import_includes_symbol(
+    import: &crate::lsp::document_state::UseImportDecl,
+    symbol_name: &str,
+) -> bool {
+    import.selected_roots.is_empty()
+        || import
+            .selected_roots
+            .iter()
+            .any(|root| root.source_name.eq_ignore_ascii_case(symbol_name))
 }
 
 fn symbol_token_spans(line: &str) -> Vec<(u32, u32, String)> {

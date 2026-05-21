@@ -3,12 +3,14 @@
 
 use serde_json::{json, Value};
 
+use crate::lsp::config::LspConfig;
 use crate::lsp::document_state::DocumentState;
 use crate::lsp::member_context::MemberCompletionContext;
 use crate::lsp::workspace_index::WorkspaceIndex;
 use libopforge::registry::{CapabilitySnapshot, CpuType};
 
 pub struct CompletionRequestContext<'a> {
+    pub config: &'a LspConfig,
     pub current_uri: &'a str,
     pub cursor_line: u32,
     pub prefix: &'a str,
@@ -74,6 +76,7 @@ pub fn completion_items(
     if let Some(member_ctx) = ctx.member_ctx {
         let field_prefix = member_ctx.field_prefix.to_ascii_lowercase();
         for field in workspace.member_fields_for_symbol(
+            ctx.config,
             ctx.current_uri,
             doc,
             ctx.cursor_line,
@@ -117,7 +120,9 @@ pub fn completion_items(
     }
 
     if !ctx.prefix.is_empty() {
-        for imported in workspace.imported_symbols_starting_with(ctx.current_uri, doc, ctx.prefix) {
+        for imported in
+            workspace.imported_symbols_starting_with(ctx.config, ctx.current_uri, doc, ctx.prefix)
+        {
             let symbol = imported.origin;
             items.push(json!({
                 "label": imported.label,

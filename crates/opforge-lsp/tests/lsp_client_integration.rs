@@ -872,6 +872,71 @@ fn overlay_stages_transitive_explicit_modules_without_configured_roots() {
 }
 
 #[test]
+fn overlay_stages_sibling_directory_explicit_modules_without_configured_roots() {
+    let temp_dir = unique_temp_dir();
+    let opasm_dir = temp_dir.join("native/motorola68000/amigaos/opasm");
+    let tkpkg_dir = temp_dir.join("native/motorola68000/amigaos/tkpkg");
+    fs::create_dir_all(&opasm_dir).expect("create opasm dir");
+    fs::create_dir_all(&tkpkg_dir).expect("create tkpkg dir");
+
+    let bridge_file = opasm_dir.join("opasm_tkpkg_bridge.asm");
+    let abi_file = tkpkg_dir.join("tkpkg_abi.asm");
+    let bridge_uri = path_to_file_uri(&bridge_file);
+
+    write_text(
+        &bridge_file,
+        ".module opasm.amigaos.tkpkg_bridge\n.use tkpkg.amigaos.abi as tkabi\n    .byte tkabi.CB_STATUS_CODE\n.endmodule\n",
+    );
+    write_text(
+        &abi_file,
+        ".module tkpkg.amigaos.abi\n.pub\nCB_STATUS_CODE = 10\n.endmodule\n",
+    );
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "validation": {
+                "debounceMs": 0,
+                "onSave": true
+            }
+        }
+    }));
+    client.notify("initialized", json!({}));
+
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": bridge_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module opasm.amigaos.tkpkg_bridge\n.use tkpkg.amigaos.abi as tkabi\n    .byte tkabi.CB_STATUS_CODE\n.endmodule\n"
+            }
+        }),
+    );
+
+    if let Some(publish) =
+        client.wait_for_publish_diagnostics(&bridge_uri, Duration::from_millis(750))
+    {
+        let diagnostics = publish
+            .get("diagnostics")
+            .and_then(|value| value.as_array())
+            .expect("diagnostics array");
+        assert!(
+            diagnostics.iter().all(|diag| {
+                !diag
+                    .get("message")
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|message| message.contains("unknown module: tkpkg.amigaos.abi"))
+            }),
+            "sibling-directory module import should resolve without configured roots"
+        );
+    }
+
+    client.shutdown();
+}
+
+#[test]
 fn overlay_rebases_relative_include_paths_from_workspace_root() {
     let temp_dir = unique_temp_dir();
     let workspace_dir = temp_dir.join("workspace");
@@ -1636,6 +1701,379 @@ fn definition_resolves_imported_symbol_via_alias_qualified_reference() {
 }
 
 #[test]
+fn hover_resolves_workspace_indexed_alias_qualified_import() {
+    let temp_dir = unique_temp_dir();
+    let opasm_dir = temp_dir.join("native/motorola68000/amigaos/opasm");
+    let tkpkg_dir = temp_dir.join("native/motorola68000/amigaos/tkpkg");
+    fs::create_dir_all(&opasm_dir).expect("create opasm dir");
+    fs::create_dir_all(&tkpkg_dir).expect("create tkpkg dir");
+    let bridge_file = opasm_dir.join("opasm_tkpkg_bridge.asm");
+    let service_file = tkpkg_dir.join("tkpkg_service.asm");
+    let bridge_uri = path_to_file_uri(&bridge_file);
+
+    let bridge_text = concat!(
+        "\t.module opasm.amigaos.tkpkg_bridge\n",
+        "\t.use tkpkg.amigaos.service as svc\n",
+        "\t.section code, kind=code\n",
+        "\t.pub\n",
+        "dispatchServiceV1\t.block\n",
+        "\tjsr svc.aerviceDispatchV1\n",
+        "\trts\n",
+        "\t.bend  ; dispatchServiceV1\n",
+        "\t.endsection\n",
+        "\t.endmodule\n",
+    );
+    let service_text = concat!(
+        "\t.module tkpkg.amigaos.service\n",
+        "\t.section code, kind=code\n",
+        "\t.pub\n",
+        "serviceDispatchV1\t.block\n",
+        "\trts\n",
+        "\t.bend  ; serviceDispatchV1\n",
+        "\t.endsection\n",
+        "\t.endmodule\n",
+    );
+    write_text(&bridge_file, bridge_text);
+    write_text(&service_file, service_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": bridge_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": bridge_text
+            }
+        }),
+    );
+
+    let hover = client.request(
+        "textDocument/hover",
+        json!({
+            "textDocument": {"uri": bridge_uri},
+            "position": {"line": 5, "character": 29}
+        }),
+    );
+    let contents = hover
+        .get("contents")
+        .and_then(|contents| contents.get("value"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(
+        contents.contains("serviceDispatchV1"),
+        "expected hover for alias-qualified imported symbol, got {hover:?}"
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn hover_on_use_module_path_prefers_target_module_over_local_import_stub() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let module_file = temp_dir.join("tkpkg_abi.asm");
+    let main_uri = path_to_file_uri(&main_file);
+
+    let main_text = ".module app\n.use tkpkg.amigaos.abi as tkabi\n.endmodule\n";
+    let module_text = ".module tkpkg.amigaos.abi\n.pub\nCB_STATUS_CODE = 10\n.endmodule\n";
+    write_text(&main_file, main_text);
+    write_text(&module_file, module_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "roots": [temp_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": main_text
+            }
+        }),
+    );
+
+    let hover = client.request(
+        "textDocument/hover",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 1, "character": 15}
+        }),
+    );
+    let contents = hover
+        .get("contents")
+        .and_then(|contents| contents.get("value"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(contents.contains("Kind: `module`"));
+    assert!(contents.contains("Imported As: `tkabi`"));
+    assert!(contents.contains("Decl: `.module tkpkg.amigaos.abi`"));
+    assert!(!contents.contains("Kind: `import`"));
+
+    client.shutdown();
+}
+
+#[test]
+fn hover_on_use_module_path_uses_module_search_when_target_is_not_root_indexed() {
+    let temp_dir = unique_temp_dir();
+    let mods_dir = temp_dir.join("mods");
+    fs::create_dir_all(&mods_dir).expect("mods dir");
+    let main_file = temp_dir.join("main.asm");
+    let module_file = mods_dir.join("tkpkg_abi.asm");
+    let main_uri = path_to_file_uri(&main_file);
+
+    let main_text = ".module app\n.use tkpkg.amigaos.abi as tkabi\n.endmodule\n";
+    let module_text = ".module tkpkg.amigaos.abi\n.pub\nCB_STATUS_CODE = 10\n.endmodule\n";
+    write_text(&main_file, main_text);
+    write_text(&module_file, module_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "modulePaths": [mods_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": main_text
+            }
+        }),
+    );
+
+    let hover = client.request(
+        "textDocument/hover",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 1, "character": 15}
+        }),
+    );
+    let contents = hover
+        .get("contents")
+        .and_then(|contents| contents.get("value"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(contents.contains("Kind: `module`"));
+    assert!(contents.contains("Imported As: `tkabi`"));
+    assert!(contents.contains("Decl: `.module tkpkg.amigaos.abi`"));
+    assert!(!contents.contains("Kind: `import`"));
+
+    client.shutdown();
+}
+
+#[test]
+fn hover_resolves_alias_qualified_symbol_via_module_search_when_target_is_not_root_indexed() {
+    let temp_dir = unique_temp_dir();
+    let mods_dir = temp_dir.join("mods");
+    fs::create_dir_all(&mods_dir).expect("mods dir");
+    let main_file = temp_dir.join("main.asm");
+    let module_file = mods_dir.join("tkpkg_abi.asm");
+    let main_uri = path_to_file_uri(&main_file);
+
+    let main_text = concat!(
+        ".module app\n",
+        ".use tkpkg.amigaos.abi as tkabi\n",
+        "    lda tkabi.CB_STATUS_CODE\n",
+        ".endmodule\n",
+    );
+    let module_text = concat!(
+        ".module tkpkg.amigaos.abi\n",
+        ".pub\n",
+        "CB_STATUS_CODE = 10\n",
+        ".endmodule\n",
+    );
+    write_text(&main_file, main_text);
+    write_text(&module_file, module_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "modulePaths": [mods_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": main_text
+            }
+        }),
+    );
+
+    let hover = client.request(
+        "textDocument/hover",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 19}
+        }),
+    );
+    let contents = hover
+        .get("contents")
+        .and_then(|contents| contents.get("value"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default();
+    assert!(
+        contents.contains("`CB_STATUS_CODE`"),
+        "expected qualified import hover through module search, got {hover:?}"
+    );
+    assert!(contents.contains("Module: `tkpkg.amigaos.abi`"));
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_resolves_alias_qualified_symbol_via_module_search_when_target_is_not_root_indexed() {
+    let temp_dir = unique_temp_dir();
+    let mods_dir = temp_dir.join("mods");
+    fs::create_dir_all(&mods_dir).expect("mods dir");
+    let main_file = temp_dir.join("main.asm");
+    let module_file = mods_dir.join("tkpkg_abi.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let module_uri = path_to_file_uri(&module_file);
+
+    let main_text = concat!(
+        ".module app\n",
+        ".use tkpkg.amigaos.abi as tkabi\n",
+        "    lda tkabi.CB_STATUS_CODE\n",
+        ".endmodule\n",
+    );
+    let module_text = concat!(
+        ".module tkpkg.amigaos.abi\n",
+        ".pub\n",
+        "CB_STATUS_CODE = 10\n",
+        ".endmodule\n",
+    );
+    write_text(&main_file, main_text);
+    write_text(&module_file, module_text);
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({
+        "opforgeLsp": {
+            "modulePaths": [mods_dir.to_string_lossy().to_string()]
+        }
+    }));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": main_text
+            }
+        }),
+    );
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 19}
+        }),
+    );
+    let entries = defs.as_array().expect("definition array");
+    assert!(!entries.is_empty(), "expected definition through module search");
+    assert_eq!(
+        entries[0]
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        module_uri
+    );
+
+    client.shutdown();
+}
+
+#[test]
+fn definition_resolves_imported_symbol_via_implicit_final_segment_qualifier() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let engine_file = temp_dir.join("engine.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let engine_uri = path_to_file_uri(&engine_file);
+
+    write_text(
+        &main_file,
+        ".module app\n.use opasm.amigaos.engine\n    lda engine.value\n.endmodule\n",
+    );
+    write_text(
+        &engine_file,
+        ".module opasm.amigaos.engine\n.pub\nvalue = 42\n.endmodule\n",
+    );
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": engine_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module opasm.amigaos.engine\n.pub\nvalue = 42\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use opasm.amigaos.engine\n    lda engine.value\n.endmodule\n"
+            }
+        }),
+    );
+
+    let defs = client.request(
+        "textDocument/definition",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 16}
+        }),
+    );
+    let entries = defs.as_array().expect("definition array");
+    assert!(
+        !entries.is_empty(),
+        "expected imported definition through implicit qualifier"
+    );
+    assert_eq!(
+        entries[0]
+            .get("uri")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        engine_uri
+    );
+
+    client.shutdown();
+}
+
+#[test]
 fn definition_prefers_local_symbol_over_imported_selective_alias() {
     let temp_dir = unique_temp_dir();
     let main_file = temp_dir.join("main.asm");
@@ -1700,6 +2138,71 @@ fn definition_prefers_local_symbol_over_imported_selective_alias() {
             .unwrap_or(999),
         2
     );
+
+    client.shutdown();
+}
+
+#[test]
+fn completion_limits_qualified_selective_imports_to_selected_roots() {
+    let temp_dir = unique_temp_dir();
+    let main_file = temp_dir.join("main.asm");
+    let math_file = temp_dir.join("math.asm");
+    let main_uri = path_to_file_uri(&main_file);
+    let math_uri = path_to_file_uri(&math_file);
+
+    write_text(
+        &main_file,
+        ".module app\n.use math (value) as M\n    lda M.\n.endmodule\n",
+    );
+    write_text(
+        &math_file,
+        ".module math\n.pub\nvalue = 42\nother = 7\n.endmodule\n",
+    );
+
+    let mut client = LspTestClient::spawn().expect("spawn lsp");
+    let _ = client.initialize(json!({}));
+    client.notify("initialized", json!({}));
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": math_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module math\n.pub\nvalue = 42\nother = 7\n.endmodule\n"
+            }
+        }),
+    );
+    client.notify(
+        "textDocument/didOpen",
+        json!({
+            "textDocument": {
+                "uri": main_uri,
+                "version": 1,
+                "languageId": "opforge",
+                "text": ".module app\n.use math (value) as M\n    lda M.\n.endmodule\n"
+            }
+        }),
+    );
+
+    let completion = client.request(
+        "textDocument/completion",
+        json!({
+            "textDocument": {"uri": main_uri},
+            "position": {"line": 2, "character": 10}
+        }),
+    );
+    let items = completion.as_array().expect("completion array");
+    assert!(items.iter().any(|item| {
+        item.get("label")
+            .and_then(|value| value.as_str())
+            .is_some_and(|label| label == "M.value")
+    }));
+    assert!(!items.iter().any(|item| {
+        item.get("label")
+            .and_then(|value| value.as_str())
+            .is_some_and(|label| label == "M.other")
+    }));
 
     client.shutdown();
 }

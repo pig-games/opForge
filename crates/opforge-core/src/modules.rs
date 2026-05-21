@@ -10,6 +10,8 @@ pub struct UseDirectiveSpec {
     pub module_id: String,
     pub alias: Option<String>,
     pub items: Vec<String>,
+    pub item_aliases: Vec<Option<String>>,
+    pub section_maps: Vec<(String, String)>,
 }
 
 fn parse_line_ast(line: &str, line_num: u32) -> Option<LineAst> {
@@ -98,10 +100,22 @@ pub fn collect_use_directives_with_items(lines: &[String]) -> Vec<UseDirectiveSp
         if let LineAst::Use(use_ast) = ast {
             let item_names: Vec<String> =
                 use_ast.items.iter().map(|item| item.name.clone()).collect();
+            let item_aliases: Vec<Option<String>> = use_ast
+                .items
+                .iter()
+                .map(|item| item.alias.clone())
+                .collect();
+            let section_maps: Vec<(String, String)> = use_ast
+                .section_maps
+                .iter()
+                .map(|section_map| (section_map.logical.clone(), section_map.concrete.clone()))
+                .collect();
             uses.push(UseDirectiveSpec {
                 module_id: use_ast.module_id,
                 alias: use_ast.alias,
                 items: item_names,
+                item_aliases,
+                section_maps,
             });
         }
     }
@@ -203,6 +217,41 @@ mod tests {
                 module_id: "mforth.kernel".to_string(),
                 alias: Some("kern".to_string()),
                 items: vec!["foo".to_string(), "bar".to_string()],
+                item_aliases: vec![None, None],
+                section_maps: vec![],
+            }]
+        );
+    }
+
+    #[test]
+    fn collect_use_directives_with_items_keeps_item_aliases() {
+        let lines = vec![".use mforth.kernel (foo as f, bar)".to_string()];
+        assert_eq!(
+            collect_use_directives_with_items(&lines),
+            vec![UseDirectiveSpec {
+                module_id: "mforth.kernel".to_string(),
+                alias: None,
+                items: vec!["foo".to_string(), "bar".to_string()],
+                item_aliases: vec![Some("f".to_string()), None],
+                section_maps: vec![],
+            }]
+        );
+    }
+
+    #[test]
+    fn collect_use_directives_with_items_keeps_qualified_section_maps() {
+        let lines = vec![".use opasm.amigaos.engine (sessionPass) as engine map { code -> app_code, tables -> app_data }".to_string()];
+        assert_eq!(
+            collect_use_directives_with_items(&lines),
+            vec![UseDirectiveSpec {
+                module_id: "opasm.amigaos.engine".to_string(),
+                alias: Some("engine".to_string()),
+                items: vec!["sessionPass".to_string()],
+                item_aliases: vec![None],
+                section_maps: vec![
+                    ("code".to_string(), "app_code".to_string()),
+                    ("tables".to_string(), "app_data".to_string()),
+                ],
             }]
         );
     }

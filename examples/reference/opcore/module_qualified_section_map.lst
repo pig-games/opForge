@@ -1,0 +1,42 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Qualified module import with selected root, logical section map, and reachability.
+----                                2  
+----                                3  .module opasm.amigaos.engine
+----                                4      .pub
+----                                5      .section code, kind=code, logical  ; [section code]
+0000    11                          6  sessionPass .byte $11  ; [section code]
+0001    22                          7  unusedPass  .byte $22  ; [section code]
+----                                8      .endsection
+----                                9  .endmodule
+----                               10  
+----                               11  .module app.main
+----                               12      .region rom, $1000, $10ff
+----                               13      .section app_code, kind=code  ; [section app_code]
+1000    AA                         14  start .byte $aa  ; [section app_code]
+1001    00                         15         .byte engine.sessionPass  ; [section app_code]
+----                               16      .endsection
+----                               17      .place app_code in rom
+----                               18      .use opasm.amigaos.engine (sessionPass) as engine map { code -> app_code }
+----                               19  .endmodule
+----                               20  
+----                               21  .end
+
+Lines: 21  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+app.main.start   1000      prv  lbl 
+opasm.amigaos.engine.sessionPass  0000      pub  lbl 
+opasm.amigaos.engine.unusedPass  0001      pub  lbl 
+
+Total memory is 2 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    AA 00

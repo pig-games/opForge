@@ -24471,24 +24471,19 @@ fn m68k_family_parser_accepts_datareg_binary_absolute_long_destination_ast() {
 #[test]
 fn m68k_jsr_accepts_qualified_imported_symbol_operand() {
     let assembler = run_passes(&[
-        ".module opasm.amigaos.engine",
+        ".module demo.routines",
         ".cpu 68000",
-        ".section code, kind=code",
+        ".org $1010",
         ".pub",
-        "sessionPass:",
+        "drawSprite:",
         " RTS",
-        ".endsection",
         ".endmodule",
-        ".module main",
+        ".module demo.main",
         ".cpu 68000",
-        ".use opasm.amigaos.engine",
-        ".region ram, $1000, $10ff",
-        ".section code, kind=code",
-        "start: JSR engine.sessionPass",
+        ".use demo.routines",
+        ".org $1000",
+        "start: JSR demo.routines.drawSprite",
         " RTS",
-        ".endsection",
-        ".place code in ram",
-        ".output \"build/out.hunk\", format=hunk, sections=code",
         ".endmodule",
     ]);
 
@@ -24496,6 +24491,22 @@ fn m68k_jsr_accepts_qualified_imported_symbol_operand() {
         assembler.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
         assembler.diagnostics
+    );
+    let entries = assembler.image().entries().expect("entries");
+    assert_eq!(
+        entries,
+        vec![
+            (0x1010, 0x4e),
+            (0x1011, 0x75),
+            (0x1000, 0x4e),
+            (0x1001, 0xb9),
+            (0x1002, 0x00),
+            (0x1003, 0x00),
+            (0x1004, 0x10),
+            (0x1005, 0x10),
+            (0x1006, 0x4e),
+            (0x1007, 0x75),
+        ]
     );
 }
 

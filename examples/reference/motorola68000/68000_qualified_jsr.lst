@@ -1,0 +1,41 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Motorola 68000 qualified imported label call smoke fixture
+----                                2  .module demo.routines
+----                                3  .cpu 68000
+----    EQU 1010                    4  .org $1010
+----                                5  .pub
+----                                6  drawSprite
+1010    4E 75                       7      RTS
+----                                8  .endmodule
+----                                9  
+----                               10  .module demo.main
+----                               11  .cpu 68000
+----                               12  .use demo.routines
+----    EQU 1000                   13  .org $1000
+----                               14  
+----                               15  start
+1000    4E B9 00 00 10 10          16      JSR demo.routines.drawSprite
+1006    4E 75                      17      RTS
+----                               18  
+----                               19  .endmodule
+----                               20  .end
+
+Lines: 20  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+demo.main.start  1000      prv  lbl 
+demo.routines.drawSprite  1010      pub  lbl 
+
+Total memory is 10 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    4E B9 00 00 10 10 4E 75
+1010    4E 75

@@ -1565,8 +1565,8 @@ impl<'a> AsmLine<'a> {
                     self.record_expr_references(step);
                 }
             }
+            Expr::Identifier(name, _) => self.record_named_reference(name),
             Expr::Number(_, _)
-            | Expr::Identifier(_, _)
             | Expr::Register(_, _)
             | Expr::Placeholder(_)
             | Expr::Dollar(_)
@@ -1579,16 +1579,11 @@ impl<'a> AsmLine<'a> {
         let Some(source) = self.current_unit_symbol.clone() else {
             return;
         };
-        let Ok(Some(target)) = self.resolve_scoped_name(name) else {
-            return;
+        let target = match self.resolve_scoped_name(name) {
+            Ok(Some(target)) => target,
+            Ok(None) if !name.contains('.') => self.scoped_define_name(name),
+            Ok(None) | Err(_) => return,
         };
-        let current_module = self.symbol_scope.module_active.as_deref();
-        let Some(entry) = self.symbols.entry(&target) else {
-            return;
-        };
-        if entry.module_id.as_deref() == current_module {
-            return;
-        }
         self.symbols.record_symbol_reference(&source, &target);
     }
 

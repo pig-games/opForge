@@ -18729,6 +18729,57 @@ fn root_qualified_reference_uses_same_name_concrete_section_by_default() {
 }
 
 #[test]
+fn root_qualified_reference_pulls_code_dependencies_into_mapped_output() {
+    let assembler = run_passes(&[
+        ".module engine",
+        ".cpu 68000",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry:",
+        "    jsr helper",
+        "helper:",
+        "    rts",
+        "unused:",
+        "    rts",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".use engine as e map { code -> app_code }",
+        ".section app_code, kind=code",
+        "start:",
+        "    jsr e.entry",
+        "    rts",
+        ".endsection",
+        ".endmodule",
+    ]);
+
+    let reachable: Vec<_> = assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .into_iter()
+        .map(|unit| unit.full_name)
+        .collect();
+    assert!(reachable.iter().any(|unit| unit == "engine.entry"));
+    assert!(reachable.iter().any(|unit| unit == "engine.helper"));
+    assert!(!reachable.iter().any(|unit| unit == "engine.unused"));
+
+    let section = assembler
+        .sections()
+        .get("app_code")
+        .expect("app_code section");
+    assert_eq!(
+        section.bytes,
+        vec![
+            0x4E, 0xB9, 0x00, 0x00, 0x00, 0x00, // jsr e.entry
+            0x4E, 0x75, // main rts
+            0x4E, 0xB9, 0x00, 0x00, 0x00, 0x06, // engine.entry jsr helper
+            0x4E, 0x75, // engine.helper rts
+        ]
+    );
+}
+
+#[test]
 fn reachable_map_diagnostic_uses_actual_importing_module() {
     let mut assembler = Assembler::new();
     let pass1 = assembler.pass1(&[

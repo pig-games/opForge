@@ -370,8 +370,14 @@ impl SymbolTable {
                         if let Some((module_id, symbol_name)) =
                             self.module_symbol_for_full_name(&reference)
                         {
+                            let importing_module =
+                                if module_id.eq_ignore_ascii_case(&unit.module_id) {
+                                    unit.importing_module.clone()
+                                } else {
+                                    unit.module_id.clone()
+                                };
                             queue.push(ReachableUnit {
-                                importing_module: unit.module_id.clone(),
+                                importing_module,
                                 module_id,
                                 symbol_name,
                                 full_name: reference,

@@ -7565,7 +7565,7 @@ mod tests {
 
     #[test]
     fn ffi_opforge_opcore_module_item_group_enumerates_use_directive() {
-        let line = CString::new(".use math as m (foo, bar)").expect("line cstr");
+        let line = CString::new(".use math (foo, bar) as m").expect("line cstr");
         let report = unsafe { opforge_opcore_process_module_item(line.as_ptr(), 21) };
         assert!(!report.is_null());
         assert_eq!(

@@ -7,7 +7,7 @@ use opcore::tokenizer::{
 };
 use types::line_ast::{
     AssignmentAst, ConditionalAst, PackAst, PlaceAst, StatementAst, StatementDefAst,
-    StatementEndAst, UseAst,
+    StatementEndAst, UseAst, UseSectionMapAst,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -601,6 +601,31 @@ impl PortableAstUseParam {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortableAstUseSectionMap {
+    pub logical: String,
+    pub concrete: String,
+    pub span: PortableSpan,
+}
+
+impl PortableAstUseSectionMap {
+    pub fn from_core_map(map: &UseSectionMapAst<Span>) -> Self {
+        Self {
+            logical: map.logical.clone(),
+            concrete: map.concrete.clone(),
+            span: map.span.into(),
+        }
+    }
+
+    pub fn to_core_map(&self) -> UseSectionMapAst<Span> {
+        UseSectionMapAst {
+            logical: self.logical.clone(),
+            concrete: self.concrete.clone(),
+            span: self.span.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PortableAstSignatureAtom {
     Literal(Vec<u8>, PortableSpan),
     Capture {
@@ -708,6 +733,7 @@ pub enum PortableLineAst {
         alias: Option<String>,
         items: Vec<PortableAstUseItem>,
         params: Vec<PortableAstUseParam>,
+        section_maps: Vec<PortableAstUseSectionMap>,
         span: PortableSpan,
     },
     StatementDef {
@@ -765,6 +791,7 @@ impl PortableLineAst {
                 alias,
                 items,
                 params,
+                section_maps,
                 span,
             }) => Self::Use {
                 module_id: module_id.clone(),
@@ -776,6 +803,10 @@ impl PortableLineAst {
                 params: params
                     .iter()
                     .map(PortableAstUseParam::from_core_param)
+                    .collect(),
+                section_maps: section_maps
+                    .iter()
+                    .map(PortableAstUseSectionMap::from_core_map)
                     .collect(),
                 span: (*span).into(),
             },
@@ -850,6 +881,7 @@ impl PortableLineAst {
                 alias,
                 items,
                 params,
+                section_maps,
                 span,
             } => LineAst::Use(UseAst {
                 module_id: module_id.clone(),
@@ -858,6 +890,10 @@ impl PortableLineAst {
                 params: params
                     .iter()
                     .map(PortableAstUseParam::to_core_param)
+                    .collect(),
+                section_maps: section_maps
+                    .iter()
+                    .map(PortableAstUseSectionMap::to_core_map)
                     .collect(),
                 span: (*span).into(),
             }),

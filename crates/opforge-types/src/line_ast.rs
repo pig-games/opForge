@@ -37,11 +37,19 @@ pub struct UseParamAst<TExpr, TSpan> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UseSectionMapAst<TSpan> {
+    pub logical: String,
+    pub concrete: String,
+    pub span: TSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UseAst<TItem, TParam, TSpan> {
     pub module_id: String,
     pub alias: Option<String>,
     pub items: Vec<TItem>,
     pub params: Vec<TParam>,
+    pub section_maps: Vec<UseSectionMapAst<TSpan>>,
     pub span: TSpan,
 }
 

@@ -8,7 +8,7 @@ use crate::repetition_driver::{
 };
 use asm::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, PassCounts, Severity};
 use asm::listing::{ListingLine, ListingWriter};
-use asm::output::{LinkerOutputDirective, RegionState, RootMetadata, SectionState};
+use asm::output::{LinkerOutputDirective, RegionState, RootMetadata, SectionKind, SectionState};
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
@@ -22,7 +22,9 @@ use std::rc::Rc;
 use types::image::ImageStore;
 use types::lockstep::LockstepReport;
 use types::processing::LineProcessingTrace;
-use types::symbol::{SymbolTable, SymbolVisibility};
+use types::symbol::{
+    LogicalSectionContract, LogicalSectionKind, ModuleImport, SymbolTable, SymbolVisibility,
+};
 use vm::output_model::{LinkerOutputFormat, IMPLICIT_HUNK_CODE_SECTION_NAME};
 
 fn build_default_registry_for_tests() -> ModuleRegistry {
@@ -40,6 +42,7 @@ pub struct Assembler {
     pub sections: HashMap<String, SectionState>,
     pub regions: HashMap<String, RegionState>,
     pub section_symbol_sections: HashMap<String, String>,
+    pub concrete_section_declarations: HashSet<String>,
     pub absolute_constant_symbols: HashSet<String>,
     pub diagnostics: Vec<Diagnostic>,
     pub cpu: CpuType,
@@ -185,10 +188,16 @@ impl Assembler {
         } else {
             None
         };
+        let seeded_concrete_section_declarations = if pass_num > 1 {
+            Some(self.concrete_section_declarations.clone())
+        } else {
+            None
+        };
         let uses_implicit_hunk_code_section =
             Self::uses_implicit_hunk_code_section(lines, self.implicit_hunk_output_requested);
         self.sections.clear();
         self.regions.clear();
+        self.concrete_section_declarations.clear();
         self.diagnostics.clear();
         let mut addr: u32 = 0;
         let line_num: u32 = u32::try_from(lines.len())
@@ -216,6 +225,9 @@ impl Assembler {
             if pass_num > 1 {
                 asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();
                 asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
+            }
+            if let Some(concrete_section_declarations) = seeded_concrete_section_declarations {
+                asm_line.layout.concrete_section_declarations = concrete_section_declarations;
             }
             if let (Some(sections), Some(regions)) = (seeded_sections, seeded_regions) {
                 asm_line.layout.sections = sections;
@@ -420,10 +432,171 @@ impl Assembler {
 
             self.cpu = asm_line.cpu;
             self.section_symbol_sections = asm_line.layout.section_symbol_sections.clone();
+            self.concrete_section_declarations =
+                asm_line.layout.concrete_section_declarations.clone();
             self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
+        }
+
+        let _ = diagnostics;
+        let reachable_units = self.symbols.reachable_units_from_selected_roots();
+        let imported_modules = self.imported_module_keys();
+        for module in self.symbols.modules() {
+            let allow_same_name_default =
+                !imported_modules.contains(&module.name.to_ascii_uppercase());
+            for import in &module.imports {
+                for unit in reachable_units.iter().filter(|unit| {
+                    unit.importing_module.eq_ignore_ascii_case(&module.name)
+                        && unit.module_id.eq_ignore_ascii_case(&import.module_id)
+                }) {
+                    let Some(section_name) = self.section_symbol_sections.get(&unit.full_name)
+                    else {
+                        continue;
+                    };
+                    let Some(dep) = self
+                        .symbols
+                        .modules()
+                        .iter()
+                        .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
+                    else {
+                        continue;
+                    };
+                    let Some(section) = dep
+                        .logical_sections
+                        .iter()
+                        .find(|section| section.name.eq_ignore_ascii_case(section_name))
+                    else {
+                        continue;
+                    };
+                    if Self::resolved_import_section_target(
+                        &self.sections,
+                        &self.concrete_section_declarations,
+                        &module.name,
+                        import,
+                        section,
+                        allow_same_name_default,
+                    )
+                    .is_none()
+                    {
+                        let err = AsmError::new(
+                            AsmErrorKind::Directive,
+                            &format!(
+                                "Reachable logical section '{}' from module '{}' requires an import section map or compatible same-name concrete section",
+                                section.name, import.module_id
+                            ),
+                            Some(&section.name),
+                        );
+                        self.diagnostics.push(
+                            Diagnostic::new(import.span.line, Severity::Error, err)
+                                .with_column(Some(import.span.col_start)),
+                        );
+                        counts.errors += 1;
+                    }
+                }
+                for section in self
+                    .symbols
+                    .modules()
+                    .iter()
+                    .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
+                    .into_iter()
+                    .flat_map(|dep| dep.logical_sections.iter())
+                    .filter(|section| {
+                        import.selected_roots.iter().any(|root| {
+                            root.name != "*"
+                                && root.alias.is_none()
+                                && !self
+                                    .section_symbol_sections
+                                    .contains_key(&format!("{}.{}", import.module_id, root.name))
+                                && Self::resolved_import_section_target(
+                                    &self.sections,
+                                    &self.concrete_section_declarations,
+                                    &module.name,
+                                    import,
+                                    section,
+                                    allow_same_name_default,
+                                )
+                                .is_none()
+                        })
+                    })
+                {
+                    let err = AsmError::new(
+                        AsmErrorKind::Directive,
+                        &format!(
+                            "Reachable logical section '{}' from module '{}' requires an import section map or compatible same-name concrete section",
+                            section.name, import.module_id
+                        ),
+                        Some(&section.name),
+                    );
+                    self.diagnostics.push(
+                        Diagnostic::new(import.span.line, Severity::Error, err)
+                            .with_column(Some(import.span.col_start)),
+                    );
+                    counts.errors += 1;
+                }
+                for map in &import.section_maps {
+                    let Some(target) = self.sections.get(&map.concrete) else {
+                        let err = AsmError::new(
+                            AsmErrorKind::Directive,
+                            &format!(
+                                "Import section map target '{}' is not a declared concrete section",
+                                map.concrete
+                            ),
+                            Some(&map.logical),
+                        );
+                        self.diagnostics.push(
+                            Diagnostic::new(map.span.line, Severity::Error, err)
+                                .with_column(Some(map.span.col_start)),
+                        );
+                        counts.errors += 1;
+                        continue;
+                    };
+                    if target.logical {
+                        let err = AsmError::new(
+                            AsmErrorKind::Directive,
+                            "Import section map target must be a concrete section",
+                            Some(&map.concrete),
+                        );
+                        self.diagnostics.push(
+                            Diagnostic::new(map.span.line, Severity::Error, err)
+                                .with_column(Some(map.span.col_start)),
+                        );
+                        counts.errors += 1;
+                    }
+                    let source_kind = self
+                        .symbols
+                        .modules()
+                        .iter()
+                        .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
+                        .and_then(|dep| {
+                            dep.logical_sections
+                                .iter()
+                                .find(|section| section.name.eq_ignore_ascii_case(&map.logical))
+                        })
+                        .map(|section| section.kind);
+                    if let Some(source_kind) = source_kind {
+                        let compatible = matches!(
+                            (source_kind, target.kind),
+                            (types::symbol::LogicalSectionKind::Code, SectionKind::Code)
+                                | (types::symbol::LogicalSectionKind::Data, SectionKind::Data)
+                                | (types::symbol::LogicalSectionKind::Bss, SectionKind::Bss)
+                        );
+                        if !compatible {
+                            let err = AsmError::new(
+                                AsmErrorKind::Directive,
+                                "Import section map kind is incompatible with target section kind",
+                                Some(&map.logical),
+                            );
+                            self.diagnostics.push(
+                                Diagnostic::new(map.span.line, Severity::Error, err)
+                                    .with_column(Some(map.span.col_start)),
+                            );
+                            counts.errors += 1;
+                        }
+                    }
+                }
+            }
         }
 
         for issue in self.symbols.validate_imports(&self.module_macro_names) {
@@ -432,9 +605,13 @@ impl Assembler {
                 types::symbol::ImportIssueKind::Symbol => AsmErrorKind::Symbol,
             };
             let err = AsmError::new(kind, &issue.message, issue.param.as_deref());
-            diagnostics
+            self.diagnostics
                 .push(Diagnostic::new(issue.line, Severity::Error, err).with_column(issue.column));
             counts.errors += 1;
+        }
+
+        if counts.errors == 0 {
+            self.apply_reachable_section_maps();
         }
 
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
@@ -460,6 +637,7 @@ impl Assembler {
             sections: HashMap::new(),
             regions: HashMap::new(),
             section_symbol_sections: HashMap::new(),
+            concrete_section_declarations: HashSet::new(),
             absolute_constant_symbols: HashSet::new(),
             diagnostics: Vec::new(),
             cpu,
@@ -627,6 +805,7 @@ impl Assembler {
         asm_line.clear_conditionals();
         asm_line.clear_scopes();
         asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();
+        asm_line.layout.concrete_section_declarations = self.concrete_section_declarations.clone();
         asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
         // Seed pass2 with pass1 placement/layout state so section-local encoding
         // (especially relative branches) uses rebased absolute addresses even if
@@ -817,7 +996,11 @@ impl Assembler {
 
         self.cpu = asm_line.cpu;
         self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
+        self.concrete_section_declarations = asm_line.layout.concrete_section_declarations.clone();
         self.sections = sections;
+        if counts.errors == 0 {
+            self.apply_reachable_section_maps();
+        }
         self.refresh_hunk_output_relocation_dispositions();
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
         self.dedup_current_diagnostics();
@@ -870,6 +1053,192 @@ impl Assembler {
             output.relocation_disposition =
                 Self::hunk_output_relocation_disposition(output, &self.sections);
         }
+    }
+
+    pub(crate) fn concrete_section_declaration_key(
+        module_name: &str,
+        section_name: &str,
+    ) -> String {
+        format!(
+            "{}\n{}",
+            module_name.to_ascii_uppercase(),
+            section_name.to_ascii_uppercase()
+        )
+    }
+
+    fn has_concrete_section_declaration(
+        concrete_section_declarations: &HashSet<String>,
+        module_name: &str,
+        section_name: &str,
+    ) -> bool {
+        concrete_section_declarations.contains(&Self::concrete_section_declaration_key(
+            module_name,
+            section_name,
+        ))
+    }
+
+    fn section_kinds_are_compatible(
+        source_kind: LogicalSectionKind,
+        target_kind: SectionKind,
+    ) -> bool {
+        matches!(
+            (source_kind, target_kind),
+            (LogicalSectionKind::Code, SectionKind::Code)
+                | (LogicalSectionKind::Data, SectionKind::Data)
+                | (LogicalSectionKind::Bss, SectionKind::Bss)
+        )
+    }
+
+    fn imported_module_keys(&self) -> HashSet<String> {
+        self.symbols
+            .modules()
+            .iter()
+            .flat_map(|module| module.imports.iter())
+            .map(|import| import.module_id.to_ascii_uppercase())
+            .collect()
+    }
+
+    fn resolved_import_section_target(
+        sections: &HashMap<String, SectionState>,
+        concrete_section_declarations: &HashSet<String>,
+        importing_module: &str,
+        import: &ModuleImport,
+        logical_section: &LogicalSectionContract,
+        allow_same_name_default: bool,
+    ) -> Option<String> {
+        if let Some(map) = import
+            .section_maps
+            .iter()
+            .find(|map| map.logical.eq_ignore_ascii_case(&logical_section.name))
+        {
+            return Some(map.concrete.clone());
+        }
+
+        if !allow_same_name_default {
+            return None;
+        }
+
+        if !Self::has_concrete_section_declaration(
+            concrete_section_declarations,
+            importing_module,
+            &logical_section.name,
+        ) {
+            return None;
+        }
+
+        let target = sections.get(&logical_section.name)?;
+        if Self::section_kinds_are_compatible(logical_section.kind, target.kind) {
+            Some(logical_section.name.clone())
+        } else {
+            None
+        }
+    }
+
+    fn apply_reachable_section_maps(&mut self) {
+        let reachable_units = self.symbols.reachable_units_from_selected_roots();
+        let imported_modules = self.imported_module_keys();
+        let mut copied_units = HashSet::new();
+        for module in self.symbols.modules() {
+            let allow_same_name_default =
+                !imported_modules.contains(&module.name.to_ascii_uppercase());
+            for import in &module.imports {
+                for unit in reachable_units.iter().filter(|unit| {
+                    unit.importing_module.eq_ignore_ascii_case(&module.name)
+                        && unit.module_id.eq_ignore_ascii_case(&import.module_id)
+                }) {
+                    if !copied_units.insert(unit.full_name.to_ascii_uppercase()) {
+                        continue;
+                    }
+                    let Some(source_section_name) =
+                        self.section_symbol_sections.get(&unit.full_name).cloned()
+                    else {
+                        continue;
+                    };
+                    let Some(dep) = self
+                        .symbols
+                        .modules()
+                        .iter()
+                        .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
+                    else {
+                        continue;
+                    };
+                    let Some(logical_section) = dep
+                        .logical_sections
+                        .iter()
+                        .find(|section| section.name.eq_ignore_ascii_case(&source_section_name))
+                    else {
+                        continue;
+                    };
+                    let Some(target_section_name) = Self::resolved_import_section_target(
+                        &self.sections,
+                        &self.concrete_section_declarations,
+                        &module.name,
+                        import,
+                        logical_section,
+                        allow_same_name_default,
+                    ) else {
+                        continue;
+                    };
+                    let Some((start, end)) =
+                        self.reachable_unit_section_range(&unit.full_name, &source_section_name)
+                    else {
+                        continue;
+                    };
+                    let Some(source_section) = self.sections.get(&source_section_name) else {
+                        continue;
+                    };
+                    let start = start.min(source_section.bytes.len());
+                    let end = end.min(source_section.bytes.len());
+                    if start > end {
+                        continue;
+                    }
+                    let bytes = source_section.bytes[start..end].to_vec();
+                    if target_section_name.eq_ignore_ascii_case(&source_section_name) {
+                        continue;
+                    }
+                    let Some(target_section) = self.sections.get_mut(&target_section_name) else {
+                        continue;
+                    };
+                    let image_addr = target_section
+                        .base_addr
+                        .map(|base_addr| base_addr + target_section.bytes.len() as u32);
+                    target_section.bytes.extend_from_slice(&bytes);
+                    target_section.max_pc = target_section
+                        .max_pc
+                        .max(u32::try_from(target_section.bytes.len()).unwrap_or(u32::MAX));
+                    target_section.pc = target_section.max_pc;
+                    if let Some(image_addr) = image_addr {
+                        self.image.store_slice(image_addr, &bytes);
+                    }
+                }
+            }
+        }
+    }
+
+    fn reachable_unit_section_range(
+        &self,
+        full_name: &str,
+        section_name: &str,
+    ) -> Option<(usize, usize)> {
+        let entry = self.symbols.entry(full_name)?;
+        let section = self.sections.get(section_name)?;
+        let start = entry.val.checked_sub(section.start_pc)? as usize;
+        let end = self
+            .symbols
+            .entries()
+            .iter()
+            .filter(|candidate| candidate.name != entry.name && candidate.val > entry.val)
+            .filter(|candidate| {
+                self.section_symbol_sections
+                    .get(&candidate.name)
+                    .is_some_and(|candidate_section| {
+                        candidate_section.eq_ignore_ascii_case(section_name)
+                    })
+            })
+            .map(|candidate| candidate.val.saturating_sub(section.start_pc) as usize)
+            .min()
+            .unwrap_or(section.bytes.len());
+        Some((start, end))
     }
 
     pub fn hunk_output_relocation_disposition_for(

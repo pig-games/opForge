@@ -5,7 +5,8 @@ use registry::{
     parse_statement_signature_from_tokens,
 };
 use types::line_ast::{
-    ConditionalAst, StatementAst, StatementDefAst, StatementEndAst, UseAst, UseItemAst, UseParamAst,
+    ConditionalAst, StatementAst, StatementDefAst, StatementEndAst, UseAst, UseItemAst,
+    UseParamAst, UseSectionMapAst,
 };
 
 use crate::vm_opasm::{
@@ -352,16 +353,7 @@ pub(super) fn parse_use_directive_from_tokens(
     let mut alias = None;
     let mut items = Vec::new();
     let mut params = Vec::new();
-
-    if match_keyword_at(tokens, cursor, "as") {
-        let (name, _) = parse_ident_like_at(
-            tokens,
-            cursor,
-            "Expected alias identifier after 'as'",
-            end_span,
-        )?;
-        alias = Some(name);
-    }
+    let mut section_maps = Vec::new();
 
     if consume_kind_at(tokens, cursor, TokenKind::OpenParen) {
         if consume_kind_at(tokens, cursor, TokenKind::CloseParen) {
@@ -422,6 +414,27 @@ pub(super) fn parse_use_directive_from_tokens(
                     });
                 }
             }
+        }
+    }
+
+    if match_keyword_at(tokens, cursor, "as") {
+        let (name, _) = parse_ident_like_at(
+            tokens,
+            cursor,
+            "Expected alias identifier after 'as'",
+            end_span,
+        )?;
+        alias = Some(name);
+        if items
+            .iter()
+            .any(|item: &UseItemAst<Span>| item.alias.is_some() || item.name == "*")
+        {
+            return Err(ParseError {
+                message:
+                    "Qualified selective imports cannot use per-item aliases or wildcard selections"
+                        .to_string(),
+                span: prev_span_at(tokens, *cursor, end_span),
+            });
         }
     }
 
@@ -503,6 +516,60 @@ pub(super) fn parse_use_directive_from_tokens(
         }
     }
 
+    if match_keyword_at(tokens, cursor, "map") {
+        if !consume_kind_at(tokens, cursor, TokenKind::OpenBrace) {
+            return Err(ParseError {
+                message: "Expected '{' after 'map'".to_string(),
+                span: current_span_at(tokens, *cursor, end_span),
+            });
+        }
+        if consume_kind_at(tokens, cursor, TokenKind::CloseBrace) {
+            return Err(ParseError {
+                message: "Section map cannot be empty".to_string(),
+                span: prev_span_at(tokens, *cursor, end_span),
+            });
+        }
+        loop {
+            let (logical, span) = parse_ident_like_at(
+                tokens,
+                cursor,
+                "Expected logical section name in map",
+                end_span,
+            )?;
+            if !match_operator_at(tokens, cursor, OperatorKind::Minus)
+                || !match_operator_at(tokens, cursor, OperatorKind::Gt)
+            {
+                return Err(ParseError {
+                    message: "Expected '->' in section map entry".to_string(),
+                    span: current_span_at(tokens, *cursor, end_span),
+                });
+            }
+            let (concrete, _) = parse_ident_like_at(
+                tokens,
+                cursor,
+                "Expected concrete section name in map",
+                end_span,
+            )?;
+            section_maps.push(UseSectionMapAst {
+                logical,
+                concrete,
+                span,
+            });
+            if consume_kind_at(tokens, cursor, TokenKind::CloseBrace) {
+                break;
+            }
+            let _ = consume_kind_at(tokens, cursor, TokenKind::Comma);
+        }
+        if alias.is_none()
+            && (!items.is_empty() || module_id.rsplit('.').all(|segment| segment.is_empty()))
+        {
+            return Err(ParseError {
+                message: "Section maps require a module namespace qualifier".to_string(),
+                span: prev_span_at(tokens, *cursor, end_span),
+            });
+        }
+    }
+
     if *cursor < tokens.len() {
         return Err(ParseError {
             message: "Unexpected trailing tokens after .use".to_string(),
@@ -519,6 +586,7 @@ pub(super) fn parse_use_directive_from_tokens(
         alias,
         items,
         params,
+        section_maps,
         span: Span {
             line: start_span.line,
             col_start: start_span.col_start,

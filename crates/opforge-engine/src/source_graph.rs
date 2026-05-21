@@ -310,10 +310,22 @@ fn collect_use_directives_with_items_from_processing(lines: &[String]) -> Vec<Us
         let LineAst::Use(use_ast) = ast else {
             continue;
         };
+        let item_aliases = use_ast
+            .items
+            .iter()
+            .map(|item| item.alias.clone())
+            .collect();
+        let section_maps = use_ast
+            .section_maps
+            .iter()
+            .map(|section_map| (section_map.logical.clone(), section_map.concrete.clone()))
+            .collect();
         uses.push(UseDirectiveSpec {
             module_id: use_ast.module_id,
             alias: use_ast.alias,
             items: use_ast.items.into_iter().map(|item| item.name).collect(),
+            item_aliases,
+            section_maps,
         });
     }
     uses

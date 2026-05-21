@@ -66,7 +66,8 @@ use types::asm_value::{AsmValue, StructField};
 use types::lockstep::{ExecutionMode, LockstepReport};
 use types::processing::{LineProcessingTrace, ProcessingRequestKind};
 use types::symbol::{
-    ImportResult, SymbolTable, SymbolTableEntry, SymbolTableResult, SymbolVisibility,
+    ImportResult, ImportedSymbolResolution, SymbolTable, SymbolTableEntry, SymbolTableResult,
+    SymbolVisibility,
 };
 use types::text_encoding::TextEncodingRegistry;
 use vm::output_model::{OutputFixupRecord, IMPLICIT_HUNK_CODE_SECTION_NAME};
@@ -175,6 +176,7 @@ pub struct AsmLine<'a> {
     pass: u8,
     label: Option<String>,
     mnemonic: Option<String>,
+    pub(crate) current_unit_symbol: Option<String>,
     pub cpu: CpuType,
     pub register_checker: RegisterChecker,
     runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
@@ -252,6 +254,7 @@ impl<'a> AsmLine<'a> {
             pass: 1,
             label: None,
             mnemonic: None,
+            current_unit_symbol: None,
             cpu,
             register_checker: build_register_checker(registry, cpu),
             runtime_line_router: None,
@@ -430,6 +433,7 @@ impl<'a> AsmLine<'a> {
         self.layout.current_section = None;
         self.symbol_scope.saw_explicit_module = false;
         self.symbol_scope.top_level_content_seen = false;
+        self.current_unit_symbol = None;
         self.reset_cpu_runtime_profile();
         self.reset_text_encoding_profile();
     }
@@ -669,7 +673,9 @@ impl<'a> AsmLine<'a> {
     fn resolve_scoped_value_name(&self, name: &str) -> Option<String> {
         if name.contains('.') {
             let candidate = self
-                .resolve_import_alias(name)
+                .resolve_qualified_imported_name(name)
+                .ok()
+                .flatten()
                 .unwrap_or_else(|| name.to_string());
             if self.lookup_value_symbol(&candidate).is_some() {
                 return Some(candidate);
@@ -702,7 +708,9 @@ impl<'a> AsmLine<'a> {
     fn resolve_scoped_scalar_value_name(&self, name: &str) -> Option<String> {
         if name.contains('.') {
             let candidate = self
-                .resolve_import_alias(name)
+                .resolve_qualified_imported_name(name)
+                .ok()
+                .flatten()
                 .unwrap_or_else(|| name.to_string());
             if self.has_scalar_value_symbol(&candidate) {
                 return Some(candidate);
@@ -1468,28 +1476,115 @@ impl<'a> AsmLine<'a> {
 
     fn resolve_imported_name(&self, name: &str) -> Option<String> {
         let module_id = self.symbol_scope.module_active.as_deref()?;
-        let (target_module, target_name) =
-            self.symbols.resolve_selective_import(module_id, name)?;
-        let full_name = format!("{target_module}.{target_name}");
-        Some(
-            self.symbols
-                .entry(&full_name)
-                .map(|entry| entry.name.clone())
-                .unwrap_or(full_name),
-        )
+        match self.symbols.resolve_imported_symbol(module_id, name) {
+            ImportedSymbolResolution::Resolved { full_name, .. } => Some(full_name),
+            ImportedSymbolResolution::Unresolved | ImportedSymbolResolution::Ambiguous => None,
+        }
     }
 
-    fn resolve_import_alias(&self, name: &str) -> Option<String> {
-        let module_id = self.symbol_scope.module_active.as_deref()?;
-        let (prefix, rest) = name.split_once('.')?;
-        let target_module = self.symbols.resolve_import_alias(module_id, prefix)?;
-        let full_name = format!("{target_module}.{rest}");
-        Some(
-            self.symbols
-                .entry(&full_name)
-                .map(|entry| entry.name.clone())
-                .unwrap_or(full_name),
-        )
+    fn resolve_qualified_imported_name(&self, name: &str) -> Result<Option<String>, AsmError> {
+        let Some(module_id) = self.symbol_scope.module_active.as_deref() else {
+            return Ok(None);
+        };
+        match self.symbols.resolve_imported_symbol(module_id, name) {
+            ImportedSymbolResolution::Resolved { full_name, .. } => Ok(Some(full_name)),
+            ImportedSymbolResolution::Unresolved => Ok(None),
+            ImportedSymbolResolution::Ambiguous => Err(AsmError::new(
+                AsmErrorKind::Symbol,
+                "Ambiguous imported module path",
+                Some(name),
+            )),
+        }
+    }
+
+    fn record_operand_references(&mut self, operands: &[Expr]) {
+        if self.pass != 1 {
+            return;
+        }
+        for operand in operands {
+            self.record_expr_references(operand);
+        }
+    }
+
+    fn record_expr_references(&mut self, expr: &Expr) {
+        if let Some(name) = opcore::expression::expr_text(expr) {
+            if name.contains('.') {
+                self.record_named_reference(&name);
+            }
+        }
+        match expr {
+            Expr::List(items, _) | Expr::Tuple(items, _) => {
+                for item in items {
+                    self.record_expr_references(item);
+                }
+            }
+            Expr::Index { base, index, .. } => {
+                self.record_expr_references(base);
+                self.record_expr_references(index);
+            }
+            Expr::Member { base, field, .. } => {
+                if let Some(base_name) = opcore::expression::expr_text(base) {
+                    self.record_named_reference(&format!("{base_name}.{field}"));
+                }
+                self.record_expr_references(base);
+            }
+            Expr::StructLiteral { fields, .. } => {
+                for (_, value) in fields {
+                    self.record_expr_references(value);
+                }
+            }
+            Expr::Call { args, .. } => {
+                for arg in args {
+                    self.record_expr_references(arg);
+                }
+            }
+            Expr::Indirect(inner, _)
+            | Expr::Immediate(inner, _)
+            | Expr::IndirectLong(inner, _)
+            | Expr::Unary { expr: inner, .. } => self.record_expr_references(inner),
+            Expr::Binary { left, right, .. } => {
+                self.record_expr_references(left);
+                self.record_expr_references(right);
+            }
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                self.record_expr_references(cond);
+                self.record_expr_references(then_expr);
+                self.record_expr_references(else_expr);
+            }
+            Expr::Range {
+                start, end, step, ..
+            } => {
+                self.record_expr_references(start);
+                self.record_expr_references(end);
+                if let Some(step) = step {
+                    self.record_expr_references(step);
+                }
+            }
+            Expr::Identifier(name, _) => self.record_named_reference(name),
+            Expr::Number(_, _)
+            | Expr::Register(_, _)
+            | Expr::Placeholder(_)
+            | Expr::Dollar(_)
+            | Expr::String(_, _)
+            | Expr::Error(_, _) => {}
+        }
+    }
+
+    fn record_named_reference(&mut self, name: &str) {
+        let Some(source) = self.current_unit_symbol.clone() else {
+            return;
+        };
+        let target = match self.resolve_scoped_name(name) {
+            Ok(Some(target)) => target,
+            Ok(None) if !name.contains('.') => self.scoped_define_name(name),
+            Ok(None) | Err(_) => return,
+        };
+        self.symbols.record_symbol_reference(&source, &target);
     }
 
     fn selective_import_conflict(&self, name: &str) -> bool {
@@ -1519,7 +1614,7 @@ impl<'a> AsmLine<'a> {
     fn resolve_scoped_name(&self, name: &str) -> Result<Option<String>, AsmError> {
         if name.contains('.') {
             let candidate = self
-                .resolve_import_alias(name)
+                .resolve_qualified_imported_name(name)?
                 .unwrap_or_else(|| name.to_string());
             if let Some(entry) = self.symbols.entry(&candidate) {
                 if !self.entry_is_visible(entry) {
@@ -1572,7 +1667,9 @@ impl<'a> AsmLine<'a> {
     fn lookup_scoped_entry(&self, name: &str) -> Option<&SymbolTableEntry> {
         if name.contains('.') {
             let candidate = self
-                .resolve_import_alias(name)
+                .resolve_qualified_imported_name(name)
+                .ok()
+                .flatten()
                 .unwrap_or_else(|| name.to_string());
             return self.symbols.entry(&candidate);
         }
@@ -1850,6 +1947,7 @@ impl<'a> AsmLine<'a> {
                         use_ast.alias,
                         use_ast.items,
                         use_ast.params,
+                        use_ast.section_maps,
                         use_ast.span,
                     );
                     let module_name = self
@@ -1963,6 +2061,7 @@ impl<'a> AsmLine<'a> {
                     }
                 }
 
+                self.record_operand_references(&operands);
                 let mut status = self.process_directive_ast(&mnemonic, &operands);
                 if status == LineStatus::NothingDone {
                     if mnemonic.starts_with('.') {
@@ -2029,6 +2128,9 @@ impl<'a> AsmLine<'a> {
 
         if res == SymbolTableResult::Ok {
             self.track_section_symbol(&full_name);
+            if self.pass == 1 {
+                self.current_unit_symbol = Some(full_name);
+            }
         }
 
         None
@@ -2046,6 +2148,10 @@ impl<'a> AsmLine<'a> {
         match op {
             AssignOp::Const | AssignOp::Var | AssignOp::VarIfUndef => {
                 let full_name = self.scoped_define_name(&label.name);
+                if self.pass == 1 {
+                    self.current_unit_symbol = Some(full_name.clone());
+                    self.record_expr_references(expr);
+                }
                 if op == AssignOp::VarIfUndef {
                     if let Some(entry) = self.symbols.entry(&full_name) {
                         self.aux_value = entry.val;

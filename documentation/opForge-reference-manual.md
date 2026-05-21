@@ -629,13 +629,75 @@ block (or `.meta.output.*` inline), `.name` sets the output base name.
 .use util.math
 .use util.math as M
 .use util.math (add16, sub16 as sub)
+.use util.math (add16) as M
+.use util.math map { code -> app_code }
+.use util.math (add16) as M map { code -> app_code }
 .use util.math with (FEATURE=1, MODE="fast")
 ```
 
 Notes:
 - `.use` must appear **inside a module** and **at module scope**.
-- `.use` affects **runtime symbol resolution only**.
-- `.pub/.priv` visibility is enforced for runtime symbols (labels/constants/vars) only; macro/segment exports are not filtered by `.use`.
+- Bare non-selective imports receive an implicit namespace qualifier from the
+  final module-id segment. For example, `.use opasm.amigaos.engine` lets code
+  reference `engine.sessionPass`.
+- `as <qualifier>` binds an explicit namespace qualifier. Qualified references
+  can then be used in operands, for example `jsr engine.sessionPass`.
+- Direct selective imports without a module qualifier import names into the
+  current module scope, and may use per-item aliases: `.use util.math (add16 as
+  add)`.
+- Selective imports with a module qualifier select root symbols for inclusion
+  but keep them qualified. In `.use util.math (add16) as M`, `M.add16` is
+  available and `add16` is not directly imported.
+- A `map { logical -> concrete }` clause maps logical sections declared by the
+  imported module into concrete sections in the importing/root module. Map
+  clauses require a namespace binding, so `.use util.math (add16) map { ... }`
+  is rejected unless `as <qualifier>` is present.
+- `.pub/.priv` visibility is enforced for runtime symbols
+  (labels/constants/vars). Qualified references to private symbols are errors.
+  Macro/segment exports are not filtered by `.use`.
+
+Reusable modules may declare logical sections:
+
+```
+.module opasm.amigaos.engine
+.pub
+.section code, kind=code, logical
+sessionPass:
+    rts
+.endsection
+.endmodule
+```
+
+Root modules map reachable logical sections into concrete output sections:
+
+```
+.module main
+.cpu 68000
+.use opasm.amigaos.engine as engine map {
+    code -> app_code
+}
+.section app_code, kind=code
+.endsection
+start:
+    jsr engine.sessionPass
+.endmodule
+```
+
+Availability and executable inclusion are separate. A module made available by
+`.use` can expose public symbols for resolution, but integrated executable output
+includes only reachable units: selected roots, qualified references from the root
+module, and their recursively referenced dependencies. Public exports that are
+not selected or referenced remain available for resolution but are excluded from
+mapped executable output. At the root/composition module boundary, reachable
+logical sections default-map to same-name concrete sections when the concrete
+section exists and has a compatible kind. Use an explicit map entry when section
+names differ, when routing dependencies from one reusable module to another, or
+when you want to route the imported material elsewhere.
+
+`.output` currently supports integrated executable payloads for `bin`, `prg`,
+and `hunk`. Library/object packaging over the module graph is not implemented in
+v0.1; requests such as `format=hunklib`, `format=hunk-object`, and
+`format=c64os-library` fail with an explicit unsupported-policy diagnostic.
 
 #### 3.10.1 Root input
 

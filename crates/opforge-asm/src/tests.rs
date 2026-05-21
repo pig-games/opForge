@@ -18527,6 +18527,325 @@ fn section_option_accepts_hunk_memory_attribute() {
 }
 
 #[test]
+fn section_option_accepts_logical_contract() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let mut asm = make_asm_line(&mut symbols, &registry);
+
+    let status = process_line(&mut asm, ".section code, kind=code, logical", 0, 1);
+
+    assert_eq!(status, LineStatus::Ok);
+    let section = asm.layout.sections.get("code").expect("code section");
+    assert!(section.logical);
+}
+
+#[test]
+fn use_section_map_validates_target_exists() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".use dep as d map { code -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Import section map target 'app_code' is not a declared concrete section")
+    }));
+}
+
+#[test]
+fn use_section_map_rejects_unknown_logical_section() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep as d map { tables -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Unknown logical section 'tables' in module 'dep'")
+    }));
+}
+
+#[test]
+fn use_section_map_rejects_incompatible_kind() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".section state, kind=bss, logical".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep as d map { state -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Import section map kind is incompatible")
+    }));
+}
+
+#[test]
+fn selected_root_requires_map_or_same_name_concrete_for_logical_section() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: nop".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".use dep (entry) as d".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error
+            .message()
+            .contains("Reachable logical section 'code' from module 'dep' requires an import section map or compatible same-name concrete section")
+    }));
+}
+
+#[test]
+fn selected_root_uses_same_name_compatible_concrete_section_by_default() {
+    let assembler = run_passes(&[
+        ".module dep",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry: .byte $11",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".section code, kind=code",
+        ".endsection",
+        ".use dep (entry) as d",
+        ".endmodule",
+    ]);
+
+    let section = assembler.sections().get("code").expect("code section");
+    assert_eq!(section.bytes, vec![0x11]);
+}
+
+#[test]
+fn selected_root_reachability_follows_qualified_symbol_references() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module util".to_string(),
+        ".pub".to_string(),
+        ".section tables, kind=data, logical".to_string(),
+        "helper: .long 1".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module dep".to_string(),
+        ".use util as u".to_string(),
+        ".section tables, kind=data".to_string(),
+        ".endsection".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: .long u.helper".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep (entry) as d map { code -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    assert!(assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .iter()
+        .any(|unit| unit.full_name == "util.helper"));
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error.message().contains(
+            "Reachable logical section 'tables' from module 'util' requires an import section map or compatible same-name concrete section",
+        )
+    }));
+}
+
+#[test]
+fn root_qualified_reference_uses_same_name_concrete_section_by_default() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module dep".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: .long 1".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".use dep as d".to_string(),
+        ".section code, kind=code".to_string(),
+        "start: .long d.entry".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert_eq!(pass1.errors, 0);
+    assert!(assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .iter()
+        .any(|unit| unit.full_name == "dep.entry"));
+}
+
+#[test]
+fn root_qualified_reference_pulls_code_dependencies_into_mapped_output() {
+    let assembler = run_passes(&[
+        ".module engine",
+        ".cpu 68000",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry:",
+        "    jsr helper",
+        "helper:",
+        "    rts",
+        "unused:",
+        "    rts",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".use engine as e map { code -> app_code }",
+        ".section app_code, kind=code",
+        "start:",
+        "    jsr e.entry",
+        "    rts",
+        ".endsection",
+        ".endmodule",
+    ]);
+
+    let reachable: Vec<_> = assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .into_iter()
+        .map(|unit| unit.full_name)
+        .collect();
+    assert!(reachable.iter().any(|unit| unit == "engine.entry"));
+    assert!(reachable.iter().any(|unit| unit == "engine.helper"));
+    assert!(!reachable.iter().any(|unit| unit == "engine.unused"));
+
+    let section = assembler
+        .sections()
+        .get("app_code")
+        .expect("app_code section");
+    assert_eq!(
+        section.bytes,
+        vec![
+            0x4E, 0xB9, 0x00, 0x00, 0x00, 0x00, // jsr e.entry
+            0x4E, 0x75, // main rts
+            0x4E, 0xB9, 0x00, 0x00, 0x00, 0x06, // engine.entry jsr helper
+            0x4E, 0x75, // engine.helper rts
+        ]
+    );
+}
+
+#[test]
+fn reachable_map_diagnostic_uses_actual_importing_module() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module util".to_string(),
+        ".pub".to_string(),
+        ".section tables, kind=data, logical".to_string(),
+        "helper: .long 1".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module dep1".to_string(),
+        ".use util as u".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: .long u.helper".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module dep2".to_string(),
+        ".use util as u".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "other: .long 0".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep1 (entry) as d1 map { code -> app_code }".to_string(),
+        ".use dep2 (other) as d2 map { code -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert!(pass1.errors > 0);
+    let util_missing_map_count = assembler
+        .diagnostics
+        .iter()
+        .filter(|diag| {
+            diag.error.message().contains(
+                "Reachable logical section 'tables' from module 'util' requires an import section map or compatible same-name concrete section",
+            )
+        })
+        .count();
+    assert_eq!(util_missing_map_count, 1);
+}
+
+#[test]
+fn top_level_unit_boundary_excludes_later_unselected_references() {
+    let mut assembler = Assembler::new();
+    let pass1 = assembler.pass1(&[
+        ".module util".to_string(),
+        ".pub".to_string(),
+        ".section tables, kind=data, logical".to_string(),
+        "helper: .long 1".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module dep".to_string(),
+        ".use util as u".to_string(),
+        ".pub".to_string(),
+        ".section code, kind=code, logical".to_string(),
+        "entry: .long 1".to_string(),
+        "unused: .long u.helper".to_string(),
+        ".endsection".to_string(),
+        ".endmodule".to_string(),
+        ".module main".to_string(),
+        ".section app_code, kind=code".to_string(),
+        ".endsection".to_string(),
+        ".use dep (entry) as d map { code -> app_code }".to_string(),
+        ".endmodule".to_string(),
+    ]);
+
+    assert_eq!(pass1.errors, 0);
+    let reachable: Vec<_> = assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .into_iter()
+        .map(|unit| unit.full_name)
+        .collect();
+    assert_eq!(reachable, vec!["dep.entry"]);
+}
+
+#[test]
 fn section_option_accepts_slow_hunk_memory_alias() {
     let mut symbols = SymbolTable::new();
     let registry = default_registry();
@@ -22226,6 +22545,162 @@ fn use_alias_import_resolves_qualified_name() {
 }
 
 #[test]
+fn use_bare_import_resolves_implicit_qualified_name() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let lines = vec![
+        ".module opasm.amigaos.engine".to_string(),
+        ".pub".to_string(),
+        "sessionPass .const 3".to_string(),
+        ".endmodule".to_string(),
+        ".module beta".to_string(),
+        ".use opasm.amigaos.engine".to_string(),
+        "    .word engine.sessionPass".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut asm_pass1 = make_asm_line(&mut symbols, &registry);
+    for line in &lines {
+        let _ = process_line(&mut asm_pass1, line, 0, 1);
+    }
+
+    let mut asm_pass2 = make_asm_line(&mut symbols, &registry);
+    let mut status = LineStatus::Ok;
+    for line in &lines {
+        status = process_line(&mut asm_pass2, line, 0, 2);
+        if line.contains(".word") {
+            break;
+        }
+    }
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm_pass2.bytes(), &[3, 0]);
+}
+
+#[test]
+fn use_import_resolves_full_module_path_name() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let lines = vec![
+        ".module opasm.amigaos.engine".to_string(),
+        ".pub".to_string(),
+        "sessionPass .const 4".to_string(),
+        ".endmodule".to_string(),
+        ".module beta".to_string(),
+        ".use opasm.amigaos.engine".to_string(),
+        "    .word opasm.amigaos.engine.sessionPass".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut asm_pass1 = make_asm_line(&mut symbols, &registry);
+    for line in &lines {
+        let _ = process_line(&mut asm_pass1, line, 0, 1);
+    }
+
+    let mut asm_pass2 = make_asm_line(&mut symbols, &registry);
+    let mut status = LineStatus::Ok;
+    for line in &lines {
+        status = process_line(&mut asm_pass2, line, 0, 2);
+        if line.contains(".word") {
+            break;
+        }
+    }
+    assert_eq!(status, LineStatus::Ok);
+    assert_eq!(asm_pass2.bytes(), &[4, 0]);
+}
+
+#[test]
+fn use_import_rejects_private_qualified_name() {
+    let assembler = run_pass1(&[
+        ".module opasm.amigaos.engine",
+        "sessionPass .const 5",
+        ".endmodule",
+        ".module beta",
+        ".use opasm.amigaos.engine",
+        "    .word engine.sessionPass",
+        ".endmodule",
+    ]);
+    assert!(assembler.diagnostics.iter().any(|diag| {
+        diag.error.kind() == AsmErrorKind::Symbol
+            && diag.error.message().contains("Symbol is private")
+    }));
+}
+
+#[test]
+fn use_full_module_path_ambiguity_errors() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let lines = vec![
+        ".module pkg.core".to_string(),
+        ".pub".to_string(),
+        "pkg.core.util.entry .const 6".to_string(),
+        ".endmodule".to_string(),
+        ".module pkg.core.util".to_string(),
+        ".pub".to_string(),
+        "entry .const 7".to_string(),
+        ".endmodule".to_string(),
+        ".module beta".to_string(),
+        ".use pkg.core as core".to_string(),
+        ".use pkg.core.util as util".to_string(),
+        "    .word pkg.core.util.entry".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut asm_pass1 = make_asm_line(&mut symbols, &registry);
+    for line in &lines {
+        let _ = process_line(&mut asm_pass1, line, 0, 1);
+    }
+
+    let mut asm_pass2 = make_asm_line(&mut symbols, &registry);
+    let mut status = LineStatus::Ok;
+    for line in &lines {
+        status = process_line(&mut asm_pass2, line, 0, 2);
+        if line.contains(".word") {
+            break;
+        }
+    }
+    assert_eq!(status, LineStatus::Error);
+    let error = asm_pass2.error().expect("ambiguous import path error");
+    assert_eq!(error.kind(), AsmErrorKind::Expression);
+    assert!(error.message().contains("Ambiguous imported module path"));
+}
+
+#[test]
+fn use_full_module_path_without_import_reports_unresolved_symbol() {
+    let mut symbols = SymbolTable::new();
+    let registry = default_registry();
+    let lines = vec![
+        ".module opasm.amigaos.engine".to_string(),
+        ".pub".to_string(),
+        "sessionPass .const 8".to_string(),
+        ".endmodule".to_string(),
+        ".module beta".to_string(),
+        ".use opasm.amigaos.engine".to_string(),
+        "    .word missing.module.sessionPass".to_string(),
+        ".endmodule".to_string(),
+    ];
+
+    let mut asm_pass1 = make_asm_line(&mut symbols, &registry);
+    for line in &lines {
+        let _ = process_line(&mut asm_pass1, line, 0, 1);
+    }
+
+    let mut asm_pass2 = make_asm_line(&mut symbols, &registry);
+    let mut status = LineStatus::Ok;
+    for line in &lines {
+        status = process_line(&mut asm_pass2, line, 0, 2);
+        if line.contains(".word") {
+            break;
+        }
+    }
+    assert_eq!(status, LineStatus::Error);
+    let error = asm_pass2.error().expect("unresolved import path error");
+    assert_eq!(error.kind(), AsmErrorKind::Expression);
+    assert!(error
+        .message()
+        .contains("Label not found: missing.module.sessionPass"));
+}
+
+#[test]
 fn use_missing_module_emits_diagnostic() {
     let assembler = run_pass1(&[".module alpha", ".use missing.mod", ".endmodule"]);
     assert!(assembler
@@ -22699,6 +23174,66 @@ fn linker_output_unknown_format_rejects_at_registry_boundary() {
     assert_eq!(err.kind(), AsmErrorKind::Directive);
     assert!(err.message().contains("Unknown .output format 'elf'"));
     assert!(err.message().contains("supported formats: bin, prg, hunk"));
+}
+
+#[test]
+fn linker_output_rejects_unsupported_library_object_policies() {
+    for format_id in ["hunklib", "hunk-object", "c64os-library"] {
+        let assembler = run_passes(&[
+            ".module main",
+            ".region ram, $1000, $10ff",
+            ".section code",
+            ".byte $aa",
+            ".endsection",
+            ".place code in ram",
+            &format!(".output \"build/out.bin\", format={format_id}, sections=code"),
+            ".endmodule",
+        ]);
+        let output = assembler
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive");
+        let err = build_linker_output_payload(output, assembler.sections())
+            .expect_err("unsupported library/object policy should fail");
+
+        assert_eq!(err.kind(), AsmErrorKind::Directive);
+        assert!(
+            err.message().contains("library/object packaging")
+                && err.message().contains("not implemented in v0.1"),
+            "unexpected message for {format_id}: {}",
+            err.message()
+        );
+    }
+}
+
+#[test]
+fn integrated_output_emits_only_reachable_mapped_units() {
+    let assembler = run_passes(&[
+        ".module dep",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry: .byte $11",
+        "unused: .byte $22",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".region rom, $1000, $10ff",
+        ".section app_code, kind=code",
+        ".endsection",
+        ".place app_code in rom",
+        ".use dep (entry) as d map { code -> app_code }",
+        ".output \"build/app.bin\", format=bin, sections=app_code",
+        ".endmodule",
+    ]);
+    let output = assembler
+        .root_metadata
+        .linker_outputs
+        .first()
+        .expect("output directive");
+    let payload = build_linker_output_payload(output, assembler.sections()).expect("bin payload");
+
+    assert_eq!(payload, vec![0x11]);
 }
 
 fn hunk_output_directive(
@@ -23985,6 +24520,121 @@ fn m68k_family_parser_accepts_datareg_binary_absolute_long_destination_ast() {
         .family
         .parse_operands("ADD.W", operands.as_slice())
         .expect("family parser should accept rewritten destination form");
+}
+
+#[test]
+fn m68k_jsr_accepts_qualified_imported_symbol_operand() {
+    let assembler = run_passes(&[
+        ".module demo.routines",
+        ".cpu 68000",
+        ".org $1010",
+        ".pub",
+        "drawSprite:",
+        " RTS",
+        ".endmodule",
+        ".module demo.main",
+        ".cpu 68000",
+        ".use demo.routines",
+        ".org $1000",
+        "start: JSR demo.routines.drawSprite",
+        " RTS",
+        ".endmodule",
+    ]);
+
+    assert!(
+        assembler.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        assembler.diagnostics
+    );
+    assert!(assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .iter()
+        .any(|unit| unit.full_name == "demo.routines.drawSprite"));
+    let entries = assembler.image().entries().expect("entries");
+    assert_eq!(
+        entries,
+        vec![
+            (0x1010, 0x4e),
+            (0x1011, 0x75),
+            (0x1000, 0x4e),
+            (0x1001, 0xb9),
+            (0x1002, 0x00),
+            (0x1003, 0x00),
+            (0x1004, 0x10),
+            (0x1005, 0x10),
+            (0x1006, 0x4e),
+            (0x1007, 0x75),
+        ]
+    );
+}
+
+#[test]
+fn m68k_lea_accepts_qualified_imported_absolute_long_symbol_operand() {
+    let assembler = run_passes(&[
+        ".module opasm.amigaos.engine",
+        ".cpu 68000",
+        ".section code, kind=code",
+        ".pub",
+        "sessionPass:",
+        " RTS",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".cpu 68000",
+        ".use opasm.amigaos.engine",
+        ".region ram, $1000, $10ff",
+        ".section code, kind=code",
+        "start: LEA engine.sessionPass.L,A0",
+        " RTS",
+        ".endsection",
+        ".place code in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".endmodule",
+    ]);
+
+    assert!(
+        assembler.diagnostics.is_empty(),
+        "unexpected diagnostics: {:?}",
+        assembler.diagnostics
+    );
+}
+
+fn assert_qualified_import_call_operand_assembles(cpu: &str, call_line: &str) {
+    let assembler = run_passes(&[
+        ".module lib.service",
+        cpu,
+        ".pub",
+        "entry:",
+        " NOP",
+        ".endmodule",
+        ".module main",
+        cpu,
+        ".use lib.service",
+        call_line,
+        ".endmodule",
+    ]);
+
+    assert!(
+        assembler.diagnostics.is_empty(),
+        "unexpected diagnostics for {cpu} `{call_line}`: {:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn qualified_import_call_operands_assemble_across_non_m68k_families() {
+    for (cpu, call_line) in [
+        (".cpu 8080", " CALL service.entry"),
+        (".cpu 8085", " CALL service.entry"),
+        (".cpu z80", " CALL service.entry"),
+        (".cpu m6502", " JSR service.entry"),
+        (".cpu 65c02", " JSR service.entry"),
+        (".cpu m6809", " JSR service.entry"),
+        (".cpu hd6309", " JSR service.entry"),
+    ] {
+        assert_qualified_import_call_operand_assembles(cpu, call_line);
+    }
 }
 
 #[test]

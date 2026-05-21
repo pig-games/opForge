@@ -1,0 +1,1 @@
+PASS: Spec Quality Orchestrator confirmed the spec unambiguously allows per-item aliases and wildcard selection only for direct selective imports without a module qualifier, explicitly rejects those forms when a module qualifier is present, and keeps syntax, acceptance, and validation sections internally consistent.

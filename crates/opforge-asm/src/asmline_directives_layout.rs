@@ -4,6 +4,7 @@
 use super::*;
 use crate::output::format_addr;
 use opcore::modules::expr_to_ident;
+use types::symbol::LogicalSectionKind;
 
 impl<'a> AsmLine<'a> {
     pub fn route_layout_directive_ast(
@@ -210,6 +211,7 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn section_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        self.current_unit_symbol = None;
         if operands.is_empty() {
             return self.failure(
                 LineStatus::Error,
@@ -299,7 +301,35 @@ impl<'a> AsmLine<'a> {
                 section.hunk_memory_type = hunk_memory_type;
             }
             section.default_region = options.region;
+            section.logical = options.logical;
             self.layout.sections.insert(name.clone(), section);
+        }
+        if options.logical {
+            if let Some(section) = self.layout.sections.get_mut(&name) {
+                section.logical = true;
+            }
+            if let Some(module) = self.symbol_scope.module_active.as_deref() {
+                let kind = self
+                    .layout
+                    .sections
+                    .get(&name)
+                    .map(|section| match section.kind {
+                        SectionKind::Code => LogicalSectionKind::Code,
+                        SectionKind::Data => LogicalSectionKind::Data,
+                        SectionKind::Bss => LogicalSectionKind::Bss,
+                    })
+                    .unwrap_or(LogicalSectionKind::Code);
+                self.symbols.add_logical_section(
+                    module,
+                    name.clone(),
+                    kind,
+                    opcore::imports::span_to_source_span(expr_span(&operands[0])),
+                );
+            }
+        } else if let Some(module) = self.symbol_scope.module_active.as_deref() {
+            self.layout.concrete_section_declarations.insert(
+                crate::engine::Assembler::concrete_section_declaration_key(module, &name),
+            );
         }
         self.layout
             .section_stack
@@ -309,6 +339,7 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn endsection_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        self.current_unit_symbol = None;
         if !operands.is_empty() {
             return self.failure(
                 LineStatus::Error,
@@ -375,6 +406,12 @@ impl<'a> AsmLine<'a> {
     ) -> Result<SectionOptions, LineStatus> {
         let mut options = SectionOptions::default();
         for option in operands {
+            if let Expr::Identifier(name, _) | Expr::Register(name, _) = option {
+                if name.eq_ignore_ascii_case("logical") {
+                    options.logical = true;
+                    continue;
+                }
+            }
             let Expr::Binary {
                 op: asm_parser::BinaryOp::Eq,
                 left,

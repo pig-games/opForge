@@ -306,7 +306,7 @@ EncodeSelectedMselUnstable
 tkpkgServiceBootstrapV1	.block
 	lea ControlBlockV1, a0  ; shared in-module CB used by the direct native bootstrap
 	moveq #ENTRY_ORD_INIT, d0  ; exercise the public init ordinal, not a private initializer
-	bsr.w tkpkgServiceDispatchV1  ; keep bootstrap behavior identical to an external init call
+	bsr.w serviceDispatchV1  ; keep bootstrap behavior identical to an external init call
 	rts
 	.bend  ; tkpkgServiceBootstrapV1
 
@@ -329,7 +329,7 @@ tkpkgServiceBootstrapV1	.block
 ; - Last-error fields are updated for bad-control, bad-request, and runtime
 ;   error paths.
 ; ---------------------------------------------------------------------------
-tkpkgServiceDispatchV1	.block
+serviceDispatchV1	.block
 	cmpi.b #ENTRY_ORD_INIT, d0
 	beq.s handleInitEntry
 	bsr.w tkpkgServicePrepareRequestV1  ; assign a request id before validation/status reporting
@@ -604,7 +604,7 @@ evaluateExpressionOk
 
 evaluateExpressionDone
 	rts
-	.bend  ; tkpkgServiceDispatchV1
+	.bend  ; serviceDispatchV1
 
 	.priv
 

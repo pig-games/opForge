@@ -11,7 +11,7 @@
 	.use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN, CB_OUTPUT_LEN, CB_STATUS_CODE)
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, packageStorage)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
+	.use tkpkg.amigaos.service as svc
 
 SYS_BASE                        = 4
 RETURN_OK                       = 0
@@ -226,7 +226,7 @@ tkpkgDebugCliDispatchServiceV1
 	move.l d7, -(sp)
 	move.l a5, -(sp)
 	move.l a6, -(sp)
-	jsr tkpkgServiceDispatchV1
+	jsr svc.erviceDispatchV1
 	movea.l (sp)+, a6
 	movea.l (sp)+, a5
 	move.l (sp)+, d7
@@ -841,7 +841,7 @@ tkpkgDebugCliReadOutputLenV1
 tkpkgDebugCliRunLastErrorV1
 	bsr.w tkpkgDebugCliClearInputWindowV1
 	moveq #ENTRY_ORD_LAST_ERROR, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	rts
 	.bend ; start

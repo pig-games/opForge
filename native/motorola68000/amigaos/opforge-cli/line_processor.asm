@@ -10,7 +10,7 @@
 	.use opforge.cli.tkpkg_control_block (opforgeNativeCliWriteInputWindow, opforgeNativeCliReadOutputLen, opforgeNativeCliReadStatus)
 	.use tkpkg.amigaos.abi (ENTRY_ORD_TOKENIZE_LINE)
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_PTR_V1)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
+	.use tkpkg.amigaos.service as svc
 	.use opforge.cli.dos (opforgeNativeCliPutStr)
 
 	.use opforge.cli.strings (NewlineText, ConditionalFailureText, NativeBadOrgText, ParserFailureText, IfdefDirectiveText, IfndefDirectiveText, ElseifDirectiveText, ElseDirectiveText, EndifDirectiveText, IfDirectiveText, IncludeDirectiveText, OrgMnemonicText)
@@ -47,7 +47,7 @@ record
 	move.w NativeCliLineRequestLen, d1
 	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_TOKENIZE_LINE, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	lea ControlBlockV1, a0
 	jsr opforgeNativeCliReadStatus
 	tst.b d0

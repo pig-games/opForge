@@ -75,8 +75,10 @@ pub struct UseImportItemDecl {
 pub struct UseImportDecl {
     pub module_id: String,
     pub alias: Option<String>,
+    pub qualifier: Option<String>,
     pub wildcard: bool,
     pub items: Vec<UseImportItemDecl>,
+    pub selected_roots: Vec<UseImportItemDecl>,
     pub line: u32,
     pub owner_module: Option<String>,
 }
@@ -579,7 +581,21 @@ fn build_import_decl(
     owner_module: Option<String>,
 ) -> UseImportDecl {
     let wildcard = items.len() == 1 && items[0].name == "*" && items[0].alias.is_none();
-    let mapped_items = if wildcard {
+    let has_selection = !items.is_empty();
+    let qualifier = alias.clone().or_else(|| {
+        (!has_selection)
+            .then(|| implicit_qualifier(&module_id))
+            .flatten()
+    });
+    let selected_roots = items
+        .iter()
+        .filter(|item| item.name != "*" || item.alias.is_some())
+        .map(|item| UseImportItemDecl {
+            source_name: item.name.clone(),
+            local_name: item.alias.clone().unwrap_or_else(|| item.name.clone()),
+        })
+        .collect();
+    let mapped_items = if wildcard || alias.is_some() {
         Vec::new()
     } else {
         items
@@ -593,11 +609,20 @@ fn build_import_decl(
     UseImportDecl {
         module_id,
         alias,
+        qualifier,
         wildcard,
         items: mapped_items,
+        selected_roots,
         line,
         owner_module,
     }
+}
+
+fn implicit_qualifier(module_id: &str) -> Option<String> {
+    module_id
+        .rsplit('.')
+        .find(|segment| !segment.is_empty())
+        .map(str::to_string)
 }
 
 fn classify_directive_symbol_kind(mnemonic: &str) -> Option<SymbolKind> {

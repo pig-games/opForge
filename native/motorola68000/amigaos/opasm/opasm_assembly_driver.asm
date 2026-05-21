@@ -3,42 +3,10 @@
 	.module opasm.amigaos.assembly_driver
 	.cpu 68020
 
-	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR)
-	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR, OPASM_ASSEMBLE_REQ_EVENT_CAPACITY)
-	.use opasm.amigaos.callback_abi (OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR, OPASM_ASSEMBLE_REQ_SERVICE_FRAME_PTR)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_KIND, OPASM_EVENT_PASS, OPASM_EVENT_TEXT_PTR)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_TEXT_LEN, OPASM_EVENT_VALUE, OPASM_EVENT_BYTES)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_PASS_BEGIN, OPASM_EVENT_PASS_OK)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_LABEL_STORED, OPASM_EVENT_LABEL_DUPLICATE)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, OPASM_EVENT_SELECTOR_STATUS_OK)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_UNKNOWN_MNEMONIC, OPASM_EVENT_UNSUPPORTED_ADDRESSING)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_UNRESOLVED_LABEL, OPASM_EVENT_BAD_ORG)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_SERVICE_FAILURE)
-	.use opasm.amigaos.callback_abi (OPASM_SERVICE_IO_BUFFER_PTR, OPASM_SERVICE_EVAL_EXTENSION_PTR)
-	.use opasm.amigaos.engine (opasmEngineRunTwoPassV1, opasmEngineBuildCallbackContextV1)
-	.use opasm.amigaos.engine (opasmEngineBeginPassOneV1, opasmEngineBeginPassTwoV1)
-	.use opasm.amigaos.engine (opasmEngineRecordStatementLabelV1, opasmEngineSetOriginV1, opasmEngineAdvancePcBySizeV1)
-	.use opasm.amigaos.engine (opasmEngineAppendImageBytesV1)
-	.use opasm.amigaos.engine (opasmEngineGetStatementTextMetadataV1)
-	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1)
-	.use opasm.amigaos.engine (opasmEngineStatementHasExprMetadataV1)
-	.use opasm.amigaos.engine (opasmEngineStatementMnemonicDuplicatesLabelV1)
-	.use opasm.amigaos.engine (opasmEngineStatementLooksBareColumnOneV1)
-	.use opasm.amigaos.engine (opasmEnginePrepareEvaluateExpressionExtensionV1)
-	.use opasm.amigaos.engine (opasmEnginePrepareEvaluateExpressionRequestV1)
-	.use opasm.amigaos.engine (opasmEnginePrepareSelectedEvaluateRequestV1)
-	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_MNEM_PTR, OPASM_ENGINE_STMT_TEXT_MNEM_LEN)
-	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_OPERAND_PTR, OPASM_ENGINE_STMT_TEXT_OPERAND_LEN)
-	.use opasm.amigaos.engine (OPASM_ENGINE_STMT_TEXT_BYTES)
-	.use opasm.amigaos.engine (OPASM_ENGINE_LABEL_EVENT_STORED, OPASM_ENGINE_LABEL_EVENT_DUPLICATE)
-	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR)
-	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB, OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB)
-	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB, OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB)
-	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB, OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB)
-	.use opasm.amigaos.engine (OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB, OPASM_ENGINE_CALLBACK_REQ_BYTES)
-	.use opasm.amigaos.events (opasmEventAppendV1)
-	.use opasm.amigaos.tkpkg_bridge (opasmTkpkgBridgeDispatchEncodeSelectedV1)
-	.use opasm.amigaos.tkpkg_bridge (opasmTkpkgBridgeDispatchEvaluateExpressionV1)
+	.use opasm.amigaos.callback_abi as abi
+	.use opasm.amigaos.engine as eng
+	.use opasm.amigaos.events as events
+	.use opasm.amigaos.tkpkg_bridge as tkpkg
 
 	.section code, kind=code
 	.pub
@@ -46,51 +14,51 @@
 ; Run one native opasm assembly session.
 ;
 ; Inputs:
-; - A0: OPASM_ASSEMBLE_REQ_* frame.
+; - A0: abi.OPASM_ASSEMBLE_REQ_* frame.
 ;
 ; Outputs:
 ; - D0: current opasm engine status.
 ; - A0: original request frame pointer.
-opasmNativeAssembleSessionV1	.block
+assembleSessionV1	.block
 	movem.l a1-a2/a4, -(sp)
 	movea.l a0, a1
 	move.l a1, OpasmActiveAssembleReqPtr
-	tst.l OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a1)
+	tst.l abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a1)
 	beq.s buildContext
-	movea.l OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a1), a0
+	movea.l abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a1), a0
 	clr.w (a0)
 
 buildContext
-	suba.l #OPASM_ENGINE_CALLBACK_REQ_BYTES, sp
+	suba.l #eng.OPASM_ENGINE_CALLBACK_REQ_BYTES, sp
 	movea.l sp, a0
-	move.l OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR(a1), OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR(a0)
-	move.l #opasmDriverPassOneBegin, OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB(a0)
-	move.l #opasmDriverPassTwoBegin, OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB(a0)
-	move.l #opasmDriverPassOneOk, OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB(a0)
-	move.l #opasmDriverPassTwoOk, OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(a0)
-	move.l #opasmDriverRecordLabel, OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(a0)
-	move.l #opasmDriverAdvancePc, OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(a0)
-	move.l #opasmDriverEmitImageBytes, OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(a0)
-	jsr opasmEngineBuildCallbackContextV1
-	adda.l #OPASM_ENGINE_CALLBACK_REQ_BYTES, sp
-	jsr opasmEngineRunTwoPassV1
+	move.l abi.OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR(a1), eng.OPASM_ENGINE_CALLBACK_REQ_BIN_REQUESTED_PTR(a0)
+	move.l #opasmDriverPassOneBegin, eng.OPASM_ENGINE_CALLBACK_REQ_PASS1_BEGIN_CB(a0)
+	move.l #opasmDriverPassTwoBegin, eng.OPASM_ENGINE_CALLBACK_REQ_PASS2_BEGIN_CB(a0)
+	move.l #opasmDriverPassOneOk, eng.OPASM_ENGINE_CALLBACK_REQ_PASS1_OK_CB(a0)
+	move.l #opasmDriverPassTwoOk, eng.OPASM_ENGINE_CALLBACK_REQ_PASS2_OK_CB(a0)
+	move.l #opasmDriverRecordLabel, eng.OPASM_ENGINE_CALLBACK_REQ_RECORD_LABEL_CB(a0)
+	move.l #opasmDriverAdvancePc, eng.OPASM_ENGINE_CALLBACK_REQ_ADVANCE_PC_CB(a0)
+	move.l #opasmDriverEmitImageBytes, eng.OPASM_ENGINE_CALLBACK_REQ_EMIT_IMAGE_CB(a0)
+	jsr eng.opasmEngineBuildCallbackContextV1
+	adda.l #eng.OPASM_ENGINE_CALLBACK_REQ_BYTES, sp
+	jsr eng.opasmEngineRunTwoPassV1
 	movea.l a1, a0
 	movem.l (sp)+, a1-a2/a4
 	rts
-	.bend  ; opasmNativeAssembleSessionV1
+	.bend  ; assembleSessionV1
 
 	.priv
 
 opasmDriverPassOneBegin	.block
-	moveq #OPASM_EVENT_PASS_BEGIN, d0
+	moveq #abi.OPASM_EVENT_PASS_BEGIN, d0
 	moveq #1, d1
 	bsr.w appendPassEvent
-	jsr opasmEngineBeginPassOneV1
+	jsr eng.opasmEngineBeginPassOneV1
 	rts
 	.bend  ; opasmDriverPassOneBegin
 
 opasmDriverPassOneOk	.block
-	moveq #OPASM_EVENT_PASS_OK, d0
+	moveq #abi.OPASM_EVENT_PASS_OK, d0
 	moveq #1, d1
 	bsr.w appendPassEvent
 	moveq #0, d0
@@ -98,15 +66,15 @@ opasmDriverPassOneOk	.block
 	.bend  ; opasmDriverPassOneOk
 
 opasmDriverPassTwoBegin	.block
-	moveq #OPASM_EVENT_PASS_BEGIN, d0
+	moveq #abi.OPASM_EVENT_PASS_BEGIN, d0
 	moveq #2, d1
 	bsr.w appendPassEvent
-	jsr opasmEngineBeginPassTwoV1
+	jsr eng.opasmEngineBeginPassTwoV1
 	rts
 	.bend  ; opasmDriverPassTwoBegin
 
 opasmDriverPassTwoOk	.block
-	moveq #OPASM_EVENT_PASS_OK, d0
+	moveq #abi.OPASM_EVENT_PASS_OK, d0
 	moveq #2, d1
 	bsr.w appendPassEvent
 	moveq #0, d0
@@ -115,12 +83,12 @@ opasmDriverPassTwoOk	.block
 
 opasmDriverRecordLabel	.block
 	movem.l d1-d5/a0, -(sp)
-	jsr opasmEngineRecordStatementLabelV1
+	jsr eng.opasmEngineRecordStatementLabelV1
 	move.l a0, d4
 	move.l d2, d5
-	cmpi.w #OPASM_ENGINE_LABEL_EVENT_STORED, d1
+	cmpi.w #eng.OPASM_ENGINE_LABEL_EVENT_STORED, d1
 	beq.s stored
-	cmpi.w #OPASM_ENGINE_LABEL_EVENT_DUPLICATE, d1
+	cmpi.w #eng.OPASM_ENGINE_LABEL_EVENT_DUPLICATE, d1
 	beq.s duplicate
 	bra.s return
 
@@ -130,7 +98,7 @@ stored
 	move.w d0, d1
 	movea.l d4, a0
 	move.l d5, d2
-	moveq #OPASM_EVENT_LABEL_STORED, d0
+	moveq #abi.OPASM_EVENT_LABEL_STORED, d0
 	bsr.w appendTextValueEvent
 	moveq #0, d0
 	bra.s return
@@ -140,7 +108,7 @@ duplicate
 	bsr.w tokenLen
 	move.w d0, d1
 	movea.l d4, a0
-	moveq #OPASM_EVENT_LABEL_DUPLICATE, d0
+	moveq #abi.OPASM_EVENT_LABEL_DUPLICATE, d0
 	bsr.w appendTextEvent
 	moveq #1, d0
 
@@ -152,22 +120,22 @@ return
 opasmDriverEmitImageBytes	.block
 	movem.l d1-d6/a0-a4, -(sp)
 	move.w d0, d6
-	suba.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movea.l sp, a0
 	moveq #0, d0
 	move.w d6, d0
-	jsr opasmEngineGetStatementTextMetadataV1
+	jsr eng.opasmEngineGetStatementTextMetadataV1
 	tst.l d0
 	bne.w ok
-	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
 	move.l a1, d5
-	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d4
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d4
 	beq.w ok
 	moveq #0, d0
 	move.w d6, d0
 	move.w d4, d1
 	movea.l d5, a0
-	jsr opasmEngineStatementMnemonicDuplicatesLabelV1
+	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
 	tst.l d0
 	bne.w ok
 	movea.l d5, a0
@@ -202,19 +170,19 @@ opasmDriverEmitImageBytes	.block
 	bsr.w prepareEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
-	jsr opasmTkpkgBridgeDispatchEncodeSelectedV1
+	jsr tkpkg.dispatchEncodeSelectedV1
 	move.w d2, d4
 	tst.b d0
 	bne.w serviceFail
 	tst.w d1
 	beq.w ok
 	move.w d1, d6
-	moveq #OPASM_EVENT_SELECTOR_STATUS_OK, d0
+	moveq #abi.OPASM_EVENT_SELECTOR_STATUS_OK, d0
 	bsr.w appendKindEvent
 	bsr.w serviceIoBufferPtr
 	moveq #0, d0
 	move.w d6, d0
-	jsr opasmEngineAppendImageBytesV1
+	jsr eng.opasmEngineAppendImageBytesV1
 	tst.l d0
 	bne.w fail
 
@@ -223,7 +191,7 @@ ok
 	bra.s return
 
 fail
-	moveq #OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, d0
+	moveq #abi.OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, d0
 	bsr.w appendKindEvent
 	moveq #1, d0
 	bra.s return
@@ -231,7 +199,7 @@ fail
 serviceFail
 	moveq #0, d0
 	move.w d6, d0
-	jsr opasmEngineStatementLooksBareColumnOneV1
+	jsr eng.opasmEngineStatementLooksBareColumnOneV1
 	tst.l d0
 	bne.w ok
 	tst.w d4
@@ -243,29 +211,29 @@ serviceFail
 	bne.s serviceFailReturn
 	bsr.w serviceIoBufferPtr
 	move.w d4, d1
-	moveq #OPASM_EVENT_SERVICE_FAILURE, d0
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
 	bsr.w appendTextEvent
 
 serviceFailReturn
 	moveq #1, d0
 
 return
-	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d1-d6/a0-a4
 	rts
 	.bend  ; opasmDriverEmitImageBytes
 
 opasmDriverAdvancePc	.block
 	movem.l d0-d7/a0-a3, -(sp)
-	suba.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	move.l d0, d7
 	movea.l sp, a0
-	jsr opasmEngineGetStatementTextMetadataV1
+	jsr eng.opasmEngineGetStatementTextMetadataV1
 	tst.l d0
 	bne.w done
-	movea.l OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
 	move.l a1, d5
-	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d6
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d6
 	moveq #0, d4
 	move.w d7, d4
 	add.w d4, d4
@@ -275,7 +243,7 @@ opasmDriverAdvancePc	.block
 	move.w d7, d0
 	move.w d6, d1
 	movea.l d5, a0
-	jsr opasmEngineStatementMnemonicDuplicatesLabelV1
+	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
 	tst.l d0
 	bne.w done
 	movea.l d5, a0
@@ -321,45 +289,45 @@ org
 	bsr.w readOperandValueForStatement
 	tst.l d0
 	beq.s orgOk
-	moveq #OPASM_EVENT_BAD_ORG, d0
+	moveq #abi.OPASM_EVENT_BAD_ORG, d0
 	bsr.w appendKindEvent
-	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #1, d0
 	rts
 
 orgOk
 	move.l d3, d0
-	jsr opasmEngineSetOriginV1
+	jsr eng.opasmEngineSetOriginV1
 	bra.w done
 
 advanceOne
 	moveq #1, d0
-	jsr opasmEngineAdvancePcBySizeV1
+	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 advanceTwo
 	moveq #2, d0
-	jsr opasmEngineAdvancePcBySizeV1
+	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 advanceThree
 	moveq #3, d0
-	jsr opasmEngineAdvancePcBySizeV1
+	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 fail
 	move.w d7, d0
-	jsr opasmEngineStatementLooksBareColumnOneV1
+	jsr eng.opasmEngineStatementLooksBareColumnOneV1
 	tst.l d0
 	bne.w done
-	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #1, d0
 	rts
 
 done
-	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d0-d7/a0-a3
 	moveq #0, d0
 	rts
@@ -377,7 +345,7 @@ trySelectedEncodeSizeForStatement	.block
 	bsr.w prepareEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
-	jsr opasmTkpkgBridgeDispatchEncodeSelectedV1
+	jsr tkpkg.dispatchEncodeSelectedV1
 	move.w d2, d4
 	tst.b d0
 	bne.w fail
@@ -401,7 +369,7 @@ fail
 	bne.s failReturn
 	bsr.w serviceIoBufferPtr
 	move.w d4, d1
-	moveq #OPASM_EVENT_SERVICE_FAILURE, d0
+	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
 	bsr.w appendTextEvent
 
 failReturn
@@ -414,10 +382,10 @@ return
 
 readOperandValueForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a2, -(sp)
-	suba.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	moveq #0, d0
 	move.w d7, d0
-	jsr opasmEngineStatementHasExprMetadataV1
+	jsr eng.opasmEngineStatementHasExprMetadataV1
 	move.w d0, d6
 	tst.w d6
 	bne.s loadSourceLine
@@ -426,7 +394,7 @@ readOperandValueForStatement	.block
 loadSourceLine
 	moveq #0, d0
 	move.w d7, d0
-	jsr opasmEngineGetStatementSourceLineTextV1
+	jsr eng.opasmEngineGetStatementSourceLineTextV1
 	tst.l d0
 	bne.s haveText
 	bra.w fail
@@ -436,15 +404,15 @@ storedText
 	movea.l sp, a0
 	moveq #0, d0
 	move.w d7, d0
-	jsr opasmEngineGetStatementTextMetadataV1
+	jsr eng.opasmEngineGetStatementTextMetadataV1
 	tst.l d0
 	bne.w fail
-	move.l OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a0), d1
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a0), d1
 	bne.s storedTextReady
 	bra.w fail
 
 storedTextReady
-	movea.l OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a0), a0
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a0), a0
 	move.l d1, d0
 
 haveText
@@ -465,7 +433,7 @@ prepareExtension
 	bsr.w prepareEvaluateExpressionExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
-	jsr opasmTkpkgBridgeDispatchEvaluateExpressionV1
+	jsr tkpkg.dispatchEvaluateExpressionV1
 	beq.s readValue
 	bra.w fail
 
@@ -477,7 +445,7 @@ readValue
 	bls.s ok
 
 fail
-	moveq #OPASM_EVENT_UNRESOLVED_LABEL, d0
+	moveq #abi.OPASM_EVENT_UNRESOLVED_LABEL, d0
 	bsr.w appendKindEvent
 	moveq #1, d0
 	bra.s return
@@ -486,7 +454,7 @@ ok
 	moveq #0, d0
 
 return
-	adda.l #OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d1-d2/d4-d7/a0-a2
 	rts
 	.bend  ; readOperandValueForStatement
@@ -498,7 +466,7 @@ prepareEncodeSelectedRequestForStatement	.block
 	move.w d6, d0
 	bsr.w serviceIoBufferPtr
 	movea.l a0, a1
-	jsr opasmEnginePrepareSelectedEvaluateRequestV1
+	jsr eng.opasmEnginePrepareSelectedEvaluateRequestV1
 	tst.l d0
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
@@ -516,7 +484,7 @@ prepareEvaluateExpressionRequest	.block
 	movea.l a0, a1
 	movea.l a2, a0
 	move.w d7, d1
-	jsr opasmEnginePrepareEvaluateExpressionRequestV1
+	jsr eng.opasmEnginePrepareEvaluateExpressionRequestV1
 	tst.l d0
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
@@ -535,7 +503,7 @@ prepareEvaluateExpressionExtension	.block
 	bsr.w serviceEvalExtensionPtr
 	movea.l a0, a1
 	movea.l a2, a0
-	jsr opasmEnginePrepareEvaluateExpressionExtensionV1
+	jsr eng.opasmEnginePrepareEvaluateExpressionExtensionV1
 	movem.l (sp)+, d0-d1/a0-a2
 	rts
 	.bend  ; prepareEvaluateExpressionExtension
@@ -550,19 +518,19 @@ readEvaluateExpressionValue	.block
 
 serviceFramePtr	.block
 	movea.l OpasmActiveAssembleReqPtr, a0
-	movea.l OPASM_ASSEMBLE_REQ_SERVICE_FRAME_PTR(a0), a0
+	movea.l abi.OPASM_ASSEMBLE_REQ_SERVICE_FRAME_PTR(a0), a0
 	rts
 	.bend  ; serviceFramePtr
 
 serviceIoBufferPtr	.block
 	bsr.w serviceFramePtr
-	movea.l OPASM_SERVICE_IO_BUFFER_PTR(a0), a0
+	movea.l abi.OPASM_SERVICE_IO_BUFFER_PTR(a0), a0
 	rts
 	.bend  ; serviceIoBufferPtr
 
 serviceEvalExtensionPtr	.block
 	bsr.w serviceFramePtr
-	movea.l OPASM_SERVICE_EVAL_EXTENSION_PTR(a0), a0
+	movea.l abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(a0), a0
 	rts
 	.bend  ; serviceEvalExtensionPtr
 
@@ -591,19 +559,19 @@ emitSelectorDiagnostic	.block
 	rts
 
 unknownMnemonic
-	moveq #OPASM_EVENT_UNKNOWN_MNEMONIC, d0
+	moveq #abi.OPASM_EVENT_UNKNOWN_MNEMONIC, d0
 	bsr.w appendKindEvent
 	moveq #1, d0
 	rts
 
 unsupportedAddressing
-	moveq #OPASM_EVENT_UNSUPPORTED_ADDRESSING, d0
+	moveq #abi.OPASM_EVENT_UNSUPPORTED_ADDRESSING, d0
 	bsr.w appendKindEvent
 	moveq #1, d0
 	rts
 
 operandError
-	moveq #OPASM_EVENT_UNRESOLVED_LABEL, d0
+	moveq #abi.OPASM_EVENT_UNRESOLVED_LABEL, d0
 	bsr.w appendKindEvent
 	moveq #1, d0
 	rts
@@ -611,27 +579,27 @@ operandError
 
 appendKindEvent	.block
 	movem.l d1/a0-a2, -(sp)
-	suba.l #OPASM_EVENT_BYTES, sp
+	suba.l #abi.OPASM_EVENT_BYTES, sp
 	movea.l sp, a0
 	bsr.w clearEventFrame
-	move.w d0, OPASM_EVENT_KIND(a0)
+	move.w d0, abi.OPASM_EVENT_KIND(a0)
 	movea.l a0, a2
 	bsr.w appendEventFrame
-	adda.l #OPASM_EVENT_BYTES, sp
+	adda.l #abi.OPASM_EVENT_BYTES, sp
 	movem.l (sp)+, d1/a0-a2
 	rts
 	.bend  ; appendKindEvent
 
 appendPassEvent	.block
 	movem.l d2/a0-a2, -(sp)
-	suba.l #OPASM_EVENT_BYTES, sp
+	suba.l #abi.OPASM_EVENT_BYTES, sp
 	movea.l sp, a0
 	bsr.w clearEventFrame
-	move.w d0, OPASM_EVENT_KIND(a0)
-	move.w d1, OPASM_EVENT_PASS(a0)
+	move.w d0, abi.OPASM_EVENT_KIND(a0)
+	move.w d1, abi.OPASM_EVENT_PASS(a0)
 	movea.l a0, a2
 	bsr.w appendEventFrame
-	adda.l #OPASM_EVENT_BYTES, sp
+	adda.l #abi.OPASM_EVENT_BYTES, sp
 	movem.l (sp)+, d2/a0-a2
 	rts
 	.bend  ; appendPassEvent
@@ -639,15 +607,15 @@ appendPassEvent	.block
 appendTextEvent	.block
 	movem.l d2/a0-a2, -(sp)
 	movea.l a0, a1
-	suba.l #OPASM_EVENT_BYTES, sp
+	suba.l #abi.OPASM_EVENT_BYTES, sp
 	movea.l sp, a0
 	bsr.w clearEventFrame
-	move.w d0, OPASM_EVENT_KIND(a0)
-	move.l a1, OPASM_EVENT_TEXT_PTR(a0)
-	move.w d1, OPASM_EVENT_TEXT_LEN(a0)
+	move.w d0, abi.OPASM_EVENT_KIND(a0)
+	move.l a1, abi.OPASM_EVENT_TEXT_PTR(a0)
+	move.w d1, abi.OPASM_EVENT_TEXT_LEN(a0)
 	movea.l a0, a2
 	bsr.w appendEventFrame
-	adda.l #OPASM_EVENT_BYTES, sp
+	adda.l #abi.OPASM_EVENT_BYTES, sp
 	movem.l (sp)+, d2/a0-a2
 	rts
 	.bend  ; appendTextEvent
@@ -655,16 +623,16 @@ appendTextEvent	.block
 appendTextValueEvent	.block
 	movem.l d3/a0-a2, -(sp)
 	movea.l a0, a1
-	suba.l #OPASM_EVENT_BYTES, sp
+	suba.l #abi.OPASM_EVENT_BYTES, sp
 	movea.l sp, a0
 	bsr.w clearEventFrame
-	move.w d0, OPASM_EVENT_KIND(a0)
-	move.l a1, OPASM_EVENT_TEXT_PTR(a0)
-	move.w d1, OPASM_EVENT_TEXT_LEN(a0)
-	move.l d2, OPASM_EVENT_VALUE(a0)
+	move.w d0, abi.OPASM_EVENT_KIND(a0)
+	move.l a1, abi.OPASM_EVENT_TEXT_PTR(a0)
+	move.w d1, abi.OPASM_EVENT_TEXT_LEN(a0)
+	move.l d2, abi.OPASM_EVENT_VALUE(a0)
 	movea.l a0, a2
 	bsr.w appendEventFrame
-	adda.l #OPASM_EVENT_BYTES, sp
+	adda.l #abi.OPASM_EVENT_BYTES, sp
 	movem.l (sp)+, d3/a0-a2
 	rts
 	.bend  ; appendTextValueEvent
@@ -675,15 +643,15 @@ appendEventFrame	.block
 	move.l a3, d0
 	tst.l d0
 	beq.s ok
-	tst.l OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(a3)
+	tst.l abi.OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(a3)
 	beq.s ok
-	tst.l OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a3)
+	tst.l abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a3)
 	beq.s ok
-	move.w OPASM_ASSEMBLE_REQ_EVENT_CAPACITY(a3), d0
+	move.w abi.OPASM_ASSEMBLE_REQ_EVENT_CAPACITY(a3), d0
 	beq.s ok
-	movea.l OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(a3), a0
-	movea.l OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a3), a1
-	jsr opasmEventAppendV1
+	movea.l abi.OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(a3), a0
+	movea.l abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(a3), a1
+	jsr events.appendV1
 
 ok
 	movem.l (sp)+, d0-d1/a0-a1/a3
@@ -692,7 +660,7 @@ ok
 
 clearEventFrame	.block
 	movem.l d0-d1/a0, -(sp)
-	moveq #OPASM_EVENT_BYTES - 1, d1
+	moveq #abi.OPASM_EVENT_BYTES - 1, d1
 
 loop
 	clr.b (a0)+

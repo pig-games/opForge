@@ -27,15 +27,15 @@ tkvmIsIdentifierStart	.block
 	; These predicate chains intentionally avoid lookup tables so the native
 	; implementation stays easy to audit against the Rust helper masks.
 	cmpi.b #'A', d0
-	blo tkvmCheckIdentStartLower
+	blo checkIdentStartLower
 	cmpi.b #'Z', d0
 	bls tkvmPredicateTrue
-tkvmCheckIdentStartLower
+checkIdentStartLower
 	cmpi.b #'a', d0
-	blo tkvmCheckIdentStartPunct
+	blo checkIdentStartPunct
 	cmpi.b #'z', d0
 	bls tkvmPredicateTrue
-tkvmCheckIdentStartPunct
+checkIdentStartPunct
 	cmpi.b #'_', d0
 	beq tkvmPredicateTrue
 	cmpi.b #'.', d0  ; '.' remains identifier-start-capable because the runtime class mask includes it
@@ -46,20 +46,20 @@ tkvmCheckIdentStartPunct
 
 tkvmIsIdentifierContinue	.block
 	cmpi.b #'A', d0
-	blo tkvmCheckIdentContinueLower
+	blo checkIdentContinueLower
 	cmpi.b #'Z', d0
 	bls tkvmPredicateTrue
-tkvmCheckIdentContinueLower
+checkIdentContinueLower
 	cmpi.b #'a', d0
-	blo tkvmCheckIdentContinueDigit
+	blo checkIdentContinueDigit
 	cmpi.b #'z', d0
 	bls tkvmPredicateTrue
-tkvmCheckIdentContinueDigit
+checkIdentContinueDigit
 	cmpi.b #'0', d0
-	blo tkvmCheckIdentExtra
+	blo checkIdentExtra
 	cmpi.b #'9', d0
 	bls tkvmPredicateTrue
-tkvmCheckIdentExtra
+checkIdentExtra
 	cmpi.b #'_', d0
 	beq tkvmPredicateTrue
 	cmpi.b #'.', d0

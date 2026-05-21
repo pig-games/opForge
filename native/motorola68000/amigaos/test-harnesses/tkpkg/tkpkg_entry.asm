@@ -9,7 +9,7 @@
 	.pub
 	.use tkpkg.amigaos.abi (AbiMarker, WireContractMarker, ENTRY_ORD_INIT)
 	.use tkpkg.amigaos.buffers (ControlBlockV1)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
+	.use tkpkg.amigaos.service svc
 
 	.section entry, kind=code
 	.pub
@@ -26,7 +26,7 @@ start	.block
 
 ; Forward an already prepared request to the shared tkpkg service dispatcher.
 tkpkgEntryDispatchV1	.block
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	rts
 	.bend  ; tkpkgEntryDispatchV1
 
@@ -34,7 +34,7 @@ tkpkgEntryDispatchV1	.block
 tkpkgEntryBootstrapV1	.block
 	lea ControlBlockV1, a0
 	moveq #ENTRY_ORD_INIT, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	rts
 	.bend  ; tkpkgEntryBootstrapV1
 

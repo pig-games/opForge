@@ -81,7 +81,7 @@ Remaining responsibilities in
   - opasm engine lifecycle: selected statement filtering and image append through
     `opasmEngineAppendImageBytesV1`.
   - tkpkg service dispatch: dispatches `ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION`
-    through `tkpkgServiceDispatchV1`.
+    through `serviceDispatchV1`.
   - CLI reporting/diagnostics: selector ok, image capacity, selector failure
     diagnostics, raw last-error printing.
   - Temporary glue: still owns service-window writes during pass 2.

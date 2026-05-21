@@ -11,7 +11,7 @@
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, packageStorage)
 	.use tkpkg.amigaos.buffers (tokenRecordBuffer, tokenScratchBuffer, lastTokenCount, lastLexemeLen, TOKEN_RECORD_SIZE)
 	.use tkpkg.amigaos.buffers (ActiveParserVmOffsetLo, LAST_ERROR_BUFFER_PTR_V1)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
+	.use tkpkg.amigaos.service as svc
 	.use opforge.cli.state (NativeCliLineRequestLen, NativeCliPrvmRouteStatus, NativeCliPrvmResultCount)
 	.use opforge.cli.state (OpforgeNativeCliPrvmRouteFrame, OpforgeNativeCliPrvmResultBuffer)
 	.use opforge.cli.state (OpforgeNativeCliPrvmDiagBuffer, OpforgeNativeCliPrvmResumeBuffer)
@@ -155,7 +155,7 @@ opforgeNativeCliDispatchPreparedParseLineEnvelope	.block
 	move.w NativeCliLineRequestLen, d1
 	bsr.w opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_PARSE_LINE, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	move.l d0, NativeCliPrvmRouteStatus
 	move.w d1, NativeCliPrvmResultCount
 	lea ControlBlockV1, a0

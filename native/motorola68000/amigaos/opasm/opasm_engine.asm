@@ -7,7 +7,7 @@
 	.module opasm.amigaos.engine
 	.cpu 68020
 
-	.use opasm.amigaos.events (opasmEventAppendV1, opasmEventResetCountV1)
+	.use opasm.amigaos.events as events
 
 	.pub
 

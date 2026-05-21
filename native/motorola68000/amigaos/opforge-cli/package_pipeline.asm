@@ -9,7 +9,7 @@
 
 	.use opforge.cli.constants (PACKAGE_INPUT_PTR_V1)
 	.use opforge.cli.copy (opforgeNativeCliCopyBytes, opforgeNativeCliCopyCString)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
+	.use tkpkg.amigaos.service as svc
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, ControlBlockV1, packageStorage, PACKAGE_STORAGE_CAPACITY, lastErrorBuffer)
 
 	.use tkpkg.amigaos.abi (ENTRY_ORD_INIT, ENTRY_ORD_LOAD_PACKAGE)
@@ -27,7 +27,7 @@
 opforgeNativeCliInitPackagePipeline	.block
 	lea ControlBlockV1, a0
 	moveq #ENTRY_ORD_INIT, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	jsr opforgeNativeCliReadStatus
 	tst.b d0
 	bne.w fail
@@ -41,7 +41,7 @@ opforgeNativeCliInitPackagePipeline	.block
 	move.w NativeCliPackageLenActive, d1
 	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_LOAD_PACKAGE, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	jsr opforgeNativeCliReadStatus
 	tst.b d0
 	bne.s fail
@@ -55,7 +55,7 @@ opforgeNativeCliInitPackagePipeline	.block
 	move.w NativeCliPipelineRequestLen, d1
 	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_SET_PIPELINE, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	jsr opforgeNativeCliReadStatus
 	tst.b d0
 	bne.s fail

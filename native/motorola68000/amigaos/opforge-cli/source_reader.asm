@@ -17,7 +17,6 @@
 	.use opforge.cli.dos (opforgeNativeCliPutStr, opforgeNativeCliOpenInput)
 	.use opforge.cli.dos (opforgeNativeCliReadInput, opforgeNativeCliClose)
 	.use opforge.cli.path (opforgeNativeCliCopyPathBuffer)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
 	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1)
 
 	.use tkpkg.amigaos.abi (ENTRY_ORD_INIT, ENTRY_ORD_LOAD_PACKAGE)

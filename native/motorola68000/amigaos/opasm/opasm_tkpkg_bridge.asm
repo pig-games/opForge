@@ -3,12 +3,10 @@
 	.module opasm.amigaos.tkpkg_bridge
 	.cpu 68020
 
-	.use opasm.amigaos.callback_abi (OPASM_SERVICE_CONTROL_BLOCK_PTR, OPASM_SERVICE_IO_BUFFER_PTR)
-	.use opasm.amigaos.callback_abi (OPASM_SERVICE_EVAL_EXTENSION_PTR, OPASM_SERVICE_EVAL_EXTENSION_BYTES)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_EVALUATE_EXPRESSION, ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION)
-	.use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN, CB_OUTPUT_LEN)
-	.use tkpkg.amigaos.abi (CB_EXTENSION_PTR, CB_EXTENSION_LEN, CB_STATUS_CODE, CB_LAST_ERROR_LEN)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
+	.use opasm.amigaos.callback_abi as abi
+	.use tkpkg.amigaos.abi as tkabi
+	.use tkpkg.amigaos.service as svc
+
 
 	.section code, kind=code
 	.pub
@@ -24,11 +22,11 @@
 ; - D1: tkpkg output byte length.
 ; - D2: tkpkg last-error byte length.
 ; - Clobbers D3-D5.
-opasmTkpkgBridgeDispatchEncodeSelectedV1	.block
+dispatchEncodeSelectedV1	.block
 	move.w d0, d1
-	moveq #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
-	bra.w opasmTkpkgBridgeDispatchServiceV1
-	.bend  ; opasmTkpkgBridgeDispatchEncodeSelectedV1
+	moveq #tkabi.ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
+	bra.w dispatchServiceV1
+	.bend  ; dispatchEncodeSelectedV1
 
 ; Dispatch the expression evaluator service using an opasm service frame.
 ;
@@ -41,17 +39,17 @@ opasmTkpkgBridgeDispatchEncodeSelectedV1	.block
 ; - D1: tkpkg output byte length.
 ; - D2: tkpkg last-error byte length.
 ; - Clobbers D3-D5.
-opasmTkpkgBridgeDispatchEvaluateExpressionV1	.block
+dispatchEvaluateExpressionV1	.block
 	move.w d0, d1
-	moveq #ENTRY_ORD_EVALUATE_EXPRESSION, d0
-	bra.w opasmTkpkgBridgeDispatchServiceV1
-	.bend  ; opasmTkpkgBridgeDispatchEvaluateExpressionV1
+	moveq #tkabi.ENTRY_ORD_EVALUATE_EXPRESSION, d0
+	bra.w dispatchServiceV1
+	.bend  ; dispatchEvaluateExpressionV1
 
 ; Dispatch one tkpkg service using an opasm service frame.
 ;
 ; Inputs:
 ; - A0: OPASM_SERVICE_* frame.
-; - D0: ENTRY_ORD_* service ordinal.
+; - D0: tkabi.ENTRY_ORD_* service ordinal.
 ; - D1: request byte length in the service IO buffer.
 ;
 ; Outputs:
@@ -59,31 +57,31 @@ opasmTkpkgBridgeDispatchEvaluateExpressionV1	.block
 ; - D1: tkpkg output byte length.
 ; - D2: tkpkg last-error byte length.
 ; - Clobbers D3-D5.
-opasmTkpkgBridgeDispatchServiceV1	.block
+dispatchServiceV1	.block
 	movem.l a0-a2, -(sp)
 	movea.l a0, a2
 	move.w d0, d4
 	move.w d1, d5
 	bsr.w writeInputWindow
 	bsr.w writeExtensionWindow
-	movea.l OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), a0
+	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), a0
 	move.w d4, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	movea.l a2, a0
-	bsr.w opasmTkpkgBridgeReadStatusV1
+	bsr.w readStatusV1
 	move.w d0, d3
 	movea.l a2, a0
-	bsr.w opasmTkpkgBridgeReadOutputLenV1
+	bsr.w readOutputLenV1
 	move.w d0, d4
 	movea.l a2, a0
-	bsr.w opasmTkpkgBridgeReadLastErrorLenV1
+	bsr.w readLastErrorLenV1
 	move.w d0, d5
 	move.w d3, d0
 	move.w d4, d1
 	move.w d5, d2
 	movem.l (sp)+, a0-a2
 	rts
-	.bend  ; opasmTkpkgBridgeDispatchServiceV1
+	.bend  ; dispatchServiceV1
 
 ; Read tkpkg service status from the control block named by an opasm service frame.
 ;
@@ -92,12 +90,12 @@ opasmTkpkgBridgeDispatchServiceV1	.block
 ;
 ; Outputs:
 ; - D0: tkpkg status byte.
-opasmTkpkgBridgeReadStatusV1	.block
-	movea.l OPASM_SERVICE_CONTROL_BLOCK_PTR(a0), a0
+readStatusV1	.block
+	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a0), a0
 	moveq #0, d0
-	move.b CB_STATUS_CODE(a0), d0
+	move.b tkabi.CB_STATUS_CODE(a0), d0
 	rts
-	.bend  ; opasmTkpkgBridgeReadStatusV1
+	.bend  ; readStatusV1
 
 ; Read tkpkg output length from the control block named by an opasm service frame.
 ;
@@ -106,16 +104,16 @@ opasmTkpkgBridgeReadStatusV1	.block
 ;
 ; Outputs:
 ; - D0: tkpkg output byte length.
-opasmTkpkgBridgeReadOutputLenV1	.block
-	movea.l OPASM_SERVICE_CONTROL_BLOCK_PTR(a0), a0
+readOutputLenV1	.block
+	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a0), a0
 	moveq #0, d0
-	move.b CB_OUTPUT_LEN(a0), d0
+	move.b tkabi.CB_OUTPUT_LEN(a0), d0
 	moveq #0, d1
 	move.b 23(a0), d1
 	lsl.w #8, d1
 	or.w d1, d0
 	rts
-	.bend  ; opasmTkpkgBridgeReadOutputLenV1
+	.bend  ; readOutputLenV1
 
 ; Read tkpkg last-error length from the control block named by an opasm service frame.
 ;
@@ -124,51 +122,51 @@ opasmTkpkgBridgeReadOutputLenV1	.block
 ;
 ; Outputs:
 ; - D0: tkpkg last-error byte length.
-opasmTkpkgBridgeReadLastErrorLenV1	.block
-	movea.l OPASM_SERVICE_CONTROL_BLOCK_PTR(a0), a0
+readLastErrorLenV1	.block
+	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a0), a0
 	moveq #0, d0
-	move.b CB_LAST_ERROR_LEN(a0), d0
+	move.b tkabi.CB_LAST_ERROR_LEN(a0), d0
 	moveq #0, d1
 	move.b 31(a0), d1
 	lsl.w #8, d1
 	or.w d1, d0
 	rts
-	.bend  ; opasmTkpkgBridgeReadLastErrorLenV1
+	.bend  ; readLastErrorLenV1
 
 	.priv
 
 writeInputWindow	.block
-	movea.l OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), a0
-	move.l OPASM_SERVICE_IO_BUFFER_PTR(a2), d0
-	sub.l OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), d0
+	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), a0
+	move.l abi.OPASM_SERVICE_IO_BUFFER_PTR(a2), d0
+	sub.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), d0
 	move.w d5, d1
-	move.b d0, CB_INPUT_PTR(a0)
+	move.b d0, tkabi.CB_INPUT_PTR(a0)
 	lsr.w #8, d0
 	move.b d0, 17(a0)
-	move.b d1, CB_INPUT_LEN(a0)
+	move.b d1, tkabi.CB_INPUT_LEN(a0)
 	lsr.w #8, d1
 	move.b d1, 19(a0)
 	rts
 	.bend  ; writeInputWindow
 
 writeExtensionWindow	.block
-	movea.l OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), a0
-	move.w OPASM_SERVICE_EVAL_EXTENSION_BYTES(a2), d1
+	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), a0
+	move.w abi.OPASM_SERVICE_EVAL_EXTENSION_BYTES(a2), d1
 	beq.s clearExtension
-	move.l OPASM_SERVICE_EVAL_EXTENSION_PTR(a2), d0
-	sub.l OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), d0
-	move.b d0, CB_EXTENSION_PTR(a0)
+	move.l abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(a2), d0
+	sub.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a2), d0
+	move.b d0, tkabi.CB_EXTENSION_PTR(a0)
 	lsr.w #8, d0
 	move.b d0, 25(a0)
-	move.b d1, CB_EXTENSION_LEN(a0)
+	move.b d1, tkabi.CB_EXTENSION_LEN(a0)
 	lsr.w #8, d1
 	move.b d1, 27(a0)
 	rts
 
 clearExtension
-	clr.b CB_EXTENSION_PTR(a0)
+	clr.b tkabi.CB_EXTENSION_PTR(a0)
 	clr.b 25(a0)
-	clr.b CB_EXTENSION_LEN(a0)
+	clr.b tkabi.CB_EXTENSION_LEN(a0)
 	clr.b 27(a0)
 	rts
 	.bend  ; writeExtensionWindow

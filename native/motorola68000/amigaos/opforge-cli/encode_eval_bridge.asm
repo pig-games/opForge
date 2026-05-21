@@ -5,7 +5,7 @@
 
 	.use tkpkg.amigaos.abi (ENTRY_ORD_ENCODE_INSTRUCTION)
 	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, LAST_ERROR_BUFFER_PTR_V1)
-	.use tkpkg.amigaos.service (tkpkgServiceDispatchV1)
+	.use tkpkg.amigaos.service as svc
 
 	.use opasm.amigaos.engine (opasmEngineGetStatementSourceLineTextV1)
 	.use opasm.amigaos.engine (opasmEnginePrepareEvaluateExpressionExtensionV1)
@@ -118,7 +118,7 @@ opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 	move.w NativeCliEncodeRequestLen, d1
 	jsr opforgeNativeCliWriteInputWindow
 	moveq #ENTRY_ORD_ENCODE_INSTRUCTION, d0
-	jsr tkpkgServiceDispatchV1
+	jsr svc.serviceDispatchV1
 	jsr opforgeNativeCliReadStatus
 
 done

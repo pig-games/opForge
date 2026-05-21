@@ -266,9 +266,13 @@ Consumers map logical sections into concrete sections:
 Only reachable units from `scanner` are placed through the map. Unreachable
 units are excluded from executable output.
 
-There is no implicit same-name default mapping in v0.1. Every reachable logical
-section must have an explicit map entry. Missing entries diagnose before output
-emission and must name the defining module and logical section.
+Reachable logical sections may use a same-name default mapping at the
+root/composition module boundary when the importing/root module declares a
+concrete section with the same name and a compatible kind/capability. Explicit
+`map { ... }` entries still override this default and remain required when names
+differ, no compatible same-name concrete section exists, or an imported library
+module is routing its own logical dependencies. Missing mappings diagnose before
+output emission and must name the defining module and logical section.
 
 Map targets are concrete sections in the consuming/root module. A target section
 may be declared before or after the `.use`, but by validation time it must be
@@ -344,8 +348,9 @@ that library/object packaging over the module graph is not implemented in v0.1.
   imported, selected, or mapped.
 - A section map entry for an unknown logical section must fail with a diagnostic
   naming the missing logical section and defining module.
-- A reachable logical section without a required concrete mapping must fail; no
-  implicit default mapping exists in v0.1.
+- A reachable logical section without either an explicit concrete mapping or, at
+  the root/composition boundary, a compatible same-name concrete section in the
+  importing/root module must fail.
 - A section map target that is not declared as a concrete section in the
   consuming/root module by validation time must fail before output emission.
 - A map from incompatible section kinds, e.g. `kind=bss` to `kind=code`, must
@@ -421,9 +426,6 @@ that library/object packaging over the module graph is not implemented in v0.1.
 
 - Which later version should add real library/object packaging for AmigaOS hunk
   libraries, C64 OS libraries, or other target-specific linkable outputs?
-- Should a future version add opt-in default section mapping for same-name,
-  compatible logical and concrete sections, or should explicit maps remain the
-  permanent rule?
 - Should future reachability optimization split units more finely than the v0.1
   top-level-symbol granularity when doing so is safe for local labels and
   generated metadata?

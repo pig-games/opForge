@@ -1522,7 +1522,12 @@ impl<'a> AsmLine<'a> {
                 self.record_expr_references(base);
                 self.record_expr_references(index);
             }
-            Expr::Member { base, .. } => self.record_expr_references(base),
+            Expr::Member { base, field, .. } => {
+                if let Some(base_name) = opcore::expression::expr_text(base) {
+                    self.record_named_reference(&format!("{base_name}.{field}"));
+                }
+                self.record_expr_references(base);
+            }
             Expr::StructLiteral { fields, .. } => {
                 for (_, value) in fields {
                     self.record_expr_references(value);

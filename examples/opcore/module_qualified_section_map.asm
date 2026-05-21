@@ -1,21 +1,26 @@
-; Qualified module import with selected root, logical section map, and reachability.
+; Qualified module import with logical section map and reference-driven reachability.
 
 .module opasm.amigaos.engine
+    .cpu 68000
     .pub
     .section code, kind=code, logical
-sessionPass: .byte $11
-unusedPass:  .byte $22
+sessionPass:
+    rts
+unusedPass:
+    rts
     .endsection
 .endmodule
 
 .module app.main
+    .cpu 68000
     .region rom, $1000, $10ff
+    .use opasm.amigaos.engine as engine map { code -> app_code }
     .section app_code, kind=code
-start: .byte $aa
-       .byte engine.sessionPass
+start:
+    jsr engine.sessionPass
+    rts
     .endsection
     .place app_code in rom
-    .use opasm.amigaos.engine (sessionPass) as engine map { code -> app_code }
 .endmodule
 
 .end

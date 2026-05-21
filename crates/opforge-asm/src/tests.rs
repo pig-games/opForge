@@ -18621,7 +18621,7 @@ fn use_section_map_rejects_incompatible_kind() {
 }
 
 #[test]
-fn selected_root_requires_explicit_map_for_logical_section() {
+fn selected_root_requires_map_or_same_name_concrete_for_logical_section() {
     let mut assembler = Assembler::new();
     let pass1 = assembler.pass1(&[
         ".module dep".to_string(),
@@ -18639,8 +18639,28 @@ fn selected_root_requires_explicit_map_for_logical_section() {
     assert!(assembler.diagnostics.iter().any(|diag| {
         diag.error
             .message()
-            .contains("Reachable logical section 'code' from module 'dep' requires an explicit import section map")
+            .contains("Reachable logical section 'code' from module 'dep' requires an import section map or compatible same-name concrete section")
     }));
+}
+
+#[test]
+fn selected_root_uses_same_name_compatible_concrete_section_by_default() {
+    let assembler = run_passes(&[
+        ".module dep",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry: .byte $11",
+        ".endsection",
+        ".endmodule",
+        ".module main",
+        ".section code, kind=code",
+        ".endsection",
+        ".use dep (entry) as d",
+        ".endmodule",
+    ]);
+
+    let section = assembler.sections().get("code").expect("code section");
+    assert_eq!(section.bytes, vec![0x11]);
 }
 
 #[test]
@@ -18655,6 +18675,8 @@ fn selected_root_reachability_follows_qualified_symbol_references() {
         ".endmodule".to_string(),
         ".module dep".to_string(),
         ".use util as u".to_string(),
+        ".section tables, kind=data".to_string(),
+        ".endsection".to_string(),
         ".pub".to_string(),
         ".section code, kind=code, logical".to_string(),
         "entry: .long u.helper".to_string(),
@@ -18675,13 +18697,13 @@ fn selected_root_reachability_follows_qualified_symbol_references() {
         .any(|unit| unit.full_name == "util.helper"));
     assert!(assembler.diagnostics.iter().any(|diag| {
         diag.error.message().contains(
-            "Reachable logical section 'tables' from module 'util' requires an explicit import section map",
+            "Reachable logical section 'tables' from module 'util' requires an import section map or compatible same-name concrete section",
         )
     }));
 }
 
 #[test]
-fn root_qualified_reference_requires_explicit_map_for_logical_section() {
+fn root_qualified_reference_uses_same_name_concrete_section_by_default() {
     let mut assembler = Assembler::new();
     let pass1 = assembler.pass1(&[
         ".module dep".to_string(),
@@ -18692,23 +18714,18 @@ fn root_qualified_reference_requires_explicit_map_for_logical_section() {
         ".endmodule".to_string(),
         ".module main".to_string(),
         ".use dep as d".to_string(),
-        ".section app_code, kind=code".to_string(),
+        ".section code, kind=code".to_string(),
         "start: .long d.entry".to_string(),
         ".endsection".to_string(),
         ".endmodule".to_string(),
     ]);
 
-    assert!(pass1.errors > 0);
+    assert_eq!(pass1.errors, 0);
     assert!(assembler
         .symbols
         .reachable_units_from_selected_roots()
         .iter()
         .any(|unit| unit.full_name == "dep.entry"));
-    assert!(assembler.diagnostics.iter().any(|diag| {
-        diag.error.message().contains(
-            "Reachable logical section 'code' from module 'dep' requires an explicit import section map",
-        )
-    }));
 }
 
 #[test]
@@ -18749,7 +18766,7 @@ fn reachable_map_diagnostic_uses_actual_importing_module() {
         .iter()
         .filter(|diag| {
             diag.error.message().contains(
-                "Reachable logical section 'tables' from module 'util' requires an explicit import section map",
+                "Reachable logical section 'tables' from module 'util' requires an import section map or compatible same-name concrete section",
             )
         })
         .count();
@@ -24492,6 +24509,11 @@ fn m68k_jsr_accepts_qualified_imported_symbol_operand() {
         "unexpected diagnostics: {:?}",
         assembler.diagnostics
     );
+    assert!(assembler
+        .symbols
+        .reachable_units_from_selected_roots()
+        .iter()
+        .any(|unit| unit.full_name == "demo.routines.drawSprite"));
     let entries = assembler.image().entries().expect("entries");
     assert_eq!(
         entries,

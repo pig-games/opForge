@@ -326,6 +326,10 @@ impl<'a> AsmLine<'a> {
                     opcore::imports::span_to_source_span(expr_span(&operands[0])),
                 );
             }
+        } else if let Some(module) = self.symbol_scope.module_active.as_deref() {
+            self.layout.concrete_section_declarations.insert(
+                crate::engine::Assembler::concrete_section_declaration_key(module, &name),
+            );
         }
         self.layout
             .section_stack

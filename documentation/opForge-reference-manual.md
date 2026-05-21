@@ -673,11 +673,11 @@ Root modules map reachable logical sections into concrete output sections:
 ```
 .module main
 .cpu 68000
-.section app_code, kind=code
-.endsection
-.use opasm.amigaos.engine (sessionPass) as engine map {
+.use opasm.amigaos.engine as engine map {
     code -> app_code
 }
+.section app_code, kind=code
+.endsection
 start:
     jsr engine.sessionPass
 .endmodule
@@ -688,8 +688,11 @@ Availability and executable inclusion are separate. A module made available by
 includes only reachable units: selected roots, qualified references from the root
 module, and their recursively referenced dependencies. Public exports that are
 not selected or referenced remain available for resolution but are excluded from
-mapped executable output. In v0.1, each reachable logical section needs an
-explicit map entry; there is no implicit same-name section mapping.
+mapped executable output. At the root/composition module boundary, reachable
+logical sections default-map to same-name concrete sections when the concrete
+section exists and has a compatible kind. Use an explicit map entry when section
+names differ, when routing dependencies from one reusable module to another, or
+when you want to route the imported material elsewhere.
 
 `.output` currently supports integrated executable payloads for `bin`, `prg`,
 and `hunk`. Library/object packaging over the module graph is not implemented in

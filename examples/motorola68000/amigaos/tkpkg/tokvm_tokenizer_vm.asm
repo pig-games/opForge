@@ -368,13 +368,13 @@ tokvmOpcodeReadChar:
         MOVE.B 0(A4, D2.L), D0
         BRA tokvmStoreCurrentByte
 tokvmStoreEofByte:
-        BNE.S tokvmScanStringDispatchFetchedByte
+        MOVEQ #-1, D0
 tokvmStoreCurrentByte:
         MOVE.L D0, LOCAL_CURRENT_BYTE(A2)
 
         BRA tokvmProgramLoop
 
-tokvmScanStringDispatchFetchedByte:
+tokvmOpcodeAdvance:
         CMP.L D4, D2  ; advance saturates at EOL, same as VmTokenizerInputStream.advance()
         BCC tokvmProgramLoop
         ADDQ.L #1, D2
@@ -939,13 +939,13 @@ tokvmScanStringCopyLiteral:
         BCC tokvmPendingLexemeOverflowFromScan
         MOVE.L LOCAL_STEP_COUNT(A2), D1
         CMPI.L #2, D1
-        BNE.S tokvmScanStringEmitDecoded
+        BNE.S tokvmScanStringEmitDecodedFast
         MOVE.W #TK_VM_FAILURE_KIND_FAIL, tokvmLastFailureKind
         MOVE.W D0, tokvmLastFailureOperand
         MOVEQ #TK_STATUS_VM_FAILURE, D0
         BRA tokvmReturn
 
-tokvmScanStringEmitDecoded:
+tokvmScanStringEmitDecodedFast:
         MOVE.B D0, (A0)+
         ADDQ.L #1, LOCAL_PENDING_LEX_LEN(A2)
         ADDQ.L #1, D2

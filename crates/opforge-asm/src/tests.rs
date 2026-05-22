@@ -1693,7 +1693,11 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
 }
 
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
-    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("main") {
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("main")
+        && asm_path
+            .components()
+            .any(|component| component.as_os_str() == "amigaos")
+    {
         let amigaos_dir = asm_path.parent().expect("main should live under amigaos");
         return vec![
             amigaos_dir.join("opforge-cli"),
@@ -1838,6 +1842,7 @@ fn should_skip_example_asm_file(path: &Path) -> bool {
                 | "tkpkg_pipeline.asm"
                 | "tkpkg_token_policy.asm"
                 | "tkpkg_tokenizer_vm.asm"
+                | "tokvm_tokenizer_vm.asm"
                 | "opcore_expr_bridge.asm"
                 | "prvm_runtime.asm"
                 | "prvm_line_router.asm"

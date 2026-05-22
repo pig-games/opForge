@@ -226,7 +226,7 @@ tkpkgDebugCliDispatchServiceV1
 	move.l d7, -(sp)
 	move.l a5, -(sp)
 	move.l a6, -(sp)
-	jsr svc.erviceDispatchV1
+	jsr svc.dispatchV1
 	movea.l (sp)+, a6
 	movea.l (sp)+, a5
 	move.l (sp)+, d7

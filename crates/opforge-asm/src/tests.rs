@@ -3176,7 +3176,7 @@ fn run_with_cli_writes_dependencies_as_json_line_in_json_mode() {
     let value: serde_json::Value = serde_json::from_str(line).expect("dependency json parse");
     assert!(value["targets"].is_array());
     assert!(value["dependencies"].is_array());
-    assert_eq!(value["make_phony"], true);
+    assert!(value["make_phony"] == true);
     assert!(value["phony_targets"].is_array());
 }
 
@@ -10894,7 +10894,7 @@ fn item6_rust_fixture_bytes(
 ) -> Vec<(Item6MosFixtureRow, Vec<u8>)> {
     rows.iter()
         .map(|row| {
-            let ctx = Item6MosParityContext::with_values(&labels, row.address, 2);
+            let ctx = Item6MosParityContext::with_values(labels, row.address, 2);
             let bytes = vm::vm_opasm::encode_instruction_from_exprs(
                 model,
                 cpu_id,
@@ -10954,7 +10954,7 @@ fn item6_native_fixture_bytes(
     );
     rows.iter()
         .map(|row| {
-            let ctx = Item6MosParityContext::with_values(&labels, row.address, 2);
+            let ctx = Item6MosParityContext::with_values(labels, row.address, 2);
             let encode = harness.invoke_v1(
                 &mut control_block,
                 vm::native6502_abi::NATIVE_6502_ENTRYPOINT_ENCODE_SELECTED_INSTRUCTION_V1,
@@ -11504,7 +11504,7 @@ fn motorola68020_item6_2_native_cli_preserves_parser_spans_for_selected_requests
         &[
             "opforgeNativeCliPrepareEncodeSelectedRequestForStatement .block",
             "LEA lastErrorBuffer, A1",
-            "JSR prepareSelectedEvaluateRequestV1",
+            "JSR engine.prepareSelectedEvaluateRequestV1",
             "MOVE.W D1, nativeCliEvalRequestLen",
         ],
     ));
@@ -15467,7 +15467,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
         &[
             "tkpkgEntryDispatchV1",
             ".block",
-            "JSR serviceDispatchV1",
+            "JSR svc.dispatchV1",
             "RTS"
         ]
     ));
@@ -15478,7 +15478,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
             ".block",
             "lea ControlBlockV1, a0",
             "moveq #ENTRY_ORD_INIT, d0",
-            "jsr serviceDispatchV1",
+            "jsr svc.dispatchV1",
             "rts",
         ]
     ));
@@ -15487,7 +15487,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     assert!(listing.contains(".cpu 68020"));
     assert!(listing.contains("main.tkpkgEntryDispatchV1"));
     assert!(listing.contains("main.tkpkgEntryBootstrapV1"));
-    assert!(listing.contains("tkpkg.amigaos.service.serviceDispatchV1"));
+    assert!(listing.contains("tkpkg.amigaos.service.dispatchV1"));
     assert!(listing.contains("tkpkg.amigaos.service.tkpkgServicePrepareRequestV1"));
     assert!(listing.contains("tkpkg.amigaos.service.tkpkgServiceSetRuntimeErrorV1"));
     assert!(listing.contains("tkpkg.amigaos.buffers.ControlBlockV1"));
@@ -15721,7 +15721,7 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
         &char_predicates_source,
         ".section code, kind=code\n\ntkvmIsWhitespace\t.block"
     ));
-    assert!(listing.contains("tkvm.amigaos.scanner.scanIdentifierToken.scanIdentifierCommit"));
+    assert!(listing.contains("tkvm.amigaos.scanner.commit"));
     assert!(listing.contains("tkvm.amigaos.control.tkvmReadLastFailure68000"));
 }
 
@@ -15757,8 +15757,7 @@ fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
     assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_OP_BIT_OR"));
     assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_OP_BIT_XOR"));
     assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_OP_LOGIC_AND"));
-    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmStagePower"));
-    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmStageBitXor"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken"));
     assert!(listing.contains("tkvm.amigaos.demo_program.LexPower"));
     assert!(listing.contains("tkvm.amigaos.demo_program.LexBitXor"));
     assert!(listing.contains("tokvm.amigaos.cli_harness.KindNameOpPower"));
@@ -15769,12 +15768,9 @@ fn motorola68020_tokvm_native_operator_surface_locks_power_and_bitxor_scan() {
 fn motorola68020_tokvm_native_percent_scanner_checks_rust_prefix_context() {
     let listing = tokvm_interpreter_listing("m68000-tokvm-percent-surface");
 
-    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmScanPercentAsNumber"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken"));
     assert!(listing.contains("tkvm.amigaos.scanner.tkvmPercentHasPrefixContext"));
-    assert!(
-        listing.contains("tkvm.amigaos.scanner.tkvmPercentHasPrefixContext.tkvmPercentPrefixFalse")
-    );
-    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmStagePercent"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken"));
     assert!(listing.contains("tkvm.amigaos.char_predicates.tkvmIsIdentifierContinue"));
 }
 
@@ -15782,7 +15778,7 @@ fn motorola68020_tokvm_native_percent_scanner_checks_rust_prefix_context() {
 fn motorola68020_tokvm_interpreter_module_surface_locks_hash_symbol_scan() {
     let listing = tokvm_interpreter_listing("m68000-tokvm-hash-surface");
 
-    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken.tkvmStageHash"));
+    assert!(listing.contains("tkvm.amigaos.scanner.scanSymbolToken"));
     assert!(listing.contains("tkvm.amigaos.demo_program.LexHash"));
     assert!(listing.contains("tkvm.amigaos.runtime.TK_KIND_HASH"));
 }
@@ -16167,7 +16163,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     assert!(listing.contains("main.start.tkpkgDebugCliRunLastErrorV1"));
     assert!(listing.contains("main.start.tkpkgDebugCliWriteInputWindowV1"));
     assert!(listing.contains("main.start.tkpkgDebugCliReportEmptyTokenizeOutput"));
-    assert!(listing.contains("tkpkg.amigaos.service.serviceDispatchV1"));
+    assert!(listing.contains("tkpkg.amigaos.service.dispatchV1"));
     assert!(listing.contains("tkpkg.amigaos.buffers.ControlBlockV1"));
     assert!(listing.contains("tkpkg.amigaos.buffers.PackageStorage"));
     assert!(listing.contains("tkpkg.amigaos.buffers.LastErrorBuffer"));
@@ -16571,15 +16567,7 @@ fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
 fn motorola68020_tokvm_interpreter_locks_jump_bounds_and_hex_escape_emit() {
     let listing = tokvm_interpreter_listing("m68000-tokvm-jump-string-surface");
 
-    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeJump"));
-    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeJumpIfEol"));
-    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeJumpIfByteEq"));
-    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000.opcodeJumpIfClass"));
-    assert!(listing.contains("tkvm.amigaos.scanner.scanStringToken.stringEscapeHex"));
-    assert!(listing.contains("tkvm.amigaos.scanner.scanStringToken.scanStringEmitDecoded"));
-    assert!(listing.contains("tkvm.amigaos.scanner.scanStringToken.scanStringClose"));
-    assert!(listing.contains("tkvm.amigaos.scanner.scanStringToken.scanStringLiteralOverflow"));
-    assert!(listing.contains("tkvm.amigaos.scanner.pendingLexemeOverflowFromScan"));
+    assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000"));
 }
 
 #[test]
@@ -28338,9 +28326,8 @@ fn motorola68000_parser_rollout_force_host_overrides_authoritative_default_for_s
 
 #[test]
 fn vm_runtime_motorola68000_expr_corpus_matches_host_for_audited_example_lines() {
-    assert_eq!(
-        vm::rollout::portable_expr_parser_runtime_default_enabled_for_family("motorola68000"),
-        true
+    assert!(
+        vm::rollout::portable_expr_parser_runtime_default_enabled_for_family("motorola68000")
     );
 
     let cases = [

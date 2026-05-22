@@ -20,7 +20,8 @@ pub fn parse_line_ast_for_repetition(
     line_num: u32,
 ) -> Result<LineAst, ParseError> {
     if let Some(model) = asm_line.opthread_execution_model.as_ref() {
-        return parse_statement_line_with_model(
+        let started = std::time::Instant::now();
+        let res = parse_statement_line_with_model(
             model,
             asm_line.cpu.as_str(),
             None,
@@ -29,8 +30,17 @@ pub fn parse_line_ast_for_repetition(
             &asm_line.register_checker,
         )
         .map(|(ast, _, _)| ast);
+        let elapsed = started.elapsed();
+        let bucket = if asm_line.pass == 1 {
+            crate::phase_profile::PhaseBucket::Pass1ParseLineAst
+        } else {
+            crate::phase_profile::PhaseBucket::Pass2ParseLineAst
+        };
+        crate::phase_profile::record_execution_path(Some(bucket), "vm.parse", elapsed);
+        return res;
     }
 
+    let started = std::time::Instant::now();
     let mut parser =
         parser_from_line_with_registers(src, line_num, asm_line.register_checker.clone())?;
     match parser.process_opcore_statement_request() {
@@ -41,6 +51,15 @@ pub fn parse_line_ast_for_repetition(
             span: parser.end_span(),
         }),
     }
+    .inspect(|_ast| {
+        let elapsed = started.elapsed();
+        let bucket = if asm_line.pass == 1 {
+            crate::phase_profile::PhaseBucket::Pass1ParseLineAst
+        } else {
+            crate::phase_profile::PhaseBucket::Pass2ParseLineAst
+        };
+        crate::phase_profile::record_execution_path(Some(bucket), "rust.parse", elapsed);
+    })
 }
 
 pub fn statement_parts(ast: &LineAst) -> Option<(Option<Label>, String, Vec<Expr>)> {

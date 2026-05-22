@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -125,12 +126,21 @@ struct ActiveScope {
 
 thread_local! {
     static CURRENT_PROFILE: RefCell<Option<PhaseProfileHandle>> = const { RefCell::new(None) };
-    static ACTIVE_SCOPES: RefCell<Vec<ActiveScope>> = RefCell::new(Vec::new());
+    static ACTIVE_SCOPES: RefCell<Vec<ActiveScope>> = const { RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    static CURRENT_PATH_PROFILE: RefCell<Option<PathProfileHandle>> = const { RefCell::new(None) };
 }
 
 fn profile_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| std::env::var_os("OPFORGE_PROFILE_PHASES").is_some())
+}
+
+pub fn path_profile_is_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("OPFORGE_PROFILE_EXECUTION_PATHS").is_some())
 }
 
 fn with_current_profile<R>(f: impl FnOnce(&PhaseProfileHandle) -> R) -> Option<R> {
@@ -160,11 +170,27 @@ pub fn install_for_current_thread_if_enabled() -> Option<InstalledPhaseProfile> 
     let handle = PhaseProfileHandle::new();
     let previous = CURRENT_PROFILE.with(|slot| slot.replace(Some(handle)));
     ACTIVE_SCOPES.with(|stack| stack.borrow_mut().clear());
+    // also install optional per-path profile when requested
+    if path_profile_is_enabled() {
+        let path_handle = PathProfileHandle::new();
+        let _prev = CURRENT_PATH_PROFILE.with(|slot| slot.replace(Some(path_handle)));
+    }
     Some(InstalledPhaseProfile { previous })
 }
 
 pub fn record_direct(bucket: PhaseBucket, duration: Duration) {
     let _ = with_current_profile(|profile| profile.record(bucket, duration));
+}
+
+pub fn record_execution_path(bucket: Option<PhaseBucket>, label: &str, duration: Duration) {
+    if !path_profile_is_enabled() {
+        return;
+    }
+    CURRENT_PATH_PROFILE.with(|slot| {
+        if let Some(handle) = slot.borrow().as_ref() {
+            handle.record(bucket, label, duration);
+        }
+    });
 }
 
 pub struct PhaseScopeGuard {
@@ -319,5 +345,85 @@ pub fn emit_summary_if_active() {
             continue;
         }
         print_stat(bucket, stat, assembly_total);
+    }
+    // emit per-path profile if active
+    if path_profile_is_enabled() {
+        CURRENT_PATH_PROFILE.with(|slot| {
+            if let Some(handle) = slot.borrow().as_ref() {
+                handle.emit_summary(assembly_total);
+            }
+        });
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct PathStat {
+    duration: Duration,
+    count: usize,
+}
+
+#[derive(Debug)]
+struct PathProfileState {
+    // map: bucket_index (usize, with usize::MAX for global) -> label -> PathStat
+    stats: HashMap<usize, HashMap<String, PathStat>>,
+}
+
+impl PathProfileState {
+    fn new() -> Self {
+        Self {
+            stats: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PathProfileHandle(Rc<RefCell<PathProfileState>>);
+
+impl PathProfileHandle {
+    fn new() -> Self {
+        Self(Rc::new(RefCell::new(PathProfileState::new())))
+    }
+
+    fn record(&self, bucket: Option<PhaseBucket>, label: &str, duration: Duration) {
+        let mut state = self.0.borrow_mut();
+        let key = bucket.map(|b| b as usize).unwrap_or(usize::MAX);
+        let entry = state.stats.entry(key).or_default();
+        let stat = entry.entry(label.to_string()).or_default();
+        stat.duration += duration;
+        stat.count += 1;
+    }
+
+    fn emit_summary(&self, assembly_total: Duration) {
+        eprintln!("[opforge execution profile]");
+        let state = self.0.borrow();
+        // sort keys for stability: global last
+        let mut keys: Vec<usize> = state.stats.keys().copied().collect();
+        keys.sort_unstable();
+        for key in keys {
+            let label_map = &state.stats[&key];
+            if key == usize::MAX {
+                eprintln!("global:");
+            } else {
+                // try map key back to PhaseBucket name
+                let bucket = unsafe { std::mem::transmute::<usize, PhaseBucket>(key) };
+                eprintln!("{}", phase_name(bucket));
+            }
+            // sort labels
+            let mut labels: Vec<_> = label_map.iter().collect();
+            labels.sort_by(|a, b| a.0.cmp(b.0));
+            for (lbl, stat) in labels {
+                let pct = if assembly_total.is_zero() {
+                    0.0
+                } else {
+                    (stat.duration.as_secs_f64() / assembly_total.as_secs_f64()) * 100.0
+                };
+                eprintln!(
+                    "  {lbl:25} {:10.3} ms {:7.2}%  ({}x)",
+                    stat.duration.as_secs_f64() * 1000.0,
+                    pct,
+                    stat.count
+                );
+            }
+        }
     }
 }

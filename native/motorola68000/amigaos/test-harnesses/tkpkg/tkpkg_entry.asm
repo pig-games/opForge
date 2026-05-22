@@ -9,7 +9,7 @@
 	.pub
 	.use tkpkg.amigaos.abi (AbiMarker, WireContractMarker, ENTRY_ORD_INIT)
 	.use tkpkg.amigaos.buffers (ControlBlockV1)
-	.use tkpkg.amigaos.service svc
+	.use tkpkg.amigaos.service as svc
 
 	.section entry, kind=code
 	.pub

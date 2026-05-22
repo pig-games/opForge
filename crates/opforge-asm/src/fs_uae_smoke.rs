@@ -1133,6 +1133,7 @@ fn run_example_smoke_with_extra_defines(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_example_smoke_with_extra_defines_and_native_cli_input(
     workspace_root: &Path,
     fs_uae_bin: &str,
@@ -1143,6 +1144,39 @@ fn run_example_smoke_with_extra_defines_and_native_cli_input(
     extra_assembly_defines: &[&str],
     native_cli_input_override: Option<&OpforgeNativeCliInputOverride<'_>>,
 ) -> Result<ExampleSmokeResult, String> {
+    let req = RunExampleSmokeRequest {
+        workspace_root,
+        fs_uae_bin,
+        args_text,
+        example_name,
+        relative_source_path,
+        cpu_override,
+        extra_assembly_defines,
+        native_cli_input_override,
+    };
+    run_example_smoke_with_request(&req)
+}
+
+struct RunExampleSmokeRequest<'a> {
+    workspace_root: &'a Path,
+    fs_uae_bin: &'a str,
+    args_text: &'a str,
+    example_name: &'static str,
+    relative_source_path: &'a str,
+    cpu_override: &'a str,
+    extra_assembly_defines: &'a [&'a str],
+    native_cli_input_override: Option<&'a OpforgeNativeCliInputOverride<'a>>,
+}
+
+fn run_example_smoke_with_request(req: &RunExampleSmokeRequest<'_>) -> Result<ExampleSmokeResult, String> {
+    let workspace_root = req.workspace_root;
+    let fs_uae_bin = req.fs_uae_bin;
+    let args_text = req.args_text;
+    let example_name = req.example_name;
+    let relative_source_path = req.relative_source_path;
+    let cpu_override = req.cpu_override;
+    let extra_assembly_defines = req.extra_assembly_defines;
+    let native_cli_input_override = req.native_cli_input_override;
     let source_path = workspace_root.join(relative_source_path);
     if !source_path.is_file() {
         return Err(format!(

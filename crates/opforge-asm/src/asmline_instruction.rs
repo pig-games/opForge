@@ -186,7 +186,7 @@ impl<'a> AsmLine<'a> {
             ) {
                 return status;
             }
-
+            let rust_encode_started = std::time::Instant::now();
             match pipeline.family.encode_family_operands(
                 &mapped_mnemonic,
                 mnemonic,
@@ -194,6 +194,17 @@ impl<'a> AsmLine<'a> {
                 self,
             ) {
                 registry::family::FamilyEncodeResult::Ok(bytes) => {
+                    let rust_encode_elapsed = rust_encode_started.elapsed();
+                    let bucket = if self.pass == 1 {
+                        crate::phase_profile::PhaseBucket::Pass1LineRoute
+                    } else {
+                        crate::phase_profile::PhaseBucket::Pass2LineRoute
+                    };
+                    crate::phase_profile::record_execution_path(
+                        Some(bucket),
+                        "rust.encode",
+                        rust_encode_elapsed,
+                    );
                     if let Err(err) = self.validate_instruction_emit_span(
                         &mapped_mnemonic,
                         effective_operands,
@@ -224,6 +235,17 @@ impl<'a> AsmLine<'a> {
                     span,
                     param,
                 } => {
+                    let rust_encode_elapsed = rust_encode_started.elapsed();
+                    let bucket = if self.pass == 1 {
+                        crate::phase_profile::PhaseBucket::Pass1LineRoute
+                    } else {
+                        crate::phase_profile::PhaseBucket::Pass2LineRoute
+                    };
+                    crate::phase_profile::record_execution_path(
+                        Some(bucket),
+                        "rust.encode",
+                        rust_encode_elapsed,
+                    );
                     self.bytes.extend_from_slice(&bytes);
                     if let Some(span) = span {
                         return self.failure_at_span(
@@ -241,7 +263,19 @@ impl<'a> AsmLine<'a> {
                         param.as_deref(),
                     );
                 }
-                registry::family::FamilyEncodeResult::NotFound => {}
+                registry::family::FamilyEncodeResult::NotFound => {
+                    let rust_encode_elapsed = rust_encode_started.elapsed();
+                    let bucket = if self.pass == 1 {
+                        crate::phase_profile::PhaseBucket::Pass1LineRoute
+                    } else {
+                        crate::phase_profile::PhaseBucket::Pass2LineRoute
+                    };
+                    crate::phase_profile::record_execution_path(
+                        Some(bucket),
+                        "rust.encode.notfound",
+                        rust_encode_elapsed,
+                    );
+                }
             }
 
             let resolved_operands =
@@ -462,14 +496,24 @@ impl<'a> AsmLine<'a> {
             ));
         };
 
-        match vm::vm_opasm::encode_instruction_from_exprs(
+        let vm_start = std::time::Instant::now();
+        let vm_res = vm::vm_opasm::encode_instruction_from_exprs(
             model,
             self.cpu.as_str(),
             None,
             mnemonic,
             operands,
             self,
-        ) {
+        );
+        let vm_elapsed = vm_start.elapsed();
+        let bucket = if self.pass == 1 {
+            crate::phase_profile::PhaseBucket::Pass1LineRoute
+        } else {
+            crate::phase_profile::PhaseBucket::Pass2LineRoute
+        };
+        crate::phase_profile::record_execution_path(Some(bucket), "vm.encode", vm_elapsed);
+
+        match vm_res {
             Ok(Some(bytes)) => {
                 if bytes.is_empty() {
                     return Some(self.failure(
@@ -1922,14 +1966,24 @@ impl<'a> AsmLine<'a> {
         let runtime_expr_operands_storage =
             Self::opthread_runtime_expr_operands_from_mapped(mapped_operands);
         let runtime_expr_operands = runtime_expr_operands_storage.as_deref().unwrap_or(operands);
-        match vm::vm_opasm::encode_instruction_from_exprs(
+        let vm_start = std::time::Instant::now();
+        let vm_res = vm::vm_opasm::encode_instruction_from_exprs(
             model,
             self.cpu.as_str(),
             None,
             mapped_mnemonic,
             runtime_expr_operands,
             self,
-        ) {
+        );
+        let vm_elapsed = vm_start.elapsed();
+        let bucket = if self.pass == 1 {
+            crate::phase_profile::PhaseBucket::Pass1LineRoute
+        } else {
+            crate::phase_profile::PhaseBucket::Pass2LineRoute
+        };
+        crate::phase_profile::record_execution_path(Some(bucket), "vm.encode", vm_elapsed);
+
+        match vm_res {
             Ok(Some(bytes)) => {
                 if runtime_expr_selector_gate_only {
                     return None;
@@ -2023,13 +2077,23 @@ impl<'a> AsmLine<'a> {
                 model,
                 pipeline.family_id.as_str(),
             ) && vm_instruction_runtime_supported_for_cpu);
-        match vm::vm_opasm::encode_instruction(
+        let vm_start = std::time::Instant::now();
+        let vm_res = vm::vm_opasm::encode_instruction(
             model,
             self.cpu.as_str(),
             None,
             mapped_mnemonic,
             resolved_operands,
-        ) {
+        );
+        let vm_elapsed = vm_start.elapsed();
+        let bucket = if self.pass == 1 {
+            crate::phase_profile::PhaseBucket::Pass1LineRoute
+        } else {
+            crate::phase_profile::PhaseBucket::Pass2LineRoute
+        };
+        crate::phase_profile::record_execution_path(Some(bucket), "vm.encode", vm_elapsed);
+
+        match vm_res {
             Ok(Some(bytes)) => {
                 if bytes.is_empty() {
                     if family_runtime_authoritative {

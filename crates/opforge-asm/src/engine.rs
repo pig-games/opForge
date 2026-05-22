@@ -117,6 +117,17 @@ struct ModuleTimingProfile {
     pass2: HashMap<String, ModuleTimingStat>,
 }
 
+struct ExecuteRegularLinePass1Context<'a, 'b> {
+    asm_line: &'a mut AsmLine<'b>,
+    src: &'a str,
+    line_num: u32,
+    addr: &'a mut u32,
+    counts: &'a mut PassCounts,
+    diagnostics: &'a mut Vec<Diagnostic>,
+    module_timing_profile: &'a mut ModuleTimingProfile,
+    pass_num: u8,
+}
+
 impl QualifiedReachabilityIndexes {
     fn build(
         symbols: &SymbolTable,
@@ -1066,14 +1077,24 @@ qualified_share={:.2}%",
 
         let mut previous_snapshot = self.capture_layout_snapshot();
         let mut stabilized = false;
-        for _ in 0..MAX_LAYOUT_STABILIZATION_PASSES {
+        for i in 0..MAX_LAYOUT_STABILIZATION_PASSES {
             let mut loop_trace = Vec::new();
             let retry_started_at = Instant::now();
             counts = self.run_layout_pass(lines, 2, false, true, &mut loop_trace);
+            let retry_elapsed = retry_started_at.elapsed();
             phase_profile::record_direct(
                 PhaseBucket::Pass1LayoutStabilizationRetries,
-                retry_started_at.elapsed(),
+                retry_elapsed,
             );
+            // record per-retry breakdown if execution-path profiling is enabled
+            if crate::phase_profile::path_profile_is_enabled() {
+                let label = format!("retry.{}", i);
+                crate::phase_profile::record_execution_path(
+                    Some(PhaseBucket::Pass1LayoutStabilizationRetries),
+                    &label,
+                    retry_elapsed,
+                );
+            }
             if counts.errors > 0 {
                 self.qualified_reachability_profile.pass1_total_time = pass1_started_at.elapsed();
                 phase_profile::record_direct(
@@ -1745,16 +1766,17 @@ qualified_share={:.2}%",
         }
     }
 
-    fn execute_regular_line_pass1(
-        asm_line: &mut AsmLine<'_>,
-        src: &str,
-        line_num: u32,
-        addr: &mut u32,
-        counts: &mut PassCounts,
-        diagnostics: &mut Vec<Diagnostic>,
-        module_timing_profile: &mut ModuleTimingProfile,
-        pass_num: u8,
-    ) {
+    fn execute_regular_line_pass1(ctx: ExecuteRegularLinePass1Context<'_, '_>) {
+        let ExecuteRegularLinePass1Context {
+            asm_line,
+            src,
+            line_num,
+            addr,
+            counts,
+            diagnostics,
+            module_timing_profile,
+            pass_num,
+        } = ctx;
         let module_before = asm_line.active_module_name().map(str::to_string);
         let line_started_at = Instant::now();
         let line_addr = match asm_line.current_addr(*addr) {
@@ -2057,16 +2079,17 @@ impl RepetitionPass for Pass1RepetitionTraversal<'_> {
         addr: &mut u32,
         _all_lines: &[String],
     ) -> Result<(), Self::Error> {
-        Assembler::execute_regular_line_pass1(
+        let ctx = ExecuteRegularLinePass1Context {
             asm_line,
             src,
             line_num,
             addr,
-            self.counts,
-            self.diagnostics,
-            self.module_timing_profile,
-            self.pass_num,
-        );
+            counts: self.counts,
+            diagnostics: self.diagnostics,
+            module_timing_profile: self.module_timing_profile,
+            pass_num: self.pass_num,
+        };
+        Assembler::execute_regular_line_pass1(ctx);
         Ok(())
     }
 }

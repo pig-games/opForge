@@ -1168,7 +1168,9 @@ struct RunExampleSmokeRequest<'a> {
     native_cli_input_override: Option<&'a OpforgeNativeCliInputOverride<'a>>,
 }
 
-fn run_example_smoke_with_request(req: &RunExampleSmokeRequest<'_>) -> Result<ExampleSmokeResult, String> {
+fn run_example_smoke_with_request(
+    req: &RunExampleSmokeRequest<'_>,
+) -> Result<ExampleSmokeResult, String> {
     let workspace_root = req.workspace_root;
     let fs_uae_bin = req.fs_uae_bin;
     let args_text = req.args_text;

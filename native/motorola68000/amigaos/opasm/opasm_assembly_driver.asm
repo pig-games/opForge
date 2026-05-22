@@ -385,7 +385,7 @@ readOperandValueForStatement	.block
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	moveq #0, d0
 	move.w d7, d0
-	jsr eng.opasmEngineStatementHasExprMetadataV1
+	jsr eng.statementHasExprMetadataV1
 	move.w d0, d6
 	tst.w d6
 	bne.s loadSourceLine
@@ -394,7 +394,7 @@ readOperandValueForStatement	.block
 loadSourceLine
 	moveq #0, d0
 	move.w d7, d0
-	jsr eng.opasmEngineGetStatementSourceLineTextV1
+	jsr eng.getStatementSourceLineTextV1
 	tst.l d0
 	bne.s haveText
 	bra.w fail
@@ -466,7 +466,7 @@ prepareEncodeSelectedRequestForStatement	.block
 	move.w d6, d0
 	bsr.w serviceIoBufferPtr
 	movea.l a0, a1
-	jsr eng.opasmEnginePrepareSelectedEvaluateRequestV1
+	jsr eng.prepareSelectedEvaluateRequestV1
 	tst.l d0
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
@@ -484,7 +484,7 @@ prepareEvaluateExpressionRequest	.block
 	movea.l a0, a1
 	movea.l a2, a0
 	move.w d7, d1
-	jsr eng.opasmEnginePrepareEvaluateExpressionRequestV1
+	jsr eng.prepareEvaluateExpressionRequestV1
 	tst.l d0
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
@@ -503,7 +503,7 @@ prepareEvaluateExpressionExtension	.block
 	bsr.w serviceEvalExtensionPtr
 	movea.l a0, a1
 	movea.l a2, a0
-	jsr eng.opasmEnginePrepareEvaluateExpressionExtensionV1
+	jsr eng.prepareEvaluateExpressionExtensionV1
 	movem.l (sp)+, d0-d1/a0-a2
 	rts
 	.bend  ; prepareEvaluateExpressionExtension

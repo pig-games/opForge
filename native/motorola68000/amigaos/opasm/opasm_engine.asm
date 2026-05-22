@@ -587,7 +587,7 @@ opasmEngineWriteEvaluateExpressionExtensionBaseV1	.block
 ;
 ; Outputs:
 ; - D0: 0 on success.
-opasmEnginePrepareEvaluateExpressionExtensionV1	.block
+prepareEvaluateExpressionExtensionV1	.block
 	movem.l d1/a0-a1, -(sp)
 	jsr opasmEngineWriteEvaluateExpressionExtensionBaseV1
 	jsr opasmEngineInferSelectedShapeForEvalRequestV1
@@ -601,7 +601,7 @@ done
 	movem.l (sp)+, d1/a0-a1
 	moveq #0, d0
 	rts
-	.bend  ; opasmEnginePrepareEvaluateExpressionExtensionV1
+	.bend  ; prepareEvaluateExpressionExtensionV1
 
 ; Return the stored source line number for one statement.
 ;
@@ -629,7 +629,7 @@ opasmEngineGetStatementLineNumberV1	.block
 ; Outputs:
 ; - D0: source-line text length, or 0 when absent.
 ; - A0: source-line text pointer when D0 is non-zero.
-opasmEngineGetStatementSourceLineTextV1	.block
+getStatementSourceLineTextV1	.block
 	movem.l d1-d2, -(sp)
 	moveq #0, d1
 	move.w d0, d1
@@ -650,7 +650,7 @@ fail
 	suba.l a0, a0
 	movem.l (sp)+, d1-d2
 	rts
-	.bend  ; opasmEngineGetStatementSourceLineTextV1
+	.bend  ; getStatementSourceLineTextV1
 
 ; Return a source-line slice for a stored statement expression span.
 ;
@@ -761,13 +761,13 @@ empty
 ;
 ; Outputs:
 ; - D0: 1 when expression metadata exists, 0 when absent.
-opasmEngineStatementHasExprMetadataV1	.block
+statementHasExprMetadataV1	.block
 	suba.l #OPASM_ENGINE_EXPR_META_BYTES, sp
 	movea.l sp, a0
 	jsr opasmEngineGetStatementExprMetadataV1
 	adda.l #OPASM_ENGINE_EXPR_META_BYTES, sp
 	rts
-	.bend  ; opasmEngineStatementHasExprMetadataV1
+	.bend  ; statementHasExprMetadataV1
 
 ; Return stored mnemonic and operand text metadata for one statement.
 ;
@@ -831,7 +831,7 @@ fail
 ; Outputs:
 ; - D0: 0 on success, non-zero on failure.
 ; - D1: request byte length when successful.
-opasmEnginePrepareEvaluateExpressionRequestV1	.block
+prepareEvaluateExpressionRequestV1	.block
 	movem.l d2-d7/a0-a5, -(sp)
 	suba.l #OPASM_ENGINE_EVAL_REQ_SCRATCH_BYTES, sp
 	movea.l a0, a2
@@ -926,7 +926,7 @@ fail
 	movem.l (sp)+, d2-d7/a0-a5
 	moveq #1, d0
 	rts
-	.bend  ; opasmEnginePrepareEvaluateExpressionRequestV1
+	.bend  ; prepareEvaluateExpressionRequestV1
 
 ; Prepare an evaluate-expression request for a selected statement.
 ;
@@ -937,7 +937,7 @@ fail
 ; Outputs:
 ; - D0: 0 on success, non-zero on failure.
 ; - D1: request byte length when successful.
-opasmEnginePrepareSelectedEvaluateRequestV1	.block
+prepareSelectedEvaluateRequestV1	.block
 	movem.l d2-d7/a0-a5, -(sp)
 	suba.l #OPASM_ENGINE_SELECTED_REQ_SCRATCH_BYTES, sp
 	move.w d0, d7
@@ -967,7 +967,7 @@ opasmEnginePrepareSelectedEvaluateRequestV1	.block
 	bls.s syntheticRequest
 	moveq #0, d0
 	move.w d7, d0
-	jsr opasmEngineGetStatementSourceLineTextV1
+	jsr getStatementSourceLineTextV1
 	tst.l d0
 	beq.s syntheticRequest
 	move.l d0, d1
@@ -1062,7 +1062,7 @@ fail
 	movem.l (sp)+, d2-d7/a0-a5
 	moveq #1, d0
 	rts
-	.bend  ; opasmEnginePrepareSelectedEvaluateRequestV1
+	.bend  ; prepareSelectedEvaluateRequestV1
 
 ; Prepare an encode-instruction request for a mnemonic.
 ;
@@ -1074,7 +1074,7 @@ fail
 ; Outputs:
 ; - D0: 0 on success, non-zero on failure.
 ; - D1: request byte length when successful.
-opasmEnginePrepareEncodeInstructionRequestV1	.block
+prepareEncodeInstructionRequestV1	.block
 	movem.l d2/a0-a1, -(sp)
 	move.l d0, d2
 	cmpi.l #255, d2
@@ -1097,7 +1097,7 @@ fail
 	movem.l (sp)+, d2/a0-a1
 	moveq #1, d0
 	rts
-	.bend  ; opasmEnginePrepareEncodeInstructionRequestV1
+	.bend  ; prepareEncodeInstructionRequestV1
 
 ; Infer the selected-shape text for an evaluate request.
 ;

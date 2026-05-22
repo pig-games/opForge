@@ -23,7 +23,7 @@
 	.use tkpkg.amigaos.buffers (PendingTokenizerVmOwnerTag)
 	.use tkpkg.amigaos.buffers (ActiveParserVmOffsetLo, ActiveParserVmOwnerTag)
 	.use tkpkg.amigaos.buffers (PendingParserVmOffsetLo, PendingParserVmOwnerTag)
-	.use tkpkg.amigaos.token_policy (tkpkgTokenPolicyResolveLocatorV1)
+	.use tkpkg.amigaos.token_policy as policy ;(tkpkgTokenPolicyResolveLocatorV1)
 
 NO_PACKAGE_TEXT_LEN                  = 41
 UNRESOLVED_CPU_TEXT_LEN              = 33
@@ -94,7 +94,7 @@ parseRequest
 	bsr.w resolveHierarchyV1
 	tst.b d0
 	bne.w done
-	bsr.w tkpkgTokenPolicyResolveLocatorV1
+	bsr.w policy.resolveLocatorV1
 	tst.b d0
 	bne.w done
 	bsr.w resolveTokenizerVmLocatorV1

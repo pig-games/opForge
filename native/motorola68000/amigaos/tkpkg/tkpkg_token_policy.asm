@@ -40,7 +40,7 @@ MissingPolicyText
 ; ---------------------------------------------------------------------------
 
 	.pub
-tkpkgTokenPolicyResolveLocatorV1	.block
+resolveLocatorV1	.block
 	moveq #SCOPED_OWNER_DIALECT, d0  ; prefer dialect-specific tokenization rules when present
 	lea PendingDialectOffsetLo, a3
 	bsr.w findOwner
@@ -64,7 +64,7 @@ tkpkgTokenPolicyResolveLocatorV1	.block
 done
 	moveq #0, d0
 	rts
-	.bend  ; tkpkgTokenPolicyResolveLocatorV1
+	.bend  ; resolveLocatorV1
 	.priv
 
 ; Find a TOKS record matching the scoped owner type in D0 and owner locator A3.

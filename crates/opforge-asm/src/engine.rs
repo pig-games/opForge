@@ -3,6 +3,7 @@
 
 use crate as asm;
 use crate::line::{repetition, AsmLine, RuntimeLineRouter};
+use crate::phase_profile::{self, PhaseBucket};
 use crate::repetition_driver::{
     execute_lines as execute_repetition_lines, RepetitionPass, UnscopedRepeatKind,
 };
@@ -19,11 +20,14 @@ use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::io::Write;
 use std::rc::Rc;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 use types::image::ImageStore;
 use types::lockstep::LockstepReport;
 use types::processing::LineProcessingTrace;
 use types::symbol::{
-    LogicalSectionContract, LogicalSectionKind, ModuleImport, SymbolTable, SymbolVisibility,
+    LogicalSectionContract, LogicalSectionKind, ModuleImport, ReachableUnit,
+    SymbolProfileStatSnapshot, SymbolTable, SymbolVisibility,
 };
 use vm::output_model::{LinkerOutputFormat, IMPLICIT_HUNK_CODE_SECTION_NAME};
 
@@ -56,6 +60,8 @@ pub struct Assembler {
     pub runtime_processing_traces: Vec<(u8, u32, LineProcessingTrace)>,
     pub runtime_lockstep_report: LockstepReport,
     implicit_hunk_output_requested: bool,
+    qualified_reachability_profile: QualifiedReachabilityProfile,
+    module_timing_profile: ModuleTimingProfile,
 }
 
 const MAX_LAYOUT_STABILIZATION_PASSES: usize = 8;
@@ -78,7 +84,286 @@ struct LayoutStabilitySnapshot {
     regions: Vec<(String, u32, u32, u32, u32, Vec<String>)>,
 }
 
+#[derive(Debug, Default, Clone)]
+struct QualifiedReachabilityIndexes {
+    reachable_units: Vec<ReachableUnit>,
+    reachable_units_by_import: HashMap<(String, String), Vec<usize>>,
+    section_symbols_by_section: HashMap<String, Vec<u32>>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct QualifiedReachabilityProfile {
+    pass1_total_time: Duration,
+    pass2_total_time: Duration,
+    index_build_time: Duration,
+    index_build_count: usize,
+    validation_time: Duration,
+    validation_count: usize,
+    apply_section_maps_time: Duration,
+    apply_section_maps_count: usize,
+    section_range_lookup_time: Duration,
+    section_range_lookup_count: usize,
+}
+
+#[derive(Debug, Default, Clone)]
+struct ModuleTimingStat {
+    duration: Duration,
+    lines: usize,
+}
+
+#[derive(Debug, Default, Clone)]
+struct ModuleTimingProfile {
+    pass1: HashMap<String, ModuleTimingStat>,
+    pass2: HashMap<String, ModuleTimingStat>,
+}
+
+impl QualifiedReachabilityIndexes {
+    fn build(
+        symbols: &SymbolTable,
+        section_symbol_sections: &HashMap<String, String>,
+        profile: &mut QualifiedReachabilityProfile,
+    ) -> Self {
+        let reachable_units = symbols.reachable_units_from_selected_roots();
+        let index_build_started_at = Instant::now();
+        let mut reachable_units_by_import: HashMap<(String, String), Vec<usize>> = HashMap::new();
+        for (idx, unit) in reachable_units.iter().enumerate() {
+            reachable_units_by_import
+                .entry((
+                    unit.importing_module.to_ascii_uppercase(),
+                    unit.module_id.to_ascii_uppercase(),
+                ))
+                .or_default()
+                .push(idx);
+        }
+
+        let mut section_symbols_by_section: HashMap<String, Vec<u32>> = HashMap::new();
+        for entry in symbols.entries() {
+            let Some(section_name) = section_symbol_sections.get(&entry.name) else {
+                continue;
+            };
+            section_symbols_by_section
+                .entry(section_name.to_ascii_uppercase())
+                .or_default()
+                .push(entry.val);
+        }
+        for addresses in section_symbols_by_section.values_mut() {
+            addresses.sort_unstable();
+        }
+        profile.index_build_time += index_build_started_at.elapsed();
+        profile.index_build_count += 1;
+
+        Self {
+            reachable_units,
+            reachable_units_by_import,
+            section_symbols_by_section,
+        }
+    }
+
+    fn reachable_unit_indices(&self, importing_module: &str, module_id: &str) -> &[usize] {
+        const EMPTY: [usize; 0] = [];
+        let key = (
+            importing_module.to_ascii_uppercase(),
+            module_id.to_ascii_uppercase(),
+        );
+        self.reachable_units_by_import
+            .get(&key)
+            .map(Vec::as_slice)
+            .unwrap_or(&EMPTY)
+    }
+
+    fn next_section_symbol_address_after(&self, section_name: &str, address: u32) -> Option<u32> {
+        let addresses = self
+            .section_symbols_by_section
+            .get(&section_name.to_ascii_uppercase())?;
+        let idx = addresses.partition_point(|candidate| *candidate <= address);
+        addresses.get(idx).copied()
+    }
+}
+
 impl Assembler {
+    fn module_timing_profile_enabled() -> bool {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        *ENABLED.get_or_init(|| std::env::var_os("OPFORGE_PROFILE_MODULE_TIMING").is_some())
+    }
+
+    fn record_module_timing(
+        profile: &mut HashMap<String, ModuleTimingStat>,
+        module_name: Option<&str>,
+        duration: Duration,
+    ) {
+        let key = module_name.unwrap_or("<top-level>").to_string();
+        let entry = profile.entry(key).or_default();
+        entry.duration += duration;
+        entry.lines += 1;
+    }
+
+    fn emit_module_timing_profile(&self) {
+        if !Self::module_timing_profile_enabled() {
+            return;
+        }
+        fn print_ranked(label: &str, timings: &HashMap<String, ModuleTimingStat>) {
+            let mut ranked: Vec<_> = timings.iter().collect();
+            ranked.sort_by(|left, right| {
+                right
+                    .1
+                    .duration
+                    .cmp(&left.1.duration)
+                    .then_with(|| left.0.cmp(right.0))
+            });
+            eprintln!("opforge module timing {label}:");
+            for (module_name, stat) in ranked.into_iter().take(15) {
+                eprintln!(
+                    "  {module_name}: {:.3}ms across {} line(s)",
+                    stat.duration.as_secs_f64() * 1000.0,
+                    stat.lines
+                );
+            }
+        }
+
+        print_ranked("pass1", &self.module_timing_profile.pass1);
+        print_ranked("pass2", &self.module_timing_profile.pass2);
+    }
+
+    fn qualified_reachability_profile_enabled() -> bool {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        *ENABLED
+            .get_or_init(|| std::env::var_os("OPFORGE_PROFILE_QUALIFIED_REACHABILITY").is_some())
+    }
+
+    fn rust_symbol_profile_enabled() -> bool {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        *ENABLED.get_or_init(|| std::env::var_os("OPFORGE_PROFILE_RUST_SYMBOL_PATHS").is_some())
+    }
+
+    fn emit_qualified_reachability_profile(&self) {
+        if !Self::qualified_reachability_profile_enabled() {
+            return;
+        }
+        let reachable_units_time = self.symbols.reachable_units_compute_time();
+        let reachable_units_count = self.symbols.reachable_units_compute_count();
+        let qualified_total = reachable_units_time
+            + self.qualified_reachability_profile.index_build_time
+            + self.qualified_reachability_profile.validation_time
+            + self.qualified_reachability_profile.apply_section_maps_time
+            + self
+                .qualified_reachability_profile
+                .section_range_lookup_time;
+        let assembly_total = self.qualified_reachability_profile.pass1_total_time
+            + self.qualified_reachability_profile.pass2_total_time;
+        let qualified_share = if assembly_total.is_zero() {
+            0.0
+        } else {
+            (qualified_total.as_secs_f64() / assembly_total.as_secs_f64()) * 100.0
+        };
+        eprintln!(
+            "opforge qualified-reachability profile: \
+reachable_units={:.3}ms ({} calls), \
+index_build={:.3}ms ({} builds), \
+validation={:.3}ms ({} passes), \
+apply_maps={:.3}ms ({} passes), \
+section_range={:.3}ms ({} lookups), \
+pass1_total={:.3}ms, \
+pass2_total={:.3}ms, \
+qualified_total={:.3}ms, \
+assembly_total={:.3}ms, \
+qualified_share={:.2}%",
+            reachable_units_time.as_secs_f64() * 1000.0,
+            reachable_units_count,
+            self.qualified_reachability_profile
+                .index_build_time
+                .as_secs_f64()
+                * 1000.0,
+            self.qualified_reachability_profile.index_build_count,
+            self.qualified_reachability_profile
+                .validation_time
+                .as_secs_f64()
+                * 1000.0,
+            self.qualified_reachability_profile.validation_count,
+            self.qualified_reachability_profile
+                .apply_section_maps_time
+                .as_secs_f64()
+                * 1000.0,
+            self.qualified_reachability_profile.apply_section_maps_count,
+            self.qualified_reachability_profile
+                .section_range_lookup_time
+                .as_secs_f64()
+                * 1000.0,
+            self.qualified_reachability_profile
+                .section_range_lookup_count,
+            self.qualified_reachability_profile
+                .pass1_total_time
+                .as_secs_f64()
+                * 1000.0,
+            self.qualified_reachability_profile
+                .pass2_total_time
+                .as_secs_f64()
+                * 1000.0,
+            qualified_total.as_secs_f64() * 1000.0,
+            assembly_total.as_secs_f64() * 1000.0,
+            qualified_share,
+        );
+    }
+
+    fn emit_rust_symbol_profile(&self) {
+        if !Self::rust_symbol_profile_enabled() {
+            return;
+        }
+
+        let snapshot = self.symbols.rust_profile_snapshot();
+        let assembly_total = self.qualified_reachability_profile.pass1_total_time
+            + self.qualified_reachability_profile.pass2_total_time;
+        let mut stats = [
+            ("resolve_imported_symbol", snapshot.resolve_imported_symbol),
+            (
+                "resolve_selective_import",
+                snapshot.resolve_selective_import,
+            ),
+            (
+                "module_symbol_for_full_name",
+                snapshot.module_symbol_for_full_name,
+            ),
+            ("record_symbol_reference", snapshot.record_symbol_reference),
+            ("validate_imports", snapshot.validate_imports),
+            (
+                "reachable_units_from_selected_roots",
+                snapshot.reachable_units_from_selected_roots,
+            ),
+            ("resolve_import_alias", snapshot.resolve_import_alias),
+        ];
+        stats.sort_by(|left, right| {
+            right
+                .1
+                .duration
+                .cmp(&left.1.duration)
+                .then_with(|| left.0.cmp(right.0))
+        });
+
+        eprintln!("opforge rust symbol profile:");
+        for (label, stat) in stats {
+            if stat.count == 0 {
+                continue;
+            }
+            Self::emit_rust_symbol_profile_stat(label, stat, assembly_total);
+        }
+    }
+
+    fn emit_rust_symbol_profile_stat(
+        label: &str,
+        stat: SymbolProfileStatSnapshot,
+        assembly_total: Duration,
+    ) {
+        let share = if assembly_total.is_zero() {
+            0.0
+        } else {
+            (stat.duration.as_secs_f64() / assembly_total.as_secs_f64()) * 100.0
+        };
+        eprintln!(
+            "  {label}: {:.3}ms across {} call(s) ({share:.2}% of assembly)",
+            stat.duration.as_secs_f64() * 1000.0,
+            stat.count,
+        );
+    }
+
     #[cfg(test)]
     fn assert_partitioned_runtime_traces_present(
         lines: &[String],
@@ -255,6 +540,7 @@ impl Assembler {
                 &mut counts,
                 diagnostics,
                 loop_trace,
+                &mut self.module_timing_profile,
                 None,
                 self.max_loop_iterations,
                 pass_num,
@@ -441,32 +727,31 @@ impl Assembler {
         }
 
         let _ = diagnostics;
-        let reachable_units = self.symbols.reachable_units_from_selected_roots();
+        let qualified_reachability = QualifiedReachabilityIndexes::build(
+            &self.symbols,
+            &self.section_symbol_sections,
+            &mut self.qualified_reachability_profile,
+        );
+        let validation_started_at = Instant::now();
         let imported_modules = self.imported_module_keys();
         for module in self.symbols.modules() {
             let allow_same_name_default =
                 !imported_modules.contains(&module.name.to_ascii_uppercase());
             for import in &module.imports {
-                for unit in reachable_units.iter().filter(|unit| {
-                    unit.importing_module.eq_ignore_ascii_case(&module.name)
-                        && unit.module_id.eq_ignore_ascii_case(&import.module_id)
-                }) {
+                for &unit_idx in
+                    qualified_reachability.reachable_unit_indices(&module.name, &import.module_id)
+                {
+                    let unit = &qualified_reachability.reachable_units[unit_idx];
                     let Some(section_name) = self.section_symbol_sections.get(&unit.full_name)
                     else {
                         continue;
                     };
-                    let Some(dep) = self
-                        .symbols
-                        .modules()
-                        .iter()
-                        .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
-                    else {
+                    let Some(_dep) = self.symbols.module(&import.module_id) else {
                         continue;
                     };
-                    let Some(section) = dep
-                        .logical_sections
-                        .iter()
-                        .find(|section| section.name.eq_ignore_ascii_case(section_name))
+                    let Some(section) = self
+                        .symbols
+                        .logical_section(&import.module_id, section_name)
                     else {
                         continue;
                     };
@@ -497,9 +782,7 @@ impl Assembler {
                 }
                 for section in self
                     .symbols
-                    .modules()
-                    .iter()
-                    .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
+                    .module(&import.module_id)
                     .into_iter()
                     .flat_map(|dep| dep.logical_sections.iter())
                     .filter(|section| {
@@ -566,14 +849,7 @@ impl Assembler {
                     }
                     let source_kind = self
                         .symbols
-                        .modules()
-                        .iter()
-                        .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
-                        .and_then(|dep| {
-                            dep.logical_sections
-                                .iter()
-                                .find(|section| section.name.eq_ignore_ascii_case(&map.logical))
-                        })
+                        .logical_section(&import.module_id, &map.logical)
                         .map(|section| section.kind);
                     if let Some(source_kind) = source_kind {
                         let compatible = matches!(
@@ -598,6 +874,8 @@ impl Assembler {
                 }
             }
         }
+        self.qualified_reachability_profile.validation_time += validation_started_at.elapsed();
+        self.qualified_reachability_profile.validation_count += 1;
 
         for issue in self.symbols.validate_imports(&self.module_macro_names) {
             let kind = match issue.kind {
@@ -611,7 +889,7 @@ impl Assembler {
         }
 
         if counts.errors == 0 {
-            self.apply_reachable_section_maps();
+            self.apply_reachable_section_maps(&qualified_reachability);
         }
 
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
@@ -651,6 +929,8 @@ impl Assembler {
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
             implicit_hunk_output_requested: false,
+            qualified_reachability_profile: QualifiedReachabilityProfile::default(),
+            module_timing_profile: ModuleTimingProfile::default(),
         }
     }
 
@@ -739,18 +1019,48 @@ impl Assembler {
     }
 
     pub fn pass1(&mut self, lines: &[String]) -> PassCounts {
+        let pass1_started_at = Instant::now();
+        self.qualified_reachability_profile = QualifiedReachabilityProfile::default();
+        self.module_timing_profile = ModuleTimingProfile::default();
         self.loop_iteration_trace_pass1.clear();
         self.runtime_processing_traces.clear();
         self.runtime_lockstep_report = LockstepReport::default();
         let mut pass1_loop_trace = Vec::new();
+        let initial_layout_started_at = Instant::now();
         let mut counts = self.run_layout_pass(lines, 1, true, true, &mut pass1_loop_trace);
+        phase_profile::record_direct(
+            PhaseBucket::Pass1InitialLayoutPass,
+            initial_layout_started_at.elapsed(),
+        );
         self.loop_iteration_trace_pass1 = pass1_loop_trace;
         if counts.errors > 0 {
+            self.qualified_reachability_profile.pass1_total_time = pass1_started_at.elapsed();
+            phase_profile::record_direct(
+                PhaseBucket::Pass1Total,
+                self.qualified_reachability_profile.pass1_total_time,
+            );
+            let dedup_started_at = Instant::now();
             self.dedup_current_diagnostics();
+            phase_profile::record_direct(
+                PhaseBucket::Pass1DiagnosticsDedup,
+                dedup_started_at.elapsed(),
+            );
+            self.emit_qualified_reachability_profile();
+            self.emit_rust_symbol_profile();
             return counts;
         }
         if !self.cpu_requires_layout_stabilization() {
+            self.qualified_reachability_profile.pass1_total_time = pass1_started_at.elapsed();
+            phase_profile::record_direct(
+                PhaseBucket::Pass1Total,
+                self.qualified_reachability_profile.pass1_total_time,
+            );
+            let dedup_started_at = Instant::now();
             self.dedup_current_diagnostics();
+            phase_profile::record_direct(
+                PhaseBucket::Pass1DiagnosticsDedup,
+                dedup_started_at.elapsed(),
+            );
             return counts;
         }
 
@@ -758,9 +1068,26 @@ impl Assembler {
         let mut stabilized = false;
         for _ in 0..MAX_LAYOUT_STABILIZATION_PASSES {
             let mut loop_trace = Vec::new();
+            let retry_started_at = Instant::now();
             counts = self.run_layout_pass(lines, 2, false, true, &mut loop_trace);
+            phase_profile::record_direct(
+                PhaseBucket::Pass1LayoutStabilizationRetries,
+                retry_started_at.elapsed(),
+            );
             if counts.errors > 0 {
+                self.qualified_reachability_profile.pass1_total_time = pass1_started_at.elapsed();
+                phase_profile::record_direct(
+                    PhaseBucket::Pass1Total,
+                    self.qualified_reachability_profile.pass1_total_time,
+                );
+                let dedup_started_at = Instant::now();
                 self.dedup_current_diagnostics();
+                phase_profile::record_direct(
+                    PhaseBucket::Pass1DiagnosticsDedup,
+                    dedup_started_at.elapsed(),
+                );
+                self.emit_qualified_reachability_profile();
+                self.emit_rust_symbol_profile();
                 return counts;
             }
 
@@ -787,7 +1114,22 @@ impl Assembler {
             counts.errors += 1;
         }
 
+        self.qualified_reachability_profile.pass1_total_time = pass1_started_at.elapsed();
+        phase_profile::record_direct(
+            PhaseBucket::Pass1Total,
+            self.qualified_reachability_profile.pass1_total_time,
+        );
+        let dedup_started_at = Instant::now();
         self.dedup_current_diagnostics();
+        phase_profile::record_direct(
+            PhaseBucket::Pass1DiagnosticsDedup,
+            dedup_started_at.elapsed(),
+        );
+        if counts.errors > 0 {
+            self.emit_qualified_reachability_profile();
+            self.emit_rust_symbol_profile();
+            self.emit_module_timing_profile();
+        }
         counts
     }
 
@@ -796,6 +1138,7 @@ impl Assembler {
         lines: &[String],
         listing: &mut ListingWriter<W>,
     ) -> std::io::Result<PassCounts> {
+        let pass2_started_at = Instant::now();
         let pass1_loop_trace = self.loop_iteration_trace_pass1.clone();
         let uses_implicit_hunk_code_section =
             Self::uses_implicit_hunk_code_section(lines, self.implicit_hunk_output_requested);
@@ -843,9 +1186,21 @@ impl Assembler {
                 AsmError::new(AsmErrorKind::Io, &message, None),
             );
             diagnostics.push(diag.clone());
+            phase_profile::record_direct(
+                PhaseBucket::Pass2DiagnosticsGeneration,
+                Duration::default(),
+            );
             listing.write_diagnostic_with_annotations(&diag, lines)?;
             counts.errors += 1;
             counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+            self.qualified_reachability_profile.pass2_total_time = pass2_started_at.elapsed();
+            phase_profile::record_direct(
+                PhaseBucket::Pass2Total,
+                self.qualified_reachability_profile.pass2_total_time,
+            );
+            self.emit_qualified_reachability_profile();
+            self.emit_rust_symbol_profile();
+            self.emit_module_timing_profile();
             return Ok(counts);
         }
 
@@ -861,6 +1216,7 @@ impl Assembler {
             image,
             &pass1_loop_trace,
             &mut pass2_loop_trace_cursor,
+            &mut self.module_timing_profile,
             None,
             self.max_loop_iterations,
         )?;
@@ -889,6 +1245,10 @@ impl Assembler {
                     applicability: "machine-applicable".to_string(),
                 });
             diagnostics.push(diag.clone());
+            phase_profile::record_direct(
+                PhaseBucket::Pass2DiagnosticsGeneration,
+                Duration::default(),
+            );
             listing.write_diagnostic_with_annotations(&diag, lines)?;
             asm_line.clear_conditionals();
             counts.errors += 1;
@@ -911,6 +1271,10 @@ impl Assembler {
                     applicability: "machine-applicable".to_string(),
                 });
             diagnostics.push(diag.clone());
+            phase_profile::record_direct(
+                PhaseBucket::Pass2DiagnosticsGeneration,
+                Duration::default(),
+            );
             listing.write_diagnostic_with_annotations(&diag, lines)?;
             counts.errors += 1;
         }
@@ -932,6 +1296,10 @@ impl Assembler {
                     applicability: "machine-applicable".to_string(),
                 });
             diagnostics.push(diag.clone());
+            phase_profile::record_direct(
+                PhaseBucket::Pass2DiagnosticsGeneration,
+                Duration::default(),
+            );
             listing.write_diagnostic_with_annotations(&diag, lines)?;
             counts.errors += 1;
         }
@@ -953,6 +1321,10 @@ impl Assembler {
                     applicability: "machine-applicable".to_string(),
                 });
             diagnostics.push(diag.clone());
+            phase_profile::record_direct(
+                PhaseBucket::Pass2DiagnosticsGeneration,
+                Duration::default(),
+            );
             listing.write_diagnostic_with_annotations(&diag, lines)?;
             asm_line.clear_struct_definition();
             counts.errors += 1;
@@ -972,7 +1344,12 @@ impl Assembler {
             .collect();
         deferred_sections.sort_by_key(|(base_addr, name, _)| (*base_addr, *name));
         for (base_addr, _, section) in deferred_sections {
+            let output_image_started_at = Instant::now();
             image.store_slice(base_addr, &section.bytes);
+            phase_profile::record_direct(
+                PhaseBucket::Pass2OutputImageEmission,
+                output_image_started_at.elapsed(),
+            );
         }
 
         if Self::cpu_warns_for_wide_output(asm_line.cpu) {
@@ -988,6 +1365,10 @@ impl Assembler {
                         AsmError::new(AsmErrorKind::Assembler, &message, None),
                     );
                     diagnostics.push(diag.clone());
+                    phase_profile::record_direct(
+                        PhaseBucket::Pass2DiagnosticsGeneration,
+                        Duration::default(),
+                    );
                     listing.write_diagnostic_with_annotations(&diag, lines)?;
                     counts.warnings += 1;
                 }
@@ -999,11 +1380,29 @@ impl Assembler {
         self.concrete_section_declarations = asm_line.layout.concrete_section_declarations.clone();
         self.sections = sections;
         if counts.errors == 0 {
-            self.apply_reachable_section_maps();
+            let qualified_reachability = QualifiedReachabilityIndexes::build(
+                &self.symbols,
+                &self.section_symbol_sections,
+                &mut self.qualified_reachability_profile,
+            );
+            self.apply_reachable_section_maps(&qualified_reachability);
         }
         self.refresh_hunk_output_relocation_dispositions();
         counts.lines = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+        self.qualified_reachability_profile.pass2_total_time = pass2_started_at.elapsed();
+        phase_profile::record_direct(
+            PhaseBucket::Pass2Total,
+            self.qualified_reachability_profile.pass2_total_time,
+        );
+        let dedup_started_at = Instant::now();
         self.dedup_current_diagnostics();
+        phase_profile::record_direct(
+            PhaseBucket::Pass2DiagnosticsDedup,
+            dedup_started_at.elapsed(),
+        );
+        self.emit_qualified_reachability_profile();
+        self.emit_rust_symbol_profile();
+        self.emit_module_timing_profile();
         Ok(counts)
     }
 
@@ -1134,18 +1533,23 @@ impl Assembler {
         }
     }
 
-    fn apply_reachable_section_maps(&mut self) {
-        let reachable_units = self.symbols.reachable_units_from_selected_roots();
+    fn apply_reachable_section_maps(
+        &mut self,
+        qualified_reachability: &QualifiedReachabilityIndexes,
+    ) {
+        let apply_started_at = Instant::now();
+        let mut section_range_lookup_time = Duration::default();
+        let mut section_range_lookup_count = 0usize;
         let imported_modules = self.imported_module_keys();
         let mut copied_units = HashSet::new();
         for module in self.symbols.modules() {
             let allow_same_name_default =
                 !imported_modules.contains(&module.name.to_ascii_uppercase());
             for import in &module.imports {
-                for unit in reachable_units.iter().filter(|unit| {
-                    unit.importing_module.eq_ignore_ascii_case(&module.name)
-                        && unit.module_id.eq_ignore_ascii_case(&import.module_id)
-                }) {
+                for &unit_idx in
+                    qualified_reachability.reachable_unit_indices(&module.name, &import.module_id)
+                {
+                    let unit = &qualified_reachability.reachable_units[unit_idx];
                     if !copied_units.insert(unit.full_name.to_ascii_uppercase()) {
                         continue;
                     }
@@ -1154,18 +1558,12 @@ impl Assembler {
                     else {
                         continue;
                     };
-                    let Some(dep) = self
-                        .symbols
-                        .modules()
-                        .iter()
-                        .find(|dep| dep.name.eq_ignore_ascii_case(&import.module_id))
-                    else {
+                    let Some(_dep) = self.symbols.module(&import.module_id) else {
                         continue;
                     };
-                    let Some(logical_section) = dep
-                        .logical_sections
-                        .iter()
-                        .find(|section| section.name.eq_ignore_ascii_case(&source_section_name))
+                    let Some(logical_section) = self
+                        .symbols
+                        .logical_section(&import.module_id, &source_section_name)
                     else {
                         continue;
                     };
@@ -1179,11 +1577,18 @@ impl Assembler {
                     ) else {
                         continue;
                     };
-                    let Some((start, end)) =
-                        self.reachable_unit_section_range(&unit.full_name, &source_section_name)
-                    else {
+                    let section_range_started_at = Instant::now();
+                    let Some((start, end)) = self.reachable_unit_section_range(
+                        qualified_reachability,
+                        &unit.full_name,
+                        &source_section_name,
+                    ) else {
+                        section_range_lookup_time += section_range_started_at.elapsed();
+                        section_range_lookup_count += 1;
                         continue;
                     };
+                    section_range_lookup_time += section_range_started_at.elapsed();
+                    section_range_lookup_count += 1;
                     let Some(source_section) = self.sections.get(&source_section_name) else {
                         continue;
                     };
@@ -1213,30 +1618,26 @@ impl Assembler {
                 }
             }
         }
+        self.qualified_reachability_profile.apply_section_maps_time += apply_started_at.elapsed();
+        self.qualified_reachability_profile.apply_section_maps_count += 1;
+        self.qualified_reachability_profile
+            .section_range_lookup_time += section_range_lookup_time;
+        self.qualified_reachability_profile
+            .section_range_lookup_count += section_range_lookup_count;
     }
 
     fn reachable_unit_section_range(
         &self,
+        qualified_reachability: &QualifiedReachabilityIndexes,
         full_name: &str,
         section_name: &str,
     ) -> Option<(usize, usize)> {
         let entry = self.symbols.entry(full_name)?;
         let section = self.sections.get(section_name)?;
         let start = entry.val.checked_sub(section.start_pc)? as usize;
-        let end = self
-            .symbols
-            .entries()
-            .iter()
-            .filter(|candidate| candidate.name != entry.name && candidate.val > entry.val)
-            .filter(|candidate| {
-                self.section_symbol_sections
-                    .get(&candidate.name)
-                    .is_some_and(|candidate_section| {
-                        candidate_section.eq_ignore_ascii_case(section_name)
-                    })
-            })
-            .map(|candidate| candidate.val.saturating_sub(section.start_pc) as usize)
-            .min()
+        let end = qualified_reachability
+            .next_section_symbol_address_after(section_name, entry.val)
+            .map(|address| address.saturating_sub(section.start_pc) as usize)
             .unwrap_or(section.bytes.len());
         Some((start, end))
     }
@@ -1316,6 +1717,7 @@ impl Assembler {
         counts: &mut PassCounts,
         diagnostics: &mut Vec<Diagnostic>,
         pass1_loop_trace: &mut Vec<(u32, u32)>,
+        module_timing_profile: &mut ModuleTimingProfile,
         unscoped_repeat_kind: Option<UnscopedRepeatKind>,
         max_loop_iterations: u32,
         pass_num: u8,
@@ -1324,8 +1726,10 @@ impl Assembler {
             counts,
             diagnostics,
             pass1_loop_trace,
+            module_timing_profile,
             pass_num,
         };
+        let _repetition_scope = phase_profile::scope(PhaseBucket::Pass1RepetitionLoopExecution);
         match execute_repetition_lines(
             &mut traversal,
             lines,
@@ -1348,8 +1752,11 @@ impl Assembler {
         addr: &mut u32,
         counts: &mut PassCounts,
         diagnostics: &mut Vec<Diagnostic>,
+        module_timing_profile: &mut ModuleTimingProfile,
         pass_num: u8,
     ) {
+        let module_before = asm_line.active_module_name().map(str::to_string);
+        let line_started_at = Instant::now();
         let line_addr = match asm_line.current_addr(*addr) {
             Ok(line_addr) => line_addr,
             Err(()) => {
@@ -1380,6 +1787,13 @@ impl Assembler {
             }
             counts.errors += 1;
         }
+        let module_after = asm_line.active_module_name();
+        let module_name = module_after.or(module_before.as_deref());
+        Self::record_module_timing(
+            &mut module_timing_profile.pass1,
+            module_name,
+            line_started_at.elapsed(),
+        );
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1395,6 +1809,7 @@ impl Assembler {
         image: &mut ImageStore,
         pass1_loop_trace: &[(u32, u32)],
         pass2_loop_trace_cursor: &mut usize,
+        module_timing_profile: &mut ModuleTimingProfile,
         unscoped_repeat_kind: Option<UnscopedRepeatKind>,
         max_loop_iterations: u32,
     ) -> std::io::Result<()> {
@@ -1405,7 +1820,9 @@ impl Assembler {
             image,
             pass1_loop_trace,
             pass2_loop_trace_cursor,
+            module_timing_profile,
         };
+        let _repetition_scope = phase_profile::scope(PhaseBucket::Pass2RepetitionLoopExecution);
         execute_repetition_lines(
             &mut traversal,
             lines,
@@ -1428,8 +1845,11 @@ impl Assembler {
         diagnostics: &mut Vec<Diagnostic>,
         listing: &mut ListingWriter<W>,
         image: &mut ImageStore,
+        module_timing_profile: &mut ModuleTimingProfile,
         all_lines: &[String],
     ) -> std::io::Result<()> {
+        let module_before = asm_line.active_module_name().map(str::to_string);
+        let line_started_at = Instant::now();
         let line_addr = match asm_line.current_addr(*addr) {
             Ok(line_addr) => line_addr,
             Err(()) => {
@@ -1457,9 +1877,15 @@ impl Assembler {
         let line_addr = asm_line.start_addr();
         let bytes = asm_line.bytes();
         if !bytes.is_empty() && !asm_line.in_section() {
+            let output_image_started_at = Instant::now();
             image.store_slice(line_addr, bytes);
+            phase_profile::record_direct(
+                PhaseBucket::Pass2OutputImageEmission,
+                output_image_started_at.elapsed(),
+            );
         }
 
+        let listing_started_at = Instant::now();
         listing.write_line(ListingLine {
             addr: line_addr,
             bytes,
@@ -1470,6 +1896,10 @@ impl Assembler {
             section: asm_line.current_section_name(),
             cond: asm_line.cond_last(),
         })?;
+        phase_profile::record_direct(
+            PhaseBucket::Pass2ListingGeneration,
+            listing_started_at.elapsed(),
+        );
 
         match status {
             LineStatus::Error | LineStatus::Pass1Error => {
@@ -1532,6 +1962,13 @@ impl Assembler {
             }
             counts.errors += 1;
         }
+        let module_after = asm_line.active_module_name();
+        let module_name = module_after.or(module_before.as_deref());
+        Self::record_module_timing(
+            &mut module_timing_profile.pass2,
+            module_name,
+            line_started_at.elapsed(),
+        );
         Ok(())
     }
 
@@ -1551,6 +1988,10 @@ impl Assembler {
         severity: Severity,
         err: AsmError,
     ) -> Diagnostic {
+        let _diagnostic_scope = phase_profile::scope(match asm_line.pass_number() {
+            1 => PhaseBucket::Pass1DiagnosticsGeneration,
+            _ => PhaseBucket::Pass2DiagnosticsGeneration,
+        });
         let mut diagnostic = Diagnostic::new(line_num, severity, err)
             .with_column(asm_line.error_column())
             .with_parser_error(
@@ -1573,6 +2014,7 @@ struct Pass1RepetitionTraversal<'a> {
     counts: &'a mut PassCounts,
     diagnostics: &'a mut Vec<Diagnostic>,
     pass1_loop_trace: &'a mut Vec<(u32, u32)>,
+    module_timing_profile: &'a mut ModuleTimingProfile,
     pass_num: u8,
 }
 
@@ -1622,6 +2064,7 @@ impl RepetitionPass for Pass1RepetitionTraversal<'_> {
             addr,
             self.counts,
             self.diagnostics,
+            self.module_timing_profile,
             self.pass_num,
         );
         Ok(())
@@ -1635,6 +2078,7 @@ struct Pass2RepetitionTraversal<'a, W: Write> {
     image: &'a mut ImageStore,
     pass1_loop_trace: &'a [(u32, u32)],
     pass2_loop_trace_cursor: &'a mut usize,
+    module_timing_profile: &'a mut ModuleTimingProfile,
 }
 
 impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
@@ -1697,6 +2141,7 @@ impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
             self.diagnostics,
             self.listing,
             self.image,
+            self.module_timing_profile,
             all_lines,
         )
     }

@@ -1995,7 +1995,10 @@ fn definition_resolves_alias_qualified_symbol_via_module_search_when_target_is_n
         }),
     );
     let entries = defs.as_array().expect("definition array");
-    assert!(!entries.is_empty(), "expected definition through module search");
+    assert!(
+        !entries.is_empty(),
+        "expected definition through module search"
+    );
     assert_eq!(
         entries[0]
             .get("uri")

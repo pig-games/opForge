@@ -67,7 +67,7 @@ use std::fs::{self};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use types::image::ImageStore;
 use types::lockstep::{ContinuationHead, LockstepReport};
 use types::processing::{LineProcessingTrace, OpcoreRequestKind, ProcessingRequestKind};
@@ -2108,6 +2108,52 @@ fn run_passes(lines: &[&str]) -> Assembler {
     );
     assert_partitioned_assembler_execution(&assembler);
     assembler
+}
+
+fn qualified_use_performance_fixture(module_count: usize, helper_count: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    for module_idx in 0..module_count {
+        lines.push(format!(".module dep{module_idx}"));
+        lines.push(".cpu 68000".to_string());
+        lines.push(".pub".to_string());
+        lines.push(".section code, kind=code, logical".to_string());
+        lines.push(format!("entry{module_idx}:"));
+        if helper_count == 0 {
+            lines.push("    rts".to_string());
+        } else {
+            lines.push(format!("    jsr helper{module_idx}_0"));
+        }
+        for helper_idx in 0..helper_count {
+            lines.push(format!("helper{module_idx}_{helper_idx}:"));
+            if helper_idx + 1 < helper_count {
+                lines.push(format!("    jsr helper{module_idx}_{}", helper_idx + 1));
+            } else {
+                lines.push("    rts".to_string());
+            }
+        }
+        lines.push(".endsection".to_string());
+        lines.push(".endmodule".to_string());
+    }
+
+    lines.push(".module main".to_string());
+    lines.push(".cpu 68000".to_string());
+    lines.push(".region rom, $1000, $7fff".to_string());
+    lines.push(".section app_code, kind=code".to_string());
+    lines.push("start:".to_string());
+    for module_idx in 0..module_count {
+        lines.push(format!("    jsr d{module_idx}.entry{module_idx}"));
+    }
+    lines.push("    rts".to_string());
+    lines.push(".endsection".to_string());
+    lines.push(".place app_code in rom".to_string());
+    for module_idx in 0..module_count {
+        lines.push(format!(
+            ".use dep{module_idx} (entry{module_idx}) as d{module_idx} map {{ code -> app_code }}"
+        ));
+    }
+    lines.push(".endmodule".to_string());
+
+    lines
 }
 
 fn create_temp_dir(label: &str) -> PathBuf {
@@ -11458,7 +11504,7 @@ fn motorola68020_item6_2_native_cli_preserves_parser_spans_for_selected_requests
         &[
             "opforgeNativeCliPrepareEncodeSelectedRequestForStatement .block",
             "LEA lastErrorBuffer, A1",
-            "JSR opasmEnginePrepareSelectedEvaluateRequestV1",
+            "JSR prepareSelectedEvaluateRequestV1",
             "MOVE.W D1, nativeCliEvalRequestLen",
         ],
     ));
@@ -15248,7 +15294,7 @@ fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
     assert!(source_contains_in_order(
         &token_policy,
         &[
-            "tkpkgTokenPolicyResolveLocatorV1",
+            "resolveLocatorV1",
             ".block",
             "MOVEQ #SCOPED_OWNER_DIALECT, D0",
             "LEA PendingDialectOffsetLo, A3",
@@ -15451,7 +15497,7 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     assert!(listing.contains("tkpkg.amigaos.package_loader.validateToc"));
     assert!(listing.contains("tkpkg.amigaos.pipeline.tkpkgPipelineSetActiveV1"));
     assert!(listing.contains("tkpkg.amigaos.pipeline.resolveTokenizerVmLocatorV1"));
-    assert!(listing.contains("tkpkg.amigaos.token_policy.tkpkgTokenPolicyResolveLocatorV1"));
+    assert!(listing.contains("tkpkg.amigaos.token_policy.resolveLocatorV1"));
     assert!(listing.contains("tkpkg.amigaos.tokenizer_vm.tkpkgTokenizerVmTokenizeLineV1"));
     assert!(listing.contains("tkvm.amigaos.runtime.tkvmRun68000"));
 
@@ -18762,6 +18808,66 @@ fn root_qualified_reference_pulls_code_dependencies_into_mapped_output() {
             0x4E, 0xB9, 0x00, 0x00, 0x00, 0x06, // engine.entry jsr helper
             0x4E, 0x75, // engine.helper rts
         ]
+    );
+}
+
+#[test]
+fn qualified_use_reachability_perf_regression_multi_module_fixture() {
+    let lines = qualified_use_performance_fixture(24, 24);
+    let mut assembler = Assembler::new();
+
+    let pass1_started_at = Instant::now();
+    let pass1 = assembler.pass1(&lines);
+    let pass1_elapsed = pass1_started_at.elapsed();
+    assert_eq!(
+        pass1.errors,
+        0,
+        "pass1 should succeed: {:?}",
+        assembler
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.severity == Severity::Error)
+            .map(|diag| format!("{}:{}", diag.line, diag.error.message()))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(assembler.symbols.reachable_units_compute_count(), 1);
+
+    let mut listing_out = Vec::new();
+    let mut listing = ListingWriter::new(&mut listing_out, false);
+    let pass2_started_at = Instant::now();
+    let pass2 = assembler.pass2(&lines, &mut listing).expect("pass2");
+    let pass2_elapsed = pass2_started_at.elapsed();
+    assert_eq!(
+        pass2.errors,
+        0,
+        "pass2 should succeed: {:?}",
+        assembler
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.severity == Severity::Error)
+            .map(|diag| format!("{}:{}", diag.line, diag.error.message()))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(assembler.symbols.reachable_units_compute_count(), 2);
+
+    let reachability_time = assembler.symbols.reachable_units_compute_time();
+    assert!(
+        reachability_time > Duration::default(),
+        "expected non-zero reachability timing for performance fixture"
+    );
+    assert!(
+        reachability_time < Duration::from_millis(250),
+        "qualified reachability timing regressed: {reachability_time:?} (pass1 {pass1_elapsed:?}, pass2 {pass2_elapsed:?})"
+    );
+
+    let app_code = assembler
+        .sections()
+        .get("app_code")
+        .expect("app_code section");
+    assert!(
+        app_code.bytes.len() > 24 * 8,
+        "expected mapped reachable units in app_code, got {} bytes",
+        app_code.bytes.len()
     );
 }
 

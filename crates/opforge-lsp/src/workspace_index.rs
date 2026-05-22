@@ -265,7 +265,8 @@ impl WorkspaceIndex {
                 if !import_matches_qualifier(import, qualified) {
                     continue;
                 }
-                for symbol in self.qualified_import_symbols_for_request(import, config, current_uri) {
+                for symbol in self.qualified_import_symbols_for_request(import, config, current_uri)
+                {
                     if symbol.name.eq_ignore_ascii_case(leaf) {
                         out.push(symbol);
                     }
@@ -276,9 +277,11 @@ impl WorkspaceIndex {
                 continue;
             }
             if import.wildcard {
-                for symbol in
-                    self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri)
-                {
+                for symbol in self.module_export_symbols_for_request(
+                    import.module_id.as_str(),
+                    config,
+                    current_uri,
+                ) {
                     if symbol.name.eq_ignore_ascii_case(leaf) {
                         out.push(symbol);
                     }
@@ -289,9 +292,11 @@ impl WorkspaceIndex {
                 if !item.local_name.eq_ignore_ascii_case(leaf) {
                     continue;
                 }
-                for symbol in
-                    self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri)
-                {
+                for symbol in self.module_export_symbols_for_request(
+                    import.module_id.as_str(),
+                    config,
+                    current_uri,
+                ) {
                     if symbol.name.eq_ignore_ascii_case(&item.source_name) {
                         out.push(symbol);
                     }
@@ -325,8 +330,7 @@ impl WorkspaceIndex {
                     continue;
                 }
                 let qualifier_label = import.qualifier.as_deref().unwrap_or(&import.module_id);
-                for symbol in
-                    self.qualified_import_symbols_for_request(import, config, current_uri)
+                for symbol in self.qualified_import_symbols_for_request(import, config, current_uri)
                 {
                     if !symbol
                         .name
@@ -344,9 +348,11 @@ impl WorkspaceIndex {
             }
 
             if import.wildcard {
-                for symbol in
-                    self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri)
-                {
+                for symbol in self.module_export_symbols_for_request(
+                    import.module_id.as_str(),
+                    config,
+                    current_uri,
+                ) {
                     if !symbol
                         .name
                         .to_ascii_lowercase()
@@ -370,9 +376,11 @@ impl WorkspaceIndex {
                 {
                     continue;
                 }
-                for symbol in
-                    self.module_export_symbols_for_request(import.module_id.as_str(), config, current_uri)
-                {
+                for symbol in self.module_export_symbols_for_request(
+                    import.module_id.as_str(),
+                    config,
+                    current_uri,
+                ) {
                     if !symbol.name.eq_ignore_ascii_case(&item.source_name) {
                         continue;
                     }
@@ -419,8 +427,7 @@ impl WorkspaceIndex {
             current_doc,
             request_line,
             base_symbol,
-        )
-        {
+        ) {
             out.extend(self.struct_fields_for_type(current_uri, current_doc, &type_name));
         }
         dedup_member_fields(out)

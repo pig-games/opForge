@@ -3,8 +3,11 @@
 //! Symbol model and symbol-table types shared across libopforge crates.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolVisibility {
@@ -164,12 +167,70 @@ fn normalized_ascii_upper_lookup_key(name: &str) -> Cow<'_, str> {
     }
 }
 
+fn rust_symbol_profile_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("OPFORGE_PROFILE_RUST_SYMBOL_PATHS").is_some())
+}
+
+#[derive(Debug, Default)]
+struct SymbolProfileStat {
+    count: Cell<usize>,
+    duration: Cell<Duration>,
+}
+
+impl SymbolProfileStat {
+    fn record(&self, duration: Duration) {
+        self.count.set(self.count.get().saturating_add(1));
+        self.duration
+            .set(self.duration.get().saturating_add(duration));
+    }
+
+    fn snapshot(&self) -> SymbolProfileStatSnapshot {
+        SymbolProfileStatSnapshot {
+            count: self.count.get(),
+            duration: self.duration.get(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct SymbolTableRustProfile {
+    record_symbol_reference: SymbolProfileStat,
+    reachable_units_from_selected_roots: SymbolProfileStat,
+    module_symbol_for_full_name: SymbolProfileStat,
+    resolve_import_alias: SymbolProfileStat,
+    resolve_selective_import: SymbolProfileStat,
+    resolve_imported_symbol: SymbolProfileStat,
+    validate_imports: SymbolProfileStat,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SymbolProfileStatSnapshot {
+    pub count: usize,
+    pub duration: Duration,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SymbolTableRustProfileSnapshot {
+    pub record_symbol_reference: SymbolProfileStatSnapshot,
+    pub reachable_units_from_selected_roots: SymbolProfileStatSnapshot,
+    pub module_symbol_for_full_name: SymbolProfileStatSnapshot,
+    pub resolve_import_alias: SymbolProfileStatSnapshot,
+    pub resolve_selective_import: SymbolProfileStatSnapshot,
+    pub resolve_imported_symbol: SymbolProfileStatSnapshot,
+    pub validate_imports: SymbolProfileStatSnapshot,
+}
+
 #[derive(Debug, Default)]
 pub struct SymbolTable {
     entries: Vec<SymbolTableEntry>,
     index: HashMap<String, usize>,
     module_info: Vec<ModuleInfo>,
     module_index: HashMap<String, usize>,
+    module_logical_section_index: HashMap<String, HashMap<String, usize>>,
+    reachable_units_compute_count: Cell<usize>,
+    reachable_units_compute_time: Cell<Duration>,
+    rust_profile: SymbolTableRustProfile,
 }
 
 impl SymbolTable {
@@ -180,6 +241,10 @@ impl SymbolTable {
             index: HashMap::new(),
             module_info: Vec::new(),
             module_index: HashMap::new(),
+            module_logical_section_index: HashMap::new(),
+            reachable_units_compute_count: Cell::new(0),
+            reachable_units_compute_time: Cell::new(Duration::default()),
+            rust_profile: SymbolTableRustProfile::default(),
         }
     }
 
@@ -197,6 +262,8 @@ impl SymbolTable {
             symbol_references: HashMap::new(),
         });
         self.module_index.insert(key, idx);
+        self.module_logical_section_index
+            .insert(name.to_ascii_uppercase(), HashMap::new());
         SymbolTableResult::Ok
     }
 
@@ -207,21 +274,33 @@ impl SymbolTable {
         kind: LogicalSectionKind,
         span: SourceSpan,
     ) {
-        if self.module_info_mut(module).is_none() {
+        let module_key = normalized_ascii_upper_lookup_key(module).into_owned();
+        if !self.module_index.contains_key(module_key.as_str()) {
             let _ = self.register_module(module);
         }
-        let info = self.module_info_mut(module).expect("module info");
-        if let Some(existing) = info
-            .logical_sections
-            .iter_mut()
-            .find(|section| section.name.eq_ignore_ascii_case(&name))
+        let module_idx = *self
+            .module_index
+            .get(module_key.as_str())
+            .expect("module index");
+        let section_key = normalized_ascii_upper_lookup_key(&name).into_owned();
+        if let Some(&section_idx) = self
+            .module_logical_section_index
+            .get(module_key.as_str())
+            .and_then(|index| index.get(section_key.as_str()))
         {
+            let existing = &mut self.module_info[module_idx].logical_sections[section_idx];
             existing.kind = kind;
             existing.span = span;
             return;
         }
-        info.logical_sections
+        let section_idx = self.module_info[module_idx].logical_sections.len();
+        self.module_info[module_idx]
+            .logical_sections
             .push(LogicalSectionContract { name, kind, span });
+        self.module_logical_section_index
+            .get_mut(module_key.as_str())
+            .expect("logical section index")
+            .insert(section_key, section_idx);
     }
 
     #[must_use]
@@ -282,8 +361,35 @@ impl SymbolTable {
         &self.module_info
     }
 
+    #[must_use]
+    pub fn module(&self, name: &str) -> Option<&ModuleInfo> {
+        self.module_info(name)
+    }
+
+    #[must_use]
+    pub fn logical_section(&self, module: &str, name: &str) -> Option<&LogicalSectionContract> {
+        let module_key = normalized_ascii_upper_lookup_key(module);
+        let module_idx = *self.module_index.get(module_key.as_ref())?;
+        let section_key = normalized_ascii_upper_lookup_key(name);
+        let section_idx = *self
+            .module_logical_section_index
+            .get(module_key.as_ref())?
+            .get(section_key.as_ref())?;
+        self.module_info
+            .get(module_idx)?
+            .logical_sections
+            .get(section_idx)
+    }
+
     pub fn record_symbol_reference(&mut self, source_full_name: &str, target_full_name: &str) {
+        let profile_enabled = rust_symbol_profile_enabled();
+        let started_at = profile_enabled.then(Instant::now);
         if source_full_name.eq_ignore_ascii_case(target_full_name) {
+            if let Some(started_at) = started_at {
+                self.rust_profile
+                    .record_symbol_reference
+                    .record(started_at.elapsed());
+            }
             return;
         }
         let module_name = self
@@ -294,19 +400,39 @@ impl SymbolTable {
                     .map(|(module, _)| module)
             });
         let Some(module_name) = module_name else {
+            if let Some(started_at) = started_at {
+                self.rust_profile
+                    .record_symbol_reference
+                    .record(started_at.elapsed());
+            }
             return;
         };
         let Some(info) = self.module_info_mut(&module_name) else {
+            if let Some(started_at) = started_at {
+                self.rust_profile
+                    .record_symbol_reference
+                    .record(started_at.elapsed());
+            }
             return;
         };
         info.symbol_references
             .entry(source_full_name.to_string())
             .or_default()
             .insert(target_full_name.to_string());
+        if let Some(started_at) = started_at {
+            self.rust_profile
+                .record_symbol_reference
+                .record(started_at.elapsed());
+        }
     }
 
     #[must_use]
     pub fn reachable_units_from_selected_roots(&self) -> Vec<ReachableUnit> {
+        let reachability_started_at = Instant::now();
+        self.reachable_units_compute_count
+            .set(self.reachable_units_compute_count.get().saturating_add(1));
+        let profile_enabled = rust_symbol_profile_enabled();
+        let profiled_started_at = profile_enabled.then(Instant::now);
         let mut reachable = HashMap::new();
         let mut seen = HashSet::new();
         let mut queue = Vec::new();
@@ -393,18 +519,54 @@ impl SymbolTable {
             normalized_ascii_upper_lookup_key(&left.full_name)
                 .cmp(&normalized_ascii_upper_lookup_key(&right.full_name))
         });
+        self.reachable_units_compute_time
+            .set(self.reachable_units_compute_time.get() + reachability_started_at.elapsed());
+        if let Some(profiled_started_at) = profiled_started_at {
+            self.rust_profile
+                .reachable_units_from_selected_roots
+                .record(profiled_started_at.elapsed());
+        }
         reachable
     }
 
     fn module_symbol_for_full_name(&self, full_name: &str) -> Option<(String, String)> {
-        self.module_info
-            .iter()
-            .filter_map(|module| {
-                full_name
-                    .strip_prefix(&format!("{}.", module.name))
-                    .map(|symbol| (module.name.clone(), symbol.to_string()))
-            })
-            .max_by_key(|(module, _)| module.len())
+        let profile_enabled = rust_symbol_profile_enabled();
+        let started_at = profile_enabled.then(Instant::now);
+        let resolved = if let Some(entry) = self.entry(full_name) {
+            if let Some(module_id) = entry.module_id.as_ref() {
+                if entry.name.len() > module_id.len() + 1
+                    && entry.name.as_bytes().get(module_id.len()) == Some(&b'.')
+                    && entry.name[..module_id.len()].eq_ignore_ascii_case(module_id)
+                {
+                    Some((
+                        module_id.clone(),
+                        entry.name[module_id.len() + 1..].to_string(),
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+        .or_else(|| {
+            self.module_info
+                .iter()
+                .filter_map(|module| {
+                    full_name
+                        .strip_prefix(&format!("{}.", module.name))
+                        .map(|symbol| (module.name.clone(), symbol.to_string()))
+                })
+                .max_by_key(|(module, _)| module.len())
+        });
+        if let Some(started_at) = started_at {
+            self.rust_profile
+                .module_symbol_for_full_name
+                .record(started_at.elapsed());
+        }
+        resolved
     }
 
     fn module_info(&self, name: &str) -> Option<&ModuleInfo> {
@@ -424,7 +586,9 @@ impl SymbolTable {
 
     #[must_use]
     pub fn resolve_import_alias(&self, module: &str, alias: &str) -> Option<&str> {
-        self.module_info(module).and_then(|info| {
+        let profile_enabled = rust_symbol_profile_enabled();
+        let started_at = profile_enabled.then(Instant::now);
+        let resolved = self.module_info(module).and_then(|info| {
             info.imports.iter().find_map(|import| {
                 import.qualifier.as_ref().and_then(|candidate| {
                     if candidate.eq_ignore_ascii_case(alias) {
@@ -434,12 +598,20 @@ impl SymbolTable {
                     }
                 })
             })
-        })
+        });
+        if let Some(started_at) = started_at {
+            self.rust_profile
+                .resolve_import_alias
+                .record(started_at.elapsed());
+        }
+        resolved
     }
 
     #[must_use]
     pub fn resolve_selective_import(&self, module: &str, name: &str) -> Option<(&str, &str)> {
-        self.module_info(module).and_then(|info| {
+        let profile_enabled = rust_symbol_profile_enabled();
+        let started_at = profile_enabled.then(Instant::now);
+        let resolved = self.module_info(module).and_then(|info| {
             info.imports.iter().find_map(|import| {
                 import.items.iter().find_map(|item| {
                     if item.name == "*" && item.alias.is_none() {
@@ -461,59 +633,86 @@ impl SymbolTable {
                     }
                 })
             })
-        })
+        });
+        if let Some(started_at) = started_at {
+            self.rust_profile
+                .resolve_selective_import
+                .record(started_at.elapsed());
+        }
+        resolved
     }
 
     #[must_use]
     pub fn resolve_imported_symbol(&self, module: &str, name: &str) -> ImportedSymbolResolution {
-        let Some(info) = self.module_info(module) else {
-            return ImportedSymbolResolution::Unresolved;
+        let profile_enabled = rust_symbol_profile_enabled();
+        let started_at = profile_enabled.then(Instant::now);
+        let resolved = {
+            let Some(info) = self.module_info(module) else {
+                if let Some(started_at) = started_at {
+                    self.rust_profile
+                        .resolve_imported_symbol
+                        .record(started_at.elapsed());
+                }
+                return ImportedSymbolResolution::Unresolved;
+            };
+
+            if !name.contains('.') {
+                if let Some((target_module, target_name)) =
+                    self.resolve_selective_import(module, name)
+                {
+                    self.resolved_import_name(target_module, target_name)
+                } else {
+                    ImportedSymbolResolution::Unresolved
+                }
+            } else if let Some((prefix, rest)) = name.split_once('.') {
+                if let Some(import) = info.imports.iter().find(|import| {
+                    import
+                        .qualifier
+                        .as_ref()
+                        .is_some_and(|qualifier| qualifier.eq_ignore_ascii_case(prefix))
+                }) {
+                    self.resolved_import_name(import.module_id.as_str(), rest)
+                } else {
+                    let mut matches = info.imports.iter().filter_map(|import| {
+                        let module_id = import.module_id.as_str();
+                        let separator_index = module_id.len();
+                        if name.len() <= separator_index || !name.is_char_boundary(separator_index)
+                        {
+                            return None;
+                        }
+                        let (candidate_module, rest_with_dot) = name.split_at(separator_index);
+                        if !candidate_module.eq_ignore_ascii_case(module_id)
+                            || !rest_with_dot.starts_with('.')
+                        {
+                            return None;
+                        }
+                        let target_name = &rest_with_dot[1..];
+                        if target_name.is_empty() {
+                            return None;
+                        }
+                        Some(self.resolved_import_name(module_id, target_name))
+                    });
+
+                    if let Some(first) = matches.next() {
+                        if matches.next().is_some() {
+                            ImportedSymbolResolution::Ambiguous
+                        } else {
+                            first
+                        }
+                    } else {
+                        ImportedSymbolResolution::Unresolved
+                    }
+                }
+            } else {
+                ImportedSymbolResolution::Unresolved
+            }
         };
-
-        if !name.contains('.') {
-            if let Some((target_module, target_name)) = self.resolve_selective_import(module, name)
-            {
-                return self.resolved_import_name(target_module, target_name);
-            }
-            return ImportedSymbolResolution::Unresolved;
+        if let Some(started_at) = started_at {
+            self.rust_profile
+                .resolve_imported_symbol
+                .record(started_at.elapsed());
         }
-
-        if let Some((prefix, rest)) = name.split_once('.') {
-            if let Some(import) = info.imports.iter().find(|import| {
-                import
-                    .qualifier
-                    .as_ref()
-                    .is_some_and(|qualifier| qualifier.eq_ignore_ascii_case(prefix))
-            }) {
-                return self.resolved_import_name(import.module_id.as_str(), rest);
-            }
-        }
-
-        let mut matches = info.imports.iter().filter_map(|import| {
-            let module_id = import.module_id.as_str();
-            let separator_index = module_id.len();
-            if name.len() <= separator_index || !name.is_char_boundary(separator_index) {
-                return None;
-            }
-            let (candidate_module, rest_with_dot) = name.split_at(separator_index);
-            if !candidate_module.eq_ignore_ascii_case(module_id) || !rest_with_dot.starts_with('.')
-            {
-                return None;
-            }
-            let target_name = &rest_with_dot[1..];
-            if target_name.is_empty() {
-                return None;
-            }
-            Some(self.resolved_import_name(module_id, target_name))
-        });
-
-        let Some(first) = matches.next() else {
-            return ImportedSymbolResolution::Unresolved;
-        };
-        if matches.next().is_some() {
-            return ImportedSymbolResolution::Ambiguous;
-        }
-        first
+        resolved
     }
 
     fn resolved_import_name(&self, module_id: &str, symbol_name: &str) -> ImportedSymbolResolution {
@@ -534,6 +733,8 @@ impl SymbolTable {
         &self,
         known_compile_time_symbols: &HashMap<String, HashMap<String, SymbolVisibility>>,
     ) -> Vec<ImportIssue> {
+        let profile_enabled = rust_symbol_profile_enabled();
+        let started_at = profile_enabled.then(Instant::now);
         let mut issues = Vec::new();
 
         for info in &self.module_info {
@@ -647,6 +848,11 @@ impl SymbolTable {
             );
         }
 
+        if let Some(started_at) = started_at {
+            self.rust_profile
+                .validate_imports
+                .record(started_at.elapsed());
+        }
         issues
     }
 
@@ -780,6 +986,32 @@ impl SymbolTable {
             writeln!(out, "{:<16}: {:04x} ({})", entry.name, entry.val, entry.val)?;
         }
         Ok(())
+    }
+
+    #[must_use]
+    pub fn reachable_units_compute_count(&self) -> usize {
+        self.reachable_units_compute_count.get()
+    }
+
+    #[must_use]
+    pub fn reachable_units_compute_time(&self) -> Duration {
+        self.reachable_units_compute_time.get()
+    }
+
+    #[must_use]
+    pub fn rust_profile_snapshot(&self) -> SymbolTableRustProfileSnapshot {
+        SymbolTableRustProfileSnapshot {
+            record_symbol_reference: self.rust_profile.record_symbol_reference.snapshot(),
+            reachable_units_from_selected_roots: self
+                .rust_profile
+                .reachable_units_from_selected_roots
+                .snapshot(),
+            module_symbol_for_full_name: self.rust_profile.module_symbol_for_full_name.snapshot(),
+            resolve_import_alias: self.rust_profile.resolve_import_alias.snapshot(),
+            resolve_selective_import: self.rust_profile.resolve_selective_import.snapshot(),
+            resolve_imported_symbol: self.rust_profile.resolve_imported_symbol.snapshot(),
+            validate_imports: self.rust_profile.validate_imports.snapshot(),
+        }
     }
 }
 

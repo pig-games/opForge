@@ -15,6 +15,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 use asm::engine::Assembler;
 use asm::error::{AsmError, AsmErrorKind, AsmRunError, AsmRunReport, Diagnostic, Severity};
@@ -25,6 +26,7 @@ use asm::output::{
     ExportSectionsDirective, LinkerOutputDirective, LinkerOutputFormat, MapFileDirective,
     RegionState, RootMetadata, SectionState,
 };
+use asm::phase_profile::{self, PhaseBucket};
 use families::{
     register_intel8080_family_stack, register_mos6502_family_stack,
     register_motorola68000_family_stack, register_motorola6800_family_stack,
@@ -1188,6 +1190,7 @@ pub fn prepare_assembly_session(
     let fs_source_provider = FsSourceProvider;
     let source_provider: &dyn SourceProvider =
         request.source_provider.unwrap_or(&fs_source_provider);
+    let source_load_started_at = Instant::now();
     let (root_lines, root_dependency_files) = expand_source_file_with_dependencies_with_provider(
         request.root_path,
         request.defines,
@@ -1195,7 +1198,12 @@ pub fn prepare_assembly_session(
         request.pp_macro_depth,
         source_provider,
     )?;
+    phase_profile::record_direct(
+        PhaseBucket::PrepareSourceModuleLoading,
+        source_load_started_at.elapsed(),
+    );
     let root_module_id = root_module_id_from_lines(request.root_path, &root_lines)?;
+    let module_graph_started_at = Instant::now();
     let graph = load_module_graph_with_provider(
         request.root_path,
         root_lines,
@@ -1205,6 +1213,10 @@ pub fn prepare_assembly_session(
         request.pp_macro_depth,
         source_provider,
     )?;
+    phase_profile::record_direct(
+        PhaseBucket::PrepareSourceModuleLoading,
+        module_graph_started_at.elapsed(),
+    );
     let session = AssemblerSessionConfig::resolve(
         request.registry,
         request.cpu_override,
@@ -1445,6 +1457,8 @@ pub fn resolve_output_plan(
 }
 
 pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunReport, AsmRunError> {
+    let _phase_profile = phase_profile::install_for_current_thread_if_enabled();
+    let assembly_started_at = Instant::now();
     let fs_output_sink = FsOutputSink;
     let output_sink: &dyn OutputSink = request.output_sink.unwrap_or(&fs_output_sink);
     let effective_include_paths =
@@ -1465,7 +1479,7 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
         prepared.into_parts();
     let expanded_lines = Arc::new(prepared_lines);
     let (cpu, registry, max_loop_iterations) = session.into_parts();
-    run_assembly_with_prepared(
+    let result = run_assembly_with_prepared(
         PreparedAssemblyRuntime {
             cpu,
             registry,
@@ -1480,17 +1494,22 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
         output_sink,
         request,
         None,
-    )
+    );
+    phase_profile::record_direct(PhaseBucket::AssemblyTotal, assembly_started_at.elapsed());
+    phase_profile::emit_summary_if_active();
+    result
 }
 
 pub fn run_prepared_assembly(
     request: PreparedAssemblyExecutionRequest<'_>,
 ) -> Result<AsmRunReport, AsmRunError> {
+    let _phase_profile = phase_profile::install_for_current_thread_if_enabled();
+    let assembly_started_at = Instant::now();
     let fs_output_sink = FsOutputSink;
     let output_sink: &dyn OutputSink = request.output_sink.unwrap_or(&fs_output_sink);
     let mut registry_guard = request.registry.lock().expect("prepared registry lock");
     let prepared_registry = std::mem::replace(&mut *registry_guard, AsmRegistry::new());
-    run_assembly_with_prepared(
+    let result = run_assembly_with_prepared(
         PreparedAssemblyRuntime {
             cpu: request.cpu,
             registry: prepared_registry,
@@ -1538,7 +1557,10 @@ pub fn run_prepared_assembly(
             suppress_outputs: request.suppress_outputs,
         },
         Some(&mut *registry_guard),
-    )
+    );
+    phase_profile::record_direct(PhaseBucket::AssemblyTotal, assembly_started_at.elapsed());
+    phase_profile::emit_summary_if_active();
+    result
 }
 
 fn run_assembly_with_prepared(
@@ -1614,6 +1636,7 @@ fn run_assembly_with_prepared(
         request.debug_conditionals,
         request.tab_size,
     );
+    let listing_header_started_at = Instant::now();
     if let Err(err) = listing.header(request.header_title) {
         let traces = assembler.runtime_processing_traces().to_vec();
         return Err(AsmRunError::new_with_traces(
@@ -1623,6 +1646,10 @@ fn run_assembly_with_prepared(
             traces,
         ));
     }
+    phase_profile::record_direct(
+        PhaseBucket::Pass2ListingGeneration,
+        listing_header_started_at.elapsed(),
+    );
     let pass2 = match assembler.pass2(&expanded_lines, &mut listing) {
         Ok(counts) => counts,
         Err(err) => {
@@ -1644,6 +1671,7 @@ fn run_assembly_with_prepared(
             traces,
         )
     })?;
+    let listing_footer_started_at = Instant::now();
     if let Err(err) = listing.footer_with_generated_output(
         &pass2,
         assembler.symbols(),
@@ -1658,6 +1686,10 @@ fn run_assembly_with_prepared(
             traces,
         ));
     }
+    phase_profile::record_direct(
+        PhaseBucket::Pass2ListingGeneration,
+        listing_footer_started_at.elapsed(),
+    );
 
     let had_source_errors = pass1.errors > 0 || pass2.errors > 0;
 
@@ -1672,6 +1704,7 @@ fn run_assembly_with_prepared(
     }
 
     if let Some(hex_path) = output_plan.hex_path() {
+        let output_started_at = Instant::now();
         ensure_parent_dir(output_sink, Path::new(hex_path)).map_err(|err| {
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
@@ -1713,9 +1746,11 @@ fn run_assembly_with_prepared(
                 traces,
             ));
         }
+        phase_profile::record_direct(PhaseBucket::PostOutputEmission, output_started_at.elapsed());
     }
 
     if let Some(srec_path) = output_plan.srec_path() {
+        let output_started_at = Instant::now();
         ensure_parent_dir(output_sink, Path::new(srec_path)).map_err(|err| {
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
@@ -1757,6 +1792,7 @@ fn run_assembly_with_prepared(
                 traces,
             ));
         }
+        phase_profile::record_direct(PhaseBucket::PostOutputEmission, output_started_at.elapsed());
     }
 
     let auto_output_range = assembler.image().output_range().map_err(|err| {
@@ -1780,6 +1816,7 @@ fn run_assembly_with_prepared(
             )
         })?
     {
+        let output_started_at = Instant::now();
         dependency_targets.push(bin_output.path.clone());
         ensure_parent_dir(output_sink, Path::new(&bin_output.path)).map_err(|err| {
             let traces = assembler.runtime_processing_traces().to_vec();
@@ -1832,6 +1869,7 @@ fn run_assembly_with_prepared(
                 ));
             }
         }
+        phase_profile::record_direct(PhaseBucket::PostOutputEmission, output_started_at.elapsed());
     }
 
     if let Some(path) = request.labels_file {
@@ -1879,6 +1917,7 @@ fn run_assembly_with_prepared(
     );
 
     if !request.suppress_outputs {
+        let output_started_at = Instant::now();
         if let Err(err) = emit_linker_outputs(
             &assembler.root_metadata.linker_outputs,
             assembler.sections(),
@@ -1962,6 +2001,7 @@ fn run_assembly_with_prepared(
                 output_sink,
             )?;
         }
+        phase_profile::record_direct(PhaseBucket::PostOutputEmission, output_started_at.elapsed());
     }
 
     Ok(AsmRunReport::new(

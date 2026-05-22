@@ -21,6 +21,7 @@ pub mod listing;
 pub mod opasm;
 pub mod operand;
 pub mod output;
+pub mod phase_profile;
 pub mod preprocess;
 mod repetition_driver;
 pub mod runtime_config;

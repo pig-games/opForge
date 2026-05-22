@@ -5,6 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use asm::error::{AsmError, AsmErrorKind, AsmRunError, Diagnostic, Severity};
+use asm::phase_profile::{self, PhaseBucket};
 use asm::preprocess::{AsmMacroExports, AsmMacroProcessor};
 use opcore::expr::{eval_expr as eval_core_expr, EvalContext};
 use opcore::macro_processor::CompileTimeVisibility;
@@ -70,6 +71,7 @@ fn expand_with_processor(
     mp: &mut AsmMacroProcessor,
     lines: &[String],
 ) -> Result<Vec<String>, AsmRunError> {
+    let _expand_scope = phase_profile::scope(PhaseBucket::PrepareMacroSegmentStatementExpand);
     match mp.expand(lines) {
         Ok(lines) => Ok(lines),
         Err(err) => {
@@ -250,6 +252,7 @@ fn apply_conditional_ast(
 }
 
 fn scan_active_module_items(lines: &[String]) -> Vec<LineAst> {
+    let _parse_scope = phase_profile::scope(PhaseBucket::PrepareParseLineAst);
     let mut out = Vec::new();
     let mut stack = Vec::new();
     for (idx, line) in lines.iter().enumerate() {
@@ -426,6 +429,7 @@ fn load_module_recursive(
     importing_path: &Path,
     importing_lines: &[String],
 ) -> Result<(), AsmRunError> {
+    let _module_use_scope = phase_profile::scope(PhaseBucket::PrepareModuleUseImport);
     let module_id = import.module_id.as_str();
     let canonical = canonical_module_id(module_id);
     if let Some(pos) = ctx

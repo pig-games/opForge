@@ -16,7 +16,11 @@ impl<'a> AsmLine<'a> {
                 _ => return LineStatus::NothingDone,
             }
         }
-        if let Some(status) = self.route_layout_directive_ast(directive, operands) {
+        let layout_status = {
+            let _layout_scope = self.pass_layout_scope();
+            self.route_layout_directive_ast(directive, operands)
+        };
+        if let Some(status) = layout_status {
             return status;
         }
         if let Some(status) = self.route_metadata_directive_ast(directive, operands) {

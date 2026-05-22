@@ -9,6 +9,7 @@ use crate::output::{
     PlacedSectionInfo, PlacementDirective, RegionState, RootMetadata, SectionKind, SectionOptions,
     SectionState,
 };
+use crate::phase_profile::{self, PhaseBucket, PhaseScopeGuard};
 use crate::runtime_config::{
     expr_eval_force_host_families_from_env, expr_eval_opt_in_families_from_env,
     expr_parser_force_host_families_from_env, expr_parser_opt_in_families_from_env,
@@ -196,6 +197,46 @@ pub struct AsmLine<'a> {
 }
 
 impl<'a> AsmLine<'a> {
+    fn pass_phase_scope(&self, pass1: PhaseBucket, pass2: PhaseBucket) -> PhaseScopeGuard {
+        match self.pass {
+            1 => phase_profile::scope(pass1),
+            2 => phase_profile::scope(pass2),
+            _ => PhaseScopeGuard::disabled(),
+        }
+    }
+
+    fn pass_expr_eval_scope(&self) -> PhaseScopeGuard {
+        self.pass_phase_scope(PhaseBucket::Pass1ExprEval, PhaseBucket::Pass2ExprEval)
+    }
+
+    fn pass_symbol_lookup_scope(&self) -> PhaseScopeGuard {
+        self.pass_phase_scope(
+            PhaseBucket::Pass1SymbolLookup,
+            PhaseBucket::Pass2SymbolLookup,
+        )
+    }
+
+    fn pass_symbol_update_scope(&self) -> PhaseScopeGuard {
+        self.pass_phase_scope(
+            PhaseBucket::Pass1SymbolUpdate,
+            PhaseBucket::Pass2SymbolUpdate,
+        )
+    }
+
+    fn pass_layout_scope(&self) -> PhaseScopeGuard {
+        self.pass_phase_scope(
+            PhaseBucket::Pass1LayoutSectionRegion,
+            PhaseBucket::Pass2LayoutSectionRegion,
+        )
+    }
+
+    fn pass_module_use_scope(&self) -> PhaseScopeGuard {
+        self.pass_phase_scope(
+            PhaseBucket::Pass1ModuleUseImport,
+            PhaseBucket::Pass2ModuleUseImport,
+        )
+    }
+
     fn default_partitioned_processing_trace() -> LineProcessingTrace {
         let mut trace = LineProcessingTrace::default();
         trace.push(ProcessingRequestKind::Processor {
@@ -405,6 +446,10 @@ impl<'a> AsmLine<'a> {
         self.start_addr
     }
 
+    pub fn pass_number(&self) -> u8 {
+        self.pass
+    }
+
     pub fn aux_value(&self) -> u32 {
         self.aux_value
     }
@@ -556,6 +601,10 @@ impl<'a> AsmLine<'a> {
 
     pub fn in_module(&self) -> bool {
         self.symbol_scope.module_active.is_some()
+    }
+
+    pub fn active_module_name(&self) -> Option<&str> {
+        self.symbol_scope.module_active.as_deref()
     }
 
     pub fn in_section(&self) -> bool {
@@ -1225,6 +1274,7 @@ impl<'a> AsmLine<'a> {
 
     #[allow(clippy::result_unit_err)]
     pub fn update_addresses(&mut self, main_addr: &mut u32, status: LineStatus) -> Result<(), ()> {
+        let _layout_scope = self.pass_layout_scope();
         let num_bytes = match u32::try_from(self.num_bytes()) {
             Ok(num_bytes) => num_bytes,
             Err(_) => {
@@ -1612,6 +1662,7 @@ impl<'a> AsmLine<'a> {
     }
 
     fn resolve_scoped_name(&self, name: &str) -> Result<Option<String>, AsmError> {
+        let _symbol_lookup_scope = self.pass_symbol_lookup_scope();
         if name.contains('.') {
             let candidate = self
                 .resolve_qualified_imported_name(name)?
@@ -1718,6 +1769,10 @@ impl<'a> AsmLine<'a> {
         AsmError::new(AsmErrorKind::Symbol, "Symbol is private", Some(name))
     }
     fn process_with_runtime_tokenizer(&mut self, line: &str, line_num: u32) -> LineStatus {
+        let _parse_scope = self.pass_phase_scope(
+            PhaseBucket::Pass1ParseLineAst,
+            PhaseBucket::Pass2ParseLineAst,
+        );
         let model = match self.opthread_execution_model.as_ref() {
             Some(model) => model,
             None => {
@@ -1823,6 +1878,8 @@ impl<'a> AsmLine<'a> {
         self.process_with_runtime_tokenizer(line, line_num)
     }
     fn process_ast(&mut self, ast: LineAst) -> LineStatus {
+        let _route_scope =
+            self.pass_phase_scope(PhaseBucket::Pass1LineRoute, PhaseBucket::Pass2LineRoute);
         if self.statement_depth > 0 {
             return match ast {
                 LineAst::StatementEnd(..) => {
@@ -1920,6 +1977,7 @@ impl<'a> AsmLine<'a> {
                 self.process_conditional_ast(conditional.kind, &conditional.exprs, conditional.span)
             }
             LineAst::Use(use_ast) => {
+                let _module_use_scope = self.pass_module_use_scope();
                 if self.cond_stack.skipping() {
                     return LineStatus::Skip;
                 }
@@ -2079,6 +2137,7 @@ impl<'a> AsmLine<'a> {
     }
 
     fn define_statement_label(&mut self, label: &Label) -> Option<LineStatus> {
+        let _symbol_update_scope = self.pass_symbol_update_scope();
         if self.pass == 1 && self.selective_import_conflict(&label.name) {
             return Some(self.failure_at_span(
                 LineStatus::Error,
@@ -2143,6 +2202,7 @@ impl<'a> AsmLine<'a> {
         expr: &Expr,
         span: Span,
     ) -> LineStatus {
+        let _symbol_update_scope = self.pass_symbol_update_scope();
         self.label = Some(label.name.clone());
 
         match op {
@@ -2602,6 +2662,7 @@ impl<'a> AsmLine<'a> {
         expr: &Expr,
         directive_name: &str,
     ) -> Result<u32, AstEvalError> {
+        let _expr_eval_scope = self.pass_expr_eval_scope();
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
             return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
         }
@@ -2628,6 +2689,7 @@ impl<'a> AsmLine<'a> {
     }
 
     pub(crate) fn eval_expr_for_scalar_context(&self, expr: &Expr) -> Result<u32, AstEvalError> {
+        let _expr_eval_scope = self.pass_expr_eval_scope();
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
             return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
         }

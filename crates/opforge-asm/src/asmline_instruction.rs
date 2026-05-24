@@ -8,6 +8,11 @@
 
 use super::*;
 
+use crate::prepared_line::PreparedLine;
+
+#[cfg(not(feature = "vm-runtime-only"))]
+use crate::prepared_line::PreparedInstructionRoute;
+
 #[cfg(not(feature = "vm-runtime-only"))]
 #[derive(Debug, Clone)]
 struct InstructionOutputFixupPlan {
@@ -21,7 +26,14 @@ impl<'a> AsmLine<'a> {
     const M68K_V03_EXPLICIT_LONG_NOTATION_ERROR: &'static str =
         "symbolic absolute instruction operands require explicit .L notation outside the supported v0.3 bare-symbol subset";
 
-    pub fn process_instruction_ast(&mut self, mnemonic: &str, operands: &[Expr]) -> LineStatus {
+    pub(crate) fn process_instruction_ast(
+        &mut self,
+        mnemonic: &str,
+        operands: &[Expr],
+        #[cfg_attr(feature = "vm-runtime-only", allow(unused_variables))] prepared_line: Option<
+            &PreparedLine,
+        >,
+    ) -> LineStatus {
         #[cfg(feature = "vm-runtime-only")]
         {
             if self.in_section() {
@@ -59,6 +71,34 @@ impl<'a> AsmLine<'a> {
                 &pipeline, mnemonic, operands,
             ) {
                 return status;
+            }
+
+            if RuntimeParseCache::enabled() {
+                if let Some(prepared_line) = prepared_line {
+                    let route_ref = prepared_line.instruction_route();
+                    if let Some(route) = route_ref.as_ref() {
+                        if route.cpu_id == self.cpu.as_str()
+                            && route.mnemonic.eq_ignore_ascii_case(mnemonic)
+                        {
+                            let effective_operands =
+                                route.rewritten_operands.as_deref().unwrap_or(operands);
+                            crate::phase_profile::record_execution_path(
+                                Some(self.line_route_bucket()),
+                                "prepared.instruction_route_cache_hit",
+                                std::time::Duration::ZERO,
+                            );
+                            return self.process_bound_instruction_route(
+                                &pipeline,
+                                mnemonic,
+                                operands,
+                                effective_operands,
+                                route.family_operands.as_ref(),
+                                &route.mapped_mnemonic,
+                                route.mapped_operands.as_ref(),
+                            );
+                        }
+                    }
+                }
             }
 
             let mut rewritten_operands = None;
@@ -176,142 +216,245 @@ impl<'a> AsmLine<'a> {
                 }
             }
 
-            if let Some(status) = self.try_encode_instruction_via_runtime_expr(
+            if RuntimeParseCache::enabled() {
+                if let Some(prepared_line) = prepared_line {
+                    prepared_line.store_instruction_route(PreparedInstructionRoute {
+                        cpu_id: self.cpu.as_str().to_string(),
+                        mnemonic: mnemonic.to_string(),
+                        rewritten_operands,
+                        family_operands,
+                        mapped_mnemonic,
+                        mapped_operands,
+                    });
+                    let route_ref = prepared_line.instruction_route();
+                    let route = route_ref
+                        .as_ref()
+                        .expect("prepared instruction route was just stored");
+                    let effective_operands =
+                        route.rewritten_operands.as_deref().unwrap_or(operands);
+                    return self.process_bound_instruction_route(
+                        &pipeline,
+                        mnemonic,
+                        operands,
+                        effective_operands,
+                        route.family_operands.as_ref(),
+                        &route.mapped_mnemonic,
+                        route.mapped_operands.as_ref(),
+                    );
+                }
+            }
+
+            self.process_bound_instruction_route(
                 &pipeline,
                 mnemonic,
+                operands,
                 effective_operands,
                 family_operands.as_ref(),
                 &mapped_mnemonic,
                 mapped_operands.as_ref(),
-            ) {
-                return status;
-            }
-            let rust_encode_started = std::time::Instant::now();
-            match pipeline.family.encode_family_operands(
-                &mapped_mnemonic,
-                mnemonic,
-                mapped_operands.as_ref(),
-                self,
-            ) {
-                registry::family::FamilyEncodeResult::Ok(bytes) => {
-                    let rust_encode_elapsed = rust_encode_started.elapsed();
-                    let bucket = self.line_route_bucket();
-                    crate::phase_profile::record_execution_path(
-                        Some(bucket),
-                        "rust.encode",
-                        rust_encode_elapsed,
+            )
+        }
+    }
+
+    #[cfg(not(feature = "vm-runtime-only"))]
+    fn process_bound_instruction_route(
+        &mut self,
+        pipeline: &ResolvedPipeline<'_>,
+        mnemonic: &str,
+        operands: &[Expr],
+        effective_operands: &[Expr],
+        family_operands: &dyn FamilyOperandSet,
+        mapped_mnemonic: &str,
+        mapped_operands: &dyn FamilyOperandSet,
+    ) -> LineStatus {
+        if let Some(status) = self.try_encode_instruction_via_runtime_expr(
+            pipeline,
+            mnemonic,
+            effective_operands,
+            family_operands,
+            mapped_mnemonic,
+            mapped_operands,
+        ) {
+            return status;
+        }
+        let rust_encode_started = std::time::Instant::now();
+        match pipeline.family.encode_family_operands(
+            mapped_mnemonic,
+            mnemonic,
+            mapped_operands,
+            self,
+        ) {
+            registry::family::FamilyEncodeResult::Ok(bytes) => {
+                let rust_encode_elapsed = rust_encode_started.elapsed();
+                let bucket = self.line_route_bucket();
+                crate::phase_profile::record_execution_path(
+                    Some(bucket),
+                    "rust.encode",
+                    rust_encode_elapsed,
+                );
+                if let Err(err) = self.validate_instruction_emit_span(
+                    mapped_mnemonic,
+                    effective_operands,
+                    bytes.len(),
+                ) {
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        err.error.message(),
+                        None,
+                        err.span,
                     );
-                    if let Err(err) = self.validate_instruction_emit_span(
-                        &mapped_mnemonic,
-                        effective_operands,
-                        bytes.len(),
-                    ) {
-                        return self.failure_at_span(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            err.error.message(),
-                            None,
-                            err.span,
-                        );
-                    }
-                    if self.in_section()
-                        && !self.family_operands_keep_current_section_relocation_free(
-                            pipeline.family_id,
-                            mapped_operands.as_ref(),
-                        )
-                    {
-                        self.mark_current_section_not_relocation_free();
-                    }
-                    self.bytes.extend_from_slice(&bytes);
-                    return LineStatus::Ok;
                 }
-                registry::family::FamilyEncodeResult::Error {
-                    bytes,
-                    message,
-                    span,
-                    param,
-                } => {
-                    let rust_encode_elapsed = rust_encode_started.elapsed();
-                    let bucket = self.line_route_bucket();
-                    crate::phase_profile::record_execution_path(
-                        Some(bucket),
-                        "rust.encode",
-                        rust_encode_elapsed,
-                    );
-                    self.bytes.extend_from_slice(&bytes);
-                    if let Some(span) = span {
-                        return self.failure_at_span(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &message,
-                            param.as_deref(),
-                            span,
-                        );
-                    }
-                    return self.failure(
+                if self.in_section()
+                    && !self.family_operands_keep_current_section_relocation_free(
+                        pipeline.family_id,
+                        mapped_operands,
+                    )
+                {
+                    self.mark_current_section_not_relocation_free();
+                }
+                self.bytes.extend_from_slice(&bytes);
+                return LineStatus::Ok;
+            }
+            registry::family::FamilyEncodeResult::Error {
+                bytes,
+                message,
+                span,
+                param,
+            } => {
+                let rust_encode_elapsed = rust_encode_started.elapsed();
+                let bucket = self.line_route_bucket();
+                crate::phase_profile::record_execution_path(
+                    Some(bucket),
+                    "rust.encode",
+                    rust_encode_elapsed,
+                );
+                self.bytes.extend_from_slice(&bytes);
+                if let Some(span) = span {
+                    return self.failure_at_span(
                         LineStatus::Error,
                         AsmErrorKind::Instruction,
                         &message,
                         param.as_deref(),
+                        span,
                     );
                 }
-                registry::family::FamilyEncodeResult::NotFound => {
-                    let rust_encode_elapsed = rust_encode_started.elapsed();
-                    let bucket = self.line_route_bucket();
-                    crate::phase_profile::record_execution_path(
-                        Some(bucket),
-                        "rust.encode.notfound",
-                        rust_encode_elapsed,
-                    );
-                }
+                return self.failure(
+                    LineStatus::Error,
+                    AsmErrorKind::Instruction,
+                    &message,
+                    param.as_deref(),
+                );
             }
+            registry::family::FamilyEncodeResult::NotFound => {
+                let rust_encode_elapsed = rust_encode_started.elapsed();
+                let bucket = self.line_route_bucket();
+                crate::phase_profile::record_execution_path(
+                    Some(bucket),
+                    "rust.encode.notfound",
+                    rust_encode_elapsed,
+                );
+            }
+        }
 
-            let resolved_operands =
-                match pipeline
-                    .cpu
-                    .resolve_operands(mnemonic, mapped_operands.as_ref(), self)
-                {
-                    Ok(ops) => ops,
-                    Err(err) => {
-                        return self.failure(
-                            LineStatus::Error,
-                            AsmErrorKind::Instruction,
-                            &err,
-                            None,
-                        )
-                    }
-                };
+        let resolved_operands = match pipeline
+            .cpu
+            .resolve_operands(mnemonic, mapped_operands, self)
+        {
+            Ok(ops) => ops,
+            Err(err) => {
+                return self.failure(LineStatus::Error, AsmErrorKind::Instruction, &err, None)
+            }
+        };
 
-            if let Some(validator) = pipeline.validator.as_ref() {
-                if let Err(err) = validator.validate_instruction(
-                    &mapped_mnemonic,
-                    resolved_operands.as_ref(),
-                    self,
+        if let Some(validator) = pipeline.validator.as_ref() {
+            if let Err(err) =
+                validator.validate_instruction(mapped_mnemonic, resolved_operands.as_ref(), self)
+            {
+                return self.failure(LineStatus::Error, AsmErrorKind::Instruction, &err, None);
+            }
+        }
+
+        if let Some(status) = self.try_encode_instruction_via_runtime_operands(
+            pipeline,
+            mapped_mnemonic,
+            effective_operands,
+            resolved_operands.as_ref(),
+        ) {
+            return status;
+        }
+
+        match pipeline
+            .family
+            .encode_instruction(mapped_mnemonic, resolved_operands.as_ref(), self)
+            .into_outcome()
+        {
+            Ok(Some(mut bytes)) => {
+                if let Err(err) = self.validate_instruction_emit_span(
+                    mapped_mnemonic,
+                    effective_operands,
+                    bytes.len(),
                 ) {
-                    return self.failure(LineStatus::Error, AsmErrorKind::Instruction, &err, None);
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        err.error.message(),
+                        None,
+                        err.span,
+                    );
+                }
+                let supported_output_fixups = match self.queue_instruction_output_fixups(
+                    pipeline.family_id,
+                    resolved_operands.as_ref(),
+                    &mut bytes,
+                ) {
+                    Ok(supported) => supported,
+                    Err(status) => return status,
+                };
+                if self.in_section()
+                    && !supported_output_fixups
+                    && !self.family_operands_keep_current_section_relocation_free(
+                        pipeline.family_id,
+                        mapped_operands,
+                    )
+                {
+                    self.mark_current_section_not_relocation_free();
+                }
+                self.bytes.extend_from_slice(&bytes);
+                self.apply_cpu_runtime_state_after_encode(
+                    pipeline.cpu.as_ref(),
+                    mapped_mnemonic,
+                    resolved_operands.as_ref(),
+                );
+                LineStatus::Ok
+            }
+            Err(err) => {
+                if let Some(span) = err.span {
+                    self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        &err.message,
+                        None,
+                        span,
+                    )
+                } else {
+                    self.failure(
+                        LineStatus::Error,
+                        AsmErrorKind::Instruction,
+                        &err.message,
+                        None,
+                    )
                 }
             }
-
-            if let Some(status) = self.try_encode_instruction_via_runtime_operands(
-                &pipeline,
-                &mapped_mnemonic,
-                effective_operands,
-                resolved_operands.as_ref(),
-            ) {
-                return status;
-            }
-
-            match pipeline
-                .family
-                .encode_instruction(&mapped_mnemonic, resolved_operands.as_ref(), self)
+            Ok(None) => match pipeline
+                .cpu
+                .encode_instruction(mapped_mnemonic, resolved_operands.as_ref(), self)
                 .into_outcome()
             {
                 Ok(Some(mut bytes)) => {
-                    if let Err(err) = self.validate_instruction_emit_span(
-                        &mapped_mnemonic,
-                        effective_operands,
-                        bytes.len(),
-                    ) {
+                    if let Err(err) =
+                        self.validate_instruction_emit_span(mapped_mnemonic, operands, bytes.len())
+                    {
                         return self.failure_at_span(
                             LineStatus::Error,
                             AsmErrorKind::Instruction,
@@ -332,7 +475,7 @@ impl<'a> AsmLine<'a> {
                         && !supported_output_fixups
                         && !self.family_operands_keep_current_section_relocation_free(
                             pipeline.family_id,
-                            mapped_operands.as_ref(),
+                            mapped_operands,
                         )
                     {
                         self.mark_current_section_not_relocation_free();
@@ -340,7 +483,7 @@ impl<'a> AsmLine<'a> {
                     self.bytes.extend_from_slice(&bytes);
                     self.apply_cpu_runtime_state_after_encode(
                         pipeline.cpu.as_ref(),
-                        &mapped_mnemonic,
+                        mapped_mnemonic,
                         resolved_operands.as_ref(),
                     );
                     LineStatus::Ok
@@ -363,76 +506,13 @@ impl<'a> AsmLine<'a> {
                         )
                     }
                 }
-                Ok(None) => match pipeline
-                    .cpu
-                    .encode_instruction(&mapped_mnemonic, resolved_operands.as_ref(), self)
-                    .into_outcome()
-                {
-                    Ok(Some(mut bytes)) => {
-                        if let Err(err) = self.validate_instruction_emit_span(
-                            &mapped_mnemonic,
-                            operands,
-                            bytes.len(),
-                        ) {
-                            return self.failure_at_span(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                err.error.message(),
-                                None,
-                                err.span,
-                            );
-                        }
-                        let supported_output_fixups = match self.queue_instruction_output_fixups(
-                            pipeline.family_id,
-                            resolved_operands.as_ref(),
-                            &mut bytes,
-                        ) {
-                            Ok(supported) => supported,
-                            Err(status) => return status,
-                        };
-                        if self.in_section()
-                            && !supported_output_fixups
-                            && !self.family_operands_keep_current_section_relocation_free(
-                                pipeline.family_id,
-                                mapped_operands.as_ref(),
-                            )
-                        {
-                            self.mark_current_section_not_relocation_free();
-                        }
-                        self.bytes.extend_from_slice(&bytes);
-                        self.apply_cpu_runtime_state_after_encode(
-                            pipeline.cpu.as_ref(),
-                            &mapped_mnemonic,
-                            resolved_operands.as_ref(),
-                        );
-                        LineStatus::Ok
-                    }
-                    Err(err) => {
-                        if let Some(span) = err.span {
-                            self.failure_at_span(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                &err.message,
-                                None,
-                                span,
-                            )
-                        } else {
-                            self.failure(
-                                LineStatus::Error,
-                                AsmErrorKind::Instruction,
-                                &err.message,
-                                None,
-                            )
-                        }
-                    }
-                    Ok(None) => self.failure_instruction_not_found(
-                        LineStatus::Error,
-                        &pipeline,
-                        mnemonic,
-                        family_operands.as_ref(),
-                    ),
-                },
-            }
+                Ok(None) => self.failure_instruction_not_found(
+                    LineStatus::Error,
+                    &pipeline,
+                    mnemonic,
+                    family_operands,
+                ),
+            },
         }
     }
 

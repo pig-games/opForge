@@ -50,6 +50,7 @@ pub(crate) trait RepetitionPass {
         line_num: u32,
         addr: &mut u32,
         parsed_line: Option<CachedRuntimeParseResult>,
+        prepared_line: Option<&PreparedLine>,
         all_lines: &[String],
     ) -> Result<(), Self::Error>;
 }
@@ -446,7 +447,15 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
 
         let parsed_line =
             parsed_line.filter(|parsed| asm_line.can_process_cached_runtime_parse(parsed));
-        ctx.execute_regular_line(asm_line, src, line_num, addr, parsed_line, lines)?;
+        ctx.execute_regular_line(
+            asm_line,
+            src,
+            line_num,
+            addr,
+            parsed_line,
+            prepared_line,
+            lines,
+        )?;
         idx = idx.saturating_add(1);
     }
 

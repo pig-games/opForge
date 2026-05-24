@@ -7,7 +7,7 @@ use crate::line::{
     RuntimeParseCache,
 };
 use crate::phase_profile::{self, PhaseBucket};
-use crate::prepared_line::PreparedSource;
+use crate::prepared_line::{PreparedLine, PreparedSource};
 use crate::repetition_driver::{
     execute_lines as execute_repetition_lines, RepetitionPass, UnscopedRepeatKind,
 };
@@ -130,6 +130,7 @@ struct ExecuteRegularLinePass1Context<'a, 'b> {
     line_num: u32,
     addr: &'a mut u32,
     parsed_line: Option<CachedRuntimeParseResult>,
+    prepared_line: Option<&'a PreparedLine>,
     counts: &'a mut PassCounts,
     diagnostics: &'a mut Vec<Diagnostic>,
     module_timing_profile: &'a mut ModuleTimingProfile,
@@ -1823,6 +1824,7 @@ qualified_share={:.2}%",
             line_num,
             addr,
             parsed_line,
+            prepared_line,
             counts,
             diagnostics,
             module_timing_profile,
@@ -1847,7 +1849,14 @@ qualified_share={:.2}%",
         };
 
         let status = if let Some(parsed_line) = parsed_line {
-            asm_line.process_cached_runtime_parse(src, line_num, line_addr, pass_num, parsed_line)
+            asm_line.process_cached_runtime_parse(
+                src,
+                line_num,
+                line_addr,
+                pass_num,
+                parsed_line,
+                prepared_line,
+            )
         } else {
             asm_line.process(src, line_num, line_addr, pass_num)
         };
@@ -1921,6 +1930,7 @@ qualified_share={:.2}%",
         line_num: u32,
         addr: &mut u32,
         parsed_line: Option<CachedRuntimeParseResult>,
+        prepared_line: Option<&PreparedLine>,
         counts: &mut PassCounts,
         diagnostics: &mut Vec<Diagnostic>,
         listing: &mut ListingWriter<W>,
@@ -1954,7 +1964,14 @@ qualified_share={:.2}%",
             }
         };
         let status = if let Some(parsed_line) = parsed_line {
-            asm_line.process_cached_runtime_parse(src, line_num, line_addr, 2, parsed_line)
+            asm_line.process_cached_runtime_parse(
+                src,
+                line_num,
+                line_addr,
+                2,
+                parsed_line,
+                prepared_line,
+            )
         } else {
             asm_line.process(src, line_num, line_addr, 2)
         };
@@ -2137,6 +2154,7 @@ impl RepetitionPass for Pass1RepetitionTraversal<'_> {
         line_num: u32,
         addr: &mut u32,
         parsed_line: Option<CachedRuntimeParseResult>,
+        prepared_line: Option<&PreparedLine>,
         _all_lines: &[String],
     ) -> Result<(), Self::Error> {
         let ctx = ExecuteRegularLinePass1Context {
@@ -2145,6 +2163,7 @@ impl RepetitionPass for Pass1RepetitionTraversal<'_> {
             line_num,
             addr,
             parsed_line,
+            prepared_line,
             counts: self.counts,
             diagnostics: self.diagnostics,
             module_timing_profile: self.module_timing_profile,
@@ -2215,6 +2234,7 @@ impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
         line_num: u32,
         addr: &mut u32,
         parsed_line: Option<CachedRuntimeParseResult>,
+        prepared_line: Option<&PreparedLine>,
         all_lines: &[String],
     ) -> Result<(), Self::Error> {
         Assembler::execute_regular_line_pass2(
@@ -2223,6 +2243,7 @@ impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
             line_num,
             addr,
             parsed_line,
+            prepared_line,
             self.counts,
             self.diagnostics,
             self.listing,

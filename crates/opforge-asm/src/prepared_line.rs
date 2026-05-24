@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::line::CachedRuntimeParseResult;
-use std::cell::RefCell;
+use opcore::parser::Expr;
+use registry::registry::FamilyOperandSet;
+use std::cell::{Ref, RefCell};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PreparedLoopKind {
@@ -50,7 +52,27 @@ pub(crate) struct PreparedLine {
     line_num: u32,
     source_hash: u64,
     runtime_parse: RefCell<Option<CachedRuntimeParseResult>>,
+    instruction_route: RefCell<Option<PreparedInstructionRoute>>,
     loop_matches: RefCell<PreparedLoopMatches>,
+}
+
+pub(crate) struct PreparedInstructionRoute {
+    pub cpu_id: String,
+    pub mnemonic: String,
+    pub rewritten_operands: Option<Vec<Expr>>,
+    pub family_operands: Box<dyn FamilyOperandSet>,
+    pub mapped_mnemonic: String,
+    pub mapped_operands: Box<dyn FamilyOperandSet>,
+}
+
+impl std::fmt::Debug for PreparedInstructionRoute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedInstructionRoute")
+            .field("cpu_id", &self.cpu_id)
+            .field("mnemonic", &self.mnemonic)
+            .field("mapped_mnemonic", &self.mapped_mnemonic)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -65,6 +87,7 @@ impl PreparedLine {
             line_num,
             source_hash: source_hash(source),
             runtime_parse: RefCell::new(None),
+            instruction_route: RefCell::new(None),
             loop_matches: RefCell::new(PreparedLoopMatches::default()),
         }
     }
@@ -79,6 +102,14 @@ impl PreparedLine {
 
     pub(crate) fn store_runtime_parse(&self, parsed: &CachedRuntimeParseResult) {
         *self.runtime_parse.borrow_mut() = Some(parsed.clone());
+    }
+
+    pub(crate) fn instruction_route(&self) -> Ref<'_, Option<PreparedInstructionRoute>> {
+        self.instruction_route.borrow()
+    }
+
+    pub(crate) fn store_instruction_route(&self, route: PreparedInstructionRoute) {
+        *self.instruction_route.borrow_mut() = Some(route);
     }
 
     pub(crate) fn cached_loop_end(&self, kind: PreparedLoopKind) -> Option<Option<usize>> {

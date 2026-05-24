@@ -10,6 +10,7 @@ use crate::output::{
     SectionState,
 };
 use crate::phase_profile::{self, PhaseBucket, PhaseScopeGuard};
+use crate::prepared_line::PreparedLine;
 use crate::runtime_config::{
     expr_eval_force_host_families_from_env, expr_eval_opt_in_families_from_env,
     expr_parser_force_host_families_from_env, expr_parser_opt_in_families_from_env,
@@ -2144,6 +2145,7 @@ impl<'a> AsmLine<'a> {
         addr: u32,
         pass: u8,
         parsed_line: CachedRuntimeParseResult,
+        prepared_line: Option<&PreparedLine>,
     ) -> LineStatus {
         self.diagnostics.last_error = None;
         self.diagnostics.last_error_column = None;
@@ -2172,7 +2174,7 @@ impl<'a> AsmLine<'a> {
             self.runtime_lockstep_report.extend(report);
         }
 
-        self.process_ast(parsed_line.ast)
+        self.process_ast_with_prepared(parsed_line.ast, prepared_line)
     }
 
     pub(crate) fn can_process_cached_runtime_parse(
@@ -2183,6 +2185,14 @@ impl<'a> AsmLine<'a> {
     }
 
     fn process_ast(&mut self, ast: LineAst) -> LineStatus {
+        self.process_ast_with_prepared(ast, None)
+    }
+
+    fn process_ast_with_prepared(
+        &mut self,
+        ast: LineAst,
+        prepared_line: Option<&PreparedLine>,
+    ) -> LineStatus {
         let _route_scope = phase_profile::scope(self.line_route_bucket());
         if self.statement_depth > 0 {
             return match ast {
@@ -2433,7 +2443,7 @@ impl<'a> AsmLine<'a> {
                             return status_with_fixit;
                         }
                     }
-                    status = self.process_instruction_ast(&mnemonic, &operands);
+                    status = self.process_instruction_ast(&mnemonic, &operands, prepared_line);
                 }
                 status
             }

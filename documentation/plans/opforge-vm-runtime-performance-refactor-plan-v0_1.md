@@ -132,7 +132,7 @@ architecture boundaries.
     classification are computed once per prepared source; loop iteration
     diagnostics and pass1/pass2 iteration consistency checks are unchanged.
 
-- [ ] Item 4: Add non-cloning bound instruction route plans
+- [x] Item 4: Add non-cloning bound instruction route plans
   - Source requirement or finding IDs: current route work repeatedly performs
     directive checks, family operand parsing, dialect mapping, and instruction
     binding; a previous cloned trait-object style cache regressed, so this item
@@ -148,8 +148,13 @@ architecture boundaries.
     a kill switch is added.
   - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
     for this plan must return `PASS` before committing the item.
-  - Commit outcome: one commit that caches or stores only stable instruction
-    route decisions and operands in a form cheaper than recomputation.
+  - Commit outcome: completed in one commit that stores successful prepared
+    family/dialect instruction route bindings on `PreparedLine` and reuses the
+    borrowed route operands during stabilization and pass2 execution. On the
+    native AmigaOS workload with listing enabled, final measured
+    `assembly_total` was `3819.788ms`; route hits were `25332x` during
+    stabilization and `12666x` during pass2. Listing output matched the
+    previous prepared-loop baseline and the cache-disabled run byte-for-byte.
   - Definition of done: hot instruction lines can reuse family/dialect route
     decisions without cloning large trait objects or changing VM encode
     semantics; fallback and diagnostics match the current implementation.

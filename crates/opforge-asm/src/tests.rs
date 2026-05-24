@@ -189,6 +189,7 @@ impl crate::line::RuntimeLineRouter for TestRuntimeLineRouter {
         line: &str,
         line_num: u32,
         register_checker: &RegisterChecker,
+        _collect_runtime_trace: bool,
     ) -> Result<
         (
             opcore::parser::LineAst,
@@ -1975,6 +1976,7 @@ fn assemble_example_with_base(
         header_title: &header_title,
         output_sink: None,
         source_provider: None,
+        collect_runtime_traces: true,
         suppress_outputs: false,
     });
 
@@ -2268,6 +2270,7 @@ fn assemble_example_error(asm_path: &Path) -> Option<String> {
         header_title: &header_title,
         output_sink: None,
         source_provider: None,
+        collect_runtime_traces: true,
         suppress_outputs: false,
     }) {
         Ok(_) => None,
@@ -12123,6 +12126,7 @@ fn motorola68020_opforge_native_cli_first_run_artifact_contract_locks_rust_outpu
         header_title: &header_title,
         output_sink: None,
         source_provider: None,
+        collect_runtime_traces: true,
         suppress_outputs: false,
     })
     .unwrap_or_else(|err| panic!("first-run 6502 artifact contract should assemble: {err}"));

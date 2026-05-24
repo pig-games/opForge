@@ -39,6 +39,7 @@ pub struct StatementRequest<'a> {
     pub line: &'a str,
     pub line_num: u32,
     pub register_checker: &'a RegisterChecker,
+    pub collect_processing_trace: bool,
 }
 
 impl<'a> StatementRequest<'a> {
@@ -53,6 +54,7 @@ impl<'a> StatementRequest<'a> {
             line,
             line_num,
             register_checker: default_register_checker(),
+            collect_processing_trace: true,
         }
     }
 
@@ -87,6 +89,11 @@ impl<'a> StatementRequest<'a> {
         self.register_checker = register_checker;
         self
     }
+
+    pub fn with_processing_trace(mut self, collect_processing_trace: bool) -> Self {
+        self.collect_processing_trace = collect_processing_trace;
+        self
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +124,7 @@ struct VmExprProcessorAdapter<'a, 'b> {
     processor: &'a mut dyn StatementExprProcessor,
     trace: &'b mut LineProcessingTrace,
     lockstep_report: &'b mut LockstepReport,
+    collect_processing_trace: bool,
 }
 
 impl vm::vm_opasm::ExprProcessingHandler for VmExprProcessorAdapter<'_, '_> {
@@ -127,7 +135,9 @@ impl vm::vm_opasm::ExprProcessingHandler for VmExprProcessorAdapter<'_, '_> {
         end_span: Span,
         end_token_text: Option<String>,
     ) -> ProcessingOutcome<Expr, ParseError> {
-        self.trace.push(request.clone());
+        if self.collect_processing_trace {
+            self.trace.push(request.clone());
+        }
         let (outcome, report) =
             self.processor
                 .process_expr_request(request, tokens, end_span, end_token_text);
@@ -163,10 +173,12 @@ pub fn process_statement(
     expr_processor: Option<&mut dyn StatementExprProcessor>,
 ) -> Result<StatementProcessResult, ParseError> {
     let mut trace = LineProcessingTrace::default();
-    trace.push(ProcessingRequestKind::Processor {
-        processor: "asm".to_string(),
-        kind: "statement".to_string(),
-    });
+    if request.collect_processing_trace {
+        trace.push(ProcessingRequestKind::Processor {
+            processor: "asm".to_string(),
+            kind: "statement".to_string(),
+        });
+    }
     let mut lockstep_report = LockstepReport::default();
     let parsed = match request.execution_mode {
         ExecutionMode::Rust => parse_statement_rust(request)?,
@@ -232,6 +244,7 @@ fn parse_statement_vm(
             processor,
             trace,
             lockstep_report,
+            collect_processing_trace: request.collect_processing_trace,
         })
             as Box<dyn vm::vm_opasm::ExprProcessingHandler + '_>));
         parse_statement_line_with_model_and_expr_handler_with_rollout_overrides(

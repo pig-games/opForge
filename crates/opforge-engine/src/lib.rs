@@ -62,8 +62,9 @@ pub use io::{
 };
 pub use processing::{
     editor_route_line, editor_route_line_with_model, editor_route_line_with_model_in_mode,
-    process_opcore_expression_request, process_opcore_expression_request_with_mode,
-    route_module_item_line, route_module_item_line_with_model, EngineError,
+    editor_route_line_with_model_in_mode_with_trace, process_opcore_expression_request,
+    process_opcore_expression_request_with_mode, route_module_item_line,
+    route_module_item_line_with_model, EngineError,
 };
 pub use source_graph::{
     load_module_graph, load_module_graph_with_provider, module_search_root_for_path,
@@ -152,6 +153,7 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
         line: &str,
         line_num: u32,
         register_checker: &RegisterChecker,
+        collect_runtime_trace: bool,
     ) -> Result<
         (
             LineAst,
@@ -164,7 +166,7 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
     > {
         let (_, end_span, end_token_text) =
             tokenize_with_vm_model(model, cpu_id, None, line, line_num, register_checker)?;
-        let (ast, trace, lockstep_report) = editor_route_line_with_model_in_mode(
+        let (ast, trace, lockstep_report) = editor_route_line_with_model_in_mode_with_trace(
             model,
             cpu_id,
             None,
@@ -172,6 +174,7 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
             line_num,
             register_checker,
             self.execution_mode,
+            collect_runtime_trace,
         )
         .map_err(|err| match err {
             EngineError::Core(err) => core_error_into_parse_error(err, line_num),
@@ -188,7 +191,7 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
             ast,
             end_span,
             end_token_text,
-            Some(trace),
+            collect_runtime_trace.then_some(trace),
             Some(lockstep_report),
         ))
     }
@@ -824,6 +827,7 @@ pub struct PreparedAssemblyExecutionRequest<'a> {
     pub header_title: &'a str,
     pub output_sink: Option<&'a dyn OutputSink>,
     pub execution_mode: ExecutionMode,
+    pub collect_runtime_traces: bool,
     pub suppress_outputs: bool,
 }
 
@@ -981,6 +985,7 @@ pub struct AssemblyExecutionRequest<'a> {
     pub output_sink: Option<&'a dyn OutputSink>,
     pub source_provider: Option<&'a dyn SourceProvider>,
     pub execution_mode: ExecutionMode,
+    pub collect_runtime_traces: bool,
     pub suppress_outputs: bool,
 }
 
@@ -1558,6 +1563,7 @@ pub fn run_prepared_assembly(
             output_sink: request.output_sink,
             source_provider: None,
             execution_mode: request.execution_mode,
+            collect_runtime_traces: request.collect_runtime_traces,
             suppress_outputs: request.suppress_outputs,
         },
         Some(&mut *registry_guard),
@@ -1589,6 +1595,7 @@ fn run_assembly_with_prepared(
         registry_slot,
     );
     assembler.set_runtime_line_router(Some(make_runtime_line_router(request.execution_mode)));
+    assembler.set_collect_runtime_traces(request.collect_runtime_traces);
     assembler.max_loop_iterations = max_loop_iterations;
     assembler.opasm_package_path = opasm_package_path;
     assembler.root_metadata.root_module_id = Some(root_module_id);
@@ -3525,6 +3532,7 @@ mod tests {
             header_title: "test",
             output_sink: Some(&output_sink),
             source_provider: Some(&source_provider),
+            collect_runtime_traces: true,
             suppress_outputs: false,
         })
         .expect("assembly should run from memory");
@@ -3570,6 +3578,53 @@ mod tests {
     }
 
     #[test]
+    fn run_assembly_can_disable_runtime_trace_collection() {
+        let source_provider = MemorySourceProvider::default()
+            .with_file("/virtual/main.asm", ".module main\nnop\n.endmodule\n");
+        let output_sink = MemoryOutputSink::default();
+
+        let report = run_assembly(AssemblyExecutionRequest {
+            root_path: Path::new("/virtual/main.asm"),
+            execution_mode: ExecutionMode::Vm,
+            input_base: "/virtual/main",
+            defines: &[],
+            include_paths: &[],
+            module_paths: &[],
+            pp_macro_depth: 32,
+            cpu_override: None,
+            default_cpu: CpuType::new("8085"),
+            max_loop_iterations: 1000,
+            opasm_package_path: None,
+            out_dir: None,
+            debug_conditionals: false,
+            tab_size: None,
+            output_format: OutputFormat::Text,
+            go_addr: None,
+            bin_specs: &[],
+            fill_byte: 0,
+            fill_byte_set: false,
+            default_outputs: false,
+            labels_file: None,
+            label_output_format: LabelOutputFormat::Vice,
+            dependency_output: None,
+            outfile_override: None,
+            list_name_override: None,
+            hex_name_override: None,
+            srec_name_override: None,
+            hunk_name_override: None,
+            header_title: "test",
+            output_sink: Some(&output_sink),
+            source_provider: Some(&source_provider),
+            collect_runtime_traces: false,
+            suppress_outputs: true,
+        })
+        .expect("assembly should run from memory");
+
+        assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
+        assert!(report.runtime_processing_traces().is_empty());
+    }
+
+    #[test]
     fn run_assembly_supports_cli_hunk_output_for_flat_source() {
         let source_provider = MemorySourceProvider::default().with_file(
             "/virtual/main.asm",
@@ -3609,6 +3664,7 @@ mod tests {
             header_title: "test",
             output_sink: Some(&output_sink),
             source_provider: Some(&source_provider),
+            collect_runtime_traces: true,
             suppress_outputs: false,
         })
         .expect("flat hunk assembly should run from memory");
@@ -3693,6 +3749,7 @@ mod tests {
             header_title: "test",
             output_sink: None,
             execution_mode: ExecutionMode::Rust,
+            collect_runtime_traces: true,
             suppress_outputs: true,
         })
         .expect("prepared execution should preserve custom registry");

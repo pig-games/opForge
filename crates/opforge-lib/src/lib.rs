@@ -1093,6 +1093,7 @@ pub struct OwnedExecutionOptions {
     pub cpu_override: Option<String>,
     pub max_loop_iterations: u32,
     pub opasm_package_path: Option<PathBuf>,
+    pub collect_runtime_traces: bool,
 }
 
 impl Default for OwnedExecutionOptions {
@@ -1102,6 +1103,7 @@ impl Default for OwnedExecutionOptions {
             cpu_override: None,
             max_loop_iterations: 1000,
             opasm_package_path: None,
+            collect_runtime_traces: true,
         }
     }
 }
@@ -1197,6 +1199,7 @@ impl OwnedAssemblerConfig {
             cpu_override: self.execution.cpu_override.as_deref(),
             max_loop_iterations: self.execution.max_loop_iterations,
             opasm_package_path: self.execution.opasm_package_path.as_deref(),
+            collect_runtime_traces: self.execution.collect_runtime_traces,
             out_dir: self.output.out_dir.as_deref(),
             debug_conditionals: self.diagnostics.debug_conditionals,
             tab_size: self.diagnostics.tab_size,
@@ -1245,6 +1248,7 @@ trait SharedBuilderExecutionConfig {
     fn set_cpu_override(&mut self, cpu_override: Self::CpuOverride);
     fn set_max_loop_iterations(&mut self, max_loop_iterations: u32);
     fn set_opasm_package_path(&mut self, opasm_package_path: Self::OpasmPackagePath);
+    fn set_collect_runtime_traces(&mut self, collect_runtime_traces: bool);
 }
 
 trait SharedBuilderOutputConfig {
@@ -1368,6 +1372,10 @@ impl<'a> SharedBuilderExecutionConfig for AssemblerConfig<'a> {
     fn set_opasm_package_path(&mut self, opasm_package_path: Self::OpasmPackagePath) {
         self.execution.opasm_package_path = Some(opasm_package_path);
     }
+
+    fn set_collect_runtime_traces(&mut self, collect_runtime_traces: bool) {
+        self.execution.collect_runtime_traces = collect_runtime_traces;
+    }
 }
 
 impl SharedBuilderExecutionConfig for OwnedAssemblerConfig {
@@ -1388,6 +1396,10 @@ impl SharedBuilderExecutionConfig for OwnedAssemblerConfig {
 
     fn set_opasm_package_path(&mut self, opasm_package_path: Self::OpasmPackagePath) {
         self.execution.opasm_package_path = Some(opasm_package_path);
+    }
+
+    fn set_collect_runtime_traces(&mut self, collect_runtime_traces: bool) {
+        self.execution.collect_runtime_traces = collect_runtime_traces;
     }
 }
 
@@ -1636,6 +1648,11 @@ where
 
     fn opasm_package_path(&mut self, opasm_package_path: C::OpasmPackagePath) {
         self.config.set_opasm_package_path(opasm_package_path);
+    }
+
+    fn collect_runtime_traces(&mut self, collect_runtime_traces: bool) {
+        self.config
+            .set_collect_runtime_traces(collect_runtime_traces);
     }
 }
 
@@ -1891,6 +1908,7 @@ fn run_public_prepared_assembly(
         header_title: options.header_title,
         output_sink: options.output_sink,
         execution_mode: options.execution_mode,
+        collect_runtime_traces: options.collect_runtime_traces,
         opasm_package_path: options.opasm_package_path,
         suppress_outputs: options.no_outputs,
     })
@@ -2051,6 +2069,7 @@ impl<'a> Default for PrepareOptions<'a> {
 #[non_exhaustive]
 pub struct AssembleOptions<'a> {
     pub execution_mode: ExecutionMode,
+    pub collect_runtime_traces: bool,
     pub output_base: &'a str,
     pub defines: &'a [String],
     pub include_paths: &'a [PathBuf],
@@ -2086,6 +2105,7 @@ impl<'a> Default for AssembleOptions<'a> {
     fn default() -> Self {
         Self {
             execution_mode: ExecutionMode::Vm,
+            collect_runtime_traces: true,
             output_base: "",
             defines: &[],
             include_paths: &[],
@@ -2169,6 +2189,7 @@ pub struct ExecutionOptions<'a> {
     pub cpu_override: Option<&'a str>,
     pub max_loop_iterations: u32,
     pub opasm_package_path: Option<&'a Path>,
+    pub collect_runtime_traces: bool,
 }
 
 impl<'a> Default for ExecutionOptions<'a> {
@@ -2178,6 +2199,7 @@ impl<'a> Default for ExecutionOptions<'a> {
             cpu_override: None,
             max_loop_iterations: 1000,
             opasm_package_path: None,
+            collect_runtime_traces: true,
         }
     }
 }
@@ -2289,6 +2311,7 @@ impl<'a> From<AssembleOptions<'a>> for AssemblerConfig<'a> {
                 cpu_override: options.cpu_override,
                 max_loop_iterations: options.max_loop_iterations,
                 opasm_package_path: options.opasm_package_path,
+                collect_runtime_traces: options.collect_runtime_traces,
             },
             output: OutputOptions {
                 out_dir: options.out_dir,
@@ -2322,6 +2345,7 @@ impl<'a> From<AssemblerConfig<'a>> for AssembleOptions<'a> {
     fn from(config: AssemblerConfig<'a>) -> Self {
         Self {
             execution_mode: config.execution.execution_mode,
+            collect_runtime_traces: config.execution.collect_runtime_traces,
             output_base: config.source.output_base,
             defines: config.source.defines,
             include_paths: config.source.include_paths,
@@ -2468,6 +2492,16 @@ impl<'a> AssemblerBuilder<'a> {
     /// relying on the default lookup path.
     pub fn opasm_package_path(mut self, opasm_package_path: &'a Path) -> Self {
         SharedBuilderMut::new(&mut self.config).opasm_package_path(opasm_package_path);
+        self
+    }
+
+    /// Enables or disables runtime processing trace collection.
+    ///
+    /// Leave this enabled when the host needs `AsmRunReport` trace metadata.
+    /// Turn it off for product assembly paths that only need outputs and
+    /// diagnostics.
+    pub fn collect_runtime_traces(mut self, collect_runtime_traces: bool) -> Self {
+        SharedBuilderMut::new(&mut self.config).collect_runtime_traces(collect_runtime_traces);
         self
     }
 
@@ -2781,6 +2815,16 @@ impl AssemblerSessionBuilder {
     /// relying on the default lookup path.
     pub fn opasm_package_path(mut self, opasm_package_path: impl Into<PathBuf>) -> Self {
         SharedBuilderMut::new(&mut self.config).opasm_package_path(opasm_package_path.into());
+        self
+    }
+
+    /// Enables or disables runtime processing trace collection.
+    ///
+    /// Leave this enabled when the host needs `AsmRunReport` trace metadata.
+    /// Turn it off for product assembly paths that only need outputs and
+    /// diagnostics.
+    pub fn collect_runtime_traces(mut self, collect_runtime_traces: bool) -> Self {
+        SharedBuilderMut::new(&mut self.config).collect_runtime_traces(collect_runtime_traces);
         self
     }
 
@@ -3494,6 +3538,7 @@ pub fn prepare<'a>(
                 cpu_override: options.cpu_override,
                 max_loop_iterations: options.max_loop_iterations,
                 opasm_package_path: options.opasm_package_path,
+                collect_runtime_traces: true,
             },
             ..AssemblerConfig::default()
         },
@@ -3518,6 +3563,7 @@ fn assemble_raw(
         default_cpu: engine::default_cpu(),
         max_loop_iterations: options.max_loop_iterations,
         opasm_package_path: options.opasm_package_path,
+        collect_runtime_traces: options.collect_runtime_traces,
         out_dir: options.out_dir,
         debug_conditionals: options.debug_conditionals,
         tab_size: options.tab_size,

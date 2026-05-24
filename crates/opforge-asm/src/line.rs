@@ -121,6 +121,7 @@ pub trait RuntimeLineRouter {
         line: &str,
         line_num: u32,
         register_checker: &RegisterChecker,
+        collect_runtime_trace: bool,
     ) -> Result<RuntimeLineParseResult, ParseError>;
 }
 
@@ -147,6 +148,7 @@ pub(crate) struct RuntimeParseCacheKey {
     package_key: String,
     expr_parser_opt_in_families: Vec<String>,
     expr_parser_force_host_families: Vec<String>,
+    collect_runtime_trace: bool,
     route: RuntimeParseRouteKey,
 }
 
@@ -239,6 +241,7 @@ pub struct AsmLine<'a> {
     runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
     runtime_package_cache_key: String,
     runtime_parse_cache: Option<Rc<RefCell<RuntimeParseCache>>>,
+    collect_runtime_traces: bool,
     runtime_processing_traces: Vec<(u32, LineProcessingTrace)>,
     runtime_lockstep_report: LockstepReport,
     pub cpu_mode: AsmCpuModeState,
@@ -305,6 +308,9 @@ impl<'a> AsmLine<'a> {
     }
 
     pub(crate) fn record_default_processing_trace(&mut self, line_num: u32) {
+        if !self.collect_runtime_traces {
+            return;
+        }
         self.runtime_processing_traces
             .push((line_num, Self::default_partitioned_processing_trace()));
     }
@@ -359,6 +365,7 @@ impl<'a> AsmLine<'a> {
             runtime_line_router: None,
             runtime_package_cache_key: String::new(),
             runtime_parse_cache: None,
+            collect_runtime_traces: true,
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
             cpu_mode: AsmCpuModeState::new(registry, cpu),
@@ -417,6 +424,10 @@ impl<'a> AsmLine<'a> {
         self.runtime_parse_cache = runtime_parse_cache;
     }
 
+    pub(crate) fn set_collect_runtime_traces(&mut self, collect_runtime_traces: bool) {
+        self.collect_runtime_traces = collect_runtime_traces;
+    }
+
     pub(crate) fn runtime_parse_bucket(&self) -> PhaseBucket {
         match self.pass {
             1 => PhaseBucket::Pass1ParseLineAst,
@@ -438,6 +449,7 @@ impl<'a> AsmLine<'a> {
             package_key: self.runtime_package_cache_key.clone(),
             expr_parser_opt_in_families: self.opthread_expr_parser_opt_in_families.clone(),
             expr_parser_force_host_families: self.opthread_expr_parser_force_host_families.clone(),
+            collect_runtime_trace: self.collect_runtime_traces,
             route,
         }
     }
@@ -520,6 +532,7 @@ impl<'a> AsmLine<'a> {
                 line,
                 line_num,
                 &self.register_checker,
+                self.collect_runtime_traces,
             )
         } else {
             opasm::process_statement(
@@ -530,15 +543,17 @@ impl<'a> AsmLine<'a> {
                         &self.opthread_expr_parser_opt_in_families,
                         &self.opthread_expr_parser_force_host_families,
                     )
-                    .with_register_checker(&self.register_checker),
+                    .with_register_checker(&self.register_checker)
+                    .with_processing_trace(self.collect_runtime_traces),
                 None,
             )
             .map(|result| {
+                let processing_trace = self.collect_runtime_traces.then_some(result.trace);
                 (
                     result.parsed.ast,
                     result.parsed.end_span,
                     result.parsed.end_token_text,
-                    Some(result.trace),
+                    processing_trace,
                     Some(result.lockstep_report),
                 )
             })
@@ -1998,8 +2013,10 @@ impl<'a> AsmLine<'a> {
                     "vm.parse_cache_hit",
                     cache_started_at.elapsed(),
                 );
-                if let Some(trace) = cached.processing_trace {
-                    self.runtime_processing_traces.push((line_num, trace));
+                if self.collect_runtime_traces {
+                    if let Some(trace) = cached.processing_trace {
+                        self.runtime_processing_traces.push((line_num, trace));
+                    }
                 }
                 if let Some(report) = cached.lockstep_report {
                     self.runtime_lockstep_report.extend(report);
@@ -2025,8 +2042,10 @@ impl<'a> AsmLine<'a> {
             }
         };
 
-        if let Some(trace) = parsed_line.processing_trace {
-            self.runtime_processing_traces.push((line_num, trace));
+        if self.collect_runtime_traces {
+            if let Some(trace) = parsed_line.processing_trace {
+                self.runtime_processing_traces.push((line_num, trace));
+            }
         }
         if let Some(report) = parsed_line.lockstep_report {
             self.runtime_lockstep_report.extend(report);

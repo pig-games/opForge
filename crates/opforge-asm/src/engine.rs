@@ -58,6 +58,7 @@ pub struct Assembler {
     pub opasm_package_path: Option<std::path::PathBuf>,
     pub runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
     runtime_parse_cache: Rc<std::cell::RefCell<RuntimeParseCache>>,
+    collect_runtime_traces: bool,
     pub runtime_processing_traces: Vec<(u8, u32, LineProcessingTrace)>,
     pub runtime_lockstep_report: LockstepReport,
     implicit_hunk_output_requested: bool,
@@ -518,6 +519,7 @@ qualified_share={:.2}%",
             asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
             asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
+            asm_line.set_collect_runtime_traces(self.collect_runtime_traces);
             asm_line.clear_conditionals();
             asm_line.clear_scopes();
             if pass_num > 1 {
@@ -560,19 +562,23 @@ qualified_share={:.2}%",
             );
 
             if capture_runtime_trace {
-                self.runtime_processing_traces.extend(
-                    asm_line
-                        .take_runtime_processing_traces()
-                        .into_iter()
-                        .map(|(line_num, trace)| (1, line_num, trace)),
-                );
+                if self.collect_runtime_traces {
+                    self.runtime_processing_traces.extend(
+                        asm_line
+                            .take_runtime_processing_traces()
+                            .into_iter()
+                            .map(|(line_num, trace)| (1, line_num, trace)),
+                    );
+                }
                 self.runtime_lockstep_report
                     .extend(asm_line.take_runtime_lockstep_report());
                 #[cfg(test)]
-                Self::assert_partitioned_runtime_traces_present(
-                    lines,
-                    &self.runtime_processing_traces,
-                );
+                if self.collect_runtime_traces {
+                    Self::assert_partitioned_runtime_traces_present(
+                        lines,
+                        &self.runtime_processing_traces,
+                    );
+                }
             }
 
             if !asm_line.cond_is_empty() {
@@ -940,6 +946,7 @@ qualified_share={:.2}%",
             opasm_package_path: None,
             runtime_line_router: None,
             runtime_parse_cache: Rc::new(std::cell::RefCell::new(RuntimeParseCache::default())),
+            collect_runtime_traces: true,
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
             implicit_hunk_output_requested: false,
@@ -983,6 +990,10 @@ qualified_share={:.2}%",
         runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
     ) {
         self.runtime_line_router = runtime_line_router;
+    }
+
+    pub fn set_collect_runtime_traces(&mut self, collect_runtime_traces: bool) {
+        self.collect_runtime_traces = collect_runtime_traces;
     }
 
     pub fn set_implicit_hunk_output_requested(&mut self, requested: bool) {
@@ -1171,6 +1182,7 @@ qualified_share={:.2}%",
         asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
         asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
+        asm_line.set_collect_runtime_traces(self.collect_runtime_traces);
         asm_line.clear_conditionals();
         asm_line.clear_scopes();
         asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();
@@ -1247,16 +1259,20 @@ qualified_share={:.2}%",
             self.max_loop_iterations,
         )?;
 
-        self.runtime_processing_traces.extend(
-            asm_line
-                .take_runtime_processing_traces()
-                .into_iter()
-                .map(|(line_num, trace)| (2, line_num, trace)),
-        );
+        if self.collect_runtime_traces {
+            self.runtime_processing_traces.extend(
+                asm_line
+                    .take_runtime_processing_traces()
+                    .into_iter()
+                    .map(|(line_num, trace)| (2, line_num, trace)),
+            );
+        }
         self.runtime_lockstep_report
             .extend(asm_line.take_runtime_lockstep_report());
         #[cfg(test)]
-        Self::assert_partitioned_runtime_traces_present(lines, &self.runtime_processing_traces);
+        if self.collect_runtime_traces {
+            Self::assert_partitioned_runtime_traces_present(lines, &self.runtime_processing_traces);
+        }
 
         if !asm_line.cond_is_empty() {
             let err = AsmError::new(AsmErrorKind::Conditional, "Found .if without .endif", None);

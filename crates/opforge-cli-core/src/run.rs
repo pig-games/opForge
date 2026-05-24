@@ -152,6 +152,7 @@ fn run_one(
         .label_output_format(config.label_output_format)
         .header_title(&header_title)
         .default_outputs(config.default_outputs)
+        .collect_runtime_traces(false)
         .debug_conditionals(config.debug_conditionals);
 
     if let Some(cpu_override) = config.cpu_override.as_deref() {

@@ -266,10 +266,33 @@ pub fn editor_route_line_with_model_in_mode(
     register_checker: &RegisterChecker,
     execution_mode: ExecutionMode,
 ) -> Result<(LineAst, LineProcessingTrace, LockstepReport), EngineError> {
+    editor_route_line_with_model_in_mode_with_trace(
+        model,
+        cpu_id,
+        dialect_override,
+        line,
+        line_num,
+        register_checker,
+        execution_mode,
+        true,
+    )
+}
+
+pub fn editor_route_line_with_model_in_mode_with_trace(
+    model: &HierarchyExecutionModel,
+    cpu_id: &str,
+    dialect_override: Option<&str>,
+    line: &str,
+    line_num: u32,
+    register_checker: &RegisterChecker,
+    execution_mode: ExecutionMode,
+    collect_processing_trace: bool,
+) -> Result<(LineAst, LineProcessingTrace, LockstepReport), EngineError> {
     let mut trace = LineProcessingTrace::default();
     let mut lockstep_report = LockstepReport::default();
-    let request = ProcessingRequestKind::Opcore(OpcoreRequestKind::Statement);
-    trace.push(request.clone());
+    if collect_processing_trace {
+        trace.push(ProcessingRequestKind::Opcore(OpcoreRequestKind::Statement));
+    }
 
     match process_opcore_statement_request(line, line_num) {
         ProcessingOutcome::Done(ast) => Ok((ast, trace, lockstep_report)),
@@ -287,6 +310,7 @@ pub fn editor_route_line_with_model_in_mode(
                 execution_mode,
                 trace: &mut trace,
                 lockstep_report: &mut lockstep_report,
+                collect_processing_trace,
             };
             route_processor_line_request(ctx, request).map(|ast| (ast, trace, lockstep_report))
         }
@@ -320,6 +344,7 @@ struct ProcessorLineRequestContext<'a> {
     execution_mode: ExecutionMode,
     trace: &'a mut LineProcessingTrace,
     lockstep_report: &'a mut LockstepReport,
+    collect_processing_trace: bool,
 }
 
 fn route_processor_line_request(
@@ -379,7 +404,8 @@ fn route_opasm_statement_request(
         asm::opasm::StatementRequest::new(ctx.line, ctx.line_num)
             .with_execution_mode(ctx.execution_mode)
             .with_model(ctx.model, ctx.cpu_id, ctx.dialect_override)
-            .with_register_checker(ctx.register_checker),
+            .with_register_checker(ctx.register_checker)
+            .with_processing_trace(ctx.collect_processing_trace),
         Some(&mut expr_handler),
     )
     .map_err(|err| {
@@ -390,8 +416,10 @@ fn route_opasm_statement_request(
             None::<String>,
         )
     })?;
-    for request in result.trace.requests() {
-        ctx.trace.push(request.clone());
+    if ctx.collect_processing_trace {
+        for request in result.trace.requests() {
+            ctx.trace.push(request.clone());
+        }
     }
     ctx.lockstep_report.extend(result.lockstep_report);
     Ok(result.parsed.ast)

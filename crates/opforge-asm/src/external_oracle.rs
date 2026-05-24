@@ -1048,6 +1048,7 @@ fn run_opforge_fixture(
         header_title: &header_title,
         output_sink: None,
         source_provider: None,
+        collect_runtime_traces: true,
         suppress_outputs: false,
     }) {
         Ok(report) => {

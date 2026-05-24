@@ -1250,6 +1250,7 @@ fn run_example_smoke_with_request(
         execution_mode: ExecutionMode::Lockstep {
             continuation_head: ContinuationHead::Vm,
         },
+        collect_runtime_traces: true,
         suppress_outputs: false,
     })
     .map_err(|err| {
@@ -1474,6 +1475,7 @@ fn run_example_smoke_with_guest_input(
         execution_mode: ExecutionMode::Lockstep {
             continuation_head: ContinuationHead::Vm,
         },
+        collect_runtime_traces: true,
         suppress_outputs: false,
     })
     .map_err(|err| {

@@ -2,7 +2,9 @@
 // Copyright (C) 2026 Erik van der Tier
 
 use crate as asm;
-use crate::line::{repetition, AsmLine, RuntimeLineRouter, RuntimeParseCache};
+use crate::line::{
+    repetition, AsmLine, CachedRuntimeParseResult, RuntimeLineRouter, RuntimeParseCache,
+};
 use crate::phase_profile::{self, PhaseBucket};
 use crate::repetition_driver::{
     execute_lines as execute_repetition_lines, RepetitionPass, UnscopedRepeatKind,
@@ -124,6 +126,7 @@ struct ExecuteRegularLinePass1Context<'a, 'b> {
     src: &'a str,
     line_num: u32,
     addr: &'a mut u32,
+    parsed_line: Option<CachedRuntimeParseResult>,
     counts: &'a mut PassCounts,
     diagnostics: &'a mut Vec<Diagnostic>,
     module_timing_profile: &'a mut ModuleTimingProfile,
@@ -1793,6 +1796,7 @@ qualified_share={:.2}%",
             src,
             line_num,
             addr,
+            parsed_line,
             counts,
             diagnostics,
             module_timing_profile,
@@ -1816,7 +1820,11 @@ qualified_share={:.2}%",
             }
         };
 
-        let status = asm_line.process(src, line_num, line_addr, pass_num);
+        let status = if let Some(parsed_line) = parsed_line {
+            asm_line.process_cached_runtime_parse(src, line_num, line_addr, pass_num, parsed_line)
+        } else {
+            asm_line.process(src, line_num, line_addr, pass_num)
+        };
         let status_failed = status == LineStatus::Pass1Error || status == LineStatus::Error;
         let update_failed = !status_failed && asm_line.update_addresses(addr, status).is_err();
         if status_failed || update_failed {
@@ -1884,6 +1892,7 @@ qualified_share={:.2}%",
         src: &str,
         line_num: u32,
         addr: &mut u32,
+        parsed_line: Option<CachedRuntimeParseResult>,
         counts: &mut PassCounts,
         diagnostics: &mut Vec<Diagnostic>,
         listing: &mut ListingWriter<W>,
@@ -1916,7 +1925,11 @@ qualified_share={:.2}%",
                 *addr
             }
         };
-        let status = asm_line.process(src, line_num, line_addr, 2);
+        let status = if let Some(parsed_line) = parsed_line {
+            asm_line.process_cached_runtime_parse(src, line_num, line_addr, 2, parsed_line)
+        } else {
+            asm_line.process(src, line_num, line_addr, 2)
+        };
         let line_addr = asm_line.start_addr();
         let bytes = asm_line.bytes();
         if !bytes.is_empty() && !asm_line.in_section() {
@@ -2098,6 +2111,7 @@ impl RepetitionPass for Pass1RepetitionTraversal<'_> {
         src: &str,
         line_num: u32,
         addr: &mut u32,
+        parsed_line: Option<CachedRuntimeParseResult>,
         _all_lines: &[String],
     ) -> Result<(), Self::Error> {
         let ctx = ExecuteRegularLinePass1Context {
@@ -2105,6 +2119,7 @@ impl RepetitionPass for Pass1RepetitionTraversal<'_> {
             src,
             line_num,
             addr,
+            parsed_line,
             counts: self.counts,
             diagnostics: self.diagnostics,
             module_timing_profile: self.module_timing_profile,
@@ -2174,6 +2189,7 @@ impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
         src: &str,
         line_num: u32,
         addr: &mut u32,
+        parsed_line: Option<CachedRuntimeParseResult>,
         all_lines: &[String],
     ) -> Result<(), Self::Error> {
         Assembler::execute_regular_line_pass2(
@@ -2181,6 +2197,7 @@ impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
             src,
             line_num,
             addr,
+            parsed_line,
             self.counts,
             self.diagnostics,
             self.listing,

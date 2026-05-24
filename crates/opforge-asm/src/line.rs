@@ -2076,6 +2076,52 @@ impl<'a> AsmLine<'a> {
 
         self.process_with_runtime_tokenizer(line, line_num)
     }
+
+    pub(crate) fn process_cached_runtime_parse(
+        &mut self,
+        line: &str,
+        line_num: u32,
+        addr: u32,
+        pass: u8,
+        parsed_line: CachedRuntimeParseResult,
+    ) -> LineStatus {
+        self.diagnostics.last_error = None;
+        self.diagnostics.last_error_column = None;
+        self.diagnostics.last_error_help = None;
+        self.diagnostics.last_error_fixits.clear();
+        self.diagnostics.last_parser_error = None;
+        self.current_line_num = line_num;
+        self.current_source_line = Some(line.to_string());
+        self.line_end_span = Some(parsed_line.end_span);
+        self.line_end_token = parsed_line.end_token_text;
+        self.start_addr = addr;
+        self.pass = pass;
+        self.bytes.clear();
+        self.pending_output_fixups.clear();
+        self.aux_value = 0;
+
+        self.label = None;
+        self.mnemonic = None;
+
+        if self.collect_runtime_traces {
+            if let Some(trace) = parsed_line.processing_trace {
+                self.runtime_processing_traces.push((line_num, trace));
+            }
+        }
+        if let Some(report) = parsed_line.lockstep_report {
+            self.runtime_lockstep_report.extend(report);
+        }
+
+        self.process_ast(parsed_line.ast)
+    }
+
+    pub(crate) fn can_process_cached_runtime_parse(
+        &self,
+        parsed_line: &CachedRuntimeParseResult,
+    ) -> bool {
+        !self.collect_runtime_traces || parsed_line.processing_trace.is_some()
+    }
+
     fn process_ast(&mut self, ast: LineAst) -> LineStatus {
         let _route_scope =
             self.pass_phase_scope(PhaseBucket::Pass1LineRoute, PhaseBucket::Pass2LineRoute);

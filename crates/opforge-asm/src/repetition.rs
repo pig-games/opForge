@@ -19,6 +19,20 @@ pub fn parse_line_ast_for_repetition(
     src: &str,
     line_num: u32,
 ) -> Result<LineAst, ParseError> {
+    parse_line_for_repetition(asm_line, src, line_num).map(|parsed| parsed.ast)
+}
+
+pub(crate) fn parse_line_for_repetition(
+    asm_line: &AsmLine<'_>,
+    src: &str,
+    line_num: u32,
+) -> Result<CachedRuntimeParseResult, ParseError> {
+    let _parse_scope = match asm_line.pass {
+        1 => crate::phase_profile::scope(crate::phase_profile::PhaseBucket::Pass1ParseLineAst),
+        2 => crate::phase_profile::scope(crate::phase_profile::PhaseBucket::Pass2ParseLineAst),
+        _ => crate::phase_profile::scope(crate::phase_profile::PhaseBucket::Pass1ParseLineAst),
+    };
+
     if let Some(model) = asm_line.opthread_execution_model.as_ref() {
         if let Some(cache_key) = asm_line.runtime_regular_parse_cache_key(src, line_num) {
             let cache_started_at = std::time::Instant::now();
@@ -28,11 +42,9 @@ pub fn parse_line_ast_for_repetition(
                     "vm.parse_cache_hit",
                     cache_started_at.elapsed(),
                 );
-                return Ok(cached.ast);
+                return Ok(cached);
             }
-            return asm_line
-                .parse_runtime_line_for_cache(src, line_num, Some(cache_key))
-                .map(|parsed| parsed.ast);
+            return asm_line.parse_runtime_line_for_cache(src, line_num, Some(cache_key));
         }
 
         let cache_key =
@@ -44,7 +56,7 @@ pub fn parse_line_ast_for_repetition(
                 "vm.parse_cache_hit",
                 cache_started_at.elapsed(),
             );
-            return Ok(cached.ast);
+            return Ok(cached);
         }
 
         let started = std::time::Instant::now();
@@ -75,13 +87,19 @@ pub fn parse_line_ast_for_repetition(
                 },
             );
         }
-        return res.map(|(ast, _, _)| ast);
+        return res.map(|(ast, end_span, end_token_text)| CachedRuntimeParseResult {
+            ast,
+            end_span,
+            end_token_text,
+            processing_trace: None,
+            lockstep_report: None,
+        });
     }
 
     let started = std::time::Instant::now();
     let mut parser =
         parser_from_line_with_registers(src, line_num, asm_line.register_checker.clone())?;
-    match parser.process_opcore_statement_request() {
+    let ast = match parser.process_opcore_statement_request() {
         ProcessingOutcome::Done(ast) => Ok(ast),
         ProcessingOutcome::Error(err) => Err(err),
         ProcessingOutcome::Return(_) => Err(ParseError {
@@ -97,6 +115,13 @@ pub fn parse_line_ast_for_repetition(
             crate::phase_profile::PhaseBucket::Pass2ParseLineAst
         };
         crate::phase_profile::record_execution_path(Some(bucket), "rust.parse", elapsed);
+    })?;
+    Ok(CachedRuntimeParseResult {
+        ast,
+        end_span: parser.end_span(),
+        end_token_text: parser.end_token_text().map(str::to_string),
+        processing_trace: None,
+        lockstep_report: None,
     })
 }
 

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Erik van der Tier
 
 use crate::error::{AsmError, AsmErrorKind, Diagnostic};
-use crate::line::{repetition, AsmLine};
+use crate::line::{repetition, AsmLine, CachedRuntimeParseResult};
 use opcore::expression::{expr_span, AstEvalError, AstEvalErrorKind};
 use opcore::scope::ScopeKind;
 use types::asm_value::AsmValue;
@@ -48,6 +48,7 @@ pub(crate) trait RepetitionPass {
         src: &str,
         line_num: u32,
         addr: &mut u32,
+        parsed_line: Option<CachedRuntimeParseResult>,
         all_lines: &[String],
     ) -> Result<(), Self::Error>;
 }
@@ -70,9 +71,9 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
             .saturating_add(1);
         let src = &lines[idx];
 
-        let parsed_ast = repetition::parse_line_ast_for_repetition(asm_line, src, line_num).ok();
-        if let Some(ast) = parsed_ast {
-            let statement_parts = repetition::statement_parts(&ast);
+        let parsed_line = repetition::parse_line_for_repetition(asm_line, src, line_num).ok();
+        if let Some(parsed) = parsed_line.as_ref() {
+            let statement_parts = repetition::statement_parts(&parsed.ast);
 
             if let Some((_, mnemonic, _)) = statement_parts.as_ref() {
                 if asm_line.cond_stack.skipping() {
@@ -131,7 +132,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
 
             if !asm_line.cond_stack.skipping() {
                 if let Some(repeat_kind) = unscoped_repeat_kind {
-                    if let Some(label) = repetition::line_label(&ast) {
+                    if let Some(label) = repetition::line_label(&parsed.ast) {
                         ctx.before_label_restriction_error(asm_line, line_num);
                         let message = match repeat_kind {
                             UnscopedRepeatKind::For => format!(
@@ -426,7 +427,9 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
             }
         }
 
-        ctx.execute_regular_line(asm_line, src, line_num, addr, lines)?;
+        let parsed_line =
+            parsed_line.filter(|parsed| asm_line.can_process_cached_runtime_parse(parsed));
+        ctx.execute_regular_line(asm_line, src, line_num, addr, parsed_line, lines)?;
         idx = idx.saturating_add(1);
     }
 

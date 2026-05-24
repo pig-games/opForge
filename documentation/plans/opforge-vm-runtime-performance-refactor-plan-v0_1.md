@@ -108,7 +108,7 @@ architecture boundaries.
     and safe trace/lockstep policy; execution results, diagnostics, and listing
     output remain unchanged; no CPU-specific Rust logic is added.
 
-- [ ] Item 3: Convert repetition traversal to a prepared block tree
+- [x] Item 3: Convert repetition traversal to a prepared block tree
   - Source requirement or finding IDs: current repetition execution repeatedly
     scans for matching `.endfor` / `.endwhile` and reparses or reclassifies line
     shape during each traversal; previous caching made parse cheaper but did
@@ -123,8 +123,11 @@ architecture boundaries.
     full native AmigaOS workload with listing byte comparison before/after.
   - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
     for this plan must return `PASS` before committing the item.
-  - Commit outcome: one commit that executes from a prepared repetition tree but
-    still delegates regular-line semantics to existing `AsmLine` processing.
+  - Commit outcome: completed as a narrow prepared loop-boundary cache: matching
+    `.endfor` / `.endwhile` indexes are stored on prepared opener lines and
+    reused by traversal, while regular-line semantics still delegate to existing
+    `AsmLine` processing. Runtime gain on the AmigaOS workload was noise-level;
+    the value is structural preparation for bound-route and stabilization work.
   - Definition of done: matching loop boundaries and regular-line/control-line
     classification are computed once per prepared source; loop iteration
     diagnostics and pass1/pass2 iteration consistency checks are unchanged.

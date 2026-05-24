@@ -3,6 +3,12 @@
 use crate::line::CachedRuntimeParseResult;
 use std::cell::RefCell;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PreparedLoopKind {
+    For,
+    While,
+}
+
 #[derive(Debug)]
 pub(crate) struct PreparedSource {
     lines: Vec<PreparedLine>,
@@ -44,6 +50,13 @@ pub(crate) struct PreparedLine {
     line_num: u32,
     source_hash: u64,
     runtime_parse: RefCell<Option<CachedRuntimeParseResult>>,
+    loop_matches: RefCell<PreparedLoopMatches>,
+}
+
+#[derive(Debug, Default)]
+struct PreparedLoopMatches {
+    for_end: Option<Option<usize>>,
+    while_end: Option<Option<usize>>,
 }
 
 impl PreparedLine {
@@ -52,6 +65,7 @@ impl PreparedLine {
             line_num,
             source_hash: source_hash(source),
             runtime_parse: RefCell::new(None),
+            loop_matches: RefCell::new(PreparedLoopMatches::default()),
         }
     }
 
@@ -65,6 +79,22 @@ impl PreparedLine {
 
     pub(crate) fn store_runtime_parse(&self, parsed: &CachedRuntimeParseResult) {
         *self.runtime_parse.borrow_mut() = Some(parsed.clone());
+    }
+
+    pub(crate) fn cached_loop_end(&self, kind: PreparedLoopKind) -> Option<Option<usize>> {
+        let matches = self.loop_matches.borrow();
+        match kind {
+            PreparedLoopKind::For => matches.for_end,
+            PreparedLoopKind::While => matches.while_end,
+        }
+    }
+
+    pub(crate) fn store_loop_end(&self, kind: PreparedLoopKind, end_idx: Option<usize>) {
+        let mut matches = self.loop_matches.borrow_mut();
+        match kind {
+            PreparedLoopKind::For => matches.for_end = Some(end_idx),
+            PreparedLoopKind::While => matches.while_end = Some(end_idx),
+        }
     }
 }
 

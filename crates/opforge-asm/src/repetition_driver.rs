@@ -3,7 +3,7 @@
 
 use crate::error::{AsmError, AsmErrorKind, Diagnostic};
 use crate::line::{repetition, AsmLine, CachedRuntimeParseResult, RuntimeParseCache};
-use crate::prepared_line::{PreparedLine, PreparedSource};
+use crate::prepared_line::{PreparedLine, PreparedLoopKind, PreparedSource};
 use opcore::expression::{expr_span, AstEvalError, AstEvalErrorKind};
 use opcore::scope::ScopeKind;
 use types::asm_value::AsmValue;
@@ -81,9 +81,12 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
             if let Some((_, mnemonic, _)) = statement_parts.as_ref() {
                 if asm_line.cond_stack.skipping() {
                     if repetition::is_for_like_directive_name(mnemonic) {
-                        let Some(end_idx) = repetition::find_matching_endfor(
+                        let Some(end_idx) = find_matching_prepared_loop(
                             lines,
                             asm_line,
+                            prepared_source,
+                            PreparedLoopKind::For,
+                            idx,
                             idx.saturating_add(1),
                             end_idx_exclusive,
                         ) else {
@@ -103,9 +106,12 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                         continue;
                     }
                     if repetition::is_while_like_directive_name(mnemonic) {
-                        let Some(end_idx) = repetition::find_matching_endwhile(
+                        let Some(end_idx) = find_matching_prepared_loop(
                             lines,
                             asm_line,
+                            prepared_source,
+                            PreparedLoopKind::While,
+                            idx,
                             idx.saturating_add(1),
                             end_idx_exclusive,
                         ) else {
@@ -192,9 +198,12 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
 
                 if repetition::is_for_like_directive_name(&mnemonic) {
                     let scoped_repeat = repetition::is_scoped_for_directive_name(&mnemonic);
-                    let Some(end_idx) = repetition::find_matching_endfor(
+                    let Some(end_idx) = find_matching_prepared_loop(
                         lines,
                         asm_line,
+                        prepared_source,
+                        PreparedLoopKind::For,
+                        idx,
                         idx.saturating_add(1),
                         end_idx_exclusive,
                     ) else {
@@ -306,9 +315,12 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
 
                 if repetition::is_while_like_directive_name(&mnemonic) {
                     let scoped_repeat = repetition::is_scoped_while_directive_name(&mnemonic);
-                    let Some(end_idx) = repetition::find_matching_endwhile(
+                    let Some(end_idx) = find_matching_prepared_loop(
                         lines,
                         asm_line,
+                        prepared_source,
+                        PreparedLoopKind::While,
+                        idx,
                         idx.saturating_add(1),
                         end_idx_exclusive,
                     ) else {
@@ -463,4 +475,71 @@ fn parse_or_prepare_line(
         prepared_line.store_runtime_parse(&parsed);
     }
     Some(parsed)
+}
+
+fn find_matching_prepared_loop(
+    lines: &[String],
+    asm_line: &AsmLine<'_>,
+    prepared_source: Option<&PreparedSource>,
+    kind: PreparedLoopKind,
+    opener_idx: usize,
+    start_idx: usize,
+    end_idx_exclusive: usize,
+) -> Option<usize> {
+    let prepared_opener = prepared_source.and_then(|source| source.get(opener_idx));
+    if let Some(prepared_opener) = prepared_opener {
+        if let Some(cached) = prepared_opener.cached_loop_end(kind) {
+            return cached;
+        }
+    }
+
+    let mut depth = 1usize;
+    let mut found = None;
+    for idx in start_idx..end_idx_exclusive {
+        let line_num = u32::try_from(idx)
+            .unwrap_or(u32::MAX.saturating_sub(1))
+            .saturating_add(1);
+        let src = &lines[idx];
+        let prepared_line = prepared_source.and_then(|source| source.get(idx));
+        let Some(parsed) = parse_or_prepare_line(asm_line, src, line_num, prepared_line) else {
+            continue;
+        };
+        let Some((_, mnemonic, _)) = repetition::statement_parts(&parsed.ast) else {
+            continue;
+        };
+
+        match kind {
+            PreparedLoopKind::For => {
+                if repetition::is_for_like_directive_name(&mnemonic) {
+                    depth = depth.saturating_add(1);
+                    continue;
+                }
+                if repetition::is_endfor_directive_name(&mnemonic) {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        found = Some(idx);
+                        break;
+                    }
+                }
+            }
+            PreparedLoopKind::While => {
+                if repetition::is_while_like_directive_name(&mnemonic) {
+                    depth = depth.saturating_add(1);
+                    continue;
+                }
+                if repetition::is_endwhile_directive_name(&mnemonic) {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        found = Some(idx);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(prepared_opener) = prepared_opener {
+        prepared_opener.store_loop_end(kind, found);
+    }
+    found
 }

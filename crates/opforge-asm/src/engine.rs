@@ -7,6 +7,7 @@ use crate::line::{
     RuntimeParseCache,
 };
 use crate::phase_profile::{self, PhaseBucket};
+use crate::prepared_line::PreparedSource;
 use crate::repetition_driver::{
     execute_lines as execute_repetition_lines, RepetitionPass, UnscopedRepeatKind,
 };
@@ -61,6 +62,7 @@ pub struct Assembler {
     pub opasm_package_path: Option<std::path::PathBuf>,
     pub runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
     runtime_parse_cache: Rc<std::cell::RefCell<RuntimeParseCache>>,
+    prepared_source: Option<PreparedSource>,
     collect_runtime_traces: bool,
     pub runtime_processing_traces: Vec<(u8, u32, LineProcessingTrace)>,
     pub runtime_lockstep_report: LockstepReport,
@@ -480,6 +482,9 @@ qualified_share={:.2}%",
         finalize_section_symbols: bool,
         loop_trace: &mut Vec<(u32, u32)>,
     ) -> PassCounts {
+        if self.prepared_source.is_none() {
+            self.prepared_source = Some(PreparedSource::from_lines(lines));
+        }
         let seeded_sections = if pass_num > 1 {
             Some(self.sections.clone())
         } else {
@@ -566,6 +571,7 @@ qualified_share={:.2}%",
                 loop_trace,
                 &mut self.module_timing_profile,
                 None,
+                self.prepared_source.as_ref(),
                 self.max_loop_iterations,
                 pass_num,
             );
@@ -955,6 +961,7 @@ qualified_share={:.2}%",
             opasm_package_path: None,
             runtime_line_router: None,
             runtime_parse_cache: Rc::new(std::cell::RefCell::new(RuntimeParseCache::default())),
+            prepared_source: None,
             collect_runtime_traces: true,
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
@@ -1057,6 +1064,7 @@ qualified_share={:.2}%",
         self.qualified_reachability_profile = QualifiedReachabilityProfile::default();
         self.module_timing_profile = ModuleTimingProfile::default();
         self.runtime_parse_cache.borrow_mut().clear();
+        self.prepared_source = Some(PreparedSource::from_lines(lines));
         self.loop_iteration_trace_pass1.clear();
         self.runtime_processing_traces.clear();
         self.runtime_lockstep_report = LockstepReport::default();
@@ -1183,6 +1191,14 @@ qualified_share={:.2}%",
         lines: &[String],
         listing: &mut ListingWriter<W>,
     ) -> std::io::Result<PassCounts> {
+        let prepared_matches_lines = self
+            .prepared_source
+            .as_ref()
+            .map(|prepared| prepared.matches_lines(lines))
+            .unwrap_or(false);
+        if !prepared_matches_lines {
+            self.prepared_source = Some(PreparedSource::from_lines(lines));
+        }
         let pass2_started_at = Instant::now();
         let pass1_loop_trace = self.loop_iteration_trace_pass1.clone();
         let uses_implicit_hunk_code_section =
@@ -1266,6 +1282,7 @@ qualified_share={:.2}%",
             &mut pass2_loop_trace_cursor,
             &mut self.module_timing_profile,
             None,
+            self.prepared_source.as_ref(),
             self.max_loop_iterations,
         )?;
 
@@ -1771,6 +1788,7 @@ qualified_share={:.2}%",
         pass1_loop_trace: &mut Vec<(u32, u32)>,
         module_timing_profile: &mut ModuleTimingProfile,
         unscoped_repeat_kind: Option<UnscopedRepeatKind>,
+        prepared_source: Option<&PreparedSource>,
         max_loop_iterations: u32,
         pass_num: u8,
     ) {
@@ -1790,6 +1808,7 @@ qualified_share={:.2}%",
             asm_line,
             addr,
             unscoped_repeat_kind,
+            prepared_source,
             max_loop_iterations,
         ) {
             Ok(()) => {}
@@ -1869,6 +1888,7 @@ qualified_share={:.2}%",
         pass2_loop_trace_cursor: &mut usize,
         module_timing_profile: &mut ModuleTimingProfile,
         unscoped_repeat_kind: Option<UnscopedRepeatKind>,
+        prepared_source: Option<&PreparedSource>,
         max_loop_iterations: u32,
     ) -> std::io::Result<()> {
         let mut traversal = Pass2RepetitionTraversal {
@@ -1889,6 +1909,7 @@ qualified_share={:.2}%",
             asm_line,
             addr,
             unscoped_repeat_kind,
+            prepared_source,
             max_loop_iterations,
         )
     }

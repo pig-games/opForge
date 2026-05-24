@@ -82,7 +82,7 @@ architecture boundaries.
     work; profiling remains opt-in and disabled by default; full workload output
     is byte-for-byte identical to the pre-item output.
 
-- [ ] Item 2: Introduce persistent `PreparedLine` IR without changing execution
+- [x] Item 2: Introduce persistent `PreparedLine` IR without changing execution
   - Source requirement or finding IDs: user request to prioritize VM/package
     paths and avoid repeated reconstruction from source text; current successful
     parse cache still clones cached ASTs into `AsmLine::process_ast` for every
@@ -98,9 +98,11 @@ architecture boundaries.
     with listing byte comparison before/after.
   - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
     for this plan must return `PASS` before committing the item.
-  - Commit outcome: one commit that creates and threads a prepared-line data
-    structure while preserving the existing `process_ast` behavior as the sole
-    semantic executor.
+  - Commit outcome: completed in one commit that creates and threads a
+    prepared-line data structure while preserving the existing `process_ast`
+    behavior as the sole semantic executor. `scripts/workflow/run_rust_quality_gate.sh`
+    still fails on the known pre-existing CPU-boundary findings, accepted by
+    maintainer for this VM/package performance series.
   - Definition of done: expanded top-level lines can be prepared once with
     source text, line number, cached AST, end span/token, route/cache identity,
     and safe trace/lockstep policy; execution results, diagnostics, and listing

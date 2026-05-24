@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Erik van der Tier
 
 use crate::error::{AsmError, AsmErrorKind, Diagnostic};
-use crate::line::{repetition, AsmLine, CachedRuntimeParseResult};
+use crate::line::{repetition, AsmLine, CachedRuntimeParseResult, RuntimeParseCache};
+use crate::prepared_line::{PreparedLine, PreparedSource};
 use opcore::expression::{expr_span, AstEvalError, AstEvalErrorKind};
 use opcore::scope::ScopeKind;
 use types::asm_value::AsmValue;
@@ -62,6 +63,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
     asm_line: &mut AsmLine<'_>,
     addr: &mut u32,
     unscoped_repeat_kind: Option<UnscopedRepeatKind>,
+    prepared_source: Option<&PreparedSource>,
     max_loop_iterations: u32,
 ) -> Result<(), C::Error> {
     let mut idx = start_idx;
@@ -71,7 +73,8 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
             .saturating_add(1);
         let src = &lines[idx];
 
-        let parsed_line = repetition::parse_line_for_repetition(asm_line, src, line_num).ok();
+        let prepared_line = prepared_source.and_then(|source| source.get(idx));
+        let parsed_line = parse_or_prepare_line(asm_line, src, line_num, prepared_line);
         if let Some(parsed) = parsed_line.as_ref() {
             let statement_parts = repetition::statement_parts(&parsed.ast);
 
@@ -274,6 +277,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             } else {
                                 Some(UnscopedRepeatKind::For)
                             },
+                            prepared_source,
                             max_loop_iterations,
                         )?;
                         if plan.var_name.is_some() {
@@ -381,6 +385,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             } else {
                                 Some(UnscopedRepeatKind::While)
                             },
+                            prepared_source,
                             max_loop_iterations,
                         )?;
 
@@ -434,4 +439,28 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
     }
 
     Ok(())
+}
+
+fn parse_or_prepare_line(
+    asm_line: &AsmLine<'_>,
+    src: &str,
+    line_num: u32,
+    prepared_line: Option<&PreparedLine>,
+) -> Option<CachedRuntimeParseResult> {
+    let prepared_line = RuntimeParseCache::enabled()
+        .then_some(prepared_line)
+        .flatten();
+
+    if let Some(prepared_line) = prepared_line {
+        debug_assert_eq!(prepared_line.line_num(), line_num);
+        if let Some(parsed) = prepared_line.cached_runtime_parse() {
+            return Some(parsed);
+        }
+    }
+
+    let parsed = repetition::parse_line_for_repetition(asm_line, src, line_num).ok()?;
+    if let Some(prepared_line) = prepared_line {
+        prepared_line.store_runtime_parse(&parsed);
+    }
+    Some(parsed)
 }

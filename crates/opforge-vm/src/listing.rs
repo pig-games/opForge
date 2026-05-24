@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::fmt::Write as FmtWrite;
 use std::io::Write;
 
 use opcore::conditional::ConditionalContext;
@@ -85,9 +87,9 @@ impl<W: Write> ListingWriter<W> {
             String::new()
         };
         let normalized_source = normalize_leading_label_colon(line.source);
-        let normalized_source = strip_ansi_sgr(&normalized_source);
+        let normalized_source = strip_ansi_sgr(normalized_source.as_ref());
         let source = if let Some(tab_size) = self.tab_size {
-            expand_tabs(&normalized_source, tab_size)
+            expand_tabs(normalized_source.as_ref(), tab_size)
         } else {
             normalized_source
         };
@@ -277,25 +279,25 @@ fn format_span_bounds(line: u32, col_start: Option<usize>, col_end: Option<usize
     }
 }
 
-fn normalize_leading_label_colon(source: &str) -> String {
+fn normalize_leading_label_colon(source: &str) -> Cow<'_, str> {
     let (code, comment) = split_comment(source);
     let mut cursor = Cursor::new(code);
     cursor.skip_ws();
     let indent_end = cursor.pos();
     let Some(first) = cursor.peek() else {
-        return source.to_string();
+        return Cow::Borrowed(source);
     };
     if matches!(first, b'.' | b'*' | b';' | b'#') {
-        return source.to_string();
+        return Cow::Borrowed(source);
     }
     if !is_ident_start(first) {
-        return source.to_string();
+        return Cow::Borrowed(source);
     }
     let Some(label) = cursor.take_ident() else {
-        return source.to_string();
+        return Cow::Borrowed(source);
     };
     if cursor.peek() != Some(b':') {
-        return source.to_string();
+        return Cow::Borrowed(source);
     }
     cursor.next();
 
@@ -311,12 +313,15 @@ fn normalize_leading_label_colon(source: &str) -> String {
         normalized.push_str(remainder);
     }
     normalized.push_str(comment);
-    normalized
+    Cow::Owned(normalized)
 }
 
-fn expand_tabs(source: &str, tab_size: usize) -> String {
+fn expand_tabs(source: &str, tab_size: usize) -> Cow<'_, str> {
     if tab_size == 0 {
-        return source.to_string();
+        return Cow::Borrowed(source);
+    }
+    if !source.as_bytes().contains(&b'\t') {
+        return Cow::Borrowed(source);
     }
     let mut expanded = String::new();
     let mut column = 0usize;
@@ -330,10 +335,13 @@ fn expand_tabs(source: &str, tab_size: usize) -> String {
             column += 1;
         }
     }
-    expanded
+    Cow::Owned(expanded)
 }
 
-fn strip_ansi_sgr(text: &str) -> String {
+fn strip_ansi_sgr(text: &str) -> Cow<'_, str> {
+    if !text.as_bytes().contains(&0x1b) {
+        return Cow::Borrowed(text);
+    }
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
 
@@ -350,16 +358,20 @@ fn strip_ansi_sgr(text: &str) -> String {
         out.push(ch);
     }
 
-    out
+    Cow::Owned(out)
 }
 
 /// Format bytes as hex string for listing.
 pub fn format_bytes(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|byte| format!("{byte:02X}"))
-        .collect::<Vec<_>>()
-        .join(" ")
+    let Some((first, rest)) = bytes.split_first() else {
+        return String::new();
+    };
+    let mut formatted = String::with_capacity(bytes.len().saturating_mul(3).saturating_sub(1));
+    write!(&mut formatted, "{first:02X}").expect("writing to String cannot fail");
+    for byte in rest {
+        write!(&mut formatted, " {byte:02X}").expect("writing to String cannot fail");
+    }
+    formatted
 }
 
 fn format_cond(ctx: &ConditionalContext) -> String {

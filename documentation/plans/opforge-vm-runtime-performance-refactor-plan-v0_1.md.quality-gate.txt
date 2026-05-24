@@ -1,0 +1,10 @@
+PASS: plan checkbox, artifact bundle, and plan workflow checks passed
+status: PASS
+gate: plan-quality
+artifact: documentation/plans/opforge-vm-runtime-performance-refactor-plan-v0_1.md
+summary: plan checkbox and workflow artifact bundle validators passed
+commands:
+  - python3 scripts/workflow/check_plan_checkboxes.py documentation/plans/opforge-vm-runtime-performance-refactor-plan-v0_1.md
+    result: PASS
+  - python3 scripts/workflow/check_workflow_artifact_bundle.py plan documentation/plans/opforge-vm-runtime-performance-refactor-plan-v0_1.md --allow-pending-gate
+    result: PASS

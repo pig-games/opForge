@@ -10,7 +10,7 @@ mod source_graph_tests;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -1629,7 +1629,8 @@ fn run_assembly_with_prepared(
     })?;
     let mut dependency_targets = output_plan.dependency_targets();
 
-    let mut list_output: Box<dyn Write> = if let Some(path) = output_plan.list_path() {
+    let listing_requested = output_plan.list_path().is_some();
+    let list_output: Box<dyn Write> = if let Some(path) = output_plan.list_path() {
         ensure_parent_dir(output_sink, Path::new(path))
             .map_err(|err| AsmRunError::new(err, Vec::new(), Vec::new()))?;
         output_sink.create_file(Path::new(path)).map_err(|_| {
@@ -1642,11 +1643,20 @@ fn run_assembly_with_prepared(
     } else {
         Box::new(std::io::sink())
     };
-    let mut listing = ListingWriter::new_with_options(
-        &mut *list_output,
-        request.debug_conditionals,
-        request.tab_size,
-    );
+    let mut list_output = BufWriter::new(list_output);
+    let mut listing = if listing_requested {
+        ListingWriter::new_with_options(
+            &mut list_output,
+            request.debug_conditionals,
+            request.tab_size,
+        )
+    } else {
+        ListingWriter::disabled_with_options(
+            &mut list_output,
+            request.debug_conditionals,
+            request.tab_size,
+        )
+    };
     let listing_header_started_at = Instant::now();
     if let Err(err) = listing.header(request.header_title) {
         let traces = assembler.runtime_processing_traces().to_vec();
@@ -1701,6 +1711,15 @@ fn run_assembly_with_prepared(
         PhaseBucket::Pass2ListingGeneration,
         listing_footer_started_at.elapsed(),
     );
+    drop(listing);
+    list_output.flush().map_err(|err| {
+        AsmRunError::new_with_traces(
+            AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
+            remap_diags(assembler.take_diagnostics()),
+            expanded_lines.clone(),
+            assembler.runtime_processing_traces().to_vec(),
+        )
+    })?;
 
     let had_source_errors = pass1.errors > 0 || pass2.errors > 0;
 

@@ -28,6 +28,7 @@ pub struct ListingLine<'a> {
 /// Writer for listing file output.
 pub struct ListingWriter<W: Write> {
     out: W,
+    enabled: bool,
     show_cond: bool,
     tab_size: Option<usize>,
 }
@@ -36,6 +37,7 @@ impl<W: Write> ListingWriter<W> {
     pub fn new(out: W, show_cond: bool) -> Self {
         Self {
             out,
+            enabled: true,
             show_cond,
             tab_size: None,
         }
@@ -44,12 +46,34 @@ impl<W: Write> ListingWriter<W> {
     pub fn new_with_options(out: W, show_cond: bool, tab_size: Option<usize>) -> Self {
         Self {
             out,
+            enabled: true,
+            show_cond,
+            tab_size,
+        }
+    }
+
+    pub fn disabled(out: W) -> Self {
+        Self {
+            out,
+            enabled: false,
+            show_cond: false,
+            tab_size: None,
+        }
+    }
+
+    pub fn disabled_with_options(out: W, show_cond: bool, tab_size: Option<usize>) -> Self {
+        Self {
+            out,
+            enabled: false,
             show_cond,
             tab_size,
         }
     }
 
     pub fn header(&mut self, title: &str) -> std::io::Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
         writeln!(self.out, "{title}")?;
         writeln!(self.out, "ADDR    BYTES                    LINE  SOURCE")?;
         writeln!(self.out, "------  -----------------------  ----  ------")?;
@@ -57,6 +81,9 @@ impl<W: Write> ListingWriter<W> {
     }
 
     pub fn write_line(&mut self, line: ListingLine<'_>) -> std::io::Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
         let (loc, bytes_col) = match line.status {
             LineStatus::DirEqu => (
                 Cow::Borrowed("----"),
@@ -110,6 +137,9 @@ impl<W: Write> ListingWriter<W> {
         source_lines: &[String],
         _parser_error: Option<&ParseError>,
     ) -> std::io::Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
         let context = build_context_lines(line_num, column, Some(source_lines), None, false);
         for line in context {
             writeln!(self.out, "{}", strip_ansi_sgr(&line))?;
@@ -164,6 +194,9 @@ impl<W: Write> ListingWriter<W> {
         total_mem: usize,
         generated_output: &[(u32, u8)],
     ) -> std::io::Result<()> {
+        if !self.enabled {
+            return Ok(());
+        }
         writeln!(
             self.out,
             "\nLines: {}  Errors: {}  Warnings: {}",
@@ -383,4 +416,35 @@ fn write_cond<W: Write>(out: &mut W, ctx: &ConditionalContext) -> std::io::Resul
         "  [{}{}{}{}]",
         matched, ctx.nest_level, ctx.skip_level, skipping
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disabled_listing_writer_suppresses_all_listing_text() {
+        let mut output = Vec::new();
+        {
+            let mut listing = ListingWriter::disabled(&mut output);
+            listing.header("test").expect("header");
+            listing
+                .write_line(ListingLine {
+                    addr: 0x1000,
+                    bytes: &[0xea],
+                    status: LineStatus::Ok,
+                    aux: 0,
+                    line_num: 1,
+                    source: "nop",
+                    section: None,
+                    cond: None,
+                })
+                .expect("line");
+            listing
+                .write_diagnostic("ERROR", "boom", 1, None, &["nop".to_string()], None)
+                .expect("diagnostic");
+        }
+
+        assert!(output.is_empty());
+    }
 }

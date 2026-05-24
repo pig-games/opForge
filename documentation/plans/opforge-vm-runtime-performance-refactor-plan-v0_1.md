@@ -159,7 +159,7 @@ architecture boundaries.
     decisions without cloning large trait objects or changing VM encode
     semantics; fallback and diagnostics match the current implementation.
 
-- [ ] Item 5: Short-circuit listing formatting when no listing output is
+- [x] Item 5: Short-circuit listing formatting when no listing output is
   requested
   - Source requirement or finding IDs: measurement on 2026-05-24 showed a CLI
     assembly without `-l` still spent roughly `842ms` in
@@ -174,9 +174,13 @@ architecture boundaries.
     AmigaOS workload with and without `-l`.
   - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
     for this plan must return `PASS` before committing the item.
-  - Commit outcome: one commit that bypasses normal listing line/footer
-    formatting on success when no listing path exists, while preserving
-    diagnostics and requested listing output.
+  - Commit outcome: completed in one listing-output commit. Runs with no
+    listing path use a disabled listing writer, and requested listing files are
+    written through a buffered writer. On the native AmigaOS workload with
+    listing enabled, `pass2.listing_generation` dropped from the previous
+    committed `788.137ms` run to `37.532ms`, with byte-for-byte identical
+    listing output. On the hex-only no-listing run, listing generation remained
+    effectively eliminated at `0.499ms`, with identical hex output.
   - Definition of done: no-listing assemblies avoid per-line listing formatting;
     requested listing output remains byte-for-byte identical; diagnostic
     reporting for failing assemblies remains intact.

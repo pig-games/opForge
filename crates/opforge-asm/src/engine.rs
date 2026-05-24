@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Erik van der Tier
 
 use crate as asm;
-use crate::line::{repetition, AsmLine, RuntimeLineRouter};
+use crate::line::{repetition, AsmLine, RuntimeLineRouter, RuntimeParseCache};
 use crate::phase_profile::{self, PhaseBucket};
 use crate::repetition_driver::{
     execute_lines as execute_repetition_lines, RepetitionPass, UnscopedRepeatKind,
@@ -57,6 +57,7 @@ pub struct Assembler {
     pub max_loop_iterations: u32,
     pub opasm_package_path: Option<std::path::PathBuf>,
     pub runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
+    runtime_parse_cache: Rc<std::cell::RefCell<RuntimeParseCache>>,
     pub runtime_processing_traces: Vec<(u8, u32, LineProcessingTrace)>,
     pub runtime_lockstep_report: LockstepReport,
     implicit_hunk_output_requested: bool,
@@ -516,6 +517,7 @@ qualified_share={:.2}%",
             );
             asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
+            asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
             asm_line.clear_conditionals();
             asm_line.clear_scopes();
             if pass_num > 1 {
@@ -937,6 +939,7 @@ qualified_share={:.2}%",
             max_loop_iterations: repetition::DEFAULT_MAX_LOOP_ITERATIONS,
             opasm_package_path: None,
             runtime_line_router: None,
+            runtime_parse_cache: Rc::new(std::cell::RefCell::new(RuntimeParseCache::default())),
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
             implicit_hunk_output_requested: false,
@@ -1033,6 +1036,7 @@ qualified_share={:.2}%",
         let pass1_started_at = Instant::now();
         self.qualified_reachability_profile = QualifiedReachabilityProfile::default();
         self.module_timing_profile = ModuleTimingProfile::default();
+        self.runtime_parse_cache.borrow_mut().clear();
         self.loop_iteration_trace_pass1.clear();
         self.runtime_processing_traces.clear();
         self.runtime_lockstep_report = LockstepReport::default();
@@ -1166,6 +1170,7 @@ qualified_share={:.2}%",
         let mut asm_line = AsmLine::with_cpu(&mut self.symbols, self.cpu, &self.registry);
         asm_line.set_runtime_package_path(self.opasm_package_path.as_deref());
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
+        asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
         asm_line.clear_conditionals();
         asm_line.clear_scopes();
         asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();

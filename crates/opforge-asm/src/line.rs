@@ -59,10 +59,11 @@ use registry::family::AssemblerContext;
 use registry::registry::{FamilyOperandSet, OperandSet, ResolvedPipeline};
 use registry::registry::{ModuleRegistry, RegistryError};
 use registry::syntax::RegisterChecker;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::OnceLock;
 use types::asm_value::{AsmValue, StructField};
 use types::lockstep::{ExecutionMode, LockstepReport};
 use types::processing::{LineProcessingTrace, ProcessingRequestKind};
@@ -109,6 +110,10 @@ fn ast_eval_error(kind: AsmErrorKind, message: &str, span: Span) -> AstEvalError
 }
 
 pub trait RuntimeLineRouter {
+    fn cache_key(&self) -> Option<String> {
+        None
+    }
+
     fn parse_line(
         &self,
         model: &HierarchyExecutionModel,
@@ -126,6 +131,57 @@ pub type RuntimeLineParseResult = (
     Option<LineProcessingTrace>,
     Option<LockstepReport>,
 );
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum RuntimeParseRouteKey {
+    Direct,
+    Router(String),
+    RepetitionScan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct RuntimeParseCacheKey {
+    line_num: u32,
+    source: String,
+    cpu_id: String,
+    package_key: String,
+    expr_parser_opt_in_families: Vec<String>,
+    expr_parser_force_host_families: Vec<String>,
+    route: RuntimeParseRouteKey,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CachedRuntimeParseResult {
+    pub ast: LineAst,
+    pub end_span: Span,
+    pub end_token_text: Option<String>,
+    pub processing_trace: Option<LineProcessingTrace>,
+    pub lockstep_report: Option<LockstepReport>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct RuntimeParseCache {
+    entries: HashMap<RuntimeParseCacheKey, CachedRuntimeParseResult>,
+}
+
+impl RuntimeParseCache {
+    pub(crate) fn enabled() -> bool {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        *ENABLED.get_or_init(|| std::env::var_os("OPFORGE_DISABLE_RUNTIME_PARSE_CACHE").is_none())
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    fn get(&self, key: &RuntimeParseCacheKey) -> Option<CachedRuntimeParseResult> {
+        self.entries.get(key).cloned()
+    }
+
+    fn insert(&mut self, key: RuntimeParseCacheKey, value: CachedRuntimeParseResult) {
+        self.entries.insert(key, value);
+    }
+}
 
 pub fn set_host_expr_eval_failpoint_for_tests(enabled: bool) {
     HOST_EXPR_EVAL_FAILPOINT.with(|flag| flag.set(enabled));
@@ -181,6 +237,8 @@ pub struct AsmLine<'a> {
     pub cpu: CpuType,
     pub register_checker: RegisterChecker,
     runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
+    runtime_package_cache_key: String,
+    runtime_parse_cache: Option<Rc<RefCell<RuntimeParseCache>>>,
     runtime_processing_traces: Vec<(u32, LineProcessingTrace)>,
     runtime_lockstep_report: LockstepReport,
     pub cpu_mode: AsmCpuModeState,
@@ -299,6 +357,8 @@ impl<'a> AsmLine<'a> {
             cpu,
             register_checker: build_register_checker(registry, cpu),
             runtime_line_router: None,
+            runtime_package_cache_key: String::new(),
+            runtime_parse_cache: None,
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
             cpu_mode: AsmCpuModeState::new(registry, cpu),
@@ -316,6 +376,9 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn set_runtime_package_path(&mut self, opasm_package_path: Option<&Path>) {
+        self.runtime_package_cache_key = opasm_package_path
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
         self.opthread_execution_model =
             build_opthread_execution_model_for_request(self.registry, self.cpu, opasm_package_path);
     }
@@ -345,6 +408,63 @@ impl<'a> AsmLine<'a> {
         runtime_line_router: Option<Rc<dyn RuntimeLineRouter>>,
     ) {
         self.runtime_line_router = runtime_line_router;
+    }
+
+    pub(crate) fn set_runtime_parse_cache(
+        &mut self,
+        runtime_parse_cache: Option<Rc<RefCell<RuntimeParseCache>>>,
+    ) {
+        self.runtime_parse_cache = runtime_parse_cache;
+    }
+
+    pub(crate) fn runtime_parse_bucket(&self) -> PhaseBucket {
+        match self.pass {
+            1 => PhaseBucket::Pass1ParseLineAst,
+            2 => PhaseBucket::Pass2ParseLineAst,
+            _ => PhaseBucket::Pass1ParseLineAst,
+        }
+    }
+
+    pub(crate) fn runtime_parse_cache_key(
+        &self,
+        line: &str,
+        line_num: u32,
+        route: RuntimeParseRouteKey,
+    ) -> RuntimeParseCacheKey {
+        RuntimeParseCacheKey {
+            line_num,
+            source: line.to_string(),
+            cpu_id: self.cpu.as_str().to_string(),
+            package_key: self.runtime_package_cache_key.clone(),
+            expr_parser_opt_in_families: self.opthread_expr_parser_opt_in_families.clone(),
+            expr_parser_force_host_families: self.opthread_expr_parser_force_host_families.clone(),
+            route,
+        }
+    }
+
+    pub(crate) fn cached_runtime_parse(
+        &self,
+        key: &RuntimeParseCacheKey,
+    ) -> Option<CachedRuntimeParseResult> {
+        if !RuntimeParseCache::enabled() {
+            return None;
+        }
+        self.runtime_parse_cache
+            .as_ref()
+            .and_then(|cache| cache.borrow().get(key))
+    }
+
+    pub(crate) fn insert_cached_runtime_parse(
+        &self,
+        key: RuntimeParseCacheKey,
+        value: CachedRuntimeParseResult,
+    ) {
+        if !RuntimeParseCache::enabled() {
+            return;
+        }
+        if let Some(cache) = &self.runtime_parse_cache {
+            cache.borrow_mut().insert(key, value);
+        }
     }
 
     pub fn take_runtime_processing_traces(&mut self) -> Vec<(u32, LineProcessingTrace)> {
@@ -1799,6 +1919,41 @@ impl<'a> AsmLine<'a> {
             }
         };
 
+        let route_key = self
+            .runtime_line_router
+            .as_ref()
+            .and_then(|router| router.cache_key().map(RuntimeParseRouteKey::Router))
+            .or_else(|| {
+                if self.runtime_line_router.is_none() {
+                    Some(RuntimeParseRouteKey::Direct)
+                } else {
+                    None
+                }
+            });
+        let cache_key = route_key
+            .clone()
+            .map(|route| self.runtime_parse_cache_key(line, line_num, route));
+        if let Some(cache_key) = cache_key.as_ref() {
+            let cache_started_at = std::time::Instant::now();
+            if let Some(cached) = self.cached_runtime_parse(cache_key) {
+                crate::phase_profile::record_execution_path(
+                    Some(self.runtime_parse_bucket()),
+                    "vm.parse_cache_hit",
+                    cache_started_at.elapsed(),
+                );
+                if let Some(trace) = cached.processing_trace {
+                    self.runtime_processing_traces.push((line_num, trace));
+                }
+                if let Some(report) = cached.lockstep_report {
+                    self.runtime_lockstep_report.extend(report);
+                }
+                self.line_end_span = Some(cached.end_span);
+                self.line_end_token = cached.end_token_text;
+                return self.process_ast(cached.ast);
+            }
+        }
+
+        let parse_started_at = std::time::Instant::now();
         let parsed_line = if let Some(router) = &self.runtime_line_router {
             router.parse_line(
                 model,
@@ -1829,6 +1984,11 @@ impl<'a> AsmLine<'a> {
                 )
             })
         };
+        crate::phase_profile::record_execution_path(
+            Some(self.runtime_parse_bucket()),
+            "vm.parse",
+            parse_started_at.elapsed(),
+        );
 
         let (ast, end_span, end_token_text, processing_trace, lockstep_report) = match parsed_line {
             Ok(parsed) => parsed,
@@ -1844,6 +2004,19 @@ impl<'a> AsmLine<'a> {
                 return LineStatus::Error;
             }
         };
+
+        if let Some(cache_key) = cache_key {
+            self.insert_cached_runtime_parse(
+                cache_key,
+                CachedRuntimeParseResult {
+                    ast: ast.clone(),
+                    end_span,
+                    end_token_text: end_token_text.clone(),
+                    processing_trace: processing_trace.clone(),
+                    lockstep_report: lockstep_report.clone(),
+                },
+            );
+        }
 
         if let Some(trace) = processing_trace {
             self.runtime_processing_traces.push((line_num, trace));

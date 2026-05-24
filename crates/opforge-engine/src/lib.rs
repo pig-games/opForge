@@ -141,6 +141,10 @@ fn core_error_into_parse_error(err: opcore::CoreError, fallback_line: u32) -> Pa
 }
 
 impl RuntimeLineRouter for EngineRuntimeLineRouter {
+    fn cache_key(&self) -> Option<String> {
+        Some(format!("engine:{:?}", self.execution_mode))
+    }
+
     fn parse_line(
         &self,
         model: &HierarchyExecutionModel,

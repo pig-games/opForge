@@ -28331,9 +28331,7 @@ fn motorola68000_parser_rollout_force_host_overrides_authoritative_default_for_s
 
 #[test]
 fn vm_runtime_motorola68000_expr_corpus_matches_host_for_audited_example_lines() {
-    assert!(
-        vm::rollout::portable_expr_parser_runtime_default_enabled_for_family("motorola68000")
-    );
+    assert!(vm::rollout::portable_expr_parser_runtime_default_enabled_for_family("motorola68000"));
 
     let cases = [
         (

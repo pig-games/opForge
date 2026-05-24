@@ -195,11 +195,7 @@ impl<'a> AsmLine<'a> {
             ) {
                 registry::family::FamilyEncodeResult::Ok(bytes) => {
                     let rust_encode_elapsed = rust_encode_started.elapsed();
-                    let bucket = if self.pass == 1 {
-                        crate::phase_profile::PhaseBucket::Pass1LineRoute
-                    } else {
-                        crate::phase_profile::PhaseBucket::Pass2LineRoute
-                    };
+                    let bucket = self.line_route_bucket();
                     crate::phase_profile::record_execution_path(
                         Some(bucket),
                         "rust.encode",
@@ -236,11 +232,7 @@ impl<'a> AsmLine<'a> {
                     param,
                 } => {
                     let rust_encode_elapsed = rust_encode_started.elapsed();
-                    let bucket = if self.pass == 1 {
-                        crate::phase_profile::PhaseBucket::Pass1LineRoute
-                    } else {
-                        crate::phase_profile::PhaseBucket::Pass2LineRoute
-                    };
+                    let bucket = self.line_route_bucket();
                     crate::phase_profile::record_execution_path(
                         Some(bucket),
                         "rust.encode",
@@ -265,11 +257,7 @@ impl<'a> AsmLine<'a> {
                 }
                 registry::family::FamilyEncodeResult::NotFound => {
                     let rust_encode_elapsed = rust_encode_started.elapsed();
-                    let bucket = if self.pass == 1 {
-                        crate::phase_profile::PhaseBucket::Pass1LineRoute
-                    } else {
-                        crate::phase_profile::PhaseBucket::Pass2LineRoute
-                    };
+                    let bucket = self.line_route_bucket();
                     crate::phase_profile::record_execution_path(
                         Some(bucket),
                         "rust.encode.notfound",
@@ -506,11 +494,7 @@ impl<'a> AsmLine<'a> {
             self,
         );
         let vm_elapsed = vm_start.elapsed();
-        let bucket = if self.pass == 1 {
-            crate::phase_profile::PhaseBucket::Pass1LineRoute
-        } else {
-            crate::phase_profile::PhaseBucket::Pass2LineRoute
-        };
+        let bucket = self.line_route_bucket();
         crate::phase_profile::record_execution_path(Some(bucket), "vm.encode", vm_elapsed);
 
         match vm_res {
@@ -1976,11 +1960,7 @@ impl<'a> AsmLine<'a> {
             self,
         );
         let vm_elapsed = vm_start.elapsed();
-        let bucket = if self.pass == 1 {
-            crate::phase_profile::PhaseBucket::Pass1LineRoute
-        } else {
-            crate::phase_profile::PhaseBucket::Pass2LineRoute
-        };
+        let bucket = self.line_route_bucket();
         crate::phase_profile::record_execution_path(Some(bucket), "vm.encode", vm_elapsed);
 
         match vm_res {
@@ -2086,11 +2066,7 @@ impl<'a> AsmLine<'a> {
             resolved_operands,
         );
         let vm_elapsed = vm_start.elapsed();
-        let bucket = if self.pass == 1 {
-            crate::phase_profile::PhaseBucket::Pass1LineRoute
-        } else {
-            crate::phase_profile::PhaseBucket::Pass2LineRoute
-        };
+        let bucket = self.line_route_bucket();
         crate::phase_profile::record_execution_path(Some(bucket), "vm.encode", vm_elapsed);
 
         match vm_res {

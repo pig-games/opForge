@@ -3,7 +3,8 @@
 
 use crate as asm;
 use crate::line::{
-    repetition, AsmLine, CachedRuntimeParseResult, RuntimeLineRouter, RuntimeParseCache,
+    repetition, AsmLine, AsmProfilePhase, CachedRuntimeParseResult, RuntimeLineRouter,
+    RuntimeParseCache,
 };
 use crate::phase_profile::{self, PhaseBucket};
 use crate::repetition_driver::{
@@ -523,6 +524,11 @@ qualified_share={:.2}%",
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
             asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
             asm_line.set_collect_runtime_traces(self.collect_runtime_traces);
+            asm_line.set_profile_phase(if pass_num > 1 {
+                AsmProfilePhase::LayoutStabilization
+            } else {
+                AsmProfilePhase::Pass1
+            });
             asm_line.clear_conditionals();
             asm_line.clear_scopes();
             if pass_num > 1 {
@@ -1186,6 +1192,7 @@ qualified_share={:.2}%",
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
         asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
         asm_line.set_collect_runtime_traces(self.collect_runtime_traces);
+        asm_line.set_profile_phase(AsmProfilePhase::Pass2);
         asm_line.clear_conditionals();
         asm_line.clear_scopes();
         asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();
@@ -1774,7 +1781,7 @@ qualified_share={:.2}%",
             module_timing_profile,
             pass_num,
         };
-        let _repetition_scope = phase_profile::scope(PhaseBucket::Pass1RepetitionLoopExecution);
+        let _repetition_scope = phase_profile::scope(asm_line.repetition_loop_bucket());
         match execute_repetition_lines(
             &mut traversal,
             lines,
@@ -1873,7 +1880,7 @@ qualified_share={:.2}%",
             pass2_loop_trace_cursor,
             module_timing_profile,
         };
-        let _repetition_scope = phase_profile::scope(PhaseBucket::Pass2RepetitionLoopExecution);
+        let _repetition_scope = phase_profile::scope(asm_line.repetition_loop_bucket());
         execute_repetition_lines(
             &mut traversal,
             lines,
@@ -2044,10 +2051,7 @@ qualified_share={:.2}%",
         severity: Severity,
         err: AsmError,
     ) -> Diagnostic {
-        let _diagnostic_scope = phase_profile::scope(match asm_line.pass_number() {
-            1 => PhaseBucket::Pass1DiagnosticsGeneration,
-            _ => PhaseBucket::Pass2DiagnosticsGeneration,
-        });
+        let _diagnostic_scope = phase_profile::scope(asm_line.diagnostics_generation_bucket());
         let mut diagnostic = Diagnostic::new(line_num, severity, err)
             .with_column(asm_line.error_column())
             .with_parser_error(

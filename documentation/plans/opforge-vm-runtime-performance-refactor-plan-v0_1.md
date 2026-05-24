@@ -58,7 +58,7 @@ architecture boundaries.
 
 ## Work Items
 
-- [ ] Item 1: Repair performance profiling attribution before deeper refactors
+- [x] Item 1: Repair performance profiling attribution before deeper refactors
   - Source requirement or finding IDs: user request to pursue bigger wins;
     observation that stabilization calls `run_layout_pass(..., pass_num = 2,
     ...)`, so current `pass2.parse_line_ast`, `pass2.line_route`,
@@ -73,8 +73,10 @@ architecture boundaries.
     with `OPFORGE_PROFILE_PHASES=1 OPFORGE_PROFILE_EXECUTION_PATHS=1`.
   - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
     for this plan must return `PASS` before committing the item.
-  - Commit outcome: one commit that only changes profiler attribution and does
-    not change assembly output.
+  - Commit outcome: completed in one profiler-only commit; assembly output is
+    unchanged. `scripts/workflow/run_rust_quality_gate.sh` still fails on the
+    known pre-existing CPU-boundary findings, accepted by maintainer for this
+    profiler-only item.
   - Definition of done: profiler output distinguishes initial pass1,
     stabilization retry, and final pass2 parse/route/expression/symbol/listing
     work; profiling remains opt-in and disabled by default; full workload output

@@ -133,6 +133,13 @@ pub type RuntimeLineParseResult = (
     Option<LockstepReport>,
 );
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AsmProfilePhase {
+    Pass1,
+    LayoutStabilization,
+    Pass2,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum RuntimeParseRouteKey {
     Direct,
@@ -242,6 +249,7 @@ pub struct AsmLine<'a> {
     runtime_package_cache_key: String,
     runtime_parse_cache: Option<Rc<RefCell<RuntimeParseCache>>>,
     collect_runtime_traces: bool,
+    profile_phase: AsmProfilePhase,
     runtime_processing_traces: Vec<(u32, LineProcessingTrace)>,
     runtime_lockstep_report: LockstepReport,
     pub cpu_mode: AsmCpuModeState,
@@ -258,21 +266,72 @@ pub struct AsmLine<'a> {
 }
 
 impl<'a> AsmLine<'a> {
-    fn pass_phase_scope(&self, pass1: PhaseBucket, pass2: PhaseBucket) -> PhaseScopeGuard {
-        match self.pass {
-            1 => phase_profile::scope(pass1),
-            2 => phase_profile::scope(pass2),
-            _ => PhaseScopeGuard::disabled(),
+    fn profile_bucket(
+        &self,
+        pass1: PhaseBucket,
+        stabilization: PhaseBucket,
+        pass2: PhaseBucket,
+    ) -> PhaseBucket {
+        match self.profile_phase {
+            AsmProfilePhase::Pass1 => pass1,
+            AsmProfilePhase::LayoutStabilization => stabilization,
+            AsmProfilePhase::Pass2 => pass2,
         }
     }
 
+    fn pass_phase_scope(
+        &self,
+        pass1: PhaseBucket,
+        stabilization: PhaseBucket,
+        pass2: PhaseBucket,
+    ) -> PhaseScopeGuard {
+        phase_profile::scope(self.profile_bucket(pass1, stabilization, pass2))
+    }
+
+    pub(crate) fn parse_line_ast_bucket(&self) -> PhaseBucket {
+        self.profile_bucket(
+            PhaseBucket::Pass1ParseLineAst,
+            PhaseBucket::Pass1LayoutStabilizationParseLineAst,
+            PhaseBucket::Pass2ParseLineAst,
+        )
+    }
+
+    pub(crate) fn line_route_bucket(&self) -> PhaseBucket {
+        self.profile_bucket(
+            PhaseBucket::Pass1LineRoute,
+            PhaseBucket::Pass1LayoutStabilizationLineRoute,
+            PhaseBucket::Pass2LineRoute,
+        )
+    }
+
+    pub(crate) fn repetition_loop_bucket(&self) -> PhaseBucket {
+        self.profile_bucket(
+            PhaseBucket::Pass1RepetitionLoopExecution,
+            PhaseBucket::Pass1LayoutStabilizationRepetitionLoopExecution,
+            PhaseBucket::Pass2RepetitionLoopExecution,
+        )
+    }
+
+    pub(crate) fn diagnostics_generation_bucket(&self) -> PhaseBucket {
+        self.profile_bucket(
+            PhaseBucket::Pass1DiagnosticsGeneration,
+            PhaseBucket::Pass1LayoutStabilizationDiagnosticsGeneration,
+            PhaseBucket::Pass2DiagnosticsGeneration,
+        )
+    }
+
     fn pass_expr_eval_scope(&self) -> PhaseScopeGuard {
-        self.pass_phase_scope(PhaseBucket::Pass1ExprEval, PhaseBucket::Pass2ExprEval)
+        self.pass_phase_scope(
+            PhaseBucket::Pass1ExprEval,
+            PhaseBucket::Pass1LayoutStabilizationExprEval,
+            PhaseBucket::Pass2ExprEval,
+        )
     }
 
     fn pass_symbol_lookup_scope(&self) -> PhaseScopeGuard {
         self.pass_phase_scope(
             PhaseBucket::Pass1SymbolLookup,
+            PhaseBucket::Pass1LayoutStabilizationSymbolLookup,
             PhaseBucket::Pass2SymbolLookup,
         )
     }
@@ -280,6 +339,7 @@ impl<'a> AsmLine<'a> {
     fn pass_symbol_update_scope(&self) -> PhaseScopeGuard {
         self.pass_phase_scope(
             PhaseBucket::Pass1SymbolUpdate,
+            PhaseBucket::Pass1LayoutStabilizationSymbolUpdate,
             PhaseBucket::Pass2SymbolUpdate,
         )
     }
@@ -287,6 +347,7 @@ impl<'a> AsmLine<'a> {
     fn pass_layout_scope(&self) -> PhaseScopeGuard {
         self.pass_phase_scope(
             PhaseBucket::Pass1LayoutSectionRegion,
+            PhaseBucket::Pass1LayoutStabilizationLayoutSectionRegion,
             PhaseBucket::Pass2LayoutSectionRegion,
         )
     }
@@ -294,6 +355,7 @@ impl<'a> AsmLine<'a> {
     fn pass_module_use_scope(&self) -> PhaseScopeGuard {
         self.pass_phase_scope(
             PhaseBucket::Pass1ModuleUseImport,
+            PhaseBucket::Pass1LayoutStabilizationModuleUseImport,
             PhaseBucket::Pass2ModuleUseImport,
         )
     }
@@ -366,6 +428,7 @@ impl<'a> AsmLine<'a> {
             runtime_package_cache_key: String::new(),
             runtime_parse_cache: None,
             collect_runtime_traces: true,
+            profile_phase: AsmProfilePhase::Pass1,
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
             cpu_mode: AsmCpuModeState::new(registry, cpu),
@@ -428,12 +491,12 @@ impl<'a> AsmLine<'a> {
         self.collect_runtime_traces = collect_runtime_traces;
     }
 
+    pub(crate) fn set_profile_phase(&mut self, profile_phase: AsmProfilePhase) {
+        self.profile_phase = profile_phase;
+    }
+
     pub(crate) fn runtime_parse_bucket(&self) -> PhaseBucket {
-        match self.pass {
-            1 => PhaseBucket::Pass1ParseLineAst,
-            2 => PhaseBucket::Pass2ParseLineAst,
-            _ => PhaseBucket::Pass1ParseLineAst,
-        }
+        self.parse_line_ast_bucket()
     }
 
     pub(crate) fn runtime_parse_cache_key(
@@ -2000,10 +2063,7 @@ impl<'a> AsmLine<'a> {
         AsmError::new(AsmErrorKind::Symbol, "Symbol is private", Some(name))
     }
     fn process_with_runtime_tokenizer(&mut self, line: &str, line_num: u32) -> LineStatus {
-        let _parse_scope = self.pass_phase_scope(
-            PhaseBucket::Pass1ParseLineAst,
-            PhaseBucket::Pass2ParseLineAst,
-        );
+        let _parse_scope = phase_profile::scope(self.parse_line_ast_bucket());
         let cache_key = self.runtime_regular_parse_cache_key(line, line_num);
         if let Some(cache_key) = cache_key.as_ref() {
             let cache_started_at = std::time::Instant::now();
@@ -2123,8 +2183,7 @@ impl<'a> AsmLine<'a> {
     }
 
     fn process_ast(&mut self, ast: LineAst) -> LineStatus {
-        let _route_scope =
-            self.pass_phase_scope(PhaseBucket::Pass1LineRoute, PhaseBucket::Pass2LineRoute);
+        let _route_scope = phase_profile::scope(self.line_route_bucket());
         if self.statement_depth > 0 {
             return match ast {
                 LineAst::StatementEnd(..) => {

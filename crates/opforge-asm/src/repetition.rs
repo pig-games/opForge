@@ -27,11 +27,7 @@ pub(crate) fn parse_line_for_repetition(
     src: &str,
     line_num: u32,
 ) -> Result<CachedRuntimeParseResult, ParseError> {
-    let _parse_scope = match asm_line.pass {
-        1 => crate::phase_profile::scope(crate::phase_profile::PhaseBucket::Pass1ParseLineAst),
-        2 => crate::phase_profile::scope(crate::phase_profile::PhaseBucket::Pass2ParseLineAst),
-        _ => crate::phase_profile::scope(crate::phase_profile::PhaseBucket::Pass1ParseLineAst),
-    };
+    let _parse_scope = crate::phase_profile::scope(asm_line.runtime_parse_bucket());
 
     if let Some(model) = asm_line.opthread_execution_model.as_ref() {
         if let Some(cache_key) = asm_line.runtime_regular_parse_cache_key(src, line_num) {
@@ -69,11 +65,7 @@ pub(crate) fn parse_line_for_repetition(
             &asm_line.register_checker,
         );
         let elapsed = started.elapsed();
-        let bucket = if asm_line.pass == 1 {
-            crate::phase_profile::PhaseBucket::Pass1ParseLineAst
-        } else {
-            crate::phase_profile::PhaseBucket::Pass2ParseLineAst
-        };
+        let bucket = asm_line.runtime_parse_bucket();
         crate::phase_profile::record_execution_path(Some(bucket), "vm.parse", elapsed);
         if let Ok((ast, end_span, end_token_text)) = &res {
             asm_line.insert_cached_runtime_parse(
@@ -109,11 +101,7 @@ pub(crate) fn parse_line_for_repetition(
     }
     .inspect(|_ast| {
         let elapsed = started.elapsed();
-        let bucket = if asm_line.pass == 1 {
-            crate::phase_profile::PhaseBucket::Pass1ParseLineAst
-        } else {
-            crate::phase_profile::PhaseBucket::Pass2ParseLineAst
-        };
+        let bucket = asm_line.runtime_parse_bucket();
         crate::phase_profile::record_execution_path(Some(bucket), "rust.parse", elapsed);
     })?;
     Ok(CachedRuntimeParseResult {

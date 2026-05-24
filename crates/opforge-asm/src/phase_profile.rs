@@ -17,6 +17,15 @@ pub enum PhaseBucket {
     Pass1Total,
     Pass1InitialLayoutPass,
     Pass1LayoutStabilizationRetries,
+    Pass1LayoutStabilizationParseLineAst,
+    Pass1LayoutStabilizationLineRoute,
+    Pass1LayoutStabilizationExprEval,
+    Pass1LayoutStabilizationModuleUseImport,
+    Pass1LayoutStabilizationSymbolLookup,
+    Pass1LayoutStabilizationSymbolUpdate,
+    Pass1LayoutStabilizationLayoutSectionRegion,
+    Pass1LayoutStabilizationRepetitionLoopExecution,
+    Pass1LayoutStabilizationDiagnosticsGeneration,
     Pass1ParseLineAst,
     Pass1LineRoute,
     Pass1ExprEval,
@@ -43,7 +52,7 @@ pub enum PhaseBucket {
     PostOutputEmission,
 }
 
-const ALL_BUCKETS: [PhaseBucket; 32] = [
+const ALL_BUCKETS: [PhaseBucket; 41] = [
     PhaseBucket::AssemblyTotal,
     PhaseBucket::PrepareSourceModuleLoading,
     PhaseBucket::PrepareParseLineAst,
@@ -52,6 +61,15 @@ const ALL_BUCKETS: [PhaseBucket; 32] = [
     PhaseBucket::Pass1Total,
     PhaseBucket::Pass1InitialLayoutPass,
     PhaseBucket::Pass1LayoutStabilizationRetries,
+    PhaseBucket::Pass1LayoutStabilizationParseLineAst,
+    PhaseBucket::Pass1LayoutStabilizationLineRoute,
+    PhaseBucket::Pass1LayoutStabilizationExprEval,
+    PhaseBucket::Pass1LayoutStabilizationModuleUseImport,
+    PhaseBucket::Pass1LayoutStabilizationSymbolLookup,
+    PhaseBucket::Pass1LayoutStabilizationSymbolUpdate,
+    PhaseBucket::Pass1LayoutStabilizationLayoutSectionRegion,
+    PhaseBucket::Pass1LayoutStabilizationRepetitionLoopExecution,
+    PhaseBucket::Pass1LayoutStabilizationDiagnosticsGeneration,
     PhaseBucket::Pass1ParseLineAst,
     PhaseBucket::Pass1LineRoute,
     PhaseBucket::Pass1ExprEval,
@@ -247,6 +265,29 @@ fn phase_name(bucket: PhaseBucket) -> &'static str {
         PhaseBucket::Pass1Total => "pass1_total",
         PhaseBucket::Pass1InitialLayoutPass => "pass1.initial_layout_pass",
         PhaseBucket::Pass1LayoutStabilizationRetries => "pass1.layout_stabilization_retries",
+        PhaseBucket::Pass1LayoutStabilizationParseLineAst => {
+            "pass1.layout_stabilization.parse_line_ast"
+        }
+        PhaseBucket::Pass1LayoutStabilizationLineRoute => "pass1.layout_stabilization.line_route",
+        PhaseBucket::Pass1LayoutStabilizationExprEval => "pass1.layout_stabilization.expr_eval",
+        PhaseBucket::Pass1LayoutStabilizationModuleUseImport => {
+            "pass1.layout_stabilization.module_use_import"
+        }
+        PhaseBucket::Pass1LayoutStabilizationSymbolLookup => {
+            "pass1.layout_stabilization.symbol_lookup"
+        }
+        PhaseBucket::Pass1LayoutStabilizationSymbolUpdate => {
+            "pass1.layout_stabilization.symbol_update"
+        }
+        PhaseBucket::Pass1LayoutStabilizationLayoutSectionRegion => {
+            "pass1.layout_stabilization.layout_section_region"
+        }
+        PhaseBucket::Pass1LayoutStabilizationRepetitionLoopExecution => {
+            "pass1.layout_stabilization.repetition_loop_execution"
+        }
+        PhaseBucket::Pass1LayoutStabilizationDiagnosticsGeneration => {
+            "pass1.layout_stabilization.diagnostics_generation"
+        }
         PhaseBucket::Pass1ParseLineAst => "pass1.parse_line_ast",
         PhaseBucket::Pass1LineRoute => "pass1.line_route",
         PhaseBucket::Pass1ExprEval => "pass1.expr_eval",
@@ -286,6 +327,15 @@ fn phase_is_child(bucket: PhaseBucket) -> bool {
         bucket,
         PhaseBucket::Pass1InitialLayoutPass
             | PhaseBucket::Pass1LayoutStabilizationRetries
+            | PhaseBucket::Pass1LayoutStabilizationParseLineAst
+            | PhaseBucket::Pass1LayoutStabilizationLineRoute
+            | PhaseBucket::Pass1LayoutStabilizationExprEval
+            | PhaseBucket::Pass1LayoutStabilizationModuleUseImport
+            | PhaseBucket::Pass1LayoutStabilizationSymbolLookup
+            | PhaseBucket::Pass1LayoutStabilizationSymbolUpdate
+            | PhaseBucket::Pass1LayoutStabilizationLayoutSectionRegion
+            | PhaseBucket::Pass1LayoutStabilizationRepetitionLoopExecution
+            | PhaseBucket::Pass1LayoutStabilizationDiagnosticsGeneration
             | PhaseBucket::Pass1ParseLineAst
             | PhaseBucket::Pass1LineRoute
             | PhaseBucket::Pass1ExprEval

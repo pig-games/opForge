@@ -58,33 +58,24 @@ impl<W: Write> ListingWriter<W> {
 
     pub fn write_line(&mut self, line: ListingLine<'_>) -> std::io::Result<()> {
         let (loc, bytes_col) = match line.status {
-            LineStatus::DirEqu => (String::new(), format!("EQU {}", format_addr(line.aux))),
+            LineStatus::DirEqu => (
+                Cow::Borrowed("----"),
+                Cow::Owned(format!("EQU {}", format_addr(line.aux))),
+            ),
             LineStatus::DirDs => (
-                format_addr(line.addr),
-                format!("+{}", format_addr(line.aux)),
+                Cow::Owned(format_addr(line.addr)),
+                Cow::Owned(format!("+{}", format_addr(line.aux))),
             ),
             _ => {
                 if line.bytes.is_empty() {
-                    ("".to_string(), String::new())
+                    (Cow::Borrowed("----"), Cow::Borrowed(""))
                 } else {
-                    (format_addr(line.addr), format_bytes(line.bytes))
+                    (
+                        Cow::Owned(format_addr(line.addr)),
+                        Cow::Owned(format_bytes(line.bytes)),
+                    )
                 }
             }
-        };
-
-        let loc = if loc.is_empty() {
-            "----".to_string()
-        } else {
-            loc
-        };
-        let section_suffix = line
-            .section
-            .map(|name| format!("  ; [section {name}]"))
-            .unwrap_or_default();
-        let cond_str = if self.show_cond {
-            line.cond.map(format_cond).unwrap_or_default()
-        } else {
-            String::new()
         };
         let normalized_source = normalize_leading_label_colon(line.source);
         let normalized_source = strip_ansi_sgr(normalized_source.as_ref());
@@ -94,15 +85,20 @@ impl<W: Write> ListingWriter<W> {
             normalized_source
         };
 
-        writeln!(
+        write!(
             self.out,
-            "{:<6}  {:<23}  {:>4}  {}{}",
-            loc,
-            bytes_col,
-            line.line_num,
-            source,
-            format_args!("{section_suffix}{cond_str}")
-        )
+            "{:<6}  {:<23}  {:>4}  {}",
+            loc, bytes_col, line.line_num, source
+        )?;
+        if let Some(name) = line.section {
+            write!(self.out, "  ; [section {name}]")?;
+        }
+        if self.show_cond {
+            if let Some(cond) = line.cond {
+                write_cond(&mut self.out, cond)?;
+            }
+        }
+        writeln!(self.out)
     }
 
     pub fn write_diagnostic(
@@ -242,17 +238,20 @@ fn write_symbol_table<W: Write>(out: &mut W, symbols: &SymbolTable) -> std::io::
         return Ok(());
     }
 
-    let mut entries: Vec<_> = symbols.entries().iter().collect();
+    let mut entries: Vec<_> = symbols
+        .entries()
+        .iter()
+        .map(|entry| (entry.name.to_ascii_uppercase(), entry))
+        .collect();
     entries.sort_by(|left, right| {
-        left.name
-            .to_ascii_uppercase()
-            .cmp(&right.name.to_ascii_uppercase())
-            .then_with(|| left.name.cmp(&right.name))
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.name.cmp(&right.1.name))
     });
 
     writeln!(out, "NAME             VALUE     VIS  KIND")?;
     writeln!(out, "---------------  --------  ---  ----")?;
-    for entry in entries {
+    for (_, entry) in entries {
         let visibility = match entry.visibility {
             SymbolVisibility::Public => "pub",
             SymbolVisibility::Private => "prv",
@@ -328,7 +327,9 @@ fn expand_tabs(source: &str, tab_size: usize) -> Cow<'_, str> {
     for ch in source.chars() {
         if ch == '\t' {
             let spaces = tab_size - (column % tab_size);
-            expanded.push_str(&" ".repeat(spaces));
+            for _ in 0..spaces {
+                expanded.push(' ');
+            }
             column += spaces;
         } else {
             expanded.push(ch);
@@ -374,10 +375,11 @@ pub fn format_bytes(bytes: &[u8]) -> String {
     formatted
 }
 
-fn format_cond(ctx: &ConditionalContext) -> String {
+fn write_cond<W: Write>(out: &mut W, ctx: &ConditionalContext) -> std::io::Result<()> {
     let matched = if ctx.matched { '+' } else { ' ' };
     let skipping = if ctx.skipping { '-' } else { ' ' };
-    format!(
+    write!(
+        out,
         "  [{}{}{}{}]",
         matched, ctx.nest_level, ctx.skip_level, skipping
     )

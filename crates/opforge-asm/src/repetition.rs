@@ -20,6 +20,21 @@ pub fn parse_line_ast_for_repetition(
     line_num: u32,
 ) -> Result<LineAst, ParseError> {
     if let Some(model) = asm_line.opthread_execution_model.as_ref() {
+        if let Some(cache_key) = asm_line.runtime_regular_parse_cache_key(src, line_num) {
+            let cache_started_at = std::time::Instant::now();
+            if let Some(cached) = asm_line.cached_runtime_parse(&cache_key) {
+                crate::phase_profile::record_execution_path(
+                    Some(asm_line.runtime_parse_bucket()),
+                    "vm.parse_cache_hit",
+                    cache_started_at.elapsed(),
+                );
+                return Ok(cached.ast);
+            }
+            return asm_line
+                .parse_runtime_line_for_cache(src, line_num, Some(cache_key))
+                .map(|parsed| parsed.ast);
+        }
+
         let cache_key =
             asm_line.runtime_parse_cache_key(src, line_num, RuntimeParseRouteKey::RepetitionScan);
         let cache_started_at = std::time::Instant::now();

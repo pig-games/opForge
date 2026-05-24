@@ -442,6 +442,28 @@ impl<'a> AsmLine<'a> {
         }
     }
 
+    pub(crate) fn runtime_regular_parse_cache_key(
+        &self,
+        line: &str,
+        line_num: u32,
+    ) -> Option<RuntimeParseCacheKey> {
+        self.runtime_regular_parse_route_key()
+            .map(|route| self.runtime_parse_cache_key(line, line_num, route))
+    }
+
+    fn runtime_regular_parse_route_key(&self) -> Option<RuntimeParseRouteKey> {
+        self.runtime_line_router
+            .as_ref()
+            .and_then(|router| router.cache_key().map(RuntimeParseRouteKey::Router))
+            .or_else(|| {
+                if self.runtime_line_router.is_none() {
+                    Some(RuntimeParseRouteKey::Direct)
+                } else {
+                    None
+                }
+            })
+    }
+
     pub(crate) fn cached_runtime_parse(
         &self,
         key: &RuntimeParseCacheKey,
@@ -465,6 +487,80 @@ impl<'a> AsmLine<'a> {
         if let Some(cache) = &self.runtime_parse_cache {
             cache.borrow_mut().insert(key, value);
         }
+    }
+
+    pub(crate) fn parse_runtime_line_for_cache(
+        &self,
+        line: &str,
+        line_num: u32,
+        cache_key: Option<RuntimeParseCacheKey>,
+    ) -> Result<CachedRuntimeParseResult, ParseError> {
+        let model = self.opthread_execution_model.as_ref().ok_or_else(|| {
+            let family_id = Self::resolve_pipeline_for_cpu(self.registry, self.cpu)
+                .map(|pipeline| pipeline.family_id.as_str().to_string())
+                .unwrap_or_else(|_| self.cpu.as_str().to_string());
+            ParseError {
+                message: format!(
+                    "VM runtime tokenizer model unavailable for family '{}'",
+                    family_id
+                ),
+                span: Span {
+                    line: line_num,
+                    col_start: 1,
+                    col_end: 1,
+                },
+            }
+        })?;
+
+        let parse_started_at = std::time::Instant::now();
+        let parsed_line = if let Some(router) = &self.runtime_line_router {
+            router.parse_line(
+                model,
+                self.cpu.as_str(),
+                line,
+                line_num,
+                &self.register_checker,
+            )
+        } else {
+            opasm::process_statement(
+                StatementRequest::new(line, line_num)
+                    .with_execution_mode(ExecutionMode::Vm)
+                    .with_model(model, self.cpu.as_str(), None)
+                    .with_expr_parser_rollout_overrides(
+                        &self.opthread_expr_parser_opt_in_families,
+                        &self.opthread_expr_parser_force_host_families,
+                    )
+                    .with_register_checker(&self.register_checker),
+                None,
+            )
+            .map(|result| {
+                (
+                    result.parsed.ast,
+                    result.parsed.end_span,
+                    result.parsed.end_token_text,
+                    Some(result.trace),
+                    Some(result.lockstep_report),
+                )
+            })
+        };
+        crate::phase_profile::record_execution_path(
+            Some(self.runtime_parse_bucket()),
+            "vm.parse",
+            parse_started_at.elapsed(),
+        );
+
+        let (ast, end_span, end_token_text, processing_trace, lockstep_report) = parsed_line?;
+        let result = CachedRuntimeParseResult {
+            ast,
+            end_span,
+            end_token_text,
+            processing_trace,
+            lockstep_report,
+        };
+        if let Some(cache_key) = cache_key {
+            self.insert_cached_runtime_parse(cache_key, result.clone());
+        }
+        Ok(result)
     }
 
     pub fn take_runtime_processing_traces(&mut self) -> Vec<(u32, LineProcessingTrace)> {
@@ -1893,46 +1989,7 @@ impl<'a> AsmLine<'a> {
             PhaseBucket::Pass1ParseLineAst,
             PhaseBucket::Pass2ParseLineAst,
         );
-        let model = match self.opthread_execution_model.as_ref() {
-            Some(model) => model,
-            None => {
-                let family_id = Self::resolve_pipeline_for_cpu(self.registry, self.cpu)
-                    .map(|pipeline| pipeline.family_id.as_str().to_string())
-                    .unwrap_or_else(|_| self.cpu.as_str().to_string());
-                let err = ParseError {
-                    message: format!(
-                        "VM runtime tokenizer model unavailable for family '{}'",
-                        family_id
-                    ),
-                    span: Span {
-                        line: line_num,
-                        col_start: 1,
-                        col_end: 1,
-                    },
-                };
-                self.diagnostics.last_error =
-                    Some(AsmError::new(AsmErrorKind::Parser, &err.message, None));
-                self.diagnostics.last_error_column = Some(err.span.col_start);
-                self.diagnostics.last_parser_error = Some(err);
-                self.record_default_processing_trace(line_num);
-                return LineStatus::Error;
-            }
-        };
-
-        let route_key = self
-            .runtime_line_router
-            .as_ref()
-            .and_then(|router| router.cache_key().map(RuntimeParseRouteKey::Router))
-            .or_else(|| {
-                if self.runtime_line_router.is_none() {
-                    Some(RuntimeParseRouteKey::Direct)
-                } else {
-                    None
-                }
-            });
-        let cache_key = route_key
-            .clone()
-            .map(|route| self.runtime_parse_cache_key(line, line_num, route));
+        let cache_key = self.runtime_regular_parse_cache_key(line, line_num);
         if let Some(cache_key) = cache_key.as_ref() {
             let cache_started_at = std::time::Instant::now();
             if let Some(cached) = self.cached_runtime_parse(cache_key) {
@@ -1953,44 +2010,7 @@ impl<'a> AsmLine<'a> {
             }
         }
 
-        let parse_started_at = std::time::Instant::now();
-        let parsed_line = if let Some(router) = &self.runtime_line_router {
-            router.parse_line(
-                model,
-                self.cpu.as_str(),
-                line,
-                line_num,
-                &self.register_checker,
-            )
-        } else {
-            opasm::process_statement(
-                StatementRequest::new(line, line_num)
-                    .with_execution_mode(ExecutionMode::Vm)
-                    .with_model(model, self.cpu.as_str(), None)
-                    .with_expr_parser_rollout_overrides(
-                        &self.opthread_expr_parser_opt_in_families,
-                        &self.opthread_expr_parser_force_host_families,
-                    )
-                    .with_register_checker(&self.register_checker),
-                None,
-            )
-            .map(|result| {
-                (
-                    result.parsed.ast,
-                    result.parsed.end_span,
-                    result.parsed.end_token_text,
-                    Some(result.trace),
-                    Some(result.lockstep_report),
-                )
-            })
-        };
-        crate::phase_profile::record_execution_path(
-            Some(self.runtime_parse_bucket()),
-            "vm.parse",
-            parse_started_at.elapsed(),
-        );
-
-        let (ast, end_span, end_token_text, processing_trace, lockstep_report) = match parsed_line {
+        let parsed_line = match self.parse_runtime_line_for_cache(line, line_num, cache_key) {
             Ok(parsed) => parsed,
             Err(err) => {
                 self.line_end_span = Some(err.span);
@@ -2005,28 +2025,15 @@ impl<'a> AsmLine<'a> {
             }
         };
 
-        if let Some(cache_key) = cache_key {
-            self.insert_cached_runtime_parse(
-                cache_key,
-                CachedRuntimeParseResult {
-                    ast: ast.clone(),
-                    end_span,
-                    end_token_text: end_token_text.clone(),
-                    processing_trace: processing_trace.clone(),
-                    lockstep_report: lockstep_report.clone(),
-                },
-            );
-        }
-
-        if let Some(trace) = processing_trace {
+        if let Some(trace) = parsed_line.processing_trace {
             self.runtime_processing_traces.push((line_num, trace));
         }
-        if let Some(report) = lockstep_report {
+        if let Some(report) = parsed_line.lockstep_report {
             self.runtime_lockstep_report.extend(report);
         }
-        self.line_end_span = Some(end_span);
-        self.line_end_token = end_token_text;
-        self.process_ast(ast)
+        self.line_end_span = Some(parsed_line.end_span);
+        self.line_end_token = parsed_line.end_token_text;
+        self.process_ast(parsed_line.ast)
     }
 
     pub fn process(&mut self, line: &str, line_num: u32, addr: u32, pass: u8) -> LineStatus {

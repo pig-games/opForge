@@ -10,8 +10,8 @@ use opcore::expr_vm::PortableExprBudgets;
 use opcore::tokenizer::{RegisterChecker, Tokenizer};
 use package::{
     decode_hierarchy_chunks, HierarchyChunks, ModeSelectorDescriptor, OpcpuCodecError,
-    TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode,
-    TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
+    ParserVmOpcodeV2, TokenCaseRule, TokenizerVmDiagnosticMap, TokenizerVmLimits,
+    TokenizerVmOpcode, TokenizerVmStreamMode, DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
     DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT, EXPR_VM_OPCODE_VERSION_V1,
     EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1, PARSER_AST_SCHEMA_ID_LINE_V1,
     PARSER_GRAMMAR_ID_LINE_V1, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
@@ -1004,6 +1004,14 @@ impl RuntimeModelCore {
             && vm_program.program == default_dispatch_tokenizer_vm_program_bytes()
     }
 
+    pub fn is_default_statement_parser_vm_program(
+        &self,
+        vm_program: &RuntimeParserVmProgram,
+    ) -> bool {
+        vm_program.opcode_version == PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT
+            && vm_program.program == default_statement_parser_vm_program_bytes()
+    }
+
     pub fn tokenize_with_default_dispatch_core(
         &self,
         source_line: &str,
@@ -1937,4 +1945,68 @@ fn default_dispatch_tokenizer_vm_program_bytes() -> Vec<u8> {
     program.push(TokenizerVmOpcode::End as u8);
 
     program
+}
+
+fn default_statement_parser_vm_program_bytes() -> Vec<u8> {
+    vec![
+        ParserVmOpcodeV2::BeginStatement as u8,
+        ParserVmOpcodeV2::ParseOptionalLeadingLabel as u8,
+        ParserVmOpcodeV2::IsEol as u8,
+        ParserVmOpcodeV2::JumpIfFalse as u8,
+        8,
+        0,
+        ParserVmOpcodeV2::FinishLine as u8,
+        ParserVmOpcodeV2::End as u8,
+        ParserVmOpcodeV2::PeekAssignmentOperator as u8,
+        ParserVmOpcodeV2::JumpIfFalse as u8,
+        14,
+        0,
+        ParserVmOpcodeV2::FinishAssignment as u8,
+        ParserVmOpcodeV2::End as u8,
+        ParserVmOpcodeV2::PeekStarOrg as u8,
+        ParserVmOpcodeV2::JumpIfFalse as u8,
+        36,
+        0,
+        ParserVmOpcodeV2::LoadInlineText as u8,
+        4,
+        b'.',
+        b'o',
+        b'r',
+        b'g',
+        ParserVmOpcodeV2::SetMnemonic as u8,
+        ParserVmOpcodeV2::Advance as u8,
+        ParserVmOpcodeV2::ConsumeOperator as u8,
+        0x02,
+        ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+        ParserVmOpcodeV2::ParseOperandExprRange as u8,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        ParserVmOpcodeV2::FinishLine as u8,
+        ParserVmOpcodeV2::End as u8,
+        ParserVmOpcodeV2::PeekKind as u8,
+        0x03,
+        ParserVmOpcodeV2::JumpIfFalse as u8,
+        48,
+        0,
+        ParserVmOpcodeV2::Advance as u8,
+        ParserVmOpcodeV2::LoadIdentifier as u8,
+        ParserVmOpcodeV2::SetDotMnemonic as u8,
+        ParserVmOpcodeV2::Advance as u8,
+        ParserVmOpcodeV2::Jump as u8,
+        51,
+        0,
+        ParserVmOpcodeV2::LoadIdentifier as u8,
+        ParserVmOpcodeV2::SetMnemonic as u8,
+        ParserVmOpcodeV2::Advance as u8,
+        ParserVmOpcodeV2::ScanTopLevelCommaBoundaries as u8,
+        ParserVmOpcodeV2::ParseOperandExprRange as u8,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        ParserVmOpcodeV2::FinishLine as u8,
+        ParserVmOpcodeV2::End as u8,
+    ]
 }

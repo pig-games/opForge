@@ -126,6 +126,55 @@ pub(crate) fn parse_line_with_parser_vm_v2<'exec>(
     state.run()
 }
 
+pub(crate) fn parse_line_with_default_statement_parser_vm_v2<'exec>(
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    parser_contract: &RuntimeParserContract,
+    entry_request: &ProcessingRequestKind,
+    exec_ctx: ParserVmExecContext<'exec>,
+) -> Result<LineAst, ParseError> {
+    enforce_entry_boundary(entry_request, end_span)?;
+    if parser_contract.opcode_version != PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT {
+        return Err(parse_error_at_end(
+            exec_ctx.source_line,
+            exec_ctx.line_num,
+            format!(
+                "{}: unsupported opasm v2 parser contract opcode version {}",
+                parser_contract.diagnostics.invalid_statement, parser_contract.opcode_version
+            ),
+        ));
+    }
+    reject_misrouted_opcore_directive(tokens.as_slice(), end_span)?;
+    if let Some(line) = parse_rust_routed_deferred_shape(
+        tokens.as_slice(),
+        end_span,
+        end_token_text.clone(),
+        &exec_ctx,
+    )? {
+        return Ok(line);
+    }
+
+    let mut state = ParserVmV2State {
+        tokens,
+        end_span,
+        end_token_text,
+        parser_contract,
+        program: &[],
+        exec_ctx,
+        pc: 0,
+        cursor: 0,
+        steps: 0,
+        value_stack: Vec::new(),
+        checkpoints: Vec::new(),
+        operand_boundaries: Vec::new(),
+        builder: ParserVmV2AstBuilder::default(),
+        parsed_line: None,
+        advance_mnemonic_suffix_plus: false,
+    };
+    state.run_default_statement_program()
+}
+
 struct ParserVmV2State<'contract, 'exec> {
     tokens: Vec<Token>,
     end_span: Span,
@@ -145,6 +194,87 @@ struct ParserVmV2State<'contract, 'exec> {
 }
 
 impl ParserVmV2State<'_, '_> {
+    fn run_default_statement_program(&mut self) -> Result<LineAst, ParseError> {
+        self.builder = ParserVmV2AstBuilder::default();
+        let (label, cursor) = leading_label_and_cursor(self.tokens.as_slice());
+        self.builder.label = label;
+        self.cursor = cursor;
+
+        if self.cursor >= self.tokens.len() {
+            return Ok(self.finish_statement_ast());
+        }
+        if self.peek_assignment_operator() {
+            self.finish_assignment()?;
+            return self.parsed_line.clone().ok_or_else(|| {
+                parse_error_at_end(
+                    self.exec_ctx.source_line,
+                    self.exec_ctx.line_num,
+                    format!(
+                        "{}: parser VM v2 ended without producing an AST",
+                        self.parser_contract.diagnostics.invalid_statement
+                    ),
+                )
+            });
+        }
+        if self.peek_star_org() {
+            self.builder.mnemonic = Some(".org".to_string());
+            self.cursor = self.cursor.saturating_add(1).min(self.tokens.len());
+            if !self.peek_operator(OPERATOR_EQ) {
+                return self.fail_with_code(
+                    self.parser_contract.diagnostics.unexpected_token.as_str(),
+                    "parser VM v2 ConsumeOperator mismatch",
+                );
+            }
+            self.cursor = self.cursor.saturating_add(1);
+            self.parse_default_statement_operands()?;
+            return Ok(self.finish_statement_ast());
+        }
+
+        if self.peek_kind(TOKEN_KIND_DOT) {
+            self.cursor = self.cursor.saturating_add(1).min(self.tokens.len());
+            let Some((name, _)) = self.identifier_at_cursor() else {
+                return self.fail_with_code(
+                    self.parser_contract.diagnostics.unexpected_token.as_str(),
+                    "parser VM v2 expected identifier",
+                );
+            };
+            self.builder.mnemonic = Some(format!(".{name}"));
+            self.cursor = self.cursor.saturating_add(1).min(self.tokens.len());
+        } else {
+            let Some((mut mnemonic, _)) = self.identifier_at_cursor() else {
+                return self.fail_with_code(
+                    self.parser_contract.diagnostics.unexpected_token.as_str(),
+                    "parser VM v2 expected identifier",
+                );
+            };
+            let advance = if self.mnemonic_has_attached_size_plus(&mnemonic) {
+                mnemonic.push('+');
+                2
+            } else {
+                1
+            };
+            self.builder.mnemonic = Some(mnemonic);
+            self.cursor = self.cursor.saturating_add(advance).min(self.tokens.len());
+        }
+
+        self.parse_default_statement_operands()?;
+        Ok(self.finish_statement_ast())
+    }
+
+    fn parse_default_statement_operands(&mut self) -> Result<(), ParseError> {
+        self.operand_boundaries =
+            split_top_level_comma_ranges(self.tokens.as_slice(), self.cursor, self.tokens.len());
+        self.parse_operand_boundaries_into_builder()
+    }
+
+    fn finish_statement_ast(&self) -> LineAst {
+        LineAst::Statement(StatementAst {
+            label: self.builder.label.clone(),
+            mnemonic: self.builder.mnemonic.clone(),
+            operands: self.builder.operands.clone(),
+        })
+    }
+
     fn run(&mut self) -> Result<LineAst, ParseError> {
         if self.tokens.is_empty() {
             self.parsed_line = Some(LineAst::Empty);
@@ -1753,6 +1883,66 @@ mod tests {
                 assert_eq!(statement.operands.len(), 1);
             }
             other => panic!("expected statement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn default_statement_fast_path_matches_default_program_shapes() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let handler: DynExprProcessingHandler<'_> =
+            Rc::new(RefCell::new(Box::new(StubExprHandler)));
+        let program = default_statement_program_for_tests();
+        let corpus = vec![
+            vec![],
+            vec![ident("label", 1, 6)],
+            vec![ident("label", 1, 6), colon(6), ident("nop", 8, 11)],
+            vec![
+                ident("bne.s", 5, 10),
+                operator(OperatorKind::Plus, 10),
+                ident("target", 12, 18),
+            ],
+            vec![
+                dot(5),
+                ident("byte", 6, 10),
+                ident("one", 12, 15),
+                comma(15),
+                ident("two", 17, 20),
+            ],
+            vec![
+                ident("value", 1, 6),
+                operator(OperatorKind::Plus, 7),
+                operator(OperatorKind::Eq, 8),
+                ident("one", 10, 13),
+            ],
+            vec![
+                operator(OperatorKind::Multiply, 5),
+                operator(OperatorKind::Eq, 7),
+                ident("addr", 9, 13),
+            ],
+        ];
+
+        for tokens in corpus {
+            let interpreted = parse_line_with_parser_vm_v2(
+                tokens.clone(),
+                span(20, 20),
+                None,
+                &contract,
+                &program,
+                &request(),
+                exec_context(&model, Some(Rc::clone(&handler))),
+            )
+            .expect("default program should parse");
+            let direct = parse_line_with_default_statement_parser_vm_v2(
+                tokens,
+                span(20, 20),
+                None,
+                &contract,
+                &request(),
+                exec_context(&model, Some(Rc::clone(&handler))),
+            )
+            .expect("default fast path should parse");
+            assert_eq!(format!("{direct:?}"), format!("{interpreted:?}"));
         }
     }
 

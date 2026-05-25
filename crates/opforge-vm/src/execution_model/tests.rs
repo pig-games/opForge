@@ -541,6 +541,7 @@ fn parse_line_with_parser_vm_rejects_retired_parse_core_line_opcode() {
         end_token_text,
         &parser_contract,
         &parser_vm_program,
+        false,
         ParserVmExecContext {
             source_line: source,
             line_num: 1,
@@ -587,6 +588,7 @@ fn parse_line_with_parser_vm_rejects_incompatible_contract_opcode_version() {
         end_token_text,
         &parser_contract,
         &parser_vm_program,
+        false,
         ParserVmExecContext {
             source_line: source,
             line_num: 1,
@@ -634,6 +636,7 @@ fn parse_line_with_parser_vm_rejects_contract_program_opcode_version_mismatch() 
         end_token_text,
         &parser_contract,
         &parser_vm_program,
+        false,
         ParserVmExecContext {
             source_line: source,
             line_num: 1,
@@ -763,6 +766,7 @@ fn parse_line_with_parser_vm_emit_diag_if_no_result_reports_unexpected_token_slo
         end_token_text,
         &parser_contract,
         &parser_vm_program,
+        false,
         ParserVmExecContext {
             source_line: source,
             line_num: 1,
@@ -814,6 +818,7 @@ fn parse_line_with_parser_vm_emit_diag_if_no_result_requires_slot_operand() {
         end_token_text,
         &parser_contract,
         &parser_vm_program,
+        false,
         ParserVmExecContext {
             source_line: source,
             line_num: 1,
@@ -861,6 +866,7 @@ fn parse_line_with_parser_vm_emit_diag_requires_slot_operand() {
         end_token_text,
         &parser_contract,
         &parser_vm_program,
+        false,
         ParserVmExecContext {
             source_line: source,
             line_num: 1,

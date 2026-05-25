@@ -164,6 +164,7 @@ impl TokenizerVmRouteCacheKey {
 pub(crate) struct ResolvedParserVmRoute {
     pub(crate) parser_contract: RuntimeParserContract,
     pub(crate) parser_vm_program: RuntimeParserVmProgram,
+    pub(crate) use_default_statement_fast_path: bool,
     max_parser_tokens_per_line: usize,
     max_parser_ast_nodes_per_line: usize,
     parser_error_code: String,
@@ -173,6 +174,7 @@ impl ResolvedParserVmRoute {
     fn new(
         parser_contract: RuntimeParserContract,
         parser_vm_program: RuntimeParserVmProgram,
+        use_default_statement_fast_path: bool,
         max_parser_tokens_per_line: usize,
         max_parser_ast_nodes_per_line: usize,
     ) -> Self {
@@ -182,6 +184,7 @@ impl ResolvedParserVmRoute {
         Self {
             parser_contract,
             parser_vm_program,
+            use_default_statement_fast_path,
             max_parser_tokens_per_line,
             max_parser_ast_nodes_per_line,
             parser_error_code,
@@ -532,10 +535,14 @@ impl HierarchyExecutionModel {
                 ))
             })?;
         self.enforce_parser_vm_program_budget_for_assembler(&parser_contract, &parser_vm_program)?;
+        let use_default_statement_fast_path = self
+            .core
+            .is_default_statement_parser_vm_program(&parser_vm_program);
 
         let route = Arc::new(ResolvedParserVmRoute::new(
             parser_contract,
             parser_vm_program,
+            use_default_statement_fast_path,
             self.core.budget_limits.max_parser_tokens_per_line,
             self.core.budget_limits.max_parser_ast_nodes_per_line,
         ));

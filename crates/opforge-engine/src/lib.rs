@@ -52,8 +52,9 @@ use vm::vm_opasm::{
     build_srec_output_payload as build_srec_payload_with_vm,
     parse_statement_line_with_model as parse_line_with_vm_model,
     render_dependencies as render_dependencies_with_vm, render_labels as render_labels_with_vm,
-    tokenize_statement_line_with_model as tokenize_with_vm_model, HierarchyExecutionModel,
-    ListingWriter,
+    tokenize_statement_line_with_model as tokenize_with_vm_model,
+    tokenize_statement_line_with_model_and_profile as tokenize_with_vm_model_and_profile,
+    HierarchyExecutionModel, ListingWriter,
 };
 
 pub use io::{
@@ -164,13 +165,29 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
         ),
         ParseError,
     > {
-        let tokenize_started_at = Instant::now();
-        let (tokens, end_span, end_token_text) =
-            tokenize_with_vm_model(model, cpu_id, None, line, line_num, register_checker)?;
-        phase_profile::record_execution_path_for_active_scope(
-            "vm.parse.router.tokenize",
-            tokenize_started_at.elapsed(),
-        );
+        let profile_tokenize = phase_profile::path_profile_is_enabled();
+        let tokenize_started_at = profile_tokenize.then(Instant::now);
+        let (tokens, end_span, end_token_text) = if profile_tokenize {
+            tokenize_with_vm_model_and_profile(
+                model,
+                cpu_id,
+                None,
+                line,
+                line_num,
+                register_checker,
+                |label, elapsed| {
+                    phase_profile::record_execution_path_for_active_scope(label, elapsed);
+                },
+            )?
+        } else {
+            tokenize_with_vm_model(model, cpu_id, None, line, line_num, register_checker)?
+        };
+        if let Some(started_at) = tokenize_started_at {
+            phase_profile::record_execution_path_for_active_scope(
+                "vm.parse.router.tokenize",
+                started_at.elapsed(),
+            );
+        }
         let tokenized = asm::opasm::TokenizedStatement {
             tokens,
             end_span,

@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use opcore::parser::{Expr, LineAst, ParseError};
 use opcore::tokenizer::{Span, Token};
@@ -69,20 +70,55 @@ pub fn tokenize_parser_tokens_with_model(
     line_num: u32,
     register_checker: &RegisterChecker,
 ) -> Result<(Vec<Token>, Span, Option<String>), ParseError> {
+    tokenize_parser_tokens_with_model_and_profile(
+        model,
+        cpu_id,
+        dialect_override,
+        line,
+        line_num,
+        register_checker,
+        |_, _| {},
+    )
+}
+
+pub fn tokenize_parser_tokens_with_model_and_profile(
+    model: &HierarchyExecutionModel,
+    cpu_id: &str,
+    dialect_override: Option<&str>,
+    line: &str,
+    line_num: u32,
+    register_checker: &RegisterChecker,
+    mut record_profile: impl FnMut(&str, Duration),
+) -> Result<(Vec<Token>, Span, Option<String>), ParseError> {
     tokenizer_runtime_utils::validate_line_column_one(line, line_num)?;
+    let portable_started_at = Instant::now();
     let portable_tokens = model
         .tokenize_portable_statement_for_assembler(cpu_id, dialect_override, line, line_num)
         .map_err(|err| {
             runtime_bridge_error_to_parse_error(err, parse_span_at_end(line, line_num))
         })?;
+    record_profile(
+        "vm.parse.router.tokenize.portable",
+        portable_started_at.elapsed(),
+    );
 
+    let convert_started_at = Instant::now();
     let core_tokens = tokenizer_runtime_utils::runtime_tokens_to_core_tokens(
         &portable_tokens,
         Some(line),
         register_checker,
     )?;
+    record_profile(
+        "vm.parse.router.tokenize.convert",
+        convert_started_at.elapsed(),
+    );
+    let metadata_started_at = Instant::now();
     let (end_span, end_token_text) =
         tokenizer_runtime_utils::parser_end_metadata(line, line_num, &core_tokens);
+    record_profile(
+        "vm.parse.router.tokenize.metadata",
+        metadata_started_at.elapsed(),
+    );
     Ok((core_tokens, end_span, end_token_text))
 }
 

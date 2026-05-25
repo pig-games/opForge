@@ -67,34 +67,64 @@ impl HierarchyExecutionModel {
         source_line: &str,
         line_num: u32,
     ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
-        let resolved = self.core.resolve_pipeline(cpu_id, dialect_override)?;
+        let route = self.resolve_tokenizer_vm_route_for_assembler(cpu_id, dialect_override)?;
         let request = PortableTokenizeRequest {
-            family_id: resolved.family_id.as_str(),
-            cpu_id: resolved.cpu_id.as_str(),
-            dialect_id: resolved.dialect_id.as_str(),
+            family_id: route.family_id.as_str(),
+            cpu_id: route.cpu_id.as_str(),
+            dialect_id: route.dialect_id.as_str(),
             source_line,
             source_stream: PortableTokenizerByteStream::from_source_line(source_line),
             line_num,
-            token_policy: self.token_policy_for_resolved(&resolved),
+            token_policy: route.token_policy.clone(),
         };
-        let vm_program = self
+        let tokens = self.tokenize_with_vm_core(&request, &route.tokenizer_vm_program)?;
+        if tokens.is_empty()
+            && !source_line_can_tokenize_to_empty(source_line, &request.token_policy)
+        {
+            return Err(RuntimeBridgeError::Resolve(format!(
+                "{}: tokenizer VM produced no tokens for non-empty source line",
+                route.tokenizer_vm_program.diagnostics.invalid_char
+            )));
+        }
+        Ok(tokens)
+    }
+
+    pub(crate) fn resolve_tokenizer_vm_route_for_assembler(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+    ) -> Result<std::sync::Arc<ResolvedTokenizerVmRoute>, RuntimeBridgeError> {
+        let key = TokenizerVmRouteCacheKey::new(cpu_id, dialect_override);
+        if let Some(route) = self
+            .tokenizer_vm_route_cache
+            .lock()
+            .expect("tokenizer VM route cache lock poisoned")
+            .get(&key)
+        {
+            return Ok(std::sync::Arc::clone(route));
+        }
+
+        let resolved = self.core.resolve_pipeline(cpu_id, dialect_override)?;
+        let token_policy = self.token_policy_for_resolved(&resolved);
+        let tokenizer_vm_program = self
             .tokenizer_vm_program_for_resolved(&resolved)
             .ok_or_else(|| {
                 RuntimeBridgeError::Resolve(format!(
                     "missing tokenizer VM program for family '{}'",
                     resolved.family_id
                 ))
-            })?;
-        let tokens = self.tokenize_with_vm_core(&request, vm_program)?;
-        if tokens.is_empty()
-            && !source_line_can_tokenize_to_empty(source_line, &request.token_policy)
-        {
-            return Err(RuntimeBridgeError::Resolve(format!(
-                "{}: tokenizer VM produced no tokens for non-empty source line",
-                vm_program.diagnostics.invalid_char
-            )));
-        }
-        Ok(tokens)
+            })?
+            .clone();
+        let route = std::sync::Arc::new(ResolvedTokenizerVmRoute::new(
+            &resolved,
+            token_policy,
+            tokenizer_vm_program,
+        ));
+        self.tokenizer_vm_route_cache
+            .lock()
+            .expect("tokenizer VM route cache lock poisoned")
+            .insert(key, std::sync::Arc::clone(&route));
+        Ok(route)
     }
 
     pub fn resolve_tokenizer_vm_program(

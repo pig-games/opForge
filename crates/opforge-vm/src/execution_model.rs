@@ -145,6 +145,21 @@ impl ParserVmRouteCacheKey {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TokenizerVmRouteCacheKey {
+    cpu_id: String,
+    dialect_override: Option<String>,
+}
+
+impl TokenizerVmRouteCacheKey {
+    fn new(cpu_id: &str, dialect_override: Option<&str>) -> Self {
+        Self {
+            cpu_id: cpu_id.to_string(),
+            dialect_override: dialect_override.map(str::to_string),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct ResolvedParserVmRoute {
     pub(crate) parser_contract: RuntimeParserContract,
@@ -202,6 +217,31 @@ impl ResolvedParserVmRoute {
             ));
         }
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ResolvedTokenizerVmRoute {
+    pub(crate) family_id: String,
+    pub(crate) cpu_id: String,
+    pub(crate) dialect_id: String,
+    pub(crate) token_policy: RuntimeTokenPolicy,
+    pub(crate) tokenizer_vm_program: RuntimeTokenizerVmProgram,
+}
+
+impl ResolvedTokenizerVmRoute {
+    fn new(
+        resolved: &ResolvedHierarchy,
+        token_policy: RuntimeTokenPolicy,
+        tokenizer_vm_program: RuntimeTokenizerVmProgram,
+    ) -> Self {
+        Self {
+            family_id: resolved.family_id.clone(),
+            cpu_id: resolved.cpu_id.clone(),
+            dialect_id: resolved.dialect_id.clone(),
+            token_policy,
+            tokenizer_vm_program,
+        }
     }
 }
 
@@ -293,6 +333,8 @@ pub struct HierarchyExecutionModel {
     core: RuntimeModelCore,
     expr_resolvers: HashMap<String, ExprResolverEntry>,
     parser_vm_route_cache: Mutex<HashMap<ParserVmRouteCacheKey, Arc<ResolvedParserVmRoute>>>,
+    tokenizer_vm_route_cache:
+        Mutex<HashMap<TokenizerVmRouteCacheKey, Arc<ResolvedTokenizerVmRoute>>>,
 }
 
 impl HierarchyExecutionModel {
@@ -301,6 +343,7 @@ impl HierarchyExecutionModel {
             core,
             expr_resolvers: default_expr_resolvers(),
             parser_vm_route_cache: Mutex::new(HashMap::new()),
+            tokenizer_vm_route_cache: Mutex::new(HashMap::new()),
         }
     }
 

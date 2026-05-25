@@ -12,6 +12,7 @@ use registry::registry::OperandSet;
 use registry::syntax::RegisterChecker;
 use std::io;
 use std::path::PathBuf;
+use std::time::Duration;
 use types::artifacts::{LabelOutputFormat, OutputFormat};
 use types::image::ImageStore;
 use types::symbol::SymbolTable;
@@ -55,6 +56,27 @@ pub fn tokenize_statement_line_with_model(
         line,
         line_num,
         register_checker,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn tokenize_statement_line_with_model_and_profile(
+    model: &HierarchyExecutionModel,
+    cpu_id: &str,
+    dialect_override: Option<&str>,
+    line: &str,
+    line_num: u32,
+    register_checker: &RegisterChecker,
+    record_profile: impl FnMut(&str, Duration),
+) -> Result<(Vec<Token>, Span, Option<String>), ParseError> {
+    crate::vm_opasm_parse::tokenize_parser_tokens_with_model_and_profile(
+        model,
+        cpu_id,
+        dialect_override,
+        line,
+        line_num,
+        register_checker,
+        record_profile,
     )
 }
 

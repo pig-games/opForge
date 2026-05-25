@@ -313,11 +313,50 @@ architecture boundaries.
     vectors without cloning on the production VM route; tokenizer diagnostics,
     lockstep behavior, listing output, and package semantics remain unchanged.
 
-- [ ] Item 10: Reassess product-build feature stripping for tooling traces
+- [x] Item 10: Cache tokenizer VM route setup and split tokenizer profiling
+  - Source requirement or finding IDs: after Items 7-9, profiling showed
+    `vm.parse.router.tokenize` as the dominant remaining parse sub-bucket; the
+    tokenizer path resolved active CPU/dialect hierarchy, token policy, and
+    tokenizer VM program on every line.
+  - Expected files: `crates/opforge-vm/src/execution_model.rs`,
+    `crates/opforge-vm/src/execution_model/tokenizer_bridge.rs`,
+    `crates/opforge-vm/src/vm_opasm.rs`,
+    `crates/opforge-vm/src/vm_opasm_parse.rs`,
+    `crates/opforge-engine/src/lib.rs`, and this plan.
+  - Full quality gates: `cargo fmt --all`; `cargo check -p vm`;
+    `cargo check -p asm`; `cargo check -p engine`;
+    `cargo check -p cli --bin opforge`; relevant VM/package parser and
+    repetition tests;
+    `cargo test -p asm qualified_use_reachability_perf_regression_multi_module_fixture`;
+    `scripts/workflow/run_rust_quality_gate.sh`; full native AmigaOS workload
+    with listing byte comparison before/after.
+  - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
+    for this plan must return `PASS` before committing the item.
+  - Commit outcome: completed in one VM/tokenizer commit. `HierarchyExecutionModel`
+    now caches tokenizer VM route setup by active CPU and dialect, reusing the
+    resolved hierarchy identity, token policy, and tokenizer VM program for
+    the immutable runtime model. Execution-path profiling also splits
+    `vm.parse.router.tokenize` into `portable`, `convert`, and `metadata`
+    sub-buckets, with substep timers used only when execution-path profiling is
+    enabled. On the native AmigaOS workload with listing enabled,
+    `assembly_total` dropped from the previous committed `2353.859ms` baseline
+    to `2352.044ms`; `pass1.parse_line_ast` dropped from `615.984ms` to
+    `604.961ms`; `vm.parse.router.tokenize` measured `228.928ms`, split into
+    `157.763ms` portable tokenizer VM execution, `30.599ms` runtime-to-core
+    conversion, and `1.638ms` end metadata. Listing output matched the
+    owned-token baseline byte-for-byte. `scripts/workflow/run_rust_quality_gate.sh`
+    still fails on the known pre-existing CPU-boundary findings, accepted by
+    maintainer for this VM/package performance series.
+  - Definition of done: tokenizer VM parsing reuses resolved tokenizer route
+    setup for the same model, CPU, and dialect; tokenizer diagnostics, token
+    policy semantics, listing output, and package behavior remain unchanged;
+    tokenizer profiling remains opt-in and disabled by default.
+
+- [ ] Item 11: Reassess product-build feature stripping for tooling traces
   - Source requirement or finding IDs: original optimization request asked to
     verify whether lockstep/runtime traces/LSP/tooling metadata remain on
-    production hot paths and can be feature-gated later; Items 7, 8, and 9
-    showed larger hot-path costs in duplicate tokenization, repeated parser
+    production hot paths and can be feature-gated later; Items 7-10 showed
+    larger hot-path costs in duplicate tokenization, repeated parser/tokenizer
     route setup, and token-vector cloning, so trace stripping remains a
     separate evidence-driven follow-up.
   - Expected files: `crates/opforge-asm/src/line.rs`,

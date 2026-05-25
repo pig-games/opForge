@@ -4109,6 +4109,7 @@ mod tests {
                     cpu_override: Some("8085".to_string()),
                     max_loop_iterations: 123,
                     opasm_package_path: None,
+                    ..OwnedExecutionOptions::default()
                 },
                 output: OwnedOutputOptions {
                     out_dir: Some(out_dir.clone()),

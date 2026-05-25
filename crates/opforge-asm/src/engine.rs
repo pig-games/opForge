@@ -9,7 +9,8 @@ use crate::line::{
 use crate::phase_profile::{self, PhaseBucket};
 use crate::prepared_line::{PreparedLine, PreparedSource};
 use crate::repetition_driver::{
-    execute_lines as execute_repetition_lines, RepetitionPass, UnscopedRepeatKind,
+    execute_lines as execute_repetition_lines, RegularLineExecution, RepetitionPass,
+    UnscopedRepeatKind,
 };
 use asm::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, PassCounts, Severity};
 use asm::listing::{ListingLine, ListingWriter};
@@ -2167,21 +2168,15 @@ impl RepetitionPass for Pass1RepetitionTraversal<'_> {
 
     fn execute_regular_line(
         &mut self,
-        asm_line: &mut AsmLine<'_>,
-        src: &str,
-        line_num: u32,
-        addr: &mut u32,
-        parsed_line: Option<CachedRuntimeParseResult>,
-        prepared_line: Option<&PreparedLine>,
-        _all_lines: &[String],
+        request: RegularLineExecution<'_, '_>,
     ) -> Result<(), Self::Error> {
         let ctx = ExecuteRegularLinePass1Context {
-            asm_line,
-            src,
-            line_num,
-            addr,
-            parsed_line,
-            prepared_line,
+            asm_line: request.asm_line,
+            src: request.src,
+            line_num: request.line_num,
+            addr: request.addr,
+            parsed_line: request.parsed_line,
+            prepared_line: request.prepared_line,
             counts: self.counts,
             diagnostics: self.diagnostics,
             module_timing_profile: self.module_timing_profile,
@@ -2247,27 +2242,21 @@ impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
 
     fn execute_regular_line(
         &mut self,
-        asm_line: &mut AsmLine<'_>,
-        src: &str,
-        line_num: u32,
-        addr: &mut u32,
-        parsed_line: Option<CachedRuntimeParseResult>,
-        prepared_line: Option<&PreparedLine>,
-        all_lines: &[String],
+        request: RegularLineExecution<'_, '_>,
     ) -> Result<(), Self::Error> {
         Assembler::execute_regular_line_pass2(
-            asm_line,
-            src,
-            line_num,
-            addr,
-            parsed_line,
-            prepared_line,
+            request.asm_line,
+            request.src,
+            request.line_num,
+            request.addr,
+            request.parsed_line,
+            request.prepared_line,
             self.counts,
             self.diagnostics,
             self.listing,
             self.image,
             self.module_timing_profile,
-            all_lines,
+            request.all_lines,
         )
     }
 }

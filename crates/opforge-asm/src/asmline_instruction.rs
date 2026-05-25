@@ -14,6 +14,17 @@ use crate::prepared_line::PreparedLine;
 use crate::prepared_line::PreparedInstructionRoute;
 
 #[cfg(not(feature = "vm-runtime-only"))]
+struct BoundInstructionRoute<'a, 'pipeline> {
+    pipeline: &'a ResolvedPipeline<'pipeline>,
+    mnemonic: &'a str,
+    operands: &'a [Expr],
+    effective_operands: &'a [Expr],
+    family_operands: &'a dyn FamilyOperandSet,
+    mapped_mnemonic: &'a str,
+    mapped_operands: &'a dyn FamilyOperandSet,
+}
+
+#[cfg(not(feature = "vm-runtime-only"))]
 #[derive(Debug, Clone)]
 struct InstructionOutputFixupPlan {
     offset: u32,
@@ -87,15 +98,15 @@ impl<'a> AsmLine<'a> {
                                 "prepared.instruction_route_cache_hit",
                                 std::time::Duration::ZERO,
                             );
-                            return self.process_bound_instruction_route(
-                                &pipeline,
+                            return self.process_bound_instruction_route(BoundInstructionRoute {
+                                pipeline: &pipeline,
                                 mnemonic,
                                 operands,
                                 effective_operands,
-                                route.family_operands.as_ref(),
-                                &route.mapped_mnemonic,
-                                route.mapped_operands.as_ref(),
-                            );
+                                family_operands: route.family_operands.as_ref(),
+                                mapped_mnemonic: &route.mapped_mnemonic,
+                                mapped_operands: route.mapped_operands.as_ref(),
+                            });
                         }
                     }
                 }
@@ -232,41 +243,45 @@ impl<'a> AsmLine<'a> {
                         .expect("prepared instruction route was just stored");
                     let effective_operands =
                         route.rewritten_operands.as_deref().unwrap_or(operands);
-                    return self.process_bound_instruction_route(
-                        &pipeline,
+                    return self.process_bound_instruction_route(BoundInstructionRoute {
+                        pipeline: &pipeline,
                         mnemonic,
                         operands,
                         effective_operands,
-                        route.family_operands.as_ref(),
-                        &route.mapped_mnemonic,
-                        route.mapped_operands.as_ref(),
-                    );
+                        family_operands: route.family_operands.as_ref(),
+                        mapped_mnemonic: &route.mapped_mnemonic,
+                        mapped_operands: route.mapped_operands.as_ref(),
+                    });
                 }
             }
 
-            self.process_bound_instruction_route(
-                &pipeline,
+            self.process_bound_instruction_route(BoundInstructionRoute {
+                pipeline: &pipeline,
                 mnemonic,
                 operands,
                 effective_operands,
-                family_operands.as_ref(),
-                &mapped_mnemonic,
-                mapped_operands.as_ref(),
-            )
+                family_operands: family_operands.as_ref(),
+                mapped_mnemonic: &mapped_mnemonic,
+                mapped_operands: mapped_operands.as_ref(),
+            })
         }
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
     fn process_bound_instruction_route(
         &mut self,
-        pipeline: &ResolvedPipeline<'_>,
-        mnemonic: &str,
-        operands: &[Expr],
-        effective_operands: &[Expr],
-        family_operands: &dyn FamilyOperandSet,
-        mapped_mnemonic: &str,
-        mapped_operands: &dyn FamilyOperandSet,
+        route: BoundInstructionRoute<'_, '_>,
     ) -> LineStatus {
+        let BoundInstructionRoute {
+            pipeline,
+            mnemonic,
+            operands,
+            effective_operands,
+            family_operands,
+            mapped_mnemonic,
+            mapped_operands,
+        } = route;
+
         if let Some(status) = self.try_encode_instruction_via_runtime_expr(
             pipeline,
             mnemonic,
@@ -508,7 +523,7 @@ impl<'a> AsmLine<'a> {
                 }
                 Ok(None) => self.failure_instruction_not_found(
                     LineStatus::Error,
-                    &pipeline,
+                    pipeline,
                     mnemonic,
                     family_operands,
                 ),

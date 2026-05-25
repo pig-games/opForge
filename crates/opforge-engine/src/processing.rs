@@ -279,6 +279,7 @@ pub fn editor_route_line_with_model_in_mode(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn editor_route_line_with_model_in_mode_with_trace(
     model: &HierarchyExecutionModel,
     cpu_id: &str,

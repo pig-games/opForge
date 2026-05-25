@@ -1678,36 +1678,64 @@ fn run_assembly_with_prepared(
         Box::new(std::io::sink())
     };
     let mut list_output = BufWriter::new(list_output);
-    let mut listing = if listing_requested {
-        ListingWriter::new_with_options(
-            &mut list_output,
-            request.debug_conditionals,
-            request.tab_size,
-        )
-    } else {
-        ListingWriter::disabled_with_options(
-            &mut list_output,
-            request.debug_conditionals,
-            request.tab_size,
-        )
-    };
-    let listing_header_started_at = Instant::now();
-    if let Err(err) = listing.header(request.header_title) {
-        let traces = assembler.runtime_processing_traces().to_vec();
-        return Err(AsmRunError::new_with_traces(
-            AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-            assembler.take_diagnostics(),
-            expanded_lines.clone(),
-            traces,
-        ));
-    }
-    phase_profile::record_direct(
-        PhaseBucket::Pass2ListingGeneration,
-        listing_header_started_at.elapsed(),
-    );
-    let pass2 = match assembler.pass2(&expanded_lines, &mut listing) {
-        Ok(counts) => counts,
-        Err(err) => {
+    let pass2;
+    let generated_output;
+    {
+        let mut listing = if listing_requested {
+            ListingWriter::new_with_options(
+                &mut list_output,
+                request.debug_conditionals,
+                request.tab_size,
+            )
+        } else {
+            ListingWriter::disabled_with_options(
+                &mut list_output,
+                request.debug_conditionals,
+                request.tab_size,
+            )
+        };
+        let listing_header_started_at = Instant::now();
+        if let Err(err) = listing.header(request.header_title) {
+            let traces = assembler.runtime_processing_traces().to_vec();
+            return Err(AsmRunError::new_with_traces(
+                AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
+                assembler.take_diagnostics(),
+                expanded_lines.clone(),
+                traces,
+            ));
+        }
+        phase_profile::record_direct(
+            PhaseBucket::Pass2ListingGeneration,
+            listing_header_started_at.elapsed(),
+        );
+        pass2 = match assembler.pass2(&expanded_lines, &mut listing) {
+            Ok(counts) => counts,
+            Err(err) => {
+                let traces = assembler.runtime_processing_traces().to_vec();
+                return Err(AsmRunError::new_with_traces(
+                    AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
+                    remap_diags(assembler.take_diagnostics()),
+                    expanded_lines.clone(),
+                    traces,
+                ));
+            }
+        };
+        generated_output = assembler.image().entries().map_err(|err| {
+            let traces = assembler.runtime_processing_traces().to_vec();
+            AsmRunError::new_with_traces(
+                AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
+                remap_diags(assembler.take_diagnostics()),
+                expanded_lines.clone(),
+                traces,
+            )
+        })?;
+        let listing_footer_started_at = Instant::now();
+        if let Err(err) = listing.footer_with_generated_output(
+            &pass2,
+            assembler.symbols(),
+            assembler.image().num_entries(),
+            &generated_output,
+        ) {
             let traces = assembler.runtime_processing_traces().to_vec();
             return Err(AsmRunError::new_with_traces(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
@@ -1716,36 +1744,11 @@ fn run_assembly_with_prepared(
                 traces,
             ));
         }
-    };
-    let generated_output = assembler.image().entries().map_err(|err| {
-        let traces = assembler.runtime_processing_traces().to_vec();
-        AsmRunError::new_with_traces(
-            AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-            remap_diags(assembler.take_diagnostics()),
-            expanded_lines.clone(),
-            traces,
-        )
-    })?;
-    let listing_footer_started_at = Instant::now();
-    if let Err(err) = listing.footer_with_generated_output(
-        &pass2,
-        assembler.symbols(),
-        assembler.image().num_entries(),
-        &generated_output,
-    ) {
-        let traces = assembler.runtime_processing_traces().to_vec();
-        return Err(AsmRunError::new_with_traces(
-            AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-            remap_diags(assembler.take_diagnostics()),
-            expanded_lines.clone(),
-            traces,
-        ));
+        phase_profile::record_direct(
+            PhaseBucket::Pass2ListingGeneration,
+            listing_footer_started_at.elapsed(),
+        );
     }
-    phase_profile::record_direct(
-        PhaseBucket::Pass2ListingGeneration,
-        listing_footer_started_at.elapsed(),
-    );
-    drop(listing);
     list_output.flush().map_err(|err| {
         AsmRunError::new_with_traces(
             AsmError::new(AsmErrorKind::Io, &err.to_string(), None),

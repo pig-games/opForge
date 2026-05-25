@@ -45,14 +45,18 @@ pub(crate) trait RepetitionPass {
 
     fn execute_regular_line(
         &mut self,
-        asm_line: &mut AsmLine<'_>,
-        src: &str,
-        line_num: u32,
-        addr: &mut u32,
-        parsed_line: Option<CachedRuntimeParseResult>,
-        prepared_line: Option<&PreparedLine>,
-        all_lines: &[String],
+        request: RegularLineExecution<'_, '_>,
     ) -> Result<(), Self::Error>;
+}
+
+pub(crate) struct RegularLineExecution<'a, 'line> {
+    pub(crate) asm_line: &'a mut AsmLine<'line>,
+    pub(crate) src: &'a str,
+    pub(crate) line_num: u32,
+    pub(crate) addr: &'a mut u32,
+    pub(crate) parsed_line: Option<CachedRuntimeParseResult>,
+    pub(crate) prepared_line: Option<&'a PreparedLine>,
+    pub(crate) all_lines: &'a [String],
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -447,15 +451,15 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
 
         let parsed_line =
             parsed_line.filter(|parsed| asm_line.can_process_cached_runtime_parse(parsed));
-        ctx.execute_regular_line(
+        ctx.execute_regular_line(RegularLineExecution {
             asm_line,
             src,
             line_num,
             addr,
             parsed_line,
             prepared_line,
-            lines,
-        )?;
+            all_lines: lines,
+        })?;
         idx = idx.saturating_add(1);
     }
 
@@ -504,11 +508,15 @@ fn find_matching_prepared_loop(
 
     let mut depth = 1usize;
     let mut found = None;
-    for idx in start_idx..end_idx_exclusive {
+    for (idx, src) in lines
+        .iter()
+        .enumerate()
+        .take(end_idx_exclusive)
+        .skip(start_idx)
+    {
         let line_num = u32::try_from(idx)
             .unwrap_or(u32::MAX.saturating_sub(1))
             .saturating_add(1);
-        let src = &lines[idx];
         let prepared_line = prepared_source.and_then(|source| source.get(idx));
         let Some(parsed) = parse_or_prepare_line(asm_line, src, line_num, prepared_line) else {
             continue;

@@ -281,12 +281,45 @@ architecture boundaries.
     budget diagnostics, parser VM execution, listing output, and package
     semantics remain unchanged.
 
-- [ ] Item 9: Reassess product-build feature stripping for tooling traces
+- [x] Item 9: Consume pretokenized VM statements without cloning token vectors
+  - Source requirement or finding IDs: Item 7 introduced a pretokenized
+    engine-router handoff, but the initial safe version passed borrowed
+    `TokenizedStatement` values and cloned token vectors before VM statement
+    parsing.
+  - Expected files: `crates/opforge-asm/src/opasm.rs`,
+    `crates/opforge-engine/src/lib.rs`,
+    `crates/opforge-engine/src/processing.rs`, and this plan.
+  - Full quality gates: `cargo fmt --all`; `cargo check -p asm`;
+    `cargo check -p engine`; `cargo check -p cli --bin opforge`; relevant
+    VM/package parser and repetition tests;
+    `cargo test -p asm qualified_use_reachability_perf_regression_multi_module_fixture`;
+    `scripts/workflow/run_rust_quality_gate.sh`; full native AmigaOS workload
+    with listing byte comparison before/after.
+  - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
+    for this plan must return `PASS` before committing the item.
+  - Commit outcome: completed in one VM/parser ownership commit. The engine
+    router now transfers owned pretokenized statements into opasm VM statement
+    parsing, while the public `tokenize_statement` API remains source
+    compatible and lockstep mode retains explicit comparison behavior. On the
+    native AmigaOS workload with listing enabled, `assembly_total` dropped from
+    the previous committed `2380.827ms` baseline to `2353.859ms`;
+    `pass1.parse_line_ast` dropped from `627.076ms` to `615.984ms`;
+    `vm.parse.router.processor_route` dropped from `228.459ms` to
+    `223.311ms`. Listing output matched the parser-route-cache baseline
+    byte-for-byte. `scripts/workflow/run_rust_quality_gate.sh` still fails on
+    the known pre-existing CPU-boundary findings, accepted by maintainer for
+    this VM/package performance series.
+  - Definition of done: VM statement parsing consumes pretokenized token
+    vectors without cloning on the production VM route; tokenizer diagnostics,
+    lockstep behavior, listing output, and package semantics remain unchanged.
+
+- [ ] Item 10: Reassess product-build feature stripping for tooling traces
   - Source requirement or finding IDs: original optimization request asked to
     verify whether lockstep/runtime traces/LSP/tooling metadata remain on
-    production hot paths and can be feature-gated later; Items 7 and 8 showed
-    larger hot-path costs in duplicate tokenization and repeated parser route
-    setup, so trace stripping remains a separate evidence-driven follow-up.
+    production hot paths and can be feature-gated later; Items 7, 8, and 9
+    showed larger hot-path costs in duplicate tokenization, repeated parser
+    route setup, and token-vector cloning, so trace stripping remains a
+    separate evidence-driven follow-up.
   - Expected files: `crates/opforge-asm/src/line.rs`,
     `crates/opforge-engine/src/lib.rs`, feature declarations if needed, and
     focused trace/lockstep tests.

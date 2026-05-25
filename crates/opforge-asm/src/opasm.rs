@@ -30,7 +30,7 @@ pub struct TokenizedStatement {
     pub end_token_text: Option<String>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct StatementRequest<'a> {
     pub execution_mode: ExecutionMode,
     pub model: Option<&'a HierarchyExecutionModel>,
@@ -42,7 +42,7 @@ pub struct StatementRequest<'a> {
     pub line_num: u32,
     pub register_checker: &'a RegisterChecker,
     pub collect_processing_trace: bool,
-    pub pretokenized: Option<&'a TokenizedStatement>,
+    pub pretokenized: Option<TokenizedStatement>,
 }
 
 impl<'a> StatementRequest<'a> {
@@ -99,7 +99,7 @@ impl<'a> StatementRequest<'a> {
         self
     }
 
-    pub fn with_pretokenized(mut self, pretokenized: Option<&'a TokenizedStatement>) -> Self {
+    pub fn with_pretokenized(mut self, pretokenized: Option<TokenizedStatement>) -> Self {
         self.pretokenized = pretokenized;
         self
     }
@@ -161,6 +161,12 @@ pub fn default_register_checker() -> &'static RegisterChecker {
 }
 
 pub fn tokenize_statement(request: StatementRequest<'_>) -> Result<TokenizedStatement, ParseError> {
+    tokenize_statement_from_request(&request)
+}
+
+fn tokenize_statement_from_request(
+    request: &StatementRequest<'_>,
+) -> Result<TokenizedStatement, ParseError> {
     let (tokens, end_span, end_token_text) = tokenize_statement_line_with_registers(
         request.line,
         request.line_num,
@@ -190,17 +196,18 @@ pub fn process_statement(
     }
     let mut lockstep_report = LockstepReport::default();
     let parsed = match request.execution_mode {
-        ExecutionMode::Rust => parse_statement_rust(request)?,
+        ExecutionMode::Rust => parse_statement_rust(&request)?,
         ExecutionMode::Vm => {
             parse_statement_vm(request, expr_processor, &mut trace, &mut lockstep_report)?
         }
         ExecutionMode::Lockstep { continuation_head } => {
-            let rust_parsed = parse_statement_rust(request);
+            let rust_parsed = parse_statement_rust(&request);
+            let report_request = request.clone();
             let vm_parsed =
                 parse_statement_vm(request, expr_processor, &mut trace, &mut lockstep_report);
             lockstep_report.extend(record_lockstep_result(
                 continuation_head,
-                request,
+                &report_request,
                 &rust_parsed,
                 &vm_parsed,
             ));
@@ -218,8 +225,10 @@ pub fn process_statement(
     })
 }
 
-fn parse_statement_rust(request: StatementRequest<'_>) -> Result<StatementParseResult, ParseError> {
-    let tokenized = tokenize_statement(request)?;
+fn parse_statement_rust(
+    request: &StatementRequest<'_>,
+) -> Result<StatementParseResult, ParseError> {
+    let tokenized = tokenize_statement_from_request(request)?;
     let mut parser = Parser::from_tokens(
         tokenized.tokens,
         tokenized.end_span,
@@ -265,9 +274,9 @@ fn parse_statement_vm(
                 request.expr_parser_force_host_families,
                 request.line,
                 request.line_num,
-                tokenized.tokens.clone(),
+                tokenized.tokens,
                 tokenized.end_span,
-                tokenized.end_token_text.clone(),
+                tokenized.end_token_text,
                 Some(expr_handler),
             )
         } else {
@@ -292,9 +301,9 @@ fn parse_statement_vm(
             request.expr_parser_force_host_families,
             request.line,
             request.line_num,
-            tokenized.tokens.clone(),
+            tokenized.tokens,
             tokenized.end_span,
-            tokenized.end_token_text.clone(),
+            tokenized.end_token_text,
             None,
         )
     } else {
@@ -319,7 +328,7 @@ fn parse_statement_vm(
 
 fn record_lockstep_result(
     continuation_head: ContinuationHead,
-    request: StatementRequest<'_>,
+    request: &StatementRequest<'_>,
     rust_outcome: &Result<StatementParseResult, ParseError>,
     vm_outcome: &Result<StatementParseResult, ParseError>,
 ) -> LockstepReport {

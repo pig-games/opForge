@@ -313,7 +313,7 @@ pub(crate) fn editor_route_statement_with_model_in_mode_with_trace(
     register_checker: &RegisterChecker,
     execution_mode: ExecutionMode,
     collect_processing_trace: bool,
-    pretokenized: Option<&asm::opasm::TokenizedStatement>,
+    pretokenized: Option<asm::opasm::TokenizedStatement>,
 ) -> Result<
     (
         asm::opasm::StatementParseResult,
@@ -337,11 +337,11 @@ pub(crate) fn editor_route_statement_with_model_in_mode_with_trace(
 
     match opcore_outcome {
         ProcessingOutcome::Done(ast) => {
-            let tokenized = match pretokenized {
-                Some(tokenized) => tokenized.clone(),
+            let (end_span, end_token_text) = match pretokenized {
+                Some(tokenized) => (tokenized.end_span, tokenized.end_token_text),
                 None => {
                     let tokenize_started_at = Instant::now();
-                    let (tokens, end_span, end_token_text) = tokenize_statement_line_with_model(
+                    let (_, end_span, end_token_text) = tokenize_statement_line_with_model(
                         model,
                         cpu_id,
                         dialect_override,
@@ -354,18 +354,14 @@ pub(crate) fn editor_route_statement_with_model_in_mode_with_trace(
                         "vm.parse.router.tokenize",
                         tokenize_started_at.elapsed(),
                     );
-                    asm::opasm::TokenizedStatement {
-                        tokens,
-                        end_span,
-                        end_token_text,
-                    }
+                    (end_span, end_token_text)
                 }
             };
             Ok((
                 asm::opasm::StatementParseResult {
                     ast,
-                    end_span: tokenized.end_span,
-                    end_token_text: tokenized.end_token_text,
+                    end_span,
+                    end_token_text,
                 },
                 trace,
                 lockstep_report,
@@ -427,7 +423,7 @@ struct ProcessorLineRequestContext<'a> {
     trace: &'a mut LineProcessingTrace,
     lockstep_report: &'a mut LockstepReport,
     collect_processing_trace: bool,
-    pretokenized: Option<&'a asm::opasm::TokenizedStatement>,
+    pretokenized: Option<asm::opasm::TokenizedStatement>,
 }
 
 fn route_processor_line_request(

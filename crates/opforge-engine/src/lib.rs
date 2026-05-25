@@ -187,7 +187,7 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
                 register_checker,
                 self.execution_mode,
                 collect_runtime_trace,
-                Some(&tokenized),
+                Some(tokenized),
             )
             .map_err(|err| match err {
                 EngineError::Core(err) => core_error_into_parse_error(err, line_num),

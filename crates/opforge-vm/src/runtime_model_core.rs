@@ -636,6 +636,14 @@ impl RuntimeModelCore {
         vm_program: &RuntimeTokenizerVmProgram,
     ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
         self.ensure_tokenizer_vm_program_compatible_for_assembler(vm_program)?;
+        self.tokenize_with_prevalidated_vm_core(request, vm_program)
+    }
+
+    pub fn tokenize_with_prevalidated_vm_core(
+        &self,
+        request: &PortableTokenizeRequest<'_>,
+        vm_program: &RuntimeTokenizerVmProgram,
+    ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
         if vm_program.state_entry_offsets.is_empty() {
             return Err(RuntimeBridgeError::Resolve(format!(
                 "{}: tokenizer VM state table is empty",

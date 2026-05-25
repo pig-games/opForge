@@ -77,7 +77,8 @@ impl HierarchyExecutionModel {
             line_num,
             token_policy: route.token_policy.clone(),
         };
-        let tokens = self.tokenize_with_vm_core(&request, &route.tokenizer_vm_program)?;
+        let tokens =
+            self.tokenize_with_prevalidated_vm_core(&request, &route.tokenizer_vm_program)?;
         if tokens.is_empty()
             && !source_line_can_tokenize_to_empty(source_line, &request.token_policy)
         {
@@ -115,6 +116,8 @@ impl HierarchyExecutionModel {
                 ))
             })?
             .clone();
+        self.core
+            .ensure_tokenizer_vm_program_compatible_for_assembler(&tokenizer_vm_program)?;
         let route = std::sync::Arc::new(ResolvedTokenizerVmRoute::new(
             &resolved,
             token_policy,
@@ -169,6 +172,15 @@ impl HierarchyExecutionModel {
         vm_program: &RuntimeTokenizerVmProgram,
     ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
         self.core.tokenize_with_vm_core(request, vm_program)
+    }
+
+    pub(crate) fn tokenize_with_prevalidated_vm_core(
+        &self,
+        request: &PortableTokenizeRequest<'_>,
+        vm_program: &RuntimeTokenizerVmProgram,
+    ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
+        self.core
+            .tokenize_with_prevalidated_vm_core(request, vm_program)
     }
 }
 

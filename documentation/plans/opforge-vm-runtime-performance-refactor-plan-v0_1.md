@@ -185,7 +185,7 @@ architecture boundaries.
     requested listing output remains byte-for-byte identical; diagnostic
     reporting for failing assemblies remains intact.
 
-- [ ] Item 6: Prototype incremental or reduced stabilization execution
+- [x] Item 6: Prototype incremental or reduced stabilization execution
   - Source requirement or finding IDs: pass1 stabilization retries remain a
     major cost because each retry reruns nearly the whole expanded program with
     fresh `AsmLine` state.
@@ -198,8 +198,16 @@ architecture boundaries.
     with listing byte comparison before/after.
   - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
     for this plan must return `PASS` before committing the item.
-  - Commit outcome: one commit containing a narrow, safely disabled or
-    conservatively enabled stabilization reuse prototype.
+  - Commit outcome: completed in one conservative stabilization commit. Before
+    retry execution, non-variable pass1 symbols are marked finalized so the
+    first stabilization retry can resolve existing provisional layout values
+    instead of spending a whole retry only transitioning symbol finalization
+    state. On the native AmigaOS workload with listing enabled,
+    `pass1.layout_stabilization_retries` dropped from the previous committed
+    `985.069ms` two-retry run to `483.887ms` with one retry, and
+    `assembly_total` dropped to `2621.766ms`. Listing output matched the
+    previous buffered-listing baseline and the cache-disabled run
+    byte-for-byte.
   - Definition of done: either a measured reduction in stabilization retry work
     with unchanged output, or a documented rollback/no-go result that preserves
     the prepared-line foundation for later work.

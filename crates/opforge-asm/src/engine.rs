@@ -412,6 +412,23 @@ qualified_share={:.2}%",
         )
     }
 
+    fn finalize_stabilization_symbols(&mut self) {
+        let names = self
+            .symbols
+            .entries()
+            .iter()
+            .filter(|entry| !entry.rw && !entry.updated)
+            .map(|entry| entry.name.clone())
+            .collect::<Vec<_>>();
+        for name in names {
+            if let Some(entry) = self.symbols.entry_mut(&name) {
+                if !entry.rw {
+                    entry.updated = true;
+                }
+            }
+        }
+    }
+
     fn capture_layout_snapshot(&self) -> LayoutStabilitySnapshot {
         let mut symbols = self
             .symbols
@@ -1108,6 +1125,7 @@ qualified_share={:.2}%",
             return counts;
         }
 
+        self.finalize_stabilization_symbols();
         let mut previous_snapshot = self.capture_layout_snapshot();
         let mut stabilized = false;
         for i in 0..MAX_LAYOUT_STABILIZATION_PASSES {

@@ -12,7 +12,6 @@ pub(crate) fn parse_line_with_parser_vm(
     end_token_text: Option<String>,
     parser_contract: &RuntimeParserContract,
     parser_vm_program: &RuntimeParserVmProgram,
-    use_default_statement_fast_path: bool,
     exec_ctx: ParserVmExecContext<'_>,
 ) -> Result<LineAst, ParseError> {
     if parser_contract.opcode_version != parser_vm_program.opcode_version {
@@ -36,20 +35,6 @@ pub(crate) fn parse_line_with_parser_vm(
                 parser_contract.diagnostics.invalid_statement, parser_contract.opcode_version
             ),
         ));
-    }
-
-    if use_default_statement_fast_path {
-        return super::parser_vm_v2::parse_line_with_default_statement_parser_vm_v2(
-            tokens,
-            end_span,
-            end_token_text,
-            parser_contract,
-            &ProcessingRequestKind::Processor {
-                processor: "asm".to_string(),
-                kind: "statement".to_string(),
-            },
-            exec_ctx,
-        );
     }
 
     super::parser_vm_v2::parse_line_with_parser_vm_v2(

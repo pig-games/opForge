@@ -423,48 +423,13 @@ architecture boundaries.
     diagnostics, budgets, listing output, and custom-program fallback
     behavior.
 
-- [x] Item 13: Fast-path the generic default parser VM statement program
-  - Source requirement or finding IDs: Item 12 removed most default tokenizer
-    dispatch overhead, leaving the default parser VM statement program as the
-    next package-authoritative opcode interpreter on the hot parse path.
-  - Expected files: `crates/opforge-vm/src/execution_model.rs`,
-    `crates/opforge-vm/src/execution_model/parser_vm.rs`,
-    `crates/opforge-vm/src/execution_model/parser_vm_v2.rs`,
-    `crates/opforge-vm/src/runtime_model_core.rs`, and this plan.
-  - Full quality gates: `cargo fmt --all`; `cargo check -p vm`;
-    `cargo check -p asm`; `cargo check -p engine`;
-    `cargo check -p cli --bin opforge`; relevant VM/package parser and
-    repetition tests;
-    `cargo test -p asm qualified_use_reachability_perf_regression_multi_module_fixture`;
-    `scripts/workflow/run_rust_quality_gate.sh`; full native AmigaOS workload
-    with listing byte comparison before/after.
-  - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
-    for this plan must return `PASS` before committing the item.
-  - Commit outcome: completed in one VM/parser commit. Cached parser routes now
-    detect the exact generic default opasm parser VM statement bytecode and run
-    it through a direct equivalent implementation that preserves the same
-    label, assignment, star-origin, dot-mnemonic, Rust-routed directive, and
-    operand-expression helpers. Custom parser VM programs continue through the
-    v2 interpreter. On two native AmigaOS workload samples with listing
-    enabled, `pass1.parse_line_ast` measured `479.245ms` and `482.479ms`
-    versus the previous committed `486.772ms`; `vm.parse` measured
-    `403.555ms` and `405.227ms` versus `412.556ms`. End-to-end
-    `assembly_total` was noisy and did not improve in these samples
-    (`2252.978ms` and `2274.575ms` versus previous committed `2206.855ms`).
-    Listing output matched the tokenizer default fast-path baseline
-    byte-for-byte.
-  - Definition of done: the generic default parser VM bytecode shape can run
-    through a direct package-neutral fast path with unchanged ASTs,
-    diagnostics, expression subcalls, listing output, and custom-program
-    fallback behavior.
-
-- [ ] Item 14: Reassess product-build feature stripping for tooling traces
+- [ ] Item 13: Reassess product-build feature stripping for tooling traces
   - Source requirement or finding IDs: original optimization request asked to
     verify whether lockstep/runtime traces/LSP/tooling metadata remain on
-    production hot paths and can be feature-gated later; Items 7-13 showed
+    production hot paths and can be feature-gated later; Items 7-12 showed
     larger hot-path costs in duplicate tokenization, repeated parser/tokenizer
     route setup, token-vector cloning, repeated tokenizer validation, and
-    tokenizer/parser VM opcode dispatch, so trace stripping remains a separate
+    tokenizer VM opcode dispatch, so trace stripping remains a separate
     evidence-driven follow-up.
   - Expected files: `crates/opforge-asm/src/line.rs`,
     `crates/opforge-engine/src/lib.rs`, feature declarations if needed, and

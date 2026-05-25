@@ -253,7 +253,6 @@ pub fn parse_tokens_with_model_with_expr_handler_and_rollout_overrides<'a>(
         end_token_text.clone(),
         &parser_route.parser_contract,
         &parser_route.parser_vm_program,
-        parser_route.use_default_statement_fast_path,
         ParserVmExecContext {
             source_line: line,
             line_num,

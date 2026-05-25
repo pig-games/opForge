@@ -68,19 +68,26 @@ impl HierarchyExecutionModel {
         line_num: u32,
     ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
         let route = self.resolve_tokenizer_vm_route_for_assembler(cpu_id, dialect_override)?;
-        let request = PortableTokenizeRequest {
-            family_id: route.family_id.as_str(),
-            cpu_id: route.cpu_id.as_str(),
-            dialect_id: route.dialect_id.as_str(),
-            source_line,
-            source_stream: PortableTokenizerByteStream::from_source_line(source_line),
-            line_num,
-            token_policy: route.token_policy.clone(),
+        let tokens = if route.use_default_dispatch_fast_path {
+            self.tokenize_with_default_dispatch_core(
+                source_line,
+                line_num,
+                &route.token_policy,
+                &route.tokenizer_vm_program,
+            )?
+        } else {
+            let request = PortableTokenizeRequest {
+                family_id: route.family_id.as_str(),
+                cpu_id: route.cpu_id.as_str(),
+                dialect_id: route.dialect_id.as_str(),
+                source_line,
+                source_stream: PortableTokenizerByteStream::from_source_line(source_line),
+                line_num,
+                token_policy: route.token_policy.clone(),
+            };
+            self.tokenize_with_prevalidated_vm_core(&request, &route.tokenizer_vm_program)?
         };
-        let tokens =
-            self.tokenize_with_prevalidated_vm_core(&request, &route.tokenizer_vm_program)?;
-        if tokens.is_empty()
-            && !source_line_can_tokenize_to_empty(source_line, &request.token_policy)
+        if tokens.is_empty() && !source_line_can_tokenize_to_empty(source_line, &route.token_policy)
         {
             return Err(RuntimeBridgeError::Resolve(format!(
                 "{}: tokenizer VM produced no tokens for non-empty source line",
@@ -118,10 +125,14 @@ impl HierarchyExecutionModel {
             .clone();
         self.core
             .ensure_tokenizer_vm_program_compatible_for_assembler(&tokenizer_vm_program)?;
+        let use_default_dispatch_fast_path = self
+            .core
+            .is_default_dispatch_tokenizer_vm_program(&tokenizer_vm_program);
         let route = std::sync::Arc::new(ResolvedTokenizerVmRoute::new(
             &resolved,
             token_policy,
             tokenizer_vm_program,
+            use_default_dispatch_fast_path,
         ));
         self.tokenizer_vm_route_cache
             .lock()
@@ -181,6 +192,21 @@ impl HierarchyExecutionModel {
     ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
         self.core
             .tokenize_with_prevalidated_vm_core(request, vm_program)
+    }
+
+    pub(crate) fn tokenize_with_default_dispatch_core(
+        &self,
+        source_line: &str,
+        line_num: u32,
+        token_policy: &RuntimeTokenPolicy,
+        vm_program: &RuntimeTokenizerVmProgram,
+    ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
+        self.core.tokenize_with_default_dispatch_core(
+            source_line,
+            line_num,
+            token_policy,
+            vm_program,
+        )
     }
 }
 

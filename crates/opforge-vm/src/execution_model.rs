@@ -227,6 +227,7 @@ pub(crate) struct ResolvedTokenizerVmRoute {
     pub(crate) dialect_id: String,
     pub(crate) token_policy: RuntimeTokenPolicy,
     pub(crate) tokenizer_vm_program: RuntimeTokenizerVmProgram,
+    pub(crate) use_default_dispatch_fast_path: bool,
 }
 
 impl ResolvedTokenizerVmRoute {
@@ -234,6 +235,7 @@ impl ResolvedTokenizerVmRoute {
         resolved: &ResolvedHierarchy,
         token_policy: RuntimeTokenPolicy,
         tokenizer_vm_program: RuntimeTokenizerVmProgram,
+        use_default_dispatch_fast_path: bool,
     ) -> Self {
         Self {
             family_id: resolved.family_id.clone(),
@@ -241,6 +243,7 @@ impl ResolvedTokenizerVmRoute {
             dialect_id: resolved.dialect_id.clone(),
             token_policy,
             tokenizer_vm_program,
+            use_default_dispatch_fast_path,
         }
     }
 }

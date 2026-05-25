@@ -386,13 +386,51 @@ architecture boundaries.
     compatibility validation while preserving tokenizer VM execution,
     diagnostics, budgets, listing output, and package semantics.
 
-- [ ] Item 12: Reassess product-build feature stripping for tooling traces
+- [x] Item 12: Fast-path the generic default tokenizer VM dispatcher
+  - Source requirement or finding IDs: Item 11 left
+    `vm.parse.router.tokenize.portable` as the largest tokenizer sub-bucket;
+    the active default tokenizer VM program is a generic package-driven
+    dispatch loop that branches by byte class and delegates to existing
+    scanner helpers.
+  - Expected files: `crates/opforge-vm/src/execution_model.rs`,
+    `crates/opforge-vm/src/execution_model/tokenizer_bridge.rs`,
+    `crates/opforge-vm/src/runtime_model_core.rs`, and this plan.
+  - Full quality gates: `cargo fmt --all`; `cargo check -p vm`;
+    `cargo check -p asm`; `cargo check -p engine`;
+    `cargo check -p cli --bin opforge`; relevant VM/package parser and
+    repetition tests;
+    `cargo test -p asm qualified_use_reachability_perf_regression_multi_module_fixture`;
+    `scripts/workflow/run_rust_quality_gate.sh`; full native AmigaOS workload
+    with listing byte comparison before/after.
+  - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
+    for this plan must return `PASS` before committing the item.
+  - Commit outcome: completed in one VM/tokenizer commit. Cached tokenizer
+    routes now detect the exact generic default tokenizer VM dispatch program
+    and use a direct equivalent dispatch loop that preserves the same scanner
+    helpers, token policy application, budget checks, diagnostics, and step
+    accounting. Custom tokenizer VM programs continue through the
+    prevalidated VM interpreter. On the native AmigaOS workload with listing
+    enabled, `assembly_total` dropped from the previous committed
+    `2290.573ms` baseline to `2206.855ms`; `pass1.parse_line_ast` dropped from
+    `555.134ms` to `486.772ms`; `vm.parse.router.tokenize` dropped from
+    `183.067ms` to `115.530ms`; `vm.parse.router.tokenize.portable` dropped
+    from `112.278ms` to `44.385ms`. Listing output matched the tokenizer
+    prevalidation baseline byte-for-byte. `scripts/workflow/run_rust_quality_gate.sh`
+    still fails on the known pre-existing CPU-boundary findings, accepted by
+    maintainer for this VM/package performance series.
+  - Definition of done: the generic default tokenizer VM bytecode shape can
+    run through a direct package-neutral fast path with unchanged tokens,
+    diagnostics, budgets, listing output, and custom-program fallback
+    behavior.
+
+- [ ] Item 13: Reassess product-build feature stripping for tooling traces
   - Source requirement or finding IDs: original optimization request asked to
     verify whether lockstep/runtime traces/LSP/tooling metadata remain on
-    production hot paths and can be feature-gated later; Items 7-11 showed
+    production hot paths and can be feature-gated later; Items 7-12 showed
     larger hot-path costs in duplicate tokenization, repeated parser/tokenizer
-    route setup, token-vector cloning, and repeated tokenizer validation, so
-    trace stripping remains a separate evidence-driven follow-up.
+    route setup, token-vector cloning, repeated tokenizer validation, and
+    tokenizer VM opcode dispatch, so trace stripping remains a separate
+    evidence-driven follow-up.
   - Expected files: `crates/opforge-asm/src/line.rs`,
     `crates/opforge-engine/src/lib.rs`, feature declarations if needed, and
     focused trace/lockstep tests.

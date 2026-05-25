@@ -994,6 +994,160 @@ impl RuntimeModelCore {
         Ok(tokens)
     }
 
+    pub fn is_default_dispatch_tokenizer_vm_program(
+        &self,
+        vm_program: &RuntimeTokenizerVmProgram,
+    ) -> bool {
+        vm_program.start_state == 0
+            && vm_program.state_entry_offsets.as_slice() == [0]
+            && vm_program.stream.mode == TokenizerVmStreamMode::LineInputBytes
+            && vm_program.program == default_dispatch_tokenizer_vm_program_bytes()
+    }
+
+    pub fn tokenize_with_default_dispatch_core(
+        &self,
+        source_line: &str,
+        line_num: u32,
+        token_policy: &RuntimeTokenPolicy,
+        vm_program: &RuntimeTokenizerVmProgram,
+    ) -> Result<Vec<PortableToken>, RuntimeBridgeError> {
+        let bytes = source_line.as_bytes();
+        let max_steps_per_line = vm_program
+            .limits
+            .max_steps_per_line
+            .min(self.budget_limits.max_tokenizer_steps_per_line);
+        let max_tokens_per_line = vm_program
+            .limits
+            .max_tokens_per_line
+            .min(self.budget_limits.max_tokenizer_tokens_per_line);
+        let max_lexeme_bytes = vm_program
+            .limits
+            .max_lexeme_bytes
+            .min(self.budget_limits.max_tokenizer_lexeme_bytes);
+        let max_tokens_per_line_usize = usize::try_from(max_tokens_per_line).unwrap_or(usize::MAX);
+        let max_lexeme_bytes_usize = usize::try_from(max_lexeme_bytes).unwrap_or(usize::MAX);
+        let mut stream = VmTokenizerInputStream::new(bytes, vm_program.stream.mode);
+        let token_capacity = max_tokens_per_line_usize.min(stream.len().saturating_add(1));
+        let mut tokens = Vec::with_capacity(token_capacity);
+        let mut step_count = 0u32;
+
+        let mut consume_steps = |count: u32| -> Result<(), RuntimeBridgeError> {
+            for _ in 0..count {
+                step_count = step_count.saturating_add(1);
+                if step_count > max_steps_per_line {
+                    return Err(RuntimeBridgeError::Resolve(format!(
+                        "{}: tokenizer VM step budget exceeded ({}/{})",
+                        vm_program.diagnostics.step_limit_exceeded, step_count, max_steps_per_line
+                    )));
+                }
+            }
+            Ok(())
+        };
+        let mut push_token = |token: PortableToken| -> Result<(), RuntimeBridgeError> {
+            if tokens.len() >= max_tokens_per_line_usize {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "{}: tokenizer VM token budget exceeded ({}/{})",
+                    vm_program.diagnostics.token_limit_exceeded,
+                    tokens.len().saturating_add(1),
+                    max_tokens_per_line
+                )));
+            }
+            let lexeme_len = token.span.col_end.saturating_sub(token.span.col_start);
+            if lexeme_len > max_lexeme_bytes_usize {
+                return Err(RuntimeBridgeError::Resolve(format!(
+                    "{}: tokenizer VM lexeme budget exceeded ({}/{})",
+                    vm_program.diagnostics.lexeme_limit_exceeded, lexeme_len, max_lexeme_bytes
+                )));
+            }
+            tokens.push(apply_token_policy_to_token(token, token_policy));
+            Ok(())
+        };
+
+        loop {
+            consume_steps(1)?; // ReadChar
+            let current_byte = stream.current_byte();
+            consume_steps(1)?; // JumpIfEol
+            if stream.is_eol() {
+                consume_steps(1)?; // End
+                break;
+            }
+
+            consume_steps(1)?; // JumpIfClass whitespace
+            if vm_char_class_matches(current_byte, 1, token_policy) {
+                consume_steps(1)?; // Advance
+                stream.advance();
+                consume_steps(1)?; // Jump loop
+                continue;
+            }
+
+            consume_steps(1)?; // JumpIfByteEq '.'
+            if current_byte == Some(b'.') {
+                consume_steps(1)?; // ScanSymbol
+                if let Some(token) = vm_scan_symbol_token(
+                    &mut stream,
+                    line_num,
+                    token_policy.comment_prefix.as_str(),
+                    token_policy.identifier_continue_class,
+                )? {
+                    push_token(token)?;
+                }
+                consume_steps(1)?; // Jump loop
+                continue;
+            }
+
+            consume_steps(1)?; // JumpIfClass identifier
+            if vm_char_class_matches(current_byte, 2, token_policy) {
+                consume_steps(1)?; // ScanIdentifier
+                let token = vm_scan_identifier_token(
+                    &mut stream,
+                    line_num,
+                    token_policy.identifier_continue_class,
+                )?;
+                push_token(token)?;
+                consume_steps(1)?; // Jump loop
+                continue;
+            }
+
+            consume_steps(1)?; // JumpIfClass number
+            if vm_char_class_matches(current_byte, 4, token_policy) {
+                consume_steps(1)?; // ScanNumber
+                let token = vm_scan_number_token(
+                    &mut stream,
+                    line_num,
+                    token_policy.number_suffix_binary.as_str(),
+                    token_policy.number_suffix_octal.as_str(),
+                    token_policy.number_suffix_decimal.as_str(),
+                    token_policy.number_suffix_hex.as_str(),
+                )?;
+                push_token(token)?;
+                consume_steps(1)?; // Jump loop
+                continue;
+            }
+
+            consume_steps(1)?; // JumpIfClass string
+            if vm_char_class_matches(current_byte, 5, token_policy) {
+                consume_steps(1)?; // ScanString
+                let token = vm_scan_string_token(&mut stream, line_num, token_policy.escape_char)?;
+                push_token(token)?;
+                consume_steps(1)?; // Jump loop
+                continue;
+            }
+
+            consume_steps(1)?; // ScanSymbol fallback
+            if let Some(token) = vm_scan_symbol_token(
+                &mut stream,
+                line_num,
+                token_policy.comment_prefix.as_str(),
+                token_policy.identifier_continue_class,
+            )? {
+                push_token(token)?;
+            }
+            consume_steps(1)?; // Jump loop
+        }
+
+        Ok(tokens)
+    }
+
     pub fn parser_contract_for_resolved(
         &self,
         resolved: &ResolvedHierarchy,
@@ -1707,4 +1861,80 @@ fn apply_token_policy_to_token(token: PortableToken, policy: &RuntimeTokenPolicy
         TokenCaseRule::AsciiUpper => AsciiCaseRule::AsciiUpper,
     };
     tokenizer_runtime_utils::apply_token_case_rule(token, mapped)
+}
+
+fn default_dispatch_tokenizer_vm_program_bytes() -> Vec<u8> {
+    let loop_offset = 0u32;
+    let mut program = Vec::new();
+
+    program.push(TokenizerVmOpcode::ReadChar as u8);
+    program.push(TokenizerVmOpcode::JumpIfEol as u8);
+    let eol_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfClass as u8);
+    program.push(1);
+    let whitespace_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfByteEq as u8);
+    program.push(b'.');
+    let symbol_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfClass as u8);
+    program.push(2);
+    let identifier_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfClass as u8);
+    program.push(4);
+    let number_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    program.push(TokenizerVmOpcode::JumpIfClass as u8);
+    program.push(5);
+    let string_target_patch = program.len();
+    program.extend_from_slice(&0u32.to_le_bytes());
+
+    let symbol_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::ScanSymbol as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let whitespace_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::Advance as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let identifier_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::ScanIdentifier as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let number_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::ScanNumber as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let string_offset = program.len() as u32;
+    program.push(TokenizerVmOpcode::ScanString as u8);
+    program.push(TokenizerVmOpcode::Jump as u8);
+    program.extend_from_slice(&loop_offset.to_le_bytes());
+
+    let end_offset = program.len() as u32;
+    program[eol_target_patch..eol_target_patch + 4].copy_from_slice(&end_offset.to_le_bytes());
+    program[whitespace_target_patch..whitespace_target_patch + 4]
+        .copy_from_slice(&whitespace_offset.to_le_bytes());
+    program[symbol_target_patch..symbol_target_patch + 4]
+        .copy_from_slice(&symbol_offset.to_le_bytes());
+    program[identifier_target_patch..identifier_target_patch + 4]
+        .copy_from_slice(&identifier_offset.to_le_bytes());
+    program[number_target_patch..number_target_patch + 4]
+        .copy_from_slice(&number_offset.to_le_bytes());
+    program[string_target_patch..string_target_patch + 4]
+        .copy_from_slice(&string_offset.to_le_bytes());
+    program.push(TokenizerVmOpcode::End as u8);
+
+    program
 }

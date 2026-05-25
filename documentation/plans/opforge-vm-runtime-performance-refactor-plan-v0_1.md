@@ -447,6 +447,16 @@ architecture boundaries.
     explicitly requested; any feature gates are opt-in/opt-out documented in
     code and tests.
 
+## Rejected Paths
+
+- Default parser VM Rust fast path: rejected on 2026-05-25 because VM parsing
+  must execute parser VM programs, not only detect a VM bytecode shape and run
+  a Rust equivalent. The reverted prototype commit `b3207be4` improved the
+  targeted `vm.parse` bucket only modestly (`412.556ms` baseline to
+  `403.555ms` / `405.227ms`) while total workload samples were slower
+  (`2206.855ms` baseline to `2252.978ms` / `2274.575ms`). Revert commit:
+  `c3e06ff9`.
+
 ## Blocking Rules
 
 - no commit before all quality gates pass

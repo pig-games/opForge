@@ -164,33 +164,50 @@ impl RuntimeLineRouter for EngineRuntimeLineRouter {
         ),
         ParseError,
     > {
-        let (_, end_span, end_token_text) =
+        let tokenize_started_at = Instant::now();
+        let (tokens, end_span, end_token_text) =
             tokenize_with_vm_model(model, cpu_id, None, line, line_num, register_checker)?;
-        let (ast, trace, lockstep_report) = editor_route_line_with_model_in_mode_with_trace(
-            model,
-            cpu_id,
-            None,
-            line,
-            line_num,
-            register_checker,
-            self.execution_mode,
-            collect_runtime_trace,
-        )
-        .map_err(|err| match err {
-            EngineError::Core(err) => core_error_into_parse_error(err, line_num),
-            EngineError::Processor(err) => ParseError {
-                message: err.summary().to_string(),
-                span: Span {
-                    line: line_num,
-                    col_start: 1,
-                    col_end: 1,
-                },
-            },
-        })?;
-        Ok((
-            ast,
+        phase_profile::record_execution_path_for_active_scope(
+            "vm.parse.router.tokenize",
+            tokenize_started_at.elapsed(),
+        );
+        let tokenized = asm::opasm::TokenizedStatement {
+            tokens,
             end_span,
             end_token_text,
+        };
+        let route_started_at = Instant::now();
+        let (parsed, trace, lockstep_report) =
+            processing::editor_route_statement_with_model_in_mode_with_trace(
+                model,
+                cpu_id,
+                None,
+                line,
+                line_num,
+                register_checker,
+                self.execution_mode,
+                collect_runtime_trace,
+                Some(&tokenized),
+            )
+            .map_err(|err| match err {
+                EngineError::Core(err) => core_error_into_parse_error(err, line_num),
+                EngineError::Processor(err) => ParseError {
+                    message: err.summary().to_string(),
+                    span: Span {
+                        line: line_num,
+                        col_start: 1,
+                        col_end: 1,
+                    },
+                },
+            })?;
+        phase_profile::record_execution_path_for_active_scope(
+            "vm.parse.router.route",
+            route_started_at.elapsed(),
+        );
+        Ok((
+            parsed.ast,
+            parsed.end_span,
+            parsed.end_token_text,
             collect_runtime_trace.then_some(trace),
             Some(lockstep_report),
         ))

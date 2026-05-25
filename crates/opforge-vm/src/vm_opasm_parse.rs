@@ -174,6 +174,35 @@ pub fn parse_line_with_model_with_expr_handler_and_rollout_overrides<'a>(
         line_num,
         register_checker,
     )?;
+    parse_tokens_with_model_with_expr_handler_and_rollout_overrides(
+        model,
+        cpu_id,
+        dialect_override,
+        expr_parser_opt_in_families,
+        expr_parser_force_host_families,
+        line,
+        line_num,
+        tokens,
+        end_span,
+        end_token_text,
+        expr_handler,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn parse_tokens_with_model_with_expr_handler_and_rollout_overrides<'a>(
+    model: &'a HierarchyExecutionModel,
+    cpu_id: &'a str,
+    dialect_override: Option<&'a str>,
+    expr_parser_opt_in_families: &'a [String],
+    expr_parser_force_host_families: &'a [String],
+    line: &'a str,
+    line_num: u32,
+    tokens: Vec<Token>,
+    end_span: Span,
+    end_token_text: Option<String>,
+    expr_handler: Option<DynExprProcessingHandler<'a>>,
+) -> Result<(LineAst, Span, Option<String>), ParseError> {
     let parser_contract = model
         .validate_parser_contract_for_assembler(cpu_id, dialect_override, tokens.len())
         .map_err(|err| {

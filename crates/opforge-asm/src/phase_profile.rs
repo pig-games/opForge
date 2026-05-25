@@ -211,6 +211,14 @@ pub fn record_execution_path(bucket: Option<PhaseBucket>, label: &str, duration:
     });
 }
 
+pub fn record_execution_path_for_active_scope(label: &str, duration: Duration) {
+    if !path_profile_is_enabled() {
+        return;
+    }
+    let bucket = ACTIVE_SCOPES.with(|stack| stack.borrow().last().map(|scope| scope.bucket));
+    record_execution_path(bucket, label, duration);
+}
+
 pub struct PhaseScopeGuard {
     enabled: bool,
 }

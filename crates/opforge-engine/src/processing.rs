@@ -5,6 +5,7 @@ use opcore::services::parse_expression_tokens as parse_stable_opcore_expression_
 use opcore::tokenizer::{Span, Token};
 use opcore::CoreError;
 use registry::syntax::{register_checker_none, RegisterChecker};
+use std::time::Instant;
 use types::lockstep::{
     ContinuationHead, ExecutionMode, LockstepCheckpoint, LockstepComparisonCategory,
     LockstepDivergence, LockstepMatch, LockstepReport, LockstepStage,
@@ -13,7 +14,7 @@ use types::processing::{
     LineProcessingTrace, OpcoreRequestKind, ProcessingOutcome, ProcessingRequestKind,
     ProcessingReturn, ProcessorError, ProcessorErrorKind, ProcessorFailureDetail,
 };
-use vm::vm_opasm::HierarchyExecutionModel;
+use vm::vm_opasm::{tokenize_statement_line_with_model, HierarchyExecutionModel};
 use vm::vm_opcore::parse_expression_tokens as parse_vm_expression_tokens;
 use vm::vm_opcore::process_module_item_request_with_model as process_module_item_request_vm;
 
@@ -288,14 +289,88 @@ pub fn editor_route_line_with_model_in_mode_with_trace(
     execution_mode: ExecutionMode,
     collect_processing_trace: bool,
 ) -> Result<(LineAst, LineProcessingTrace, LockstepReport), EngineError> {
+    let (parsed, trace, lockstep_report) = editor_route_statement_with_model_in_mode_with_trace(
+        model,
+        cpu_id,
+        dialect_override,
+        line,
+        line_num,
+        register_checker,
+        execution_mode,
+        collect_processing_trace,
+        None,
+    )?;
+    Ok((parsed.ast, trace, lockstep_report))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn editor_route_statement_with_model_in_mode_with_trace(
+    model: &HierarchyExecutionModel,
+    cpu_id: &str,
+    dialect_override: Option<&str>,
+    line: &str,
+    line_num: u32,
+    register_checker: &RegisterChecker,
+    execution_mode: ExecutionMode,
+    collect_processing_trace: bool,
+    pretokenized: Option<&asm::opasm::TokenizedStatement>,
+) -> Result<
+    (
+        asm::opasm::StatementParseResult,
+        LineProcessingTrace,
+        LockstepReport,
+    ),
+    EngineError,
+> {
     let mut trace = LineProcessingTrace::default();
     let mut lockstep_report = LockstepReport::default();
     if collect_processing_trace {
         trace.push(ProcessingRequestKind::Opcore(OpcoreRequestKind::Statement));
     }
 
-    match process_opcore_statement_request(line, line_num) {
-        ProcessingOutcome::Done(ast) => Ok((ast, trace, lockstep_report)),
+    let opcore_started_at = Instant::now();
+    let opcore_outcome = process_opcore_statement_request(line, line_num);
+    asm::phase_profile::record_execution_path_for_active_scope(
+        "vm.parse.router.opcore_classify",
+        opcore_started_at.elapsed(),
+    );
+
+    match opcore_outcome {
+        ProcessingOutcome::Done(ast) => {
+            let tokenized = match pretokenized {
+                Some(tokenized) => tokenized.clone(),
+                None => {
+                    let tokenize_started_at = Instant::now();
+                    let (tokens, end_span, end_token_text) = tokenize_statement_line_with_model(
+                        model,
+                        cpu_id,
+                        dialect_override,
+                        line,
+                        line_num,
+                        register_checker,
+                    )
+                    .map_err(|err| EngineError::Core(CoreError::from_statement_parse(line, err)))?;
+                    asm::phase_profile::record_execution_path_for_active_scope(
+                        "vm.parse.router.tokenize",
+                        tokenize_started_at.elapsed(),
+                    );
+                    asm::opasm::TokenizedStatement {
+                        tokens,
+                        end_span,
+                        end_token_text,
+                    }
+                }
+            };
+            Ok((
+                asm::opasm::StatementParseResult {
+                    ast,
+                    end_span: tokenized.end_span,
+                    end_token_text: tokenized.end_token_text,
+                },
+                trace,
+                lockstep_report,
+            ))
+        }
         ProcessingOutcome::Error(err) => Err(EngineError::Core(CoreError::from_statement_parse(
             line, err,
         ))),
@@ -311,8 +386,15 @@ pub fn editor_route_line_with_model_in_mode_with_trace(
                 trace: &mut trace,
                 lockstep_report: &mut lockstep_report,
                 collect_processing_trace,
+                pretokenized,
             };
-            route_processor_line_request(ctx, request).map(|ast| (ast, trace, lockstep_report))
+            let route_started_at = Instant::now();
+            let routed = route_processor_line_request(ctx, request);
+            asm::phase_profile::record_execution_path_for_active_scope(
+                "vm.parse.router.processor_route",
+                route_started_at.elapsed(),
+            );
+            routed.map(|parsed| (parsed, trace, lockstep_report))
         }
         ProcessingOutcome::Return(ProcessingReturn::Unknown) => Err(EngineError::invalid_request(
             "engine",
@@ -345,12 +427,13 @@ struct ProcessorLineRequestContext<'a> {
     trace: &'a mut LineProcessingTrace,
     lockstep_report: &'a mut LockstepReport,
     collect_processing_trace: bool,
+    pretokenized: Option<&'a asm::opasm::TokenizedStatement>,
 }
 
 fn route_processor_line_request(
     ctx: ProcessorLineRequestContext<'_>,
     request: ProcessingRequestKind,
-) -> Result<LineAst, EngineError> {
+) -> Result<asm::opasm::StatementParseResult, EngineError> {
     match request {
         ProcessingRequestKind::Processor {
             ref processor,
@@ -396,7 +479,7 @@ impl asm::opasm::StatementExprProcessor for EngineExprProcessingHandler {
 
 fn route_opasm_statement_request(
     ctx: ProcessorLineRequestContext<'_>,
-) -> Result<LineAst, EngineError> {
+) -> Result<asm::opasm::StatementParseResult, EngineError> {
     let mut expr_handler = EngineExprProcessingHandler {
         execution_mode: ctx.execution_mode,
     };
@@ -405,7 +488,8 @@ fn route_opasm_statement_request(
             .with_execution_mode(ctx.execution_mode)
             .with_model(ctx.model, ctx.cpu_id, ctx.dialect_override)
             .with_register_checker(ctx.register_checker)
-            .with_processing_trace(ctx.collect_processing_trace),
+            .with_processing_trace(ctx.collect_processing_trace)
+            .with_pretokenized(ctx.pretokenized),
         Some(&mut expr_handler),
     )
     .map_err(|err| {
@@ -422,7 +506,7 @@ fn route_opasm_statement_request(
         }
     }
     ctx.lockstep_report.extend(result.lockstep_report);
-    Ok(result.parsed.ast)
+    Ok(result.parsed)
 }
 
 fn process_opcore_expression_request_lockstep(

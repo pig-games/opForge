@@ -18,7 +18,9 @@ use types::processing::{LineProcessingTrace, ProcessingOutcome, ProcessingReques
 use vm::portable_contract::PortableLineAst;
 use vm::vm_opasm::{
     parse_statement_line_with_model_and_expr_handler_with_rollout_overrides,
-    parse_statement_line_with_model_with_rollout_overrides, HierarchyExecutionModel,
+    parse_statement_line_with_model_with_rollout_overrides,
+    parse_statement_tokens_with_model_and_expr_handler_with_rollout_overrides,
+    HierarchyExecutionModel,
 };
 
 #[derive(Debug, Clone)]
@@ -40,6 +42,7 @@ pub struct StatementRequest<'a> {
     pub line_num: u32,
     pub register_checker: &'a RegisterChecker,
     pub collect_processing_trace: bool,
+    pub pretokenized: Option<&'a TokenizedStatement>,
 }
 
 impl<'a> StatementRequest<'a> {
@@ -55,6 +58,7 @@ impl<'a> StatementRequest<'a> {
             line_num,
             register_checker: default_register_checker(),
             collect_processing_trace: true,
+            pretokenized: None,
         }
     }
 
@@ -92,6 +96,11 @@ impl<'a> StatementRequest<'a> {
 
     pub fn with_processing_trace(mut self, collect_processing_trace: bool) -> Self {
         self.collect_processing_trace = collect_processing_trace;
+        self
+    }
+
+    pub fn with_pretokenized(mut self, pretokenized: Option<&'a TokenizedStatement>) -> Self {
+        self.pretokenized = pretokenized;
         self
     }
 }
@@ -247,7 +256,35 @@ fn parse_statement_vm(
             collect_processing_trace: request.collect_processing_trace,
         })
             as Box<dyn vm::vm_opasm::ExprProcessingHandler + '_>));
-        parse_statement_line_with_model_and_expr_handler_with_rollout_overrides(
+        if let Some(tokenized) = request.pretokenized {
+            parse_statement_tokens_with_model_and_expr_handler_with_rollout_overrides(
+                model,
+                request.cpu_id,
+                request.dialect_override,
+                request.expr_parser_opt_in_families,
+                request.expr_parser_force_host_families,
+                request.line,
+                request.line_num,
+                tokenized.tokens.clone(),
+                tokenized.end_span,
+                tokenized.end_token_text.clone(),
+                Some(expr_handler),
+            )
+        } else {
+            parse_statement_line_with_model_and_expr_handler_with_rollout_overrides(
+                model,
+                request.cpu_id,
+                request.dialect_override,
+                request.expr_parser_opt_in_families,
+                request.expr_parser_force_host_families,
+                request.line,
+                request.line_num,
+                request.register_checker,
+                Some(expr_handler),
+            )
+        }
+    } else if let Some(tokenized) = request.pretokenized {
+        parse_statement_tokens_with_model_and_expr_handler_with_rollout_overrides(
             model,
             request.cpu_id,
             request.dialect_override,
@@ -255,8 +292,10 @@ fn parse_statement_vm(
             request.expr_parser_force_host_families,
             request.line,
             request.line_num,
-            request.register_checker,
-            Some(expr_handler),
+            tokenized.tokens.clone(),
+            tokenized.end_span,
+            tokenized.end_token_text.clone(),
+            None,
         )
     } else {
         parse_statement_line_with_model_with_rollout_overrides(

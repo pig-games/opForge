@@ -212,10 +212,48 @@ architecture boundaries.
     with unchanged output, or a documented rollback/no-go result that preserves
     the prepared-line foundation for later work.
 
-- [ ] Item 7: Reassess product-build feature stripping for tooling traces
+- [x] Item 7: Remove duplicate engine-router tokenization for VM statement parse
+  - Source requirement or finding IDs: original optimization request asked to
+    split `vm.parse` costs further and pursue larger VM/package parse wins;
+    route profiling showed the engine runtime router tokenized every source
+    line before routing, while opasm VM statement parsing tokenized
+    processor-routed lines again.
+  - Expected files: `crates/opforge-asm/src/opasm.rs`,
+    `crates/opforge-asm/src/phase_profile.rs`,
+    `crates/opforge-engine/src/lib.rs`,
+    `crates/opforge-engine/src/processing.rs`,
+    `crates/opforge-vm/src/vm_opasm.rs`, and
+    `crates/opforge-vm/src/vm_opasm_parse.rs`.
+  - Full quality gates: `cargo fmt --all`; `cargo check -p asm`;
+    `cargo check -p engine`; `cargo check -p cli --bin opforge`; relevant
+    VM/package parser and repetition tests;
+    `cargo test -p asm qualified_use_reachability_perf_regression_multi_module_fixture`;
+    `scripts/workflow/run_rust_quality_gate.sh`; full native AmigaOS workload
+    with listing byte comparison before/after.
+  - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
+    for this plan must return `PASS` before committing the item.
+  - Commit outcome: completed in one VM/parser commit. The engine router still
+    tokenizes once up front to preserve tokenizer diagnostic ordering, but it
+    now passes that token stream into opasm VM statement parsing for
+    processor-routed lines. On the native AmigaOS workload with listing
+    enabled, `assembly_total` dropped from the previous committed
+    `2621.766ms` baseline to `2453.537ms`; `pass1.parse_line_ast` dropped from
+    `873.641ms` to `720.332ms`; `vm.parse.router.processor_route` measured
+    `320.403ms` after the duplicate tokenizer pass was removed. Listing output
+    matched the previous stabilization baseline byte-for-byte.
+    `scripts/workflow/run_rust_quality_gate.sh` still fails on the known
+    pre-existing CPU-boundary findings, accepted by maintainer for this
+    VM/package performance series.
+  - Definition of done: processor-routed VM statement lines reuse the
+    engine-router token stream; tokenizer diagnostics, ASTs, lockstep reports,
+    listing output, and package semantics remain unchanged.
+
+- [ ] Item 8: Reassess product-build feature stripping for tooling traces
   - Source requirement or finding IDs: original optimization request asked to
     verify whether lockstep/runtime traces/LSP/tooling metadata remain on
-    production hot paths and can be feature-gated later.
+    production hot paths and can be feature-gated later; Item 7 showed the
+    larger hot-path cost was duplicate tokenization, so trace stripping remains
+    a separate evidence-driven follow-up.
   - Expected files: `crates/opforge-asm/src/line.rs`,
     `crates/opforge-engine/src/lib.rs`, feature declarations if needed, and
     focused trace/lockstep tests.

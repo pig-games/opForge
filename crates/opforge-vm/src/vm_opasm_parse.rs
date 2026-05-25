@@ -7,8 +7,6 @@ use registry::syntax::{register_checker_none, RegisterChecker};
 use types::processing::{ProcessingOutcome, ProcessingRequestKind};
 
 use crate::portable_contract::PortableLineAst;
-use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
-use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_parse_utils::{parse_span_at_end, runtime_bridge_error_to_parse_error};
 use crate::tokenizer_runtime_utils;
 use crate::vm_opcore::HierarchyExecutionModel;
@@ -203,26 +201,13 @@ pub fn parse_tokens_with_model_with_expr_handler_and_rollout_overrides<'a>(
     end_token_text: Option<String>,
     expr_handler: Option<DynExprProcessingHandler<'a>>,
 ) -> Result<(LineAst, Span, Option<String>), ParseError> {
-    let parser_contract = model
-        .validate_parser_contract_for_assembler(cpu_id, dialect_override, tokens.len())
+    let parser_route = model
+        .resolve_parser_vm_route_for_assembler(cpu_id, dialect_override)
         .map_err(|err| {
             runtime_bridge_error_to_parse_error(err, parse_span_at_end(line, line_num))
         })?;
-    let parser_vm_program = model
-        .resolve_parser_vm_program(cpu_id, dialect_override)
-        .map_err(|err| runtime_bridge_error_to_parse_error(err, parse_span_at_end(line, line_num)))?
-        .ok_or_else(|| {
-            runtime_bridge_error_to_parse_error(
-                RuntimeBridgeError::Diagnostic(RuntimeBridgeDiagnostic::new(
-                    parser_contract.diagnostics.invalid_statement.as_str(),
-                    "missing parser VM program for active CPU pipeline",
-                    None,
-                )),
-                parse_span_at_end(line, line_num),
-            )
-        })?;
-    model
-        .enforce_parser_vm_program_budget_for_assembler(&parser_contract, &parser_vm_program)
+    parser_route
+        .enforce_line_budget(tokens.len())
         .map_err(|err| {
             runtime_bridge_error_to_parse_error(err, parse_span_at_end(line, line_num))
         })?;
@@ -230,8 +215,8 @@ pub fn parse_tokens_with_model_with_expr_handler_and_rollout_overrides<'a>(
         tokens,
         end_span,
         end_token_text.clone(),
-        &parser_contract,
-        &parser_vm_program,
+        &parser_route.parser_contract,
+        &parser_route.parser_vm_program,
         ParserVmExecContext {
             source_line: line,
             line_num,

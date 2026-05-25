@@ -248,12 +248,45 @@ architecture boundaries.
     engine-router token stream; tokenizer diagnostics, ASTs, lockstep reports,
     listing output, and package semantics remain unchanged.
 
-- [ ] Item 8: Reassess product-build feature stripping for tooling traces
+- [x] Item 8: Cache resolved parser VM route setup
+  - Source requirement or finding IDs: after Item 7 removed duplicate
+    tokenization, profiling still showed `vm.parse.router.processor_route` as
+    a major cost; parser VM statement parsing resolved and validated the active
+    parser contract/program on every processor-routed line.
+  - Expected files: `crates/opforge-vm/src/execution_model.rs`,
+    `crates/opforge-vm/src/vm_opasm_parse.rs`, and this plan.
+  - Full quality gates: `cargo fmt --all`; `cargo check -p vm`;
+    `cargo check -p asm`; `cargo check -p engine`;
+    `cargo check -p cli --bin opforge`; relevant VM/package parser and
+    repetition tests;
+    `cargo test -p asm qualified_use_reachability_perf_regression_multi_module_fixture`;
+    `scripts/workflow/run_rust_quality_gate.sh`; full native AmigaOS workload
+    with listing byte comparison before/after.
+  - Plan-compliance review evidence: `scripts/workflow/run_plan_workflow.sh`
+    for this plan must return `PASS` before committing the item.
+  - Commit outcome: completed in one VM/parser commit. `HierarchyExecutionModel`
+    now caches the resolved parser contract/program pair by active CPU and
+    dialect, with model-local budget/profile/package state baked into the
+    cached route. Per-line token and AST budget checks still run for every
+    parse. On the native AmigaOS workload with listing enabled,
+    `assembly_total` dropped from the previous committed `2447.769ms` baseline
+    to `2380.827ms`; `pass1.parse_line_ast` dropped from `714.062ms` to
+    `627.076ms`; `vm.parse.router.processor_route` dropped from `317.640ms` to
+    `228.459ms`. Listing output matched the previous parser-token baseline
+    byte-for-byte. `scripts/workflow/run_rust_quality_gate.sh` still fails on
+    the known pre-existing CPU-boundary findings, accepted by maintainer for
+    this VM/package performance series.
+  - Definition of done: parser VM statement parsing reuses resolved
+    contract/program setup for the same model, CPU, and dialect; line-specific
+    budget diagnostics, parser VM execution, listing output, and package
+    semantics remain unchanged.
+
+- [ ] Item 9: Reassess product-build feature stripping for tooling traces
   - Source requirement or finding IDs: original optimization request asked to
     verify whether lockstep/runtime traces/LSP/tooling metadata remain on
-    production hot paths and can be feature-gated later; Item 7 showed the
-    larger hot-path cost was duplicate tokenization, so trace stripping remains
-    a separate evidence-driven follow-up.
+    production hot paths and can be feature-gated later; Items 7 and 8 showed
+    larger hot-path costs in duplicate tokenization and repeated parser route
+    setup, so trace stripping remains a separate evidence-driven follow-up.
   - Expected files: `crates/opforge-asm/src/line.rs`,
     `crates/opforge-engine/src/lib.rs`, feature declarations if needed, and
     focused trace/lockstep tests.

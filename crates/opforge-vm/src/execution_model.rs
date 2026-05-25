@@ -13,6 +13,7 @@
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use opcore::expr_vm::PortableExprBudgets;
 use opcore::parser::{Expr, ParseError};
@@ -30,6 +31,7 @@ use crate::portable_contract::{PortableLineAst, PortableToken};
 use crate::runtime_contract_types::{
     RuntimeExprContract, RuntimeExprParserContract, RuntimeParserCertificationChecklists,
 };
+use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
 use crate::runtime_error::RuntimeBridgeError;
 use crate::runtime_model_core::RuntimeModelCore;
 use crate::runtime_model_types::{
@@ -128,6 +130,90 @@ struct ExprResolverEntry {
     defer_native_diagnostics_on_none: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ParserVmRouteCacheKey {
+    cpu_id: String,
+    dialect_override: Option<String>,
+}
+
+impl ParserVmRouteCacheKey {
+    fn new(cpu_id: &str, dialect_override: Option<&str>) -> Self {
+        Self {
+            cpu_id: cpu_id.to_string(),
+            dialect_override: dialect_override.map(str::to_string),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ResolvedParserVmRoute {
+    pub(crate) parser_contract: RuntimeParserContract,
+    pub(crate) parser_vm_program: RuntimeParserVmProgram,
+    max_parser_tokens_per_line: usize,
+    max_parser_ast_nodes_per_line: usize,
+    parser_error_code: String,
+}
+
+impl ResolvedParserVmRoute {
+    fn new(
+        parser_contract: RuntimeParserContract,
+        parser_vm_program: RuntimeParserVmProgram,
+        max_parser_tokens_per_line: usize,
+        max_parser_ast_nodes_per_line: usize,
+    ) -> Self {
+        let parser_error_code = parser_contract_error_code(&parser_contract).to_string();
+        let max_parser_ast_nodes_per_line =
+            (parser_contract.max_ast_nodes_per_line as usize).min(max_parser_ast_nodes_per_line);
+        Self {
+            parser_contract,
+            parser_vm_program,
+            max_parser_tokens_per_line,
+            max_parser_ast_nodes_per_line,
+            parser_error_code,
+        }
+    }
+
+    pub(crate) fn enforce_line_budget(
+        &self,
+        estimated_ast_nodes: usize,
+    ) -> Result<(), RuntimeBridgeError> {
+        if estimated_ast_nodes > self.max_parser_tokens_per_line {
+            return Err(RuntimeBridgeError::Diagnostic(
+                RuntimeBridgeDiagnostic::new(
+                    self.parser_error_code.as_str(),
+                    format!(
+                        "parser token budget exceeded ({} > {})",
+                        estimated_ast_nodes, self.max_parser_tokens_per_line
+                    ),
+                    None,
+                ),
+            ));
+        }
+        if estimated_ast_nodes > self.max_parser_ast_nodes_per_line {
+            return Err(RuntimeBridgeError::Diagnostic(
+                RuntimeBridgeDiagnostic::new(
+                    self.parser_error_code.as_str(),
+                    format!(
+                        "parser AST node budget exceeded ({} > {})",
+                        estimated_ast_nodes, self.max_parser_ast_nodes_per_line
+                    ),
+                    None,
+                ),
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn parser_contract_error_code(contract: &RuntimeParserContract) -> &str {
+    let code = contract.diagnostics.invalid_statement.trim();
+    if code.is_empty() {
+        "vm-runtime"
+    } else {
+        code
+    }
+}
+
 fn register_fn_resolver(
     map: &mut HashMap<String, ExprResolverEntry>,
     family_id: &str,
@@ -206,6 +292,7 @@ impl PortableInstructionAdapter for OperandSetInstructionAdapter<'_> {
 pub struct HierarchyExecutionModel {
     core: RuntimeModelCore,
     expr_resolvers: HashMap<String, ExprResolverEntry>,
+    parser_vm_route_cache: Mutex<HashMap<ParserVmRouteCacheKey, Arc<ResolvedParserVmRoute>>>,
 }
 
 impl HierarchyExecutionModel {
@@ -213,6 +300,7 @@ impl HierarchyExecutionModel {
         Self {
             core,
             expr_resolvers: default_expr_resolvers(),
+            parser_vm_route_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -369,6 +457,47 @@ impl HierarchyExecutionModel {
     ) -> Result<(), RuntimeBridgeError> {
         self.core
             .enforce_parser_vm_program_budget_for_assembler(parser_contract, parser_vm_program)
+    }
+
+    pub(crate) fn resolve_parser_vm_route_for_assembler(
+        &self,
+        cpu_id: &str,
+        dialect_override: Option<&str>,
+    ) -> Result<Arc<ResolvedParserVmRoute>, RuntimeBridgeError> {
+        let key = ParserVmRouteCacheKey::new(cpu_id, dialect_override);
+        if let Some(route) = self
+            .parser_vm_route_cache
+            .lock()
+            .expect("parser VM route cache lock poisoned")
+            .get(&key)
+        {
+            return Ok(Arc::clone(route));
+        }
+
+        let parser_contract =
+            self.validate_parser_contract_for_assembler(cpu_id, dialect_override, 0)?;
+        let parser_vm_program = self
+            .resolve_parser_vm_program(cpu_id, dialect_override)?
+            .ok_or_else(|| {
+                RuntimeBridgeError::Diagnostic(RuntimeBridgeDiagnostic::new(
+                    parser_contract.diagnostics.invalid_statement.as_str(),
+                    "missing parser VM program for active CPU pipeline",
+                    None,
+                ))
+            })?;
+        self.enforce_parser_vm_program_budget_for_assembler(&parser_contract, &parser_vm_program)?;
+
+        let route = Arc::new(ResolvedParserVmRoute::new(
+            parser_contract,
+            parser_vm_program,
+            self.core.budget_limits.max_parser_tokens_per_line,
+            self.core.budget_limits.max_parser_ast_nodes_per_line,
+        ));
+        self.parser_vm_route_cache
+            .lock()
+            .expect("parser VM route cache lock poisoned")
+            .insert(key, Arc::clone(&route));
+        Ok(route)
     }
 
     pub(crate) fn ensure_parser_vm_v2_expr_subcall_contract_for_assembler(

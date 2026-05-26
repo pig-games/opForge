@@ -314,9 +314,9 @@ ExprRequestBuffer
 ExprResultBuffer
 	.fill byte, 32, 0
 PrvmIteratorEntryPtr
-	.long prvmIterateLines68000
+	.long line_iterator.prvmIterateLines68000
 
 	.endsection
-	.use prvm.amigaos.line_iterator (prvmIterateLines68000)
+	.use prvm.amigaos.line_iterator
 	.output "build/prvm_line_iterator_smoke.hunk", format=hunk, sections=entry, code
 	.endmodule

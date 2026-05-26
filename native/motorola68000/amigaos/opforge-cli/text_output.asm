@@ -7,8 +7,8 @@
 	.module opforge.cli.text_output
 	.cpu 68020
 
-	.use opforge.cli.state (NativeCliDecimalChar, NativeCliHexBuffer)
-	.use opforge.cli.strings (HexDigitsText, SpaceText)
+	.use opforge.cli.state
+	.use opforge.cli.strings
 	.use opforge.cli.dos
 
 	.section code, kind=code
@@ -44,10 +44,10 @@ maybeEmit
 emit
 	move.w #1, d5
 	addi.b #'0', d3
-	lea NativeCliDecimalChar, a1
+	lea state.NativeCliDecimalChar, a1
 	move.b d3, (a1)
 	clr.b 1(a1)
-	move.l #NativeCliDecimalChar, d1
+	move.l #state.NativeCliDecimalChar, d1
 	jsr dos.putStr
 
 next
@@ -60,9 +60,9 @@ next
 opforgeNativeCliPutHexU32	.block
 	movem.l d0-d4/a0-a2, -(sp)
 	move.l d0, -(sp)
-	lea NativeCliHexBuffer, a1
+	lea state.NativeCliHexBuffer, a1
 	move.b #'$', (a1)+
-	lea HexDigitsText, a0
+	lea strings.HexDigitsText, a0
 	movea.l sp, a2
 	moveq #3, d4
 
@@ -77,14 +77,14 @@ loop
 	dbra d4, loop
 	clr.b (a1)
 	addq.l #4, sp
-	move.l #NativeCliHexBuffer, d1
+	move.l #state.NativeCliHexBuffer, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a2
 	rts
 	.bend  ; opforgeNativeCliPutHexU32
 
 opforgeNativeCliPutSpace	.block
-	move.l #SpaceText, d1
+	move.l #strings.SpaceText, d1
 	jsr dos.putStr
 	rts
 	.bend  ; opforgeNativeCliPutSpace

@@ -5,13 +5,9 @@
 
 	.module main
 	.cpu 68020
-	.use tkpkg.amigaos.abi (ENTRY_ORD_INIT, ENTRY_ORD_LOAD_PACKAGE)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_SET_PIPELINE, ENTRY_ORD_TOKENIZE_LINE)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_LAST_ERROR, TOKENIZE_LINE_SAMPLE_LINE_NUM)
-	.use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN, CB_OUTPUT_LEN, CB_STATUS_CODE)
-	.use tkpkg.amigaos.buffers (ControlBlockV1, lastErrorBuffer, packageStorage)
-	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1, LAST_ERROR_BUFFER_CAPACITY)
-	.use tkpkg.amigaos.service as svc
+	.use tkpkg.amigaos.abi
+	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.service
 
 SYS_BASE                        = 4
 RETURN_OK                       = 0
@@ -29,11 +25,11 @@ MODE_OLDFILE                    = 1005
 PATH_BUFFER_CAPACITY            = 256
 DEBUG_CLI_SOURCE_BUFFER_CAPACITY = 16384
 DEBUG_CLI_MANIFEST_BUFFER_CAPACITY = 8192
-DEBUG_CLI_MAX_LINE_BYTES        = LAST_ERROR_BUFFER_CAPACITY - 4
+DEBUG_CLI_MAX_LINE_BYTES        = buffers.LAST_ERROR_BUFFER_CAPACITY - 4
 DEBUG_CLI_FILE_MODE_SINGLE      = 1
 DEBUG_CLI_FILE_MODE_MANIFEST    = 2
 
-PACKAGE_INPUT_PTR_V1           = LAST_ERROR_BUFFER_PTR_V1 + LAST_ERROR_BUFFER_CAPACITY
+PACKAGE_INPUT_PTR_V1           = buffers.LAST_ERROR_BUFFER_PTR_V1 + buffers.LAST_ERROR_BUFFER_CAPACITY
 
 	.section entry, kind=code
 	.pub
@@ -67,23 +63,23 @@ tkpkgDebugCliHaveDos
 	move.l #StartedText, d1
 	bsr.w tkpkgDebugCliPutStrV1
 
-	lea ControlBlockV1, a0
-	moveq #ENTRY_ORD_INIT, d0
+	lea buffers.ControlBlockV1, a0
+	moveq #abi.ENTRY_ORD_INIT, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	tst.b d0
 	bne.w tkpkgDebugCliReportFailure
 
 	lea tkpkgDebugCliPackageData, a1
-	lea packageStorage, a2
+	lea buffers.packageStorage, a2
 	move.w TkpkgDebugCliPackageLen, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
 
-	lea ControlBlockV1, a0
+	lea buffers.ControlBlockV1, a0
 	move.w #PACKAGE_INPUT_PTR_V1, d0
 	move.w TkpkgDebugCliPackageLen, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
-	moveq #ENTRY_ORD_LOAD_PACKAGE, d0
+	moveq #abi.ENTRY_ORD_LOAD_PACKAGE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	tst.b d0
@@ -115,15 +111,15 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	move.l d0, DebugCliFileModeEnabled
 
 	lea setPipelineRequest, a1
-	lea lastErrorBuffer, a2
+	lea buffers.lastErrorBuffer, a2
 	moveq #SET_PIPELINE_REQUEST_LEN, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
 
-	lea ControlBlockV1, a0
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
+	lea buffers.ControlBlockV1, a0
+	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
 	moveq #SET_PIPELINE_REQUEST_LEN, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
-	moveq #ENTRY_ORD_SET_PIPELINE, d0
+	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	tst.b d0
@@ -139,15 +135,15 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	bsr.w tkpkgDebugCliPutStrV1
 
 	lea TokenizeLineRequest, a1
-	lea lastErrorBuffer, a2
+	lea buffers.lastErrorBuffer, a2
 	moveq #TOKENIZE_LINE_REQUEST_LEN, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
 
-	lea ControlBlockV1, a0
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
+	lea buffers.ControlBlockV1, a0
+	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
 	moveq #TOKENIZE_LINE_REQUEST_LEN, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
-	moveq #ENTRY_ORD_TOKENIZE_LINE, d0
+	moveq #abi.ENTRY_ORD_TOKENIZE_LINE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	tst.b d0
@@ -157,7 +153,7 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	beq.w tkpkgDebugCliReportEmptyTokenizeOutput
 	move.l #TokenizeSuccessText, d1
 	bsr.w tkpkgDebugCliPutStrV1
-	move.l #lastErrorBuffer, d1
+	move.l #buffers.lastErrorBuffer, d1
 	bsr.w tkpkgDebugCliPutStrV1
 	move.l #NewlineText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -183,7 +179,7 @@ tkpkgDebugCliPipelineFileMode
 
 tkpkgDebugCliCheckLastErrorClear
 
-	lea ControlBlockV1, a0
+	lea buffers.ControlBlockV1, a0
 	bsr.w tkpkgDebugCliRunLastErrorV1
 	tst.b d0
 	bne.w tkpkgDebugCliCloseDos
@@ -197,7 +193,7 @@ tkpkgDebugCliCheckLastErrorClear
 	bra.w tkpkgDebugCliCloseDos
 
 tkpkgDebugCliReportFailure
-	lea ControlBlockV1, a0
+	lea buffers.ControlBlockV1, a0
 	bsr.w tkpkgDebugCliRunLastErrorV1
 	tst.b d0
 	bne.w tkpkgDebugCliCloseDos
@@ -205,7 +201,7 @@ tkpkgDebugCliReportFailure
 tkpkgDebugCliReportLastErrorBuffer
 	move.l #FailurePrefixText, d1
 	bsr.w tkpkgDebugCliPutStrV1
-	move.l #lastErrorBuffer, d1
+	move.l #buffers.lastErrorBuffer, d1
 	bsr.w tkpkgDebugCliPutStrV1
 	move.l #NewlineText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -226,7 +222,7 @@ tkpkgDebugCliDispatchServiceV1
 	move.l d7, -(sp)
 	move.l a5, -(sp)
 	move.l a6, -(sp)
-	jsr svc.dispatchV1
+	jsr service.dispatchV1
 	movea.l (sp)+, a6
 	movea.l (sp)+, a5
 	move.l (sp)+, d7
@@ -497,7 +493,7 @@ tkpkgDebugCliManifestCpuPresent
 	bra.w tkpkgDebugCliManifestPrepareDone
 
 tkpkgDebugCliManifestPathPresent
-	cmp.l #LAST_ERROR_BUFFER_CAPACITY - 1, d5
+	cmp.l #buffers.LAST_ERROR_BUFFER_CAPACITY - 1, d5
 	bls.s tkpkgDebugCliManifestCpuFits
 	move.l #ManifestPipelineTooLongText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -505,7 +501,7 @@ tkpkgDebugCliManifestPathPresent
 	bra.w tkpkgDebugCliManifestPrepareDone
 
 tkpkgDebugCliManifestCpuFits
-	lea lastErrorBuffer, a2
+	lea buffers.lastErrorBuffer, a2
 	movea.l a4, a1
 	move.l d5, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
@@ -513,7 +509,7 @@ tkpkgDebugCliManifestCpuFits
 	movem.l d5-d7/a3-a4, -(sp)
 	move.l #ManifestPipelineBeginText, d1
 	bsr.w tkpkgDebugCliPutStrV1
-	move.l #lastErrorBuffer, d1
+	move.l #buffers.lastErrorBuffer, d1
 	bsr.w tkpkgDebugCliPutStrV1
 	move.l #NewlineText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -594,11 +590,11 @@ tkpkgDebugCliManifestCopyDone
 
 tkpkgDebugCliSetPipelineFromLastErrorV1
 	movem.l d1/a0, -(sp)
-	lea ControlBlockV1, a0
+	lea buffers.ControlBlockV1, a0
 	move.w d0, d1
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
+	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
 	bsr.w tkpkgDebugCliWriteInputWindowV1
-	moveq #ENTRY_ORD_SET_PIPELINE, d0
+	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	movem.l (sp)+, d1/a0
@@ -726,7 +722,7 @@ tkpkgDebugCliTokenizeLineSliceV1
 tkpkgDebugCliSliceFits
 	movea.l a1, a3
 	move.l d0, d7
-	lea lastErrorBuffer, a2
+	lea buffers.lastErrorBuffer, a2
 	move.l d1, d2
 	move.b d2, (a2)+
 	lsr.l #8, d2
@@ -739,12 +735,12 @@ tkpkgDebugCliSliceFits
 	move.l d7, d0
 	bsr.w tkpkgDebugCliCopyBytesV1
 
-	lea ControlBlockV1, a0
-	move.w #LAST_ERROR_BUFFER_PTR_V1, d0
+	lea buffers.ControlBlockV1, a0
+	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
 	move.w d7, d1
 	addq.w #4, d1
 	bsr.w tkpkgDebugCliWriteInputWindowV1
-	moveq #ENTRY_ORD_TOKENIZE_LINE, d0
+	moveq #abi.ENTRY_ORD_TOKENIZE_LINE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	tst.b d0
@@ -752,9 +748,9 @@ tkpkgDebugCliSliceFits
 	bsr.w tkpkgDebugCliReadOutputLenV1
 	tst.w d0
 	beq.w tkpkgDebugCliSliceOk
-	lea lastErrorBuffer, a1
+	lea buffers.lastErrorBuffer, a1
 	clr.b 0(a1, d0.l)
-	move.l #lastErrorBuffer, d1
+	move.l #buffers.lastErrorBuffer, d1
 	bsr.w tkpkgDebugCliPutStrV1
 	move.l #NewlineText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -809,29 +805,29 @@ tkpkgDebugCliCopyDone
 	rts
 
 tkpkgDebugCliWriteInputWindowV1
-	move.b d0, CB_INPUT_PTR(a0)
+	move.b d0, abi.CB_INPUT_PTR(a0)
 	lsr.w #8, d0
 	move.b d0, 17(a0)
-	move.b d1, CB_INPUT_LEN(a0)
+	move.b d1, abi.CB_INPUT_LEN(a0)
 	lsr.w #8, d1
 	move.b d1, 19(a0)
 	rts
 
 tkpkgDebugCliClearInputWindowV1
-	clr.b CB_INPUT_PTR(a0)
+	clr.b abi.CB_INPUT_PTR(a0)
 	clr.b 17(a0)
-	clr.b CB_INPUT_LEN(a0)
+	clr.b abi.CB_INPUT_LEN(a0)
 	clr.b 19(a0)
 	rts
 
 tkpkgDebugCliReadStatusV1
 	moveq #0, d0
-	move.b CB_STATUS_CODE(a0), d0
+	move.b abi.CB_STATUS_CODE(a0), d0
 	rts
 
 tkpkgDebugCliReadOutputLenV1
 	moveq #0, d0
-	move.b CB_OUTPUT_LEN(a0), d0
+	move.b abi.CB_OUTPUT_LEN(a0), d0
 	moveq #0, d1
 	move.b 23(a0), d1
 	lsl.w #8, d1
@@ -840,8 +836,8 @@ tkpkgDebugCliReadOutputLenV1
 
 tkpkgDebugCliRunLastErrorV1
 	bsr.w tkpkgDebugCliClearInputWindowV1
-	moveq #ENTRY_ORD_LAST_ERROR, d0
-	jsr svc.dispatchV1
+	moveq #abi.ENTRY_ORD_LAST_ERROR, d0
+	jsr service.dispatchV1
 	bsr.w tkpkgDebugCliReadStatusV1
 	rts
 	.bend ; start
@@ -1018,7 +1014,7 @@ setPipelineRequest
 SetPipelineRequestEnd
 
 TokenizeLineRequest
-	.byte TOKENIZE_LINE_SAMPLE_LINE_NUM, 0, 0, 0
+	.byte abi.TOKENIZE_LINE_SAMPLE_LINE_NUM, 0, 0, 0
 	.byte "move.b d0,d1"
 tokenizeLineRequestEnd
 

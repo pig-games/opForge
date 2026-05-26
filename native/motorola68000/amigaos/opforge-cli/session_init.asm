@@ -3,10 +3,10 @@
 	.module opforge.cli.session_init
 	.cpu 68020
 
-	.use opasm.amigaos.engine as eng
-	.use opforge.cli.constants (NATIVE_MODULE_USE_STATE_BYTES)
-	.use opforge.cli.state (NativeCliCpuName, NativeCliModuleUseStateStart)
-	.use opforge.cli.strings (DefaultCpuName)
+	.use opasm.amigaos.engine
+	.use opforge.cli.constants
+	.use opforge.cli.state
+	.use opforge.cli.strings
 	.use opforge.cli.copy
 
 	.section code, kind=code
@@ -14,23 +14,23 @@
 
 ; Initialize transitional native assembly-session state for the current CLI run.
 opforgeNativeCliInitAssemblySession	.block
-	lea NativeCliCpuName, a0
+	lea state.NativeCliCpuName, a0
 	tst.b (a0)
 	bne.s haveCpu
-	lea DefaultCpuName, a0
+	lea strings.DefaultCpuName, a0
 
 haveCpu
-	jsr eng.initSessionV1
+	jsr engine.initSessionV1
 	rts
 	.bend  ; opforgeNativeCliInitAssemblySession
 
 ; Clear module/use and statement collection state before parsing input.
 opforgeNativeCliInitModuleUseState	.block
 	movem.l d0-d1/a0, -(sp)
-	lea NativeCliModuleUseStateStart, a0
-	move.l #NATIVE_MODULE_USE_STATE_BYTES, d0
+	lea state.NativeCliModuleUseStateStart, a0
+	move.l #constants.NATIVE_MODULE_USE_STATE_BYTES, d0
 	jsr copy.clearBytes
-	jsr eng.resetStatementCollectionV1
+	jsr engine.resetStatementCollectionV1
 	movem.l (sp)+, d0-d1/a0
 	rts
 	.bend  ; opforgeNativeCliInitModuleUseState

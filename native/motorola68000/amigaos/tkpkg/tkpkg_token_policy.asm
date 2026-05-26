@@ -3,13 +3,8 @@
 	.module tkpkg.amigaos.token_policy
 	.cpu 68020
 	.pub
-	.use tkpkg.amigaos.abi (STATUS_RUNTIME_ERROR_V1)
-	.use tkpkg.amigaos.buffers (SCOPED_OWNER_DIALECT, SCOPED_OWNER_CPU)
-	.use tkpkg.amigaos.buffers (SCOPED_OWNER_FAMILY, PackageStorage)
-	.use tkpkg.amigaos.buffers (ToksChunkOffsetLo, PendingDialectOffsetLo)
-	.use tkpkg.amigaos.buffers (PendingCpuOffsetLo, PendingFamilyOffsetLo)
-	.use tkpkg.amigaos.buffers (PendingTokenPolicyOffsetLo)
-	.use tkpkg.amigaos.buffers (PendingTokenPolicyOwnerTag)
+	.use tkpkg.amigaos.abi
+	.use tkpkg.amigaos.buffers
 
 MISSING_POLICY_TEXT_LEN             = 33
 TOKS_ENTRY_FIXED_PREFIX_SIZE        = 9
@@ -41,24 +36,24 @@ MissingPolicyText
 
 	.pub
 resolveLocatorV1	.block
-	moveq #SCOPED_OWNER_DIALECT, d0  ; prefer dialect-specific tokenization rules when present
-	lea PendingDialectOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_DIALECT, d0  ; prefer dialect-specific tokenization rules when present
+	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w findOwner
 	tst.b d0
 	beq.s done
-	moveq #SCOPED_OWNER_CPU, d0  ; fall back to CPU-local policy
-	lea PendingCpuOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_CPU, d0  ; fall back to CPU-local policy
+	lea buffers.PendingCpuOffsetLo, a3
 	bsr.w findOwner
 	tst.b d0
 	beq.s done
-	moveq #SCOPED_OWNER_FAMILY, d0  ; final fallback is family-wide policy
-	lea PendingFamilyOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_FAMILY, d0  ; final fallback is family-wide policy
+	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w findOwner
 	tst.b d0
 	beq.s done
 	lea MissingPolicyText, a1
 	moveq #MISSING_POLICY_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 done
@@ -71,14 +66,14 @@ done
 findOwner	.block
 	move.b d0, d6  ; D6 keeps the scoped-owner tag while D0 is reused by helpers
 	move.l a3, -(sp)
-	lea PendingTokenPolicyOffsetLo, a3
+	lea buffers.PendingTokenPolicyOffsetLo, a3
 	clr.l (a3)+
 	clr.b (a3)
 	movea.l (sp)+, a3
 	bsr.w readLocatorPtrLen
 	move.w d3, d5
 	movea.l a1, a5
-	lea ToksChunkOffsetLo, a3
+	lea buffers.ToksChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocator
 	bsr.w readU32LeLow16
 	tst.b d1
@@ -127,12 +122,12 @@ found
 	bsr.w skipToksEntry
 	tst.b d1
 	bne.w missing
-	lea PendingTokenPolicyOffsetLo, a3
+	lea buffers.PendingTokenPolicyOffsetLo, a3
 	movea.l a4, a1
 	move.l a2, d0
 	sub.l a4, d0
 	bsr.w storeRecordLocator
-	move.b d6, PendingTokenPolicyOwnerTag
+	move.b d6, buffers.PendingTokenPolicyOwnerTag
 	moveq #0, d0
 	rts
 	.bend  ; findOwner
@@ -231,7 +226,7 @@ boundsFail
 storeRecordLocator	.block
 	move.l a6, -(sp)
 	move.l a1, d2
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	sub.l a6, d2
 	move.b d2, (a3)+
 	lsr.w #8, d2
@@ -256,7 +251,7 @@ readLocatorPtrLen	.block
 	move.b (a3)+, d1
 	lsl.w #8, d1
 	or.w d1, d3
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	lea 0(a6, d2.W), a1
 	rts
 	.bend  ; readLocatorPtrLen
@@ -274,7 +269,7 @@ chunkPtrFromLocator	.block
 	move.b (a3)+, d1
 	lsl.w #8, d1
 	or.w d1, d7
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	lea 0(a6, d0.W), a2
 	lea 0(a2, d7.W), a6
 	rts

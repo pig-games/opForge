@@ -7,23 +7,19 @@
 	.module opforge.cli.source_reader
 	.cpu 68020
 
-	.use opforge.cli.state (NativeCliInputChar, NativeCliDosBase, NativeCliInputPath, NativeCliCurrentPath)
-	.use opforge.cli.state (NativeCliPackageLenActive, NativeCliSourceLine, NativeCliSourceLineNum, NativeCliSourceLineLen)
-	.use opforge.cli.state (NativeCliSawCr, NativeCliIncludeDepth, NativeCliModuleResolveDepth)
-	.use opforge.cli.state (NativeCliModuleDepth, NativeCliResolvedModuleId)
-	.use opforge.cli.state (NativeCliModuleSavedLineLen, NativeCliModuleSavedSawCr, NativeCliModuleSavedLineNum, NativeCliModuleSavedPath, NativeCliIncludePath)
-	.use opforge.cli.constants (PACKAGE_INPUT_PTR_V1, SOURCE_LINE_BUFFER_CAPACITY)
-	.use opforge.cli.strings (TokenizerOkText, ModuleDepthFailureText)
+	.use opforge.cli.state
+	.use opforge.cli.constants
+	.use opforge.cli.strings
 	.use opforge.cli.dos
-	.use opforge.cli.path (opforgeNativeCliCopyPathBuffer)
-	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1)
+	.use opforge.cli.path
+	.use tkpkg.amigaos.buffers
 
-	.use tkpkg.amigaos.abi (ENTRY_ORD_INIT, ENTRY_ORD_LOAD_PACKAGE)
+	.use tkpkg.amigaos.abi
 
-	.use opforge.cli.package_pipeline (opforgeNativeCliInitPackagePipeline)
-	.use opforge.cli.line_processor (opforgeNativeCliTokenizeCurrentLine)
-	.use opforge.cli.include_use (opforgeNativeCliPreparePendingInclude, opforgeNativeCliFinishPendingInclude)
-	.use opforge.cli.tkpkg_control_block (opforgeNativeCliReadStatus, opforgeNativeCliReadOutputLen, opforgeNativeCliWriteInputWindow)
+	.use opforge.cli.package_pipeline
+	.use opforge.cli.line_processor
+	.use opforge.cli.include_use
+	.use opforge.cli.tkpkg_control_block
 
 	.section code, kind=code
 	.pub
@@ -31,12 +27,12 @@
 ; Initialize package state, tokenize every source line, and run parser routing.
 opforgeNativeCliTokenizeFrontend	.block
 	movem.l d2-d7/a2-a6, -(sp)
-	bsr.w opforgeNativeCliInitPackagePipeline
+	bsr.w package_pipeline.opforgeNativeCliInitPackagePipeline
 	tst.l d0
 	bne.b return
-	move.l #TokenizerOkText, d1
+	move.l #strings.TokenizerOkText, d1
 	jsr dos.putStr
-	move.w #-1, NativeCliResolvedModuleId
+	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliTokenizeFile
 	tst.l d0
 	bne.s return
@@ -53,12 +49,12 @@ return
 
 ; Tokenize the primary input file path recorded by argument parsing.
 opforgeNativeCliTokenizeFile	.block
-	lea NativeCliInputPath, a0
-	lea NativeCliCurrentPath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	lea state.NativeCliInputPath, a0
+	lea state.NativeCliCurrentPath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
-	lea NativeCliInputPath, a0
+	lea state.NativeCliInputPath, a0
 	bsr.w opforgeNativeCliTokenizeFileAtPath
 	rts
 
@@ -77,12 +73,12 @@ opforgeNativeCliTokenizeFileAtPath	.block
 
 openOk
 	move.l d0, d5
-	move.l #1, NativeCliSourceLineNum
-	clr.w NativeCliSourceLineLen
-	clr.w NativeCliSawCr
+	move.l #1, state.NativeCliSourceLineNum
+	clr.w state.NativeCliSourceLineLen
+	clr.w state.NativeCliSawCr
 
 loop
-	lea NativeCliInputChar, a0
+	lea state.NativeCliInputChar, a0
 	moveq #1, d0
 	move.l d5, d1
 	jsr dos.readInput
@@ -91,10 +87,10 @@ loop
 	tst.l d0
 	beq.w fileEof
 
-	move.b NativeCliInputChar, d0
-	tst.w NativeCliSawCr
+	move.b state.NativeCliInputChar, d0
+	tst.w state.NativeCliSawCr
 	beq.s checkBreak
-	clr.w NativeCliSawCr
+	clr.w state.NativeCliSawCr
 	cmpi.b #10, d0
 	beq.w loop
 
@@ -104,20 +100,20 @@ checkBreak
 	cmpi.b #13, d0
 	beq.s crDone
 
-	move.w NativeCliSourceLineLen, d1
-	cmpi.w #SOURCE_LINE_BUFFER_CAPACITY, d1
+	move.w state.NativeCliSourceLineLen, d1
+	cmpi.w #constants.SOURCE_LINE_BUFFER_CAPACITY, d1
 	bhs.w close
-	lea NativeCliSourceLine, a1
+	lea state.NativeCliSourceLine, a1
 	move.b d0, 0(a1, d1.W)
 	addq.w #1, d1
-	move.w d1, NativeCliSourceLineLen
+	move.w d1, state.NativeCliSourceLineLen
 	bra.w loop
 
 crDone
-	move.w #1, NativeCliSawCr
+	move.w #1, state.NativeCliSawCr
 
 lineDone
-	jsr opforgeNativeCliTokenizeCurrentLine
+	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
 	tst.l d0
 	bne.s close
 	bsr.w opforgeNativeCliTokenizePendingInclude
@@ -126,16 +122,16 @@ lineDone
 	bsr.w opforgeNativeCliTokenizePendingUseModule
 	tst.l d0
 	bne.s close
-	move.l NativeCliSourceLineNum, d0
+	move.l state.NativeCliSourceLineNum, d0
 	addq.l #1, d0
-	move.l d0, NativeCliSourceLineNum
-	clr.w NativeCliSourceLineLen
+	move.l d0, state.NativeCliSourceLineNum
+	clr.w state.NativeCliSourceLineLen
 	bra.w loop
 
 fileEof
-	tst.w NativeCliSourceLineLen
+	tst.w state.NativeCliSourceLineLen
 	beq.s checkModuleDepth
-	jsr opforgeNativeCliTokenizeCurrentLine
+	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
 	tst.l d0
 	bne.s close
 	bsr.w opforgeNativeCliTokenizePendingInclude
@@ -146,13 +142,13 @@ fileEof
 	bne.s close
 
 checkModuleDepth
-	tst.w NativeCliIncludeDepth
+	tst.w state.NativeCliIncludeDepth
 	bne.s successClose
-	tst.w NativeCliModuleResolveDepth
+	tst.w state.NativeCliModuleResolveDepth
 	bne.s successClose
-	tst.w NativeCliModuleDepth
+	tst.w state.NativeCliModuleDepth
 	beq.s successClose
-	move.l #ModuleDepthFailureText, d1
+	move.l #strings.ModuleDepthFailureText, d1
 	jsr dos.putStr
 	bra.s close
 
@@ -170,23 +166,23 @@ close
 	.bend  ; opforgeNativeCliTokenizeFileAtPath
 
 opforgeNativeCliTokenizePendingInclude	.block
-	bsr.w opforgeNativeCliPreparePendingInclude
+	bsr.w include_use.opforgeNativeCliPreparePendingInclude
 	tst.l d0
 	bne.s return
 	tst.l d1
 	beq.s return
-	lea NativeCliIncludePath, a0
+	lea state.NativeCliIncludePath, a0
 	bsr.w opforgeNativeCliTokenizeFileAtPath
-	bsr.w opforgeNativeCliFinishPendingInclude
+	bsr.w include_use.opforgeNativeCliFinishPendingInclude
 
 return
 	rts
 	.bend  ; opforgeNativeCliTokenizePendingInclude
 
 opforgeNativeCliTokenizePendingUseModule	.block
-	cmpi.w #-1, NativeCliResolvedModuleId
+	cmpi.w #-1, state.NativeCliResolvedModuleId
 	beq.s ok
-	move.w #-1, NativeCliResolvedModuleId
+	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliTokenizeResolvedUseModule
 	rts
 
@@ -197,26 +193,26 @@ ok
 
 opforgeNativeCliTokenizeResolvedUseModule	.block
 	movem.l d1-d2/a0-a1, -(sp)
-	move.w NativeCliSourceLineLen, d0
-	move.w d0, NativeCliModuleSavedLineLen
-	move.w NativeCliSawCr, d0
-	move.w d0, NativeCliModuleSavedSawCr
-	move.l NativeCliSourceLineNum, d0
-	move.l d0, NativeCliModuleSavedLineNum
-	lea NativeCliCurrentPath, a0
-	lea NativeCliModuleSavedPath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	move.w state.NativeCliSourceLineLen, d0
+	move.w d0, state.NativeCliModuleSavedLineLen
+	move.w state.NativeCliSawCr, d0
+	move.w d0, state.NativeCliModuleSavedSawCr
+	move.l state.NativeCliSourceLineNum, d0
+	move.l d0, state.NativeCliModuleSavedLineNum
+	lea state.NativeCliCurrentPath, a0
+	lea state.NativeCliModuleSavedPath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.w fail
-	lea NativeCliIncludePath, a0
-	lea NativeCliCurrentPath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	lea state.NativeCliIncludePath, a0
+	lea state.NativeCliCurrentPath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.w fail
-	lea NativeCliIncludePath, a0
-	move.w #1, NativeCliModuleResolveDepth
+	lea state.NativeCliIncludePath, a0
+	move.w #1, state.NativeCliModuleResolveDepth
 	bsr.w opforgeNativeCliTokenizeFileAtPath
-	clr.w NativeCliModuleResolveDepth
+	clr.w state.NativeCliModuleResolveDepth
 	tst.l d0
 	bne.s restoreFail
 	moveq #0, d1
@@ -226,15 +222,15 @@ restoreFail
 	moveq #1, d1
 
 restore
-	move.w NativeCliModuleSavedLineLen, d2
-	move.w d2, NativeCliSourceLineLen
-	move.w NativeCliModuleSavedSawCr, d2
-	move.w d2, NativeCliSawCr
-	move.l NativeCliModuleSavedLineNum, d2
-	move.l d2, NativeCliSourceLineNum
-	lea NativeCliModuleSavedPath, a0
-	lea NativeCliCurrentPath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	move.w state.NativeCliModuleSavedLineLen, d2
+	move.w d2, state.NativeCliSourceLineLen
+	move.w state.NativeCliModuleSavedSawCr, d2
+	move.w d2, state.NativeCliSawCr
+	move.l state.NativeCliModuleSavedLineNum, d2
+	move.l d2, state.NativeCliSourceLineNum
+	lea state.NativeCliModuleSavedPath, a0
+	lea state.NativeCliCurrentPath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
 	tst.l d1

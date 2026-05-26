@@ -2,7 +2,7 @@
 
 	.module main
 	.cpu 68020
-	.use prvm.amigaos.runtime (prvmRun68000)
+	.use prvm.amigaos.runtime
 
 SYS_BASE                        = 4
 RETURN_OK                       = 0
@@ -95,7 +95,7 @@ haveDos
 	bsr.w buildRequestFrame
 	lea RequestFrame(PC), a0
 	move.l #PRVM_REQUEST_FRAME_SIZE, d0
-	jsr prvmRun68000.l
+	jsr runtime.prvmRun68000.l
 
 	lea SmokeStatus(PC), a0
 	move.l d0, 0(a0)
@@ -114,7 +114,7 @@ haveDos
 	lea RequestFrame(PC), a0
 	move.w #PRVM_CALL_MODE_RESUME, 8(a0)
 	move.l #PRVM_REQUEST_FRAME_SIZE, d0
-	jsr prvmRun68000.l
+	jsr runtime.prvmRun68000.l
 
 	lea SmokeStatus(PC), a0
 	move.l d0, 0(a0)

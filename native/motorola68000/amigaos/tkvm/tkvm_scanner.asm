@@ -3,18 +3,9 @@
 	.module tkvm.amigaos.scanner
 	.cpu 68020
 	.pub
-	.use tkvm.amigaos.demo_program (LexDot, LexDollar, LexHash, LexQuestion)
-	.use tkvm.amigaos.demo_program (LexOpenBracket, LexCloseBracket, LexOpenBrace, LexCloseBrace)
-	.use tkvm.amigaos.demo_program (LexComma, LexColon, LexOpenParen, LexCloseParen)
-	.use tkvm.amigaos.demo_program (LexPlus, LexMinus, LexMultiply, LexPower)
-	.use tkvm.amigaos.demo_program (LexDivide, LexBitNot, LexEq, LexNe)
-	.use tkvm.amigaos.demo_program (LexLogicNot, LexBitAnd, LexBitOr, LexLogicAnd)
-	.use tkvm.amigaos.demo_program (LexLogicOr, LexBitXor, LexLogicXor)
-	.use tkvm.amigaos.demo_program (LexLt, LexLe, LexGt, LexGe)
-	.use tkvm.amigaos.demo_program (LexShl, LexShr, LexMod, LexRange, LexRangeInclusive)
-	.use tkvm.amigaos.char_predicates (tkvmIsIdentifierContinue, tkvmIsNumberBody)
-	.use tkvm.amigaos.char_predicates (tkvmIsHexDigitOrUnderscore, tkvmHexDigitValue)
-	.use tkvm.amigaos.state (TkvmLastFailureKind, TkvmLastFailureOperand)
+	.use tkvm.amigaos.demo_program
+	.use tkvm.amigaos.char_predicates
+	.use tkvm.amigaos.state
 
 TK_STATUS_SUCCESS               = 0
 TK_STATUS_TOKEN_OVERFLOW        = 2
@@ -161,7 +152,7 @@ loop
 	bcc done
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
-	jsr tkvmIsIdentifierContinue  ; mirrors vm_matches_identifier_continue_class()
+	jsr char_predicates.tkvmIsIdentifierContinue  ; mirrors vm_matches_identifier_continue_class()
 	tst.l d0
 	beq done
 	move.l d3, d0
@@ -231,7 +222,7 @@ loop
 	cmp.l LOCAL_PENDING_START(a2), d2
 	beq acceptByte
 checkBody
-	jsr tkvmIsNumberBody  ; same permissive number-body walk as vm_scan_number_token()
+	jsr char_predicates.tkvmIsNumberBody  ; same permissive number-body walk as vm_scan_number_token()
 	tst.l d0
 	beq done
 acceptByte
@@ -317,7 +308,7 @@ hex
 	bcc malformedString
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
-	jsr tkvmHexDigitValue
+	jsr char_predicates.tkvmHexDigitValue
 	tst.l d0
 	bmi malformedString
 	move.l d0, LOCAL_TEMP_U32(a2)
@@ -326,7 +317,7 @@ hex
 	bcc malformedString
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
-	jsr tkvmHexDigitValue
+	jsr char_predicates.tkvmHexDigitValue
 	tst.l d0
 	bmi malformedString
 	move.l d1, -(sp)
@@ -443,8 +434,8 @@ scanSymbolToken	.block
 	beq lessLike
 	cmpi.b #'>', d0
 	beq greaterLike
-	move.w #TK_VM_FAILURE_KIND_FAIL, TkvmLastFailureKind
-	move.w d0, TkvmLastFailureOperand
+	move.w #TK_VM_FAILURE_KIND_FAIL, state.TkvmLastFailureKind
+	move.w d0, state.TkvmLastFailureOperand
 	moveq #TK_STATUS_VM_FAILURE, d0
 	rts
 
@@ -468,7 +459,7 @@ dotLike
 	bne stageRange
 	addq.l #1, d2
 	move.w #TK_KIND_OP_RANGE_INCLUSIVE, LOCAL_PENDING_KIND(a2)
-	lea LexRangeInclusive, a0
+	lea demo_program.LexRangeInclusive, a0
 	moveq #3, d0
 	bra stageAndCommitSymbol
 
@@ -476,13 +467,13 @@ stageRange
 	; '..' and '..=' share the same entry path so the inclusive form only
 	; needs one extra lookahead byte and a different fixed lexeme template.
 	move.w #TK_KIND_OP_RANGE, LOCAL_PENDING_KIND(a2)
-	lea LexRange, a0
+	lea demo_program.LexRange, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 stageDot
 	move.w #TK_KIND_DOT, LOCAL_PENDING_KIND(a2)
-	lea LexDot, a0
+	lea demo_program.LexDot, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -494,7 +485,7 @@ dollarOrPrefixedNumber
 	bcc stageDollar
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
-	jsr tkvmIsHexDigitOrUnderscore  ; '$' starts either a hex literal or a standalone dollar token
+	jsr char_predicates.tkvmIsHexDigitOrUnderscore  ; '$' starts either a hex literal or a standalone dollar token
 	tst.l d0
 	beq stageDollar
 	move.l LOCAL_PENDING_START(a2), d2
@@ -503,7 +494,7 @@ dollarOrPrefixedNumber
 
 stageDollar
 	move.w #TK_KIND_DOLLAR, LOCAL_PENDING_KIND(a2)
-	lea LexDollar, a0
+	lea demo_program.LexDollar, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -529,14 +520,14 @@ percentAsNumber
 
 stagePercent
 	move.w #TK_KIND_OP_MOD, LOCAL_PENDING_KIND(a2)
-	lea LexMod, a0
+	lea demo_program.LexMod, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageHash
 	addq.l #1, d2
 	move.w #TK_KIND_HASH, LOCAL_PENDING_KIND(a2)
-	lea LexHash, a0
+	lea demo_program.LexHash, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -547,77 +538,77 @@ stageQuestion
 	; stage-and-commit tail.
 	addq.l #1, d2
 	move.w #TK_KIND_QUESTION, LOCAL_PENDING_KIND(a2)
-	lea LexQuestion, a0
+	lea demo_program.LexQuestion, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageOpenBracket
 	addq.l #1, d2
 	move.w #TK_KIND_OPEN_BRACKET, LOCAL_PENDING_KIND(a2)
-	lea LexOpenBracket, a0
+	lea demo_program.LexOpenBracket, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageCloseBracket
 	addq.l #1, d2
 	move.w #TK_KIND_CLOSE_BRACKET, LOCAL_PENDING_KIND(a2)
-	lea LexCloseBracket, a0
+	lea demo_program.LexCloseBracket, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageOpenBrace
 	addq.l #1, d2
 	move.w #TK_KIND_OPEN_BRACE, LOCAL_PENDING_KIND(a2)
-	lea LexOpenBrace, a0
+	lea demo_program.LexOpenBrace, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageCloseBrace
 	addq.l #1, d2
 	move.w #TK_KIND_CLOSE_BRACE, LOCAL_PENDING_KIND(a2)
-	lea LexCloseBrace, a0
+	lea demo_program.LexCloseBrace, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageComma
 	addq.l #1, d2
 	move.w #TK_KIND_COMMA, LOCAL_PENDING_KIND(a2)
-	lea LexComma, a0
+	lea demo_program.LexComma, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageColon
 	addq.l #1, d2
 	move.w #TK_KIND_COLON, LOCAL_PENDING_KIND(a2)
-	lea LexColon, a0
+	lea demo_program.LexColon, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageOpenParen
 	addq.l #1, d2
 	move.w #TK_KIND_OPEN_PAREN, LOCAL_PENDING_KIND(a2)
-	lea LexOpenParen, a0
+	lea demo_program.LexOpenParen, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageCloseParen
 	addq.l #1, d2
 	move.w #TK_KIND_CLOSE_PAREN, LOCAL_PENDING_KIND(a2)
-	lea LexCloseParen, a0
+	lea demo_program.LexCloseParen, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stagePlus
 	addq.l #1, d2
 	move.w #TK_KIND_OP_PLUS, LOCAL_PENDING_KIND(a2)
-	lea LexPlus, a0
+	lea demo_program.LexPlus, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageMinus
 	addq.l #1, d2
 	move.w #TK_KIND_OP_MINUS, LOCAL_PENDING_KIND(a2)
-	lea LexMinus, a0
+	lea demo_program.LexMinus, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -631,28 +622,28 @@ scanStarLike
 
 stageMultiply
 	move.w #TK_KIND_OP_MULTIPLY, LOCAL_PENDING_KIND(a2)
-	lea LexMultiply, a0
+	lea demo_program.LexMultiply, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stagePower
 	addq.l #1, d2
 	move.w #TK_KIND_OP_POWER, LOCAL_PENDING_KIND(a2)
-	lea LexPower, a0
+	lea demo_program.LexPower, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 stageDivide
 	addq.l #1, d2
 	move.w #TK_KIND_OP_DIVIDE, LOCAL_PENDING_KIND(a2)
-	lea LexDivide, a0
+	lea demo_program.LexDivide, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
 stageBitNot
 	addq.l #1, d2
 	move.w #TK_KIND_OP_BIT_NOT, LOCAL_PENDING_KIND(a2)
-	lea LexBitNot, a0
+	lea demo_program.LexBitNot, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -670,7 +661,7 @@ stageEq
 	; The canonical fixed lexeme is always "==" for equality so report output
 	; normalizes '=' and '==' into one operator surface.
 	move.w #TK_KIND_OP_EQ, LOCAL_PENDING_KIND(a2)
-	lea LexEq, a0
+	lea demo_program.LexEq, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
@@ -683,7 +674,7 @@ bangLike
 	bne stageLogicNot
 	addq.l #1, d2
 	move.w #TK_KIND_OP_NE, LOCAL_PENDING_KIND(a2)
-	lea LexNe, a0
+	lea demo_program.LexNe, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
@@ -691,7 +682,7 @@ stageLogicNot
 	; Unlike equality, logical-not preserves its single-byte spelling in the
 	; report/output surface because '!' and '!=' are distinct token kinds.
 	move.w #TK_KIND_OP_LOGIC_NOT, LOCAL_PENDING_KIND(a2)
-	lea LexLogicNot, a0
+	lea demo_program.LexLogicNot, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -704,13 +695,13 @@ andLike
 	bne stageBitAnd
 	addq.l #1, d2
 	move.w #TK_KIND_OP_LOGIC_AND, LOCAL_PENDING_KIND(a2)
-	lea LexLogicAnd, a0
+	lea demo_program.LexLogicAnd, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 stageBitAnd
 	move.w #TK_KIND_OP_BIT_AND, LOCAL_PENDING_KIND(a2)
-	lea LexBitAnd, a0
+	lea demo_program.LexBitAnd, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -723,13 +714,13 @@ orLike
 	bne bitOr
 	addq.l #1, d2
 	move.w #TK_KIND_OP_LOGIC_OR, LOCAL_PENDING_KIND(a2)
-	lea LexLogicOr, a0
+	lea demo_program.LexLogicOr, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 bitOr
 	move.w #TK_KIND_OP_BIT_OR, LOCAL_PENDING_KIND(a2)
-	lea LexBitOr, a0
+	lea demo_program.LexBitOr, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -743,13 +734,13 @@ caretLike
 	bne stageBitXor
 	addq.l #1, d2
 	move.w #TK_KIND_OP_LOGIC_XOR, LOCAL_PENDING_KIND(a2)
-	lea LexLogicXor, a0
+	lea demo_program.LexLogicXor, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 stageBitXor
 	move.w #TK_KIND_OP_BIT_XOR, LOCAL_PENDING_KIND(a2)
-	lea LexBitXor, a0
+	lea demo_program.LexBitXor, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -769,21 +760,21 @@ lessLike
 stageShl
 	addq.l #1, d2
 	move.w #TK_KIND_OP_SHL, LOCAL_PENDING_KIND(a2)
-	lea LexShl, a0
+	lea demo_program.LexShl, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 stageLe
 	addq.l #1, d2
 	move.w #TK_KIND_OP_LE, LOCAL_PENDING_KIND(a2)
-	lea LexLe, a0
+	lea demo_program.LexLe, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 stageAltNe
 	addq.l #1, d2
 	move.w #TK_KIND_OP_NE, LOCAL_PENDING_KIND(a2)
-	lea LexNe, a0
+	lea demo_program.LexNe, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
@@ -791,7 +782,7 @@ stageLt
 	; The family labels above all converge here with a fully-chosen token
 	; kind and lexeme template, so the commit tail can stay generic.
 	move.w #TK_KIND_OP_LT, LOCAL_PENDING_KIND(a2)
-	lea LexLt, a0
+	lea demo_program.LexLt, a0
 	moveq #1, d0
 	bra stageAndCommitSymbol
 
@@ -809,20 +800,20 @@ greaterLike
 stageShr
 	addq.l #1, d2
 	move.w #TK_KIND_OP_SHR, LOCAL_PENDING_KIND(a2)
-	lea LexShr, a0
+	lea demo_program.LexShr, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 stageGe
 	addq.l #1, d2
 	move.w #TK_KIND_OP_GE, LOCAL_PENDING_KIND(a2)
-	lea LexGe, a0
+	lea demo_program.LexGe, a0
 	moveq #2, d0
 	bra stageAndCommitSymbol
 
 stageGt
 	move.w #TK_KIND_OP_GT, LOCAL_PENDING_KIND(a2)
-	lea LexGt, a0
+	lea demo_program.LexGt, a0
 	moveq #1, d0
 
 stageAndCommitSymbol
@@ -951,7 +942,7 @@ checkPrevNonSpaceByte
 
 	tst.w LOCAL_PENDING_KIND(a2)
 	beq prefixFalse
-	jsr tkvmIsIdentifierContinue
+	jsr char_predicates.tkvmIsIdentifierContinue
 	tst.l d0
 	bne prefixTrue
 

@@ -7,7 +7,7 @@
 	.module opforge.cli.path
 	.cpu 68020
 
-	.use opforge.cli.constants (PATH_BUFFER_CAPACITY)
+	.use opforge.cli.constants
 
 	.section code, kind=code
 	.pub
@@ -52,7 +52,7 @@ mark
 
 copy
 	movea.l a0, a2
-	move.l #PATH_BUFFER_CAPACITY - 1, d4
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d4
 	tst.l d6
 	beq.s done
 
@@ -80,7 +80,7 @@ return
 	.bend  ; opforgeNativeCliCopyPathRoot
 
 opforgeNativeCliCopyPathBuffer	.block
-	move.l #PATH_BUFFER_CAPACITY - 1, d6
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d6
 
 loop
 	move.b (a0)+, d2
@@ -98,7 +98,7 @@ ok
 	.bend  ; opforgeNativeCliCopyPathBuffer
 
 opforgeNativeCliAppendPathBuffer	.block
-	move.l #PATH_BUFFER_CAPACITY - 1, d6
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d6
 
 end
 	tst.b (a1)

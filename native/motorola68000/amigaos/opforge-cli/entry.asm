@@ -3,10 +3,8 @@
 	.module opforge.cli.entry
 	.cpu 68020
 
-	.use opforge.cli.constants (SYS_BASE, PR_CLI, PR_MSG_PORT)
-	.use opforge.cli.constants (FIND_TASK, WAIT_PORT, GET_MSG, REPLY_MSG, FORBID)
-	.use opforge.cli.constants (RETURN_WORKBENCH_UNSUPPORTED)
-	.use opforge.cli.run (opforgeNativeCliRun)
+	.use opforge.cli.constants
+	.use opforge.cli.run
 
 	.section entry, kind=code
 	.pub
@@ -30,31 +28,31 @@ start	.block
 	clr.l d2  ; no Workbench startup message is pending until GetMsg succeeds
 
 	suba.l a1, a1  ; Exec FindTask(NULL) => current process
-	movea.l SYS_BASE.W, a6  ; Exec base for process and Workbench-message calls
-	jsr FIND_TASK(a6)
+	movea.l constants.SYS_BASE.W, a6  ; Exec base for process and Workbench-message calls
+	jsr constants.FIND_TASK(a6)
 
 	movea.l d0, a2
-	tst.l PR_CLI(a2)  ; nonzero means Shell launch; zero means Workbench activation
+	tst.l constants.PR_CLI(a2)  ; nonzero means Shell launch; zero means Workbench activation
 	bne.w cli
 
-	lea PR_MSG_PORT(a2), a0
-	jsr WAIT_PORT(a6)
-	lea PR_MSG_PORT(a2), a0
-	jsr GET_MSG(a6)
+	lea constants.PR_MSG_PORT(a2), a0
+	jsr constants.WAIT_PORT(a6)
+	lea constants.PR_MSG_PORT(a2), a0
+	jsr constants.GET_MSG(a6)
 	move.l d0, d2  ; preserve startup message so ReplyMsg can be sent before exit
-	moveq #RETURN_WORKBENCH_UNSUPPORTED, d7
+	moveq #constants.RETURN_WORKBENCH_UNSUPPORTED, d7
 	bra.w reply
 
 cli
-	jsr opforgeNativeCliRun  ; run the Shell-native CLI host path
+	jsr run.opforgeNativeCliRun  ; run the Shell-native CLI host path
 	move.l d0, d7  ; keep return code stable across optional Workbench reply path
 
 reply
 	tst.l d2
 	beq.w done
-	jsr FORBID(a6)
+	jsr constants.FORBID(a6)
 	movea.l d2, a1
-	jsr REPLY_MSG(a6)
+	jsr constants.REPLY_MSG(a6)
 
 done
 	move.l d7, d0

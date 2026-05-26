@@ -3,23 +3,8 @@
 	.module tkpkg.amigaos.package_loader
 	.cpu 68020
 	.pub
-	.use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN)
-	.use tkpkg.amigaos.buffers (PACKAGE_STORAGE_CAPACITY, PACKAGE_STATE_LOADED)
-	.use tkpkg.amigaos.buffers (PACKAGE_STATE_CLEAR_LONGWORD_COUNT)
-	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_FAMS, PACKAGE_CHUNK_CPUS)
-	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_DIAL, PACKAGE_CHUNK_TOKS)
-	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_TKVM, PACKAGE_CHUNK_TABL)
-	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_EXPR, PACKAGE_CHUNK_EXVM)
-	.use tkpkg.amigaos.buffers (PACKAGE_CHUNK_MSEL, PACKAGE_CHUNK_PRVM)
-	.use tkpkg.amigaos.buffers (PACKAGE_REQUIRED_CHUNK_FLAGS)
-	.use tkpkg.amigaos.buffers (PackageStorage, PackageStateFlags)
-	.use tkpkg.amigaos.buffers (PackageChunkFlags, PackageChunkFlagsHi, PackageStorageLen)
-	.use tkpkg.amigaos.buffers (PackageStorageLenHi, FamsChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (CpusChunkOffsetLo, DialChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (ToksChunkOffsetLo, TkvmChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (TablChunkOffsetLo, MselChunkOffsetLo, ExprChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (ExvmChunkOffsetLo, PrvmChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (ActiveCpuBuffer, ActiveDialectBuffer)
+	.use tkpkg.amigaos.abi
+	.use tkpkg.amigaos.buffers
 
 OPASM_HEADER_SIZE                    = 12
 OPASM_TOC_ENTRY_SIZE                 = 12
@@ -30,7 +15,7 @@ UNEXPECTED_EOF_TEXT_LEN              = 30
 DUPLICATE_CHUNK_TEXT_LEN             = 33
 MISSING_CHUNK_TEXT_LEN               = 30
 CHUNK_BOUNDS_TEXT_LEN                = 27
-PACKAGE_STATE_CLEAR_LONGWORD_LAST    = PACKAGE_STATE_CLEAR_LONGWORD_COUNT - 1
+PACKAGE_STATE_CLEAR_LONGWORD_LAST    = buffers.PACKAGE_STATE_CLEAR_LONGWORD_COUNT - 1
 
 	.section data, kind=data
 
@@ -81,23 +66,23 @@ tkpkgPackageLoaderLoadV1	.block
 	bsr.w readInputLen
 	tst.w d0
 	beq.w invalidMagic
-	cmpi.w #PACKAGE_STORAGE_CAPACITY, d0
+	cmpi.w #buffers.PACKAGE_STORAGE_CAPACITY, d0
 	bhi.w chunkBounds
-	move.b d0, PackageStorageLen  ; store low byte of package length for later bounded TOC walks
+	move.b d0, buffers.PackageStorageLen  ; store low byte of package length for later bounded TOC walks
 	lsr.w #8, d0
-	move.b d0, PackageStorageLenHi  ; high byte keeps package length portable in byte-addressed state
+	move.b d0, buffers.PackageStorageLenHi  ; high byte keeps package length portable in byte-addressed state
 	bsr.w readInputOffset
 	lea 0(a0, d1.W), a1  ; A1: caller package bytes inside the control-block window
-	lea PackageStorage, a2  ; A2: native package storage used by later locator reads
+	lea buffers.PackageStorage, a2  ; A2: native package storage used by later locator reads
 	bsr.w copyInputBytes
-	lea PackageStorage, a1
+	lea buffers.PackageStorage, a1
 	bsr.w validateHeader
 	tst.b d0
 	bne.s done
 	bsr.w validateToc
 	tst.b d0
 	bne.s done
-	move.b #PACKAGE_STATE_LOADED, PackageStateFlags
+	move.b #buffers.PACKAGE_STATE_LOADED, buffers.PackageStateFlags
 	moveq #0, d0
 
 done
@@ -117,7 +102,7 @@ done
 ;   zeroed as one contiguous longword range.
 ; ---------------------------------------------------------------------------
 clearLoadedState	.block
-	lea PackageStateFlags, a3
+	lea buffers.PackageStateFlags, a3
 	move.w #PACKAGE_STATE_CLEAR_LONGWORD_LAST, d0
 
 loop
@@ -129,7 +114,7 @@ loop
 ; Read CB_INPUT_LEN as a native 16-bit little-endian service length.
 readInputLen	.block
 	moveq #0, d0
-	move.b CB_INPUT_LEN(a0), d0
+	move.b abi.CB_INPUT_LEN(a0), d0
 	moveq #0, d1
 	move.b 19(a0), d1
 	lsl.w #8, d1
@@ -140,7 +125,7 @@ readInputLen	.block
 ; Read CB_INPUT_PTR as a native 16-bit control-block-relative offset.
 readInputOffset	.block
 	moveq #0, d1
-	move.b CB_INPUT_PTR(a0), d1
+	move.b abi.CB_INPUT_PTR(a0), d1
 	moveq #0, d2
 	move.b 17(a0), d2
 	lsl.w #8, d2
@@ -151,9 +136,9 @@ readInputOffset	.block
 ; Copy the currently recorded package length from A1 to package storage at A2.
 copyInputBytes	.block
 	moveq #0, d2
-	move.b PackageStorageLen, d2
+	move.b buffers.PackageStorageLen, d2
 	moveq #0, d3
-	move.b PackageStorageLenHi, d3
+	move.b buffers.PackageStorageLenHi, d3
 	lsl.w #8, d3
 	or.w d3, d2
 	tst.w d2
@@ -193,9 +178,9 @@ validateHeader	.block
 ; Walk the package TOC, reject duplicates/bounds failures, and store locators.
 validateToc	.block
 	moveq #0, d7
-	move.b PackageStorageLen, d7
+	move.b buffers.PackageStorageLen, d7
 	moveq #0, d6
-	move.b PackageStorageLenHi, d6
+	move.b buffers.PackageStorageLenHi, d6
 	lsl.w #8, d6
 	or.w d6, d7
 	moveq #0, d0
@@ -243,11 +228,11 @@ tocLoop
 	bne.s checkCpus
 	cmpi.b #'S', 3(a2)
 	bne.s checkCpus
-	btst #0, PackageChunkFlags
+	btst #0, buffers.PackageChunkFlags
 	bne.w duplicateChunk
-	lea FamsChunkOffsetLo, a3
+	lea buffers.FamsChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_FAMS, PackageChunkFlags
+	ori.b #buffers.PACKAGE_CHUNK_FAMS, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkCpus
@@ -259,11 +244,11 @@ checkCpus
 	bne.s checkDial
 	cmpi.b #'S', 3(a2)
 	bne.s checkDial
-	btst #1, PackageChunkFlags
+	btst #1, buffers.PackageChunkFlags
 	bne.w duplicateChunk
-	lea CpusChunkOffsetLo, a3
+	lea buffers.CpusChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_CPUS, PackageChunkFlags
+	ori.b #buffers.PACKAGE_CHUNK_CPUS, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkDial
@@ -275,11 +260,11 @@ checkDial
 	bne.s checkToks
 	cmpi.b #'L', 3(a2)
 	bne.s checkToks
-	btst #2, PackageChunkFlags
+	btst #2, buffers.PackageChunkFlags
 	bne.w duplicateChunk
-	lea DialChunkOffsetLo, a3
+	lea buffers.DialChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_DIAL, PackageChunkFlags
+	ori.b #buffers.PACKAGE_CHUNK_DIAL, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkToks
@@ -291,11 +276,11 @@ checkToks
 	bne.s checkTkvm
 	cmpi.b #'S', 3(a2)
 	bne.s checkTkvm
-	btst #3, PackageChunkFlags
+	btst #3, buffers.PackageChunkFlags
 	bne.w duplicateChunk
-	lea ToksChunkOffsetLo, a3
+	lea buffers.ToksChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_TOKS, PackageChunkFlags
+	ori.b #buffers.PACKAGE_CHUNK_TOKS, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkTkvm
@@ -307,11 +292,11 @@ checkTkvm
 	bne.w checkTabl
 	cmpi.b #'M', 3(a2)
 	bne.w checkTabl
-	btst #4, PackageChunkFlags
+	btst #4, buffers.PackageChunkFlags
 	bne.w duplicateChunk
-	lea TkvmChunkOffsetLo, a3
+	lea buffers.TkvmChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_TKVM, PackageChunkFlags
+	ori.b #buffers.PACKAGE_CHUNK_TKVM, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkTabl
@@ -323,11 +308,11 @@ checkTabl
 	bne.w checkMsel
 	cmpi.b #'L', 3(a2)
 	bne.w checkMsel
-	btst #5, PackageChunkFlags
+	btst #5, buffers.PackageChunkFlags
 	bne.w duplicateChunk
-	lea TablChunkOffsetLo, a3
+	lea buffers.TablChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_TABL, PackageChunkFlags
+	ori.b #buffers.PACKAGE_CHUNK_TABL, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkMsel
@@ -339,11 +324,11 @@ checkMsel
 	bne.w checkPrvm
 	cmpi.b #'L', 3(a2)
 	bne.w checkPrvm
-	btst #0, PackageChunkFlagsHi
+	btst #0, buffers.PackageChunkFlagsHi
 	bne.w duplicateChunk
-	lea MselChunkOffsetLo, a3
+	lea buffers.MselChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_MSEL, PackageChunkFlagsHi
+	ori.b #buffers.PACKAGE_CHUNK_MSEL, buffers.PackageChunkFlagsHi
 	bra.w nextTocEntry
 
 checkPrvm
@@ -355,11 +340,11 @@ checkPrvm
 	bne.w checkExpr
 	cmpi.b #'M', 3(a2)
 	bne.w checkExpr
-	btst #1, PackageChunkFlagsHi
+	btst #1, buffers.PackageChunkFlagsHi
 	bne.w duplicateChunk
-	lea PrvmChunkOffsetLo, a3
+	lea buffers.PrvmChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_PRVM, PackageChunkFlagsHi
+	ori.b #buffers.PACKAGE_CHUNK_PRVM, buffers.PackageChunkFlagsHi
 	bra.w nextTocEntry
 
 checkExpr
@@ -371,11 +356,11 @@ checkExpr
 	bne.w checkExvm
 	cmpi.b #'R', 3(a2)
 	bne.w checkExvm
-	btst #6, PackageChunkFlags
+	btst #6, buffers.PackageChunkFlags
 	bne.w duplicateChunk
-	lea ExprChunkOffsetLo, a3
+	lea buffers.ExprChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_EXPR, PackageChunkFlags
+	ori.b #buffers.PACKAGE_CHUNK_EXPR, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 checkExvm
@@ -387,19 +372,19 @@ checkExvm
 	bne.w nextTocEntry
 	cmpi.b #'M', 3(a2)
 	bne.w nextTocEntry
-	btst #7, PackageChunkFlags
+	btst #7, buffers.PackageChunkFlags
 	bne.w duplicateChunk
-	lea ExvmChunkOffsetLo, a3
+	lea buffers.ExvmChunkOffsetLo, a3
 	bsr.w storeLocator
-	ori.b #PACKAGE_CHUNK_EXVM, PackageChunkFlags
+	ori.b #buffers.PACKAGE_CHUNK_EXVM, buffers.PackageChunkFlags
 	bra.w nextTocEntry
 
 nextTocEntry
 	lea OPASM_TOC_ENTRY_SIZE(a2), a2
 	dbf d2, tocLoop
-	move.b PackageChunkFlags, d0
-	andi.b #PACKAGE_REQUIRED_CHUNK_FLAGS, d0
-	cmpi.b #PACKAGE_REQUIRED_CHUNK_FLAGS, d0
+	move.b buffers.PackageChunkFlags, d0
+	andi.b #buffers.PACKAGE_REQUIRED_CHUNK_FLAGS, d0
+	cmpi.b #buffers.PACKAGE_REQUIRED_CHUNK_FLAGS, d0
 	bne.w missingChunk
 	moveq #0, d0
 	rts

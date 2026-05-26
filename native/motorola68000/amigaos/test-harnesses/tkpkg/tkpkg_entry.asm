@@ -7,18 +7,18 @@
 	.module main
 	.cpu 68020
 	.pub
-	.use tkpkg.amigaos.abi (AbiMarker, WireContractMarker, ENTRY_ORD_INIT)
-	.use tkpkg.amigaos.buffers (ControlBlockV1)
-	.use tkpkg.amigaos.service as svc
+	.use tkpkg.amigaos.abi
+	.use tkpkg.amigaos.buffers
+	.use tkpkg.amigaos.service
 
 	.section entry, kind=code
 	.pub
 
 ; Minimal executable entry used to keep the tkpkg runtime linkable as a hunk.
 start	.block
-	lea AbiMarker, a0
+	lea abi.AbiMarker, a0
 	tst.b (a0)
-	lea WireContractMarker, a0
+	lea abi.WireContractMarker, a0
 	tst.b (a0)
 	clr.l d0
 	rts
@@ -26,15 +26,15 @@ start	.block
 
 ; Forward an already prepared request to the shared tkpkg service dispatcher.
 tkpkgEntryDispatchV1	.block
-	jsr svc.dispatchV1
+	jsr service.dispatchV1
 	rts
 	.bend  ; tkpkgEntryDispatchV1
 
 ; Initialize the shared control block through the public service ordinal.
 tkpkgEntryBootstrapV1	.block
-	lea ControlBlockV1, a0
-	moveq #ENTRY_ORD_INIT, d0
-	jsr svc.dispatchV1
+	lea buffers.ControlBlockV1, a0
+	moveq #abi.ENTRY_ORD_INIT, d0
+	jsr service.dispatchV1
 	rts
 	.bend  ; tkpkgEntryBootstrapV1
 

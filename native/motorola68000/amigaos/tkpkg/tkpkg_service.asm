@@ -3,47 +3,14 @@
 	.module tkpkg.amigaos.service
 	.cpu 68020
 	.pub
-	.use tkpkg.amigaos.abi (NATIVE_ABI_MAGIC_0, NATIVE_ABI_MAGIC_1)
-	.use tkpkg.amigaos.abi (NATIVE_ABI_MAGIC_2, NATIVE_ABI_MAGIC_3)
-	.use tkpkg.amigaos.abi (NATIVE_ABI_VERSION_V1, NATIVE_CONTROL_BLOCK_SIZE_V1)
-	.use tkpkg.amigaos.abi (CAPABILITY_FLAGS_V1, STATUS_BAD_CONTROL_BLOCK_V1)
-	.use tkpkg.amigaos.abi (STATUS_BAD_REQUEST_V1)
-	.use tkpkg.amigaos.abi (STATUS_OK_V1, STATUS_RUNTIME_ERROR_V1)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_INIT, ENTRY_ORD_LOAD_PACKAGE)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_SET_PIPELINE, ENTRY_ORD_TOKENIZE_LINE)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_PARSE_LINE, ENTRY_ORD_ENCODE_INSTRUCTION)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_LAST_ERROR, ENTRY_ORD_EVALUATE_EXPRESSION)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_SELECT_INSTRUCTION)
-	.use tkpkg.amigaos.abi (ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION)
-	.use tkpkg.amigaos.abi (CB_MAGIC, CB_ABI_VERSION, CB_STRUCT_SIZE)
-	.use tkpkg.amigaos.abi (CB_CAPABILITY_FLAGS, CB_STATUS_CODE, CB_REQUEST_ID)
-	.use tkpkg.amigaos.abi (CB_RESERVED0, CB_INPUT_PTR, CB_INPUT_LEN)
-	.use tkpkg.amigaos.abi (CB_OUTPUT_PTR, CB_OUTPUT_LEN, CB_EXTENSION_PTR)
-	.use tkpkg.amigaos.abi (CB_EXTENSION_LEN, CB_LAST_ERROR_PTR, CB_LAST_ERROR_LEN)
-	.use tkpkg.amigaos.buffers (PACKAGE_STATE_PIPELINE_ACTIVE, PackageStateFlags)
-	.use tkpkg.amigaos.buffers (BAD_REQUEST_TEXT_LEN, CONTROL_BLOCK_ERROR_TEXT_LEN)
-	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_PTR_V1)
-	.use tkpkg.amigaos.buffers (RUNTIME_ERROR_TEXT_LEN)
-	.use tkpkg.amigaos.buffers (LAST_ERROR_KIND_NONE, LAST_ERROR_KIND_BAD_REQUEST)
-	.use tkpkg.amigaos.buffers (LAST_ERROR_KIND_BAD_CONTROL, LAST_ERROR_KIND_RUNTIME)
-	.use tkpkg.amigaos.buffers (BadRequestText, ControlBlockErrorText, RuntimeErrorText)
-	.use tkpkg.amigaos.buffers (ControlBlockV1, NextRequestIdHi, NextRequestIdLo)
-	.use tkpkg.amigaos.buffers (StoredLastErrorKind, StoredLastErrorLen)
-	.use tkpkg.amigaos.buffers (StoredLastErrorLenHi)
-	.use tkpkg.amigaos.buffers (LastErrorBuffer, PackageStorage, TokenScratchBuffer)
-	.use tkpkg.amigaos.buffers (TablChunkOffsetLo, TablChunkOffsetHi)
-	.use tkpkg.amigaos.buffers (MselChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (ExprChunkOffsetLo, ExprChunkOffsetHi)
-	.use tkpkg.amigaos.buffers (ExvmChunkOffsetLo, ExvmChunkOffsetHi)
-	.use tkpkg.amigaos.buffers (ActiveCpuBuffer, ActiveDialectBuffer)
-	.use tkpkg.amigaos.buffers (ActiveFamilyBuffer)
-	.use opasm.amigaos.engine (opasmEngineSessionPass, opasmEngineLabelFinalizedTable)
-	.use opasm.amigaos.engine (opasmEngineLabelNameTable, opasmEngineLabelValueTable, opasmEngineLabelCount)
-	.use opcore.amigaos.expr_bridge (opcoreExvmEvalOperandV1)
-	.use tkpkg.amigaos.package_loader (tkpkgPackageLoaderLoadV1)
-	.use tkpkg.amigaos.pipeline (tkpkgPipelineSetActiveV1)
-	.use tkpkg.amigaos.tokenizer_vm (tkpkgTokenizerVmTokenizeLineV1)
-	.use prvm.amigaos.line_router (prvmRouteLine68000)
+	.use tkpkg.amigaos.abi
+	.use tkpkg.amigaos.buffers
+	.use opasm.amigaos.engine
+	.use opcore.amigaos.expr_bridge
+	.use tkpkg.amigaos.package_loader
+	.use tkpkg.amigaos.pipeline
+	.use tkpkg.amigaos.tokenizer_vm
+	.use prvm.amigaos.line_router
 
 TKPKG_PARSE_ROUTE_FRAME_SIZE         = 116
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE   = 9
@@ -304,8 +271,8 @@ EncodeSelectedMselUnstable
 ; - D0/D1 follow tkpkg_service_dispatch_v1 for ENTRY_ORD_INIT.
 ; ---------------------------------------------------------------------------
 bootstrapV1	.block
-	lea ControlBlockV1, a0  ; shared in-module CB used by the direct native bootstrap
-	moveq #ENTRY_ORD_INIT, d0  ; exercise the public init ordinal, not a private initializer
+	lea buffers.ControlBlockV1, a0  ; shared in-module CB used by the direct native bootstrap
+	moveq #abi.ENTRY_ORD_INIT, d0  ; exercise the public init ordinal, not a private initializer
 	bsr.w dispatchV1  ; keep bootstrap behavior identical to an external init call
 	rts
 	.bend  ; bootstrapV1
@@ -330,29 +297,29 @@ bootstrapV1	.block
 ;   error paths.
 ; ---------------------------------------------------------------------------
 dispatchV1	.block
-	cmpi.b #ENTRY_ORD_INIT, d0
+	cmpi.b #abi.ENTRY_ORD_INIT, d0
 	beq.s handleInitEntry
 	bsr.w tkpkgServicePrepareRequestV1  ; assign a request id before validation/status reporting
 	bsr.w tkpkgServiceValidateHeaderV1  ; reject stale or foreign control blocks early
 	tst.b d1
 	bne.s dispatchDone
-	cmpi.b #ENTRY_ORD_LAST_ERROR, d0
+	cmpi.b #abi.ENTRY_ORD_LAST_ERROR, d0
 	beq.s handleLastError
-	cmpi.b #ENTRY_ORD_LOAD_PACKAGE, d0
+	cmpi.b #abi.ENTRY_ORD_LOAD_PACKAGE, d0
 	beq.w handleLoadPackage
-	cmpi.b #ENTRY_ORD_SET_PIPELINE, d0
+	cmpi.b #abi.ENTRY_ORD_SET_PIPELINE, d0
 	beq.w handleSetPipeline
-	cmpi.b #ENTRY_ORD_TOKENIZE_LINE, d0
+	cmpi.b #abi.ENTRY_ORD_TOKENIZE_LINE, d0
 	beq.w handleTokenizeLine
-	cmpi.b #ENTRY_ORD_PARSE_LINE, d0
+	cmpi.b #abi.ENTRY_ORD_PARSE_LINE, d0
 	beq.w handleParseLine
-	cmpi.b #ENTRY_ORD_ENCODE_INSTRUCTION, d0
+	cmpi.b #abi.ENTRY_ORD_ENCODE_INSTRUCTION, d0
 	beq.w handleEncodeInstruction
-	cmpi.b #ENTRY_ORD_EVALUATE_EXPRESSION, d0
+	cmpi.b #abi.ENTRY_ORD_EVALUATE_EXPRESSION, d0
 	beq.w handleEvaluateExpression
-	cmpi.b #ENTRY_ORD_SELECT_INSTRUCTION, d0
+	cmpi.b #abi.ENTRY_ORD_SELECT_INSTRUCTION, d0
 	beq.w handleSelectInstruction
-	cmpi.b #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
+	cmpi.b #abi.ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION, d0
 	beq.w handleEncodeSelectedInstruction
 	bsr.w tkpkgServiceSetBadRequestV1
 	rts
@@ -375,16 +342,16 @@ handleInit
 	rts
 
 handleLastError
-	tst.b CB_INPUT_LEN(a0)
+	tst.b abi.CB_INPUT_LEN(a0)
 	bne.s lastErrorBadRequest
 	tst.b 19(a0)
 	bne.s lastErrorBadRequest
 	bsr.w tkpkgServiceWriteClearInputFieldsV1
 	bsr.w tkpkgServiceSetStatusOkV1
 	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	move.b StoredLastErrorLen, CB_OUTPUT_LEN(a0)
-	move.b StoredLastErrorLenHi, 23(a0)
-	tst.b StoredLastErrorLen
+	move.b buffers.StoredLastErrorLen, abi.CB_OUTPUT_LEN(a0)
+	move.b buffers.StoredLastErrorLenHi, 23(a0)
+	tst.b buffers.StoredLastErrorLen
 	beq.s lastErrorDone
 	bsr.w tkpkgServiceWriteOutputBufferOffsetV1
 
@@ -399,7 +366,7 @@ lastErrorBadRequest
 
 handleLoadPackage
 	move.l a0, -(sp)
-	bsr.w tkpkgPackageLoaderLoadV1
+	bsr.w package_loader.tkpkgPackageLoaderLoadV1
 	movea.l (sp)+, a0
 	tst.b d0
 	bne.s loadPackageError
@@ -416,11 +383,11 @@ loadPackageError
 
 handleSetPipeline
 	move.l a0, -(sp)
-	bsr.w tkpkgPipelineSetActiveV1
+	bsr.w pipeline.tkpkgPipelineSetActiveV1
 	movea.l (sp)+, a0
 	tst.b d0
 	beq.s setPipelineOk
-	cmpi.b #STATUS_BAD_REQUEST_V1, d0
+	cmpi.b #abi.STATUS_BAD_REQUEST_V1, d0
 	beq.s setPipelineBadRequest
 	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
 	rts
@@ -439,11 +406,11 @@ setPipelineOk
 
 handleTokenizeLine
 	move.l a0, -(sp)
-	bsr.w tkpkgTokenizerVmTokenizeLineV1
+	bsr.w tokenizer_vm.tkpkgTokenizerVmTokenizeLineV1
 	movea.l (sp)+, a0
 	tst.b d0
 	beq.s tokenizeLineOk
-	cmpi.b #STATUS_BAD_REQUEST_V1, d0
+	cmpi.b #abi.STATUS_BAD_REQUEST_V1, d0
 	beq.s tokenizeLineBadRequest
 	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
 	rts
@@ -461,7 +428,7 @@ tokenizeLineOk
 	tst.w d1
 	beq.s tokenizeLineDone
 	bsr.w tkpkgServiceWriteOutputBufferOffsetV1
-	move.b d1, CB_OUTPUT_LEN(a0)
+	move.b d1, abi.CB_OUTPUT_LEN(a0)
 	lsr.w #8, d1
 	move.b d1, 23(a0)
 
@@ -505,7 +472,7 @@ encodeInstructionOk
 	tst.w d1
 	beq.s encodeInstructionDone
 	bsr.w tkpkgServiceWriteOutputBufferOffsetV1
-	move.b d1, CB_OUTPUT_LEN(a0)
+	move.b d1, abi.CB_OUTPUT_LEN(a0)
 	lsr.w #8, d1
 	move.b d1, 23(a0)
 
@@ -518,7 +485,7 @@ handleSelectInstruction
 	movea.l (sp)+, a0
 	tst.b d0
 	beq.s selectInstructionOk
-	cmpi.b #STATUS_BAD_REQUEST_V1, d0
+	cmpi.b #abi.STATUS_BAD_REQUEST_V1, d0
 	beq.s selectInstructionBadRequest
 	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
 	rts
@@ -536,7 +503,7 @@ selectInstructionOk
 	tst.w d1
 	beq.s selectInstructionDone
 	bsr.w tkpkgServiceWriteOutputBufferOffsetV1
-	move.b d1, CB_OUTPUT_LEN(a0)
+	move.b d1, abi.CB_OUTPUT_LEN(a0)
 	lsr.w #8, d1
 	move.b d1, 23(a0)
 
@@ -549,7 +516,7 @@ handleEncodeSelectedInstruction
 	movea.l (sp)+, a0
 	tst.b d0
 	beq.s encodeSelectedInstructionOk
-	cmpi.b #STATUS_BAD_REQUEST_V1, d0
+	cmpi.b #abi.STATUS_BAD_REQUEST_V1, d0
 	beq.s encodeSelectedInstructionBadRequest
 	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
 	rts
@@ -567,7 +534,7 @@ encodeSelectedInstructionOk
 	tst.w d1
 	beq.s encodeSelectedInstructionDone
 	bsr.w tkpkgServiceWriteOutputBufferOffsetV1
-	move.b d1, CB_OUTPUT_LEN(a0)
+	move.b d1, abi.CB_OUTPUT_LEN(a0)
 	lsr.w #8, d1
 	move.b d1, 23(a0)
 
@@ -580,7 +547,7 @@ handleEvaluateExpression
 	movea.l (sp)+, a0
 	tst.b d0
 	beq.s evaluateExpressionOk
-	cmpi.b #STATUS_BAD_REQUEST_V1, d0
+	cmpi.b #abi.STATUS_BAD_REQUEST_V1, d0
 	beq.s evaluateExpressionBadRequest
 	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
 	rts
@@ -598,7 +565,7 @@ evaluateExpressionOk
 	tst.w d1
 	beq.s evaluateExpressionDone
 	bsr.w tkpkgServiceWriteOutputBufferOffsetV1
-	move.b d1, CB_OUTPUT_LEN(a0)
+	move.b d1, abi.CB_OUTPUT_LEN(a0)
 	lsr.w #8, d1
 	move.b d1, 23(a0)
 
@@ -634,23 +601,23 @@ evaluateExpressionDone
 ; ---------------------------------------------------------------------------
 evaluateExpressionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
-	btst #1, PackageStateFlags
+	btst #1, buffers.PackageStateFlags
 	bne.s havePipeline
 	lea EvaluateExprNeedsPipelineText, a1
 	moveq #EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 havePipeline
 	moveq #0, d0
-	move.b CB_INPUT_PTR(a0), d0
+	move.b abi.CB_INPUT_PTR(a0), d0
 	moveq #0, d1
 	move.b 17(a0), d1
 	lsl.w #8, d1
 	or.w d1, d0
 	lea 0(a0, d0.W), a4
 	moveq #0, d7
-	move.b CB_INPUT_LEN(a0), d7
+	move.b abi.CB_INPUT_LEN(a0), d7
 	moveq #0, d0
 	move.b 19(a0), d0
 	lsl.w #8, d0
@@ -697,13 +664,13 @@ havePipeline
 	moveq #0, d6
 	moveq #0, d5
 	moveq #0, d0
-	move.b CB_EXTENSION_PTR(a0), d0
+	move.b abi.CB_EXTENSION_PTR(a0), d0
 	moveq #0, d3
 	move.b 25(a0), d3
 	lsl.w #8, d3
 	or.w d3, d0
 	moveq #0, d3
-	move.b CB_EXTENSION_LEN(a0), d3
+	move.b abi.CB_EXTENSION_LEN(a0), d3
 	moveq #0, d5
 	move.b 27(a0), d5
 	lsl.w #8, d5
@@ -741,9 +708,9 @@ noExtension
 	moveq #0, d5
 	move.w d7, d5
 	moveq #0, d6
-	move.w opasmEngineSessionPass.l, d6
-	lea opasmEngineLabelFinalizedTable.l, a6
-	jsr opcoreExvmEvalOperandV1
+	move.w engine.opasmEngineSessionPass.l, d6
+	lea engine.opasmEngineLabelFinalizedTable.l, a6
+	jsr expr_bridge.opcoreExvmEvalOperandV1
 	move.l (sp)+, d6
 	tst.b d0
 	bne.s bridgeFail
@@ -757,7 +724,7 @@ noExtensionWrite
 	bra.s return
 
 badPayload
-	moveq #STATUS_BAD_REQUEST_V1, d0
+	moveq #abi.STATUS_BAD_REQUEST_V1, d0
 	moveq #0, d1
 	bra.s return
 
@@ -769,7 +736,7 @@ resolveFail
 bridgeFail
 	lea EvaluateExprFailedText, a1
 	moveq #EVAL_EXPR_FAILED_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 
 return
 	movem.l (sp)+, d2-d7/a2-a6
@@ -778,11 +745,11 @@ return
 
 encodeSelectedInstructionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
-	btst #1, PackageStateFlags
+	btst #1, buffers.PackageStateFlags
 	bne.s havePipeline
 	lea EvaluateExprNeedsPipelineText, a1
 	moveq #EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 havePipeline
@@ -793,7 +760,7 @@ havePipeline
 	beq.s return
 
 haveEnvelope
-	lea TokenScratchBuffer, a4
+	lea buffers.TokenScratchBuffer, a4
 	move.w d1, d7
 	bsr.w tkpkgEncodeInstructionEnvelopeV1
 
@@ -804,11 +771,11 @@ return
 
 selectInstructionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
-	btst #1, PackageStateFlags
+	btst #1, buffers.PackageStateFlags
 	bne.s havePipeline
 	lea EvaluateExprNeedsPipelineText, a1
 	moveq #EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.s return
 
 havePipeline
@@ -827,14 +794,14 @@ return
 	.bend  ; selectInstructionV1
 buildSelectedEnvelopeV1	.block
 	moveq #0, d0
-	move.b CB_INPUT_PTR(a0), d0
+	move.b abi.CB_INPUT_PTR(a0), d0
 	moveq #0, d1
 	move.b 17(a0), d1
 	lsl.w #8, d1
 	or.w d1, d0
 	lea 0(a0, d0.W), a4
 	moveq #0, d7
-	move.b CB_INPUT_LEN(a0), d7
+	move.b abi.CB_INPUT_LEN(a0), d7
 	moveq #0, d0
 	move.b 19(a0), d0
 	lsl.w #8, d0
@@ -867,13 +834,13 @@ buildSelectedEnvelopeV1	.block
 	move.l a3, EncodeSelectedMnemonicPtr
 	move.l a4, EncodeSelectedSourceLinePtr
 	moveq #0, d0
-	move.b CB_EXTENSION_PTR(a0), d0
+	move.b abi.CB_EXTENSION_PTR(a0), d0
 	moveq #0, d1
 	move.b 25(a0), d1
 	lsl.w #8, d1
 	or.w d1, d0
 	moveq #0, d1
-	move.b CB_EXTENSION_LEN(a0), d1
+	move.b abi.CB_EXTENSION_LEN(a0), d1
 	moveq #0, d5
 	move.b 27(a0), d5
 	lsl.w #8, d5
@@ -977,21 +944,21 @@ buildCandidate
 	beq.w unsupportedAddress
 	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
 	beq.w operandError
-	lea RuntimeErrorText, a1
-	moveq #RUNTIME_ERROR_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	lea buffers.RuntimeErrorText, a1
+	moveq #buffers.RUNTIME_ERROR_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 unknownMnemonic
 	lea SelectedSelectorUnknownText, a1
 	moveq #SELECTED_SELECTOR_UNKNOWN_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 unsupportedAddress
 	lea SelectedSelectorUnsupportedText, a1
 	moveq #SELECTED_SELECTOR_UNSUPPORTED_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandError
@@ -1036,121 +1003,121 @@ operandError
 	beq.w exprVmPop
 	lea SelectedSelectorOperandText, a1
 	moveq #SELECTED_SELECTOR_OPERAND_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandBadExvm
 	lea SelectedOperandBadExvmText, a1
 	moveq #SELECTED_OPERAND_BAD_EXVM_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandEmpty
 	lea SelectedOperandEmptyText, a1
 	moveq #SELECTED_OPERAND_EMPTY_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandUnexpected
 	lea SelectedOperandUnexpectedText, a1
 	moveq #SELECTED_OPERAND_UNEXPECTED_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandBridge
 	lea SelectedOperandBridgeText, a1
 	moveq #SELECTED_OPERAND_BRIDGE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandLength
 	lea SelectedOperandLengthText, a1
 	moveq #SELECTED_OPERAND_LENGTH_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandCompile
 	lea SelectedOperandCompileText, a1
 	moveq #SELECTED_OPERAND_COMPILE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandFinalize
 	lea SelectedOperandFinalizeText, a1
 	moveq #SELECTED_OPERAND_FINALIZE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandEval
 	lea SelectedOperandEvalText, a1
 	moveq #SELECTED_OPERAND_EVAL_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandHexParse
 	lea SelectedOperandHexParseText, a1
 	moveq #SELECTED_OPERAND_HEX_PARSE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandLiteralEmit
 	lea SelectedOperandLiteralEmitText, a1
 	moveq #SELECTED_OPERAND_LITERAL_EMIT_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandTrailing
 	lea SelectedOperandTrailingText, a1
 	moveq #SELECTED_OPERAND_TRAILING_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 operandSingle
 	lea SelectedOperandSingleText, a1
 	moveq #SELECTED_OPERAND_SINGLE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 exprVmMissingEnd
 	lea ExprVmMissingEndText, a1
 	moveq #EXPRVM_MISSING_END_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 exprVmUnknownOpcode
 	lea ExprVmUnknownOpcodeText, a1
 	moveq #EXPRVM_UNKNOWN_OPCODE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 exprVmLiteralRead
 	lea ExprVmLiteralReadText, a1
 	moveq #EXPRVM_LITERAL_READ_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 exprVmLiteralPush
 	lea ExprVmLiteralPushText, a1
 	moveq #EXPRVM_LITERAL_PUSH_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 exprVmRequireScalar
 	lea ExprVmRequireScalarText, a1
 	moveq #EXPRVM_REQUIRE_SCALAR_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 exprVmEndStack
 	lea ExprVmEndStackText, a1
 	moveq #EXPRVM_END_STACK_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 exprVmPop
 	lea ExprVmPopText, a1
 	moveq #EXPRVM_POP_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w return
 
 haveOutput
@@ -1164,7 +1131,7 @@ noOutput
 	bra.w return
 
 badPayload
-	moveq #STATUS_BAD_REQUEST_V1, d0
+	moveq #abi.STATUS_BAD_REQUEST_V1, d0
 	moveq #0, d1
 	bra.w return
 
@@ -1183,7 +1150,7 @@ tkpkgBuildSelectedEnvelopeFromMselV1	.block
 	move.w d2, EncodeSelectedMselMnemonicLen
 	tst.w d2
 	beq.w noOutput
-	lea MselChunkOffsetLo, a3
+	lea buffers.MselChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
 	tst.b d1
 	bne.w noOutput
@@ -1365,7 +1332,7 @@ tryU16Fits
 	bra.w buildOperand
 
 tryBranchOffset8
-	cmpi.w #1, opasmEngineSessionPass.l
+	cmpi.w #1, engine.opasmEngineSessionPass.l
 	beq.w tryUnstablePassOneOperand
 	bsr.w tkpkgMselEvalOperandV1
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
@@ -1394,7 +1361,7 @@ tryBranchFits
 	bra.w buildOperand
 
 tryUnstablePassOneOperand
-	cmpi.w #1, opasmEngineSessionPass.l
+	cmpi.w #1, engine.opasmEngineSessionPass.l
 	bne.w noOutput
 	clr.l EncodeSelectedMselValue
 	bra.w buildOperand
@@ -1816,7 +1783,7 @@ return
 	.bend  ; tkpkgMselStripIndexSuffixV1
 
 tkpkgMselWriteCandidateEnvelopeV1	.block
-	lea TokenScratchBuffer, a4
+	lea buffers.TokenScratchBuffer, a4
 	move.w EncodeSelectedMselMnemonicLen, d0
 	cmpi.w #255, d0
 	bhi.w operandError
@@ -1847,7 +1814,7 @@ writeNoOperands
 
 done
 	move.l a4, d1
-	lea TokenScratchBuffer, a0
+	lea buffers.TokenScratchBuffer, a0
 	sub.l a0, d1
 	moveq #TKPKG_SELECTED_STATUS_OK, d0
 	rts
@@ -1876,7 +1843,7 @@ tkpkgSelectedMselOwnerMatchesV1	.block
 	movea.l a1, a3
 	cmpi.b #SCOPED_OWNER_DIALECT, d6
 	bne.s checkCpu
-	lea ActiveDialectBuffer.l, a2
+	lea buffers.ActiveDialectBuffer.l, a2
 	tst.b (a2)
 	beq.s noMatch
 	bra.s compare
@@ -1884,13 +1851,13 @@ tkpkgSelectedMselOwnerMatchesV1	.block
 checkCpu
 	cmpi.b #SCOPED_OWNER_CPU, d6
 	bne.s checkFamily
-	lea ActiveCpuBuffer.l, a2
+	lea buffers.ActiveCpuBuffer.l, a2
 	bra.s compare
 
 checkFamily
 	cmpi.b #SCOPED_OWNER_FAMILY, d6
 	bne.s noMatch
-	lea ActiveFamilyBuffer.l, a2
+	lea buffers.ActiveFamilyBuffer.l, a2
 
 compare
 	bsr.w tkpkgServiceActiveOwnerLenV1
@@ -1909,7 +1876,7 @@ return
 
 writeCandidateOutputV1	.block
 	movem.l d2-d7/a2-a4, -(sp)
-	lea TokenScratchBuffer, a4
+	lea buffers.TokenScratchBuffer, a4
 	moveq #0, d4
 	move.w d7, d4
 	cmpi.w #4, d4
@@ -1929,7 +1896,7 @@ writeCandidateOutputV1	.block
 	beq.w noOutput
 	tst.w d3
 	beq.w noOutput
-	lea LastErrorBuffer, a2
+	lea buffers.LastErrorBuffer, a2
 	moveq #0, d1
 
 loop
@@ -1998,9 +1965,9 @@ noOutput
 	bra.s return
 
 fail
-	lea RuntimeErrorText, a1
-	moveq #RUNTIME_ERROR_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	lea buffers.RuntimeErrorText, a1
+	moveq #buffers.RUNTIME_ERROR_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 
 return
 	movem.l (sp)+, d2-d7/a2-a4
@@ -2100,9 +2067,9 @@ textOk
 	moveq #0, d5
 	moveq #1, d5
 	moveq #0, d6
-	move.w opasmEngineSessionPass.l, d6
-	lea opasmEngineLabelFinalizedTable.l, a6
-	jsr opcoreExvmEvalOperandV1
+	move.w engine.opasmEngineSessionPass.l, d6
+	lea engine.opasmEngineLabelFinalizedTable.l, a6
+	jsr expr_bridge.opcoreExvmEvalOperandV1
 	tst.b d0
 	beq.w return
 	cmpi.b #3, d0
@@ -2165,10 +2132,10 @@ encodeSelectedOperandTryLabelV1	.block
 	moveq #0, d7
 	tst.l d1
 	bne.s haveContext
-	lea opasmEngineLabelNameTable.l, a1
-	lea opasmEngineLabelValueTable.l, a2
+	lea engine.opasmEngineLabelNameTable.l, a1
+	lea engine.opasmEngineLabelValueTable.l, a2
 	moveq #0, d1
-	move.w opasmEngineLabelCount.l, d1
+	move.w engine.opasmEngineLabelCount.l, d1
 	tst.l d1
 	beq.s return
 
@@ -2232,7 +2199,7 @@ return
 
 writeExpressionValueOutputV1	.block
 	movem.l d0/d2-d7/a0-a2, -(sp)
-	lea LastErrorBuffer, a2
+	lea buffers.LastErrorBuffer, a2
 	lea EvaluateExprValuePrefixText, a1
 	moveq #EVAL_EXPR_VALUE_PREFIX_LEN, d6
 	move.w d6, d5
@@ -2334,7 +2301,7 @@ return
 	.bend  ; resolveExpressionContractVersionsV1
 
 resolveExvmOpcodeVersionV1	.block
-	lea ActiveDialectBuffer.l, a4
+	lea buffers.ActiveDialectBuffer.l, a4
 	tst.b (a4)
 	beq.s skipDialect
 	moveq #SCOPED_OWNER_DIALECT, d6
@@ -2343,19 +2310,19 @@ resolveExvmOpcodeVersionV1	.block
 	beq.s found
 
 skipDialect
-	lea ActiveCpuBuffer.l, a4
+	lea buffers.ActiveCpuBuffer.l, a4
 	moveq #SCOPED_OWNER_CPU, d6
 	bsr.w findExvmOpcodeVersionV1
 	tst.b d0
 	beq.s found
-	lea ActiveFamilyBuffer.l, a4
+	lea buffers.ActiveFamilyBuffer.l, a4
 	moveq #SCOPED_OWNER_FAMILY, d6
 	bsr.w findExvmOpcodeVersionV1
 	tst.b d0
 	beq.s found
 	lea EvaluateExprMissingExvmText, a1
 	moveq #EVAL_EXPR_MISSING_EXVM_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 found
@@ -2363,7 +2330,7 @@ found
 	beq.s ok
 	lea EvaluateExprBadExvmVersionText, a1
 	moveq #EVAL_EXPR_BAD_EXVM_VERSION_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 ok
@@ -2372,7 +2339,7 @@ ok
 	.bend  ; resolveExvmOpcodeVersionV1
 
 resolveExprOpcodeVersionV1	.block
-	lea ActiveDialectBuffer.l, a4
+	lea buffers.ActiveDialectBuffer.l, a4
 	tst.b (a4)
 	beq.s skipDialect
 	moveq #SCOPED_OWNER_DIALECT, d6
@@ -2381,19 +2348,19 @@ resolveExprOpcodeVersionV1	.block
 	beq.s found
 
 skipDialect
-	lea ActiveCpuBuffer.l, a4
+	lea buffers.ActiveCpuBuffer.l, a4
 	moveq #SCOPED_OWNER_CPU, d6
 	bsr.w findExprOpcodeVersionV1
 	tst.b d0
 	beq.s found
-	lea ActiveFamilyBuffer.l, a4
+	lea buffers.ActiveFamilyBuffer.l, a4
 	moveq #SCOPED_OWNER_FAMILY, d6
 	bsr.w findExprOpcodeVersionV1
 	tst.b d0
 	beq.s found
 	lea EvaluateExprMissingExprText, a1
 	moveq #EVAL_EXPR_MISSING_EXPR_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 found
@@ -2404,7 +2371,7 @@ found
 	beq.s ok
 	lea EvaluateExprBadExprVersionText, a1
 	moveq #EVAL_EXPR_BAD_EXPR_VERSION_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 ok
@@ -2414,7 +2381,7 @@ ok
 
 findExvmOpcodeVersionV1	.block
 	move.b d6, d5
-	lea ExvmChunkOffsetLo, a3
+	lea buffers.ExvmChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
 	tst.b d1
 	bne.s missing
@@ -2471,7 +2438,7 @@ readVersion
 
 findExprOpcodeVersionV1	.block
 	move.b d6, d5
-	lea ExprChunkOffsetLo, a3
+	lea buffers.ExprChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
 	tst.b d1
 	bne.s missing
@@ -2585,7 +2552,7 @@ tkpkgServiceChunkPtrFromLocatorV1	.block
 	or.w d1, d7
 	tst.w d7
 	beq.s missing
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	lea 0(a6, d0.W), a2
 	lea 0(a2, d7.W), a6
 	moveq #0, d1
@@ -2736,14 +2703,14 @@ done
 ; ---------------------------------------------------------------------------
 tkpkgServiceParseLineV1	.block
 	moveq #0, d0
-	move.b CB_INPUT_PTR(a0), d0  ; low byte of CB-relative route-frame offset
+	move.b abi.CB_INPUT_PTR(a0), d0  ; low byte of CB-relative route-frame offset
 	moveq #0, d1
 	move.b 17(a0), d1  ; high byte of CB_INPUT_PTR; direct offset avoids a temp struct
 	lsl.w #8, d1
 	or.w d1, d0
 	lea 0(a0, d0.W), a1  ; A1 now points at the caller-supplied PRVM route frame
 	moveq #0, d0
-	move.b CB_INPUT_LEN(a0), d0  ; low byte of route-frame byte length
+	move.b abi.CB_INPUT_LEN(a0), d0  ; low byte of route-frame byte length
 	moveq #0, d1
 	move.b 19(a0), d1  ; high byte of CB_INPUT_LEN
 	lsl.w #8, d1
@@ -2751,7 +2718,7 @@ tkpkgServiceParseLineV1	.block
 	cmpi.w #TKPKG_PARSE_ROUTE_FRAME_SIZE, d0
 	bne.s badRequest
 	movea.l a1, a0  ; PRVM router ABI expects its route frame in A0
-	jsr prvmRouteLine68000  ; D0/D1 become the parser service's immediate return pair
+	jsr line_router.prvmRouteLine68000  ; D0/D1 become the parser service's immediate return pair
 	moveq #0, d2
 	rts
 
@@ -2787,14 +2754,14 @@ badRequest
 tkpkgServiceEncodeInstructionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	moveq #0, d0
-	move.b CB_INPUT_PTR(a0), d0  ; low byte of CB-relative encode-request offset
+	move.b abi.CB_INPUT_PTR(a0), d0  ; low byte of CB-relative encode-request offset
 	moveq #0, d1
 	move.b 17(a0), d1  ; high byte of CB_INPUT_PTR
 	lsl.w #8, d1
 	or.w d1, d0
 	lea 0(a0, d0.W), a4  ; A4 walks the request envelope in-place
 	moveq #0, d7
-	move.b CB_INPUT_LEN(a0), d7  ; D7 tracks remaining request bytes as fields are consumed
+	move.b abi.CB_INPUT_LEN(a0), d7  ; D7 tracks remaining request bytes as fields are consumed
 	moveq #0, d0
 	move.b 19(a0), d0
 	lsl.w #8, d0
@@ -2907,13 +2874,13 @@ return
 tkpkgEncodeFindAndExecuteTableProgram	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	moveq #0, d0
-	move.b TablChunkOffsetLo, d0
+	move.b buffers.TablChunkOffsetLo, d0
 	moveq #0, d1
-	move.b TablChunkOffsetHi, d1
+	move.b buffers.TablChunkOffsetHi, d1
 	lsl.w #8, d1
 	or.w d1, d0
 	beq.w fail
-	lea PackageStorage, a0
+	lea buffers.PackageStorage, a0
 	adda.w d0, a0
 	bsr.w tkpkgEncodeReadU32Low16
 	tst.w d0
@@ -2976,7 +2943,7 @@ tkpkgEncodeExecuteProgram	.block
 	movem.l d2-d7/a0-a4, -(sp)
 	movea.l a1, a0
 	move.w d1, d7
-	lea LastErrorBuffer, a2
+	lea buffers.LastErrorBuffer, a2
 	clr.w d1
 
 loop
@@ -3036,8 +3003,8 @@ ok
 	bra.s return
 
 fail
-	lea RuntimeErrorText, a1
-	moveq #RUNTIME_ERROR_TEXT_LEN, d1
+	lea buffers.RuntimeErrorText, a1
+	moveq #buffers.RUNTIME_ERROR_TEXT_LEN, d1
 	moveq #1, d0
 
 return
@@ -3126,11 +3093,11 @@ tkpkgServiceValidateHeaderV1	.block
 	bne.s badControlBlock
 	cmpi.b #$35, 3(a0)
 	bne.s badControlBlock
-	cmpi.b #$01, CB_ABI_VERSION(a0)
+	cmpi.b #$01, abi.CB_ABI_VERSION(a0)
 	bne.s badControlBlock
 	tst.b 5(a0)
 	bne.s badControlBlock
-	cmpi.b #NATIVE_CONTROL_BLOCK_SIZE_V1, CB_STRUCT_SIZE(a0)
+	cmpi.b #abi.NATIVE_CONTROL_BLOCK_SIZE_V1, abi.CB_STRUCT_SIZE(a0)
 	bne.s badControlBlock
 	tst.b 7(a0)
 	bne.s badControlBlock
@@ -3147,72 +3114,72 @@ tkpkgServiceWriteHeaderV1	.block
 	move.b #$54, 1(a0)
 	move.b #$36, 2(a0)
 	move.b #$35, 3(a0)
-	move.b #$01, CB_ABI_VERSION(a0)
+	move.b #$01, abi.CB_ABI_VERSION(a0)
 	clr.b 5(a0)
-	move.b #NATIVE_CONTROL_BLOCK_SIZE_V1, CB_STRUCT_SIZE(a0)
+	move.b #abi.NATIVE_CONTROL_BLOCK_SIZE_V1, abi.CB_STRUCT_SIZE(a0)
 	clr.b 7(a0)
-	move.b #CAPABILITY_FLAGS_V1, CB_CAPABILITY_FLAGS(a0)
+	move.b #abi.CAPABILITY_FLAGS_V1, abi.CB_CAPABILITY_FLAGS(a0)
 	clr.b 9(a0)
-	clr.b CB_RESERVED0(a0)
+	clr.b abi.CB_RESERVED0(a0)
 	clr.b 15(a0)
 	bsr.w tkpkgServiceSetStatusOkV1
 	rts
 	.bend  ; tkpkgServiceWriteHeaderV1
 
 tkpkgServiceIncrementRequestIdV1	.block
-	move.b NextRequestIdLo, d1
+	move.b buffers.NextRequestIdLo, d1
 	addq.b #1, d1
-	move.b d1, NextRequestIdLo
+	move.b d1, buffers.NextRequestIdLo
 	bne.s done
-	move.b NextRequestIdHi, d2
+	move.b buffers.NextRequestIdHi, d2
 	addq.b #1, d2
-	move.b d2, NextRequestIdHi
+	move.b d2, buffers.NextRequestIdHi
 
 done
-	move.b NextRequestIdLo, CB_REQUEST_ID(a0)
-	move.b NextRequestIdHi, 13(a0)
+	move.b buffers.NextRequestIdLo, abi.CB_REQUEST_ID(a0)
+	move.b buffers.NextRequestIdHi, 13(a0)
 	rts
 	.bend  ; tkpkgServiceIncrementRequestIdV1
 
 tkpkgServiceSetBadRequestV1	.block
 	bsr.w tkpkgServiceSetStatusBadRequestV1
 	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	lea BadRequestText, a1
-	moveq #BAD_REQUEST_TEXT_LEN, d1
+	lea buffers.BadRequestText, a1
+	moveq #buffers.BAD_REQUEST_TEXT_LEN, d1
 	bsr.w tkpkgServiceCopyLastErrorMessageV1
 	bsr.w tkpkgServiceWriteLastErrorBufferOffsetV1
-	move.b #BAD_REQUEST_TEXT_LEN, CB_LAST_ERROR_LEN(a0)
+	move.b #buffers.BAD_REQUEST_TEXT_LEN, abi.CB_LAST_ERROR_LEN(a0)
 	clr.b 31(a0)
-	move.b #BAD_REQUEST_TEXT_LEN, StoredLastErrorLen
-	clr.b StoredLastErrorLenHi
-	move.b #LAST_ERROR_KIND_BAD_REQUEST, StoredLastErrorKind
+	move.b #buffers.BAD_REQUEST_TEXT_LEN, buffers.StoredLastErrorLen
+	clr.b buffers.StoredLastErrorLenHi
+	move.b #buffers.LAST_ERROR_KIND_BAD_REQUEST, buffers.StoredLastErrorKind
 	rts
 	.bend  ; tkpkgServiceSetBadRequestV1
 
 tkpkgServiceSetBadControlBlockV1	.block
 	bsr.w tkpkgServiceSetStatusBadControlBlockV1
 	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	lea ControlBlockErrorText, a1
-	moveq #CONTROL_BLOCK_ERROR_TEXT_LEN, d1
+	lea buffers.ControlBlockErrorText, a1
+	moveq #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN, d1
 	bsr.w tkpkgServiceCopyLastErrorMessageV1
 	bsr.w tkpkgServiceWriteLastErrorBufferOffsetV1
-	move.b #CONTROL_BLOCK_ERROR_TEXT_LEN, CB_LAST_ERROR_LEN(a0)
+	move.b #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN, abi.CB_LAST_ERROR_LEN(a0)
 	clr.b 31(a0)
-	move.b #CONTROL_BLOCK_ERROR_TEXT_LEN, StoredLastErrorLen
-	clr.b StoredLastErrorLenHi
-	move.b #LAST_ERROR_KIND_BAD_CONTROL, StoredLastErrorKind
+	move.b #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN, buffers.StoredLastErrorLen
+	clr.b buffers.StoredLastErrorLenHi
+	move.b #buffers.LAST_ERROR_KIND_BAD_CONTROL, buffers.StoredLastErrorKind
 	rts
 	.bend  ; tkpkgServiceSetBadControlBlockV1
 
 tkpkgServiceSetRuntimeErrorV1	.block
 	bsr.w tkpkgServiceSetStatusRuntimeErrorV1
 	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	lea RuntimeErrorText, a1
-	moveq #RUNTIME_ERROR_TEXT_LEN, d1
+	lea buffers.RuntimeErrorText, a1
+	moveq #buffers.RUNTIME_ERROR_TEXT_LEN, d1
 	bsr.w tkpkgServiceSetRuntimeErrorMessageV1
-	move.b #LAST_ERROR_KIND_RUNTIME, StoredLastErrorKind
-	move.b #RUNTIME_ERROR_TEXT_LEN, StoredLastErrorLen
-	clr.b StoredLastErrorLenHi
+	move.b #buffers.LAST_ERROR_KIND_RUNTIME, buffers.StoredLastErrorKind
+	move.b #buffers.RUNTIME_ERROR_TEXT_LEN, buffers.StoredLastErrorLen
+	clr.b buffers.StoredLastErrorLenHi
 	rts
 	.bend  ; tkpkgServiceSetRuntimeErrorV1
 
@@ -3221,67 +3188,67 @@ tkpkgServiceSetRuntimeErrorMessageV1	.block
 	bsr.w tkpkgServiceWriteClearOutputFieldsV1
 	bsr.w tkpkgServiceCopyLastErrorMessageV1
 	bsr.w tkpkgServiceWriteLastErrorBufferOffsetV1
-	move.b d1, CB_LAST_ERROR_LEN(a0)
+	move.b d1, abi.CB_LAST_ERROR_LEN(a0)
 	clr.b 31(a0)
-	move.b d1, StoredLastErrorLen
-	clr.b StoredLastErrorLenHi
-	move.b #LAST_ERROR_KIND_RUNTIME, StoredLastErrorKind
+	move.b d1, buffers.StoredLastErrorLen
+	clr.b buffers.StoredLastErrorLenHi
+	move.b #buffers.LAST_ERROR_KIND_RUNTIME, buffers.StoredLastErrorKind
 	rts
 	.bend  ; tkpkgServiceSetRuntimeErrorMessageV1
 
 tkpkgServiceClearStoredLastErrorV1	.block
-	clr.b StoredLastErrorLen
-	clr.b StoredLastErrorLenHi
-	move.b #LAST_ERROR_KIND_NONE, StoredLastErrorKind
+	clr.b buffers.StoredLastErrorLen
+	clr.b buffers.StoredLastErrorLenHi
+	move.b #buffers.LAST_ERROR_KIND_NONE, buffers.StoredLastErrorKind
 	rts
 	.bend  ; tkpkgServiceClearStoredLastErrorV1
 
 tkpkgServiceWriteClearOutputFieldsV1	.block
-	clr.b CB_OUTPUT_PTR(a0)
+	clr.b abi.CB_OUTPUT_PTR(a0)
 	clr.b 21(a0)
-	clr.b CB_OUTPUT_LEN(a0)
+	clr.b abi.CB_OUTPUT_LEN(a0)
 	clr.b 23(a0)
 	rts
 	.bend  ; tkpkgServiceWriteClearOutputFieldsV1
 
 tkpkgServiceWriteClearExtensionFieldsV1	.block
-	clr.b CB_EXTENSION_PTR(a0)
+	clr.b abi.CB_EXTENSION_PTR(a0)
 	clr.b 25(a0)
-	clr.b CB_EXTENSION_LEN(a0)
+	clr.b abi.CB_EXTENSION_LEN(a0)
 	clr.b 27(a0)
 	rts
 	.bend  ; tkpkgServiceWriteClearExtensionFieldsV1
 
 tkpkgServiceWriteClearInputFieldsV1	.block
-	clr.b CB_INPUT_PTR(a0)
+	clr.b abi.CB_INPUT_PTR(a0)
 	clr.b 17(a0)
-	clr.b CB_INPUT_LEN(a0)
+	clr.b abi.CB_INPUT_LEN(a0)
 	clr.b 19(a0)
 	rts
 	.bend  ; tkpkgServiceWriteClearInputFieldsV1
 
 tkpkgServiceWriteClearLastErrorFieldsV1	.block
-	clr.b CB_LAST_ERROR_PTR(a0)
+	clr.b abi.CB_LAST_ERROR_PTR(a0)
 	clr.b 29(a0)
-	clr.b CB_LAST_ERROR_LEN(a0)
+	clr.b abi.CB_LAST_ERROR_LEN(a0)
 	clr.b 31(a0)
 	rts
 	.bend  ; tkpkgServiceWriteClearLastErrorFieldsV1
 
 tkpkgServiceWriteLastErrorBufferOffsetV1	.block
-	move.b #LAST_ERROR_BUFFER_PTR_V1, CB_LAST_ERROR_PTR(a0)
+	move.b #buffers.LAST_ERROR_BUFFER_PTR_V1, abi.CB_LAST_ERROR_PTR(a0)
 	clr.b 29(a0)
 	rts
 	.bend  ; tkpkgServiceWriteLastErrorBufferOffsetV1
 
 tkpkgServiceWriteOutputBufferOffsetV1	.block
-	move.b #LAST_ERROR_BUFFER_PTR_V1, CB_OUTPUT_PTR(a0)
+	move.b #buffers.LAST_ERROR_BUFFER_PTR_V1, abi.CB_OUTPUT_PTR(a0)
 	clr.b 21(a0)
 	rts
 	.bend  ; tkpkgServiceWriteOutputBufferOffsetV1
 
 tkpkgServiceCopyLastErrorMessageV1	.block
-	lea LastErrorBuffer, a2
+	lea buffers.LastErrorBuffer, a2
 	move.w d1, d2
 	tst.w d2
 	beq.s done
@@ -3297,25 +3264,25 @@ done
 	.bend  ; tkpkgServiceCopyLastErrorMessageV1
 
 tkpkgServiceSetStatusOkV1	.block
-	clr.b CB_STATUS_CODE(a0)
+	clr.b abi.CB_STATUS_CODE(a0)
 	clr.b 11(a0)
 	rts
 	.bend  ; tkpkgServiceSetStatusOkV1
 
 tkpkgServiceSetStatusBadControlBlockV1	.block
-	move.b #STATUS_BAD_CONTROL_BLOCK_V1, CB_STATUS_CODE(a0)
+	move.b #abi.STATUS_BAD_CONTROL_BLOCK_V1, abi.CB_STATUS_CODE(a0)
 	clr.b 11(a0)
 	rts
 	.bend  ; tkpkgServiceSetStatusBadControlBlockV1
 
 tkpkgServiceSetStatusBadRequestV1	.block
-	move.b #STATUS_BAD_REQUEST_V1, CB_STATUS_CODE(a0)
+	move.b #abi.STATUS_BAD_REQUEST_V1, abi.CB_STATUS_CODE(a0)
 	clr.b 11(a0)
 	rts
 	.bend  ; tkpkgServiceSetStatusBadRequestV1
 
 tkpkgServiceSetStatusRuntimeErrorV1	.block
-	move.b #STATUS_RUNTIME_ERROR_V1, CB_STATUS_CODE(a0)
+	move.b #abi.STATUS_RUNTIME_ERROR_V1, abi.CB_STATUS_CODE(a0)
 	clr.b 11(a0)
 	rts
 	.bend  ; tkpkgServiceSetStatusRuntimeErrorV1

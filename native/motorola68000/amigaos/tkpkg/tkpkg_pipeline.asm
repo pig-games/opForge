@@ -3,26 +3,8 @@
 	.module tkpkg.amigaos.pipeline
 	.cpu 68020
 	.pub
-	.use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN, STATUS_BAD_REQUEST_V1)
-	.use tkpkg.amigaos.abi (STATUS_RUNTIME_ERROR_V1)
-	.use tkpkg.amigaos.buffers (PACKAGE_STATE_LOADED, PACKAGE_STATE_PIPELINE_ACTIVE)
-	.use tkpkg.amigaos.buffers (PIPELINE_ID_BUFFER_CAPACITY, SCOPED_OWNER_DIALECT)
-	.use tkpkg.amigaos.buffers (SCOPED_OWNER_CPU, SCOPED_OWNER_FAMILY)
-	.use tkpkg.amigaos.buffers (PackageStateFlags, PackageStorage, FamsChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (CpusChunkOffsetLo, DialChunkOffsetLo)
-	.use tkpkg.amigaos.buffers (TkvmChunkOffsetLo, PrvmChunkOffsetLo, ActiveCpuBuffer)
-	.use tkpkg.amigaos.buffers (ActiveDialectBuffer, ActiveFamilyBuffer)
-	.use tkpkg.amigaos.buffers (ActiveTokenPolicyOffsetLo, ActiveTokenPolicyOwnerTag)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmOffsetLo, ActiveTokenizerVmOwnerTag)
-	.use tkpkg.amigaos.buffers (PendingFamilyOffsetLo, PendingCpuOffsetLo)
-	.use tkpkg.amigaos.buffers (PendingDialectOffsetLo, PendingDefaultDialectOffsetLo)
-	.use tkpkg.amigaos.buffers (PendingCanonicalDialectOffsetLo)
-	.use tkpkg.amigaos.buffers (PendingTokenPolicyOffsetLo)
-	.use tkpkg.amigaos.buffers (PendingTokenPolicyOwnerTag)
-	.use tkpkg.amigaos.buffers (PendingTokenizerVmOffsetLo)
-	.use tkpkg.amigaos.buffers (PendingTokenizerVmOwnerTag)
-	.use tkpkg.amigaos.buffers (ActiveParserVmOffsetLo, ActiveParserVmOwnerTag)
-	.use tkpkg.amigaos.buffers (PendingParserVmOffsetLo, PendingParserVmOwnerTag)
+	.use tkpkg.amigaos.abi
+	.use tkpkg.amigaos.buffers
 	.use tkpkg.amigaos.token_policy as policy  ;(tkpkgTokenPolicyResolveLocatorV1)
 
 NO_PACKAGE_TEXT_LEN                  = 41
@@ -75,16 +57,16 @@ IdentifierTooLongText
 ;   `<cpu-id>\0<dialect-id?>`.
 ;
 ; Outputs:
-; - D0: 0 on success, STATUS_BAD_REQUEST_V1 or STATUS_RUNTIME_ERROR_V1 on
+; - D0: 0 on success, abi.STATUS_BAD_REQUEST_V1 or abi.STATUS_RUNTIME_ERROR_V1 on
 ;   failure.
 ; - A1/D1: runtime failure text pointer/length when D0 is runtime error.
 ; ---------------------------------------------------------------------------
 tkpkgPipelineSetActiveV1	.block
-	btst #0, PackageStateFlags  ; require load_package before selecting any runtime pipeline
+	btst #0, buffers.PackageStateFlags  ; require load_package before selecting any runtime pipeline
 	bne.s parseRequest
 	lea NoPackageText, a1
 	moveq #NO_PACKAGE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 parseRequest
@@ -117,14 +99,14 @@ done
 	.priv
 
 parseRequestV1	.block
-	lea PendingFamilyOffsetLo, a3
+	lea buffers.PendingFamilyOffsetLo, a3
 	moveq #36, d0
 
 clearPendingLoop
 	clr.b (a3)+
 	dbf d0, clearPendingLoop
 	moveq #0, d0
-	move.b CB_INPUT_LEN(a0), d0
+	move.b abi.CB_INPUT_LEN(a0), d0
 	moveq #0, d1
 	move.b 19(a0), d1
 	lsl.w #8, d1
@@ -133,7 +115,7 @@ clearPendingLoop
 	blo.w badRequest
 	move.w d0, d6
 	moveq #0, d1
-	move.b CB_INPUT_PTR(a0), d1
+	move.b abi.CB_INPUT_PTR(a0), d1
 	moveq #0, d2
 	move.b 17(a0), d2
 	lsl.w #8, d2
@@ -158,7 +140,7 @@ separatorFound
 	beq.w badRequest
 	move.w d1, d4
 	move.w d3, d5
-	lea PendingCpuOffsetLo, a3
+	lea buffers.PendingCpuOffsetLo, a3
 	move.b d4, (a3)+
 	lsr.w #8, d4
 	move.b d4, (a3)+
@@ -170,11 +152,11 @@ separatorFound
 	sub.w d1, d0
 	subq.w #1, d0
 	beq.s noDialect
-	lea PendingDialectOffsetLo, a3
+	lea buffers.PendingDialectOffsetLo, a3
 	move.w d4, d2
 	lsl.w #8, d2
 	moveq #0, d5
-	move.b PendingCpuOffsetLo, d5
+	move.b buffers.PendingCpuOffsetLo, d5
 	or.w d5, d2
 	add.w d1, d2
 	addq.w #1, d2
@@ -188,13 +170,13 @@ separatorFound
 	rts
 
 noDialect
-	lea PendingDialectOffsetLo, a3
+	lea buffers.PendingDialectOffsetLo, a3
 	clr.l (a3)
 	moveq #0, d0
 	rts
 
 badRequest
-	moveq #STATUS_BAD_REQUEST_V1, d0
+	moveq #abi.STATUS_BAD_REQUEST_V1, d0
 	rts
 	.bend  ; parseRequestV1
 
@@ -215,29 +197,29 @@ resolveHierarchyV1	.block
 cpuUnresolved
 	lea UnresolvedCpuText, a1
 	moveq #UNRESOLVED_CPU_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 familyUnresolved
 	lea UnresolvedFamilyText, a1
 	moveq #UNRESOLVED_FAMILY_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 dialectUnresolved
 	lea UnresolvedDialectText, a1
 	moveq #UNRESOLVED_DIALECT_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 	.bend  ; resolveHierarchyV1
 
 ; Find the CPUS record matching the requested CPU id and stage its family.
 findCpuEntryV1	.block
-	lea PendingCpuOffsetLo, a3
+	lea buffers.PendingCpuOffsetLo, a3
 	bsr.w readRequestLocatorPtrLenV1
 	move.w d3, d5
 	movea.l a1, a5
-	lea CpusChunkOffsetLo, a3
+	lea buffers.CpusChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
 	tst.b d1
@@ -263,19 +245,19 @@ cpuLoop
 	movea.l (sp)+, a2
 	tst.b d0
 	beq.w skipCpuEntry
-	lea PendingCpuOffsetLo, a3
+	lea buffers.PendingCpuOffsetLo, a3
 	movea.l a4, a1
 	move.w d6, d0
 	bsr.w storePackageStringLocatorV1
 	bsr.w locateStringV1
 	tst.b d1
 	bne.w cpuMissing
-	lea PendingFamilyOffsetLo, a3
+	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w storePackageStringLocatorV1
 	bsr.w locateOptionalStringV1
 	tst.b d1
 	bne.w cpuMissing
-	lea PendingDefaultDialectOffsetLo, a3
+	lea buffers.PendingDefaultDialectOffsetLo, a3
 	bsr.w storeOptionalPackageStringLocatorV1
 	moveq #0, d0
 	rts
@@ -296,12 +278,12 @@ cpuMissing
 
 ; Find the FAMS record matching the family referenced by the selected CPU.
 findFamilyEntryV1	.block
-	lea PackageStorage, a6
-	lea PendingFamilyOffsetLo, a3
+	lea buffers.PackageStorage, a6
+	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w readLocatorPtrLenV1
 	move.w d3, d5
 	movea.l a1, a5
-	lea FamsChunkOffsetLo, a3
+	lea buffers.FamsChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
 	tst.b d1
@@ -330,7 +312,7 @@ familyLoop
 	bsr.w locateStringV1
 	tst.b d1
 	bne.w familyMissing
-	lea PendingCanonicalDialectOffsetLo, a3
+	lea buffers.PendingCanonicalDialectOffsetLo, a3
 	bsr.w storePackageStringLocatorV1
 	moveq #0, d0
 	rts
@@ -348,11 +330,11 @@ familyMissing
 
 ; Choose requested dialect when present, otherwise CPU default, then family canonical.
 resolveSelectedDialectV1	.block
-	lea PendingDialectOffsetLo, a3
+	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w readLocatorPtrLenV1
 	tst.w d3
 	beq.s defaultDialect
-	lea PendingDialectOffsetLo, a3
+	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w findRequestedDialectEntryV1
 	tst.b d0
 	beq.s dialectDone
@@ -360,17 +342,17 @@ resolveSelectedDialectV1	.block
 	rts
 
 defaultDialect
-	lea PendingDefaultDialectOffsetLo, a3
+	lea buffers.PendingDefaultDialectOffsetLo, a3
 	bsr.w readLocatorPtrLenV1
 	tst.w d3
 	beq.s canonicalDialect
-	lea PendingDefaultDialectOffsetLo, a3
+	lea buffers.PendingDefaultDialectOffsetLo, a3
 	bsr.w findDialectEntryV1
 	tst.b d0
 	beq.s dialectDone
 
 canonicalDialect
-	lea PendingCanonicalDialectOffsetLo, a3
+	lea buffers.PendingCanonicalDialectOffsetLo, a3
 	bsr.w findDialectEntryV1
 	tst.b d0
 	bne.s dialectMissing
@@ -399,11 +381,11 @@ findDialectEntryV1	.block
 findDialectEntryLoadedV1	.block
 	move.w d3, d5
 	movea.l a1, a5
-	lea PendingFamilyOffsetLo, a3
+	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w readLocatorPtrLenV1
 	move.w d3, d6
 	movea.l a1, a4
-	lea DialChunkOffsetLo, a3
+	lea buffers.DialChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
 	tst.b d1
@@ -474,7 +456,7 @@ dialectNotFound
 	rts
 
 dialectAccept
-	lea PendingDialectOffsetLo, a3
+	lea buffers.PendingDialectOffsetLo, a3
 	movea.l a0, a1
 	move.w (sp)+, d0
 	bsr.w storePackageStringLocatorV1
@@ -498,7 +480,7 @@ dialectAllowsCpuV1	.block
 	tst.w d7
 	beq.s dialectRejected
 	move.l a6, -(sp)
-	lea PendingCpuOffsetLo, a3
+	lea buffers.PendingCpuOffsetLo, a3
 	bsr.w readLocatorPtrLenV1
 	movea.l (sp)+, a6
 	move.w d3, d5
@@ -535,24 +517,24 @@ dialectAllowed
 
 ; Resolve tokenizer VM program with dialect -> CPU -> family owner precedence.
 resolveTokenizerVmLocatorV1	.block
-	moveq #SCOPED_OWNER_DIALECT, d0
-	lea PendingDialectOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_DIALECT, d0
+	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w findTokenizerVmOwnerV1
 	tst.b d0
 	beq.s vmResolved
-	moveq #SCOPED_OWNER_CPU, d0
-	lea PendingCpuOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_CPU, d0
+	lea buffers.PendingCpuOffsetLo, a3
 	bsr.w findTokenizerVmOwnerV1
 	tst.b d0
 	beq.s vmResolved
-	moveq #SCOPED_OWNER_FAMILY, d0
-	lea PendingFamilyOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_FAMILY, d0
+	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w findTokenizerVmOwnerV1
 	tst.b d0
 	beq.s vmResolved
 	lea MissingProgramText, a1
 	moveq #MISSING_PROGRAM_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 vmResolved
@@ -562,24 +544,24 @@ vmResolved
 
 ; Resolve parser VM program with dialect -> CPU -> family owner precedence.
 resolveParserVmLocatorV1	.block
-	moveq #SCOPED_OWNER_DIALECT, d0
-	lea PendingDialectOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_DIALECT, d0
+	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w findParserVmOwnerV1
 	tst.b d0
 	beq.s parserVmResolved
-	moveq #SCOPED_OWNER_CPU, d0
-	lea PendingCpuOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_CPU, d0
+	lea buffers.PendingCpuOffsetLo, a3
 	bsr.w findParserVmOwnerV1
 	tst.b d0
 	beq.s parserVmResolved
-	moveq #SCOPED_OWNER_FAMILY, d0
-	lea PendingFamilyOffsetLo, a3
+	moveq #buffers.SCOPED_OWNER_FAMILY, d0
+	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w findParserVmOwnerV1
 	tst.b d0
 	beq.s parserVmResolved
 	lea MissingParserProgramText, a1
 	moveq #MISSING_PARSER_PROGRAM_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 parserVmResolved
@@ -590,11 +572,11 @@ parserVmResolved
 ; Find a TKVM record matching the scoped owner locator in A3/D0.
 findTokenizerVmOwnerV1	.block
 	move.b d0, d6
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	bsr.w readLocatorPtrLenV1
 	move.w d3, d5
 	movea.l a1, a5
-	lea TkvmChunkOffsetLo, a3
+	lea buffers.TkvmChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
 	tst.b d1
@@ -641,12 +623,12 @@ vmFound
 	bsr.w skipTokenizerVmEntryV1
 	tst.b d1
 	bne.w vmOwnerMissing
-	lea PendingTokenizerVmOffsetLo, a3
+	lea buffers.PendingTokenizerVmOffsetLo, a3
 	movea.l a4, a1
 	move.l a2, d0
 	sub.l a4, d0
 	bsr.w storeRecordLocatorV1
-	move.b d6, PendingTokenizerVmOwnerTag
+	move.b d6, buffers.PendingTokenizerVmOwnerTag
 	moveq #0, d0
 	rts
 	.bend  ; findTokenizerVmOwnerV1
@@ -654,11 +636,11 @@ vmFound
 ; Find a PRVM record matching the scoped owner locator in A3/D0.
 findParserVmOwnerV1	.block
 	move.b d0, d6
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	bsr.w readLocatorPtrLenV1
 	move.w d3, d5
 	movea.l a1, a5
-	lea PrvmChunkOffsetLo, a3
+	lea buffers.PrvmChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
 	tst.b d1
@@ -705,12 +687,12 @@ parserFound
 	bsr.w skipParserVmEntryV1
 	tst.b d1
 	bne.w parserOwnerMissing
-	lea PendingParserVmOffsetLo, a3
+	lea buffers.PendingParserVmOffsetLo, a3
 	movea.l a4, a1
 	move.l a2, d0
 	sub.l a4, d0
 	bsr.w storeRecordLocatorV1
-	move.b d6, PendingParserVmOwnerTag
+	move.b d6, buffers.PendingParserVmOwnerTag
 	moveq #0, d0
 	rts
 	.bend  ; findParserVmOwnerV1
@@ -815,37 +797,37 @@ parserSkipBoundsFail
 
 ; Commit fully resolved pending locators into active service state.
 commitActiveSelectionV1	.block
-	lea PendingCpuOffsetLo, a3
-	lea ActiveCpuBuffer.l, a2
+	lea buffers.PendingCpuOffsetLo, a3
+	lea buffers.ActiveCpuBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
 	tst.b d0
 	bne.w commitDone
-	lea PendingDialectOffsetLo, a3
-	lea ActiveDialectBuffer.l, a2
+	lea buffers.PendingDialectOffsetLo, a3
+	lea buffers.ActiveDialectBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
 	tst.b d0
 	bne.w commitDone
-	lea PendingFamilyOffsetLo, a3
-	lea ActiveFamilyBuffer.l, a2
+	lea buffers.PendingFamilyOffsetLo, a3
+	lea buffers.ActiveFamilyBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
 	tst.b d0
 	bne.w commitDone
-	lea PendingTokenPolicyOffsetLo, a3
-	lea ActiveTokenPolicyOffsetLo.l, a2
+	lea buffers.PendingTokenPolicyOffsetLo, a3
+	lea buffers.ActiveTokenPolicyOffsetLo.l, a2
 	bsr.w copyRecordLocatorV1
-	move.b PendingTokenPolicyOwnerTag, d0
-	move.b d0, ActiveTokenPolicyOwnerTag
-	lea PendingTokenizerVmOffsetLo, a3
-	lea ActiveTokenizerVmOffsetLo.l, a2
+	move.b buffers.PendingTokenPolicyOwnerTag, d0
+	move.b d0, buffers.ActiveTokenPolicyOwnerTag
+	lea buffers.PendingTokenizerVmOffsetLo, a3
+	lea buffers.ActiveTokenizerVmOffsetLo.l, a2
 	bsr.w copyRecordLocatorV1
-	move.b PendingTokenizerVmOwnerTag, d0
-	move.b d0, ActiveTokenizerVmOwnerTag
-	lea PendingParserVmOffsetLo, a3
-	lea ActiveParserVmOffsetLo.l, a2
+	move.b buffers.PendingTokenizerVmOwnerTag, d0
+	move.b d0, buffers.ActiveTokenizerVmOwnerTag
+	lea buffers.PendingParserVmOffsetLo, a3
+	lea buffers.ActiveParserVmOffsetLo.l, a2
 	bsr.w copyRecordLocatorV1
-	move.b PendingParserVmOwnerTag, d0
-	move.b d0, ActiveParserVmOwnerTag
-	ori.b #PACKAGE_STATE_PIPELINE_ACTIVE, PackageStateFlags
+	move.b buffers.PendingParserVmOwnerTag, d0
+	move.b d0, buffers.ActiveParserVmOwnerTag
+	ori.b #buffers.PACKAGE_STATE_PIPELINE_ACTIVE, buffers.PackageStateFlags
 	moveq #0, d0
 
 commitDone
@@ -854,7 +836,7 @@ commitDone
 
 copyLocatorToBufferV1	.block
 	bsr.w readLocatorPtrLenV1
-	cmpi.w #PIPELINE_ID_BUFFER_CAPACITY, d3
+	cmpi.w #buffers.PIPELINE_ID_BUFFER_CAPACITY, d3
 	bhs.s copyBufferTooLong
 	move.w d3, d2
 	tst.w d2
@@ -873,7 +855,7 @@ copyBufferDone
 copyBufferTooLong
 	lea IdentifierTooLongText, a1
 	moveq #IDENTIFIER_TOO_LONG_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 	.bend  ; copyLocatorToBufferV1
 
@@ -885,7 +867,7 @@ copyRecordLocatorV1	.block
 storePackageStringLocatorV1	.block
 	move.l a6, -(sp)
 	move.l a1, d2
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	sub.l a6, d2
 	move.b d2, (a3)+
 	lsr.w #8, d2
@@ -911,7 +893,7 @@ clearOptionalLocator
 storeRecordLocatorV1	.block
 	move.l a6, -(sp)
 	move.l a1, d2
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	sub.l a6, d2
 	move.b d2, (a3)+
 	lsr.w #8, d2
@@ -936,7 +918,7 @@ readLocatorPtrLenV1	.block
 	move.b (a3)+, d1
 	lsl.w #8, d1
 	or.w d1, d3
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	lea 0(a6, d2.W), a1
 	rts
 	.bend  ; readLocatorPtrLenV1
@@ -971,7 +953,7 @@ chunkPtrFromLocatorV1	.block
 	move.b (a3)+, d1
 	lsl.w #8, d1
 	or.w d1, d7
-	lea PackageStorage, a6
+	lea buffers.PackageStorage, a6
 	lea 0(a6, d0.W), a2
 	lea 0(a2, d7.W), a6
 	rts

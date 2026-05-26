@@ -7,7 +7,7 @@
 	.module opforge.cli.token_util
 	.cpu 68020
 
-	.use opforge.cli.constants (TOKEN_BUFFER_CAPACITY)
+	.use opforge.cli.constants
 
 	.section code, kind=code
 	.pub
@@ -23,7 +23,7 @@ opforgeNativeCliCopyTokenBuffer	.block
 opforgeNativeCliTokenLen	.block
 	movem.l d1/a0, -(sp)
 	moveq #0, d0
-	move.l #TOKEN_BUFFER_CAPACITY - 1, d1
+	move.l #constants.TOKEN_BUFFER_CAPACITY - 1, d1
 
 loop
 	tst.b (a0)+

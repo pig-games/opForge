@@ -3,10 +3,10 @@
 	.module tkpkg.amigaos.buffers
 	.cpu 68020
 	.pub
-	.use tkpkg.amigaos.abi (NATIVE_CONTROL_BLOCK_SIZE_V1)
+	.use tkpkg.amigaos.abi
 
 LAST_ERROR_BUFFER_CAPACITY           = 4096
-LAST_ERROR_BUFFER_PTR_V1             = NATIVE_CONTROL_BLOCK_SIZE_V1
+LAST_ERROR_BUFFER_PTR_V1             = abi.NATIVE_CONTROL_BLOCK_SIZE_V1
 PACKAGE_STORAGE_CAPACITY             = 32768
 PIPELINE_ID_BUFFER_CAPACITY          = 32
 TOKEN_RECORD_SIZE                    = 20
@@ -58,7 +58,7 @@ RuntimeErrorText
 	.section bss, kind=bss
 
 ControlBlockV1
-	.res byte, NATIVE_CONTROL_BLOCK_SIZE_V1
+	.res byte, abi.NATIVE_CONTROL_BLOCK_SIZE_V1
 
 LastErrorBuffer
 	.res byte, LAST_ERROR_BUFFER_CAPACITY

@@ -3,7 +3,7 @@
 	.module prvm.amigaos.line_iterator
 	.cpu 68020
 	.pub
-	.use prvm.amigaos.line_router (prvmRouteLine68000)
+	.use prvm.amigaos.line_router
 
 PRVM_ROUTE_MAGIC_OPLR               = $4F504C52
 PRVM_ROUTE_FRAME_SIZE               = 116
@@ -278,7 +278,7 @@ buildRouteFrame	.block
 PrvmIteratorRouteFrame
 	.fill byte, 116, 0
 PrvmIteratorRouteEntryPtr
-	.long prvmRouteLine68000
+	.long line_router.prvmRouteLine68000
 
 	.endsection
 	.endmodule

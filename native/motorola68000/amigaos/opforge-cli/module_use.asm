@@ -6,24 +6,13 @@
 
 	.module opforge.cli.module_use
 	.cpu 68020
-	.use opforge.cli.state (NativeCliArgToken, NativeCliSourceLineNum, NativeCliIncludeTarget)
-	.use opforge.cli.state (NativeCliIncludePath, NativeCliResolvedModuleId)
-	.use opforge.cli.state (NativeCliModuleCount, NativeCliModulePathCount, NativeCliRootModuleId)
-	.use opforge.cli.state (NativeCliCurrentModuleId, NativeCliModuleDepth)
-	.use opforge.cli.state (NativeCliModuleNameTable, NativeCliModuleFileIdTable)
-	.use opforge.cli.state (NativeCliModuleLineTable, NativeCliModuleDepthTable)
-	.use opforge.cli.state (NativeCliImportCount, NativeCliImportOwnerModuleTable)
-	.use opforge.cli.state (NativeCliImportModuleTable, NativeCliImportFileIdTable)
-	.use opforge.cli.state (NativeCliImportLineTable, NativeCliImportAliasTable)
-	.use opforge.cli.state (NativeCliImportSelectCount, NativeCliImportSelectImportTable)
-	.use opforge.cli.state (NativeCliImportSelectNameTable, NativeCliImportSelectAliasTable)
-	.use opforge.cli.state (NativeCliImportSelectFlagsTable, NativeCliModulePathTable)
-	.use opforge.cli.constants (NATIVE_MODULE_TABLE_CAPACITY, NATIVE_IMPORT_TABLE_CAPACITY, NATIVE_IMPORT_SELECT_CAPACITY)
-	.use opforge.cli.token_util (opforgeNativeCliCopyTokenBuffer, opforgeNativeCliTokenLen)
-	.use opforge.cli.text_output (opforgeNativeCliPutDecU16, opforgeNativeCliPutSpace)
-	.use opforge.cli.strings (ModRootText, ModDefText, ModEndText, ModuleFoundText, UseImportText, UseSelectText, UseWildcardText, NewlineText, ModuleSourceExtensionText)
+	.use opforge.cli.state
+	.use opforge.cli.constants
+	.use opforge.cli.token_util
+	.use opforge.cli.text_output
+	.use opforge.cli.strings
 	.use opforge.cli.dos
-	.use opforge.cli.path (opforgeNativeCliCopyPathBuffer, opforgeNativeCliAppendPathBuffer)
+	.use opforge.cli.path
 
 	.section code, kind=code
 	.pub
@@ -31,44 +20,44 @@
 opforgeNativeCliRecordModule	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0
-	move.w NativeCliModuleCount, d0
-	cmpi.w #NATIVE_MODULE_TABLE_CAPACITY, d0
+	move.w state.NativeCliModuleCount, d0
+	cmpi.w #constants.NATIVE_MODULE_TABLE_CAPACITY, d0
 	bhs.w fail
 	move.w d0, d3
-	lea NativeCliArgToken, a0
-	lea NativeCliModuleNameTable, a1
+	lea state.NativeCliArgToken, a0
+	lea state.NativeCliModuleNameTable, a1
 	moveq #0, d1
 	move.w d3, d1
 	lsl.l #6, d1
 	adda.l d1, a1
-	bsr.w opforgeNativeCliCopyTokenBuffer
+	bsr.w token_util.opforgeNativeCliCopyTokenBuffer
 
 	moveq #0, d1
 	move.w d3, d1
 	add.w d1, d1
-	lea NativeCliModuleFileIdTable, a1
+	lea state.NativeCliModuleFileIdTable, a1
 	move.w #1, 0(a1, d1.l)
-	lea NativeCliModuleDepthTable, a1
-	move.w NativeCliModuleDepth, 0(a1, d1.l)
+	lea state.NativeCliModuleDepthTable, a1
+	move.w state.NativeCliModuleDepth, 0(a1, d1.l)
 
 	moveq #0, d1
 	move.w d3, d1
 	lsl.l #2, d1
-	lea NativeCliModuleLineTable, a1
-	move.l NativeCliSourceLineNum, 0(a1, d1.l)
+	lea state.NativeCliModuleLineTable, a1
+	move.l state.NativeCliSourceLineNum, 0(a1, d1.l)
 
-	tst.w NativeCliModuleCount
+	tst.w state.NativeCliModuleCount
 	bne.s haveRoot
-	move.w d3, NativeCliRootModuleId
+	move.w d3, state.NativeCliRootModuleId
 
 haveRoot
-	move.w d3, NativeCliCurrentModuleId
-	move.w NativeCliModuleCount, d0
+	move.w d3, state.NativeCliCurrentModuleId
+	move.w state.NativeCliModuleCount, d0
 	addq.w #1, d0
-	move.w d0, NativeCliModuleCount
-	move.w NativeCliModuleDepth, d0
+	move.w d0, state.NativeCliModuleCount
+	move.w state.NativeCliModuleDepth, d0
 	addq.w #1, d0
-	move.w d0, NativeCliModuleDepth
+	move.w d0, state.NativeCliModuleDepth
 	moveq #0, d0
 	bra.s return
 
@@ -83,37 +72,37 @@ return
 opforgeNativeCliRecordImport	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0
-	move.w NativeCliImportCount, d0
-	cmpi.w #NATIVE_IMPORT_TABLE_CAPACITY, d0
+	move.w state.NativeCliImportCount, d0
+	cmpi.w #constants.NATIVE_IMPORT_TABLE_CAPACITY, d0
 	bhs.w fail
 	move.w d0, d4
 	moveq #0, d1
 	move.w d4, d1
 	add.w d1, d1
-	lea NativeCliImportOwnerModuleTable, a1
-	move.w NativeCliCurrentModuleId, 0(a1, d1.l)
-	lea NativeCliImportModuleTable, a1
+	lea state.NativeCliImportOwnerModuleTable, a1
+	move.w state.NativeCliCurrentModuleId, 0(a1, d1.l)
+	lea state.NativeCliImportModuleTable, a1
 	clr.w 0(a1, d1.l)
-	lea NativeCliImportFileIdTable, a1
+	lea state.NativeCliImportFileIdTable, a1
 	move.w #1, 0(a1, d1.l)
 
 	moveq #0, d1
 	move.w d4, d1
 	lsl.l #2, d1
-	lea NativeCliImportLineTable, a1
-	move.l NativeCliSourceLineNum, 0(a1, d1.l)
+	lea state.NativeCliImportLineTable, a1
+	move.l state.NativeCliSourceLineNum, 0(a1, d1.l)
 
 	moveq #0, d1
 	move.w d4, d1
 	lsl.l #6, d1
-	lea NativeCliImportAliasTable, a1
+	lea state.NativeCliImportAliasTable, a1
 	adda.l d1, a1
-	lea NativeCliIncludeTarget, a0
-	bsr.w opforgeNativeCliCopyTokenBuffer
+	lea state.NativeCliIncludeTarget, a0
+	bsr.w token_util.opforgeNativeCliCopyTokenBuffer
 
-	move.w NativeCliImportCount, d0
+	move.w state.NativeCliImportCount, d0
 	addq.w #1, d0
-	move.w d0, NativeCliImportCount
+	move.w d0, state.NativeCliImportCount
 	moveq #0, d0
 	bra.s return
 
@@ -128,37 +117,37 @@ return
 opforgeNativeCliRecordImportSelect	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0
-	move.w NativeCliImportSelectCount, d0
-	cmpi.w #NATIVE_IMPORT_SELECT_CAPACITY, d0
+	move.w state.NativeCliImportSelectCount, d0
+	cmpi.w #constants.NATIVE_IMPORT_SELECT_CAPACITY, d0
 	bhs.w fail
 	move.w d0, d6
 	moveq #0, d1
 	move.w d6, d1
 	add.w d1, d1
-	lea NativeCliImportSelectImportTable, a1
+	lea state.NativeCliImportSelectImportTable, a1
 	move.w d4, 0(a1, d1.l)
-	lea NativeCliImportSelectFlagsTable, a1
+	lea state.NativeCliImportSelectFlagsTable, a1
 	move.w d3, 0(a1, d1.l)
 
 	moveq #0, d1
 	move.w d6, d1
 	lsl.l #6, d1
-	lea NativeCliImportSelectNameTable, a1
+	lea state.NativeCliImportSelectNameTable, a1
 	adda.l d1, a1
-	lea NativeCliArgToken, a0
-	bsr.w opforgeNativeCliCopyTokenBuffer
+	lea state.NativeCliArgToken, a0
+	bsr.w token_util.opforgeNativeCliCopyTokenBuffer
 
 	moveq #0, d1
 	move.w d6, d1
 	lsl.l #6, d1
-	lea NativeCliImportSelectAliasTable, a1
+	lea state.NativeCliImportSelectAliasTable, a1
 	adda.l d1, a1
-	lea NativeCliIncludeTarget, a0
-	bsr.w opforgeNativeCliCopyTokenBuffer
+	lea state.NativeCliIncludeTarget, a0
+	bsr.w token_util.opforgeNativeCliCopyTokenBuffer
 
-	move.w NativeCliImportSelectCount, d0
+	move.w state.NativeCliImportSelectCount, d0
 	addq.w #1, d0
-	move.w d0, NativeCliImportSelectCount
+	move.w d0, state.NativeCliImportSelectCount
 	moveq #0, d0
 	bra.s return
 
@@ -172,58 +161,58 @@ return
 
 opforgeNativeCliEmitImportRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
-	move.l #UseImportText, d1
+	move.l #strings.UseImportText, d1
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
 	move.w d4, d0
 	add.w d0, d0
-	lea NativeCliImportOwnerModuleTable, a0
+	lea state.NativeCliImportOwnerModuleTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
 	move.w d4, d0
 	add.w d0, d0
-	lea NativeCliImportModuleTable, a0
+	lea state.NativeCliImportModuleTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
 	move.w d4, d0
 	add.w d0, d0
-	lea NativeCliImportFileIdTable, a0
+	lea state.NativeCliImportFileIdTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
 	move.w d4, d0
 	lsl.l #2, d0
-	lea NativeCliImportLineTable, a0
+	lea state.NativeCliImportLineTable, a0
 	move.l 0(a0, d0.l), d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliImportAliasPtr
-	bsr.w opforgeNativeCliTokenLen
+	bsr.w token_util.opforgeNativeCliTokenLen
 	move.w d0, d3
-	bsr.w opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutDecU16
 	tst.w d3
 	beq.s newline
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportAliasPtr
 	move.l a0, d1
 	jsr dos.putStr
 
 newline
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
@@ -231,47 +220,47 @@ newline
 
 opforgeNativeCliEmitImportSelectRecord	.block
 	movem.l d0-d4/d6-d7/a0-a1, -(sp)
-	move.l #UseSelectText, d1
+	move.l #strings.UseSelectText, d1
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #0, d0
 	move.w d7, d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliImportSelectNamePtr
-	bsr.w opforgeNativeCliTokenLen
+	bsr.w token_util.opforgeNativeCliTokenLen
 	move.w d0, d3
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportSelectNamePtr
 	move.l a0, d1
 	jsr dos.putStr
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliImportSelectAliasPtr
-	bsr.w opforgeNativeCliTokenLen
+	bsr.w token_util.opforgeNativeCliTokenLen
 	move.w d0, d3
-	bsr.w opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutDecU16
 	tst.w d3
 	beq.s flags
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportSelectAliasPtr
 	move.l a0, d1
 	jsr dos.putStr
 
 flags
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #0, d0
 	move.w d6, d0
 	add.w d0, d0
-	lea NativeCliImportSelectFlagsTable, a0
+	lea state.NativeCliImportSelectFlagsTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4/d6-d7/a0-a1
 	rts
@@ -279,15 +268,15 @@ flags
 
 opforgeNativeCliEmitImportWildcardRecord	.block
 	movem.l d0-d4, -(sp)
-	move.l #UseWildcardText, d1
+	move.l #strings.UseWildcardText, d1
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #0, d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4
 	rts
@@ -298,29 +287,29 @@ opforgeNativeCliResolveBareUseModule	.block
 	clr.w d7
 
 loop
-	move.w NativeCliModulePathCount, d0
+	move.w state.NativeCliModulePathCount, d0
 	cmp.w d0, d7
 	bhs.w fail
 	moveq #0, d0
 	move.w d7, d0
 	lsl.l #8, d0
-	lea NativeCliModulePathTable, a0
+	lea state.NativeCliModulePathTable, a0
 	adda.l d0, a0
-	lea NativeCliIncludePath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	lea state.NativeCliIncludePath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.w fail
-	lea NativeCliArgToken, a0
-	lea NativeCliIncludePath, a1
-	jsr opforgeNativeCliAppendPathBuffer
+	lea state.NativeCliArgToken, a0
+	lea state.NativeCliIncludePath, a1
+	jsr path.opforgeNativeCliAppendPathBuffer
 	tst.l d0
 	bne.w fail
-	lea ModuleSourceExtensionText, a0
-	lea NativeCliIncludePath, a1
-	jsr opforgeNativeCliAppendPathBuffer
+	lea strings.ModuleSourceExtensionText, a0
+	lea state.NativeCliIncludePath, a1
+	jsr path.opforgeNativeCliAppendPathBuffer
 	tst.l d0
 	bne.w fail
-	lea NativeCliIncludePath, a0
+	lea state.NativeCliIncludePath, a0
 	jsr dos.openInput
 	tst.l d0
 	bne.s found
@@ -330,10 +319,10 @@ loop
 found
 	move.l d0, d1
 	jsr dos.close
-	move.w NativeCliModuleCount, d6
-	move.w d6, NativeCliResolvedModuleId
+	move.w state.NativeCliModuleCount, d6
+	move.w d6, state.NativeCliResolvedModuleId
 	moveq #0, d0
-	move.w NativeCliResolvedModuleId, d0
+	move.w state.NativeCliResolvedModuleId, d0
 	moveq #0, d1
 	bra.s return
 
@@ -348,56 +337,56 @@ return
 opforgeNativeCliEmitModuleRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	move.w d0, d4
-	cmp.w NativeCliRootModuleId, d4
+	cmp.w state.NativeCliRootModuleId, d4
 	bne.s def
-	move.l #ModRootText, d1
+	move.l #strings.ModRootText, d1
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 
 def
-	move.l #ModDefText, d1
+	move.l #strings.ModDefText, d1
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
 	move.w d4, d0
 	add.w d0, d0
-	lea NativeCliModuleFileIdTable, a0
+	lea state.NativeCliModuleFileIdTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
 	move.w d4, d0
 	lsl.l #2, d0
-	lea NativeCliModuleLineTable, a0
+	lea state.NativeCliModuleLineTable, a0
 	move.l 0(a0, d0.l), d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
 	move.w d4, d0
 	add.w d0, d0
-	lea NativeCliModuleDepthTable, a0
+	lea state.NativeCliModuleDepthTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliModuleNamePtr
-	bsr.w opforgeNativeCliTokenLen
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w token_util.opforgeNativeCliTokenLen
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliModuleNamePtr
 	move.l a0, d1
 	jsr dos.putStr
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
@@ -406,12 +395,12 @@ def
 opforgeNativeCliEmitModuleCompatibility	.block
 	movem.l d0/d4/a0, -(sp)
 	move.w d0, d4
-	move.l #ModuleFoundText, d1
+	move.l #strings.ModuleFoundText, d1
 	jsr dos.putStr
 	bsr.w opforgeNativeCliModuleNamePtr
 	move.l a0, d1
 	jsr dos.putStr
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0/d4/a0
 	rts
@@ -419,14 +408,14 @@ opforgeNativeCliEmitModuleCompatibility	.block
 
 opforgeNativeCliEmitCloseModule	.block
 	movem.l d1-d4/a0-a1, -(sp)
-	tst.w NativeCliModuleDepth
+	tst.w state.NativeCliModuleDepth
 	beq.s fail
 	moveq #0, d0
-	move.w NativeCliModuleDepth, d0
+	move.w state.NativeCliModuleDepth, d0
 	subq.w #1, d0
-	move.w d0, NativeCliModuleDepth
+	move.w d0, state.NativeCliModuleDepth
 	moveq #0, d0
-	move.w NativeCliCurrentModuleId, d0
+	move.w state.NativeCliCurrentModuleId, d0
 	bsr.w opforgeNativeCliEmitModuleEndRecord
 	bsr.w opforgeNativeCliRestoreParentModule
 	moveq #0, d0
@@ -445,22 +434,22 @@ return
 opforgeNativeCliEmitModuleEndRecord	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	move.w d0, d4
-	move.l #ModEndText, d1
+	move.l #strings.ModEndText, d1
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #1, d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
-	move.l NativeCliSourceLineNum, d0
-	bsr.w opforgeNativeCliPutDecU16
-	bsr.w opforgeNativeCliPutSpace
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
+	move.l state.NativeCliSourceLineNum, d0
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #0, d0
-	move.w NativeCliModuleDepth, d0
-	bsr.w opforgeNativeCliPutDecU16
-	move.l #NewlineText, d1
+	move.w state.NativeCliModuleDepth, d0
+	bsr.w text_output.opforgeNativeCliPutDecU16
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a1
 	rts
@@ -468,15 +457,15 @@ opforgeNativeCliEmitModuleEndRecord	.block
 
 opforgeNativeCliRestoreParentModule	.block
 	movem.l d1-d3/a0, -(sp)
-	tst.w NativeCliModuleDepth
+	tst.w state.NativeCliModuleDepth
 	bne.s find
-	clr.w NativeCliCurrentModuleId
+	clr.w state.NativeCliCurrentModuleId
 	bra.s return
 
 find
-	move.w NativeCliModuleDepth, d0
+	move.w state.NativeCliModuleDepth, d0
 	subq.w #1, d0
-	move.w NativeCliModuleCount, d1
+	move.w state.NativeCliModuleCount, d1
 	beq.s clear
 	subq.w #1, d1
 
@@ -484,18 +473,18 @@ loop
 	moveq #0, d2
 	move.w d1, d2
 	add.w d2, d2
-	lea NativeCliModuleDepthTable, a0
+	lea state.NativeCliModuleDepthTable, a0
 	move.w 0(a0, d2.l), d3
 	cmp.w d0, d3
 	beq.s found
 	dbra d1, loop
 
 clear
-	clr.w NativeCliCurrentModuleId
+	clr.w state.NativeCliCurrentModuleId
 	bra.s return
 
 found
-	move.w d1, NativeCliCurrentModuleId
+	move.w d1, state.NativeCliCurrentModuleId
 
 return
 	movem.l (sp)+, d1-d3/a0
@@ -506,7 +495,7 @@ opforgeNativeCliModuleNamePtr	.block
 	moveq #0, d0
 	move.w d4, d0
 	lsl.l #6, d0
-	lea NativeCliModuleNameTable, a0
+	lea state.NativeCliModuleNameTable, a0
 	adda.l d0, a0
 	rts
 	.bend  ; opforgeNativeCliModuleNamePtr
@@ -515,7 +504,7 @@ opforgeNativeCliImportAliasPtr	.block
 	moveq #0, d0
 	move.w d4, d0
 	lsl.l #6, d0
-	lea NativeCliImportAliasTable, a0
+	lea state.NativeCliImportAliasTable, a0
 	adda.l d0, a0
 	rts
 	.bend  ; opforgeNativeCliImportAliasPtr
@@ -524,7 +513,7 @@ opforgeNativeCliImportSelectNamePtr	.block
 	moveq #0, d0
 	move.w d6, d0
 	lsl.l #6, d0
-	lea NativeCliImportSelectNameTable, a0
+	lea state.NativeCliImportSelectNameTable, a0
 	adda.l d0, a0
 	rts
 	.bend  ; opforgeNativeCliImportSelectNamePtr
@@ -533,7 +522,7 @@ opforgeNativeCliImportSelectAliasPtr	.block
 	moveq #0, d0
 	move.w d6, d0
 	lsl.l #6, d0
-	lea NativeCliImportSelectAliasTable, a0
+	lea state.NativeCliImportSelectAliasTable, a0
 	adda.l d0, a0
 	rts
 	.bend  ; opforgeNativeCliImportSelectAliasPtr

@@ -5,12 +5,9 @@
 	.module tkvm.amigaos.runtime
 	.cpu 68020
 	.pub
-	.use tkvm.amigaos.state (TkvmStepBudget, TkvmProgramStateTablePtr, TkvmProgramStateCount)
-	.use tkvm.amigaos.state (TkvmProgramStartState, TkvmLastFailureKind, TkvmLastFailureOperand)
-	.use tkvm.amigaos.char_predicates (tkvmIsWhitespace, tkvmIsIdentifierStart, tkvmIsIdentifierContinue)
-	.use tkvm.amigaos.char_predicates (tkvmIsQuoteChar)
-	.use tkvm.amigaos.scanner (commitPendingToken, scanIdentifierToken, scanNumberToken)
-	.use tkvm.amigaos.scanner (scanStringToken, scanSymbolToken)
+	.use tkvm.amigaos.state
+	.use tkvm.amigaos.char_predicates
+	.use tkvm.amigaos.scanner
 
 ; Positive VM statuses mirror the native tokenization result contract.
 TK_STATUS_SUCCESS               = 0
@@ -151,12 +148,12 @@ tkvmRun68000	.block
 	clr.l d2  ; source cursor starts at column 1 / byte 0
 	clr.l d3  ; scratch bytes committed starts at 0
 	clr.l LOCAL_STEP_COUNT(a2)
-	move.l TkvmStepBudget, d0
+	move.l state.TkvmStepBudget, d0
 	move.l d0, LOCAL_STEP_LIMIT(a2)
 	moveq #-1, d0  ; sentinel current byte = EOF until ReadChar runs
 	move.l d0, LOCAL_CURRENT_BYTE(a2)
-	clr.w TkvmLastFailureKind
-	clr.w TkvmLastFailureOperand
+	clr.w state.TkvmLastFailureKind
+	clr.w state.TkvmLastFailureOperand
 
 	tst.l d4  ; reject negative lengths/capacities before dereferencing any caller pointers
 	bmi invalidArgument
@@ -212,10 +209,10 @@ newlineUnsupported
 
 newlineScanDone
 	moveq #0, d0
-	move.w TkvmProgramStartState, d0
-	cmp.l TkvmProgramStateCount, d0
+	move.w state.TkvmProgramStartState, d0
+	cmp.l state.TkvmProgramStateCount, d0
 	bcc invalidProgramAtCursor
-	move.l TkvmProgramStateTablePtr, d1
+	move.l state.TkvmProgramStateTablePtr, d1
 	tst.l d1
 	beq.w invalidProgramAtCursor
 	movea.l d1, a1
@@ -341,7 +338,7 @@ opcodeEmitToken
 	move.b (a0)+, d0
 	move.w d0, LOCAL_PENDING_KIND(a2)
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr commitPendingToken
+	jsr scanner.commitPendingToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
@@ -360,9 +357,9 @@ opcodeSetState
 	move.b (a0)+, d1
 	lsl.w #8, d1
 	or.w d1, d0
-	cmp.l TkvmProgramStateCount, d0
+	cmp.l state.TkvmProgramStateCount, d0
 	bcc invalidProgramAtCursor
-	move.l TkvmProgramStateTablePtr, d1
+	move.l state.TkvmProgramStateTablePtr, d1
 	tst.l d1
 	beq.w invalidProgramAtCursor
 	movea.l d1, a1
@@ -384,8 +381,8 @@ opcodeFail
 	bhi invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0
-	move.w #TK_VM_FAILURE_KIND_FAIL, TkvmLastFailureKind
-	move.w d0, TkvmLastFailureOperand
+	move.w #TK_VM_FAILURE_KIND_FAIL, state.TkvmLastFailureKind
+	move.w d0, state.TkvmLastFailureOperand
 	bra vmFailureAtCursor
 
 opcodeEmitDiag
@@ -396,8 +393,8 @@ opcodeEmitDiag
 	bhi invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0
-	move.w #TK_VM_FAILURE_KIND_EMIT_DIAG, TkvmLastFailureKind
-	move.w d0, TkvmLastFailureOperand
+	move.w #TK_VM_FAILURE_KIND_EMIT_DIAG, state.TkvmLastFailureKind
+	move.w d0, state.TkvmLastFailureOperand
 	bra vmFailureAtCursor
 
 opcodeJump
@@ -496,7 +493,7 @@ classWhitespace
 	; Class 1 is intentionally tiny in this first slice: only inline space
 	; and tab are skipped by the demo loop because CR/LF are rejected up front.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
-	jsr tkvmIsWhitespace
+	jsr char_predicates.tkvmIsWhitespace
 	tst.l d0
 	beq programLoop
 	bra applyClassJump
@@ -505,7 +502,7 @@ classIdentStart
 	; Class 2 mirrors the Rust identifier-start mask used by the default
 	; tokenizer VM policy for ASCII letters, underscore, and dot.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
-	jsr tkvmIsIdentifierStart
+	jsr char_predicates.tkvmIsIdentifierStart
 	tst.l d0
 	beq programLoop
 	bra applyClassJump
@@ -514,7 +511,7 @@ classIdentContinue
 	; Class 3 is wider than the start class so identifiers can continue with
 	; digits and assembler-flavored suffix bytes such as '$' and '@'.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
-	jsr tkvmIsIdentifierContinue
+	jsr char_predicates.tkvmIsIdentifierContinue
 	tst.l d0
 	beq programLoop
 	bra applyClassJump
@@ -532,7 +529,7 @@ classDigit
 classQuote
 	; Class 5 delegates to the same quote-set logic reused by string scanning.
 	move.l LOCAL_CURRENT_BYTE(a2), d0
-	jsr tkvmIsQuoteChar
+	jsr char_predicates.tkvmIsQuoteChar
 	tst.l d0
 	beq programLoop
 
@@ -549,7 +546,7 @@ applyClassJump
 ; saves and restores the native program counter around each call.
 opcodeScanIdentifier
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanIdentifierToken
+	jsr scanner.scanIdentifierToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
@@ -557,7 +554,7 @@ opcodeScanIdentifier
 
 opcodeScanNumber
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanNumberToken
+	jsr scanner.scanNumberToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
@@ -565,7 +562,7 @@ opcodeScanNumber
 
 opcodeScanString
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanStringToken
+	jsr scanner.scanStringToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
@@ -573,7 +570,7 @@ opcodeScanString
 
 opcodeScanSymbol
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanSymbolToken
+	jsr scanner.scanSymbolToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0

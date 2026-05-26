@@ -7,13 +7,7 @@
 	.module opforge.cli.state
 	.cpu 68020
 
-	.use opforge.cli.constants (TOKEN_BUFFER_CAPACITY, PATH_BUFFER_CAPACITY, SOURCE_LINE_BUFFER_CAPACITY)
-	.use opforge.cli.constants (PRVM_ROUTE_FRAME_SIZE, PRVM_ROUTE_RESULT_CAPACITY)
-	.use opforge.cli.constants (PRVM_ROUTE_DIAG_CAPACITY, PRVM_ROUTE_RESUME_CAPACITY)
-	.use opforge.cli.constants (PRVM_ROUTE_EXPR_REQUEST_SIZE, PRVM_ROUTE_EXPR_RESULT_SIZE)
-	.use opforge.cli.constants (PRVM_ROUTE_EXPR_RESULT_CAPACITY)
-	.use opforge.cli.constants (NATIVE_MODULE_TABLE_CAPACITY, NATIVE_IMPORT_TABLE_CAPACITY)
-	.use opforge.cli.constants (NATIVE_IMPORT_SELECT_CAPACITY, NATIVE_MODULE_PATH_CAPACITY)
+	.use opforge.cli.constants
 
 	.pub
 
@@ -36,19 +30,19 @@ NativeCliParseStatus
 	.res word, 1
 
 NativeCliArgToken
-	.res byte, TOKEN_BUFFER_CAPACITY
+	.res byte, constants.TOKEN_BUFFER_CAPACITY
 NativeCliInputPath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliHunkPath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliBinPath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliOutfileBase
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliCpuName
-	.res byte, TOKEN_BUFFER_CAPACITY
+	.res byte, constants.TOKEN_BUFFER_CAPACITY
 NativeCliPackagePath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliSourceLineLen
 	.res word, 1
 NativeCliParserTailLen
@@ -135,37 +129,37 @@ NativeCliStmtExprSpanStart
 NativeCliStmtExprSpanEnd
 	.res long, 1
 NativeCliSourceLine
-	.res byte, SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliParserTailBuffer
-	.res byte, SOURCE_LINE_BUFFER_CAPACITY
+	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliCurrentPath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliSavedPath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliModuleSavedPath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliIncludeTarget
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliIncludePath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliIncludeRootPath
-	.res byte, PATH_BUFFER_CAPACITY
+	.res byte, constants.PATH_BUFFER_CAPACITY
 OpforgeNativeCliPrvmRouteFrame
-	.res byte, PRVM_ROUTE_FRAME_SIZE
+	.res byte, constants.PRVM_ROUTE_FRAME_SIZE
 NativeCliPrvmRouteStatus
 	.res long, 1
 NativeCliPrvmResultCount
 	.res word, 1
 OpforgeNativeCliPrvmResultBuffer
-	.res byte, PRVM_ROUTE_RESULT_CAPACITY
+	.res byte, constants.PRVM_ROUTE_RESULT_CAPACITY
 OpforgeNativeCliPrvmDiagBuffer
-	.res byte, PRVM_ROUTE_DIAG_CAPACITY
+	.res byte, constants.PRVM_ROUTE_DIAG_CAPACITY
 OpforgeNativeCliPrvmResumeBuffer
-	.res byte, PRVM_ROUTE_RESUME_CAPACITY
+	.res byte, constants.PRVM_ROUTE_RESUME_CAPACITY
 OpforgeNativeCliPrvmExprRequest
-	.res byte, PRVM_ROUTE_EXPR_REQUEST_SIZE
+	.res byte, constants.PRVM_ROUTE_EXPR_REQUEST_SIZE
 OpforgeNativeCliPrvmExprResultSlot
-	.res byte, PRVM_ROUTE_EXPR_RESULT_SIZE * PRVM_ROUTE_EXPR_RESULT_CAPACITY
+	.res byte, constants.PRVM_ROUTE_EXPR_RESULT_SIZE * constants.PRVM_ROUTE_EXPR_RESULT_CAPACITY
 
 NativeCliModuleUseStateStart
 NativeCliModuleCount
@@ -183,33 +177,33 @@ NativeCliCurrentModuleId
 NativeCliModuleDepth
 	.res word, 1
 NativeCliModuleNameTable
-	.res byte, NATIVE_MODULE_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_MODULE_TABLE_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 NativeCliModuleFileIdTable
-	.res word, NATIVE_MODULE_TABLE_CAPACITY
+	.res word, constants.NATIVE_MODULE_TABLE_CAPACITY
 NativeCliModuleLineTable
-	.res long, NATIVE_MODULE_TABLE_CAPACITY
+	.res long, constants.NATIVE_MODULE_TABLE_CAPACITY
 NativeCliModuleDepthTable
-	.res word, NATIVE_MODULE_TABLE_CAPACITY
+	.res word, constants.NATIVE_MODULE_TABLE_CAPACITY
 NativeCliImportOwnerModuleTable
-	.res word, NATIVE_IMPORT_TABLE_CAPACITY
+	.res word, constants.NATIVE_IMPORT_TABLE_CAPACITY
 NativeCliImportModuleTable
-	.res word, NATIVE_IMPORT_TABLE_CAPACITY
+	.res word, constants.NATIVE_IMPORT_TABLE_CAPACITY
 NativeCliImportFileIdTable
-	.res word, NATIVE_IMPORT_TABLE_CAPACITY
+	.res word, constants.NATIVE_IMPORT_TABLE_CAPACITY
 NativeCliImportLineTable
-	.res long, NATIVE_IMPORT_TABLE_CAPACITY
+	.res long, constants.NATIVE_IMPORT_TABLE_CAPACITY
 NativeCliImportAliasTable
-	.res byte, NATIVE_IMPORT_TABLE_CAPACITY * TOKEN_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_IMPORT_TABLE_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 NativeCliImportSelectImportTable
-	.res word, NATIVE_IMPORT_SELECT_CAPACITY
+	.res word, constants.NATIVE_IMPORT_SELECT_CAPACITY
 NativeCliImportSelectNameTable
-	.res byte, NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_IMPORT_SELECT_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 NativeCliImportSelectAliasTable
-	.res byte, NATIVE_IMPORT_SELECT_CAPACITY * TOKEN_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_IMPORT_SELECT_CAPACITY * constants.TOKEN_BUFFER_CAPACITY
 NativeCliImportSelectFlagsTable
-	.res word, NATIVE_IMPORT_SELECT_CAPACITY
+	.res word, constants.NATIVE_IMPORT_SELECT_CAPACITY
 NativeCliModulePathTable
-	.res byte, NATIVE_MODULE_PATH_CAPACITY * PATH_BUFFER_CAPACITY
+	.res byte, constants.NATIVE_MODULE_PATH_CAPACITY * constants.PATH_BUFFER_CAPACITY
 nativeCliModuleUseStateEnd
 
 	.endsection

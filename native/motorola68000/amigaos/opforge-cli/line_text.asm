@@ -7,11 +7,11 @@
 	.module opforge.cli.line_text
 	.cpu 68020
 
-	.use opforge.cli.state (NativeCliArgToken, NativeCliIncludeTarget)
-	.use opforge.cli.constants (TOKEN_BUFFER_CAPACITY)
-	.use opforge.cli.strings (AsKeywordText)
-	.use opforge.cli.module_use (opforgeNativeCliRecordImportSelect, opforgeNativeCliEmitImportSelectRecord, opforgeNativeCliEmitImportWildcardRecord)
-	.use opforge.cli.token_util (opforgeNativeCliCopyTokenBuffer)
+	.use opforge.cli.state
+	.use opforge.cli.constants
+	.use opforge.cli.strings
+	.use opforge.cli.module_use
+	.use opforge.cli.token_util
 
 	.section code, kind=code
 	.pub
@@ -79,7 +79,7 @@ no
 	.bend  ; opforgeNativeCliLineStartsWith
 
 opforgeNativeCliCopyLineWord	.block
-	move.l #TOKEN_BUFFER_CAPACITY - 1, d6
+	move.l #constants.TOKEN_BUFFER_CAPACITY - 1, d6
 	clr.l d5
 
 loop
@@ -119,7 +119,7 @@ fail
 opforgeNativeCliCopyOperandText	.block
 	movem.l d0-d4/a0-a1, -(sp)
 	clr.w d5
-	move.l #TOKEN_BUFFER_CAPACITY - 1, d4
+	move.l #constants.TOKEN_BUFFER_CAPACITY - 1, d4
 
 loop
 	tst.l d0
@@ -177,7 +177,7 @@ trimDone
 	.bend  ; opforgeNativeCliCopyOperandText
 
 opforgeNativeCliCopyUseToken	.block
-	move.l #TOKEN_BUFFER_CAPACITY - 1, d6
+	move.l #constants.TOKEN_BUFFER_CAPACITY - 1, d6
 
 loop
 	tst.l d0
@@ -218,7 +218,7 @@ fail
 opforgeNativeCliParseUseOptionalAlias	.block
 	movem.l d6/a1, -(sp)
 	move.l d0, d6
-	lea AsKeywordText, a1
+	lea strings.AsKeywordText, a1
 	moveq #2, d1
 	bsr.w opforgeNativeCliLineStartsWith
 	tst.l d0
@@ -227,11 +227,11 @@ opforgeNativeCliParseUseOptionalAlias	.block
 	addq.l #2, a0
 	subq.l #2, d0
 	bsr.w opforgeNativeCliSkipLineWhitespace
-	lea NativeCliIncludeTarget, a1
+	lea state.NativeCliIncludeTarget, a1
 	bsr.w opforgeNativeCliCopyUseToken
 	tst.l d1
 	bne.s fail
-	tst.b NativeCliIncludeTarget
+	tst.b state.NativeCliIncludeTarget
 	beq.s fail
 	moveq #0, d1
 	bra.s return
@@ -262,36 +262,36 @@ opforgeNativeCliParseUseItems
 	beq.w opforgeNativeCliParseUseWildcard
 
 opforgeNativeCliParseUseItemLoop
-	lea NativeCliArgToken, a1
+	lea state.NativeCliArgToken, a1
 	bsr.w opforgeNativeCliCopyUseToken
 	tst.l d1
 	bne.w opforgeNativeCliParseUseItemsFail
-	tst.b NativeCliArgToken
+	tst.b state.NativeCliArgToken
 	beq.w opforgeNativeCliParseUseItemsFail
-	cmpi.b #'*', NativeCliArgToken
+	cmpi.b #'*', state.NativeCliArgToken
 	bne.s opforgeNativeCliParseUseItemNameOk
-	lea NativeCliArgToken, a1
+	lea state.NativeCliArgToken, a1
 	tst.b 1(a1)
 	beq.w opforgeNativeCliParseUseItemsFail
 
 opforgeNativeCliParseUseItemNameOk
-	clr.b NativeCliIncludeTarget
+	clr.b state.NativeCliIncludeTarget
 	bsr.w opforgeNativeCliSkipLineWhitespace
 	bsr.w opforgeNativeCliParseUseOptionalAlias
 	tst.l d1
 	bne.w opforgeNativeCliParseUseItemsFail
 	moveq #0, d3
-	tst.b NativeCliIncludeTarget
+	tst.b state.NativeCliIncludeTarget
 	beq.s opforgeNativeCliParseUseItemNoAliasFlag
 	moveq #1, d3
 
 opforgeNativeCliParseUseItemNoAliasFlag
 	move.l d0, -(sp)
 	move.w d5, d4
-	jsr opforgeNativeCliRecordImportSelect
+	jsr module_use.opforgeNativeCliRecordImportSelect
 	tst.l d0
 	bne.w opforgeNativeCliParseUseItemsFailPop
-	jsr opforgeNativeCliEmitImportSelectRecord
+	jsr module_use.opforgeNativeCliEmitImportSelectRecord
 	move.l (sp)+, d0
 	addq.w #1, d7
 	bsr.w opforgeNativeCliSkipLineWhitespace
@@ -317,7 +317,7 @@ opforgeNativeCliParseUseWildcard
 	subq.l #1, d0
 	bsr.w opforgeNativeCliSkipLineWhitespace
 	move.l d0, d6
-	lea AsKeywordText, a1
+	lea strings.AsKeywordText, a1
 	moveq #2, d1
 	bsr.w opforgeNativeCliLineStartsWith
 	tst.l d0
@@ -331,7 +331,7 @@ opforgeNativeCliParseUseWildcard
 	subq.l #1, d0
 	moveq #0, d3
 	move.w d5, d4
-	bsr.w opforgeNativeCliEmitImportWildcardRecord
+	bsr.w module_use.opforgeNativeCliEmitImportWildcardRecord
 	moveq #0, d1
 	rts
 

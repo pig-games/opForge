@@ -6,13 +6,10 @@
 	.module tokvm.amigaos.cli_harness
 	.cpu 68020
 	.pub
-	.use tkvm.amigaos.runtime (tkvmRun68000)
-	.use tkvm.amigaos.control (tkvmSetStepBudget68000)
-	.use tkvm.amigaos.demo_program (DemoProgram, DemoProgramLen)
-	.use tkvm.amigaos.state (TKVM_DEFAULT_MAX_STEPS_PER_LINE)
-	.use tkvm.amigaos.runtime (TOKEN_BUFFER_CAPACITY, TOKEN_RECORD_SIZE)
-	.use tkvm.amigaos.runtime (SOURCE_BUFFER_CAPACITY, SCRATCH_BUFFER_CAPACITY)
-	.use tkvm.amigaos.runtime (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_PROGRAM, TK_KIND_OP_LT)
+	.use tkvm.amigaos.runtime
+	.use tkvm.amigaos.control
+	.use tkvm.amigaos.demo_program
+	.use tkvm.amigaos.state
 
 ; ---------------------------------------------------------------------------
 ; AmigaOS Exec/DOS offsets used by the CLI harness layer.
@@ -140,7 +137,7 @@ outputOpened
 inputOpened
 	move.l d0, d5  ; input handle lives only until the bounded single-line read completes
 	lea SourceBuffer, a0
-	move.l #SOURCE_BUFFER_CAPACITY, d0  ; tokvm native ABI takes a caller-owned contiguous source slice
+	move.l #runtime.SOURCE_BUFFER_CAPACITY, d0  ; tokvm native ABI takes a caller-owned contiguous source slice
 	move.l d5, d1
 	bsr.w amigaosCliFileioRead
 	cmp.l #-1, d0
@@ -203,17 +200,17 @@ invokeVm
 	; A0/D0 source slice, A1/D1 token buffer+capacity, A2/D2 scratch buffer+capacity,
 	; A3/D3 demo bytecode pointer+length. This mirrors the native contract documented
 	; in tkvm_runtime.asm and used by the Rust-side bridge tests.
-	move.l #TKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
-	jsr tkvmSetStepBudget68000
+	move.l #state.TKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
+	jsr control.tkvmSetStepBudget68000
 	lea SourceBuffer, a0
 	move.l d4, d0
 	lea TokenBuffer, a1
-	move.l #TOKEN_BUFFER_CAPACITY, d1
+	move.l #runtime.TOKEN_BUFFER_CAPACITY, d1
 	lea LexemeScratch, a2
-	move.l #SCRATCH_BUFFER_CAPACITY, d2
-	lea DemoProgram, a3
-	move.l DemoProgramLen, d3
-	jsr tkvmRun68000
+	move.l #runtime.SCRATCH_BUFFER_CAPACITY, d2
+	lea demo_program.DemoProgram, a3
+	move.l demo_program.DemoProgramLen, d3
+	jsr runtime.tkvmRun68000
 
 	move.l d0, d4  ; status
 	move.l d1, d5  ; emitted token count
@@ -366,7 +363,7 @@ writeReport	.block
 	bsr.w validateVmResult
 	tst.l d0
 	beq.s reportValidated
-	moveq #TK_STATUS_VM_FAILURE, d4
+	moveq #runtime.TK_STATUS_VM_FAILURE, d4
 	moveq #0, d5
 	moveq #0, d6
 	clr.l d2
@@ -527,7 +524,7 @@ reportTokenLoop
 	tst.l d0
 	bne.w reportFail
 
-	adda.l #TOKEN_RECORD_SIZE, a5
+	adda.l #runtime.TOKEN_RECORD_SIZE, a5
 	addq.l #1, d3
 	bra.w reportTokenLoop
 
@@ -557,13 +554,13 @@ reportDone
 validateVmResult	.block
 	tst.l d4  ; non-negative statuses are TK_STATUS_* VM results, negative are harness failures
 	bmi validateNegativeStatus
-	cmpi.l #TK_STATUS_INVALID_PROGRAM, d4
+	cmpi.l #runtime.TK_STATUS_INVALID_PROGRAM, d4
 	bgt validateInvalid
-	cmp.l #TOKEN_BUFFER_CAPACITY, d5
+	cmp.l #runtime.TOKEN_BUFFER_CAPACITY, d5
 	bhi validateInvalid
-	cmp.l #SOURCE_BUFFER_CAPACITY, d6
+	cmp.l #runtime.SOURCE_BUFFER_CAPACITY, d6
 	bhi validateInvalid
-	cmp.l #SCRATCH_BUFFER_CAPACITY, d2
+	cmp.l #runtime.SCRATCH_BUFFER_CAPACITY, d2
 	bhi validateInvalid
 
 	lea TokenBuffer, a0
@@ -574,19 +571,19 @@ validateTokenLoop
 
 	moveq #0, d0
 	move.w (a0), d0
-	cmpi.l #TK_KIND_OP_LT, d0  ; last valid kind in the native PortableTokenKind mirror table
+	cmpi.l #runtime.TK_KIND_OP_LT, d0  ; last valid kind in the native PortableTokenKind mirror table
 	bgt validateInvalid
 
 	move.l 4(a0), d0
 	tst.l d0
 	beq validateInvalid
-	cmpi.l #SOURCE_BUFFER_CAPACITY + 1, d0
+	cmpi.l #runtime.SOURCE_BUFFER_CAPACITY + 1, d0
 	bhi validateInvalid
 
 	move.l 8(a0), d0
 	tst.l d0
 	beq validateInvalid
-	cmpi.l #SOURCE_BUFFER_CAPACITY + 1, d0
+	cmpi.l #runtime.SOURCE_BUFFER_CAPACITY + 1, d0
 	bhi validateInvalid
 	cmp.l 4(a0), d0
 	blt validateInvalid
@@ -600,7 +597,7 @@ validateTokenLoop
 	cmp.l d2, d7
 	bhi validateInvalid
 
-	adda.l #TOKEN_RECORD_SIZE, a0
+	adda.l #runtime.TOKEN_RECORD_SIZE, a0
 	addq.l #1, d1
 	bra.s validateTokenLoop
 
@@ -721,7 +718,7 @@ done
 ; The table order is locked to the TK_KIND_* numeric encoding exported by the
 ; native tokenizer VM module.
 kindName	.block
-	cmp.l #TK_KIND_OP_LT, d0
+	cmp.l #runtime.TK_KIND_OP_LT, d0
 	bhi.s kindUnknown
 	add.l d0, d0
 	add.l d0, d0
@@ -1107,11 +1104,11 @@ InputPathBuffer
 OutputPathBuffer
 	.res byte, PATH_BUFFER_CAPACITY
 SourceBuffer
-	.res byte, SOURCE_BUFFER_CAPACITY
+	.res byte, runtime.SOURCE_BUFFER_CAPACITY
 TokenBuffer
-	.res byte, TOKEN_RECORD_SIZE * TOKEN_BUFFER_CAPACITY
+	.res byte, runtime.TOKEN_RECORD_SIZE * runtime.TOKEN_BUFFER_CAPACITY
 LexemeScratch
-	.res byte, SCRATCH_BUFFER_CAPACITY
+	.res byte, runtime.SCRATCH_BUFFER_CAPACITY
 DecimalBuffer
 	.res byte, 16
 DecimalBufferEnd

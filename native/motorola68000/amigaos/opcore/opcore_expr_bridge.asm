@@ -3,13 +3,7 @@
 	.module opcore.amigaos.expr_bridge
 	.cpu 68020
 	.pub
-	.use exprvm.amigaos.runtime (exprvmEvalProgramV1, ExprvmSelectedOpcodeVersion, ExprvmCurrentPass)
-	.use exprvm.amigaos.runtime (EXPRVM_OPCODE_END, EXPRVM_OPCODE_PUSH_LITERAL, EXPRVM_OPCODE_PUSH_CURRENT_ADDR)
-	.use exprvm.amigaos.runtime (EXPRVM_OPCODE_PUSH_SYMBOL, EXPRVM_OPCODE_APPLY_UNARY, EXPRVM_OPCODE_APPLY_BINARY)
-	.use exprvm.amigaos.runtime (EXPRVM_V2_OPCODE_END, EXPRVM_V2_OPCODE_PUSH_LITERAL, EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR)
-	.use exprvm.amigaos.runtime (EXPRVM_V2_OPCODE_PUSH_SYMBOL, EXPRVM_V2_OPCODE_APPLY_UNARY, EXPRVM_V2_OPCODE_APPLY_BINARY)
-	.use exprvm.amigaos.runtime (EXPRVM_V2_OPCODE_REQUIRE_SCALAR, EXPRVM_UNARY_MINUS, EXPRVM_BINARY_ADD)
-	.use exprvm.amigaos.runtime (EXPRVM_BINARY_SUBTRACT)
+	.use exprvm.amigaos.runtime
 
 TOKEN_BUFFER_CAPACITY           = 64
 OPCORE_EXPRVM_PROGRAM_CAPACITY  = 128
@@ -70,9 +64,9 @@ opcoreExvmEvalOperandV1	.block
 	moveq #1, d5
 
 selectedVersionReady
-	move.w d5, ExprvmSelectedOpcodeVersion
+	move.w d5, runtime.ExprvmSelectedOpcodeVersion
 	clr.l d5
-	move.w d6, ExprvmCurrentPass
+	move.w d6, runtime.ExprvmCurrentPass
 	movea.l a1, a3  ; label-name table base kept stable across parse helpers
 	movea.l a2, a4  ; label-value table base kept stable across parse helpers
 	movea.l d2, a5  ; A5 carries the current PC for '*' terms
@@ -162,7 +156,7 @@ compileOk
 	bra.s restore
 
 finalizeOk
-	moveq #EXPRVM_OPCODE_END, d6
+	moveq #runtime.EXPRVM_OPCODE_END, d6
 	bsr.w emitU8D6
 	move.l d0, d2
 	tst.l d2
@@ -179,8 +173,8 @@ ensureEndOk
 	move.l d7, d1
 	move.l a5, d2
 	moveq #0, d6
-	move.w ExprvmSelectedOpcodeVersion, d6
-	jsr exprvmEvalProgramV1
+	move.w runtime.ExprvmSelectedOpcodeVersion, d6
+	jsr runtime.exprvmEvalProgramV1
 	move.l d0, d2
 	tst.l d2
 	beq.s restore
@@ -238,14 +232,14 @@ operator
 	bne.s fail
 	cmpi.b #'+', d6
 	beq.s add
-	moveq #EXPRVM_BINARY_SUBTRACT, d6
+	moveq #runtime.EXPRVM_BINARY_SUBTRACT, d6
 	bsr.w emitApplyBinaryD6
 	tst.l d0
 	bne.s fail
 	bra.s loop
 
 add
-	moveq #EXPRVM_BINARY_ADD, d6
+	moveq #runtime.EXPRVM_BINARY_ADD, d6
 	bsr.w emitApplyBinaryD6
 	tst.l d0
 	bne.s fail
@@ -406,7 +400,7 @@ label
 	tst.l d5
 	beq.s labelResolved
 	moveq #0, d3
-	move.w ExprvmCurrentPass, d3
+	move.w runtime.ExprvmCurrentPass, d3
 	cmpi.w #1, d3
 	bne.s maybeApplyUnary
 	clr.l d3
@@ -433,7 +427,7 @@ maybeApplyUnary
 	bne.w return
 	tst.l d4
 	beq.s ok
-	moveq #EXPRVM_UNARY_MINUS, d6
+	moveq #runtime.EXPRVM_UNARY_MINUS, d6
 	bsr.w emitApplyUnaryD6
 	move.l d0, d5
 	bne.w return
@@ -456,18 +450,18 @@ resetProgram	.block
 	.bend  ; resetProgram
 
 finalizeProgram	.block
-	move.w ExprvmSelectedOpcodeVersion, d3
+	move.w runtime.ExprvmSelectedOpcodeVersion, d3
 	cmpi.w #2, d3
 	bne.s version1
-	moveq #EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6
+	moveq #runtime.EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6
 	bsr.w emitU8D6
 	tst.l d0
 	bne.s return
-	moveq #EXPRVM_V2_OPCODE_END, d6
+	moveq #runtime.EXPRVM_V2_OPCODE_END, d6
 	bra.s return
 
 version1
-	moveq #EXPRVM_OPCODE_END, d6
+	moveq #runtime.EXPRVM_OPCODE_END, d6
 
 return
 	bsr.w emitU8D6
@@ -475,14 +469,14 @@ return
 	.bend  ; finalizeProgram
 
 emitPushCurrent	.block
-	move.w ExprvmSelectedOpcodeVersion, d3
+	move.w runtime.ExprvmSelectedOpcodeVersion, d3
 	cmpi.w #2, d3
 	bne.w version1
-	moveq #EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
+	moveq #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
 	bra.w ready
 
 version1
-	moveq #EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d6
+	moveq #runtime.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d6
 
 ready
 	bra.w emitU8D6
@@ -491,14 +485,14 @@ ready
 emitApplyUnaryD6	.block
 	movem.l d6, -(sp)
 	move.l d6, d3
-	move.w ExprvmSelectedOpcodeVersion, d6
+	move.w runtime.ExprvmSelectedOpcodeVersion, d6
 	cmpi.w #2, d6
 	bne.s version1
-	moveq #EXPRVM_V2_OPCODE_APPLY_UNARY, d6
+	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d6
 	bra.s ready
 
 version1
-	moveq #EXPRVM_OPCODE_APPLY_UNARY, d6
+	moveq #runtime.EXPRVM_OPCODE_APPLY_UNARY, d6
 
 ready
 	bsr.w emitU8D6
@@ -515,14 +509,14 @@ return
 emitApplyBinaryD6	.block
 	movem.l d6, -(sp)
 	move.l d6, d3
-	move.w ExprvmSelectedOpcodeVersion, d6
+	move.w runtime.ExprvmSelectedOpcodeVersion, d6
 	cmpi.w #2, d6
 	bne.s version1
-	moveq #EXPRVM_V2_OPCODE_APPLY_BINARY, d6
+	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d6
 	bra.s ready
 
 version1
-	moveq #EXPRVM_OPCODE_APPLY_BINARY, d6
+	moveq #runtime.EXPRVM_OPCODE_APPLY_BINARY, d6
 
 ready
 	bsr.w emitU8D6
@@ -538,14 +532,14 @@ return
 
 emitPushSymbolD3	.block
 	movem.l d2-d3/d6, -(sp)
-	move.w ExprvmSelectedOpcodeVersion, d6
+	move.w runtime.ExprvmSelectedOpcodeVersion, d6
 	cmpi.w #2, d6
 	bne.s version1
-	moveq #EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
+	moveq #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
 	bra.s ready
 
 version1
-	moveq #EXPRVM_OPCODE_PUSH_SYMBOL, d6
+	moveq #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d6
 
 ready
 	bsr.w emitU8D6
@@ -561,14 +555,14 @@ return
 
 emitPushLiteralD3	.block
 	movem.l d2-d3/d6, -(sp)
-	move.w ExprvmSelectedOpcodeVersion, d6
+	move.w runtime.ExprvmSelectedOpcodeVersion, d6
 	cmpi.w #2, d6
 	bne.s version1
-	moveq #EXPRVM_V2_OPCODE_PUSH_LITERAL, d6
+	moveq #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, d6
 	bra.s ready
 
 version1
-	moveq #EXPRVM_OPCODE_PUSH_LITERAL, d6
+	moveq #runtime.EXPRVM_OPCODE_PUSH_LITERAL, d6
 
 ready
 	bsr.w emitU8D6

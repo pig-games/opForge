@@ -7,15 +7,12 @@
 	.module opforge.cli.directive_handlers
 	.cpu 68020
 
-	.use opforge.cli.state (NativeCliSourceLine, NativeCliCurrentModuleId, NativeCliArgToken, NativeCliIncludeTarget)
-	.use opforge.cli.state (NativeCliSourceLineLen, NativeCliModuleResolveDepth, NativeCliResolvedModuleId)
-	.use opforge.cli.state (NativeCliImportModuleTable)
-	.use opforge.cli.state (NativeCliParserTailBuffer, NativeCliParserTailLen)
-	.use opforge.cli.constants (SOURCE_LINE_BUFFER_CAPACITY)
-	.use opforge.cli.strings (ParserFailureText, ModuleDirectiveText, EndmoduleDirectiveText, UseDirectiveText, NewlineText, ModuleResolveFailureText, ModuleDepthFailureText)
+	.use opforge.cli.state
+	.use opforge.cli.constants
+	.use opforge.cli.strings
 	.use opforge.cli.dos
-	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace, opforgeNativeCliLineStartsWith, opforgeNativeCliCopyLineWord, opforgeNativeCliCopyUseToken, opforgeNativeCliParseUseOptionalAlias, opforgeNativeCliParseUseItems)
-	.use opforge.cli.module_use (opforgeNativeCliRecordModule, opforgeNativeCliEmitModuleRecord, opforgeNativeCliEmitModuleCompatibility, opforgeNativeCliEmitCloseModule, opforgeNativeCliRecordImport, opforgeNativeCliEmitImportRecord, opforgeNativeCliResolveBareUseModule)
+	.use opforge.cli.line_text
+	.use opforge.cli.module_use
 
 	.section code, kind=code
 	.pub
@@ -25,15 +22,15 @@ opforgeNativeCliBuildParserTailBuffer	.block
 	bsr.w opforgeNativeCliParserTailFallbackEnd
 
 haveEnd
-	lea NativeCliParserTailBuffer, a1
-	clr.w NativeCliParserTailLen
+	lea state.NativeCliParserTailBuffer, a1
+	clr.w state.NativeCliParserTailLen
 	moveq #0, d0
-	move.w NativeCliSourceLineLen, d0
+	move.w state.NativeCliSourceLineLen, d0
 	cmp.l d0, d6
 	bhi.w fail
 
 endOk
-	lea NativeCliSourceLine, a0
+	lea state.NativeCliSourceLine, a0
 	adda.l d6, a0
 	sub.l d6, d0
 	moveq #0, d5
@@ -41,7 +38,7 @@ endOk
 copyLoop
 	tst.l d0
 	beq.w done
-	cmpi.l #SOURCE_LINE_BUFFER_CAPACITY - 1, d5
+	cmpi.l #constants.SOURCE_LINE_BUFFER_CAPACITY - 1, d5
 	bhs.w fail
 	move.b (a0)+, (a1)+
 	addq.l #1, d5
@@ -50,13 +47,13 @@ copyLoop
 
 done
 	clr.b (a1)
-	move.w d5, NativeCliParserTailLen
+	move.w d5, state.NativeCliParserTailLen
 	moveq #0, d0
 	bra.s return
 
 fail
-	clr.b NativeCliParserTailBuffer
-	clr.w NativeCliParserTailLen
+	clr.b state.NativeCliParserTailBuffer
+	clr.w state.NativeCliParserTailLen
 	moveq #1, d0
 
 return
@@ -65,34 +62,34 @@ return
 	.bend  ;  opforgeNativeCliBuildParserTailBuffer
 
 opforgeNativeCliParserTailFallbackEnd	.block
-	lea NativeCliSourceLine, a0
+	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
-	move.w NativeCliSourceLineLen, d0
-	bsr.w opforgeNativeCliSkipLineWhitespace
+	move.w state.NativeCliSourceLineLen, d0
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	moveq #0, d5
-	move.w NativeCliSourceLineLen, d5
+	move.w state.NativeCliSourceLineLen, d5
 	sub.l d0, d5
-	lea ModuleDirectiveText, a1
+	lea strings.ModuleDirectiveText, a1
 	moveq #7, d1
-	bsr.w opforgeNativeCliLineStartsWith
+	bsr.w line_text.opforgeNativeCliLineStartsWith
 	tst.l d0
 	bne.s module
-	lea NativeCliSourceLine, a0
+	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
-	move.w NativeCliSourceLineLen, d0
-	bsr.w opforgeNativeCliSkipLineWhitespace
-	lea EndmoduleDirectiveText, a1
+	move.w state.NativeCliSourceLineLen, d0
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	lea strings.EndmoduleDirectiveText, a1
 	moveq #10, d1
-	bsr.w opforgeNativeCliLineStartsWith
+	bsr.w line_text.opforgeNativeCliLineStartsWith
 	tst.l d0
 	bne.s endmodule
-	lea NativeCliSourceLine, a0
+	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
-	move.w NativeCliSourceLineLen, d0
-	bsr.w opforgeNativeCliSkipLineWhitespace
-	lea UseDirectiveText, a1
+	move.w state.NativeCliSourceLineLen, d0
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	lea strings.UseDirectiveText, a1
 	moveq #4, d1
-	bsr.w opforgeNativeCliLineStartsWith
+	bsr.w line_text.opforgeNativeCliLineStartsWith
 	tst.l d0
 	bne.s use
 	moveq #0, d6
@@ -119,9 +116,9 @@ opforgeNativeCliParserTailPtr	.block
 	move.l d0, d1
 	tst.l d1
 	bne.s return
-	lea NativeCliParserTailBuffer, a0
+	lea state.NativeCliParserTailBuffer, a0
 	moveq #0, d0
-	move.w NativeCliParserTailLen, d0
+	move.w state.NativeCliParserTailLen, d0
 	moveq #0, d1
 
 return
@@ -132,34 +129,34 @@ opforgeNativeCliParseModuleLine	.block
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
 	bne.w fail
-	bsr.w opforgeNativeCliSkipLineWhitespace
-	lea NativeCliArgToken, a1
-	bsr.w opforgeNativeCliCopyLineWord
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliArgToken, a1
+	bsr.w line_text.opforgeNativeCliCopyLineWord
 	tst.l d0
 	bne.w fail
-	tst.b NativeCliArgToken
+	tst.b state.NativeCliArgToken
 	beq.w fail
-	bsr.w opforgeNativeCliSkipLineWhitespace
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	tst.l d0
 	beq.s record
 	cmpi.b #';', (a0)
 	bne.w fail
 
 record
-	bsr.w opforgeNativeCliRecordModule
+	bsr.w module_use.opforgeNativeCliRecordModule
 	tst.l d0
 	bne.w fail
 	moveq #0, d0
-	move.w NativeCliCurrentModuleId, d0
-	bsr.w opforgeNativeCliEmitModuleRecord
+	move.w state.NativeCliCurrentModuleId, d0
+	bsr.w module_use.opforgeNativeCliEmitModuleRecord
 	moveq #0, d0
-	move.w NativeCliCurrentModuleId, d0
-	bsr.w opforgeNativeCliEmitModuleCompatibility
+	move.w state.NativeCliCurrentModuleId, d0
+	bsr.w module_use.opforgeNativeCliEmitModuleCompatibility
 	moveq #0, d0
 	rts
 
 fail
-	move.l #ParserFailureText, d1
+	move.l #strings.ParserFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	rts
@@ -169,68 +166,68 @@ opforgeNativeCliParseEndmoduleLine	.block
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
 	bne.w fail
-	bsr.w opforgeNativeCliSkipLineWhitespace
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	tst.l d0
 	beq.s close
 	cmpi.b #';', (a0)
 	bne.w fail
 
 close
-	bsr.w opforgeNativeCliEmitCloseModule
+	bsr.w module_use.opforgeNativeCliEmitCloseModule
 	tst.l d0
 	bne.w moduleDepthFail
 	moveq #0, d0
 	rts
 
 moduleDepthFail
-	move.l #ModuleDepthFailureText, d1
+	move.l #strings.ModuleDepthFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	rts
 
 fail
-	move.l #ParserFailureText, d1
+	move.l #strings.ParserFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseEndmoduleLine
 
 opforgeNativeCliParseUseLine	.block
-	move.w #-1, NativeCliResolvedModuleId
+	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
 	bne.w fail
-	bsr.w opforgeNativeCliSkipLineWhitespace
-	lea NativeCliArgToken, a1
-	bsr.w opforgeNativeCliCopyUseToken
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliArgToken, a1
+	bsr.w line_text.opforgeNativeCliCopyUseToken
 	tst.l d1
 	bne.w fail
-	tst.b NativeCliArgToken
+	tst.b state.NativeCliArgToken
 	beq.w fail
-	clr.b NativeCliIncludeTarget
-	bsr.w opforgeNativeCliSkipLineWhitespace
-	bsr.w opforgeNativeCliParseUseOptionalAlias
+	clr.b state.NativeCliIncludeTarget
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	bsr.w line_text.opforgeNativeCliParseUseOptionalAlias
 	tst.l d1
 	bne.w fail
 	move.l d0, d5
-	bsr.w opforgeNativeCliRecordImport
+	bsr.w module_use.opforgeNativeCliRecordImport
 	tst.l d0
 	bne.w fail
 	move.l d5, d0
-	bsr.w opforgeNativeCliSkipLineWhitespace
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	tst.l d0
 	beq.w bare
 	cmpi.b #';', (a0)
 	beq.w bare
-	bsr.w opforgeNativeCliEmitImportRecord
+	bsr.w module_use.opforgeNativeCliEmitImportRecord
 	cmpi.b #'(', (a0)
 	bne.w fail
 	addq.l #1, a0
 	subq.l #1, d0
-	bsr.w opforgeNativeCliParseUseItems
+	bsr.w line_text.opforgeNativeCliParseUseItems
 	tst.l d1
 	bne.w fail
-	bsr.w opforgeNativeCliSkipLineWhitespace
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	tst.l d0
 	beq.w done
 	cmpi.b #';', (a0)
@@ -238,38 +235,38 @@ opforgeNativeCliParseUseLine	.block
 	bra.w done
 
 bare
-	tst.b NativeCliIncludeTarget
+	tst.b state.NativeCliIncludeTarget
 	bne.s bareEmit
-	tst.w NativeCliModuleResolveDepth
+	tst.w state.NativeCliModuleResolveDepth
 	bne.s bareEmit
-	bsr.w opforgeNativeCliResolveBareUseModule
+	bsr.w module_use.opforgeNativeCliResolveBareUseModule
 	tst.l d1
 	bne.w resolveFail
 	moveq #0, d2
 	move.w d4, d2
 	add.w d2, d2
-	lea NativeCliImportModuleTable, a1
+	lea state.NativeCliImportModuleTable, a1
 	move.w d0, 0(a1, d2.l)
 
 bareEmit
-	bsr.w opforgeNativeCliEmitImportRecord
+	bsr.w module_use.opforgeNativeCliEmitImportRecord
 
 done
 	moveq #0, d0
 	rts
 
 resolveFail
-	move.l #ModuleResolveFailureText, d1
+	move.l #strings.ModuleResolveFailureText, d1
 	jsr dos.putStr
-	move.l #NativeCliArgToken, d1
+	move.l #state.NativeCliArgToken, d1
 	jsr dos.putStr
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	rts
 
 fail
-	move.l #ParserFailureText, d1
+	move.l #strings.ParserFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	rts

@@ -7,99 +7,93 @@
 	.module opforge.cli.include_use
 	.cpu 68020
 
-	.use opforge.cli.state (NativeCliSourceLine, NativeCliSourceLineLen, NativeCliSawCr)
-	.use opforge.cli.state (NativeCliSourceLineNum, NativeCliCurrentPath)
-	.use opforge.cli.state (NativeCliIncludeDepth, NativeCliIncludePending, NativeCliIncludeTarget)
-	.use opforge.cli.state (NativeCliIncludePath, NativeCliIncludeRootPath)
-	.use opforge.cli.state (NativeCliSavedLineLen, NativeCliSavedSawCr, NativeCliSavedLineNum, NativeCliSavedPath)
-	.use opforge.cli.constants (NATIVE_INCLUDE_DEPTH_LIMIT, PATH_BUFFER_CAPACITY)
-	.use opforge.cli.strings (IncludeStageText, IncludeRootText, IncludeFileText, IncludeEnterText)
-	.use opforge.cli.strings (IncludeLeaveText, IncludeOkText, IncludeFailureText, SpaceText, NewlineText)
+	.use opforge.cli.state
+	.use opforge.cli.constants
+	.use opforge.cli.strings
 	.use opforge.cli.dos
-	.use opforge.cli.line_text (opforgeNativeCliSkipLineWhitespace)
-	.use opforge.cli.path (opforgeNativeCliCopyPathBuffer, opforgeNativeCliCopyPathRoot)
-	.use opforge.cli.path (opforgeNativeCliPathIsAbsolute, opforgeNativeCliAppendPathBuffer)
+	.use opforge.cli.line_text
+	.use opforge.cli.path
 
 	.section code, kind=code
 	.pub
 
 opforgeNativeCliParseIncludeLine	.block
-	clr.w NativeCliIncludePending
-	lea NativeCliSourceLine, a0
+	clr.w state.NativeCliIncludePending
+	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
-	move.w NativeCliSourceLineLen, d0
-	bsr.w opforgeNativeCliSkipLineWhitespace
+	move.w state.NativeCliSourceLineLen, d0
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	addq.l #8, a0
 	subq.l #8, d0
-	bsr.w opforgeNativeCliSkipLineWhitespace
-	lea NativeCliIncludeTarget, a1
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliIncludeTarget, a1
 	bsr.w opforgeNativeCliCopyIncludeTarget
 	tst.l d0
 	bne.w fail
-	tst.b NativeCliIncludeTarget
+	tst.b state.NativeCliIncludeTarget
 	beq.w fail
-	move.w #1, NativeCliIncludePending
+	move.w #1, state.NativeCliIncludePending
 	moveq #0, d0
 	rts
 
 fail
-	move.l #IncludeFailureText, d1
+	move.l #strings.IncludeFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	rts
 	.bend  ; opforgeNativeCliParseIncludeLine
 
 opforgeNativeCliPreparePendingInclude	.block
-	tst.w NativeCliIncludePending
+	tst.w state.NativeCliIncludePending
 	beq.w none
-	clr.w NativeCliIncludePending
-	tst.w NativeCliIncludeDepth
+	clr.w state.NativeCliIncludePending
+	tst.w state.NativeCliIncludeDepth
 	bne.w fail
 	bsr.w opforgeNativeCliResolveIncludePath
 	tst.l d0
 	bne.w fail
 
-	move.w NativeCliSourceLineLen, d0
-	move.w d0, NativeCliSavedLineLen
-	move.w NativeCliSawCr, d0
-	move.w d0, NativeCliSavedSawCr
-	move.l NativeCliSourceLineNum, d0
-	move.l d0, NativeCliSavedLineNum
-	lea NativeCliCurrentPath, a0
-	lea NativeCliSavedPath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	move.w state.NativeCliSourceLineLen, d0
+	move.w d0, state.NativeCliSavedLineLen
+	move.w state.NativeCliSawCr, d0
+	move.w d0, state.NativeCliSavedSawCr
+	move.l state.NativeCliSourceLineNum, d0
+	move.l d0, state.NativeCliSavedLineNum
+	lea state.NativeCliCurrentPath, a0
+	lea state.NativeCliSavedPath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.w fail
 
-	move.l #IncludeStageText, d1
+	move.l #strings.IncludeStageText, d1
 	jsr dos.putStr
-	move.l #IncludeRootText, d1
+	move.l #strings.IncludeRootText, d1
 	jsr dos.putStr
-	move.l #NativeCliIncludeRootPath, d1
+	move.l #state.NativeCliIncludeRootPath, d1
 	jsr dos.putStr
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
-	move.l #IncludeFileText, d1
+	move.l #strings.IncludeFileText, d1
 	jsr dos.putStr
-	move.l #NativeCliIncludePath, d1
+	move.l #state.NativeCliIncludePath, d1
 	jsr dos.putStr
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
-	move.l #IncludeEnterText, d1
+	move.l #strings.IncludeEnterText, d1
 	jsr dos.putStr
-	move.l #NativeCliCurrentPath, d1
+	move.l #state.NativeCliCurrentPath, d1
 	jsr dos.putStr
-	move.l #SpaceText, d1
+	move.l #strings.SpaceText, d1
 	jsr dos.putStr
-	move.l #NativeCliIncludePath, d1
+	move.l #state.NativeCliIncludePath, d1
 	jsr dos.putStr
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 
-	move.w #NATIVE_INCLUDE_DEPTH_LIMIT, NativeCliIncludeDepth
-	lea NativeCliIncludePath, a0
-	lea NativeCliCurrentPath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	move.w #constants.NATIVE_INCLUDE_DEPTH_LIMIT, state.NativeCliIncludeDepth
+	lea state.NativeCliIncludePath, a0
+	lea state.NativeCliCurrentPath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
 	moveq #1, d1
@@ -112,7 +106,7 @@ none
 	rts
 
 fail
-	move.l #IncludeFailureText, d1
+	move.l #strings.IncludeFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
 	rts
@@ -122,36 +116,36 @@ opforgeNativeCliFinishPendingInclude	.block
 	movem.l d1/a0-a1, -(sp)
 	tst.l d0
 	bne.s restoreFail
-	move.l #IncludeLeaveText, d1
+	move.l #strings.IncludeLeaveText, d1
 	jsr dos.putStr
-	move.l #IncludeOkText, d1
+	move.l #strings.IncludeOkText, d1
 	jsr dos.putStr
 	moveq #0, d1
 	bra.s restore
 
 restoreFail
-	move.l #IncludeFailureText, d1
+	move.l #strings.IncludeFailureText, d1
 	jsr dos.putStr
 	moveq #1, d1
 
 restore
-	move.w NativeCliSavedLineLen, d0
-	move.w d0, NativeCliSourceLineLen
-	move.w NativeCliSavedSawCr, d0
-	move.w d0, NativeCliSawCr
-	move.l NativeCliSavedLineNum, d0
-	move.l d0, NativeCliSourceLineNum
-	lea NativeCliSavedPath, a0
-	lea NativeCliCurrentPath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	move.w state.NativeCliSavedLineLen, d0
+	move.w d0, state.NativeCliSourceLineLen
+	move.w state.NativeCliSavedSawCr, d0
+	move.w d0, state.NativeCliSawCr
+	move.l state.NativeCliSavedLineNum, d0
+	move.l d0, state.NativeCliSourceLineNum
+	lea state.NativeCliSavedPath, a0
+	lea state.NativeCliCurrentPath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
-	clr.w NativeCliIncludeDepth
+	clr.w state.NativeCliIncludeDepth
 	move.l d1, d0
 	bra.s return
 
 fail
-	clr.w NativeCliIncludeDepth
+	clr.w state.NativeCliIncludeDepth
 	moveq #1, d0
 
 return
@@ -160,29 +154,29 @@ return
 	.bend  ; opforgeNativeCliFinishPendingInclude
 
 opforgeNativeCliResolveIncludePath	.block
-	lea NativeCliCurrentPath, a0
-	lea NativeCliIncludeRootPath, a1
-	jsr opforgeNativeCliCopyPathRoot
+	lea state.NativeCliCurrentPath, a0
+	lea state.NativeCliIncludeRootPath, a1
+	jsr path.opforgeNativeCliCopyPathRoot
 	tst.l d0
 	bne.w fail
-	lea NativeCliIncludeTarget, a0
-	jsr opforgeNativeCliPathIsAbsolute
+	lea state.NativeCliIncludeTarget, a0
+	jsr path.opforgeNativeCliPathIsAbsolute
 	tst.l d0
 	beq.s relative
-	lea NativeCliIncludeTarget, a0
-	lea NativeCliIncludePath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	lea state.NativeCliIncludeTarget, a0
+	lea state.NativeCliIncludePath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	rts
 
 relative
-	lea NativeCliIncludeRootPath, a0
-	lea NativeCliIncludePath, a1
-	jsr opforgeNativeCliCopyPathBuffer
+	lea state.NativeCliIncludeRootPath, a0
+	lea state.NativeCliIncludePath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
 	tst.l d0
 	bne.s fail
-	lea NativeCliIncludeTarget, a0
-	lea NativeCliIncludePath, a1
-	jsr opforgeNativeCliAppendPathBuffer
+	lea state.NativeCliIncludeTarget, a0
+	lea state.NativeCliIncludePath, a1
+	jsr path.opforgeNativeCliAppendPathBuffer
 	rts
 
 fail
@@ -199,7 +193,7 @@ opforgeNativeCliCopyIncludeTarget	.block
 	beq.s quoted
 	cmpi.b #39, d2
 	beq.s quoted
-	move.l #PATH_BUFFER_CAPACITY - 1, d6
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d6
 	clr.l d5
 
 bareLoop
@@ -226,7 +220,7 @@ quoted
 	move.b d2, d4
 	addq.l #1, a0
 	subq.l #1, d0
-	move.l #PATH_BUFFER_CAPACITY - 1, d6
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d6
 	clr.l d5
 
 quotedLoop

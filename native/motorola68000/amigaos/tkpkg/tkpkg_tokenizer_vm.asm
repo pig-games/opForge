@@ -3,52 +3,11 @@
 	.module tkpkg.amigaos.tokenizer_vm
 	.cpu 68020
 	.pub
-	.use tkpkg.amigaos.abi (CB_INPUT_PTR, CB_INPUT_LEN)
-	.use tkpkg.amigaos.abi (STATUS_BAD_REQUEST_V1, STATUS_RUNTIME_ERROR_V1)
-	.use tkpkg.amigaos.buffers (LAST_ERROR_BUFFER_CAPACITY, PACKAGE_STATE_PIPELINE_ACTIVE)
-	.use tkpkg.amigaos.buffers (TOKEN_BUFFER_CAPACITY, TOKEN_RECORD_SIZE)
-	.use tkpkg.amigaos.buffers (TOKEN_SCRATCH_CAPACITY, TOKENIZER_VM_STATE_TABLE_CAPACITY)
-	.use tkpkg.amigaos.buffers (PackageStateFlags, PackageStorage, LastErrorBuffer)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmOffsetLo)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmStartStateLo, ActiveTokenizerVmStartStateHi)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmStateCountLo, ActiveTokenizerVmStateCountHi)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmStateTable)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmMaxErrorsPerLine)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmInvalidCharDiagLen, ActiveTokenizerVmInvalidCharDiagCode)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmUnterminatedStringDiagLen, ActiveTokenizerVmUnterminatedStringDiagCode)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmStepLimitDiagLen, ActiveTokenizerVmStepLimitDiagCode)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmTokenLimitDiagLen, ActiveTokenizerVmTokenLimitDiagCode)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmLexemeLimitDiagLen, ActiveTokenizerVmLexemeLimitDiagCode)
-	.use tkpkg.amigaos.buffers (ActiveTokenizerVmErrorLimitDiagLen, ActiveTokenizerVmErrorLimitDiagCode)
-	.use tkpkg.amigaos.buffers (TokenRecordBuffer, TokenScratchBuffer)
-	.use tkpkg.amigaos.buffers (LastTokenCount, LastLexemeLen)
-	.use tkvm.amigaos.runtime (tkvmRun68000)
-	.use tkvm.amigaos.control (tkvmSetStepBudget68000, tkvmSetProgramStateTable68000)
-	.use tkvm.amigaos.control (tkvmReadLastFailure68000)
-	.use tkvm.amigaos.state (TKVM_DEFAULT_MAX_STEPS_PER_LINE)
-	.use tkvm.amigaos.runtime (TK_STATUS_SUCCESS, TK_STATUS_NEWLINE_UNSUPPORTED)
-	.use tkvm.amigaos.runtime (TK_STATUS_TOKEN_OVERFLOW, TK_STATUS_LEXEME_OVERFLOW)
-	.use tkvm.amigaos.runtime (TK_STATUS_VM_FAILURE, TK_STATUS_INVALID_ARGUMENT)
-	.use tkvm.amigaos.runtime (TK_STATUS_INVALID_PROGRAM, TK_STATUS_STEP_LIMIT_EXCEEDED)
-	.use tkvm.amigaos.runtime (TK_VM_FAILURE_KIND_FAIL, TK_VM_FAILURE_KIND_EMIT_DIAG)
-	.use tkvm.amigaos.runtime (TK_KIND_IDENTIFIER, TK_KIND_NUMBER, TK_KIND_STRING)
-	.use tkvm.amigaos.runtime (TK_KIND_COMMA, TK_KIND_COLON, TK_KIND_DOLLAR)
-	.use tkvm.amigaos.runtime (TK_KIND_DOT, TK_KIND_HASH, TK_KIND_QUESTION)
-	.use tkvm.amigaos.runtime (TK_KIND_OPEN_BRACKET, TK_KIND_CLOSE_BRACKET)
-	.use tkvm.amigaos.runtime (TK_KIND_OPEN_BRACE, TK_KIND_CLOSE_BRACE)
-	.use tkvm.amigaos.runtime (TK_KIND_OPEN_PAREN, TK_KIND_CLOSE_PAREN)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_RANGE, TK_KIND_OP_RANGE_INCLUSIVE)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_PLUS, TK_KIND_OP_MINUS)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_MULTIPLY, TK_KIND_OP_POWER)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_DIVIDE, TK_KIND_OP_MOD)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_SHL, TK_KIND_OP_SHR)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_BIT_NOT, TK_KIND_OP_LOGIC_NOT)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_BIT_AND, TK_KIND_OP_BIT_OR)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_BIT_XOR)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_LOGIC_AND, TK_KIND_OP_LOGIC_OR)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_LOGIC_XOR, TK_KIND_OP_EQ)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_NE, TK_KIND_OP_GE)
-	.use tkvm.amigaos.runtime (TK_KIND_OP_GT, TK_KIND_OP_LE, TK_KIND_OP_LT)
+	.use tkpkg.amigaos.abi
+	.use tkpkg.amigaos.buffers
+	.use tkvm.amigaos.runtime
+	.use tkvm.amigaos.control
+	.use tkvm.amigaos.state
 
 TKVM_OPCODE_VERSION_V1                = 1
 TKVM_STREAM_VERSION_V1                = 1
@@ -289,11 +248,11 @@ OpLtText
 	.pub
 tkpkgTokenizerVmTokenizeLineV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
-	btst #1, PackageStateFlags  ; require set_pipeline before executing any package VM program
+	btst #1, buffers.PackageStateFlags  ; require set_pipeline before executing any package VM program
 	bne.s pipelineReady
 	lea NoPipelineText, a1
 	moveq #NO_PIPELINE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w tokenizeDone
 
 pipelineReady
@@ -303,8 +262,8 @@ pipelineReady
 	bsr.w readProgram
 	tst.b d0
 	bne.w tokenizeDone
-	move.l #TKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
-	jsr tkvmSetStepBudget68000  ; keep tkpkg-driven tokenizer runs under the bounded VM budget
+	move.l #state.TKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
+	jsr control.tkvmSetStepBudget68000  ; keep tkpkg-driven tokenizer runs under the bounded VM budget
 	movea.l a3, a5  ; A5 keeps program bytes while A3 is reused for tkvm call ABI
 	move.l d3, d7  ; D7 keeps program length while record metadata is decoded
 	cmpi.b #1, (a5)
@@ -312,40 +271,40 @@ pipelineReady
 	cmpi.b #8, 1(a5)
 	bne.w badProgramHeader
 	move.l d6, -(sp)
-	lea ActiveTokenizerVmStateTable, a0
+	lea buffers.ActiveTokenizerVmStateTable, a0
 	moveq #0, d0
-	move.b ActiveTokenizerVmStateCountLo, d0
+	move.b buffers.ActiveTokenizerVmStateCountLo, d0
 	moveq #0, d1
-	move.b ActiveTokenizerVmStateCountHi, d1
+	move.b buffers.ActiveTokenizerVmStateCountHi, d1
 	lsl.w #8, d1
 	or.w d1, d0
 	moveq #0, d1
-	move.b ActiveTokenizerVmStartStateLo, d1
+	move.b buffers.ActiveTokenizerVmStartStateLo, d1
 	moveq #0, d2
-	move.b ActiveTokenizerVmStartStateHi, d2
+	move.b buffers.ActiveTokenizerVmStartStateHi, d2
 	lsl.w #8, d2
 	or.w d2, d1
-	jsr tkvmSetProgramStateTable68000  ; install package state table into shared tkvm core
+	jsr control.tkvmSetProgramStateTable68000  ; install package state table into shared tkvm core
 	movea.l a4, a0  ; tkvm input pointer: source bytes after line-number prefix
 	move.l d4, d0  ; tkvm input length: source byte count
-	lea TokenRecordBuffer, a1  ; tkvm output token records
+	lea buffers.TokenRecordBuffer, a1  ; tkvm output token records
 	moveq #0, d1
-	move.w #TOKEN_BUFFER_CAPACITY, d1
-	lea TokenScratchBuffer, a2  ; lexeme scratch mirrors Rust portable-token lexeme storage
+	move.w #buffers.TOKEN_BUFFER_CAPACITY, d1
+	lea buffers.TokenScratchBuffer, a2  ; lexeme scratch mirrors Rust portable-token lexeme storage
 	moveq #0, d2
-	move.w #TOKEN_SCRATCH_CAPACITY, d2
+	move.w #buffers.TOKEN_SCRATCH_CAPACITY, d2
 	movea.l a5, a3  ; tkvm program pointer
 	move.l d7, d3  ; tkvm program length
-	jsr tkvmRun68000
+	jsr runtime.tkvmRun68000
 	move.l (sp)+, d6
-	cmpi.b #TK_STATUS_SUCCESS, d0
+	cmpi.b #runtime.TK_STATUS_SUCCESS, d0
 	beq.s render
 	bsr.w statusMessage
 	bra.w tokenizeDone
 
 render
-	move.w d1, LastTokenCount
-	move.w d3, LastLexemeLen
+	move.w d1, buffers.LastTokenCount
+	move.w d3, buffers.LastLexemeLen
 	bsr.w validateResult
 	tst.b d0
 	bne.w invalidProgram
@@ -355,13 +314,13 @@ render
 invalidProgram
 	lea InvalidProgramText, a1
 	moveq #INVALID_PROGRAM_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	bra.w tokenizeDone
 
 badProgramHeader
 	lea BadProgramHeaderText, a1
 	moveq #BAD_PROGRAM_HEADER_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 
 tokenizeDone
 	movem.l (sp)+, d2-d7/a2-a6
@@ -372,7 +331,7 @@ tokenizeDone
 ; Read the line-number-prefixed tokenizer service payload.
 readLinePayload	.block
 	moveq #0, d0
-	move.b CB_INPUT_LEN(a0), d0
+	move.b abi.CB_INPUT_LEN(a0), d0
 	moveq #0, d1
 	move.b 19(a0), d1
 	lsl.w #8, d1
@@ -383,7 +342,7 @@ readLinePayload	.block
 	move.w d0, d4
 	subq.w #4, d4
 	moveq #0, d0
-	move.b CB_INPUT_PTR(a0), d0
+	move.b abi.CB_INPUT_PTR(a0), d0
 	moveq #0, d1
 	move.b 17(a0), d1
 	lsl.w #8, d1
@@ -414,13 +373,13 @@ readLinePayload	.block
 badPayload
 	lea BadPayloadText, a1
 	moveq #BAD_PAYLOAD_TEXT_LEN, d1
-	moveq #STATUS_BAD_REQUEST_V1, d0
+	moveq #abi.STATUS_BAD_REQUEST_V1, d0
 	rts
 	.bend  ; readLinePayload
 
 ; Decode the active TKVM package record and expose program bytes/state table.
 readProgram	.block
-	lea ActiveTokenizerVmOffsetLo, a1
+	lea buffers.ActiveTokenizerVmOffsetLo, a1
 	moveq #0, d0
 	move.b (a1)+, d0
 	moveq #0, d1
@@ -435,7 +394,7 @@ readProgram	.block
 	or.w d1, d2
 	tst.w d2
 	beq.w invalidProgram
-	lea PackageStorage, a2
+	lea buffers.PackageStorage, a2
 	lea 0(a2, d0.W), a2
 	movea.l a2, a6
 	adda.l d2, a6
@@ -455,27 +414,27 @@ readProgram	.block
 	bsr.w readU16Le
 	tst.b d1
 	bne.w invalidProgram
-	move.b d0, ActiveTokenizerVmStartStateLo
+	move.b d0, buffers.ActiveTokenizerVmStartStateLo
 	lsr.w #8, d0
-	move.b d0, ActiveTokenizerVmStartStateHi
+	move.b d0, buffers.ActiveTokenizerVmStartStateHi
 	bsr.w readU32Le
 	tst.b d1
 	bne.w invalidProgram
 	tst.l d0
 	beq.w invalidProgram
-	cmpi.l #TOKENIZER_VM_STATE_TABLE_CAPACITY, d0
+	cmpi.l #buffers.TOKENIZER_VM_STATE_TABLE_CAPACITY, d0
 	bhi.w invalidProgram
-	move.b d0, ActiveTokenizerVmStateCountLo
+	move.b d0, buffers.ActiveTokenizerVmStateCountLo
 	lsr.l #8, d0
-	move.b d0, ActiveTokenizerVmStateCountHi
+	move.b d0, buffers.ActiveTokenizerVmStateCountHi
 	moveq #0, d0
-	move.b ActiveTokenizerVmStateCountLo, d0
+	move.b buffers.ActiveTokenizerVmStateCountLo, d0
 	moveq #0, d1
-	move.b ActiveTokenizerVmStateCountHi, d1
+	move.b buffers.ActiveTokenizerVmStateCountHi, d1
 	lsl.w #8, d1
 	or.w d1, d0
 	move.w d0, d7
-	lea ActiveTokenizerVmStateTable, a3
+	lea buffers.ActiveTokenizerVmStateTable, a3
 	subq.w #1, d7
 
 skipStateOffsets
@@ -510,34 +469,34 @@ skipStateOffsets
 	bsr.w readU32Le
 	tst.b d1
 	bne.w invalidProgram
-	move.l d0, ActiveTokenizerVmMaxErrorsPerLine
-	lea ActiveTokenizerVmInvalidCharDiagCode, a3
-	lea ActiveTokenizerVmInvalidCharDiagLen, a1
+	move.l d0, buffers.ActiveTokenizerVmMaxErrorsPerLine
+	lea buffers.ActiveTokenizerVmInvalidCharDiagCode, a3
+	lea buffers.ActiveTokenizerVmInvalidCharDiagLen, a1
 	bsr.w readStringIntoSlot
 	tst.b d1
 	bne.w invalidProgram
-	lea ActiveTokenizerVmUnterminatedStringDiagCode, a3
-	lea ActiveTokenizerVmUnterminatedStringDiagLen, a1
+	lea buffers.ActiveTokenizerVmUnterminatedStringDiagCode, a3
+	lea buffers.ActiveTokenizerVmUnterminatedStringDiagLen, a1
 	bsr.w readStringIntoSlot
 	tst.b d1
 	bne.w invalidProgram
-	lea ActiveTokenizerVmStepLimitDiagCode, a3
-	lea ActiveTokenizerVmStepLimitDiagLen, a1
+	lea buffers.ActiveTokenizerVmStepLimitDiagCode, a3
+	lea buffers.ActiveTokenizerVmStepLimitDiagLen, a1
 	bsr.w readStringIntoSlot
 	tst.b d1
 	bne.w invalidProgram
-	lea ActiveTokenizerVmTokenLimitDiagCode, a3
-	lea ActiveTokenizerVmTokenLimitDiagLen, a1
+	lea buffers.ActiveTokenizerVmTokenLimitDiagCode, a3
+	lea buffers.ActiveTokenizerVmTokenLimitDiagLen, a1
 	bsr.w readStringIntoSlot
 	tst.b d1
 	bne.w invalidProgram
-	lea ActiveTokenizerVmLexemeLimitDiagCode, a3
-	lea ActiveTokenizerVmLexemeLimitDiagLen, a1
+	lea buffers.ActiveTokenizerVmLexemeLimitDiagCode, a3
+	lea buffers.ActiveTokenizerVmLexemeLimitDiagLen, a1
 	bsr.w readStringIntoSlot
 	tst.b d1
 	bne.w invalidProgram
-	lea ActiveTokenizerVmErrorLimitDiagCode, a3
-	lea ActiveTokenizerVmErrorLimitDiagLen, a1
+	lea buffers.ActiveTokenizerVmErrorLimitDiagCode, a3
+	lea buffers.ActiveTokenizerVmErrorLimitDiagLen, a1
 	bsr.w readStringIntoSlot
 	tst.b d1
 	bne.w invalidProgram
@@ -547,15 +506,15 @@ skipStateOffsets
 	tst.w d3
 	beq.w invalidProgram
 	moveq #0, d0
-	move.b ActiveTokenizerVmStartStateLo, d0
+	move.b buffers.ActiveTokenizerVmStartStateLo, d0
 	moveq #0, d1
-	move.b ActiveTokenizerVmStartStateHi, d1
+	move.b buffers.ActiveTokenizerVmStartStateHi, d1
 	lsl.w #8, d1
 	or.w d1, d0
 	moveq #0, d1
-	move.b ActiveTokenizerVmStateCountLo, d1
+	move.b buffers.ActiveTokenizerVmStateCountLo, d1
 	moveq #0, d2
-	move.b ActiveTokenizerVmStateCountHi, d2
+	move.b buffers.ActiveTokenizerVmStateCountHi, d2
 	lsl.w #8, d2
 	or.w d2, d1
 	cmp.w d1, d0
@@ -566,37 +525,37 @@ skipStateOffsets
 invalidProgram
 	lea InvalidProgramText, a1
 	moveq #INVALID_PROGRAM_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 	.bend  ; readProgram
 
 ; Convert a tkvm status/failure code into the tkpkg runtime diagnostic string.
 statusMessage	.block
-	cmpi.b #TK_STATUS_NEWLINE_UNSUPPORTED, d0
+	cmpi.b #runtime.TK_STATUS_NEWLINE_UNSUPPORTED, d0
 	beq.s statusNewline
-	cmpi.b #TK_STATUS_STEP_LIMIT_EXCEEDED, d0
+	cmpi.b #runtime.TK_STATUS_STEP_LIMIT_EXCEEDED, d0
 	beq.s statusStepLimit
-	cmpi.b #TK_STATUS_TOKEN_OVERFLOW, d0
+	cmpi.b #runtime.TK_STATUS_TOKEN_OVERFLOW, d0
 	beq.s statusTokenOverflow
-	cmpi.b #TK_STATUS_LEXEME_OVERFLOW, d0
+	cmpi.b #runtime.TK_STATUS_LEXEME_OVERFLOW, d0
 	beq.s statusLexemeOverflow
-	cmpi.b #TK_STATUS_VM_FAILURE, d0
+	cmpi.b #runtime.TK_STATUS_VM_FAILURE, d0
 	bne.s checkInvalidArgument
 	bra.w statusVmFailure
 checkInvalidArgument
-	cmpi.b #TK_STATUS_INVALID_ARGUMENT, d0
+	cmpi.b #runtime.TK_STATUS_INVALID_ARGUMENT, d0
 	bne.s fallbackInvalidProgram
 	bra.w statusInvalidArgument
 fallbackInvalidProgram
 	lea InvalidProgramText, a1
 	moveq #INVALID_PROGRAM_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 statusNewline
 	lea NewlineText, a1
 	moveq #NEWLINE_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 statusStepLimit
@@ -630,14 +589,14 @@ statusLexemeOverflow
 	bra.w finishStatusBuffer
 
 statusVmFailure
-	jsr tkvmReadLastFailure68000
-	cmpi.w #TK_VM_FAILURE_KIND_FAIL, d0
+	jsr control.tkvmReadLastFailure68000
+	cmpi.w #runtime.TK_VM_FAILURE_KIND_FAIL, d0
 	beq.w statusVmFailReason
-	cmpi.w #TK_VM_FAILURE_KIND_EMIT_DIAG, d0
+	cmpi.w #runtime.TK_VM_FAILURE_KIND_EMIT_DIAG, d0
 	beq.w statusVmEmitDiag
 	lea VmFailureFallbackText, a1
 	moveq #VM_FAILURE_FALLBACK_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 
 statusVmFailReason
@@ -655,7 +614,7 @@ statusVmFailReason
 
 statusVmEmitDiag
 	move.l d1, d6
-	tst.l ActiveTokenizerVmMaxErrorsPerLine
+	tst.l buffers.ActiveTokenizerVmMaxErrorsPerLine
 	beq.s statusVmDiagBudgetExceeded
 	bsr.w beginStatusBuffer
 	move.l d6, d0
@@ -681,7 +640,7 @@ statusVmDiagBudgetExceeded
 statusInvalidArgument
 	lea InvalidArgumentText, a1
 	moveq #INVALID_ARGUMENT_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	rts
 	.bend  ; statusMessage
 
@@ -692,23 +651,23 @@ beginStatusBuffer	.block
 	lea 4(sp), a4
 	clr.l LOCAL_OUTPUT_LEN(a4)
 	clr.l LOCAL_OUTPUT_OVERFLOW(a4)
-	clr.b LastErrorBuffer
+	clr.b buffers.LastErrorBuffer
 	rts
 	.bend  ; beginStatusBuffer
 
 finishStatusBuffer	.block
 	tst.l LOCAL_OUTPUT_OVERFLOW(a4)
 	bne.s finishStatusOverflow
-	lea LastErrorBuffer, a1
+	lea buffers.LastErrorBuffer, a1
 	move.l LOCAL_OUTPUT_LEN(a4), d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	adda.l #LOCAL_SIZE, sp
 	rts
 
 finishStatusOverflow
 	lea OutputOverflowText, a1
 	moveq #OUTPUT_OVERFLOW_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	adda.l #LOCAL_SIZE, sp
 	rts
 	.bend  ; finishStatusBuffer
@@ -724,52 +683,52 @@ getDiagCode	.block
 	beq.s diagLexemeLimit
 	cmpi.b #5, d0
 	beq.s diagErrorLimit
-	lea ActiveTokenizerVmInvalidCharDiagCode, a1
+	lea buffers.ActiveTokenizerVmInvalidCharDiagCode, a1
 	moveq #0, d2
-	move.b ActiveTokenizerVmInvalidCharDiagLen, d2
+	move.b buffers.ActiveTokenizerVmInvalidCharDiagLen, d2
 	rts
 
 diagUnterminatedString
-	lea ActiveTokenizerVmUnterminatedStringDiagCode, a1
+	lea buffers.ActiveTokenizerVmUnterminatedStringDiagCode, a1
 	moveq #0, d2
-	move.b ActiveTokenizerVmUnterminatedStringDiagLen, d2
+	move.b buffers.ActiveTokenizerVmUnterminatedStringDiagLen, d2
 	rts
 
 diagStepLimit
-	lea ActiveTokenizerVmStepLimitDiagCode, a1
+	lea buffers.ActiveTokenizerVmStepLimitDiagCode, a1
 	moveq #0, d2
-	move.b ActiveTokenizerVmStepLimitDiagLen, d2
+	move.b buffers.ActiveTokenizerVmStepLimitDiagLen, d2
 	rts
 
 diagTokenLimit
-	lea ActiveTokenizerVmTokenLimitDiagCode, a1
+	lea buffers.ActiveTokenizerVmTokenLimitDiagCode, a1
 	moveq #0, d2
-	move.b ActiveTokenizerVmTokenLimitDiagLen, d2
+	move.b buffers.ActiveTokenizerVmTokenLimitDiagLen, d2
 	rts
 
 diagLexemeLimit
-	lea ActiveTokenizerVmLexemeLimitDiagCode, a1
+	lea buffers.ActiveTokenizerVmLexemeLimitDiagCode, a1
 	moveq #0, d2
-	move.b ActiveTokenizerVmLexemeLimitDiagLen, d2
+	move.b buffers.ActiveTokenizerVmLexemeLimitDiagLen, d2
 	rts
 
 diagErrorLimit
-	lea ActiveTokenizerVmErrorLimitDiagCode, a1
+	lea buffers.ActiveTokenizerVmErrorLimitDiagCode, a1
 	moveq #0, d2
-	move.b ActiveTokenizerVmErrorLimitDiagLen, d2
+	move.b buffers.ActiveTokenizerVmErrorLimitDiagLen, d2
 	rts
 	.bend  ; getDiagCode
 
 ; Validate tkvm output counts and spans before rendering report bytes.
 validateResult	.block
 	movem.l d1-d7/a0, -(sp)
-	cmp.l #TOKEN_BUFFER_CAPACITY, d1
+	cmp.l #buffers.TOKEN_BUFFER_CAPACITY, d1
 	bhi.s validateInvalid
 	cmp.l d4, d2
 	bhi.s validateInvalid
-	cmp.l #TOKEN_SCRATCH_CAPACITY, d3
+	cmp.l #buffers.TOKEN_SCRATCH_CAPACITY, d3
 	bhi.s validateInvalid
-	lea TokenRecordBuffer, a0
+	lea buffers.TokenRecordBuffer, a0
 	moveq #0, d5
 
 validateLoop
@@ -777,7 +736,7 @@ validateLoop
 	bcc.s validateOk
 	moveq #0, d0
 	move.w (a0), d0
-	cmpi.l #TK_KIND_OP_LT, d0
+	cmpi.l #runtime.TK_KIND_OP_LT, d0
 	bgt.s validateInvalid
 	move.l 4(a0), d6
 	tst.l d6
@@ -800,7 +759,7 @@ validateLoop
 	add.l d6, d7
 	cmp.l d3, d7
 	bhi.s validateInvalid
-	adda.l #TOKEN_RECORD_SIZE, a0
+	adda.l #buffers.TOKEN_RECORD_SIZE, a0
 	addq.l #1, d5
 	bra.s validateLoop
 
@@ -824,7 +783,7 @@ renderOutput	.block
 	clr.l LOCAL_OUTPUT_LEN(a4)
 	clr.l LOCAL_OUTPUT_OVERFLOW(a4)
 	move.l d6, LOCAL_RENDER_LINE(a4)
-	clr.b LastErrorBuffer
+	clr.b buffers.LastErrorBuffer
 	moveq #0, d6
 
 renderLoop
@@ -837,7 +796,7 @@ renderLoop
 	move.w (a5), d0
 	move.l 12(a5), d2
 	move.l 16(a5), d3
-	lea TokenScratchBuffer, a6
+	lea buffers.TokenScratchBuffer, a6
 	adda.l d2, a6
 	bsr.w appendKindDebug
 	bsr.w appendLiteralAt
@@ -865,42 +824,42 @@ renderDone
 renderOverflow
 	lea OutputOverflowText, a1
 	moveq #OUTPUT_OVERFLOW_TEXT_LEN, d1
-	moveq #STATUS_RUNTIME_ERROR_V1, d0
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 	adda.l #LOCAL_SIZE, sp
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 	.bend  ; renderOutput
 
 appendKindDebug	.block
-	cmpi.w #TK_KIND_IDENTIFIER, d0
+	cmpi.w #runtime.TK_KIND_IDENTIFIER, d0
 	beq.w appendIdentifier
-	cmpi.w #TK_KIND_NUMBER, d0
+	cmpi.w #runtime.TK_KIND_NUMBER, d0
 	beq.w appendNumber
-	cmpi.w #TK_KIND_STRING, d0
+	cmpi.w #runtime.TK_KIND_STRING, d0
 	beq.w appendString
-	cmpi.w #TK_KIND_COMMA, d0
+	cmpi.w #runtime.TK_KIND_COMMA, d0
 	beq.w appendBareComma
-	cmpi.w #TK_KIND_COLON, d0
+	cmpi.w #runtime.TK_KIND_COLON, d0
 	beq.w appendBareColon
-	cmpi.w #TK_KIND_DOLLAR, d0
+	cmpi.w #runtime.TK_KIND_DOLLAR, d0
 	beq.w appendBareDollar
-	cmpi.w #TK_KIND_DOT, d0
+	cmpi.w #runtime.TK_KIND_DOT, d0
 	beq.w appendBareDot
-	cmpi.w #TK_KIND_HASH, d0
+	cmpi.w #runtime.TK_KIND_HASH, d0
 	beq.w appendBareHash
-	cmpi.w #TK_KIND_QUESTION, d0
+	cmpi.w #runtime.TK_KIND_QUESTION, d0
 	beq.w appendBareQuestion
-	cmpi.w #TK_KIND_OPEN_BRACKET, d0
+	cmpi.w #runtime.TK_KIND_OPEN_BRACKET, d0
 	beq.w appendBareOpenBracket
-	cmpi.w #TK_KIND_CLOSE_BRACKET, d0
+	cmpi.w #runtime.TK_KIND_CLOSE_BRACKET, d0
 	beq.w appendBareCloseBracket
-	cmpi.w #TK_KIND_OPEN_BRACE, d0
+	cmpi.w #runtime.TK_KIND_OPEN_BRACE, d0
 	beq.w appendBareOpenBrace
-	cmpi.w #TK_KIND_CLOSE_BRACE, d0
+	cmpi.w #runtime.TK_KIND_CLOSE_BRACE, d0
 	beq.w appendBareCloseBrace
-	cmpi.w #TK_KIND_OPEN_PAREN, d0
+	cmpi.w #runtime.TK_KIND_OPEN_PAREN, d0
 	beq.w appendBareOpenParen
-	cmpi.w #TK_KIND_CLOSE_PAREN, d0
+	cmpi.w #runtime.TK_KIND_CLOSE_PAREN, d0
 	beq.w appendBareCloseParen
 	bra.w appendOperator
 
@@ -1040,51 +999,51 @@ appendOperator
 	bra.w appendLiteralCloseParen
 
 appendOperatorName
-	cmpi.w #TK_KIND_OP_RANGE, d0
+	cmpi.w #runtime.TK_KIND_OP_RANGE, d0
 	beq.w opRange
-	cmpi.w #TK_KIND_OP_RANGE_INCLUSIVE, d0
+	cmpi.w #runtime.TK_KIND_OP_RANGE_INCLUSIVE, d0
 	beq.w opRangeInclusive
-	cmpi.w #TK_KIND_OP_PLUS, d0
+	cmpi.w #runtime.TK_KIND_OP_PLUS, d0
 	beq.w opPlus
-	cmpi.w #TK_KIND_OP_MINUS, d0
+	cmpi.w #runtime.TK_KIND_OP_MINUS, d0
 	beq.w opMinus
-	cmpi.w #TK_KIND_OP_MULTIPLY, d0
+	cmpi.w #runtime.TK_KIND_OP_MULTIPLY, d0
 	beq.w opMultiply
-	cmpi.w #TK_KIND_OP_POWER, d0
+	cmpi.w #runtime.TK_KIND_OP_POWER, d0
 	beq.w opPower
-	cmpi.w #TK_KIND_OP_DIVIDE, d0
+	cmpi.w #runtime.TK_KIND_OP_DIVIDE, d0
 	beq.w opDivide
-	cmpi.w #TK_KIND_OP_MOD, d0
+	cmpi.w #runtime.TK_KIND_OP_MOD, d0
 	beq.w opMod
-	cmpi.w #TK_KIND_OP_SHL, d0
+	cmpi.w #runtime.TK_KIND_OP_SHL, d0
 	beq.w opShl
-	cmpi.w #TK_KIND_OP_SHR, d0
+	cmpi.w #runtime.TK_KIND_OP_SHR, d0
 	beq.w opShr
-	cmpi.w #TK_KIND_OP_BIT_NOT, d0
+	cmpi.w #runtime.TK_KIND_OP_BIT_NOT, d0
 	beq.w opBitNot
-	cmpi.w #TK_KIND_OP_LOGIC_NOT, d0
+	cmpi.w #runtime.TK_KIND_OP_LOGIC_NOT, d0
 	beq.w opLogicNot
-	cmpi.w #TK_KIND_OP_BIT_AND, d0
+	cmpi.w #runtime.TK_KIND_OP_BIT_AND, d0
 	beq.w opBitAnd
-	cmpi.w #TK_KIND_OP_BIT_OR, d0
+	cmpi.w #runtime.TK_KIND_OP_BIT_OR, d0
 	beq.w opBitOr
-	cmpi.w #TK_KIND_OP_BIT_XOR, d0
+	cmpi.w #runtime.TK_KIND_OP_BIT_XOR, d0
 	beq.w opBitXor
-	cmpi.w #TK_KIND_OP_LOGIC_AND, d0
+	cmpi.w #runtime.TK_KIND_OP_LOGIC_AND, d0
 	beq.w opLogicAnd
-	cmpi.w #TK_KIND_OP_LOGIC_OR, d0
+	cmpi.w #runtime.TK_KIND_OP_LOGIC_OR, d0
 	beq.w opLogicOr
-	cmpi.w #TK_KIND_OP_LOGIC_XOR, d0
+	cmpi.w #runtime.TK_KIND_OP_LOGIC_XOR, d0
 	beq.w opLogicXor
-	cmpi.w #TK_KIND_OP_EQ, d0
+	cmpi.w #runtime.TK_KIND_OP_EQ, d0
 	beq.w opEq
-	cmpi.w #TK_KIND_OP_NE, d0
+	cmpi.w #runtime.TK_KIND_OP_NE, d0
 	beq.w opNe
-	cmpi.w #TK_KIND_OP_GE, d0
+	cmpi.w #runtime.TK_KIND_OP_GE, d0
 	beq.w opGe
-	cmpi.w #TK_KIND_OP_GT, d0
+	cmpi.w #runtime.TK_KIND_OP_GT, d0
 	beq.w opGt
-	cmpi.w #TK_KIND_OP_LE, d0
+	cmpi.w #runtime.TK_KIND_OP_LE, d0
 	beq.w opLe
 	lea OpLtText, a1
 	moveq #2, d2
@@ -1383,7 +1342,7 @@ appendBytesDone
 appendChar	.block
 	move.l a1, -(sp)
 	move.l LOCAL_OUTPUT_LEN(a4), d1
-	cmpi.l #LAST_ERROR_BUFFER_CAPACITY - 1, d1
+	cmpi.l #buffers.LAST_ERROR_BUFFER_CAPACITY - 1, d1
 	bcs.s appendCharStore
 	moveq #1, d1
 	move.l d1, LOCAL_OUTPUT_OVERFLOW(a4)
@@ -1391,7 +1350,7 @@ appendChar	.block
 	rts
 
 appendCharStore
-	lea LastErrorBuffer, a1
+	lea buffers.LastErrorBuffer, a1
 	move.b d0, 0(a1, d1.l)
 	addq.l #1, d1
 	move.l d1, LOCAL_OUTPUT_LEN(a4)
@@ -1455,7 +1414,7 @@ recordPtr	.block
 	move.l d0, d1
 	add.l d1, d1
 	adda.l d1, a0
-	lea TokenRecordBuffer, a1
+	lea buffers.TokenRecordBuffer, a1
 	adda.l a0, a1
 	movea.l a1, a0
 	rts

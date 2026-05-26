@@ -3,22 +3,11 @@
 	.module opforge.cli.opasm_event_report
 	.cpu 68020
 
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_KIND, OPASM_EVENT_PASS, OPASM_EVENT_TEXT_PTR)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_TEXT_LEN, OPASM_EVENT_VALUE, OPASM_EVENT_BYTES)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_PASS_BEGIN, OPASM_EVENT_PASS_OK)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_LABEL_STORED, OPASM_EVENT_LABEL_DUPLICATE)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, OPASM_EVENT_SELECTOR_STATUS_OK)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_UNKNOWN_MNEMONIC, OPASM_EVENT_UNSUPPORTED_ADDRESSING)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_UNRESOLVED_LABEL, OPASM_EVENT_BAD_ORG)
-	.use opasm.amigaos.callback_abi (OPASM_EVENT_SERVICE_FAILURE)
+	.use opasm.amigaos.callback_abi as abi
 
 	.use opforge.cli.dos
-	.use opforge.cli.text_output (opforgeNativeCliPutHexU32, opforgeNativeCliPutSpace)
-	.use opforge.cli.strings (NativePassOneText, NativePassTwoText, NativePassOneOkText, NativePassTwoOkText)
-	.use opforge.cli.strings (NativeLabelText, NativeDuplicateLabelText, NativeImageCapacityText)
-	.use opforge.cli.strings (NativeSelectorStatusOkText, NativeUnknownMnemonicText)
-	.use opforge.cli.strings (NativeUnsupportedAddressingText, NativeUnresolvedLabelText)
-	.use opforge.cli.strings (NativeBadOrgText, NewlineText)
+	.use opforge.cli.text_output
+	.use opforge.cli.strings
 
 	.section code, kind=code
 	.pub
@@ -40,7 +29,7 @@ opforgeNativeCliRenderOpasmEventsV1	.block
 loop
 	movea.l a1, a0
 	jsr opforgeNativeCliRenderOpasmEventV1
-	adda.l #OPASM_EVENT_BYTES, a1
+	adda.l #abi.OPASM_EVENT_BYTES, a1
 	subq.w #1, d2
 	bne.s loop
 
@@ -60,33 +49,33 @@ done
 opforgeNativeCliRenderOpasmEventV1	.block
 	movem.l d1-d2/a0-a1, -(sp)
 	movea.l a0, a1
-	move.w OPASM_EVENT_KIND(a1), d0
-	cmpi.w #OPASM_EVENT_PASS_BEGIN, d0
+	move.w abi.OPASM_EVENT_KIND(a1), d0
+	cmpi.w #abi.OPASM_EVENT_PASS_BEGIN, d0
 	beq.w passBegin
-	cmpi.w #OPASM_EVENT_PASS_OK, d0
+	cmpi.w #abi.OPASM_EVENT_PASS_OK, d0
 	beq.w passOk
-	cmpi.w #OPASM_EVENT_LABEL_STORED, d0
+	cmpi.w #abi.OPASM_EVENT_LABEL_STORED, d0
 	beq.w labelStored
-	cmpi.w #OPASM_EVENT_LABEL_DUPLICATE, d0
+	cmpi.w #abi.OPASM_EVENT_LABEL_DUPLICATE, d0
 	beq.w labelDuplicate
-	cmpi.w #OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, d0
+	cmpi.w #abi.OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, d0
 	beq.w imageCapacity
-	cmpi.w #OPASM_EVENT_SELECTOR_STATUS_OK, d0
+	cmpi.w #abi.OPASM_EVENT_SELECTOR_STATUS_OK, d0
 	beq.w selectorOk
-	cmpi.w #OPASM_EVENT_UNKNOWN_MNEMONIC, d0
+	cmpi.w #abi.OPASM_EVENT_UNKNOWN_MNEMONIC, d0
 	beq.w unknownMnemonic
-	cmpi.w #OPASM_EVENT_UNSUPPORTED_ADDRESSING, d0
+	cmpi.w #abi.OPASM_EVENT_UNSUPPORTED_ADDRESSING, d0
 	beq.w unsupportedAddressing
-	cmpi.w #OPASM_EVENT_UNRESOLVED_LABEL, d0
+	cmpi.w #abi.OPASM_EVENT_UNRESOLVED_LABEL, d0
 	beq.w unresolvedLabel
-	cmpi.w #OPASM_EVENT_BAD_ORG, d0
+	cmpi.w #abi.OPASM_EVENT_BAD_ORG, d0
 	beq.w badOrg
-	cmpi.w #OPASM_EVENT_SERVICE_FAILURE, d0
+	cmpi.w #abi.OPASM_EVENT_SERVICE_FAILURE, d0
 	beq.w serviceFailure
 	bra.w done
 
 passBegin
-	move.w OPASM_EVENT_PASS(a1), d0
+	move.w abi.OPASM_EVENT_PASS(a1), d0
 	cmpi.w #1, d0
 	beq.s passOneBegin
 	cmpi.w #2, d0
@@ -94,15 +83,15 @@ passBegin
 	bra.w done
 
 passOneBegin
-	move.l #NativePassOneText, d1
+	move.l #strings.NativePassOneText, d1
 	bra.w reportText
 
 passTwoBegin
-	move.l #NativePassTwoText, d1
+	move.l #strings.NativePassTwoText, d1
 	bra.w reportText
 
 passOk
-	move.w OPASM_EVENT_PASS(a1), d0
+	move.w abi.OPASM_EVENT_PASS(a1), d0
 	cmpi.w #1, d0
 	beq.s passOneOk
 	cmpi.w #2, d0
@@ -110,57 +99,57 @@ passOk
 	bra.w done
 
 passOneOk
-	move.l #NativePassOneOkText, d1
+	move.l #strings.NativePassOneOkText, d1
 	bra.w reportText
 
 passTwoOk
-	move.l #NativePassTwoOkText, d1
+	move.l #strings.NativePassTwoOkText, d1
 	bra.w reportText
 
 labelStored
-	move.l #NativeLabelText, d1
+	move.l #strings.NativeLabelText, d1
 	jsr dos.putStr
 	bsr.w reportEventText
-	jsr opforgeNativeCliPutSpace
-	move.l OPASM_EVENT_VALUE(a1), d0
-	jsr opforgeNativeCliPutHexU32
-	move.l #NewlineText, d1
+	jsr text_output.opforgeNativeCliPutSpace
+	move.l abi.OPASM_EVENT_VALUE(a1), d0
+	jsr text_output.opforgeNativeCliPutHexU32
+	move.l #strings.NewlineText, d1
 	bra.s reportText
 
 labelDuplicate
-	move.l #NativeDuplicateLabelText, d1
+	move.l #strings.NativeDuplicateLabelText, d1
 	jsr dos.putStr
 	bsr.w reportEventText
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 	bra.s reportText
 
 imageCapacity
-	move.l #NativeImageCapacityText, d1
+	move.l #strings.NativeImageCapacityText, d1
 	bra.s reportText
 
 selectorOk
-	move.l #NativeSelectorStatusOkText, d1
+	move.l #strings.NativeSelectorStatusOkText, d1
 	bra.s reportText
 
 unknownMnemonic
-	move.l #NativeUnknownMnemonicText, d1
+	move.l #strings.NativeUnknownMnemonicText, d1
 	bra.s reportText
 
 unsupportedAddressing
-	move.l #NativeUnsupportedAddressingText, d1
+	move.l #strings.NativeUnsupportedAddressingText, d1
 	bra.s reportText
 
 unresolvedLabel
-	move.l #NativeUnresolvedLabelText, d1
+	move.l #strings.NativeUnresolvedLabelText, d1
 	bra.s reportText
 
 badOrg
-	move.l #NativeBadOrgText, d1
+	move.l #strings.NativeBadOrgText, d1
 	bra.s reportText
 
 serviceFailure
 	bsr.w reportEventText
-	move.l #NewlineText, d1
+	move.l #strings.NewlineText, d1
 
 reportText
 	jsr dos.putStr
@@ -175,8 +164,8 @@ done
 
 reportEventText	.block
 	movem.l d0-d2/a0-a2, -(sp)
-	movea.l OPASM_EVENT_TEXT_PTR(a1), a0
-	move.w OPASM_EVENT_TEXT_LEN(a1), d2
+	movea.l abi.OPASM_EVENT_TEXT_PTR(a1), a0
+	move.w abi.OPASM_EVENT_TEXT_LEN(a1), d2
 	beq.s done
 	lea EventCharBuffer, a2
 

@@ -13,6 +13,8 @@ read, safe to change, and difficult for agents to subtly damage.
 - Do not duplicate information that is already obvious from the code.
 - Treat public routines as ABI surfaces.
 - Treat private hot-path helpers as performance-sensitive code.
+- Use modules and namespaces to carry ownership and domain context instead of
+  repeating long symbolic prefixes everywhere.
 - Do not add generic CPU/family/dialect-specific semantics to native VM or shared
   implementation layers.
 - Validate formatting before treating native assembly work as complete.
@@ -49,6 +51,91 @@ routineName	.block
   input/output register contract.
 - Public routines should preserve caller-visible registers unless their contract
   explicitly says otherwise. Use balanced save/restore such as `movem.l` when needed.
+
+## Module and namespace naming
+
+Use module qualification and `.namespace` to carry semantic context instead of
+encoding the same context into every symbol name.
+
+Prefer this:
+
+```asm
+.use opasm.amigaos.callback_abi as abi
+
+suba.l #abi.req.BYTES + abi.service.BYTES, sp
+move.l #OpasmEventBuffer, abi.req.EVENT_BUFFER_PTR(a0)
+move.w #OPASM_EVENT_CAPACITY, abi.req.EVENT_CAPACITY(a0)
+move.l #buffers.ControlBlockV1, abi.service.CONTROL_BLOCK_PTR(a1)
+```
+
+over this:
+
+```asm
+suba.l #abi.OPASM_ASSEMBLE_REQ_BYTES + abi.OPASM_SERVICE_BYTES, sp
+move.l #NativeCliOpasmEventBuffer, abi.OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(a0)
+move.w #NATIVE_CLI_OPASM_EVENT_CAPACITY, abi.OPASM_ASSEMBLE_REQ_EVENT_CAPACITY(a0)
+move.l #buffers.ControlBlockV1, abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a1)
+```
+
+Rules:
+
+- Use module qualification for ownership, for example `abi.`, `driver.`, `state.`,
+  or `constants.`.
+- Use `.namespace` inside broad modules for record/layout families, for example
+  `req`, `service`, `event`, `route`, `result`, or `status`.
+- Do not repeat the module path in every symbol. Inside
+  `opasm.amigaos.callback_abi`, avoid canonical names starting with `OPASM_`
+  unless compatibility requires them.
+- Keep namespace names short and semantic. Good: `abi.req.BYTES`,
+  `abi.service.IO_BUFFER_PTR`, `abi.event.BYTES`. Weak: `abi.opasm.*`,
+  `abi.callback.*`, or `abi.native.*` when those only restate the module path.
+- Keep constants and ABI fields inside namespaces in `UPPER_SNAKE_CASE`.
+- Keep data labels and routines outside namespaces aligned with the normal native
+  naming conventions.
+- Do not use namespaces to hide unclear structure. If a constants module mixes
+  unrelated domains, prefer adding focused namespaces or splitting the module
+  before shortening names aggressively.
+
+For ABI cleanup, migrate safely:
+
+1. Introduce the namespace form first.
+2. Keep old all-caps prefixed symbols as compatibility aliases during the first slice.
+3. Migrate one consumer module at a time.
+4. Remove aliases only when all consumers are migrated and no external/package
+   compatibility concern remains.
+5. Confirm that all numeric offsets, sizes, record layouts, and emitted output
+   remain unchanged.
+
+Good ABI module shape:
+
+```asm
+.namespace req
+BYTES                = ...
+EVENT_BUFFER_PTR     = ...
+EVENT_CAPACITY       = ...
+EVENT_COUNT_PTR      = ...
+SERVICE_FRAME_PTR    = ...
+.endnamespace
+
+.namespace service
+BYTES                = ...
+CONTROL_BLOCK_PTR    = ...
+IO_BUFFER_PTR        = ...
+IO_BUFFER_CAPACITY   = ...
+EVAL_EXTENSION_PTR   = ...
+EVAL_EXTENSION_BYTES = ...
+.endnamespace
+
+OPASM_ASSEMBLE_REQ_BYTES            = req.BYTES
+OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR = req.EVENT_BUFFER_PTR
+OPASM_SERVICE_BYTES                 = service.BYTES
+```
+
+Review namespace refactors as readability/organization changes unless they
+intentionally change an ABI. Reject patches that mix namespace cleanup with
+unrelated register allocation, control-flow, or behavior changes. Prefer small
+proof slices, such as one ABI module plus one consumer, before applying the
+pattern broadly.
 
 ## Routine documentation headers
 
@@ -449,6 +536,8 @@ Before treating native 68000 assembly work as complete:
 - Callers do not use `tst.l d0` immediately after a helper when CCR already
   reflects the documented returned status.
 - Explicit tests remain where CCR is undocumented, clobbered, semantic, or clearer.
+- Module and namespace qualifications replace redundant long prefixes where safe.
+- Public ABI renames keep compatibility aliases or migrate all call sites.
 - No CPU/family/dialect-specific semantics were added to generic layers.
 - Native formatter check passes.
 
@@ -476,4 +565,29 @@ For each candidate:
 6. Do not add `Saved/restored:` or default `Preserves:` fields.
 7. Run the native 68000 formatter/check gate.
 8. Report every changed call site and why it was safe.
+```
+
+## Codex prompt fragment for namespace cleanup
+
+Use this fragment when asking an implementation agent to clean up native 68000
+module or ABI symbol names:
+
+```md
+Inspect touched `native/motorola68000/**/*.asm` modules for symbols whose long
+prefixes repeat information already carried by `.module`, `.use`, aliasing, or
+`.namespace` qualification.
+
+For each candidate:
+
+1. Prefer module qualification for ownership, such as `abi.`, `state.`, or `driver.`.
+2. Prefer `.namespace` for record/layout families, such as `req`, `service`,
+   `event`, `route`, `result`, or `status`.
+3. Do not change numeric ABI values, offsets, sizes, emitted bytes, or record layout.
+4. Keep old prefixed public ABI symbols as compatibility aliases during the first slice.
+5. Migrate one consumer module at a time; do not perform a blind global rename.
+6. Do not combine namespace cleanup with register allocation, control-flow, or
+   semantic behavior changes.
+7. Run the native 68000 formatter/check gate.
+8. Report canonical namespace names, retained compatibility aliases, and follow-up
+   candidates.
 ```

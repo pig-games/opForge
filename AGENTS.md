@@ -174,7 +174,8 @@ the finding-closure reviewer passes.
 
 Load only the rule packs relevant to the current task:
 
-- `agents/rules/native-68000.md` when touching `native/motorola68000/**/*.asm`
+- `agents/rules/native-68000.md` when touching `native/motorola68000/**/*.asm`;
+  this is also the agent guide for good opForge 680x0 assembly style
 - `agents/rules/fs-uae.md` when running or debugging FS-UAE tests
 - `agents/rules/release-notes.md` for release-bearing work
 - `agents/rules/reference-refresh.md` for golden/reference updates

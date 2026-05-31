@@ -131,7 +131,31 @@ LOCAL_SIZE                      = 36
 
 	.pub
 
+; ---------------------------------------------------------------------------
 ; Native tokenizer VM interpreter.
+;
+; Inputs:
+; - A0: source buffer pointer.
+; - A1: token record output buffer pointer.
+; - A2: scratch/lexeme buffer pointer.
+; - A3: tokenizer bytecode program pointer.
+; - D0: source byte length.
+; - D1: token capacity in 20-byte records.
+; - D2: scratch capacity in bytes.
+; - D3: tokenizer bytecode length in bytes.
+;
+; Outputs:
+; - D0: TK_STATUS_* result.
+; - D1: emitted token count on success or partial progress.
+; - D2: status-specific cursor/column value on failures that report one.
+; - D3: committed scratch bytes on success or partial progress.
+;
+; Clobbers:
+; - D0-D7/A0-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
+; ---------------------------------------------------------------------------
 tkvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
 	movea.l a2, a6  ; preserve scratch base separately so A2 can become the interpreter-local frame pointer

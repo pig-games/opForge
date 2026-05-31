@@ -14,6 +14,11 @@
 ; ---------------------------------------------------------------------------
 	.section code, kind=code
 
+; Report whether D0 is intra-line whitespace for the native tokenizer slice.
+; Inputs: D0 = input byte.
+; Outputs: D0 = 1 when the byte is space or tab, otherwise 0.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 tkvmIsWhitespace	.block
 	cmpi.b #' ', d0  ; this line-input slice only treats space and tab as intra-line whitespace
 	beq tkvmPredicateTrue
@@ -23,6 +28,12 @@ tkvmIsWhitespace	.block
 	rts
 	.bend  ; tkvmIsWhitespace
 
+; Report whether D0 can start a native tokenizer identifier.
+; Inputs: D0 = input byte.
+; Outputs: D0 = 1 when the byte is a valid identifier-start character,
+; otherwise 0.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 tkvmIsIdentifierStart	.block
 	; These predicate chains intentionally avoid lookup tables so the native
 	; implementation stays easy to audit against the Rust helper masks.
@@ -44,6 +55,12 @@ checkIdentStartPunct
 	rts
 	.bend  ; tkvmIsIdentifierStart
 
+; Report whether D0 can continue a native tokenizer identifier.
+; Inputs: D0 = input byte.
+; Outputs: D0 = 1 when the byte is a valid identifier-continue character,
+; otherwise 0.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 tkvmIsIdentifierContinue	.block
 	cmpi.b #'A', d0
 	blo checkIdentContinueLower
@@ -72,6 +89,11 @@ checkIdentExtra
 	rts
 	.bend  ; tkvmIsIdentifierContinue
 
+; Report whether D0 is one of the supported quote delimiters.
+; Inputs: D0 = input byte.
+; Outputs: D0 = 1 when the byte is `"` or `'`, otherwise 0.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 tkvmIsQuoteChar	.block
 	cmpi.b #'"', d0  ; demo program accepts both quote styles, matching the Rust helper's quote-char set
 	beq tkvmPredicateTrue
@@ -81,6 +103,12 @@ tkvmIsQuoteChar	.block
 	rts
 	.bend  ; tkvmIsQuoteChar
 
+; Report whether D0 is acceptable in the permissive scanned body of a number token.
+; Inputs: D0 = input byte.
+; Outputs: D0 = 1 when the byte is accepted in a scanned number body,
+; otherwise 0.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 tkvmIsNumberBody	.block
 	; Number bodies are deliberately permissive at scan time. Validation of
 	; bases and suffix meaning is deferred to later consumers, matching the
@@ -112,17 +140,26 @@ tkvmCheckNumberExtra
 	rts
 	.bend  ; tkvmIsNumberBody
 
+; Report whether D0 is `_` or a hexadecimal digit.
+; Inputs: D0 = input byte.
+; Outputs: D0 = 1 when the byte is `_` or a hex digit, otherwise 0.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 tkvmIsHexDigitOrUnderscore	.block
 	; Used only as a fast probe for deciding whether '$' begins a number or
 	; remains a standalone token.
 	cmpi.b #'_', d0
 	beq tkvmPredicateTrue
 	jsr tkvmHexDigitValue
-	tst.l d0
 	bmi tkvmPredicateFalse
 	bra tkvmPredicateTrue
 	.bend  ; tkvmIsHexDigitOrUnderscore
 
+; Decode one hexadecimal digit in D0 into its nibble value.
+; Inputs: D0 = input byte.
+; Outputs: D0 = decoded nibble value 0-15, or -1 when the byte is not hex.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 tkvmHexDigitValue	.block
 	cmpi.b #'0', d0  ; shared nibble decoder for \xHH strings and '$'-prefixed number probing
 	blo tkvmHexUpper

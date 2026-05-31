@@ -50,6 +50,12 @@ EXPRVM_STACK_CAPACITY           = 8
 ; - D4: nonzero when the program referenced at least one symbol.
 ; - D5: nonzero when the program referenced a symbol that is unstable for the
 ;   current pass.
+;
+; Clobbers:
+; - D0/D3-D5/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 ; ---------------------------------------------------------------------------
 exprvmEvalProgramV1	.block
 	movem.l d1-d2/d6-d7/a0-a6, -(sp)
@@ -104,11 +110,9 @@ evalLoopV2
 
 opcodePushLiteral
 	bsr.w readI64Low32
-	tst.l d0
 	bmi.w literalReadFail
 	move.l d0, ExprvmEvalRemaining
 	bsr.w pushD3
-	tst.l d0
 	bmi.w literalPushFail
 	move.l ExprvmEvalRemaining, d0
 	bra.w evalLoop
@@ -117,14 +121,12 @@ opcodePushCurrent
 	move.l a5, d3
 	move.l d0, ExprvmEvalRemaining
 	bsr.w pushD3
-	tst.l d0
 	bmi.w fail
 	move.l ExprvmEvalRemaining, d0
 	bra.w evalLoop
 
 opcodePushSymbol
 	bsr.w readU16
-	tst.l d0
 	bmi.w fail
 	cmp.w d1, d3
 	bhs.w fail
@@ -149,19 +151,16 @@ pushSymbolStable
 	movea.l a4, a2
 	move.l 0(a2, d6.l), d3
 	bsr.w pushD3
-	tst.l d0
 	bmi.w fail
 	move.l ExprvmEvalRemaining, d0
 	bra.w evalLoop
 
 opcodeApplyUnary
 	bsr.w readU8
-	tst.l d0
 	bmi.w fail
 	move.l d0, ExprvmEvalRemaining
 	move.l d3, d6
 	bsr.w popD3
-	tst.l d0
 	bmi.w fail
 	cmpi.b #EXPRVM_UNARY_PLUS, d6
 	beq.s applyUnaryDone
@@ -205,23 +204,19 @@ applyUnaryLow
 
 applyUnaryDone
 	bsr.w pushD3
-	tst.l d0
 	bmi.w fail
 	move.l ExprvmEvalRemaining, d0
 	bra.w evalLoop
 
 opcodeApplyBinary
 	bsr.w readU8
-	tst.l d0
 	bmi.w fail
 	move.l d0, ExprvmEvalRemaining
 	move.l d3, d6
 	bsr.w popD3
-	tst.l d0
 	bmi.w fail
 	move.l d3, -(sp)
 	bsr.w popD3
-	tst.l d0
 	bmi.s applyBinaryRestoreFail
 	move.l (sp)+, d2
 	cmpi.b #EXPRVM_BINARY_ADD, d6
@@ -243,7 +238,6 @@ applyBinarySubtract
 
 applyBinaryDone
 	bsr.w pushD3
-	tst.l d0
 	bmi.w fail
 	move.l ExprvmEvalRemaining, d0
 	bra.w evalLoop
@@ -257,7 +251,6 @@ opcodeEnd
 	cmpi.l #1, d7
 	bne.w endStackFail
 	bsr.w popD3
-	tst.l d0
 	bmi.w popFail
 	moveq #0, d0
 	bra.s return
@@ -298,6 +291,11 @@ return
 	rts
 	.bend  ; exprvmEvalProgramV1
 
+; Push D3 onto the private ExprVM value stack.
+; Inputs: D3 = value to push; D7 = current stack depth.
+; Outputs: D0 = 0 on success or -1 on overflow; D7 incremented on success.
+; Clobbers: D2/A2.
+; CCR: reflects D0 on return.
 pushD3	.block
 	cmpi.l #EXPRVM_STACK_CAPACITY, d7
 	bhs.s fail
@@ -314,6 +312,12 @@ fail
 	rts
 	.bend  ; pushD3
 
+; Pop the private ExprVM value stack into D3.
+; Inputs: D7 = current stack depth.
+; Outputs: D0 = 0 on success or -1 on underflow; D3 = popped value on success;
+; D7 decremented on success.
+; Clobbers: D2/A2.
+; CCR: reflects D0 on return.
 popD3	.block
 	tst.l d7
 	beq.s fail
@@ -330,6 +334,12 @@ fail
 	rts
 	.bend  ; popD3
 
+; Read one unsigned byte from the bytecode stream.
+; Inputs: A0 = bytecode cursor; D0 = remaining byte count.
+; Outputs: D0 = remaining byte count after consume or -1 on underflow; D3 =
+; zero-extended byte value on success; A0 advanced by 1 on success.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 readU8	.block
 	tst.l d0
 	beq.s fail
@@ -343,6 +353,12 @@ fail
 	rts
 	.bend  ; readU8
 
+; Read one big-endian unsigned 16-bit value from the bytecode stream.
+; Inputs: A0 = bytecode cursor; D0 = remaining byte count.
+; Outputs: D0 = remaining byte count after consume or -1 on underflow; D3 =
+; zero-extended 16-bit value on success; A0 advanced by 2 on success.
+; Clobbers: D2/CCR.
+; CCR: reflects D0 on return.
 readU16	.block
 	cmpi.l #2, d0
 	bcs.s fail
@@ -360,6 +376,12 @@ fail
 	rts
 	.bend  ; readU16
 
+; Read the low 32 bits of one big-endian 64-bit literal from the bytecode stream.
+; Inputs: A0 = bytecode cursor; D0 = remaining byte count.
+; Outputs: D0 = remaining byte count after consume or -1 on underflow; D3 =
+; low 32 literal bits on success; A0 advanced by 8 on success.
+; Clobbers: D2/CCR.
+; CCR: reflects D0 on return.
 readI64Low32	.block
 	cmpi.l #8, d0
 	bcs.s fail

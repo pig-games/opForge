@@ -3,7 +3,7 @@
 	.module prvm.amigaos.line_iterator
 	.cpu 68020
 	.pub
-	.use prvm.amigaos.line_router
+	.use prvm.amigaos.line_router (prvmRouteLine68000)
 
 PRVM_ROUTE_MAGIC_OPLR               = $4F504C52
 PRVM_ROUTE_FRAME_SIZE               = 116
@@ -94,6 +94,12 @@ ROUTE_FRAME_FLAGS                   = 112
 ; - D1: number of nonblank routed lines
 ; - D2: one-based line number for the first failing line, or zero
 ; - D3: total logical line count observed
+;
+; Clobbers:
+; - D0-D7/A0-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 ; ---------------------------------------------------------------------------
 prvmIterateLines68000	.block
 	movem.l d4-d7/a2-a6, -(sp)
@@ -136,7 +142,6 @@ nextLine
 	movea.l a2, a0
 	move.l d3, d0
 	bsr.w lineIsBlank
-	tst.l d0
 	bne.s skipRoute
 
 	movea.l a2, a0
@@ -181,6 +186,12 @@ done
 	
 	.priv
 
+; Find the current line length up to LF and return the remaining tail length.
+; Inputs: A3 = current source cursor; D0 = remaining source length.
+; Outputs: D0 = line length before LF; D1 = remaining length after LF; A3
+; advanced past the scanned bytes and optional LF.
+; Clobbers: D2/CCR.
+; CCR: reflects the final length-transfer path, not a stable status value.
 findLineEnd	.block
 	clr.l d1
 
@@ -201,6 +212,11 @@ done
 	rts
 	.bend  ; findLineEnd
 
+; Trim one trailing CR from the current line span.
+; Inputs: A0 = line start pointer; D0 = line length.
+; Outputs: D0 = line length after optional CR trim.
+; Clobbers: A1/CCR.
+; CCR: reflects D0 on return.
 trimCr	.block
 	tst.l d0
 	beq.s done
@@ -215,6 +231,11 @@ done
 	rts
 	.bend  ; trimCr
 
+; Report whether the current line span is blank or whitespace-only.
+; Inputs: A0 = line start pointer; D0 = line length.
+; Outputs: D0 = 1 when blank or whitespace-only, otherwise 0.
+; Clobbers: D2/CCR.
+; CCR: reflects D0 on return.
 lineIsBlank	.block
 	tst.l d0
 	beq.s blank
@@ -239,6 +260,12 @@ notBlank
 	rts
 	.bend  ; lineIsBlank
 
+; Populate the shared route frame for the current logical line.
+; Inputs: A0 = line start pointer; D0 = trimmed line length; A6 = iterator
+; frame base; D6 = current one-based line number.
+; Outputs: PrvmIteratorRouteFrame is populated for the route call.
+; Clobbers: A1/CCR.
+; CCR: unspecified on return.
 buildRouteFrame	.block
 	lea PrvmIteratorRouteFrame(PC), a1
 	move.l #PRVM_ROUTE_MAGIC_OPLR, ROUTE_FRAME_MAGIC(a1)
@@ -278,7 +305,7 @@ buildRouteFrame	.block
 PrvmIteratorRouteFrame
 	.fill byte, 116, 0
 PrvmIteratorRouteEntryPtr
-	.long line_router.prvmRouteLine68000
+	.long prvmRouteLine68000
 
 	.endsection
 	.endmodule

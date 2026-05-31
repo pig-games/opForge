@@ -14578,11 +14578,11 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
 
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceWriteHeaderV1\t.block\n        MOVE.B #$4f,(A0)\n        MOVE.B #$54,1(A0)\n        MOVE.B #$36,2(A0)\n        MOVE.B #$35,3(A0)\n        MOVE.B #$01,CB_ABI_VERSION(A0)\n        CLR.B 5(A0)\n        MOVE.B #NATIVE_CONTROL_BLOCK_SIZE_V1,CB_STRUCT_SIZE(A0)\n        CLR.B 7(A0)\n        MOVE.B #CAPABILITY_FLAGS_V1,CB_CAPABILITY_FLAGS(A0)\n        CLR.B 9(A0)"
+        "tkpkgServiceWriteHeaderV1\t.block\n        MOVE.B #$4f,(A0)\n        MOVE.B #$54,1(A0)\n        MOVE.B #$36,2(A0)\n        MOVE.B #$35,3(A0)\n        MOVE.B #$01,abi.CB_ABI_VERSION(A0)\n        CLR.B 5(A0)\n        MOVE.B #abi.NATIVE_CONTROL_BLOCK_SIZE_V1,abi.CB_STRUCT_SIZE(A0)\n        CLR.B 7(A0)\n        MOVE.B #abi.CAPABILITY_FLAGS_V1,abi.CB_CAPABILITY_FLAGS(A0)\n        CLR.B 9(A0)"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceIncrementRequestIdV1\t.block\n        MOVE.B NextRequestIdLo,D1\n        ADDQ.B #1,D1\n        MOVE.B D1,NextRequestIdLo"
+        "tkpkgServiceIncrementRequestIdV1\t.block\n        MOVE.B buffers.NextRequestIdLo,D1\n        ADDQ.B #1,D1\n        MOVE.B D1,buffers.NextRequestIdLo"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -14590,7 +14590,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "CMPI.B #ENTRY_ORD_PARSE_LINE,D0\n        BEQ.W handleParseLine\n        CMPI.B #ENTRY_ORD_ENCODE_INSTRUCTION,D0\n        BEQ.W handleEncodeInstruction\n        CMPI.B #ENTRY_ORD_EVALUATE_EXPRESSION,D0\n        BEQ.W handleEvaluateExpression\n        CMPI.B #ENTRY_ORD_SELECT_INSTRUCTION,D0\n        BEQ.W handleSelectInstruction\n        CMPI.B #ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION,D0\n        BEQ.W handleEncodeSelectedInstruction"
+        "CMPI.B #abi.ENTRY_ORD_PARSE_LINE,D0\n        BEQ.W handleParseLine\n        CMPI.B #abi.ENTRY_ORD_ENCODE_INSTRUCTION,D0\n        BEQ.W handleEncodeInstruction\n        CMPI.B #abi.ENTRY_ORD_EVALUATE_EXPRESSION,D0\n        BEQ.W handleEvaluateExpression\n        CMPI.B #abi.ENTRY_ORD_SELECT_INSTRUCTION,D0\n        BEQ.W handleSelectInstruction\n        CMPI.B #abi.ENTRY_ORD_ENCODE_SELECTED_INSTRUCTION,D0\n        BEQ.W handleEncodeSelectedInstruction"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -14599,7 +14599,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(!source.contains(".use opasm.amigaos.selector_stage"));
     assert!(tkpkg_source_contains(
         &source,
-        ".use opcore.amigaos.expr_bridge (opcoreExvmEvalOperandV1)"
+        ".use opcore.amigaos.expr_bridge"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -14619,15 +14619,15 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        BTST #1,PackageStateFlags"
+        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        BTST #1,buffers.PackageStateFlags"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "selectInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, PackageStateFlags"
+        "selectInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "encodeSelectedInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, PackageStateFlags"
+        "encodeSelectedInstructionV1\t.block\n\tmovem.l d2-d7/a2-a6, -(sp)\n\tbtst #1, buffers.PackageStateFlags"
     ));
     assert!(source.contains("buildSelectedEnvelopeV1"));
     assert!(source.contains("writeCandidateOutputV1"));
@@ -14650,18 +14650,18 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "move.l d6, -(sp)\n\tmoveq #0, d4\n\tmove.w d6, d4\n\tmoveq #0, d5\n\tmove.w d7, d5\n\tmoveq #0, d6\n\tmove.w opasmEngineSessionPass.l, d6\n\tlea opasmEngineLabelFinalizedTable.l, a6\n\tjsr opcoreExvmEvalOperandV1"
+        "move.l d6, -(sp)\n\tmoveq #0, d4\n\tmove.w d6, d4\n\tmoveq #0, d5\n\tmove.w d7, d5\n\tmoveq #0, d6\n\tmove.w engine.opasmEngineSessionPass.l, d6\n\tlea engine.opasmEngineLabelFinalizedTable.l, a6\n\tjsr expr_bridge.opcoreExvmEvalOperandV1"
     ));
     assert!(source.contains("movea.l a3, a5"));
     assert!(source.contains("move.l d3, TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF(a5)"));
     assert!(source.contains("EvaluateExprValuePrefixText"));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceParseLineV1\t.block\n        MOVEQ #0,D0\n        MOVE.B CB_INPUT_PTR(A0),D0"
+        "tkpkgServiceParseLineV1\t.block\n        MOVEQ #0,D0\n        MOVE.B abi.CB_INPUT_PTR(A0),D0"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "CMPI.W #TKPKG_PARSE_ROUTE_FRAME_SIZE,D0\n        BNE.S badRequest\n        MOVEA.L A1,A0\n        JSR prvmRouteLine68000"
+        "CMPI.W #TKPKG_PARSE_ROUTE_FRAME_SIZE,D0\n        BNE.S badRequest\n        MOVEA.L A1,A0\n        JSR line_router.prvmRouteLine68000"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -14669,7 +14669,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceSetStatusRuntimeErrorV1\t.block\n        MOVE.B #STATUS_RUNTIME_ERROR_V1,CB_STATUS_CODE(A0)\n        CLR.B 11(A0)"
+        "tkpkgServiceSetStatusRuntimeErrorV1\t.block\n        MOVE.B #abi.STATUS_RUNTIME_ERROR_V1,abi.CB_STATUS_CODE(A0)\n        CLR.B 11(A0)"
     ));
 }
 

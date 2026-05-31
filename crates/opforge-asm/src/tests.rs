@@ -14680,15 +14680,15 @@ fn motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract() {
 
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceSetBadRequestV1\t.block\n        BSR.W tkpkgServiceSetStatusBadRequestV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        LEA BadRequestText,A1\n        MOVEQ #BAD_REQUEST_TEXT_LEN,D1\n        BSR.W tkpkgServiceCopyLastErrorMessageV1\n        BSR.W tkpkgServiceWriteLastErrorBufferOffsetV1\n        MOVE.B #BAD_REQUEST_TEXT_LEN,CB_LAST_ERROR_LEN(A0)"
+        "tkpkgServiceSetBadRequestV1\t.block\n        BSR.W tkpkgServiceSetStatusBadRequestV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        LEA buffers.BadRequestText,A1\n        MOVEQ #buffers.BAD_REQUEST_TEXT_LEN,D1\n        BSR.W tkpkgServiceCopyLastErrorMessageV1\n        BSR.W tkpkgServiceWriteLastErrorBufferOffsetV1\n        MOVE.B #buffers.BAD_REQUEST_TEXT_LEN,abi.CB_LAST_ERROR_LEN(A0)"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceSetBadControlBlockV1\t.block\n        BSR.W tkpkgServiceSetStatusBadControlBlockV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        LEA ControlBlockErrorText,A1\n        MOVEQ #CONTROL_BLOCK_ERROR_TEXT_LEN,D1\n        BSR.W tkpkgServiceCopyLastErrorMessageV1\n        BSR.W tkpkgServiceWriteLastErrorBufferOffsetV1\n        MOVE.B #CONTROL_BLOCK_ERROR_TEXT_LEN,CB_LAST_ERROR_LEN(A0)"
+        "tkpkgServiceSetBadControlBlockV1\t.block\n        BSR.W tkpkgServiceSetStatusBadControlBlockV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        LEA buffers.ControlBlockErrorText,A1\n        MOVEQ #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN,D1\n        BSR.W tkpkgServiceCopyLastErrorMessageV1\n        BSR.W tkpkgServiceWriteLastErrorBufferOffsetV1\n        MOVE.B #buffers.CONTROL_BLOCK_ERROR_TEXT_LEN,abi.CB_LAST_ERROR_LEN(A0)"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "handleLastError:\n        TST.B CB_INPUT_LEN(A0)\n        BNE.S lastErrorBadRequest\n        TST.B 19(A0)\n        BNE.S lastErrorBadRequest\n        BSR.W tkpkgServiceWriteClearInputFieldsV1\n        BSR.W tkpkgServiceSetStatusOkV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        MOVE.B StoredLastErrorLen,CB_OUTPUT_LEN(A0)\n        MOVE.B StoredLastErrorLenHi,23(A0)\n        TST.B StoredLastErrorLen\n        BEQ.S lastErrorDone\n        BSR.W tkpkgServiceWriteOutputBufferOffsetV1"
+        "handleLastError:\n        TST.B abi.CB_INPUT_LEN(A0)\n        BNE.S lastErrorBadRequest\n        TST.B 19(A0)\n        BNE.S lastErrorBadRequest\n        BSR.W tkpkgServiceWriteClearInputFieldsV1\n        BSR.W tkpkgServiceSetStatusOkV1\n        BSR.W tkpkgServiceWriteClearOutputFieldsV1\n        MOVE.B buffers.StoredLastErrorLen,abi.CB_OUTPUT_LEN(A0)\n        MOVE.B buffers.StoredLastErrorLenHi,23(A0)\n        TST.B buffers.StoredLastErrorLen\n        BEQ.S lastErrorDone\n        BSR.W tkpkgServiceWriteOutputBufferOffsetV1"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -14700,11 +14700,11 @@ fn motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceWriteLastErrorBufferOffsetV1\t.block\n        MOVE.B #LAST_ERROR_BUFFER_PTR_V1,CB_LAST_ERROR_PTR(A0)\n        CLR.B 29(A0)"
+        "tkpkgServiceWriteLastErrorBufferOffsetV1\t.block\n        MOVE.B #buffers.LAST_ERROR_BUFFER_PTR_V1,abi.CB_LAST_ERROR_PTR(A0)\n        CLR.B 29(A0)"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "tkpkgServiceWriteOutputBufferOffsetV1\t.block\n        MOVE.B #LAST_ERROR_BUFFER_PTR_V1,CB_OUTPUT_PTR(A0)\n        CLR.B 21(A0)"
+        "tkpkgServiceWriteOutputBufferOffsetV1\t.block\n        MOVE.B #buffers.LAST_ERROR_BUFFER_PTR_V1,abi.CB_OUTPUT_PTR(A0)\n        CLR.B 21(A0)"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -14720,7 +14720,7 @@ fn motorola68020_tkpkg_service_preserves_last_error_roundtrip_contract() {
     ));
     assert!(tkpkg_source_contains(
         &buffers,
-        "ControlBlockV1:\n        .res byte,NATIVE_CONTROL_BLOCK_SIZE_V1"
+        "ControlBlockV1:\n        .res byte,abi.NATIVE_CONTROL_BLOCK_SIZE_V1"
     ));
     assert!(tkpkg_source_contains(
         &buffers,

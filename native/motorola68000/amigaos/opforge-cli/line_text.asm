@@ -323,7 +323,6 @@ opforgeNativeCliParseUseWildcard
 	tst.l d0
 	bne.s opforgeNativeCliParseUseItemsFail
 	move.l d6, d0
-	tst.l d0
 	beq.s opforgeNativeCliParseUseItemsFail
 	cmpi.b #')', (a0)
 	bne.s opforgeNativeCliParseUseItemsFail

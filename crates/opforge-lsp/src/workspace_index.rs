@@ -948,6 +948,9 @@ pub(crate) fn module_search_roots_for_request(
                         break;
                     }
                 }
+                if workspace_root.as_ref().is_some_and(|root| dir == root) {
+                    break;
+                }
                 cursor = dir.parent();
             }
         }

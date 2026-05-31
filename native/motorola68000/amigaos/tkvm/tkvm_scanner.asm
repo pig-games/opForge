@@ -945,7 +945,6 @@ markLeadingSpace
 
 loop
 	move.l LOCAL_TEMP_U32(a2), d0
-	tst.l d0
 	beq prefixTrue
 	subq.l #1, d0
 	move.l d0, LOCAL_TEMP_U32(a2)

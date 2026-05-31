@@ -167,7 +167,6 @@ AbiMarker
 prvmRun68000	.block
 	movem.l d4-d7/a4-a6, -(sp)
 	move.l a0, d1  ; null-check the frame before touching any offset fields
-	tst.l d1
 	beq.w invalidArgument
 	cmpi.l #PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgument
@@ -209,7 +208,6 @@ validateEntryKind
 	bmi invalidArgumentWithLocals
 	beq validateTokenBuffer
 	move.l PRVM_FRAME_SOURCE_PTR(a4), d0
-	tst.l d0
 	beq invalidArgumentWithLocals
 
 validateTokenBuffer
@@ -217,7 +215,6 @@ validateTokenBuffer
 	bmi invalidArgumentWithLocals
 	beq validateLexemeBuffer
 	move.l PRVM_FRAME_TOKEN_PTR(a4), d0
-	tst.l d0
 	beq invalidArgumentWithLocals
 
 validateLexemeBuffer
@@ -225,31 +222,25 @@ validateLexemeBuffer
 	bmi invalidArgumentWithLocals
 	beq validateProgramBuffer
 	move.l PRVM_FRAME_LEXEME_PTR(a4), d7
-	tst.l d7
 	beq invalidArgumentWithLocals
 
 validateProgramBuffer
 	move.l PRVM_FRAME_PROGRAM_LEN(a4), d6
 	ble invalidProgramAtCursor
 	move.l PRVM_FRAME_PROGRAM_PTR(a4), d0
-	tst.l d0
 	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_RESULT_PTR(a4), d0
-	tst.l d0
 	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_RESULT_CAPACITY(a4), d0
 	bmi invalidArgumentWithLocals
 	move.l PRVM_FRAME_DIAGNOSTIC_PTR(a4), d0
-	tst.l d0
 	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_RESUME_PTR(a4), d0
-	tst.l d0
 	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_RESUME_CAPACITY(a4), d0
 	cmpi.l #PRVM_RESUME_STATE_SIZE, d0
 	blt invalidArgumentWithLocals
 	move.l PRVM_FRAME_EXPR_REQUEST_PTR(a4), d0
-	tst.l d0
 	beq invalidArgumentWithLocals
 	move.l PRVM_FRAME_EXPR_REQUEST_SIZE(a4), d0
 	cmpi.l #PRVM_EXPR_REQUEST_RECORD_SIZE, d0
@@ -258,7 +249,6 @@ validateProgramBuffer
 	bmi invalidArgumentWithLocals
 	beq validateExpressionResultBufferDone
 	move.l PRVM_FRAME_EXPR_RESULT_PTR(a4), d7
-	tst.l d7
 	beq invalidArgumentWithLocals
 validateExpressionResultBufferDone
 

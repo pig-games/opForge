@@ -856,7 +856,6 @@ prepareEvaluateExpressionRequestV1	.block
 	tst.l d5
 	beq.s useStatementLine
 	move.l OPASM_ENGINE_EVAL_REQ_EXPR_SPAN_LINE(sp), d2
-	tst.l d2
 	bne.s writeLine
 
 useStatementLine
@@ -992,7 +991,6 @@ buildRequest
 	tst.l d5
 	beq.s useStatementLine
 	move.l OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_LINE(sp), d2
-	tst.l d2
 	bne.s writeLine
 
 useStatementLine
@@ -1309,7 +1307,6 @@ opasmEngineStatementLooksBareColumnOneV1	.block
 	lea OpasmEngineStmtSourceLineTextTable.l, a0
 	adda.l d2, a0
 	move.b (a0), d3
-	tst.b d3
 	beq.w no
 	cmpi.b #10, d3
 	beq.w no
@@ -1328,7 +1325,6 @@ tokenLoop
 	tst.l d4
 	beq.s yes
 	move.b (a0), d3
-	tst.b d3
 	beq.s yes
 	cmpi.b #10, d3
 	beq.s yes
@@ -1348,7 +1344,6 @@ trailingLoop
 	tst.l d4
 	beq.s yes
 	move.b (a0), d3
-	tst.b d3
 	beq.s yes
 	cmpi.b #10, d3
 	beq.s yes
@@ -1408,7 +1403,6 @@ done
 
 copyFixedString	.block
 	move.w d0, d6
-	tst.w d6
 	beq.s done
 
 loop

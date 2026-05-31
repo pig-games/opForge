@@ -10,6 +10,7 @@ import sys
 PRESETS = {
     "rust-full": "scripts/workflow/run_rust_quality_gate.sh",
     "native-68000-format": "scripts/workflow/run_native_68000_format_gate.sh",
+    "native-68000-ccr-cleanup-round": "scripts/workflow/run_native_68000_ccr_cleanup_round.sh",
     "workflow-docs": "make workflow-gate",
     "fsuae-smoke": (
         "OPFORGE_FS_UAE_SMOKE=1 "

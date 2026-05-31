@@ -347,7 +347,6 @@ readLinePayload	.block
 	move.b 17(a0), d1
 	lsl.w #8, d1
 	or.w d1, d0
-	tst.w d0
 	beq.s badPayload
 	lea 0(a0, d0.W), a4
 	moveq #0, d6
@@ -392,7 +391,6 @@ readProgram	.block
 	move.b (a1)+, d1
 	lsl.w #8, d1
 	or.w d1, d2
-	tst.w d2
 	beq.w invalidProgram
 	lea buffers.PackageStorage, a2
 	lea 0(a2, d0.W), a2
@@ -739,14 +737,12 @@ validateLoop
 	cmpi.l #runtime.TK_KIND_OP_LT, d0
 	bgt.s validateInvalid
 	move.l 4(a0), d6
-	tst.l d6
 	beq.s validateInvalid
 	move.l d4, d7
 	addq.l #1, d7
 	cmp.l d7, d6
 	bhi.s validateInvalid
 	move.l 8(a0), d6
-	tst.l d6
 	beq.s validateInvalid
 	cmp.l d7, d6
 	bhi.s validateInvalid

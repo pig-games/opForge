@@ -141,7 +141,6 @@ copyInputBytes	.block
 	move.b buffers.PackageStorageLenHi, d3
 	lsl.w #8, d3
 	or.w d3, d2
-	tst.w d2
 	beq.s done
 
 loop

@@ -470,7 +470,6 @@ loop
 	tst.l d0
 	beq.s done
 	move.b (a0), d2
-	tst.b d2
 	beq.s done
 	cmpi.b #10, d2
 	beq.s done
@@ -504,7 +503,6 @@ loop
 	tst.l d0
 	beq.s done
 	move.b (a0)+, d3
-	tst.b d3
 	beq.s done
 	cmpi.b #10, d3
 	beq.s done

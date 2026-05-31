@@ -1289,6 +1289,20 @@ fn run_validation_task(
     };
     let module_search_roots =
         crate::lsp::workspace_index::module_search_roots_for_request(&config, &root_uri);
+    if let Err(message) = materialize_overlay_search_roots(
+        &overlay.original_root,
+        &overlay.working_dir,
+        &module_search_roots,
+    ) {
+        let _ = fs::remove_dir_all(&overlay.temp_root);
+        return ValidationTaskResult {
+            root_uri,
+            version: doc.version,
+            generation,
+            dependencies: HashSet::new(),
+            diagnostics: vec![overlay_failure_diagnostic(&doc, message)],
+        };
+    }
     let result = run_validation(
         &config,
         &overlay.root_file,
@@ -1403,6 +1417,22 @@ fn overlay_root_for_active_file(config: &LspConfig, original_file: &Path) -> Pat
         let parent = original_file.parent().unwrap_or(Path::new("."));
         parent.parent().unwrap_or(parent).to_path_buf()
     })
+}
+
+fn materialize_overlay_search_roots(
+    original_root: &Path,
+    working_dir: &Path,
+    search_roots: &[PathBuf],
+) -> Result<(), String> {
+    for root in search_roots {
+        let Ok(relative) = overlay_relative_path(original_root, root) else {
+            continue;
+        };
+        let target = working_dir.join(relative);
+        fs::create_dir_all(&target)
+            .map_err(|err| format!("create overlay search root {}: {err}", target.display()))?;
+    }
+    Ok(())
 }
 
 fn collect_overlay_source_files(
@@ -2196,6 +2226,100 @@ mod tests {
             "validation should use workspace-root fallback module paths: {:?}",
             result.diagnostics
         );
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn validation_overlay_rebases_sibling_module_dependency_diagnostics() {
+        let temp_dir = unique_temp_dir("lsp-validation-sibling-module-root");
+        let src_dir = temp_dir.join("src");
+        let shared_dir = temp_dir.join("shared");
+        let root_file = src_dir.join("root.asm");
+        let helper_file = shared_dir.join("helper.asm");
+
+        fs::create_dir_all(&src_dir).expect("create src dir");
+        fs::create_dir_all(&shared_dir).expect("create shared dir");
+        fs::write(&root_file, ".use helper (BROKEN)\n.byte BROKEN\n")
+            .expect("write root source");
+        fs::write(
+            &helper_file,
+            ".module helper\n.pub\nBROKEN = MISSING\n.endmodule\n",
+        )
+        .expect("write helper source");
+
+        let registry = default_asm_registry();
+        let root_uri = path_to_file_uri(&root_file);
+        let mut doc = DocumentState::new(
+            root_uri.clone(),
+            Some(root_file.clone()),
+            1,
+            fs::read_to_string(&root_file).expect("read root source"),
+        );
+        doc.refresh_derived_state(&registry);
+
+        let config = LspConfig {
+            roots: vec![temp_dir.to_string_lossy().to_string()],
+            module_paths: vec!["shared".to_string()],
+            ..LspConfig::default()
+        };
+
+        let mut workspace_index = WorkspaceIndex::default();
+        workspace_index.rebuild(&registry, &config, &HashMap::new());
+
+        let overlay = create_overlay_workspace(&config, &doc, &HashMap::new(), &workspace_index)
+            .expect("create overlay workspace");
+        assert!(
+            overlay.source_files.iter().any(|path| path == &helper_file),
+            "expected helper file to be staged: {:?}",
+            overlay.source_files
+        );
+
+        let module_search_roots =
+            crate::lsp::workspace_index::module_search_roots_for_request(&config, &doc.uri);
+        materialize_overlay_search_roots(
+            &overlay.original_root,
+            &overlay.working_dir,
+            &module_search_roots,
+        )
+        .expect("materialize overlay roots");
+        let rebased_roots: Vec<PathBuf> = module_search_roots
+            .iter()
+            .filter_map(|root| {
+                overlay_relative_path(&overlay.original_root, root)
+                    .ok()
+                    .map(|relative| overlay.working_dir.join(relative))
+            })
+            .collect();
+        for root in &rebased_roots {
+            fs::read_dir(root).unwrap_or_else(|err| {
+                panic!("expected readable overlay module root {}: {err}", root.display())
+            });
+        }
+
+        let result = run_validation(
+            &config,
+            &overlay.root_file,
+            &overlay.working_dir,
+            &overlay.original_root,
+            &module_search_roots,
+        );
+
+        let diagnostics = remap_overlay_diagnostics(
+            result.diagnostics,
+            &overlay.working_dir,
+            &overlay.original_root,
+        );
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .file
+                    .as_deref()
+                    .is_some_and(|file| file == helper_file.to_string_lossy())
+            }),
+            "expected helper diagnostics to remap to the original sibling helper path: {:?}",
+            diagnostics
+        );
+        let _ = fs::remove_dir_all(overlay.temp_root);
         let _ = fs::remove_dir_all(temp_dir);
     }
 

@@ -304,6 +304,25 @@ Common focused checks:
 cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture
 ```
 
+Normal non-mutating redundant-`tst` detection for native Motorola 68000 sources:
+
+```sh
+python3 scripts/workflow/check_native_68000_redundant_tests.py native/motorola68000 --fail
+```
+
+When you want to apply the mechanically safe cleanup, use the explicit
+bookended workflow wrapper instead of the normal quality gate:
+
+```sh
+make native-68000-ccr-cleanup-round
+```
+
+The cleanup wrapper runs the assembler/native-oriented baseline tests before
+mutating files, applies `--write --explain`, runs native 68000 formatting, and
+reruns the same tests after cleanup. If the post-cleanup test phase fails,
+inspect for brittle source-shape expectations before assuming the assembly
+behavior itself changed.
+
 FS-UAE tests are opt-in. They require `OPFORGE_FS_UAE_SMOKE=1` and
 environment/configuration for the local FS-UAE executable and launcher
 arguments. The helper code lives in `crates/opforge-asm/src/fs_uae_smoke.rs`.

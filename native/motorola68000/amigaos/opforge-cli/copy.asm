@@ -13,7 +13,6 @@
 ; Copy D0 bytes from A1 to A2.
 copyBytes	.block
 	move.w d0, d2
-	tst.w d2
 	beq.s done
 
 loop
@@ -41,7 +40,6 @@ loop
 ; Copy exactly D0 bytes from A0 to A1.
 copyFixedString	.block
 	move.w d0, d2
-	tst.w d2
 	beq.s done
 
 loop

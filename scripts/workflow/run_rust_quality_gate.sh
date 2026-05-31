@@ -8,12 +8,13 @@ Usage:
 
 Runs the canonical Rust quality gate for opForge code changes:
   1. native Motorola 68000 formatter check
-  2. CPU-specific architecture boundary check (enforced + warning-only scopes)
-  3. cargo fmt --all
-  4. cargo clippy -- -D warnings
-  5. cargo audit
-  6. C compiler availability check for FFI ABI coverage
-  7. cargo test --locked
+  2. report-only native Motorola 68000 redundant tst check (fail on safe autofixes)
+  3. CPU-specific architecture boundary check (enforced + warning-only scopes)
+  4. cargo fmt --all
+  5. cargo clippy -- -D warnings
+  6. cargo audit
+  7. C compiler availability check for FFI ABI coverage
+  8. cargo test --locked
 
 Use this single command when a plan, review, or implementation slice requires
 the full Rust quality gate.
@@ -54,6 +55,9 @@ require_c_compiler() {
 }
 
 run_step "Run native Motorola 68000 formatter gate" "${script_dir}/run_native_68000_format_gate.sh"
+run_step \
+  "Check native Motorola 68000 redundant tst patterns (report-only)" \
+  python3 "${script_dir}/check_native_68000_redundant_tests.py" native/motorola68000 --fail
 run_step "Check CPU-specific architecture boundary" python3 "${script_dir}/check_cpu_specific_arch_boundary.py"
 run_step "Run Rust formatter" cargo fmt --all
 run_step "Run Rust clippy" cargo clippy -- -D warnings

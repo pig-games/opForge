@@ -191,28 +191,24 @@ tkvmRun68000	.block
 	tst.l d4  ; non-empty source requires a non-null source pointer
 	beq checkTokenPointer
 	move.l a4, d0
-	tst.l d0
 	beq invalidArgument
 
 checkTokenPointer
 	tst.l d5  ; non-zero token capacity requires a writable token buffer
 	beq checkScratchPointer
 	move.l a5, d0
-	tst.l d0
 	beq invalidArgument
 
 checkScratchPointer
 	tst.l d6  ; non-zero scratch capacity requires a writable scratch buffer
 	beq checkProgramPointer
 	move.l a6, d0
-	tst.l d0
 	beq invalidArgument
 
 checkProgramPointer
 	tst.l d7  ; bytecode length 0 cannot encode a valid tokenizer program
 	beq invalidProgramAtCursor
 	move.l a3, d0
-	tst.l d0
 	beq invalidArgument
 
 	moveq #0, d0  ; proactively reject CR/LF because this slice models one line-input stream only
@@ -237,7 +233,6 @@ newlineScanDone
 	cmp.l state.TkvmProgramStateCount, d0
 	bcc invalidProgramAtCursor
 	move.l state.TkvmProgramStateTablePtr, d1
-	tst.l d1
 	beq.w invalidProgramAtCursor
 	movea.l d1, a1
 	add.l d0, d0
@@ -337,7 +332,6 @@ opcodeStartLexeme
 
 opcodePushChar
 	move.l LOCAL_CURRENT_BYTE(a2), d0
-	tst.l d0
 	bmi invalidProgramAtCursor
 	move.l d1, LOCAL_TEMP_U32(a2)
 	move.l d3, d1
@@ -383,7 +377,6 @@ opcodeSetState
 	cmp.l state.TkvmProgramStateCount, d0
 	bcc invalidProgramAtCursor
 	move.l state.TkvmProgramStateTablePtr, d1
-	tst.l d1
 	beq.w invalidProgramAtCursor
 	movea.l d1, a1
 	add.l d0, d0
@@ -470,7 +463,6 @@ opcodeJumpIfByteEq
 	adda.l #4, a0
 	move.l d0, LOCAL_TEMP_U32(a2)
 	move.l LOCAL_CURRENT_BYTE(a2), d0  ; no jump fires at EOF, matching Rust's Option<u8>-based predicate path
-	tst.l d0
 	bmi programLoop
 	cmp.w LOCAL_PENDING_KIND(a2), d0
 	bne programLoop
@@ -496,7 +488,6 @@ opcodeJumpIfClass
 	adda.l #4, a0
 	move.l d0, LOCAL_TEMP_U32(a2)
 	move.l LOCAL_CURRENT_BYTE(a2), d0  ; EOF never matches a class, same as vm_char_class_matches(None, ...)
-	tst.l d0
 	bmi programLoop
 	moveq #0, d0
 	move.w LOCAL_PENDING_KIND(a2), d0

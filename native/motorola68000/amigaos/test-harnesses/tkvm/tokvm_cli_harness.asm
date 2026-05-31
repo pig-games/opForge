@@ -575,13 +575,11 @@ validateTokenLoop
 	bgt validateInvalid
 
 	move.l 4(a0), d0
-	tst.l d0
 	beq validateInvalid
 	cmpi.l #runtime.SOURCE_BUFFER_CAPACITY + 1, d0
 	bhi validateInvalid
 
 	move.l 8(a0), d0
-	tst.l d0
 	beq validateInvalid
 	cmpi.l #runtime.SOURCE_BUFFER_CAPACITY + 1, d0
 	bhi validateInvalid

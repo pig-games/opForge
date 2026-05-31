@@ -257,8 +257,11 @@ fn diagnostics_are_deduplicated_by_stable_key() {
     let helper_file = shared_dir.join("helper.asm");
     let root_uri = path_to_file_uri(&root_file);
     let helper_uri = path_to_file_uri(&helper_file);
-    write_text(&root_file, ".use helper\n");
-    write_text(&helper_file, ".module helper\n@\n.endmodule\n");
+    write_text(&root_file, ".use helper (BROKEN)\n.byte BROKEN\n");
+    write_text(
+        &helper_file,
+        ".module helper\n.pub\nBROKEN = MISSING\n.endmodule\n",
+    );
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
     let _ = client.initialize(json!({
@@ -280,11 +283,10 @@ fn diagnostics_are_deduplicated_by_stable_key() {
                 "uri": helper_uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": ".module helper\n@\n.endmodule\n"
+                "text": ".module helper\n.pub\nBROKEN = MISSING\n.endmodule\n"
             }
         }),
     );
-    let _ = wait_for_nonempty_publish(&mut client, &helper_uri, Duration::from_secs(3));
 
     client.notify(
         "textDocument/didOpen",
@@ -293,7 +295,7 @@ fn diagnostics_are_deduplicated_by_stable_key() {
                 "uri": root_uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": ".use helper\n"
+                "text": ".use helper (BROKEN)\n.byte BROKEN\n"
             }
         }),
     );
@@ -465,8 +467,11 @@ fn overlay_remaps_dependency_diagnostics_to_original_uri() {
     let temp_dir = unique_temp_dir();
     let root_file = temp_dir.join("root.asm");
     let helper_file = temp_dir.join("helper.asm");
-    write_text(&root_file, ".use helper\n");
-    write_text(&helper_file, ".module helper\n@\n.endmodule\n");
+    write_text(&root_file, ".use helper (BROKEN)\n.byte BROKEN\n");
+    write_text(
+        &helper_file,
+        ".module helper\n.pub\nBROKEN = MISSING\n.endmodule\n",
+    );
     let root_uri = path_to_file_uri(&root_file);
     let helper_uri = path_to_file_uri(&helper_file);
 
@@ -488,7 +493,7 @@ fn overlay_remaps_dependency_diagnostics_to_original_uri() {
                 "uri": root_uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": ".use helper\n"
+                "text": ".use helper (BROKEN)\n.byte BROKEN\n"
             }
         }),
     );
@@ -1004,9 +1009,15 @@ fn overlay_stages_only_active_and_dependency_files() {
     let include_file = src_dir.join("inc.asm");
     let helper_file = deps_dir.join("helper.asm");
     let unrelated_file = noise_dir.join("unrelated.asm");
-    write_text(&root_file, ".include \"inc.asm\"\n.use helper\n");
-    write_text(&include_file, "@\n");
-    write_text(&helper_file, ".module helper\n@\n.endmodule\n");
+    write_text(
+        &root_file,
+        ".include \"inc.asm\"\n.use helper (BROKEN)\n.byte BROKEN\n",
+    );
+    write_text(&include_file, ".bogus\n");
+    write_text(
+        &helper_file,
+        ".module helper\n.pub\nBROKEN = MISSING\n.endmodule\n",
+    );
     write_text(&unrelated_file, "@\n");
     let root_uri = path_to_file_uri(&root_file);
     let helper_uri = path_to_file_uri(&helper_file);
@@ -1032,7 +1043,7 @@ fn overlay_stages_only_active_and_dependency_files() {
                 "uri": root_uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": ".include \"inc.asm\"\n.use helper\n"
+                "text": ".include \"inc.asm\"\n.use helper (BROKEN)\n.byte BROKEN\n"
             }
         }),
     );
@@ -1717,7 +1728,7 @@ fn hover_resolves_workspace_indexed_alias_qualified_import() {
         "\t.section code, kind=code\n",
         "\t.pub\n",
         "dispatchServiceV1\t.block\n",
-        "\tjsr svc.aerviceDispatchV1\n",
+        "\tjsr svc.serviceDispatchV1\n",
         "\trts\n",
         "\t.bend  ; dispatchServiceV1\n",
         "\t.endsection\n",

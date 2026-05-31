@@ -11511,9 +11511,9 @@ fn motorola68020_item6_2_native_cli_preserves_parser_spans_for_selected_requests
         &source,
         &[
             "opforgeNativeCliPrepareEncodeSelectedRequestForStatement .block",
-            "LEA lastErrorBuffer, A1",
+            "LEA buffers.lastErrorBuffer, A1",
             "JSR engine.prepareSelectedEvaluateRequestV1",
-            "MOVE.W D1, nativeCliEvalRequestLen",
+            "MOVE.W D1, state.NativeCliEvalRequestLen",
         ],
     ));
 }
@@ -12252,30 +12252,33 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
     assert!(source_contains_in_order(
         &source,
         &[
-            "MOVE.L #nativeCliBinRequested, abi.OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR(A0)",
-            "MOVE.L #nativeCliOpasmEventBuffer, abi.OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(A0)",
+            "MOVE.L #state.NativeCliBinRequested, abi.OPASM_ASSEMBLE_REQ_BIN_REQUESTED_PTR(A0)",
+            "MOVE.L #NativeCliOpasmEventBuffer, abi.OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(A0)",
             "MOVE.W #NATIVE_CLI_OPASM_EVENT_CAPACITY, abi.OPASM_ASSEMBLE_REQ_EVENT_CAPACITY(A0)",
-            "MOVE.L #nativeCliOpasmEventCount, abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(A0)",
+            "MOVE.L #NativeCliOpasmEventCount, abi.OPASM_ASSEMBLE_REQ_EVENT_COUNT_PTR(A0)",
+            "LEA abi.OPASM_ASSEMBLE_REQ_BYTES(A0), A2",
             "MOVE.L A2, abi.OPASM_ASSEMBLE_REQ_SERVICE_FRAME_PTR(A0)",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
-            "MOVE.L #controlBlockV1, abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(A1)",
-            "MOVE.L #lastErrorBuffer, abi.OPASM_SERVICE_IO_BUFFER_PTR(A1)",
-            "MOVE.W #LAST_ERROR_BUFFER_CAPACITY, abi.OPASM_SERVICE_IO_BUFFER_CAPACITY(A1)",
+            "MOVE.L #buffers.ControlBlockV1, abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(A1)",
+            "MOVE.L #buffers.lastErrorBuffer, abi.OPASM_SERVICE_IO_BUFFER_PTR(A1)",
+            "MOVE.W #buffers.LAST_ERROR_BUFFER_CAPACITY, abi.OPASM_SERVICE_IO_BUFFER_CAPACITY(A1)",
+            "LEA buffers.ControlBlockV1, A2",
+            "ADDA.W #constants.NATIVE_EVAL_EXPR_EXTENSION_PTR_V1, A2",
             "MOVE.L A2, abi.OPASM_SERVICE_EVAL_EXTENSION_PTR(A1)",
-            "MOVE.W #NATIVE_EVAL_EXPR_EXTENSION_BYTES, abi.OPASM_SERVICE_EVAL_EXTENSION_BYTES(A1)",
+            "MOVE.W #constants.NATIVE_EVAL_EXPR_EXTENSION_BYTES, abi.OPASM_SERVICE_EVAL_EXTENSION_BYTES(A1)",
         ]
     ));
     assert!(source_contains_in_order(
         &source,
         &[
             "JSR driver.assembleSessionV1",
-            "LEA nativeCliOpasmEventBuffer, A0",
-            "MOVE.W nativeCliOpasmEventCount, D0",
-            "JSR opforgeNativeCliRenderOpasmEventsV1",
+            "LEA NativeCliOpasmEventBuffer, A0",
+            "MOVE.W NativeCliOpasmEventCount, D0",
+            "JSR opasm_event_report.opforgeNativeCliRenderOpasmEventsV1",
         ]
     ));
     assert!(!source.contains("opforge_native_cli_run_pass_one:"));
@@ -14966,10 +14969,23 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
     assert!(source_contains_in_order(
         &service,
         &[
-            "lea MselChunkOffsetLo, a3",
+            "lea buffers.MselChunkOffsetLo, a3",
+            "tst.b d5",
+            "beq.s skipShapeCompare",
             "move.l a1, EncodeSelectedCurrentShapePtr",
+            "move.w d0, EncodeSelectedCurrentShapeLen",
             "tst.w EncodeSelectedMselShapeLen",
             "beq.s skipShapeCompare",
+            "tst.l EncodeSelectedMselShapePtr",
+            "beq.s skipShapeCompare",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "move.w d0, EncodeSelectedMselPlanLen",
+            "move.l a2, -(sp)",
+            "move.w d7, -(sp)",
             "bsr.w tkpkgMselTryBuildCandidateV1",
         ]
     ));
@@ -15254,9 +15270,8 @@ fn motorola68020_tkpkg_rejects_over_capacity_active_identifiers_before_copying()
     assert!(source_contains_in_order(
         &pipeline,
         &[
-            "tkpkgPipelineSetActiveV1",
-            ".block",
-            "BTST #0, PackageStateFlags",
+            "tkpkgPipelineSetActiveV1 .block",
+            "BTST #0, buffers.PackageStateFlags",
             "BNE.S parseRequest",
             "LEA NoPackageText, A1",
         ]
@@ -15270,10 +15285,9 @@ fn motorola68020_tkpkg_rejects_over_capacity_active_identifiers_before_copying()
     assert!(source_contains_in_order(
         &pipeline,
         &[
-            "commitActiveSelectionV1",
-            ".block",
-            "lea PendingCpuOffsetLo, a3",
-            "lea ActiveCpuBuffer.l, a2",
+            "commitActiveSelectionV1 .block",
+            "lea buffers.PendingCpuOffsetLo, a3",
+            "lea buffers.ActiveCpuBuffer.l, a2",
             "bsr.w copyLocatorToBufferV1",
             "tst.b d0",
             "bne.w commitDone",
@@ -15281,23 +15295,23 @@ fn motorola68020_tkpkg_rejects_over_capacity_active_identifiers_before_copying()
     ));
     assert!(normalized_pipeline.contains(
         normalize_tkpkg_fragment(
-            "lea PendingDialectOffsetLo, a3\n        lea ActiveDialectBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.w commitDone"
+            "lea buffers.PendingDialectOffsetLo, a3\n        lea buffers.ActiveDialectBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.w commitDone"
         )
         .as_str()
     ));
     assert!(normalized_pipeline.contains(
         normalize_tkpkg_fragment(
-            "lea PendingFamilyOffsetLo, a3\n        lea ActiveFamilyBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.w commitDone"
+            "lea buffers.PendingFamilyOffsetLo, a3\n        lea buffers.ActiveFamilyBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.w commitDone"
         )
         .as_str()
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "copyLocatorToBufferV1\t.block\n        BSR.W readLocatorPtrLenV1\n        CMPI.W #PIPELINE_ID_BUFFER_CAPACITY, D3\n        BHS.S copyBufferTooLong"
+        "copyLocatorToBufferV1\t.block\n        BSR.W readLocatorPtrLenV1\n        CMPI.W #buffers.PIPELINE_ID_BUFFER_CAPACITY, D3\n        BHS.S copyBufferTooLong"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "copyBufferTooLong:\n        LEA IdentifierTooLongText, A1\n        MOVEQ #IDENTIFIER_TOO_LONG_TEXT_LEN, D1\n        MOVEQ #STATUS_RUNTIME_ERROR_V1, D0"
+        "copyBufferTooLong:\n        LEA IdentifierTooLongText, A1\n        MOVEQ #IDENTIFIER_TOO_LONG_TEXT_LEN, D1\n        MOVEQ #abi.STATUS_RUNTIME_ERROR_V1, D0"
     ));
 }
 
@@ -15379,40 +15393,39 @@ fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
     assert!(source_contains_in_order(
         &token_policy,
         &[
-            "resolveLocatorV1",
-            ".block",
-            "MOVEQ #SCOPED_OWNER_DIALECT, D0",
-            "LEA PendingDialectOffsetLo, A3",
+            "resolveLocatorV1 .block",
+            "MOVEQ #buffers.SCOPED_OWNER_DIALECT, D0",
+            "LEA buffers.PendingDialectOffsetLo, A3",
             "BSR.W findOwner",
         ]
     ));
     assert!(source_contains_in_order(
         &token_policy,
         &[
-            "MOVEQ #SCOPED_OWNER_CPU, D0",
-            "LEA PendingCpuOffsetLo, A3",
+            "MOVEQ #buffers.SCOPED_OWNER_CPU, D0",
+            "LEA buffers.PendingCpuOffsetLo, A3",
             "BSR.W findOwner",
         ]
     ));
     assert!(source_contains_in_order(
         &token_policy,
         &[
-            "MOVEQ #SCOPED_OWNER_FAMILY, D0",
-            "LEA PendingFamilyOffsetLo, A3",
+            "MOVEQ #buffers.SCOPED_OWNER_FAMILY, D0",
+            "LEA buffers.PendingFamilyOffsetLo, A3",
             "BSR.W findOwner",
         ]
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "resolveTokenizerVmLocatorV1\t.block\n        MOVEQ #SCOPED_OWNER_DIALECT, D0\n        LEA PendingDialectOffsetLo, A3\n        BSR.W findTokenizerVmOwnerV1"
+        "resolveTokenizerVmLocatorV1\t.block\n        MOVEQ #buffers.SCOPED_OWNER_DIALECT, D0\n        LEA buffers.PendingDialectOffsetLo, A3\n        BSR.W findTokenizerVmOwnerV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "MOVEQ #SCOPED_OWNER_CPU, D0\n        LEA PendingCpuOffsetLo, A3\n        BSR.W findTokenizerVmOwnerV1"
+        "MOVEQ #buffers.SCOPED_OWNER_CPU, D0\n        LEA buffers.PendingCpuOffsetLo, A3\n        BSR.W findTokenizerVmOwnerV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "MOVEQ #SCOPED_OWNER_FAMILY, D0\n        LEA PendingFamilyOffsetLo, A3\n        BSR.W findTokenizerVmOwnerV1"
+        "MOVEQ #buffers.SCOPED_OWNER_FAMILY, D0\n        LEA buffers.PendingFamilyOffsetLo, A3\n        BSR.W findTokenizerVmOwnerV1"
     ));
     assert!(tkpkg_source_contains(&buffers, "SCOPED_OWNER_DIALECT = 2"));
     assert!(tkpkg_source_contains(&buffers, "SCOPED_OWNER_CPU = 1"));
@@ -15436,11 +15449,10 @@ fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
     assert!(source_contains_in_order(
         &token_policy,
         &[
-            "findOwner",
-            ".block",
+            "findOwner .block",
             "MOVE.B D0, D6",
             "MOVE.L A3, -(SP)",
-            "LEA PendingTokenPolicyOffsetLo, A3",
+            "LEA buffers.PendingTokenPolicyOffsetLo, A3",
             "CLR.L (A3)+",
             "CLR.B (A3)",
             "MOVEA.L (SP)+, A3",
@@ -15550,20 +15562,18 @@ fn motorola68020_tkpkg_module_surface_assembles_composed_runtime_boundary() {
     assert!(source_contains_in_order(
         &entry_source,
         &[
-            "tkpkgEntryDispatchV1",
-            ".block",
-            "JSR svc.dispatchV1",
+            "tkpkgEntryDispatchV1 .block",
+            "JSR service.dispatchV1",
             "RTS"
         ]
     ));
     assert!(source_contains_in_order(
         &entry_source,
         &[
-            "tkpkgEntryBootstrapV1",
-            ".block",
-            "lea ControlBlockV1, a0",
-            "moveq #ENTRY_ORD_INIT, d0",
-            "jsr svc.dispatchV1",
+            "tkpkgEntryBootstrapV1 .block",
+            "lea buffers.ControlBlockV1, a0",
+            "moveq #abi.ENTRY_ORD_INIT, d0",
+            "jsr service.dispatchV1",
             "rts",
         ]
     ));
@@ -15716,10 +15726,10 @@ fn motorola68020_tkpkg_tokenizer_vm_bounds_selected_tkvm_record_decode() {
     let normalized_tokenizer = normalize_tkpkg_fragment(&tokenizer_source).to_ascii_lowercase();
 
     for expected in [
-        "LEA PackageStorage, A2\n        LEA 0(A2, D0.W), A2\n        MOVEA.L A2, A6\n        ADDA.L D2, A6\n        MOVEQ #1, D0\n        BSR.W requireBytes\n        TST.B D1\n        BNE.W invalidProgram\n        ADDQ.W #1, A2",
+        "LEA buffers.PackageStorage, A2\n        LEA 0(A2, D0.W), A2\n        MOVEA.L A2, A6\n        ADDA.L D2, A6\n        MOVEQ #1, D0\n        BSR.W requireBytes\n        TST.B D1\n        BNE.W invalidProgram\n        ADDQ.W #1, A2",
         "BSR.W skipString\n        TST.B D1\n        BNE.W invalidProgram\n        BSR.W readU16Le",
         "skipStateOffsets\n        BSR.W readU32Le\n        TST.B D1\n        BNE.W invalidProgram\n        MOVE.L D0, (A3)+",
-        "BSR.W readStringIntoSlot\n        TST.B D1\n        BNE.W invalidProgram\n        LEA ActiveTokenizerVmUnterminatedStringDiagCode, A3",
+        "LEA buffers.ActiveTokenizerVmUnterminatedStringDiagCode, A3\n        LEA buffers.ActiveTokenizerVmUnterminatedStringDiagLen, A1\n        BSR.W readStringIntoSlot\n        TST.B D1\n        BNE.W invalidProgram",
         "BSR.W readBytesField\n        TST.B D1\n        BNE.W invalidProgram\n        TST.W D3",
         "skipString\t.block\n        BSR.W readU32Le\n        TST.B D1\n        BNE.S skipStringDone\n        BSR.W requireBytes",
         "readStringIntoSlot\t.block\n        BSR.W readU32Le\n        TST.B D1\n        BNE.S readStringDone\n        BSR.W requireBytes",
@@ -15796,7 +15806,7 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     assert!(listing.contains("tkvm.amigaos.control.tkvmSetProgramStateTable68000"));
     assert!(tokvm_source_contains(&local_tokvm_source, "opcodeSetState"));
     assert!(local_tokvm_source.contains(
-        "move.l state.TkvmProgramStateTablePtr, d1\n\ttst.l d1\n\tbeq.w invalidProgramAtCursor\n\tmovea.l d1, a1\n\tadd.l d0, d0\n\tadd.l d0, d0\n\tadda.l d0, a1\n\tmove.l (a1), d0"
+        "move.l state.TkvmProgramStateTablePtr, d1\n\tbeq.w invalidProgramAtCursor\n\tmovea.l d1, a1\n\tadd.l d0, d0\n\tadd.l d0, d0\n\tadda.l d0, a1\n\tmove.l (a1), d0"
     ));
     assert!(char_predicates_source.contains("tkvmIsWhitespace\t.block"));
     assert!(listing.contains("tkvm.amigaos.scanner.commit"));
@@ -15814,11 +15824,11 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_locks_number_and_operator
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "CMPI.W #TK_KIND_OP_POWER,D0\n        BEQ.W opPower"
+        "CMPI.W #runtime.TK_KIND_OP_POWER,D0\n        BEQ.W opPower"
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "CMPI.W #TK_KIND_OP_BIT_XOR,D0\n        BEQ.W opBitXor"
+        "CMPI.W #runtime.TK_KIND_OP_BIT_XOR,D0\n        BEQ.W opBitXor"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -16440,14 +16450,14 @@ fn motorola68020_tokvm_interpreter_uses_demo_program_length_value() {
     assert!(
         tokvm_source_contains(
             &source,
-            "        MOVE.L #TKVM_DEFAULT_MAX_STEPS_PER_LINE,D0\n        JSR tkvmSetStepBudget68000\n        LEA SourceBuffer,A0"
+            "        MOVE.L #state.TKVM_DEFAULT_MAX_STEPS_PER_LINE,D0\n        JSR control.tkvmSetStepBudget68000\n        LEA SourceBuffer,A0"
         ),
         "expected tokvm harness to set an explicit native step budget before invoking the interpreter"
     );
     assert!(
         tokvm_source_contains(
             &source,
-            "        LEA DemoProgram,A3\n        MOVE.L DemoProgramLen,D3\n        JSR tkvmRun68000"
+            "        LEA demo_program.DemoProgram,A3\n        MOVE.L demo_program.DemoProgramLen,D3\n        JSR runtime.tkvmRun68000"
         ),
         "expected tokvm harness to pass the stored demo program length value into tkvmRun68000"
     );
@@ -16471,7 +16481,7 @@ fn motorola68020_tokvm_interpreter_validates_vm_result_before_report_render() {
     assert!(
         tokvm_source_contains(
             &source,
-            "        MOVE.L D3,D2\n        BSR.W validateVmResult\n        TST.L D0\n        BEQ.S reportValidated\n        MOVEQ #TK_STATUS_VM_FAILURE,D4\n        MOVEQ #0,D5\n        MOVEQ #0,D6\n        CLR.L D2"
+            "        MOVE.L D3,D2\n        BSR.W validateVmResult\n        TST.L D0\n        BEQ.S reportValidated\n        MOVEQ #runtime.TK_STATUS_VM_FAILURE,D4\n        MOVEQ #0,D5\n        MOVEQ #0,D6\n        CLR.L D2"
         ),
         "expected tokvm report writer to validate VM outputs before formatting token metadata"
     );
@@ -16622,7 +16632,7 @@ fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
     assert!(
         tokvm_source_contains(
             &source,
-            "opcodePushChar:\n        MOVE.L LOCAL_CURRENT_BYTE(A2),D0\n        TST.L D0\n        BMI invalidProgramAtCursor\n        MOVE.L D1,LOCAL_TEMP_U32(A2)\n        MOVE.L D3,D1\n        ADD.L LOCAL_PENDING_LEX_LEN(A2),D1\n        CMP.L D6,D1\n        BCC lexemeOverflowAtCursor"
+            "opcodePushChar:\n        MOVE.L LOCAL_CURRENT_BYTE(A2),D0\n        BMI invalidProgramAtCursor\n        MOVE.L D1,LOCAL_TEMP_U32(A2)\n        MOVE.L D3,D1\n        ADD.L LOCAL_PENDING_LEX_LEN(A2),D1\n        CMP.L D6,D1\n        BCC lexemeOverflowAtCursor"
         ),
         "expected PushChar to validate ReadChar state and reuse native scratch-budget checks"
     );

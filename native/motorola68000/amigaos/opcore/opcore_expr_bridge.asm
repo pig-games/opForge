@@ -146,7 +146,6 @@ opcodeParseExpression
 	movem.l d1/d4/a1, -(sp)
 	bsr.w compileAdditive
 	move.l d0, d2
-	tst.l d2
 	beq.s compileOk
 	cmpi.l #2, d2
 	bhs.s restore
@@ -156,7 +155,6 @@ opcodeParseExpression
 compileOk
 	bsr.w finalizeProgram
 	move.l d0, d2
-	tst.l d2
 	beq.s finalizeOk
 	moveq #4, d2
 	bra.s restore
@@ -165,7 +163,6 @@ finalizeOk
 	moveq #runtime.EXPRVM_OPCODE_END, d6
 	bsr.w emitU8D6
 	move.l d0, d2
-	tst.l d2
 	beq.s ensureEndOk
 	moveq #4, d2
 	bra.s restore
@@ -182,7 +179,6 @@ ensureEndOk
 	move.w runtime.ExprvmSelectedOpcodeVersion, d6
 	jsr runtime.exprvmEvalProgramV1
 	move.l d0, d2
-	tst.l d2
 	beq.s restore
 	cmpi.l #51, d2
 	bhs.s restore
@@ -400,7 +396,6 @@ label
 	move.l d0, d2
 	bsr.w resolveLabelIndex
 	move.l d0, d5
-	tst.l d5
 	beq.s labelResolved
 	moveq #0, d3
 	move.w runtime.ExprvmCurrentPass, d3
@@ -409,7 +404,6 @@ label
 	clr.l d3
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
-	tst.l d5
 	bne.s maybeApplyUnary
 	adda.l d2, a0
 	move.l d6, d0
@@ -419,7 +413,6 @@ label
 labelResolved
 	bsr.w emitPushSymbolD3
 	move.l d0, d5
-	tst.l d5
 	bne.s maybeApplyUnary
 	adda.l d2, a0
 	move.l d6, d0

@@ -288,7 +288,6 @@ opforgeNativeCliLoadActivePrvmProgram	.block
 	move.b (a1)+, d1
 	lsl.w #8, d1
 	or.w d1, d2
-	tst.w d2
 	beq.s fail
 	lea buffers.packageStorage, a2
 	lea 0(a2, d0.W), a2

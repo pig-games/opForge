@@ -114,7 +114,6 @@ use
 opforgeNativeCliParserTailPtr	.block
 	bsr.w opforgeNativeCliBuildParserTailBuffer
 	move.l d0, d1
-	tst.l d1
 	bne.s return
 	lea state.NativeCliParserTailBuffer, a0
 	moveq #0, d0

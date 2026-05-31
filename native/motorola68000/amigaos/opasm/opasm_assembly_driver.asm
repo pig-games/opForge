@@ -387,7 +387,6 @@ readOperandValueForStatement	.block
 	move.w d7, d0
 	jsr eng.statementHasExprMetadataV1
 	move.w d0, d6
-	tst.w d6
 	bne.s loadSourceLine
 	bra.w storedText
 
@@ -641,7 +640,6 @@ appendEventFrame	.block
 	movem.l d0-d1/a0-a1/a3, -(sp)
 	movea.l OpasmActiveAssembleReqPtr, a3
 	move.l a3, d0
-	tst.l d0
 	beq.s ok
 	tst.l abi.OPASM_ASSEMBLE_REQ_EVENT_BUFFER_PTR(a3)
 	beq.s ok

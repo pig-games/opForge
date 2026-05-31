@@ -343,7 +343,6 @@ stringEqAsciiCasefold	.block
 	cmp.w d1, d0
 	bne.s noMatch
 	move.w d0, d4
-	tst.w d4
 	beq.s match
 	subq.w #1, d4
 

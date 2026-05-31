@@ -1300,7 +1300,6 @@ tryU8
 
 tryU8Stable
 	move.l EncodeSelectedMselValue, d3
-	tst.l d3
 	bpl.s tryU8NonNegative
 	bra.w operandError
 
@@ -1318,7 +1317,6 @@ tryU16
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w return
 	move.l EncodeSelectedMselValue, d3
-	tst.l d3
 	bpl.s tryU16NonNegative
 	bra.w operandError
 
@@ -1888,7 +1886,6 @@ writeCandidateOutputV1	.block
 	bhi.w fail
 	adda.w d5, a4
 	sub.w d5, d4
-	tst.w d4
 	beq.w fail
 	moveq #0, d3
 	move.b (a4)+, d3
@@ -2550,7 +2547,6 @@ tkpkgServiceChunkPtrFromLocatorV1	.block
 	move.b (a3)+, d1
 	lsl.w #8, d1
 	or.w d1, d7
-	tst.w d7
 	beq.s missing
 	lea buffers.PackageStorage, a6
 	lea 0(a6, d0.W), a2
@@ -2648,7 +2644,6 @@ tkpkgServiceStringEqAsciiCasefoldV1	.block
 	cmp.w d1, d0
 	bne.s noMatch
 	move.w d0, d4
-	tst.w d4
 	beq.s match
 	subq.w #1, d4
 
@@ -2787,7 +2782,6 @@ tkpkgEncodeInstructionEnvelopeV1	.block
 	movea.l a4, a5
 	adda.w d2, a4
 	sub.w d2, d7
-	tst.w d7
 	beq.w fail
 	moveq #0, d3
 	move.b (a4)+, d3
@@ -2806,7 +2800,6 @@ tkpkgEncodeInstructionEnvelopeV1	.block
 	movea.l a4, a6
 	adda.w d4, a4
 	sub.w d4, d7
-	tst.w d7
 	beq.w fail
 	moveq #0, d5
 	move.b (a4)+, d5
@@ -3250,7 +3243,6 @@ tkpkgServiceWriteOutputBufferOffsetV1	.block
 tkpkgServiceCopyLastErrorMessageV1	.block
 	lea buffers.LastErrorBuffer, a2
 	move.w d1, d2
-	tst.w d2
 	beq.s done
 
 loop

@@ -120,7 +120,6 @@ clearPendingLoop
 	move.b 17(a0), d2
 	lsl.w #8, d2
 	or.w d2, d1
-	tst.w d1
 	beq.w badRequest
 	lea 0(a0, d1.W), a1
 	moveq #0, d3
@@ -839,7 +838,6 @@ copyLocatorToBufferV1	.block
 	cmpi.w #buffers.PIPELINE_ID_BUFFER_CAPACITY, d3
 	bhs.s copyBufferTooLong
 	move.w d3, d2
-	tst.w d2
 	beq.s copyBufferDone
 	subq.w #1, d2
 
@@ -1088,7 +1086,6 @@ stringEqAsciiCasefoldV1	.block
 	cmp.w d1, d0
 	bne.s stringNoMatch
 	move.w d0, d4
-	tst.w d4
 	beq.s stringMatch
 	subq.w #1, d4
 

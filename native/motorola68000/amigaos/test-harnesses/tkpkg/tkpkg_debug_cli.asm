@@ -793,7 +793,6 @@ tkpkgDebugCliCloseDosV1
 
 tkpkgDebugCliCopyBytesV1
 	move.w d0, d2
-	tst.w d2
 	beq.s tkpkgDebugCliCopyDone
 
 tkpkgDebugCliCopyLoop

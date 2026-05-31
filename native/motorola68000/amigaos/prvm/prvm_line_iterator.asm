@@ -118,7 +118,6 @@ prvmIterateLines68000	.block
 	bne.w invalidArgument
 
 	move.l ITER_FRAME_START_LINE_NUM(a6), d6
-	tst.l d6
 	bne.s startLineReady
 	moveq #1, d6
 

@@ -18,6 +18,7 @@ crates/opforge-cli-core/src/cli.rs | 8080,8085,z80,6809,6309,6502,65c02,65816,45
 
 # The native formatter wrapper must name the host/native CPU and native module roots.
 scripts/workflow/run_native_68000_format_gate.sh | 68000,68020,motorola68000,m68000,m68020 | Native 68000 formatter gate must invoke opForge with the native host CPU profile.
+scripts/workflow/run_native_68000_ccr_cleanup_round.sh | 68000,68020,motorola68000,m68000,m68020 | Native 68000 cleanup wrapper intentionally names the native host CPU scope and validation command.
 
 # The checker sources intentionally enumerate CPU-specific vocabulary and reviewed exceptions.
 scripts/workflow/check_cpu_specific_arch_boundary.py | * | The checker implementation documents protected neutral paths and low-signal CPU vocabulary suppressions.

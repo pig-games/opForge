@@ -16588,14 +16588,14 @@ fn motorola68020_tokvm_interpreter_restores_program_counter_after_scan_opcodes()
     assert!(
         tokvm_source_contains(
             &tokenizer_source,
-            "opcodeScanIdentifier:\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR scanIdentifierToken\n        TST.L D0\n        BNE return\n        MOVEA.L LOCAL_PROGRAM_COUNTER(A2),A0\n        BRA programLoop"
+            "opcodeScanIdentifier:\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR scanner.scanIdentifierToken\n        BNE return\n        MOVEA.L LOCAL_PROGRAM_COUNTER(A2),A0\n        BRA programLoop"
         ),
         "expected the identifier scan opcode to restore the VM program counter after tokenization"
     );
     assert!(
         tokvm_source_contains(
             &tokenizer_source,
-            "opcodeScanSymbol:\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR scanSymbolToken\n        TST.L D0\n        BNE return\n        MOVEA.L LOCAL_PROGRAM_COUNTER(A2),A0\n        BRA programLoop"
+            "opcodeScanSymbol:\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR scanner.scanSymbolToken\n        BNE return\n        MOVEA.L LOCAL_PROGRAM_COUNTER(A2),A0\n        BRA programLoop"
         ),
         "expected the symbol scan opcode to restore the VM program counter after tokenization"
     );
@@ -16636,13 +16636,13 @@ fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
     assert!(
         tokvm_source_contains(
             &source,
-            "opcodeEmitToken:\n        LEA 0(A3,D7.L),A1\n        CMPA.L A1,A0\n        BCC invalidProgramAtCursor\n        MOVEQ #0,D0\n        MOVE.B (A0)+,D0\n        MOVE.W D0,LOCAL_PENDING_KIND(A2)\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR commitPendingToken"
+            "opcodeEmitToken:\n        LEA 0(A3,D7.L),A1\n        CMPA.L A1,A0\n        BCC invalidProgramAtCursor\n        MOVEQ #0,D0\n        MOVE.B (A0)+,D0\n        MOVE.W D0,LOCAL_PENDING_KIND(A2)\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR scanner.commitPendingToken"
         ),
         "expected EmitToken to read the inline kind operand and commit the pending native token"
     );
     assert!(
         source.contains(
-            "move.w d0, LOCAL_PENDING_KIND(a2)\n\tmove.l a0, LOCAL_PROGRAM_COUNTER(a2)\n\tjsr commitPendingToken\n\ttst.l d0\n\tbne return\n\tmovea.l LOCAL_PROGRAM_COUNTER(a2), a0\n\tbra programLoop"
+            "move.w d0, LOCAL_PENDING_KIND(a2)\n\tmove.l a0, LOCAL_PROGRAM_COUNTER(a2)\n\tjsr scanner.commitPendingToken\n\tbne return\n\tmovea.l LOCAL_PROGRAM_COUNTER(a2), a0\n\tbra programLoop"
         ),
         "expected EmitToken to preserve the bytecode PC across native token commit"
     );
@@ -16707,8 +16707,8 @@ fn motorola68020_tokvm_interpreter_records_operand_aware_vm_failures() {
         "expected tokvm to retain a dedicated last-failure operand slot"
     );
     assert!(
-        source.contains("clr.w TkvmLastFailureKind")
-            && source.contains("clr.w TkvmLastFailureOperand"),
+        source.contains("clr.w state.TkvmLastFailureKind")
+            && source.contains("clr.w state.TkvmLastFailureOperand"),
         "expected tkvmRun68000 to clear stale failure metadata before each execution"
     );
 }

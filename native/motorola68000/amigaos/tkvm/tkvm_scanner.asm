@@ -408,6 +408,15 @@ pendingLexemeOverflow
 ; forms. The structure intentionally parallels vm_scan_symbol_token() in Rust:
 ; dispatch by lead byte, optionally consume a longer form, then commit the
 ; canonical lexeme bytes through tkvmStageAndCommitSymbol.
+; Inputs: A2 = LOCAL_* frame base; A4 = source buffer base; A6 = scratch base;
+; D2 = source cursor; D3 = scratch bytes used; D4 = source length; D6 =
+; scratch capacity.
+; Outputs: D0 = TK_STATUS_SUCCESS, TK_STATUS_LEXEME_OVERFLOW,
+; TK_STATUS_VM_FAILURE, or TK_STATUS_INVALID_PROGRAM; D2 advanced past the
+; consumed symbol or prefixed number; D1/D3 updated by downstream helpers on
+; success.
+; Clobbers: A0-A1/D0/CCR.
+; CCR: reflects D0 on return.
 scanSymbolToken	.block
 	; The dispatch order matters. More syntactically specific lead bytes are
 	; tested before generic operator fallbacks so multi-byte forms get the
@@ -854,7 +863,6 @@ stageAndCommitSymbol
 	; D2 already points just past the consumed source bytes, and A0/D0 name
 	; the canonical lexeme bytes to materialize into scratch.
 	jsr stageFixedLexeme  ; stage the canonical lexeme bytes before committing the token metadata
-	tst.l d0
 	bne stageAndCommitSymbolDone
 	move.l d2, LOCAL_PENDING_END(a2)
 	jsr commitPendingToken
@@ -874,6 +882,12 @@ symbolInvalidProgram
 ; Stage a fixed lexeme literal from the static data table into scratch.
 ; This is used for punctuation and operator tokens whose lexeme spelling is
 ; known upfront and does not need to be copied from the source buffer.
+; Inputs: A0 = fixed lexeme bytes; A2 = LOCAL_* frame base; A6 = scratch base;
+; D0 = fixed lexeme length; D3 = scratch bytes used; D6 = scratch capacity.
+; Outputs: D0 = TK_STATUS_SUCCESS or TK_STATUS_LEXEME_OVERFLOW; LOCAL_PENDING_LEX_LEN
+; updated to the fixed lexeme length; D2 = failing start column on overflow.
+; Clobbers: A1/CCR.
+; CCR: reflects D0 on return.
 stageFixedLexeme	.block
 	move.l d0, LOCAL_PENDING_LEX_LEN(a2)  ; fixed operator/punctuation lexeme length from the inline template string
 	move.l d3, d0
@@ -902,6 +916,12 @@ pendingLexemeOverflow
 
 ; Rust treats '%' as a binary-number prefix only when the byte appears where an
 ; expression can start. Without that context, % remains the modulo operator.
+; Inputs: A2 = LOCAL_* frame base; A4 = source buffer base.
+; Outputs: D0 = 1 when `%` should begin a prefixed number, otherwise 0.
+; LOCAL_PENDING_KIND/LOCAL_TEMP_U32 are reused as temporary scratch before
+; symbol staging begins.
+; Clobbers: A1/CCR.
+; CCR: reflects D0 on return.
 tkvmPercentHasPrefixContext	.block
 	move.l LOCAL_PENDING_START(a2), d0
 	beq prefixTrue

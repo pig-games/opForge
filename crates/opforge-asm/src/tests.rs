@@ -15676,41 +15676,37 @@ fn motorola68020_tkpkg_tokenize_line_module_surface_routes_entrypoint_into_packa
 
     assert!(tkpkg_source_contains(
         &service_source,
-        ".use tkpkg.amigaos.tokenizer_vm (tkpkgTokenizerVmTokenizeLineV1)"
+        ".use tkpkg.amigaos.tokenizer_vm"
     ));
     assert!(tkpkg_source_contains(
         &service_source,
-        "CMPI.B #ENTRY_ORD_TOKENIZE_LINE,D0\n        BEQ.W handleTokenizeLine"
+        "CMPI.B #abi.ENTRY_ORD_TOKENIZE_LINE,D0\n        BEQ.W handleTokenizeLine"
     ));
     assert!(tkpkg_source_contains(
         &service_source,
-        "handleTokenizeLine:\n        MOVE.L A0,-(SP)\n        BSR.W tkpkgTokenizerVmTokenizeLineV1"
+        "handleTokenizeLine:\n        MOVE.L A0,-(SP)\n        BSR.W tokenizer_vm.tkpkgTokenizerVmTokenizeLineV1"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tkvmRun68000)"
+        ".use tkvm.amigaos.runtime"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.control (tkvmSetStepBudget68000, tkvmSetProgramStateTable68000)"
+        ".use tkvm.amigaos.control"
     ));
-    assert!(tkpkg_source_contains(
-        &tokenizer_source,
-        ".use tkvm.amigaos.control (tkvmReadLastFailure68000)"
-    ));
-    assert!(tokenizer_source.contains("jsr tkvmSetStepBudget68000"));
+    assert!(tokenizer_source.contains("jsr control.tkvmSetStepBudget68000"));
     assert!(tokenizer_source.contains("ActiveTokenizerVmStateTable"));
     assert!(tokenizer_source.contains("ActiveTokenizerVmStateCountLo"));
     assert!(tokenizer_source.contains("ActiveTokenizerVmInvalidCharDiagCode"));
-    assert!(tokenizer_source.contains("jsr tkvmSetProgramStateTable68000"));
-    assert!(tokenizer_source.contains("jsr tkvmRun68000"));
+    assert!(tokenizer_source.contains("jsr control.tkvmSetProgramStateTable68000"));
+    assert!(tokenizer_source.contains("jsr runtime.tkvmRun68000"));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
         "MOVEQ #0,D4\n        MOVE.W D0,D4\n        SUBQ.W #4,D4"
     ));
     assert!(tokvm_source_contains(
         &local_tokvm_source,
-        "tkvm_run_68000:"
+        "tkvmRun68000\t.block"
     ));
 }
 
@@ -15758,19 +15754,19 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.runtime (tkvmRun68000)"
+        ".use tkvm.amigaos.runtime"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        ".use tkvm.amigaos.control (tkvmSetStepBudget68000, tkvmSetProgramStateTable68000)"
+        ".use tkvm.amigaos.control"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        "MOVEQ #0,D1\n        MOVE.W #TOKEN_BUFFER_CAPACITY,D1"
+        "MOVEQ #0,D1\n        MOVE.W #buffers.TOKEN_BUFFER_CAPACITY,D1"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
-        "MOVEQ #0,D2\n        MOVE.W #TOKEN_SCRATCH_CAPACITY,D2"
+        "MOVEQ #0,D2\n        MOVE.W #buffers.TOKEN_SCRATCH_CAPACITY,D2"
     ));
     assert!(tkpkg_source_contains(
         &tokenizer_source,
@@ -15800,12 +15796,9 @@ fn motorola68020_tkpkg_tokenizer_parity_module_surface_assembles_entry_runtime()
     assert!(listing.contains("tkvm.amigaos.control.tkvmSetProgramStateTable68000"));
     assert!(tokvm_source_contains(&local_tokvm_source, "opcodeSetState"));
     assert!(local_tokvm_source.contains(
-        "move.l TkvmProgramStateTablePtr, d1\n\ttst.l d1\n\tbeq.w invalidProgramAtCursor\n\tmovea.l d1, a1\n\tadd.l d0, d0\n\tadd.l d0, d0\n\tadda.l d0, a1\n\tmove.l (a1), d0"
+        "move.l state.TkvmProgramStateTablePtr, d1\n\ttst.l d1\n\tbeq.w invalidProgramAtCursor\n\tmovea.l d1, a1\n\tadd.l d0, d0\n\tadd.l d0, d0\n\tadda.l d0, a1\n\tmove.l (a1), d0"
     ));
-    assert!(tokvm_source_contains(
-        &char_predicates_source,
-        ".section code, kind=code\n\ntkvmIsWhitespace\t.block"
-    ));
+    assert!(char_predicates_source.contains("tkvmIsWhitespace\t.block"));
     assert!(listing.contains("tkvm.amigaos.scanner.commit"));
     assert!(listing.contains("tkvm.amigaos.control.tkvmReadLastFailure68000"));
 }

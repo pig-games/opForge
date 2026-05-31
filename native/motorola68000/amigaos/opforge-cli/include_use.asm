@@ -17,6 +17,11 @@
 	.section code, kind=code
 	.pub
 
+; Parse one `.include` directive from the current source line.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
+; Outputs: D0 = 0 on success; state.NativeCliIncludePending/NativeCliIncludeTarget updated.
+; Clobbers: A0-A1/D0-D2/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliParseIncludeLine	.block
 	clr.w state.NativeCliIncludePending
 	lea state.NativeCliSourceLine, a0
@@ -28,7 +33,6 @@ opforgeNativeCliParseIncludeLine	.block
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	lea state.NativeCliIncludeTarget, a1
 	bsr.w opforgeNativeCliCopyIncludeTarget
-	tst.l d0
 	bne.w fail
 	tst.b state.NativeCliIncludeTarget
 	beq.w fail
@@ -43,6 +47,11 @@ fail
 	rts
 	.bend  ; opforgeNativeCliParseIncludeLine
 
+; Resolve and stage the pending include path before tokenization enters the include.
+; Inputs: state.NativeCliIncludePending and current/saved path state.
+; Outputs: D0 = 0 on success; D1 = 1 when an include was staged, 0 when none was pending.
+; Clobbers: A0-A1/D0-D1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliPreparePendingInclude	.block
 	tst.w state.NativeCliIncludePending
 	beq.w none
@@ -50,7 +59,6 @@ opforgeNativeCliPreparePendingInclude	.block
 	tst.w state.NativeCliIncludeDepth
 	bne.w fail
 	bsr.w opforgeNativeCliResolveIncludePath
-	tst.l d0
 	bne.w fail
 
 	move.w state.NativeCliSourceLineLen, d0
@@ -150,6 +158,11 @@ return
 	rts
 	.bend  ; opforgeNativeCliFinishPendingInclude
 
+; Resolve the pending include target into NativeCliIncludePath.
+; Inputs: state.NativeCliCurrentPath, NativeCliIncludeTarget.
+; Outputs: D0 = 0 on success; state.NativeCliIncludeRootPath/NativeCliIncludePath updated.
+; Clobbers: A0-A1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliResolveIncludePath	.block
 	lea state.NativeCliCurrentPath, a0
 	lea state.NativeCliIncludeRootPath, a1
@@ -157,7 +170,6 @@ opforgeNativeCliResolveIncludePath	.block
 	bne.w fail
 	lea state.NativeCliIncludeTarget, a0
 	jsr path.opforgeNativeCliPathIsAbsolute
-	tst.l d0
 	beq.s relative
 	lea state.NativeCliIncludeTarget, a0
 	lea state.NativeCliIncludePath, a1

@@ -121,6 +121,11 @@ return
 	rts
 	.bend  ; opforgeNativeCliParserTailPtr
 
+; Parse one `.module` directive from the current source line.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
+; Outputs: D0 = 0 on success, nonzero on parse/module-record failure.
+; Clobbers: A0-A1/D1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliParseModuleLine	.block
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
@@ -128,7 +133,6 @@ opforgeNativeCliParseModuleLine	.block
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	lea state.NativeCliArgToken, a1
 	bsr.w line_text.opforgeNativeCliCopyLineWord
-	tst.l d0
 	bne.w fail
 	tst.b state.NativeCliArgToken
 	beq.w fail
@@ -139,7 +143,6 @@ opforgeNativeCliParseModuleLine	.block
 
 record
 	bsr.w module_use.opforgeNativeCliRecordModule
-	tst.l d0
 	bne.w fail
 	moveq #0, d0
 	move.w state.NativeCliCurrentModuleId, d0
@@ -157,6 +160,11 @@ fail
 	rts
 	.bend  ; opforgeNativeCliParseModuleLine
 
+; Parse one `.endmodule` directive from the current source line.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
+; Outputs: D0 = 0 on success, nonzero on parse/module-depth failure.
+; Clobbers: A0/D1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliParseEndmoduleLine	.block
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
@@ -168,7 +176,6 @@ opforgeNativeCliParseEndmoduleLine	.block
 
 close
 	bsr.w module_use.opforgeNativeCliEmitCloseModule
-	tst.l d0
 	bne.w moduleDepthFail
 	moveq #0, d0
 	rts
@@ -186,6 +193,11 @@ fail
 	rts
 	.bend  ; opforgeNativeCliParseEndmoduleLine
 
+; Parse one `.use` directive from the current source line.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
+; Outputs: D0 = resolved module id on success, nonzero failure status on parse/import errors.
+; Clobbers: A0-A1/D1/D5/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliParseUseLine	.block
 	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliParserTailPtr
@@ -205,7 +217,6 @@ opforgeNativeCliParseUseLine	.block
 	bne.w fail
 	move.l d0, d5
 	bsr.w module_use.opforgeNativeCliRecordImport
-	tst.l d0
 	bne.w fail
 	move.l d5, d0
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace

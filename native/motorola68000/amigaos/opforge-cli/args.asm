@@ -18,7 +18,22 @@
 	.section code, kind=code
 	.pub
 
+; ---------------------------------------------------------------------------
 ; Parse the native CLI argument tail into fixed buffers and request flags.
+;
+; Inputs:
+; - A0: DOS GetArgStr-style argument tail pointer.
+;
+; Outputs:
+; - D0: 0 on parse completion; state.NativeCliParseStatus records OK/help/version.
+; - state.* argument buffers and request flags updated from the parsed tail.
+;
+; Clobbers:
+; - D0-D7/A0-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
+; ---------------------------------------------------------------------------
 opforgeNativeCliParseArgs	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l a0, a3  ; A3 walks the AmigaDOS argument tail in-place
@@ -168,7 +183,6 @@ modulePath
 	tst.l d0
 	bne.w modulePathCapacity
 	bsr.w opforgeNativeCliRecordModulePathValue
-	tst.l d0
 	bne.w modulePathCapacity
 	bra.w parseLoop
 
@@ -218,7 +232,6 @@ defaultHunkPath
 
 parseOk
 	bsr.w opforgeNativeCliRecordImplicitModulePathRoot
-	tst.l d0
 	bne.w modulePathCapacity
 	move.w #constants.NCLI_PARSE_OK, state.NativeCliParseStatus
 	bra.w parseReturn

@@ -673,7 +673,6 @@ loop
 	lea HexPairBuffer, a0
 	moveq #2, d0
 	bsr.w amigaosCliFileioWriteExact
-	tst.l d0
 	bne.s done
 	subq.l #1, d5
 	bra.s loop
@@ -832,6 +831,10 @@ emit
 
 ; Preserve D1 across DOS Write calls because the report writer keeps the output handle
 ; in D1 while emitting decimal fields and repeated LEXHEX byte pairs.
+; Inputs: A0 = byte buffer pointer; D0 = exact byte count; D1 = cached DOS file handle.
+; Outputs: D0 = 0 on success, nonzero on short-write or DOS failure.
+; Clobbers: D1-D7/A2-A6/CCR.
+; CCR: reflects D0 on return.
 amigaosCliFileioWriteExact	.block
 	movem.l d1-d7/a2-a6, -(sp)
 	move.l d0, d3

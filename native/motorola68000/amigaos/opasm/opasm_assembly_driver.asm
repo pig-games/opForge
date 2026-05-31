@@ -200,7 +200,6 @@ serviceFail
 	bsr.w serviceIoBufferPtr
 	clr.b 0(a0, d4.W)
 	bsr.w emitSelectorDiagnostic
-	tst.l d0
 	bne.s serviceFailReturn
 	bsr.w serviceIoBufferPtr
 	move.w d4, d1
@@ -216,6 +215,11 @@ return
 	rts
 	.bend  ; opasmDriverEmitImageBytes
 
+; Advance the current PC by the size inferred for the selected statement text.
+; Inputs: D0 = statement index.
+; Outputs: D0 = 0 on success, nonzero on selector or evaluation failure.
+; Clobbers: D1-D7/A0-A3/CCR.
+; CCR: reflects D0 on return.
 opasmDriverAdvancePc	.block
 	movem.l d0-d7/a0-a3, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
@@ -261,7 +265,6 @@ opasmDriverAdvancePc	.block
 	moveq #0, d0
 	move.w d7, d0
 	bsr.w trySelectedEncodeSizeForStatement
-	tst.l d0
 	bne.w fail
 	cmpi.w #1, d1
 	beq.w advanceOne
@@ -352,7 +355,6 @@ fail
 	bsr.w serviceIoBufferPtr
 	clr.b 0(a0, d4.W)
 	bsr.w emitSelectorDiagnostic
-	tst.l d0
 	bne.s failReturn
 	bsr.w serviceIoBufferPtr
 	move.w d4, d1

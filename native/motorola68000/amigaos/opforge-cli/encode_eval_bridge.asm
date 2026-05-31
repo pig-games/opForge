@@ -85,13 +85,17 @@ empty
 
 	.priv
 
+; Build the encode-instruction service payload for the current statement mnemonic.
+; Inputs: state.NativeCliStmtMnemStart/state.NativeCliStmtMnemLen describe the mnemonic text.
+; Outputs: D0 = 0 on success; state.NativeCliEncodeRequestLen updated from D1 on success.
+; Clobbers: D1/A0-A1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliPrepareEncodeInstructionRequest	.block
 	movem.l d1/a0-a1, -(sp)
 	lea buffers.lastErrorBuffer, a1
 	movea.l state.NativeCliStmtMnemStart, a0
 	move.l state.NativeCliStmtMnemLen, d0
 	jsr engine.prepareEncodeInstructionRequestV1
-	tst.l d0
 	bne.s return
 	move.w d1, state.NativeCliEncodeRequestLen
 

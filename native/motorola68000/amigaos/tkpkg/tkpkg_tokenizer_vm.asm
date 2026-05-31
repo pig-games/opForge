@@ -257,10 +257,8 @@ tkpkgTokenizerVmTokenizeLineV1	.block
 
 pipelineReady
 	bsr.w readLinePayload
-	tst.b d0
 	bne.w tokenizeDone
 	bsr.w readProgram
-	tst.b d0
 	bne.w tokenizeDone
 	move.l #state.TKVM_DEFAULT_MAX_STEPS_PER_LINE, d0
 	jsr control.tkvmSetStepBudget68000  ; keep tkpkg-driven tokenizer runs under the bounded VM budget

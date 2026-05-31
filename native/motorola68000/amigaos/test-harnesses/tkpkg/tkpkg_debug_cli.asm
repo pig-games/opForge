@@ -688,7 +688,6 @@ tkpkgDebugCliLineReady
 tkpkgDebugCliLineDispatch
 	move.l d6, d1
 	bsr.w tkpkgDebugCliTokenizeLineSliceV1
-	tst.l d0
 	bne.w tkpkgDebugCliSourceReturn
 	addq.l #1, d6
 	bra.w tkpkgDebugCliSourceLineLoop

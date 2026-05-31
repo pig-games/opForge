@@ -2055,7 +2055,6 @@ textOk
 	move.w engine.opasmEngineSessionPass.l, d6
 	lea engine.opasmEngineLabelFinalizedTable.l, a6
 	jsr expr_bridge.opcoreExvmEvalOperandV1
-	tst.b d0
 	beq.w return
 	cmpi.b #3, d0
 	beq.s compileFail
@@ -2267,13 +2266,16 @@ next
 	rts
 	.bend  ; appendUnsignedDecimalV1
 
+; Resolve both EXVM and ExprVM opcode versions for the current package selection.
+; Inputs: active EXVM/EXPR package locators plus D6 preserved for caller state.
+; Outputs: D0 = 0 on success, nonzero on version lookup failure; D6 restored on success.
+; Clobbers: CCR.
+; CCR: reflects D0 on return.
 resolveExpressionContractVersionsV1	.block
 	bsr.w resolveExvmOpcodeVersionV1
-	tst.b d0
 	bne.s return
 	move.l d6, -(sp)
 	bsr.w resolveExprOpcodeVersionV1
-	tst.b d0
 	bne.s exprFail
 	move.l (sp)+, d6
 	bra.s return
@@ -2874,7 +2876,6 @@ loop
 	movea.l a5, a1
 	move.w d2, d0
 	bsr.w tkpkgEncodeStringEqIgnoreCase
-	tst.b d0
 	beq.s skipModeCheck
 	movea.l a0, a1
 	bsr.w tkpkgEncodeReadU32Low16
@@ -2884,7 +2885,6 @@ loop
 	movea.l a6, a1
 	move.w d4, d0
 	bsr.w tkpkgEncodeStringEqIgnoreCase
-	tst.b d0
 	beq.s skipProgram
 	bsr.w tkpkgEncodeReadU32Low16
 	move.w d0, d1

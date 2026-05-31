@@ -169,7 +169,6 @@ loop
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	jsr char_predicates.tkvmIsIdentifierContinue  ; mirrors vm_matches_identifier_continue_class()
-	tst.l d0
 	beq done
 	move.l d3, d0
 	add.l LOCAL_PENDING_LEX_LEN(a2), d0
@@ -247,7 +246,6 @@ loop
 	beq acceptByte
 checkBody
 	jsr char_predicates.tkvmIsNumberBody  ; same permissive number-body walk as vm_scan_number_token()
-	tst.l d0
 	beq done
 acceptByte
 	move.l d3, d0
@@ -342,7 +340,6 @@ hex
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	jsr char_predicates.tkvmHexDigitValue
-	tst.l d0
 	bmi malformedString
 	move.l d0, LOCAL_TEMP_U32(a2)
 	addq.l #1, d2
@@ -351,7 +348,6 @@ hex
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	jsr char_predicates.tkvmHexDigitValue
-	tst.l d0
 	bmi malformedString
 	move.l d1, -(sp)
 	move.l LOCAL_TEMP_U32(a2), d1
@@ -528,7 +524,6 @@ dollarOrPrefixedNumber
 	moveq #0, d0
 	move.b 0(a4, d2.l), d0
 	jsr char_predicates.tkvmIsHexDigitOrUnderscore  ; '$' starts either a hex literal or a standalone dollar token
-	tst.l d0
 	beq stageDollar
 	move.l LOCAL_PENDING_START(a2), d2
 	jsr scanNumberToken
@@ -554,7 +549,6 @@ percentOrPrefixedNumber
 
 percentAsNumber
 	jsr tkvmPercentHasPrefixContext
-	tst.l d0
 	beq stagePercent
 	move.l LOCAL_PENDING_START(a2), d2  ; rewind so the number scanner sees the leading '%', like Rust prefixed-number handling
 	jsr scanNumberToken
@@ -995,7 +989,6 @@ checkPrevNonSpaceByte
 	tst.w LOCAL_PENDING_KIND(a2)
 	beq prefixFalse
 	jsr char_predicates.tkvmIsIdentifierContinue
-	tst.l d0
 	bne prefixTrue
 
 prefixFalse

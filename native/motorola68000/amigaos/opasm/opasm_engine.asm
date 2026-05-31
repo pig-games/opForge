@@ -1103,6 +1103,12 @@ fail
 ; Outputs:
 ; - A0: selected-shape text when D0 is non-zero.
 ; - D0: selected-shape text length, or 0 when none applies.
+;
+; Clobbers:
+; - D1-D7/A1-A2/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 opasmEngineInferSelectedShapeForEvalRequestV1	.block
 	movem.l d1-d7/a1-a2, -(sp)
 	movea.l a0, a2
@@ -1110,7 +1116,6 @@ opasmEngineInferSelectedShapeForEvalRequestV1	.block
 	moveq #0, d0
 	move.b 8(a2), d0
 	bsr.w inferSelectedShapeBranchMnemonic
-	tst.l d0
 	bne.w direct
 	movea.l a2, a0
 	moveq #0, d0

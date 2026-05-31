@@ -1269,22 +1269,18 @@ tkpkgMselTryBuildCandidateV1	.block
 	lea TkpkgMselPlanNoneText, a2
 	moveq #4, d1
 	bsr.w tkpkgMselPlanEqualsV1
-	tst.b d0
 	bne.w buildNone
 	lea TkpkgMselPlanU8Text, a2
 	moveq #2, d1
 	bsr.w tkpkgMselPlanEqualsV1
-	tst.b d0
 	bne.s tryU8
 	lea TkpkgMselPlanU16Text, a2
 	moveq #3, d1
 	bsr.w tkpkgMselPlanEqualsV1
-	tst.b d0
 	bne.s tryU16
 	lea TkpkgMselPlanBranch8Text, a2
 	moveq #4, d1
 	bsr.w tkpkgMselPlanEqualsV1
-	tst.b d0
 	bne.s tryBranchOffset8
 	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 	bra.w return
@@ -1559,14 +1555,12 @@ tkpkgMselCurrentShapeIndexSuffixV1	.block
 	lea TkpkgMselShapeDirectXText, a2
 	moveq #8, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	bne.s directX
 	movea.l EncodeSelectedCurrentShapePtr, a1
 	move.w EncodeSelectedCurrentShapeLen, d0
 	lea TkpkgMselShapeDirectYText, a2
 	moveq #8, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	bne.s directY
 	moveq #0, d0
 	rts
@@ -1586,21 +1580,18 @@ tkpkgMselCurrentShapeParenModeV1	.block
 	lea TkpkgMselShapeIndirectText, a2
 	moveq #8, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	bne.s indirect
 	movea.l EncodeSelectedCurrentShapePtr, a1
 	move.w EncodeSelectedCurrentShapeLen, d0
 	lea TkpkgMselShapeIndexedIndirectXText, a2
 	moveq #18, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	bne.s indexedIndirectX
 	movea.l EncodeSelectedCurrentShapePtr, a1
 	move.w EncodeSelectedCurrentShapeLen, d0
 	lea TkpkgMselShapeIndirectIndexedYText, a2
 	moveq #18, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	bne.s indirectIndexedY
 	moveq #0, d0
 	rts
@@ -1624,21 +1615,18 @@ tkpkgMselCurrentModeParenModeV1	.block
 	lea TkpkgMselShapeIndirectText, a2
 	moveq #8, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	bne.s indirect
 	movea.l EncodeSelectedMselModePtr, a1
 	move.w EncodeSelectedMselModeLen, d0
 	lea TkpkgMselModeIndexedIndirectXText, a2
 	moveq #16, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	bne.s indexedIndirectX
 	movea.l EncodeSelectedMselModePtr, a1
 	move.w EncodeSelectedMselModeLen, d0
 	lea TkpkgMselModeIndirectIndexedYText, a2
 	moveq #16, d1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	tst.b d0
 	bne.s indirectIndexedY
 	moveq #0, d0
 	rts
@@ -2303,19 +2291,16 @@ resolveExvmOpcodeVersionV1	.block
 	beq.s skipDialect
 	moveq #SCOPED_OWNER_DIALECT, d6
 	bsr.w findExvmOpcodeVersionV1
-	tst.b d0
 	beq.s found
 
 skipDialect
 	lea buffers.ActiveCpuBuffer.l, a4
 	moveq #SCOPED_OWNER_CPU, d6
 	bsr.w findExvmOpcodeVersionV1
-	tst.b d0
 	beq.s found
 	lea buffers.ActiveFamilyBuffer.l, a4
 	moveq #SCOPED_OWNER_FAMILY, d6
 	bsr.w findExvmOpcodeVersionV1
-	tst.b d0
 	beq.s found
 	lea EvaluateExprMissingExvmText, a1
 	moveq #EVAL_EXPR_MISSING_EXVM_TEXT_LEN, d1
@@ -2341,19 +2326,16 @@ resolveExprOpcodeVersionV1	.block
 	beq.s skipDialect
 	moveq #SCOPED_OWNER_DIALECT, d6
 	bsr.w findExprOpcodeVersionV1
-	tst.b d0
 	beq.s found
 
 skipDialect
 	lea buffers.ActiveCpuBuffer.l, a4
 	moveq #SCOPED_OWNER_CPU, d6
 	bsr.w findExprOpcodeVersionV1
-	tst.b d0
 	beq.s found
 	lea buffers.ActiveFamilyBuffer.l, a4
 	moveq #SCOPED_OWNER_FAMILY, d6
 	bsr.w findExprOpcodeVersionV1
-	tst.b d0
 	beq.s found
 	lea EvaluateExprMissingExprText, a1
 	moveq #EVAL_EXPR_MISSING_EXPR_TEXT_LEN, d1

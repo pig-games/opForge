@@ -28,7 +28,6 @@ opforgeNativeCliInitPackagePipeline	.block
 	moveq #abi.ENTRY_ORD_INIT, d0
 	jsr service.dispatchV1
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
-	tst.b d0
 	bne.w fail
 
 	bsr.w opforgeNativeCliStagePackage
@@ -42,7 +41,6 @@ opforgeNativeCliInitPackagePipeline	.block
 	moveq #abi.ENTRY_ORD_LOAD_PACKAGE, d0
 	jsr service.dispatchV1
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
-	tst.b d0
 	bne.s fail
 
 	bsr.w opforgeNativeCliPreparePipelineRequest
@@ -56,7 +54,6 @@ opforgeNativeCliInitPackagePipeline	.block
 	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
 	jsr service.dispatchV1
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
-	tst.b d0
 	bne.s fail
 	moveq #0, d0
 	rts

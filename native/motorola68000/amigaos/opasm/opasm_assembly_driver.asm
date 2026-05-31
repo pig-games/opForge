@@ -125,7 +125,6 @@ opasmDriverEmitImageBytes	.block
 	moveq #0, d0
 	move.w d6, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
-	tst.l d0
 	bne.w ok
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
 	move.l a1, d5
@@ -136,7 +135,6 @@ opasmDriverEmitImageBytes	.block
 	move.w d4, d1
 	movea.l d5, a0
 	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
-	tst.l d0
 	bne.w ok
 	movea.l d5, a0
 	moveq #0, d0
@@ -144,7 +142,6 @@ opasmDriverEmitImageBytes	.block
 	lea OrgMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	tst.l d0
 	bne.w ok
 	movea.l d5, a0
 	moveq #0, d0
@@ -152,7 +149,6 @@ opasmDriverEmitImageBytes	.block
 	lea CpuMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	tst.l d0
 	bne.w ok
 	movea.l d5, a0
 	moveq #0, d0
@@ -160,7 +156,6 @@ opasmDriverEmitImageBytes	.block
 	lea EndMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	tst.l d0
 	bne.w ok
 	bsr.w prepareEncodeSelectedRequestForStatement
 	tst.l d0
@@ -183,7 +178,6 @@ opasmDriverEmitImageBytes	.block
 	moveq #0, d0
 	move.w d6, d0
 	jsr eng.opasmEngineAppendImageBytesV1
-	tst.l d0
 	bne.w fail
 
 ok
@@ -200,7 +194,6 @@ serviceFail
 	moveq #0, d0
 	move.w d6, d0
 	jsr eng.opasmEngineStatementLooksBareColumnOneV1
-	tst.l d0
 	bne.w ok
 	tst.w d4
 	beq.s serviceFailReturn
@@ -229,7 +222,6 @@ opasmDriverAdvancePc	.block
 	move.l d0, d7
 	movea.l sp, a0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
-	tst.l d0
 	bne.w done
 	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
 	move.l a1, d5
@@ -244,7 +236,6 @@ opasmDriverAdvancePc	.block
 	move.w d6, d1
 	movea.l d5, a0
 	jsr eng.opasmEngineStatementMnemonicDuplicatesLabelV1
-	tst.l d0
 	bne.w done
 	movea.l d5, a0
 	moveq #0, d0
@@ -252,7 +243,6 @@ opasmDriverAdvancePc	.block
 	lea OrgMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	tst.l d0
 	bne.w org
 	movea.l d5, a0
 	moveq #0, d0
@@ -260,7 +250,6 @@ opasmDriverAdvancePc	.block
 	lea CpuMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	tst.l d0
 	bne.w done
 	movea.l d5, a0
 	moveq #0, d0
@@ -268,7 +257,6 @@ opasmDriverAdvancePc	.block
 	lea EndMnemonicText, a1
 	moveq #4, d1
 	bsr.w lineStartsWith
-	tst.l d0
 	bne.w done
 	moveq #0, d0
 	move.w d7, d0
@@ -319,7 +307,6 @@ advanceThree
 fail
 	move.w d7, d0
 	jsr eng.opasmEngineStatementLooksBareColumnOneV1
-	tst.l d0
 	bne.w done
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d0-d7/a0-a3
@@ -404,7 +391,6 @@ storedText
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
-	tst.l d0
 	bne.w fail
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a0), d1
 	bne.s storedTextReady
@@ -466,7 +452,6 @@ prepareEncodeSelectedRequestForStatement	.block
 	bsr.w serviceIoBufferPtr
 	movea.l a0, a1
 	jsr eng.prepareSelectedEvaluateRequestV1
-	tst.l d0
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
 
@@ -484,7 +469,6 @@ prepareEvaluateExpressionRequest	.block
 	movea.l a2, a0
 	move.w d7, d1
 	jsr eng.prepareEvaluateExpressionRequestV1
-	tst.l d0
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
 
@@ -537,22 +521,18 @@ emitSelectorDiagnostic	.block
 	bsr.w serviceIoBufferPtr
 	lea DriverSelectorUnknownRawText, a1
 	bsr.w tokenEquals
-	tst.l d0
 	bne.s unknownMnemonic
 	bsr.w serviceIoBufferPtr
 	lea DriverSelectorUnsupportedRawText, a1
 	bsr.w tokenEquals
-	tst.l d0
 	bne.s unsupportedAddressing
 	bsr.w serviceIoBufferPtr
 	lea DriverSelectorOperandRawText, a1
 	bsr.w tokenEquals
-	tst.l d0
 	bne.s operandError
 	bsr.w serviceIoBufferPtr
 	lea DriverSelectedOperandCompileRawText, a1
 	bsr.w tokenEquals
-	tst.l d0
 	bne.s operandError
 	moveq #0, d0
 	rts

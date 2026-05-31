@@ -842,7 +842,6 @@ prepareEvaluateExpressionRequestV1	.block
 	moveq #0, d0
 	move.w d7, d0
 	jsr opasmEngineGetStatementTextMetadataV1
-	tst.l d0
 	bne.w fail
 	move.l OPASM_ENGINE_STMT_TEXT_MNEM_LEN(sp), d6
 	cmpi.l #255, d6
@@ -945,7 +944,6 @@ prepareSelectedEvaluateRequestV1	.block
 	moveq #0, d0
 	move.w d7, d0
 	jsr opasmEngineGetStatementTextMetadataV1
-	tst.l d0
 	bne.w fail
 	move.l OPASM_ENGINE_SELECTED_REQ_MNEM_LEN(sp), d6
 	cmpi.l #255, d6

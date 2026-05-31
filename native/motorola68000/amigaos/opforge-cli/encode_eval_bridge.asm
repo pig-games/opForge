@@ -22,7 +22,6 @@ opforgeNativeCliPrepareEncodeSelectedRequestForStatement	.block
 	move.w d6, d0
 	lea buffers.lastErrorBuffer, a1
 	jsr engine.prepareSelectedEvaluateRequestV1
-	tst.l d0
 	bne.s return
 	move.w d1, state.NativeCliEvalRequestLen
 
@@ -36,7 +35,6 @@ opforgeNativeCliPrepareEvaluateExpressionRequest	.block
 	lea buffers.lastErrorBuffer, a1
 	move.w d7, d1
 	jsr engine.prepareEvaluateExpressionRequestV1
-	tst.l d0
 	bne.s return
 	move.w d1, state.NativeCliEvalRequestLen
 

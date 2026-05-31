@@ -50,11 +50,9 @@ record
 	jsr service.dispatchV1
 	lea buffers.ControlBlockV1, a0
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
-	tst.b d0
 	bne.s fail
 	lea buffers.ControlBlockV1, a0
 	jsr tkpkg_control_block.opforgeNativeCliReadOutputLen
-	tst.w d0
 	beq.s ok
 	lea buffers.lastErrorBuffer, a1
 	clr.b 0(a1, d0.w)
@@ -71,7 +69,6 @@ ok
 fail
 	lea buffers.ControlBlockV1, a0
 	jsr tkpkg_control_block.opforgeNativeCliReadOutputLen
-	tst.w d0
 	beq.s return
 	lea buffers.lastErrorBuffer, a1
 	clr.b 0(a1, d0.W)
@@ -91,7 +88,6 @@ opforgeNativeCliParseCurrentLine	.block
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.w done
 	movea.l a0, a4
 	move.l d0, d7
@@ -99,7 +95,6 @@ opforgeNativeCliParseCurrentLine	.block
 	lea strings.IfdefDirectiveText, a1
 	moveq #6, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.w conditionalLine
 
 	movea.l a4, a0
@@ -107,7 +102,6 @@ opforgeNativeCliParseCurrentLine	.block
 	lea strings.IfndefDirectiveText, a1
 	moveq #7, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.w conditionalLine
 
 	movea.l a4, a0
@@ -115,7 +109,6 @@ opforgeNativeCliParseCurrentLine	.block
 	lea strings.ElseifDirectiveText, a1
 	moveq #7, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.w conditionalLine
 
 	movea.l a4, a0
@@ -123,7 +116,6 @@ opforgeNativeCliParseCurrentLine	.block
 	lea strings.ElseDirectiveText, a1
 	moveq #5, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.w conditionalLine
 
 	movea.l a4, a0
@@ -131,7 +123,6 @@ opforgeNativeCliParseCurrentLine	.block
 	lea strings.EndifDirectiveText, a1
 	moveq #6, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.w conditionalLine
 
 	movea.l a4, a0
@@ -139,7 +130,6 @@ opforgeNativeCliParseCurrentLine	.block
 	lea strings.IfDirectiveText, a1
 	moveq #3, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.w conditionalLine
 
 	movea.l a4, a0
@@ -147,7 +137,6 @@ opforgeNativeCliParseCurrentLine	.block
 	lea strings.IncludeDirectiveText, a1
 	moveq #8, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	beq.s checkOrg
 	jsr include_use.opforgeNativeCliParseIncludeLine
 	bra.w return
@@ -158,7 +147,6 @@ checkOrg
 	lea strings.OrgMnemonicText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.w badOrgLine
 
 	bsr.w opforgeNativeCliRouteParserModuleUseLine

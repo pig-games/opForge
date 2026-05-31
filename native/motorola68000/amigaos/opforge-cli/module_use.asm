@@ -297,17 +297,14 @@ loop
 	adda.l d0, a0
 	lea state.NativeCliIncludePath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.w fail
 	lea state.NativeCliArgToken, a0
 	lea state.NativeCliIncludePath, a1
 	jsr path.opforgeNativeCliAppendPathBuffer
-	tst.l d0
 	bne.w fail
 	lea strings.ModuleSourceExtensionText, a0
 	lea state.NativeCliIncludePath, a1
 	jsr path.opforgeNativeCliAppendPathBuffer
-	tst.l d0
 	bne.w fail
 	lea state.NativeCliIncludePath, a0
 	jsr dos.openInput

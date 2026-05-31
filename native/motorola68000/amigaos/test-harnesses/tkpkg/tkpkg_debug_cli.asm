@@ -67,7 +67,6 @@ tkpkgDebugCliHaveDos
 	moveq #abi.ENTRY_ORD_INIT, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
-	tst.b d0
 	bne.w tkpkgDebugCliReportFailure
 
 	lea tkpkgDebugCliPackageData, a1
@@ -82,7 +81,6 @@ tkpkgDebugCliHaveDos
 	moveq #abi.ENTRY_ORD_LOAD_PACKAGE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
-	tst.b d0
 	bne.w tkpkgDebugCliReportFailure
 	move.l #PackageLoadedText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -122,7 +120,6 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
-	tst.b d0
 	bne.w tkpkgDebugCliReportFailure
 
 	move.l DebugCliFileModeEnabled, d0
@@ -146,10 +143,8 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	moveq #abi.ENTRY_ORD_TOKENIZE_LINE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
-	tst.b d0
 	bne.w tkpkgDebugCliReportFailure
 	bsr.w tkpkgDebugCliReadOutputLenV1
-	tst.w d0
 	beq.w tkpkgDebugCliReportEmptyTokenizeOutput
 	move.l #TokenizeSuccessText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -181,10 +176,8 @@ tkpkgDebugCliCheckLastErrorClear
 
 	lea buffers.ControlBlockV1, a0
 	bsr.w tkpkgDebugCliRunLastErrorV1
-	tst.b d0
 	bne.w tkpkgDebugCliCloseDos
 	bsr.w tkpkgDebugCliReadOutputLenV1
-	tst.w d0
 	bne.w tkpkgDebugCliReportLastErrorBuffer
 
 	move.l #LastErrorClearText, d1
@@ -195,7 +188,6 @@ tkpkgDebugCliCheckLastErrorClear
 tkpkgDebugCliReportFailure
 	lea buffers.ControlBlockV1, a0
 	bsr.w tkpkgDebugCliRunLastErrorV1
-	tst.b d0
 	bne.w tkpkgDebugCliCloseDos
 
 tkpkgDebugCliReportLastErrorBuffer
@@ -743,10 +735,8 @@ tkpkgDebugCliSliceFits
 	moveq #abi.ENTRY_ORD_TOKENIZE_LINE, d0
 	bsr.w tkpkgDebugCliDispatchServiceV1
 	bsr.w tkpkgDebugCliReadStatusV1
-	tst.b d0
 	bne.w tkpkgDebugCliSliceRuntimeFailure
 	bsr.w tkpkgDebugCliReadOutputLenV1
-	tst.w d0
 	beq.w tkpkgDebugCliSliceOk
 	lea buffers.lastErrorBuffer, a1
 	clr.b 0(a1, d0.l)

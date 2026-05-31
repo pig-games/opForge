@@ -52,7 +52,6 @@ opforgeNativeCliTokenizeFile	.block
 	lea state.NativeCliInputPath, a0
 	lea state.NativeCliCurrentPath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.s fail
 	lea state.NativeCliInputPath, a0
 	bsr.w opforgeNativeCliTokenizeFileAtPath
@@ -202,12 +201,10 @@ opforgeNativeCliTokenizeResolvedUseModule	.block
 	lea state.NativeCliCurrentPath, a0
 	lea state.NativeCliModuleSavedPath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.w fail
 	lea state.NativeCliIncludePath, a0
 	lea state.NativeCliCurrentPath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.w fail
 	lea state.NativeCliIncludePath, a0
 	move.w #1, state.NativeCliModuleResolveDepth
@@ -231,7 +228,6 @@ restore
 	lea state.NativeCliModuleSavedPath, a0
 	lea state.NativeCliCurrentPath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.s fail
 	tst.l d1
 	bne.s fail

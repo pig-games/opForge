@@ -18,7 +18,8 @@ It also reports, but does not auto-fix, suspicious call-return tests:
     tst.l d0
     bmi.w fail
 
-Those require callee ABI/CCR contract knowledge.
+Those require callee ABI/CCR contract knowledge unless the callee is in the
+reviewed allowlist below.
 """
 
 from __future__ import annotations
@@ -41,6 +42,9 @@ COND_BRANCH_RE = re.compile(
 )
 
 CALL_RE = re.compile(r"^\s*(?:bsr|jsr)\s*(?:\.[sbwlSBWL])?\b")
+CALL_TARGET_RE = re.compile(
+    r"^\s*(?:bsr|jsr)\s*(?:\.[sbwlSBWL])?\s+(?P<target>[^\s;]+)"
+)
 
 TST_DATA_RE = re.compile(
     rf"^\s*tst\.(?P<width>{WIDTH_RE})\s+(?P<reg>{DATA_REG_RE})\s*(?:;.*)?$",
@@ -50,6 +54,77 @@ TST_DATA_RE = re.compile(
 LABEL_RE = re.compile(r"^\s*[A-Za-z_.$][A-Za-z0-9_.$]*\s*:")
 DIRECTIVE_RE = re.compile(r"^\s*\.[A-Za-z]")
 COMMENT_OR_BLANK_RE = re.compile(r"^\s*(?:;.*)?$")
+
+
+# Reviewed helpers whose contracts are known to return with CCR reflecting D0.
+# Call sites may branch directly on D0 after these helpers without an extra tst.
+# Width sets stay explicit so we only autofix widths we have reviewed for each
+# helper or alias.
+REVIEWED_CCR_D0_CALL_TST_WIDTHS = {
+    "control.tkvmSetStepBudget68000": frozenset({"l"}),
+    "currentTokenPtr": frozenset({"l"}),
+    "emitBeginStatement": frozenset({"l"}),
+    "emitDirectiveText": frozenset({"l"}),
+    "emitFinishLine": frozenset({"l"}),
+    "emitLabelText": frozenset({"l"}),
+    "emitMnemonicText": frozenset({"l"}),
+    "emitOperandExprSlot": frozenset({"l"}),
+    "emitOperandTextSpan": frozenset({"l"}),
+    "eng.opasmEngineAppendImageBytesV1": frozenset({"l"}),
+    "eng.opasmEngineGetStatementTextMetadataV1": frozenset({"l"}),
+    "eng.opasmEngineStatementLooksBareColumnOneV1": frozenset({"l"}),
+    "eng.opasmEngineStatementMnemonicDuplicatesLabelV1": frozenset({"l"}),
+    "eng.prepareEvaluateExpressionRequestV1": frozenset({"l"}),
+    "eng.prepareSelectedEvaluateRequestV1": frozenset({"l"}),
+    "engine.prepareEvaluateExpressionRequestV1": frozenset({"l"}),
+    "engine.prepareSelectedEvaluateRequestV1": frozenset({"l"}),
+    "expr_bridge.opcoreExvmEvalOperandV1": frozenset({"l"}),
+    "copyToken": frozenset({"l"}),
+    "findCpuEntryV1": frozenset({"b", "l"}),
+    "findDialectEntryV1": frozenset({"b", "l"}),
+    "findExprOpcodeVersionV1": frozenset({"b", "l"}),
+    "findExvmOpcodeVersionV1": frozenset({"b", "l"}),
+    "findFamilyEntryV1": frozenset({"b", "l"}),
+    "findOwner": frozenset({"b", "l"}),
+    "findParserVmOwnerV1": frozenset({"b", "l"}),
+    "findRequestedDialectEntryV1": frozenset({"b", "l"}),
+    "findTokenizerVmOwnerV1": frozenset({"b", "l"}),
+    "lineStartsWith": frozenset({"l"}),
+    "line_router.prvmRouteLine68000": frozenset({"l"}),
+    "line_text.opforgeNativeCliLineStartsWith": frozenset({"l"}),
+    "line_text.opforgeNativeCliSkipLineWhitespace": frozenset({"l"}),
+    "opasmEngineGetStatementTextMetadataV1": frozenset({"l"}),
+    "opforgeNativeCliActivePrvmRequireBytes": frozenset({"l"}),
+    "opforgeNativeCliCopyOptionalValue": frozenset({"l"}),
+    "opforgeNativeCliCopyRequiredValue": frozenset({"l"}),
+    "opforgeNativeCliCopyToken": frozenset({"l"}),
+    "opforgeNativeCliIsUnsupportedFlag": frozenset({"l"}),
+    "opforgeNativeCliLineStartsWith": frozenset({"l"}),
+    "opforgeNativeCliParserMnemonicEquals": frozenset({"l"}),
+    "path.opforgeNativeCliAppendPathBuffer": frozenset({"l"}),
+    "path.opforgeNativeCliCopyPathBuffer": frozenset({"l"}),
+    "path.opforgeNativeCliCopyPathRoot": frozenset({"l"}),
+    "popCheckpointAddress": frozenset({"l"}),
+    "pushCheckpoint": frozenset({"l"}),
+    "readProgramTarget": frozenset({"l"}),
+    "resolveSelectedDialectV1": frozenset({"l"}),
+    "resultRecordPtr": frozenset({"l"}),
+    "runtime.tkvmRun68000": frozenset({"l"}),
+    "tkpkg_control_block.opforgeNativeCliReadOutputLen": frozenset({"w"}),
+    "tkpkg_control_block.opforgeNativeCliReadStatus": frozenset({"b"}),
+    "tkpkgDebugCliReadOutputLenV1": frozenset({"w"}),
+    "tkpkgDebugCliReadStatusV1": frozenset({"b"}),
+    "tkpkgDebugCliRunLastErrorV1": frozenset({"b"}),
+    "tkpkgMselPlanEqualsV1": frozenset({"b", "l"}),
+    "tkpkgServiceStringEqAsciiCasefoldV1": frozenset({"b", "l"}),
+    "tokenEquals": frozenset({"l"}),
+    "tokenPtrByIndex": frozenset({"l"}),
+    "token_util.opforgeNativeCliTokenEquals": frozenset({"l"}),
+    "validateResult": frozenset({"b", "l"}),
+    "validateExpressionResultSlot": frozenset({"l"}),
+    "writeExpressionRequest": frozenset({"l"}),
+    "writeResumeState": frozenset({"l"}),
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -89,6 +164,13 @@ def has_label_or_directive(line: str) -> bool:
 
 def is_conditional_branch(line: str) -> bool:
     return bool(COND_BRANCH_RE.match(strip_comment(line)))
+
+
+def parse_call_target(line: str) -> str | None:
+    match = CALL_TARGET_RE.match(strip_comment(line))
+    if match is None:
+        return None
+    return match.group("target")
 
 
 def parse_ccr_setting_write_to_data_reg(line: str) -> WriteInfo | None:
@@ -215,6 +297,27 @@ def find_redundant_tests(path: Path, lines: Sequence[str]) -> list[Finding]:
 
         # Report-only call-return pattern. Only for D0 and only adjacent.
         if CALL_RE.match(strip_comment(prev)) and tst_reg == "d0":
+            call_target = parse_call_target(prev)
+            reviewed_widths = REVIEWED_CCR_D0_CALL_TST_WIDTHS.get(call_target)
+            if reviewed_widths is not None and tst_width in reviewed_widths:
+                findings.append(
+                    Finding(
+                        code="R68000-TST-002",
+                        path=path,
+                        line_no=i + 2,
+                        message=(
+                            f"redundant tst.l d0 after reviewed CCR-preserving call "
+                            f"to {call_target}"
+                        ),
+                        autofixable=True,
+                        original_lines=(prev, tst, branch),
+                        suggested_action=(
+                            "delete the tst line; the reviewed callee contract already "
+                            "returns CCR reflecting D0"
+                        ),
+                    )
+                )
+                continue
             findings.append(
                 Finding(
                     code="R68000-TST-101",

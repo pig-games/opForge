@@ -57,7 +57,6 @@ haveDos
 	move.l d3, 12(a0)
 
 	bsr.w validateResult
-	tst.l d0
 	bne.s reportFailure
 
 	bsr.w buildFrame

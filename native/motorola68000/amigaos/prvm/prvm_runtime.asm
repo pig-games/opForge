@@ -352,14 +352,12 @@ opcodeEnd
 
 opcodeJump
 	bsr.w readProgramTarget
-	tst.l d0
 	bne returnWithLocals
 	movea.l d5, a5
 	bra programLoop
 
 opcodeJumpIfFalse
 	bsr.w readProgramTarget
-	tst.l d0
 	bne returnWithLocals
 	tst.l LOCAL_BOOL_VALUE(a3)
 	bne programLoop
@@ -368,13 +366,11 @@ opcodeJumpIfFalse
 
 opcodeCheckpoint
 	bsr.w pushCheckpoint
-	tst.l d0
 	bne returnWithLocals
 	bra programLoop
 
 opcodeRollback
 	bsr.w popCheckpointAddress
-	tst.l d0
 	bne returnWithLocals
 	move.l (a0)+, d2
 	move.l (a0)+, d1
@@ -387,7 +383,6 @@ opcodeRollback
 
 opcodeCommit
 	bsr.w popCheckpointAddress
-	tst.l d0
 	bne returnWithLocals
 	bra programLoop
 
@@ -414,7 +409,6 @@ opcodePeekAssignment
 	cmp.l d4, d2
 	bcc programLoop
 	bsr.w currentTokenPtr
-	tst.l d0
 	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, 0(a1)
 	bne programLoop
@@ -427,7 +421,6 @@ opcodePeekStarOrg
 	bne programLoop
 	move.l d2, d0
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_OP_MULTIPLY, 0(a1)
 	bne programLoop
@@ -436,7 +429,6 @@ opcodePeekStarOrg
 	cmp.l d4, d0
 	bcc programLoop
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_OP_EQ, 0(a1)
 	bne programLoop
@@ -455,7 +447,6 @@ opcodeConsumeOperator
 	moveq #0, d0
 	move.b (a5)+, d0
 	bsr.w currentTokenPtr
-	tst.l d0
 	bne returnWithLocals
 	move.w 0(a1), d7
 	cmpi.b #PRVM_OPERATOR_PLUS, -1(a5)
@@ -486,7 +477,6 @@ consumeMultiply
 
 opcodeLoadIdentifier
 	bsr.w currentTokenPtr
-	tst.l d0
 	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
 	bne invalidTokenAtCursor
@@ -552,7 +542,6 @@ opcodeParseOptionalLabel
 	beq programLoop
 	clr.l d0
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
 	bne programLoop
@@ -576,7 +565,6 @@ opcodeParseOptionalLabel
 	bcs emitOptionalLabel
 	moveq #1, d0
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_COLON, 0(a1)
 	bne emitOptionalLabel
@@ -587,7 +575,6 @@ opcodeParseOptionalLabel
 
 emitOptionalLabel
 	bsr.w emitLabelText
-	tst.l d0
 	bne returnWithLocals
 	bra programLoop
 
@@ -597,7 +584,6 @@ opcodeBeginStatement
 	clr.l LOCAL_OPERAND_COUNT(a3)
 	clr.l LOCAL_LABEL_FLAG(a3)
 	bsr.w emitBeginStatement
-	tst.l d0
 	bne returnWithLocals
 	bra programLoop
 
@@ -605,7 +591,6 @@ opcodeSetMnemonic
 	tst.l LOCAL_LOADED_FLAG(a3)
 	beq invalidProgramAtCursor
 	bsr.w emitMnemonicText
-	tst.l d0
 	bne returnWithLocals
 	clr.l LOCAL_LOADED_FLAG(a3)
 	bra programLoop
@@ -614,14 +599,12 @@ opcodeSetDotMnemonic
 	tst.l LOCAL_LOADED_FLAG(a3)
 	beq invalidProgramAtCursor
 	bsr.w emitDirectiveText
-	tst.l d0
 	bne returnWithLocals
 	clr.l LOCAL_LOADED_FLAG(a3)
 	bra programLoop
 
 opcodeFinishLine
 	bsr.w emitFinishLine
-	tst.l d0
 	bne returnWithLocals
 	move.l #1, LOCAL_FINISHED_FLAG(a3)
 	bra programLoop
@@ -631,7 +614,6 @@ opcodeFinishAssignment
 	beq invalidProgramAtCursor
 	move.l d4, d2
 	bsr.w emitFinishLine
-	tst.l d0
 	bne returnWithLocals
 	move.l #1, LOCAL_FINISHED_FLAG(a3)
 	bra programLoop
@@ -665,7 +647,6 @@ findOperandEndLoop
 	bcc operandEndFound
 	move.l d5, d0
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne returnWithLocals
 	cmpi.w #PRVM_TOKEN_KIND_COMMA, 0(a1)
 	beq operandEndFound
@@ -677,13 +658,10 @@ operandEndFound
 	move.l LOCAL_OPERAND_COUNT(a3), d0
 	move.l d0, LOCAL_EXPR_SLOT_INDEX(a3)
 	bsr.w emitOperandTextSpan
-	tst.l d0
 	bne returnWithLocals
 	bsr.w writeExpressionRequest
-	tst.l d0
 	bne returnWithLocals
 	bsr.w writeResumeState
-	tst.l d0
 	bne returnWithLocals
 	move.l LOCAL_EXPR_SLOT_INDEX(a3), d1
 	move.l LOCAL_EXPR_START_TOKEN(a3), d2
@@ -713,10 +691,8 @@ resumeFromExpression
 	cmpa.l a6, a5
 	bhi invalidResume
 	bsr.w validateExpressionResultSlot
-	tst.l d0
 	bne returnWithLocals
 	bsr.w emitOperandExprSlot
-	tst.l d0
 	bne returnWithLocals
 	move.l LOCAL_OPERAND_COUNT(a3), d0
 	addq.l #1, d0
@@ -989,7 +965,6 @@ commitResultRecord	.block
 
 emitBeginStatement	.block
 	bsr.w resultRecordPtr
-	tst.l d0
 	bne return
 	move.w #PRVM_RESULT_BEGIN_STATEMENT, 0(a2)
 	clr.w 2(a2)
@@ -1010,7 +985,6 @@ emitLabelText	.block
 	tst.l LOCAL_LABEL_FLAG(a3)
 	beq return
 	bsr.w resultRecordPtr
-	tst.l d0
 	bne return
 	move.w #PRVM_RESULT_LABEL_TEXT, 0(a2)
 	clr.w 2(a2)
@@ -1029,7 +1003,6 @@ return
 
 emitMnemonicText	.block
 	bsr.w resultRecordPtr
-	tst.l d0
 	bne return
 	move.w #PRVM_RESULT_MNEMONIC_TEXT, 0(a2)
 	clr.w 2(a2)
@@ -1048,7 +1021,6 @@ return
 
 emitDirectiveText	.block
 	bsr.w resultRecordPtr
-	tst.l d0
 	bne return
 	move.w #PRVM_RESULT_DIRECTIVE_TEXT, 0(a2)
 	clr.w 2(a2)
@@ -1070,13 +1042,11 @@ emitOperandTextSpan	.block
 	cmp.l LOCAL_EXPR_END_TOKEN(a3), d0
 	bcc none
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne return
 	move.l 4(a1), d5
 	move.l LOCAL_EXPR_END_TOKEN(a3), d0
 	subq.l #1, d0
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne return
 	move.l 8(a1), d7
 	move.l d5, -(sp)
@@ -1108,13 +1078,11 @@ emitOperandExprSlot	.block
 	cmp.l LOCAL_EXPR_END_TOKEN(a3), d0
 	bcc return
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne return
 	move.l 4(a1), d5
 	move.l LOCAL_EXPR_END_TOKEN(a3), d0
 	subq.l #1, d0
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne return
 	move.l 8(a1), d7
 	move.l d5, -(sp)
@@ -1141,7 +1109,6 @@ return
 
 emitFinishLine	.block
 	bsr.w resultRecordPtr
-	tst.l d0
 	bne return
 	move.w #PRVM_RESULT_FINISH_LINE, 0(a2)
 	clr.w 2(a2)
@@ -1170,7 +1137,6 @@ writeExpressionRequest	.block
 	cmp.l d4, d0
 	bcc endSpan
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne return
 	move.l PRVM_FRAME_LINE_NUM(a4), 20(a2)
 	move.l 4(a1), 24(a2)

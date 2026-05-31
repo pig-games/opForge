@@ -62,7 +62,6 @@ opforgeNativeCliPreparePendingInclude	.block
 	lea state.NativeCliCurrentPath, a0
 	lea state.NativeCliSavedPath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.w fail
 
 	move.l #strings.IncludeStageText, d1
@@ -94,7 +93,6 @@ opforgeNativeCliPreparePendingInclude	.block
 	lea state.NativeCliIncludePath, a0
 	lea state.NativeCliCurrentPath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.s fail
 	moveq #1, d1
 	moveq #0, d0
@@ -138,7 +136,6 @@ restore
 	lea state.NativeCliSavedPath, a0
 	lea state.NativeCliCurrentPath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.s fail
 	clr.w state.NativeCliIncludeDepth
 	move.l d1, d0
@@ -157,7 +154,6 @@ opforgeNativeCliResolveIncludePath	.block
 	lea state.NativeCliCurrentPath, a0
 	lea state.NativeCliIncludeRootPath, a1
 	jsr path.opforgeNativeCliCopyPathRoot
-	tst.l d0
 	bne.w fail
 	lea state.NativeCliIncludeTarget, a0
 	jsr path.opforgeNativeCliPathIsAbsolute
@@ -172,7 +168,6 @@ relative
 	lea state.NativeCliIncludeRootPath, a0
 	lea state.NativeCliIncludePath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.s fail
 	lea state.NativeCliIncludeTarget, a0
 	lea state.NativeCliIncludePath, a1

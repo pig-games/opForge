@@ -43,86 +43,69 @@ parseLoop
 	beq.w quoted
 	lea state.NativeCliArgToken, a1
 	bsr.w opforgeNativeCliCopyToken
-	tst.l d0
 	bne.w usage
 
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagHelpLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w parseHelp
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagHelpShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w parseHelp
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagVersionLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w parseVersion
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagVersionShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w parseVersion
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagInfileShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w infile
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagInfileLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w infile
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagHunkLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w hunk
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagBinShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w bin
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagBinLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w bin
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagOutfileShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w outfile
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagOutfileLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w outfile
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagCpuLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w cpu
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagPackageLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w package
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagModuleShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w modulePath
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagModuleLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w modulePath
 	bsr.w opforgeNativeCliIsUnsupportedFlag
-	tst.l d0
 	bne.w unsupported
 	lea state.NativeCliArgToken, a0
 	cmpi.b #'-', (a0)
@@ -140,7 +123,6 @@ infileFirst
 	move.w #2, state.NativeCliInputStyle
 	lea state.NativeCliInputPath, a1
 	bsr.w opforgeNativeCliCopyRequiredValue
-	tst.l d0
 	bne.w missingValue
 	bra.w parseLoop
 
@@ -149,7 +131,6 @@ hunk
 	move.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	lea state.NativeCliHunkPath, a1
 	bsr.w opforgeNativeCliCopyOptionalValue
-	tst.l d0
 	bmi.w quoted
 	bra.w parseLoop
 
@@ -158,28 +139,24 @@ bin
 	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
 	lea state.NativeCliBinPath, a1
 	bsr.w opforgeNativeCliCopyOptionalValue
-	tst.l d0
 	bmi.w quoted
 	bra.w parseLoop
 
 outfile
 	lea state.NativeCliOutfileBase, a1
 	bsr.w opforgeNativeCliCopyRequiredValue
-	tst.l d0
 	bne.w missingValue
 	bra.w parseLoop
 
 cpu
 	lea state.NativeCliCpuName, a1
 	bsr.w opforgeNativeCliCopyRequiredValue
-	tst.l d0
 	bne.w missingValue
 	bra.w parseLoop
 
 package
 	lea state.NativeCliPackagePath, a1
 	bsr.w opforgeNativeCliCopyRequiredValue
-	tst.l d0
 	bne.w missingValue
 	bra.w parseLoop
 
@@ -467,52 +444,42 @@ opforgeNativeCliIsUnsupportedFlag	.block
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagListShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagListLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagHexShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagHexLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagSrecShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagSrecLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagDefineShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagDefineLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagIncludeShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagIncludeLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
-	tst.l d0
 	bne.w unsupportedYes
 	moveq #0, d0
 	rts
@@ -541,7 +508,6 @@ opforgeNativeCliRecordModulePathValue	.block
 	adda.l d1, a1
 	lea state.NativeCliIncludeTarget, a0
 	jsr path.opforgeNativeCliCopyPathBuffer
-	tst.l d0
 	bne.s recordFail
 	move.w state.NativeCliModulePathCount, d0
 	addq.w #1, d0

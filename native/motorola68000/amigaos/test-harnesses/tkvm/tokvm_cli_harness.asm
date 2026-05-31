@@ -257,7 +257,6 @@ parseArgs	.block
 	beq.s argsQuoted
 	lea InputPathBuffer, a1
 	bsr.s copyToken  ; copy token 0 => input path
-	tst.l d0
 	bne.s argsDone
 	bsr.s skipWhitespace
 	tst.b (a3)
@@ -266,7 +265,6 @@ parseArgs	.block
 	beq.s argsQuoted
 	lea OutputPathBuffer, a1
 	bsr.s copyToken  ; copy token 1 => output path
-	tst.l d0
 	bne.s argsDone
 	bsr.s skipWhitespace
 	tst.b (a3)

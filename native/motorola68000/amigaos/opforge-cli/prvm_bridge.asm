@@ -65,7 +65,6 @@ haveText
 	lea strings.ModuleMnemonicText, a1
 	moveq #6, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
-	tst.l d0
 	bne.w module
 	move.l 48(a2), d0
 	lea buffers.tokenScratchBuffer, a0
@@ -74,7 +73,6 @@ haveText
 	lea strings.EndmoduleMnemonicText, a1
 	moveq #9, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
-	tst.l d0
 	bne.w endmodule
 	move.l 48(a2), d0
 	lea buffers.tokenScratchBuffer, a0
@@ -83,7 +81,6 @@ haveText
 	lea strings.UseMnemonicText, a1
 	moveq #3, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
-	tst.l d0
 	bne.w use
 
 fallback
@@ -94,7 +91,6 @@ fallback
 	lea strings.ModuleDirectiveText, a1
 	moveq #7, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
-	tst.l d0
 	bne.s module
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
@@ -103,7 +99,6 @@ fallback
 	lea strings.EndmoduleDirectiveText, a1
 	moveq #10, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
-	tst.l d0
 	bne.s endmodule
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
@@ -112,7 +107,6 @@ fallback
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	bsr.w opforgeNativeCliParserMnemonicEquals
-	tst.l d0
 	bne.s use
 	moveq #constants.NCLI_PARSER_DIRECTIVE_NONE, d0
 	rts
@@ -295,7 +289,6 @@ opforgeNativeCliLoadActivePrvmProgram	.block
 	adda.l d2, a3
 	moveq #1, d0
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	tst.l d0
 	bne.s fail
 	addq.w #1, a2
 	bsr.w opforgeNativeCliActivePrvmReadU32
@@ -303,12 +296,10 @@ opforgeNativeCliLoadActivePrvmProgram	.block
 	bne.s fail
 	move.l d0, d3
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	tst.l d0
 	bne.s fail
 	adda.l d3, a2
 	moveq #2, d0
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	tst.l d0
 	bne.s fail
 	moveq #0, d0
 	move.b (a2)+, d0
@@ -325,7 +316,6 @@ opforgeNativeCliLoadActivePrvmProgram	.block
 	beq.s fail
 	move.l d0, d3
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	tst.l d0
 	bne.s fail
 	move.l a2, 56(a4)
 	move.l d3, 60(a4)
@@ -343,7 +333,6 @@ return
 opforgeNativeCliActivePrvmReadU32	.block
 	moveq #4, d0
 	bsr.w opforgeNativeCliActivePrvmRequireBytes
-	tst.l d0
 	bne.s fail
 	moveq #0, d0
 	move.b (a2)+, d0

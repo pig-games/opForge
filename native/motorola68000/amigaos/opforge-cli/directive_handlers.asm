@@ -72,7 +72,6 @@ opforgeNativeCliParserTailFallbackEnd	.block
 	lea strings.ModuleDirectiveText, a1
 	moveq #7, d1
 	bsr.w line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.s module
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
@@ -81,7 +80,6 @@ opforgeNativeCliParserTailFallbackEnd	.block
 	lea strings.EndmoduleDirectiveText, a1
 	moveq #10, d1
 	bsr.w line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.s endmodule
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
@@ -90,7 +88,6 @@ opforgeNativeCliParserTailFallbackEnd	.block
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	bsr.w line_text.opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.s use
 	moveq #0, d6
 	rts
@@ -136,7 +133,6 @@ opforgeNativeCliParseModuleLine	.block
 	tst.b state.NativeCliArgToken
 	beq.w fail
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.s record
 	cmpi.b #';', (a0)
 	bne.w fail
@@ -166,7 +162,6 @@ opforgeNativeCliParseEndmoduleLine	.block
 	tst.l d1
 	bne.w fail
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.s close
 	cmpi.b #';', (a0)
 	bne.w fail
@@ -214,7 +209,6 @@ opforgeNativeCliParseUseLine	.block
 	bne.w fail
 	move.l d5, d0
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.w bare
 	cmpi.b #';', (a0)
 	beq.w bare
@@ -227,7 +221,6 @@ opforgeNativeCliParseUseLine	.block
 	tst.l d1
 	bne.w fail
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.w done
 	cmpi.b #';', (a0)
 	bne.w fail

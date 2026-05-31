@@ -39,17 +39,14 @@ resolveLocatorV1	.block
 	moveq #buffers.SCOPED_OWNER_DIALECT, d0  ; prefer dialect-specific tokenization rules when present
 	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w findOwner
-	tst.b d0
 	beq.s done
 	moveq #buffers.SCOPED_OWNER_CPU, d0  ; fall back to CPU-local policy
 	lea buffers.PendingCpuOffsetLo, a3
 	bsr.w findOwner
-	tst.b d0
 	beq.s done
 	moveq #buffers.SCOPED_OWNER_FAMILY, d0  ; final fallback is family-wide policy
 	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w findOwner
-	tst.b d0
 	beq.s done
 	lea MissingPolicyText, a1
 	moveq #MISSING_POLICY_TEXT_LEN, d1

@@ -221,7 +221,6 @@ opforgeNativeCliParseUseOptionalAlias	.block
 	lea strings.AsKeywordText, a1
 	moveq #2, d1
 	bsr.w opforgeNativeCliLineStartsWith
-	tst.l d0
 	beq.s none
 	move.l d6, d0
 	addq.l #2, a0
@@ -320,7 +319,6 @@ opforgeNativeCliParseUseWildcard
 	lea strings.AsKeywordText, a1
 	moveq #2, d1
 	bsr.w opforgeNativeCliLineStartsWith
-	tst.l d0
 	bne.s opforgeNativeCliParseUseItemsFail
 	move.l d6, d0
 	beq.s opforgeNativeCliParseUseItemsFail

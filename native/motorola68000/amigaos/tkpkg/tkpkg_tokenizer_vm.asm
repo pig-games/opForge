@@ -306,7 +306,6 @@ render
 	move.w d1, buffers.LastTokenCount
 	move.w d3, buffers.LastLexemeLen
 	bsr.w validateResult
-	tst.b d0
 	bne.w invalidProgram
 	bsr.w renderOutput
 	bra.w tokenizeDone

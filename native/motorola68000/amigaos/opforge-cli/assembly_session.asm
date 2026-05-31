@@ -335,7 +335,6 @@ opforgeNativeCliRecordSourceStatementFallback	.block
 	moveq #0, d0
 	move.w state.NativeCliSourceLineLen, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.w return
 	movea.l a0, a2
 	move.l d0, d2
@@ -364,7 +363,6 @@ firstToken
 	movea.l a3, a0
 	move.l d5, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.s bareLabel
 	tst.b (a0)
 	beq.s bareLabel
@@ -400,7 +398,6 @@ labelToken
 	movea.l a3, a0
 	move.l d5, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.w return
 	movea.l a0, a2
 	move.l d0, d2
@@ -437,7 +434,6 @@ opforgeNativeCliRecordSourceStatementMnemonic	.block
 	move.l d2, d0
 	sub.w d3, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.s done
 	tst.b (a0)
 	beq.s done

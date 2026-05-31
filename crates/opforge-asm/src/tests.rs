@@ -15090,7 +15090,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "resolveHierarchyV1\t.block\n        BSR.W findCpuEntryV1\n        TST.B D0\n        BNE.W cpuUnresolved\n        BSR.W findFamilyEntryV1"
+        "resolveHierarchyV1\t.block\n        BSR.W findCpuEntryV1\n        BNE.W cpuUnresolved\n        BSR.W findFamilyEntryV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -16101,7 +16101,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "MOVEQ #abi.ENTRY_ORD_TOKENIZE_LINE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure\n        BSR.W tkpkgDebugCliReadOutputLenV1\n        TST.W D0\n        BEQ.W tkpkgDebugCliReportEmptyTokenizeOutput"
+        "MOVEQ #abi.ENTRY_ORD_TOKENIZE_LINE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        BNE.W tkpkgDebugCliReportFailure\n        BSR.W tkpkgDebugCliReadOutputLenV1\n        BEQ.W tkpkgDebugCliReportEmptyTokenizeOutput"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -16150,7 +16150,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "MOVEQ #abi.ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure\n        MOVE.L #PackageLoadedText, D1"
+        "MOVEQ #abi.ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        BNE.W tkpkgDebugCliReportFailure\n        MOVE.L #PackageLoadedText, D1"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -16198,7 +16198,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "BSR.W tkpkgDebugCliReadOutputLenV1\n        TST.W D0\n        BEQ.W tkpkgDebugCliSliceOk\n        LEA buffers.lastErrorBuffer, A1\n        CLR.B 0(A1,D0.L)\n        MOVE.L #buffers.lastErrorBuffer, D1"
+        "BSR.W tkpkgDebugCliReadOutputLenV1\n        BEQ.W tkpkgDebugCliSliceOk\n        LEA buffers.lastErrorBuffer, A1\n        CLR.B 0(A1,D0.L)\n        MOVE.L #buffers.lastErrorBuffer, D1"
     ));
     assert!(tkpkg_source_contains(
         &source,
@@ -16326,15 +16326,15 @@ fn motorola68020_tkpkg_debug_cli_locks_package_selection_contract() {
 
     let init_idx = tkpkg_source_snippet_index(
         &source,
-        "LEA buffers.ControlBlockV1, A0\n        MOVEQ #abi.ENTRY_ORD_INIT, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+        "LEA buffers.ControlBlockV1, A0\n        MOVEQ #abi.ENTRY_ORD_INIT, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        BNE.W tkpkgDebugCliReportFailure",
     );
     let load_idx = tkpkg_source_snippet_index(
         &source,
-        "LEA tkpkgDebugCliPackageData, A1\n        LEA buffers.packageStorage, A2\n        MOVE.W TkpkgDebugCliPackageLen, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA buffers.ControlBlockV1, A0\n        MOVE.W #PACKAGE_INPUT_PTR_V1, D0\n        MOVE.W TkpkgDebugCliPackageLen, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #abi.ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+        "LEA tkpkgDebugCliPackageData, A1\n        LEA buffers.packageStorage, A2\n        MOVE.W TkpkgDebugCliPackageLen, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA buffers.ControlBlockV1, A0\n        MOVE.W #PACKAGE_INPUT_PTR_V1, D0\n        MOVE.W TkpkgDebugCliPackageLen, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #abi.ENTRY_ORD_LOAD_PACKAGE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        BNE.W tkpkgDebugCliReportFailure",
     );
     let set_pipeline_idx = tkpkg_source_snippet_index(
         &source,
-        "LEA setPipelineRequest, A1\n        LEA buffers.lastErrorBuffer, A2\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA buffers.ControlBlockV1, A0\n        MOVE.W #buffers.LAST_ERROR_BUFFER_PTR_V1, D0\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #abi.ENTRY_ORD_SET_PIPELINE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        TST.B D0\n        BNE.W tkpkgDebugCliReportFailure",
+        "LEA setPipelineRequest, A1\n        LEA buffers.lastErrorBuffer, A2\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D0\n        BSR.W tkpkgDebugCliCopyBytesV1\n\n        LEA buffers.ControlBlockV1, A0\n        MOVE.W #buffers.LAST_ERROR_BUFFER_PTR_V1, D0\n        MOVEQ #SET_PIPELINE_REQUEST_LEN, D1\n        BSR.W tkpkgDebugCliWriteInputWindowV1\n        MOVEQ #abi.ENTRY_ORD_SET_PIPELINE, D0\n        BSR.W tkpkgDebugCliDispatchServiceV1\n        BSR.W tkpkgDebugCliReadStatusV1\n        BNE.W tkpkgDebugCliReportFailure",
     );
     let line_mode_idx = tkpkg_source_snippet_index(
         &source,
@@ -16342,7 +16342,7 @@ fn motorola68020_tkpkg_debug_cli_locks_package_selection_contract() {
     );
     let last_error_idx = tkpkg_source_snippet_index(
         &source,
-        "tkpkgDebugCliCheckLastErrorClear:\n\n        LEA buffers.ControlBlockV1, A0\n        BSR.W tkpkgDebugCliRunLastErrorV1\n        TST.B D0\n        BNE.W tkpkgDebugCliCloseDos\n        BSR.W tkpkgDebugCliReadOutputLenV1\n        TST.W D0\n        BNE.W tkpkgDebugCliReportLastErrorBuffer",
+        "tkpkgDebugCliCheckLastErrorClear:\n\n        LEA buffers.ControlBlockV1, A0\n        BSR.W tkpkgDebugCliRunLastErrorV1\n        BNE.W tkpkgDebugCliCloseDos\n        BSR.W tkpkgDebugCliReadOutputLenV1\n        BNE.W tkpkgDebugCliReportLastErrorBuffer",
     );
 
     assert!(

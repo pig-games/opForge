@@ -123,7 +123,6 @@ haveDos
 	move.l d3, 12(a0)
 
 	bsr.w validateResult
-	tst.l d0
 	bne.s reportFailure
 
 	lea SuccessText(PC), a1
@@ -203,7 +202,6 @@ serviceExprRequest
 	cmpi.l #1, d2
 	bne.w invalidExprService
 	bsr.w tokenPtrByIndex
-	tst.l d0
 	bne.w invalidExprService
 	move.l 16(a0), d4
 	cmpi.l #2, d4

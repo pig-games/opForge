@@ -182,10 +182,8 @@ badRequest
 ; Resolve the pending CPU/family/dialect hierarchy before runtime locators.
 resolveHierarchyV1	.block
 	bsr.w findCpuEntryV1
-	tst.b d0
 	bne.w cpuUnresolved
 	bsr.w findFamilyEntryV1
-	tst.b d0
 	bne.w familyUnresolved
 	bsr.w resolveSelectedDialectV1
 	tst.b d0
@@ -335,7 +333,6 @@ resolveSelectedDialectV1	.block
 	beq.s defaultDialect
 	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w findRequestedDialectEntryV1
-	tst.b d0
 	beq.s dialectDone
 	moveq #1, d0
 	rts
@@ -347,13 +344,11 @@ defaultDialect
 	beq.s canonicalDialect
 	lea buffers.PendingDefaultDialectOffsetLo, a3
 	bsr.w findDialectEntryV1
-	tst.b d0
 	beq.s dialectDone
 
 canonicalDialect
 	lea buffers.PendingCanonicalDialectOffsetLo, a3
 	bsr.w findDialectEntryV1
-	tst.b d0
 	bne.s dialectMissing
 
 dialectDone
@@ -519,17 +514,14 @@ resolveTokenizerVmLocatorV1	.block
 	moveq #buffers.SCOPED_OWNER_DIALECT, d0
 	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w findTokenizerVmOwnerV1
-	tst.b d0
 	beq.s vmResolved
 	moveq #buffers.SCOPED_OWNER_CPU, d0
 	lea buffers.PendingCpuOffsetLo, a3
 	bsr.w findTokenizerVmOwnerV1
-	tst.b d0
 	beq.s vmResolved
 	moveq #buffers.SCOPED_OWNER_FAMILY, d0
 	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w findTokenizerVmOwnerV1
-	tst.b d0
 	beq.s vmResolved
 	lea MissingProgramText, a1
 	moveq #MISSING_PROGRAM_TEXT_LEN, d1
@@ -546,17 +538,14 @@ resolveParserVmLocatorV1	.block
 	moveq #buffers.SCOPED_OWNER_DIALECT, d0
 	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w findParserVmOwnerV1
-	tst.b d0
 	beq.s parserVmResolved
 	moveq #buffers.SCOPED_OWNER_CPU, d0
 	lea buffers.PendingCpuOffsetLo, a3
 	bsr.w findParserVmOwnerV1
-	tst.b d0
 	beq.s parserVmResolved
 	moveq #buffers.SCOPED_OWNER_FAMILY, d0
 	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w findParserVmOwnerV1
-	tst.b d0
 	beq.s parserVmResolved
 	lea MissingParserProgramText, a1
 	moveq #MISSING_PARSER_PROGRAM_TEXT_LEN, d1

@@ -14747,11 +14747,11 @@ fn motorola68020_tkpkg_load_package_validates_little_endian_container_header() {
 
     assert!(tkpkg_source_contains(
         &service,
-        "CMPI.B #ENTRY_ORD_LOAD_PACKAGE, D0\n        BEQ.W handleLoadPackage"
+        "CMPI.B #abi.ENTRY_ORD_LOAD_PACKAGE, D0\n        BEQ.W handleLoadPackage"
     ));
     assert!(tkpkg_source_contains(
         &service,
-        "handleLoadPackage:\n        MOVE.L A0, -(SP)\n        BSR.W tkpkgPackageLoaderLoadV1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BNE.S loadPackageError"
+        "handleLoadPackage:\n        MOVE.L A0, -(SP)\n        BSR.W package_loader.tkpkgPackageLoaderLoadV1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BNE.S loadPackageError"
     ));
     assert!(source_contains_in_order(
         &loader,
@@ -14762,7 +14762,7 @@ fn motorola68020_tkpkg_load_package_validates_little_endian_container_header() {
             "BSR.W readInputLen",
             "TST.W D0",
             "BEQ.W invalidMagic",
-            "CMPI.W #PACKAGE_STORAGE_CAPACITY,D0",
+            "CMPI.W #buffers.PACKAGE_STORAGE_CAPACITY,D0",
         ]
     ));
     assert!(source_contains_in_order(
@@ -14805,9 +14805,9 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
             "copyInputBytes",
             ".block",
             "moveq #0, d2",
-            "move.b PackageStorageLen, d2",
+            "move.b buffers.PackageStorageLen, d2",
             "moveq #0, d3",
-            "move.b PackageStorageLenHi, d3",
+            "move.b buffers.PackageStorageLenHi, d3",
             "lsl.w #8, d3",
             "or.w d3, d2",
         ]
@@ -14816,27 +14816,27 @@ fn motorola68020_tkpkg_load_package_copies_owned_package_state() {
         &loader,
         &["loop", "MOVE.B (A1)+,(A2)+", "SUBQ.W #1,D2", "BNE.S loop"]
     ));
-    assert!(loader.contains("FamsChunkOffsetLo"));
-    assert!(loader.contains("PACKAGE_CHUNK_FAMS"));
-    assert!(loader.contains("ToksChunkOffsetLo"));
-    assert!(loader.contains("PACKAGE_CHUNK_TOKS"));
-    assert!(loader.contains("TkvmChunkOffsetLo"));
-    assert!(loader.contains("PACKAGE_CHUNK_TKVM"));
-    assert!(loader.contains("MselChunkOffsetLo"));
-    assert!(loader.contains("PACKAGE_CHUNK_MSEL"));
-    assert!(loader.contains("PackageChunkFlagsHi"));
+    assert!(loader.contains("buffers.FamsChunkOffsetLo"));
+    assert!(loader.contains("buffers.PACKAGE_CHUNK_FAMS"));
+    assert!(loader.contains("buffers.ToksChunkOffsetLo"));
+    assert!(loader.contains("buffers.PACKAGE_CHUNK_TOKS"));
+    assert!(loader.contains("buffers.TkvmChunkOffsetLo"));
+    assert!(loader.contains("buffers.PACKAGE_CHUNK_TKVM"));
+    assert!(loader.contains("buffers.MselChunkOffsetLo"));
+    assert!(loader.contains("buffers.PACKAGE_CHUNK_MSEL"));
+    assert!(loader.contains("buffers.PackageChunkFlagsHi"));
     assert!(source_contains_in_order(
         &loader,
         &["checkTabl", "checkMsel", "checkExpr"]
     ));
     assert!(loader.contains("bne.w checkMsel"));
-    assert!(loader.contains("lea MselChunkOffsetLo, a3"));
-    assert!(loader.contains("ori.b #PACKAGE_CHUNK_MSEL, PackageChunkFlagsHi"));
-    assert!(loader.contains("ExprChunkOffsetLo"));
-    assert!(loader.contains("PACKAGE_CHUNK_EXPR"));
-    assert!(loader.contains("ExvmChunkOffsetLo"));
-    assert!(loader.contains("PACKAGE_CHUNK_EXVM"));
-    assert!(loader.contains("PACKAGE_REQUIRED_CHUNK_FLAGS"));
+    assert!(loader.contains("lea buffers.MselChunkOffsetLo, a3"));
+    assert!(loader.contains("ori.b #buffers.PACKAGE_CHUNK_MSEL, buffers.PackageChunkFlagsHi"));
+    assert!(loader.contains("buffers.ExprChunkOffsetLo"));
+    assert!(loader.contains("buffers.PACKAGE_CHUNK_EXPR"));
+    assert!(loader.contains("buffers.ExvmChunkOffsetLo"));
+    assert!(loader.contains("buffers.PACKAGE_CHUNK_EXVM"));
+    assert!(loader.contains("buffers.PACKAGE_REQUIRED_CHUNK_FLAGS"));
     assert!(loader.contains("missingChunk"));
     assert!(tkpkg_source_contains(
         &buffers,
@@ -15044,33 +15044,33 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
 
     assert!(tkpkg_source_contains(
         &service,
-        "CMPI.B #ENTRY_ORD_SET_PIPELINE, D0\n        BEQ.W handleSetPipeline"
+        "CMPI.B #abi.ENTRY_ORD_SET_PIPELINE, D0\n        BEQ.W handleSetPipeline"
     ));
     assert!(tkpkg_source_contains(
         &service,
-        "handleSetPipeline:\n        MOVE.L A0, -(SP)\n        BSR.W tkpkgPipelineSetActiveV1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BEQ.S setPipelineOk\n        CMPI.B #STATUS_BAD_REQUEST_V1, D0"
+        "handleSetPipeline:\n        MOVE.L A0, -(SP)\n        BSR.W pipeline.tkpkgPipelineSetActiveV1\n        MOVEA.L (SP)+, A0\n        TST.B D0\n        BEQ.S setPipelineOk\n        CMPI.B #abi.STATUS_BAD_REQUEST_V1, D0"
     ));
     assert!(source_contains_in_order(
         &pipeline,
         &[
             "tkpkgPipelineSetActiveV1",
             ".block",
-            "BTST #0, PackageStateFlags",
+            "BTST #0, buffers.PackageStateFlags",
             "BNE.S parseRequest",
             "LEA NoPackageText, A1",
         ]
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "parseRequestV1\t.block\n        LEA PendingFamilyOffsetLo, A3\n        MOVEQ #36, D0"
+        "parseRequestV1\t.block\n        LEA buffers.PendingFamilyOffsetLo, A3\n        MOVEQ #36, D0"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "findCpuEntryV1\t.block\n        LEA PendingCpuOffsetLo, A3\n        BSR.W readRequestLocatorPtrLenV1"
+        "findCpuEntryV1\t.block\n        LEA buffers.PendingCpuOffsetLo, A3\n        BSR.W readRequestLocatorPtrLenV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "TST.B D0\n        BEQ.W skipCpuEntry\n        LEA PendingCpuOffsetLo, A3\n        MOVEA.L A4, A1\n        MOVE.W D6, D0\n        BSR.W storePackageStringLocatorV1"
+        "TST.B D0\n        BEQ.W skipCpuEntry\n        LEA buffers.PendingCpuOffsetLo, A3\n        MOVEA.L A4, A1\n        MOVE.W D6, D0\n        BSR.W storePackageStringLocatorV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -15078,7 +15078,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "resolveSelectedDialectV1\t.block\n        LEA PendingDialectOffsetLo, A3\n        BSR.W readLocatorPtrLenV1\n        TST.W D3\n        BEQ.S defaultDialect\n        LEA PendingDialectOffsetLo, A3\n        BSR.W findRequestedDialectEntryV1"
+        "resolveSelectedDialectV1\t.block\n        LEA buffers.PendingDialectOffsetLo, A3\n        BSR.W readLocatorPtrLenV1\n        TST.W D3\n        BEQ.S defaultDialect\n        LEA buffers.PendingDialectOffsetLo, A3\n        BSR.W findRequestedDialectEntryV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -15094,7 +15094,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "dialectAccept:\n        LEA PendingDialectOffsetLo, A3\n        MOVEA.L A0, A1\n        MOVE.W (SP)+, D0\n        BSR.W storePackageStringLocatorV1"
+        "dialectAccept:\n        LEA buffers.PendingDialectOffsetLo, A3\n        MOVEA.L A0, A1\n        MOVE.W (SP)+, D0\n        BSR.W storePackageStringLocatorV1"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -15102,7 +15102,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "commitActiveSelectionV1\t.block\n        LEA PendingCpuOffsetLo, A3\n        LEA ActiveCpuBuffer.L, A2\n        BSR.W copyLocatorToBufferV1"
+        "commitActiveSelectionV1\t.block\n        LEA buffers.PendingCpuOffsetLo, A3\n        LEA buffers.ActiveCpuBuffer.L, A2\n        BSR.W copyLocatorToBufferV1"
     ));
     assert!(tkpkg_source_contains(
         &buffers,

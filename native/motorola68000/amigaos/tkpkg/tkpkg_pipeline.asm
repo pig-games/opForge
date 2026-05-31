@@ -788,17 +788,14 @@ commitActiveSelectionV1	.block
 	lea buffers.PendingCpuOffsetLo, a3
 	lea buffers.ActiveCpuBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
-	tst.b d0
 	bne.w commitDone
 	lea buffers.PendingDialectOffsetLo, a3
 	lea buffers.ActiveDialectBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
-	tst.b d0
 	bne.w commitDone
 	lea buffers.PendingFamilyOffsetLo, a3
 	lea buffers.ActiveFamilyBuffer.l, a2
 	bsr.w copyLocatorToBufferV1
-	tst.b d0
 	bne.w commitDone
 	lea buffers.PendingTokenPolicyOffsetLo, a3
 	lea buffers.ActiveTokenPolicyOffsetLo.l, a2

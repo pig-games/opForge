@@ -896,7 +896,6 @@ loop
 	movea.l a2, a1
 	move.l d6, d0
 	bsr.w labelEquals
-	tst.l d0
 	bne.s found
 	addq.w #1, d4
 	bra.s loop

@@ -22,7 +22,6 @@
 
 opforgeNativeCliDispatchParseLineEnvelope	.block
 	bsr.w opforgeNativeCliPrepareParseLineServiceRequest
-	tst.l d0
 	bne.s done
 	bsr.w opforgeNativeCliDispatchPreparedParseLineEnvelope
 
@@ -32,7 +31,6 @@ done
 
 opforgeNativeCliDispatchParseLineUntilReady	.block
 	bsr.w opforgeNativeCliPrepareParseLineServiceRequest
-	tst.l d0
 	bne.s done
 
 loop
@@ -147,7 +145,6 @@ done
 
 opforgeNativeCliPrepareParseLineServiceRequest	.block
 	bsr.w opforgeNativeCliBuildPrvmRouteFrame
-	tst.l d0
 	bne.s done
 	bsr.w opforgeNativeCliWritePrvmRouteFrameInput
 

@@ -15289,19 +15289,18 @@ fn motorola68020_tkpkg_rejects_over_capacity_active_identifiers_before_copying()
             "lea buffers.PendingCpuOffsetLo, a3",
             "lea buffers.ActiveCpuBuffer.l, a2",
             "bsr.w copyLocatorToBufferV1",
-            "tst.b d0",
             "bne.w commitDone",
         ]
     ));
     assert!(normalized_pipeline.contains(
         normalize_tkpkg_fragment(
-            "lea buffers.PendingDialectOffsetLo, a3\n        lea buffers.ActiveDialectBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.w commitDone"
+            "lea buffers.PendingDialectOffsetLo, a3\n        lea buffers.ActiveDialectBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        bne.w commitDone"
         )
         .as_str()
     ));
     assert!(normalized_pipeline.contains(
         normalize_tkpkg_fragment(
-            "lea buffers.PendingFamilyOffsetLo, a3\n        lea buffers.ActiveFamilyBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        tst.b d0\n        bne.w commitDone"
+            "lea buffers.PendingFamilyOffsetLo, a3\n        lea buffers.ActiveFamilyBuffer.l, a2\n        bsr.w copyLocatorToBufferV1\n        bne.w commitDone"
         )
         .as_str()
     ));

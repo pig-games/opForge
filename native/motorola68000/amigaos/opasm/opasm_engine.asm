@@ -338,7 +338,6 @@ duplicateLoop
 
 haveExistingLabelLen
 	bsr.w labelEquals
-	tst.l d0
 	bne.w duplicate
 	addq.w #1, d6
 	bra.s duplicateLoop

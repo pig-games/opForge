@@ -129,7 +129,6 @@ outputOpened
 	moveq #RETURN_FILE_FAILURE, d7
 	move.l #HARNESS_STATUS_INPUT_OPEN, d0
 	bsr.w writeFailureReport
-	tst.l d0
 	beq.w cleanup
 	moveq #RETURN_OUTPUT_FAILURE, d7
 	bra.w cleanup
@@ -147,7 +146,6 @@ inputOpened
 	moveq #RETURN_FILE_FAILURE, d7
 	move.l #HARNESS_STATUS_INPUT_READ, d0
 	bsr.w writeFailureReport
-	tst.l d0
 	beq.w cleanup
 	moveq #RETURN_OUTPUT_FAILURE, d7
 	bra.w cleanup
@@ -166,7 +164,6 @@ readOk
 	moveq #RETURN_FILE_FAILURE, d7
 	move.l #HARNESS_STATUS_INPUT_READ, d0
 	bsr.w writeFailureReport
-	tst.l d0
 	beq.w cleanup
 	moveq #RETURN_OUTPUT_FAILURE, d7
 	bra.w cleanup
@@ -179,7 +176,6 @@ probeOk
 	moveq #RETURN_FILE_FAILURE, d7
 	move.l #HARNESS_STATUS_INPUT_READ, d0
 	bsr.w writeFailureReport
-	tst.l d0
 	beq.w cleanup
 	moveq #RETURN_OUTPUT_FAILURE, d7
 	bra.w cleanup
@@ -190,7 +186,6 @@ probeClosed
 	moveq #RETURN_INPUT_TOO_LARGE, d7
 	move.l #HARNESS_STATUS_INPUT_TOO_LARGE, d0
 	bsr.w writeFailureReport
-	tst.l d0
 	beq.w cleanup
 	moveq #RETURN_OUTPUT_FAILURE, d7
 	bra.w cleanup
@@ -373,13 +368,11 @@ reportValidated
 	move.l d7, d1
 	lea ReportHeader, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea ReportStatusPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
@@ -391,43 +384,36 @@ reportValidated
 	move.l d7, d1
 	lea NewlineString, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea ReportTokensPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	move.l d5, d0
 	bsr.w writeU32
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea NewlineString, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea ReportCursorPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	move.l d6, d0
 	bsr.w writeU32
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea NewlineString, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	; Walk the native 20-byte token records and re-expand them into the
@@ -441,19 +427,16 @@ reportTokenLoop
 	move.l d7, d1
 	lea ReportTokenPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	move.l d3, d0
 	bsr.w writeU32
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea ReportKindPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	moveq #0, d0
@@ -461,49 +444,41 @@ reportTokenLoop
 	bsr.w kindName  ; record kind code -> PortableTokenKind/report name mapping
 	move.l d7, d1
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea ReportStartPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	move.l 4(a5), d0
 	bsr.w writeU32
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea ReportEndPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	move.l 8(a5), d0
 	bsr.w writeU32
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea ReportLenPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	move.l 16(a5), d0
 	bsr.w writeU32
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
 	lea ReportLexhexPrefix, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	movea.l a5, a6  ; A5 points at the current record, A6 is a temporary for offseted fields
@@ -519,7 +494,6 @@ reportTokenLoop
 	move.l d7, d1
 	lea NewlineString, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 
 	adda.l #runtime.TOKEN_RECORD_SIZE, a5
@@ -532,7 +506,6 @@ reportEnd
 	move.l d7, d1
 	lea ReportEndLine, a0
 	bsr.w amigaosCliFileioWriteCstr
-	tst.l d0
 	bne.w reportFail
 	moveq #0, d0
 	bra.w reportDone

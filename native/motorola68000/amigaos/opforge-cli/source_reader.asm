@@ -113,7 +113,6 @@ crDone
 
 lineDone
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
-	tst.l d0
 	bne.s close
 	bsr.w opforgeNativeCliTokenizePendingInclude
 	tst.l d0
@@ -131,7 +130,6 @@ fileEof
 	tst.w state.NativeCliSourceLineLen
 	beq.s checkModuleDepth
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
-	tst.l d0
 	bne.s close
 	bsr.w opforgeNativeCliTokenizePendingInclude
 	tst.l d0

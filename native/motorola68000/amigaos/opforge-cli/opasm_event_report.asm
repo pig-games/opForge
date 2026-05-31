@@ -47,9 +47,9 @@ done
 ; Outputs:
 ; - D0: 0 after the record has been rendered or ignored.
 opforgeNativeCliRenderOpasmEventV1	.block
-	movem.l d1-d2/a0-a1, -(sp)
-	movea.l a0, a1
-	move.w abi.OPASM_EVENT_KIND(a1), d0
+	movem.l d1-d2/a0-a2, -(sp)
+	movea.l a0, a2
+	move.w abi.OPASM_EVENT_KIND(a2), d0
 	cmpi.w #abi.OPASM_EVENT_PASS_BEGIN, d0
 	beq.w passBegin
 	cmpi.w #abi.OPASM_EVENT_PASS_OK, d0
@@ -75,7 +75,7 @@ opforgeNativeCliRenderOpasmEventV1	.block
 	bra.w done
 
 passBegin
-	move.w abi.OPASM_EVENT_PASS(a1), d0
+	move.w abi.OPASM_EVENT_PASS(a2), d0
 	cmpi.w #1, d0
 	beq.s passOneBegin
 	cmpi.w #2, d0
@@ -91,7 +91,7 @@ passTwoBegin
 	bra.w reportText
 
 passOk
-	move.w abi.OPASM_EVENT_PASS(a1), d0
+	move.w abi.OPASM_EVENT_PASS(a2), d0
 	cmpi.w #1, d0
 	beq.s passOneOk
 	cmpi.w #2, d0
@@ -111,7 +111,7 @@ labelStored
 	jsr dos.putStr
 	bsr.w reportEventText
 	jsr text_output.opforgeNativeCliPutSpace
-	move.l abi.OPASM_EVENT_VALUE(a1), d0
+	move.l abi.OPASM_EVENT_VALUE(a2), d0
 	jsr text_output.opforgeNativeCliPutHexU32
 	move.l #strings.NewlineText, d1
 	bra.s reportText
@@ -155,25 +155,37 @@ reportText
 	jsr dos.putStr
 
 done
-	movem.l (sp)+, d1-d2/a0-a1
+	movem.l (sp)+, d1-d2/a0-a2
 	moveq #0, d0
 	rts
 	.bend  ; opforgeNativeCliRenderOpasmEventV1
 
 	.priv
 
+; Render the event-owned text payload for the current record.
+;
+; Inputs:
+; - A2: OPASM_EVENT_* record.
+;
+; Outputs:
+; - text bytes have been emitted to stdout.
 reportEventText	.block
 	movem.l d0-d2/a0-a2, -(sp)
-	movea.l abi.OPASM_EVENT_TEXT_PTR(a1), a0
-	move.w abi.OPASM_EVENT_TEXT_LEN(a1), d2
+	movea.l abi.OPASM_EVENT_TEXT_PTR(a2), a0
+	move.w abi.OPASM_EVENT_TEXT_LEN(a2), d2
 	beq.s done
 	lea EventCharBuffer, a2
 
 loop
+	move.l a0, -(sp)
+	move.w d2, -(sp)
 	move.b (a0)+, (a2)
 	clr.b 1(a2)
 	move.l #EventCharBuffer, d1
 	jsr dos.putStr
+	move.w (sp)+, d2
+	movea.l (sp)+, a0
+	addq.l #1, a0
 	subq.w #1, d2
 	bne.s loop
 

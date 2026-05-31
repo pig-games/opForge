@@ -2239,8 +2239,7 @@ mod tests {
 
         fs::create_dir_all(&src_dir).expect("create src dir");
         fs::create_dir_all(&shared_dir).expect("create shared dir");
-        fs::write(&root_file, ".use helper (BROKEN)\n.byte BROKEN\n")
-            .expect("write root source");
+        fs::write(&root_file, ".use helper (BROKEN)\n.byte BROKEN\n").expect("write root source");
         fs::write(
             &helper_file,
             ".module helper\n.pub\nBROKEN = MISSING\n.endmodule\n",
@@ -2292,7 +2291,10 @@ mod tests {
             .collect();
         for root in &rebased_roots {
             fs::read_dir(root).unwrap_or_else(|err| {
-                panic!("expected readable overlay module root {}: {err}", root.display())
+                panic!(
+                    "expected readable overlay module root {}: {err}",
+                    root.display()
+                )
             });
         }
 

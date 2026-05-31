@@ -79,6 +79,14 @@ LOCAL_TEMP_U32                  = 20
 ; OPFORGE-TOKVM 1 report format.
 ; ---------------------------------------------------------------------------
 
+; Commit the pending token metadata and staged lexeme bytes into the native token buffer.
+; Inputs: A2 = LOCAL_* frame base; A5 = token buffer base; D1 = token count;
+; D3 = scratch bytes used; D5 = token capacity; D6 = scratch capacity.
+; Outputs: D0 = TK_STATUS_SUCCESS or an overflow status; D1 incremented on
+; success; D3 advanced by the pending lexeme length on success; D2 = failing
+; start column on overflow.
+; Clobbers: A0-A1/CCR.
+; CCR: reflects D0 on return.
 commitPendingToken	.block
 	cmp.l d5, d1  ; token_count < token_capacity
 	bcc pendingTokenOverflow
@@ -135,6 +143,14 @@ pendingLexemeOverflow
 ; populates LOCAL_PENDING_* metadata, stages lexeme bytes into the scratch
 ; buffer, then commits a token record.
 ; ---------------------------------------------------------------------------
+; Scan one identifier token from the current source cursor.
+; Inputs: A2 = LOCAL_* frame base; A4 = source buffer base; A6 = scratch base;
+; D2 = source cursor; D3 = scratch bytes used; D4 = source length; D6 =
+; scratch capacity.
+; Outputs: D0 = TK_STATUS_SUCCESS or an overflow status; D2 advanced past the
+; identifier; D1/D3 updated by commitPendingToken on success.
+; Clobbers: A0/CCR.
+; CCR: reflects D0 on return.
 scanIdentifierToken	.block
 	; Identifier scan is the native mirror of vm_scan_identifier_token():
 	; walk identifier-continue bytes, lowercase ASCII letters for the demo
@@ -201,6 +217,14 @@ pendingLexemeOverflow
 	rts
 	.bend  ; scanIdentifierToken
 
+; Scan one permissive number token from the current source cursor.
+; Inputs: A2 = LOCAL_* frame base; A4 = source buffer base; A6 = scratch base;
+; D2 = source cursor; D3 = scratch bytes used; D4 = source length; D6 =
+; scratch capacity.
+; Outputs: D0 = TK_STATUS_SUCCESS or an overflow status; D2 advanced past the
+; scanned number body; D1/D3 updated by commitPendingToken on success.
+; Clobbers: A0/CCR.
+; CCR: reflects D0 on return.
 scanNumberToken	.block
 	; Number scan accepts the same permissive body bytes as the Rust helper,
 	; leaving base interpretation to downstream token consumers/report logic.
@@ -247,6 +271,15 @@ pendingLexemeOverflow
 	rts
 	.bend  ; scanNumberToken
 
+; Scan one quoted string token, decoding supported escape sequences into scratch bytes.
+; Inputs: A2 = LOCAL_* frame base; A4 = source buffer base; A6 = scratch base;
+; D2 = source cursor at the opening quote; D3 = scratch bytes used; D4 = source
+; length; D6 = scratch capacity.
+; Outputs: D0 = TK_STATUS_SUCCESS, TK_STATUS_LEXEME_OVERFLOW, or
+; TK_STATUS_VM_FAILURE; D2 advanced past the closing delimiter on success;
+; D1/D3 updated by commitPendingToken on success.
+; Clobbers: A0/D1/CCR.
+; CCR: reflects D0 on return.
 scanStringToken	.block
 	; Strings keep their raw delimiter choice for closing rules, but only the
 	; decoded payload bytes are staged into scratch and exposed in LEXHEX.

@@ -9903,7 +9903,7 @@ fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() 
 
     assert!(source.contains(".module prvm.amigaos.line_router"));
     assert!(source.contains(".cpu 68020"));
-    assert!(source.contains(".use prvm.amigaos.runtime (prvmRun68000)"));
+    assert!(source.contains(".use prvm.amigaos.runtime"));
     assert!(source.contains("prvmRouteLine68000\t.block"));
     assert!(source.contains("PRVM_ROUTE_MAGIC_OPLR"));
     assert!(source.contains("PRVM_STATUS_UNSUPPORTED_ROUTE"));
@@ -9927,7 +9927,7 @@ fn motorola68020_prvm_line_router_example_exposes_one_line_delegation_surface() 
         ]
     ));
     assert!(source.contains("PrvmRouteInterpreterEntryPtr"));
-    assert!(source.contains(".long prvmRun68000"));
+    assert!(source.contains(".long runtime.prvmRun68000"));
     assert!(!source.contains("ParseOperandExpr"));
     assert!(!source.contains(".output"));
 }
@@ -9957,7 +9957,7 @@ fn motorola68020_prvm_line_iterator_example_exposes_whole_file_iteration_surface
 
     assert!(source.contains(".module prvm.amigaos.line_iterator"));
     assert!(source.contains(".cpu 68020"));
-    assert!(source.contains(".use prvm.amigaos.line_router (prvmRouteLine68000)"));
+    assert!(source.contains(".use prvm.amigaos.line_router"));
     assert!(source.contains("prvmIterateLines68000\t.block"));
     assert!(source.contains("findLineEnd\t.block"));
     assert!(source.contains("trimCr\t.block"));
@@ -9977,7 +9977,7 @@ fn motorola68020_prvm_line_iterator_example_exposes_whole_file_iteration_surface
     assert!(source.contains("PrvmIteratorRouteEntryPtr"));
     assert!(source.contains("addq.l #1, d7"));
     assert!(source.contains("move.l d7, d3"));
-    assert!(source.contains(".long prvmRouteLine68000"));
+    assert!(source.contains(".long line_router.prvmRouteLine68000"));
     assert!(!source.contains("prvm_run_68000"));
     assert!(!source.contains("ParseOperandExpr"));
     assert!(!source.contains(".output"));
@@ -14594,7 +14594,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        ".use prvm.amigaos.line_router (prvmRouteLine68000)"
+        ".use prvm.amigaos.line_router"
     ));
     assert!(!source.contains(".use opasm.amigaos.selector_stage"));
     assert!(tkpkg_source_contains(

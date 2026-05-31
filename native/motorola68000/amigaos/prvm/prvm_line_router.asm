@@ -3,7 +3,7 @@
 	.module prvm.amigaos.line_router
 	.cpu 68020
 	.pub
-	.use prvm.amigaos.runtime (prvmRun68000)
+	.use prvm.amigaos.runtime
 
 PRVM_REQUEST_FRAME_SIZE             = 112
 PRVM_MAGIC_OPRP                     = $4F505250
@@ -244,7 +244,7 @@ KindStatementText
 PrvmRouteRequestFrame
 	.fill byte, 112, 0
 PrvmRouteInterpreterEntryPtr
-	.long prvmRun68000
+	.long runtime.prvmRun68000
 
 	.endsection
 	.endmodule

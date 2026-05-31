@@ -50,6 +50,12 @@ EXVM_OPCODE_FAIL                = $03
 ; - D4: nonzero when the evaluated program referenced at least one symbol.
 ; - D5: nonzero when the evaluated program referenced a symbol that is
 ;   unstable for the current pass.
+;
+; Clobbers:
+; - D0/D3-D5/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 ; ---------------------------------------------------------------------------
 opcoreExprEvalOperandV1	.block
 	moveq #1, d4
@@ -234,14 +240,12 @@ operator
 	beq.s add
 	moveq #runtime.EXPRVM_BINARY_SUBTRACT, d6
 	bsr.w emitApplyBinaryD6
-	tst.l d0
 	bne.s fail
 	bra.s loop
 
 add
 	moveq #runtime.EXPRVM_BINARY_ADD, d6
 	bsr.w emitApplyBinaryD6
-	tst.l d0
 	bne.s fail
 	bra.s loop
 
@@ -354,7 +358,6 @@ hex
 
 hexParsed
 	bsr.w emitPushLiteralD3
-	tst.l d0
 	beq.s hexEmitOk
 	moveq #32, d5
 	bra.w maybeApplyUnary
@@ -449,13 +452,17 @@ resetProgram	.block
 	rts
 	.bend  ; resetProgram
 
+; Append the final ExprVM end/require-scalar sequence for the selected opcode version.
+; Inputs: runtime.ExprvmSelectedOpcodeVersion = evaluator opcode version.
+; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
+; Clobbers: D3/D6/CCR.
+; CCR: reflects D0 on return.
 finalizeProgram	.block
 	move.w runtime.ExprvmSelectedOpcodeVersion, d3
 	cmpi.w #2, d3
 	bne.s version1
 	moveq #runtime.EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	moveq #runtime.EXPRVM_V2_OPCODE_END, d6
 	bra.s return
@@ -468,6 +475,11 @@ return
 	rts
 	.bend  ; finalizeProgram
 
+; Append the selected-version PushCurrentAddress opcode.
+; Inputs: runtime.ExprvmSelectedOpcodeVersion = evaluator opcode version.
+; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
+; Clobbers: D3/D6/CCR.
+; CCR: reflects D0 on return.
 emitPushCurrent	.block
 	move.w runtime.ExprvmSelectedOpcodeVersion, d3
 	cmpi.w #2, d3
@@ -482,6 +494,12 @@ ready
 	bra.w emitU8D6
 	.bend  ; emitPushCurrent
 
+; Append the selected-version unary opcode plus operand kind from D6.
+; Inputs: D6 = ExprVM unary operator id; runtime.ExprvmSelectedOpcodeVersion =
+; evaluator opcode version.
+; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
+; Clobbers: D3/CCR.
+; CCR: reflects D0 on return.
 emitApplyUnaryD6	.block
 	movem.l d6, -(sp)
 	move.l d6, d3
@@ -496,7 +514,6 @@ version1
 
 ready
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	move.l d3, d6
 	bsr.w emitU8D6
@@ -506,6 +523,12 @@ return
 	rts
 	.bend  ; emitApplyUnaryD6
 
+; Append the selected-version binary opcode plus operand kind from D6.
+; Inputs: D6 = ExprVM binary operator id; runtime.ExprvmSelectedOpcodeVersion =
+; evaluator opcode version.
+; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
+; Clobbers: D3/CCR.
+; CCR: reflects D0 on return.
 emitApplyBinaryD6	.block
 	movem.l d6, -(sp)
 	move.l d6, d3
@@ -520,7 +543,6 @@ version1
 
 ready
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	move.l d3, d6
 	bsr.w emitU8D6
@@ -530,6 +552,12 @@ return
 	rts
 	.bend  ; emitApplyBinaryD6
 
+; Append the selected-version PushSymbol opcode plus the symbol index in D3.
+; Inputs: D3 = symbol index; runtime.ExprvmSelectedOpcodeVersion = evaluator
+; opcode version.
+; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
+; Clobbers: D2/D6/CCR.
+; CCR: reflects D0 on return.
 emitPushSymbolD3	.block
 	movem.l d2-d3/d6, -(sp)
 	move.w runtime.ExprvmSelectedOpcodeVersion, d6
@@ -543,7 +571,6 @@ version1
 
 ready
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	movem.l (sp), d2-d3/d6
 	bsr.w emitU16D3
@@ -553,6 +580,13 @@ return
 	rts
 	.bend  ; emitPushSymbolD3
 
+; Append the selected-version PushLiteral opcode plus the 64-bit literal with
+; the low 32 bits from D3 and a zero high word.
+; Inputs: D3 = low 32 literal bits; runtime.ExprvmSelectedOpcodeVersion =
+; evaluator opcode version.
+; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
+; Clobbers: D2/D6/CCR.
+; CCR: reflects D0 on return.
 emitPushLiteralD3	.block
 	movem.l d2-d3/d6, -(sp)
 	move.w runtime.ExprvmSelectedOpcodeVersion, d6
@@ -566,11 +600,9 @@ version1
 
 ready
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	movem.l (sp), d2-d3/d6
 	bsr.w emitU32D3
-	tst.l d0
 	bne.s return
 	clr.l d3
 	bsr.w emitU32D3
@@ -580,21 +612,23 @@ return
 	rts
 	.bend  ; emitPushLiteralD3
 
+; Append D3 as four little-endian bytes to the private ExprVM program buffer.
+; Inputs: D3 = value to encode.
+; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
+; Clobbers: D6/CCR.
+; CCR: reflects D0 on return.
 emitU32D3	.block
 	move.l d3, d6
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	move.l d3, d6
 	lsr.l #8, d6
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	move.l d3, d6
 	lsr.l #8, d6
 	lsr.l #8, d6
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	move.l d3, d6
 	lsr.l #8, d6
@@ -606,10 +640,14 @@ return
 	rts
 	.bend  ; emitU32D3
 
+; Append D3 as two little-endian bytes to the private ExprVM program buffer.
+; Inputs: D3 = value to encode.
+; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
+; Clobbers: D6/CCR.
+; CCR: reflects D0 on return.
 emitU16D3	.block
 	move.l d3, d6
 	bsr.w emitU8D6
-	tst.l d0
 	bne.s return
 	move.l d3, d6
 	lsr.l #8, d6
@@ -619,6 +657,12 @@ return
 	rts
 	.bend  ; emitU16D3
 
+; Append the low byte of D6 to the private ExprVM program buffer.
+; Inputs: D6 = byte value to append; OpcoreExprVmProgramLen = current length.
+; Outputs: D0 = 0 on success or 1 on buffer overflow; OpcoreExprVmProgramLen
+; incremented on success.
+; Clobbers: D1/A2/CCR.
+; CCR: reflects D0 on return.
 emitU8D6	.block
 	movem.l d1/a2, -(sp)
 	moveq #0, d0

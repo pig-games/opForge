@@ -5,9 +5,9 @@
 	.module tkvm.amigaos.runtime
 	.cpu 68020
 	.pub
-	.use tkvm.amigaos.state
+	.use tkvm.amigaos.state (TkvmStepBudget, TkvmProgramStateTablePtr, TkvmProgramStateCount, TkvmProgramStartState, TkvmLastFailureKind, TkvmLastFailureOperand)
 	.use tkvm.amigaos.char_predicates
-	.use tkvm.amigaos.scanner
+	.use tkvm.amigaos.scanner (commitPendingToken, scanIdentifierToken, scanNumberToken, scanStringToken, scanSymbolToken)
 
 ; Positive VM statuses mirror the native tokenization result contract.
 TK_STATUS_SUCCESS               = 0
@@ -148,12 +148,12 @@ tkvmRun68000	.block
 	clr.l d2  ; source cursor starts at column 1 / byte 0
 	clr.l d3  ; scratch bytes committed starts at 0
 	clr.l LOCAL_STEP_COUNT(a2)
-	move.l state.TkvmStepBudget, d0
+	move.l TkvmStepBudget, d0
 	move.l d0, LOCAL_STEP_LIMIT(a2)
 	moveq #-1, d0  ; sentinel current byte = EOF until ReadChar runs
 	move.l d0, LOCAL_CURRENT_BYTE(a2)
-	clr.w state.TkvmLastFailureKind
-	clr.w state.TkvmLastFailureOperand
+	clr.w TkvmLastFailureKind
+	clr.w TkvmLastFailureOperand
 
 	tst.l d4  ; reject negative lengths/capacities before dereferencing any caller pointers
 	bmi invalidArgument
@@ -209,10 +209,10 @@ newlineUnsupported
 
 newlineScanDone
 	moveq #0, d0
-	move.w state.TkvmProgramStartState, d0
-	cmp.l state.TkvmProgramStateCount, d0
+	move.w TkvmProgramStartState, d0
+	cmp.l TkvmProgramStateCount, d0
 	bcc invalidProgramAtCursor
-	move.l state.TkvmProgramStateTablePtr, d1
+	move.l TkvmProgramStateTablePtr, d1
 	tst.l d1
 	beq.w invalidProgramAtCursor
 	movea.l d1, a1
@@ -338,7 +338,7 @@ opcodeEmitToken
 	move.b (a0)+, d0
 	move.w d0, LOCAL_PENDING_KIND(a2)
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanner.commitPendingToken
+	jsr commitPendingToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
@@ -357,9 +357,9 @@ opcodeSetState
 	move.b (a0)+, d1
 	lsl.w #8, d1
 	or.w d1, d0
-	cmp.l state.TkvmProgramStateCount, d0
+	cmp.l TkvmProgramStateCount, d0
 	bcc invalidProgramAtCursor
-	move.l state.TkvmProgramStateTablePtr, d1
+	move.l TkvmProgramStateTablePtr, d1
 	tst.l d1
 	beq.w invalidProgramAtCursor
 	movea.l d1, a1
@@ -381,8 +381,8 @@ opcodeFail
 	bhi invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0
-	move.w #TK_VM_FAILURE_KIND_FAIL, state.TkvmLastFailureKind
-	move.w d0, state.TkvmLastFailureOperand
+	move.w #TK_VM_FAILURE_KIND_FAIL, TkvmLastFailureKind
+	move.w d0, TkvmLastFailureOperand
 	bra vmFailureAtCursor
 
 opcodeEmitDiag
@@ -393,8 +393,8 @@ opcodeEmitDiag
 	bhi invalidProgramAtCursor
 	moveq #0, d0
 	move.b (a0)+, d0
-	move.w #TK_VM_FAILURE_KIND_EMIT_DIAG, state.TkvmLastFailureKind
-	move.w d0, state.TkvmLastFailureOperand
+	move.w #TK_VM_FAILURE_KIND_EMIT_DIAG, TkvmLastFailureKind
+	move.w d0, TkvmLastFailureOperand
 	bra vmFailureAtCursor
 
 opcodeJump
@@ -546,7 +546,7 @@ applyClassJump
 ; saves and restores the native program counter around each call.
 opcodeScanIdentifier
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanner.scanIdentifierToken
+	jsr scanIdentifierToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
@@ -554,7 +554,7 @@ opcodeScanIdentifier
 
 opcodeScanNumber
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanner.scanNumberToken
+	jsr scanNumberToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
@@ -562,7 +562,7 @@ opcodeScanNumber
 
 opcodeScanString
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanner.scanStringToken
+	jsr scanStringToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
@@ -570,7 +570,7 @@ opcodeScanString
 
 opcodeScanSymbol
 	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
-	jsr scanner.scanSymbolToken
+	jsr scanSymbolToken
 	tst.l d0
 	bne return
 	movea.l LOCAL_PROGRAM_COUNTER(a2), a0

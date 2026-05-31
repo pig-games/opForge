@@ -61,6 +61,7 @@ COMMENT_OR_BLANK_RE = re.compile(r"^\s*(?:;.*)?$")
 # Width sets stay explicit so we only autofix widths we have reviewed for each
 # helper or alias.
 REVIEWED_CCR_D0_CALL_TST_WIDTHS = {
+    "module_use.opforgeNativeCliRecordImportSelect": frozenset({"l"}),
     "control.tkvmSetStepBudget68000": frozenset({"l"}),
     "currentTokenPtr": frozenset({"l"}),
     "emitBeginStatement": frozenset({"l"}),
@@ -96,8 +97,13 @@ REVIEWED_CCR_D0_CALL_TST_WIDTHS = {
     "line_text.opforgeNativeCliLineStartsWith": frozenset({"l"}),
     "line_text.opforgeNativeCliSkipLineWhitespace": frozenset({"l"}),
     "labelEquals": frozenset({"l"}),
+    "include_use.opforgeNativeCliPreparePendingInclude": frozenset({"l"}),
     "opforgeNativeCliBuildPrvmRouteFrame": frozenset({"l"}),
     "opforgeNativeCliInitPackagePipeline": frozenset({"l"}),
+    "opforgeNativeCliTokenizeFile": frozenset({"l"}),
+    "opforgeNativeCliTokenizePendingInclude": frozenset({"l"}),
+    "opforgeNativeCliTokenizePendingUseModule": frozenset({"l"}),
+    "opforgeNativeCliTokenizeResolvedUseModule": frozenset({"l"}),
     "opforgeNativeCliPrepareParseLineServiceRequest": frozenset({"l"}),
     "opasmEngineGetStatementTextMetadataV1": frozenset({"l"}),
     "amigaosCliFileioWriteCstr": frozenset({"l"}),
@@ -111,6 +117,7 @@ REVIEWED_CCR_D0_CALL_TST_WIDTHS = {
     "path.opforgeNativeCliAppendPathBuffer": frozenset({"l"}),
     "path.opforgeNativeCliCopyPathBuffer": frozenset({"l"}),
     "path.opforgeNativeCliCopyPathRoot": frozenset({"l"}),
+    "package_pipeline.opforgeNativeCliInitPackagePipeline": frozenset({"l"}),
     "popCheckpointAddress": frozenset({"l"}),
     "pushCheckpoint": frozenset({"l"}),
     "readProgramTarget": frozenset({"l"}),

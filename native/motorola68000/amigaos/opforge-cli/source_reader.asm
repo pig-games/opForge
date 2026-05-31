@@ -24,17 +24,29 @@
 	.section code, kind=code
 	.pub
 
+; ---------------------------------------------------------------------------
 ; Initialize package state, tokenize every source line, and run parser routing.
+;
+; Inputs:
+; - none; uses parsed CLI state and shared tkpkg buffers.
+;
+; Outputs:
+; - D0: 0 on success, nonzero on package/tokenization failure.
+;
+; Clobbers:
+; - D0-D7/A0-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
+; ---------------------------------------------------------------------------
 opforgeNativeCliTokenizeFrontend	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	bsr.w package_pipeline.opforgeNativeCliInitPackagePipeline
-	tst.l d0
 	bne.b return
 	move.l #strings.TokenizerOkText, d1
 	jsr dos.putStr
 	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliTokenizeFile
-	tst.l d0
 	bne.s return
 
 success
@@ -48,6 +60,10 @@ return
 	.priv
 
 ; Tokenize the primary input file path recorded by argument parsing.
+; Inputs: state.NativeCliInputPath holds the requested source file path.
+; Outputs: D0 = 0 on success; state.NativeCliCurrentPath updated for the active file.
+; Clobbers: A0-A1/D0/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliTokenizeFile	.block
 	lea state.NativeCliInputPath, a0
 	lea state.NativeCliCurrentPath, a1
@@ -63,6 +79,10 @@ fail
 	.bend  ; opforgeNativeCliTokenizeFile
 
 ; Read and tokenize one AmigaDOS text file at A0, preserving logical line state.
+; Inputs: A0 = path buffer for the source file to read.
+; Outputs: D0 = 0 on success; source-line state and pending include/use work drained.
+; Clobbers: D0-D5/A0-A1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliTokenizeFileAtPath	.block
 	jsr dos.openInput
 	tst.l d0
@@ -115,10 +135,8 @@ lineDone
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
 	bne.s close
 	bsr.w opforgeNativeCliTokenizePendingInclude
-	tst.l d0
 	bne.s close
 	bsr.w opforgeNativeCliTokenizePendingUseModule
-	tst.l d0
 	bne.s close
 	move.l state.NativeCliSourceLineNum, d0
 	addq.l #1, d0
@@ -132,10 +150,8 @@ fileEof
 	jsr line_processor.opforgeNativeCliTokenizeCurrentLine
 	bne.s close
 	bsr.w opforgeNativeCliTokenizePendingInclude
-	tst.l d0
 	bne.s close
 	bsr.w opforgeNativeCliTokenizePendingUseModule
-	tst.l d0
 	bne.s close
 
 checkModuleDepth
@@ -162,9 +178,13 @@ close
 	rts
 	.bend  ; opforgeNativeCliTokenizeFileAtPath
 
+; Drain one pending include request, tokenizing the staged file when present.
+; Inputs: include pending state and saved-path state in opforge.cli.state.
+; Outputs: D0 = 0 on success; include file tokenized when D1 from prepare step was nonzero.
+; Clobbers: A0/D0-D1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliTokenizePendingInclude	.block
 	bsr.w include_use.opforgeNativeCliPreparePendingInclude
-	tst.l d0
 	bne.s return
 	tst.l d1
 	beq.s return
@@ -176,6 +196,11 @@ return
 	rts
 	.bend  ; opforgeNativeCliTokenizePendingInclude
 
+; Drain one pending `.use` module import when parser routing resolved a module id.
+; Inputs: state.NativeCliResolvedModuleId and saved module-path state.
+; Outputs: D0 = 0 on success; resolved module reset and tokenized when one was pending.
+; Clobbers: D0/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliTokenizePendingUseModule	.block
 	cmpi.w #-1, state.NativeCliResolvedModuleId
 	beq.s ok
@@ -188,6 +213,11 @@ ok
 	rts
 	.bend  ; opforgeNativeCliTokenizePendingUseModule
 
+; Tokenize the file for the currently resolved `.use` module and restore caller state.
+; Inputs: state.NativeCliIncludePath and module-saved path/line state.
+; Outputs: D0 = 0 on success; current path/line state restored after module tokenization.
+; Clobbers: D0-D2/A0-A1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliTokenizeResolvedUseModule	.block
 	movem.l d1-d2/a0-a1, -(sp)
 	move.w state.NativeCliSourceLineLen, d0

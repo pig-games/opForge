@@ -12369,7 +12369,7 @@ fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
 }
 
 #[test]
-fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
+fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm");
     let source = opcore_amigaos_source("opcore_expr_bridge.asm");
@@ -12392,127 +12392,157 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_binary_scalars() {
     assert!(source.contains("EXVM_OPCODE_END"));
     assert!(source.contains("EXPRVM_V2_OPCODE_PUSH_LITERAL"));
     assert!(source.contains("EXPRVM_V2_OPCODE_REQUIRE_SCALAR"));
-    assert!(source_contains_in_order(
-        &source,
-        &["runEvalProgram", ".block"]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &["selectProgram", ".block"]
-    ));
     assert!(source.contains("OpcoreExvmDefaultProgram"));
     assert!(source.contains("D2: current assembly PC for '$' current-address terms."));
     assert!(source.contains("OPCORE_EXPRVM_PROGRAM_CAPACITY"));
     assert!(source.contains("OpcoreExvmSelectedOpcodeVersion"));
-    assert!(source.contains("ExprvmSelectedOpcodeVersion"));
-    assert!(source.contains("ExprvmCurrentPass"));
-    assert!(source_contains_in_order(
-        &source,
-        &["compileAdditive", ".block"]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &["compileSingleTerm", ".block"]
-    ));
-    assert!(source.contains("currentPc"));
-    assert!(source.contains("dollar"));
-    assert!(source_contains_in_order(
-        &source,
-        &["parseBinary", ".block"]
-    ));
-    assert!(source.contains("hex0x"));
-    assert!(source.contains("unaryMinus"));
-    assert!(source_contains_in_order(
-        &source,
-        &["finalizeProgram", ".block"]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &["emitPushLiteralD3", ".block"]
-    ));
-    assert!(source_contains_in_order(
-        &source,
-        &["emitPushSymbolD3", ".block"]
-    ));
+    assert!(source.contains("runtime.ExprvmSelectedOpcodeVersion"));
+    assert!(source.contains("runtime.ExprvmCurrentPass"));
     assert!(source.contains("OpcoreExprVmProgramBuffer"));
     assert!(!source.contains("BSR.W opcoreExprBridgeEvalAdditive"));
-    assert!(source_contains_in_order(
+    for routine_name in [
+        "selectProgram",
+        "runEvalProgram",
+        "compileAdditive",
+        "compileSingleTerm",
+        "finalizeProgram",
+        "emitPushLiteralD3",
+        "emitPushSymbolD3",
+        "emitApplyBinaryD6",
+        "parseBinary",
+        "resolveLabelIndex",
+    ] {
+        assert!(
+            routine_body(&source, routine_name).is_some(),
+            "expected {routine_name} routine to exist"
+        );
+    }
+    assert!(routine_contains_in_order(
         &source,
+        "opcoreExprEvalOperandV1",
+        &["moveq #1, d4", "bra.w opcoreExvmEvalOperandV1"]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "opcoreExvmEvalOperandV1",
         &[
-            "noImmediatePrefix:",
-            "BSR.W selectProgram",
-            "BSR.W runEvalProgram",
-            "BRA.W return",
+            "move.w d4, OpcoreExvmSelectedOpcodeVersion",
+            "cmpi.w #2, d5",
+            "move.w d5, runtime.ExprvmSelectedOpcodeVersion",
+            "move.w d6, runtime.ExprvmCurrentPass",
+            "bsr.w selectProgram",
+            "bsr.w runEvalProgram",
         ]
     ));
-    assert!(source_contains_in_order(
+    assert!(routine_contains(
         &source,
+        "selectProgram",
+        "OpcoreExvmDefaultProgram"
+    ));
+    assert!(routine_contains(
+        &source,
+        "selectProgram",
+        "OPCORE_EXVM_DEFAULT_PROGRAM_LEN"
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "runEvalProgram",
         &[
-            "runEvalProgram",
-            ".block",
-            "CMPI.B #EXVM_OPCODE_PARSE_EXPRESSION, D6",
-            "opcodeParseExpression:",
-            "BSR.W compileAdditive",
-            "BSR.W finalizeProgram",
-            "JSR exprvmEvalProgramV1",
-            "opcodeEnd:",
-            "CMPI.L #1, D4",
+            "cmpi.b #EXVM_OPCODE_PARSE_EXPRESSION, d6",
+            "opcodeParseExpression",
+            "bsr.w compileAdditive",
+            "bsr.w finalizeProgram",
         ]
     ));
-    assert!(source_contains_in_order(
+    assert!(routine_contains_any(
         &source,
+        "runEvalProgram",
+        &["jsr exprvmEvalProgramV1", "jsr runtime.exprvmEvalProgramV1"]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "runEvalProgram",
+        &["opcodeEnd", "moveq #0, d0", "rts"]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "compileAdditive",
         &[
-            "compileAdditive",
-            ".block",
-            "BSR.W resetProgram",
-            "BSR.W compileSingleTerm",
-            "loop:",
-            "BSR.W compileSingleTerm",
-            "CMPI.B #'+', D6",
-            "MOVEQ #EXPRVM_BINARY_SUBTRACT, D6",
-            "BSR.W emitApplyBinaryD6",
-            "MOVEQ #EXPRVM_BINARY_ADD, D6",
+            "bsr.w resetProgram",
+            "bsr.w compileSingleTerm",
+            "cmpi.b #'+', d6",
+            "moveq #runtime.EXPRVM_BINARY_SUBTRACT, d6",
+            "bsr.w emitApplyBinaryD6",
+            "moveq #runtime.EXPRVM_BINARY_ADD, d6",
         ]
     ));
-    assert!(source_contains_in_order(
+    assert!(routine_contains_in_order(
         &source,
+        "compileSingleTerm",
         &[
-            "compileSingleTerm",
-            ".block",
-            "body:",
-            "CMPI.B #'*', (A0)",
-            "CMPI.B #'$', (A0)",
-            "BEQ.W dollar",
-            "dollar:",
-            "CMPI.L #1, D0",
-            "BLS.W hex",
-            "BRA.W currentPc",
+            "body",
+            "cmpi.b #'*', (a0)",
+            "beq.s currentPc",
+            "cmpi.b #'$', (a0)",
+            "beq.w dollar",
+            "cmpi.b #'%', (a0)",
+            "beq.w binaryLiteral",
+            "cmpi.b #'x', 1(a0)",
+            "beq.w hex0x",
         ]
     ));
-    assert!(source_contains_in_order(
+    assert!(routine_contains_in_order(
         &source,
+        "compileSingleTerm",
         &[
-            "opcoreExprEvalOperandV1:",
-            "MOVEQ #1, D4",
-            "opcoreExvmEvalOperandV1:",
-            "MOVE.W D4, OpcoreExvmSelectedOpcodeVersion",
-            "CMPI.W #2, D5",
-            "MOVE.W D5, ExprvmSelectedOpcodeVersion",
-            "MOVE.W D6, ExprvmCurrentPass",
-            "BSR.W selectProgram",
+            "unaryMinus",
+            "moveq #1, d4",
+            "currentPc",
+            "bsr.w emitPushCurrent",
+            "dollar",
+            "cmpi.l #1, d0",
+            "beq.w currentPc",
         ]
     ));
-    assert!(source_contains_in_order(
+    assert!(routine_contains_in_order(
         &source,
+        "compileSingleTerm",
         &[
-            "label:",
-            "BSR.W resolveLabelIndex",
-            "MOVE.W ExprvmCurrentPass, D3",
-            "CMPI.W #1, D3",
-            "BSR.W emitPushLiteralD3",
+            "binaryLiteral",
+            "bsr.w parseBinary",
+            "bsr.w emitPushLiteralD3",
         ]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "compileSingleTerm",
+        &[
+            "label",
+            "bsr.w resolveLabelIndex",
+            "move.w runtime.ExprvmCurrentPass, d3",
+            "cmpi.w #1, d3",
+            "clr.l d3",
+            "bsr.w emitPushLiteralD3",
+        ]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "finalizeProgram",
+        &[
+            "cmpi.w #2, d3",
+            "moveq #runtime.EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6",
+            "moveq #runtime.EXPRVM_V2_OPCODE_END, d6",
+        ]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "parseBinary",
+        &["cmpi.b #'0', d1", "cmpi.b #'1', d1"]
     ));
 }
+// TODO: Add bridge-specific binary scalar behavior coverage once a focused test
+// harness can invoke the opcore expr bridge directly without depending on
+// broader runtime-mode policy selection.
 
 #[test]
 fn motorola68020_exprvm_runtime_owns_bytecode_evaluator() {
@@ -13186,6 +13216,52 @@ fn source_contains_in_order(source: &str, snippets: &[&str]) -> bool {
         offset += index + len;
     }
     true
+}
+
+fn source_contains_any(source: &str, snippets: &[&str]) -> bool {
+    snippets
+        .iter()
+        .any(|snippet| source_contains_in_order(source, &[*snippet]))
+}
+
+fn routine_body(source: &str, routine_name: &str) -> Option<String> {
+    let routine_name = routine_name.to_ascii_lowercase();
+    let mut start = None;
+    let mut collected = String::new();
+
+    for line in source.lines() {
+        let lower = line.trim_start().to_ascii_lowercase();
+        if start.is_none() && lower.starts_with(&routine_name) && lower.contains(".block") {
+            start = Some(());
+        }
+        if start.is_some() {
+            collected.push_str(line);
+            collected.push('\n');
+            if lower.starts_with(".bend") {
+                return Some(collected);
+            }
+        }
+    }
+
+    None
+}
+
+fn routine_contains(source: &str, routine_name: &str, needle: &str) -> bool {
+    routine_body(source, routine_name)
+        .map(|body| body.contains(needle))
+        .unwrap_or(false)
+}
+
+fn routine_contains_any(source: &str, routine_name: &str, needles: &[&str]) -> bool {
+    routine_body(source, routine_name)
+        .map(|body| source_contains_any(&body, needles))
+        .unwrap_or(false)
+}
+
+fn routine_contains_in_order(source: &str, routine_name: &str, snippets: &[&str]) -> bool {
+    routine_body(source, routine_name)
+        .map(|body| source_contains_in_order(&body, snippets))
+        .unwrap_or(false)
 }
 
 fn tkpkg_source_contains(source: &str, snippet: &str) -> bool {

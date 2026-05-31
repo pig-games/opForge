@@ -3,7 +3,7 @@
 	.module prvm.amigaos.line_router
 	.cpu 68020
 	.pub
-	.use prvm.amigaos.runtime
+	.use prvm.amigaos.runtime (prvmRun68000)
 
 PRVM_REQUEST_FRAME_SIZE             = 112
 PRVM_MAGIC_OPRP                     = $4F505250
@@ -66,6 +66,12 @@ ROUTE_FRAME_FLAGS                   = 112
 ; Return ABI:
 ; - forwards D0-D3 from prvm_run_68000 on success
 ; - returns deterministic nonzero status with D1-D3 cleared on route failure
+;
+; Clobbers:
+; - D0-D7/A0-A4/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 ; ---------------------------------------------------------------------------
 prvmRouteLine68000	.block
 	movem.l d4-d7/a2-a4, -(sp)
@@ -85,7 +91,6 @@ prvmRouteLine68000	.block
 	lea ProcessorAsmText(PC), a1
 	moveq #3, d1
 	bsr.w compareText
-	tst.l d0
 	bne.w unsupported
 
 	movea.l ROUTE_FRAME_KIND_PTR(a4), a0
@@ -93,13 +98,11 @@ prvmRouteLine68000	.block
 	lea KindStatementText(PC), a1
 	moveq #9, d1
 	bsr.w compareText
-	tst.l d0
 	bne.w unsupported
 
 	movea.l ROUTE_FRAME_SOURCE_PTR(a4), a0
 	move.l ROUTE_FRAME_SOURCE_LEN(a4), d0
 	bsr.w rejectNewline
-	tst.l d0
 	bne.w newlineUnsupported
 
 	bsr.w buildRequestFrame
@@ -129,9 +132,16 @@ done
 	movem.l (sp)+, d4-d7/a2-a4
 	rts
 	.bend  ; prvmRouteLine68000
-	
+		
 	.priv
 
+; Compare the source text in A0 against the fixed literal in A1.
+; Inputs: A0 = candidate text; D0 = candidate length; A1 = expected text; D1 =
+; expected length.
+; Outputs: D0 = 0 on exact match, otherwise 1; A0/A1 advanced across the
+; compared bytes on matching prefixes.
+; Clobbers: D2/CCR.
+; CCR: reflects D0 on return.
 compareText	.block
 	cmp.l d1, d0
 	bne.s mismatch
@@ -153,6 +163,11 @@ mismatch
 	rts
 	.bend  ; compareText
 
+; Reject any source line that still contains CR or LF bytes.
+; Inputs: A0 = source text pointer; D0 = source text length.
+; Outputs: D0 = 0 when no newline bytes are present, otherwise 1.
+; Clobbers: D1/CCR.
+; CCR: reflects D0 on return.
 rejectNewline	.block
 	tst.l d0
 	beq.s noNewline
@@ -175,6 +190,11 @@ found
 	rts
 	.bend  ; rejectNewline
 
+; Populate the shared PRVM request frame from the current route frame.
+; Inputs: A4 = route frame base.
+; Outputs: PrvmRouteRequestFrame is populated for `prvmRun68000`.
+; Clobbers: A0/CCR.
+; CCR: unspecified on return.
 buildRequestFrame	.block
 	lea PrvmRouteRequestFrame(PC), a0
 	move.l #PRVM_MAGIC_OPRP, 0(a0)
@@ -224,7 +244,7 @@ KindStatementText
 PrvmRouteRequestFrame
 	.fill byte, 112, 0
 PrvmRouteInterpreterEntryPtr
-	.long runtime.prvmRun68000
+	.long prvmRun68000
 
 	.endsection
 	.endmodule

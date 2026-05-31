@@ -31433,6 +31433,7 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
 
 #[test]
 fn external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin() {
+    const TEST_NAME: &str = "external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin";
     let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("native CLI FS-UAE smoke lock poisoned");
@@ -31475,10 +31476,17 @@ fn external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin() {
                 panic!("read native CLI output {}: {err}", output_path.display())
             });
             assert_eq!(actual, native_cli_6502_contract_expected_bin());
+            let last_green_marker = crate::fs_uae_smoke::record_last_green_fs_uae_test_run(
+                &workspace_root(),
+                TEST_NAME,
+                &run.artifact_dir,
+            )
+            .unwrap_or_else(|err| panic!("record FS-UAE last-green marker for {TEST_NAME}: {err}"));
             eprintln!(
-                "FS-UAE native opForge CLI 6502 output smoke wrote {} under {}",
+                "FS-UAE native opForge CLI 6502 output smoke wrote {} under {} (last green marker: {})",
                 output_path.display(),
-                run.artifact_dir.display()
+                run.artifact_dir.display(),
+                last_green_marker.display()
             );
         }
     }

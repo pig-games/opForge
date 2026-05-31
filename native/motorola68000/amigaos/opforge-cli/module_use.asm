@@ -114,6 +114,17 @@ return
 	rts
 	.bend  ; opforgeNativeCliRecordImport
 
+; Inputs:
+;   D3.W = import-select flags
+;   D4.W = owning import table index
+;   state.NativeCliArgToken = selected import token
+;   state.NativeCliIncludeTarget = optional alias token
+; Outputs:
+;   D0.L = 0 on success, 1 when the import-select table is full
+; Clobbers:
+;   D0-D1, D6, A0-A1
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliRecordImportSelect	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0

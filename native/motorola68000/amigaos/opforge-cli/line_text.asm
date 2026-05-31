@@ -288,7 +288,6 @@ opforgeNativeCliParseUseItemNoAliasFlag
 	move.l d0, -(sp)
 	move.w d5, d4
 	jsr module_use.opforgeNativeCliRecordImportSelect
-	tst.l d0
 	bne.w opforgeNativeCliParseUseItemsFailPop
 	jsr module_use.opforgeNativeCliEmitImportSelectRecord
 	move.l (sp)+, d0

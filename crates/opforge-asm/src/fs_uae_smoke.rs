@@ -37,6 +37,8 @@ const FS_UAE_DEFAULT_POST_START_TIMEOUT_MS: u64 = 20_000;
 const FS_UAE_LAUNCHER_STDOUT_FILE: &str = "fs_uae_launcher.stdout.log";
 const FS_UAE_LAUNCHER_STDERR_FILE: &str = "fs_uae_launcher.stderr.log";
 const FS_UAE_CONFIG_FILE_NAME: &str = "fs-uae-smoke.fs-uae";
+const FS_UAE_LAST_GREEN_DIR_NAME: &str = "fs-uae-last-green";
+const FS_UAE_LAST_GREEN_FILE_NAME: &str = "last_green.txt";
 const FS_UAE_MOUNTED_WORK_DIR_NAME: &str = "Work";
 const FS_UAE_MOUNTED_HUNK_ALIAS: &str = "build/opforge_fsuae_smoke.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
@@ -162,6 +164,11 @@ pub(crate) struct OpforgeNativeCliMosFixtureCase<'a> {
 struct OpforgeNativeCliInputOverride<'a> {
     source: &'a [u8],
     package_bytes: &'a [u8],
+}
+
+struct GitHeadProvenance {
+    commit: String,
+    commit_unix_seconds: String,
 }
 
 pub(crate) fn run_hunk_smoke_from_env(workspace_root: &Path) -> Result<FsUaeSmokeOutcome, String> {
@@ -487,6 +494,109 @@ fn create_artifact_dir(workspace_root: &Path, label: &str) -> Result<PathBuf, St
     fs::create_dir_all(&dir)
         .map_err(|err| format!("create artifact directory {}: {err}", dir.display()))?;
     Ok(dir)
+}
+
+pub(crate) fn record_last_green_fs_uae_test_run(
+    workspace_root: &Path,
+    test_name: &str,
+    artifact_dir: &Path,
+) -> Result<PathBuf, String> {
+    let provenance = read_git_head_provenance(workspace_root)?;
+    let green_run_unix_seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string();
+    let record = format_last_green_record(
+        test_name,
+        artifact_dir,
+        provenance.commit.as_str(),
+        provenance.commit_unix_seconds.as_str(),
+        green_run_unix_seconds.as_str(),
+    );
+
+    let target_dir = workspace_root
+        .join("target")
+        .join(FS_UAE_LAST_GREEN_DIR_NAME);
+    fs::create_dir_all(&target_dir).map_err(|err| {
+        format!(
+            "create last-green directory {}: {err}",
+            target_dir.display()
+        )
+    })?;
+
+    let stable_marker_path = target_dir.join(format!("{test_name}.txt"));
+    fs::write(&stable_marker_path, record.as_bytes()).map_err(|err| {
+        format!(
+            "write stable last-green marker {}: {err}",
+            stable_marker_path.display()
+        )
+    })?;
+
+    let artifact_marker_path = artifact_dir.join(FS_UAE_LAST_GREEN_FILE_NAME);
+    fs::write(&artifact_marker_path, record.as_bytes()).map_err(|err| {
+        format!(
+            "write artifact last-green marker {}: {err}",
+            artifact_marker_path.display()
+        )
+    })?;
+
+    Ok(stable_marker_path)
+}
+
+fn format_last_green_record(
+    test_name: &str,
+    artifact_dir: &Path,
+    git_head_commit: &str,
+    git_head_commit_unix_seconds: &str,
+    green_run_unix_seconds: &str,
+) -> String {
+    format!(
+        "test={test_name}\n\
+git_head_commit={git_head_commit}\n\
+git_head_commit_unix_seconds={git_head_commit_unix_seconds}\n\
+green_run_unix_seconds={green_run_unix_seconds}\n\
+artifact_dir={}\n",
+        artifact_dir.display()
+    )
+}
+
+fn read_git_head_provenance(workspace_root: &Path) -> Result<GitHeadProvenance, String> {
+    let commit = run_git_stdout(workspace_root, &["rev-parse", "HEAD"])?;
+    let commit_unix_seconds =
+        run_git_stdout(workspace_root, &["show", "-s", "--format=%ct", "HEAD"])?;
+    Ok(GitHeadProvenance {
+        commit,
+        commit_unix_seconds,
+    })
+}
+
+fn run_git_stdout(workspace_root: &Path, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(workspace_root)
+        .output()
+        .map_err(|err| {
+            format!(
+                "run git {} in {}: {err}",
+                args.join(" "),
+                workspace_root.display()
+            )
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "git {} failed in {} with status {}: {}",
+            args.join(" "),
+            workspace_root.display(),
+            output.status,
+            stderr.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|err| format!("decode git {} stdout as UTF-8: {err}", args.join(" ")))?;
+    Ok(stdout.trim().to_string())
 }
 
 fn example_guest_input(example_name: &str) -> Option<(&'static str, &'static [u8])> {
@@ -1795,6 +1905,24 @@ mod tests {
             vec!["OPFORGE_FS_UAE_SMOKE".to_string()]
         );
         assert!(example_assembly_defines("helloworld").is_empty());
+    }
+
+    #[test]
+    fn format_last_green_record_captures_commit_timestamp_and_artifact_dir() {
+        let record = format_last_green_record(
+            "external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin",
+            Path::new("/tmp/opforge-fsuae-smoke"),
+            "abc123def456",
+            "1717152000",
+            "1717152600",
+        );
+
+        assert!(record
+            .contains("test=external_fs_uae_opforge_native_cli_6502_writes_rust_matching_bin"));
+        assert!(record.contains("git_head_commit=abc123def456"));
+        assert!(record.contains("git_head_commit_unix_seconds=1717152000"));
+        assert!(record.contains("green_run_unix_seconds=1717152600"));
+        assert!(record.contains("artifact_dir=/tmp/opforge-fsuae-smoke"));
     }
 
     #[test]

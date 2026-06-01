@@ -77,7 +77,6 @@ haveDos
 	move.l d3, 12(a0)
 
 	bsr.w validateFailFastResult
-	tst.l d0
 	bne.s reportFailure
 
 	lea SuccessText(PC), a1
@@ -168,6 +167,11 @@ validateResult	.block
 	rts
 	.bend  ; validateResult
 
+; Validate the unsupported-route fail-fast surface.
+; Inputs: IteratorStatus = iterator status tuple from the just-completed call.
+; Outputs: D0.L = 0 on success, 1 on mismatch; A1 = failure text on mismatch.
+; Clobbers: D0/A0-A1/CCR.
+; CCR: reflects D0.L on return.
 validateFailFastResult	.block
 	lea IteratorStatus(PC), a0
 	cmpi.l #PRVM_STATUS_UNSUPPORTED_ROUTE, 0(a0)

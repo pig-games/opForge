@@ -2919,7 +2919,6 @@ tkpkgEncodeFindAndExecuteTableProgram	.block
 	lea buffers.PackageStorage, a0
 	adda.w d0, a0
 	bsr.w tkpkgEncodeReadU32Low16
-	tst.w d0
 	beq.w noMatch
 	move.w d0, d7
 	subq.w #1, d7
@@ -3046,6 +3045,18 @@ return
 	rts
 	.bend  ; tkpkgEncodeExecuteProgram
 
+; Inputs:
+; - A0: points at a 32-bit little-endian table field whose low 16 bits are consumed.
+;
+; Outputs:
+; - D0.W: decoded low 16-bit value.
+; - A0: advanced past the 4-byte field.
+;
+; Clobbers:
+; - D0-D1/A0/CCR
+;
+; CCR:
+; - Reflects D0.W on return.
 tkpkgEncodeReadU32Low16	.block
 	moveq #0, d0
 	move.b (a0)+, d0

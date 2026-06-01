@@ -17,6 +17,18 @@
 	.section code, kind=code
 	.pub
 
+; Inputs:
+;   state.NativeCliArgToken = module name token
+;   state.NativeCliSourceLineNum = defining source line
+;   state.NativeCliModuleDepth/state.NativeCliModuleCount describe the current module stack
+; Outputs:
+;   D0.L = 0 on success, 1 when the module table is full
+;   state.NativeCliCurrentModuleId updated to the recorded module on success
+;   state.NativeCliRootModuleId initialized on the first recorded module
+; Clobbers:
+;   D0-D3/A0-A1/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliRecordModule	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0
@@ -69,6 +81,17 @@ return
 	rts
 	.bend  ; opforgeNativeCliRecordModule
 
+; Inputs:
+;   state.NativeCliCurrentModuleId = owning module
+;   state.NativeCliSourceLineNum = import source line
+;   state.NativeCliIncludeTarget = optional import alias token
+; Outputs:
+;   D0.L = 0 on success, 1 when the import table is full
+;   A new import row is recorded for the current module on success
+; Clobbers:
+;   D0-D4/A0-A1/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliRecordImport	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	moveq #0, d0
@@ -293,6 +316,18 @@ opforgeNativeCliEmitImportWildcardRecord	.block
 	rts
 	.bend  ; opforgeNativeCliEmitImportWildcardRecord
 
+; Inputs:
+;   state.NativeCliArgToken = bare imported module name token
+;   state.NativeCliModulePathTable/state.NativeCliModulePathCount = candidate search roots
+; Outputs:
+;   D0.L = resolved module id on success
+;   D1.L = 0 on success, 1 when no readable module source is found or path assembly fails
+;   state.NativeCliIncludePath = last candidate path attempted
+;   state.NativeCliResolvedModuleId updated on success
+; Clobbers:
+;   D0-D1/D6-D7/A0-A1/CCR
+; CCR:
+;   Reflects D1.L on return
 opforgeNativeCliResolveBareUseModule	.block
 	movem.l d2-d7/a0-a1, -(sp)
 	clr.w d7
@@ -319,6 +354,8 @@ loop
 	bne.w fail
 	lea state.NativeCliIncludePath, a0
 	jsr dos.openInput
+	; Keep the explicit status probe: this crosses the DOS boundary and the
+	; open-handle success convention is clearer than assuming a CCR contract.
 	tst.l d0
 	bne.s found
 	addq.w #1, d7
@@ -414,6 +451,16 @@ opforgeNativeCliEmitModuleCompatibility	.block
 	rts
 	.bend  ; opforgeNativeCliEmitModuleCompatibility
 
+; Inputs:
+;   state.NativeCliCurrentModuleId/state.NativeCliModuleDepth describe the active module
+;   state.NativeCliSourceLineNum = closing source line
+; Outputs:
+;   D0.L = 0 on success, 1 when there is no open module to close
+;   state.NativeCliModuleDepth decremented and state.NativeCliCurrentModuleId restored on success
+; Clobbers:
+;   D0-D4/A0-A1/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliEmitCloseModule	.block
 	movem.l d1-d4/a0-a1, -(sp)
 	tst.w state.NativeCliModuleDepth

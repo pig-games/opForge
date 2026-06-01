@@ -39,8 +39,6 @@ opforgeNativeCliTokenizeCurrentLine	.block
 record
 	jsr assembly_session.opforgeNativeCliRecordSourceLine
 	bsr.w opforgeNativeCliPrepareLineServiceRequest
-	tst.l d0
-	bne.s fail
 
 	lea buffers.ControlBlockV1, a0
 	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
@@ -211,6 +209,11 @@ return
 	.bend  ; opforgeNativeCliRouteParserModuleUseLine
 
 ; Build the tokenizer request payload: u32 line number plus source bytes.
+; Build the tokenizer request payload: u32 line number plus source bytes.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen/state.NativeCliSourceLineNum describe the current logical line.
+; Outputs: D0 = 0; D1 = request byte length; state.NativeCliLineRequestLen updated; buffers.lastErrorBuffer populated with the request payload.
+; Clobbers: D0-D2/A1-A2/CCR.
+; CCR: reflects D0 on return. This helper has no failure path with the current fixed-size request layout.
 opforgeNativeCliPrepareLineServiceRequest	.block
 	lea buffers.lastErrorBuffer, a2
 	move.l state.NativeCliSourceLineNum, d2  ; line number is little-endian to match package fixtures

@@ -690,7 +690,6 @@ havePipeline
 noExtension
 	move.l d6, -(sp)
 	bsr.w resolveExpressionContractVersionsV1
-	tst.b d0
 	bne.s resolveFail
 	move.l (sp)+, d6
 	move.l (sp)+, d3

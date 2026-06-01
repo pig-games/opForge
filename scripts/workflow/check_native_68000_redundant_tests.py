@@ -291,6 +291,14 @@ REVIEWED_RETAINED_CALL_TST_SITES = (
         reason="fallback OS/library handle acquisition probe",
     ),
     ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/test-harnesses/prvm/prvm_debug_cli.asm",
+        block_name="start",
+        call_target="OPEN_LIBRARY(a6)",
+        tst_width="l",
+        branch_text="beq.w done",
+        reason="fallback OS/library handle acquisition probe",
+    ),
+    ReviewedRetainedCallSite(
         path_suffix="native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm",
         call_target="tkpkgDebugCliOpenInputV1",
         tst_width="l",

@@ -455,6 +455,11 @@ tkpkgDebugCliManifestReturn
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 
+; Prepare one manifest entry by optionally selecting a pipeline and copying the path.
+; Inputs: A1 = manifest line start; D0.L = trimmed line length.
+; Outputs: D0.L = 0 on success, 1 on pipeline-set failure, -1 on invalid manifest entry; DebugCliInputPathBuffer updated on success.
+; Clobbers: D0-D1/D5-D7/A1-A4/CCR.
+; CCR: reflects D0.L on return.
 tkpkgDebugCliPrepareManifestEntryV1
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l a1, a4
@@ -536,7 +541,6 @@ tkpkgDebugCliManifestPipelineOk
 	sub.l d5, d0
 	subq.l #1, d0
 	bsr.w tkpkgDebugCliCopyManifestPathV1
-	tst.l d0
 	beq.s tkpkgDebugCliManifestPrepareOk
 	move.l #ManifestPathTooLongText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -547,7 +551,6 @@ tkpkgDebugCliManifestNoPipeline
 	movea.l a4, a1
 	move.l d7, d0
 	bsr.w tkpkgDebugCliCopyManifestPathV1
-	tst.l d0
 	beq.s tkpkgDebugCliManifestPrepareOk
 	move.l #ManifestPathTooLongText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -561,6 +564,11 @@ tkpkgDebugCliManifestPrepareDone
 	movem.l (sp)+, d2-d7/a2-a6
 	rts
 
+; Copy one manifest-selected path into DebugCliInputPathBuffer.
+; Inputs: A1 = source path bytes; D0.L = path length.
+; Outputs: D0.L = 0 on success, -1 when the path does not fit; DebugCliInputPathBuffer written on success.
+; Clobbers: D0/D2/A0/A2/CCR.
+; CCR: reflects D0.L on return.
 tkpkgDebugCliCopyManifestPathV1
 	movem.l d1-d3/a0-a2, -(sp)
 	cmp.l #PATH_BUFFER_CAPACITY - 1, d0

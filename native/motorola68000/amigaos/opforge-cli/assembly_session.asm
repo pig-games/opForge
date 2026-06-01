@@ -339,7 +339,6 @@ opforgeNativeCliRecordSourceStatementFallback	.block
 	movea.l a0, a2
 	move.l d0, d2
 	bsr.w opforgeNativeCliFallbackTokenLen
-	tst.w d0
 	beq.w return
 	move.w d0, d3
 	moveq #0, d4
@@ -402,7 +401,6 @@ labelToken
 	movea.l a0, a2
 	move.l d0, d2
 	bsr.w opforgeNativeCliFallbackTokenLen
-	tst.w d0
 	beq.w return
 	move.w d0, d3
 	moveq #0, d4
@@ -449,7 +447,6 @@ opforgeNativeCliRecordSourceStatementMnemonic	.block
 	addq.w #1, d5
 	move.l d5, state.NativeCliStmtOperandStart
 	bsr.w opforgeNativeCliFallbackOperandLen
-	tst.w d0
 	beq.s done
 	add.w d0, d5
 	move.l d5, state.NativeCliStmtOperandEnd
@@ -458,6 +455,15 @@ done
 	rts
 	.bend  ; opforgeNativeCliRecordSourceStatementMnemonic
 
+; Inputs:
+;   A0 = token start candidate
+;   D0.L = remaining bytes in the logical line
+; Outputs:
+;   D0.W = token length up to whitespace, ':', ';', or line end
+; Clobbers:
+;   D0-D2/A0/CCR
+; CCR:
+;   Reflects D0.W on return
 opforgeNativeCliFallbackTokenLen	.block
 	movem.l d1-d2/a0, -(sp)
 	moveq #0, d1
@@ -489,7 +495,16 @@ done
 	movem.l (sp)+, d1-d2/a0
 	rts
 	.bend  ; opforgeNativeCliFallbackTokenLen
-
+	
+; Inputs:
+;   A0 = operand-text start candidate
+;   D0.L = remaining bytes in the logical line
+; Outputs:
+;   D0.W = trimmed operand span length up to comment or line end
+; Clobbers:
+;   D0-D3/A0/CCR
+; CCR:
+;   Reflects D0.W on return
 opforgeNativeCliFallbackOperandLen	.block
 	movem.l d1-d3/a0, -(sp)
 	moveq #0, d1

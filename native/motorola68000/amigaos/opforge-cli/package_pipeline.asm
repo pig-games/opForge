@@ -95,6 +95,9 @@ opforgeNativeCliStagePackage	.block
 externalPackage
 	lea state.NativeCliPackagePath, a0
 	jsr dos.openInput
+	; Keep the file-open result check explicit: this crosses the DOS boundary and
+	; reads as a semantic handle/open-success probe rather than a local helper
+	; CCR contract.
 	tst.l d0
 	bne.s externalOpenOk
 	moveq #1, d0

@@ -71,22 +71,17 @@ tkpkgPipelineSetActiveV1	.block
 
 parseRequest
 	bsr.w parseRequestV1
-	tst.b d0
 	bne.w done
 	bsr.w resolveHierarchyV1
-	tst.b d0
 	bne.w done
 	bsr.w policy.resolveLocatorV1
 	tst.b d0
 	bne.w done
 	bsr.w resolveTokenizerVmLocatorV1
-	tst.b d0
 	bne.w done
 	bsr.w resolveParserVmLocatorV1
-	tst.b d0
 	bne.w done
 	bsr.w commitActiveSelectionV1
-	tst.b d0
 	bne.w done
 	moveq #0, d0
 
@@ -98,6 +93,18 @@ done
 
 	.priv
 
+; Inputs:
+; - A0: control block whose input window contains `<cpu-id>\0<dialect-id?>`.
+;
+; Outputs:
+; - D0: 0 on success, abi.STATUS_BAD_REQUEST_V1 on malformed input.
+; - pending CPU/dialect locator buffers updated on success.
+;
+; Clobbers:
+; - D0-D6/A1/A3/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 parseRequestV1	.block
 	lea buffers.PendingFamilyOffsetLo, a3
 	moveq #36, d0
@@ -180,13 +187,24 @@ badRequest
 	.bend  ; parseRequestV1
 
 ; Resolve the pending CPU/family/dialect hierarchy before runtime locators.
+; Inputs:
+; - pending CPU/dialect request locators already parsed into buffers.Pending* state.
+;
+; Outputs:
+; - D0: 0 on success, abi.STATUS_RUNTIME_ERROR_V1 on unresolved CPU/family/dialect.
+; - A1/D1: failure text pointer/length when D0 is runtime error.
+;
+; Clobbers:
+; - D0-D7/A1-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 resolveHierarchyV1	.block
 	bsr.w findCpuEntryV1
 	bne.w cpuUnresolved
 	bsr.w findFamilyEntryV1
 	bne.w familyUnresolved
 	bsr.w resolveSelectedDialectV1
-	tst.b d0
 	bne.w dialectUnresolved
 	moveq #0, d0
 	rts
@@ -326,6 +344,19 @@ familyMissing
 	.bend  ; findFamilyEntryV1
 
 ; Choose requested dialect when present, otherwise CPU default, then family canonical.
+; Inputs:
+; - buffers.PendingDialectOffsetLo / PendingDefaultDialectOffsetLo / PendingCanonicalDialectOffsetLo
+;   contain the candidate request, default, and canonical dialect locators.
+;
+; Outputs:
+; - D0: 0 on success, 1 when no dialect can be resolved.
+; - buffers.PendingDialectOffsetLo normalized to the accepted package dialect on success.
+;
+; Clobbers:
+; - D0-D7/A0-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 resolveSelectedDialectV1	.block
 	lea buffers.PendingDialectOffsetLo, a3
 	bsr.w readLocatorPtrLenV1
@@ -510,6 +541,19 @@ dialectAllowed
 	.bend  ; dialectAllowsCpuV1
 
 ; Resolve tokenizer VM program with dialect -> CPU -> family owner precedence.
+; Inputs:
+; - pending dialect/cpu/family locators already resolved.
+;
+; Outputs:
+; - D0: 0 on success, abi.STATUS_RUNTIME_ERROR_V1 when no tokenizer VM program exists.
+; - buffers.PendingTokenizerVmOffsetLo / PendingTokenizerVmOwnerTag updated on success.
+; - A1/D1: failure text pointer/length when D0 is runtime error.
+;
+; Clobbers:
+; - D0-D7/A1-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 resolveTokenizerVmLocatorV1	.block
 	moveq #buffers.SCOPED_OWNER_DIALECT, d0
 	lea buffers.PendingDialectOffsetLo, a3
@@ -534,6 +578,19 @@ vmResolved
 	.bend  ; resolveTokenizerVmLocatorV1
 
 ; Resolve parser VM program with dialect -> CPU -> family owner precedence.
+; Inputs:
+; - pending dialect/cpu/family locators already resolved.
+;
+; Outputs:
+; - D0: 0 on success, abi.STATUS_RUNTIME_ERROR_V1 when no parser VM program exists.
+; - buffers.PendingParserVmOffsetLo / PendingParserVmOwnerTag updated on success.
+; - A1/D1: failure text pointer/length when D0 is runtime error.
+;
+; Clobbers:
+; - D0-D7/A1-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 resolveParserVmLocatorV1	.block
 	moveq #buffers.SCOPED_OWNER_DIALECT, d0
 	lea buffers.PendingDialectOffsetLo, a3
@@ -784,6 +841,19 @@ parserSkipBoundsFail
 	.bend  ; skipParserVmEntryV1
 
 ; Commit fully resolved pending locators into active service state.
+; Inputs:
+; - fully resolved pending locator/tag state in buffers.Pending* fields.
+;
+; Outputs:
+; - D0: 0 on success, abi.STATUS_RUNTIME_ERROR_V1 when any identifier copy overflows.
+; - active pipeline locator/tag state committed into buffers.Active* fields on success.
+; - A1/D1: failure text pointer/length when D0 is runtime error.
+;
+; Clobbers:
+; - D0-D3/A1-A3/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 commitActiveSelectionV1	.block
 	lea buffers.PendingCpuOffsetLo, a3
 	lea buffers.ActiveCpuBuffer.l, a2

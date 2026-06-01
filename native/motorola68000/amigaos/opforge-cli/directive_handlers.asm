@@ -17,6 +17,11 @@
 	.section code, kind=code
 	.pub
 
+; Build the parser-tail scratch buffer for `.module` / `.endmodule` / `.use`.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the current source line.
+; Outputs: D0 = 0 on success, 1 on tail-buffer overflow; state.NativeCliParserTailBuffer/state.NativeCliParserTailLen updated on success.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliBuildParserTailBuffer	.block
 	movem.l d1-d7/a0-a3, -(sp)
 	bsr.w opforgeNativeCliParserTailFallbackEnd
@@ -61,6 +66,11 @@ return
 	rts
 	.bend  ;  opforgeNativeCliBuildParserTailBuffer
 
+; Compute the fallback parser-tail offset when the table-backed parser did not provide one.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the current source line.
+; Outputs: D6 = byte offset immediately after the recognized directive keyword, or 0 when no supported directive prefix matches.
+; Clobbers: D0-D1/D5-D6/A0-A1/CCR.
+; CCR: reflects the final directive-prefix comparison, not D6.
 opforgeNativeCliParserTailFallbackEnd	.block
 	lea state.NativeCliSourceLine, a0
 	moveq #0, d0
@@ -108,6 +118,11 @@ use
 	rts
 	.bend  ; opforgeNativeCliParserTailFallbackEnd
 
+; Return the parser-tail scratch buffer as a pointer/length pair.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the current source line.
+; Outputs: D1 = 0 on success, 1 on failure; A0 = parser-tail buffer pointer on success; D0 = parser-tail byte length on success, otherwise build failure status.
+; Clobbers: D0-D1/A0/CCR.
+; CCR: reflects D1 on return.
 opforgeNativeCliParserTailPtr	.block
 	bsr.w opforgeNativeCliBuildParserTailBuffer
 	move.l d0, d1
@@ -195,7 +210,7 @@ fail
 
 ; Parse one `.use` directive from the current source line.
 ; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
-; Outputs: D0 = resolved module id on success, nonzero failure status on parse/import errors.
+; Outputs: D0 = 0 on success, nonzero failure status on parse/import errors; state.NativeCliResolvedModuleId and import tables updated for bare-module resolution when applicable.
 ; Clobbers: A0-A1/D1/D5/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliParseUseLine	.block

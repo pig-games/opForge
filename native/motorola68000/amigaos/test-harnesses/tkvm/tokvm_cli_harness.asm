@@ -93,7 +93,6 @@ tokvmAmigaosCliHarnessRun	.block
 
 	bsr.w amigaosCliFileioGetArgStr  ; DOS GetArgStr provides the raw Shell argument tail
 	bsr.w parseArgs  ; native spec is intentionally fixed: <input-path> <output-path>
-	tst.l d0
 	beq.w argsParsed
 	moveq #RETURN_USAGE, d7
 	move.l GLOBALS_STDOUT_HANDLE(a4), d1
@@ -242,6 +241,10 @@ shutdown
 ; Parse exactly two unquoted Shell paths from DOS GetArgStr output.
 ; This stays intentionally narrower than a full command-line parser because the
 ; harness spec defines a fixed tokvm <input-path> <output-path> contract.
+; Inputs: A0 = DOS GetArgStr tail pointer.
+; Outputs: D0.L = 0 on success, negative HARNESS_STATUS_* on failure; InputPathBuffer/OutputPathBuffer filled on success.
+; Clobbers: D0/A1/A3/CCR.
+; CCR: reflects D0.L on return.
 parseArgs	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l a0, a3  ; A3 walks the raw DOS argument tail in-place
@@ -299,6 +302,10 @@ skipDone
 ; Copy one CLI path token into the caller-selected buffer.
 ; This intentionally implements a narrow Shell token grammar rather than full
 ; quote/escape handling because the tokvm host spec only accepts raw paths.
+; Inputs: A3 = current DOS arg cursor; A1 = destination path buffer.
+; Outputs: D0.L = 0 on success, negative HARNESS_STATUS_* on failure; A3/A1 advanced over copied bytes.
+; Clobbers: D0/D6/CCR.
+; CCR: reflects D0.L on return.
 copyToken	.block
 	move.l #PATH_BUFFER_CAPACITY - 1, d6  ; reserve space for the trailing NUL DOS expects
 copyLoop

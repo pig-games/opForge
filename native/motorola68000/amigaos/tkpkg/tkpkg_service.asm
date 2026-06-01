@@ -1390,14 +1390,17 @@ return
 	rts
 	.bend  ; tkpkgMselTryBuildCandidateV1
 
+; Compare current selected-plan text against the caller-supplied plan tag.
+; Inputs: A2 = expected plan text; D1 = expected plan length.
+; Outputs: D0 = 1 when plan matches, 0 otherwise.
+; Clobbers: D0/D4/CCR.
+; CCR: reflects D0 on return.
 tkpkgMselPlanEqualsV1	.block
-	move.l a2, -(sp)
-	move.w d1, -(sp)
+	movem.l d1/a2, -(sp)
 	movea.l EncodeSelectedMselPlanPtr, a1
 	move.w EncodeSelectedMselPlanLen, d0
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	move.w (sp)+, d1
-	movea.l (sp)+, a2
+	movem.l (sp)+, d1/a2
 	rts
 	.bend  ; tkpkgMselPlanEqualsV1
 

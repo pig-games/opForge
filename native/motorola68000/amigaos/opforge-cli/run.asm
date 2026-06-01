@@ -135,7 +135,6 @@ outputFormatReady
 	jsr session_init.opforgeNativeCliInitAssemblySession
 	jsr args.opforgeNativeCliEmitModulePathRecords
 	jsr source_reader.opforgeNativeCliTokenizeFrontend
-	tst.l d0
 	beq.s tokenizerOk
 	move.l #strings.TokenizerFailureText, d1
 	jsr dos.putStr
@@ -159,7 +158,6 @@ passesOk
 	tst.l d0
 	beq.s emitStub
 	jsr output.opforgeNativeCliWriteFlatOutput
-	tst.l d0
 	beq.s outputOk
 	move.l #strings.NativeOutputFailureText, d1
 	jsr dos.putStr

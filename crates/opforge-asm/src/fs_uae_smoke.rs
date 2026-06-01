@@ -902,12 +902,28 @@ enum TkpkgDebugCliInputMode<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct FsUaeCapturePathSet {
+    primary: PathBuf,
+    fallback: Option<PathBuf>,
+}
+
+impl FsUaeCapturePathSet {
+    fn from_primary_and_optional_fallback(primary: PathBuf, fallback: Option<PathBuf>) -> Self {
+        Self { primary, fallback }
+    }
+
+    fn candidates(&self) -> impl Iterator<Item = &Path> {
+        std::iter::once(self.primary.as_path()).chain(self.fallback.as_deref())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct FsUaeCaptureConfig {
-    start_path: PathBuf,
-    ready_path: PathBuf,
-    stdout_path: PathBuf,
-    stderr_path: PathBuf,
-    exit_code_path: PathBuf,
+    start_paths: FsUaeCapturePathSet,
+    ready_paths: FsUaeCapturePathSet,
+    stdout_paths: FsUaeCapturePathSet,
+    stderr_paths: FsUaeCapturePathSet,
+    exit_code_paths: FsUaeCapturePathSet,
     timeout: Duration,
     post_start_timeout: Duration,
     poll_interval: Duration,
@@ -919,43 +935,37 @@ enum FsUaeWaitOutcome {
     Captured,
 }
 
-fn capture_config_from_env(artifact_dir: &Path) -> Result<FsUaeCaptureConfig, String> {
+fn capture_config_from_env(
+    artifact_dir: &Path,
+    fallback_artifact_dir: Option<&Path>,
+) -> Result<FsUaeCaptureConfig, String> {
+    let start_name = std::env::var(FS_UAE_START_FILE_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| FS_UAE_DEFAULT_START_FILE.to_string());
+    let ready_name = std::env::var(FS_UAE_READY_FILE_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| FS_UAE_DEFAULT_READY_FILE.to_string());
+    let stdout_name = std::env::var(FS_UAE_STDOUT_FILE_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| FS_UAE_DEFAULT_STDOUT_FILE.to_string());
+    let stderr_name = std::env::var(FS_UAE_STDERR_FILE_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| FS_UAE_DEFAULT_STDERR_FILE.to_string());
+    let exit_code_name = std::env::var(FS_UAE_EXIT_CODE_FILE_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| FS_UAE_DEFAULT_EXIT_CODE_FILE.to_string());
+
     Ok(FsUaeCaptureConfig {
-        start_path: resolve_capture_path(
-            artifact_dir,
-            &std::env::var(FS_UAE_START_FILE_ENV)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| FS_UAE_DEFAULT_START_FILE.to_string()),
-        ),
-        ready_path: resolve_capture_path(
-            artifact_dir,
-            &std::env::var(FS_UAE_READY_FILE_ENV)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| FS_UAE_DEFAULT_READY_FILE.to_string()),
-        ),
-        stdout_path: resolve_capture_path(
-            artifact_dir,
-            &std::env::var(FS_UAE_STDOUT_FILE_ENV)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| FS_UAE_DEFAULT_STDOUT_FILE.to_string()),
-        ),
-        stderr_path: resolve_capture_path(
-            artifact_dir,
-            &std::env::var(FS_UAE_STDERR_FILE_ENV)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| FS_UAE_DEFAULT_STDERR_FILE.to_string()),
-        ),
-        exit_code_path: resolve_capture_path(
-            artifact_dir,
-            &std::env::var(FS_UAE_EXIT_CODE_FILE_ENV)
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| FS_UAE_DEFAULT_EXIT_CODE_FILE.to_string()),
-        ),
+        start_paths: capture_path_set(artifact_dir, fallback_artifact_dir, &start_name),
+        ready_paths: capture_path_set(artifact_dir, fallback_artifact_dir, &ready_name),
+        stdout_paths: capture_path_set(artifact_dir, fallback_artifact_dir, &stdout_name),
+        stderr_paths: capture_path_set(artifact_dir, fallback_artifact_dir, &stderr_name),
+        exit_code_paths: capture_path_set(artifact_dir, fallback_artifact_dir, &exit_code_name),
         timeout: Duration::from_millis(parse_env_u64(
             FS_UAE_TIMEOUT_MS_ENV,
             FS_UAE_DEFAULT_TIMEOUT_MS,
@@ -969,6 +979,17 @@ fn capture_config_from_env(artifact_dir: &Path) -> Result<FsUaeCaptureConfig, St
             FS_UAE_DEFAULT_POLL_MS,
         )?),
     })
+}
+
+fn capture_path_set(
+    artifact_dir: &Path,
+    fallback_artifact_dir: Option<&Path>,
+    value: &str,
+) -> FsUaeCapturePathSet {
+    FsUaeCapturePathSet::from_primary_and_optional_fallback(
+        resolve_capture_path(artifact_dir, value),
+        fallback_artifact_dir.map(|dir| resolve_capture_path(dir, value)),
+    )
 }
 
 fn resolve_capture_path(artifact_dir: &Path, value: &str) -> PathBuf {
@@ -988,6 +1009,125 @@ fn parse_env_u64(name: &str, default_value: u64) -> Result<u64, String> {
             .map_err(|err| format!("parse {name}='{value}' as u64: {err}")),
         _ => Ok(default_value),
     }
+}
+
+fn resolve_fs_uae_boot_work_dir_from_template() -> Result<Option<PathBuf>, String> {
+    let Some(template_path) = std::env::var(FS_UAE_CONFIG_TEMPLATE_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Ok(None);
+    };
+
+    let template_path = PathBuf::from(template_path);
+    let template_text = fs::read_to_string(&template_path).map_err(|err| {
+        format!(
+            "read FS-UAE config template {}: {err}",
+            template_path.display()
+        )
+    })?;
+    Ok(parse_fs_uae_hard_drive_path(&template_text, 0))
+}
+
+fn parse_fs_uae_hard_drive_path(config_text: &str, drive_index: usize) -> Option<PathBuf> {
+    let expected_key = format!("hard_drive_{drive_index}");
+    for line in config_text.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with(&expected_key) {
+            continue;
+        }
+        let (_, value) = trimmed.split_once('=')?;
+        let path_text = value.trim();
+        if path_text.is_empty() {
+            continue;
+        }
+        return Some(PathBuf::from(path_text));
+    }
+    None
+}
+
+fn mirror_smoke_work_payloads(source_root: &Path, target_root: &Path) -> Result<(), String> {
+    if source_root == target_root {
+        return Ok(());
+    }
+
+    fs::create_dir_all(target_root).map_err(|err| {
+        format!(
+            "create fallback Work directory {}: {err}",
+            target_root.display()
+        )
+    })?;
+
+    let mut pending_dirs = vec![source_root.to_path_buf()];
+    while let Some(current_dir) = pending_dirs.pop() {
+        for entry in fs::read_dir(&current_dir)
+            .map_err(|err| format!("read directory {}: {err}", current_dir.display()))?
+        {
+            let entry = entry.map_err(|err| {
+                format!("read directory entry in {}: {err}", current_dir.display())
+            })?;
+            let source_path = entry.path();
+            let relative = source_path.strip_prefix(source_root).map_err(|err| {
+                format!(
+                    "strip prefix {} from {}: {err}",
+                    source_root.display(),
+                    source_path.display()
+                )
+            })?;
+            let target_path = target_root.join(relative);
+            let file_type = entry
+                .file_type()
+                .map_err(|err| format!("query file type for {}: {err}", source_path.display()))?;
+            if file_type.is_dir() {
+                fs::create_dir_all(&target_path).map_err(|err| {
+                    format!("create mirror directory {}: {err}", target_path.display())
+                })?;
+                pending_dirs.push(source_path);
+            } else if file_type.is_file() {
+                if let Some(parent) = target_path.parent() {
+                    fs::create_dir_all(parent).map_err(|err| {
+                        format!("create mirror parent {}: {err}", parent.display())
+                    })?;
+                }
+                fs::copy(&source_path, &target_path).map_err(|err| {
+                    format!(
+                        "copy smoke payload {} to {}: {err}",
+                        source_path.display(),
+                        target_path.display()
+                    )
+                })?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn clear_capture_files(capture: &FsUaeCaptureConfig) -> Result<(), String> {
+    for path in capture
+        .start_paths
+        .candidates()
+        .chain(capture.ready_paths.candidates())
+        .chain(capture.stdout_paths.candidates())
+        .chain(capture.stderr_paths.candidates())
+        .chain(capture.exit_code_paths.candidates())
+    {
+        match fs::remove_file(path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                return Err(format!(
+                    "remove stale capture file {}: {err}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn capture_path_exists(paths: &FsUaeCapturePathSet) -> bool {
+    paths.candidates().any(Path::is_file)
 }
 
 fn snapshot_fs_uae_process_ids() -> Result<BTreeSet<u32>, String> {
@@ -1106,6 +1246,15 @@ fn read_optional_text(path: &Path) -> Result<Option<String>, String> {
         .map_err(|err| format!("read {}: {err}", path.display()))
 }
 
+fn read_optional_text_from_paths(paths: &FsUaeCapturePathSet) -> Result<Option<String>, String> {
+    for path in paths.candidates() {
+        if let Some(text) = read_optional_text(path)? {
+            return Ok(Some(text));
+        }
+    }
+    Ok(None)
+}
+
 fn read_optional_exit_code(path: &Path) -> Result<Option<i32>, String> {
     let Some(text) = read_optional_text(path)? else {
         return Ok(None);
@@ -1119,6 +1268,15 @@ fn read_optional_exit_code(path: &Path) -> Result<Option<i32>, String> {
         .parse::<i32>()
         .map(Some)
         .map_err(|err| format!("parse guest exit code from {}: {err}", path.display()))
+}
+
+fn read_optional_exit_code_from_paths(paths: &FsUaeCapturePathSet) -> Result<Option<i32>, String> {
+    for path in paths.candidates() {
+        if let Some(code) = read_optional_exit_code(path)? {
+            return Ok(Some(code));
+        }
+    }
+    Ok(None)
 }
 
 fn merge_output(
@@ -1160,11 +1318,11 @@ fn wait_for_capture_or_exit(
     let deadline = Instant::now() + capture.timeout;
     let mut smoke_started_at = None;
     loop {
-        if capture.ready_path.is_file() {
+        if capture_path_exists(&capture.ready_paths) {
             return Ok(FsUaeWaitOutcome::Captured);
         }
 
-        if smoke_started_at.is_none() && capture.start_path.is_file() {
+        if smoke_started_at.is_none() && capture_path_exists(&capture.start_paths) {
             smoke_started_at = Some(Instant::now());
         }
 
@@ -1182,7 +1340,7 @@ fn wait_for_capture_or_exit(
             return Err(format!(
                 "FS-UAE smoke for {example_name} timed out after {} ms waiting for {} or process exit",
                 capture.timeout.as_millis(),
-                capture.ready_path.display(),
+                capture.ready_paths.primary.display(),
             ));
         }
 
@@ -1193,8 +1351,8 @@ fn wait_for_capture_or_exit(
                 return Err(format!(
                     "FS-UAE smoke for {example_name} exceeded the post-start timeout of {} ms after {} appeared without producing {}",
                     capture.post_start_timeout.as_millis(),
-                    capture.start_path.display(),
-                    capture.ready_path.display(),
+                    capture.start_paths.primary.display(),
+                    capture.ready_paths.primary.display(),
                 ));
             }
         }
@@ -1400,7 +1558,8 @@ fn run_example_smoke_with_request(
         })?;
     }
 
-    let capture = capture_config_from_env(&mounted_work_dir)?;
+    let capture = capture_config_from_env(&mounted_work_dir, None)?;
+    clear_capture_files(&capture)?;
     let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
 
     let args = args_text
@@ -1411,13 +1570,25 @@ fn run_example_smoke_with_request(
             line.replace("{hunk}", &hunk_path.to_string_lossy())
                 .replace("{artifact_dir}", &artifact_dir.to_string_lossy())
                 .replace("{example}", example_name)
-                .replace("{start_file}", &capture.start_path.to_string_lossy())
-                .replace("{ready_file}", &capture.ready_path.to_string_lossy())
-                .replace("{stdout_file}", &capture.stdout_path.to_string_lossy())
-                .replace("{stderr_file}", &capture.stderr_path.to_string_lossy())
+                .replace(
+                    "{start_file}",
+                    &capture.start_paths.primary.to_string_lossy(),
+                )
+                .replace(
+                    "{ready_file}",
+                    &capture.ready_paths.primary.to_string_lossy(),
+                )
+                .replace(
+                    "{stdout_file}",
+                    &capture.stdout_paths.primary.to_string_lossy(),
+                )
+                .replace(
+                    "{stderr_file}",
+                    &capture.stderr_paths.primary.to_string_lossy(),
+                )
                 .replace(
                     "{exit_code_file}",
-                    &capture.exit_code_path.to_string_lossy(),
+                    &capture.exit_code_paths.primary.to_string_lossy(),
                 )
                 .replace(
                     "{fsuae_config}",
@@ -1473,12 +1644,12 @@ fn run_example_smoke_with_request(
         .map_err(|err| format!("wait for FS-UAE process for {example_name}: {err}"))?;
     let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
 
-    let guest_exit_code = read_optional_exit_code(&capture.exit_code_path)?;
+    let guest_exit_code = read_optional_exit_code_from_paths(&capture.exit_code_paths)?;
     let launcher_stdout = read_optional_text(&launcher_stdout_path)?;
     let launcher_stderr = read_optional_text(&launcher_stderr_path)?;
     let launcher_status_text = fs_uae_launcher_status_text(launcher_status);
-    let captured_stdout = read_optional_text(&capture.stdout_path)?;
-    let captured_stderr = read_optional_text(&capture.stderr_path)?;
+    let captured_stdout = read_optional_text_from_paths(&capture.stdout_paths)?;
+    let captured_stderr = read_optional_text_from_paths(&capture.stderr_paths)?;
 
     Ok(ExampleSmokeResult::Run(FsUaeSmokeRun {
         example_name,
@@ -1625,7 +1796,13 @@ fn run_example_smoke_with_guest_input(
         })?;
     }
 
-    let capture = capture_config_from_env(&mounted_work_dir)?;
+    let fallback_work_dir =
+        resolve_fs_uae_boot_work_dir_from_template()?.map(|root| root.join("Work"));
+    if let Some(fallback_work_dir) = fallback_work_dir.as_deref() {
+        mirror_smoke_work_payloads(&mounted_work_dir, fallback_work_dir)?;
+    }
+    let capture = capture_config_from_env(&mounted_work_dir, fallback_work_dir.as_deref())?;
+    clear_capture_files(&capture)?;
     let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
 
     let args = args_text
@@ -1636,13 +1813,25 @@ fn run_example_smoke_with_guest_input(
             line.replace("{hunk}", &hunk_path.to_string_lossy())
                 .replace("{artifact_dir}", &artifact_dir.to_string_lossy())
                 .replace("{example}", spec.example_name)
-                .replace("{start_file}", &capture.start_path.to_string_lossy())
-                .replace("{ready_file}", &capture.ready_path.to_string_lossy())
-                .replace("{stdout_file}", &capture.stdout_path.to_string_lossy())
-                .replace("{stderr_file}", &capture.stderr_path.to_string_lossy())
+                .replace(
+                    "{start_file}",
+                    &capture.start_paths.primary.to_string_lossy(),
+                )
+                .replace(
+                    "{ready_file}",
+                    &capture.ready_paths.primary.to_string_lossy(),
+                )
+                .replace(
+                    "{stdout_file}",
+                    &capture.stdout_paths.primary.to_string_lossy(),
+                )
+                .replace(
+                    "{stderr_file}",
+                    &capture.stderr_paths.primary.to_string_lossy(),
+                )
                 .replace(
                     "{exit_code_file}",
-                    &capture.exit_code_path.to_string_lossy(),
+                    &capture.exit_code_paths.primary.to_string_lossy(),
                 )
                 .replace(
                     "{fsuae_config}",
@@ -1698,12 +1887,12 @@ fn run_example_smoke_with_guest_input(
         .map_err(|err| format!("wait for FS-UAE process for {}: {err}", spec.example_name))?;
     let _ = cleanup_spawned_fs_uae_processes(&baseline_process_ids);
 
-    let guest_exit_code = read_optional_exit_code(&capture.exit_code_path)?;
+    let guest_exit_code = read_optional_exit_code_from_paths(&capture.exit_code_paths)?;
     let launcher_stdout = read_optional_text(&launcher_stdout_path)?;
     let launcher_stderr = read_optional_text(&launcher_stderr_path)?;
     let launcher_status_text = fs_uae_launcher_status_text(launcher_status);
-    let captured_stdout = read_optional_text(&capture.stdout_path)?;
-    let captured_stderr = read_optional_text(&capture.stderr_path)?;
+    let captured_stdout = read_optional_text_from_paths(&capture.stdout_paths)?;
+    let captured_stderr = read_optional_text_from_paths(&capture.stderr_paths)?;
 
     Ok(ExampleSmokeResult::Run(FsUaeSmokeRun {
         example_name: spec.example_name,
@@ -1784,34 +1973,34 @@ mod tests {
     fn capture_config_defaults_to_standard_smoke_files() {
         let artifact_dir = Path::new("/tmp/opforge-fsuae-smoke");
         let capture = FsUaeCaptureConfig {
-            start_path: resolve_capture_path(artifact_dir, FS_UAE_DEFAULT_START_FILE),
-            ready_path: resolve_capture_path(artifact_dir, FS_UAE_DEFAULT_READY_FILE),
-            stdout_path: resolve_capture_path(artifact_dir, FS_UAE_DEFAULT_STDOUT_FILE),
-            stderr_path: resolve_capture_path(artifact_dir, FS_UAE_DEFAULT_STDERR_FILE),
-            exit_code_path: resolve_capture_path(artifact_dir, FS_UAE_DEFAULT_EXIT_CODE_FILE),
+            start_paths: capture_path_set(artifact_dir, None, FS_UAE_DEFAULT_START_FILE),
+            ready_paths: capture_path_set(artifact_dir, None, FS_UAE_DEFAULT_READY_FILE),
+            stdout_paths: capture_path_set(artifact_dir, None, FS_UAE_DEFAULT_STDOUT_FILE),
+            stderr_paths: capture_path_set(artifact_dir, None, FS_UAE_DEFAULT_STDERR_FILE),
+            exit_code_paths: capture_path_set(artifact_dir, None, FS_UAE_DEFAULT_EXIT_CODE_FILE),
             timeout: Duration::from_millis(FS_UAE_DEFAULT_TIMEOUT_MS),
             post_start_timeout: Duration::from_millis(FS_UAE_DEFAULT_POST_START_TIMEOUT_MS),
             poll_interval: Duration::from_millis(FS_UAE_DEFAULT_POLL_MS),
         };
 
         assert_eq!(
-            capture.start_path,
+            capture.start_paths.primary,
             artifact_dir.join(FS_UAE_DEFAULT_START_FILE)
         );
         assert_eq!(
-            capture.ready_path,
+            capture.ready_paths.primary,
             artifact_dir.join(FS_UAE_DEFAULT_READY_FILE)
         );
         assert_eq!(
-            capture.stdout_path,
+            capture.stdout_paths.primary,
             artifact_dir.join(FS_UAE_DEFAULT_STDOUT_FILE)
         );
         assert_eq!(
-            capture.stderr_path,
+            capture.stderr_paths.primary,
             artifact_dir.join(FS_UAE_DEFAULT_STDERR_FILE)
         );
         assert_eq!(
-            capture.exit_code_path,
+            capture.exit_code_paths.primary,
             artifact_dir.join(FS_UAE_DEFAULT_EXIT_CODE_FILE)
         );
         assert_eq!(

@@ -1484,7 +1484,6 @@ stripIndirectIndexedY
 
 evalOperandText
 	bsr.w encodeSelectedOperandV1
-	tst.l d0
 	bne.s operandError
 	move.l d3, EncodeSelectedMselValue
 	clr.b EncodeSelectedMselUnstable
@@ -2045,6 +2044,20 @@ decimal
 	rts
 	.bend  ; hexDigitFromNibbleV1
 
+; Inputs:
+; - A0/D0: operand text pointer and length.
+; - Selected-envelope EXVM opcode version/current-PC/label context fields.
+;
+; Outputs:
+; - D0: 0 on success, nonzero on operand parse/eval failure.
+; - D3: evaluated operand value on success.
+; - EncodeSelectedOperandDiag updated on failure.
+;
+; Clobbers:
+; - D0-D2/D4-D7/A0-A2/A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 encodeSelectedOperandV1	.block
 	movem.l d1-d2/d6-d7/a1-a2/a6, -(sp)
 	clr.w EncodeSelectedOperandDiag
@@ -2165,6 +2178,7 @@ exprVmFail
 
 return
 	movem.l (sp)+, d1-d2/d6-d7/a1-a2/a6
+	tst.l d0
 	rts
 	.bend  ; encodeSelectedOperandV1
 

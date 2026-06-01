@@ -390,6 +390,8 @@ loadSourceLine
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.getStatementSourceLineTextV1
+	; Keep the source-line presence check explicit: this crosses into the engine
+	; module and reads as a semantic "did the engine provide a source slice?" probe.
 	tst.l d0
 	bne.s haveText
 	bra.w fail
@@ -413,7 +415,6 @@ haveText
 	tst.w d6
 	bne.s prepareRequest
 	bsr.w skipLineWhitespace
-	tst.l d0
 	bne.s prepareRequest
 	bra.w fail
 
@@ -763,6 +764,17 @@ no
 	rts
 	.bend  ; lineStartsWith
 
+; Inputs:
+; - A0/D0: source-line pointer and remaining length.
+;
+; Outputs:
+; - A0/D0: advanced pointer and remaining length after skipping leading spaces/tabs.
+;
+; Clobbers:
+; - D0-D1/A0/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 skipLineWhitespace	.block
 loop
 	tst.l d0
@@ -780,6 +792,7 @@ skip
 	bra.s loop
 
 done
+	tst.l d0
 	rts
 	.bend  ; skipLineWhitespace
 

@@ -158,7 +158,6 @@ opasmDriverEmitImageBytes	.block
 	bsr.w lineStartsWith
 	bne.w ok
 	bsr.w prepareEncodeSelectedRequestForStatement
-	tst.l d0
 	bne.w return
 	tst.w OpasmDriverEvalRequestLen
 	beq.w ok
@@ -278,7 +277,6 @@ org
 	move.w d4, d7
 	moveq #2, d5
 	bsr.w readOperandValueForStatement
-	tst.l d0
 	beq.s orgOk
 	moveq #abi.OPASM_EVENT_BAD_ORG, d0
 	bsr.w appendKindEvent
@@ -328,7 +326,6 @@ trySelectedEncodeSizeForStatement	.block
 	move.w d0, d6
 	clr.w d4
 	bsr.w prepareEncodeSelectedRequestForStatement
-	tst.l d0
 	bne.w prepareFail
 	tst.w OpasmDriverEvalRequestLen
 	beq.w empty
@@ -369,6 +366,16 @@ return
 	rts
 	.bend  ; trySelectedEncodeSizeForStatement
 
+; Inputs:
+;   D7.W = statement index
+;   D5.B = operand width policy used for range checks
+; Outputs:
+;   D0.L = 0 on success, 1 when the operand cannot be resolved or fails width checks
+;   D3.L = resolved operand value on success
+; Clobbers:
+;   D0-D7/A0-A2/CCR
+; CCR:
+;   Reflects D0.L on return
 readOperandValueForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a2, -(sp)
 	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
@@ -412,7 +419,6 @@ haveText
 
 prepareRequest
 	bsr.w prepareEvaluateExpressionRequest
-	tst.l d0
 	beq.s prepareExtension
 	bra.w fail
 
@@ -446,6 +452,15 @@ return
 	rts
 	.bend  ; readOperandValueForStatement
 
+; Inputs:
+;   D6.W = statement index
+; Outputs:
+;   D0.L = 0 on success, 1 when selector request preparation fails
+;   OpasmDriverEvalRequestLen updated from D1 on success
+; Clobbers:
+;   D0-D1/D6/A0-A1/CCR
+; CCR:
+;   Reflects D0.L on return
 prepareEncodeSelectedRequestForStatement	.block
 	movem.l d1/d6/a1, -(sp)
 	clr.w OpasmDriverEvalRequestLen
@@ -456,12 +471,23 @@ prepareEncodeSelectedRequestForStatement	.block
 	jsr eng.prepareSelectedEvaluateRequestV1
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
+	tst.l d0
 
 return
 	movem.l (sp)+, d1/d6/a1
 	rts
 	.bend  ; prepareEncodeSelectedRequestForStatement
 
+; Inputs:
+;   A0 = expression text pointer
+;   D7.W = expression text length
+; Outputs:
+;   D0.L = 0 on success, 1 when expression request preparation fails
+;   OpasmDriverEvalRequestLen updated from D1 on success
+; Clobbers:
+;   D0-D1/D7/A0-A2/CCR
+; CCR:
+;   Reflects D0.L on return
 prepareEvaluateExpressionRequest	.block
 	movem.l d1/a0-a2, -(sp)
 	movea.l a0, a2
@@ -473,6 +499,7 @@ prepareEvaluateExpressionRequest	.block
 	jsr eng.prepareEvaluateExpressionRequestV1
 	bne.s return
 	move.w d1, OpasmDriverEvalRequestLen
+	tst.l d0
 
 return
 	movem.l (sp)+, d1/a0-a2

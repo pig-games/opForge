@@ -1388,10 +1388,8 @@ buildNone
 	tst.w EncodeSelectedMselExprLen
 	beq.s buildNoneOperand
 	bsr.w tkpkgMselCurrentShapeAccumulatorV1
-	tst.b d0
 	beq.s noOutput
 	bsr.w tkpkgMselExprIsAccumulatorAV1
-	tst.b d0
 	beq.s noOutput
 
 buildNoneOperand
@@ -1434,7 +1432,6 @@ tkpkgMselEvalOperandV1	.block
 	bsr.w tkpkgMselCurrentShapeIndexSuffixV1
 	move.b d0, d6
 	bsr.w tkpkgMselCurrentShapeParenModeV1
-	tst.b d0
 	bne.s haveParenMode
 	bsr.w tkpkgMselCurrentModeParenModeV1
 
@@ -1514,6 +1511,17 @@ tkpkgMselCurrentShapeImmediateV1	.block
 	rts
 	.bend  ; tkpkgMselCurrentShapeImmediateV1
 
+; Inputs:
+; - Uses the current selected-shape text stored in EncodeSelectedCurrentShapePtr/Len.
+;
+; Outputs:
+; - D0: 1 when the current shape is `accumulator`, 0 otherwise.
+;
+; Clobbers:
+; - D0-D4/A1-A2/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 tkpkgMselCurrentShapeAccumulatorV1	.block
 	movea.l EncodeSelectedCurrentShapePtr, a1
 	move.w EncodeSelectedCurrentShapeLen, d0
@@ -1523,6 +1531,17 @@ tkpkgMselCurrentShapeAccumulatorV1	.block
 	rts
 	.bend  ; tkpkgMselCurrentShapeAccumulatorV1
 
+; Inputs:
+; - Uses the current selected operand text stored in EncodeSelectedMselExprPtr/Len.
+;
+; Outputs:
+; - D0: 1 when the trimmed operand text is exactly `a`, 0 otherwise.
+;
+; Clobbers:
+; - D0-D2/A1/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 tkpkgMselExprIsAccumulatorAV1	.block
 	movem.l d1-d2/a1, -(sp)
 	movea.l EncodeSelectedMselExprPtr, a1
@@ -1601,6 +1620,18 @@ directY
 	rts
 	.bend  ; tkpkgMselCurrentShapeIndexSuffixV1
 
+; Inputs:
+; - Uses the current selected-shape text stored in EncodeSelectedCurrentShapePtr/Len.
+;
+; Outputs:
+; - D0: 0 when no paren mode is active, 1 for indirect, 2 for indexed-indirect-X,
+;   3 for indirect-indexed-Y.
+;
+; Clobbers:
+; - D0-D4/A1-A2/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 tkpkgMselCurrentShapeParenModeV1	.block
 	movea.l EncodeSelectedCurrentShapePtr, a1
 	move.w EncodeSelectedCurrentShapeLen, d0

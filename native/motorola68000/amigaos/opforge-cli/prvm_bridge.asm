@@ -35,7 +35,6 @@ opforgeNativeCliDispatchParseLineUntilReady	.block
 
 loop
 	bsr.w opforgeNativeCliDispatchPreparedParseLineEnvelope
-	tst.l d0
 	bne.s done
 	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
 	bne.s done
@@ -123,6 +122,18 @@ use
 
 	.priv
 
+; Inputs:
+;   state.OpforgeNativeCliPrvmRouteFrame = prepared PRVM route frame
+;   state.NativeCliLineRequestLen = route-frame input length
+; Outputs:
+;   D0.L = tkpkg service status
+;   D1.W = PRVM result count from service.dispatchV1
+;   state.NativeCliPrvmRouteStatus = PRVM route status
+;   state.NativeCliPrvmResultCount = PRVM result count
+; Clobbers:
+;   D0-D1/A0/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliDispatchPreparedParseLineEnvelope	.block
 	bsr.w opforgeNativeCliWritePrvmRouteFrameInput
 	bne.s done

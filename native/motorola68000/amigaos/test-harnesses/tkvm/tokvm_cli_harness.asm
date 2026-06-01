@@ -493,7 +493,6 @@ reportTokenLoop
 	move.l 16(a6), d0
 	move.l d7, d1
 	bsr.w writeHexBytes
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
@@ -665,6 +664,10 @@ emit
 
 ; Render a lexeme payload as uppercase hexadecimal bytes. This matches the
 ; LEXHEX field expected by the native report rendering tests.
+; Inputs: A0 = byte buffer pointer; D0.L = byte count; D1 = output handle.
+; Outputs: D0.L = 0 on success, nonzero on write failure.
+; Clobbers: D0-D5/A0-A1/A5-A6/CCR.
+; CCR: reflects D0.L on return.
 writeHexBytes	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l a0, a6
@@ -693,6 +696,7 @@ loop
 
 done
 	movem.l (sp)+, d2-d7/a2-a6
+	tst.l d0
 	rts
 	.bend  ; writeHexBytes
 

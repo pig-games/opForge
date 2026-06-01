@@ -16509,6 +16509,7 @@ fn motorola68020_tokvm_interpreter_preserves_signed_status_before_minus_write() 
             "bsr.w writeU32",
             "writeI32NegativeDone",
             "move.l (sp)+, d2",
+            "tst.l d0",
             "rts",
             "writeI32Unsigned",
             "bsr.w writeU32",

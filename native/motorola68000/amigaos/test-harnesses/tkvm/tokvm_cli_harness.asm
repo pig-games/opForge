@@ -384,7 +384,6 @@ reportValidated
 	move.l d7, d1
 	move.l d4, d0
 	bsr.w writeI32
-	tst.l d0
 	bne.w reportFail
 
 	move.l d7, d1
@@ -605,6 +604,10 @@ validateInvalid
 
 ; Signed report writer used for STATUS fields so host failures can emit their
 ; negative HARNESS_STATUS_* values without special formatting logic.
+; Inputs: D0.L = signed value to write; D1 = output handle.
+; Outputs: D0.L = 0 on success, nonzero on write failure.
+; Clobbers: D0-D2/A0/CCR.
+; CCR: reflects D0.L on return.
 writeI32	.block
 	tst.l d0
 	bpl.s writeI32Unsigned
@@ -621,6 +624,7 @@ writeI32	.block
 	bsr.w writeU32
 writeI32NegativeDone
 	move.l (sp)+, d2
+	tst.l d0
 	rts
 writeI32Unsigned
 	bsr.w writeU32

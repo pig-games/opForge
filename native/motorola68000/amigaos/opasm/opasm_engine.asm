@@ -586,10 +586,19 @@ opasmEngineWriteEvaluateExpressionExtensionBaseV1	.block
 ;
 ; Outputs:
 ; - D0: 0 on success.
+; - selected-shape metadata written at the extension tail when inferred.
+;
+; Clobbers:
+; - D0-D1/A0-A1/CCR
+;
+; CCR:
+; - reflects D0 on return.
 prepareEvaluateExpressionExtensionV1	.block
 	movem.l d1/a0-a1, -(sp)
 	jsr opasmEngineWriteEvaluateExpressionExtensionBaseV1
 	jsr opasmEngineInferSelectedShapeForEvalRequestV1
+	; Keep the explicit length probe: this branches on whether a selected-shape
+	; string exists, not on a status-return contract.
 	tst.w d0
 	beq.s done
 	adda.w #16, a1
@@ -628,6 +637,12 @@ opasmEngineGetStatementLineNumberV1	.block
 ; Outputs:
 ; - D0: source-line text length, or 0 when absent.
 ; - A0: source-line text pointer when D0 is non-zero.
+;
+; Clobbers:
+; - D0-D2/A0/CCR
+;
+; CCR:
+; - reflects D0 on return.
 getStatementSourceLineTextV1	.block
 	movem.l d1-d2, -(sp)
 	moveq #0, d1
@@ -1376,6 +1391,17 @@ return
 	rts
 	.bend  ; opasmEngineStatementLooksBareColumnOneV1
 
+; Inputs:
+; - callback context fields in OPASM_ENGINE_CTX_* and callback pointers in A4/A5.
+;
+; Outputs:
+; - D0: 0 on success, non-zero when either pass callback chain reports failure.
+;
+; Clobbers:
+; - D0-D7/A0-A5/CCR
+;
+; CCR:
+; - reflects D0 on return.
 opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5
@@ -1832,6 +1858,17 @@ done
 	rts
 	.bend  ; storeStatementRecord
 
+; Inputs:
+; - pass-one callback pointers and session context in OPASM_ENGINE_CTX_*.
+;
+; Outputs:
+; - D0: 0 on success, non-zero when any pass-one callback reports failure.
+;
+; Clobbers:
+; - D0/D7/A0/CCR
+;
+; CCR:
+; - reflects D0 on return.
 runPassOne	.block
 	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0
 	move.w #1, (a0)
@@ -1869,6 +1906,17 @@ return
 	rts
 	.bend  ; runPassOne
 
+; Inputs:
+; - pass-two callback pointers and session context in OPASM_ENGINE_CTX_*.
+;
+; Outputs:
+; - D0: 0 on success, non-zero when any pass-two callback reports failure.
+;
+; Clobbers:
+; - D0/D7/A0/CCR
+;
+; CCR:
+; - reflects D0 on return.
 runPassTwo	.block
 	movea.l OPASM_ENGINE_CTX_SESSION_PASS_PTR(a5), a0
 	move.w #2, (a0)

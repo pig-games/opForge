@@ -361,7 +361,6 @@ writeReport	.block
 	; degrades to TK_STATUS_VM_FAILURE instead of emitting invalid report metadata.
 	move.l d3, d2
 	bsr.w validateVmResult
-	tst.l d0
 	beq.s reportValidated
 	moveq #runtime.TK_STATUS_VM_FAILURE, d4
 	moveq #0, d5
@@ -529,6 +528,10 @@ reportDone
 ; The Rust runtime validates token shapes before exposing PortableToken output;
 ; this native harness mirrors that expectation so malformed native state falls
 ; back to TK_STATUS_VM_FAILURE instead of emitting invalid token metadata.
+; Inputs: D4 = status, D5 = token count, D6 = cursor, D2 = scratch bytes used.
+; Outputs: D0.L = 0 when the VM result tuple is safe to report, 1 when it must collapse to TK_STATUS_VM_FAILURE.
+; Clobbers: D0-D1/D3/D7/A0/CCR.
+; CCR: reflects D0.L on return.
 validateVmResult	.block
 	tst.l d4  ; non-negative statuses are TK_STATUS_* VM results, negative are harness failures
 	bmi validateNegativeStatus

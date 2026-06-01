@@ -16479,7 +16479,7 @@ fn motorola68020_tokvm_interpreter_validates_vm_result_before_report_render() {
     assert!(
         tokvm_source_contains(
             &source,
-            "        MOVE.L D3,D2\n        BSR.W validateVmResult\n        TST.L D0\n        BEQ.S reportValidated\n        MOVEQ #runtime.TK_STATUS_VM_FAILURE,D4\n        MOVEQ #0,D5\n        MOVEQ #0,D6\n        CLR.L D2"
+            "        MOVE.L D3,D2\n        BSR.W validateVmResult\n        BEQ.S reportValidated\n        MOVEQ #runtime.TK_STATUS_VM_FAILURE,D4\n        MOVEQ #0,D5\n        MOVEQ #0,D6\n        CLR.L D2"
         ),
         "expected tokvm report writer to validate VM outputs before formatting token metadata"
     );

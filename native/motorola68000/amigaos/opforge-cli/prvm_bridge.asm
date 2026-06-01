@@ -40,7 +40,6 @@ loop
 	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
 	bne.s done
 	bsr.w opforgeNativeCliServicePrvmExpressionRequest
-	tst.l d0
 	bne.s done
 	bra.s loop
 
@@ -126,7 +125,6 @@ use
 
 opforgeNativeCliDispatchPreparedParseLineEnvelope	.block
 	bsr.w opforgeNativeCliWritePrvmRouteFrameInput
-	tst.l d0
 	bne.s done
 	lea buffers.ControlBlockV1, a0
 	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
@@ -152,6 +150,16 @@ done
 	rts
 	.bend  ; opforgeNativeCliPrepareParseLineServiceRequest
 
+; Inputs:
+;   state.OpforgeNativeCliPrvmRouteFrame = prepared PRVM route frame
+; Outputs:
+;   D0.L = 0
+;   state.NativeCliLineRequestLen = constants.PRVM_ROUTE_FRAME_SIZE
+;   buffers.lastErrorBuffer = copied route frame payload
+; Clobbers:
+;   D0/A1-A2/CCR
+; CCR:
+;   Reflects D0.L on return. This helper has no failure path with the current fixed-size route frame.
 opforgeNativeCliWritePrvmRouteFrameInput	.block
 	lea state.OpforgeNativeCliPrvmRouteFrame, a1
 	lea buffers.lastErrorBuffer, a2
@@ -162,6 +170,15 @@ opforgeNativeCliWritePrvmRouteFrameInput	.block
 	rts
 	.bend  ; opforgeNativeCliWritePrvmRouteFrameInput
 
+; Inputs:
+;   state.OpforgeNativeCliPrvmExprRequest = pending expression request from PRVM
+; Outputs:
+;   D0.L = 0 on success, 1 when the request is invalid or out of range
+;   state.OpforgeNativeCliPrvmExprResultSlot and route-frame result pointers updated on success
+; Clobbers:
+;   D0-D4/A0-A2/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliServicePrvmExpressionRequest	.block
 	movem.l d1-d4/a0-a2, -(sp)
 	lea state.OpforgeNativeCliPrvmExprRequest, a0
@@ -233,7 +250,6 @@ opforgeNativeCliBuildPrvmRouteFrame	.block
 	move.w buffers.lastLexemeLen, d0
 	move.l d0, 52(a0)
 	bsr.w opforgeNativeCliLoadActivePrvmProgram
-	tst.l d0
 	bne.w done
 	lea state.OpforgeNativeCliPrvmResultBuffer, a1
 	movea.l a1, a0
@@ -263,6 +279,15 @@ done
 	rts
 	.bend  ; opforgeNativeCliBuildPrvmRouteFrame
 
+; Inputs:
+;   A0 = PRVM route frame receiving active program pointer/length
+; Outputs:
+;   D0.L = 0 on success, 1 when the active parser VM payload is invalid or truncated
+;   56(A0)/60(A0) = active parser VM program pointer/length on success
+; Clobbers:
+;   D0-D4/A1-A4/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliLoadActivePrvmProgram	.block
 	movem.l d1-d4/a1-a4, -(sp)
 	movea.l a0, a4

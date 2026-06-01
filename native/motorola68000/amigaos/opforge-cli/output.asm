@@ -10,10 +10,21 @@
 	.section code, kind=code
 	.pub
 
+; Inputs:
+;   state.NativeCliBinPath = output file path
+;   opasm engine image buffer/count contain the assembled flat output
+; Outputs:
+;   D0.L = 0 on success, 1 when the output file cannot be opened or written fully
+; Clobbers:
+;   D0-D4/A0-A1/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliWriteFlatOutput	.block
 	movem.l d1-d4/a0-a1, -(sp)
 	lea state.NativeCliBinPath, a0
 	jsr dos.openOutput
+	; Keep the explicit status probe: this crosses the DOS boundary and the
+	; returned file handle is clearer than assuming a CCR contract.
 	tst.l d0
 	beq.s fail
 	move.l d0, d4

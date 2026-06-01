@@ -75,6 +75,9 @@ parseRequest
 	bsr.w resolveHierarchyV1
 	bne.w done
 	bsr.w policy.resolveLocatorV1
+	; Keep the token-policy result check explicit: this crosses a module boundary
+	; and is clearer as a semantic locator-resolution status probe than as a
+	; local helper CCR contract assumption.
 	tst.b d0
 	bne.w done
 	bsr.w resolveTokenizerVmLocatorV1

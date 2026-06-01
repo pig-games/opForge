@@ -154,6 +154,198 @@ REVIEWED_CCR_D0_CALL_TST_WIDTHS = {
 
 
 @dataclasses.dataclass(frozen=True)
+class ReviewedRetainedCallSite:
+    path_suffix: str
+    call_target: str
+    tst_width: str
+    branch_text: str
+    reason: str
+    block_name: str | None = None
+    prev_line_text: str | None = None
+
+
+REVIEWED_RETAINED_CALL_TST_SITES = (
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        block_name="prepareSelectedEvaluateRequestV1",
+        call_target="getStatementSourceLineTextV1",
+        tst_width="l",
+        branch_text="beq.s syntheticRequest",
+        reason="semantic stored-source-slice presence probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        block_name="opasmEngineRunTwoPassV1",
+        call_target="runPassOne",
+        tst_width="l",
+        branch_text="bne.s done",
+        reason="whole-pass boundary outcome check",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        block_name="runPassOne",
+        call_target="(a0)",
+        tst_width="l",
+        branch_text="bne.s return",
+        prev_line_text="movea.l opasm_engine_ctx_pass1_begin_cb(a5), a0",
+        reason="indirect pass-one begin callback boundary",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        block_name="runPassOne",
+        call_target="(a0)",
+        tst_width="l",
+        branch_text="bne.s return",
+        prev_line_text="movea.l opasm_engine_ctx_record_label_cb(a5), a0",
+        reason="indirect pass-one record-label callback boundary",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        block_name="runPassOne",
+        call_target="(a0)",
+        tst_width="l",
+        branch_text="bne.s return",
+        prev_line_text="movea.l opasm_engine_ctx_advance_pc_cb(a5), a0",
+        reason="indirect pass-one advance-PC callback boundary",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        block_name="runPassTwo",
+        call_target="(a0)",
+        tst_width="l",
+        branch_text="bne.s return",
+        prev_line_text="movea.l opasm_engine_ctx_pass2_begin_cb(a5), a0",
+        reason="indirect pass-two begin callback boundary",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        block_name="runPassTwo",
+        call_target="(a0)",
+        tst_width="l",
+        branch_text="bne.s return",
+        prev_line_text="movea.l opasm_engine_ctx_emit_image_cb(a5), a0",
+        reason="indirect pass-two emit-image callback boundary",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_engine.asm",
+        block_name="runPassTwo",
+        call_target="(a0)",
+        tst_width="l",
+        branch_text="bne.s return",
+        prev_line_text="movea.l opasm_engine_ctx_advance_pc_cb(a5), a0",
+        reason="indirect pass-two advance-PC callback boundary",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
+        block_name="readOperandValueForStatement",
+        call_target="eng.getStatementSourceLineTextV1",
+        tst_width="l",
+        branch_text="bne.s haveText",
+        reason="cross-module source-line presence probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/output.asm",
+        block_name="opforgeNativeCliWriteFlatOutput",
+        call_target="dos.openOutput",
+        tst_width="l",
+        branch_text="beq.s fail",
+        reason="DOS file-open handle probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/module_use.asm",
+        call_target="dos.openInput",
+        tst_width="l",
+        branch_text="bne.s found",
+        reason="DOS include-path file-open handle probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/source_reader.asm",
+        block_name="opforgeNativeCliTokenizeFileAtPath",
+        call_target="dos.openInput",
+        tst_width="l",
+        branch_text="bne.s openOk",
+        reason="DOS source-reader file-open handle probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/package_pipeline.asm",
+        block_name="opforgeNativeCliStagePackage",
+        call_target="dos.openInput",
+        tst_width="l",
+        branch_text="bne.s externalOpenOk",
+        reason="DOS external-package file-open handle probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/run.asm",
+        block_name="opforgeNativeCliRun",
+        call_target="constants.OPEN_LIBRARY(a6)",
+        tst_width="l",
+        branch_text="bne.s haveDos",
+        reason="OS/library handle acquisition probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/run.asm",
+        block_name="opforgeNativeCliRun",
+        call_target="constants.OPEN_LIBRARY(a6)",
+        tst_width="l",
+        branch_text="beq.w done",
+        reason="fallback OS/library handle acquisition probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/run.asm",
+        block_name="opforgeNativeCliRun",
+        call_target="dos.openInput",
+        tst_width="l",
+        branch_text="bne.s inputOpened",
+        reason="DOS input file-open handle probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/run.asm",
+        block_name="opforgeNativeCliRun",
+        call_target="engine_callbacks.opforgeNativeCliRunTwoPassEngine",
+        tst_width="l",
+        branch_text="beq.s passesOk",
+        reason="engine callback bridge whole-pass outcome check",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/run.asm",
+        block_name="opforgeNativeCliRun",
+        call_target="engine.opasmEngineGetImageByteCountV1",
+        tst_width="l",
+        branch_text="beq.s emitStub",
+        reason="semantic image-byte-count probe",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/line_processor.asm",
+        call_target="opforgeNativeCliParseCurrentLine",
+        tst_width="l",
+        branch_text="bne.s fail",
+        reason="semantic tokenizer/service-to-parser handoff check",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/line_processor.asm",
+        call_target="assembly_session.opforgeNativeCliRecordPrvmStatementLine",
+        tst_width="l",
+        branch_text="bne.w fail",
+        reason="cross-module PRVM statement-record status check",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/opforge-cli/assembly_session.asm",
+        call_target="engine.opasmEngineGetStatementCountV1",
+        tst_width="w",
+        branch_text="bpl.s skipEmit",
+        reason="semantic statement-count sign probe for debug-record emission",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm",
+        call_target="policy.resolveLocatorV1",
+        tst_width="b",
+        branch_text="bne.w done",
+        reason="cross-module token-policy locator-resolution status check",
+    ),
+)
+
+
+@dataclasses.dataclass(frozen=True)
 class Finding:
     code: str
     path: Path
@@ -174,6 +366,10 @@ class WriteInfo:
 
 def strip_comment(line: str) -> str:
     return line.split(";", 1)[0].rstrip()
+
+
+def normalize_code(line: str) -> str:
+    return re.sub(r"\s+", " ", strip_comment(line).strip().lower())
 
 
 def normalize_reg(reg: str) -> str:
@@ -301,6 +497,22 @@ def split_local_blocks(lines: Sequence[str]) -> dict[str, list[str]]:
     return blocks
 
 
+def map_line_to_block(lines: Sequence[str]) -> dict[int, str]:
+    line_to_block: dict[int, str] = {}
+    current_name: str | None = None
+
+    for idx, raw_line in enumerate(lines):
+        line = raw_line.rstrip("\n")
+        block_match = BLOCK_LABEL_RE.match(line)
+        if block_match is not None:
+            current_name = block_match.group(1)
+            continue
+        if current_name is not None:
+            line_to_block[idx] = current_name
+
+    return line_to_block
+
+
 def helper_tail_appears_ccr_safe(block_lines: Sequence[str]) -> bool:
     significant = [line for line in block_lines if SIGNIFICANT_LINE_RE.match(line) and not COMMENT_OR_BLANK_RE.match(line)]
     if not significant:
@@ -330,9 +542,44 @@ def helper_tail_appears_ccr_safe(block_lines: Sequence[str]) -> bool:
     return False
 
 
+def is_reviewed_retained_call_site(
+    *,
+    path: Path,
+    block_name: str | None,
+    prev_line_text: str | None,
+    call_target: str | None,
+    tst_width: str,
+    branch: str,
+) -> bool:
+    if call_target is None:
+        return False
+
+    normalized_branch = normalize_code(branch)
+    normalized_prev_line = normalize_code(prev_line_text) if prev_line_text is not None else None
+    path_text = path.as_posix()
+
+    for site in REVIEWED_RETAINED_CALL_TST_SITES:
+        if not path_text.endswith(site.path_suffix):
+            continue
+        if site.block_name is not None and site.block_name != block_name:
+            continue
+        if site.call_target != call_target:
+            continue
+        if site.tst_width != tst_width:
+            continue
+        if site.branch_text.lower() != normalized_branch:
+            continue
+        if site.prev_line_text is not None and site.prev_line_text.lower() != normalized_prev_line:
+            continue
+        return True
+
+    return False
+
+
 def find_redundant_tests(path: Path, lines: Sequence[str]) -> list[Finding]:
     findings: list[Finding] = []
     local_blocks = split_local_blocks(lines)
+    line_to_block = map_line_to_block(lines)
 
     for i in range(len(lines) - 2):
         prev = lines[i].rstrip("\n")
@@ -377,6 +624,17 @@ def find_redundant_tests(path: Path, lines: Sequence[str]) -> list[Finding]:
         # Report-only call-return pattern. Only for D0 and only adjacent.
         if CALL_RE.match(strip_comment(prev)) and tst_reg == "d0":
             call_target = parse_call_target(prev)
+            block_name = line_to_block.get(i)
+            prev_line_text = lines[i - 1].rstrip("\n") if i > 0 else None
+            if is_reviewed_retained_call_site(
+                path=path,
+                block_name=block_name,
+                prev_line_text=prev_line_text,
+                call_target=call_target,
+                tst_width=tst_width,
+                branch=branch,
+            ):
+                continue
             reviewed_widths = REVIEWED_CCR_D0_CALL_TST_WIDTHS.get(call_target)
             if reviewed_widths is not None and tst_width in reviewed_widths:
                 local_callee = call_target.split(".")[-1] if call_target is not None else None

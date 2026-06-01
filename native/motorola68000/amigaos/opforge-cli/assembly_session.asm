@@ -148,8 +148,6 @@ checkStore
 	bsr.w opforgeNativeCliStoreStatementRecord
 	bne.w fail
 	jsr engine.opasmEngineGetStatementCountV1
-	; Keep the count check explicit: this is a cross-module engine query whose
-	; negative result is interpreted semantically as "emit the debug record now".
 	tst.w d0
 	bpl.s skipEmit
 	bsr.w opforgeNativeCliEmitStatementRecord

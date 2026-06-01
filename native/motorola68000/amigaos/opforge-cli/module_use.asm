@@ -354,8 +354,6 @@ loop
 	bne.w fail
 	lea state.NativeCliIncludePath, a0
 	jsr dos.openInput
-	; Keep the explicit status probe: this crosses the DOS boundary and the
-	; open-handle success convention is clearer than assuming a CCR contract.
 	tst.l d0
 	bne.s found
 	addq.w #1, d7

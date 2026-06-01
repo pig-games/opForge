@@ -23,8 +23,6 @@ opforgeNativeCliWriteFlatOutput	.block
 	movem.l d1-d4/a0-a1, -(sp)
 	lea state.NativeCliBinPath, a0
 	jsr dos.openOutput
-	; Keep the explicit status probe: this crosses the DOS boundary and the
-	; returned file handle is clearer than assuming a CCR contract.
 	tst.l d0
 	beq.s fail
 	move.l d0, d4

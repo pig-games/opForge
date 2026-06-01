@@ -979,8 +979,6 @@ prepareSelectedEvaluateRequestV1	.block
 	moveq #0, d0
 	move.w d7, d0
 	jsr getStatementSourceLineTextV1
-	; Keep the source-slice presence check explicit: this is a semantic probe for
-	; whether stored source text exists for the requested statement span.
 	tst.l d0
 	beq.s syntheticRequest
 	move.l d0, d1
@@ -1408,8 +1406,6 @@ opasmEngineRunTwoPassV1	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l a4, a5
 	bsr.w runPassOne
-	; Keep the pass boundary explicit: this branch is about whether pass one as a
-	; whole succeeded, not just about trimming a local helper-status re-test.
 	tst.l d0
 	bne.s done
 	bsr.w runPassTwo
@@ -1878,8 +1874,6 @@ runPassOne	.block
 	move.w #1, (a0)
 	movea.l OPASM_ENGINE_CTX_PASS1_BEGIN_CB(a5), a0
 	jsr (a0)
-	; Keep callback status checks explicit: these indirect callbacks cross module
-	; boundaries and do not advertise a single local CCR contract we can assume.
 	tst.l d0
 	bne.s return
 	clr.w d7
@@ -1893,16 +1887,12 @@ loop
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_RECORD_LABEL_CB(a5), a0
 	jsr (a0)
-	; Keep callback status checks explicit: these indirect callbacks cross module
-	; boundaries and do not advertise a single local CCR contract we can assume.
 	tst.l d0
 	bne.s return
 	moveq #0, d0
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_ADVANCE_PC_CB(a5), a0
 	jsr (a0)
-	; Keep callback status checks explicit: these indirect callbacks cross module
-	; boundaries and do not advertise a single local CCR contract we can assume.
 	tst.l d0
 	bne.s return
 	addq.w #1, d7
@@ -1932,8 +1922,6 @@ runPassTwo	.block
 	move.w #2, (a0)
 	movea.l OPASM_ENGINE_CTX_PASS2_BEGIN_CB(a5), a0
 	jsr (a0)
-	; Keep callback status checks explicit: these indirect callbacks cross module
-	; boundaries and do not advertise a single local CCR contract we can assume.
 	tst.l d0
 	bne.s return
 	clr.w d7
@@ -1950,8 +1938,6 @@ loop
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_EMIT_IMAGE_CB(a5), a0
 	jsr (a0)
-	; Keep callback status checks explicit: these indirect callbacks cross module
-	; boundaries and do not advertise a single local CCR contract we can assume.
 	tst.l d0
 	bne.s return
 
@@ -1960,8 +1946,6 @@ advanceOnly
 	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_ADVANCE_PC_CB(a5), a0
 	jsr (a0)
-	; Keep callback status checks explicit: these indirect callbacks cross module
-	; boundaries and do not advertise a single local CCR contract we can assume.
 	tst.l d0
 	bne.s return
 	addq.w #1, d7

@@ -323,6 +323,11 @@ emitDone
 
 	.priv
 
+; Skip ASCII whitespace in the DOS argument tail.
+; Inputs: A3 = current argument-tail pointer.
+; Outputs: A3 advanced past spaces/tabs/newlines/carriage returns.
+; Clobbers: CCR.
+; CCR: reflects the final delimiter compare, not a status result.
 opforgeNativeCliSkipWhitespace	.block
 	cmpi.b #' ', (a3)
 	beq.s skipOne
@@ -341,6 +346,11 @@ skipDone
 	rts
 	.bend  ; opforgeNativeCliSkipWhitespace
 
+; Copy one unquoted CLI token from the DOS argument tail.
+; Inputs: A3 = current argument-tail pointer; A1 = destination token buffer.
+; Outputs: D0 = 0 on success, 1 on malformed/overflow token; A3 advanced past copied token on success; destination buffer NUL-terminated on success.
+; Clobbers: D0/D6/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliCopyToken	.block
 	move.l #constants.TOKEN_BUFFER_CAPACITY - 1, d6
 
@@ -375,6 +385,11 @@ tokenFail
 	rts
 	.bend  ; opforgeNativeCliCopyToken
 
+; Copy one required unquoted CLI value.
+; Inputs: A3 = current argument-tail pointer; A1 = destination token buffer.
+; Outputs: D0 = 0 on success, 1 when the value is missing or quoted; A3 advanced past leading whitespace and the copied token on success.
+; Clobbers: D0/D6/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliCopyRequiredValue	.block
 	bsr.w opforgeNativeCliSkipWhitespace
 	tst.b (a3)
@@ -389,6 +404,11 @@ requiredMissing
 	rts
 	.bend  ; opforgeNativeCliCopyRequiredValue
 
+; Copy one required module/package path value.
+; Inputs: A3 = current argument-tail pointer; A1 = destination path buffer.
+; Outputs: D0 = 0 on success, 1 when the value is missing/quoted, 2 when it exceeds the path buffer; A3 advanced past the copied path on success.
+; Clobbers: D0/D6/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliCopyRequiredPathValue	.block
 	bsr.w opforgeNativeCliSkipWhitespace
 	tst.b (a3)
@@ -432,6 +452,11 @@ pathCapacity
 	rts
 	.bend  ; opforgeNativeCliCopyRequiredPathValue
 
+; Copy one optional CLI value when the next token is a value, not another flag.
+; Inputs: A3 = current argument-tail pointer; A1 = destination token buffer.
+; Outputs: D0 = 0 when no value or a copied value is accepted, -1 when a quoted value would be required; destination buffer cleared when no value is consumed.
+; Clobbers: D0/D6/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliCopyOptionalValue	.block
 	bsr.w opforgeNativeCliSkipWhitespace
 	tst.b (a3)
@@ -453,6 +478,11 @@ optionalQuoted
 	rts
 	.bend  ; opforgeNativeCliCopyOptionalValue
 
+; Check whether the current parsed flag is one of the known-but-unsupported CLI options.
+; Inputs: state.NativeCliArgToken = current parsed flag token.
+; Outputs: D0 = 1 when the flag is recognized as unsupported, 0 otherwise.
+; Clobbers: D0/A0-A1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliIsUnsupportedFlag	.block
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagListShort, a1
@@ -502,6 +532,11 @@ unsupportedYes
 	rts
 	.bend  ; opforgeNativeCliIsUnsupportedFlag
 
+; Seed module path slot 0 from the input file root.
+; Inputs: state.NativeCliInputPath = parsed input path.
+; Outputs: D0 = 0 on success, non-zero on path-copy failure; state.NativeCliModulePathTable[0] = input path root on success.
+; Clobbers: D0/A0-A1/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliRecordImplicitModulePathRoot	.block
 	lea state.NativeCliInputPath, a0
 	lea state.NativeCliModulePathTable, a1
@@ -509,6 +544,11 @@ opforgeNativeCliRecordImplicitModulePathRoot	.block
 	rts
 	.bend  ; opforgeNativeCliRecordImplicitModulePathRoot
 
+; Append one explicit `-M` / `--module-path` value to the module path table.
+; Inputs: state.NativeCliIncludeTarget = parsed module path; state.NativeCliModulePathCount = current table length.
+; Outputs: D0 = 0 on success, 1 on capacity/path-copy failure; module path table and count updated on success.
+; Clobbers: D0-D1/A0-A1/CCR.
+; CCR: reflects D0 on return. The epilogue restores saved registers with CCR-neutral `movem`/`rts`.
 opforgeNativeCliRecordModulePathValue	.block
 	movem.l d1/a0-a1, -(sp)
 	moveq #0, d0

@@ -158,7 +158,6 @@ tkpkgDebugCliPipelineManifestMode
 	move.l #PipelineSuccessText, d1
 	bsr.w tkpkgDebugCliPutStrV1
 	bsr.w tkpkgDebugCliTokenizeManifestV1
-	tst.l d0
 	bmi.w tkpkgDebugCliCloseDos
 	bne.w tkpkgDebugCliReportFailure
 	bra.w tkpkgDebugCliCheckLastErrorClear
@@ -167,7 +166,6 @@ tkpkgDebugCliPipelineFileMode
 	move.l #PipelineSuccessText, d1
 	bsr.w tkpkgDebugCliPutStrV1
 	bsr.w tkpkgDebugCliTokenizeFileV1
-	tst.l d0
 	bmi.w tkpkgDebugCliCloseDos
 	bne.w tkpkgDebugCliReportFailure
 
@@ -322,6 +320,11 @@ tkpkgDebugCliCopyPathFail
 	moveq #1, d0
 	rts
 
+; Tokenize each file listed in the manifest path currently in DebugCliInputPathBuffer.
+; Inputs: DebugCliInputPathBuffer = manifest path; DebugCliDosBase = open dos.library base.
+; Outputs: D0.L = 0 on success, 1 on tokenizer/manifest validation failure, -1 on DOS/file I/O failure.
+; Clobbers: D0-D7/A0-A6/CCR.
+; CCR: reflects D0.L on return.
 tkpkgDebugCliTokenizeManifestV1
 	movem.l d2-d7/a2-a6, -(sp)
 	lea DebugCliInputPathBuffer, a0
@@ -425,7 +428,6 @@ tkpkgDebugCliManifestLineTrimmed
 	cmpi.b #';', (a1)
 	beq.s tkpkgDebugCliManifestSkipLine
 	bsr.w tkpkgDebugCliPrepareManifestEntryV1
-	tst.l d0
 	bmi.w tkpkgDebugCliManifestReturn
 	beq.s tkpkgDebugCliManifestEntryOk
 	bra.w tkpkgDebugCliManifestReturn
@@ -440,7 +442,6 @@ tkpkgDebugCliManifestEntryOk
 	move.l #ManifestTokenizeBeginText, d1
 	bsr.w tkpkgDebugCliPutStrV1
 	bsr.w tkpkgDebugCliTokenizeFileV1
-	tst.l d0
 	bne.s tkpkgDebugCliManifestReturn
 	move.l #ManifestTokenizeOkText, d1
 	bsr.w tkpkgDebugCliPutStrV1
@@ -608,6 +609,11 @@ tkpkgDebugCliSetPipelineFromLastErrorV1
 	movem.l (sp)+, d1/a0
 	rts
 
+; Tokenize the single source file currently in DebugCliInputPathBuffer.
+; Inputs: DebugCliInputPathBuffer = source path; DebugCliDosBase = open dos.library base.
+; Outputs: D0.L = 0 on success, 1 on tokenizer/runtime failure, -1 on DOS/file I/O failure.
+; Clobbers: D0-D7/A0-A6/CCR.
+; CCR: reflects D0.L on return.
 tkpkgDebugCliTokenizeFileV1
 	movem.l d2-d7/a2-a6, -(sp)
 	lea DebugCliInputPathBuffer, a0

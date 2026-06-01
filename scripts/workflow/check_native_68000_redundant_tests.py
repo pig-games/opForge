@@ -291,6 +291,20 @@ REVIEWED_RETAINED_CALL_TST_SITES = (
         reason="fallback OS/library handle acquisition probe",
     ),
     ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm",
+        call_target="tkpkgDebugCliOpenInputV1",
+        tst_width="l",
+        branch_text="bne.s tkpkgDebugCliManifestOpenOk",
+        reason="DOS file-open handle probe through local wrapper",
+    ),
+    ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm",
+        call_target="tkpkgDebugCliOpenInputV1",
+        tst_width="l",
+        branch_text="bne.s tkpkgDebugCliFileOpenOk",
+        reason="DOS file-open handle probe through local wrapper",
+    ),
+    ReviewedRetainedCallSite(
         path_suffix="native/motorola68000/amigaos/opforge-cli/run.asm",
         block_name="opforgeNativeCliRun",
         call_target="constants.OPEN_LIBRARY(a6)",

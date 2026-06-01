@@ -16184,7 +16184,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "MOVE.L #manifestTokenizeBeginText, D1\n        BSR.W tkpkgDebugCliPutStrV1\n        BSR.W tkpkgDebugCliTokenizeFileV1\n        TST.L D0\n        BNE.S tkpkgDebugCliManifestReturn\n        MOVE.L #manifestTokenizeOkText, D1"
+        "MOVE.L #manifestTokenizeBeginText, D1\n        BSR.W tkpkgDebugCliPutStrV1\n        BSR.W tkpkgDebugCliTokenizeFileV1\n        BNE.S tkpkgDebugCliManifestReturn\n        MOVE.L #manifestTokenizeOkText, D1"
     ));
     assert!(tkpkg_source_contains(
         &source,

@@ -64,7 +64,6 @@ ChunkBoundsText
 tkpkgPackageLoaderLoadV1	.block
 	bsr.w clearLoadedState
 	bsr.w readInputLen
-	tst.w d0
 	beq.w invalidMagic
 	cmpi.w #buffers.PACKAGE_STORAGE_CAPACITY, d0
 	bhi.w chunkBounds
@@ -77,10 +76,8 @@ tkpkgPackageLoaderLoadV1	.block
 	bsr.w copyInputBytes
 	lea buffers.PackageStorage, a1
 	bsr.w validateHeader
-	tst.b d0
 	bne.s done
 	bsr.w validateToc
-	tst.b d0
 	bne.s done
 	move.b #buffers.PACKAGE_STATE_LOADED, buffers.PackageStateFlags
 	moveq #0, d0
@@ -111,7 +108,17 @@ loop
 	rts
 	.bend  ; clearLoadedState
 
-; Read CB_INPUT_LEN as a native 16-bit little-endian service length.
+; Inputs:
+; - A0: control block whose CB_INPUT_LEN fields contain the service input length.
+;
+; Outputs:
+; - D0.W: native 16-bit little-endian input length.
+;
+; Clobbers:
+; - D0-D1/CCR
+;
+; CCR:
+; - Reflects D0.W on return.
 readInputLen	.block
 	moveq #0, d0
 	move.b abi.CB_INPUT_LEN(a0), d0
@@ -152,7 +159,18 @@ done
 	rts
 	.bend  ; copyInputBytes
 
-; Validate the fixed package header before any TOC offsets are trusted.
+; Inputs:
+; - A1: package storage base.
+;
+; Outputs:
+; - D0: 0 on success, 1 on header validation failure.
+; - A1/D1: diagnostic pointer/length on failure.
+;
+; Clobbers:
+; - D0-D1/A1/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 validateHeader	.block
 	moveq #0, d0
 	cmpi.b #'O', (a1)
@@ -174,7 +192,19 @@ validateHeader	.block
 	rts
 	.bend  ; validateHeader
 
-; Walk the package TOC, reject duplicates/bounds failures, and store locators.
+; Inputs:
+; - A1: package storage base whose fixed header has already been validated.
+;
+; Outputs:
+; - D0: 0 on success, 1 on TOC/bounds/required-chunk failure.
+; - A1/D1: diagnostic pointer/length on failure.
+; - package chunk locator/flag buffers updated on success.
+;
+; Clobbers:
+; - D0-D7/A1-A3/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 validateToc	.block
 	moveq #0, d7
 	move.b buffers.PackageStorageLen, d7

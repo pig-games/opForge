@@ -14763,7 +14763,6 @@ fn motorola68020_tkpkg_load_package_validates_little_endian_container_header() {
             ".block",
             "BSR.W clearLoadedState",
             "BSR.W readInputLen",
-            "TST.W D0",
             "BEQ.W invalidMagic",
             "CMPI.W #buffers.PACKAGE_STORAGE_CAPACITY,D0",
         ]

@@ -754,7 +754,6 @@ encodeSelectedInstructionV1	.block
 
 havePipeline
 	bsr.w buildSelectedEnvelopeV1
-	tst.b d0
 	bne.s return
 	tst.w d1
 	beq.s return
@@ -769,6 +768,18 @@ return
 	rts
 	.bend  ; encodeSelectedInstructionV1
 
+; Inputs:
+; - A0: selected-instruction service request control block.
+;
+; Outputs:
+; - D0: 0 on success, nonzero ABI/runtime status on failure.
+; - D1: 1 when a selectable instruction exists, 0 when no output is available.
+;
+; Clobbers:
+; - D0-D1/D2-D7/A1-A6/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 selectInstructionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	btst #1, buffers.PackageStateFlags
@@ -780,7 +791,6 @@ selectInstructionV1	.block
 
 havePipeline
 	bsr.w buildSelectedEnvelopeV1
-	tst.b d0
 	bne.s return
 	tst.w d1
 	beq.s return
@@ -792,6 +802,20 @@ return
 	rts
 
 	.bend  ; selectInstructionV1
+
+; Inputs:
+; - A0: selected-instruction or selection-probe service request control block.
+;
+; Outputs:
+; - D0: 0 on success, nonzero ABI/runtime status on failure.
+; - D1: built envelope length on success, 0 when no matching output is available.
+; - A1: diagnostic text pointer on failure.
+;
+; Clobbers:
+; - D0-D7/A1/A3-A5/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 buildSelectedEnvelopeV1	.block
 	moveq #0, d0
 	move.b abi.CB_INPUT_PTR(a0), d0
@@ -883,7 +907,6 @@ resolveVersions
 	move.l d6, -(sp)
 	move.l d5, -(sp)
 	bsr.w resolveExpressionContractVersionsV1
-	tst.b d0
 	bne.w resolveFail
 	move.w d6, EncodeSelectedExvmOpcodeVersion
 	move.w d7, EncodeSelectedExprOpcodeVersion
@@ -1140,6 +1163,7 @@ resolveFail
 	addq.l #8, sp
 
 return
+	tst.l d0
 	rts
 	.bend  ; buildSelectedEnvelopeV1
 
@@ -2272,7 +2296,7 @@ next
 ; Resolve both EXVM and ExprVM opcode versions for the current package selection.
 ; Inputs: active EXVM/EXPR package locators plus D6 preserved for caller state.
 ; Outputs: D0 = 0 on success, nonzero on version lookup failure; D6 restored on success.
-; Clobbers: CCR.
+; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 resolveExpressionContractVersionsV1	.block
 	bsr.w resolveExvmOpcodeVersionV1
@@ -2287,6 +2311,7 @@ exprFail
 	addq.l #4, sp
 
 return
+	tst.l d0
 	rts
 	.bend  ; resolveExpressionContractVersionsV1
 

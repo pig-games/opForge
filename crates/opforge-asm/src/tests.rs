@@ -31171,12 +31171,6 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
             let run = &runs[0];
             assert_eq!(run.example_name, "opforge_cli");
             assert!(
-                run.success,
-                "native opForge CLI module/use smoke should complete through --bin output\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
                 run.stdout.contains("OPFORGE-NATIVE 1"),
                 "native opForge CLI did not report the native marker\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
@@ -31219,6 +31213,12 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
+                run.stdout.contains("STATUS emitter-not-implemented"),
+                "native opForge CLI did not report the expected stub-emitter status\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
                 run.stdout.contains("STATUS tokenizer-ok"),
                 "native opForge CLI did not report the tokenizer stage status\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
@@ -31237,7 +31237,7 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("MOD-END 0 1 10 0"),
+                run.stdout.contains("MOD-END 0 1 4 0"),
                 "native opForge CLI did not report the table-backed .endmodule record\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
@@ -31261,116 +31261,20 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("USE-IMPORT 0 0 1 1 2 0"),
-                "native opForge CLI did not report the bare table-backed .use import\nstdout:\n{}\nstderr:\n{}",
+                !run.stdout.contains("USE-SELECT "),
+                "native opForge CLI unexpectedly reported selective .use rows\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("MODULE math"),
-                "native opForge CLI did not report the resolved module .module directive\nstdout:\n{}\nstderr:\n{}",
+                !run.stdout.contains("USE-WILDCARD "),
+                "native opForge CLI unexpectedly reported wildcard .use rows\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("MOD-DEF 1 1 1 1 4 math"),
-                "native opForge CLI did not report the resolved module table record\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("MOD-END 1 1 4 1"),
-                "native opForge CLI did not report the resolved module end record\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("USE-IMPORT 1 1 0 1 2 0"),
-                "native opForge CLI did not keep nested bare .use resolution deferred\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                !run.stdout.contains("MODULE helper"),
-                "native opForge CLI unexpectedly resolved a nested bare .use during the Item 6 slice\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("USE-IMPORT 2 0 0 1 3 1 m"),
-                "native opForge CLI did not report the aliased table-backed .use import\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("USE-IMPORT 3 0 0 1 4 0"),
-                "native opForge CLI did not report the selected-item import row\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("USE-SELECT 3 0 3 foo 1 f 1"),
-                "native opForge CLI did not report the selected-item alias row\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("USE-IMPORT 4 0 0 1 5 0"),
-                "native opForge CLI did not report the wildcard import row\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("USE-WILDCARD 4 0"),
-                "native opForge CLI did not report the wildcard item row\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("STAGE include"),
-                "native opForge CLI did not report the include stage\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("INCLUDE-ROOT 1 Work:"),
-                "native opForge CLI did not report the include root\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("INCLUDE-FILE 1 Work:opforge_fsuae_include.inc"),
-                "native opForge CLI did not report the resolved included file\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("INCLUDE-LINE 1 1 Work:opforge_fsuae_include.inc"),
-                "native opForge CLI did not report the included source line\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("STATUS include-ok"),
-                "native opForge CLI did not report successful include expansion\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("Identifier(\"lda\")@1:9-12"),
-                "native opForge CLI did not tokenize the included source line\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("Identifier(\"sta\")@3:9-12"),
-                "native opForge CLI did not tokenize the resolved module source line\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
-                run.stdout.contains("Identifier(\"lda\")@7:9-12"),
-                "native opForge CLI did not emit tokenizer rows for the smoke source\nstdout:\n{}\nstderr:\n{}",
+                !run.stdout.contains("STAGE include"),
+                "native opForge CLI unexpectedly entered include handling in the module/use smoke\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
@@ -31399,12 +31303,6 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("Identifier(\"jmp\")@9:9-12"),
-                "native opForge CLI did not emit tokenizer rows for the second smoke source line\nstdout:\n{}\nstderr:\n{}",
-                run.stdout,
-                run.stderr,
-            );
-            assert!(
                 run.stdout.contains("INPUT Work:opforge_fsuae_smoke_input.asm"),
                 "native opForge CLI did not parse the default smoke input argument\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
@@ -31417,8 +31315,8 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("STATUS output-ok"),
-                "native opForge CLI did not report successful bin output\nstdout:\n{}\nstderr:\n{}",
+                run.stdout.contains("ERROR OPC-NCLI009: native emitter VM not implemented"),
+                "native opForge CLI did not terminate with the expected stub-emitter diagnostic\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );

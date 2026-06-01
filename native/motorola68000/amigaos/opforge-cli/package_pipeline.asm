@@ -22,7 +22,16 @@
 	.section code, kind=code
 	.pub
 
-; Initialize tkpkg, stage/load package bytes, and select the requested pipeline.
+; Inputs:
+;   state.NativeCliPackagePath = optional external package path
+;   state.NativeCliCpuName = optional pipeline CPU name override
+; Outputs:
+;   D0.L = 0 on success, 1 when package staging/loading or pipeline selection fails
+;   buffers.ControlBlockV1 and package/pipeline request state updated for tkpkg
+; Clobbers:
+;   D0-D1/D5-D7/A0-A2/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliInitPackagePipeline	.block
 	lea buffers.ControlBlockV1, a0
 	moveq #abi.ENTRY_ORD_INIT, d0
@@ -31,7 +40,6 @@ opforgeNativeCliInitPackagePipeline	.block
 	bne.w fail
 
 	bsr.w opforgeNativeCliStagePackage
-	tst.l d0
 	bne.w fail
 
 	lea buffers.ControlBlockV1, a0
@@ -44,8 +52,6 @@ opforgeNativeCliInitPackagePipeline	.block
 	bne.s fail
 
 	bsr.w opforgeNativeCliPreparePipelineRequest
-	tst.l d0
-	bne.s fail
 
 	lea buffers.ControlBlockV1, a0
 	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0
@@ -65,7 +71,15 @@ fail
 
 	.priv
 
-; Stage either the embedded package or an external --opasm-package file.
+; Inputs:
+;   state.NativeCliPackagePath = optional external package path
+; Outputs:
+;   D0.L = 0 on success, 1 when package staging fails
+;   buffers.packageStorage/state.NativeCliPackageLenActive contain the staged package on success
+; Clobbers:
+;   D0-D7/A0-A2/CCR
+; CCR:
+;   Reflects D0.L on return
 opforgeNativeCliStagePackage	.block
 	tst.b state.NativeCliPackagePath
 	bne.s externalPackage
@@ -127,7 +141,16 @@ externalReadFail
 	rts
 	.bend  ; opforgeNativeCliStagePackage
 
-; Build the tkpkg set-pipeline request payload from --cpu or the default CPU.
+; Inputs:
+;   state.NativeCliCpuName = optional requested CPU name
+; Outputs:
+;   D0.L = 0
+;   state.NativeCliPipelineRequestLen = request byte length
+;   buffers.lastErrorBuffer = C-string pipeline request payload
+; Clobbers:
+;   D0/A0-A1/CCR
+; CCR:
+;   Reflects D0.L on return. This helper has no failure path with the current fixed-size request buffer.
 opforgeNativeCliPreparePipelineRequest	.block
 	lea state.NativeCliCpuName, a0
 	tst.b (a0)

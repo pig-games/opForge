@@ -402,6 +402,8 @@ storedText
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.opasmEngineGetStatementTextMetadataV1
+	; Keep the metadata failure branch explicit: this engine query is a semantic
+	; "does stored statement text metadata exist and parse cleanly?" boundary.
 	bne.w fail
 	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a0), d1
 	bne.s storedTextReady
@@ -428,6 +430,9 @@ prepareExtension
 	bsr.w serviceFramePtr
 	move.w OpasmDriverEvalRequestLen, d0
 	jsr tkpkg.dispatchEvaluateExpressionV1
+	; Keep the package-service dispatch status check explicit: this crosses the
+	; module/service boundary and is clearer as an ABI status probe than as a
+	; helper-style CCR contract assumption.
 	beq.s readValue
 	bra.w fail
 

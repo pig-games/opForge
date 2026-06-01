@@ -59,6 +59,9 @@ record
 
 ok
 	bsr.w opforgeNativeCliParseCurrentLine
+	; Keep the parser result check explicit: this is the semantic handoff from the
+	; line-tokenizer/service roundtrip into statement parsing, and the helper does
+	; not yet advertise a reviewed CCR-reflects-D0 contract.
 	tst.l d0
 	bne.s fail
 	moveq #0, d0
@@ -167,6 +170,9 @@ checkUse
 
 recordStatement
 	jsr assembly_session.opforgeNativeCliRecordPrvmStatementLine
+	; Keep the PRVM statement-record result check explicit: this crosses into the
+	; assembly-session module and is clearer as a semantic record/commit status
+	; probe than as a local helper CCR contract assumption.
 	tst.l d0
 	bne.w fail
 

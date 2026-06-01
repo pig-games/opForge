@@ -48,6 +48,8 @@ opforgeNativeCliRun	.block
 	moveq #36, d0
 	movea.l constants.SYS_BASE.W, a6  ; first try the AmigaOS 2.x+ dos.library version expected by tests
 	jsr constants.OPEN_LIBRARY(a6)
+	; Keep the library-open result check explicit: this is an OS/library handle
+	; acquisition boundary, not a local helper contract.
 	tst.l d0
 	bne.s haveDos
 
@@ -55,6 +57,8 @@ opforgeNativeCliRun	.block
 	moveq #0, d0
 	movea.l constants.SYS_BASE.W, a6  ; fallback keeps older emulator images usable for smoke runs
 	jsr constants.OPEN_LIBRARY(a6)
+	; Keep the fallback library-open result check explicit for the same reason:
+	; this is an OS/library handle probe across the AmigaDOS boundary.
 	tst.l d0
 	beq.w done
 
@@ -96,6 +100,8 @@ version
 parsed
 	lea state.NativeCliInputPath, a0
 	jsr dos.openInput
+	; Keep the input-open result check explicit: this crosses the DOS boundary and
+	; reads more clearly as a file-handle/open-success probe.
 	tst.l d0
 	bne.s inputOpened
 	move.l #strings.InputOpenErrorText, d1
@@ -145,6 +151,8 @@ tokenizerOk
 	move.l #strings.ParserOkText, d1
 	jsr dos.putStr
 	jsr engine_callbacks.opforgeNativeCliRunTwoPassEngine
+	; Keep the two-pass engine result check explicit: this crosses the callback
+	; bridge into the engine/runtime path and is clearer as a whole-pass outcome.
 	tst.l d0
 	beq.s passesOk
 	move.l #strings.NativePassFailureText, d1
@@ -155,6 +163,8 @@ tokenizerOk
 passesOk
 	jsr report.opforgeNativeCliEmitAssemblySessionSummary
 	jsr engine.opasmEngineGetImageByteCountV1
+	; Keep the image-byte-count check explicit: this is a semantic "did assembly
+	; produce any image bytes?" probe, not a status-return helper convention.
 	tst.l d0
 	beq.s emitStub
 	jsr output.opforgeNativeCliWriteFlatOutput

@@ -775,6 +775,12 @@ empty
 ;
 ; Outputs:
 ; - D0: 1 when expression metadata exists, 0 when absent.
+;
+; Clobbers:
+; - A0/CCR.
+;
+; CCR:
+; - Reflects D0 on return. The final wrapper tail uses only CCR-neutral `adda`/`rts`.
 statementHasExprMetadataV1	.block
 	suba.l #OPASM_ENGINE_EXPR_META_BYTES, sp
 	movea.l sp, a0

@@ -73,7 +73,6 @@ opforgeNativeCliLoadStatementExprMetadata	.block
 	moveq #0, d0
 	move.w d7, d0
 	jsr engine.statementHasExprMetadataV1
-	tst.l d0
 	beq.s empty
 	move.w #1, state.NativeCliStmtExprFound
 	rts

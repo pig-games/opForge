@@ -85,6 +85,8 @@ fail
 ; CCR: reflects D0 on return.
 opforgeNativeCliTokenizeFileAtPath	.block
 	jsr dos.openInput
+	; Keep the explicit status probe: this crosses the DOS boundary and the
+	; open-handle success convention is clearer than assuming a CCR contract.
 	tst.l d0
 	bne.s openOk
 	moveq #1, d0

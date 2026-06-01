@@ -146,9 +146,10 @@ trySourceFallback
 	beq.w done
 checkStore
 	bsr.w opforgeNativeCliStoreStatementRecord
-	tst.l d0
 	bne.w fail
 	jsr engine.opasmEngineGetStatementCountV1
+	; Keep the count check explicit: this is a cross-module engine query whose
+	; negative result is interpreted semantically as "emit the debug record now".
 	tst.w d0
 	bpl.s skipEmit
 	bsr.w opforgeNativeCliEmitStatementRecord
@@ -538,6 +539,17 @@ done
 	rts
 	.bend  ; opforgeNativeCliFallbackOperandLen
 
+; Inputs:
+; - Uses the current NativeCliStmt* fields plus NativeCliSourceLine metadata.
+;
+; Outputs:
+; - D0: 0 on success, nonzero if the engine rejects the statement record.
+;
+; Clobbers:
+; - D0/A0-A2/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 opforgeNativeCliStoreStatementRecord	.block
 	suba.l #engine.OPASM_ENGINE_STMT_RECORD_REQUEST_BYTES, sp
 	movea.l sp, a2

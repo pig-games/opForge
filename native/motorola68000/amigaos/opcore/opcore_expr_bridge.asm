@@ -79,7 +79,6 @@ selectedVersionReady
 	move.w d1, d7  ; D7 is the label count consumed by the resolver loop
 	clr.l d3
 	bsr.w skipWhitespace
-	tst.l d0
 	beq.w fail
 	cmpi.b #'#', (a0)
 	bne.s noImmediatePrefix
@@ -215,7 +214,6 @@ compileAdditive	.block
 
 loop
 	bsr.w skipWhitespace
-	tst.l d0
 	beq.s ok
 	moveq #0, d6
 	move.b (a0), d6
@@ -269,7 +267,6 @@ compileSingleTerm	.block
 	moveq #0, d4
 	moveq #0, d5
 	bsr.w skipWhitespace
-	tst.l d0
 	beq.w fail
 	cmpi.b #'+', (a0)
 	beq.s unaryPlus
@@ -676,6 +673,17 @@ return
 	rts
 	.bend  ; emitU8D6
 
+; Inputs:
+; - A0/D0: expression text pointer and remaining length.
+;
+; Outputs:
+; - A0/D0: advanced pointer and remaining length after skipping leading spaces/tabs.
+;
+; Clobbers:
+; - D0-D1/A0/CCR
+;
+; CCR:
+; - Reflects D0 on return.
 skipWhitespace	.block
 	tst.l d0
 	beq.s done
@@ -692,6 +700,7 @@ one
 	bra.s skipWhitespace
 
 done
+	tst.l d0
 	rts
 	.bend  ; skipWhitespace
 

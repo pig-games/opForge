@@ -102,7 +102,6 @@ tkpkgDebugCliCopyDefaultSmokePathLoop
 	moveq #DEBUG_CLI_FILE_MODE_SINGLE, d0
 .else
 	bsr.w tkpkgDebugCliParseOptionalInputPathV1
-	tst.l d0
 	bmi.w tkpkgDebugCliCloseDos
 .endif
 .endif
@@ -225,6 +224,11 @@ tkpkgDebugCliPutStrV1
 	jsr PUT_STR(a6)
 	rts
 
+; Parse the optional single-file input path from DOS args.
+; Inputs: DebugCliDosBase = open dos.library base.
+; Outputs: D0.L = file mode (0 none, 1 single-file, -1 usage/failure); DebugCliInputPathBuffer filled on success.
+; Clobbers: D0-D1/A1/A3/A6/CCR.
+; CCR: reflects D0.L on return.
 tkpkgDebugCliParseOptionalInputPathV1
 	movem.l d2-d7/a2-a6, -(sp)
 	movea.l DebugCliDosBase, a6
@@ -237,7 +241,6 @@ tkpkgDebugCliParseOptionalInputPathV1
 	beq.s tkpkgDebugCliQuotedPath
 	lea DebugCliInputPathBuffer, a1
 	bsr.w tkpkgDebugCliCopyPathToken
-	tst.l d0
 	bne.s tkpkgDebugCliUsagePath
 	bsr.w tkpkgDebugCliSkipWhitespace
 	tst.b (a3)
@@ -281,6 +284,11 @@ tkpkgDebugCliSkipOne
 tkpkgDebugCliSkipDone
 	rts
 
+; Copy one unquoted whitespace-delimited path token from A3 into A1.
+; Inputs: A3 = current DOS arg cursor; A1 = destination buffer.
+; Outputs: D0.L = 0 on success, 1 on invalid/too-long token; A3/A1 advanced on copied bytes.
+; Clobbers: D0/D6/CCR.
+; CCR: reflects D0.L on return.
 tkpkgDebugCliCopyPathToken
 	move.l #PATH_BUFFER_CAPACITY - 1, d6
 

@@ -16087,7 +16087,7 @@ fn motorola68020_tkpkg_smoke_debug_cli_example_assembles_native_pipeline_smoke_p
     ));
     assert!(tkpkg_source_contains(
         &source,
-        ".else\n        BSR.W tkpkgDebugCliParseOptionalInputPathV1\n        TST.L D0\n        BMI.W tkpkgDebugCliCloseDos\n.endif\n.endif\n        MOVE.L D0, DebugCliFileModeEnabled"
+        ".else\n        BSR.W tkpkgDebugCliParseOptionalInputPathV1\n        BMI.W tkpkgDebugCliCloseDos\n.endif\n.endif\n        MOVE.L D0, DebugCliFileModeEnabled"
     ));
     assert!(tkpkg_source_contains(
         &source,

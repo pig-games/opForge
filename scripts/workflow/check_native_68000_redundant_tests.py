@@ -283,6 +283,14 @@ REVIEWED_RETAINED_CALL_TST_SITES = (
         reason="fallback OS/library handle acquisition probe",
     ),
     ReviewedRetainedCallSite(
+        path_suffix="native/motorola68000/amigaos/test-harnesses/prvm/prvm_smoke.asm",
+        block_name="start",
+        call_target="OPEN_LIBRARY(a6)",
+        tst_width="l",
+        branch_text="beq.w done",
+        reason="fallback OS/library handle acquisition probe",
+    ),
+    ReviewedRetainedCallSite(
         path_suffix="native/motorola68000/amigaos/opforge-cli/run.asm",
         block_name="opforgeNativeCliRun",
         call_target="constants.OPEN_LIBRARY(a6)",

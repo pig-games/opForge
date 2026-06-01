@@ -104,11 +104,9 @@ haveDos
 	move.l d3, 12(a0)
 
 	bsr.w validateExprRequest
-	tst.l d0
 	bne.s reportFailure
 
 	bsr.w serviceExprRequest
-	tst.l d0
 	bne.s reportFailure
 
 	lea RequestFrame(PC), a0
@@ -193,6 +191,11 @@ buildRequestFrame
 	clr.l 108(a0)
 	rts
 
+; Build the native expression result slot expected by the resume run.
+; Inputs: ExprRequestBuffer = pending PRVM expression request.
+; Outputs: D0.L = 0 on success, 1 on invalid request; NativeExprSlotTable/ExprResultBuffer updated on success.
+; Clobbers: D0-D6/A0-A3/CCR.
+; CCR: reflects D0.L on return.
 serviceExprRequest
 	lea ExprRequestBuffer(PC), a2
 	move.l 12(a2), d0
@@ -280,6 +283,11 @@ invalidExprService
 	moveq #1, d0
 	rts
 
+; Validate the first-run expression-request stop surface.
+; Inputs: SmokeStatus = runtime status tuple; ExprRequestBuffer = emitted expression request.
+; Outputs: D0.L = 0 on success, 1 on mismatch; A1 = failure text on mismatch.
+; Clobbers: D0/A0-A1/CCR.
+; CCR: reflects D0.L on return.
 validateExprRequest
 	lea SmokeStatus(PC), a1
 	lea ExprRequestBuffer(PC), a0
@@ -375,7 +383,6 @@ validateResult
 	cmpi.w #PRVM_RESULT_FINISH_LINE, 160(a0)
 	bne.w invalidFinish
 	bsr.w validateNativeExprSlot
-	tst.l d0
 	bne.s validateResultReturn
 	lea SuccessText(PC), a1
 	clr.l d0
@@ -383,6 +390,11 @@ validateResult
 validateResultReturn
 	rts
 
+; Validate the native expression slot written by serviceExprRequest.
+; Inputs: NativeExprSlotTable = expected decimal-immediate expression slot.
+; Outputs: D0.L = 0 on success, 1 on mismatch; A1 = failure text on mismatch.
+; Clobbers: D0/A0-A1/CCR.
+; CCR: reflects D0.L on return.
 validateNativeExprSlot
 	lea NativeExprSlotTable(PC), a0
 	cmpi.w #PRVM_NATIVE_EXPR_STATE_READY, 0(a0)

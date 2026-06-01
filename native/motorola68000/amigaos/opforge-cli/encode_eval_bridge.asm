@@ -106,7 +106,6 @@ return
 
 opforgeNativeCliDispatchEncodeInstructionEnvelope	.block
 	bsr.w opforgeNativeCliPrepareEncodeInstructionRequest
-	tst.l d0
 	bne.s done
 	lea buffers.ControlBlockV1, a0
 	move.w #buffers.LAST_ERROR_BUFFER_PTR_V1, d0

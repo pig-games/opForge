@@ -54,6 +54,16 @@ TST_DATA_RE = re.compile(
 LABEL_RE = re.compile(r"^\s*[A-Za-z_.$][A-Za-z0-9_.$]*\s*:")
 DIRECTIVE_RE = re.compile(r"^\s*\.[A-Za-z]")
 COMMENT_OR_BLANK_RE = re.compile(r"^\s*(?:;.*)?$")
+BLOCK_LABEL_RE = re.compile(r"^([A-Za-z0-9_.$]+)\t\.block$")
+SIGNIFICANT_LINE_RE = re.compile(r"^\s*(?!;)(?:.+\S)?$")
+SUSPICIOUS_CCR_CLEANUP_RE = re.compile(
+    r"^\s*(?:move\.[bwl]\s+\(sp\)\+,|movea\.l\s+\(sp\)\+,|addq\.[wl]\s+#\d+,\s*sp\b|lea\s+[^,]+\(sp\),\s*sp\b)",
+    re.IGNORECASE,
+)
+EXPLICIT_D0_SET_RE = re.compile(
+    rf"^\s*(?:moveq\s+#?[^,]+,\s*d0|clr\.{WIDTH_RE}\s+d0|ext\.[wl]\s+d0|move\.{WIDTH_RE}\s+.+,\s*d0)\b",
+    re.IGNORECASE,
+)
 
 
 # Reviewed helpers whose contracts are known to return with CCR reflecting D0.
@@ -268,8 +278,61 @@ def parse_ccr_setting_write_to_data_reg(line: str) -> WriteInfo | None:
     return None
 
 
+def split_local_blocks(lines: Sequence[str]) -> dict[str, list[str]]:
+    blocks: dict[str, list[str]] = {}
+    current_name: str | None = None
+    current_lines: list[str] = []
+
+    for raw_line in lines:
+        line = raw_line.rstrip("\n")
+        block_match = BLOCK_LABEL_RE.match(line)
+        if block_match is not None:
+            if current_name is not None:
+                blocks[current_name] = current_lines
+            current_name = block_match.group(1)
+            current_lines = []
+            continue
+        if current_name is not None:
+            current_lines.append(line)
+
+    if current_name is not None:
+        blocks[current_name] = current_lines
+
+    return blocks
+
+
+def helper_tail_appears_ccr_safe(block_lines: Sequence[str]) -> bool:
+    significant = [line for line in block_lines if SIGNIFICANT_LINE_RE.match(line) and not COMMENT_OR_BLANK_RE.match(line)]
+    if not significant:
+        return False
+
+    rts_index = None
+    for idx in range(len(significant) - 1, -1, -1):
+        if strip_comment(significant[idx]).strip().lower() == "rts":
+            rts_index = idx
+            break
+    if rts_index is None:
+        return False
+
+    tail = significant[max(0, rts_index - 11) : rts_index + 1]
+    last_suspicious_index = None
+    for idx, line in enumerate(tail):
+        if SUSPICIOUS_CCR_CLEANUP_RE.match(strip_comment(line).strip()):
+            last_suspicious_index = idx
+
+    if last_suspicious_index is None:
+        return True
+
+    for line in tail[last_suspicious_index + 1 :]:
+        if EXPLICIT_D0_SET_RE.match(strip_comment(line).strip()):
+            return True
+
+    return False
+
+
 def find_redundant_tests(path: Path, lines: Sequence[str]) -> list[Finding]:
     findings: list[Finding] = []
+    local_blocks = split_local_blocks(lines)
 
     for i in range(len(lines) - 2):
         prev = lines[i].rstrip("\n")
@@ -316,6 +379,27 @@ def find_redundant_tests(path: Path, lines: Sequence[str]) -> list[Finding]:
             call_target = parse_call_target(prev)
             reviewed_widths = REVIEWED_CCR_D0_CALL_TST_WIDTHS.get(call_target)
             if reviewed_widths is not None and tst_width in reviewed_widths:
+                local_callee = call_target.split(".")[-1] if call_target is not None else None
+                local_block = local_blocks.get(local_callee) if local_callee is not None else None
+                if local_block is not None and not helper_tail_appears_ccr_safe(local_block):
+                    findings.append(
+                        Finding(
+                            code="R68000-TST-102",
+                            path=path,
+                            line_no=i + 2,
+                            message=(
+                                f"reviewed helper {call_target} has a local return tail that "
+                                "does not look CCR-safe; keep the tst until the helper contract is fixed"
+                            ),
+                            autofixable=False,
+                            original_lines=(prev, tst, branch),
+                            suggested_action=(
+                                "inspect the callee epilogue for manual stack cleanup or other "
+                                "CCR-clobbering instructions after the returned D0 status is computed"
+                            ),
+                        )
+                    )
+                    continue
                 findings.append(
                     Finding(
                         code="R68000-TST-002",

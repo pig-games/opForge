@@ -16,6 +16,11 @@
 	.section code, kind=code
 	.pub
 
+; Skip leading spaces/tabs in one source-line slice.
+; Inputs: A0 = current line pointer; D0 = remaining byte count.
+; Outputs: A0 advanced past leading spaces/tabs; D0 = remaining byte count after trimming.
+; Clobbers: D0/CCR.
+; CCR: reflects D0 on return.
 opforgeNativeCliSkipLineWhitespace	.block
 	tst.l d0
 	beq.s done
@@ -30,6 +35,7 @@ one
 	bra.s opforgeNativeCliSkipLineWhitespace
 
 done
+	tst.l d0
 	rts
 	.bend  ; opforgeNativeCliSkipLineWhitespace
 
@@ -215,6 +221,11 @@ fail
 	rts
 	.bend  ; opforgeNativeCliCopyUseToken
 
+; Parse optional `as <alias>` text after one selective `use` item.
+; Inputs: A0 = current line pointer; D0 = remaining byte count.
+; Outputs: D0 = remaining byte count after any parsed alias text; D1 = 0 on success, 1 on malformed alias; state.NativeCliIncludeTarget = parsed alias when present.
+; Clobbers: D0-D1/D6/A0-A1/CCR.
+; CCR: reflects D1 on return.
 opforgeNativeCliParseUseOptionalAlias	.block
 	movem.l d6/a1, -(sp)
 	move.l d0, d6
@@ -249,11 +260,15 @@ return
 	rts
 	.bend  ; opforgeNativeCliParseUseOptionalAlias
 
+; Parse a parenthesized selective/wildcard `use (...)` item list.
+; Inputs: A0 = current line pointer at the list payload; D0 = remaining byte count; D4 = current import owner/module index.
+; Outputs: D0 = remaining byte count after the closing `)` on success; D1 = 0 on success, 1 on malformed input; D7 = emitted selective-import count on success.
+; Clobbers: D0-D7/A0-A1/CCR.
+; CCR: reflects D1 on return.
 opforgeNativeCliParseUseItems
 	move.w d4, d5
 	clr.w d7
 	bsr.w opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.w opforgeNativeCliParseUseItemsFail
 	cmpi.b #')', (a0)
 	beq.w opforgeNativeCliParseUseItemsFail
@@ -293,7 +308,6 @@ opforgeNativeCliParseUseItemNoAliasFlag
 	move.l (sp)+, d0
 	addq.w #1, d7
 	bsr.w opforgeNativeCliSkipLineWhitespace
-	tst.l d0
 	beq.w opforgeNativeCliParseUseItemsFail
 	cmpi.b #')', (a0)
 	beq.s opforgeNativeCliParseUseItemsClose

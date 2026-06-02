@@ -12937,8 +12937,6 @@ fn tkpkg_mos6502_native_parity_package_bytes() -> Vec<u8> {
     registry.register_cpu(Box::new(families::m45gs02::module::M45GS02CpuModule));
     let mut chunks =
         build_hierarchy_chunks_from_registry(&registry).expect("build mos6502 tkpkg parity chunks");
-    chunks.parser_contracts.clear();
-    chunks.parser_vm_programs.clear();
     chunks.registers.clear();
     chunks.forms.clear();
     chunks.tables.clear();
@@ -12951,8 +12949,6 @@ fn tkpkg_intel8080_native_parity_package_bytes() -> Vec<u8> {
     register_intel8080_family_stack(&mut registry);
     let mut chunks = build_hierarchy_chunks_from_registry(&registry)
         .expect("build intel8080 tkpkg parity chunks");
-    chunks.parser_contracts.clear();
-    chunks.parser_vm_programs.clear();
     chunks.registers.clear();
     chunks.forms.clear();
     chunks.tables.clear();
@@ -12965,8 +12961,6 @@ fn tkpkg_motorola6800_native_parity_package_bytes() -> Vec<u8> {
     register_motorola6800_family_stack(&mut registry);
     let mut chunks = build_hierarchy_chunks_from_registry(&registry)
         .expect("build motorola6800 tkpkg parity chunks");
-    chunks.parser_contracts.clear();
-    chunks.parser_vm_programs.clear();
     chunks.registers.clear();
     chunks.forms.clear();
     chunks.tables.clear();
@@ -13004,8 +12998,6 @@ fn tkpkg_m68020_single_pipeline_package_bytes() -> Vec<u8> {
     chunks
         .tokenizer_vm_programs
         .retain(|program| program.owner == family_owner);
-    chunks.parser_contracts.clear();
-    chunks.parser_vm_programs.clear();
 
     assert_eq!(chunks.families.len(), 1, "expected one smoke family");
     assert_eq!(chunks.cpus.len(), 1, "expected one smoke cpu");
@@ -13019,6 +13011,16 @@ fn tkpkg_m68020_single_pipeline_package_bytes() -> Vec<u8> {
         chunks.tokenizer_vm_programs.len(),
         1,
         "expected one smoke tokenizer VM"
+    );
+    assert_eq!(
+        chunks.parser_contracts.len(),
+        1,
+        "expected one smoke parser contract"
+    );
+    assert_eq!(
+        chunks.parser_vm_programs.len(),
+        1,
+        "expected one smoke parser VM"
     );
 
     encode_hierarchy_chunks_from_chunks(&chunks)
@@ -13048,8 +13050,6 @@ fn tkpkg_m68020_package_with_pipeline_ids(
     chunks
         .tokenizer_vm_programs
         .retain(|program| program.owner == old_family_owner);
-    chunks.parser_contracts.clear();
-    chunks.parser_vm_programs.clear();
     chunks.expr_contracts.clear();
     chunks.expr_parser_contracts.clear();
     chunks.registers.clear();
@@ -13080,7 +13080,17 @@ fn tkpkg_m68020_package_with_pipeline_ids(
     chunks.dialects[0].family_id = family_id.to_string();
     chunks.dialects[0].cpu_allow_list = Some(vec![cpu_id.to_string()]);
     chunks.token_policies[0].owner = new_family_owner.clone();
-    chunks.tokenizer_vm_programs[0].owner = new_family_owner;
+    chunks.tokenizer_vm_programs[0].owner = new_family_owner.clone();
+    for parser_contract in &mut chunks.parser_contracts {
+        if parser_contract.owner == old_family_owner {
+            parser_contract.owner = new_family_owner.clone();
+        }
+    }
+    for parser_vm_program in &mut chunks.parser_vm_programs {
+        if parser_vm_program.owner == old_family_owner {
+            parser_vm_program.owner = new_family_owner.clone();
+        }
+    }
 
     encode_hierarchy_chunks_from_chunks(&chunks).expect("encode custom-id tkpkg smoke package")
 }

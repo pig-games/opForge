@@ -395,25 +395,20 @@ readProgram	.block
 	adda.l d2, a6
 	moveq #1, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.w invalidProgram
 	addq.w #1, a2
 	bsr.w skipString
-	tst.b d1
 	bne.w invalidProgram
 	bsr.w readU16Le
-	tst.b d1
 	bne.w invalidProgram
 	cmpi.w #TKVM_OPCODE_VERSION_V1, d0
 	bne.w invalidProgram
 	bsr.w readU16Le
-	tst.b d1
 	bne.w invalidProgram
 	move.b d0, buffers.ActiveTokenizerVmStartStateLo
 	lsr.w #8, d0
 	move.b d0, buffers.ActiveTokenizerVmStartStateHi
 	bsr.w readU32Le
-	tst.b d1
 	bne.w invalidProgram
 	tst.l d0
 	beq.w invalidProgram
@@ -434,69 +429,55 @@ readProgram	.block
 
 skipStateOffsets
 	bsr.w readU32Le
-	tst.b d1
 	bne.w invalidProgram
 	move.l d0, (a3)+
 	dbf d7, skipStateOffsets
 	bsr.w readU16Le
-	tst.b d1
 	bne.w invalidProgram
 	cmpi.w #TKVM_STREAM_VERSION_V1, d0
 	bne.w invalidProgram
 	moveq #1, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.w invalidProgram
 	moveq #0, d0
 	move.b (a2)+, d0
 	cmpi.b #TKVM_STREAM_MODE_LINE, d0
 	bne.w invalidProgram
 	bsr.w readU32Le
-	tst.b d1
 	bne.w invalidProgram
 	move.l d0, d5
 	bsr.w readU32Le
-	tst.b d1
 	bne.w invalidProgram
 	bsr.w readU32Le
-	tst.b d1
 	bne.w invalidProgram
 	bsr.w readU32Le
-	tst.b d1
 	bne.w invalidProgram
 	move.l d0, buffers.ActiveTokenizerVmMaxErrorsPerLine
 	lea buffers.ActiveTokenizerVmInvalidCharDiagCode, a3
 	lea buffers.ActiveTokenizerVmInvalidCharDiagLen, a1
 	bsr.w readStringIntoSlot
-	tst.b d1
 	bne.w invalidProgram
 	lea buffers.ActiveTokenizerVmUnterminatedStringDiagCode, a3
 	lea buffers.ActiveTokenizerVmUnterminatedStringDiagLen, a1
 	bsr.w readStringIntoSlot
-	tst.b d1
 	bne.w invalidProgram
 	lea buffers.ActiveTokenizerVmStepLimitDiagCode, a3
 	lea buffers.ActiveTokenizerVmStepLimitDiagLen, a1
 	bsr.w readStringIntoSlot
-	tst.b d1
 	bne.w invalidProgram
 	lea buffers.ActiveTokenizerVmTokenLimitDiagCode, a3
 	lea buffers.ActiveTokenizerVmTokenLimitDiagLen, a1
 	bsr.w readStringIntoSlot
-	tst.b d1
 	bne.w invalidProgram
 	lea buffers.ActiveTokenizerVmLexemeLimitDiagCode, a3
 	lea buffers.ActiveTokenizerVmLexemeLimitDiagLen, a1
 	bsr.w readStringIntoSlot
-	tst.b d1
 	bne.w invalidProgram
 	lea buffers.ActiveTokenizerVmErrorLimitDiagCode, a3
 	lea buffers.ActiveTokenizerVmErrorLimitDiagLen, a1
 	bsr.w readStringIntoSlot
-	tst.b d1
 	bne.w invalidProgram
 	bsr.w readBytesField
-	tst.b d1
 	bne.w invalidProgram
 	tst.w d3
 	beq.w invalidProgram
@@ -1443,24 +1424,30 @@ appendLiteralCloseParen	.block
 	bra.w appendBytes
 	.bend  ; appendLiteralCloseParen
 
+; Skip one length-prefixed string at A2.
+; Inputs: A2 = current package cursor; A6 = exclusive package end.
+; Outputs: A2 advanced past the string; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 skipString	.block
 	bsr.w readU32Le
-	tst.b d1
 	bne.s skipStringDone
 	bsr.w requireBytes
-	tst.b d1
 	bne.s skipStringDone
 	adda.l d0, a2
 skipStringDone
 	rts
 	.bend  ; skipString
 
+; Copy one length-prefixed string into the caller-owned diagnostic slot.
+; Inputs: A1 = destination length byte; A3 = destination text buffer; A2/A6 = package cursor/end.
+; Outputs: A2 advanced past the encoded string; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D2/A0/CCR.
+; CCR: reflects D1 on return.
 readStringIntoSlot	.block
 	bsr.w readU32Le
-	tst.b d1
 	bne.s readStringDone
 	bsr.w requireBytes
-	tst.b d1
 	bne.s readStringDone
 	move.l d0, d2
 	cmpi.l #31, d2
@@ -1484,12 +1471,15 @@ readStringDone
 	rts
 	.bend  ; readStringIntoSlot
 
+; Expose one length-prefixed byte field from the package record.
+; Inputs: A2/A6 = package cursor/end.
+; Outputs: A3 = field bytes; D3 = field length; A2 advanced past the field; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/D3/A3/CCR.
+; CCR: reflects D1 on return.
 readBytesField	.block
 	bsr.w readU32Le
-	tst.b d1
 	bne.s readBytesDone
 	bsr.w requireBytes
-	tst.b d1
 	bne.s readBytesDone
 	movea.l a2, a3
 	move.l d0, d3
@@ -1499,10 +1489,14 @@ readBytesDone
 	rts
 	.bend  ; readBytesField
 
+; Read one little-endian u16 from the package record.
+; Inputs: A2 = current package cursor; A6 = exclusive package end.
+; Outputs: D0 = decoded value; A2 advanced by 2 on success; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 readU16Le	.block
 	moveq #2, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.s readU16Done
 	moveq #0, d0
 	move.b (a2)+, d0
@@ -1515,10 +1509,14 @@ readU16Done
 	rts
 	.bend  ; readU16Le
 
+; Read one little-endian u32 from the package record.
+; Inputs: A2 = current package cursor; A6 = exclusive package end.
+; Outputs: D0 = decoded value; A2 advanced by 4 on success; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 readU32Le	.block
 	moveq #4, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.s readU32Done
 	moveq #0, d0
 	move.b (a2)+, d0
@@ -1542,6 +1540,11 @@ readU32Done
 	rts
 	.bend  ; readU32Le
 
+; Verify that D0 bytes remain between A2 and the exclusive end pointer in A6.
+; Inputs: D0 = required byte count; A2 = current read cursor; A6 = exclusive end.
+; Outputs: D1 = 0 when enough bytes remain, 1 on bounds failure.
+; Clobbers: D1/CCR.
+; CCR: reflects D1 on return.
 requireBytes	.block
 	cmpa.l a6, a2
 	bhi.s requireBytesFail

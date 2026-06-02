@@ -73,7 +73,6 @@ findOwner	.block
 	lea buffers.ToksChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocator
 	bsr.w readU32LeLow16
-	tst.b d1
 	bne.w missing
 	tst.w d0
 	beq.w missing
@@ -85,11 +84,9 @@ loop
 	movea.l a2, a4
 	moveq #1, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.w missing
 	move.b (a2)+, d4
 	bsr.w locateString
-	tst.b d1
 	bne.w missing
 	cmp.b d6, d4
 	bne.w skipEntry
@@ -107,7 +104,6 @@ loop
 
 skipEntry
 	bsr.w skipToksEntry
-	tst.b d1
 	bne.w missing
 	dbf d7, loop
 
@@ -117,7 +113,6 @@ missing
 
 found
 	bsr.w skipToksEntry
-	tst.b d1
 	bne.w missing
 	lea buffers.PendingTokenPolicyOffsetLo, a3
 	movea.l a4, a1
@@ -130,19 +125,21 @@ found
 	.bend  ; findOwner
 
 ; Skip one TOKS entry, including optional tail extension fields.
+; Inputs: A2 = current TOKS record cursor; A6 = exclusive TOKS chunk end; D7 preserved across the call.
+; Outputs: A2 advanced past the entry; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
+; Skip one TOKS entry, including optional tail extension fields.
 skipToksEntry	.block
 	move.w d7, -(sp)
 	moveq #TOKS_ENTRY_FIXED_PREFIX_SIZE, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.w boundsFail
 	lea TOKS_ENTRY_FIXED_PREFIX_SIZE(a2), a2
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	moveq #1, d0
 	bsr.w requireBytes
-	tst.b d1
 	beq.s tailMarkerReady
 	bra.w boundsFail
 
@@ -154,48 +151,36 @@ tailMarkerReady
 tailExt
 	moveq #1, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.w boundsFail
 	addq.w #1, a2
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	moveq #1, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.w boundsFail
 	tst.b (a2)+
 	beq.s tailStrings
 	moveq #1, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.w boundsFail
 	addq.w #1, a2
 
 tailStrings
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	bsr.w readU32LeLow16
-	tst.b d1
 	bne.w boundsFail
 	move.w d0, d7
 	lea 4(a2), a2
@@ -205,7 +190,6 @@ tailStrings
 
 operatorsLoop
 	bsr.w skipString
-	tst.b d1
 	bne.w boundsFail
 	dbf d7, operatorsLoop
 
@@ -273,21 +257,29 @@ chunkPtrFromLocator	.block
 	.bend  ; chunkPtrFromLocator
 
 ; skip_string is an alias for callers that only need the A2 advance.
+; Inputs: A2/A6 = current string cursor/exclusive end.
+; Outputs: A2 advanced past the encoded string; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/D2-D3/A1/CCR.
+; CCR: reflects D1 on return.
+; skip_string is an alias for callers that only need the A2 advance.
 skipString	.block
 	bsr.w locateString
 	rts
 	.bend  ; skipString
 
+; Resolve one length-prefixed string locator into A1 and advance A2 past it.
+; Inputs: A2 = current string cursor; A6 = exclusive TOKS chunk end.
+; Outputs: D0 = string byte length; A1 = string bytes; A2 advanced past the record; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D3/A1/CCR.
+; CCR: reflects D1 on return.
 locateString	.block
 	bsr.w readU32LeLow16
-	tst.b d1
 	bne.s boundsFail
 	move.l d0, d2
 	move.l d0, d3
 	addq.l #4, d3
 	move.l d3, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.s boundsFail
 	move.l d2, d0
 	lea 4(a2), a1
@@ -303,10 +295,14 @@ boundsFail
 	rts
 	.bend  ; locateString
 
+; Read one little-endian u32 field and return its low 16 bits.
+; Inputs: A2 = current field cursor; A6 = exclusive TOKS chunk end.
+; Outputs: D0 = decoded low-16 value; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 readU32LeLow16	.block
 	moveq #4, d0
 	bsr.w requireBytes
-	tst.b d1
 	bne.s boundsFail
 	moveq #0, d0
 	move.b (a2), d0
@@ -323,6 +319,11 @@ boundsFail
 	rts
 	.bend  ; readU32LeLow16
 
+; Verify that D0 bytes remain between A2 and the exclusive end pointer in A6.
+; Inputs: D0 = required byte count; A2 = current TOKS cursor; A6 = exclusive end.
+; Outputs: D1 = 0 when enough bytes remain, 1 on bounds failure.
+; Clobbers: D1/CCR.
+; CCR: reflects D1 on return.
 requireBytes	.block
 	movea.l a2, a1
 	adda.l d0, a1

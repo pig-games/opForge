@@ -237,7 +237,6 @@ findCpuEntryV1	.block
 	lea buffers.CpusChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.w cpuMissing
 	tst.w d0
 	beq.w cpuMissing
@@ -247,7 +246,6 @@ findCpuEntryV1	.block
 
 cpuLoop
 	bsr.w locateStringV1
-	tst.b d1
 	bne.w cpuMissing
 	move.w d0, d6
 	movea.l a1, a4
@@ -265,12 +263,10 @@ cpuLoop
 	move.w d6, d0
 	bsr.w storePackageStringLocatorV1
 	bsr.w locateStringV1
-	tst.b d1
 	bne.w cpuMissing
 	lea buffers.PendingFamilyOffsetLo, a3
 	bsr.w storePackageStringLocatorV1
 	bsr.w locateOptionalStringV1
-	tst.b d1
 	bne.w cpuMissing
 	lea buffers.PendingDefaultDialectOffsetLo, a3
 	bsr.w storeOptionalPackageStringLocatorV1
@@ -279,10 +275,8 @@ cpuLoop
 
 skipCpuEntry
 	bsr.w skipStringV1
-	tst.b d1
 	bne.w cpuMissing
 	bsr.w skipOptionalStringV1
-	tst.b d1
 	bne.w cpuMissing
 	dbf d7, cpuLoop
 
@@ -301,7 +295,6 @@ findFamilyEntryV1	.block
 	lea buffers.FamsChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.w familyMissing
 	tst.w d0
 	beq.w familyMissing
@@ -311,7 +304,6 @@ findFamilyEntryV1	.block
 
 familyLoop
 	bsr.w locateStringV1
-	tst.b d1
 	bne.w familyMissing
 	move.w d0, d6
 	movea.l a1, a4
@@ -325,7 +317,6 @@ familyLoop
 	tst.b d0
 	beq.w skipFamilyEntry
 	bsr.w locateStringV1
-	tst.b d1
 	bne.w familyMissing
 	lea buffers.PendingCanonicalDialectOffsetLo, a3
 	bsr.w storePackageStringLocatorV1
@@ -334,7 +325,6 @@ familyLoop
 
 skipFamilyEntry
 	bsr.w skipStringV1
-	tst.b d1
 	bne.w familyMissing
 	dbf d7, familyLoop
 
@@ -413,7 +403,6 @@ findDialectEntryLoadedV1	.block
 	lea buffers.DialChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.w dialectNotFound
 	tst.w d0
 	beq.w dialectNotFound
@@ -423,7 +412,6 @@ findDialectEntryLoadedV1	.block
 
 dialectLoop
 	bsr.w locateStringV1
-	tst.b d1
 	bne.w dialectNotFound
 	move.w d0, -(sp)
 	movea.l a1, a0
@@ -437,7 +425,6 @@ dialectLoop
 	tst.b d0
 	beq.w skipDialectEntry
 	bsr.w locateStringV1
-	tst.b d1
 	beq.s dialectFamilyLoaded
 	addq.w #2, sp
 	bra.w dialectNotFound
@@ -470,7 +457,6 @@ skipDialectAllowList
 
 skipDialectAllowListPayload
 	bsr.w skipOptionalStringListV1
-	tst.b d1
 	bne.w dialectNotFound
 
 dialectNext
@@ -493,12 +479,10 @@ dialectAllowsCpuV1	.block
 	move.w d7, -(sp)
 	moveq #1, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.s dialectRejected
 	move.b (a2)+, d0
 	beq.s dialectAllowed
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.s dialectRejected
 	move.w d0, d7
 	lea 4(a2), a2
@@ -514,7 +498,6 @@ dialectAllowsCpuV1	.block
 
 allowLoop
 	bsr.w locateStringV1
-	tst.b d1
 	bne.s dialectRejected
 	move.w d0, d6
 	movea.l a1, a4
@@ -624,7 +607,6 @@ findTokenizerVmOwnerV1	.block
 	lea buffers.TkvmChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.w vmOwnerMissing
 	tst.w d0
 	beq.w vmOwnerMissing
@@ -636,11 +618,9 @@ vmLoop
 	movea.l a2, a4
 	moveq #1, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.w vmOwnerMissing
 	move.b (a2)+, d4
 	bsr.w locateStringV1
-	tst.b d1
 	bne.w vmOwnerMissing
 	cmp.b d6, d4
 	bne.w vmSkipEntry
@@ -656,7 +636,6 @@ vmLoop
 
 vmSkipEntry
 	bsr.w skipTokenizerVmEntryV1
-	tst.b d1
 	bne.w vmOwnerMissing
 	dbf d7, vmLoop
 
@@ -666,7 +645,6 @@ vmOwnerMissing
 
 vmFound
 	bsr.w skipTokenizerVmEntryV1
-	tst.b d1
 	bne.w vmOwnerMissing
 	lea buffers.PendingTokenizerVmOffsetLo, a3
 	movea.l a4, a1
@@ -688,7 +666,6 @@ findParserVmOwnerV1	.block
 	lea buffers.PrvmChunkOffsetLo, a3
 	bsr.w chunkPtrFromLocatorV1
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.w parserOwnerMissing
 	tst.w d0
 	beq.w parserOwnerMissing
@@ -700,11 +677,9 @@ parserLoop
 	movea.l a2, a4
 	moveq #1, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.w parserOwnerMissing
 	move.b (a2)+, d4
 	bsr.w locateStringV1
-	tst.b d1
 	bne.w parserOwnerMissing
 	cmp.b d6, d4
 	bne.w parserSkipEntry
@@ -720,7 +695,6 @@ parserLoop
 
 parserSkipEntry
 	bsr.w skipParserVmEntryV1
-	tst.b d1
 	bne.w parserOwnerMissing
 	dbf d7, parserLoop
 
@@ -730,7 +704,6 @@ parserOwnerMissing
 
 parserFound
 	bsr.w skipParserVmEntryV1
-	tst.b d1
 	bne.w parserOwnerMissing
 	lea buffers.PendingParserVmOffsetLo, a3
 	movea.l a4, a1
@@ -747,11 +720,9 @@ skipTokenizerVmEntryV1	.block
 	move.w d7, -(sp)
 	moveq #TOKENIZER_VM_ENTRY_PREFIX_SIZE, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	lea TOKENIZER_VM_ENTRY_PREFIX_SIZE(a2), a2
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	move.w d0, d7
 	lea 4(a2), a2
@@ -759,7 +730,6 @@ skipTokenizerVmEntryV1	.block
 	move.w d7, d0
 	lsl.l #2, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	tst.w d7
 	beq.s vmAfterOffsets
@@ -772,36 +742,27 @@ vmOffsetLoop
 vmAfterOffsets
 	moveq #TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	lea TOKENIZER_VM_ENTRY_FIXED_TAIL_SIZE(a2), a2
 	bsr.w skipStringV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	bsr.w skipStringV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	bsr.w skipStringV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	bsr.w skipStringV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	bsr.w skipStringV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	bsr.w skipStringV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	move.l d0, d2
 	move.l d0, d3
 	addq.l #4, d3
 	move.l d3, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.w vmSkipBoundsFail
 	lea 4(a2), a2
 	adda.l d2, a2
@@ -819,16 +780,13 @@ vmSkipBoundsFail
 skipParserVmEntryV1	.block
 	moveq #2, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.w parserSkipBoundsFail
 	lea 2(a2), a2
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.w parserSkipBoundsFail
 	move.l d0, d3
 	addq.l #4, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.w parserSkipBoundsFail
 	lea 4(a2), a2
 	adda.l d3, a2
@@ -1013,16 +971,19 @@ chunkPtrFromLocatorV1	.block
 	rts
 	.bend  ; chunkPtrFromLocatorV1
 
+; Resolve one length-prefixed package string and advance A2 past it.
+; Inputs: A2 = current package cursor; A6 = exclusive package end.
+; Outputs: D0 = string byte length; A1 = string bytes; A2 advanced past the record; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D3/A1/CCR.
+; CCR: reflects D1 on return.
 locateStringV1	.block
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.s locateStringBoundsFail
 	move.l d0, d2
 	move.l d0, d3
 	addq.l #4, d3
 	move.l d3, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.s locateStringBoundsFail
 	move.l d2, d0
 	lea 4(a2), a1
@@ -1038,15 +999,24 @@ locateStringBoundsFail
 	rts
 	.bend  ; locateStringV1
 
+; Skip one length-prefixed package string.
+; Inputs: A2/A6 = current package cursor/exclusive end.
+; Outputs: A2 advanced past the string; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/D2-D3/A1/CCR.
+; CCR: reflects D1 on return.
 skipStringV1	.block
 	bsr.w locateStringV1
 	rts
 	.bend  ; skipStringV1
 
+; Resolve one optional string slot whose leading byte marks presence.
+; Inputs: A2 = current package cursor; A6 = exclusive package end.
+; Outputs: D0 = string byte length when present; A1 = string bytes when present; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/D2-D3/A1/CCR.
+; CCR: reflects D1 on return.
 locateOptionalStringV1	.block
 	moveq #1, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.s optionalBoundsFail
 	move.b (a2)+, d1
 	beq.s optionalNone
@@ -1066,21 +1036,29 @@ optionalBoundsFail
 	rts
 	.bend  ; locateOptionalStringV1
 
+; Skip one optional string slot whose leading byte marks presence.
+; Inputs: A2/A6 = current package cursor/exclusive end.
+; Outputs: A2 advanced past the optional slot payload; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/D2-D3/A1/CCR.
+; CCR: reflects D1 on return.
 skipOptionalStringV1	.block
 	bsr.w locateOptionalStringV1
 	rts
 	.bend  ; skipOptionalStringV1
 
+; Skip one optional string allow-list payload while preserving D7.
+; Inputs: A2/A6 = current package cursor/exclusive end; D7 preserved across the call.
+; Outputs: A2 advanced past the list when present; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 skipOptionalStringListV1	.block
 	move.w d7, -(sp)
 	moveq #1, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.s skipListBoundsFail
 	move.b (a2)+, d1
 	beq.s skipListDone
 	bsr.w readU32LeLow16V1
-	tst.b d1
 	bne.s skipListBoundsFail
 	move.w d0, d7
 	lea 4(a2), a2
@@ -1090,7 +1068,6 @@ skipOptionalStringListV1	.block
 
 skipListLoop
 	bsr.w skipStringV1
-	tst.b d1
 	bne.s skipListBoundsFail
 	dbf d7, skipListLoop
 
@@ -1105,10 +1082,14 @@ skipListBoundsFail
 	rts
 	.bend  ; skipOptionalStringListV1
 
+; Read one little-endian u32 field and return its low 16 bits.
+; Inputs: A2 = current package cursor; A6 = exclusive package end.
+; Outputs: D0 = decoded low-16 value; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 readU32LeLow16V1	.block
 	moveq #4, d0
 	bsr.w requireBytesV1
-	tst.b d1
 	bne.s readU32BoundsFail
 	moveq #0, d0
 	move.b (a2), d0
@@ -1125,6 +1106,11 @@ readU32BoundsFail
 	rts
 	.bend  ; readU32LeLow16V1
 
+; Verify that D0 bytes remain between A2 and the exclusive end pointer in A6.
+; Inputs: D0 = required byte count; A2 = current package cursor; A6 = exclusive end.
+; Outputs: D1 = 0 when enough bytes remain, 1 on bounds failure.
+; Clobbers: D1/CCR.
+; CCR: reflects D1 on return.
 requireBytesV1	.block
 	movea.l a2, a1
 	adda.l d0, a1

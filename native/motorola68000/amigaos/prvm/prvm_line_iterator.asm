@@ -150,6 +150,7 @@ nextLine
 	move.l #PRVM_ROUTE_FRAME_SIZE, d0
 	movea.l PrvmIteratorRouteEntryPtr(PC), a1
 	jsr (a1)
+	tst.l d0
 	bne.w failFast
 	addq.l #1, d5
 

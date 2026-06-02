@@ -301,7 +301,6 @@ dispatchV1	.block
 	beq.s handleInitEntry
 	bsr.w tkpkgServicePrepareRequestV1  ; assign a request id before validation/status reporting
 	bsr.w tkpkgServiceValidateHeaderV1  ; reject stale or foreign control blocks early
-	tst.b d1
 	bne.s dispatchDone
 	cmpi.b #abi.ENTRY_ORD_LAST_ERROR, d0
 	beq.s handleLastError
@@ -1175,10 +1174,8 @@ tkpkgBuildSelectedEnvelopeFromMselV1	.block
 	beq.w noOutput
 	lea buffers.MselChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
-	tst.b d1
 	bne.w noOutput
 	bsr.w tkpkgServiceReadU32LeLow16V1
-	tst.b d1
 	bne.w noOutput
 	tst.w d0
 	beq.w noOutput
@@ -1189,16 +1186,13 @@ tkpkgBuildSelectedEnvelopeFromMselV1	.block
 entryLoop
 	moveq #1, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
 	bne.w unsupported
 	move.b (a2)+, d6
 	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
 	bne.w unsupported
 	bsr.w tkpkgSelectedMselOwnerMatchesV1
 	move.b d0, d5
 	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
 	bne.w unsupported
 	tst.b d5
 	beq.s skipMnemonicCompare
@@ -1211,7 +1205,6 @@ entryLoop
 
 skipMnemonicCompare
 	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
 	bne.w unsupported
 	tst.b d5
 	beq.s skipShapeCompare
@@ -1232,7 +1225,6 @@ skipMnemonicCompare
 
 skipShapeCompare
 	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
 	bne.w unsupported
 	tst.b d5
 	beq.s skipModeStore
@@ -1241,7 +1233,6 @@ skipShapeCompare
 
 skipModeStore
 	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
 	bne.w unsupported
 	tst.b d5
 	beq.s skipPlanStore
@@ -1268,7 +1259,6 @@ maybeReturnOperandError
 skipPlanStore
 	moveq #4, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
 	bne.w unsupported
 	lea 4(a2), a2
 	dbf d7, entryLoop
@@ -2436,10 +2426,8 @@ findExvmOpcodeVersionV1	.block
 	move.b d6, d5
 	lea buffers.ExvmChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
-	tst.b d1
 	bne.s missing
 	bsr.w tkpkgServiceReadU32LeLow16V1
-	tst.b d1
 	bne.s missing
 	tst.w d0
 	beq.s missing
@@ -2450,11 +2438,9 @@ findExvmOpcodeVersionV1	.block
 loop
 	moveq #1, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
 	bne.s missing
 	move.b (a2)+, d6
 	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
 	bne.s missing
 	cmp.b d5, d6
 	bne.s skipEntry
@@ -2467,12 +2453,10 @@ loop
 	movea.l a3, a1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
-	tst.b d0
 	bne.s readVersion
 
 skipEntry
 	bsr.w skipExvmEntryTailV1
-	tst.b d1
 	bne.s missing
 	dbf d7, loop
 
@@ -2482,7 +2466,6 @@ missing
 
 readVersion
 	bsr.w tkpkgServiceReadU16LeV1
-	tst.b d1
 	bne.s missing
 	move.w d0, d6
 	moveq #0, d0
@@ -2493,10 +2476,8 @@ findExprOpcodeVersionV1	.block
 	move.b d6, d5
 	lea buffers.ExprChunkOffsetLo, a3
 	bsr.w tkpkgServiceChunkPtrFromLocatorV1
-	tst.b d1
 	bne.s missing
 	bsr.w tkpkgServiceReadU32LeLow16V1
-	tst.b d1
 	bne.s missing
 	tst.w d0
 	beq.s missing
@@ -2507,11 +2488,9 @@ findExprOpcodeVersionV1	.block
 loop
 	moveq #1, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
 	bne.s missing
 	move.b (a2)+, d6
 	bsr.w tkpkgServiceLocateStringV1
-	tst.b d1
 	bne.s missing
 	cmp.b d5, d6
 	bne.s skipEntry
@@ -2524,12 +2503,10 @@ loop
 	movea.l a3, a1
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
-	tst.b d0
 	bne.s readVersion
 
 skipEntry
 	bsr.w tkpkgServiceSkipExprEntryTailV1
-	tst.b d1
 	bne.s missing
 	dbf d7, loop
 
@@ -2539,16 +2516,19 @@ missing
 
 readVersion
 	bsr.w tkpkgServiceReadU16LeV1
-	tst.b d1
 	bne.s missing
 	move.w d0, d7
 	moveq #0, d0
 	rts
 	.bend  ; findExprOpcodeVersionV1
 
+; Skip the EXVM entry tail after the owner string.
+; Inputs: A2/A6 = current EXVM entry cursor/exclusive end.
+; Outputs: A2 advanced past the tail when present; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 skipExvmEntryTailV1	.block
 	bsr.w tkpkgServiceReadU16LeV1
-	tst.b d1
 	bne.s done
 	bsr.w tkpkgServiceSkipStringV1
 
@@ -2556,20 +2536,22 @@ done
 	rts
 	.bend  ; skipExvmEntryTailV1
 
+; Skip the EXPR entry tail after the owner string and fixed metadata.
+; Inputs: A2/A6 = current EXPR entry cursor/exclusive end.
+; Outputs: A2 advanced past the tail when present; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/D7/CCR.
+; CCR: reflects D1 on return.
 tkpkgServiceSkipExprEntryTailV1	.block
 	bsr.w tkpkgServiceReadU16LeV1
-	tst.b d1
 	bne.s tailDone
 	moveq #16, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
 	bne.s tailDone
 	lea 16(a2), a2
 	moveq #7, d7
 
 stringLoop
 	bsr.w tkpkgServiceSkipStringV1
-	tst.b d1
 	bne.s tailDone
 	dbf d7, stringLoop
 
@@ -2615,10 +2597,14 @@ missing
 	rts
 	.bend  ; tkpkgServiceChunkPtrFromLocatorV1
 
+; Read one little-endian u16 from the current package cursor.
+; Inputs: A2 = current package cursor; A6 = exclusive package end.
+; Outputs: D0 = decoded value; A2 advanced by 2 on success; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 tkpkgServiceReadU16LeV1	.block
 	moveq #2, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
 	bne.s fail
 	moveq #0, d0
 	move.b (a2)+, d0
@@ -2634,16 +2620,19 @@ fail
 	rts
 	.bend  ; tkpkgServiceReadU16LeV1
 
+; Resolve one length-prefixed string locator into A1 and advance A2 past it.
+; Inputs: A2 = current string cursor; A6 = exclusive package end.
+; Outputs: D0 = string byte length; A1 = string bytes; A2 advanced past the record; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D3/A1/CCR.
+; CCR: reflects D1 on return.
 tkpkgServiceLocateStringV1	.block
 	bsr.w tkpkgServiceReadU32LeLow16V1
-	tst.b d1
 	bne.s boundsFail
 	move.l d0, d2
 	move.l d0, d3
 	addq.l #4, d3
 	move.l d3, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
 	bne.s boundsFail
 	move.l d2, d0
 	lea 4(a2), a1
@@ -2659,15 +2648,24 @@ boundsFail
 	rts
 	.bend  ; tkpkgServiceLocateStringV1
 
+; Skip one length-prefixed string at the current package cursor.
+; Inputs: A2/A6 = current string cursor/exclusive end.
+; Outputs: A2 advanced past the string; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/D2-D3/A1/CCR.
+; CCR: reflects D1 on return.
 tkpkgServiceSkipStringV1	.block
 	bsr.w tkpkgServiceLocateStringV1
 	rts
 	.bend  ; tkpkgServiceSkipStringV1
 
+; Read one little-endian u32 field and return its low 16 bits.
+; Inputs: A2 = current field cursor; A6 = exclusive package end.
+; Outputs: D0 = decoded low-16 value; D1 = 0 on success, 1 on bounds failure.
+; Clobbers: D0-D1/CCR.
+; CCR: reflects D1 on return.
 tkpkgServiceReadU32LeLow16V1	.block
 	moveq #4, d0
 	bsr.w tkpkgServiceRequireBytesV1
-	tst.b d1
 	bne.s fail
 	moveq #0, d0
 	move.b (a2), d0
@@ -2683,6 +2681,11 @@ fail
 	rts
 	.bend  ; tkpkgServiceReadU32LeLow16V1
 
+; Verify that D0 bytes remain between A2 and the exclusive end pointer in A6.
+; Inputs: D0 = required byte count; A2 = current package cursor; A6 = exclusive end.
+; Outputs: D1 = 0 when enough bytes remain, 1 on bounds failure.
+; Clobbers: D1/CCR.
+; CCR: reflects D1 on return.
 tkpkgServiceRequireBytesV1	.block
 	movea.l a2, a1
 	adda.l d0, a1
@@ -2696,6 +2699,11 @@ fail
 	rts
 	.bend  ; tkpkgServiceRequireBytesV1
 
+; Compare two ASCII strings case-insensitively.
+; Inputs: A1 = first string bytes; A2 = second string bytes; D0/D1 = lengths.
+; Outputs: D0 = 1 when strings match, 0 otherwise.
+; Clobbers: D0/D2-D4/CCR.
+; CCR: reflects D0 on return.
 tkpkgServiceStringEqAsciiCasefoldV1	.block
 	cmp.w d1, d0
 	bne.s noMatch
@@ -3141,6 +3149,11 @@ tkpkgServicePrepareRequestV1	.block
 	rts
 	.bend  ; tkpkgServicePrepareRequestV1
 
+; Validate the native service control block header.
+; Inputs: A0 = candidate control block.
+; Outputs: D1 = 0 when the header is valid, 1 when the control block is rejected.
+; Clobbers: D1/CCR.
+; CCR: reflects D1 on return.
 tkpkgServiceValidateHeaderV1	.block
 	moveq #0, d1
 	cmpi.b #$4f, (a0)
@@ -3159,6 +3172,7 @@ tkpkgServiceValidateHeaderV1	.block
 	bne.s badControlBlock
 	tst.b 7(a0)
 	bne.s badControlBlock
+	moveq #0, d1
 	rts
 
 badControlBlock

@@ -15,8 +15,6 @@
 	.use opforge.cli.constants
 
 	.use opforge.cli.strings
-	.use opforge.cli.dos
-	.use opforge.cli.text_output
 	.use opforge.cli.copy
 	.use opforge.cli.line_text
 
@@ -97,6 +95,11 @@ finalize
 	bsr.w opforgeNativeCliRecordPrvmExpressionRequest
 
 checkMnemonic
+	bsr.w opforgeNativeCliFirstTokenLabelNeedsSourceFallback
+	beq.s checkLabel
+	bsr.w opforgeNativeCliRecordSourceBareLabelStatement
+
+checkLabel
 	tst.l state.NativeCliStmtLabelLen
 	beq.s checkMnemonicFound
 	tst.w state.NativeCliStmtMnemFound
@@ -136,8 +139,6 @@ checkMnemonicFound
 	bra.w trySourceFallback
 
 maybeLabelOnly
-	tst.l state.NativeCliStmtLabelLen
-	bne.s checkStore
 trySourceFallback
 	bsr.w opforgeNativeCliRecordSourceStatementFallback
 	tst.w state.NativeCliStmtMnemFound
@@ -147,12 +148,6 @@ trySourceFallback
 checkStore
 	bsr.w opforgeNativeCliStoreStatementRecord
 	bne.w fail
-	jsr engine.opasmEngineGetStatementCountV1
-	tst.w d0
-	bpl.s skipEmit
-	bsr.w opforgeNativeCliEmitStatementRecord
-
-skipEmit
 	jsr engine.opasmEngineCommitStatementRecordV1
 	bra.w done
 	
@@ -229,57 +224,6 @@ return
 
 	.priv
 
-opforgeNativeCliEmitStatementRecord	.block
-	movem.l d0-d7/a0-a1, -(sp)
-	move.l #strings.StatementText, d1
-	jsr dos.putStr
-	jsr engine.opasmEngineGetStatementCountV1
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliSourceLineNum, d0
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	move.w state.NativeCliStmtDirectiveKind, d0
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtLabelStart, d0
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtLabelEnd, d0
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtMnemStart, d0
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtMnemEnd, d0
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtLabelLen, d0
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtMnemLen, d0
-	jsr text_output.opforgeNativeCliPutDecU16
-	jsr text_output.opforgeNativeCliPutSpace
-	lea buffers.tokenScratchBuffer, a0
-	move.l state.NativeCliStmtMnemOff, d0
-	adda.l d0, a0
-	lea state.NativeCliArgToken, a1
-	move.l state.NativeCliStmtMnemLen, d0
-	jsr copy.copyFixedString
-	clr.b (a1)
-	move.l #state.NativeCliArgToken, d1
-	jsr dos.putStr
-	move.l #strings.NewlineText, d1
-	jsr dos.putStr
-	tst.w state.NativeCliStmtExprFound
-	beq.s done
-	jsr opforgeNativeCliEmitStatementExprRequest
-
-done
-	movem.l (sp)+, d0-d7/a0-a1
-	rts
-	.bend  ; opforgeNativeCliEmitStatementRecord
-
 opforgeNativeCliRecordPrvmExpressionRequest	.block
 	lea state.OpforgeNativeCliPrvmExprRequest, a2
 	cmpi.w #1, 0(a2)
@@ -296,37 +240,6 @@ opforgeNativeCliRecordPrvmExpressionRequest	.block
 done
 	rts
 	.bend  ; opforgeNativeCliRecordPrvmExpressionRequest
-
-opforgeNativeCliEmitStatementExprRequest	.block
-	move.l #strings.StatementExprText, d1
-	jsr dos.putStr
-	jsr engine.opasmEngineGetStatementCountV1
-	bsr.w text_output.opforgeNativeCliPutDecU16
-	bsr.w text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtExprOperandIndex, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
-	bsr.w text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtExprSlotIndex, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
-	bsr.w text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtExprStartToken, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
-	bsr.w text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtExprEndToken, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
-	bsr.w text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtExprSpanLine, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
-	bsr.w text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtExprSpanStart, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
-	bsr.w text_output.opforgeNativeCliPutSpace
-	move.l state.NativeCliStmtExprSpanEnd, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
-	move.l #strings.NewlineText, d1
-	jsr dos.putStr
-	rts
-	.bend  ; opforgeNativeCliEmitStatementExprRequest
 
 opforgeNativeCliRecordSourceStatementFallback	.block
 	movem.l d0-d7/a0-a3, -(sp)
@@ -349,29 +262,66 @@ opforgeNativeCliRecordSourceStatementFallback	.block
 	move.l d2, d5
 	sub.w d3, d5
 	tst.l d5
-	beq.s firstToken
+	beq.w firstToken
 	cmpi.b #':', (a3)
-	beq.s labelToken
+	beq.w labelToken
 
 firstToken
 	cmpi.l #1, d4
-	bne.s firstTokenMnemonic
+	bne.w firstTokenMnemonic
+	tst.w state.NativeCliStmtExprFound
+	bne.w firstTokenLabel
+	tst.w state.NativeCliStmtMnemFound
+	beq.w firstTokenLabel
 	tst.l d5
-	beq.s bareLabel
+	beq.w bareLabel
 	movea.l a3, a0
 	move.l d5, d0
 	jsr line_text.opforgeNativeCliSkipLineWhitespace
-	beq.s bareLabel
+	beq.w bareLabel
 	tst.b (a0)
-	beq.s bareLabel
+	beq.w bareLabel
 	cmpi.b #10, (a0)
-	beq.s bareLabel
+	beq.w bareLabel
 	cmpi.b #13, (a0)
-	beq.s bareLabel
+	beq.w bareLabel
 	cmpi.b #';', (a0)
-	beq.s bareLabel
+	beq.w bareLabel
 
 firstTokenMnemonic
+	bsr.w opforgeNativeCliRecordSourceStatementMnemonic
+	bra.w return
+
+firstTokenLabel
+	move.l d4, state.NativeCliStmtLabelStart
+	move.l d4, d0
+	add.w d3, d0
+	move.l d0, state.NativeCliStmtLabelEnd
+	move.l d3, state.NativeCliStmtLabelLen
+	clr.l state.NativeCliStmtLabelOff
+	tst.l d5
+	beq.w return
+	movea.l a3, a0
+	move.l d5, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w return
+	tst.b (a0)
+	beq.w return
+	cmpi.b #10, (a0)
+	beq.w return
+	cmpi.b #13, (a0)
+	beq.w return
+	cmpi.b #';', (a0)
+	beq.w return
+	movea.l a0, a2
+	move.l d0, d2
+	bsr.w opforgeNativeCliFallbackTokenLen
+	beq.w return
+	move.w d0, d3
+	moveq #0, d4
+	move.w state.NativeCliSourceLineLen, d4
+	sub.w d2, d4
+	addq.w #1, d4
 	bsr.w opforgeNativeCliRecordSourceStatementMnemonic
 	bra.w return
 
@@ -412,7 +362,160 @@ return
 	movem.l (sp)+, d0-d7/a0-a3
 	rts
 	.bend  ; opforgeNativeCliRecordSourceStatementFallback
-	
+
+opforgeNativeCliRecordSourceBareLabelStatement	.block
+	movem.l d0-d5/a0-a3, -(sp)
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s done
+	movea.l a0, a2
+	move.l d0, d2
+	bsr.w opforgeNativeCliFallbackTokenLen
+	beq.s done
+	move.w d0, d3
+	moveq #0, d4
+	move.w state.NativeCliSourceLineLen, d4
+	sub.w d2, d4
+	addq.w #1, d4
+	move.l d4, state.NativeCliStmtLabelStart
+	move.l d4, d0
+	add.w d3, d0
+	move.l d0, state.NativeCliStmtLabelEnd
+	move.l d3, state.NativeCliStmtLabelLen
+	clr.l state.NativeCliStmtLabelOff
+	movea.l a2, a3
+	adda.w d3, a3
+	move.l d2, d5
+	sub.w d3, d5
+	tst.l d5
+	beq.s done
+	movea.l a3, a0
+	move.l d5, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s done
+	tst.b (a0)
+	beq.s done
+	cmpi.b #10, (a0)
+	beq.s done
+	cmpi.b #13, (a0)
+	beq.s done
+	cmpi.b #';', (a0)
+	beq.s done
+	movea.l a0, a2
+	move.l d0, d2
+	bsr.w opforgeNativeCliFallbackTokenLen
+	beq.s done
+	move.w d0, d3
+	moveq #0, d4
+	move.w state.NativeCliSourceLineLen, d4
+	sub.w d2, d4
+	addq.w #1, d4
+	bsr.w opforgeNativeCliRecordSourceStatementMnemonic
+
+done
+	movem.l (sp)+, d0-d5/a0-a3
+	rts
+	.bend  ; opforgeNativeCliRecordSourceBareLabelStatement
+
+; Detect the bare-label form "label mnemonic ..." when PRVM handed us the first
+; token as the mnemonic and no explicit label row. This stays syntax-based:
+; we only force a source fallback when another token appears before the current
+; operand span, or when there is a second token and no operand span exists yet.
+opforgeNativeCliFirstTokenLabelNeedsSourceFallback	.block
+	movem.l d1-d4/a0-a1, -(sp)
+	clr.l d0
+	tst.l state.NativeCliStmtLabelLen
+	bne.w done
+	tst.w state.NativeCliStmtMnemFound
+	beq.w done
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d1
+	move.w state.NativeCliSourceLineLen, d1
+	move.l d1, d4
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w done
+	move.l d0, d2
+	sub.w d2, d4
+	addq.w #1, d4
+	move.l state.NativeCliStmtMnemStart, d3
+	cmp.l d4, d3
+	bne.w done
+	movea.l a0, a1
+	bsr.w opforgeNativeCliFallbackTokenLen
+	beq.w done
+	move.l d0, d3
+	move.l state.NativeCliStmtMnemLen, d4
+	cmp.l d3, d4
+	bne.w done
+	movea.l a1, a0
+	adda.w d3, a0
+	move.l d2, d1
+	sub.w d3, d1
+	move.l d1, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w done
+	tst.b (a0)
+	beq.w done
+	cmpi.b #10, (a0)
+	beq.w done
+	cmpi.b #13, (a0)
+	beq.w done
+	cmpi.b #';', (a0)
+	beq.w done
+	move.l state.NativeCliStmtOperandStart, d1
+	beq.w needsFallback
+	moveq #0, d4
+	move.w state.NativeCliSourceLineLen, d4
+	sub.l d0, d4
+	addq.l #1, d4
+	cmp.l d4, d1
+	bhi.w needsFallback
+	bne.w done
+	movea.l a0, a1
+	bsr.w opforgeNativeCliFallbackTokenLen
+	beq.w done
+	move.l d0, d3
+	lea state.NativeCliSourceLine, a0
+	move.l d1, d4
+	subq.l #1, d4
+	adda.l d4, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	sub.l d1, d0
+	addq.l #1, d0
+	movea.l a0, a1
+	bsr.w opforgeNativeCliFallbackTokenLen
+	beq.w done
+	move.l d0, d3
+	movea.l a1, a0
+	adda.w d3, a0
+	moveq #0, d1
+	move.w state.NativeCliSourceLineLen, d1
+	sub.l state.NativeCliStmtOperandStart, d1
+	addq.l #1, d1
+	sub.w d3, d1
+	move.l d1, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w done
+	tst.b (a0)
+	beq.w done
+	cmpi.b #10, (a0)
+	beq.w done
+	cmpi.b #13, (a0)
+	beq.w done
+	cmpi.b #';', (a0)
+	beq.w done
+
+needsFallback
+	moveq #1, d0
+
+done
+	movem.l (sp)+, d1-d4/a0-a1
+	rts
+	.bend  ; opforgeNativeCliFirstTokenLabelNeedsSourceFallback
+
 opforgeNativeCliRecordSourceStatementMnemonic	.block
 	move.l d4, state.NativeCliStmtMnemStart
 	move.l d4, d0

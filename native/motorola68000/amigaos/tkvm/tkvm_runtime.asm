@@ -122,7 +122,7 @@ LOCAL_PENDING_START             = 8
 LOCAL_PENDING_END               = 12
 LOCAL_PENDING_LEX_LEN           = 16
 LOCAL_TEMP_U32                  = 20
-LOCAL_PROGRAM_COUNTER           = 24
+LOCAL_OPCODE_CURSOR             = 24
 LOCAL_STEP_COUNT                = 28
 LOCAL_STEP_LIMIT                = 32
 LOCAL_SIZE                      = 36
@@ -355,10 +355,10 @@ opcodeEmitToken
 	moveq #0, d0
 	move.b (a0)+, d0
 	move.w d0, LOCAL_PENDING_KIND(a2)
-	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
+	move.l a0, LOCAL_OPCODE_CURSOR(a2)
 	jsr scanner.commitPendingToken
 	bne return
-	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
+	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
 opcodeSetState
@@ -555,31 +555,31 @@ applyClassJump
 ; tokenizer_runtime_utils.rs. The helper bodies reuse A0, so the interpreter
 ; saves and restores the native program counter around each call.
 opcodeScanIdentifier
-	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
+	move.l a0, LOCAL_OPCODE_CURSOR(a2)
 	jsr scanner.scanIdentifierToken
 	bne return
-	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
+	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
 opcodeScanNumber
-	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
+	move.l a0, LOCAL_OPCODE_CURSOR(a2)
 	jsr scanner.scanNumberToken
 	bne return
-	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
+	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
 opcodeScanString
-	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
+	move.l a0, LOCAL_OPCODE_CURSOR(a2)
 	jsr scanner.scanStringToken
 	bne return
-	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
+	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
 opcodeScanSymbol
-	move.l a0, LOCAL_PROGRAM_COUNTER(a2)
+	move.l a0, LOCAL_OPCODE_CURSOR(a2)
 	jsr scanner.scanSymbolToken
 	bne return
-	movea.l LOCAL_PROGRAM_COUNTER(a2), a0
+	movea.l LOCAL_OPCODE_CURSOR(a2), a0
 	bra programLoop
 
 invalidArgument

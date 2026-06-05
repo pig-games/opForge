@@ -231,7 +231,7 @@ defaultHunkPath
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
 
 parseOk
-	bsr.w opforgeNativeCliRecordImplicitModulePathRoot
+	bsr.w opforgeNativeCliSeedModulePathRootFromInput
 	bne.w modulePathCapacity
 	move.w #constants.NCLI_PARSE_OK, state.NativeCliParseStatus
 	bra.w parseReturn
@@ -302,7 +302,7 @@ emitLoop
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	jsr text_output.opforgeNativeCliPutDecU16
+	jsr text_output.opforgeNativeCliPutU16Decimal
 	jsr text_output.opforgeNativeCliPutSpace
 	moveq #0, d0
 	move.w d4, d0
@@ -537,12 +537,12 @@ unsupportedYes
 ; Outputs: D0 = 0 on success, non-zero on path-copy failure; state.NativeCliModulePathTable[0] = input path root on success.
 ; Clobbers: D0/A0-A1/CCR.
 ; CCR: reflects D0 on return.
-opforgeNativeCliRecordImplicitModulePathRoot	.block
+opforgeNativeCliSeedModulePathRootFromInput	.block
 	lea state.NativeCliInputPath, a0
 	lea state.NativeCliModulePathTable, a1
 	jsr path.opforgeNativeCliCopyPathRoot
 	rts
-	.bend  ; opforgeNativeCliRecordImplicitModulePathRoot
+	.bend  ; opforgeNativeCliSeedModulePathRootFromInput
 
 ; Append one explicit `-M` / `--module-path` value to the module path table.
 ; Inputs: state.NativeCliIncludeTarget = parsed module path; state.NativeCliModulePathCount = current table length.

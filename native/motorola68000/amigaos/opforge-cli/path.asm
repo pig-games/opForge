@@ -12,7 +12,7 @@
 	.section code, kind=code
 	.pub
 
-opforgeNativeCliPathIsAbsolute	.block
+opforgeNativeCliPathHasVolumePrefix	.block
 	moveq #0, d0
 
 loop
@@ -29,7 +29,7 @@ yes
 no
 	moveq #0, d0
 	rts
-	.bend  ; opforgeNativeCliPathIsAbso
+	.bend  ; opforgeNativeCliPathHasVolumePrefix
 
 opforgeNativeCliCopyPathRoot	.block
 	movem.l d2-d6/a2, -(sp)

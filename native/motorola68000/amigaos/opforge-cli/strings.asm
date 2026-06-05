@@ -74,6 +74,10 @@ SessionSourceCountText
 	.byte "SESSION-SOURCE-COUNT ", 0
 SessionStmtCountText
 	.byte "SESSION-STMT-COUNT ", 0
+SessionStmtDumpText
+	.byte "SESSION-STMT ", 0
+SessionStmtNoMnemText
+	.byte "NO-MNEM", 0
 SessionLabelCountText
 	.byte "SESSION-LABEL-COUNT ", 0
 SessionImageBytesText
@@ -191,18 +195,6 @@ CpuMnemonicText
 	.byte ".cpu"
 EndMnemonicText
 	.byte ".end"
-LdaMnemonicText
-	.byte "lda"
-StaMnemonicText
-	.byte "sta"
-JmpMnemonicText
-	.byte "jmp"
-NopMnemonicText
-	.byte "nop"
-ImmediateModeText
-	.byte "immediate"
-AbsoluteModeText
-	.byte "absolute"
 ModuleDirectiveText
 	.byte ".module"
 EndmoduleDirectiveText

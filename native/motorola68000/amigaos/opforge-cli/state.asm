@@ -150,7 +150,11 @@ NativeCliPrvmRouteStatus
 	.res long, 1
 NativeCliPrvmResultCount
 	.res word, 1
+NativeCliPrvmPartialResultCount
+	.res word, 1
 OpforgeNativeCliPrvmResultBuffer
+	.res byte, constants.PRVM_ROUTE_RESULT_CAPACITY
+OpforgeNativeCliPrvmPartialResultBuffer
 	.res byte, constants.PRVM_ROUTE_RESULT_CAPACITY
 OpforgeNativeCliPrvmDiagBuffer
 	.res byte, constants.PRVM_ROUTE_DIAG_CAPACITY

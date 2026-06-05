@@ -111,16 +111,16 @@ StringSuffix
 OperatorPrefix
 	.byte "Operator("
 
-AtSep
+AtDelimiterText
 	.byte "@"
 
-ColonSep
+ColonDelimiterText
 	.byte ":"
 
-DashSep
+DashDelimiterText
 	.byte "-"
 
-NewlineSep
+NewlineDelimiterText
 	.byte 10
 
 CloseParenText
@@ -1395,25 +1395,25 @@ recordPtr	.block
 	.bend  ; recordPtr
 
 appendLiteralAt	.block
-	lea AtSep, a1
+	lea AtDelimiterText, a1
 	moveq #1, d2
 	bra.w appendBytes
 	.bend  ; appendLiteralAt
 
 appendLiteralColon	.block
-	lea ColonSep, a1
+	lea ColonDelimiterText, a1
 	moveq #1, d2
 	bra.w appendBytes
 	.bend  ; appendLiteralColon
 
 appendLiteralDash	.block
-	lea DashSep, a1
+	lea DashDelimiterText, a1
 	moveq #1, d2
 	bra.w appendBytes
 	.bend  ; appendLiteralDash
 
 appendLiteralNewline	.block
-	lea NewlineSep, a1
+	lea NewlineDelimiterText, a1
 	moveq #1, d2
 	bra.w appendBytes
 	.bend  ; appendLiteralNewline

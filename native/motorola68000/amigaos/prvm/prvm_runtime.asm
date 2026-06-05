@@ -1138,9 +1138,24 @@ writeExpressionRequest	.block
 	bcc endSpan
 	bsr.w tokenPtrByIndex
 	bne return
+	move.l 4(a1), d1
+	move.l LOCAL_EXPR_END_TOKEN(a3), d0
+	beq.s writeSingleTokenSpan
+	subq.l #1, d0
+	cmp.l d4, d0
+	bcc.s writeSingleTokenSpan
+	bsr.w tokenPtrByIndex
+	bne return
+	move.l 8(a1), d2
+	bra.s writeSpan
+
+writeSingleTokenSpan
+	move.l 8(a1), d2
+
+writeSpan
 	move.l PRVM_FRAME_LINE_NUM(a4), 20(a2)
-	move.l 4(a1), 24(a2)
-	move.l 8(a1), 28(a2)
+	move.l d1, 24(a2)
+	move.l d2, 28(a2)
 	clr.l d0
 	rts
 

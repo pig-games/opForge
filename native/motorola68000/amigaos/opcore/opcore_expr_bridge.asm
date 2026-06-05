@@ -81,12 +81,12 @@ selectedVersionReady
 	bsr.w skipWhitespace
 	beq.w fail
 	cmpi.b #'#', (a0)
-	bne.s noImmediatePrefix
+	bne.s operandPrefixDone
 	addq.l #1, a0  ; strip immediate marker; addressing mode was selected elsewhere
 	subq.l #1, d0  ; keep remaining text length aligned with A0
 	bsr.w skipWhitespace
 
-noImmediatePrefix
+operandPrefixDone
 	tst.l d0
 	beq.w fail
 	move.l d0, -(sp)

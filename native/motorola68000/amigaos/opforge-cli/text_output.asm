@@ -15,7 +15,7 @@
 	.pub
 
 ; Print unsigned 16-bit D0 as decimal through the CLI stdout path.
-opforgeNativeCliPutDecU16	.block
+opforgeNativeCliPutU16Decimal	.block
 	movem.l d1-d6/a0-a1, -(sp)
 	andi.l #$0000FFFF, d0
 	lea DecimalPowers, a0
@@ -54,7 +54,7 @@ next
 	dbra d6, powerLoop
 	movem.l (sp)+, d1-d6/a0-a1
 	rts
-	.bend  ; opforgeNativeCliPutDecU16
+	.bend  ; opforgeNativeCliPutU16Decimal
 
 ; Print unsigned 32-bit D0 as `$XXXXXXXX`.
 opforgeNativeCliPutHexU32	.block

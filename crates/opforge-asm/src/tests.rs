@@ -10322,8 +10322,6 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "opforgeNativeCliStoreStatementRecord",
         "opforgeNativeCliRecordPrvmExpressionRequest",
         "opforgeNativeCliRecordSourceLine",
-        "opforgeNativeCliEmitStatementRecord",
-        "opforgeNativeCliEmitStatementExprRequest",
         "opforgeNativeCliInitAssemblySession",
         "opforgeNativeCliEmitAssemblySessionSummary",
         "opforgeNativeCliResolveIncludePath",
@@ -10336,7 +10334,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "opforgeNativeCliEmitModuleEndRecord",
         "opforgeNativeCliRestoreParentModule",
         "opforgeNativeCliCopyRequiredPathValue",
-        "opforgeNativeCliRecordImplicitModulePathRoot",
+        "opforgeNativeCliSeedModulePathRootFromInput",
         "opforgeNativeCliRecordModulePathValue",
         "opforgeNativeCliEmitModulePathRecords",
         "opforgeNativeCliCopyUseToken",
@@ -10428,6 +10426,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "opforgeNativeCliWriteResolvedOperandHex",
         "opforgeNativeCliPassTwoEmitBinSmokeFallback",
         "opforgeNativeCliSelectorEvaluateOperandV1",
+        "opforgeNativeCliEmitStatementRecord",
+        "opforgeNativeCliEmitStatementExprRequest",
         "nativeCliSelectorStageContext",
         "nativeCliSelectorStmtIndex",
         "prvm_route_line_68000",
@@ -11960,6 +11960,117 @@ fn motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_b
     }
 }
 
+#[test]
+fn motorola68020_item6_7_native_branch_plan_emits_adjusted_rel8_value() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg service source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "tryBranchStable",
+            "MOVE.L EncodeSelectedMselValue, D3",
+            "MOVE.L EncodeSelectedCurrentPc, D4",
+            "ADDQ.L #2, D4",
+            "SUB.L D4, D3",
+            "CMPI.L #-128, D3",
+            "CMPI.L #127, D3",
+            "tryBranchFits",
+            "MOVE.L D3, EncodeSelectedMselValue",
+            "MOVEQ #1, D6",
+            "BRA.W buildOperand",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item6_7_prvm_expr_requests_preserve_multi_token_operand_spans() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_runtime.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native prvm runtime source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "WRITEEXPRESSIONREQUEST .BLOCK",
+            "MOVE.L LOCAL_EXPR_START_TOKEN(A3), D0",
+            "BSR.W TOKENPTRBYINDEX",
+            "MOVE.L 4(A1), D1",
+            "MOVE.L LOCAL_EXPR_END_TOKEN(A3), D0",
+            "SUBQ.L #1, D0",
+            "BSR.W TOKENPTRBYINDEX",
+            "MOVE.L 8(A1), D2",
+            "MOVE.L D1, 24(A2)",
+            "MOVE.L D2, 28(A2)",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item6_7_bare_label_fallback_detects_second_token_before_operand_span() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/assembly_session.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native assembly session source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opforgeNativeCliFirstTokenLabelNeedsSourceFallback",
+            "MOVEA.L A1, A0",
+            "ADDA.W D3, A0",
+            "MOVE.L D2, D1",
+            "SUB.W D3, D1",
+            "JSR line_text.opforgeNativeCliSkipLineWhitespace",
+            "MOVE.L state.NativeCliStmtOperandStart, D1",
+            "BEQ.W needsFallback",
+            "MOVE.W state.NativeCliSourceLineLen, D4",
+            "SUB.L D0, D4",
+            "ADDQ.L #1, D4",
+            "CMP.L D4, D1",
+            "BHI.W needsFallback",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "firstToken",
+            "CMPI.L #1, D4",
+            "TST.W state.NativeCliStmtExprFound",
+            "BNE.W firstTokenLabel",
+            "TST.W state.NativeCliStmtMnemFound",
+            "BEQ.W firstTokenLabel",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item6_7_selected_eval_request_prefers_expr_span_slice_when_present() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native opasm engine source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "prepareSelectedEvaluateRequestV1",
+            "JSR opasmEngineGetStatementExprMetadataV1",
+            "MOVE.L D0, D5",
+            "BEQ.S syntheticRequest",
+            "MOVE.L OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_START(SP), D2",
+            "MOVE.L OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_END(SP), D3",
+            "JSR getStatementSourceLineTextV1",
+            "MOVEA.L A0, A2",
+            "MOVE.L D1, D4",
+            "MOVEQ #1, D5",
+        ]
+    ));
+}
+
 fn native_cli_6502_contract_encode(
     model: &vm::vm_opasm::HierarchyExecutionModel,
     addr: u32,
@@ -12630,8 +12741,6 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("opforgeNativeCliStoreStatementRecord"));
     assert!(listing.contains("opforgeNativeCliRecordPrvmExpressionRequest"));
     assert!(listing.contains("opforgeNativeCliRecordSourceLine"));
-    assert!(listing.contains("opforgeNativeCliEmitStatementRecord"));
-    assert!(listing.contains("opforgeNativeCliEmitStatementExprRequest"));
     assert!(listing.contains("opforgeNativeCliInitAssemblySession"));
     assert!(listing.contains("opforgeNativeCliEmitAssemblySessionSummary"));
     assert!(listing.contains("opforgeNativeCliEmitIncludeLineRecord"));
@@ -12642,7 +12751,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(listing.contains("dos.closeModule"));
     assert!(listing.contains("opforgeNativeCliEmitModuleEndRecord"));
     assert!(listing.contains("opforgeNativeCliRestoreParentModule"));
-    assert!(listing.contains("opforgeNativeCliRecordImplicitModulePathRoot"));
+    assert!(listing.contains("opforgeNativeCliSeedModulePathRootFromInput"));
     assert!(listing.contains("opforgeNativeCliRecordModulePathValue"));
     assert!(listing.contains("opforgeNativeCliEmitModulePathRecords"));
     assert!(listing.contains("opforgeNativeCliRecordImport"));
@@ -15115,7 +15224,7 @@ fn motorola68020_tkpkg_set_pipeline_resolves_package_backed_selection() {
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "dialectLoop:\n        BSR.W locateStringV1\n        TST.B D1\n        BNE.W dialectNotFound\n        MOVE.W D0, -(SP)"
+        "dialectLoop:\n        BSR.W locateStringV1\n        BNE.W dialectNotFound\n        MOVE.W D0, -(SP)"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -15159,11 +15268,11 @@ fn motorola68020_tkpkg_set_pipeline_bounds_selected_chunks_before_traversal() {
     assert!(pipeline.contains("lea 0(a2, d7.W), a6"));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "readU32LeLow16V1\t.block\n        MOVEQ #4, D0\n        BSR.W requireBytesV1\n        TST.B D1\n        BNE.S readU32BoundsFail"
+        "readU32LeLow16V1\t.block\n        MOVEQ #4, D0\n        BSR.W requireBytesV1\n        BNE.S readU32BoundsFail"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
-        "locateStringV1\t.block\n        BSR.W readU32LeLow16V1\n        TST.B D1\n        BNE.S locateStringBoundsFail"
+        "locateStringV1\t.block\n        BSR.W readU32LeLow16V1\n        BNE.S locateStringBoundsFail"
     ));
     assert!(tkpkg_source_contains(
         &pipeline,
@@ -15203,7 +15312,6 @@ fn motorola68020_tkpkg_set_pipeline_bounds_selected_chunks_before_traversal() {
             "locateString",
             ".block",
             "BSR.W readU32LeLow16",
-            "TST.B D1",
             "BNE.S boundsFail",
         ]
     ));
@@ -15287,7 +15395,7 @@ fn motorola68020_tkpkg_rejects_over_capacity_active_identifiers_before_copying()
     ));
     assert!(normalize_tkpkg_fragment(&pipeline).contains(
         normalize_tkpkg_fragment(
-            "bsr.w commitActiveSelectionV1\n        tst.b d0\n        bne.w done\n        moveq #0, d0"
+            "bsr.w commitActiveSelectionV1\n        bne.w done\n        moveq #0, d0"
         )
         .as_str()
     ));
@@ -15472,19 +15580,13 @@ fn motorola68020_tkpkg_owner_precedence_prefers_dialect_then_cpu_then_family() {
         &[
             "tailStrings",
             "BSR.W skipString",
-            "TST.B D1",
             "BNE.W boundsFail",
             "BSR.W skipString",
         ]
     ));
     assert!(source_contains_in_order(
         &token_policy,
-        &[
-            "bsr.w readU32LeLow16",
-            "tst.b d1",
-            "bne.w boundsFail",
-            "move.w d0, d7"
-        ]
+        &["bsr.w readU32LeLow16", "bne.w boundsFail", "move.w d0, d7"]
     ));
 }
 
@@ -15734,16 +15836,16 @@ fn motorola68020_tkpkg_tokenizer_vm_bounds_selected_tkvm_record_decode() {
     let normalized_tokenizer = normalize_tkpkg_fragment(&tokenizer_source).to_ascii_lowercase();
 
     for expected in [
-        "LEA buffers.PackageStorage, A2\n        LEA 0(A2, D0.W), A2\n        MOVEA.L A2, A6\n        ADDA.L D2, A6\n        MOVEQ #1, D0\n        BSR.W requireBytes\n        TST.B D1\n        BNE.W invalidProgram\n        ADDQ.W #1, A2",
-        "BSR.W skipString\n        TST.B D1\n        BNE.W invalidProgram\n        BSR.W readU16Le",
-        "skipStateOffsets\n        BSR.W readU32Le\n        TST.B D1\n        BNE.W invalidProgram\n        MOVE.L D0, (A3)+",
-        "LEA buffers.ActiveTokenizerVmUnterminatedStringDiagCode, A3\n        LEA buffers.ActiveTokenizerVmUnterminatedStringDiagLen, A1\n        BSR.W readStringIntoSlot\n        TST.B D1\n        BNE.W invalidProgram",
-        "BSR.W readBytesField\n        TST.B D1\n        BNE.W invalidProgram\n        TST.W D3",
-        "skipString\t.block\n        BSR.W readU32Le\n        TST.B D1\n        BNE.S skipStringDone\n        BSR.W requireBytes",
-        "readStringIntoSlot\t.block\n        BSR.W readU32Le\n        TST.B D1\n        BNE.S readStringDone\n        BSR.W requireBytes",
-        "readBytesField\t.block\n        BSR.W readU32Le\n        TST.B D1\n        BNE.S readBytesDone\n        BSR.W requireBytes",
-        "readU16Le\t.block\n        MOVEQ #2, D0\n        BSR.W requireBytes\n        TST.B D1\n        BNE.S readU16Done",
-        "readU32Le\t.block\n        MOVEQ #4, D0\n        BSR.W requireBytes\n        TST.B D1\n        BNE.S readU32Done",
+        "LEA buffers.PackageStorage, A2\n        LEA 0(A2, D0.W), A2\n        MOVEA.L A2, A6\n        ADDA.L D2, A6\n        MOVEQ #1, D0\n        BSR.W requireBytes\n        BNE.W invalidProgram\n        ADDQ.W #1, A2",
+        "BSR.W skipString\n        BNE.W invalidProgram\n        BSR.W readU16Le",
+        "skipStateOffsets\n        BSR.W readU32Le\n        BNE.W invalidProgram\n        MOVE.L D0, (A3)+",
+        "LEA buffers.ActiveTokenizerVmUnterminatedStringDiagCode, A3\n        LEA buffers.ActiveTokenizerVmUnterminatedStringDiagLen, A1\n        BSR.W readStringIntoSlot\n        BNE.W invalidProgram",
+        "BSR.W readBytesField\n        BNE.W invalidProgram\n        TST.W D3",
+        "skipString\t.block\n        BSR.W readU32Le\n        BNE.S skipStringDone\n        BSR.W requireBytes",
+        "readStringIntoSlot\t.block\n        BSR.W readU32Le\n        BNE.S readStringDone\n        BSR.W requireBytes",
+        "readBytesField\t.block\n        BSR.W readU32Le\n        BNE.S readBytesDone\n        BSR.W requireBytes",
+        "readU16Le\t.block\n        MOVEQ #2, D0\n        BSR.W requireBytes\n        BNE.S readU16Done",
+        "readU32Le\t.block\n        MOVEQ #4, D0\n        BSR.W requireBytes\n        BNE.S readU32Done",
         "requireBytes\t.block\n        CMPA.L A6, A2\n        BHI.S requireBytesFail\n        MOVE.L A6, D1\n        SUB.L A2, D1\n        CMP.L D1, D0\n        BHI.S requireBytesFail",
     ] {
         let formatted_expected = normalize_tkpkg_fragment(expected).to_ascii_lowercase();
@@ -16588,7 +16690,7 @@ fn motorola68020_tokvm_interpreter_restores_program_counter_after_scan_opcodes()
     assert!(
         tokvm_source_contains(
             &tokenizer_source,
-            "LOCAL_PROGRAM_COUNTER           = 24\nLOCAL_STEP_COUNT                = 28\nLOCAL_STEP_LIMIT                = 32\nLOCAL_SIZE                      = 36"
+            "LOCAL_OPCODE_CURSOR             = 24\nLOCAL_STEP_COUNT                = 28\nLOCAL_STEP_LIMIT                = 32\nLOCAL_SIZE                      = 36"
         ),
         "expected tokvm locals to reserve storage for the saved program counter"
     );
@@ -16600,14 +16702,14 @@ fn motorola68020_tokvm_interpreter_restores_program_counter_after_scan_opcodes()
     assert!(
         tokvm_source_contains(
             &tokenizer_source,
-            "opcodeScanIdentifier:\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR scanner.scanIdentifierToken\n        BNE return\n        MOVEA.L LOCAL_PROGRAM_COUNTER(A2),A0\n        BRA programLoop"
+            "opcodeScanIdentifier:\n        MOVE.L A0,LOCAL_OPCODE_CURSOR(A2)\n        JSR scanner.scanIdentifierToken\n        BNE return\n        MOVEA.L LOCAL_OPCODE_CURSOR(A2),A0\n        BRA programLoop"
         ),
         "expected the identifier scan opcode to restore the VM program counter after tokenization"
     );
     assert!(
         tokvm_source_contains(
             &tokenizer_source,
-            "opcodeScanSymbol:\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR scanner.scanSymbolToken\n        BNE return\n        MOVEA.L LOCAL_PROGRAM_COUNTER(A2),A0\n        BRA programLoop"
+            "opcodeScanSymbol:\n        MOVE.L A0,LOCAL_OPCODE_CURSOR(A2)\n        JSR scanner.scanSymbolToken\n        BNE return\n        MOVEA.L LOCAL_OPCODE_CURSOR(A2),A0\n        BRA programLoop"
         ),
         "expected the symbol scan opcode to restore the VM program counter after tokenization"
     );
@@ -16648,13 +16750,13 @@ fn motorola68020_tokvm_interpreter_supports_manual_lexeme_building_opcodes() {
     assert!(
         tokvm_source_contains(
             &source,
-            "opcodeEmitToken:\n        LEA 0(A3,D7.L),A1\n        CMPA.L A1,A0\n        BCC invalidProgramAtCursor\n        MOVEQ #0,D0\n        MOVE.B (A0)+,D0\n        MOVE.W D0,LOCAL_PENDING_KIND(A2)\n        MOVE.L A0,LOCAL_PROGRAM_COUNTER(A2)\n        JSR scanner.commitPendingToken"
+            "opcodeEmitToken:\n        LEA 0(A3,D7.L),A1\n        CMPA.L A1,A0\n        BCC invalidProgramAtCursor\n        MOVEQ #0,D0\n        MOVE.B (A0)+,D0\n        MOVE.W D0,LOCAL_PENDING_KIND(A2)\n        MOVE.L A0,LOCAL_OPCODE_CURSOR(A2)\n        JSR scanner.commitPendingToken"
         ),
         "expected EmitToken to read the inline kind operand and commit the pending native token"
     );
     assert!(
         source.contains(
-            "move.w d0, LOCAL_PENDING_KIND(a2)\n\tmove.l a0, LOCAL_PROGRAM_COUNTER(a2)\n\tjsr scanner.commitPendingToken\n\tbne return\n\tmovea.l LOCAL_PROGRAM_COUNTER(a2), a0\n\tbra programLoop"
+            "move.w d0, LOCAL_PENDING_KIND(a2)\n\tmove.l a0, LOCAL_OPCODE_CURSOR(a2)\n\tjsr scanner.commitPendingToken\n\tbne return\n\tmovea.l LOCAL_OPCODE_CURSOR(a2), a0\n\tbra programLoop"
         ),
         "expected EmitToken to preserve the bytecode PC across native token commit"
     );
@@ -31407,10 +31509,19 @@ fn external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins() 
         .expect("native CLI FS-UAE smoke lock poisoned");
 
     let repo_root = workspace_root();
-    let package_bytes = item6_mos_package_bytes();
-    let model = load_opasm_model_from_package_bytes(package_bytes.as_slice());
+    let rust_package_bytes = item6_mos_package_bytes();
+    let package_bytes = rust_package_bytes.clone();
+    assert_eq!(
+        package_bytes, rust_package_bytes,
+        "FS-UAE Item 6.7 native and Rust paths must consume identical serialized package bytes"
+    );
+    let model = load_opasm_model_from_package_bytes(rust_package_bytes.as_slice());
     let mut staged_fixtures = Vec::new();
     for (fixture, cpu_id) in item6_mos_fixture_allowlist() {
+        assert_eq!(
+            package_bytes, rust_package_bytes,
+            "same-package identity check before FS-UAE Item 6.7 fixture comparison {fixture}"
+        );
         let source =
             fs::read_to_string(repo_root.join(fixture)).expect("read Item 6 FS-UAE MOS fixture");
         let stripped_source = item6_source_without_native_cli_setup_directives(source.as_str());
@@ -31476,13 +31587,17 @@ fn external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins() 
                     )
                 });
                 println!(
-                    "FS-UAE Item 6 stripped fixture {fixture} ({cpu_id})\nrust bin: {}\nnative bin: {}",
+                    "FS-UAE Item 6 stripped fixture {fixture} ({cpu_id})\nrust bin: {}\nnative bin: {}\nstdout:\n{}\nstderr:\n{}",
                     item6_hex_bytes(rust_bin.as_slice()),
-                    item6_hex_bytes(native_bin.as_slice())
+                    item6_hex_bytes(native_bin.as_slice()),
+                    run.stdout,
+                    run.stderr
                 );
                 assert_eq!(
                     native_bin, *rust_bin,
-                    "FS-UAE Item 6 stripped fixture byte mismatch for {fixture}"
+                    "FS-UAE Item 6 stripped fixture byte mismatch for {fixture}\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr
                 );
             }
         }

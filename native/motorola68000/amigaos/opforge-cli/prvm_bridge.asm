@@ -30,6 +30,7 @@ done
 	.bend  ; opforgeNativeCliDispatchParseLineEnvelope
 
 opforgeNativeCliDispatchParseLineUntilReady	.block
+	clr.w state.NativeCliPrvmPartialResultCount
 	bsr.w opforgeNativeCliPrepareParseLineServiceRequest
 	bne.s done
 
@@ -37,10 +38,15 @@ loop
 	bsr.w opforgeNativeCliDispatchPreparedParseLineEnvelope
 	bne.s done
 	cmpi.l #constants.PRVM_STATUS_EXPR_REQUEST, state.NativeCliPrvmRouteStatus
+	bne.s finalize
+	bsr.w opforgeNativeCliAccumulatePrvmResultRows
 	bne.s done
 	bsr.w opforgeNativeCliServicePrvmExpressionRequest
 	bne.s done
 	bra.s loop
+
+finalize
+	bsr.w opforgeNativeCliFinalizePrvmResultRows
 
 done
 	rts
@@ -409,6 +415,114 @@ opforgeNativeCliParserMnemonicEquals	.block
 	bsr.w line_text.opforgeNativeCliLineStartsWith
 	rts
 	.bend  ; opforgeNativeCliParserMnemonicEquals
+
+opforgeNativeCliAccumulatePrvmResultRows	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	moveq #0, d0
+	move.w state.NativeCliPrvmPartialResultCount, d0
+	moveq #0, d1
+	move.w state.NativeCliPrvmResultCount, d1
+	beq.w done
+	add.l d1, d0
+	cmpi.l #constants.PRVM_RESULT_RECORD_COUNT, d0
+	bhi.w fail
+	moveq #0, d2
+	move.w state.NativeCliPrvmPartialResultCount, d2
+	lsl.l #5, d2
+	lea state.OpforgeNativeCliPrvmPartialResultBuffer, a1
+	adda.l d2, a1
+	lea state.OpforgeNativeCliPrvmResultBuffer, a0
+	moveq #0, d3
+	move.w state.NativeCliPrvmResultCount, d3
+
+recordLoop
+	move.l #constants.PRVM_RESULT_RECORD_SIZE, d0
+	jsr copy.copyFixedString
+	subq.w #1, d3
+	beq.s countDone
+	bra.s recordLoop
+
+countDone
+	move.w state.NativeCliPrvmPartialResultCount, d0
+	add.w state.NativeCliPrvmResultCount, d0
+	move.w d0, state.NativeCliPrvmPartialResultCount
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+	bra.s return
+
+done
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d4/a0-a2
+	rts
+	.bend  ; opforgeNativeCliAccumulatePrvmResultRows
+
+opforgeNativeCliFinalizePrvmResultRows	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	tst.w state.NativeCliPrvmPartialResultCount
+	beq.w done
+	moveq #0, d0
+	move.w state.NativeCliPrvmPartialResultCount, d0
+	moveq #0, d1
+	move.w state.NativeCliPrvmResultCount, d1
+	add.l d1, d0
+	cmpi.l #constants.PRVM_RESULT_RECORD_COUNT, d0
+	bhi.w fail
+	moveq #0, d2
+	move.w state.NativeCliPrvmPartialResultCount, d2
+	lsl.l #5, d2
+	lea state.OpforgeNativeCliPrvmPartialResultBuffer, a1
+	adda.l d2, a1
+	lea state.OpforgeNativeCliPrvmResultBuffer, a0
+	moveq #0, d3
+	move.w state.NativeCliPrvmResultCount, d3
+	beq.s copyBack
+
+appendLoop
+	move.l #constants.PRVM_RESULT_RECORD_SIZE, d0
+	jsr copy.copyFixedString
+	subq.w #1, d3
+	beq.s copyBack
+	bra.s appendLoop
+
+copyBack
+	lea state.OpforgeNativeCliPrvmPartialResultBuffer, a0
+	lea state.OpforgeNativeCliPrvmResultBuffer, a1
+	moveq #0, d3
+	move.w state.NativeCliPrvmPartialResultCount, d3
+	add.w state.NativeCliPrvmResultCount, d3
+	beq.s mergedDone
+
+copyBackLoop
+	move.l #constants.PRVM_RESULT_RECORD_SIZE, d0
+	jsr copy.copyFixedString
+	subq.w #1, d3
+	beq.s mergedDone
+	bra.s copyBackLoop
+
+mergedDone
+	move.w state.NativeCliPrvmPartialResultCount, d0
+	add.w state.NativeCliPrvmResultCount, d0
+	move.w d0, state.NativeCliPrvmResultCount
+	clr.w state.NativeCliPrvmPartialResultCount
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+	bra.s return
+
+done
+	moveq #0, d0
+
+return
+	movem.l (sp)+, d1-d4/a0-a2
+	rts
+	.bend  ; opforgeNativeCliFinalizePrvmResultRows
 
 	.endsection
 	.endmodule

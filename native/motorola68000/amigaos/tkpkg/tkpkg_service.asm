@@ -1364,6 +1364,7 @@ tryBranchMinFits
 	bra.w operandError
 
 tryBranchFits
+	move.l d3, EncodeSelectedMselValue
 	moveq #1, d6
 	bra.w buildOperand
 

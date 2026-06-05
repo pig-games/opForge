@@ -169,14 +169,14 @@ opforgeNativeCliResolveIncludePath	.block
 	jsr path.opforgeNativeCliCopyPathRoot
 	bne.w fail
 	lea state.NativeCliIncludeTarget, a0
-	jsr path.opforgeNativeCliPathIsAbsolute
-	beq.s relative
+	jsr path.opforgeNativeCliPathHasVolumePrefix
+	beq.s appendFromRoot
 	lea state.NativeCliIncludeTarget, a0
 	lea state.NativeCliIncludePath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
 	rts
 
-relative
+appendFromRoot
 	lea state.NativeCliIncludeRootPath, a0
 	lea state.NativeCliIncludePath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer

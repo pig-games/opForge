@@ -199,7 +199,7 @@ opforgeNativeCliEmitImportRecord	.block
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
@@ -207,7 +207,7 @@ opforgeNativeCliEmitImportRecord	.block
 	add.w d0, d0
 	lea state.NativeCliImportOwnerModuleTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
@@ -215,7 +215,7 @@ opforgeNativeCliEmitImportRecord	.block
 	add.w d0, d0
 	lea state.NativeCliImportModuleTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
@@ -223,7 +223,7 @@ opforgeNativeCliEmitImportRecord	.block
 	add.w d0, d0
 	lea state.NativeCliImportFileIdTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
@@ -231,13 +231,13 @@ opforgeNativeCliEmitImportRecord	.block
 	lsl.l #2, d0
 	lea state.NativeCliImportLineTable, a0
 	move.l 0(a0, d0.l), d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliImportAliasPtr
 	bsr.w token_util.opforgeNativeCliTokenLen
 	move.w d0, d3
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	tst.w d3
 	beq.s newline
 	bsr.w text_output.opforgeNativeCliPutSpace
@@ -258,17 +258,17 @@ opforgeNativeCliEmitImportSelectRecord	.block
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #0, d0
 	move.w d7, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliImportSelectNamePtr
 	bsr.w token_util.opforgeNativeCliTokenLen
 	move.w d0, d3
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliImportSelectNamePtr
 	move.l a0, d1
@@ -278,7 +278,7 @@ opforgeNativeCliEmitImportSelectRecord	.block
 	bsr.w opforgeNativeCliImportSelectAliasPtr
 	bsr.w token_util.opforgeNativeCliTokenLen
 	move.w d0, d3
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	tst.w d3
 	beq.s flags
 	bsr.w text_output.opforgeNativeCliPutSpace
@@ -293,7 +293,7 @@ flags
 	add.w d0, d0
 	lea state.NativeCliImportSelectFlagsTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4/d6-d7/a0-a1
@@ -306,10 +306,10 @@ opforgeNativeCliEmitImportWildcardRecord	.block
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #0, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4
@@ -386,7 +386,7 @@ opforgeNativeCliEmitModuleRecord	.block
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 
@@ -395,7 +395,7 @@ def
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
@@ -403,7 +403,7 @@ def
 	add.w d0, d0
 	lea state.NativeCliModuleFileIdTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
@@ -411,7 +411,7 @@ def
 	lsl.l #2, d0
 	lea state.NativeCliModuleLineTable, a0
 	move.l 0(a0, d0.l), d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	moveq #0, d0
@@ -419,12 +419,12 @@ def
 	add.w d0, d0
 	lea state.NativeCliModuleDepthTable, a0
 	move.w 0(a0, d0.l), d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 
 	bsr.w opforgeNativeCliModuleNamePtr
 	bsr.w token_util.opforgeNativeCliTokenLen
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 	bsr.w opforgeNativeCliModuleNamePtr
 	move.l a0, d1
@@ -491,17 +491,17 @@ opforgeNativeCliEmitModuleEndRecord	.block
 	jsr dos.putStr
 	moveq #0, d0
 	move.w d4, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #1, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 	move.l state.NativeCliSourceLineNum, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	bsr.w text_output.opforgeNativeCliPutSpace
 	moveq #0, d0
 	move.w state.NativeCliModuleDepth, d0
-	bsr.w text_output.opforgeNativeCliPutDecU16
+	bsr.w text_output.opforgeNativeCliPutU16Decimal
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d4/a0-a1

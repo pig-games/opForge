@@ -31,3 +31,15 @@ crates/opforge-core/src/macro_processor.rs | lda,sta | Inline parser-surface exa
 crates/opforge-core/src/report.rs | lda | Inline diagnostic/reporting examples mention instruction mnemonics without implementing CPU semantics.
 crates/opforge-core/src/parser_reporter.rs | lda | Inline parser-reporting examples mention instruction mnemonics without implementing CPU semantics.
 crates/opforge-core/src/parser.rs | lda,sta,postincrement,abcd | Generic parser surface owns syntax-shape vocabulary but not target runtime semantics.
+
+# Reviewed native operand-shape ownership stays in the generic host bridge until package selectors consume it.
+native/motorola68000/amigaos/opasm/opasm_engine.asm | accumulator,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Native opasm engine stores reviewed generic operand-shape metadata without implementing target CPU semantics itself.
+native/motorola68000/amigaos/tkpkg/tkpkg_service.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Native tkpkg selector bridge owns reviewed generic operand-shape and rel8 plan metadata while target semantics remain package-defined.
+
+# Host-native ABI entrypoints intentionally retain stable 68000 surface names.
+native/motorola68000/amigaos/prvm/*.asm | 68000 | PRVM host-native runtime surfaces intentionally retain stable 68000 ABI names.
+native/motorola68000/amigaos/tkvm/tkvm_control.asm | 68000 | TKVM control API intentionally retains stable 68000 ABI helper names for host-native callers.
+native/motorola68000/amigaos/tkvm/tkvm_runtime.asm | 68000 | TKVM runtime entrypoint intentionally retains the stable 68000 ABI name for host-native callers.
+
+# Host-native smoke harnesses may name the exercised expression form directly.
+native/motorola68000/amigaos/test-harnesses/prvm/prvm_smoke.asm | immediate,dec | PRVM smoke harness intentionally names the immediate-decimal expression case it validates.

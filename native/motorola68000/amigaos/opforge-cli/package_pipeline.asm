@@ -179,8 +179,6 @@ opforgeNativeCliPackageData
 	.incbin "opforge_cli_package.opasm"
 OPFORGE_NATIVE_CLI_PACKAGE_DATA_END
 
-DEFAULT_FAMILY_NAME_LEN = strings.DefaultFamilyNameEnd - strings.DefaultFamilyName
-MOS6502_FAMILY_NAME_LEN = strings.mos6502FamilyNameEnd - strings.Mos6502FamilyName
 OPFORGE_NATIVE_CLI_PACKAGE_LEN = OPFORGE_NATIVE_CLI_PACKAGE_DATA_END - opforgeNativeCliPackageData
 
 	.endsection

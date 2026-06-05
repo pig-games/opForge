@@ -976,8 +976,6 @@ prepareSelectedEvaluateRequestV1	.block
 	jsr opasmEngineGetStatementExprMetadataV1
 	move.l d0, d5
 	beq.s syntheticRequest
-	tst.l d4
-	bne.s syntheticRequest
 	move.l OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_START(sp), d2
 	move.l OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_END(sp), d3
 	cmp.l d2, d3

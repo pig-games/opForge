@@ -6305,6 +6305,39 @@ fn generic_selector_runtime_files_do_not_contain_intel_selector_vocabulary() {
 }
 
 #[test]
+fn generic_selector_encoding_files_do_not_access_m65816_state_directly() {
+    let banned_terms = [
+        "families::m65816::state",
+        "state::accumulator_is_8bit",
+        "state::index_is_8bit",
+        "state::data_bank(",
+        "state::data_bank_known(",
+        "state::program_bank(",
+        "state::program_bank_known(",
+        "state::direct_page(",
+        "state::direct_page_known(",
+    ];
+
+    for (path, source) in [
+        (
+            "execution_model/selector_encoding.rs",
+            include_str!("execution_model/selector_encoding.rs"),
+        ),
+        (
+            "selector_encoding_utils.rs",
+            include_str!("selector_encoding_utils.rs"),
+        ),
+    ] {
+        for term in banned_terms {
+            assert!(
+                !source.contains(term),
+                "generic selector encoding file {path} contains banned M65816 state term {term}"
+            );
+        }
+    }
+}
+
+#[test]
 fn execution_model_encodes_m65c02_instruction_from_expr_operands() {
     let registry = mos6502_family_registry();
 

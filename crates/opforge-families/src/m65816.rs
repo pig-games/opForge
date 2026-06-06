@@ -6,8 +6,11 @@ pub mod instructions;
 
 pub mod module;
 
+pub mod selector;
+
 pub mod state;
 
 mod handler;
 
 pub use handler::M65816CpuHandler;
+pub use selector::VmSelectorAdapter;

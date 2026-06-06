@@ -148,7 +148,7 @@ This plan also classifies the current Motorola 68000 situation precisely:
     - Z80 half-index, indexed-CB, indexed-memory, interrupt-mode, and indirect-LD behaviors remain covered by focused tests
     - a new guardrail fails if Intel-family selector vocabulary or CPU-id branching is reintroduced into the generic selector bridge
 
-- [ ] Item 2: move M65816 state and decision ownership behind one adapter seam
+- [x] Item 2: move M65816 state and decision ownership behind one adapter seam
   - Source requirement or finding IDs: F2a; M65816 selector-plan handling in `crates/opforge-vm/src/execution_model/selector_encoding.rs`; M65816 helper and state logic in `crates/opforge-vm/src/selector_encoding_utils.rs`.
   - Expected files:
     - `crates/opforge-vm/src/execution_model/selector_encoding.rs`

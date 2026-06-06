@@ -1,13 +1,10 @@
 use crate::selector_encoding_utils::{
-    encode_abs16_bank_fold_value, encode_fixed_width_value, encode_force_abs16_value,
-    encode_force_d_value, encode_force_u24_value, encode_m65816_immediate_value,
-    encode_relative_offset, expr_has_symbol_references, mode_key_operand_size,
-    prefer_long_decision, should_defer_abs16_decision,
+    encode_fixed_width_value, encode_relative_offset, expr_has_symbol_references,
+    mode_key_operand_size,
 };
-use families::m65816::state;
+use families::m65816::VmSelectorAdapter as M65816VmSelectorAdapter;
 use opcore::parser::Expr;
 use package::ModeSelectorDescriptor;
-use registry::family::AssemblerContext;
 use registry::registry::VmEncodeCandidate;
 
 use super::selector_bridge::{SelectorExprContext, SelectorInput};
@@ -199,11 +196,7 @@ fn encode_expr_force_d_u8(
         return Ok(vec![0]);
     }
     let value = expr_ctx.eval_expr(expr)?;
-    encode_force_d_value(
-        value,
-        state::direct_page_known(expr_ctx.assembler_ctx),
-        state::direct_page(expr_ctx.assembler_ctx),
-    )
+    M65816VmSelectorAdapter::from_assembler_ctx(expr_ctx.assembler_ctx).encode_force_d(value)
 }
 
 fn encode_expr_force_u24(
@@ -214,7 +207,7 @@ fn encode_expr_force_u24(
         return Ok(vec![0, 0, 0]);
     }
     let value = expr_ctx.eval_expr(expr)?;
-    encode_force_u24_value(value)
+    M65816VmSelectorAdapter::from_assembler_ctx(expr_ctx.assembler_ctx).encode_force_u24(value)
 }
 
 fn prefer_long_for_expr(
@@ -222,22 +215,22 @@ fn prefer_long_for_expr(
     upper_mnemonic: &str,
     expr_ctx: &SelectorExprContext<'_>,
 ) -> Result<bool, String> {
-    let (assumed_bank, assumed_known) = assumed_bank_state(upper_mnemonic, expr_ctx.assembler_ctx);
     let symbol_based = expr_has_symbol_references(expr);
     let pass = expr_ctx.assembler_ctx.pass();
     let current_address = expr_ctx.assembler_ctx.current_address();
 
     let value = expr_ctx.eval_expr(expr)?;
     let has_unstable_symbols = expr_ctx.has_unstable_symbols(expr)?;
-    Ok(prefer_long_decision(
-        value,
-        symbol_based,
-        assumed_known,
-        assumed_bank,
-        current_address,
-        pass,
-        has_unstable_symbols,
-    ))
+    Ok(
+        M65816VmSelectorAdapter::from_assembler_ctx(expr_ctx.assembler_ctx).prefer_long(
+            value,
+            upper_mnemonic,
+            symbol_based,
+            current_address,
+            pass,
+            has_unstable_symbols,
+        ),
+    )
 }
 
 fn should_defer_abs16_to_other_candidates(
@@ -248,14 +241,14 @@ fn should_defer_abs16_to_other_candidates(
     let pass = expr_ctx.assembler_ctx.pass();
     let value = expr_ctx.eval_expr(expr)?;
     let has_unstable_symbols = expr_ctx.has_unstable_symbols(expr)?;
-    let (assumed_bank, assumed_known) = assumed_bank_state(upper_mnemonic, expr_ctx.assembler_ctx);
-    Ok(should_defer_abs16_decision(
-        value,
-        assumed_known,
-        assumed_bank,
-        pass,
-        has_unstable_symbols,
-    ))
+    Ok(
+        M65816VmSelectorAdapter::from_assembler_ctx(expr_ctx.assembler_ctx).should_defer_abs16(
+            value,
+            upper_mnemonic,
+            pass,
+            has_unstable_symbols,
+        ),
+    )
 }
 
 fn encode_expr_abs16_bank_fold(
@@ -264,27 +257,8 @@ fn encode_expr_abs16_bank_fold(
     expr_ctx: &SelectorExprContext<'_>,
 ) -> Result<Vec<u8>, String> {
     let value = expr_ctx.eval_expr(expr)?;
-    let (assumed_bank, assumed_known) = assumed_bank_state(upper_mnemonic, expr_ctx.assembler_ctx);
-    let assumed_key = if matches!(upper_mnemonic, "JMP" | "JSR") {
-        "pbr"
-    } else {
-        "dbr"
-    };
-    encode_abs16_bank_fold_value(
-        value,
-        upper_mnemonic,
-        assumed_known,
-        assumed_bank,
-        assumed_key,
-    )
-}
-
-fn assumed_bank_state(upper_mnemonic: &str, ctx: &dyn AssemblerContext) -> (u8, bool) {
-    if matches!(upper_mnemonic, "JMP" | "JSR") {
-        (state::program_bank(ctx), state::program_bank_known(ctx))
-    } else {
-        (state::data_bank(ctx), state::data_bank_known(ctx))
-    }
+    M65816VmSelectorAdapter::from_assembler_ctx(expr_ctx.assembler_ctx)
+        .encode_abs16_bank_fold(value, upper_mnemonic)
 }
 
 fn encode_expr_force_abs16(
@@ -298,24 +272,11 @@ fn encode_expr_force_abs16(
         return Ok(vec![0, 0]);
     }
     let value = expr_ctx.eval_expr(expr)?;
-    let assumed_bank_key = if use_program_bank { "pbr" } else { "dbr" };
-    let assumed_known = if use_program_bank {
-        state::program_bank_known(expr_ctx.assembler_ctx)
-    } else {
-        state::data_bank_known(expr_ctx.assembler_ctx)
-    };
-    let assumed_bank = if use_program_bank {
-        state::program_bank(expr_ctx.assembler_ctx)
-    } else {
-        state::data_bank(expr_ctx.assembler_ctx)
-    };
-    encode_force_abs16_value(
+    M65816VmSelectorAdapter::from_assembler_ctx(expr_ctx.assembler_ctx).encode_force_abs16(
         value,
         upper_mnemonic,
+        use_program_bank,
         force_suffix(force),
-        assumed_known,
-        assumed_bank,
-        assumed_bank_key,
     )
 }
 
@@ -379,10 +340,6 @@ fn encode_expr_m65816_immediate(
     expr_ctx: &SelectorExprContext<'_>,
 ) -> Result<Vec<u8>, String> {
     let value = expr_ctx.eval_expr(expr)?;
-    encode_m65816_immediate_value(
-        value,
-        upper_mnemonic,
-        state::accumulator_is_8bit(expr_ctx.assembler_ctx),
-        state::index_is_8bit(expr_ctx.assembler_ctx),
-    )
+    M65816VmSelectorAdapter::from_assembler_ctx(expr_ctx.assembler_ctx)
+        .encode_immediate(value, upper_mnemonic)
 }

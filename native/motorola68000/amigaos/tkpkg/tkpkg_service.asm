@@ -138,6 +138,8 @@ TkpkgMselPlanU16Text
 	.byte "u16", 0
 TkpkgMselPlanBranch8Text
 	.byte "rel8", 0
+TkpkgMselPlanPairU8Rel8Text
+	.byte "pair_u8_rel8", 0
 TkpkgMselShapeImmediateText
 	.byte "immediate", 0
 TkpkgMselShapeAccumulatorText
@@ -250,6 +252,18 @@ EncodeSelectedMselValue
 	.res long, 1
 EncodeSelectedMselUnstable
 	.res byte, 1
+PairAPtr
+	.res long, 1
+PairALen
+	.res word, 1
+PairBPtr
+	.res long, 1
+PairBLen
+	.res word, 1
+PairAVal
+	.res long, 1
+PairBVal
+	.res long, 1
 
 	.endsection
 
@@ -658,6 +672,7 @@ havePipeline
 	subq.w #1, d1
 	cmp.w d7, d1
 	bhi.w badPayload
+	move.l d2, d3
 	moveq #0, d1
 	moveq #0, d2
 	moveq #0, d6
@@ -675,7 +690,7 @@ havePipeline
 	lsl.w #8, d5
 	or.w d5, d3
 	move.l d4, -(sp)
-	move.l d2, -(sp)
+	move.l d3, -(sp)
 	cmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d3
 	bcs.s noExtension
 	lea 0(a0, d0.W), a3
@@ -1295,6 +1310,10 @@ tkpkgMselTryBuildCandidateV1	.block
 	moveq #4, d1
 	bsr.w tkpkgMselPlanEqualsV1
 	bne.s tryBranchOffset8
+	lea TkpkgMselPlanPairU8Rel8Text, a2
+	moveq #12, d1
+	bsr.w tkpkgMselPlanEqualsV1
+	bne.w tryPairU8Rel8
 	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 	bra.w return
 
@@ -1368,6 +1387,180 @@ tryBranchFits
 	moveq #1, d6
 	bra.w buildOperand
 
+tryPairU8Rel8
+	clr.l PairAPtr.l
+	clr.w PairALen.l
+	clr.l PairBPtr.l
+	clr.w PairBLen.l
+	movea.l EncodeSelectedMselExprPtr, a1
+	move.w EncodeSelectedMselExprLen, d7
+	tst.w d7
+	beq.w operandError
+	moveq #0, d5
+	moveq #0, d6
+
+pairScanLoop
+	tst.w d7
+	beq.w operandError
+	move.b (a1)+, d4
+	cmpi.b #'(', d4
+	beq.s pairOpenParen
+	cmpi.b #')', d4
+	beq.s pairCloseParen
+	cmpi.b #',', d4
+	bne.s pairNextChar
+	tst.w d6
+	beq.s pairFoundComma
+	bra.s pairNextChar
+
+pairOpenParen
+	addq.w #1, d6
+	bra.s pairNextChar
+
+pairCloseParen
+	tst.w d6
+	beq.s pairNextChar
+	subq.w #1, d6
+
+pairNextChar
+	addq.w #1, d5
+	subq.w #1, d7
+	bra.s pairScanLoop
+
+pairFoundComma
+	movea.l EncodeSelectedMselExprPtr, a0
+	moveq #0, d0
+	move.w d5, d0
+	move.l d0, d2
+
+pairFirstTrimStartLoop
+	tst.l d2
+	beq.w operandError
+	move.b (a0), d3
+	cmpi.b #' ', d3
+	beq.s pairFirstTrimStartOne
+	cmpi.b #9, d3
+	bne.s pairFirstTrimEndInit
+
+pairFirstTrimStartOne
+	addq.l #1, a0
+	subq.l #1, d2
+	bra.s pairFirstTrimStartLoop
+
+pairFirstTrimEndInit
+	lea 0(a0, d2.l), a1
+	subq.l #1, a1
+
+pairFirstTrimEndLoop
+	tst.l d2
+	beq.w operandError
+	move.b (a1), d3
+	cmpi.b #' ', d3
+	beq.s pairFirstTrimEndOne
+	cmpi.b #9, d3
+	bne.s pairFirstTrimOk
+
+pairFirstTrimEndOne
+	subq.l #1, a1
+	subq.l #1, d2
+	bra.s pairFirstTrimEndLoop
+
+pairFirstTrimOk
+	move.l a0, PairAPtr.l
+	move.w d2, PairALen.l
+	movea.l EncodeSelectedMselExprPtr, a0
+	adda.w d5, a0
+	addq.l #1, a0
+	moveq #0, d0
+	move.w EncodeSelectedMselExprLen, d0
+	sub.w d5, d0
+	subq.w #1, d0
+	move.l d0, d2
+
+pairSecondTrimStartLoop
+	tst.l d2
+	beq.w operandError
+	move.b (a0), d3
+	cmpi.b #' ', d3
+	beq.s pairSecondTrimStartOne
+	cmpi.b #9, d3
+	bne.s pairSecondTrimEndInit
+
+pairSecondTrimStartOne
+	addq.l #1, a0
+	subq.l #1, d2
+	bra.s pairSecondTrimStartLoop
+
+pairSecondTrimEndInit
+	lea 0(a0, d2.l), a1
+	subq.l #1, a1
+
+pairSecondTrimEndLoop
+	tst.l d2
+	beq.w operandError
+	move.b (a1), d3
+	cmpi.b #' ', d3
+	beq.s pairSecondTrimEndOne
+	cmpi.b #9, d3
+	bne.s pairSecondTrimOk
+
+pairSecondTrimEndOne
+	subq.l #1, a1
+	subq.l #1, d2
+	bra.s pairSecondTrimEndLoop
+
+pairSecondTrimOk
+	move.l a0, d0
+	move.l d0, PairBPtr.l
+	move.w d2, PairBLen.l
+	move.l PairAPtr.l, d0
+	move.l d0, EncodeSelectedMselExprPtr
+	move.w PairALen.l, d0
+	move.w d0, EncodeSelectedMselExprLen
+	bsr.w tkpkgMselEvalOperandV1
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.w return
+	move.l EncodeSelectedMselValue, d3
+	bpl.s tryPairFirstNonNegative
+	bra.w operandError
+
+tryPairFirstNonNegative
+	cmpi.l #$000000FF, d3
+	bls.s tryPairFirstFits
+	bra.w operandError
+
+tryPairFirstFits
+	move.l d3, PairAVal.l
+	cmpi.w #1, engine.opasmEngineSessionPass.l
+	bne.s tryPairSecondStable
+	clr.l PairBVal.l
+	bra.w buildPairOperand
+
+tryPairSecondStable
+	move.l PairBPtr.l, d0
+	move.l d0, EncodeSelectedMselExprPtr
+	move.w PairBLen.l, d0
+	move.w d0, EncodeSelectedMselExprLen
+	bsr.w tkpkgMselEvalOperandV1
+	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
+	bne.w return
+	move.l EncodeSelectedMselValue, d3
+	move.l EncodeSelectedCurrentPc, d4
+	addq.l #3, d4
+	sub.l d4, d3
+	cmpi.l #-128, d3
+	bge.s tryPairSecondMinFits
+	bra.w operandError
+
+tryPairSecondMinFits
+	cmpi.l #127, d3
+	ble.s tryPairSecondFits
+	bra.w operandError
+
+tryPairSecondFits
+	move.l d3, PairBVal.l
+	bra.w buildPairOperand
+
 tryUnstablePassOneOperand
 	cmpi.w #1, engine.opasmEngineSessionPass.l
 	bne.w noOutput
@@ -1396,6 +1589,34 @@ operandError
 
 buildOperand
 	bsr.w tkpkgMselWriteCandidateEnvelopeV1
+	bra.s return
+
+buildPairOperand
+	lea buffers.TokenScratchBuffer, a4
+	move.w EncodeSelectedMselMnemonicLen, d0
+	cmpi.w #255, d0
+	bhi.w operandError
+	move.b d0, (a4)+
+	movea.l a5, a0
+	bsr.w tkpkgMselCopyBytesV1
+	move.b #1, (a4)+
+	move.w EncodeSelectedMselModeLen, d0
+	cmpi.w #255, d0
+	bhi.w operandError
+	move.b d0, (a4)+
+	movea.l EncodeSelectedMselModePtr, a0
+	bsr.w tkpkgMselCopyBytesV1
+	move.b #2, (a4)+
+	move.b #1, (a4)+
+	move.l PairAVal.l, d3
+	move.b d3, (a4)+
+	move.b #1, (a4)+
+	move.l PairBVal.l, d3
+	move.b d3, (a4)+
+	move.l a4, d1
+	lea buffers.TokenScratchBuffer, a0
+	sub.l a0, d1
+	moveq #TKPKG_SELECTED_STATUS_OK, d0
 
 return
 	movem.l (sp)+, d2-d7/a0-a6
@@ -2904,7 +3125,7 @@ validateOperandFail
 
 validateOperandDone
 	move.w (sp)+, d6
-	bra.s encodeCandidate
+	bra.w encodeCandidate
 
 noOperandRecord
 	moveq #0, d6
@@ -2912,12 +3133,65 @@ noOperandRecord
 
 encodeCandidate
 	bsr.w tkpkgEncodeFindAndExecuteTableProgram
-	bra.s return
+	bra.w return
 
 noMatch
+	cmpi.w #4, d2
+	bne.s noMatchReturn
+	cmpi.w #2, d5
+	bne.s noMatchReturn
+	cmpi.w #1, d6
+	bne.s noMatchReturn
+	movea.l a5, a0
+	move.b (a0)+, d0
+	ori.b #$20, d0
+	cmpi.b #'b', d0
+	bne.s noMatchReturn
+	move.b (a0)+, d0
+	ori.b #$20, d0
+	cmpi.b #'b', d0
+	bne.s noMatchReturn
+	move.b (a0)+, d0
+	ori.b #$20, d0
+	cmpi.b #'r', d0
+	beq.s directBitBranchReset
+	cmpi.b #'s', d0
+	bne.s noMatchReturn
+	moveq #0, d0
+	move.b #$8F, d0
+	bra.s directBitBranchOpcode
+
+directBitBranchReset
+	moveq #$0F, d0
+
+directBitBranchOpcode
+	moveq #0, d1
+	move.b (a0), d1
+	cmpi.b #'0', d1
+	blo.s noMatchReturn
+	cmpi.b #'7', d1
+	bhi.s noMatchReturn
+	sub.b #'0', d1
+	lsl.b #4, d1
+	add.b d1, d0
+	lea buffers.LastErrorBuffer, a2
+	move.b d0, (a2)+
+	move.b (a3), (a2)+
+	movea.l a3, a0
+	adda.w d6, a0
+	moveq #0, d1
+	move.b (a0)+, d1
+	cmpi.w #1, d1
+	bne.s noMatchReturn
+	move.b (a0), (a2)+
+	moveq #3, d1
+	moveq #0, d0
+	bra.w return
+
+noMatchReturn
 	moveq #0, d1
 	moveq #2, d0
-	bra.s return
+	bra.w return
 
 fail
 	lea EncodeEnvelopeMalformedText, a1

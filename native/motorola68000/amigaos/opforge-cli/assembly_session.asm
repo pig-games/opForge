@@ -101,9 +101,19 @@ checkMnemonic
 
 checkLabel
 	tst.l state.NativeCliStmtLabelLen
-	beq.s checkMnemonicFound
+	beq.w checkMnemonicFound
 	tst.w state.NativeCliStmtMnemFound
 	beq.w maybeLabelOnly
+	move.l state.NativeCliStmtLabelStart, d0
+	cmp.l state.NativeCliStmtMnemStart, d0
+	bls.s labelBeforeMnemonic
+	clr.l state.NativeCliStmtLabelStart
+	clr.l state.NativeCliStmtLabelEnd
+	clr.l state.NativeCliStmtLabelOff
+	clr.l state.NativeCliStmtLabelLen
+	bra.w checkMnemonicFound
+
+labelBeforeMnemonic
 	tst.l state.NativeCliStmtOperandStart
 	bne.s checkMnemonicFound
 	move.l state.NativeCliStmtLabelLen, d0

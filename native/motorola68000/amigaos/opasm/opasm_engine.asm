@@ -1134,6 +1134,11 @@ opasmEngineInferSelectedShapeForEvalRequestV1	.block
 	move.w d0, d7
 	moveq #0, d0
 	move.b 8(a2), d0
+	bsr.w inferSelectedShapePairDirectMnemonic
+	bne.w pairDirect
+	movea.l a2, a0
+	moveq #0, d0
+	move.b 8(a0), d0
 	bsr.w inferSelectedShapeBranchMnemonic
 	bne.w direct
 	movea.l a2, a0
@@ -1229,6 +1234,11 @@ accumulator
 immediate
 	lea OpasmEngineSelectedShapeImmediateText, a0
 	moveq #9, d0
+	bra.s return
+
+pairDirect
+	lea OpasmEngineSelectedShapePairDirectText, a0
+	moveq #11, d0
 	bra.s return
 
 direct
@@ -1471,6 +1481,66 @@ return
 	rts
 	.bend  ; inferSelectedShapeSuffix
 
+inferSelectedShapePairDirectMnemonic	.block
+	cmpi.w #3, d0
+	beq.s len3Ok
+	cmpi.w #4, d0
+	beq.s len4Ok
+	moveq #0, d0
+	rts
+
+len3Ok
+	lea 9(a2), a1
+	move.b (a1)+, d1
+	move.b (a1)+, d2
+	move.b (a1), d3
+	ori.b #$20, d1
+	ori.b #$20, d2
+	ori.b #$20, d3
+	cmpi.b #'m', d1
+	bne.s no
+	cmpi.b #'v', d2
+	bne.s no
+	cmpi.b #'n', d3
+	beq.s yes
+	cmpi.b #'p', d3
+	beq.s yes
+	moveq #0, d0
+	rts
+
+len4Ok
+	lea 9(a2), a1
+	move.b (a1)+, d1
+	move.b (a1)+, d2
+	move.b (a1)+, d3
+	move.b (a1), d4
+	ori.b #$20, d1
+	ori.b #$20, d2
+	ori.b #$20, d3
+	cmpi.b #'b', d1
+	bne.s no
+	cmpi.b #'b', d2
+	bne.s no
+	cmpi.b #'r', d3
+	beq.s checkDigit
+	cmpi.b #'s', d3
+	bne.s no
+
+checkDigit
+	cmpi.b #'0', d4
+	blo.s no
+	cmpi.b #'7', d4
+	bhi.s no
+
+yes
+	moveq #1, d0
+	rts
+
+no
+	moveq #0, d0
+	rts
+	.bend  ; inferSelectedShapePairDirectMnemonic
+
 inferSelectedShapeBranchMnemonic	.block
 	cmpi.w #3, d0
 	beq.s lenOk
@@ -1563,6 +1633,8 @@ OpasmEngineSelectedShapeAccumulatorText
 	.byte "accumulator", 0
 OpasmEngineSelectedShapeImmediateText
 	.byte "immediate", 0
+OpasmEngineSelectedShapePairDirectText
+	.byte "pair_direct", 0
 OpasmEngineSelectedShapeDirectText
 	.byte "direct", 0
 OpasmEngineSelectedShapeDirectXText

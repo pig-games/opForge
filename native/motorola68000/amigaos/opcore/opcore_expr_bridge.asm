@@ -314,7 +314,10 @@ unaryMinus
 currentPc
 	addq.l #1, a0
 	subq.l #1, d0
+	move.l d0, -(sp)
 	bsr.w emitPushCurrent
+	move.l d0, d5
+	move.l (sp)+, d0
 	bra.w maybeApplyUnary
 
 dollar
@@ -350,7 +353,11 @@ hex
 	bra.w maybeApplyUnary
 
 hexParsed
+	move.l d0, -(sp)
 	bsr.w emitPushLiteralD3
+	move.l d0, d5
+	move.l (sp)+, d0
+	tst.l d5
 	beq.s hexEmitOk
 	moveq #32, d5
 	bra.w maybeApplyUnary
@@ -365,8 +372,10 @@ hex0x
 	bsr.w parseHex
 	tst.l d5
 	bne.w maybeApplyUnary
+	move.l d0, -(sp)
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
+	move.l (sp)+, d0
 	bra.w maybeApplyUnary
 
 binaryLiteral
@@ -375,16 +384,20 @@ binaryLiteral
 	bsr.w parseBinary
 	tst.l d5
 	bne.s maybeApplyUnary
+	move.l d0, -(sp)
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
+	move.l (sp)+, d0
 	bra.s maybeApplyUnary
 
 decimal
 	bsr.w parseDecimal
 	tst.l d5
 	bne.w maybeApplyUnary
+	move.l d0, -(sp)
 	bsr.w emitPushLiteralD3
 	move.l d0, d5
+	move.l (sp)+, d0
 	bra.w maybeApplyUnary
 
 label
@@ -421,8 +434,10 @@ maybeApplyUnary
 	tst.l d4
 	beq.s ok
 	moveq #runtime.EXPRVM_UNARY_MINUS, d6
+	move.l d0, -(sp)
 	bsr.w emitApplyUnaryD6
 	move.l d0, d5
+	move.l (sp)+, d0
 	bne.w return
 
 ok

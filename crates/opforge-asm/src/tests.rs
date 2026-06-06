@@ -11986,6 +11986,67 @@ fn motorola68020_item6_7_native_branch_plan_emits_adjusted_rel8_value() {
 }
 
 #[test]
+fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg service source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "TkpkgMselPlanPairU8Rel8Text",
+            ".BYTE \"pair_u8_rel8\", 0",
+            "tryPairU8Rel8",
+            "pairScanLoop",
+            "CMPI.B #',', D4",
+            "pairFoundComma",
+            "pairFirstTrimStartLoop",
+            "pairFirstTrimOk",
+            "MOVE.L A0, PairAPtr",
+            "MOVE.W D2, PairALen",
+            "pairSecondTrimStartLoop",
+            "pairSecondTrimOk",
+            "MOVE.W D2, PairBLen",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "PairAPtr",
+            "EncodeSelectedMselExprPtr",
+            "PairALen",
+            "EncodeSelectedMselExprLen",
+            "BSR.W tkpkgMselEvalOperandV1",
+            "CMPI.L #$000000FF, D3",
+            "PairAVal",
+            "tryPairSecondStable",
+            "PairBLen",
+            "EncodeSelectedMselExprLen",
+            "BSR.W tkpkgMselEvalOperandV1",
+            "MOVE.L EncodeSelectedCurrentPc, D4",
+            "ADDQ.L #3, D4",
+            "SUB.L D4, D3",
+            "PairBVal",
+            "buildPairOperand",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "buildPairOperand",
+            "MOVE.B #2, (A4)+",
+            "MOVE.B #1, (A4)+",
+            "PairAVal",
+            "MOVE.B D3, (A4)+",
+            "MOVE.B #1, (A4)+",
+            "PairBVal",
+            "MOVE.B D3, (A4)+",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_item6_7_prvm_expr_requests_preserve_multi_token_operand_spans() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_runtime.asm");
@@ -12037,6 +12098,23 @@ fn motorola68020_item6_7_bare_label_fallback_detects_second_token_before_operand
     assert!(source_contains_in_order(
         &source,
         &[
+            "checkLabel",
+            "TST.L state.NativeCliStmtLabelLen",
+            "TST.W state.NativeCliStmtMnemFound",
+            "MOVE.L state.NativeCliStmtLabelStart, D0",
+            "CMP.L state.NativeCliStmtMnemStart, D0",
+            "BLS.S labelBeforeMnemonic",
+            "CLR.L state.NativeCliStmtLabelStart",
+            "CLR.L state.NativeCliStmtLabelEnd",
+            "CLR.L state.NativeCliStmtLabelOff",
+            "CLR.L state.NativeCliStmtLabelLen",
+            "BRA.W checkMnemonicFound",
+            "labelBeforeMnemonic",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
             "firstToken",
             "CMPI.L #1, D4",
             "TST.W state.NativeCliStmtExprFound",
@@ -12067,6 +12145,152 @@ fn motorola68020_item6_7_selected_eval_request_prefers_expr_span_slice_when_pres
             "MOVEA.L A0, A2",
             "MOVE.L D1, D4",
             "MOVEQ #1, D5",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item6_7_pair_direct_shape_inference_covers_bit_branches() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native opasm engine source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opasmEngineInferSelectedShapeForEvalRequestV1",
+            "BSR.W inferSelectedShapePairDirectMnemonic",
+            "BNE.W pairDirect",
+            "BSR.W inferSelectedShapeBranchMnemonic",
+            "pairDirect",
+            "LEA OpasmEngineSelectedShapePairDirectText, A0",
+        ]
+    ));
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "inferSelectedShapePairDirectMnemonic",
+            "CMPI.W #4, D0",
+            "CMPI.B #'b', D1",
+            "CMPI.B #'b', D2",
+            "CMPI.B #'r', D3",
+            "CMPI.B #'s', D3",
+            "checkDigit",
+            "CMPI.B #'0', D4",
+            "CMPI.B #'7', D4",
+            "yes",
+            "MOVEQ #1, D0",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item6_7_embedded_native_cli_package_contains_bit_branch_vm_entries() {
+    let package_path = workspace_root()
+        .join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let package_bytes = fs::read(&package_path).expect("read embedded native CLI package");
+    let chunks =
+        package::decode_hierarchy_chunks(&package_bytes).expect("decode embedded native CLI package");
+
+    let has_selector = |mnemonic: &str| {
+        chunks.selectors.iter().any(|selector| {
+            matches!(&selector.owner, ScopedOwner::Cpu(owner) if owner.eq_ignore_ascii_case(m65c02_cpu_id.as_str()))
+                && selector.mnemonic.eq_ignore_ascii_case(mnemonic)
+                && selector.shape_key.eq_ignore_ascii_case("pair_direct")
+                && selector.mode_key.eq_ignore_ascii_case("ZeroPage")
+                && selector.operand_plan.eq_ignore_ascii_case("pair_u8_rel8")
+        })
+    };
+
+    let has_table = |mnemonic: &str, opcode: u8| {
+        chunks.tables.iter().any(|program| {
+            matches!(&program.owner, ScopedOwner::Cpu(owner) if owner.eq_ignore_ascii_case(m65c02_cpu_id.as_str()))
+                && program.mnemonic.eq_ignore_ascii_case(mnemonic)
+                && program.mode_key.eq_ignore_ascii_case("ZeroPage")
+                && program.program
+                    == vec![OP_EMIT_U8, opcode, OP_EMIT_OPERAND, 0x00, OP_EMIT_OPERAND, 0x01, OP_END]
+        })
+    };
+
+    assert!(
+        has_selector("BBR0"),
+        "embedded native CLI package must retain the 65C02 BBR0 pair_direct selector"
+    );
+    assert!(
+        has_selector("BBS7"),
+        "embedded native CLI package must retain the 65C02 BBS7 pair_direct selector"
+    );
+    assert!(
+        has_table("BBR0", 0x0F),
+        "embedded native CLI package must retain the 65C02 BBR0 table program"
+    );
+    assert!(
+        has_table("BBS7", 0xFF),
+        "embedded native CLI package must retain the 65C02 BBS7 table program"
+    );
+}
+
+#[test]
+fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_empty() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native opasm assembly driver source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opasmDriverAdvancePc",
+            "BSR.W opasmDriverOperandIsAccumulatorA",
+            "BEQ.S notAccumulatorForm",
+            "BSR.W opasmDriverIsAccumulatorOneByteMnemonic",
+            "BNE.W advanceOne",
+            "notAccumulatorForm",
+            "BSR.W opasmDriverIsBitBranchMnemonic",
+            "BNE.W advanceThree",
+            "BSR.W opasmDriverIsRelativeBranchMnemonic",
+            "BNE.W advanceTwo",
+            "BSR.W trySelectedEncodeSizeForStatement",
+            "BEQ.S selectedSizeOk",
+            "JSR eng.opasmEngineStatementLooksBareColumnOneV1",
+            "selectedSizeOk",
+            "CMPI.W #1, D1",
+            "MOVEQ #1, D0",
+            "opasmDriverOperandIsAccumulatorA",
+            "opasmDriverIsAccumulatorOneByteMnemonic",
+            "checkInc",
+            "checkDec",
+        ]
+    ));
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opasmDriverIsBitBranchMnemonic",
+            "CMPI.W #4, D0",
+            "CMPI.B #'b', D1",
+            "CMPI.B #'r', D2",
+            "BEQ.S checkBitDigit",
+            "CMPI.B #'s', D2",
+            "checkBitDigit",
+            "CMPI.B #'0', D0",
+            "CMPI.B #'7', D0",
+            "MOVEQ #1, D0",
+        ]
+    ));
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opasmDriverIsRelativeBranchMnemonic",
+            "CMPI.W #3, D0",
+            "CMPI.B #'b', D1",
+            "checkRa",
+            "CMPI.B #'a', D2",
+            "yes",
+            "MOVEQ #1, D0",
         ]
     ));
 }
@@ -12612,10 +12836,37 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
             "unaryMinus",
             "moveq #1, d4",
             "currentPc",
+            "move.l d0, -(sp)",
             "bsr.w emitPushCurrent",
+            "move.l d0, d5",
+            "move.l (sp)+, d0",
             "dollar",
             "cmpi.l #1, d0",
             "beq.w currentPc",
+        ]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "compileSingleTerm",
+        &[
+            "decimal",
+            "bsr.w parseDecimal",
+            "move.l d0, -(sp)",
+            "bsr.w emitPushLiteralD3",
+            "move.l d0, d5",
+            "move.l (sp)+, d0",
+            "bra.w maybeApplyUnary",
+        ]
+    ));
+    assert!(routine_contains_in_order(
+        &source,
+        "compileSingleTerm",
+        &[
+            "moveq #runtime.EXPRVM_UNARY_MINUS, d6",
+            "move.l d0, -(sp)",
+            "bsr.w emitApplyUnaryD6",
+            "move.l d0, d5",
+            "move.l (sp)+, d0",
         ]
     ));
     assert!(routine_contains_in_order(
@@ -14764,7 +15015,11 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(source.contains("opcoreExvmEvalOperandV1"));
     assert!(tkpkg_source_contains(
         &source,
-        "move.l d4, -(sp)\n\tmove.l d2, -(sp)\n\tcmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d3"
+        "move.l d2, d3\n\tmoveq #0, d1\n\tmoveq #0, d2"
+    ));
+    assert!(tkpkg_source_contains(
+        &source,
+        "move.l d4, -(sp)\n\tmove.l d3, -(sp)\n\tcmpi.w #TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE, d3"
     ));
     assert!(tkpkg_source_contains(
         &source,

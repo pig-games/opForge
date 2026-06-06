@@ -782,6 +782,12 @@ The intended native shape mirrors the Rust path:
       - Blocking status, 2026-05-14: Item 6.7 remains incomplete until the
         required host FS-UAE exact-byte proof also runs and passes. Host-only
         deterministic parity is not sufficient completion evidence for this item.
+      - Blocking status, 2026-06-06: the host FS-UAE proof now runs, but
+        `external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins`
+        still has one red case for `examples/mos6502/65c02_allmodes.asm`.
+        The current mismatch is isolated to missing `BBR/BBS` bytes
+        (`0F 20 01` and `FF 21 01`) in the guest-native output while the same
+        staged Item 6 package bytes pass the deterministic native parity path.
       - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
     - Source requirement or finding IDs: `SR-CLI-BOUNDARY`,
       `SR-RUST-VM-ARCH`, `SR-6502-SELECTOR`, `SR-6502-ENCODER`; expected to

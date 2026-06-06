@@ -54,7 +54,6 @@ mod selector_encoding;
 mod tests;
 mod tokenizer_bridge;
 
-pub use selector_bridge::{intel8080_candidate_from_resolved, intel8080_ld_indirect_candidate};
 pub use tokenizer_bridge::apply_token_policy_to_token;
 
 thread_local! {

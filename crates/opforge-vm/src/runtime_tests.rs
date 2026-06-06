@@ -1,8 +1,7 @@
 use crate::builder::{build_hierarchy_chunks_from_registry, build_hierarchy_package_from_registry};
 use crate::bytecode::{OP_EMIT_OPERAND, OP_EMIT_U8, OP_END};
 use crate::execution_model::{
-    apply_token_policy_to_token, intel8080_candidate_from_resolved,
-    intel8080_ld_indirect_candidate, FamilyExprResolver, HierarchyExecutionModel,
+    apply_token_policy_to_token, FamilyExprResolver, HierarchyExecutionModel,
     CORE_EXPR_PARSER_FAILPOINT, RUNTIME_EXPR_COMPATIBILITY_FAILPOINT,
 };
 use crate::exvm_v2_runtime::{run_exvm_expression_parser_program_with_backend, ExvmRuntimeBackend};
@@ -36,7 +35,10 @@ use crate::vm_opcore::{
     run_exvm_expression_parser_program, ExvmExecutionBudgets,
 };
 use families::{
-    intel8080::Operand as IntelOperand,
+    intel8080::{
+        candidate_from_resolved_operands as intel8080_candidate_from_resolved,
+        ld_indirect_candidate as intel8080_ld_indirect_candidate, Operand as IntelOperand,
+    },
     m65816::state,
     mos6502::{
         module::{M6502CpuModule, MOS6502FamilyModule, MOS6502Operands},
@@ -6265,6 +6267,38 @@ fn generic_selector_runtime_files_do_not_contain_mos_selector_vocabulary() {
             assert!(
                 !source.contains(term),
                 "generic selector runtime file {path} contains banned MOS selector term {term}"
+            );
+        }
+    }
+}
+
+#[test]
+fn generic_selector_runtime_files_do_not_contain_intel_selector_vocabulary() {
+    let banned_terms = [
+        "\"8085\"",
+        "\"z80\"",
+        "lookup_i8085_extension",
+        "lookup_z80_extension",
+        "IntelInstructionEntry",
+        "IntelArgType",
+        "IXH",
+        "IYH",
+        "cbidx=",
+        "cbreg=",
+        "halfidx=",
+        "idxmem=",
+        "ldind=",
+        "mode_key_for_z80_",
+    ];
+
+    for (path, source) in [(
+        "execution_model/selector_bridge.rs",
+        include_str!("execution_model/selector_bridge.rs"),
+    )] {
+        for term in banned_terms {
+            assert!(
+                !source.contains(term),
+                "generic selector runtime file {path} contains banned Intel selector term {term}"
             );
         }
     }

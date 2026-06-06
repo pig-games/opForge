@@ -126,7 +126,7 @@ This plan also classifies the current Motorola 68000 situation precisely:
 
 ## Work Items
 
-- [ ] Item 1: move Intel 8080 / 8085 / Z80 selector synthesis behind a family-owned expr resolver
+- [x] Item 1: move Intel 8080 / 8085 / Z80 selector synthesis behind a family-owned expr resolver
   - Source requirement or finding IDs: F1; existing `FamilyExprResolver` seam in `crates/opforge-vm/src/execution_model.rs`; completed MOS-family selector normalization fix as the ownership pattern to mirror.
   - Expected files:
     - `crates/opforge-vm/src/execution_model/selector_bridge.rs`

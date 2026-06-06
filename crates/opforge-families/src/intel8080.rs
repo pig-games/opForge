@@ -12,6 +12,8 @@ pub mod module;
 
 mod operand;
 
+pub mod selector;
+
 pub mod table;
 
 pub use crate::i8085::I8085CpuHandler;
@@ -22,6 +24,9 @@ pub use dialect::{
 pub use extensions::{I8085_EXTENSION_TABLE, Z80_EXTENSION_TABLE};
 pub use handler::Intel8080FamilyHandler;
 pub use operand::{expr_span, FamilyOperand, Operand};
+pub use selector::{
+    candidate_from_resolved_operands, ld_indirect_candidate, vm_encode_candidates_from_exprs,
+};
 pub use table::{lookup_instruction, ArgType, InstructionEntry, Prefix, FAMILY_INSTRUCTION_TABLE};
 
 pub fn is_register(name: &str) -> bool {

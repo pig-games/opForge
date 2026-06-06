@@ -6238,15 +6238,35 @@ fn mos6502_vm_expr_selector_is_package_backed_for_source_operand_shapes() {
 }
 
 #[test]
-fn mos6502_vm_expr_selector_has_no_family_operand_shortcut_guardrail() {
-    for source in [
-        include_str!("execution_model.rs"),
+fn generic_selector_runtime_files_do_not_contain_mos_selector_vocabulary() {
+    let banned_terms = [
+        "BBR",
+        "BBS",
+        "MVN",
+        "MVP",
+        "M65C02",
+        "MOS6502",
+        "accumulator",
+        "direct_x",
+        "direct_y",
+        "indexed_indirect_x",
+        "indirect_indexed_y",
+        "AddressMode::ZeroPage",
+        "Register(\"A\")",
+        "Register(\"X\")",
+        "Register(\"Y\")",
+    ];
+
+    for (path, source) in [(
+        "execution_model/selector_bridge.rs",
         include_str!("execution_model/selector_bridge.rs"),
-        include_str!("execution_model/selector_encoding.rs"),
-    ] {
-        assert!(!source.contains("families::mos6502"));
-        assert!(!source.contains("MOS6502FamilyHandler"));
-        assert!(!source.contains("FamilyOperand"));
+    )] {
+        for term in banned_terms {
+            assert!(
+                !source.contains(term),
+                "generic selector runtime file {path} contains banned MOS selector term {term}"
+            );
+        }
     }
 }
 

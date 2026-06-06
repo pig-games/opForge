@@ -7,6 +7,19 @@ logic.
 The generic implementation executes package-provided semantics. It does not know
 what CPU it is serving.
 
+Builder and package-authoring code may know concrete CPU families, selector
+shape vocabularies, operand plans, and mode metadata because that layer is the
+source of package-defined behavior.
+
+Runtime VM code may execute generic selector matching, operand-plan evaluation,
+bytecode walking, and expression evaluation against package-provided records.
+Runtime VM code must not derive CPU-family selector meaning from source syntax,
+register names, mnemonic spellings, or addressing-mode names.
+
+Native VM implementations follow the same rule: they may consume package-defined
+selector and operand-plan metadata, but they must not become package builders or
+family-specific selector resolvers.
+
 Current deterministic enforcement focuses on architecture-neutral core parser,
 shared type, root `src/`, workflow implementation paths, and `native/**`.
 Native assembly is scanned structurally for implementation-owned labels,
@@ -39,6 +52,9 @@ failing the gate. Rust test files are excluded from both scopes.
 - instruction-width assumptions
 - page-crossing or branch-displacement CPU behavior
 - target CPU status flag logic
+- selector-shape derivation from target-specific source syntax
+- inferring selector semantics from registers such as `A`, `X`, or `Y`
+- deriving package selector choices from CPU-specific mnemonics such as bit-branch or block-move spellings
 
 ## Quality gate
 

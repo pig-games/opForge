@@ -4,13 +4,6 @@
 
 use opcore::parser::Expr;
 
-pub fn input_shape_requires_m65816(shape_key: &str) -> bool {
-    shape_key.eq_ignore_ascii_case("stack_relative")
-        || shape_key.eq_ignore_ascii_case("stack_relative_indirect_y")
-        || shape_key.eq_ignore_ascii_case("indirect_long")
-        || shape_key.eq_ignore_ascii_case("indirect_long_y")
-}
-
 pub fn encode_le_bytes(value: u32, byte_count: usize) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(byte_count);
     let mut remaining = value;

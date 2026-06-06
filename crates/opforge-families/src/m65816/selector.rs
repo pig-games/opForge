@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::m65816::state;
+use opcore::parser::Expr;
 use registry::family::AssemblerContext;
 
 #[derive(Clone, Copy, Debug)]
@@ -243,6 +244,228 @@ impl VmSelectorAdapter {
     }
 }
 
+pub fn input_shape_requires_runtime_family_support(shape_key: &str) -> bool {
+    shape_key.eq_ignore_ascii_case("stack_relative")
+        || shape_key.eq_ignore_ascii_case("stack_relative_indirect_y")
+        || shape_key.eq_ignore_ascii_case("indirect_long")
+        || shape_key.eq_ignore_ascii_case("indirect_long_y")
+}
+
+pub fn encode_runtime_operand_plan<E, U>(
+    operand_plan: &str,
+    expr0: Option<&Expr>,
+    expr1: Option<&Expr>,
+    upper_mnemonic: &str,
+    ctx: &dyn AssemblerContext,
+    mut eval_expr: E,
+    mut has_unstable_symbols: U,
+) -> Result<Option<Vec<Vec<u8>>>, String>
+where
+    E: FnMut(&Expr) -> Result<i64, String>,
+    U: FnMut(&Expr) -> Result<bool, String>,
+{
+    let adapter = VmSelectorAdapter::from_assembler_ctx(ctx);
+    let operand_bytes = match operand_plan {
+        "force_d_u8" => vec![encode_expr_force_d_u8(
+            expr0,
+            ctx,
+            &mut eval_expr,
+            &mut has_unstable_symbols,
+            adapter,
+        )?],
+        "force_l_u24" => vec![encode_expr_force_u24(
+            expr0,
+            ctx,
+            &mut eval_expr,
+            &mut has_unstable_symbols,
+            adapter,
+        )?],
+        "m65816_long_pref_u24" => {
+            let expr0 = expr0.ok_or_else(|| "missing unresolved-long operand".to_string())?;
+            let symbol_based = expr_has_symbol_references(expr0);
+            let value = eval_expr(expr0)?;
+            if !adapter.prefer_long(
+                value,
+                upper_mnemonic,
+                symbol_based,
+                ctx.current_address(),
+                ctx.pass(),
+                has_unstable_symbols(expr0)?,
+            ) {
+                return Ok(None);
+            }
+            vec![encode_expr_force_u24(
+                Some(expr0),
+                ctx,
+                &mut eval_expr,
+                &mut has_unstable_symbols,
+                adapter,
+            )?]
+        }
+        "m65816_abs16_bank_fold_dbr" => {
+            let expr0 = expr0.ok_or_else(|| "missing bank-fold operand".to_string())?;
+            let value = eval_expr(expr0)?;
+            if adapter.should_defer_abs16(
+                value,
+                upper_mnemonic,
+                ctx.pass(),
+                has_unstable_symbols(expr0)?,
+            ) {
+                return Ok(None);
+            }
+            vec![adapter.encode_abs16_bank_fold(value, upper_mnemonic)?]
+        }
+        "force_b_abs16_dbr" => {
+            if matches!(upper_mnemonic, "JMP" | "JSR") {
+                return Ok(None);
+            }
+            vec![encode_expr_force_abs16(
+                expr0,
+                ctx,
+                &mut eval_expr,
+                &mut has_unstable_symbols,
+                adapter,
+                upper_mnemonic,
+                false,
+            )?]
+        }
+        "force_k_abs16_pbr" => {
+            if !matches!(upper_mnemonic, "JMP" | "JSR") {
+                return Ok(None);
+            }
+            vec![encode_expr_force_abs16(
+                expr0,
+                ctx,
+                &mut eval_expr,
+                &mut has_unstable_symbols,
+                adapter,
+                upper_mnemonic,
+                true,
+            )?]
+        }
+        "imm_mx" => {
+            let expr0 = expr0.ok_or_else(|| "missing immediate operand".to_string())?;
+            vec![adapter.encode_immediate(eval_expr(expr0)?, upper_mnemonic)?]
+        }
+        _ => return Ok(None),
+    };
+
+    let _ = expr1;
+    Ok(Some(operand_bytes))
+}
+
+fn encode_expr_force_d_u8<E, U>(
+    expr0: Option<&Expr>,
+    ctx: &dyn AssemblerContext,
+    eval_expr: &mut E,
+    has_unstable_symbols: &mut U,
+    adapter: VmSelectorAdapter,
+) -> Result<Vec<u8>, String>
+where
+    E: FnMut(&Expr) -> Result<i64, String>,
+    U: FnMut(&Expr) -> Result<bool, String>,
+{
+    let expr0 = expr0.ok_or_else(|| "missing force-d operand".to_string())?;
+    if ctx.pass() == 1 && has_unstable_symbols(expr0)? {
+        return Ok(vec![0]);
+    }
+    adapter.encode_force_d(eval_expr(expr0)?)
+}
+
+fn encode_expr_force_u24<E, U>(
+    expr0: Option<&Expr>,
+    ctx: &dyn AssemblerContext,
+    eval_expr: &mut E,
+    has_unstable_symbols: &mut U,
+    adapter: VmSelectorAdapter,
+) -> Result<Vec<u8>, String>
+where
+    E: FnMut(&Expr) -> Result<i64, String>,
+    U: FnMut(&Expr) -> Result<bool, String>,
+{
+    let expr0 = expr0.ok_or_else(|| "missing force-l operand".to_string())?;
+    if ctx.pass() == 1 && has_unstable_symbols(expr0)? {
+        return Ok(vec![0, 0, 0]);
+    }
+    adapter.encode_force_u24(eval_expr(expr0)?)
+}
+
+fn encode_expr_force_abs16<E, U>(
+    expr0: Option<&Expr>,
+    ctx: &dyn AssemblerContext,
+    eval_expr: &mut E,
+    has_unstable_symbols: &mut U,
+    adapter: VmSelectorAdapter,
+    upper_mnemonic: &str,
+    use_program_bank: bool,
+) -> Result<Vec<u8>, String>
+where
+    E: FnMut(&Expr) -> Result<i64, String>,
+    U: FnMut(&Expr) -> Result<bool, String>,
+{
+    let force_suffix = if use_program_bank { "k" } else { "b" };
+    let missing_error = if use_program_bank {
+        "missing force-k operand"
+    } else {
+        "missing force-b operand"
+    };
+    let expr0 = expr0.ok_or_else(|| missing_error.to_string())?;
+    if ctx.pass() == 1 && has_unstable_symbols(expr0)? {
+        return Ok(vec![0, 0]);
+    }
+    adapter.encode_force_abs16(
+        eval_expr(expr0)?,
+        upper_mnemonic,
+        use_program_bank,
+        force_suffix,
+    )
+}
+
+fn expr_has_symbol_references(expr: &Expr) -> bool {
+    match expr {
+        Expr::Identifier(_, _) | Expr::Register(_, _) => true,
+        Expr::Indirect(inner, _) | Expr::Immediate(inner, _) | Expr::IndirectLong(inner, _) => {
+            expr_has_symbol_references(inner)
+        }
+        Expr::List(items, _) | Expr::Tuple(items, _) => {
+            items.iter().any(expr_has_symbol_references)
+        }
+        Expr::Index { base, index, .. } => {
+            expr_has_symbol_references(base) || expr_has_symbol_references(index)
+        }
+        Expr::Member { base, .. } => expr_has_symbol_references(base),
+        Expr::StructLiteral { fields, .. } => fields
+            .iter()
+            .any(|(_, value)| expr_has_symbol_references(value)),
+        Expr::Call { args, .. } => args.iter().any(expr_has_symbol_references),
+        Expr::Placeholder(_) => false,
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+            ..
+        } => {
+            expr_has_symbol_references(cond)
+                || expr_has_symbol_references(then_expr)
+                || expr_has_symbol_references(else_expr)
+        }
+        Expr::Unary { expr, .. } => expr_has_symbol_references(expr),
+        Expr::Binary { left, right, .. } => {
+            expr_has_symbol_references(left) || expr_has_symbol_references(right)
+        }
+        Expr::Range {
+            start, end, step, ..
+        } => {
+            expr_has_symbol_references(start)
+                || expr_has_symbol_references(end)
+                || step
+                    .as_ref()
+                    .is_some_and(|step_expr| expr_has_symbol_references(step_expr))
+        }
+        Expr::Number(_, _) | Expr::Dollar(_) | Expr::String(_, _) | Expr::Error(_, _) => false,
+    }
+}
+
 fn bank_mismatch_error(
     address: u32,
     actual_bank: u8,
@@ -352,5 +575,16 @@ mod tests {
     #[test]
     fn should_defer_abs16_rejects_large_non_24bit_values() {
         assert!(!default_adapter().should_defer_abs16(0x1_000000, "LDA", 2, false));
+    }
+
+    #[test]
+    fn runtime_family_support_shape_gate_matches_m65816_only_shapes() {
+        assert!(input_shape_requires_runtime_family_support(
+            "stack_relative"
+        ));
+        assert!(input_shape_requires_runtime_family_support(
+            "indirect_long_y"
+        ));
+        assert!(!input_shape_requires_runtime_family_support("direct"));
     }
 }

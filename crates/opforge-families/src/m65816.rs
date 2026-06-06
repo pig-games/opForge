@@ -13,4 +13,6 @@ pub mod state;
 mod handler;
 
 pub use handler::M65816CpuHandler;
-pub use selector::VmSelectorAdapter;
+pub use selector::{
+    encode_runtime_operand_plan, input_shape_requires_runtime_family_support, VmSelectorAdapter,
+};

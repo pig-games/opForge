@@ -168,7 +168,7 @@ This plan also classifies the current Motorola 68000 situation precisely:
     - current M65816 immediate-width, force-suffix, long/absolute fold, and bank-diagnostic behavior remains covered by focused tests
     - a guardrail test prevents reintroducing direct `families::m65816::state` access in generic encoding helpers
 
-- [ ] Item 3: close any remaining M65816-only selector-plan vocabulary still left in generic runtime code
+- [x] Item 3: close any remaining M65816-only selector-plan vocabulary still left in generic runtime code
   - Source requirement or finding IDs: F2b; remaining M65816-only plan names or shape checks that survive Item 2.
   - Expected files:
     - `crates/opforge-vm/src/execution_model/selector_encoding.rs`

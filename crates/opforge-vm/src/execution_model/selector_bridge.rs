@@ -1,5 +1,6 @@
 use families::hd6309::HD6309CpuHandler;
 use families::intel8080::vm_encode_candidates_from_exprs as intel8080_vm_encode_candidates_from_exprs;
+use families::m65816::input_shape_requires_runtime_family_support as m65816_input_shape_requires_runtime_family_support;
 use families::m6800::module::vm_encode_candidates_for_operands as vm_candidates_m6800;
 use families::m6800::M6800FamilyHandler;
 use families::m6809::M6809CpuHandler;
@@ -11,7 +12,7 @@ use opcore::parser::Expr;
 use registry::family::{expr_has_unstable_symbols, AssemblerContext, CpuHandler, FamilyHandler};
 use registry::registry::VmEncodeCandidate;
 
-use super::selector_encoding::{input_shape_requires_m65816, selector_to_candidate};
+use super::selector_encoding::selector_to_candidate;
 use super::{HierarchyExecutionModel, ResolvedHierarchy, RuntimeBridgeError, SelectorOperandForce};
 
 pub(super) struct SelectorInput<'a> {
@@ -239,7 +240,7 @@ impl HierarchyExecutionModel {
             return Ok(None);
         };
         if !resolved.cpu_id.eq_ignore_ascii_case("65816")
-            && input_shape_requires_m65816(&input.shape_key)
+            && m65816_input_shape_requires_runtime_family_support(&input.shape_key)
         {
             return Err(RuntimeBridgeError::Resolve(
                 self.non_m65816_force_error(&resolved.cpu_id),

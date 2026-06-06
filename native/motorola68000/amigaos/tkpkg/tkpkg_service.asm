@@ -1394,7 +1394,6 @@ tryPairU8Rel8
 	clr.w PairBLen.l
 	movea.l EncodeSelectedMselExprPtr, a1
 	move.w EncodeSelectedMselExprLen, d7
-	tst.w d7
 	beq.w operandError
 	moveq #0, d5
 	moveq #0, d6

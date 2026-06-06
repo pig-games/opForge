@@ -12188,11 +12188,11 @@ fn motorola68020_item6_7_pair_direct_shape_inference_covers_bit_branches() {
 
 #[test]
 fn motorola68020_item6_7_embedded_native_cli_package_contains_bit_branch_vm_entries() {
-    let package_path = workspace_root()
-        .join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
+    let package_path =
+        workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
     let package_bytes = fs::read(&package_path).expect("read embedded native CLI package");
-    let chunks =
-        package::decode_hierarchy_chunks(&package_bytes).expect("decode embedded native CLI package");
+    let chunks = package::decode_hierarchy_chunks(&package_bytes)
+        .expect("decode embedded native CLI package");
 
     let has_selector = |mnemonic: &str| {
         chunks.selectors.iter().any(|selector| {
@@ -12243,56 +12243,28 @@ fn motorola68020_item6_7_pass_one_sizes_relative_branches_when_selected_size_is_
         &source,
         &[
             "opasmDriverAdvancePc",
-            "BSR.W opasmDriverOperandIsAccumulatorA",
-            "BEQ.S notAccumulatorForm",
-            "BSR.W opasmDriverIsAccumulatorOneByteMnemonic",
-            "BNE.W advanceOne",
-            "notAccumulatorForm",
-            "BSR.W opasmDriverIsBitBranchMnemonic",
-            "BNE.W advanceThree",
-            "BSR.W opasmDriverIsRelativeBranchMnemonic",
-            "BNE.W advanceTwo",
             "BSR.W trySelectedEncodeSizeForStatement",
             "BEQ.S selectedSizeOk",
             "JSR eng.opasmEngineStatementLooksBareColumnOneV1",
             "selectedSizeOk",
             "CMPI.W #1, D1",
             "MOVEQ #1, D0",
-            "opasmDriverOperandIsAccumulatorA",
-            "opasmDriverIsAccumulatorOneByteMnemonic",
-            "checkInc",
-            "checkDec",
         ]
     ));
 
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opasmDriverIsBitBranchMnemonic",
-            "CMPI.W #4, D0",
-            "CMPI.B #'b', D1",
-            "CMPI.B #'r', D2",
-            "BEQ.S checkBitDigit",
-            "CMPI.B #'s', D2",
-            "checkBitDigit",
-            "CMPI.B #'0', D0",
-            "CMPI.B #'7', D0",
-            "MOVEQ #1, D0",
-        ]
-    ));
-
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "opasmDriverIsRelativeBranchMnemonic",
-            "CMPI.W #3, D0",
-            "CMPI.B #'b', D1",
-            "checkRa",
-            "CMPI.B #'a', D2",
-            "yes",
-            "MOVEQ #1, D0",
-        ]
-    ));
+    for removed_helper in [
+        "opasmDriverOperandIsAccumulatorA",
+        "opasmDriverIsAccumulatorOneByteMnemonic",
+        "opasmDriverIsBitBranchMnemonic",
+        "opasmDriverIsRelativeBranchMnemonic",
+        "checkBitDigit",
+        "checkRa",
+    ] {
+        assert!(
+            !source.contains(removed_helper),
+            "native advance-PC path should no longer hardcode helper {removed_helper}"
+        );
+    }
 }
 
 fn native_cli_6502_contract_encode(

@@ -171,13 +171,14 @@ opasmDriverEmitImageBytes	.block
 	tst.w d1
 	beq.w ok
 	move.w d1, d6
-	moveq #abi.OPASM_EVENT_SELECTOR_STATUS_OK, d0
-	bsr.w appendKindEvent
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readOutputPtrV1
 	moveq #0, d0
 	move.w d6, d0
 	jsr eng.opasmEngineAppendImageBytesV1
 	bne.w fail
+	moveq #abi.OPASM_EVENT_SELECTOR_STATUS_OK, d0
+	bsr.w appendKindEvent
 
 ok
 	moveq #0, d0
@@ -196,11 +197,13 @@ serviceFail
 	bne.w ok
 	tst.w d4
 	beq.s serviceFailReturn
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
 	clr.b 0(a0, d4.W)
 	bsr.w emitSelectorDiagnostic
 	bne.s serviceFailReturn
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
 	move.w d4, d1
 	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
 	bsr.w appendTextEvent
@@ -349,11 +352,13 @@ prepareFail
 fail
 	tst.w d4
 	beq.s failReturn
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
 	clr.b 0(a0, d4.W)
 	bsr.w emitSelectorDiagnostic
 	bne.s failReturn
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
 	move.w d4, d1
 	moveq #abi.OPASM_EVENT_SERVICE_FAILURE, d0
 	bsr.w appendTextEvent
@@ -546,19 +551,23 @@ serviceEvalExtensionPtr	.block
 	.bend  ; serviceEvalExtensionPtr
 
 emitSelectorDiagnostic	.block
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
 	lea DriverSelectorUnknownRawText, a1
 	bsr.w tokenEquals
 	bne.s unknownMnemonic
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
 	lea DriverSelectorUnsupportedRawText, a1
 	bsr.w tokenEquals
 	bne.s unsupportedAddressing
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
 	lea DriverSelectorOperandRawText, a1
 	bsr.w tokenEquals
 	bne.s operandError
-	bsr.w serviceIoBufferPtr
+	bsr.w serviceFramePtr
+	jsr tkpkg.readLastErrorPtrV1
 	lea DriverSelectedOperandCompileRawText, a1
 	bsr.w tokenEquals
 	bne.s operandError

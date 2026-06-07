@@ -260,6 +260,8 @@ EncodeSelectedMselValue
 	.res long, 1
 EncodeSelectedMselUnstable
 	.res byte, 1
+EncodeSelectedOutputLen
+	.res word, 1
 PairAPtr
 	.res long, 1
 PairALen
@@ -547,12 +549,13 @@ encodeSelectedInstructionBadRequest
 	rts
 
 encodeSelectedInstructionOk
+	move.w d1, EncodeSelectedOutputLen.l
 	bsr.w tkpkgServiceWriteClearInputFieldsV1
 	bsr.w tkpkgServiceClearStoredLastErrorV1
 	bsr.w tkpkgServiceWriteClearLastErrorFieldsV1
 	bsr.w tkpkgServiceSetStatusOkV1
 	bsr.w tkpkgServiceWriteClearOutputFieldsV1
-	tst.w d1
+	move.w EncodeSelectedOutputLen.l, d1
 	beq.s encodeSelectedInstructionDone
 	bsr.w tkpkgServiceWriteOutputBufferOffsetV1
 	move.b d1, abi.CB_OUTPUT_LEN(a0)
@@ -1710,6 +1713,14 @@ haveShapeSurface
 
 haveParenMode
 	move.b d0, d5
+	tst.b d6
+	bne.s haveOperandSurface
+	tst.b d5
+	bne.s haveOperandSurface
+	bsr.w tkpkgMselCurrentModeIndexSuffixV1
+	move.b d0, d6
+
+haveOperandSurface
 	movea.l EncodeSelectedMselExprPtr, a0
 	moveq #0, d0
 	move.w EncodeSelectedMselExprLen, d0
@@ -1939,6 +1950,26 @@ CurrentModeParenCodeTable
 	.word 16
 	.byte TKPKG_MSEL_SURFACE_INDIRECT_INDEXED_Y, 0
 	.bend  ; tkpkgMselCurrentModeParenCodeV1
+
+tkpkgMselCurrentModeIndexSuffixV1	.block
+	movea.l EncodeSelectedMselModePtr, a1
+	move.w EncodeSelectedMselModeLen, d0
+	cmpi.w #2, d0
+	bcs.s none
+	subq.w #1, d0
+	move.b 0(a1, d0.w), d0
+	ori.b #$20, d0
+	cmpi.b #'x', d0
+	beq.s return
+	cmpi.b #'y', d0
+	beq.s return
+
+none
+	moveq #0, d0
+
+return
+	rts
+	.bend  ; tkpkgMselCurrentModeIndexSuffixV1
 
 tkpkgMselStripOuterParensV1	.block
 	movem.l d2-d3/a1, -(sp)

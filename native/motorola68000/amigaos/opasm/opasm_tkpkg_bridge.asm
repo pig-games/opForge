@@ -114,6 +114,25 @@ readOutputLenV1	.block
 	rts
 	.bend  ; readOutputLenV1
 
+; Read tkpkg output pointer from the control block named by an opasm service frame.
+;
+; Inputs:
+; - A0: OPASM_SERVICE_* frame.
+;
+; Outputs:
+; - A0: tkpkg output buffer pointer.
+readOutputPtrV1	.block
+	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a0), a0
+	moveq #0, d0
+	move.b tkabi.CB_OUTPUT_PTR(a0), d0
+	moveq #0, d1
+	move.b 21(a0), d1
+	lsl.w #8, d1
+	or.w d1, d0
+	adda.w d0, a0
+	rts
+	.bend  ; readOutputPtrV1
+
 ; Read tkpkg last-error length from the control block named by an opasm service frame.
 ;
 ; Inputs:
@@ -131,6 +150,25 @@ readLastErrorLenV1	.block
 	or.w d1, d0
 	rts
 	.bend  ; readLastErrorLenV1
+
+; Read tkpkg last-error pointer from the control block named by an opasm service frame.
+;
+; Inputs:
+; - A0: OPASM_SERVICE_* frame.
+;
+; Outputs:
+; - A0: tkpkg last-error buffer pointer.
+readLastErrorPtrV1	.block
+	movea.l abi.OPASM_SERVICE_CONTROL_BLOCK_PTR(a0), a0
+	moveq #0, d0
+	move.b tkabi.CB_LAST_ERROR_PTR(a0), d0
+	moveq #0, d1
+	move.b 29(a0), d1
+	lsl.w #8, d1
+	or.w d1, d0
+	adda.w d0, a0
+	rts
+	.bend  ; readLastErrorPtrV1
 
 	.priv
 

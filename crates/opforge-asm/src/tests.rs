@@ -12105,6 +12105,12 @@ fn motorola68020_item6_7_native_tkpkg_surface_lookup_stays_isolated_behind_table
             "BSR.W tkpkgMselCurrentShapeCodeV1",
             "TST.B D5",
             "BSR.W tkpkgMselCurrentModeParenCodeV1",
+            "TST.B D6",
+            "BNE.S haveOperandSurface",
+            "TST.B D5",
+            "BNE.S haveOperandSurface",
+            "BSR.W tkpkgMselCurrentModeIndexSuffixV1",
+            "MOVE.B D0, D6",
         ]
     ));
     assert!(source_contains_in_order(
@@ -12123,6 +12129,11 @@ fn motorola68020_item6_7_native_tkpkg_surface_lookup_stays_isolated_behind_table
             "CurrentModeParenCodeTable",
             "TkpkgMselModeIndexedIndirectXText",
             "TkpkgMselModeIndirectIndexedYText",
+            "tkpkgMselCurrentModeIndexSuffixV1 .BLOCK",
+            "MOVEA.L EncodeSelectedMselModePtr, A1",
+            "MOVE.W EncodeSelectedMselModeLen, D0",
+            "CMPI.B #'X', D0",
+            "CMPI.B #'Y', D0",
         ]
     ));
 
@@ -12220,7 +12231,7 @@ fn motorola68020_item6_7_bare_label_fallback_detects_second_token_before_operand
 }
 
 #[test]
-fn motorola68020_item6_7_selected_eval_request_prefers_expr_span_slice_when_present() {
+fn motorola68020_item6_7_selected_eval_request_uses_operand_surface_span() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
     let source = fs::read_to_string(&asm_path).expect("read native opasm engine source");
@@ -12231,14 +12242,58 @@ fn motorola68020_item6_7_selected_eval_request_prefers_expr_span_slice_when_pres
         &[
             "prepareSelectedEvaluateRequestV1",
             "JSR opasmEngineGetStatementExprMetadataV1",
-            "MOVE.L D0, D5",
-            "BEQ.S syntheticRequest",
-            "MOVE.L OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_START(SP), D2",
-            "MOVE.L OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_END(SP), D3",
-            "JSR getStatementSourceLineTextV1",
-            "MOVEA.L A0, A2",
-            "MOVE.L D1, D4",
-            "MOVEQ #1, D5",
+            "MOVEQ #0, D5",
+            "buildRequest",
+            "TST.L D5",
+            "BEQ.S useStatementLine",
+            "syntheticSpan",
+            "TST.L D4",
+            "MOVEQ #1, D2",
+            "MOVE.L D4, D3",
+            "ADDQ.L #1, D3",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item6_7_selected_shape_inference_uses_request_span_slice() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native opasm engine source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "opasmEngineInferSelectedShapeForEvalRequestV1",
+            "MOVE.B 8(A0), D0",
+            "MOVE.B 4(A0), D1",
+            "MOVE.B 5(A0), D2",
+            "LSL.W #8, D2",
+            "OR.W D2, D1",
+            "MOVE.B 6(A0), D2",
+            "MOVE.B 7(A0), D3",
+            "LSL.W #8, D3",
+            "OR.W D3, D2",
+            "LEA 9(A0, D0.W), A0",
+            "TST.W D1",
+            "CMP.W D1, D2",
+            "MOVE.W D1, D4",
+            "SUBQ.W #1, D4",
+            "MOVEA.L A0, A1",
+            "ADDA.W D4, A1",
+            "MOVE.W D2, D5",
+            "SUB.W D1, D5",
+            "MOVE.W D5, D2",
+            "MOVE.W D4, D6",
+            "MOVEA.L A1, A0",
+            "scanBack",
+            "CMPI.B #'#', D3",
+            "CMPI.B #'(', D3",
+            "includePrefix",
+            "SUBQ.L #1, A0",
+            "ADDQ.W #1, D2",
+            "trimLeading",
         ]
     ));
 }
@@ -12261,7 +12316,6 @@ fn motorola68020_item6_7_pair_direct_shape_inference_covers_bit_branches() {
             "LEA OpasmEngineSelectedShapePairDirectText, A0",
         ]
     ));
-
     assert!(source_contains_in_order(
         &source,
         &[
@@ -12276,6 +12330,28 @@ fn motorola68020_item6_7_pair_direct_shape_inference_covers_bit_branches() {
             "CMPI.B #'7', D4",
             "yes",
             "MOVEQ #1, D0",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item6_7_extension_writer_preserves_request_len_for_shape_inference() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native opasm engine source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "prepareEvaluateExpressionExtensionV1",
+            "MOVE.W D0, D2",
+            "MOVEA.L A1, A3",
+            "JSR opasmEngineWriteEvaluateExpressionExtensionBaseV1",
+            "MOVE.W D2, D0",
+            "JSR opasmEngineInferSelectedShapeForEvalRequestV1",
+            "MOVEA.L A3, A1",
+            "ADDA.W #16, A1",
         ]
     ));
 }
@@ -12701,6 +12777,64 @@ fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label
     assert!(listing.contains("STATUS pass2-ok"));
     assert!(listing.contains("LABEL"));
     assert!(listing.contains("OPC-NCLI021: duplicate native label"));
+}
+
+#[test]
+fn motorola68020_opasm_driver_uses_tkpkg_output_and_error_pointers() {
+    let repo_root = workspace_root();
+    let driver_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
+    let bridge_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_tkpkg_bridge.asm");
+    let service_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm");
+    let driver = fs::read_to_string(&driver_path).expect("read opasm assembly driver source");
+    let bridge = fs::read_to_string(&bridge_path).expect("read opasm tkpkg bridge source");
+    let service = fs::read_to_string(&service_path).expect("read tkpkg service source");
+
+    assert!(bridge.contains("readOutputPtrV1\t.block"));
+    assert!(bridge.contains("move.b tkabi.CB_OUTPUT_PTR(a0), d0"));
+    assert!(bridge.contains("readLastErrorPtrV1\t.block"));
+    assert!(bridge.contains("move.b tkabi.CB_LAST_ERROR_PTR(a0), d0"));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "jsr tkpkg.dispatchEncodeSelectedV1",
+            "move.w d2, d4",
+            "tst.b d0",
+            "move.w d1, d6",
+            "jsr tkpkg.readOutputPtrV1",
+            "jsr eng.opasmEngineAppendImageBytesV1",
+            "moveq #abi.OPASM_EVENT_SELECTOR_STATUS_OK, d0",
+            "bsr.w appendKindEvent",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "serviceFail",
+            "jsr tkpkg.readLastErrorPtrV1",
+            "clr.b 0(a0, d4.W)",
+            "bsr.w emitSelectorDiagnostic",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "emitSelectorDiagnostic\t.block",
+            "jsr tkpkg.readLastErrorPtrV1",
+            "lea DriverSelectorUnknownRawText, a1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "encodeSelectedInstructionOk",
+            "move.w d1, EncodeSelectedOutputLen.l",
+            "bsr.w tkpkgServiceWriteClearInputFieldsV1",
+            "bsr.w tkpkgServiceWriteClearOutputFieldsV1",
+            "move.w EncodeSelectedOutputLen.l, d1",
+            "move.b d1, abi.CB_OUTPUT_LEN(a0)",
+        ]
+    ));
 }
 
 #[test]

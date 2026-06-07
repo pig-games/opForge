@@ -594,19 +594,23 @@ opasmEngineWriteEvaluateExpressionExtensionBaseV1	.block
 ; CCR:
 ; - reflects D0 on return.
 prepareEvaluateExpressionExtensionV1	.block
-	movem.l d1/a0-a1, -(sp)
+	movem.l d1-d2/a0-a1/a3, -(sp)
+	move.w d0, d2
+	movea.l a1, a3
 	jsr opasmEngineWriteEvaluateExpressionExtensionBaseV1
+	move.w d2, d0
 	jsr opasmEngineInferSelectedShapeForEvalRequestV1
 	; Keep the explicit length probe: this branches on whether a selected-shape
 	; string exists, not on a status-return contract.
 	tst.w d0
 	beq.s done
+	movea.l a3, a1
 	adda.w #16, a1
 	move.l a0, (a1)
 	move.l d0, 4(a1)
 
 done
-	movem.l (sp)+, d1/a0-a1
+	movem.l (sp)+, d1-d2/a0-a1/a3
 	moveq #0, d0
 	rts
 	.bend  ; prepareEvaluateExpressionExtensionV1
@@ -974,32 +978,6 @@ prepareSelectedEvaluateRequestV1	.block
 	moveq #0, d0
 	move.w d7, d0
 	jsr opasmEngineGetStatementExprMetadataV1
-	move.l d0, d5
-	beq.s syntheticRequest
-	move.l OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_START(sp), d2
-	move.l OPASM_ENGINE_SELECTED_REQ_EXPR_SPAN_END(sp), d3
-	cmp.l d2, d3
-	bls.s syntheticRequest
-	moveq #0, d0
-	move.w d7, d0
-	jsr getStatementSourceLineTextV1
-	tst.l d0
-	beq.s syntheticRequest
-	move.l d0, d1
-	move.l d2, d0
-	subq.l #1, d0
-	cmp.l d1, d0
-	bhs.s syntheticRequest
-	move.l d3, d0
-	subq.l #1, d0
-	cmp.l d1, d0
-	bhi.s syntheticRequest
-	movea.l a0, a2
-	move.l d1, d4
-	moveq #1, d5
-	bra.s buildRequest
-
-syntheticRequest
 	moveq #0, d5
 
 buildRequest
@@ -1144,13 +1122,67 @@ opasmEngineInferSelectedShapeForEvalRequestV1	.block
 	movea.l a2, a0
 	moveq #0, d0
 	move.b 8(a0), d0
+	moveq #0, d1
+	move.b 4(a0), d1
 	moveq #0, d2
-	move.w d7, d2
-	subi.w #9, d2
+	move.b 5(a0), d2
+	lsl.w #8, d2
+	or.w d2, d1
+	moveq #0, d2
+	move.b 6(a0), d2
+	moveq #0, d3
+	move.b 7(a0), d3
+	lsl.w #8, d3
+	or.w d3, d2
+	moveq #0, d5
+	move.w d7, d5
+	subi.w #9, d5
 	bcs.w none
-	sub.w d0, d2
+	sub.w d0, d5
 	bcs.w none
 	lea 9(a0, d0.w), a0
+	tst.w d1
+	beq.w none
+	cmp.w d1, d2
+	bls.w none
+	move.w d1, d4
+	subq.w #1, d4
+	cmp.w d5, d4
+	bhs.w none
+	move.w d2, d3
+	subq.w #1, d3
+	cmp.w d5, d3
+	bhi.w none
+	movea.l a0, a1
+	adda.w d4, a1
+	move.w d2, d5
+	sub.w d1, d5
+	move.w d5, d2
+	move.w d4, d6
+	movea.l a1, a0
+
+scanBack
+	tst.w d6
+	beq.s trimLeading
+	move.b -1(a1), d3
+	cmpi.b #' ', d3
+	beq.s scanBackOne
+	cmpi.b #9, d3
+	beq.s scanBackOne
+	cmpi.b #'#', d3
+	beq.s includePrefix
+	cmpi.b #'(', d3
+	beq.s includePrefix
+	bra.s trimLeading
+
+scanBackOne
+	subq.l #1, a1
+	subq.w #1, d6
+	bra.s scanBack
+
+includePrefix
+	subq.l #1, a0
+	addq.w #1, d2
 
 trimLeading
 	tst.w d2

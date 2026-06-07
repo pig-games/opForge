@@ -7,6 +7,7 @@ pub mod module;
 mod compatibility;
 mod fpu_capability;
 mod handler;
+mod operand_surface;
 
 pub mod operand;
 pub mod state;
@@ -18,6 +19,7 @@ pub(crate) use fpu_capability::{deferred_fpu_message_for_cpu, validate_fpu_targe
 pub(crate) use handler::EffectiveAddressKind;
 pub use handler::M68KFamilyHandler;
 pub use operand::{FamilyOperand, Operand};
+pub use operand_surface::parse_runtime_operand_surface_expr;
 pub use table::{
     has_fpu_mnemonic, has_m68010_mnemonic, has_m68020_mnemonic, has_m68080_mnemonic, has_mnemonic,
     parse_fpu_mnemonic, parse_m68010_mnemonic, parse_m68020_mnemonic, parse_m68080_mnemonic,

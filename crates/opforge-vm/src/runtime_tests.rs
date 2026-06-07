@@ -2315,6 +2315,38 @@ fn parser_vm_v2_parity_exvm_operand_expr_range_preserves_wrappers_with_core_fail
 }
 
 #[test]
+fn execution_model_expr_parser_vm_routes_m68k_postincrement_through_family_surface_hook() {
+    let registry = mos6502_and_motorola68000_registry();
+    let model = HierarchyExecutionModel::from_registry(&registry).expect("execution model build");
+    let register_checker = register_checker_none();
+    let (line, _, _) = crate::vm_opasm::parse_statement_line_with_model(
+        &model,
+        "m68000",
+        None,
+        "    MOVE.B (A0)+,D0",
+        1,
+        &register_checker,
+    )
+    .expect("m68k postincrement operand should parse through family surface hook");
+
+    match line {
+        LineAst::Statement(statement) => {
+            assert_eq!(statement.mnemonic.as_deref(), Some("MOVE.B"));
+            assert_eq!(statement.operands.len(), 2);
+            assert_eq!(
+                expression_contract_shape(&statement.operands[0]),
+                "Unary(Plus,Indirect(Identifier))"
+            );
+            assert_eq!(
+                expression_contract_shape(&statement.operands[1]),
+                "Identifier"
+            );
+        }
+        other => panic!("expected m68k statement, got {other:?}"),
+    }
+}
+
+#[test]
 fn execution_model_compile_expression_program_vm_opt_in_bypasses_core_parser_failpoint() {
     struct FailpointReset;
 
@@ -6374,6 +6406,27 @@ fn generic_selector_runtime_files_do_not_contain_m65816_selector_vocabulary() {
                 "generic selector runtime file {path} contains banned M65816 selector term {term}"
             );
         }
+    }
+}
+
+#[test]
+fn generic_vm_opasm_runtime_file_does_not_contain_m68k_operand_shape_vocabulary() {
+    let banned_terms = [
+        "family_allows_m68k_operand_shapes",
+        "parse_m68k_",
+        "is_m68k_",
+        "\"TEX8\"",
+        "\"CAS2\"",
+        "\"DIVSL\"",
+        "\"BFINS\"",
+    ];
+
+    let source = include_str!("vm_opasm.rs");
+    for term in banned_terms {
+        assert!(
+            !source.contains(term),
+            "generic vm_opasm runtime file contains banned M68K operand-shape term {term}"
+        );
     }
 }
 

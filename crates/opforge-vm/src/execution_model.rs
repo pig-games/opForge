@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use opcore::expr_vm::PortableExprBudgets;
 use opcore::parser::{Expr, ParseError};
+use opcore::tokenizer::{Span, Token};
 use package::{
     HierarchyChunks, ModeSelectorDescriptor, DIAG_OPTHREAD_FORCE_UNSUPPORTED_6502,
     DIAG_OPTHREAD_FORCE_UNSUPPORTED_65C02, DIAG_OPTHREAD_INVALID_FORCE_OVERRIDE,
@@ -77,6 +78,19 @@ pub type ExprResolverFn = fn(
     &[Expr],
     &dyn AssemblerContext,
 ) -> Result<Option<Vec<VmEncodeCandidate>>, RuntimeBridgeError>;
+
+pub(crate) type OperandSurfaceExprSubparser<'a> =
+    dyn for<'tokens> FnMut(&'tokens [Token], Span, Option<String>) -> Result<Expr, ParseError> + 'a;
+
+pub(crate) type OperandSurfaceExprParserFn = fn(
+    &[Token],
+    Option<&str>,
+    usize,
+    Span,
+    Option<&str>,
+    &mut OperandSurfaceExprSubparser<'_>,
+    &mut OperandSurfaceExprSubparser<'_>,
+) -> Result<Option<Expr>, ParseError>;
 
 /// Generic family adapter contract for expr-based parse/resolve candidate generation.
 pub trait FamilyExprResolver: std::fmt::Debug + Send + Sync {
@@ -303,6 +317,24 @@ fn default_expr_resolvers() -> HashMap<String, ExprResolverEntry> {
     expr_resolvers
 }
 
+fn register_operand_surface_parser(
+    map: &mut HashMap<String, OperandSurfaceExprParserFn>,
+    family_id: &str,
+    parser: OperandSurfaceExprParserFn,
+) {
+    map.insert(family_id.to_ascii_lowercase(), parser);
+}
+
+fn default_operand_surface_parsers() -> HashMap<String, OperandSurfaceExprParserFn> {
+    let mut parsers = HashMap::new();
+    register_operand_surface_parser(
+        &mut parsers,
+        "motorola68000",
+        families::m68k::parse_runtime_operand_surface_expr,
+    );
+    parsers
+}
+
 #[derive(Debug)]
 struct OperandSetInstructionAdapter<'a> {
     cpu_id: &'a str,
@@ -334,6 +366,7 @@ impl PortableInstructionAdapter for OperandSetInstructionAdapter<'_> {
 pub struct HierarchyExecutionModel {
     core: RuntimeModelCore,
     expr_resolvers: HashMap<String, ExprResolverEntry>,
+    operand_surface_parsers: HashMap<String, OperandSurfaceExprParserFn>,
     parser_vm_route_cache: Mutex<HashMap<ParserVmRouteCacheKey, Arc<ResolvedParserVmRoute>>>,
     tokenizer_vm_route_cache:
         Mutex<HashMap<TokenizerVmRouteCacheKey, Arc<ResolvedTokenizerVmRoute>>>,
@@ -344,6 +377,7 @@ impl HierarchyExecutionModel {
         Self {
             core,
             expr_resolvers: default_expr_resolvers(),
+            operand_surface_parsers: default_operand_surface_parsers(),
             parser_vm_route_cache: Mutex::new(HashMap::new()),
             tokenizer_vm_route_cache: Mutex::new(HashMap::new()),
         }
@@ -403,6 +437,33 @@ impl HierarchyExecutionModel {
         dialect_override: Option<&str>,
     ) -> Result<ResolvedHierarchy, RuntimeBridgeError> {
         Ok(self.core.resolve_pipeline(cpu_id, dialect_override)?)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn parse_family_operand_surface_expr(
+        &self,
+        family_id: &str,
+        tokens: &[Token],
+        mnemonic: Option<&str>,
+        operand_index: usize,
+        end_span: Span,
+        end_token_text: Option<&str>,
+        parse_expr: &mut OperandSurfaceExprSubparser<'_>,
+        parse_wrapped_or_expr: &mut OperandSurfaceExprSubparser<'_>,
+    ) -> Result<Option<Expr>, ParseError> {
+        let key = family_id.to_ascii_lowercase();
+        let Some(parser) = self.operand_surface_parsers.get(key.as_str()) else {
+            return Ok(None);
+        };
+        parser(
+            tokens,
+            mnemonic,
+            operand_index,
+            end_span,
+            end_token_text,
+            parse_expr,
+            parse_wrapped_or_expr,
+        )
     }
 
     pub fn register_checker_for_resolved(&self, resolved: &ResolvedHierarchy) -> RegisterChecker {

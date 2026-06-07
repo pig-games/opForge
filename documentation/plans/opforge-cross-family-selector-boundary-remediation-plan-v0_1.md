@@ -189,7 +189,7 @@ This plan also classifies the current Motorola 68000 situation precisely:
     - package-surface changes are absent unless Item 2 proves them necessary
     - guardrails distinguish temporary adapter delegation from fully generic operand-plan execution
 
-- [ ] Item 4: move Motorola 68000 operand-shape admission out of the generic `.opasm` VM parser
+- [x] Item 4: move Motorola 68000 operand-shape admission out of the generic `.opasm` VM parser
   - Source requirement or finding IDs: F3; generic M68K operand-shape gate in `crates/opforge-vm/src/vm_opasm.rs`.
   - Expected files:
     - `crates/opforge-vm/src/vm_opasm.rs`

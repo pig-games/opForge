@@ -20,6 +20,14 @@ Native VM implementations follow the same rule: they may consume package-defined
 selector and operand-plan metadata, but they must not become package builders or
 family-specific selector resolvers.
 
+Current native transitional seam:
+- `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm` still contains one
+  table-driven lookup seam that collapses package-owned selector shape and mode
+  tags into compact local surface codes before operand evaluation.
+- That seam is transitional and must stay isolated. New native selector work
+  should extend package data or package-owned adapters instead of reintroducing
+  per-shape compare ladders or scattered tag-name helpers.
+
 Current deterministic enforcement focuses on architecture-neutral core parser,
 shared type, root `src/`, workflow implementation paths, and `native/**`.
 Native assembly is scanned structurally for implementation-owned labels,

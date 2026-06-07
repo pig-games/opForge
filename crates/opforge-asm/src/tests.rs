@@ -12083,6 +12083,64 @@ fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() 
 }
 
 #[test]
+fn motorola68020_item6_7_native_tkpkg_surface_lookup_stays_isolated_behind_tables() {
+    let repo_root = workspace_root();
+    let asm_path = repo_root.join("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm");
+    let source = fs::read_to_string(&asm_path).expect("read native tkpkg service source");
+    let source = format_tokvm_asm_fragment(&source);
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "buildNone",
+            "BSR.W tkpkgMselCurrentShapeCodeV1",
+            "CMPI.B #TKPKG_MSEL_SURFACE_ACCUMULATOR, D0",
+            "BSR.W tkpkgMselExprIsAccumulatorAV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "tkpkgMselEvalOperandV1 .BLOCK",
+            "BSR.W tkpkgMselCurrentShapeCodeV1",
+            "TST.B D5",
+            "BSR.W tkpkgMselCurrentModeParenCodeV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "tkpkgMselLookupTaggedTextCodeV1 .BLOCK",
+            "CurrentShapeCodeTable",
+            "TkpkgMselShapeImmediateText",
+            "TkpkgMselShapeAccumulatorText",
+            "TkpkgMselShapeDirectXText",
+            "TkpkgMselShapeDirectYText",
+            "TkpkgMselShapeIndirectText",
+            "TkpkgMselShapeIndexedIndirectXText",
+            "TkpkgMselShapeIndirectIndexedYText",
+            "tkpkgMselCurrentModeParenCodeV1 .BLOCK",
+            "CurrentModeParenCodeTable",
+            "TkpkgMselModeIndexedIndirectXText",
+            "TkpkgMselModeIndirectIndexedYText",
+        ]
+    ));
+
+    for removed_helper in [
+        "tkpkgMselCurrentShapeImmediateV1",
+        "tkpkgMselCurrentShapeAccumulatorV1",
+        "tkpkgMselCurrentShapeIndexSuffixV1",
+        "tkpkgMselCurrentShapeParenModeV1",
+        "tkpkgMselCurrentModeParenModeV1",
+    ] {
+        assert!(
+            !source.contains(removed_helper),
+            "Item 6 should retire piecemeal native shape helper `{removed_helper}`"
+        );
+    }
+}
+
+#[test]
 fn motorola68020_item6_7_prvm_expr_requests_preserve_multi_token_operand_spans() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/prvm/prvm_runtime.asm");

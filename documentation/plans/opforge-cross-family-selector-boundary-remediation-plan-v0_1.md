@@ -228,7 +228,7 @@ This plan also classifies the current Motorola 68000 situation precisely:
     - existing native parity tests for single-operand and branch-plan paths remain green
     - any remaining shape-specific helper debt is left intentionally for Item 6 and documented as such
 
-- [ ] Item 6: close the remaining native Motorola 68000 shape-specific selector helpers
+- [x] Item 6: close the remaining native Motorola 68000 shape-specific selector helpers
   - Source requirement or finding IDs: F4b; hardcoded shape helpers and pair-specific operand handling in `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.
   - Expected files:
     - `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`

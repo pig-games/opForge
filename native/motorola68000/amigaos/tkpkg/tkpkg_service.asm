@@ -21,6 +21,14 @@ TKPKG_SELECTED_STATUS_NO_OUTPUT      = 1
 TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC = 2
 TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS = 3
 TKPKG_SELECTED_STATUS_OPERAND_ERROR  = 4
+TKPKG_MSEL_SURFACE_NONE             = 0
+TKPKG_MSEL_SURFACE_IMMEDIATE        = 1
+TKPKG_MSEL_SURFACE_ACCUMULATOR      = 2
+TKPKG_MSEL_SURFACE_DIRECT_X         = 3
+TKPKG_MSEL_SURFACE_DIRECT_Y         = 4
+TKPKG_MSEL_SURFACE_INDIRECT         = 5
+TKPKG_MSEL_SURFACE_INDEXED_INDIRECT_X = 6
+TKPKG_MSEL_SURFACE_INDIRECT_INDEXED_Y = 7
 TKPKG_EVAL_EXPR_EXTENSION_RESULT_OFF = 16
 TKPKG_EVAL_EXPR_EXTENSION_TOTAL_SIZE = 20
 EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN    = 45
@@ -1565,8 +1573,9 @@ tryUnstablePassOneOperand
 buildNone
 	tst.w EncodeSelectedMselExprLen
 	beq.s buildNoneOperand
-	bsr.w tkpkgMselCurrentShapeAccumulatorV1
-	beq.s noOutput
+	bsr.w tkpkgMselCurrentShapeCodeV1
+	cmpi.b #TKPKG_MSEL_SURFACE_ACCUMULATOR, d0
+	bne.s noOutput
 	bsr.w tkpkgMselExprIsAccumulatorAV1
 	beq.s noOutput
 
@@ -1656,13 +1665,48 @@ tkpkgMselPlanEqualsV1	.block
 	.bend  ; tkpkgMselPlanEqualsV1
 
 tkpkgMselEvalOperandV1	.block
-	bsr.w tkpkgMselCurrentShapeImmediateV1
-	move.b d0, d7
-	bsr.w tkpkgMselCurrentShapeIndexSuffixV1
-	move.b d0, d6
-	bsr.w tkpkgMselCurrentShapeParenModeV1
+	bsr.w tkpkgMselCurrentShapeCodeV1
+	moveq #0, d7
+	moveq #0, d6
+	moveq #0, d5
+	cmpi.b #TKPKG_MSEL_SURFACE_IMMEDIATE, d0
+	bne.s checkDirectX
+	moveq #1, d7
+	bra.s haveShapeSurface
+
+checkDirectX
+	cmpi.b #TKPKG_MSEL_SURFACE_DIRECT_X, d0
+	bne.s checkDirectY
+	moveq #'x', d6
+	bra.s haveShapeSurface
+
+checkDirectY
+	cmpi.b #TKPKG_MSEL_SURFACE_DIRECT_Y, d0
+	bne.s checkIndirect
+	moveq #'y', d6
+	bra.s haveShapeSurface
+
+checkIndirect
+	cmpi.b #TKPKG_MSEL_SURFACE_INDIRECT, d0
+	bne.s checkIndexedIndirectX
+	moveq #1, d5
+	bra.s haveShapeSurface
+
+checkIndexedIndirectX
+	cmpi.b #TKPKG_MSEL_SURFACE_INDEXED_INDIRECT_X, d0
+	bne.s checkSurfaceIndexedY
+	moveq #2, d5
+	bra.s haveShapeSurface
+
+checkSurfaceIndexedY
+	cmpi.b #TKPKG_MSEL_SURFACE_INDIRECT_INDEXED_Y, d0
+	bne.s haveShapeSurface
+	moveq #3, d5
+
+haveShapeSurface
+	tst.b d5
 	bne.s haveParenMode
-	bsr.w tkpkgMselCurrentModeParenModeV1
+	bsr.w tkpkgMselCurrentModeParenCodeV1
 
 haveParenMode
 	move.b d0, d5
@@ -1730,34 +1774,86 @@ operandError
 	rts
 	.bend  ; tkpkgMselEvalOperandV1
 
-tkpkgMselCurrentShapeImmediateV1	.block
-	movea.l EncodeSelectedCurrentShapePtr, a1
-	move.w EncodeSelectedCurrentShapeLen, d0
-	lea TkpkgMselShapeImmediateText, a2
-	moveq #9, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	rts
-	.bend  ; tkpkgMselCurrentShapeImmediateV1
-
+; Transitional native seam:
+; - Package-owned shape and mode tags are collapsed into compact local surface
+;   codes here before operand evaluation mutates source spans.
+; - Keep this lookup table-driven; do not reintroduce per-shape compare ladders
+;   elsewhere in tkpkg selector runtime code.
+;
 ; Inputs:
-; - Uses the current selected-shape text stored in EncodeSelectedCurrentShapePtr/Len.
+; - A0: table of (`.long text`, `.word len`, `.byte code`, `.byte pad`) entries.
+; - A1/D0: active text pointer and length.
+; - D7: entry count minus one for DBF iteration.
 ;
 ; Outputs:
-; - D0: 1 when the current shape is `accumulator`, 0 otherwise.
+; - D0: matched surface code or `TKPKG_MSEL_SURFACE_NONE`.
 ;
 ; Clobbers:
-; - D0-D4/A1-A2/CCR
+; - D0-D5/D7/A0-A4/CCR
 ;
 ; CCR:
 ; - Reflects D0 on return.
-tkpkgMselCurrentShapeAccumulatorV1	.block
+tkpkgMselLookupTaggedTextCodeV1	.block
+	movem.l d1-d5/a1-a4, -(sp)
+	movea.l a0, a3
+	movea.l a1, a4
+	move.w d0, d5
+	move.w d7, d4
+
+loop
+	movea.l a4, a1
+	move.w d5, d0
+	movea.l (a3)+, a2
+	moveq #0, d1
+	move.w (a3)+, d1
+	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	bne.s match
+	addq.l #2, a3
+	dbf d4, loop
+	moveq #TKPKG_MSEL_SURFACE_NONE, d0
+	bra.s return
+
+match
+	moveq #0, d0
+	move.b (a3), d0
+
+return
+	movem.l (sp)+, d1-d5/a1-a4
+	rts
+	.bend  ; tkpkgMselLookupTaggedTextCodeV1
+
+tkpkgMselCurrentShapeCodeV1	.block
 	movea.l EncodeSelectedCurrentShapePtr, a1
 	move.w EncodeSelectedCurrentShapeLen, d0
-	lea TkpkgMselShapeAccumulatorText, a2
-	moveq #11, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
+	lea CurrentShapeCodeTable(pc), a0
+	moveq #6, d7
+	bsr.w tkpkgMselLookupTaggedTextCodeV1
 	rts
-	.bend  ; tkpkgMselCurrentShapeAccumulatorV1
+
+	.align 2
+CurrentShapeCodeTable
+	.long TkpkgMselShapeImmediateText
+	.word 9
+	.byte TKPKG_MSEL_SURFACE_IMMEDIATE, 0
+	.long TkpkgMselShapeAccumulatorText
+	.word 11
+	.byte TKPKG_MSEL_SURFACE_ACCUMULATOR, 0
+	.long TkpkgMselShapeDirectXText
+	.word 8
+	.byte TKPKG_MSEL_SURFACE_DIRECT_X, 0
+	.long TkpkgMselShapeDirectYText
+	.word 8
+	.byte TKPKG_MSEL_SURFACE_DIRECT_Y, 0
+	.long TkpkgMselShapeIndirectText
+	.word 8
+	.byte TKPKG_MSEL_SURFACE_INDIRECT, 0
+	.long TkpkgMselShapeIndexedIndirectXText
+	.word 18
+	.byte TKPKG_MSEL_SURFACE_INDEXED_INDIRECT_X, 0
+	.long TkpkgMselShapeIndirectIndexedYText
+	.word 18
+	.byte TKPKG_MSEL_SURFACE_INDIRECT_INDEXED_Y, 0
+	.bend  ; tkpkgMselCurrentShapeCodeV1
 
 ; Inputs:
 ; - Uses the current selected operand text stored in EncodeSelectedMselExprPtr/Len.
@@ -1823,112 +1919,26 @@ return
 	rts
 	.bend  ; tkpkgMselExprIsAccumulatorAV1
 
-tkpkgMselCurrentShapeIndexSuffixV1	.block
-	movea.l EncodeSelectedCurrentShapePtr, a1
-	move.w EncodeSelectedCurrentShapeLen, d0
-	lea TkpkgMselShapeDirectXText, a2
-	moveq #8, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	bne.s directX
-	movea.l EncodeSelectedCurrentShapePtr, a1
-	move.w EncodeSelectedCurrentShapeLen, d0
-	lea TkpkgMselShapeDirectYText, a2
-	moveq #8, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	bne.s directY
-	moveq #0, d0
-	rts
-
-directX
-	moveq #'x', d0
-	rts
-
-directY
-	moveq #'y', d0
-	rts
-	.bend  ; tkpkgMselCurrentShapeIndexSuffixV1
-
-; Inputs:
-; - Uses the current selected-shape text stored in EncodeSelectedCurrentShapePtr/Len.
-;
-; Outputs:
-; - D0: 0 when no paren mode is active, 1 for indirect, 2 for indexed-indirect-X,
-;   3 for indirect-indexed-Y.
-;
-; Clobbers:
-; - D0-D4/A1-A2/CCR
-;
-; CCR:
-; - Reflects D0 on return.
-tkpkgMselCurrentShapeParenModeV1	.block
-	movea.l EncodeSelectedCurrentShapePtr, a1
-	move.w EncodeSelectedCurrentShapeLen, d0
-	lea TkpkgMselShapeIndirectText, a2
-	moveq #8, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	bne.s indirect
-	movea.l EncodeSelectedCurrentShapePtr, a1
-	move.w EncodeSelectedCurrentShapeLen, d0
-	lea TkpkgMselShapeIndexedIndirectXText, a2
-	moveq #18, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	bne.s indexedIndirectX
-	movea.l EncodeSelectedCurrentShapePtr, a1
-	move.w EncodeSelectedCurrentShapeLen, d0
-	lea TkpkgMselShapeIndirectIndexedYText, a2
-	moveq #18, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	bne.s indirectIndexedY
-	moveq #0, d0
-	rts
-
-indirect
-	moveq #1, d0
-	rts
-
-indexedIndirectX
-	moveq #2, d0
-	rts
-
-indirectIndexedY
-	moveq #3, d0
-	rts
-	.bend  ; tkpkgMselCurrentShapeParenModeV1
-
-tkpkgMselCurrentModeParenModeV1	.block
+tkpkgMselCurrentModeParenCodeV1	.block
 	movea.l EncodeSelectedMselModePtr, a1
 	move.w EncodeSelectedMselModeLen, d0
-	lea TkpkgMselShapeIndirectText, a2
-	moveq #8, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	bne.s indirect
-	movea.l EncodeSelectedMselModePtr, a1
-	move.w EncodeSelectedMselModeLen, d0
-	lea TkpkgMselModeIndexedIndirectXText, a2
-	moveq #16, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	bne.s indexedIndirectX
-	movea.l EncodeSelectedMselModePtr, a1
-	move.w EncodeSelectedMselModeLen, d0
-	lea TkpkgMselModeIndirectIndexedYText, a2
-	moveq #16, d1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	bne.s indirectIndexedY
-	moveq #0, d0
+	lea CurrentModeParenCodeTable(pc), a0
+	moveq #2, d7
+	bsr.w tkpkgMselLookupTaggedTextCodeV1
 	rts
 
-indirect
-	moveq #1, d0
-	rts
-
-indexedIndirectX
-	moveq #2, d0
-	rts
-
-indirectIndexedY
-	moveq #3, d0
-	rts
-	.bend  ; tkpkgMselCurrentModeParenModeV1
+	.align 2
+CurrentModeParenCodeTable
+	.long TkpkgMselShapeIndirectText
+	.word 8
+	.byte TKPKG_MSEL_SURFACE_INDIRECT, 0
+	.long TkpkgMselModeIndexedIndirectXText
+	.word 16
+	.byte TKPKG_MSEL_SURFACE_INDEXED_INDIRECT_X, 0
+	.long TkpkgMselModeIndirectIndexedYText
+	.word 16
+	.byte TKPKG_MSEL_SURFACE_INDIRECT_INDEXED_Y, 0
+	.bend  ; tkpkgMselCurrentModeParenCodeV1
 
 tkpkgMselStripOuterParensV1	.block
 	movem.l d2-d3/a1, -(sp)

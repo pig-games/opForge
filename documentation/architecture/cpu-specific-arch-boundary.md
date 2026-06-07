@@ -20,6 +20,20 @@ Native VM implementations follow the same rule: they may consume package-defined
 selector and operand-plan metadata, but they must not become package builders or
 family-specific selector resolvers.
 
+Current 680x0 classification:
+- There is no current Motorola 68000 selector-bridge resolver leak in generic
+  runtime files.
+- `crates/opforge-families/src/m68k/operand_surface.rs` is the allowed
+  family-owned parser-boundary adapter for special 680x0 operand surfaces. That
+  adapter is still an active parser-boundary debt, but it is no longer generic
+  runtime derivation.
+- Generic runtime files such as
+  `crates/opforge-vm/src/execution_model/selector_bridge.rs` and
+  `crates/opforge-vm/src/vm_opasm.rs` must stay free of Motorola 68000
+  selector-shape derivation.
+- `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm` remains the only
+  active native transitional selector seam and must stay table-driven.
+
 Current native transitional seam:
 - `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm` still contains one
   table-driven lookup seam that collapses package-owned selector shape and mode

@@ -249,7 +249,7 @@ This plan also classifies the current Motorola 68000 situation precisely:
     - existing native parity tests for rel8, pair-direct bit-branch, and selected encode paths remain green
     - the architecture documentation records any residual native exception honestly if one still remains
 
-- [ ] Item 7: add cross-family guardrails and close the documentation gap
+- [x] Item 7: add cross-family guardrails and close the documentation gap
   - Source requirement or finding IDs: F5; architectural boundary clarification requested in this conversation.
   - Expected files:
     - `crates/opforge-vm/src/runtime_tests.rs`

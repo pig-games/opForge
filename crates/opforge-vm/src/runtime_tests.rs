@@ -6410,6 +6410,71 @@ fn generic_selector_runtime_files_do_not_contain_m65816_selector_vocabulary() {
 }
 
 #[test]
+fn generic_selector_runtime_guardrails_allow_family_owned_adapters_only() {
+    let generic_selector_bridge = include_str!("execution_model/selector_bridge.rs");
+    let generic_vm_opasm = include_str!("vm_opasm.rs");
+    let generic_execution_model = include_str!("execution_model.rs");
+    let intel_selector = include_str!("../../opforge-families/src/intel8080/selector.rs");
+    let m68k_operand_surface = include_str!("../../opforge-families/src/m68k/operand_surface.rs");
+
+    for term in [
+        "lookup_i8085_extension",
+        "lookup_z80_extension",
+        "mode_key_for_z80_",
+    ] {
+        assert!(
+            intel_selector.contains(term),
+            "family-owned Intel selector adapter should retain term {term}"
+        );
+        assert!(
+            !generic_selector_bridge.contains(term),
+            "generic selector bridge should not regain family-owned Intel term {term}"
+        );
+    }
+
+    for term in [
+        "parse_postincrement_operand",
+        "parse_predecrement_operand",
+        "parse_register_pair_operand",
+        "is_m68k_tex_mnemonic",
+    ] {
+        assert!(
+            m68k_operand_surface.contains(term),
+            "family-owned M68K operand adapter should retain term {term}"
+        );
+        assert!(
+            !generic_vm_opasm.contains(term),
+            "generic vm_opasm runtime should not regain family-owned M68K term {term}"
+        );
+    }
+
+    assert!(
+        generic_execution_model.contains("parse_runtime_operand_surface_expr"),
+        "execution model should keep the family-owned operand-surface hook registration"
+    );
+    assert!(
+        !generic_execution_model.contains("parse_postincrement_operand"),
+        "execution model registration should not inline family-owned M68K operand parsing"
+    );
+}
+
+#[test]
+fn generic_selector_runtime_documentation_records_current_motorola68000_boundary_classification() {
+    let doc = include_str!("../../../documentation/architecture/cpu-specific-arch-boundary.md");
+
+    for required in [
+        "no current Motorola 68000 selector-bridge resolver leak",
+        "family-owned parser-boundary adapter",
+        "native transitional selector seam",
+    ] {
+        assert!(
+            doc.contains(required),
+            "architecture boundary doc should record current Motorola 68000 classification phrase `{required}`"
+        );
+    }
+}
+
+#[test]
 fn generic_vm_opasm_runtime_file_does_not_contain_m68k_operand_shape_vocabulary() {
     let banned_terms = [
         "family_allows_m68k_operand_shapes",

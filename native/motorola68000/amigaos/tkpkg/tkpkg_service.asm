@@ -1294,26 +1294,22 @@ return
 
 tkpkgMselTryBuildCandidateV1	.block
 	movem.l d2-d7/a0-a6, -(sp)
-	lea TkpkgMselPlanNoneText, a2
-	moveq #4, d1
+	lea PlanDispatchTable(pc), a4
+	moveq #4, d7
+
+dispatchPlanLoop
+	movea.l (a4)+, a2
+	moveq #0, d1
+	move.w (a4)+, d1
+	addq.l #2, a4
 	bsr.w tkpkgMselPlanEqualsV1
-	bne.w buildNone
-	lea TkpkgMselPlanU8Text, a2
-	moveq #2, d1
-	bsr.w tkpkgMselPlanEqualsV1
-	bne.s tryU8
-	lea TkpkgMselPlanU16Text, a2
-	moveq #3, d1
-	bsr.w tkpkgMselPlanEqualsV1
-	bne.s tryU16
-	lea TkpkgMselPlanBranch8Text, a2
-	moveq #4, d1
-	bsr.w tkpkgMselPlanEqualsV1
-	bne.s tryBranchOffset8
-	lea TkpkgMselPlanPairU8Rel8Text, a2
-	moveq #12, d1
-	bsr.w tkpkgMselPlanEqualsV1
-	bne.w tryPairU8Rel8
+	beq.s dispatchPlanNext
+	movea.l (a4), a0
+	jmp (a0)
+
+dispatchPlanNext
+	adda.w #4, a4
+	dbf d7, dispatchPlanLoop
 	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
 	bra.w return
 
@@ -1580,15 +1576,15 @@ buildNoneOperand
 
 noOutput
 	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
-	bra.s return
+	bra.w return
 
 operandError
 	moveq #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
-	bra.s return
+	bra.w return
 
 buildOperand
 	bsr.w tkpkgMselWriteCandidateEnvelopeV1
-	bra.s return
+	bra.w return
 
 buildPairOperand
 	lea buffers.TokenScratchBuffer, a4
@@ -1616,6 +1612,29 @@ buildPairOperand
 	lea buffers.TokenScratchBuffer, a0
 	sub.l a0, d1
 	moveq #TKPKG_SELECTED_STATUS_OK, d0
+
+	.align 2
+PlanDispatchTable
+	.long TkpkgMselPlanNoneText
+	.word 4
+	.word 0
+	.long buildNone
+	.long TkpkgMselPlanU8Text
+	.word 2
+	.word 0
+	.long tryU8
+	.long TkpkgMselPlanU16Text
+	.word 3
+	.word 0
+	.long tryU16
+	.long TkpkgMselPlanBranch8Text
+	.word 4
+	.word 0
+	.long tryBranchOffset8
+	.long TkpkgMselPlanPairU8Rel8Text
+	.word 12
+	.word 0
+	.long tryPairU8Rel8
 
 return
 	movem.l (sp)+, d2-d7/a0-a6

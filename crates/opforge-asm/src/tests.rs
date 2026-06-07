@@ -11615,6 +11615,42 @@ fn motorola68020_item6_3_native_tkpkg_implements_rel8_as_generic_plan() {
 }
 
 #[test]
+fn motorola68020_item6_3_native_tkpkg_dispatches_plan_tags_through_table() {
+    let service = tkpkg_amigaos_source("tkpkg_service.asm");
+
+    assert!(source_contains_in_order(
+        &service,
+        &[
+            "tkpkgMselTryBuildCandidateV1\t.block",
+            "lea planDispatchTable(pc), a4",
+            "moveq #4, d7",
+            "dispatchPlanLoop",
+            "movea.l (a4)+, a2",
+            "move.w (a4)+, d1",
+            "addq.l #2, a4",
+            "bsr.w tkpkgMselPlanEqualsV1",
+            "beq.s dispatchPlanNext",
+            "movea.l (a4), a0",
+            "jmp (a0)",
+            "dispatchPlanNext",
+            "adda.w #4, a4",
+            "dbf d7, dispatchPlanLoop",
+            "planDispatchTable",
+            ".long TkpkgMselPlanNoneText",
+            ".long buildNone",
+            ".long TkpkgMselPlanU8Text",
+            ".long tryU8",
+            ".long TkpkgMselPlanU16Text",
+            ".long tryU16",
+            ".long TkpkgMselPlanBranch8Text",
+            ".long tryBranchOffset8",
+            ".long TkpkgMselPlanPairU8Rel8Text",
+            ".long tryPairU8Rel8",
+        ],
+    ));
+}
+
+#[test]
 fn motorola68020_item6_4_tabl_operand_indexes_match_rust_and_native_harness() {
     let package_bytes = item6_mos_package_bytes_with_tabl_program(
         "lda",

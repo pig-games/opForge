@@ -208,7 +208,7 @@ This plan also classifies the current Motorola 68000 situation precisely:
     - Motorola 68000 operand-shape support remains behaviorally intact for the current M68K family corpus
     - parser-layer ownership is documented separately from selector-layer ownership so later audits do not confuse the two
 
-- [ ] Item 5: replace the native Motorola 68000 tkpkg generic plan-tag switchboard with a narrow package-driven dispatch slice
+- [x] Item 5: replace the native Motorola 68000 tkpkg generic plan-tag switchboard with a narrow package-driven dispatch slice
   - Source requirement or finding IDs: F4a; native transitional selector code in `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`; native Motorola 68000 rule pack in `agents/rules/native-68000.md`.
   - Expected files:
     - `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`

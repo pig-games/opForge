@@ -157,10 +157,24 @@ match this Rust-reference contract before expanding the matrix.
   `plan-quality-orchestrator` returns `PASS`.
 - Execute one work item at a time; each work item ends in exactly one new commit
   before the next work item starts.
-- Do not revert existing dirty worktree changes. Current local changes in
-  `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm` and
-  `crates/opforge-asm/src/tests.rs` must be preserved and treated as input
-  context unless the user explicitly directs otherwise.
+- Boundary update, 2026-06-07: the cross-family selector-boundary remediation
+  plan has completed and was archived. Generic Rust runtime selector leaks for
+  MOS, Intel, M65816, and M68K operand-surface parsing were moved behind
+  family-owned seams, and the native tkpkg selector surface is now documented
+  as one isolated table-driven transitional seam. Future work in this plan must
+  preserve that boundary and must not reintroduce selector or encoder ownership
+  into CLI glue, generic Rust VM code, or scattered native tag-name helpers.
+- Rust-reference implementation rule, 2026-06-07: before inventing native
+  logic for parser, selector, encoder, directive, source-graph, image, or
+  output behavior, implementation slices must identify the existing Rust path
+  that already solves the same problem and use it as the behavioral guide. A
+  native slice may diverge from that guide only for concrete differences between
+  Rust and a native 68020/AmigaOS codebase, such as memory layout, calling
+  convention, register pressure, table representation, fixed-buffer handling,
+  host file IO, or assembly control flow. Divergence must preserve the Rust
+  semantics, be recorded in the slice summary or plan evidence, and must not
+  create a second independent selector, encoder, directive, source-graph, image,
+  or output policy when the Rust implementation already owns that policy.
 - Do not install, import, add, recommend, vendor, execute, or otherwise touch
   `litellm`.
 - Keep the first implementation target focused on the attached MOS package
@@ -429,6 +443,27 @@ The intended native shape mirrors the Rust path:
     CPU-specific selection rules. If native CPU-specific selector or encoder
     logic appears necessary in any area other than hard-coded `.cpu`/`.org` test
     setup, stop and ask the user for approval before implementing it.
+  - Boundary impact update, 2026-06-07: the completed cross-family selector
+    remediation work closes the broad generic-runtime boundary risk that was
+    still open when Item 6 was decomposed. MOS selector normalization now lives
+    in family-owned runtime code, M68K operand-surface parsing is behind a
+    family hook, Intel and M65816 selector decisions are no longer open-coded in
+    generic selector runtime files, and
+    `documentation/architecture/cpu-specific-arch-boundary.md` records the
+    native tkpkg selector surface as a single table-driven transitional seam.
+    Item 6 remains about proving the Amiga-native MOS package-backed path and
+    removing or containing native selector/encoder residue; it no longer needs
+    to rediscover the already remediated cross-family Rust boundary issues.
+  - Rust-reference guardrail, 2026-06-07: Item 6 native selector and encoder
+    changes must start from the Rust package selector/encoder implementation,
+    package data, and VM tests as the reference behavior. Do not add native
+    shape inference, branch sizing, pair-operand handling, candidate admission,
+    or byte-emission logic because it appears quicker than tracing the Rust
+    path. Native-only code may exist only as an implementation translation of
+    the Rust/package behavior into 68020 assembly service boundaries, fixed
+    buffers, and AmigaOS host constraints, and the validation evidence must make
+    that translation visible through same-package identity checks and labeled
+    Rust/native byte output.
   - Expected files: `native/motorola68000/amigaos/opasm/*`,
     `native/motorola68000/amigaos/tkpkg/*`, package fixture references as
     needed, and focused tests in `crates/opforge-asm/src/tests.rs`. Expected
@@ -788,7 +823,16 @@ The intended native shape mirrors the Rust path:
         The current mismatch is isolated to missing `BBR/BBS` bytes
         (`0F 20 01` and `FF 21 01`) in the guest-native output while the same
         staged Item 6 package bytes pass the deterministic native parity path.
-      - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
+      - Boundary impact update, 2026-06-07: recent native boundary improvements
+        added deterministic guard coverage for adjusted `rel8` branch sizing,
+        `pair_u8_rel8` bit-branch handling, isolated tkpkg surface lookup
+        tables, multi-token PRVM expression spans, bare-label fallback handling,
+        selected-eval expression-span slicing, pair-direct shape inference, and
+        embedded native CLI package retention of `BBR0`/`BBS7` selector/table
+        entries. These improvements strengthen the known failure isolation, but
+        Item 6.7 still requires a green host FS-UAE exact-byte run before it can
+        be checked complete.
+  - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
     - Source requirement or finding IDs: `SR-CLI-BOUNDARY`,
       `SR-RUST-VM-ARCH`, `SR-6502-SELECTOR`, `SR-6502-ENCODER`; expected to
       close Item 6 without native MOS-specific selector or encoder residue.
@@ -796,11 +840,14 @@ The intended native shape mirrors the Rust path:
     - Full quality gates: source-inspection guard tests rejecting active native
       MOS mnemonic tables, addressing-mode tables, opcode tables, relative
       branch opcode logic, selector-stage fallback calls, and raw operand
-      spelling classifiers outside package/VM data; exact-byte parity tests
-      from Items 6.5 through 6.7, including their same-package-bytecode identity
-      checks and labeled Rust/native hexadecimal byte evidence; `cargo test -p
-      asm motorola68020_tkpkg_ -- --nocapture`; native formatter check; plus
-      `scripts/workflow/run_rust_quality_gate.sh`.
+      spelling classifiers outside package/VM data; guard tests proving the
+      tkpkg surface lookup remains isolated behind tables and the embedded
+      native CLI package retains required 65C02 bit-branch selector/table
+      entries; exact-byte parity tests from Items 6.5 through 6.7, including
+      their same-package-bytecode identity checks and labeled Rust/native
+      hexadecimal byte evidence; `cargo test -p vm generic_selector_runtime_ --
+      --nocapture`; `cargo test -p asm motorola68020_tkpkg_ -- --nocapture`;
+      native formatter check; plus `scripts/workflow/run_rust_quality_gate.sh`.
     - Plan-compliance review evidence: before commit, run
       `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 6.8
       slice summary, changed files, validation output, and a statement that no
@@ -825,6 +872,14 @@ The intended native shape mirrors the Rust path:
       does not add a native MOS mnemonic table, addressing-mode table, opcode
       table, relative-branch opcode table, selector-stage fallback call, or raw
       operand spelling classifier outside package/VM data.
+    - Boundary impact update, 2026-06-07: the separate cross-family boundary
+      remediation plan completed and archived after moving MOS selector
+      normalization, Intel selector synthesis, M65816 selector state/plans, and
+      M68K operand-surface admission behind family-owned seams. The remaining
+      Item 6.8 audit is therefore narrowed to this native first-run path: prove
+      no unapproved native MOS selector/encoder residue remains, prove the
+      documented tkpkg table-driven transitional seam stays isolated, and carry
+      the new generic-runtime guardrails as regression protection.
     - Interim host validation evidence: `cargo test -p asm
       motorola68020_item6_5_base_6502_fixtures_match_exact_native_and_rust_bytes
       -- --nocapture` passed with labeled Rust/native hexadecimal byte parity
@@ -863,6 +918,28 @@ The intended native shape mirrors the Rust path:
       `LABEL branch_test $00000918` and the bare source line `branch_test`,
       reporting `ERROR OPC-NCLI020: native pass engine failed`; the launcher
       stderr ends with `FS-UAE launcher exit status: signal: 9 (SIGKILL)`.
+
+- Boundary carry-forward for Items 7 through 18, 2026-06-07: the recent
+  boundary remediation does not reduce the remaining directive, source-graph,
+  output, or final FS-UAE scope. It does tighten how those steps must be
+  implemented: new directive/source/output behavior belongs in native opasm,
+  source graph, or output-artifact layers, with CLI changes limited to request
+  wiring and host IO. Any future touch to generic Rust VM selector/parser
+  runtime or native tkpkg selector surfaces must preserve the family-owned and
+  table-driven boundary documented in
+  `documentation/architecture/cpu-specific-arch-boundary.md` and should include
+  the relevant `generic_selector_runtime_`, `motorola68020_tkpkg_`, and
+  CPU-specific architecture-boundary guard evidence in addition to the
+  item-specific gates.
+- Rust-reference carry-forward for Items 7 through 18, 2026-06-07: directive,
+  source-graph, image, and output slices must treat the Rust implementation and
+  Rust reference tests as the design source. Before adding native behavior,
+  identify the Rust module or reference test that defines the behavior; copy the
+  semantics, diagnostics, ordering, and edge cases unless a real native 68020 or
+  AmigaOS constraint requires a different representation. Record any such
+  representation difference in the slice evidence, and add parity or guard
+  coverage so later agents do not replace Rust-guided behavior with an
+  independently invented native policy.
 - [ ] Item 7: Implement layout-control directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,
     `SR-OPASM-ENGINE`; expected to support the directives that directly shape
@@ -871,8 +948,9 @@ The intended native shape mirrors the Rust path:
     `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm` only for
     boundary wiring if needed, and directive parity tests.
   - Full quality gates: focused tests for `.org`, `.align`, `.fill`,
-    `.res/.ds`, `.region`, `.section`, and `.place`; `cargo test -p asm
-    motorola68020_opforge_native_cli_ -- --nocapture`; plus
+    `.res/.ds`, `.region`, `.section`, and `.place`; boundary regression check
+    when request wiring touches tkpkg or generic VM selector/parser surfaces;
+    `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; plus
     `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 7 slice
@@ -893,8 +971,9 @@ The intended native shape mirrors the Rust path:
     `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm` only for
     boundary wiring if needed, and directive parity tests.
   - Full quality gates: focused tests for `.byte/.db`, `.word/.dw`, `.long`,
-    `.text`, `.null`, and `.ptext`; `cargo test -p asm
-    motorola68020_opforge_native_cli_ -- --nocapture`; plus
+    `.text`, `.null`, and `.ptext`; boundary regression check when request
+    wiring touches tkpkg or generic VM selector/parser surfaces; `cargo test -p
+    asm motorola68020_opforge_native_cli_ -- --nocapture`; plus
     `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 8 slice
@@ -913,7 +992,9 @@ The intended native shape mirrors the Rust path:
     boundary wiring if needed, and directive parity tests.
   - Full quality gates: focused tests for `.const/.var/.set`, `.cpu`, and the
     first-run conditional behavior explicitly included in the acceptance matrix;
-    `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; plus
+    boundary regression check when CPU-selection request wiring touches tkpkg or
+    generic VM selector/parser surfaces; `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture`; plus
     `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 9 slice
@@ -930,8 +1011,9 @@ The intended native shape mirrors the Rust path:
     `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm`, and focused
     Rust/native source graph tests.
   - Full quality gates: focused tests for include roots, `.include`, missing
-    include diagnostics, and source line remapping; `cargo test -p asm
-    motorola68020_opforge_native_cli_ -- --nocapture`; plus
+    include diagnostics, and source line remapping; boundary regression check if
+    source graph request plumbing touches generic VM parser/selector runtime;
+    `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`; plus
     `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 10 slice
@@ -949,9 +1031,11 @@ The intended native shape mirrors the Rust path:
     `native/motorola68000/amigaos/opforge-cli/opforge_cli.asm`, FS-UAE fixture
     setup as needed, and focused source graph tests.
   - Full quality gates: focused tests for module roots, explicit and implicit
-    modules, module diagnostics, and module line remapping; `cargo test -p asm
-    motorola68020_opforge_native_cli_ -- --nocapture`; opt-in FS-UAE source
-    graph smoke; plus `scripts/workflow/run_rust_quality_gate.sh`.
+    modules, module diagnostics, and module line remapping; boundary regression
+    check if source graph request plumbing touches generic VM parser/selector
+    runtime; `cargo test -p asm motorola68020_opforge_native_cli_ --
+    --nocapture`; opt-in FS-UAE source graph smoke; plus
+    `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 11 slice
     summary, changed files, and validation output; require `PASS`.
@@ -967,9 +1051,11 @@ The intended native shape mirrors the Rust path:
   - Expected files: `native/motorola68000/amigaos/opasm/*`, FS-UAE fixture
     setup, and Rust/native source graph tests.
   - Full quality gates: focused tests for recursive `.use`, selected
-    imports/aliases, and missing/ambiguous module diagnostics; `cargo test -p
-    asm motorola68020_opforge_native_cli_ -- --nocapture`; opt-in FS-UAE
-    source graph smoke; plus `scripts/workflow/run_rust_quality_gate.sh`.
+    imports/aliases, and missing/ambiguous module diagnostics; boundary
+    regression check if import-resolution plumbing touches generic VM
+    parser/selector runtime; `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture`; opt-in FS-UAE source
+    graph smoke; plus `scripts/workflow/run_rust_quality_gate.sh`.
   - Plan-compliance review evidence: before commit, run
     `plan-compliance-reviewer` with `AGENTS.md`, this plan, the Item 12 slice
     summary, changed files, and validation output; require `PASS`.

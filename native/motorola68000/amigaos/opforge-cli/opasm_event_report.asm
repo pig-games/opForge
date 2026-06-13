@@ -125,6 +125,14 @@ labelDuplicate
 
 imageCapacity
 	move.l #strings.NativeImageCapacityText, d1
+	jsr dos.putStr
+	move.l abi.OPASM_EVENT_VALUE(a2), d0
+	beq.w done
+	move.l #strings.NativeImageCapacityRequestText, d1
+	jsr dos.putStr
+	move.l abi.OPASM_EVENT_VALUE(a2), d0
+	jsr text_output.opforgeNativeCliPutU16Decimal
+	move.l #strings.NewlineText, d1
 	bra.s reportText
 
 selectorOk

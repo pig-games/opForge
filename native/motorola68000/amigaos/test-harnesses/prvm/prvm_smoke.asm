@@ -171,7 +171,7 @@ buildRequestFrame
 	move.l #PRVM_SMOKE_PROGRAM_LEN, 48(a0)
 	lea ResultBuffer(PC), a1
 	move.l a1, 52(a0)
-	move.l #192, 56(a0)
+	move.l #256, 56(a0)
 	lea DiagnosticBuffer(PC), a1
 	move.l a1, 60(a0)
 	move.l #32, 64(a0)
@@ -746,7 +746,7 @@ SmokeResultBytes
 RequestFrame
 	.fill byte, 112, 0
 ResultBuffer
-	.fill byte, 192, 0
+	.fill byte, 256, 0
 DiagnosticBuffer
 	.fill byte, 32, 0
 ResumeBuffer

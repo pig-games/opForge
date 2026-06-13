@@ -134,7 +134,6 @@ The current compatibility aliases remain valid for slices already landed:
 ```text
 STATUS tokenizer-ok
 STATUS include-ok
-STATUS parser-module-use-ok
 ```
 
 Later implementation slices may emit both aliases and canonical records during a

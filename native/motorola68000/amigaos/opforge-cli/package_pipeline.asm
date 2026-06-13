@@ -60,8 +60,12 @@ opforgeNativeCliInitPackagePipeline	.block
 	moveq #abi.ENTRY_ORD_SET_PIPELINE, d0
 	jsr service.dispatchV1
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
-	bne.s fail
+	bne.s pipelineUnavailable
 	moveq #0, d0
+	rts
+
+pipelineUnavailable
+	moveq #2, d0
 	rts
 
 fail

@@ -10240,7 +10240,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path; --hunk is not implemented yet."
     ));
     assert!(listing.contains("OPC-NCLI010: native tokenizer stage failed"));
-    assert!(listing.contains("STATUS parser-module-use-ok"));
+    assert!(listing.contains("STAGE parser"));
     assert!(listing.contains("OPC-NCLI009: native emitter VM not implemented"));
     assert!(listing.contains("STATUS output-ok"));
     assert!(listing.contains("STATUS selector-status-ok"));
@@ -11131,6 +11131,200 @@ fn item6_source_without_native_cli_setup_directives(source: &str) -> String {
         }
     }
     stripped
+}
+
+fn item6_65c02_focused_fs_uae_source(case: &str) -> Option<&'static str> {
+    match case {
+        "rts-only" => Some(
+            r#"
+        rts
+"#,
+        ),
+        "stz" => Some(
+            r#"
+        stz $20
+        stz $1234
+        stz $30,x
+        stz $2345,x
+        rts
+"#,
+        ),
+        "stz-zp" => Some(
+            r#"
+        stz $20
+        rts
+"#,
+        ),
+        "stz-abs" => Some(
+            r#"
+        stz $1234
+        rts
+"#,
+        ),
+        "stz-zpx" => Some(
+            r#"
+        stz $30,x
+        rts
+"#,
+        ),
+        "stz-absx" => Some(
+            r#"
+        stz $2345,x
+        rts
+"#,
+        ),
+        "stack" => Some(
+            r#"
+        phx
+        phy
+        plx
+        ply
+        rts
+"#,
+        ),
+        "inc-dec-a" => Some(
+            r#"
+        inc a
+        dec a
+        rts
+"#,
+        ),
+        "trb-tsb" => Some(
+            r#"
+        trb $40
+        trb $3456
+        tsb $50
+        tsb $4567
+        rts
+"#,
+        ),
+        "bra" => Some(
+            r#"
+        bra skip1
+        nop
+        nop
+skip1
+        rts
+"#,
+        ),
+        "bbr-bbs" => Some(
+            r#"
+        bbr0 $20, bbr_target
+        nop
+bbr_target
+        bbs7 $21, bbs_target
+        nop
+bbs_target
+        rts
+"#,
+        ),
+        "bbr0" => Some(
+            r#"
+        bbr0 $20, bbr_target
+        nop
+bbr_target
+        rts
+"#,
+        ),
+        "bbr0-const" => Some(
+            r#"
+        bbr0 $20, $0804
+        nop
+        rts
+"#,
+        ),
+        "bbs7" => Some(
+            r#"
+        bbs7 $21, bbs_target
+        nop
+bbs_target
+        rts
+"#,
+        ),
+        "bit" => Some(
+            r#"
+        bit #$55
+        bit $60,x
+        bit $5678,x
+        rts
+"#,
+        ),
+        "prefix-through-bit" => Some(
+            r#"
+        stz $20
+        stz $1234
+        stz $30,x
+        stz $2345,x
+        phx
+        phy
+        plx
+        ply
+        inc a
+        dec a
+        trb $40
+        trb $3456
+        tsb $50
+        tsb $4567
+        bra skip1
+        nop
+        nop
+skip1
+        bbr0 $20, bbr_target
+        nop
+bbr_target
+        bbs7 $21, bbs_target
+        nop
+bbs_target
+        bit #$55
+        bit $60,x
+        bit $5678,x
+        rts
+"#,
+        ),
+        "zpi-load" => Some(
+            r#"
+        lda ($20)
+        rts
+"#,
+        ),
+        "zpi-store" => Some(
+            r#"
+        sta ($30)
+        rts
+"#,
+        ),
+        "zpi-all" => Some(
+            r#"
+        lda ($20)
+        sta ($30)
+        adc ($40)
+        sbc ($50)
+        and ($60)
+        ora ($70)
+        eor ($80)
+        cmp ($90)
+        rts
+"#,
+        ),
+        "jmp-abs-indexed-indirect" => Some(
+            r#"
+        jmp ($1234,x)
+"#,
+        ),
+        "base-indexed-indirect" => Some(
+            r#"
+        lda ($20,x)
+        rts
+"#,
+        ),
+        "base-indirect-indexed" => Some(
+            r#"
+        lda ($20),y
+        rts
+"#,
+        ),
+        _ => None,
+    }
 }
 
 fn item6_native_cli_fixture_bin_bytes(
@@ -13254,7 +13448,7 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
     assert!(!listing.contains("opforgeNativeCliPassAdvancePc"));
     assert!(listing.contains("opforgeNativeCliRun"));
     assert!(listing.contains("STATUS tokenizer-ok"));
-    assert!(listing.contains("STATUS parser-module-use-ok"));
+    assert!(listing.contains("STAGE parser"));
     assert!(listing.contains("STAGE session"));
     assert!(listing.contains("SESSION-CPU"));
     assert!(listing.contains("SESSION-SOURCE-COUNT"));
@@ -31744,8 +31938,8 @@ fn external_fs_uae_opforge_native_cli_reports_module_use_parser_status() {
                 run.stderr,
             );
             assert!(
-                run.stdout.contains("STATUS parser-module-use-ok"),
-                "native opForge CLI did not report the module/use parser status\nstdout:\n{}\nstderr:\n{}",
+                run.stdout.contains("STAGE parser"),
+                "native opForge CLI did not report the parser stage\nstdout:\n{}\nstderr:\n{}",
                 run.stdout,
                 run.stderr,
             );
@@ -32055,6 +32249,79 @@ fn external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins() 
                     run.stderr
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item6_65c02_allmodes_matches_rust_bin() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let rust_package_bytes = item6_mos_package_bytes();
+    let package_bytes = rust_package_bytes.clone();
+    let model = load_opasm_model_from_package_bytes(rust_package_bytes.as_slice());
+    let fixture = "examples/mos6502/65c02_allmodes.asm";
+    let cpu_id = m65c02_cpu_id.as_str();
+    let source = fs::read_to_string(repo_root.join(fixture))
+        .expect("read focused Item 6 65C02 FS-UAE MOS fixture");
+    let mut fixture_label = fixture.to_string();
+    let stripped_source = if let Ok(case) = std::env::var("OPFORGE_ITEM6_65C02_FOCUSED_CASE") {
+        let source = item6_65c02_focused_fs_uae_source(case.as_str())
+            .unwrap_or_else(|| panic!("unknown OPFORGE_ITEM6_65C02_FOCUSED_CASE value '{case}'"));
+        fixture_label = format!("{fixture}#{case}");
+        source.to_string()
+    } else {
+        item6_source_without_native_cli_setup_directives(source.as_str())
+    };
+    let rust_bin = item6_rust_fixture_native_cli_flat_bytes_with_initial_pc(
+        &model,
+        cpu_id,
+        fixture_label.as_str(),
+        stripped_source.as_str(),
+        0x0800,
+    );
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: fixture_label.as_str(),
+        cpu_id,
+        source: stripped_source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("focused native opForge CLI 65C02 Item 6 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused 65C02 Item 6 run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI Item 6 fixture {fixture_label} failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 6 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, rust_bin,
+                "focused FS-UAE Item 6 stripped fixture byte mismatch for {fixture_label}\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
         }
     }
 }

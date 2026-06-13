@@ -38,6 +38,8 @@ opforgeNativeCliTokenizeCurrentLine	.block
 
 record
 	jsr assembly_session.opforgeNativeCliRecordSourceLine
+	tst.w state.NativeCliPackagePipelineReady
+	beq.w parseOnly
 	bsr.w opforgeNativeCliPrepareLineServiceRequest
 
 	lea buffers.ControlBlockV1, a0
@@ -48,19 +50,66 @@ record
 	jsr service.dispatchV1
 	lea buffers.ControlBlockV1, a0
 	jsr tkpkg_control_block.opforgeNativeCliReadStatus
-	bne.s fail
-	lea buffers.ControlBlockV1, a0
-	jsr tkpkg_control_block.opforgeNativeCliReadOutputLen
-	beq.s ok
-	lea buffers.lastErrorBuffer, a1
-	clr.b 0(a1, d0.w)
-	move.l #buffers.lastErrorBuffer, d1
-	jsr dos.putStr
+	bne.w fail
 
 ok
 	bsr.w opforgeNativeCliParseCurrentLine
 	tst.l d0
-	bne.s fail
+	bne.w fail
+	moveq #0, d0
+	rts
+
+parseOnly
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w parseOnlyOk
+	movea.l a0, a4
+	move.l d0, d7
+	lea strings.EndmoduleDirectiveText, a1
+	moveq #10, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.w parseOnlyCheckModule
+	jsr directive_handlers.opforgeNativeCliParseEndmoduleLine
+	bra.s parseOnlyStatus
+
+parseOnlyCheckModule
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.ModuleDirectiveText, a1
+	moveq #7, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.w parseOnlyCheckUse
+	jsr directive_handlers.opforgeNativeCliParseModuleLine
+	bra.s parseOnlyStatus
+
+parseOnlyCheckUse
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.UseDirectiveText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.w parseOnlyOk
+	move.w state.NativeCliImportCount, d6
+	jsr directive_handlers.opforgeNativeCliParseUseLine
+	tst.l d0
+	bne.s parseOnlyStatus
+	cmp.w state.NativeCliImportCount, d6
+	bne.s parseOnlyOk
+	move.l #strings.ModuleResolveFailureText, d1
+	jsr dos.putStr
+	move.l #state.NativeCliArgToken, d1
+	jsr dos.putStr
+	move.l #strings.NewlineText, d1
+	jsr dos.putStr
+	moveq #1, d0
+
+parseOnlyStatus
+	tst.l d0
+	bne.w return
+
+parseOnlyOk
 	moveq #0, d0
 	rts
 
@@ -147,7 +196,41 @@ checkOrg
 	jsr line_text.opforgeNativeCliLineStartsWith
 	bne.w badOrgLine
 
+	tst.w state.NativeCliPackagePipelineReady
+	beq.w sourceDirectiveFallback
 	bsr.w opforgeNativeCliRouteParserModuleUseLine
+	bra.s haveDirectiveKind
+
+sourceDirectiveFallback
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.EndmoduleDirectiveText, a1
+	moveq #10, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkModuleFallback
+	moveq #constants.NCLI_PARSER_DIRECTIVE_ENDMODULE, d0
+	bra.s haveDirectiveKind
+
+checkModuleFallback
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.ModuleDirectiveText, a1
+	moveq #7, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkUseFallback
+	moveq #constants.NCLI_PARSER_DIRECTIVE_MODULE, d0
+	bra.s haveDirectiveKind
+
+checkUseFallback
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.UseDirectiveText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.w done
+	moveq #constants.NCLI_PARSER_DIRECTIVE_USE, d0
+
+haveDirectiveKind
 	cmpi.w #constants.NCLI_PARSER_DIRECTIVE_MODULE, d0
 	bne.s checkEndmodule
 	jsr directive_handlers.opforgeNativeCliParseModuleLine

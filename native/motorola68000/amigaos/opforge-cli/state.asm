@@ -28,6 +28,8 @@ NativeCliOutputFormat
 	.res word, 1
 NativeCliParseStatus
 	.res word, 1
+NativeCliPackagePipelineReady
+	.res word, 1
 
 NativeCliArgToken
 	.res byte, constants.TOKEN_BUFFER_CAPACITY

@@ -57,9 +57,9 @@ TokenizerOkText
 	.byte "STATUS tokenizer-ok", 10, 0
 TokenizerFailureText
 	.byte "ERROR OPC-NCLI010: native tokenizer stage failed", 10, 0
-ParserOkText
+ParserStageText
 	.byte "STAGE parser", 10
-	.byte "STATUS parser-module-use-ok", 10, 0
+	.byte 0
 SessionStageText
 	.byte "STAGE session", 10, 0
 SessionCpuText
@@ -106,6 +106,8 @@ NativeOutputFailureText
 	.byte "ERROR OPC-NCLI023: native flat output write failed", 10, 0
 NativeImageCapacityText
 	.byte "ERROR OPC-NCLI024: native image buffer capacity exceeded", 10, 0
+NativeImageCapacityRequestText
+	.byte "IMAGE-CAPACITY-REQUEST ", 0
 NativeUnknownMnemonicText
 	.byte "ERROR OPC-NCLI025: unknown native mnemonic", 10, 0
 NativeUnsupportedAddressingText

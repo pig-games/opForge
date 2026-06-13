@@ -169,7 +169,7 @@ opasmDriverEmitImageBytes	.block
 	tst.b d0
 	bne.w serviceFail
 	tst.w d1
-	beq.w ok
+	beq.w noOutput
 	move.w d1, d6
 	bsr.w serviceFramePtr
 	jsr tkpkg.readOutputPtrV1
@@ -186,7 +186,10 @@ ok
 
 fail
 	moveq #abi.OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, d0
-	bsr.w appendKindEvent
+	suba.l a0, a0
+	moveq #0, d1
+	move.l d6, d2
+	bsr.w appendTextValueEvent
 	moveq #1, d0
 	bra.s return
 
@@ -209,6 +212,12 @@ serviceFail
 	bsr.w appendTextEvent
 
 serviceFailReturn
+	moveq #1, d0
+	bra.s return
+
+noOutput
+	moveq #abi.OPASM_EVENT_UNSUPPORTED_ADDRESSING, d0
+	bsr.w appendKindEvent
 	moveq #1, d0
 
 return

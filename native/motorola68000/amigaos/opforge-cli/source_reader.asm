@@ -41,10 +41,18 @@
 ; ---------------------------------------------------------------------------
 opforgeNativeCliTokenizeFrontend	.block
 	movem.l d2-d7/a2-a6, -(sp)
+	clr.w state.NativeCliPackagePipelineReady
 	bsr.w package_pipeline.opforgeNativeCliInitPackagePipeline
-	bne.b return
+	beq.s packageReady
+	cmpi.l #2, d0
+	beq.s packageUnavailable
+	bra.s return
+
+packageReady
+	move.w #1, state.NativeCliPackagePipelineReady
 	move.l #strings.TokenizerOkText, d1
 	jsr dos.putStr
+packageUnavailable
 	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliTokenizeFile
 	bne.s return

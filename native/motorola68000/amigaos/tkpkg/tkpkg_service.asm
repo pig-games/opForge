@@ -16,6 +16,7 @@ TKPKG_PARSE_ROUTE_FRAME_SIZE         = 116
 TKPKG_EVAL_EXPR_REQUEST_FIXED_SIZE   = 9
 TKPKG_EVAL_EXPR_EXTENSION_INPUT_SIZE = 16
 TKPKG_SELECTED_EXTENSION_INPUT_SIZE  = 24
+TKPKG_SELECTED_EXTENSION_PASS_INPUT_SIZE = 28
 TKPKG_SELECTED_STATUS_OK             = 0
 TKPKG_SELECTED_STATUS_NO_OUTPUT      = 1
 TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC = 2
@@ -228,6 +229,8 @@ EncodeSelectedLabelCount
 	.res long, 1
 EncodeSelectedCurrentPc
 	.res long, 1
+EncodeSelectedSessionPass
+	.res word, 1
 EncodeSelectedExvmOpcodeVersion
 	.res word, 1
 EncodeSelectedExprOpcodeVersion
@@ -243,6 +246,10 @@ EncodeSelectedCurrentShapePtr
 EncodeSelectedCurrentShapeLen
 	.res word, 1
 EncodeSelectedMselMnemonicLen
+	.res word, 1
+EncodeSelectedMselOwnerPtr
+	.res long, 1
+EncodeSelectedMselOwnerLen
 	.res word, 1
 EncodeSelectedMselExprPtr
 	.res long, 1
@@ -260,6 +267,9 @@ EncodeSelectedMselValue
 	.res long, 1
 EncodeSelectedMselUnstable
 	.res byte, 1
+	.align 2
+EncodeSelectedMselMatchFlags
+	.res word, 1
 EncodeSelectedOutputLen
 	.res word, 1
 PairAPtr
@@ -780,12 +790,31 @@ havePipeline
 	bsr.w buildSelectedEnvelopeV1
 	bne.s return
 	tst.w d1
-	beq.s return
+	bne.s haveEnvelope
+	btst #0, EncodeSelectedMselMatchFlags
+	beq.s unknownSelected
+	lea SelectedSelectorUnsupportedText, a1
+	moveq #SELECTED_SELECTOR_UNSUPPORTED_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.s return
+
+unknownSelected
+	lea SelectedSelectorUnknownText, a1
+	moveq #SELECTED_SELECTOR_UNKNOWN_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
+	bra.s return
 
 haveEnvelope
 	lea buffers.TokenScratchBuffer, a4
 	move.w d1, d7
 	bsr.w tkpkgEncodeInstructionEnvelopeV1
+	tst.b d0
+	bne.s return
+	tst.w d1
+	bne.s return
+	lea SelectedSelectorUnsupportedText, a1
+	moveq #SELECTED_SELECTOR_UNSUPPORTED_TEXT_LEN, d1
+	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
 
 return
 	movem.l (sp)+, d2-d7/a2-a6
@@ -907,7 +936,9 @@ buildSelectedEnvelopeV1	.block
 	move.l a2, EncodeSelectedLabelValuePtr
 	move.l d1, EncodeSelectedLabelCount
 	move.l d2, EncodeSelectedCurrentPc
-	bset #0, d6
+	moveq #0, d0
+	move.w engine.opasmEngineSessionPass.l, d0
+	move.w d0, EncodeSelectedSessionPass
 	clr.l EncodeSelectedMselShapePtr
 	clr.w EncodeSelectedMselShapeLen
 	cmpi.w #TKPKG_SELECTED_EXTENSION_INPUT_SIZE, d5
@@ -916,6 +947,10 @@ buildSelectedEnvelopeV1	.block
 	move.l (a5)+, d0
 	move.l a1, EncodeSelectedMselShapePtr
 	move.w d0, EncodeSelectedMselShapeLen
+	cmpi.w #TKPKG_SELECTED_EXTENSION_PASS_INPUT_SIZE, d5
+	bcs.s resolveVersions
+	move.l (a5)+, d0
+	move.w d0, EncodeSelectedSessionPass
 	bra.s resolveVersions
 
 noExtension
@@ -923,6 +958,9 @@ noExtension
 	clr.l EncodeSelectedLabelValuePtr
 	clr.l EncodeSelectedLabelCount
 	clr.l EncodeSelectedCurrentPc
+	moveq #0, d0
+	move.w engine.opasmEngineSessionPass.l, d0
+	move.w d0, EncodeSelectedSessionPass
 	clr.l EncodeSelectedMselShapePtr
 	clr.w EncodeSelectedMselShapeLen
 
@@ -1193,6 +1231,7 @@ return
 
 tkpkgBuildSelectedEnvelopeFromMselV1	.block
 	movem.l d2-d7/a0-a6, -(sp)
+	clr.w EncodeSelectedMselMatchFlags
 	movea.l a0, a5
 	move.w d0, d2
 	move.w d2, EncodeSelectedMselMnemonicLen
@@ -1216,28 +1255,22 @@ entryLoop
 	move.b (a2)+, d6
 	bsr.w tkpkgServiceLocateStringV1
 	bne.w unsupported
-	bsr.w tkpkgSelectedMselOwnerMatchesV1
-	move.b d0, d5
+	move.l a1, EncodeSelectedMselOwnerPtr
+	move.w d0, EncodeSelectedMselOwnerLen
 	bsr.w tkpkgServiceLocateStringV1
 	bne.w unsupported
-	tst.b d5
-	beq.s skipMnemonicCompare
 	move.l a2, -(sp)
 	move.w d2, d1
 	movea.l a5, a2
 	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
 	movea.l (sp)+, a2
-	and.b d0, d5
-
-skipMnemonicCompare
+	move.b d0, d5
 	bsr.w tkpkgServiceLocateStringV1
 	bne.w unsupported
 	tst.b d5
 	beq.s skipShapeCompare
 	move.l a1, EncodeSelectedCurrentShapePtr
 	move.w d0, EncodeSelectedCurrentShapeLen
-	tst.b d5
-	beq.s skipShapeCompare
 	tst.w EncodeSelectedMselShapeLen
 	beq.s skipShapeCompare
 	tst.l EncodeSelectedMselShapePtr
@@ -1252,37 +1285,56 @@ skipMnemonicCompare
 skipShapeCompare
 	bsr.w tkpkgServiceLocateStringV1
 	bne.w unsupported
-	tst.b d5
-	beq.s skipModeStore
-	move.l a1, EncodeSelectedMselModePtr
-	move.w d0, EncodeSelectedMselModeLen
+	move.l a1, -(sp)
+	move.w d0, -(sp)
 
-skipModeStore
 	bsr.w tkpkgServiceLocateStringV1
 	bne.w unsupported
 	tst.b d5
-	beq.s skipPlanStore
-	move.l a1, EncodeSelectedMselPlanPtr
+	beq.w skipPlanStore
+	move.l a1, -(sp)
+	move.w d0, -(sp)
+	move.w EncodeSelectedMselOwnerLen, d0
+	movea.l EncodeSelectedMselOwnerPtr, a1
+	bsr.w tkpkgSelectedMselOwnerMatchesV1
+	tst.b d0
+	beq.w skipPlanStoreWithPlanFrame
+	bset #0, EncodeSelectedMselMatchFlags
+	move.w 6(sp), d0
+	move.w d0, EncodeSelectedMselModeLen
+	move.l 8(sp), d0
+	move.l d0, EncodeSelectedMselModePtr
+	move.w (sp), d0
 	move.w d0, EncodeSelectedMselPlanLen
+	move.l 2(sp), d0
+	move.l d0, EncodeSelectedMselPlanPtr
 	move.l a2, -(sp)
 	move.w d7, -(sp)
 	bsr.w tkpkgMselTryBuildCandidateV1
 	move.w (sp)+, d7
 	movea.l (sp)+, a2
+	addq.l #6, sp
+	addq.l #6, sp
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
-	beq.s return
+	beq.w return
 	cmpi.l #TKPKG_SELECTED_STATUS_OPERAND_ERROR, d0
-	beq.s maybeReturnOperandError
-	bra.s skipPlanStore
+	beq.w maybeReturnOperandError
+	bra.w skipPlanRecordNoFrame
 
 maybeReturnOperandError
 	tst.w EncodeSelectedMselShapeLen
-	beq.s skipPlanStore
+	beq.w skipPlanRecordNoFrame
 	tst.l EncodeSelectedMselShapePtr
-	beq.s skipPlanStore
-	bra.s return
+	beq.w skipPlanRecordNoFrame
+	bra.w return
+
+skipPlanStoreWithPlanFrame
+	addq.l #6, sp
 
 skipPlanStore
+	addq.l #6, sp
+
+skipPlanRecordNoFrame
 	moveq #4, d0
 	bsr.w tkpkgServiceRequireBytesV1
 	bne.w unsupported
@@ -1291,7 +1343,13 @@ skipPlanStore
 
 noOutput
 	moveq #0, d1
-	moveq #TKPKG_SELECTED_STATUS_NO_OUTPUT, d0
+	btst #0, EncodeSelectedMselMatchFlags
+	beq.s unknownMnemonic
+	moveq #TKPKG_SELECTED_STATUS_UNSUPPORTED_ADDRESS, d0
+	bra.s return
+
+unknownMnemonic
+	moveq #TKPKG_SELECTED_STATUS_UNKNOWN_MNEMONIC, d0
 	bra.s return
 
 unsupported
@@ -1366,7 +1424,11 @@ tryU16Fits
 
 tryBranchOffset8
 	cmpi.w #1, engine.opasmEngineSessionPass.l
-	beq.w tryUnstablePassOneOperand
+	bne.s tryBranchEvaluate
+	moveq #1, d6
+	bra.w tryUnstablePassOneOperand
+
+tryBranchEvaluate
 	bsr.w tkpkgMselEvalOperandV1
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w return
@@ -1519,11 +1581,19 @@ pairSecondTrimOk
 	move.l a0, d0
 	move.l d0, PairBPtr.l
 	move.w d2, PairBLen.l
+	moveq #0, d6
+	cmpi.w #1, EncodeSelectedSessionPass.l
+	beq.s pairPassCaptured
+	moveq #1, d6
+
+pairPassCaptured
+	move.w d6, -(sp)
 	move.l PairAPtr.l, d0
 	move.l d0, EncodeSelectedMselExprPtr
 	move.w PairALen.l, d0
 	move.w d0, EncodeSelectedMselExprLen
 	bsr.w tkpkgMselEvalOperandV1
+	move.w (sp)+, d6
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w return
 	move.l EncodeSelectedMselValue, d3
@@ -1537,7 +1607,7 @@ tryPairFirstNonNegative
 
 tryPairFirstFits
 	move.l d3, PairAVal.l
-	cmpi.w #1, engine.opasmEngineSessionPass.l
+	tst.w d6
 	bne.s tryPairSecondStable
 	clr.l PairBVal.l
 	bra.w buildPairOperand
@@ -1624,6 +1694,7 @@ buildPairOperand
 	lea buffers.TokenScratchBuffer, a0
 	sub.l a0, d1
 	moveq #TKPKG_SELECTED_STATUS_OK, d0
+	bra.w return
 
 	.align 2
 PlanDispatchTable
@@ -1708,10 +1779,8 @@ checkSurfaceIndexedY
 
 haveShapeSurface
 	tst.b d5
-	bne.s haveParenMode
+	bne.s haveOperandSurface
 	bsr.w tkpkgMselCurrentModeParenCodeV1
-
-haveParenMode
 	move.b d0, d5
 	tst.b d6
 	bne.s haveOperandSurface
@@ -1758,6 +1827,7 @@ stripIndexedIndirectX
 	bsr.w tkpkgMselStripIndexSuffixV1
 	tst.b d1
 	bne.s operandError
+	moveq #1, d6
 	bra.s evalOperandText
 
 stripIndirectIndexedY
@@ -1766,6 +1836,7 @@ stripIndirectIndexedY
 	tst.b d1
 	bne.s evalOperandText
 	bsr.w tkpkgMselStripOuterParensV1
+	moveq #1, d6
 
 evalOperandText
 	bsr.w encodeSelectedOperandV1
@@ -2393,7 +2464,7 @@ textOk
 	moveq #0, d5
 	moveq #1, d5
 	moveq #0, d6
-	move.w engine.opasmEngineSessionPass.l, d6
+	move.w EncodeSelectedSessionPass.l, d6
 	lea engine.opasmEngineLabelFinalizedTable.l, a6
 	jsr expr_bridge.opcoreExvmEvalOperandV1
 	beq.w return
@@ -3192,62 +3263,9 @@ noOperandRecord
 
 encodeCandidate
 	bsr.w tkpkgEncodeFindAndExecuteTableProgram
-	bra.w return
+	bra.s return
 
 noMatch
-	cmpi.w #4, d2
-	bne.s noMatchReturn
-	cmpi.w #2, d5
-	bne.s noMatchReturn
-	cmpi.w #1, d6
-	bne.s noMatchReturn
-	movea.l a5, a0
-	move.b (a0)+, d0
-	ori.b #$20, d0
-	cmpi.b #'b', d0
-	bne.s noMatchReturn
-	move.b (a0)+, d0
-	ori.b #$20, d0
-	cmpi.b #'b', d0
-	bne.s noMatchReturn
-	move.b (a0)+, d0
-	ori.b #$20, d0
-	cmpi.b #'r', d0
-	beq.s directBitBranchReset
-	cmpi.b #'s', d0
-	bne.s noMatchReturn
-	moveq #0, d0
-	move.b #$8F, d0
-	bra.s directBitBranchOpcode
-
-directBitBranchReset
-	moveq #$0F, d0
-
-directBitBranchOpcode
-	moveq #0, d1
-	move.b (a0), d1
-	cmpi.b #'0', d1
-	blo.s noMatchReturn
-	cmpi.b #'7', d1
-	bhi.s noMatchReturn
-	sub.b #'0', d1
-	lsl.b #4, d1
-	add.b d1, d0
-	lea buffers.LastErrorBuffer, a2
-	move.b d0, (a2)+
-	move.b (a3), (a2)+
-	movea.l a3, a0
-	adda.w d6, a0
-	moveq #0, d1
-	move.b (a0)+, d1
-	cmpi.w #1, d1
-	bne.s noMatchReturn
-	move.b (a0), (a2)+
-	moveq #3, d1
-	moveq #0, d0
-	bra.w return
-
-noMatchReturn
 	moveq #0, d1
 	moveq #2, d0
 	bra.w return
@@ -3280,7 +3298,13 @@ tkpkgEncodeFindAndExecuteTableProgram	.block
 
 loop
 	move.b (a0)+, d0
-	bsr.w tkpkgEncodeSkipString
+	move.w d6, -(sp)
+	move.b d0, d6
+	bsr.w tkpkgEncodeReadU32Low16
+	movea.l a0, a1
+	move.l a1, -(sp)
+	move.w d0, -(sp)
+	adda.w d0, a0
 	movea.l a0, a1
 	bsr.w tkpkgEncodeReadU32Low16
 	move.w d0, d1
@@ -3289,7 +3313,7 @@ loop
 	movea.l a5, a1
 	move.w d2, d0
 	bsr.w tkpkgEncodeStringEqIgnoreCase
-	beq.s skipModeCheck
+	beq.s skipEntryFromMode
 	movea.l a0, a1
 	bsr.w tkpkgEncodeReadU32Low16
 	move.w d0, d1
@@ -3298,6 +3322,14 @@ loop
 	movea.l a6, a1
 	move.w d4, d0
 	bsr.w tkpkgEncodeStringEqIgnoreCase
+	beq.s skipEntryProgram
+	move.w (sp), d0
+	movea.l 2(sp), a1
+	bsr.w tkpkgSelectedMselOwnerMatchesV1
+	move.b d0, d3
+	move.w 6(sp), d6
+	adda.l #8, sp
+	tst.b d3
 	beq.s skipProgram
 	bsr.w tkpkgEncodeReadU32Low16
 	move.w d0, d1
@@ -3305,10 +3337,19 @@ loop
 	bsr.w tkpkgEncodeExecuteProgram
 	bra.s return
 
-skipModeCheck
+skipEntryFromMode
+	move.w 6(sp), d6
+	adda.l #8, sp
 	bsr.w tkpkgEncodeSkipString
 
 skipProgram
+	bsr.w tkpkgEncodeSkipBytes
+	dbra d7, loop
+	bra.s noMatch
+
+skipEntryProgram
+	move.w 6(sp), d6
+	adda.l #8, sp
 	bsr.w tkpkgEncodeSkipBytes
 	dbra d7, loop
 

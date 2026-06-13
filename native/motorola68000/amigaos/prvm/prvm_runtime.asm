@@ -1126,6 +1126,7 @@ return
 	.bend  ; emitFinishLine
 
 writeExpressionRequest	.block
+	movem.l d1-d2/a1-a2, -(sp)
 	movea.l PRVM_FRAME_EXPR_REQUEST_PTR(a4), a2
 	move.w #1, 0(a2)
 	clr.w 2(a2)
@@ -1157,14 +1158,21 @@ writeSpan
 	move.l d1, 24(a2)
 	move.l d2, 28(a2)
 	clr.l d0
-	rts
+	bra.s returnOk
 
 endSpan
 	move.l PRVM_FRAME_LINE_NUM(a4), 20(a2)
 	clr.l 24(a2)
 	clr.l 28(a2)
 	clr.l d0
+	bra.s returnOk
+
 return
+	movem.l (sp)+, d1-d2/a1-a2
+	rts
+
+returnOk
+	movem.l (sp)+, d1-d2/a1-a2
 	rts
 	.bend  ; writeExpressionRequest
 

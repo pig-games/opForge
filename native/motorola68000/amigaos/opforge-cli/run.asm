@@ -142,7 +142,9 @@ outputFormatReady
 	bra.w closeDos
 
 tokenizerOk
-	move.l #strings.ParserOkText, d1
+	move.l #strings.ParserStageText, d1
+	jsr dos.putStr
+	move.l #strings.SessionStageText, d1
 	jsr dos.putStr
 	jsr engine_callbacks.opforgeNativeCliRunTwoPassEngine
 	tst.l d0

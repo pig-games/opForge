@@ -439,11 +439,14 @@ opasmEngineAdvancePcBySizeV1	.block
 ; - D0: 0 on success, non-zero on image capacity failure.
 opasmEngineAppendImageBytesV1	.block
 	movem.l d1-d3/a0-a1, -(sp)
+	moveq #0, d3
 	move.w d0, d3
+	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d3
+	bhi.s fail
 	moveq #0, d1
 	move.w OpasmEngineImageByteCount.l, d1
-	add.w d3, d1
-	cmpi.w #NATIVE_IMAGE_BUFFER_CAPACITY, d1
+	add.l d3, d1
+	cmpi.l #NATIVE_IMAGE_BUFFER_CAPACITY, d1
 	bhi.s fail
 	moveq #0, d1
 	move.w OpasmEngineImageByteCount.l, d1
@@ -571,7 +574,10 @@ opasmEngineWriteEvaluateExpressionExtensionBaseV1	.block
 	move.l d1, (a1)+
 	move.l OpasmEngineSessionCurrentPc.l, (a1)+
 	clr.l (a1)+
-	clr.l (a1)
+	clr.l (a1)+
+	moveq #0, d1
+	move.w OpasmEngineSessionPass.l, d1
+	move.l d1, (a1)
 	movem.l (sp)+, d1/a1
 	moveq #0, d0
 	rts

@@ -54,6 +54,7 @@ opasmDriverPassOneBegin	.block
 	moveq #1, d1
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassOneV1
+	bsr.w resetLayoutState
 	rts
 	.bend  ; opasmDriverPassOneBegin
 
@@ -70,6 +71,8 @@ opasmDriverPassTwoBegin	.block
 	moveq #2, d1
 	bsr.w appendPassEvent
 	jsr eng.opasmEngineBeginPassTwoV1
+	clr.w OpasmLayoutSectionActive
+	moveq #0, d0
 	rts
 	.bend  ; opasmDriverPassTwoBegin
 
@@ -381,28 +384,28 @@ opasmDriverAdvancePc	.block
 	lea RegionMnemonicText, a1
 	moveq #6, d1
 	bsr.w lineStartsWith
-	bne.w done
+	bne.w region
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d6, d0
 	lea SectionMnemonicText, a1
 	moveq #7, d1
 	bsr.w lineStartsWith
-	bne.w done
+	bne.w section
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d6, d0
 	lea EndsectionMnemonicText, a1
 	moveq #10, d1
 	bsr.w lineStartsWith
-	bne.w done
+	bne.w endsection
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d6, d0
 	lea PlaceMnemonicText, a1
 	moveq #5, d1
 	bsr.w lineStartsWith
-	bne.w done
+	bne.w place
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d6, d0
@@ -469,6 +472,26 @@ orgOk
 	move.l d3, d0
 	jsr eng.opasmEngineSetOriginV1
 	bra.w done
+
+region
+	bsr.w processRegionDirectiveForStatement
+	beq.w done
+	bra.s orgBad
+
+section
+	bsr.w processSectionDirectiveForStatement
+	beq.w done
+	bra.s orgBad
+
+endsection
+	bsr.w processEndsectionDirectiveForStatement
+	beq.w done
+	bra.s orgBad
+
+place
+	bsr.w processPlaceDirectiveForStatement
+	beq.w done
+	bra.s orgBad
 
 align
 	bsr.w readAlignPadForStatement
@@ -683,6 +706,165 @@ return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a2
 	rts
 	.bend  ; readOperandValueForStatement
+
+; Reset native layout directive state for one assembly session.
+; Outputs: D0.L = 0.
+; Clobbers: D0/CCR.
+; CCR: reflects D0.L on return.
+resetLayoutState	.block
+	clr.w OpasmLayoutRegionDefined
+	clr.l OpasmLayoutRegionStart
+	clr.l OpasmLayoutRegionEnd
+	clr.l OpasmLayoutRegionCursor
+	move.l #1, OpasmLayoutRegionAlign
+	clr.w OpasmLayoutSectionDefined
+	clr.w OpasmLayoutSectionActive
+	clr.w OpasmLayoutSectionPlaced
+	clr.l OpasmLayoutSectionStartPc
+	clr.l OpasmLayoutSectionSize
+	clr.l OpasmLayoutSectionBase
+	move.l #1, OpasmLayoutSectionAlign
+	moveq #0, d0
+	rts
+	.bend  ; resetLayoutState
+
+; Store the single-region native layout slice from `.region <name>, <start>, <end>`.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 on invalid region bounds.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+processRegionDirectiveForStatement	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	moveq #2, d6
+	bsr.w readCommaOperandValueForStatement
+	bne.s fail
+	move.l d3, OpasmLayoutRegionStart
+	move.l d3, OpasmLayoutRegionCursor
+	moveq #3, d6
+	bsr.w readCommaOperandValueForStatement
+	bne.s fail
+	move.l d3, OpasmLayoutRegionEnd
+	cmp.l OpasmLayoutRegionStart, d3
+	blo.s fail
+	move.l #1, OpasmLayoutRegionAlign
+	move.w #1, OpasmLayoutRegionDefined
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d7/a0-a3
+	rts
+	.bend  ; processRegionDirectiveForStatement
+
+; Enter the native single-section layout slice.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success.
+; Clobbers: D0-D1/A0/CCR.
+; CCR: reflects D0.L on return.
+processSectionDirectiveForStatement	.block
+	movem.l d1/a0, -(sp)
+	move.w #1, OpasmLayoutSectionActive
+	move.w #1, OpasmLayoutSectionDefined
+	move.l #1, OpasmLayoutSectionAlign
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #2, d0
+	bne.s passOne
+	tst.w OpasmLayoutSectionPlaced
+	beq.s ok
+	move.l OpasmLayoutSectionBase, d0
+	jsr eng.opasmEngineSetOriginV1
+	bra.s ok
+
+passOne
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	move.l d0, OpasmLayoutSectionStartPc
+
+ok
+	moveq #0, d0
+	movem.l (sp)+, d1/a0
+	rts
+	.bend  ; processSectionDirectiveForStatement
+
+; Leave the native single-section layout slice and record its pass-one size.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 when no section is active.
+; Clobbers: D0-D1/A0/CCR.
+; CCR: reflects D0.L on return.
+processEndsectionDirectiveForStatement	.block
+	movem.l d1/a0, -(sp)
+	tst.w OpasmLayoutSectionActive
+	beq.s fail
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #1, d0
+	bne.s clearActive
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	move.l d0, d1
+	sub.l OpasmLayoutSectionStartPc, d1
+	move.l d1, OpasmLayoutSectionSize
+
+clearActive
+	clr.w OpasmLayoutSectionActive
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1/a0
+	rts
+	.bend  ; processEndsectionDirectiveForStatement
+
+; Place the native single-section slice in the single recorded region.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 on missing state or range overflow.
+; Clobbers: D0-D2/A0/CCR.
+; CCR: reflects D0.L on return.
+processPlaceDirectiveForStatement	.block
+	movem.l d1-d2/a0, -(sp)
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #1, d0
+	bne.s ok
+	tst.w OpasmLayoutRegionDefined
+	beq.s fail
+	tst.w OpasmLayoutSectionDefined
+	beq.s fail
+	tst.w OpasmLayoutSectionPlaced
+	bne.s fail
+	move.l OpasmLayoutRegionCursor, d1
+	move.l OpasmLayoutSectionSize, d2
+	beq.s store
+	move.l d1, d0
+	add.l d2, d0
+	bcs.s fail
+	subq.l #1, d0
+	cmp.l OpasmLayoutRegionEnd, d0
+	bhi.s fail
+	addq.l #1, d0
+	move.l d0, OpasmLayoutRegionCursor
+	bra.s storeBase
+
+store
+	move.l d1, OpasmLayoutRegionCursor
+
+storeBase
+	move.l d1, OpasmLayoutSectionBase
+	move.w #1, OpasmLayoutSectionPlaced
+
+ok
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/a0
+	rts
+	.bend  ; processPlaceDirectiveForStatement
 
 ; Evaluate a comma-separated directive operand part.
 ; Inputs: D7.W = statement index; D6.W = one-based operand part number.
@@ -1459,6 +1641,42 @@ OpasmDriverEvalFallbackPtr
 	.res long, 1
 
 OpasmDriverEvalFallbackLen
+	.res long, 1
+
+OpasmLayoutRegionDefined
+	.res word, 1
+
+OpasmLayoutRegionStart
+	.res long, 1
+
+OpasmLayoutRegionEnd
+	.res long, 1
+
+OpasmLayoutRegionCursor
+	.res long, 1
+
+OpasmLayoutRegionAlign
+	.res long, 1
+
+OpasmLayoutSectionDefined
+	.res word, 1
+
+OpasmLayoutSectionActive
+	.res word, 1
+
+OpasmLayoutSectionPlaced
+	.res word, 1
+
+OpasmLayoutSectionStartPc
+	.res long, 1
+
+OpasmLayoutSectionSize
+	.res long, 1
+
+OpasmLayoutSectionBase
+	.res long, 1
+
+OpasmLayoutSectionAlign
 	.res long, 1
 
 	.endsection

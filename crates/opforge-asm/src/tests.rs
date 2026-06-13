@@ -13087,9 +13087,13 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &[
             "opasmDriverAdvancePc .BLOCK",
             "LEA RegionMnemonicText, A1",
+            "BNE.W region",
             "LEA SectionMnemonicText, A1",
+            "BNE.W section",
             "LEA EndsectionMnemonicText, A1",
+            "BNE.W endsection",
             "LEA PlaceMnemonicText, A1",
+            "BNE.W place",
             "LEA AlignMnemonicText, A1",
             "BNE.W align",
             "LEA DsMnemonicText, A1",
@@ -13099,6 +13103,21 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
             "LEA FillMnemonicText, A1",
             "BNE.W fill",
             "BSR.W trySelectedEncodeSizeForStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "region",
+            "BSR.W processRegionDirectiveForStatement",
+            "section",
+            "BSR.W processSectionDirectiveForStatement",
+            "endsection",
+            "BSR.W processEndsectionDirectiveForStatement",
+            "place",
+            "BSR.W processPlaceDirectiveForStatement",
+            "align",
+            "BSR.W readAlignPadForStatement",
         ]
     ));
     assert!(source_contains_in_order(
@@ -13116,6 +13135,25 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
             "MOVEQ #3, D6",
             "BSR.W readCommaOperandValueForStatement",
             "BSR.W appendRepeatedByte",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "processPlaceDirectiveForStatement .BLOCK",
+            "MOVE.L OpasmLayoutRegionCursor, D1",
+            "MOVE.L OpasmLayoutSectionSize, D2",
+            "MOVE.L D1, OpasmLayoutSectionBase",
+            "MOVE.W #1, OpasmLayoutSectionPlaced",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "processSectionDirectiveForStatement .BLOCK",
+            "TST.W OpasmLayoutSectionPlaced",
+            "MOVE.L OpasmLayoutSectionBase, D0",
+            "JSR eng.opasmEngineSetOriginV1",
         ]
     ));
 }
@@ -32469,13 +32507,13 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
     let repo_root = workspace_root();
     let package_bytes = item6_mos_package_bytes();
     let source = [
-        "        .region ram, $0800, $083f, align=1",
+        "        .region ram, $1000, $10ff, align=1",
         "        .section code, align=1",
-        "start   lda #$01",
+        "        lda #$01",
         "        .align 4",
         "        .fill byte, 2, $ff",
         "        .ds 1",
-        "done    nop",
+        "        nop",
         "        .endsection",
         "        .place code in ram",
     ]
@@ -32503,6 +32541,11 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
             assert!(
                 run.success,
                 "focused native opForge CLI Item 7 layout fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("SESSION-ORIGIN $00001000"),
+                "focused native opForge CLI Item 7 layout fixture did not place section at region base\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
             let output_path = run

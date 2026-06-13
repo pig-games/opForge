@@ -13141,7 +13141,12 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &driver,
         &[
             "processPlaceDirectiveForStatement .BLOCK",
+            "BSR.W parsePlaceDirectiveNamesForStatement",
+            "BSR.W layoutNamesMatch",
+            "BSR.W layoutNamesMatch",
+            "BSR.W readAlignOptionForStatement",
             "MOVE.L OpasmLayoutRegionCursor, D1",
+            "BSR.W alignLayoutCursor",
             "MOVE.L OpasmLayoutSectionSize, D2",
             "MOVE.L D1, OpasmLayoutSectionBase",
             "MOVE.W #1, OpasmLayoutSectionPlaced",
@@ -13154,6 +13159,26 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
             "TST.W OpasmLayoutSectionPlaced",
             "MOVE.L OpasmLayoutSectionBase, D0",
             "JSR eng.opasmEngineSetOriginV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "processRegionDirectiveForStatement .BLOCK",
+            "BSR.W readCommaNameForStatement",
+            "MOVE.W D3, OpasmLayoutRegionNameLen",
+            "BSR.W readAlignOptionForStatement",
+            "MOVE.L D3, OpasmLayoutRegionAlign",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "processSectionDirectiveForStatement .BLOCK",
+            "BSR.W readCommaNameForStatement",
+            "MOVE.W D3, OpasmLayoutSectionNameLen",
+            "BSR.W readAlignOptionForStatement",
+            "MOVE.L D3, OpasmLayoutSectionAlign",
         ]
     ));
 }
@@ -32507,8 +32532,8 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
     let repo_root = workspace_root();
     let package_bytes = item6_mos_package_bytes();
     let source = [
-        "        .region ram, $1000, $10ff, align=1",
-        "        .section code, align=1",
+        "        .region ram, $1001, $10ff, align=8",
+        "        .section code, align=16",
         "        lda #$01",
         "        .align 4",
         "        .fill byte, 2, $ff",
@@ -32518,13 +32543,29 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
         "        .place code in ram",
     ]
     .join("\n");
+    let mismatch_source = [
+        "        .region ram, $1001, $10ff, align=8",
+        "        .section code, align=16",
+        "        lda #$01",
+        "        .endsection",
+        "        .place code in rom",
+    ]
+    .join("\n");
     let expected = vec![0xA9, 0x01, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xEA];
-    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
-        name: "item7-layout-directives",
-        cpu_id: m6502_cpu_id.as_str(),
-        source: source.as_bytes(),
-        package_bytes: package_bytes.as_slice(),
-    }];
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            name: "item7-layout-directives",
+            cpu_id: m6502_cpu_id.as_str(),
+            source: source.as_bytes(),
+            package_bytes: package_bytes.as_slice(),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            name: "item7-layout-name-mismatch",
+            cpu_id: m6502_cpu_id.as_str(),
+            source: mismatch_source.as_bytes(),
+            package_bytes: package_bytes.as_slice(),
+        },
+    ];
 
     match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
         &repo_root,
@@ -32536,7 +32577,7 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
             eprintln!("SKIP: {reason}");
         }
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 1, "expected one focused Item 7 run");
+            assert_eq!(runs.len(), 2, "expected two focused Item 7 runs");
             let run = &runs[0];
             assert!(
                 run.success,
@@ -32544,7 +32585,7 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
                 run.stdout, run.stderr,
             );
             assert!(
-                run.stdout.contains("SESSION-ORIGIN $00001000"),
+                run.stdout.contains("SESSION-ORIGIN $00001010"),
                 "focused native opForge CLI Item 7 layout fixture did not place section at region base\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
@@ -32562,6 +32603,13 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
                 native_bin, expected,
                 "focused FS-UAE Item 7 layout byte mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
+            );
+            let mismatch_run = &runs[1];
+            assert!(
+                !mismatch_run.success,
+                "focused native opForge CLI Item 7 layout name mismatch fixture should fail\nstdout:\n{}\nstderr:\n{}",
+                mismatch_run.stdout,
+                mismatch_run.stderr,
             );
         }
     }

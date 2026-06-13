@@ -761,7 +761,7 @@ The intended native shape mirrors the Rust path:
       --nocapture` passed. `scripts/workflow/run_native_68000_format_gate.sh`
       passed with 35 checked files, 0 would change, and 0 warnings.
       `scripts/workflow/run_rust_quality_gate_summary.sh` passed.
-  - [ ] Item 6.7: Prove native CLI/FS-UAE exact byte parity for the full
+  - [x] Item 6.7: Prove native CLI/FS-UAE exact byte parity for the full
     indicated fixture set
     - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,
       `SR-NATIVE-6502-FULL`, `SR-6502-ENCODER`; expected to promote row-level
@@ -814,24 +814,34 @@ The intended native shape mirrors the Rust path:
       run_native_68000_format_gate.sh` passed with 35 checked files, 0 would
       change, and 0 warnings. `scripts/workflow/run_rust_quality_gate_summary.sh`
       passed.
-      - Blocking status, 2026-05-14: Item 6.7 remains incomplete until the
-        required host FS-UAE exact-byte proof also runs and passes. Host-only
-        deterministic parity is not sufficient completion evidence for this item.
-      - Blocking status, 2026-06-06: the host FS-UAE proof now runs, but
-        `external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins`
-        still has one red case for `examples/mos6502/65c02_allmodes.asm`.
-        The current mismatch is isolated to missing `BBR/BBS` bytes
-        (`0F 20 01` and `FF 21 01`) in the guest-native output while the same
-        staged Item 6 package bytes pass the deterministic native parity path.
-      - Boundary impact update, 2026-06-07: recent native boundary improvements
-        added deterministic guard coverage for adjusted `rel8` branch sizing,
-        `pair_u8_rel8` bit-branch handling, isolated tkpkg surface lookup
-        tables, multi-token PRVM expression spans, bare-label fallback handling,
-        selected-eval expression-span slicing, pair-direct shape inference, and
-        embedded native CLI package retention of `BBR0`/`BBS7` selector/table
-        entries. These improvements strengthen the known failure isolation, but
-        Item 6.7 still requires a green host FS-UAE exact-byte run before it can
-        be checked complete.
+    - Validation evidence, 2026-06-13: commit `3261becd` completed the native
+      Item 6.7 package-backed path. The implementation removed the temporary
+      native direct bit-branch helper and restored byte emission through
+      `tkpkgEncodeFindAndExecuteTableProgram`, so `BBR`/`BBS` behavior remains
+      encoded in package table/program data rather than CPU-specific native
+      helper logic. `cargo test -p asm
+      motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_bytes
+      -- --nocapture` passed and printed matching full `.bin` payloads for
+      all five indicated fixtures. `OPFORGE_FS_UAE_SMOKE=1
+      OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+      OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/
+      Configurations/opforge-tkpkg-test.fs-uae'
+      OPFORGE_FS_UAE_ARGS='{fsuae_config}'
+      OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 cargo test -p asm
+      external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins
+      -- --nocapture --test-threads=1` passed in 83.78s and printed matching
+      `rust bin:` / `native bin:` evidence for `6502_native_cli_smoke.asm`,
+      `6502_simple.asm`, `6502_allmodes.asm`, `65c02_simple.asm`, and
+      `65c02_allmodes.asm`. The `65c02_allmodes.asm` FS-UAE evidence included
+      matching `0F 20 01` and `FF 21 01` bytes for `BBR0`/`BBS7`, plus
+      matching `B2 20` and `7C 34 12` bytes for the other 65C02-only rows.
+      `cargo test -p asm
+      motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed after the helper removal, `git diff --check` passed,
+      `scripts/workflow/run_native_68000_format_gate.sh --write` reported 0
+      changed files after formatting, and `scripts/workflow/
+      run_rust_quality_gate.sh` completed with `PASS: Rust quality gate
+      complete.`
   - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
     - Source requirement or finding IDs: `SR-CLI-BOUNDARY`,
       `SR-RUST-VM-ARCH`, `SR-6502-SELECTOR`, `SR-6502-ENCODER`; expected to
@@ -901,23 +911,9 @@ The intended native shape mirrors the Rust path:
       run_rust_quality_gate_summary.sh` completed successfully and reported
       `PASS: Rust quality gate complete.` after logging the full gate to
       `target/workflow-logs/rust-quality-gate.log`.
-    - Blocking status, 2026-05-14: Item 6.8 remains incomplete because Item 6.7
-      has not passed its required host FS-UAE proof. The checkpointed Item 6
-      native/host path is green for the focused host gates below, but the
-      opt-in stripped-fixture FS-UAE proof still has one known red case for
-      follow-up cleanup. Command:
-      `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/
-      Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/
-      Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
-      OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
-      external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins
-      -- --nocapture --test-threads=1`. Current result: the first two stripped
-      fixtures pass with matching Rust/native bins
-      (`6502_native_cli_smoke.asm` and `6502_simple.asm`), then
-      `examples/mos6502/6502_allmodes.asm` fails during native pass1 after
-      `LABEL branch_test $00000918` and the bare source line `branch_test`,
-      reporting `ERROR OPC-NCLI020: native pass engine failed`; the launcher
-      stderr ends with `FS-UAE launcher exit status: signal: 9 (SIGKILL)`.
+    - Status update, 2026-06-13: Item 6.8 is unblocked by the green Item 6.7
+      host FS-UAE proof. The remaining work is the final audit/removal proof
+      that no unapproved native MOS selector/encoder residue remains.
 
 - Boundary carry-forward for Items 7 through 18, 2026-06-07: the recent
   boundary remediation does not reduce the remaining directive, source-graph,

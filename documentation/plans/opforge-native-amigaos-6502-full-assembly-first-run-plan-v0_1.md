@@ -970,7 +970,7 @@ The intended native shape mirrors the Rust path:
   representation difference in the slice evidence, and add parity or guard
   coverage so later agents do not replace Rust-guided behavior with an
   independently invented native policy.
-- [ ] Item 7: Implement layout-control directives in native opasm
+- [x] Item 7: Implement layout-control directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,
     `SR-OPASM-ENGINE`; expected to support the directives that directly shape
     image layout before broader data emission support lands.
@@ -992,6 +992,36 @@ The intended native shape mirrors the Rust path:
     directives to control origin, regions, sections, placement, alignment,
     fill, and reserved ranges with Rust-compatible state changes and
     diagnostics.
+  - Validation evidence, 2026-06-13: native opasm now executes the first-run
+    layout-control slice in `opasm_assembly_driver.asm` with region and
+    section tables, duplicate/overlap/capacity checks, pass-one placement
+    state, pass-two placed-section rebasing, and zero-fill gap materialization
+    for flat native CLI image output. `opasm_engine.asm` added
+    `opasmEngineSetCurrentPcV1` so later placed sections can advance the pass
+    PC without overwriting the first image origin. Directive routing keeps
+    `.org`, `.align`, `.fill`, `.res/.ds`, `.region`, `.section`, and `.place`
+    ahead of selected instruction emission, and the Item 7 source-shape test
+    locks those routes plus the placed-section gap/origin helper.
+    `cargo test -p asm item7 -- --nocapture` passed. `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/
+    Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes
+    -- --nocapture --test-threads=1` passed in 49.60s and verified native
+    AmigaOS output bytes `A9 01 00 00 EA 00 00 00 00 00 00 00 00 00 00 00 00
+    A9 02`, `SESSION-ORIGIN $00001002`, missing-region failure, and duplicate
+    placement failure. `cargo test -p asm motorola68020_opforge_native_cli_ --
+    --nocapture` passed with 5 tests. `scripts/workflow/
+    run_native_68000_format_gate.sh --write` and `scripts/workflow/
+    run_native_68000_format_gate.sh` both passed with 0 native formatting
+    changes. `python3 scripts/workflow/check_cpu_specific_arch_boundary.py`
+    passed with no enforced-scope errors. `scripts/workflow/
+    run_rust_quality_gate.sh` completed with `PASS: Rust quality gate
+    complete.` Plan-compliance reviewer rubric was applied with `AGENTS.md`,
+    this plan, the Item 7 slice summary, changed files, and validation output;
+    result: `PASS` for a slice limited to native opasm layout-control
+    execution and directive parity tests.
 
 - [ ] Item 8: Implement data and text emission directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,

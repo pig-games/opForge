@@ -9,6 +9,9 @@
 	.use opasm.amigaos.tkpkg_bridge as tkpkg
 
 OPASM_LAYOUT_NAME_CAPACITY = 32
+OPASM_LAYOUT_REGION_CAPACITY = 8
+OPASM_LAYOUT_SECTION_CAPACITY = 16
+OPASM_LAYOUT_INDEX_NONE = $ffff
 
 	.section code, kind=code
 	.pub
@@ -571,12 +574,12 @@ prepareFail
 
 fail
 	tst.w d4
-	beq.s failReturn
+	beq.w failReturn
 	bsr.w serviceFramePtr
 	jsr tkpkg.readLastErrorPtrV1
 	clr.b 0(a0, d4.W)
 	bsr.w emitSelectorDiagnostic
-	bne.s failReturn
+	bne.w failReturn
 	bsr.w serviceFramePtr
 	jsr tkpkg.readLastErrorPtrV1
 	move.w d4, d1
@@ -626,11 +629,13 @@ loadExprSlice
 	jsr eng.opasmEngineGetStatementExprTextSliceV1
 	tst.l d0
 	bne.s haveText
-	bra.w fail
+	moveq #1, d0
+	bra.w return
 
 exprSliceFail
 	adda.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
-	bra.w fail
+	moveq #1, d0
+	bra.w return
 
 storedText
 	clr.l d3
@@ -644,14 +649,16 @@ storedText
 	bsr.w skipLineWhitespace
 	tst.l d0
 	bne.s haveText
-	bra.w fail
+	moveq #1, d0
+	bra.w return
 
 haveText
 	tst.w d6
 	bne.s prepareRequest
 	bsr.w skipLineWhitespace
 	bne.s prepareRequest
-	bra.w fail
+	moveq #1, d0
+	bra.w return
 
 prepareRequest
 	move.l a0, OpasmDriverEvalFallbackPtr
@@ -679,7 +686,7 @@ readValue
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w parseDirectiveLiteralValue
-	bne.s fail
+	bne.w fail
 
 checkWidth
 	cmpi.b #1, d5
@@ -714,22 +721,12 @@ return
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0.L on return.
 resetLayoutState	.block
-	clr.w OpasmLayoutRegionDefined
-	clr.l OpasmLayoutRegionStart
-	clr.l OpasmLayoutRegionEnd
-	clr.l OpasmLayoutRegionCursor
-	move.l #1, OpasmLayoutRegionAlign
-	clr.w OpasmLayoutRegionNameLen
-	clr.b OpasmLayoutRegionName
-	clr.w OpasmLayoutSectionDefined
+	clr.w OpasmLayoutRegionCount
+	clr.w OpasmLayoutSectionCount
 	clr.w OpasmLayoutSectionActive
-	clr.w OpasmLayoutSectionPlaced
-	clr.l OpasmLayoutSectionStartPc
-	clr.l OpasmLayoutSectionSize
-	clr.l OpasmLayoutSectionBase
-	move.l #1, OpasmLayoutSectionAlign
-	clr.w OpasmLayoutSectionNameLen
-	clr.b OpasmLayoutSectionName
+	move.w #OPASM_LAYOUT_INDEX_NONE, OpasmLayoutActiveSectionIndex
+	clr.w OpasmLayoutScratchNameLen
+	clr.b OpasmLayoutScratchName
 	clr.w OpasmLayoutPlaceSectionNameLen
 	clr.b OpasmLayoutPlaceSectionName
 	clr.w OpasmLayoutPlaceRegionNameLen
@@ -738,34 +735,84 @@ resetLayoutState	.block
 	rts
 	.bend  ; resetLayoutState
 
-; Store the single-region native layout slice from `.region <name>, <start>, <end>`.
+; Store a native layout region from `.region <name>, <start>, <end>`.
 ; Inputs: D7.W = statement index.
 ; Outputs: D0.L = 0 on success, 1 on invalid region bounds.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
 processRegionDirectiveForStatement	.block
 	movem.l d1-d7/a0-a3, -(sp)
-	lea OpasmLayoutRegionName, a1
+	jsr eng.opasmEngineGetSessionPassV1
+	cmpi.w #2, d0
+	beq.w ok
+	lea OpasmLayoutScratchName.l, a1
 	moveq #1, d6
 	bsr.w readCommaNameForStatement
-	bne.s fail
-	move.w d3, OpasmLayoutRegionNameLen
+	bne.w fail
+	move.w d3, OpasmLayoutScratchNameLen
 	moveq #2, d6
 	bsr.w readCommaOperandValueForStatement
-	bne.s fail
-	move.l d3, OpasmLayoutRegionStart
-	move.l d3, OpasmLayoutRegionCursor
+	bne.w fail
+	move.l d3, OpasmLayoutScratchStart
 	moveq #3, d6
 	bsr.w readCommaOperandValueForStatement
-	bne.s fail
-	move.l d3, OpasmLayoutRegionEnd
-	cmp.l OpasmLayoutRegionStart, d3
-	blo.s fail
+	bne.w fail
+	move.l d3, OpasmLayoutScratchEnd
+	cmp.l OpasmLayoutScratchStart, d3
+	blo.w fail
 	moveq #4, d6
 	bsr.w readAlignOptionForStatement
-	bne.s fail
-	move.l d3, OpasmLayoutRegionAlign
-	move.w #1, OpasmLayoutRegionDefined
+	bne.w fail
+	moveq #0, d0
+	move.w OpasmLayoutRegionCount, d0
+	cmpi.w #OPASM_LAYOUT_REGION_CAPACITY, d0
+	bhs.w fail
+	bsr.w findRegionByScratchName
+	beq.w fail
+	bsr.w layoutScratchRegionOverlapsExisting
+	bne.w fail
+	lea OpasmLayoutScratchName.l, a0
+	lea OpasmLayoutRegionNames.l, a1
+	moveq #0, d0
+	move.w OpasmLayoutRegionCount, d0
+	lsl.l #5, d0
+	lea 0(a1, d0.w), a1
+	move.w OpasmLayoutScratchNameLen, d0
+	bsr.w copyNameBytes
+	lea OpasmLayoutRegionNameLens.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutRegionCount, d0
+	lsl.l #1, d0
+	lea 0(a0, d0.w), a0
+	move.w OpasmLayoutScratchNameLen, (a0)
+	lea OpasmLayoutRegionStarts.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutRegionCount, d0
+	lsl.l #2, d0
+	lea 0(a0, d0.w), a0
+	move.l OpasmLayoutScratchStart, (a0)
+	lea OpasmLayoutRegionEnds.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutRegionCount, d0
+	lsl.l #2, d0
+	lea 0(a0, d0.w), a0
+	move.l OpasmLayoutScratchEnd, (a0)
+	lea OpasmLayoutRegionCursors.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutRegionCount, d0
+	lsl.l #2, d0
+	lea 0(a0, d0.w), a0
+	move.l OpasmLayoutScratchStart, (a0)
+	lea OpasmLayoutRegionAligns.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutRegionCount, d0
+	lsl.l #2, d0
+	lea 0(a0, d0.w), a0
+	move.l d3, (a0)
+	lea OpasmLayoutRegionCount.l, a0
+	addq.w #1, (a0)
+
+ok
 	moveq #0, d0
 	bra.s return
 
@@ -777,36 +824,103 @@ return
 	rts
 	.bend  ; processRegionDirectiveForStatement
 
-; Enter the native single-section layout slice.
+; Enter a native layout section slice.
 ; Inputs: D7.W = statement index.
 ; Outputs: D0.L = 0 on success.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
 processSectionDirectiveForStatement	.block
 	movem.l d1-d7/a0-a3, -(sp)
-	lea OpasmLayoutSectionName, a1
+	lea OpasmLayoutScratchName.l, a1
 	moveq #1, d6
 	bsr.w readCommaNameForStatement
-	bne.s fail
-	move.w d3, OpasmLayoutSectionNameLen
+	bne.w fail
+	move.w d3, OpasmLayoutScratchNameLen
 	moveq #2, d6
 	bsr.w readAlignOptionForStatement
-	bne.s fail
-	move.w #1, OpasmLayoutSectionActive
-	move.w #1, OpasmLayoutSectionDefined
-	move.l d3, OpasmLayoutSectionAlign
+	bne.w fail
+	tst.w OpasmLayoutSectionActive
+	bne.w fail
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #2, d0
-	bne.s passOne
-	tst.w OpasmLayoutSectionPlaced
-	beq.s ok
-	move.l OpasmLayoutSectionBase, d0
-	jsr eng.opasmEngineSetOriginV1
+	beq.w passTwo
+	moveq #0, d0
+	move.w OpasmLayoutSectionCount, d0
+	cmpi.w #OPASM_LAYOUT_SECTION_CAPACITY, d0
+	bhs.w fail
+	bsr.w findSectionByScratchName
+	beq.w fail
+	lea OpasmLayoutScratchName.l, a0
+	lea OpasmLayoutSectionNames.l, a1
+	moveq #0, d0
+	move.w OpasmLayoutSectionCount, d0
+	lsl.l #5, d0
+	lea 0(a1, d0.w), a1
+	move.w OpasmLayoutScratchNameLen, d0
+	bsr.w copyNameBytes
+	lea OpasmLayoutSectionNameLens.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutSectionCount, d0
+	lsl.l #1, d0
+	lea 0(a0, d0.w), a0
+	move.w OpasmLayoutScratchNameLen, (a0)
+	lea OpasmLayoutSectionPlacedFlags.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutSectionCount, d0
+	lsl.l #1, d0
+	lea 0(a0, d0.w), a0
+	clr.w (a0)
+	lea OpasmLayoutSectionAligns.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutSectionCount, d0
+	lsl.l #2, d0
+	lea 0(a0, d0.w), a0
+	move.l d3, (a0)
+	lea OpasmLayoutSectionSizes.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutSectionCount, d0
+	lsl.l #2, d0
+	lea 0(a0, d0.w), a0
+	clr.l (a0)
+	lea OpasmLayoutSectionBases.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutSectionCount, d0
+	lsl.l #2, d0
+	lea 0(a0, d0.w), a0
+	clr.l (a0)
+	move.w #1, OpasmLayoutSectionActive
+	move.w OpasmLayoutSectionCount, d0
+	move.w d0, d1
+	move.w d1, OpasmLayoutActiveSectionIndex
+	lea OpasmLayoutSectionCount.l, a0
+	addq.w #1, (a0)
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	move.l d0, d1
+	lea OpasmLayoutSectionStartPcs.l, a0
+	moveq #0, d0
+	move.w OpasmLayoutActiveSectionIndex, d0
+	lsl.l #2, d0
+	lea 0(a0, d0.w), a0
+	move.l d1, (a0)
 	bra.s ok
 
-passOne
+passTwo
+	bsr.w findSectionByScratchName
+	bne.w fail
+	bsr.w layoutSectionPlacedPtr
+	tst.w (a0)
+	beq.s startSection
+	bsr.w layoutSectionBasePtr
+	move.l (a0), d0
+	bsr.w setPlacedSectionOriginWithImageGap
+	bne.w fail
+
+startSection
+	move.w #1, OpasmLayoutSectionActive
+	move.w d5, OpasmLayoutActiveSectionIndex
 	jsr eng.opasmEngineGetSessionCurrentPcV1
-	move.l d0, OpasmLayoutSectionStartPc
+	bsr.w layoutSectionStartPcPtr
+	move.l d0, (a0)
 
 ok
 	moveq #0, d0
@@ -820,25 +934,34 @@ return
 	rts
 	.bend  ; processSectionDirectiveForStatement
 
-; Leave the native single-section layout slice and record its pass-one size.
+; Leave the active native section slice and record its pass-one size.
 ; Inputs: D7.W = statement index.
 ; Outputs: D0.L = 0 on success, 1 when no section is active.
-; Clobbers: D0-D1/A0/CCR.
+; Clobbers: D0-D5/A0/CCR.
 ; CCR: reflects D0.L on return.
 processEndsectionDirectiveForStatement	.block
-	movem.l d1/a0, -(sp)
+	movem.l d1-d5/a0, -(sp)
 	tst.w OpasmLayoutSectionActive
-	beq.s fail
+	beq.w fail
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #1, d0
 	bne.s clearActive
 	jsr eng.opasmEngineGetSessionCurrentPcV1
 	move.l d0, d1
-	sub.l OpasmLayoutSectionStartPc, d1
-	move.l d1, OpasmLayoutSectionSize
+	moveq #0, d5
+	move.w OpasmLayoutActiveSectionIndex, d5
+	cmpi.w #OPASM_LAYOUT_INDEX_NONE, d5
+	beq.w fail
+	lea OpasmLayoutSectionStartPcs.l, a0
+	bsr.w layoutLongPtr
+	sub.l (a0), d1
+	lea OpasmLayoutSectionSizes.l, a0
+	bsr.w layoutLongPtr
+	move.l d1, (a0)
 
 clearActive
 	clr.w OpasmLayoutSectionActive
+	move.w #OPASM_LAYOUT_INDEX_NONE, OpasmLayoutActiveSectionIndex
 	moveq #0, d0
 	bra.s return
 
@@ -846,11 +969,11 @@ fail
 	moveq #1, d0
 
 return
-	movem.l (sp)+, d1/a0
+	movem.l (sp)+, d1-d5/a0
 	rts
 	.bend  ; processEndsectionDirectiveForStatement
 
-; Place the native single-section slice in the single recorded region.
+; Place a named native section slice in a named region.
 ; Inputs: D7.W = statement index.
 ; Outputs: D0.L = 0 on success, 1 on missing state or range overflow.
 ; Clobbers: D0-D7/A0-A3/CCR.
@@ -860,66 +983,84 @@ processPlaceDirectiveForStatement	.block
 	jsr eng.opasmEngineGetSessionPassV1
 	cmpi.w #1, d0
 	bne.w ok
-	tst.w OpasmLayoutRegionDefined
-	beq.w fail
-	tst.w OpasmLayoutSectionDefined
-	beq.w fail
-	tst.w OpasmLayoutSectionPlaced
+	tst.w OpasmLayoutSectionActive
 	bne.w fail
+	tst.w OpasmLayoutRegionCount
+	beq.w fail
+	tst.w OpasmLayoutSectionCount
+	beq.w fail
 	bsr.w parsePlaceDirectiveNamesForStatement
 	bne.w fail
-	lea OpasmLayoutSectionName, a0
-	moveq #0, d0
-	move.w OpasmLayoutSectionNameLen, d0
-	lea OpasmLayoutPlaceSectionName, a1
-	moveq #0, d1
-	move.w OpasmLayoutPlaceSectionNameLen, d1
-	bsr.w layoutNamesMatch
+	bsr.w findSectionByPlaceName
 	bne.w fail
-	lea OpasmLayoutRegionName, a0
-	moveq #0, d0
-	move.w OpasmLayoutRegionNameLen, d0
-	lea OpasmLayoutPlaceRegionName, a1
-	moveq #0, d1
-	move.w OpasmLayoutPlaceRegionNameLen, d1
-	bsr.w layoutNamesMatch
+	move.w d5, OpasmLayoutPlaceSectionIndex
+	bsr.w layoutSectionPlacedPtr
+	tst.w (a0)
 	bne.w fail
+	bsr.w findRegionByPlaceName
+	bne.w fail
+	move.w d5, OpasmLayoutPlaceRegionIndex
 	moveq #2, d6
 	bsr.w readAlignOptionForStatement
 	bne.w fail
 	move.l d3, d4
-	cmp.l OpasmLayoutRegionAlign, d4
+	moveq #0, d5
+	move.w OpasmLayoutPlaceRegionIndex, d5
+	bsr.w layoutRegionAlignPtr
+	cmp.l (a0), d4
 	bhs.s haveRegionAlign
-	move.l OpasmLayoutRegionAlign, d4
+	move.l (a0), d4
 
 haveRegionAlign
-	cmp.l OpasmLayoutSectionAlign, d4
+	moveq #0, d5
+	move.w OpasmLayoutPlaceSectionIndex, d5
+	bsr.w layoutSectionAlignPtr
+	cmp.l (a0), d4
 	bhs.s haveSectionAlign
-	move.l OpasmLayoutSectionAlign, d4
+	move.l (a0), d4
 
 haveSectionAlign
-	move.l OpasmLayoutRegionCursor, d1
+	moveq #0, d5
+	move.w OpasmLayoutPlaceRegionIndex, d5
+	bsr.w layoutRegionCursorPtr
+	move.l (a0), d1
 	move.l d4, d0
 	bsr.w alignLayoutCursor
 	bne.w fail
-	move.l OpasmLayoutSectionSize, d2
+	moveq #0, d5
+	move.w OpasmLayoutPlaceSectionIndex, d5
+	bsr.w layoutSectionSizePtr
+	move.l (a0), d2
 	beq.s store
 	move.l d1, d0
 	add.l d2, d0
 	bcs.w fail
 	subq.l #1, d0
-	cmp.l OpasmLayoutRegionEnd, d0
+	moveq #0, d5
+	move.w OpasmLayoutPlaceRegionIndex, d5
+	bsr.w layoutRegionEndPtr
+	cmp.l (a0), d0
 	bhi.w fail
 	addq.l #1, d0
-	move.l d0, OpasmLayoutRegionCursor
+	moveq #0, d5
+	move.w OpasmLayoutPlaceRegionIndex, d5
+	bsr.w layoutRegionCursorPtr
+	move.l d0, (a0)
 	bra.s storeBase
 
 store
-	move.l d1, OpasmLayoutRegionCursor
+	moveq #0, d5
+	move.w OpasmLayoutPlaceRegionIndex, d5
+	bsr.w layoutRegionCursorPtr
+	move.l d1, (a0)
 
 storeBase
-	move.l d1, OpasmLayoutSectionBase
-	move.w #1, OpasmLayoutSectionPlaced
+	moveq #0, d5
+	move.w OpasmLayoutPlaceSectionIndex, d5
+	bsr.w layoutSectionBasePtr
+	move.l d1, (a0)
+	bsr.w layoutSectionPlacedPtr
+	move.w #1, (a0)
 
 ok
 	moveq #0, d0
@@ -932,6 +1073,425 @@ return
 	movem.l (sp)+, d1-d7/a0-a3
 	rts
 	.bend  ; processPlaceDirectiveForStatement
+
+; Set origin for a placed section, preserving first image origin and filling gaps.
+; Inputs: D0.L = placed section base.
+; Outputs: D0.L = 0 on success, 1 on image capacity failure.
+; Clobbers: D0-D4/A0/CCR.
+; CCR: reflects D0.L on return.
+setPlacedSectionOriginWithImageGap	.block
+	movem.l d1-d4/a0, -(sp)
+	move.l d0, d4
+	jsr eng.opasmEngineGetImageByteCountV1
+	tst.l d0
+	beq.s firstImageOrigin
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	move.l d4, d1
+	cmp.l d0, d1
+	bls.s setCurrentPc
+	sub.l d0, d1
+	move.l d1, d0
+	moveq #0, d1
+	bsr.w appendRepeatedByte
+	bne.s fail
+
+setCurrentPc
+	move.l d4, d0
+	jsr eng.opasmEngineSetCurrentPcV1
+	bra.s return
+
+firstImageOrigin
+	move.l d4, d0
+	jsr eng.opasmEngineSetOriginV1
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d4/a0
+	rts
+	.bend  ; setPlacedSectionOriginWithImageGap
+
+; Copy a bounded layout name into a table slot.
+; Inputs: A0 = source; A1 = destination; D0.W = byte count.
+; Outputs: destination bytes plus trailing NUL.
+; Clobbers: D0-D1/A0-A1/CCR.
+; CCR: reflects D0.W on return.
+copyNameBytes	.block
+	move.w d0, d1
+	beq.s done
+
+loop
+	move.b (a0)+, (a1)+
+	subq.w #1, d1
+	bne.s loop
+
+done
+	clr.b (a1)
+	rts
+	.bend  ; copyNameBytes
+
+; Return the region name buffer pointer for an index.
+; Inputs: D5.W = region index.
+; Outputs: A1 = name buffer pointer.
+; Clobbers: D0/A1/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutRegionNamePtr	.block
+	moveq #0, d0
+	move.w d5, d0
+	lsl.l #5, d0
+	lea OpasmLayoutRegionNames.l, a1
+	adda.l d0, a1
+	rts
+	.bend  ; layoutRegionNamePtr
+
+; Return the section name buffer pointer for an index.
+; Inputs: D5.W = section index.
+; Outputs: A1 = name buffer pointer.
+; Clobbers: D0/A1/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutSectionNamePtr	.block
+	moveq #0, d0
+	move.w d5, d0
+	lsl.l #5, d0
+	lea OpasmLayoutSectionNames.l, a1
+	adda.l d0, a1
+	rts
+	.bend  ; layoutSectionNamePtr
+
+; Return an indexed region name-length pointer.
+; Inputs: D5.W = region index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutRegionNameLenPtr	.block
+	lea OpasmLayoutRegionNameLens.l, a0
+	bsr.w layoutWordPtr
+	rts
+	.bend  ; layoutRegionNameLenPtr
+
+; Return an indexed region start pointer.
+; Inputs: D5.W = region index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutRegionStartPtr	.block
+	lea OpasmLayoutRegionStarts.l, a0
+	bsr.w layoutLongPtr
+	rts
+	.bend  ; layoutRegionStartPtr
+
+; Return an indexed region end pointer.
+; Inputs: D5.W = region index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutRegionEndPtr	.block
+	lea OpasmLayoutRegionEnds.l, a0
+	bsr.w layoutLongPtr
+	rts
+	.bend  ; layoutRegionEndPtr
+
+; Return an indexed region cursor pointer.
+; Inputs: D5.W = region index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutRegionCursorPtr	.block
+	lea OpasmLayoutRegionCursors.l, a0
+	bsr.w layoutLongPtr
+	rts
+	.bend  ; layoutRegionCursorPtr
+
+; Return an indexed region alignment pointer.
+; Inputs: D5.W = region index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutRegionAlignPtr	.block
+	lea OpasmLayoutRegionAligns.l, a0
+	bsr.w layoutLongPtr
+	rts
+	.bend  ; layoutRegionAlignPtr
+
+; Return an indexed section name-length pointer.
+; Inputs: D5.W = section index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutSectionNameLenPtr	.block
+	lea OpasmLayoutSectionNameLens.l, a0
+	bsr.w layoutWordPtr
+	rts
+	.bend  ; layoutSectionNameLenPtr
+
+; Return an indexed section placed-flag pointer.
+; Inputs: D5.W = section index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutSectionPlacedPtr	.block
+	lea OpasmLayoutSectionPlacedFlags.l, a0
+	bsr.w layoutWordPtr
+	rts
+	.bend  ; layoutSectionPlacedPtr
+
+; Return an indexed section start-PC pointer.
+; Inputs: D5.W = section index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutSectionStartPcPtr	.block
+	lea OpasmLayoutSectionStartPcs.l, a0
+	bsr.w layoutLongPtr
+	rts
+	.bend  ; layoutSectionStartPcPtr
+
+; Return an indexed section size pointer.
+; Inputs: D5.W = section index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutSectionSizePtr	.block
+	lea OpasmLayoutSectionSizes.l, a0
+	bsr.w layoutLongPtr
+	rts
+	.bend  ; layoutSectionSizePtr
+
+; Return an indexed section base pointer.
+; Inputs: D5.W = section index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutSectionBasePtr	.block
+	lea OpasmLayoutSectionBases.l, a0
+	bsr.w layoutLongPtr
+	rts
+	.bend  ; layoutSectionBasePtr
+
+; Return an indexed section alignment pointer.
+; Inputs: D5.W = section index.
+; Outputs: A0 = field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutSectionAlignPtr	.block
+	lea OpasmLayoutSectionAligns.l, a0
+	bsr.w layoutLongPtr
+	rts
+	.bend  ; layoutSectionAlignPtr
+
+; Index into a word table.
+; Inputs: A0 = table base; D5.W = index.
+; Outputs: A0 = indexed field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutWordPtr	.block
+	moveq #0, d2
+	move.w d5, d2
+	lsl.l #1, d2
+	lea 0(a0, d2.w), a0
+	rts
+	.bend  ; layoutWordPtr
+
+; Index into a long table.
+; Inputs: A0 = table base; D5.W = index.
+; Outputs: A0 = indexed field pointer.
+; Clobbers: D0/A0/CCR.
+; CCR: reflects D0.L after index scaling.
+layoutLongPtr	.block
+	moveq #0, d2
+	move.w d5, d2
+	lsl.l #2, d2
+	lea 0(a0, d2.w), a0
+	rts
+	.bend  ; layoutLongPtr
+
+; Find a region by the scratch layout name.
+; Outputs: D0.L = 0 on found, 1 when missing; D5.W = index on found.
+; Clobbers: D0-D5/A0-A1/CCR.
+; CCR: reflects D0.L on return.
+findRegionByScratchName	.block
+	moveq #0, d5
+
+loop
+	lea OpasmLayoutRegionCount.l, a0
+	cmp.w (a0), d5
+	bhs.s missing
+	lea OpasmLayoutRegionNameLens.l, a0
+	bsr.w layoutWordPtr
+	moveq #0, d0
+	move.w (a0), d0
+	moveq #0, d1
+	move.w OpasmLayoutScratchNameLen, d1
+	lea OpasmLayoutRegionNames.l, a1
+	moveq #0, d2
+	move.w d5, d2
+	lsl.l #5, d2
+	lea 0(a1, d2.w), a1
+	movea.l a1, a0
+	lea OpasmLayoutScratchName.l, a1
+	bsr.w layoutNamesMatch
+	beq.s found
+	addq.w #1, d5
+	bra.s loop
+
+found
+	moveq #0, d0
+	rts
+
+missing
+	moveq #1, d0
+	rts
+	.bend  ; findRegionByScratchName
+
+; Find a section by the scratch layout name.
+; Outputs: D0.L = 0 on found, 1 when missing; D5.W = index on found.
+; Clobbers: D0-D5/A0-A1/CCR.
+; CCR: reflects D0.L on return.
+findSectionByScratchName	.block
+	moveq #0, d5
+
+loop
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d5
+	bhs.s missing
+	lea OpasmLayoutSectionNameLens.l, a0
+	bsr.w layoutWordPtr
+	moveq #0, d0
+	move.w (a0), d0
+	moveq #0, d1
+	move.w OpasmLayoutScratchNameLen, d1
+	lea OpasmLayoutSectionNames.l, a1
+	moveq #0, d2
+	move.w d5, d2
+	lsl.l #5, d2
+	lea 0(a1, d2.w), a1
+	movea.l a1, a0
+	lea OpasmLayoutScratchName.l, a1
+	bsr.w layoutNamesMatch
+	beq.s found
+	addq.w #1, d5
+	bra.s loop
+
+found
+	moveq #0, d0
+	rts
+
+missing
+	moveq #1, d0
+	rts
+	.bend  ; findSectionByScratchName
+
+; Find a region by the parsed `.place` region name.
+; Outputs: D0.L = 0 on found, 1 when missing; D5.W = index on found.
+; Clobbers: D0-D5/A0-A1/CCR.
+; CCR: reflects D0.L on return.
+findRegionByPlaceName	.block
+	moveq #0, d5
+
+loop
+	lea OpasmLayoutRegionCount.l, a0
+	cmp.w (a0), d5
+	bhs.s missing
+	lea OpasmLayoutRegionNameLens.l, a0
+	bsr.w layoutWordPtr
+	moveq #0, d0
+	move.w (a0), d0
+	moveq #0, d1
+	move.w OpasmLayoutPlaceRegionNameLen, d1
+	lea OpasmLayoutRegionNames.l, a1
+	moveq #0, d2
+	move.w d5, d2
+	lsl.l #5, d2
+	lea 0(a1, d2.w), a1
+	movea.l a1, a0
+	lea OpasmLayoutPlaceRegionName.l, a1
+	bsr.w layoutNamesMatch
+	beq.s found
+	addq.w #1, d5
+	bra.s loop
+
+found
+	moveq #0, d0
+	rts
+
+missing
+	moveq #1, d0
+	rts
+	.bend  ; findRegionByPlaceName
+
+; Find a section by the parsed `.place` section name.
+; Outputs: D0.L = 0 on found, 1 when missing; D5.W = index on found.
+; Clobbers: D0-D5/A0-A1/CCR.
+; CCR: reflects D0.L on return.
+findSectionByPlaceName	.block
+	moveq #0, d5
+
+loop
+	lea OpasmLayoutSectionCount.l, a0
+	cmp.w (a0), d5
+	bhs.s missing
+	lea OpasmLayoutSectionNameLens.l, a0
+	bsr.w layoutWordPtr
+	moveq #0, d0
+	move.w (a0), d0
+	moveq #0, d1
+	move.w OpasmLayoutPlaceSectionNameLen, d1
+	lea OpasmLayoutSectionNames.l, a1
+	moveq #0, d2
+	move.w d5, d2
+	lsl.l #5, d2
+	lea 0(a1, d2.w), a1
+	movea.l a1, a0
+	lea OpasmLayoutPlaceSectionName.l, a1
+	bsr.w layoutNamesMatch
+	beq.s found
+	addq.w #1, d5
+	bra.s loop
+
+found
+	moveq #0, d0
+	rts
+
+missing
+	moveq #1, d0
+	rts
+	.bend  ; findSectionByPlaceName
+
+; Check whether the scratch region range overlaps any existing region.
+; Outputs: D0.L = 0 when clear, 1 on overlap.
+; Clobbers: D0-D6/A0/CCR.
+; CCR: reflects D0.L on return.
+layoutScratchRegionOverlapsExisting	.block
+	moveq #0, d6
+
+loop
+	lea OpasmLayoutRegionCount.l, a0
+	cmp.w (a0), d6
+	bhs.s clear
+	move.w d6, d5
+	lea OpasmLayoutRegionEnds.l, a0
+	bsr.w layoutLongPtr
+	move.l OpasmLayoutScratchStart, d0
+	cmp.l (a0), d0
+	bhi.s next
+	lea OpasmLayoutRegionStarts.l, a0
+	bsr.w layoutLongPtr
+	move.l (a0), d0
+	cmp.l OpasmLayoutScratchEnd, d0
+	bhi.s next
+	moveq #1, d0
+	rts
+
+next
+	addq.w #1, d6
+	bra.s loop
+
+clear
+	moveq #0, d0
+	rts
+	.bend  ; layoutScratchRegionOverlapsExisting
 
 ; Read a comma-separated directive identifier part into a bounded layout buffer.
 ; Inputs: D7.W = statement index; D6.W = one-based part; A1 = destination buffer.
@@ -981,7 +1541,7 @@ partEnd
 	cmp.w d6, d4
 	beq.s copyPart
 	tst.l d2
-	beq.s fail
+	beq.w fail
 	addq.l #1, a2
 	subq.l #1, d2
 	addq.w #1, d4
@@ -1004,10 +1564,10 @@ return
 	rts
 	.bend  ; readCommaNameForStatement
 
-; Read an optional `align=<n>` comma part, defaulting to 1 when absent.
-; Inputs: D7.W = statement index; D6.W = one-based part.
-; Outputs: D0.L = 0 on success, 1 on invalid align; D3.L = align value.
-; Clobbers: D0-D7/A0-A3/CCR.
+; Read optional align=<n> for a comma-delimited directive operand.
+; Inputs: D7.W = statement index; D6.W = one-based comma part.
+; Outputs: D0.L = 0 on success; D3.L = parsed step or 1 by default.
+; Clobbers: D0-D2/D4-D7/A0-A3/CCR.
 ; CCR: reflects D0.L on return.
 readAlignOptionForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a3, -(sp)
@@ -1099,9 +1659,9 @@ parsePlaceDirectiveNamesForStatement	.block
 	beq.w fail
 	movea.l a0, a2
 	move.l d0, d2
-	lea OpasmLayoutPlaceSectionName, a1
+	lea OpasmLayoutPlaceSectionName.l, a1
 	bsr.w copyNameTokenSlice
-	bne.s fail
+	bne.w fail
 	move.w d3, OpasmLayoutPlaceSectionNameLen
 	adda.l d3, a2
 	sub.l d3, d2
@@ -1113,7 +1673,7 @@ parsePlaceDirectiveNamesForStatement	.block
 	lea InText, a1
 	moveq #2, d1
 	bsr.w lineStartsWith
-	beq.s fail
+	beq.w fail
 	addq.l #2, a2
 	subq.l #2, d2
 	movea.l a2, a0
@@ -1121,9 +1681,9 @@ parsePlaceDirectiveNamesForStatement	.block
 	bsr.w skipLineWhitespace
 	movea.l a0, a2
 	move.l d0, d2
-	lea OpasmLayoutPlaceRegionName, a1
+	lea OpasmLayoutPlaceRegionName.l, a1
 	bsr.w copyNameTokenSlice
-	bne.s fail
+	bne.w fail
 	move.w d3, OpasmLayoutPlaceRegionNameLen
 	moveq #0, d0
 	bra.s return
@@ -1159,7 +1719,7 @@ loop
 	cmpi.b #',', d1
 	beq.s finish
 	tst.w d4
-	beq.s fail
+	beq.w fail
 	move.b d1, (a1)+
 	addq.l #1, a0
 	subq.l #1, d0
@@ -1169,7 +1729,7 @@ loop
 
 finish
 	tst.w d3
-	beq.s fail
+	beq.w fail
 	clr.b (a1)
 	movem.l (sp)+, d1-d2/d4/a0-a1
 	moveq #0, d0
@@ -1189,9 +1749,9 @@ fail
 layoutNamesMatch	.block
 	movem.l d1-d4/a0-a1, -(sp)
 	cmp.l d1, d0
-	bne.s fail
+	bne.w fail
 	move.l d0, d2
-	beq.s fail
+	beq.w fail
 
 loop
 	tst.l d2
@@ -1203,7 +1763,7 @@ loop
 	bsr.w lowerD3
 	exg d3, d4
 	cmp.b d4, d3
-	bne.s fail
+	bne.w fail
 	subq.l #1, d2
 	bra.s loop
 
@@ -1288,24 +1848,27 @@ return
 	rts
 	.bend  ; parseAlignOptionValue
 
-; Align a layout cursor using the native first-run power-of-two subset.
+; Align a layout cursor with Rust-compatible positive-integer `align_up`.
 ; Inputs: D0.L = align; D1.L = cursor.
 ; Outputs: D0.L = 0 on success, 1 on invalid/overflow; D1.L = aligned cursor.
-; Clobbers: D0/D2-D3/CCR.
+; Clobbers: D0/D2-D4/CCR.
 ; CCR: reflects D0.L on return.
 alignLayoutCursor	.block
+	tst.l d0
+	beq.w fail
 	cmpi.l #1, d0
 	bls.s ok
-	move.l d0, d2
-	subq.l #1, d2
-	move.l d0, d3
-	and.l d2, d3
-	bne.s fail
+	move.l d0, d4
+	moveq #0, d3
+	move.l d1, d2
+	divu.l d4, d3:d2
+	tst.l d3
+	beq.s ok
+	move.l d4, d2
+	sub.l d3, d2
 	move.l d1, d3
 	add.l d2, d3
-	bcs.s fail
-	not.l d2
-	and.l d2, d3
+	bcs.w fail
 	move.l d3, d1
 
 ok
@@ -1381,7 +1944,7 @@ partEnd
 	cmp.w d6, d4
 	beq.s evaluatePart
 	tst.l d2
-	beq.s fail
+	beq.w fail
 	addq.l #1, a2
 	subq.l #1, d2
 	addq.w #1, d4
@@ -1393,7 +1956,7 @@ evaluatePart
 	bsr.w trimPartTrailing
 	move.l a0, OpasmDriverEvalFallbackPtr
 	move.l d0, OpasmDriverEvalFallbackLen
-	beq.s fail
+	beq.w fail
 	bsr.w parseDirectiveLiteralValue
 	beq.s evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
@@ -1411,7 +1974,7 @@ evaluatePart
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w parseDirectiveLiteralValue
-	bne.s fail
+	bne.w fail
 
 evalPartOk
 	moveq #0, d0
@@ -1441,14 +2004,14 @@ readAlignPadForStatement	.block
 	movem.l d1-d2/d4-d7/a0-a2, -(sp)
 	moveq #2, d5
 	bsr.w readOperandValueForStatement
-	bne.s fail
+	bne.w fail
 	move.l d3, d4
-	beq.s fail
+	beq.w fail
 	move.l d4, d0
 	subq.l #1, d0
 	move.l d0, d5
 	and.l d4, d0
-	bne.s fail
+	bne.w fail
 	jsr eng.opasmEngineGetSessionCurrentPcV1
 	and.l d5, d0
 	beq.s aligned
@@ -1542,7 +2105,7 @@ parseDirectiveLiteralValue	.block
 	bsr.w skipLineWhitespace
 	bsr.w trimLiteralFallbackTrailing
 	tst.l d0
-	beq.s fail
+	beq.w fail
 	clr.l d3
 	move.l d0, d4
 	move.b (a0), d1
@@ -1553,7 +2116,7 @@ parseDirectiveLiteralValue	.block
 hexPrefix
 	addq.l #1, a0
 	subq.l #1, d4
-	beq.s fail
+	beq.w fail
 
 hexLoop
 	tst.l d4
@@ -1573,9 +2136,9 @@ decimalLoop
 	moveq #0, d1
 	move.b (a0)+, d1
 	cmpi.b #'0', d1
-	blo.s fail
+	blo.w fail
 	cmpi.b #'9', d1
-	bhi.s fail
+	bhi.w fail
 	subi.b #'0', d1
 	move.l d3, d2
 	lsl.l #3, d3
@@ -1622,7 +2185,7 @@ done
 
 hexNibbleValue	.block
 	cmpi.b #'0', d1
-	blo.s fail
+	blo.w fail
 	cmpi.b #'9', d1
 	bls.s decimal
 	cmpi.b #'A', d1
@@ -1632,9 +2195,9 @@ hexNibbleValue	.block
 
 lower
 	cmpi.b #'a', d1
-	blo.s fail
+	blo.w fail
 	cmpi.b #'f', d1
-	bhi.s fail
+	bhi.w fail
 	subi.b #'a' - 10, d1
 	moveq #0, d0
 	rts
@@ -1672,7 +2235,7 @@ loop
 	movea.l sp, a0
 	moveq #1, d0
 	jsr eng.opasmEngineAppendImageBytesV1
-	bne.s fail
+	bne.w fail
 	subq.l #1, d2
 	bra.s loop
 
@@ -2116,53 +2679,74 @@ OpasmDriverEvalFallbackLen
 OpasmLayoutNameDestPtr
 	.res long, 1
 
-OpasmLayoutRegionDefined
+OpasmLayoutRegionCount
 	.res word, 1
 
-OpasmLayoutRegionStart
-	.res long, 1
-
-OpasmLayoutRegionEnd
-	.res long, 1
-
-OpasmLayoutRegionCursor
-	.res long, 1
-
-OpasmLayoutRegionAlign
-	.res long, 1
-
-OpasmLayoutRegionNameLen
-	.res word, 1
-
-OpasmLayoutRegionName
-	.res byte, OPASM_LAYOUT_NAME_CAPACITY
-
-OpasmLayoutSectionDefined
+OpasmLayoutSectionCount
 	.res word, 1
 
 OpasmLayoutSectionActive
 	.res word, 1
 
-OpasmLayoutSectionPlaced
+OpasmLayoutActiveSectionIndex
 	.res word, 1
 
-OpasmLayoutSectionStartPc
-	.res long, 1
-
-OpasmLayoutSectionSize
-	.res long, 1
-
-OpasmLayoutSectionBase
-	.res long, 1
-
-OpasmLayoutSectionAlign
-	.res long, 1
-
-OpasmLayoutSectionNameLen
+OpasmLayoutPlaceSectionIndex
 	.res word, 1
 
-OpasmLayoutSectionName
+OpasmLayoutPlaceRegionIndex
+	.res word, 1
+
+OpasmLayoutScratchStart
+	.res long, 1
+
+OpasmLayoutScratchEnd
+	.res long, 1
+
+OpasmLayoutScratchNameLen
+	.res word, 1
+
+OpasmLayoutScratchName
 	.res byte, OPASM_LAYOUT_NAME_CAPACITY
+
+OpasmLayoutRegionNameLens
+	.res word, OPASM_LAYOUT_REGION_CAPACITY
+
+OpasmLayoutRegionNames
+	.res byte, OPASM_LAYOUT_REGION_CAPACITY * OPASM_LAYOUT_NAME_CAPACITY
+
+OpasmLayoutRegionStarts
+	.res long, OPASM_LAYOUT_REGION_CAPACITY
+
+OpasmLayoutRegionEnds
+	.res long, OPASM_LAYOUT_REGION_CAPACITY
+
+OpasmLayoutRegionCursors
+	.res long, OPASM_LAYOUT_REGION_CAPACITY
+
+OpasmLayoutRegionAligns
+	.res long, OPASM_LAYOUT_REGION_CAPACITY
+
+OpasmLayoutSectionNameLens
+	.res word, OPASM_LAYOUT_SECTION_CAPACITY
+
+OpasmLayoutSectionNames
+	.res byte, OPASM_LAYOUT_SECTION_CAPACITY * OPASM_LAYOUT_NAME_CAPACITY
+
+OpasmLayoutSectionPlacedFlags
+	.res word, OPASM_LAYOUT_SECTION_CAPACITY
+
+OpasmLayoutSectionStartPcs
+	.res long, OPASM_LAYOUT_SECTION_CAPACITY
+
+OpasmLayoutSectionSizes
+	.res long, OPASM_LAYOUT_SECTION_CAPACITY
+
+OpasmLayoutSectionBases
+	.res long, OPASM_LAYOUT_SECTION_CAPACITY
+
+OpasmLayoutSectionAligns
+	.res long, OPASM_LAYOUT_SECTION_CAPACITY
 
 OpasmLayoutPlaceSectionNameLen
 	.res word, 1

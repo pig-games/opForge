@@ -416,6 +416,19 @@ opasmEngineSetOriginV1	.block
 	rts
 	.bend  ; opasmEngineSetOriginV1
 
+; Set current PC while preserving the session origin.
+;
+; Inputs:
+; - D0: new current PC.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineSetCurrentPcV1	.block
+	move.l d0, OpasmEngineSessionCurrentPc.l
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineSetCurrentPcV1
+
 ; Advance current PC by an encoded byte size.
 ;
 ; Inputs:

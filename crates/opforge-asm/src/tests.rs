@@ -13142,22 +13142,34 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &[
             "processPlaceDirectiveForStatement .BLOCK",
             "BSR.W parsePlaceDirectiveNamesForStatement",
-            "BSR.W layoutNamesMatch",
-            "BSR.W layoutNamesMatch",
+            "BSR.W findSectionByPlaceName",
+            "MOVE.W D5, OpasmLayoutPlaceSectionIndex",
+            "BSR.W findRegionByPlaceName",
+            "MOVE.W D5, OpasmLayoutPlaceRegionIndex",
             "BSR.W readAlignOptionForStatement",
-            "MOVE.L OpasmLayoutRegionCursor, D1",
+            "BSR.W layoutRegionCursorPtr",
             "BSR.W alignLayoutCursor",
-            "MOVE.L OpasmLayoutSectionSize, D2",
-            "MOVE.L D1, OpasmLayoutSectionBase",
-            "MOVE.W #1, OpasmLayoutSectionPlaced",
+            "BSR.W layoutSectionSizePtr",
+            "BSR.W layoutSectionBasePtr",
+            "MOVE.W #1, (A0)",
         ]
     ));
     assert!(source_contains_in_order(
         &driver,
         &[
             "processSectionDirectiveForStatement .BLOCK",
-            "TST.W OpasmLayoutSectionPlaced",
-            "MOVE.L OpasmLayoutSectionBase, D0",
+            "BSR.W findSectionByScratchName",
+            "BSR.W layoutSectionPlacedPtr",
+            "BSR.W layoutSectionBasePtr",
+            "BSR.W setPlacedSectionOriginWithImageGap",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "setPlacedSectionOriginWithImageGap .BLOCK",
+            "BSR.W appendRepeatedByte",
+            "JSR eng.opasmEngineSetCurrentPcV1",
             "JSR eng.opasmEngineSetOriginV1",
         ]
     ));
@@ -13166,9 +13178,10 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &[
             "processRegionDirectiveForStatement .BLOCK",
             "BSR.W readCommaNameForStatement",
-            "MOVE.W D3, OpasmLayoutRegionNameLen",
+            "MOVE.W D3, OpasmLayoutScratchNameLen",
             "BSR.W readAlignOptionForStatement",
-            "MOVE.L D3, OpasmLayoutRegionAlign",
+            "LEA OpasmLayoutRegionAligns.L, A0",
+            "MOVE.L D3, (A0)",
         ]
     ));
     assert!(source_contains_in_order(
@@ -13176,9 +13189,20 @@ fn motorola68020_item7_native_layout_directives_route_before_selected_encoding()
         &[
             "processSectionDirectiveForStatement .BLOCK",
             "BSR.W readCommaNameForStatement",
-            "MOVE.W D3, OpasmLayoutSectionNameLen",
+            "MOVE.W D3, OpasmLayoutScratchNameLen",
             "BSR.W readAlignOptionForStatement",
-            "MOVE.L D3, OpasmLayoutSectionAlign",
+            "BSR.W findSectionByScratchName",
+            "LEA OpasmLayoutSectionAligns.L, A0",
+            "MOVE.L D3, (A0)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "alignLayoutCursor .BLOCK",
+            "DIVU.L D4, D3:D2",
+            "SUB.L D3, D2",
+            "ADD.L D2, D3",
         ]
     ));
 }
@@ -32532,26 +32556,43 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
     let repo_root = workspace_root();
     let package_bytes = item6_mos_package_bytes();
     let source = [
-        "        .region ram, $1001, $10ff, align=8",
-        "        .section code, align=16",
+        "        .region ram, $1001, $100f, align=6",
+        "        .region alt, $1011, $10ff, align=5",
+        "        .section code, align=5",
         "        lda #$01",
-        "        .align 4",
-        "        .fill byte, 2, $ff",
-        "        .ds 1",
+        "        .endsection",
+        "        .section tail, align=7",
         "        nop",
         "        .endsection",
+        "        .section high, align=1",
+        "        lda #$02",
+        "        .endsection",
         "        .place code in ram",
+        "        .place tail in ram",
+        "        .place high in alt",
     ]
     .join("\n");
     let mismatch_source = [
-        "        .region ram, $1001, $10ff, align=8",
-        "        .section code, align=16",
+        "        .region ram, $1001, $10ff, align=6",
+        "        .section code, align=5",
         "        lda #$01",
         "        .endsection",
         "        .place code in rom",
     ]
     .join("\n");
-    let expected = vec![0xA9, 0x01, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xEA];
+    let duplicate_place_source = [
+        "        .region ram, $1001, $10ff, align=6",
+        "        .section code, align=5",
+        "        lda #$01",
+        "        .endsection",
+        "        .place code in ram",
+        "        .place code in ram",
+    ]
+    .join("\n");
+    let expected = vec![
+        0xA9, 0x01, 0x00, 0x00, 0xEA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0xA9, 0x02,
+    ];
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
             name: "item7-layout-directives",
@@ -32563,6 +32604,12 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
             name: "item7-layout-name-mismatch",
             cpu_id: m6502_cpu_id.as_str(),
             source: mismatch_source.as_bytes(),
+            package_bytes: package_bytes.as_slice(),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            name: "item7-layout-duplicate-place",
+            cpu_id: m6502_cpu_id.as_str(),
+            source: duplicate_place_source.as_bytes(),
             package_bytes: package_bytes.as_slice(),
         },
     ];
@@ -32577,7 +32624,7 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
             eprintln!("SKIP: {reason}");
         }
         crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 2, "expected two focused Item 7 runs");
+            assert_eq!(runs.len(), 3, "expected three focused Item 7 runs");
             let run = &runs[0];
             assert!(
                 run.success,
@@ -32585,7 +32632,7 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
                 run.stdout, run.stderr,
             );
             assert!(
-                run.stdout.contains("SESSION-ORIGIN $00001010"),
+                run.stdout.contains("SESSION-ORIGIN $00001002"),
                 "focused native opForge CLI Item 7 layout fixture did not place section at region base\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
@@ -32610,6 +32657,13 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
                 "focused native opForge CLI Item 7 layout name mismatch fixture should fail\nstdout:\n{}\nstderr:\n{}",
                 mismatch_run.stdout,
                 mismatch_run.stderr,
+            );
+            let duplicate_run = &runs[2];
+            assert!(
+                !duplicate_run.success,
+                "focused native opForge CLI Item 7 duplicate placement fixture should fail\nstdout:\n{}\nstderr:\n{}",
+                duplicate_run.stdout,
+                duplicate_run.stderr,
             );
         }
     }

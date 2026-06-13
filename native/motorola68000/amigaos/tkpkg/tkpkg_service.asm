@@ -1582,7 +1582,7 @@ pairSecondTrimOk
 	move.l d0, PairBPtr.l
 	move.w d2, PairBLen.l
 	moveq #0, d6
-	cmpi.w #1, EncodeSelectedSessionPass.l
+	cmpi.w #1, engine.opasmEngineSessionPass.l
 	beq.s pairPassCaptured
 	moveq #1, d6
 
@@ -1592,7 +1592,7 @@ pairPassCaptured
 	move.l d0, EncodeSelectedMselExprPtr
 	move.w PairALen.l, d0
 	move.w d0, EncodeSelectedMselExprLen
-	bsr.w tkpkgMselEvalOperandV1
+	bsr.w tkpkgMselEvalPairPartOperandV1
 	move.w (sp)+, d6
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w return
@@ -1617,7 +1617,7 @@ tryPairSecondStable
 	move.l d0, EncodeSelectedMselExprPtr
 	move.w PairBLen.l, d0
 	move.w d0, EncodeSelectedMselExprLen
-	bsr.w tkpkgMselEvalOperandV1
+	bsr.w tkpkgMselEvalPairPartOperandV1
 	cmpi.l #TKPKG_SELECTED_STATUS_OK, d0
 	bne.w return
 	move.l EncodeSelectedMselValue, d3
@@ -1737,6 +1737,33 @@ tkpkgMselPlanEqualsV1	.block
 	movem.l (sp)+, d1/a2
 	rts
 	.bend  ; tkpkgMselPlanEqualsV1
+
+; Evaluate one operand part from a package-owned pair plan.
+; Inputs: EncodeSelectedMselExprPtr/Len identify the part to evaluate.
+; Outputs: D0 = selected status; EncodeSelectedMselValue set on success.
+; Clobbers: D0-D1/CCR plus tkpkgMselEvalOperandV1 clobbers.
+; CCR: reflects D0 on return.
+tkpkgMselEvalPairPartOperandV1	.block
+	move.l EncodeSelectedMselModePtr, -(sp)
+	move.w EncodeSelectedMselModeLen, -(sp)
+	move.l EncodeSelectedCurrentShapePtr, -(sp)
+	move.w EncodeSelectedCurrentShapeLen, -(sp)
+	clr.l EncodeSelectedCurrentShapePtr
+	clr.w EncodeSelectedCurrentShapeLen
+	clr.l EncodeSelectedMselModePtr
+	clr.w EncodeSelectedMselModeLen
+	bsr.w tkpkgMselEvalOperandV1
+	move.w (sp)+, d1
+	move.w d1, EncodeSelectedCurrentShapeLen
+	move.l (sp)+, d1
+	move.l d1, EncodeSelectedCurrentShapePtr
+	move.w (sp)+, d1
+	move.w d1, EncodeSelectedMselModeLen
+	move.l (sp)+, d1
+	move.l d1, EncodeSelectedMselModePtr
+	tst.l d0
+	rts
+	.bend  ; tkpkgMselEvalPairPartOperandV1
 
 tkpkgMselEvalOperandV1	.block
 	bsr.w tkpkgMselCurrentShapeCodeV1

@@ -419,7 +419,7 @@ The intended native shape mirrors the Rust path:
     zero-page, zero-page indexed, absolute, and absolute indexed addressing
     families without hard-coded CLI acceptance logic.
 
-- [ ] Item 6: Complete package-backed MOS 6502/65C02 selector and encoder
+- [x] Item 6: Complete package-backed MOS 6502/65C02 selector and encoder
   parity
   - Source requirement or finding IDs: `SR-6502-SELECTOR`,
     `SR-6502-ENCODER`, `SR-RUST-VM-ARCH`, `SR-TKPKG-SERVICE`; expected to
@@ -842,7 +842,7 @@ The intended native shape mirrors the Rust path:
       changed files after formatting, and `scripts/workflow/
       run_rust_quality_gate.sh` completed with `PASS: Rust quality gate
       complete.`
-  - [ ] Item 6.8: Final native CPU-specific selector/encoder audit and removal
+  - [x] Item 6.8: Final native CPU-specific selector/encoder audit and removal
     - Source requirement or finding IDs: `SR-CLI-BOUNDARY`,
       `SR-RUST-VM-ARCH`, `SR-6502-SELECTOR`, `SR-6502-ENCODER`; expected to
       close Item 6 without native MOS-specific selector or encoder residue.
@@ -914,6 +914,40 @@ The intended native shape mirrors the Rust path:
     - Status update, 2026-06-13: Item 6.8 is unblocked by the green Item 6.7
       host FS-UAE proof. The remaining work is the final audit/removal proof
       that no unapproved native MOS selector/encoder residue remains.
+    - Validation evidence, 2026-06-13: the final audit removed native
+      BBR/BBS/BRA mnemonic-based selected-shape classifiers from
+      `opasm_engine.asm`, added generic top-level-comma detection so
+      comma-separated operand requests do not get misclassified as scalar
+      `direct`, and kept pair-operand evaluation in `tkpkg_service.asm`
+      package-plan driven by clearing/restoring selected shape and mode state
+      around each pair part. The native pair plan now uses the engine pass
+      source for pass-one sizing, matching the Rust VM label layout while
+      leaving BBR/BBS semantics in package MSEL/TABL data. `cargo test -p asm
+      motorola68020_item6_8_native_shape_inference_has_no_mos_mnemonic_classifiers
+      -- --nocapture` passed; `cargo test -p asm
+      motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes --
+      --nocapture` passed; `cargo test -p asm
+      motorola68020_item6_5 -- --nocapture`, `cargo test -p asm
+      motorola68020_item6_6 -- --nocapture`, and `cargo test -p asm
+      motorola68020_item6_7_full_indicated_fixture_native_cli_parity_matches_rust_bytes
+      -- --nocapture` passed with labeled Rust/native hexadecimal evidence.
+      `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/
+      Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/
+      Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+      OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+      external_fs_uae_opforge_native_cli_item6_stripped_fixtures_match_rust_bins
+      -- --nocapture --test-threads=1` passed in 83.52s; the
+      `65c02_allmodes.asm` target evidence showed pass-one labels
+      `bbr_target $00000822` and `bbs_target $00000826` and matching bytes
+      including `0F 20 01`, `FF 21 01`, `B2 20`, and `7C 34 12`. `cargo test
+      -p vm generic_selector_runtime_ -- --nocapture` passed with 5 tests;
+      `cargo test -p asm motorola68020_tkpkg_ -- --nocapture` passed with 31
+      tests; `scripts/workflow/run_native_68000_format_gate.sh --write`
+      reported 0 changed files after formatting; `git diff --check` passed;
+      `scripts/workflow/run_rust_quality_gate.sh` completed with `PASS: Rust
+      quality gate complete.` This completes Item 6 because all Item 6
+      subitems are now checked and the native MOS selector/encoder path has no
+      unapproved native CPU-specific selector/encoder residue.
 
 - Boundary carry-forward for Items 7 through 18, 2026-06-07: the recent
   boundary remediation does not reduce the remaining directive, source-graph,
@@ -1180,7 +1214,7 @@ The intended native shape mirrors the Rust path:
 - [x] Milestone 1: first-run 6502 acceptance matrix is locked.
 - [x] Milestone 2: CLI no longer owns assembly semantics; native opasm owns
   engine/pass/session behavior.
-- [ ] Milestone 3: native MOS 6502/65C02 selector and encoder parity lands in
+- [x] Milestone 3: native MOS 6502/65C02 selector and encoder parity lands in
   package-backed commit-sized slices covering the indicated simple, smoke, and
   all-modes fixtures.
 - [ ] Milestone 4: first-run directive support lands in three commit-sized

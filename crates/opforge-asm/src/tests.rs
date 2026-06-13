@@ -12247,18 +12247,37 @@ fn motorola68020_item6_7_native_pair_u8_rel8_plan_matches_rust_selector_shape() 
             "EncodeSelectedMselExprPtr",
             "PairALen",
             "EncodeSelectedMselExprLen",
-            "BSR.W tkpkgMselEvalOperandV1",
+            "BSR.W tkpkgMselEvalPairPartOperandV1",
             "CMPI.L #$000000FF, D3",
             "PairAVal",
             "tryPairSecondStable",
             "PairBLen",
             "EncodeSelectedMselExprLen",
-            "BSR.W tkpkgMselEvalOperandV1",
+            "BSR.W tkpkgMselEvalPairPartOperandV1",
             "MOVE.L EncodeSelectedCurrentPc, D4",
             "ADDQ.L #3, D4",
             "SUB.L D4, D3",
             "PairBVal",
             "buildPairOperand",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "tkpkgMselEvalPairPartOperandV1 .BLOCK",
+            "MOVE.L EncodeSelectedMselModePtr, -(SP)",
+            "MOVE.W EncodeSelectedMselModeLen, -(SP)",
+            "MOVE.L EncodeSelectedCurrentShapePtr, -(SP)",
+            "MOVE.W EncodeSelectedCurrentShapeLen, -(SP)",
+            "CLR.L EncodeSelectedCurrentShapePtr",
+            "CLR.W EncodeSelectedCurrentShapeLen",
+            "CLR.L EncodeSelectedMselModePtr",
+            "CLR.W EncodeSelectedMselModeLen",
+            "BSR.W tkpkgMselEvalOperandV1",
+            "MOVE.W D1, EncodeSelectedCurrentShapeLen",
+            "MOVE.L D1, EncodeSelectedCurrentShapePtr",
+            "MOVE.W D1, EncodeSelectedMselModeLen",
+            "MOVE.L D1, EncodeSelectedMselModePtr",
         ]
     ));
     assert!(source_contains_in_order(
@@ -12460,7 +12479,7 @@ fn motorola68020_item6_7_selected_shape_inference_uses_request_span_slice() {
         &source,
         &[
             "opasmEngineInferSelectedShapeForEvalRequestV1",
-            "MOVE.B 8(A0), D0",
+            "MOVE.B 8(A2), D0",
             "MOVE.B 4(A0), D1",
             "MOVE.B 5(A0), D2",
             "LSL.W #8, D2",
@@ -12488,12 +12507,17 @@ fn motorola68020_item6_7_selected_shape_inference_uses_request_span_slice() {
             "SUBQ.L #1, A0",
             "ADDQ.W #1, D2",
             "trimLeading",
+            "checkTopLevelComma",
+            "CMPI.B #',', D3",
+            "TST.W D5",
+            "BEQ.W none",
+            "ready",
         ]
     ));
 }
 
 #[test]
-fn motorola68020_item6_7_pair_direct_shape_inference_covers_bit_branches() {
+fn motorola68020_item6_8_native_shape_inference_has_no_mos_mnemonic_classifiers() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
     let source = fs::read_to_string(&asm_path).expect("read native opasm engine source");
@@ -12503,29 +12527,31 @@ fn motorola68020_item6_7_pair_direct_shape_inference_covers_bit_branches() {
         &source,
         &[
             "opasmEngineInferSelectedShapeForEvalRequestV1",
-            "BSR.W inferSelectedShapePairDirectMnemonic",
-            "BNE.W pairDirect",
-            "BSR.W inferSelectedShapeBranchMnemonic",
-            "pairDirect",
-            "LEA OpasmEngineSelectedShapePairDirectText, A0",
+            "MOVE.B 4(A0), D1",
+            "MOVE.B 5(A0), D2",
+            "LEA 9(A0, D0.W), A0",
+            "CMPI.B #'#', D3",
+            "checkTopLevelComma",
+            "CMPI.B #',', D3",
+            "BEQ.W none",
+            "BSR.W inferSelectedShapeSuffix",
+            "LEA OpasmEngineSelectedShapeDirectText, A0",
         ]
     ));
-    assert!(source_contains_in_order(
-        &source,
-        &[
-            "inferSelectedShapePairDirectMnemonic",
-            "CMPI.W #4, D0",
-            "CMPI.B #'b', D1",
-            "CMPI.B #'b', D2",
-            "CMPI.B #'r', D3",
-            "CMPI.B #'s', D3",
-            "checkDigit",
-            "CMPI.B #'0', D4",
-            "CMPI.B #'7', D4",
-            "yes",
-            "MOVEQ #1, D0",
-        ]
-    ));
+
+    for removed_classifier in [
+        "inferSelectedShapePairDirectMnemonic",
+        "inferSelectedShapeBranchMnemonic",
+        "OpasmEngineSelectedShapePairDirectText",
+        "pair_direct",
+        "checkDigit",
+        "checkRa",
+    ] {
+        assert!(
+            !source.contains(removed_classifier),
+            "Item 6.8 must not infer selected shapes with native MOS mnemonic classifier `{removed_classifier}`"
+        );
+    }
 }
 
 #[test]
@@ -15688,7 +15714,12 @@ fn motorola68020_item6_does_not_expand_native_m6502_edge_hardcodes() {
         "TkpkgDirectIndirectText",
         "TkpkgDirect",
         "tkpkgEncodeDirect6502EnvelopeV1",
+        "tkpkgEncodeDirectBitBranchEnvelopeV1",
         "tkpkgMselClassifyOperandV1",
+        "inferSelectedShapePairDirectMnemonic",
+        "inferSelectedShapeBranchMnemonic",
+        "OpasmEngineSelectedShapePairDirectText",
+        "directBitBranch",
         "trimIndexedIndirect",
         "checkIndirectIndexedY",
         "PlanRel8",

@@ -13058,6 +13058,109 @@ fn motorola68020_opasm_driver_uses_tkpkg_output_and_error_pointers() {
 }
 
 #[test]
+fn motorola68020_item7_native_layout_directives_route_before_selected_encoding() {
+    let repo_root = workspace_root();
+    let driver_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
+    let driver = fs::read_to_string(&driver_path).expect("read opasm assembly driver source");
+
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverEmitImageBytes .BLOCK",
+            "LEA RegionMnemonicText, A1",
+            "LEA SectionMnemonicText, A1",
+            "LEA EndsectionMnemonicText, A1",
+            "LEA PlaceMnemonicText, A1",
+            "LEA AlignMnemonicText, A1",
+            "BNE.W emitAlign",
+            "LEA DsMnemonicText, A1",
+            "BNE.W emitDs",
+            "LEA ResMnemonicText, A1",
+            "LEA FillMnemonicText, A1",
+            "BNE.W emitFill",
+            "BSR.W prepareEncodeSelectedRequestForStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverAdvancePc .BLOCK",
+            "LEA RegionMnemonicText, A1",
+            "LEA SectionMnemonicText, A1",
+            "LEA EndsectionMnemonicText, A1",
+            "LEA PlaceMnemonicText, A1",
+            "LEA AlignMnemonicText, A1",
+            "BNE.W align",
+            "LEA DsMnemonicText, A1",
+            "BNE.W ds",
+            "LEA ResMnemonicText, A1",
+            "BNE.W res",
+            "LEA FillMnemonicText, A1",
+            "BNE.W fill",
+            "BSR.W trySelectedEncodeSizeForStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "emitAlign",
+            "BSR.W readAlignPadForStatement",
+            "BSR.W appendRepeatedByte",
+            "emitDs",
+            "BSR.W readOperandValueForStatement",
+            "BSR.W appendRepeatedByte",
+            "emitFill",
+            "MOVEQ #2, D6",
+            "BSR.W readCommaOperandValueForStatement",
+            "MOVEQ #3, D6",
+            "BSR.W readCommaOperandValueForStatement",
+            "BSR.W appendRepeatedByte",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item7_native_layout_operand_eval_uses_tkpkg_expr_service() {
+    let repo_root = workspace_root();
+    let driver_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
+    let driver = fs::read_to_string(&driver_path).expect("read opasm assembly driver source");
+
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "readCommaOperandValueForStatement .BLOCK",
+            "JSR eng.opasmEngineGetStatementTextMetadataV1",
+            "partScan",
+            "CMPI.B #',', D0",
+            "evaluatePart",
+            "BSR.W prepareEvaluateExpressionRequest",
+            "BSR.W prepareEvaluateExpressionExtension",
+            "JSR tkpkg.dispatchEvaluateExpressionV1",
+            "BSR.W readEvaluateExpressionValue",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "readAlignPadForStatement .BLOCK",
+            "BSR.W readOperandValueForStatement",
+            "JSR eng.opasmEngineGetSessionCurrentPcV1",
+            "AND.L D5, D0",
+            "SUB.L D0, D3",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "appendRepeatedByte .BLOCK",
+            "JSR eng.opasmEngineAppendImageBytesV1",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
@@ -32351,6 +32454,70 @@ fn external_fs_uae_opforge_native_cli_item6_65c02_allmodes_matches_rust_bin() {
             assert_eq!(
                 native_bin, rust_bin,
                 "focused FS-UAE Item 6 stripped fixture byte mismatch for {fixture_label}\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .region ram, $0800, $083f, align=1",
+        "        .section code, align=1",
+        "start   lda #$01",
+        "        .align 4",
+        "        .fill byte, 2, $ff",
+        "        .ds 1",
+        "done    nop",
+        "        .endsection",
+        "        .place code in ram",
+    ]
+    .join("\n");
+    let expected = vec![0xA9, 0x01, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0xEA];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "item7-layout-directives",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 7 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused Item 7 run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI Item 7 layout fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 7 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "focused FS-UAE Item 7 layout byte mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
         }

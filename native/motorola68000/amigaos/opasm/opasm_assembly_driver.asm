@@ -140,23 +140,79 @@ opasmDriverEmitImageBytes	.block
 	moveq #0, d0
 	move.w d4, d0
 	lea OrgMnemonicText, a1
-	moveq #4, d1
+	moveq #3, d1
 	bsr.w lineStartsWith
 	bne.w ok
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d4, d0
 	lea CpuMnemonicText, a1
-	moveq #4, d1
+	moveq #3, d1
 	bsr.w lineStartsWith
 	bne.w ok
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d4, d0
 	lea EndMnemonicText, a1
-	moveq #4, d1
+	moveq #3, d1
 	bsr.w lineStartsWith
 	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea RegionMnemonicText, a1
+	moveq #6, d1
+	bsr.w lineStartsWith
+	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea SectionMnemonicText, a1
+	moveq #7, d1
+	bsr.w lineStartsWith
+	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea EndsectionMnemonicText, a1
+	moveq #10, d1
+	bsr.w lineStartsWith
+	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea PlaceMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea AlignMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w emitAlign
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea DsMnemonicText, a1
+	moveq #2, d1
+	bsr.w lineStartsWith
+	bne.w emitDs
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea ResMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea FillMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w emitFill
 	bsr.w prepareEncodeSelectedRequestForStatement
 	bne.w return
 	tst.w OpasmDriverEvalRequestLen
@@ -182,7 +238,7 @@ opasmDriverEmitImageBytes	.block
 
 ok
 	moveq #0, d0
-	bra.s return
+	bra.w return
 
 fail
 	moveq #abi.OPASM_EVENT_IMAGE_CAPACITY_EXCEEDED, d0
@@ -191,7 +247,7 @@ fail
 	move.l d6, d2
 	bsr.w appendTextValueEvent
 	moveq #1, d0
-	bra.s return
+	bra.w return
 
 serviceFail
 	moveq #0, d0
@@ -217,6 +273,52 @@ serviceFailReturn
 
 noOutput
 	moveq #abi.OPASM_EVENT_UNSUPPORTED_ADDRESSING, d0
+	bsr.w appendKindEvent
+	moveq #1, d0
+	bra.s return
+
+emitAlign
+	move.w d6, d7
+	bsr.w readAlignPadForStatement
+	bne.s emitLayoutFail
+	move.l d3, d0
+	moveq #0, d1
+	bsr.w appendRepeatedByte
+	bne.s emitLayoutFail
+	moveq #0, d0
+	bra.s return
+
+emitDs
+	move.w d6, d7
+	moveq #2, d5
+	bsr.w readOperandValueForStatement
+	bne.s emitLayoutFail
+	move.l d3, d0
+	moveq #0, d1
+	bsr.w appendRepeatedByte
+	bne.s emitLayoutFail
+	moveq #0, d0
+	bra.s return
+
+emitFill
+	move.w d6, d7
+	moveq #2, d6
+	bsr.w readCommaOperandValueForStatement
+	bne.s emitLayoutFail
+	move.l d3, d5
+	move.w d7, d6
+	moveq #3, d6
+	bsr.w readCommaOperandValueForStatement
+	bne.s emitLayoutFail
+	move.l d5, d0
+	move.b d3, d1
+	bsr.w appendRepeatedByte
+	bne.s emitLayoutFail
+	moveq #0, d0
+	bra.s return
+
+emitLayoutFail
+	moveq #abi.OPASM_EVENT_UNRESOLVED_LABEL, d0
 	bsr.w appendKindEvent
 	moveq #1, d0
 
@@ -256,23 +358,79 @@ opasmDriverAdvancePc	.block
 	moveq #0, d0
 	move.w d6, d0
 	lea OrgMnemonicText, a1
-	moveq #4, d1
+	moveq #3, d1
 	bsr.w lineStartsWith
 	bne.w org
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d6, d0
 	lea CpuMnemonicText, a1
-	moveq #4, d1
+	moveq #3, d1
 	bsr.w lineStartsWith
 	bne.w done
 	movea.l d5, a0
 	moveq #0, d0
 	move.w d6, d0
 	lea EndMnemonicText, a1
-	moveq #4, d1
+	moveq #3, d1
 	bsr.w lineStartsWith
 	bne.w done
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea RegionMnemonicText, a1
+	moveq #6, d1
+	bsr.w lineStartsWith
+	bne.w done
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea SectionMnemonicText, a1
+	moveq #7, d1
+	bsr.w lineStartsWith
+	bne.w done
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea EndsectionMnemonicText, a1
+	moveq #10, d1
+	bsr.w lineStartsWith
+	bne.w done
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea PlaceMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w done
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea AlignMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w align
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea DsMnemonicText, a1
+	moveq #2, d1
+	bsr.w lineStartsWith
+	bne.w ds
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea ResMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w res
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea FillMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w fill
 	moveq #0, d0
 	move.w d7, d0
 	bsr.w trySelectedEncodeSizeForStatement
@@ -295,10 +453,11 @@ selectedSizeOk
 	bra.w done
 
 org
-	move.w d4, d7
 	moveq #2, d5
 	bsr.w readOperandValueForStatement
 	beq.s orgOk
+
+orgBad
 	moveq #abi.OPASM_EVENT_BAD_ORG, d0
 	bsr.w appendKindEvent
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
@@ -309,6 +468,33 @@ org
 orgOk
 	move.l d3, d0
 	jsr eng.opasmEngineSetOriginV1
+	bra.w done
+
+align
+	bsr.w readAlignPadForStatement
+	beq.s advanceLayoutD3
+	bra.s orgBad
+
+ds
+	moveq #2, d5
+	bsr.w readOperandValueForStatement
+	beq.s advanceLayoutD3
+	bra.s orgBad
+
+res
+	moveq #2, d6
+	bsr.w readCommaOperandValueForStatement
+	beq.s advanceLayoutD3
+	bra.s orgBad
+
+fill
+	moveq #2, d6
+	bsr.w readCommaOperandValueForStatement
+	bne.s orgBad
+
+advanceLayoutD3
+	move.l d3, d0
+	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
 
 advanceOne
@@ -396,32 +582,44 @@ readOperandValueForStatement	.block
 	moveq #0, d0
 	move.w d7, d0
 	jsr eng.statementHasExprMetadataV1
-	move.w d0, d6
-	bne.s loadSourceLine
+	clr.w d6
 	bra.w storedText
 
-loadSourceLine
+loadExprSlice
+	suba.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
 	moveq #0, d0
 	move.w d7, d0
-	jsr eng.getStatementSourceLineTextV1
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementExprMetadataV1
+	tst.l d0
+	beq.s exprSliceFail
+	move.l eng.OPASM_ENGINE_EXPR_META_SPAN_START(a0), d1
+	move.l eng.OPASM_ENGINE_EXPR_META_SPAN_END(a0), d2
+	adda.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementExprTextSliceV1
 	tst.l d0
 	bne.s haveText
 	bra.w fail
 
-storedText
-	clr.l d3
-	movea.l sp, a0
-	moveq #0, d0
-	move.w d7, d0
-	jsr eng.opasmEngineGetStatementTextMetadataV1
-	bne.w fail
-	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(a0), d1
-	bne.s storedTextReady
+exprSliceFail
+	adda.l #eng.OPASM_ENGINE_EXPR_META_BYTES, sp
 	bra.w fail
 
-storedTextReady
-	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(a0), a0
-	move.l d1, d0
+storedText
+	clr.l d3
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.getStatementSourceLineTextV1
+	tst.l d0
+	beq.w fail
+	bsr.w skipLineWhitespace
+	bsr.w skipSourceHeadToken
+	bsr.w skipLineWhitespace
+	tst.l d0
+	bne.s haveText
+	bra.w fail
 
 haveText
 	tst.w d6
@@ -431,9 +629,15 @@ haveText
 	bra.w fail
 
 prepareRequest
+	move.l a0, OpasmDriverEvalFallbackPtr
+	move.l d0, OpasmDriverEvalFallbackLen
+	bsr.w parseDirectiveLiteralValue
+	beq.s checkWidth
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w prepareEvaluateExpressionRequest
 	beq.s prepareExtension
-	bra.w fail
+	bra.s evalFallback
 
 prepareExtension
 	bsr.w prepareEvaluateExpressionExtension
@@ -441,10 +645,18 @@ prepareExtension
 	move.w OpasmDriverEvalRequestLen, d0
 	jsr tkpkg.dispatchEvaluateExpressionV1
 	beq.s readValue
-	bra.w fail
+	bra.s evalFallback
 
 readValue
 	bsr.w readEvaluateExpressionValue
+	tst.l d3
+	bne.s checkWidth
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w parseDirectiveLiteralValue
+	bne.s fail
+
+checkWidth
 	cmpi.b #1, d5
 	bne.s ok
 	cmpi.l #$000000FF, d3
@@ -458,12 +670,375 @@ fail
 
 ok
 	moveq #0, d0
+	bra.s return
+
+evalFallback
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w parseDirectiveLiteralValue
+	beq.s ok
 
 return
 	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
 	movem.l (sp)+, d1-d2/d4-d7/a0-a2
 	rts
 	.bend  ; readOperandValueForStatement
+
+; Evaluate a comma-separated directive operand part.
+; Inputs: D7.W = statement index; D6.W = one-based operand part number.
+; Outputs: D0.L = 0 on success, 1 on parse/evaluation failure; D3.L = value.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+readCommaOperandValueForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w fail
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.getStatementSourceLineTextV1
+	tst.l d0
+	beq.w fail
+	bsr.w skipLineWhitespace
+	bsr.w skipSourceHeadToken
+	bsr.w skipLineWhitespace
+	tst.l d0
+	beq.w fail
+	movea.l a0, a2
+	move.l d0, d2
+
+	moveq #1, d4
+
+partStart
+	bsr.w skipPartWhitespace
+	movea.l a2, a3
+	moveq #0, d5
+
+partScan
+	tst.l d2
+	beq.s partEnd
+	move.b (a2), d0
+	cmpi.b #',', d0
+	beq.s partEnd
+	addq.l #1, a2
+	subq.l #1, d2
+	addq.l #1, d5
+	bra.s partScan
+
+partEnd
+	cmp.w d6, d4
+	beq.s evaluatePart
+	tst.l d2
+	beq.s fail
+	addq.l #1, a2
+	subq.l #1, d2
+	addq.w #1, d4
+	bra.s partStart
+
+evaluatePart
+	movea.l a3, a0
+	move.l d5, d0
+	bsr.w trimPartTrailing
+	move.l a0, OpasmDriverEvalFallbackPtr
+	move.l d0, OpasmDriverEvalFallbackLen
+	beq.s fail
+	bsr.w parseDirectiveLiteralValue
+	beq.s evalPartOk
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w prepareEvaluateExpressionRequest
+	bne.s evalPartFallback
+	bsr.w prepareEvaluateExpressionExtension
+	bsr.w serviceFramePtr
+	move.w OpasmDriverEvalRequestLen, d0
+	jsr tkpkg.dispatchEvaluateExpressionV1
+	bne.s evalPartFallback
+	bsr.w readEvaluateExpressionValue
+	tst.l d3
+	bne.s evalPartOk
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w parseDirectiveLiteralValue
+	bne.s fail
+
+evalPartOk
+	moveq #0, d0
+	bra.s return
+
+evalPartFallback
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w parseDirectiveLiteralValue
+	beq.s return
+
+fail
+	moveq #1, d0
+
+return
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; readCommaOperandValueForStatement
+
+; Compute Rust-compatible `.align` padding for the current native PC.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 on invalid expression/boundary; D3.L = pad.
+; Clobbers: D0-D7/A0-A2/CCR.
+; CCR: reflects D0.L on return.
+readAlignPadForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a2, -(sp)
+	moveq #2, d5
+	bsr.w readOperandValueForStatement
+	bne.s fail
+	move.l d3, d4
+	beq.s fail
+	move.l d4, d0
+	subq.l #1, d0
+	move.l d0, d5
+	and.l d4, d0
+	bne.s fail
+	jsr eng.opasmEngineGetSessionCurrentPcV1
+	and.l d5, d0
+	beq.s aligned
+	move.l d4, d3
+	sub.l d0, d3
+	bra.s ok
+
+aligned
+	clr.l d3
+
+ok
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d4-d7/a0-a2
+	rts
+	.bend  ; readAlignPadForStatement
+
+skipPartWhitespace	.block
+loop
+	tst.l d2
+	beq.s done
+	move.b (a2), d0
+	cmpi.b #' ', d0
+	beq.s skip
+	cmpi.b #9, d0
+	beq.s skip
+	bra.s done
+
+skip
+	addq.l #1, a2
+	subq.l #1, d2
+	bra.s loop
+
+done
+	rts
+	.bend  ; skipPartWhitespace
+
+skipSourceHeadToken	.block
+loop
+	tst.l d0
+	beq.s done
+	move.b (a0), d1
+	cmpi.b #' ', d1
+	beq.s done
+	cmpi.b #9, d1
+	beq.s done
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.s loop
+
+done
+	rts
+	.bend  ; skipSourceHeadToken
+
+trimPartTrailing	.block
+	tst.l d0
+	beq.s done
+	movea.l a0, a1
+	adda.l d0, a1
+
+loop
+	tst.l d0
+	beq.s done
+	move.b -(a1), d1
+	cmpi.b #' ', d1
+	beq.s trim
+	cmpi.b #9, d1
+	beq.s trim
+	bra.s done
+
+trim
+	subq.l #1, d0
+	bra.s loop
+
+done
+	rts
+	.bend  ; trimPartTrailing
+
+; Parse a simple directive literal used as a fallback after package eval.
+; Inputs: A0/D0 = text slice (`$hex` or decimal).
+; Outputs: D0.L = 0 on success, 1 on parse failure; D3.L = value.
+; Clobbers: D0-D4/A0-A1/CCR.
+; CCR: reflects D0.L on return.
+parseDirectiveLiteralValue	.block
+	movem.l d1-d2/d4/a0-a1, -(sp)
+	bsr.w skipLineWhitespace
+	bsr.w trimLiteralFallbackTrailing
+	tst.l d0
+	beq.s fail
+	clr.l d3
+	move.l d0, d4
+	move.b (a0), d1
+	cmpi.b #'$', d1
+	beq.s hexPrefix
+	bra.s decimalLoop
+
+hexPrefix
+	addq.l #1, a0
+	subq.l #1, d4
+	beq.s fail
+
+hexLoop
+	tst.l d4
+	beq.s ok
+	moveq #0, d1
+	move.b (a0)+, d1
+	bsr.w hexNibbleValue
+	bmi.s fail
+	lsl.l #4, d3
+	or.l d1, d3
+	subq.l #1, d4
+	bra.s hexLoop
+
+decimalLoop
+	tst.l d4
+	beq.s ok
+	moveq #0, d1
+	move.b (a0)+, d1
+	cmpi.b #'0', d1
+	blo.s fail
+	cmpi.b #'9', d1
+	bhi.s fail
+	subi.b #'0', d1
+	move.l d3, d2
+	lsl.l #3, d3
+	add.l d2, d3
+	add.l d2, d3
+	add.l d1, d3
+	subq.l #1, d4
+	bra.s decimalLoop
+
+ok
+	movem.l (sp)+, d1-d2/d4/a0-a1
+	moveq #0, d0
+	rts
+
+fail
+	movem.l (sp)+, d1-d2/d4/a0-a1
+	moveq #1, d0
+	rts
+	.bend  ; parseDirectiveLiteralValue
+
+trimLiteralFallbackTrailing	.block
+	tst.l d0
+	beq.s done
+	movea.l a0, a1
+	adda.l d0, a1
+
+loop
+	tst.l d0
+	beq.s done
+	move.b -(a1), d1
+	cmpi.b #' ', d1
+	beq.s trim
+	cmpi.b #9, d1
+	beq.s trim
+	bra.s done
+
+trim
+	subq.l #1, d0
+	bra.s loop
+
+done
+	rts
+	.bend  ; trimLiteralFallbackTrailing
+
+hexNibbleValue	.block
+	cmpi.b #'0', d1
+	blo.s fail
+	cmpi.b #'9', d1
+	bls.s decimal
+	cmpi.b #'A', d1
+	blo.s lower
+	cmpi.b #'F', d1
+	bls.s upper
+
+lower
+	cmpi.b #'a', d1
+	blo.s fail
+	cmpi.b #'f', d1
+	bhi.s fail
+	subi.b #'a' - 10, d1
+	moveq #0, d0
+	rts
+
+upper
+	subi.b #'A' - 10, d1
+	moveq #0, d0
+	rts
+
+decimal
+	subi.b #'0', d1
+	moveq #0, d0
+	rts
+
+fail
+	moveq #-1, d0
+	rts
+	.bend  ; hexNibbleValue
+
+; Append one byte value repeatedly to the current image stream.
+; Inputs: D0.L = count; D1.B = byte value.
+; Outputs: D0.L = 0 on success, 1 on image capacity failure.
+; Clobbers: D0-D3/A0/CCR.
+; CCR: reflects D0.L on return.
+appendRepeatedByte	.block
+	movem.l d1-d3/a0, -(sp)
+	move.l d0, d2
+	move.b d1, d3
+	subq.l #2, sp
+	move.b d3, (sp)
+
+loop
+	tst.l d2
+	beq.s ok
+	movea.l sp, a0
+	moveq #1, d0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.s fail
+	subq.l #1, d2
+	bra.s loop
+
+ok
+	addq.l #2, sp
+	movem.l (sp)+, d1-d3/a0
+	moveq #0, d0
+	rts
+
+fail
+	addq.l #2, sp
+	movem.l (sp)+, d1-d3/a0
+	moveq #1, d0
+	rts
+	.bend  ; appendRepeatedByte
 
 ; Inputs:
 ;   D6.W = statement index
@@ -493,7 +1068,8 @@ return
 
 ; Inputs:
 ;   A0 = expression text pointer
-;   D7.W = expression text length
+;   D0.L = expression text length
+;   D7.W = statement index
 ; Outputs:
 ;   D0.L = 0 on success, 1 when expression request preparation fails
 ;   OpasmDriverEvalRequestLen updated from D1 on success
@@ -733,6 +1309,14 @@ no
 
 lineStartsWith	.block
 	movem.l d2-d4/a0-a3, -(sp)
+	tst.l d0
+	beq.s no
+	cmpi.b #'.', (a0)
+	bne.s compareStart
+	addq.l #1, a0
+	subq.l #1, d0
+
+compareStart
 	cmp.l d1, d0
 	bcs.s no
 	movea.l a0, a2
@@ -817,13 +1401,37 @@ done
 	.section data, kind=data
 
 OrgMnemonicText
-	.byte ".org", 0
+	.byte "org", 0
 
 CpuMnemonicText
-	.byte ".cpu", 0
+	.byte "cpu", 0
 
 EndMnemonicText
-	.byte ".end", 0
+	.byte "end", 0
+
+RegionMnemonicText
+	.byte "region", 0
+
+SectionMnemonicText
+	.byte "section", 0
+
+EndsectionMnemonicText
+	.byte "endsection", 0
+
+PlaceMnemonicText
+	.byte "place", 0
+
+AlignMnemonicText
+	.byte "align", 0
+
+DsMnemonicText
+	.byte "ds", 0
+
+ResMnemonicText
+	.byte "res", 0
+
+FillMnemonicText
+	.byte "fill", 0
 
 DriverSelectorUnknownRawText
 	.byte "OTR901: selector unknown mnemonic", 0
@@ -846,6 +1454,12 @@ OpasmActiveAssembleReqPtr
 
 OpasmDriverEvalRequestLen
 	.res word, 1
+
+OpasmDriverEvalFallbackPtr
+	.res long, 1
+
+OpasmDriverEvalFallbackLen
+	.res long, 1
 
 	.endsection
 	.endmodule

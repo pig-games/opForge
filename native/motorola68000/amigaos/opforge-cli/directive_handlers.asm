@@ -306,9 +306,9 @@ fail
 	rts
 	.bend  ; opforgeNativeCliParseUseLine
 
-; Parse one first-run `.output` directive for native `.bin`/`.prg` request selection.
+; Parse one first-run `.output` directive for native `.bin`/`.prg`/`.hex` request selection.
 ; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
-; Outputs: D0 = 0 on supported `format=bin` or `format=prg`, nonzero on malformed or unsupported output.
+; Outputs: D0 = 0 on supported `format=bin`, `format=prg`, or `format=hex`; nonzero on malformed or unsupported output.
 ; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliParseOutputLine	.block
@@ -342,7 +342,9 @@ maybeOption
 	bsr.w copyOutputOptionToken
 	tst.l d1
 	bne.w fail
+	move.l d0, d5
 	bsr.w classifyOutputOptionToken
+	move.l d5, d0
 	tst.l d1
 	beq.s optionAfterToken
 	cmpi.l #2, d1
@@ -369,7 +371,9 @@ optionLoop
 	bsr.w copyOutputOptionToken
 	tst.l d1
 	bne.w fail
+	move.l d0, d5
 	bsr.w classifyOutputOptionToken
+	move.l d5, d0
 	cmpi.l #2, d1
 	beq.w fail
 
@@ -390,6 +394,8 @@ finishOptions
 	beq.s selectBin
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d6
 	beq.s selectPrg
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d6
+	beq.w selectHex
 	bra.w fail
 
 selectBin
@@ -441,6 +447,31 @@ prgPathReady
 	movem.l (sp)+, d6-d7/a3
 	rts
 
+selectHex
+	tst.b state.NativeCliOutputPathScratch
+	beq.s defaultHexPath
+	lea state.NativeCliOutputPathScratch, a0
+	lea state.NativeCliHexPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bra.s hexPathReady
+
+defaultHexPath
+	tst.b state.NativeCliHexPath
+	bne.s hexPathReady
+	tst.b state.NativeCliOutfileBase
+	beq.w fail
+	lea state.NativeCliOutfileBase, a0
+	lea state.NativeCliHexPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+
+hexPathReady
+	move.w #1, state.NativeCliBinRequested
+	move.w #1, state.NativeCliHexRequested
+	move.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat
+	moveq #0, d0
+	movem.l (sp)+, d6-d7/a3
+	rts
+
 fail
 	move.l #strings.ParserFailureText, d1
 	jsr dos.putStr
@@ -487,6 +518,8 @@ parseOutputFormatToken	.block
 	move.b (a2)+, d0
 	cmpi.b #'b', d0
 	beq.s maybeBin
+	cmpi.b #'h', d0
+	beq.s maybeHex
 	cmpi.b #'p', d0
 	beq.s maybePrg
 	bra.s malformed
@@ -499,6 +532,17 @@ maybeBin
 	tst.b (a2)
 	bne.s malformed
 	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d6
+	moveq #0, d1
+	rts
+
+maybeHex
+	cmpi.b #'e', (a2)+
+	bne.s malformed
+	cmpi.b #'x', (a2)+
+	bne.s malformed
+	tst.b (a2)
+	bne.s malformed
+	move.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d6
 	moveq #0, d1
 	rts
 

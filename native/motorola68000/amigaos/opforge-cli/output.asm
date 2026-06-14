@@ -22,9 +22,15 @@
 ;   Reflects D0.L on return
 opforgeNativeCliWriteFlatOutput	.block
 	movem.l d1-d4/a0-a1, -(sp)
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat
+	beq.s openHex
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
 	beq.s openPrg
 	lea state.NativeCliBinPath, a0
+	bra.s openSelected
+
+openHex
+	lea state.NativeCliHexPath, a0
 	bra.s openSelected
 
 openPrg
@@ -35,6 +41,8 @@ openSelected
 	tst.l d0
 	beq.s fail
 	move.l d0, d4
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat
+	beq.s buildHex
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
 	bne.s buildBin
 	moveq #-1, d2
@@ -44,6 +52,10 @@ openSelected
 
 buildPrg
 	jsr artifacts.opasmOutputBuildPrgArtifactV1
+	bra.s artifactBuilt
+
+buildHex
+	jsr artifacts.opasmOutputBuildHexArtifactV1
 	bra.s artifactBuilt
 
 buildBin

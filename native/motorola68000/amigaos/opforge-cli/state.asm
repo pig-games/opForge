@@ -26,6 +26,8 @@ NativeCliBinRequested
 	.res word, 1
 NativeCliPrgRequested
 	.res word, 1
+NativeCliHexRequested
+	.res word, 1
 NativeCliOutputFormat
 	.res word, 1
 NativeCliPrgLoadAddrSet
@@ -44,6 +46,8 @@ NativeCliHunkPath
 NativeCliBinPath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliPrgPath
+	.res byte, constants.PATH_BUFFER_CAPACITY
+NativeCliHexPath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliOutfileBase
 	.res byte, constants.PATH_BUFFER_CAPACITY

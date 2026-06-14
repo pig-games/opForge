@@ -1361,7 +1361,7 @@ The intended native shape mirrors the Rust path:
     completed with `PASS: Rust quality gate complete.` `make workflow-gate`
     passed before this evidence update.
 
-- [ ] Item 15: Add `.hex` output parity
+- [x] Item 15: Add `.hex` output parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,
     `SR-FIRST-OUTPUTS`; expected to add Intel HEX as a first-run artifact.
   - Expected files: native output artifact module files, focused tests, and
@@ -1378,6 +1378,42 @@ The intended native shape mirrors the Rust path:
   - Definition of done: native `.hex` output for first-run 6502 fixtures matches
     Rust output text exactly or differs only where a documented line-ending
     normalization rule allows it.
+  - Completion evidence, 2026-06-14: added native Intel HEX artifact support in
+    `opasm.amigaos.output_artifacts` through
+    `opasmOutputBuildHexArtifactV1`, which renders the current first-run
+    contiguous engine image as checksummed uppercase Intel HEX records plus the
+    EOF record. The artifact builder rejects images whose origin/range exceeds
+    the 16-bit Intel HEX address field, emits one max-length record for the
+    short first-run fixture to match Rust output text exactly, and preserves the
+    final EOF newline. Native CLI output dispatch now selects `.bin`, `.prg`, or
+    `.hex` through the artifact layer. Source `.output` parsing recognizes
+    `format=hex`, carries `NativeCliHexPath`/`NativeCliHexRequested` state, uses
+    the existing flat-output emission gate, supports explicit path and `-o`
+    default path routing, and preserves the remaining parser-tail length around
+    option classification so terminal `format=hex` and trailing ignored options
+    such as `sections=code` do not fail delimiter validation. The native
+    first-run path still consumes the flat engine image; true sparse-section HEX
+    records remain a linker-output/Rust section metadata concern outside the
+    current native first-run flat artifact boundary.
+  - Gate evidence, 2026-06-14: focused `cargo test -p asm item15 --
+    --nocapture` passed; `cargo test -p asm motorola68020_opforge_native_cli_
+    -- --nocapture` passed; `scripts/workflow/run_native_68000_format_gate.sh`
+    passed. The mandatory real FS-UAE run
+    `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item15_hex_artifact_matches_rust_guided_text
+    -- --nocapture --test-threads=1` passed, covering
+    `.output "Work:opforge_native_out.hex", format=hex, sections=code` text
+    `:0508000011EEEEA94419\n:00000001FF\n`. Two default-parallel
+    `scripts/workflow/run_rust_quality_gate.sh` attempts reached only known LSP
+    integration `request response` flakes after the native and asm checks
+    passed; `cargo test -p lsp --test lsp_client_integration -- --nocapture`
+    and the serial rerun `cargo test -p lsp --test lsp_client_integration --
+    --nocapture --test-threads=1` both passed. The required full gate then
+    passed as `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`,
+    ending with `PASS: Rust quality gate complete.`
 
 - [ ] Item 16: Add `.lst` listing output parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,

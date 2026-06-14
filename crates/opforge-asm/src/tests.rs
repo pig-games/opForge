@@ -13145,6 +13145,117 @@ fn motorola68020_item14_native_prg_output_routes_through_artifact_layer() {
 }
 
 #[test]
+fn motorola68020_item15_native_hex_output_routes_through_artifact_layer() {
+    let repo_root = workspace_root();
+    let artifact_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm");
+    let artifact_source = format_tokvm_amigaos_fragment(
+        &fs::read_to_string(&artifact_path).expect("read opasm output artifact source"),
+    );
+    let output_source = opforge_amigaos_source("output.asm");
+    let args_source = opforge_amigaos_source("args.asm");
+    let directive_source = opforge_amigaos_source("directive_handlers.asm");
+    let fs_uae_source =
+        fs::read_to_string(repo_root.join("crates/opforge-asm/src/fs_uae_smoke.rs"))
+            .expect("read FS-UAE smoke source");
+    let strings_source = opforge_amigaos_source("strings.asm");
+    let state_source = opforge_amigaos_source("state.asm");
+    let constants_source = opforge_amigaos_source("constants.asm");
+
+    assert!(constants_source.contains("NATIVE_OUTPUT_FORMAT_HEX"));
+    assert!(constants_source.contains("= 4"));
+    assert!(state_source.contains("NativeCliHexRequested"));
+    assert!(state_source.contains("NativeCliHexPath"));
+    assert!(strings_source.contains("OutputFormatHexOptionText"));
+    assert!(strings_source.contains("\"format=hex\""));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_ITEM15_OUTPUT_DIRECTIVE"));
+    assert!(fs_uae_source.contains("FS_UAE_OPFORGE_NATIVE_CLI_ITEM15_OUTPUT_DIRECTIVE_DEFINE"));
+    assert!(fs_uae_source.contains("run_opforge_native_cli_item15_hex_output_from_env"));
+    assert!(source_contains_in_order(
+        &artifact_source,
+        &[
+            "opasmOutputBuildHexArtifactV1 .block",
+            "jsr engine.opasmEngineGetSessionOriginV1",
+            "cmpi.l #$0000FFFF, d0",
+            "jsr opasmOutputBuildBinArtifactV1",
+            "add.l d5, d0",
+            "cmpi.l #$0000FFFF, d0",
+            "move.l #255, d7",
+            "move.b #':', (a2)+",
+            "bsr.w opasmOutputEmitHexByte",
+            "OpasmHexEofRecord",
+            "lea OpasmHexArtifactBuffer.l, a0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &artifact_source,
+        &[
+            "opasmOutputEmitHexByte .block",
+            "lea OpasmHexDigits.l, a1",
+            "lsr.b #4, d1",
+            "move.b 0(a1, d1.l), (a2)+",
+            "andi.b #$0F, d0",
+            "move.b 0(a1, d0.l), (a2)+",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &output_source,
+        &[
+            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat",
+            "lea state.NativeCliHexPath, a0",
+            "buildHex",
+            "jsr artifacts.opasmOutputBuildHexArtifactV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "selectHex",
+            "lea state.NativeCliHexPath, a1",
+            "move.w #1, state.NativeCliBinRequested",
+            "move.w #1, state.NativeCliHexRequested",
+            "move.w #constants.NATIVE_OUTPUT_FORMAT_HEX, state.NativeCliOutputFormat",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "move.l d0, d5",
+            "bsr.w classifyOutputOptionToken",
+            "move.l d5, d0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "parseOutputFormatToken .block",
+            "cmpi.b #'h', d0",
+            "maybeHex",
+            "cmpi.b #'e', (a2)+",
+            "cmpi.b #'x', (a2)+",
+            "move.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d6",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "tst.b state.NativeCliOutfileBase",
+            "lea state.NativeCliOutfileBase, a0",
+            "lea state.NativeCliHexPath, a1",
+            "jsr token_util.opforgeNativeCliCopyTokenBuffer",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &args_source,
+        &[
+            "clr.w state.NativeCliHexRequested",
+            "clr.b state.NativeCliHexPath",
+            "clr.b state.NativeCliOutputPathScratch",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label_layout() {
     let repo_root = workspace_root();
     let source = opforge_amigaos_source("engine_callbacks.asm");
@@ -33834,6 +33945,66 @@ fn external_fs_uae_opforge_native_cli_item14_prg_artifact_matches_rust_guided_by
                 "focused Item 14 wide loadaddr fixture should report native parser-stage rejection\nstdout:\n{}\nstderr:\n{}",
                 wide_run.stdout,
                 wide_run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item15_hex_artifact_matches_rust_guided_text() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .output \"Work:opforge_native_out.hex\", format=hex, sections=code",
+        "        .byte $11",
+        "        .fill byte, 2, $ee",
+        "        lda #$44",
+    ]
+    .join("\n");
+    let expected = ":0508000011EEEEA94419\n:00000001FF\n";
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item15_hex_output_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 15 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected Item 15 HEX output run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI Item 15 HEX artifact fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS output-ok"),
+                "focused Item 15 fixture should report HEX output artifact success\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_HEX_OUTPUT_FILE);
+            let native_hex = fs::read_to_string(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 15 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_hex, expected,
+                "focused FS-UAE Item 15 HEX artifact text mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
             );
         }
     }

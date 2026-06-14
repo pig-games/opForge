@@ -41,6 +41,7 @@ opforgeNativeCliParseArgs	.block
 	clr.w state.NativeCliHunkRequested
 	clr.w state.NativeCliBinRequested
 	clr.w state.NativeCliPrgRequested
+	clr.w state.NativeCliHexRequested
 	clr.w state.NativeCliOutputFormat
 	clr.w state.NativeCliPrgLoadAddrSet
 	clr.w state.NativeCliParseStatus
@@ -48,6 +49,7 @@ opforgeNativeCliParseArgs	.block
 	clr.b state.NativeCliHunkPath
 	clr.b state.NativeCliBinPath
 	clr.b state.NativeCliPrgPath
+	clr.b state.NativeCliHexPath
 	clr.b state.NativeCliOutputPathScratch
 	clr.b state.NativeCliOutfileBase
 	clr.b state.NativeCliCpuName

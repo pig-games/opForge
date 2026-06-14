@@ -332,6 +332,31 @@ opforgeNativeCliResolveBareUseModule	.block
 	movem.l d2-d7/a0-a1, -(sp)
 	clr.w d7
 
+reuseLoop
+	move.w state.NativeCliModuleCount, d0
+	cmp.w d0, d7
+	bhs.w searchPaths
+	lea state.NativeCliArgToken, a0
+	moveq #0, d0
+	move.w d7, d0
+	lsl.l #6, d0
+	lea state.NativeCliModuleNameTable, a1
+	adda.l d0, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.s foundLoaded
+	addq.w #1, d7
+	bra.w reuseLoop
+
+foundLoaded
+	move.w d7, state.NativeCliResolvedModuleId
+	moveq #0, d0
+	move.w state.NativeCliResolvedModuleId, d0
+	moveq #0, d1
+	bra.w return
+
+searchPaths
+	clr.w d7
+
 loop
 	move.w state.NativeCliModulePathCount, d0
 	cmp.w d0, d7

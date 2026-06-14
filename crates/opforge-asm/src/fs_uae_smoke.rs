@@ -81,6 +81,9 @@ const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE: &str = "opforge_include_r
 const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_TEXT: &str = "        .byte $11\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE: &str = "opforge_include_root_b/defs.inc";
 const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_TEXT: &str = "        .byte $22\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_ITEM12_VALUES_FILE: &str = "values.asm";
+const FS_UAE_OPFORGE_NATIVE_CLI_ITEM12_VALUES_TEXT: &str =
+    ".module values\n.pub\nVALUE .const $37\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE: &str =
     "opforge_fsuae_unmatched_endmodule.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_TEXT: &str = ".endmodule\n";
@@ -773,6 +776,11 @@ fn stage_example_guest_inputs(
             mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_ITEM12_VALUES_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_ITEM12_VALUES_TEXT.as_bytes(),
         )?;
         stage_guest_input_bytes(
             mounted_work_dir,

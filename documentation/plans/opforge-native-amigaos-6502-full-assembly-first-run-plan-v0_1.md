@@ -1214,7 +1214,7 @@ The intended native shape mirrors the Rust path:
     imported symbol semantics beyond loading the referenced module declaration
     and source body.
 
-- [ ] Item 12: Implement `.use` and import-resolution source graph parity
+- [x] Item 12: Implement `.use` and import-resolution source graph parity
   - Source requirement or finding IDs: `SR-SOURCE-GRAPH`;
     expected to finish the import-resolution behavior on top of Items 10 and 11.
   - Expected files: `native/motorola68000/amigaos/opasm/*`, FS-UAE fixture
@@ -1232,6 +1232,34 @@ The intended native shape mirrors the Rust path:
     behavior for the first-run source graph surface.
   - Definition of done: native `.use` behavior matches Rust references for the
     first-run multi-file 6502 fixtures.
+  - Completion evidence, 2026-06-14: implemented native `.use` import
+    resolution for bare, selected, and alias imports by resolving the target
+    module immediately after import-row recording unless dependency
+    tokenization is already active. The native resolver now reuses an already
+    loaded module row before probing module roots, avoiding duplicate module
+    tokenization for repeated imports. Native opasm operand evaluation now
+    resolves alias-qualified imported symbols such as `V.VALUE` by falling
+    back from exact label lookup to the final dotted segment before package
+    expression evaluation. Focused test `cargo test -p asm item12 --
+    --nocapture` passed with the opt-in FS-UAE case skipped by default. The
+    mandatory real FS-UAE run `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item12_import_alias_resolves_guided_bytes
+    -- --nocapture --test-threads=1` passed. That fixture verified selected
+    import metadata `USE-SELECT 0 0 5 VALUE 0 0`, alias import metadata
+    `USE-IMPORT 0 0 1 1 2 1 V`, and Rust-guided output byte `37` for both
+    selected `VALUE` and alias-qualified `V.VALUE`.
+  - Gate evidence, 2026-06-14: `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture` passed;
+    `scripts/workflow/run_native_68000_format_gate.sh` passed;
+    `scripts/workflow/run_rust_quality_gate.sh` completed with `PASS: Rust
+    quality gate complete.` `make workflow-gate` passed. The first full
+    quality-gate attempt exposed a transient external-oracle sidecar cleanup
+    failure that passed on focused rerun; a later full-gate attempt exposed
+    parallel LSP integration timing failures that passed serially; the final
+    full quality-gate rerun passed cleanly.
 
 - [ ] Item 13: Add native output artifact architecture and `.bin` parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,

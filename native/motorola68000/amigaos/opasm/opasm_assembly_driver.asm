@@ -970,6 +970,10 @@ prepareRequest
 	beq.s checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w resolveDottedLabelSuffixValue
+	beq.s checkWidth
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w prepareEvaluateExpressionRequest
 	beq.s prepareExtension
 	bra.s evalFallback
@@ -1011,6 +1015,10 @@ evalFallback
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w parseDirectiveLiteralValue
+	beq.s ok
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w resolveDottedLabelSuffixValue
 	beq.s ok
 
 return
@@ -2268,6 +2276,10 @@ evaluatePart
 	beq.s evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w resolveDottedLabelSuffixValue
+	beq.s evalPartOk
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w prepareEvaluateExpressionRequest
 	bne.s evalPartFallback
 	bsr.w prepareEvaluateExpressionExtension
@@ -2292,6 +2304,10 @@ evalPartFallback
 	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w parseDirectiveLiteralValue
 	beq.s return
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w resolveDottedLabelSuffixValue
+	beq.s return
 
 fail
 	moveq #1, d0
@@ -2301,6 +2317,53 @@ return
 	movem.l (sp)+, d1-d2/d4-d7/a0-a3
 	rts
 	.bend  ; readCommaOperandValueForStatement
+
+; Resolve the final segment of an alias-qualified imported symbol token.
+; Inputs: A0/D0 = trimmed text slice.
+; Outputs: D0.L = 0 on success, 1 on failure; D3.L = resolved value.
+; Clobbers: D0-D2/D4/A0-A2/CCR.
+; CCR: reflects D0.L on return.
+resolveDottedLabelSuffixValue	.block
+	movem.l d1-d2/d4/a0-a2, -(sp)
+	bsr.w skipLineWhitespace
+	bsr.w trimLiteralFallbackTrailing
+	tst.l d0
+	beq.w fail
+	movea.l a0, a1
+	movea.l a0, a2
+	move.l d0, d2
+	moveq #-1, d4
+
+scan
+	tst.l d2
+	beq.s scanned
+	move.b (a2)+, d1
+	subq.l #1, d2
+	cmpi.b #'.', d1
+	bne.s scan
+	move.l a2, d4
+	bra.s scan
+
+scanned
+	cmpi.l #-1, d4
+	beq.s fail
+	movea.l d4, a0
+	move.l a2, d0
+	sub.l d4, d0
+	beq.s fail
+	jsr eng.opasmEngineResolveLabelValueV1
+	beq.s ok
+
+fail
+	movem.l (sp)+, d1-d2/d4/a0-a2
+	moveq #1, d0
+	rts
+
+ok
+	movem.l (sp)+, d1-d2/d4/a0-a2
+	moveq #0, d0
+	rts
+	.bend  ; resolveDottedLabelSuffixValue
 
 ; Compute Rust-compatible `.align` padding for the current native PC.
 ; Inputs: D7.W = statement index.

@@ -234,6 +234,18 @@ opforgeNativeCliParseUseLine	.block
 	move.l d0, d5
 	bsr.w module_use.opforgeNativeCliRecordImport
 	bne.w fail
+	tst.w state.NativeCliModuleResolveDepth
+	bne.s parseTail
+	bsr.w module_use.opforgeNativeCliResolveBareUseModule
+	tst.l d1
+	bne.w resolveFail
+	moveq #0, d2
+	move.w d4, d2
+	add.w d2, d2
+	lea state.NativeCliImportModuleTable, a1
+	move.w d0, 0(a1, d2.l)
+
+parseTail
 	move.l d5, d0
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	beq.w bare
@@ -254,20 +266,6 @@ opforgeNativeCliParseUseLine	.block
 	bra.w done
 
 bare
-	tst.b state.NativeCliIncludeTarget
-	bne.s bareEmit
-	tst.w state.NativeCliModuleResolveDepth
-	bne.s bareEmit
-	bsr.w module_use.opforgeNativeCliResolveBareUseModule
-	tst.l d1
-	bne.w resolveFail
-	moveq #0, d2
-	move.w d4, d2
-	add.w d2, d2
-	lea state.NativeCliImportModuleTable, a1
-	move.w d0, 0(a1, d2.l)
-
-bareEmit
 	bsr.w module_use.opforgeNativeCliEmitImportRecord
 
 done

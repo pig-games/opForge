@@ -13582,6 +13582,67 @@ fn motorola68020_item11_native_use_module_recursion_preserves_root_reader() {
 }
 
 #[test]
+fn motorola68020_item12_native_import_resolution_routes_dotted_operands() {
+    let repo_root = workspace_root();
+    let driver_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
+    let directive_path =
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/directive_handlers.asm");
+    let module_use_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/module_use.asm");
+    let source = fs::read_to_string(&driver_path).expect("read native opasm assembly driver");
+    let directives =
+        fs::read_to_string(&directive_path).expect("read native directive handlers source");
+    let module_use = fs::read_to_string(&module_use_path).expect("read native module/use source");
+
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "readOperandValueForStatement .BLOCK",
+            "JSR eng.opasmEngineResolveLabelValueV1",
+            "BSR.W resolveDottedLabelSuffixValue",
+            "BSR.W prepareEvaluateExpressionRequest",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "readCommaOperandValueForStatement .BLOCK",
+            "JSR eng.opasmEngineResolveLabelValueV1",
+            "BSR.W resolveDottedLabelSuffixValue",
+            "BSR.W prepareEvaluateExpressionRequest",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &source,
+        &[
+            "resolveDottedLabelSuffixValue .BLOCK",
+            "CMPI.B #'.', D1",
+            "JSR eng.opasmEngineResolveLabelValueV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directives,
+        &[
+            "opforgeNativeCliParseUseLine .BLOCK",
+            "BSR.W module_use.opforgeNativeCliRecordImport",
+            "BSR.W module_use.opforgeNativeCliResolveBareUseModule",
+            "LEA state.NativeCliImportModuleTable, A1",
+            "BSR.W module_use.opforgeNativeCliEmitImportRecord",
+            "BSR.W line_text.opforgeNativeCliParseUseItems",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &module_use,
+        &[
+            "opforgeNativeCliResolveBareUseModule .BLOCK",
+            "JSR token_util.opforgeNativeCliTokenEquals",
+            "MOVE.W D7, state.NativeCliResolvedModuleId",
+            "JSR dos.openInput",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
@@ -33300,6 +33361,117 @@ fn external_fs_uae_opforge_native_cli_item11_module_root_resolution_matches_rust
                 native_bin, expected,
                 "focused FS-UAE Item 11 module byte mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item12_import_alias_resolves_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let selective_source = [
+        "        .module app",
+        "        .use values (VALUE)",
+        "        .byte VALUE",
+        "        .endmodule",
+    ]
+    .join("\n");
+    let alias_source = [
+        "        .module app",
+        "        .use values as V",
+        "        .byte V.VALUE",
+        "        .endmodule",
+    ]
+    .join("\n");
+    let expected = vec![0x37];
+    let cases = [
+        crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            name: "item12-selective-import-resolution",
+            cpu_id: m6502_cpu_id.as_str(),
+            source: selective_source.as_bytes(),
+            package_bytes: package_bytes.as_slice(),
+        },
+        crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+            name: "item12-alias-import-resolution",
+            cpu_id: m6502_cpu_id.as_str(),
+            source: alias_source.as_bytes(),
+            package_bytes: package_bytes.as_slice(),
+        },
+    ];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 12 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 2, "expected two focused Item 12 runs");
+
+            let selective_run = &runs[0];
+            assert!(
+                selective_run.success,
+                "focused native opForge CLI Item 12 selected-import fixture failed\nstdout:\n{}\nstderr:\n{}",
+                selective_run.stdout,
+                selective_run.stderr,
+            );
+            assert!(
+                selective_run.stdout.contains("USE-SELECT 0 0 5 VALUE 0 0"),
+                "focused Item 12 selected-import fixture should report selected VALUE import\nstdout:\n{}\nstderr:\n{}",
+                selective_run.stdout,
+                selective_run.stderr,
+            );
+            let selective_output_path = selective_run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let selective_bin = fs::read(&selective_output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 12 selected output {}: {err}",
+                    selective_output_path.display()
+                )
+            });
+            assert_eq!(
+                selective_bin, expected,
+                "focused FS-UAE Item 12 selected-import byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                selective_run.stdout, selective_run.stderr,
+            );
+
+            let alias_run = &runs[1];
+            assert!(
+                alias_run.success,
+                "focused native opForge CLI Item 12 alias-import fixture failed\nstdout:\n{}\nstderr:\n{}",
+                alias_run.stdout,
+                alias_run.stderr,
+            );
+            assert!(
+                alias_run.stdout.contains("USE-IMPORT 0 0 1 1 2 1 V"),
+                "focused Item 12 alias-import fixture should link aliased import to values module\nstdout:\n{}\nstderr:\n{}",
+                alias_run.stdout,
+                alias_run.stderr,
+            );
+            let alias_output_path = alias_run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let alias_bin = fs::read(&alias_output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 12 alias output {}: {err}",
+                    alias_output_path.display()
+                )
+            });
+            assert_eq!(
+                alias_bin, expected,
+                "focused FS-UAE Item 12 alias-import byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                alias_run.stdout, alias_run.stderr,
             );
         }
     }

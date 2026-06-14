@@ -1171,7 +1171,7 @@ The intended native shape mirrors the Rust path:
     `PASS: Rust quality gate complete.` Item 10 intentionally did not add Item
     11 module declaration/root semantics or Item 12 `.use` import behavior.
 
-- [ ] Item 11: Implement module declaration and root resolution parity
+- [x] Item 11: Implement module declaration and root resolution parity
   - Source requirement or finding IDs: `SR-SOURCE-GRAPH`,
     `SR-DIRECTIVES`; expected to establish module structure before import
     semantics land.
@@ -1192,6 +1192,27 @@ The intended native shape mirrors the Rust path:
   - Definition of done: native can assemble first-run multi-file fixtures using
     `.module` with Rust-compatible module structure, line attribution, and
     diagnostics.
+  - Completion evidence, 2026-06-14: implemented native source-graph `.use`
+    routing early enough to resolve and tokenize module files before package
+    statement tokenization, preserved the root AmigaDOS file handle across both
+    `.use` parsing and recursive module tokenization, and removed the stray
+    stack adjustment in optional `.use as` parsing. Focused test `cargo test -p
+    asm item11 -- --nocapture` passed with the opt-in FS-UAE case skipped by
+    default. The mandatory real FS-UAE run
+    `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/
+    Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/
+    Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item11_module_root_resolution_matches_rust_order
+    -- --nocapture --test-threads=1` passed. That fixture recorded root module
+    `app`, resolved and tokenized `helper.asm`, linked `USE-IMPORT 0 0 1 1 2
+    0`, and emitted Rust-order bytes `a9 00 a9 44`.
+  - Gate evidence, 2026-06-14: `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture` passed;
+    `scripts/workflow/run_rust_quality_gate.sh` completed with `PASS: Rust
+    quality gate complete.` Item 11 intentionally did not implement Item 12
+    imported symbol semantics beyond loading the referenced module declaration
+    and source body.
 
 - [ ] Item 12: Implement `.use` and import-resolution source graph parity
   - Source requirement or finding IDs: `SR-SOURCE-GRAPH`;

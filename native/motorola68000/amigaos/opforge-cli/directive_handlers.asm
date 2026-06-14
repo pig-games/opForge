@@ -211,9 +211,10 @@ fail
 ; Parse one `.use` directive from the current source line.
 ; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
 ; Outputs: D0 = 0 on success, nonzero failure status on parse/import errors; state.NativeCliResolvedModuleId and import tables updated for bare-module resolution when applicable.
-; Clobbers: A0-A1/D1/D5/CCR.
+; Clobbers: A0-A1/D1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliParseUseLine	.block
+	movem.l d5, -(sp)
 	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
@@ -271,6 +272,7 @@ bareEmit
 
 done
 	moveq #0, d0
+	movem.l (sp)+, d5
 	rts
 
 resolveFail
@@ -281,12 +283,14 @@ resolveFail
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	moveq #1, d0
+	movem.l (sp)+, d5
 	rts
 
 fail
 	move.l #strings.ParserFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
+	movem.l (sp)+, d5
 	rts
 	.bend  ; opforgeNativeCliParseUseLine
 

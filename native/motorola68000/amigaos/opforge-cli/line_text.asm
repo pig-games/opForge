@@ -256,7 +256,6 @@ fail
 
 return
 	movem.l (sp)+, d6/a1
-	addq.l #4, sp
 	rts
 	.bend  ; opforgeNativeCliParseUseOptionalAlias
 

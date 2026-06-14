@@ -38,6 +38,19 @@ opforgeNativeCliTokenizeCurrentLine	.block
 
 record
 	jsr assembly_session.opforgeNativeCliRecordSourceLine
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	jsr line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s checkPackage
+	lea strings.UseDirectiveText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkPackage
+	jsr directive_handlers.opforgeNativeCliParseUseLine
+	rts
+
+checkPackage
 	tst.w state.NativeCliPackagePipelineReady
 	beq.w parseOnly
 	bsr.w opforgeNativeCliPrepareLineServiceRequest
@@ -189,6 +202,16 @@ opforgeNativeCliParseCurrentLine	.block
 	bra.w return
 
 checkOrg
+	movea.l a4, a0
+	move.l d7, d0
+	lea strings.UseDirectiveText, a1
+	moveq #4, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkOrgDirective
+	jsr directive_handlers.opforgeNativeCliParseUseLine
+	bra.w return
+
+checkOrgDirective
 	movea.l a4, a0
 	move.l d7, d0
 	lea strings.OrgMnemonicText, a1

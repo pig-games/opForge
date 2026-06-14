@@ -212,14 +212,18 @@ return
 ; Clobbers: D0/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliTokenizePendingUseModule	.block
+	movem.l d5, -(sp)
 	cmpi.w #-1, state.NativeCliResolvedModuleId
 	beq.s ok
 	move.w #-1, state.NativeCliResolvedModuleId
 	bsr.w opforgeNativeCliTokenizeResolvedUseModule
-	rts
+	bra.s return
 
 ok
 	moveq #0, d0
+
+return
+	movem.l (sp)+, d5
 	rts
 	.bend  ; opforgeNativeCliTokenizePendingUseModule
 

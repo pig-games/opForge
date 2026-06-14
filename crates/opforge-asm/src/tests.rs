@@ -10233,11 +10233,12 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile"
     ));
     assert!(listing.contains("OPC-NCLI017: native module path capacity exceeded"));
+    assert!(listing.contains("OPC-NCLI029: native include path capacity exceeded"));
     assert!(listing
         .contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity"));
     assert!(listing.contains("OPC-NCLI008: Input source file not found"));
     assert!(listing.contains(
-        "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path; --hunk is not implemented yet."
+        "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, and -M/--module-path; --hunk is not implemented yet."
     ));
     assert!(listing.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(listing.contains("STAGE parser"));
@@ -10282,6 +10283,8 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE",
         "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_MODULE_PATH",
         "OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW",
+        "OPFORGE_FS_UAE_NATIVE_CLI_ITEM10_INCLUDE_OUTPUT",
+        "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INCLUDE",
         "OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT",
         "--cpu 65c02",
         "Work:opforge_native_out.bin",
@@ -13418,6 +13421,79 @@ fn motorola68020_item9_native_symbol_config_directives_route_before_selected_enc
             "BNE.W conditionalLine",
             "conditionalLine",
             "MOVE.L #strings.ConditionalFailureText, D1",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item10_native_include_roots_expand_before_tokenization() {
+    let repo_root = workspace_root();
+    let args_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/args.asm");
+    let include_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/include_use.asm");
+    let path_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/path.asm");
+    let state_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/state.asm");
+    let strings_path = repo_root.join("native/motorola68000/amigaos/opforge-cli/strings.asm");
+    let args = fs::read_to_string(&args_path).expect("read native CLI args source");
+    let include_use = fs::read_to_string(&include_path).expect("read native include source");
+    let path = fs::read_to_string(&path_path).expect("read native path source");
+    let state = fs::read_to_string(&state_path).expect("read native CLI state source");
+    let strings = fs::read_to_string(&strings_path).expect("read native CLI strings source");
+
+    assert!(source_contains_in_order(
+        &args,
+        &[
+            "LEA strings.FlagIncludeShort, A1",
+            "BNE.W includePath",
+            "LEA strings.FlagIncludeLong, A1",
+            "BNE.W includePath",
+            "includePath",
+            "BSR.W opforgeNativeCliCopyRequiredPathValue",
+            "BSR.W opforgeNativeCliRecordIncludePathValue",
+        ]
+    ));
+    let unsupported_table = args
+        .split("opforgeNativeCliIsUnsupportedFlag\t.block")
+        .nth(1)
+        .expect("native CLI unsupported flag helper is present");
+    assert!(
+        !unsupported_table.contains("FlagIncludeShort")
+            && !unsupported_table.contains("FlagIncludeLong"),
+        "-I/--include-path must not remain in the unsupported flag table"
+    );
+    assert!(state.contains("NativeCliIncludePathCount"));
+    assert!(state.contains("NativeCliIncludePathTable"));
+    assert!(strings.contains("OPC-NCLI029: native include path capacity exceeded"));
+    assert!(source_contains_in_order(
+        &path,
+        &[
+            "opforgeNativeCliAppendPathSegmentBuffer .BLOCK",
+            "CMPI.B #':', -1(A1)",
+            "MOVE.B #'/', (A1)+",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &include_use,
+        &[
+            "opforgeNativeCliResolveIncludePath .BLOCK",
+            "BSR.W opforgeNativeCliBuildAndProbeIncludePath",
+            "LEA state.NativeCliIncludePathTable, A0",
+            "BSR.W opforgeNativeCliBuildAndProbeIncludePath",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &include_use,
+        &[
+            "opforgeNativeCliBuildAndProbeIncludePath .BLOCK",
+            "JSR path.opforgeNativeCliAppendPathSegmentBuffer",
+            "BSR.W opforgeNativeCliProbeResolvedIncludePath",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &include_use,
+        &[
+            "opforgeNativeCliProbeResolvedIncludePath .BLOCK",
+            "JSR dos.openInput",
+            "JSR dos.close",
         ]
     ));
 }
@@ -32973,6 +33049,91 @@ fn external_fs_uae_opforge_native_cli_item9_symbol_config_directives_match_rust_
                 native_bin, expected,
                 "focused FS-UAE Item 9 symbol/config byte mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let expected = vec![0x22, 0xA9, 0x44];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item10_include_from_env(
+        &repo_root,
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 10 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                2,
+                "expected include success and missing-include runs"
+            );
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI Item 10 include fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("INCLUDE-ROOT 1 Work:opforge_include_root_b"),
+                "focused Item 10 include fixture should report the first CLI include root as selected\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout
+                    .contains("INCLUDE-FILE 1 Work:opforge_include_root_b/defs.inc"),
+                "focused Item 10 include fixture should report the resolved include path\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            assert!(
+                run.stdout.contains("INCLUDE-LINE 1 1"),
+                "focused Item 10 include fixture should report included source line depth and number\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 10 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "focused FS-UAE Item 10 include byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+
+            let missing_run = &runs[1];
+            assert!(
+                !missing_run.success,
+                "focused native opForge CLI Item 10 missing include fixture should fail\nstdout:\n{}\nstderr:\n{}",
+                missing_run.stdout,
+                missing_run.stderr,
+            );
+            assert!(
+                missing_run
+                    .stdout
+                    .contains("ERROR OPC-NCLI014: native include expansion failed"),
+                "focused Item 10 missing include fixture should report the include diagnostic\nstdout:\n{}\nstderr:\n{}",
+                missing_run.stdout,
+                missing_run.stderr,
             );
         }
     }

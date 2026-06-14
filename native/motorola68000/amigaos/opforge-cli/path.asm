@@ -125,5 +125,49 @@ ok
 	rts
 	.bend  ; opforgeNativeCliAppendPathBuffer
 
+; Append one relative path segment to a path buffer, inserting `/` when needed.
+; Inputs: A0 = NUL-terminated segment; A1 = destination path buffer.
+; Outputs: D0 = 0 on success, 1 on capacity failure; destination is NUL-terminated.
+; Clobbers: D0/D2/D6/A0-A1/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliAppendPathSegmentBuffer	.block
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d6
+
+end
+	tst.b (a1)
+	beq.s maybeSeparator
+	addq.l #1, a1
+	subq.l #1, d6
+	beq.s fail
+	bra.s end
+
+maybeSeparator
+	cmpi.l #constants.PATH_BUFFER_CAPACITY - 1, d6
+	beq.s copy
+	cmpi.b #':', -1(a1)
+	beq.s copy
+	cmpi.b #'/', -1(a1)
+	beq.s copy
+	move.b #'/', (a1)+
+	subq.l #1, d6
+	beq.s fail
+
+copy
+	move.b (a0)+, d2
+	move.b d2, (a1)+
+	beq.s ok
+	subq.l #1, d6
+	bne.s copy
+
+fail
+	clr.b -(a1)
+	moveq #1, d0
+	rts
+
+ok
+	moveq #0, d0
+	rts
+	.bend  ; opforgeNativeCliAppendPathSegmentBuffer
+
 	.endsection
 	.endmodule

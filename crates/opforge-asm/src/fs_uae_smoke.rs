@@ -49,6 +49,10 @@ const FS_UAE_OPFORGE_NATIVE_CLI_INPUT_TEXT: &str =
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_DEFINE: &str = "OPFORGE_FS_UAE_NATIVE_CLI_6502_OUTPUT";
 const FS_UAE_OPFORGE_NATIVE_CLI_65C02_OUTPUT_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_65C02_OUTPUT";
+const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE: &str =
+    "OPFORGE_FS_UAE_NATIVE_CLI_ITEM10_INCLUDE_OUTPUT";
+const FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE: &str =
+    "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INCLUDE";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE: &str = "opforge_6502_native_cli_smoke.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT: &str =
     "start   lda #$42\n        sta $20\n        lda $20,x\n        sta $0200\n        lda $0200,x\n        lda $0200,y\ndone    jmp done\n";
@@ -73,6 +77,10 @@ const FS_UAE_OPFORGE_NATIVE_CLI_NESTED_MODULE_TEXT: &str =
     ".module helper\n        lda #$00\n.endmodule\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE: &str = "opforge_fsuae_include.inc";
 const FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT: &str = "        lda #$01\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE: &str = "opforge_include_root_a/defs.inc";
+const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_TEXT: &str = "        .byte $11\n";
+const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE: &str = "opforge_include_root_b/defs.inc";
+const FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_TEXT: &str = "        .byte $22\n";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_FILE: &str =
     "opforge_fsuae_unmatched_endmodule.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_UNMATCHED_ENDMODULE_TEXT: &str = ".endmodule\n";
@@ -311,6 +319,63 @@ pub(crate) fn run_opforge_native_cli_mos_fixture_outputs_from_env(
         let input_override = OpforgeNativeCliInputOverride {
             source: case.source,
             package_bytes: case.package_bytes,
+        };
+        let run = run_example_smoke_with_extra_defines_and_native_cli_input(
+            workspace_root,
+            &fs_uae_bin,
+            &args_text,
+            FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+            FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
+            "68020",
+            &[define],
+            Some(&input_override),
+        )?;
+        match run {
+            ExampleSmokeResult::Run(run) => runs.push(run),
+            ExampleSmokeResult::Skipped(reason) => return Ok(FsUaeSmokeOutcome::Skipped(reason)),
+        }
+    }
+
+    Ok(FsUaeSmokeOutcome::Completed { runs })
+}
+
+pub(crate) fn run_opforge_native_cli_item10_include_from_env(
+    workspace_root: &Path,
+    package_bytes: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
+        return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "set {FS_UAE_OPT_IN_ENV}=1 to enable the opt-in FS-UAE smoke test"
+        )));
+    }
+
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; provide newline-delimited FS-UAE arguments with {{hunk}}, {{artifact_dir}}, {{example}}, {{ready_file}}, {{stdout_file}}, {{stderr_file}}, and {{exit_code_file}} placeholders as needed"
+            )))
+        }
+    };
+
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let include_source = "        .include \"defs.inc\"\n        lda #$44\n";
+    let missing_include_source = "        .include \"missing.inc\"\n        lda #$44\n";
+    let cases = [
+        (
+            FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_DEFINE,
+            include_source.as_bytes(),
+        ),
+        (
+            FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE,
+            missing_include_source.as_bytes(),
+        ),
+    ];
+    let mut runs = Vec::with_capacity(cases.len());
+    for (define, source) in cases {
+        let input_override = OpforgeNativeCliInputOverride {
+            source,
+            package_bytes,
         };
         let run = run_example_smoke_with_extra_defines_and_native_cli_input(
             workspace_root,
@@ -698,6 +763,16 @@ fn stage_example_guest_inputs(
             mounted_work_dir,
             FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_FILE,
             FS_UAE_OPFORGE_NATIVE_CLI_INCLUDE_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_A_TEXT.as_bytes(),
+        )?;
+        stage_guest_input_bytes(
+            mounted_work_dir,
+            FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_FILE,
+            FS_UAE_OPFORGE_NATIVE_CLI_ITEM10_INCLUDE_B_TEXT.as_bytes(),
         )?;
         stage_guest_input_bytes(
             mounted_work_dir,

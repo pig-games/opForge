@@ -17,7 +17,7 @@ VersionText
 	.byte "opForge native AmigaOS CLI 0.1", 10, 0
 HelpText
 	.byte "Usage: opForge [OPTIONS] [INPUT]", 10
-	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -M/--module-path", 10, 0
+	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path", 10, 0
 UsageText
 	.byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]", 10, 0
 QuotedText
@@ -25,7 +25,7 @@ QuotedText
 UnsupportedText
 	.byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ", 0
 NativeSubsetHelpText
-	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, and -M/--module-path; --hunk is not implemented yet.", 10, 0
+	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, and -M/--module-path; --hunk is not implemented yet.", 10, 0
 UnknownFlagText
 	.byte "OPC-NCLI004: unknown CLI flag: ", 0
 MissingValueText
@@ -40,6 +40,8 @@ MultiplePositionalText
 	.byte "OPC-NCLI012: Multiple positional inputs are not supported; use repeatable -i/--infile", 10, 0
 ModulePathCapacityText
 	.byte "OPC-NCLI017: native module path capacity exceeded", 10, 0
+IncludePathCapacityText
+	.byte "OPC-NCLI029: native include path capacity exceeded", 10, 0
 PackageTooLargeText
 	.byte "ERROR OPC-NCLI019: opasm package exceeds native package storage capacity", 10, 0
 InputOpenErrorText
@@ -276,7 +278,15 @@ defaultFsUaeArgTail
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MODULE_PATH_OVERFLOW
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m68020 --opasm-package Work:opforge_cli_package.opasm -M Work:mod1 -M Work:mod2 -M Work:mod3 -M Work:mod4 -M Work:mod5 -M Work:mod6 -M Work:mod7 -M Work:mod8", 0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM10_INCLUDE_OUTPUT
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -I Work:opforge_include_root_b -I Work:opforge_include_root_a", 0
+.else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INCLUDE
+	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -I Work:opforge_include_root_a", 0
+.else
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
+.endif
+.endif
 .endif
 .endif
 .endif

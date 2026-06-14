@@ -192,6 +192,7 @@ close
 ; Clobbers: A0/D0-D1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliTokenizePendingInclude	.block
+	movem.l d5, -(sp)
 	bsr.w include_use.opforgeNativeCliPreparePendingInclude
 	bne.s return
 	tst.l d1
@@ -201,6 +202,7 @@ opforgeNativeCliTokenizePendingInclude	.block
 	bsr.w include_use.opforgeNativeCliFinishPendingInclude
 
 return
+	movem.l (sp)+, d5
 	rts
 	.bend  ; opforgeNativeCliTokenizePendingInclude
 

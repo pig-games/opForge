@@ -1132,7 +1132,7 @@ The intended native shape mirrors the Rust path:
     supply-chain ban, CPU-specific architecture boundary, quality-gate
     evidence, reference scope, and release-note policy checks.
 
-- [ ] Item 10: Implement include-root and file expansion source graph behavior
+- [x] Item 10: Implement include-root and file expansion source graph behavior
   - Source requirement or finding IDs: `SR-SOURCE-GRAPH`,
     `SR-CLI-BOUNDARY`; expected to support the first multi-file path.
   - Expected files: `native/motorola68000/amigaos/opasm/*`,
@@ -1150,6 +1150,26 @@ The intended native shape mirrors the Rust path:
     match the Rust source graph behavior needed for first-run fixtures.
   - Definition of done: native can assemble first-run include-based fixtures
     with Rust-matching include resolution and diagnostics.
+  - Completion evidence, 2026-06-14: implemented native CLI `-I` /
+    `--include-path` recording, include-root probing in CLI order after the
+    current file root, missing include diagnostics, and recursive include
+    tokenization that preserves the outer source handle. The focused static
+    test `cargo test -p asm item10 -- --nocapture` passed with the opt-in
+    FS-UAE case skipped by default. The mandatory real FS-UAE run
+    `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/
+    Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/
+    Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item10_include_roots_match_rust_guided_bytes
+    -- --nocapture --test-threads=1` passed. That run selected
+    `Work:opforge_include_root_b/defs.inc` ahead of root A, emitted
+    Rust-guided bytes `22 a9 44`, and verified the missing include path reports
+    `ERROR OPC-NCLI014: native include expansion failed`.
+  - Gate evidence, 2026-06-14: `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture` passed;
+    `scripts/workflow/run_rust_quality_gate.sh` completed with
+    `PASS: Rust quality gate complete.` Item 10 intentionally did not add Item
+    11 module declaration/root semantics or Item 12 `.use` import behavior.
 
 - [ ] Item 11: Implement module declaration and root resolution parity
   - Source requirement or finding IDs: `SR-SOURCE-GRAPH`,

@@ -113,6 +113,14 @@ parseLoop
 	jsr token_util.opforgeNativeCliTokenEquals
 	bne.w package
 	lea state.NativeCliArgToken, a0
+	lea strings.FlagIncludeShort, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w includePath
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagIncludeLong, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w includePath
+	lea state.NativeCliArgToken, a0
 	lea strings.FlagModuleShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
 	bne.w modulePath
@@ -173,6 +181,17 @@ package
 	lea state.NativeCliPackagePath, a1
 	bsr.w opforgeNativeCliCopyRequiredValue
 	bne.w missingValue
+	bra.w parseLoop
+
+includePath
+	lea state.NativeCliIncludeTarget, a1
+	bsr.w opforgeNativeCliCopyRequiredPathValue
+	cmpi.l #1, d0
+	beq.w missingValue
+	tst.l d0
+	bne.w includePathCapacity
+	bsr.w opforgeNativeCliRecordIncludePathValue
+	bne.w includePathCapacity
 	bra.w parseLoop
 
 modulePath
@@ -282,6 +301,10 @@ multiplePositional
 
 modulePathCapacity
 	move.w #constants.NCLI_PARSE_MODULE_PATH_CAPACITY, state.NativeCliParseStatus
+	bra.w parseReturn
+
+includePathCapacity
+	move.w #constants.NCLI_PARSE_INCLUDE_PATH_CAPACITY, state.NativeCliParseStatus
 
 parseReturn
 	move.w state.NativeCliParseStatus, d0
@@ -516,14 +539,6 @@ opforgeNativeCliIsUnsupportedFlag	.block
 	lea strings.FlagDefineLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
 	bne.w unsupportedYes
-	lea state.NativeCliArgToken, a0
-	lea strings.FlagIncludeShort, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w unsupportedYes
-	lea state.NativeCliArgToken, a0
-	lea strings.FlagIncludeLong, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w unsupportedYes
 	moveq #0, d0
 	rts
 
@@ -575,6 +590,38 @@ recordReturn
 	movem.l (sp)+, d1/a0-a1
 	rts
 	.bend  ; opforgeNativeCliRecordModulePathValue
+
+; Append one explicit `-I` / `--include-path` value to the include path table.
+; Inputs: state.NativeCliIncludeTarget = parsed include path; state.NativeCliIncludePathCount = current table length.
+; Outputs: D0 = 0 on success, 1 on capacity/path-copy failure; include path table and count updated on success.
+; Clobbers: D0-D1/A0-A1/CCR.
+; CCR: reflects D0 on return. The epilogue restores saved registers with CCR-neutral `movem`/`rts`.
+opforgeNativeCliRecordIncludePathValue	.block
+	movem.l d1/a0-a1, -(sp)
+	moveq #0, d0
+	move.w state.NativeCliIncludePathCount, d0
+	cmpi.w #constants.NATIVE_INCLUDE_PATH_CAPACITY, d0
+	bhs.s recordFail
+	move.l d0, d1
+	lsl.l #8, d1
+	lea state.NativeCliIncludePathTable, a1
+	adda.l d1, a1
+	lea state.NativeCliIncludeTarget, a0
+	jsr path.opforgeNativeCliCopyPathBuffer
+	bne.s recordFail
+	move.w state.NativeCliIncludePathCount, d0
+	addq.w #1, d0
+	move.w d0, state.NativeCliIncludePathCount
+	moveq #0, d0
+	bra.s recordReturn
+
+recordFail
+	moveq #1, d0
+
+recordReturn
+	movem.l (sp)+, d1/a0-a1
+	rts
+	.bend  ; opforgeNativeCliRecordIncludePathValue
 
 	.endsection
 	.endmodule

@@ -29,10 +29,6 @@ opforgeNativeCliEmitIncludeLineRecord	.block
 	jsr dos.putStr
 	move.l state.NativeCliSourceLineNum, d0
 	jsr text_output.opforgeNativeCliPutU16Decimal
-	move.l #strings.SpaceText, d1
-	jsr dos.putStr
-	move.l #state.NativeCliCurrentPath, d1
-	jsr dos.putStr
 	move.l #strings.NewlineText, d1
 	jsr dos.putStr
 	movem.l (sp)+, d0-d1
@@ -152,13 +148,13 @@ done
 opforgeNativeCliReportParseError	.block
 	move.w state.NativeCliParseStatus, d0
 	cmpi.w #constants.NCLI_PARSE_QUOTED, d0
-	beq.s quoted
+	beq.w quoted
 	cmpi.w #constants.NCLI_PARSE_UNSUPPORTED, d0
-	beq.s unsupported
+	beq.w unsupported
 	cmpi.w #constants.NCLI_PARSE_UNKNOWN_FLAG, d0
-	beq.s unknown
+	beq.w unknown
 	cmpi.w #constants.NCLI_PARSE_MISSING_VALUE, d0
-	beq.s missing
+	beq.w missing
 	cmpi.w #constants.NCLI_PARSE_NO_INPUT, d0
 	beq.w noInput
 	cmpi.w #constants.NCLI_PARSE_HUNK_REQUIRED, d0
@@ -169,6 +165,8 @@ opforgeNativeCliReportParseError	.block
 	beq.w multiplePositional
 	cmpi.w #constants.NCLI_PARSE_MODULE_PATH_CAPACITY, d0
 	beq.w modulePathCapacity
+	cmpi.w #constants.NCLI_PARSE_INCLUDE_PATH_CAPACITY, d0
+	beq.w includePathCapacity
 	move.l #strings.UsageText, d1
 	bra.w reportText
 
@@ -218,6 +216,10 @@ multiplePositional
 
 modulePathCapacity
 	move.l #strings.ModulePathCapacityText, d1
+	bra.w reportText
+
+includePathCapacity
+	move.l #strings.IncludePathCapacityText, d1
 
 reportText
 	jsr dos.putStr

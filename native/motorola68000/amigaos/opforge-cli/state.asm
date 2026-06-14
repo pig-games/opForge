@@ -174,6 +174,8 @@ NativeCliImportCount
 	.res word, 1
 NativeCliModulePathCount
 	.res word, 1
+NativeCliIncludePathCount
+	.res word, 1
 NativeCliImportSelectCount
 	.res word, 1
 NativeCliRootModuleId
@@ -210,6 +212,8 @@ NativeCliImportSelectFlagsTable
 	.res word, constants.NATIVE_IMPORT_SELECT_CAPACITY
 NativeCliModulePathTable
 	.res byte, constants.NATIVE_MODULE_PATH_CAPACITY * constants.PATH_BUFFER_CAPACITY
+NativeCliIncludePathTable
+	.res byte, constants.NATIVE_INCLUDE_PATH_CAPACITY * constants.PATH_BUFFER_CAPACITY
 nativeCliModuleUseStateEnd
 
 	.endsection

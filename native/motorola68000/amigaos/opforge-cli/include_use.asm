@@ -164,6 +164,7 @@ return
 ; Clobbers: A0-A1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliResolveIncludePath	.block
+	movem.l d6-d7/a0-a1, -(sp)
 	lea state.NativeCliCurrentPath, a0
 	lea state.NativeCliIncludeRootPath, a1
 	jsr path.opforgeNativeCliCopyPathRoot
@@ -174,22 +175,85 @@ opforgeNativeCliResolveIncludePath	.block
 	lea state.NativeCliIncludeTarget, a0
 	lea state.NativeCliIncludePath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
-	rts
+	bne.s fail
+	bsr.w opforgeNativeCliProbeResolvedIncludePath
+	beq.s ok
+	bra.s fail
 
 appendFromRoot
+	bsr.w opforgeNativeCliBuildAndProbeIncludePath
+	beq.s ok
+	clr.w d7
+
+includeRootLoop
+	move.w state.NativeCliIncludePathCount, d0
+	cmp.w d0, d7
+	bhs.s fail
+	moveq #0, d6
+	move.w d7, d6
+	lsl.l #8, d6
+	lea state.NativeCliIncludePathTable, a0
+	adda.l d6, a0
+	lea state.NativeCliIncludeRootPath, a1
+	jsr path.opforgeNativeCliCopyPathBuffer
+	bne.s fail
+	bsr.w opforgeNativeCliBuildAndProbeIncludePath
+	beq.s ok
+	addq.w #1, d7
+	bra.s includeRootLoop
+
+ok
+	movem.l (sp)+, d6-d7/a0-a1
+	moveq #0, d0
+	rts
+
+fail
+	movem.l (sp)+, d6-d7/a0-a1
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliResolveIncludePath
+
+; Build NativeCliIncludeRootPath + NativeCliIncludeTarget and verify it opens.
+; Inputs: state.NativeCliIncludeRootPath and state.NativeCliIncludeTarget.
+; Outputs: D0 = 0 on readable include file, 1 on path/open failure; state.NativeCliIncludePath = candidate path.
+; Clobbers: D0-D1/A0-A1/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliBuildAndProbeIncludePath	.block
 	lea state.NativeCliIncludeRootPath, a0
 	lea state.NativeCliIncludePath, a1
 	jsr path.opforgeNativeCliCopyPathBuffer
 	bne.s fail
 	lea state.NativeCliIncludeTarget, a0
 	lea state.NativeCliIncludePath, a1
-	jsr path.opforgeNativeCliAppendPathBuffer
+	jsr path.opforgeNativeCliAppendPathSegmentBuffer
+	bne.s fail
+	bsr.w opforgeNativeCliProbeResolvedIncludePath
 	rts
 
 fail
 	moveq #1, d0
 	rts
-	.bend  ; opforgeNativeCliResolveIncludePath
+	.bend  ; opforgeNativeCliBuildAndProbeIncludePath
+
+; Verify that NativeCliIncludePath can be opened, closing the probe handle.
+; Inputs: state.NativeCliIncludePath.
+; Outputs: D0 = 0 when readable, 1 when AmigaDOS open fails.
+; Clobbers: D0-D1/A0/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliProbeResolvedIncludePath	.block
+	lea state.NativeCliIncludePath, a0
+	jsr dos.openInput
+	tst.l d0
+	beq.s fail
+	move.l d0, d1
+	jsr dos.close
+	moveq #0, d0
+	rts
+
+fail
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliProbeResolvedIncludePath
 
 opforgeNativeCliCopyIncludeTarget	.block
 	tst.l d0

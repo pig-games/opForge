@@ -402,6 +402,190 @@ return
 	rts
 	.bend  ; opasmEngineRecordStatementLabelV1
 
+; Record or update the value-backed label attached to one symbol directive.
+;
+; Inputs:
+; - D0: statement index.
+; - D3: symbol value.
+; - D4.W: non-zero to update an existing symbol value instead of reporting a
+;         duplicate.
+;
+; Outputs:
+; - D0: 0 on success/no label, non-zero on duplicate/capacity failure.
+; - D1: OPASM_ENGINE_LABEL_EVENT_*.
+; - D2: stored value for stored-label diagnostics.
+; - A0: label text for stored/duplicate diagnostics.
+opasmEngineRecordStatementLabelValueV1	.block
+	movem.l d3-d7/a1-a3, -(sp)
+	move.l d0, d7
+	lsl.l #6, d7
+	lea OpasmEngineStmtLabelNameTable.l, a1
+	adda.l d7, a1
+	tst.b (a1)
+	beq.w noLabel
+	moveq #0, d0
+	move.w OpasmEngineLabelCount.l, d0
+	cmpi.w #NATIVE_LABEL_TABLE_CAPACITY, d0
+	bhs.w capacity
+	moveq #0, d6
+
+duplicateLoop
+	move.w OpasmEngineLabelCount.l, d0
+	cmp.w d0, d6
+	bhs.s storeLabel
+	moveq #0, d5
+	move.w d6, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+	moveq #0, d0
+	move.l d7, d5
+	lsr.l #6, d5
+	add.w d5, d5
+	lea OpasmEngineStmtLabelLenTable.l, a2
+	move.w 0(a2, d5.l), d0
+	bne.s haveExistingLabelLen
+	movea.l a1, a0
+	bsr.w tokenLen
+	moveq #0, d5
+	move.w d6, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+
+haveExistingLabelLen
+	bsr.w labelEquals
+	bne.w duplicate
+	addq.w #1, d6
+	bra.s duplicateLoop
+
+storeLabel
+	moveq #0, d6
+	move.w OpasmEngineLabelCount.l, d6
+	move.l d6, d5
+	lsl.l #2, d5
+	lea OpasmEngineLabelValueTable.l, a0
+	move.l d3, 0(a0, d5.l)
+	lea OpasmEngineLabelFinalizedTable.l, a0
+	move.b #1, 0(a0, d6.l)
+	move.l d6, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+	move.l a0, d4
+	movea.l a1, a3
+	movea.l a0, a1
+	movea.l a3, a0
+	moveq #0, d0
+	move.l d7, d5
+	lsr.l #6, d5
+	add.w d5, d5
+	lea OpasmEngineStmtLabelLenTable.l, a2
+	move.w 0(a2, d5.l), d0
+	bne.s haveStoreLabelLen
+	movea.l a3, a0
+	bsr.w tokenLen
+	movea.l a3, a0
+
+haveStoreLabelLen
+	bsr.w copyFixedString
+	clr.b (a1)
+	addq.w #1, OpasmEngineLabelCount.l
+	moveq #0, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_STORED, d1
+	move.l d3, d2
+	movea.l d4, a0
+	bra.s return
+
+duplicate
+	tst.w d4
+	bne.s updateExisting
+	moveq #1, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_DUPLICATE, d1
+	movea.l a1, a0
+	bra.s return
+
+updateExisting
+	moveq #0, d5
+	move.w d6, d5
+	lsl.l #2, d5
+	lea OpasmEngineLabelValueTable.l, a0
+	move.l d3, 0(a0, d5.l)
+	lea OpasmEngineLabelFinalizedTable.l, a0
+	move.b #1, 0(a0, d6.l)
+	moveq #0, d5
+	move.w d6, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+	moveq #0, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_STORED, d1
+	move.l d3, d2
+	bra.s return
+
+capacity
+	moveq #1, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_CAPACITY, d1
+	movea.l a1, a0
+	bra.s return
+
+noLabel
+	moveq #0, d0
+	moveq #OPASM_ENGINE_LABEL_EVENT_NONE, d1
+	suba.l a0, a0
+
+return
+	movem.l (sp)+, d3-d7/a1-a3
+	rts
+	.bend  ; opasmEngineRecordStatementLabelValueV1
+
+; Resolve one exact label token from the opasm-owned symbol table.
+;
+; Inputs:
+; - A0: label token text.
+; - D0: label token byte length.
+;
+; Outputs:
+; - D0: 0 on success, 1 when no label matches.
+; - D3: label value on success.
+opasmEngineResolveLabelValueV1	.block
+	movem.l d1-d2/d4-d6/a0-a2, -(sp)
+	movea.l a0, a2
+	move.l d0, d6
+	clr.w d4
+
+loop
+	cmp.w OpasmEngineLabelCount.l, d4
+	bhs.s fail
+	moveq #0, d5
+	move.w d4, d5
+	lsl.l #6, d5
+	lea OpasmEngineLabelNameTable.l, a0
+	adda.l d5, a0
+	movea.l a2, a1
+	move.l d6, d0
+	bsr.w labelEquals
+	bne.s found
+	addq.w #1, d4
+	bra.s loop
+
+found
+	moveq #0, d5
+	move.w d4, d5
+	lsl.l #2, d5
+	lea OpasmEngineLabelValueTable.l, a0
+	move.l 0(a0, d5.l), d3
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d4-d6/a0-a2
+	rts
+	.bend  ; opasmEngineResolveLabelValueV1
+
 ; Set origin and current PC.
 ;
 ; Inputs:

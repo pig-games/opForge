@@ -91,8 +91,63 @@ opasmDriverPassTwoOk	.block
 	.bend  ; opasmDriverPassTwoOk
 
 opasmDriverRecordLabel	.block
-	movem.l d1-d5/a0, -(sp)
+	movem.l d1-d7/a0-a1, -(sp)
+	move.w d0, d7
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movea.l sp, a0
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w recordPcLabel
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_PTR(a0), a1
+	move.l a1, d5
+	move.l eng.OPASM_ENGINE_STMT_TEXT_MNEM_LEN(a0), d4
+	beq.w recordPcLabel
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea ConstMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w recordConstSymbol
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea VarMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w recordMutableSymbol
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea SetMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w recordMutableSymbol
+
+recordPcLabel
+	moveq #0, d0
+	move.w d7, d0
 	jsr eng.opasmEngineRecordStatementLabelV1
+	bra.s handleLabelEvent
+
+recordConstSymbol
+	moveq #0, d6
+	bra.s recordSymbolValue
+
+recordMutableSymbol
+	moveq #1, d6
+
+recordSymbolValue
+	moveq #2, d5
+	bsr.w readOperandValueForStatement
+	bne.w symbolValueFail
+	moveq #0, d0
+	move.w d7, d0
+	move.w d6, d4
+	jsr eng.opasmEngineRecordStatementLabelValueV1
+
+handleLabelEvent
 	move.l a0, d4
 	move.l d2, d5
 	cmpi.w #eng.OPASM_ENGINE_LABEL_EVENT_STORED, d1
@@ -122,8 +177,13 @@ duplicate
 	moveq #1, d0
 
 return
-	movem.l (sp)+, d1-d5/a0
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a1
 	rts
+
+symbolValueFail
+	moveq #1, d0
+	bra.s return
 	.bend  ; opasmDriverRecordLabel
 
 opasmDriverEmitImageBytes	.block
@@ -156,6 +216,27 @@ opasmDriverEmitImageBytes	.block
 	moveq #0, d0
 	move.w d4, d0
 	lea CpuMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea ConstMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea VarMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w ok
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea SetMnemonicText, a1
 	moveq #3, d1
 	bsr.w lineStartsWith
 	bne.w ok
@@ -478,6 +559,27 @@ opasmDriverAdvancePc	.block
 	moveq #0, d0
 	move.w d6, d0
 	lea CpuMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w done
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea ConstMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w done
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea VarMnemonicText, a1
+	moveq #3, d1
+	bsr.w lineStartsWith
+	bne.w done
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea SetMnemonicText, a1
 	moveq #3, d1
 	bsr.w lineStartsWith
 	bne.w done
@@ -838,13 +940,11 @@ storedText
 	clr.l d3
 	moveq #0, d0
 	move.w d7, d0
-	jsr eng.getStatementSourceLineTextV1
-	tst.l d0
-	beq.w fail
-	bsr.w skipLineWhitespace
-	bsr.w skipSourceHeadToken
-	bsr.w skipLineWhitespace
-	tst.l d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w fail
+	movea.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_PTR(sp), a0
+	move.l eng.OPASM_ENGINE_STMT_TEXT_OPERAND_LEN(sp), d0
 	bne.s haveText
 	moveq #1, d0
 	bra.w return
@@ -861,6 +961,12 @@ prepareRequest
 	move.l a0, OpasmDriverEvalFallbackPtr
 	move.l d0, OpasmDriverEvalFallbackLen
 	bsr.w parseDirectiveLiteralValue
+	beq.s checkWidth
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
+	bsr.w skipLineWhitespace
+	bsr.w trimLiteralFallbackTrailing
+	jsr eng.opasmEngineResolveLabelValueV1
 	beq.s checkWidth
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
@@ -2158,6 +2264,10 @@ evaluatePart
 	beq.s evalPartOk
 	movea.l OpasmDriverEvalFallbackPtr, a0
 	move.l OpasmDriverEvalFallbackLen, d0
+	jsr eng.opasmEngineResolveLabelValueV1
+	beq.s evalPartOk
+	movea.l OpasmDriverEvalFallbackPtr, a0
+	move.l OpasmDriverEvalFallbackLen, d0
 	bsr.w prepareEvaluateExpressionRequest
 	bne.s evalPartFallback
 	bsr.w prepareEvaluateExpressionExtension
@@ -3239,6 +3349,15 @@ OrgMnemonicText
 
 CpuMnemonicText
 	.byte "cpu", 0
+
+ConstMnemonicText
+	.byte "const", 0
+
+VarMnemonicText
+	.byte "var", 0
+
+SetMnemonicText
+	.byte "set", 0
 
 EndMnemonicText
 	.byte "end", 0

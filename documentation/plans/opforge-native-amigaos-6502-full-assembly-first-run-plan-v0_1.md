@@ -1069,7 +1069,7 @@ The intended native shape mirrors the Rust path:
     focused parity tests, required validations are reported passing, and the
     commit boundary is focused.`
 
-- [ ] Item 9: Implement symbol and configuration directives in native opasm
+- [x] Item 9: Implement symbol and configuration directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,
     `SR-OPASM-ENGINE`; expected to support first-run symbol/configuration state
     without expanding into source-graph behavior.
@@ -1089,6 +1089,48 @@ The intended native shape mirrors the Rust path:
     directive execution needed by first-run 6502 fixtures.
   - Definition of done: symbol-setting, CPU selection, and scoped first-run
     conditional behavior match Rust-compatible state changes and diagnostics.
+  - Validation evidence, 2026-06-14: native opasm now routes `.const`,
+    `.var`, and `.set` ahead of selected instruction emission, evaluates their
+    scalar operand through the existing pass-aware opcore/tkpkg expression
+    service, and stores the resulting symbol value in the opasm-owned symbol
+    table. Value-backed symbols are finalized immediately so data directives
+    can resolve exact symbol operands in pass 2 before falling back to package
+    expression evaluation. `.var` and `.set` use a narrow update path for
+    first-run mutable symbol assignment, while `.const` keeps duplicate-label
+    diagnostics through the existing label event surface. `.cpu` remains
+    accepted as a configuration directive that emits no bytes and does not
+    advance the PC; first-run CPU/package selection remains host-selected
+    through the existing native CLI `--cpu`/package pipeline boundary,
+    preserving the current package-backed selector ownership. Conditional
+    directives are still scoped to the existing native CLI preprocessing
+    boundary and produce `OPC-NCLI015`; the first-run acceptance matrix does
+    not yet include a conditional source fixture that reaches native opasm, and
+    the Item 9 static test locks that current diagnostic boundary rather than
+    expanding into source-graph behavior. Focused structural test
+    `motorola68020_item9_native_symbol_config_directives_route_before_selected_encoding`
+    passed and locks directive routing, symbol-value storage, `.cpu` no-output
+    handling, data directive symbol resolution, and the conditional
+    preprocessing boundary. Focused FS-UAE fixture
+    `external_fs_uae_opforge_native_cli_item9_symbol_config_directives_match_rust_guided_bytes`
+    is present for `.cpu`, `.const`, `.var`, `.set`, and symbol-backed
+    data emission. `cargo test -p asm item9 -- --nocapture` passed with 2
+    tests, with FS-UAE skipped by default. The mandatory real FS-UAE run
+    `OPFORGE_FS_UAE_SMOKE=1 OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/
+    Contents/MacOS/fs-uae' OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/
+    Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item9_symbol_config_directives_match_rust_guided_bytes
+    -- --nocapture --test-threads=1` passed and produced native bytes
+    `42 a9 42 8d 02 02` with `SESSION-CPU m6502`,
+    `SESSION-LABEL-COUNT 3`, and `SESSION-IMAGE-BYTES 6`. `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture` passed with 5 tests.
+    `cargo fmt --check` passed. `python3
+    scripts/workflow/check_cpu_specific_arch_boundary.py` passed with no
+    enforced-scope errors. `git diff --check` passed. `scripts/workflow/
+    run_rust_quality_gate.sh` completed with `PASS: Rust quality gate
+    complete.` `make workflow-gate` passed, including agent symlink,
+    supply-chain ban, CPU-specific architecture boundary, quality-gate
+    evidence, reference scope, and release-note policy checks.
 
 - [ ] Item 10: Implement include-root and file expansion source graph behavior
   - Source requirement or finding IDs: `SR-SOURCE-GRAPH`,

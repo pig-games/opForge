@@ -13323,6 +13323,106 @@ fn motorola68020_item8_native_data_text_directives_route_before_selected_encodin
 }
 
 #[test]
+fn motorola68020_item9_native_symbol_config_directives_route_before_selected_encoding() {
+    let repo_root = workspace_root();
+    let driver_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
+    let engine_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
+    let line_processor_path =
+        repo_root.join("native/motorola68000/amigaos/opforge-cli/line_processor.asm");
+    let driver = fs::read_to_string(&driver_path).expect("read opasm assembly driver source");
+    let engine = fs::read_to_string(&engine_path).expect("read opasm engine source");
+    let line_processor =
+        fs::read_to_string(&line_processor_path).expect("read native CLI line processor source");
+
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverRecordLabel .BLOCK",
+            "LEA ConstMnemonicText, A1",
+            "BNE.W recordConstSymbol",
+            "LEA VarMnemonicText, A1",
+            "BNE.W recordMutableSymbol",
+            "LEA SetMnemonicText, A1",
+            "BNE.W recordMutableSymbol",
+            "recordSymbolValue",
+            "BSR.W readOperandValueForStatement",
+            "JSR eng.opasmEngineRecordStatementLabelValueV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverEmitImageBytes .BLOCK",
+            "LEA CpuMnemonicText, A1",
+            "BNE.W ok",
+            "LEA ConstMnemonicText, A1",
+            "BNE.W ok",
+            "LEA VarMnemonicText, A1",
+            "BNE.W ok",
+            "LEA SetMnemonicText, A1",
+            "BNE.W ok",
+            "BSR.W prepareEncodeSelectedRequestForStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverAdvancePc .BLOCK",
+            "LEA CpuMnemonicText, A1",
+            "BNE.W done",
+            "LEA ConstMnemonicText, A1",
+            "BNE.W done",
+            "LEA VarMnemonicText, A1",
+            "BNE.W done",
+            "LEA SetMnemonicText, A1",
+            "BNE.W done",
+            "BSR.W trySelectedEncodeSizeForStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineRecordStatementLabelValueV1 .BLOCK",
+            "LEA OpasmEngineLabelValueTable.L, A0",
+            "MOVE.L D3, 0(A0, D5.L)",
+            "duplicate",
+            "TST.W D4",
+            "BNE.S updateExisting",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &engine,
+        &[
+            "opasmEngineResolveLabelValueV1 .BLOCK",
+            "LEA OpasmEngineLabelNameTable.L, A0",
+            "BSR.W labelEquals",
+            "LEA OpasmEngineLabelValueTable.L, A0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "readCommaOperandValueForStatement .BLOCK",
+            "BSR.W parseDirectiveLiteralValue",
+            "JSR eng.opasmEngineResolveLabelValueV1",
+            "BSR.W prepareEvaluateExpressionRequest",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &line_processor,
+        &[
+            "LEA strings.IfdefDirectiveText, A1",
+            "BNE.W conditionalLine",
+            "LEA strings.IfDirectiveText, A1",
+            "BNE.W conditionalLine",
+            "conditionalLine",
+            "MOVE.L #strings.ConditionalFailureText, D1",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
@@ -32804,6 +32904,74 @@ fn external_fs_uae_opforge_native_cli_item8_data_text_directives_match_rust_guid
             assert_eq!(
                 native_bin, expected,
                 "focused FS-UAE Item 8 data/text byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item9_symbol_config_directives_match_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .cpu 6502",
+        "OFFSET  .const $02",
+        "VALUE   .var $40",
+        "NEXT    .set $42",
+        "        .byte NEXT",
+        "        lda #$42",
+        "        sta $0202",
+    ]
+    .join("\n");
+    let expected = vec![0x42, 0xA9, 0x42, 0x8D, 0x02, 0x02];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "item9-symbol-config-directives",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 9 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused Item 9 run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI Item 9 symbol/config fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("SESSION-CPU m6502"),
+                "focused native opForge CLI Item 9 fixture should keep package-selected CPU state\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 9 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "focused FS-UAE Item 9 symbol/config byte mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
         }

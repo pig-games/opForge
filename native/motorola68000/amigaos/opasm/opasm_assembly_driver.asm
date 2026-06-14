@@ -12,6 +12,7 @@ OPASM_LAYOUT_NAME_CAPACITY = 32
 OPASM_LAYOUT_REGION_CAPACITY = 8
 OPASM_LAYOUT_SECTION_CAPACITY = 16
 OPASM_LAYOUT_INDEX_NONE = $ffff
+OPASM_TEXT_SCRATCH_CAPACITY = 512
 
 	.section code, kind=code
 	.pub
@@ -221,6 +222,62 @@ opasmDriverEmitImageBytes	.block
 	moveq #4, d1
 	bsr.w lineStartsWith
 	bne.w emitFill
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea ByteMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w emitByte
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea DbMnemonicText, a1
+	moveq #2, d1
+	bsr.w lineStartsWith
+	bne.w emitByte
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea WordMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w emitWord
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea DwMnemonicText, a1
+	moveq #2, d1
+	bsr.w lineStartsWith
+	bne.w emitWord
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea LongMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w emitLong
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea TextMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w emitText
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea NullMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w emitNull
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d4, d0
+	lea PtextMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w emitPtext
 	bsr.w prepareEncodeSelectedRequestForStatement
 	bne.w return
 	tst.w OpasmDriverEvalRequestLen
@@ -277,53 +334,101 @@ serviceFail
 
 serviceFailReturn
 	moveq #1, d0
-	bra.s return
+	bra.w return
 
 noOutput
 	moveq #abi.OPASM_EVENT_UNSUPPORTED_ADDRESSING, d0
 	bsr.w appendKindEvent
 	moveq #1, d0
-	bra.s return
+	bra.w return
 
 emitAlign
 	move.w d6, d7
 	bsr.w readAlignPadForStatement
-	bne.s emitLayoutFail
+	bne.w emitLayoutFail
 	move.l d3, d0
 	moveq #0, d1
 	bsr.w appendRepeatedByte
-	bne.s emitLayoutFail
+	bne.w emitLayoutFail
 	moveq #0, d0
-	bra.s return
+	bra.w return
 
 emitDs
 	move.w d6, d7
 	moveq #2, d5
 	bsr.w readOperandValueForStatement
-	bne.s emitLayoutFail
+	bne.w emitLayoutFail
 	move.l d3, d0
 	moveq #0, d1
 	bsr.w appendRepeatedByte
-	bne.s emitLayoutFail
+	bne.w emitLayoutFail
 	moveq #0, d0
-	bra.s return
+	bra.w return
 
 emitFill
 	move.w d6, d7
 	moveq #2, d6
 	bsr.w readCommaOperandValueForStatement
-	bne.s emitLayoutFail
+	bne.w emitLayoutFail
 	move.l d3, d5
 	move.w d7, d6
 	moveq #3, d6
 	bsr.w readCommaOperandValueForStatement
-	bne.s emitLayoutFail
+	bne.w emitLayoutFail
 	move.l d5, d0
 	move.b d3, d1
 	bsr.w appendRepeatedByte
-	bne.s emitLayoutFail
+	bne.w emitLayoutFail
 	moveq #0, d0
-	bra.s return
+	bra.w return
+
+emitByte
+	move.w d6, d7
+	moveq #1, d5
+	bsr.w emitDataDirectiveForStatement
+	bne.w emitLayoutFail
+	moveq #0, d0
+	bra.w return
+
+emitWord
+	move.w d6, d7
+	moveq #2, d5
+	bsr.w emitDataDirectiveForStatement
+	bne.w emitLayoutFail
+	moveq #0, d0
+	bra.w return
+
+emitLong
+	move.w d6, d7
+	moveq #4, d5
+	bsr.w emitDataDirectiveForStatement
+	bne.w emitLayoutFail
+	moveq #0, d0
+	bra.w return
+
+emitText
+	move.w d6, d7
+	moveq #0, d5
+	bsr.w emitTextDirectiveForStatement
+	bne.w emitLayoutFail
+	moveq #0, d0
+	bra.w return
+
+emitNull
+	move.w d6, d7
+	moveq #1, d5
+	bsr.w emitTextDirectiveForStatement
+	bne.w emitLayoutFail
+	moveq #0, d0
+	bra.w return
+
+emitPtext
+	move.w d6, d7
+	moveq #2, d5
+	bsr.w emitTextDirectiveForStatement
+	bne.w emitLayoutFail
+	moveq #0, d0
+	bra.w return
 
 emitLayoutFail
 	moveq #abi.OPASM_EVENT_UNRESOLVED_LABEL, d0
@@ -439,6 +544,62 @@ opasmDriverAdvancePc	.block
 	moveq #4, d1
 	bsr.w lineStartsWith
 	bne.w fill
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea ByteMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w byte
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea DbMnemonicText, a1
+	moveq #2, d1
+	bsr.w lineStartsWith
+	bne.w byte
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea WordMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w word
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea DwMnemonicText, a1
+	moveq #2, d1
+	bsr.w lineStartsWith
+	bne.w word
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea LongMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w long
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea TextMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w text
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea NullMnemonicText, a1
+	moveq #4, d1
+	bsr.w lineStartsWith
+	bne.w null
+	movea.l d5, a0
+	moveq #0, d0
+	move.w d6, d0
+	lea PtextMnemonicText, a1
+	moveq #5, d1
+	bsr.w lineStartsWith
+	bne.w ptext
 	moveq #0, d0
 	move.w d7, d0
 	bsr.w trySelectedEncodeSizeForStatement
@@ -524,6 +685,42 @@ advanceLayoutD3
 	move.l d3, d0
 	jsr eng.opasmEngineAdvancePcBySizeV1
 	bra.w done
+
+byte
+	moveq #1, d5
+	bsr.w dataDirectiveSizeForStatement
+	beq.s advanceLayoutD3
+	bra.w orgBad
+
+word
+	moveq #2, d5
+	bsr.w dataDirectiveSizeForStatement
+	beq.s advanceLayoutD3
+	bra.w orgBad
+
+long
+	moveq #4, d5
+	bsr.w dataDirectiveSizeForStatement
+	beq.s advanceLayoutD3
+	bra.w orgBad
+
+text
+	moveq #0, d5
+	bsr.w textDirectiveSizeForStatement
+	beq.s advanceLayoutD3
+	bra.w orgBad
+
+null
+	moveq #1, d5
+	bsr.w textDirectiveSizeForStatement
+	beq.s advanceLayoutD3
+	bra.w orgBad
+
+ptext
+	moveq #2, d5
+	bsr.w textDirectiveSizeForStatement
+	beq.s advanceLayoutD3
+	bra.w orgBad
 
 advanceOne
 	moveq #1, d0
@@ -2034,6 +2231,431 @@ return
 	rts
 	.bend  ; readAlignPadForStatement
 
+; Return the byte size of a numeric data directive.
+; Inputs: D7.W = statement index; D5.W = unit size (1, 2, or 4).
+; Outputs: D0.L = 0 on success, 1 on malformed data list; D3.L = byte size.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+dataDirectiveSizeForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	bsr.w countCommaPartsForStatement
+	bne.s fail
+	moveq #0, d2
+	move.w d5, d2
+	mulu.l d2, d3
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; dataDirectiveSizeForStatement
+
+; Emit a numeric data directive in first-run MOS little-endian order.
+; Inputs: D7.W = statement index; D5.W = unit size (1, 2, or 4).
+; Outputs: D0.L = 0 on success, 1 on malformed data list or image overflow.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+emitDataDirectiveForStatement	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	move.w d5, d4
+	bsr.w countCommaPartsForStatement
+	bne.w fail
+	move.w d3, d2
+	moveq #1, d6
+
+partLoop
+	cmp.w d2, d6
+	bhi.w ok
+	move.w d4, d5
+	cmpi.w #1, d4
+	bne.s readPart
+	moveq #1, d5
+
+readPart
+	bsr.w readCommaOperandValueForStatement
+	bne.w fail
+	cmpi.w #1, d4
+	beq.s emitOne
+	cmpi.w #2, d4
+	beq.s emitTwo
+	cmpi.w #4, d4
+	beq.s emitFour
+	bra.w fail
+
+emitOne
+	cmpi.l #$000000FF, d3
+	bhi.w fail
+	lea OpasmDataScratch.l, a0
+	move.b d3, (a0)
+	moveq #1, d0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.w fail
+	bra.s nextPart
+
+emitTwo
+	lea OpasmDataScratch.l, a0
+	move.b d3, (a0)
+	move.l d3, d0
+	lsr.l #8, d0
+	move.b d0, 1(a0)
+	moveq #2, d0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.w fail
+	bra.s nextPart
+
+emitFour
+	lea OpasmDataScratch.l, a0
+	move.b d3, (a0)
+	move.l d3, d0
+	lsr.l #8, d0
+	move.b d0, 1(a0)
+	move.l d3, d0
+	lsr.l #8, d0
+	lsr.l #8, d0
+	move.b d0, 2(a0)
+	move.l d3, d0
+	lsr.l #8, d0
+	lsr.l #8, d0
+	lsr.l #8, d0
+	move.b d0, 3(a0)
+	moveq #4, d0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.w fail
+
+nextPart
+	addq.w #1, d6
+	bra.w partLoop
+
+ok
+	moveq #0, d0
+	bra.w return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d7/a0-a3
+	rts
+	.bend  ; emitDataDirectiveForStatement
+
+; Count comma-delimited operands after the directive mnemonic.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 on empty/malformed list; D3.W = part count.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+countCommaPartsForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w fail
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.getStatementSourceLineTextV1
+	tst.l d0
+	beq.w fail
+	bsr.w skipLineWhitespace
+	bsr.w skipSourceHeadToken
+	bsr.w skipLineWhitespace
+	tst.l d0
+	beq.w fail
+	movea.l a0, a2
+	move.l d0, d2
+	moveq #1, d3
+	moveq #0, d4
+
+scan
+	tst.l d2
+	beq.s finish
+	move.b (a2)+, d0
+	subq.l #1, d2
+	cmpi.b #',', d0
+	beq.s comma
+	cmpi.b #' ', d0
+	beq.s scan
+	cmpi.b #9, d0
+	beq.s scan
+	moveq #1, d4
+	bra.s scan
+
+comma
+	tst.w d4
+	beq.s fail
+	addq.w #1, d3
+	moveq #0, d4
+	bra.s scan
+
+finish
+	tst.w d4
+	beq.s fail
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; countCommaPartsForStatement
+
+; Return the emitted byte size of a text directive.
+; Inputs: D7.W = statement index; D5.W = mode (0 .text, 1 .null, 2 .ptext).
+; Outputs: D0.L = 0 on success, 1 on malformed text; D3.L = byte size.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+textDirectiveSizeForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	bsr.w parseTextDirectiveForStatement
+	bne.s fail
+	move.l OpasmTextScratchLen, d3
+	cmpi.w #0, d5
+	beq.s ok
+	cmpi.w #1, d5
+	beq.s nullSize
+	cmpi.l #255, d3
+	bhi.s fail
+	addq.l #1, d3
+	bra.s ok
+
+nullSize
+	bsr.w textScratchContainsZero
+	bne.s fail
+	addq.l #1, d3
+
+ok
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; textDirectiveSizeForStatement
+
+; Emit a parsed text directive.
+; Inputs: D7.W = statement index; D5.W = mode (0 .text, 1 .null, 2 .ptext).
+; Outputs: D0.L = 0 on success, 1 on malformed text or image overflow.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+emitTextDirectiveForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	bsr.w parseTextDirectiveForStatement
+	bne.s fail
+	cmpi.w #0, d5
+	beq.s emitTextBytes
+	cmpi.w #1, d5
+	beq.s emitNullBytes
+	move.l OpasmTextScratchLen, d0
+	cmpi.l #255, d0
+	bhi.s fail
+	lea OpasmDataScratch.l, a0
+	move.b d0, (a0)
+	moveq #1, d0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.s fail
+	bra.s emitTextBytes
+
+emitNullBytes
+	bsr.w textScratchContainsZero
+	bne.s fail
+
+emitTextBytes
+	move.l OpasmTextScratchLen, d0
+	beq.s suffix
+	lea OpasmTextScratch.l, a0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.s fail
+
+suffix
+	cmpi.w #1, d5
+	bne.s ok
+	lea OpasmDataScratch.l, a0
+	clr.b (a0)
+	moveq #1, d0
+	jsr eng.opasmEngineAppendImageBytesV1
+	bne.s fail
+
+ok
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; emitTextDirectiveForStatement
+
+; Parse quoted text operands into the scratch buffer.
+; Inputs: D7.W = statement index.
+; Outputs: D0.L = 0 on success, 1 on malformed text or scratch overflow.
+; Clobbers: D0-D7/A0-A3/CCR.
+; CCR: reflects D0.L on return.
+parseTextDirectiveForStatement	.block
+	movem.l d1-d2/d4-d7/a0-a3, -(sp)
+	clr.l OpasmTextScratchLen
+	suba.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	moveq #0, d0
+	move.w d7, d0
+	movea.l sp, a0
+	jsr eng.opasmEngineGetStatementTextMetadataV1
+	bne.w fail
+	moveq #0, d0
+	move.w d7, d0
+	jsr eng.getStatementSourceLineTextV1
+	tst.l d0
+	beq.w fail
+	bsr.w skipLineWhitespace
+	bsr.w skipSourceHeadToken
+	bsr.w skipLineWhitespace
+	tst.l d0
+	beq.w fail
+	movea.l a0, a2
+	move.l d0, d2
+
+operandStart
+	bsr.w skipPartWhitespace
+	tst.l d2
+	beq.s ok
+	cmpi.b #'"', (a2)
+	bne.w fail
+	addq.l #1, a2
+	subq.l #1, d2
+
+charLoop
+	tst.l d2
+	beq.w fail
+	move.b (a2)+, d1
+	subq.l #1, d2
+	cmpi.b #'"', d1
+	beq.s operandEnd
+	cmpi.b #92, d1
+	bne.s appendChar
+	tst.l d2
+	beq.w fail
+	move.b (a2)+, d1
+	subq.l #1, d2
+	bsr.w decodeTextEscape
+
+appendChar
+	bsr.w appendTextScratchByte
+	bne.w fail
+	bra.s charLoop
+
+operandEnd
+	bsr.w skipPartWhitespace
+	tst.l d2
+	beq.s ok
+	cmpi.b #',', (a2)
+	bne.w fail
+	addq.l #1, a2
+	subq.l #1, d2
+	bra.s operandStart
+
+ok
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	adda.l #eng.OPASM_ENGINE_STMT_TEXT_BYTES, sp
+	movem.l (sp)+, d1-d2/d4-d7/a0-a3
+	rts
+	.bend  ; parseTextDirectiveForStatement
+
+; Decode a Rust-compatible first-run string escape subset.
+; Inputs: D1.B = escaped byte.
+; Outputs: D1.B = decoded byte.
+; Clobbers: D1/CCR.
+decodeTextEscape	.block
+	cmpi.b #'0', d1
+	bne.s checkN
+	moveq #0, d1
+	rts
+
+checkN
+	cmpi.b #'n', d1
+	bne.s checkR
+	moveq #10, d1
+	rts
+
+checkR
+	cmpi.b #'r', d1
+	bne.s checkT
+	moveq #13, d1
+	rts
+
+checkT
+	cmpi.b #'t', d1
+	bne.s done
+	moveq #9, d1
+
+done
+	rts
+	.bend  ; decodeTextEscape
+
+; Append D1.B to the text scratch buffer.
+; Outputs: D0.L = 0 on success, 1 on capacity overflow.
+appendTextScratchByte	.block
+	movem.l d2/a0, -(sp)
+	move.l OpasmTextScratchLen, d2
+	cmpi.l #OPASM_TEXT_SCRATCH_CAPACITY, d2
+	bhs.s fail
+	lea OpasmTextScratch.l, a0
+	move.b d1, 0(a0, d2.l)
+	addq.l #1, d2
+	move.l d2, OpasmTextScratchLen
+	moveq #0, d0
+	bra.s return
+
+fail
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d2/a0
+	rts
+	.bend  ; appendTextScratchByte
+
+; Return 1 when the parsed text scratch contains a zero byte.
+; Outputs: D0.L = 0 when clear, 1 when a zero byte is present.
+textScratchContainsZero	.block
+	movem.l d1-d2/a0, -(sp)
+	move.l OpasmTextScratchLen, d2
+	lea OpasmTextScratch.l, a0
+
+loop
+	tst.l d2
+	beq.s clear
+	move.b (a0)+, d1
+	beq.s found
+	subq.l #1, d2
+	bra.s loop
+
+clear
+	moveq #0, d0
+	bra.s return
+
+found
+	moveq #1, d0
+
+return
+	movem.l (sp)+, d1-d2/a0
+	rts
+	.bend  ; textScratchContainsZero
+
 skipPartWhitespace	.block
 loop
 	tst.l d2
@@ -2648,6 +3270,30 @@ ResMnemonicText
 FillMnemonicText
 	.byte "fill", 0
 
+ByteMnemonicText
+	.byte "byte", 0
+
+DbMnemonicText
+	.byte "db", 0
+
+WordMnemonicText
+	.byte "word", 0
+
+DwMnemonicText
+	.byte "dw", 0
+
+LongMnemonicText
+	.byte "long", 0
+
+TextMnemonicText
+	.byte "text", 0
+
+NullMnemonicText
+	.byte "null", 0
+
+PtextMnemonicText
+	.byte "ptext", 0
+
 DriverSelectorUnknownRawText
 	.byte "OTR901: selector unknown mnemonic", 0
 
@@ -2675,6 +3321,15 @@ OpasmDriverEvalFallbackPtr
 
 OpasmDriverEvalFallbackLen
 	.res long, 1
+
+OpasmDataScratch
+	.res byte, 4
+
+OpasmTextScratchLen
+	.res long, 1
+
+OpasmTextScratch
+	.res byte, OPASM_TEXT_SCRATCH_CAPACITY
 
 OpasmLayoutNameDestPtr
 	.res long, 1

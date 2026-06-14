@@ -1023,7 +1023,7 @@ The intended native shape mirrors the Rust path:
     result: `PASS` for a slice limited to native opasm layout-control
     execution and directive parity tests.
 
-- [ ] Item 8: Implement data and text emission directives in native opasm
+- [x] Item 8: Implement data and text emission directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,
     `SR-OPASM-ENGINE`; expected to support direct byte, word, and text
     emission once layout control exists.
@@ -1042,6 +1042,32 @@ The intended native shape mirrors the Rust path:
     emission directives inside native opasm.
   - Definition of done: first-run fixtures can emit byte, word, long, and text
     data with Rust-compatible bytes and diagnostics.
+  - Validation evidence, 2026-06-14: native opasm now routes `.byte/.db`,
+    `.word/.dw`, `.long`, `.text`, `.null`, and `.ptext` ahead of selected
+    instruction emission in `opasm_assembly_driver.asm`, using the Rust data
+    and text directive behavior in `asmline_directives_data.rs` and
+    `asmline_directives_text.rs` as the semantic source. Numeric directive
+    operands reuse the native opasm comma operand evaluator and emit MOS
+    first-run little-endian bytes; text directives parse quoted literal bytes
+    into opasm-owned scratch storage, with `.null` zero-byte rejection and
+    `.ptext` length-prefix bounds. Focused structural test
+    `motorola68020_item8_native_data_text_directives_route_before_selected_encoding`
+    locks directive routing and helper ownership. Focused FS-UAE fixture
+    `external_fs_uae_opforge_native_cli_item8_data_text_directives_match_rust_guided_bytes`
+    passed outside the sandbox after the sandboxed FS-UAE launcher aborted with
+    SIGABRT, and verified exact native bytes `01 FF 02 34 12 00 08 FE 00 78
+    56 34 12 4F 4B 41 00 02 42 43`. `cargo test -p asm item8 --
+    --nocapture` passed with the FS-UAE case skipped when the opt-in
+    environment was absent. `cargo test -p asm motorola68020_opforge_native_cli_
+    -- --nocapture` passed with 5 tests. `scripts/workflow/
+    run_native_68000_format_gate.sh --write` passed with 0 changed files.
+    `python3 scripts/workflow/check_cpu_specific_arch_boundary.py` passed with
+    no enforced-scope errors. `git diff --check` passed. `scripts/workflow/
+    run_rust_quality_gate.sh` completed with `PASS: Rust quality gate
+    complete.` Plan-compliance reviewer returned `PASS: Item 8 scope matches
+    the plan; changes are limited to native opasm directive emission and
+    focused parity tests, required validations are reported passing, and the
+    commit boundary is focused.`
 
 - [ ] Item 9: Implement symbol and configuration directives in native opasm
   - Source requirement or finding IDs: `SR-DIRECTIVES`,

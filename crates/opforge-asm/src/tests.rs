@@ -13248,6 +13248,81 @@ fn motorola68020_item7_native_layout_operand_eval_uses_tkpkg_expr_service() {
 }
 
 #[test]
+fn motorola68020_item8_native_data_text_directives_route_before_selected_encoding() {
+    let repo_root = workspace_root();
+    let driver_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm");
+    let driver = fs::read_to_string(&driver_path).expect("read opasm assembly driver source");
+
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverEmitImageBytes .BLOCK",
+            "LEA ByteMnemonicText, A1",
+            "BNE.W emitByte",
+            "LEA DbMnemonicText, A1",
+            "BNE.W emitByte",
+            "LEA WordMnemonicText, A1",
+            "BNE.W emitWord",
+            "LEA DwMnemonicText, A1",
+            "BNE.W emitWord",
+            "LEA LongMnemonicText, A1",
+            "BNE.W emitLong",
+            "LEA TextMnemonicText, A1",
+            "BNE.W emitText",
+            "LEA NullMnemonicText, A1",
+            "BNE.W emitNull",
+            "LEA PtextMnemonicText, A1",
+            "BNE.W emitPtext",
+            "BSR.W prepareEncodeSelectedRequestForStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "opasmDriverAdvancePc .BLOCK",
+            "LEA ByteMnemonicText, A1",
+            "BNE.W byte",
+            "LEA WordMnemonicText, A1",
+            "BNE.W word",
+            "LEA LongMnemonicText, A1",
+            "BNE.W long",
+            "LEA TextMnemonicText, A1",
+            "BNE.W text",
+            "LEA NullMnemonicText, A1",
+            "BNE.W null",
+            "LEA PtextMnemonicText, A1",
+            "BNE.W ptext",
+            "BSR.W trySelectedEncodeSizeForStatement",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "emitDataDirectiveForStatement .BLOCK",
+            "BSR.W countCommaPartsForStatement",
+            "BSR.W readCommaOperandValueForStatement",
+            "JSR eng.opasmEngineAppendImageBytesV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "parseTextDirectiveForStatement .BLOCK",
+            "BSR.W skipSourceHeadToken",
+            "BSR.W appendTextScratchByte",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &driver,
+        &[
+            "emitTextDirectiveForStatement .BLOCK",
+            "JSR eng.opasmEngineAppendImageBytesV1",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opasm_engine_module_owns_two_pass_loop() {
     let repo_root = workspace_root();
     let asm_path = repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm");
@@ -32664,6 +32739,72 @@ fn external_fs_uae_opforge_native_cli_item7_layout_directives_match_rust_guided_
                 "focused native opForge CLI Item 7 duplicate placement fixture should fail\nstdout:\n{}\nstderr:\n{}",
                 duplicate_run.stdout,
                 duplicate_run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item8_data_text_directives_match_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .byte $01, $ff",
+        "        .db 2",
+        "        .word $1234, $0800",
+        "        .dw $00fe",
+        "        .long $12345678",
+        "        .text \"OK\"",
+        "        .null \"A\"",
+        "        .ptext \"BC\"",
+    ]
+    .join("\n");
+    let expected = vec![
+        0x01, 0xFF, 0x02, 0x34, 0x12, 0x00, 0x08, 0xFE, 0x00, 0x78, 0x56, 0x34, 0x12, 0x4F, 0x4B,
+        0x41, 0x00, 0x02, 0x42, 0x43,
+    ];
+    let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
+        name: "item8-data-text-directives",
+        cpu_id: m6502_cpu_id.as_str(),
+        source: source.as_bytes(),
+        package_bytes: package_bytes.as_slice(),
+    }];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
+        &repo_root,
+        cases.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 8 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected one focused Item 8 run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI Item 8 data/text fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 8 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_bin, expected,
+                "focused FS-UAE Item 8 data/text byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
             );
         }
     }

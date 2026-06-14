@@ -223,7 +223,7 @@ parseDone
 	tst.w state.NativeCliInputStyle
 	beq.w noInput
 	tst.w state.NativeCliOutputFormat
-	beq.w hunkRequired
+	beq.s parseOk
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
 	beq.s defaultBinPath
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat

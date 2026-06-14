@@ -13,6 +13,7 @@
 	.use opforge.cli.dos
 	.use opforge.cli.line_text
 	.use opforge.cli.module_use
+	.use opforge.cli.token_util
 
 	.section code, kind=code
 	.pub
@@ -79,6 +80,14 @@ opforgeNativeCliParserTailFallbackEnd	.block
 	moveq #0, d5
 	move.w state.NativeCliSourceLineLen, d5
 	sub.l d0, d5
+	lea strings.OutputDirectiveText, a1
+	moveq #7, d1
+	bsr.w line_text.opforgeNativeCliLineStartsWith
+	bne.s output
+	lea state.NativeCliSourceLine, a0
+	moveq #0, d0
+	move.w state.NativeCliSourceLineLen, d0
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
 	lea strings.ModuleDirectiveText, a1
 	moveq #7, d1
 	bsr.w line_text.opforgeNativeCliLineStartsWith
@@ -115,6 +124,11 @@ endmodule
 use
 	move.l d5, d6
 	addq.l #4, d6
+	rts
+
+output
+	move.l d5, d6
+	addq.l #7, d6
 	rts
 	.bend  ; opforgeNativeCliParserTailFallbackEnd
 
@@ -291,6 +305,264 @@ fail
 	movem.l (sp)+, d5
 	rts
 	.bend  ; opforgeNativeCliParseUseLine
+
+; Parse one first-run `.output` directive for native `.bin` request selection.
+; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
+; Outputs: D0 = 0 on supported `format=bin`, nonzero on malformed or unsupported output.
+; Clobbers: D0-D7/A0-A2/CCR.
+; CCR: reflects D0 on return.
+opforgeNativeCliParseOutputLine	.block
+	bsr.w opforgeNativeCliParserTailPtr
+	tst.l d1
+	bne.w fail
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w fail
+	cmpi.b #'"', (a0)
+	bne.s maybeOption
+	lea state.NativeCliBinPath, a1
+	bsr.w copyOutputQuotedPath
+	tst.l d1
+	bne.w fail
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w fail
+	cmpi.b #',', (a0)
+	bne.w fail
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.s optionLoop
+
+maybeOption
+	bsr.w copyOutputOptionToken
+	tst.l d1
+	bne.w fail
+	movea.l a0, a2
+	lea state.NativeCliArgToken, a0
+	lea strings.OutputFormatBinOptionText, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	movea.l a2, a0
+	bne.s haveBinFormatFromToken
+	lea state.NativeCliParserTailBuffer, a0
+	moveq #0, d0
+	move.w state.NativeCliParserTailLen, d0
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	lea state.NativeCliBinPath, a1
+	bsr.w copyOutputBarePath
+	tst.l d1
+	bne.w fail
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w fail
+	cmpi.b #',', (a0)
+	bne.w fail
+	addq.l #1, a0
+	subq.l #1, d0
+
+optionLoop
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	beq.w fail
+	bsr.w copyOutputOptionToken
+	tst.l d1
+	bne.w fail
+	movea.l a0, a2
+	lea state.NativeCliArgToken, a0
+	lea strings.OutputFormatBinOptionText, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	movea.l a2, a0
+	bne.s haveBinFormatFromToken
+	bsr.w outputOptionDelimiter
+	tst.l d1
+	bne.w fail
+	addq.l #1, a0
+	subq.l #1, d0
+	bra.s optionLoop
+
+haveBinFormatFromToken
+	bsr.w outputOptionEndOk
+	tst.l d1
+	bne.w fail
+	tst.b state.NativeCliBinPath
+	bne.s pathReady
+	tst.b state.NativeCliOutfileBase
+	beq.w fail
+	lea state.NativeCliOutfileBase, a0
+	lea state.NativeCliBinPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+
+pathReady
+	move.w #1, state.NativeCliBinRequested
+	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
+	moveq #0, d0
+	rts
+
+fail
+	move.l #strings.ParserFailureText, d1
+	jsr dos.putStr
+	moveq #1, d0
+	rts
+	.bend  ; opforgeNativeCliParseOutputLine
+
+; Copy a quoted `.output` path.
+; Inputs: A0 = quote; D0 = remaining byte count; A1 = destination path buffer.
+; Outputs: D0 = remaining byte count after closing quote; D1 = 0 success, 1 failure; A0 advanced.
+; Clobbers: D0-D3/A0-A1/CCR.
+; CCR: reflects D1 on return.
+copyOutputQuotedPath	.block
+	addq.l #1, a0
+	subq.l #1, d0
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d2
+	clr.l d3
+
+loop
+	tst.l d0
+	beq.s fail
+	cmpi.b #'"', (a0)
+	beq.s close
+	tst.l d2
+	beq.s fail
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	subq.l #1, d2
+	addq.l #1, d3
+	bra.s loop
+
+close
+	tst.l d3
+	beq.s fail
+	clr.b (a1)
+	addq.l #1, a0
+	subq.l #1, d0
+	moveq #0, d1
+	rts
+
+fail
+	clr.b (a1)
+	moveq #1, d1
+	rts
+	.bend  ; copyOutputQuotedPath
+
+; Copy a bare `.output` path.
+; Inputs: A0 = path text; D0 = remaining byte count; A1 = destination path buffer.
+; Outputs: D0 = remaining byte count after path; D1 = 0 success, 1 failure; A0 advanced.
+; Clobbers: D0-D3/A0-A1/CCR.
+; CCR: reflects D1 on return.
+copyOutputBarePath	.block
+	move.l #constants.PATH_BUFFER_CAPACITY - 1, d2
+	clr.l d3
+
+loop
+	tst.l d0
+	beq.s done
+	cmpi.b #' ', (a0)
+	beq.s done
+	cmpi.b #9, (a0)
+	beq.s done
+	cmpi.b #',', (a0)
+	beq.s done
+	cmpi.b #';', (a0)
+	beq.s done
+	tst.l d2
+	beq.s fail
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	subq.l #1, d2
+	addq.l #1, d3
+	bra.s loop
+
+done
+	tst.l d3
+	beq.s fail
+	clr.b (a1)
+	moveq #0, d1
+	rts
+
+fail
+	clr.b (a1)
+	moveq #1, d1
+	rts
+	.bend  ; copyOutputBarePath
+
+; Copy one comma-delimited `.output` option token.
+; Inputs: A0 = option text; D0 = remaining byte count.
+; Outputs: D1 = 0 success, 1 failure; A0/D0 advanced to option delimiter; state.NativeCliArgToken contains token.
+; Clobbers: D0-D3/A0-A1/CCR.
+; CCR: reflects D1 on return.
+copyOutputOptionToken	.block
+	lea state.NativeCliArgToken, a1
+	move.l #constants.TOKEN_BUFFER_CAPACITY - 1, d2
+	clr.l d3
+
+loop
+	tst.l d0
+	beq.s done
+	cmpi.b #' ', (a0)
+	beq.s done
+	cmpi.b #9, (a0)
+	beq.s done
+	cmpi.b #',', (a0)
+	beq.s done
+	cmpi.b #';', (a0)
+	beq.s done
+	tst.l d2
+	beq.s fail
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	subq.l #1, d2
+	addq.l #1, d3
+	bra.s loop
+
+done
+	tst.l d3
+	beq.s fail
+	clr.b (a1)
+	moveq #0, d1
+	rts
+
+fail
+	clr.b (a1)
+	moveq #1, d1
+	rts
+	.bend  ; copyOutputOptionToken
+
+; Require a comma after a skipped `.output` option.
+; Inputs: A0/D0 = current option delimiter.
+; Outputs: D1 = 0 when current byte is comma, 1 otherwise.
+; Clobbers: D1/CCR.
+; CCR: reflects D1 on return.
+outputOptionDelimiter	.block
+	tst.l d0
+	beq.s fail
+	cmpi.b #',', (a0)
+	bne.s fail
+	moveq #0, d1
+	rts
+
+fail
+	moveq #1, d1
+	rts
+	.bend  ; outputOptionDelimiter
+
+; Accept end, comment, comma, or whitespace after `format=bin`.
+; Inputs: A0/D0 = current option delimiter.
+; Outputs: D1 = 0 on accepted delimiter, 1 otherwise.
+; Clobbers: D1/CCR.
+; CCR: reflects D1 on return.
+outputOptionEndOk	.block
+	tst.l d0
+	beq.s ok
+	cmpi.b #',', (a0)
+	beq.s ok
+	cmpi.b #';', (a0)
+	beq.s ok
+	cmpi.b #' ', (a0)
+	beq.s ok
+	cmpi.b #9, (a0)
+	beq.s ok
+	moveq #1, d1
+	rts
+
+ok
+	moveq #0, d1
+	rts
+	.bend  ; outputOptionEndOk
 
 	.endsection
 	.endmodule

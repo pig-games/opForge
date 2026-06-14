@@ -3,7 +3,7 @@
 	.module opforge.cli.output
 	.cpu 68020
 
-	.use opasm.amigaos.engine
+	.use opasm.amigaos.output_artifacts as artifacts
 	.use opforge.cli.state
 	.use opforge.cli.dos
 
@@ -12,7 +12,7 @@
 
 ; Inputs:
 ;   state.NativeCliBinPath = output file path
-;   opasm engine image buffer/count contain the assembled flat output
+;   opasm output artifact layer can render the selected flat output
 ; Outputs:
 ;   D0.L = 0 on success, 1 when the output file cannot be opened or written fully
 ; Clobbers:
@@ -26,9 +26,10 @@ opforgeNativeCliWriteFlatOutput	.block
 	tst.l d0
 	beq.s fail
 	move.l d0, d4
-	jsr engine.opasmEngineGetImageBufferPtrV1
-	jsr engine.opasmEngineGetImageByteCountV1
-	move.l d0, d3
+	jsr artifacts.opasmOutputBuildBinArtifactV1
+	bne.s closeFail
+	move.l d1, d3
+	move.l d3, d0
 	move.l d4, d1
 	jsr dos.writeOutput
 	cmp.l d3, d0

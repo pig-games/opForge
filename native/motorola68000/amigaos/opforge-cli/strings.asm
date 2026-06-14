@@ -207,6 +207,8 @@ UseDirectiveText
 	.byte ".use"
 IncludeDirectiveText
 	.byte ".include"
+OutputDirectiveText
+	.byte ".output"
 IfDirectiveText
 	.byte ".if"
 IfdefDirectiveText
@@ -284,7 +286,11 @@ defaultFsUaeArgTail
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INCLUDE
 	.byte "Work:opforge_6502_native_cli_smoke.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -I Work:opforge_include_root_a", 0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+.else
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
+.endif
 .endif
 .endif
 .endif
@@ -368,7 +374,9 @@ M6502CpuNameText
 	.byte "m6502", 0
 Mos6502FamilyName
 	.byte "mos6502"
-mos6502FamilyNameEnd
+Mos6502FamilyNameEnd
+OutputFormatBinOptionText
+	.byte "format=bin", 0
 
 	.endsection
 

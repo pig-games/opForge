@@ -110,6 +110,8 @@ parsed
 inputOpened
 	move.l d0, d1
 	jsr dos.close
+	tst.w state.NativeCliOutputFormat
+	beq.s outputFormatReady
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	bne.s outputFormatReady
 	move.l #strings.NativeHunkNotImplementedText, d1
@@ -142,6 +144,22 @@ outputFormatReady
 	bra.w closeDos
 
 tokenizerOk
+	tst.w state.NativeCliOutputFormat
+	bne.s haveOutputRequest
+	move.l #strings.HunkRequiredText, d1
+	jsr dos.putStr
+	move.l #constants.RETURN_USAGE, state.NativeCliReturnCode
+	bra.w closeDos
+
+haveOutputRequest
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
+	bne.s outputRequestReady
+	move.l #strings.NativeHunkNotImplementedText, d1
+	jsr dos.putStr
+	move.l #constants.RETURN_NOT_IMPLEMENTED, state.NativeCliReturnCode
+	bra.w closeDos
+
+outputRequestReady
 	move.l #strings.ParserStageText, d1
 	jsr dos.putStr
 	move.l #strings.SessionStageText, d1

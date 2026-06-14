@@ -204,6 +204,16 @@ opforgeNativeCliParseCurrentLine	.block
 checkOrg
 	movea.l a4, a0
 	move.l d7, d0
+	lea strings.OutputDirectiveText, a1
+	moveq #7, d1
+	jsr line_text.opforgeNativeCliLineStartsWith
+	beq.s checkUseDirective
+	jsr directive_handlers.opforgeNativeCliParseOutputLine
+	bra.w return
+
+checkUseDirective
+	movea.l a4, a0
+	move.l d7, d0
 	lea strings.UseDirectiveText, a1
 	moveq #4, d1
 	jsr line_text.opforgeNativeCliLineStartsWith

@@ -1261,7 +1261,7 @@ The intended native shape mirrors the Rust path:
     parallel LSP integration timing failures that passed serially; the final
     full quality-gate rerun passed cleanly.
 
-- [ ] Item 13: Add native output artifact architecture and `.bin` parity
+- [x] Item 13: Add native output artifact architecture and `.bin` parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,
     `SR-FIRST-OUTPUTS`, `SR-DIRECTIVES`; expected to establish the native
     output component shape with the simplest binary artifact first.
@@ -1283,6 +1283,35 @@ The intended native shape mirrors the Rust path:
     CLI internals, `.output` selects the requested first-run artifact through
     the same layer, and native output matches Rust references for first-run
     cases.
+  - Completion evidence, 2026-06-14: added native opasm output artifact module
+    `opasm.amigaos.output_artifacts` with `opasmOutputBuildBinArtifactV1`,
+    which exposes the assembled image as a first-run `.bin` payload pointer and
+    byte count. The native CLI output writer now imports this artifact layer and
+    no longer calls `opasmEngineGetImageBufferPtrV1` or
+    `opasmEngineGetImageByteCountV1` directly. Native `.output` handling now
+    recognizes the first-run `format=bin` subset, copies a quoted or bare
+    output path into the existing bin request state, and supports default path
+    selection from `-o/--outfile` for `.output format=bin`. The CLI argument
+    parser now lets source-level `.output` satisfy output selection, while the
+    run path still reports `OPC-NCLI007` after source processing if neither CLI
+    flags nor source directives select an output. The first
+    plan-compliance-reviewer run correctly returned `FAIL` because the initial
+    slice only routed CLI `--bin`; the slice was extended to cover source
+    `.output` selection before commit.
+  - Gate evidence, 2026-06-14: focused `cargo test -p asm item13 --
+    --nocapture` passed. The mandatory real FS-UAE run
+    `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item13_bin_artifact_matches_rust_guided_bytes
+    -- --nocapture --test-threads=1` passed with no native `--bin` argument;
+    the source `.output "Work:opforge_native_out.bin", format=bin,
+    sections=code` request selected the path and produced `11 EE EE A9 44`.
+    `cargo test -p asm motorola68020_opforge_native_cli_ -- --nocapture`
+    passed; `scripts/workflow/run_native_68000_format_gate.sh` passed;
+    `scripts/workflow/run_rust_quality_gate.sh` completed with `PASS: Rust
+    quality gate complete.` `make workflow-gate` passed.
 
 - [ ] Item 14: Add `.prg` output parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,

@@ -55,10 +55,13 @@ const FS_UAE_OPFORGE_NATIVE_CLI_MISSING_INCLUDE_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_MISSING_INCLUDE";
 const FS_UAE_OPFORGE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE_DEFINE: &str =
     "OPFORGE_FS_UAE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE";
+const FS_UAE_OPFORGE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE_DEFINE: &str =
+    "OPFORGE_FS_UAE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_FILE: &str = "opforge_6502_native_cli_smoke.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_INPUT_TEXT: &str =
     "start   lda #$42\n        sta $20\n        lda $20,x\n        sta $0200\n        lda $0200,x\n        lda $0200,y\ndone    jmp done\n";
 pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE: &str = "opforge_native_out.bin";
+pub(crate) const FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE: &str = "opforge_native_out.prg";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC_FILE: &str =
     "opforge_6502_unknown_mnemonic.asm";
 const FS_UAE_OPFORGE_NATIVE_CLI_6502_UNKNOWN_MNEMONIC_TEXT: &str = "start   wat #$42\n";
@@ -439,6 +442,54 @@ pub(crate) fn run_opforge_native_cli_item13_output_directive_from_env(
         ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
+}
+
+pub(crate) fn run_opforge_native_cli_item14_prg_output_from_env(
+    workspace_root: &Path,
+    success_source: &[u8],
+    wide_loadaddr_source: &[u8],
+    package_bytes: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    if std::env::var(FS_UAE_OPT_IN_ENV).is_err() {
+        return Ok(FsUaeSmokeOutcome::Skipped(format!(
+            "set {FS_UAE_OPT_IN_ENV}=1 to enable the opt-in FS-UAE smoke test"
+        )));
+    }
+
+    let args_text = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set; provide newline-delimited FS-UAE arguments with {{hunk}}, {{artifact_dir}}, {{example}}, {{ready_file}}, {{stdout_file}}, {{stderr_file}}, and {{exit_code_file}} placeholders as needed"
+            )))
+        }
+    };
+
+    let fs_uae_bin = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".to_string());
+    let cases = [success_source, wide_loadaddr_source];
+    let mut runs = Vec::with_capacity(cases.len());
+    for source in cases {
+        let input_override = OpforgeNativeCliInputOverride {
+            source,
+            package_bytes,
+        };
+        let run = run_example_smoke_with_extra_defines_and_native_cli_input(
+            workspace_root,
+            &fs_uae_bin,
+            &args_text,
+            FS_UAE_OPFORGE_NATIVE_CLI_EXAMPLE_NAME,
+            FS_UAE_OPFORGE_NATIVE_CLI_SOURCE_PATH,
+            "68020",
+            &[FS_UAE_OPFORGE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE_DEFINE],
+            Some(&input_override),
+        )?;
+        match run {
+            ExampleSmokeResult::Run(run) => runs.push(run),
+            ExampleSmokeResult::Skipped(reason) => return Ok(FsUaeSmokeOutcome::Skipped(reason)),
+        }
+    }
+
+    Ok(FsUaeSmokeOutcome::Completed { runs })
 }
 
 fn mos6502_native_cli_single_cpu_package_bytes() -> Result<Vec<u8>, String> {

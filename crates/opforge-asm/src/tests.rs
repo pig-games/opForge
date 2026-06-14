@@ -12999,12 +12999,18 @@ fn motorola68020_item13_native_bin_output_routes_through_artifact_layer() {
         &[
             "opforgeNativeCliParseOutputLine .block",
             "bsr.w opforgeNativeCliParserTailPtr",
-            "lea state.NativeCliBinPath, a1",
+            "lea state.NativeCliOutputPathScratch, a1",
             "bsr.w copyOutputQuotedPath",
-            "lea strings.OutputFormatBinOptionText, a1",
-            "jsr token_util.opforgeNativeCliTokenEquals",
+            "selectBin",
             "move.w #1, state.NativeCliBinRequested",
             "move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "parseOutputFormatToken .block",
+            "move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d6",
         ]
     ));
     assert!(source_contains_in_order(
@@ -13033,6 +13039,107 @@ fn motorola68020_item13_native_bin_output_routes_through_artifact_layer() {
             "move.l #strings.HunkRequiredText, d1",
             "move.l #constants.RETURN_USAGE, state.NativeCliReturnCode",
             "haveOutputRequest",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item14_native_prg_output_routes_through_artifact_layer() {
+    let repo_root = workspace_root();
+    let artifact_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm");
+    let artifact_source = format_tokvm_amigaos_fragment(
+        &fs::read_to_string(&artifact_path).expect("read opasm output artifact source"),
+    );
+    let output_source = opforge_amigaos_source("output.asm");
+    let args_source = opforge_amigaos_source("args.asm");
+    let directive_source = opforge_amigaos_source("directive_handlers.asm");
+    let strings_source = opforge_amigaos_source("strings.asm");
+    let state_source = opforge_amigaos_source("state.asm");
+    let constants_source = opforge_amigaos_source("constants.asm");
+
+    assert!(constants_source.contains("NATIVE_OUTPUT_FORMAT_PRG"));
+    assert!(state_source.contains("NativeCliPrgRequested"));
+    assert!(state_source.contains("NativeCliPrgLoadAddrSet"));
+    assert!(state_source.contains("NativeCliPrgLoadAddr"));
+    assert!(state_source.contains("NativeCliPrgPath"));
+    assert!(state_source.contains("NativeCliOutputPathScratch"));
+    assert!(strings_source.contains("OutputFormatPrgOptionText"));
+    assert!(strings_source.contains("\"format=prg\""));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE"));
+    assert!(source_contains_in_order(
+        &artifact_source,
+        &[
+            "opasmOutputBuildPrgArtifactV1 .block",
+            "cmpi.l #$FFFFFFFF, d2",
+            "jsr engine.opasmEngineGetSessionOriginV1",
+            "cmpi.l #$0000FFFF, d2",
+            "bhi.s fail",
+            "lea OpasmPrgArtifactBuffer.l, a2",
+            "move.b d2, (a2)+",
+            "jsr opasmOutputBuildBinArtifactV1",
+            "addi.l #2, d1",
+            "lea OpasmPrgArtifactBuffer.l, a0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &output_source,
+        &[
+            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat",
+            "lea state.NativeCliPrgPath, a0",
+            "moveq #-1, d2",
+            "tst.w state.NativeCliPrgLoadAddrSet",
+            "move.l state.NativeCliPrgLoadAddr, d2",
+            "jsr artifacts.opasmOutputBuildPrgArtifactV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "selectPrg",
+            "move.w #1, state.NativeCliBinRequested",
+            "move.w #1, state.NativeCliPrgRequested",
+            "move.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "parseOutputFormatToken .block",
+            "cmpi.b #'p', d0",
+            "maybePrg",
+            "cmpi.b #'r', (a2)+",
+            "cmpi.b #'g', (a2)+",
+            "move.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d6",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "parseOutputLoadAddrToken .block",
+            "cmpi.l #4, d3",
+            "bhi.s malformed",
+            "move.l d2, state.NativeCliPrgLoadAddr",
+            "move.w #1, state.NativeCliPrgLoadAddrSet",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "tst.b state.NativeCliOutfileBase",
+            "lea state.NativeCliOutfileBase, a0",
+            "lea state.NativeCliPrgPath, a1",
+            "jsr token_util.opforgeNativeCliCopyTokenBuffer",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &args_source,
+        &[
+            "clr.w state.NativeCliPrgRequested",
+            "clr.w state.NativeCliPrgLoadAddrSet",
+            "clr.b state.NativeCliPrgPath",
+            "clr.b state.NativeCliOutputPathScratch",
+            "clr.l state.NativeCliPrgLoadAddr",
         ]
     ));
 }
@@ -33638,6 +33745,95 @@ fn external_fs_uae_opforge_native_cli_item13_bin_artifact_matches_rust_guided_by
                 native_bin, expected,
                 "focused FS-UAE Item 13 bin artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item14_prg_artifact_matches_rust_guided_bytes() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let success_source = [
+        "        .output \"Work:opforge_native_out.prg\", format=prg, loadaddr=$0800, sections=code",
+        "        .byte $11",
+        "        .fill byte, 2, $ee",
+        "        lda #$44",
+    ]
+    .join("\n");
+    let wide_loadaddr_source = [
+        "        .output \"Work:opforge_native_out.prg\", format=prg, loadaddr=$123456, sections=code",
+        "        lda #$44",
+    ]
+    .join("\n");
+    let expected = vec![0x00, 0x08, 0x11, 0xEE, 0xEE, 0xA9, 0x44];
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item14_prg_output_from_env(
+        &repo_root,
+        success_source.as_bytes(),
+        wide_loadaddr_source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 14 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(
+                runs.len(),
+                2,
+                "expected Item 14 success and wide-loadaddr runs"
+            );
+            let success_run = &runs[0];
+            assert!(
+                success_run.success,
+                "focused native opForge CLI Item 14 PRG artifact fixture failed\nstdout:\n{}\nstderr:\n{}",
+                success_run.stdout, success_run.stderr,
+            );
+            assert!(
+                success_run.stdout.contains("STATUS output-ok"),
+                "focused Item 14 fixture should report PRG output artifact success\nstdout:\n{}\nstderr:\n{}",
+                success_run.stdout,
+                success_run.stderr,
+            );
+            let output_path = success_run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE);
+            let native_prg = fs::read(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 14 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            assert_eq!(
+                native_prg, expected,
+                "focused FS-UAE Item 14 PRG artifact byte mismatch\nstdout:\n{}\nstderr:\n{}",
+                success_run.stdout, success_run.stderr,
+            );
+
+            let wide_run = &runs[1];
+            assert!(
+                !wide_run.success,
+                "focused native opForge CLI Item 14 wide loadaddr fixture should fail\nstdout:\n{}\nstderr:\n{}",
+                wide_run.stdout,
+                wide_run.stderr,
+            );
+            assert!(
+                wide_run
+                    .stdout
+                    .contains("ERROR OPC-NCLI013: native module/use parser stage failed")
+                    && wide_run
+                        .stdout
+                        .contains("ERROR OPC-NCLI010: native tokenizer stage failed"),
+                "focused Item 14 wide loadaddr fixture should report native parser-stage rejection\nstdout:\n{}\nstderr:\n{}",
+                wide_run.stdout,
+                wide_run.stderr,
             );
         }
     }

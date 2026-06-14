@@ -24,7 +24,11 @@ NativeCliHunkRequested
 	.res word, 1
 NativeCliBinRequested
 	.res word, 1
+NativeCliPrgRequested
+	.res word, 1
 NativeCliOutputFormat
+	.res word, 1
+NativeCliPrgLoadAddrSet
 	.res word, 1
 NativeCliParseStatus
 	.res word, 1
@@ -38,6 +42,8 @@ NativeCliInputPath
 NativeCliHunkPath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliBinPath
+	.res byte, constants.PATH_BUFFER_CAPACITY
+NativeCliPrgPath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliOutfileBase
 	.res byte, constants.PATH_BUFFER_CAPACITY
@@ -61,6 +67,8 @@ NativeCliEncodeRequestLen
 	.res word, 1
 	.align 4
 NativeCliSourceLineNum
+	.res long, 1
+NativeCliPrgLoadAddr
 	.res long, 1
 NativeCliSawCr
 	.res word, 1
@@ -134,6 +142,8 @@ NativeCliSourceLine
 	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
 NativeCliParserTailBuffer
 	.res byte, constants.SOURCE_LINE_BUFFER_CAPACITY
+NativeCliOutputPathScratch
+	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliCurrentPath
 	.res byte, constants.PATH_BUFFER_CAPACITY
 NativeCliSavedPath

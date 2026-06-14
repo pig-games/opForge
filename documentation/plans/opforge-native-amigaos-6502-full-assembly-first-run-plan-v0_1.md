@@ -1313,7 +1313,7 @@ The intended native shape mirrors the Rust path:
     `scripts/workflow/run_rust_quality_gate.sh` completed with `PASS: Rust
     quality gate complete.` `make workflow-gate` passed.
 
-- [ ] Item 14: Add `.prg` output parity
+- [x] Item 14: Add `.prg` output parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,
     `SR-FIRST-OUTPUTS`; expected to layer Commodore load-address output on top
     of the artifact subsystem after `.bin` is proven.
@@ -1331,6 +1331,35 @@ The intended native shape mirrors the Rust path:
     the artifact layer.
   - Definition of done: native `.prg` output matches Rust references for the
     first-run fixtures.
+  - Completion evidence, 2026-06-14: added native PRG output artifact support
+    in `opasm.amigaos.output_artifacts` through
+    `opasmOutputBuildPrgArtifactV1`, which prefixes the current engine image
+    with a little-endian 16-bit load address from either the source
+    `loadaddr=$NNNN` option or the session origin. Native CLI output dispatch
+    now selects `.bin` or `.prg` artifact construction through the artifact
+    layer, with `NativeCliPrgPath`, `NativeCliPrgLoadAddr`,
+    `NativeCliPrgLoadAddrSet`, and `NativeCliOutputPathScratch` keeping parser
+    state separate from the active source path. Source `.output` parsing now
+    recognizes first-run `format=prg`, rejects wide PRG load addresses, carries
+    `.prg` requests through the existing flat payload emission gate, and keeps
+    Item 13 `.bin` routing compatible through the same shared parser.
+  - Gate evidence, 2026-06-14: focused `cargo test -p asm item14 --
+    --nocapture` passed; compatibility `cargo test -p asm item13 --
+    --nocapture` passed after updating the Item 13 structural assertion for the
+    shared output parser; `cargo test -p asm motorola68020_opforge_native_cli_
+    -- --nocapture` passed; `scripts/workflow/run_native_68000_format_gate.sh`
+    passed. The mandatory real FS-UAE run
+    `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item14_prg_artifact_matches_rust_guided_bytes
+    -- --nocapture --test-threads=1` passed, covering successful
+    `.output "Work:opforge_native_out.prg", format=prg, loadaddr=$0800,
+    sections=code` bytes `00 08 11 EE EE A9 44` and the wide
+    `loadaddr=$123456` rejection. `scripts/workflow/run_rust_quality_gate.sh`
+    completed with `PASS: Rust quality gate complete.` `make workflow-gate`
+    passed before this evidence update.
 
 - [ ] Item 15: Add `.hex` output parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,

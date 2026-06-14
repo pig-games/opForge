@@ -289,7 +289,11 @@ defaultFsUaeArgTail
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM13_OUTPUT_DIRECTIVE
 	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM14_OUTPUT_DIRECTIVE
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+.else
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
+.endif
 .endif
 .endif
 .endif
@@ -377,6 +381,8 @@ Mos6502FamilyName
 Mos6502FamilyNameEnd
 OutputFormatBinOptionText
 	.byte "format=bin", 0
+OutputFormatPrgOptionText
+	.byte "format=prg", 0
 
 	.endsection
 

@@ -40,14 +40,19 @@ opforgeNativeCliParseArgs	.block
 	clr.w state.NativeCliInputStyle
 	clr.w state.NativeCliHunkRequested
 	clr.w state.NativeCliBinRequested
+	clr.w state.NativeCliPrgRequested
 	clr.w state.NativeCliOutputFormat
+	clr.w state.NativeCliPrgLoadAddrSet
 	clr.w state.NativeCliParseStatus
 	clr.b state.NativeCliInputPath
 	clr.b state.NativeCliHunkPath
 	clr.b state.NativeCliBinPath
+	clr.b state.NativeCliPrgPath
+	clr.b state.NativeCliOutputPathScratch
 	clr.b state.NativeCliOutfileBase
 	clr.b state.NativeCliCpuName
 	clr.b state.NativeCliPackagePath
+	clr.l state.NativeCliPrgLoadAddr
 	move.w #1, state.NativeCliModulePathCount
 
 parseLoop

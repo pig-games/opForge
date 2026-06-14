@@ -306,12 +306,17 @@ fail
 	rts
 	.bend  ; opforgeNativeCliParseUseLine
 
-; Parse one first-run `.output` directive for native `.bin` request selection.
+; Parse one first-run `.output` directive for native `.bin`/`.prg` request selection.
 ; Inputs: state.NativeCliSourceLine/state.NativeCliSourceLineLen contain the line text.
-; Outputs: D0 = 0 on supported `format=bin`, nonzero on malformed or unsupported output.
-; Clobbers: D0-D7/A0-A2/CCR.
+; Outputs: D0 = 0 on supported `format=bin` or `format=prg`, nonzero on malformed or unsupported output.
+; Clobbers: D0-D7/A0-A3/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliParseOutputLine	.block
+	movem.l d6-d7/a3, -(sp)
+	moveq #0, d6
+	clr.b state.NativeCliOutputPathScratch
+	clr.w state.NativeCliPrgLoadAddrSet
+	clr.l state.NativeCliPrgLoadAddr
 	bsr.w opforgeNativeCliParserTailPtr
 	tst.l d1
 	bne.w fail
@@ -319,7 +324,7 @@ opforgeNativeCliParseOutputLine	.block
 	beq.w fail
 	cmpi.b #'"', (a0)
 	bne.s maybeOption
-	lea state.NativeCliBinPath, a1
+	lea state.NativeCliOutputPathScratch, a1
 	bsr.w copyOutputQuotedPath
 	tst.l d1
 	bne.w fail
@@ -332,20 +337,20 @@ opforgeNativeCliParseOutputLine	.block
 	bra.s optionLoop
 
 maybeOption
+	movea.l a0, a3
+	move.l d0, d7
 	bsr.w copyOutputOptionToken
 	tst.l d1
 	bne.w fail
-	movea.l a0, a2
-	lea state.NativeCliArgToken, a0
-	lea strings.OutputFormatBinOptionText, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	movea.l a2, a0
-	bne.s haveBinFormatFromToken
-	lea state.NativeCliParserTailBuffer, a0
-	moveq #0, d0
-	move.w state.NativeCliParserTailLen, d0
+	bsr.w classifyOutputOptionToken
+	tst.l d1
+	beq.s optionAfterToken
+	cmpi.l #2, d1
+	beq.w fail
+	movea.l a3, a0
+	move.l d7, d0
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
-	lea state.NativeCliBinPath, a1
+	lea state.NativeCliOutputPathScratch, a1
 	bsr.w copyOutputBarePath
 	tst.l d1
 	bne.w fail
@@ -358,47 +363,262 @@ maybeOption
 
 optionLoop
 	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
-	beq.w fail
+	beq.s finishOptions
+	cmpi.b #';', (a0)
+	beq.s finishOptions
 	bsr.w copyOutputOptionToken
 	tst.l d1
 	bne.w fail
-	movea.l a0, a2
-	lea state.NativeCliArgToken, a0
-	lea strings.OutputFormatBinOptionText, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	movea.l a2, a0
-	bne.s haveBinFormatFromToken
+	bsr.w classifyOutputOptionToken
+	cmpi.l #2, d1
+	beq.w fail
+
+optionAfterToken
+	bsr.w line_text.opforgeNativeCliSkipLineWhitespace
+	beq.s finishOptions
+	cmpi.b #';', (a0)
+	beq.s finishOptions
 	bsr.w outputOptionDelimiter
 	tst.l d1
 	bne.w fail
 	addq.l #1, a0
 	subq.l #1, d0
-	bra.s optionLoop
+	bra.w optionLoop
 
-haveBinFormatFromToken
-	bsr.w outputOptionEndOk
-	tst.l d1
-	bne.w fail
+finishOptions
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d6
+	beq.s selectBin
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d6
+	beq.s selectPrg
+	bra.w fail
+
+selectBin
+	tst.b state.NativeCliOutputPathScratch
+	beq.s defaultBinPath
+	lea state.NativeCliOutputPathScratch, a0
+	lea state.NativeCliBinPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bra.s binPathReady
+
+defaultBinPath
 	tst.b state.NativeCliBinPath
-	bne.s pathReady
+	bne.s binPathReady
 	tst.b state.NativeCliOutfileBase
 	beq.w fail
 	lea state.NativeCliOutfileBase, a0
 	lea state.NativeCliBinPath, a1
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
 
-pathReady
+binPathReady
 	move.w #1, state.NativeCliBinRequested
 	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
 	moveq #0, d0
+	movem.l (sp)+, d6-d7/a3
+	rts
+
+selectPrg
+	tst.b state.NativeCliOutputPathScratch
+	beq.s defaultPrgPath
+	lea state.NativeCliOutputPathScratch, a0
+	lea state.NativeCliPrgPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bra.s prgPathReady
+
+defaultPrgPath
+	tst.b state.NativeCliPrgPath
+	bne.s prgPathReady
+	tst.b state.NativeCliOutfileBase
+	beq.w fail
+	lea state.NativeCliOutfileBase, a0
+	lea state.NativeCliPrgPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+
+prgPathReady
+	move.w #1, state.NativeCliBinRequested
+	move.w #1, state.NativeCliPrgRequested
+	move.w #constants.NATIVE_OUTPUT_FORMAT_PRG, state.NativeCliOutputFormat
+	moveq #0, d0
+	movem.l (sp)+, d6-d7/a3
 	rts
 
 fail
 	move.l #strings.ParserFailureText, d1
 	jsr dos.putStr
 	moveq #1, d0
+	movem.l (sp)+, d6-d7/a3
 	rts
 	.bend  ; opforgeNativeCliParseOutputLine
+
+; Classify one `.output` option token.
+; Inputs: state.NativeCliArgToken contains the copied token.
+; Outputs: D1 = 0 when recognized, 1 when ignored, 2 when malformed; D6 updated for format tokens.
+; Clobbers: D0-D5/A0-A2/CCR.
+classifyOutputOptionToken	.block
+	bsr.w parseOutputFormatToken
+	tst.l d1
+	bne.s maybeLoadAddr
+	rts
+
+maybeLoadAddr
+	bsr.w parseOutputLoadAddrToken
+	rts
+	.bend  ; classifyOutputOptionToken
+
+; Parse `format=bin` or `format=prg` from the option token.
+; Inputs: state.NativeCliArgToken contains one option token.
+; Outputs: D1 = 0 when parsed, 1 when this is another option, 2 when malformed; D6 updated for recognized formats.
+; Clobbers: D0-D1/A2/CCR.
+parseOutputFormatToken	.block
+	lea state.NativeCliArgToken, a2
+	cmpi.b #'f', (a2)+
+	bne.w unknown
+	cmpi.b #'o', (a2)+
+	bne.w unknown
+	cmpi.b #'r', (a2)+
+	bne.w unknown
+	cmpi.b #'m', (a2)+
+	bne.w unknown
+	cmpi.b #'a', (a2)+
+	bne.w unknown
+	cmpi.b #'t', (a2)+
+	bne.w unknown
+	cmpi.b #'=', (a2)+
+	bne.w unknown
+	move.b (a2)+, d0
+	cmpi.b #'b', d0
+	beq.s maybeBin
+	cmpi.b #'p', d0
+	beq.s maybePrg
+	bra.s malformed
+
+maybeBin
+	cmpi.b #'i', (a2)+
+	bne.s malformed
+	cmpi.b #'n', (a2)+
+	bne.s malformed
+	tst.b (a2)
+	bne.s malformed
+	move.w #constants.NATIVE_OUTPUT_FORMAT_BIN, d6
+	moveq #0, d1
+	rts
+
+maybePrg
+	cmpi.b #'r', (a2)+
+	bne.s malformed
+	cmpi.b #'g', (a2)+
+	bne.s malformed
+	tst.b (a2)
+	bne.s malformed
+	move.w #constants.NATIVE_OUTPUT_FORMAT_PRG, d6
+	moveq #0, d1
+	rts
+
+unknown
+	moveq #1, d1
+	rts
+
+malformed
+	moveq #2, d1
+	rts
+	.bend  ; parseOutputFormatToken
+
+; Parse `loadaddr=$NNNN` from the option token.
+; Inputs: state.NativeCliArgToken contains one option token.
+; Outputs: D1 = 0 when parsed, 1 when this is another option, 2 when malformed/wide.
+; Clobbers: D0-D5/A2/CCR.
+parseOutputLoadAddrToken	.block
+	lea state.NativeCliArgToken, a2
+	cmpi.b #'l', (a2)+
+	bne.w unknown
+	cmpi.b #'o', (a2)+
+	bne.w unknown
+	cmpi.b #'a', (a2)+
+	bne.w unknown
+	cmpi.b #'d', (a2)+
+	bne.w unknown
+	cmpi.b #'a', (a2)+
+	bne.w unknown
+	cmpi.b #'d', (a2)+
+	bne.w unknown
+	cmpi.b #'d', (a2)+
+	bne.w unknown
+	cmpi.b #'r', (a2)+
+	bne.w unknown
+	cmpi.b #'=', (a2)+
+	bne.w unknown
+	cmpi.b #36, (a2)+
+	bne.w malformed
+	clr.l d2
+	clr.l d3
+
+loop
+	move.b (a2)+, d0
+	beq.s done
+	bsr.w outputHexDigitToNibble
+	tst.l d1
+	bne.s malformed
+	addq.l #1, d3
+	cmpi.l #4, d3
+	bhi.s malformed
+	lsl.l #4, d2
+	or.l d0, d2
+	bra.s loop
+
+done
+	tst.l d3
+	beq.s malformed
+	move.l d2, state.NativeCliPrgLoadAddr
+	move.w #1, state.NativeCliPrgLoadAddrSet
+	moveq #0, d1
+	rts
+
+unknown
+	moveq #1, d1
+	rts
+
+malformed
+	moveq #2, d1
+	rts
+	.bend  ; parseOutputLoadAddrToken
+
+; Convert a hexadecimal ASCII byte to a nibble.
+; Inputs: D0.B = ASCII character.
+; Outputs: D0.L = nibble; D1 = 0 on success, 1 on non-hex.
+; Clobbers: D0-D1/CCR.
+outputHexDigitToNibble	.block
+	cmpi.b #'0', d0
+	blo.s maybeUpper
+	cmpi.b #'9', d0
+	bhi.s maybeUpper
+	subi.b #'0', d0
+	andi.l #$0000000F, d0
+	moveq #0, d1
+	rts
+
+maybeUpper
+	cmpi.b #'A', d0
+	blo.s maybeLower
+	cmpi.b #'F', d0
+	bhi.s maybeLower
+	subi.b #55, d0
+	andi.l #$0000000F, d0
+	moveq #0, d1
+	rts
+
+maybeLower
+	cmpi.b #'a', d0
+	blo.s fail
+	cmpi.b #'f', d0
+	bhi.s fail
+	subi.b #87, d0
+	andi.l #$0000000F, d0
+	moveq #0, d1
+	rts
+
+fail
+	moveq #1, d1
+	rts
+	.bend  ; outputHexDigitToNibble
 
 ; Copy a quoted `.output` path.
 ; Inputs: A0 = quote; D0 = remaining byte count; A1 = destination path buffer.

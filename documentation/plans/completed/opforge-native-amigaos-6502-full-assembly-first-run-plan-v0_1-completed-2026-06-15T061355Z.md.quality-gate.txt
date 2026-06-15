@@ -1,5 +1,5 @@
 status: PASS
 gate: plan-quality
-artifact: documentation/plans/opforge-native-amigaos-6502-full-assembly-first-run-plan-v0_1.md
+artifact: documentation/plans/completed/opforge-native-amigaos-6502-full-assembly-first-run-plan-v0_1-completed-2026-06-15T061355Z.md
 summary: plan quality reviewer confirmed the plan is executable under the branch-local workflow rules with explicit work-item ownership for the first-run directive and output contract
 reviewer: Plan Quality Reviewer

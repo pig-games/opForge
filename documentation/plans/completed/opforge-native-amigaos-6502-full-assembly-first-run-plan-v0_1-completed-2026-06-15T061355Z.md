@@ -1495,7 +1495,7 @@ The intended native shape mirrors the Rust path:
     ending with `PASS: Rust quality gate complete.`; `make workflow-gate`
     passed; and `git diff --check` passed.
 
-- [ ] Item 18: Record final first-run parity evidence and workflow-gate pass
+- [x] Item 18: Record final first-run parity evidence and workflow-gate pass
   - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,
     `SR-NATIVE-6502-FULL`, `SR-AGENTS-COMPLIANCE`; expected to close the plan
     with acceptance evidence rather than more feature scope.
@@ -1513,6 +1513,23 @@ The intended native shape mirrors the Rust path:
     any intentionally deferred output notes, and a passing workflow gate.
   - Definition of done: the first-run 6502 matrix has passing FS-UAE parity and
     workflow-gate evidence recorded without adding new feature scope.
+  - Completion summary, 2026-06-15: recorded final first-run acceptance evidence
+    after Item 17 added real FS-UAE matrix coverage for `.bin`, `.prg`, `.hex`,
+    and `.lst`. No new feature scope was added in this closure item; remaining
+    non-first-run outputs and broader CPU-family completion stay in Deferred
+    Work.
+  - Gate evidence, 2026-06-15: focused `cargo test -p asm item17 --
+    --nocapture` passed; mandatory real FS-UAE
+    `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item17_first_run_artifact_matrix_matches_rust
+    -- --nocapture --test-threads=1` passed; `cargo test -p asm
+    examples_match_reference_outputs -- --nocapture` passed;
+    `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh` passed,
+    ending with `PASS: Rust quality gate complete.`; `make workflow-gate`
+    passed; and `git diff --check` passed.
 
 ## Milestones
 
@@ -1522,14 +1539,14 @@ The intended native shape mirrors the Rust path:
 - [x] Milestone 3: native MOS 6502/65C02 selector and encoder parity lands in
   package-backed commit-sized slices covering the indicated simple, smoke, and
   all-modes fixtures.
-- [ ] Milestone 4: first-run directive support lands in three commit-sized
+- [x] Milestone 4: first-run directive support lands in three commit-sized
   slices covering layout control, data/text emission, and
   symbol/configuration directives.
-- [ ] Milestone 5: first-run source graph support lands in three commit-sized
+- [x] Milestone 5: first-run source graph support lands in three commit-sized
   slices covering include expansion, module structure, and `.use` behavior.
 - [x] Milestone 6: `.bin`, `.prg`, `.hex`, and `.lst` are implemented through
   native artifact components.
-- [ ] Milestone 7: FS-UAE end-to-end parity coverage and final workflow-gate
+- [x] Milestone 7: FS-UAE end-to-end parity coverage and final workflow-gate
   evidence pass for the first-run 6502 matrix.
 
 ## Deferred Work

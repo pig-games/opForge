@@ -1415,7 +1415,7 @@ The intended native shape mirrors the Rust path:
     passed as `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh`,
     ending with `PASS: Rust quality gate complete.`
 
-- [ ] Item 16: Add `.lst` listing output parity
+- [x] Item 16: Add `.lst` listing output parity
   - Source requirement or finding IDs: `SR-OUTPUT-ARCH`,
     `SR-FIRST-OUTPUTS`; expected to complete first-run output support.
   - Expected files: native output/listing module files, tests, and first-run
@@ -1431,6 +1431,32 @@ The intended native shape mirrors the Rust path:
     the artifact layer.
   - Definition of done: native `.lst` output matches the first-run Rust listing
     contract for the selected 6502 fixture set.
+  - Completion summary, 2026-06-14: native opasm now records per-statement
+    output address, image offset, and byte count during pass two, and the
+    artifact layer renders a first-run Rust-style listing payload with header,
+    fixed-width address/byte/source rows, summary counts, symbol-table section,
+    memory total, and generated-output footer. Native CLI `-l`/`--list` and
+    `.output ..., format=lst` select `NATIVE_OUTPUT_FORMAT_LST` through the same
+    output writer/artifact dispatch as `.bin`, `.prg`, and `.hex`; listing
+    selection also requests image emission so row bytes and generated output are
+    available. The selected first-run FS-UAE fixture uses source-level
+    `.output "Work:opforge_native_out.lst", format=lst, sections=code` and
+    exact text comparison to validate addresses, emitted bytes, source text,
+    the labeled `start` instruction row, directive rows, included-file line
+    attribution, and generated output for `.byte`, `.fill`, and `lda` source.
+  - Gate evidence, 2026-06-14: focused `cargo test -p asm item16 --
+    --nocapture` passed; mandatory real FS-UAE
+    `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item16_listing_artifact_matches_rust_guided_text
+    -- --nocapture --test-threads=1` passed; `cargo test -p asm
+    motorola68020_opforge_native_cli_ -- --nocapture` passed;
+    `scripts/workflow/run_native_68000_format_gate.sh` passed;
+    `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh` passed,
+    ending with `PASS: Rust quality gate complete.`; and `make workflow-gate`
+    passed.
 
 - [ ] Item 17: Add FS-UAE first-run artifact parity coverage
   - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,

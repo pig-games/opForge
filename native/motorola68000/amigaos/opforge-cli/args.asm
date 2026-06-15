@@ -42,6 +42,7 @@ opforgeNativeCliParseArgs	.block
 	clr.w state.NativeCliBinRequested
 	clr.w state.NativeCliPrgRequested
 	clr.w state.NativeCliHexRequested
+	clr.w state.NativeCliLstRequested
 	clr.w state.NativeCliOutputFormat
 	clr.w state.NativeCliPrgLoadAddrSet
 	clr.w state.NativeCliParseStatus
@@ -50,6 +51,7 @@ opforgeNativeCliParseArgs	.block
 	clr.b state.NativeCliBinPath
 	clr.b state.NativeCliPrgPath
 	clr.b state.NativeCliHexPath
+	clr.b state.NativeCliLstPath
 	clr.b state.NativeCliOutputPathScratch
 	clr.b state.NativeCliOutfileBase
 	clr.b state.NativeCliCpuName
@@ -103,6 +105,14 @@ parseLoop
 	lea strings.FlagBinLong, a1
 	jsr token_util.opforgeNativeCliTokenEquals
 	bne.w bin
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagListShort, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w list
+	lea state.NativeCliArgToken, a0
+	lea strings.FlagListLong, a1
+	jsr token_util.opforgeNativeCliTokenEquals
+	bne.w list
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagOutfileShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals
@@ -172,6 +182,15 @@ bin
 	bmi.w quoted
 	bra.w parseLoop
 
+list
+	move.w #1, state.NativeCliBinRequested
+	move.w #1, state.NativeCliLstRequested
+	move.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	lea state.NativeCliLstPath, a1
+	bsr.w opforgeNativeCliCopyOptionalValue
+	bmi.w quoted
+	bra.w parseLoop
+
 outfile
 	lea state.NativeCliOutfileBase, a1
 	bsr.w opforgeNativeCliCopyRequiredValue
@@ -230,11 +249,13 @@ parseDone
 	tst.w state.NativeCliInputStyle
 	beq.w noInput
 	tst.w state.NativeCliOutputFormat
-	beq.s parseOk
+	beq.w parseOk
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_BIN, state.NativeCliOutputFormat
 	beq.s defaultBinPath
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HUNK, state.NativeCliOutputFormat
 	beq.s defaultHunkPath
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	beq.s defaultLstPath
 	bra.w usage
 
 defaultBinPath
@@ -254,6 +275,16 @@ defaultHunkPath
 	beq.s parseOk
 	lea state.NativeCliOutfileBase, a0
 	lea state.NativeCliHunkPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bra.s parseOk
+
+defaultLstPath
+	tst.b state.NativeCliLstPath
+	bne.s parseOk
+	tst.b state.NativeCliOutfileBase
+	beq.s parseOk
+	lea state.NativeCliOutfileBase, a0
+	lea state.NativeCliLstPath, a1
 	jsr token_util.opforgeNativeCliCopyTokenBuffer
 
 parseOk
@@ -514,14 +545,6 @@ optionalQuoted
 ; Clobbers: D0/A0-A1/CCR.
 ; CCR: reflects D0 on return.
 opforgeNativeCliIsUnsupportedFlag	.block
-	lea state.NativeCliArgToken, a0
-	lea strings.FlagListShort, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w unsupportedYes
-	lea state.NativeCliArgToken, a0
-	lea strings.FlagListLong, a1
-	jsr token_util.opforgeNativeCliTokenEquals
-	bne.w unsupportedYes
 	lea state.NativeCliArgToken, a0
 	lea strings.FlagHexShort, a1
 	jsr token_util.opforgeNativeCliTokenEquals

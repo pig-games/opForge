@@ -10225,8 +10225,9 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
             "native CLI surface should contain Rust CLI flag literal {expected}"
         );
     }
-    assert!(listing
-        .contains("OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin"));
+    assert!(listing.contains(
+        "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin or --list"
+    ));
     assert!(listing
         .contains("OPC-NCLI011: Do not mix positional input with -i/--infile; use one style"));
     assert!(listing.contains(
@@ -10238,7 +10239,7 @@ fn motorola68020_opforge_native_cli_surface_locks_rust_subset_flag_names() {
         .contains("ERROR OPC-NCLI019: opasm package exceeds native package storage capacity"));
     assert!(listing.contains("OPC-NCLI008: Input source file not found"));
     assert!(listing.contains(
-        "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, and -M/--module-path; --hunk is not implemented yet."
+        "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, and -M/--module-path; --hunk is not implemented yet."
     ));
     assert!(listing.contains("OPC-NCLI010: native tokenizer stage failed"));
     assert!(listing.contains("STAGE parser"));
@@ -13251,6 +13252,101 @@ fn motorola68020_item15_native_hex_output_routes_through_artifact_layer() {
             "clr.w state.NativeCliHexRequested",
             "clr.b state.NativeCliHexPath",
             "clr.b state.NativeCliOutputPathScratch",
+        ]
+    ));
+}
+
+#[test]
+fn motorola68020_item16_native_listing_output_routes_through_artifact_layer() {
+    let repo_root = workspace_root();
+    let artifact_path =
+        repo_root.join("native/motorola68000/amigaos/opasm/opasm_output_artifacts.asm");
+    let artifact_source = format_tokvm_amigaos_fragment(
+        &fs::read_to_string(&artifact_path).expect("read opasm output artifact source"),
+    );
+    let engine_source =
+        fs::read_to_string(repo_root.join("native/motorola68000/amigaos/opasm/opasm_engine.asm"))
+            .expect("read opasm engine source");
+    let output_source = opforge_amigaos_source("output.asm");
+    let args_source = opforge_amigaos_source("args.asm");
+    let directive_source = opforge_amigaos_source("directive_handlers.asm");
+    let fs_uae_source =
+        fs::read_to_string(repo_root.join("crates/opforge-asm/src/fs_uae_smoke.rs"))
+            .expect("read FS-UAE smoke source");
+    let strings_source = opforge_amigaos_source("strings.asm");
+    let state_source = opforge_amigaos_source("state.asm");
+    let constants_source = opforge_amigaos_source("constants.asm");
+
+    assert!(constants_source.contains("NATIVE_OUTPUT_FORMAT_LST"));
+    assert!(state_source.contains("NativeCliLstRequested"));
+    assert!(state_source.contains("NativeCliLstPath"));
+    assert!(strings_source.contains("OutputFormatLstOptionText"));
+    assert!(strings_source.contains("\"format=lst\""));
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_ITEM16_LIST_OUTPUT"));
+    assert!(fs_uae_source.contains("FS_UAE_OPFORGE_NATIVE_CLI_ITEM16_LIST_OUTPUT_DEFINE"));
+    assert!(fs_uae_source.contains("run_opforge_native_cli_item16_listing_output_from_env"));
+    assert!(source_contains_in_order(
+        &engine_source,
+        &[
+            "opasmEngineBeginStatementOutputV1",
+            "OpasmEngineStmtOutputOffsetTable",
+            "opasmEngineEndStatementOutputV1",
+            "OpasmEngineStmtOutputByteCountTable",
+            "opasmEngineGetStatementOutputAddrV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &artifact_source,
+        &[
+            "opasmOutputBuildListingArtifactV1 .block",
+            "OpasmListingTitle",
+            "jsr engine.opasmEngineGetStatementCountV1",
+            "jsr engine.opasmEngineGetStatementOutputByteCountV1",
+            "jsr engine.opasmEngineGetStatementOutputAddrV1",
+            "jsr engine.getStatementSourceLineTextV1",
+            "OpasmListingGeneratedHeader",
+            "lea OpasmListingArtifactBuffer.l, a0",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &output_source,
+        &[
+            "cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat",
+            "lea state.NativeCliLstPath, a0",
+            "buildLst",
+            "jsr artifacts.opasmOutputBuildListingArtifactV1",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &args_source,
+        &[
+            "lea strings.FlagListShort, a1",
+            "bne.w list",
+            "lea strings.FlagListLong, a1",
+            "bne.w list",
+            "move.w #1, state.NativeCliLstRequested",
+            "move.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "selectLst",
+            "lea state.NativeCliLstPath, a1",
+            "move.w #1, state.NativeCliBinRequested",
+            "move.w #1, state.NativeCliLstRequested",
+            "move.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &directive_source,
+        &[
+            "parseOutputFormatToken .block",
+            "cmpi.b #'l', d0",
+            "maybeLst",
+            "cmpi.b #'s', (a2)+",
+            "cmpi.b #'t', (a2)+",
+            "move.w #constants.NATIVE_OUTPUT_FORMAT_LST, d6",
         ]
     ));
 }
@@ -34004,6 +34100,89 @@ fn external_fs_uae_opforge_native_cli_item15_hex_artifact_matches_rust_guided_te
             assert_eq!(
                 native_hex, expected,
                 "focused FS-UAE Item 15 HEX artifact text mismatch\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item16_listing_artifact_matches_rust_guided_text() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source = [
+        "        .output \"Work:opforge_native_out.lst\", format=lst, sections=code",
+        "start   lda #$44",
+        "        .include \"opforge_fsuae_include.inc\"",
+        "        .fill byte, 2, $ee",
+        "        .byte $11",
+    ]
+    .join("\n");
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item16_listing_output_from_env(
+        &repo_root,
+        source.as_bytes(),
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 16 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 1, "expected Item 16 listing output run");
+            let run = &runs[0];
+            assert!(
+                run.success,
+                "focused native opForge CLI Item 16 listing artifact fixture failed\nstdout:\n{}\nstderr:\n{}",
+                run.stdout, run.stderr,
+            );
+            assert!(
+                run.stdout.contains("STATUS output-ok"),
+                "focused Item 16 fixture should report listing output artifact success\nstdout:\n{}\nstderr:\n{}",
+                run.stdout,
+                run.stderr,
+            );
+            let output_path = run
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE);
+            let native_listing = fs::read_to_string(&output_path).unwrap_or_else(|err| {
+                panic!(
+                    "read focused native CLI Item 16 output {}: {err}",
+                    output_path.display()
+                )
+            });
+            let expected_listing = concat!(
+                "opForge Assembler native\n",
+                "ADDR    BYTES                    LINE  SOURCE\n",
+                "------  -----------------------  ----  ------\n",
+                "0800    A9 44                       2  start   lda #$44\n",
+                "0802    A9 01                       1          lda #$01\n",
+                "0804    EE EE                       4          .fill byte, 2, $ee\n",
+                "0806    11                          5          .byte $11\n",
+                "\n",
+                "Lines: 4  Errors: 0  Warnings: 0\n",
+                "\n",
+                "SYMBOL TABLE\n",
+                "\n",
+                "(none)\n",
+                "\n",
+                "Total memory is 7 bytes\n",
+                "\n",
+                "GENERATED OUTPUT\n",
+                "\n",
+                "ADDR    BYTES\n",
+                "------  -----------------------\n",
+                "0800    A9 44 A9 01 EE EE 11\n",
+            );
+            assert_eq!(
+                native_listing, expected_listing,
+                "focused FS-UAE Item 16 listing text mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
             );
         }

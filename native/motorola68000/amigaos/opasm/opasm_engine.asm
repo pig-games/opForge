@@ -669,6 +669,55 @@ fail
 	rts
 	.bend  ; opasmEngineAppendImageBytesV1
 
+; Mark the image byte offset/address where one statement starts emitting bytes.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineBeginStatementOutputV1	.block
+	movem.l d1-d2/a0, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	lsl.l #2, d1
+	moveq #0, d2
+	move.w OpasmEngineImageByteCount.l, d2
+	lea OpasmEngineStmtOutputOffsetTable.l, a0
+	move.l d2, 0(a0, d1.l)
+	lea OpasmEngineStmtOutputByteCountTable.l, a0
+	clr.l 0(a0, d1.l)
+	move.l OpasmEngineSessionCurrentPc.l, d2
+	lea OpasmEngineStmtOutputAddrTable.l, a0
+	move.l d2, 0(a0, d1.l)
+	movem.l (sp)+, d1-d2/a0
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineBeginStatementOutputV1
+
+; Mark the image byte count emitted by one statement.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: 0 on success.
+opasmEngineEndStatementOutputV1	.block
+	movem.l d1-d2/a0, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	lsl.l #2, d1
+	moveq #0, d2
+	move.w OpasmEngineImageByteCount.l, d2
+	lea OpasmEngineStmtOutputOffsetTable.l, a0
+	sub.l 0(a0, d1.l), d2
+	lea OpasmEngineStmtOutputByteCountTable.l, a0
+	move.l d2, 0(a0, d1.l)
+	movem.l (sp)+, d1-d2/a0
+	moveq #0, d0
+	rts
+	.bend  ; opasmEngineEndStatementOutputV1
+
 ; Return the current opasm-owned image byte count.
 ;
 ; Outputs:
@@ -835,6 +884,60 @@ opasmEngineGetStatementLineNumberV1	.block
 	move.l (sp)+, d1
 	rts
 	.bend  ; opasmEngineGetStatementLineNumberV1
+
+; Return the recorded output address for one statement.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: output address.
+opasmEngineGetStatementOutputAddrV1	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	lsl.l #2, d1
+	lea OpasmEngineStmtOutputAddrTable.l, a0
+	move.l 0(a0, d1.l), d0
+	move.l (sp)+, d1
+	rts
+	.bend  ; opasmEngineGetStatementOutputAddrV1
+
+; Return the recorded output image offset for one statement.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: image offset.
+opasmEngineGetStatementOutputOffsetV1	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	lsl.l #2, d1
+	lea OpasmEngineStmtOutputOffsetTable.l, a0
+	move.l 0(a0, d1.l), d0
+	move.l (sp)+, d1
+	rts
+	.bend  ; opasmEngineGetStatementOutputOffsetV1
+
+; Return the recorded output byte count for one statement.
+;
+; Inputs:
+; - D0: statement index.
+;
+; Outputs:
+; - D0: byte count.
+opasmEngineGetStatementOutputByteCountV1	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w d0, d1
+	lsl.l #2, d1
+	lea OpasmEngineStmtOutputByteCountTable.l, a0
+	move.l 0(a0, d1.l), d0
+	move.l (sp)+, d1
+	rts
+	.bend  ; opasmEngineGetStatementOutputByteCountV1
 
 ; Return stored source-line text for one statement.
 ;
@@ -1891,6 +1994,12 @@ storeStatementRecord	.block
 	clr.w 0(a0, d2.l)
 	lea OpasmEngineStmtDirectiveKindTable.l, a0
 	move.w OPASM_ENGINE_STMT_REQ_DIRECTIVE_KIND(a5), 0(a0, d2.l)
+	lea OpasmEngineStmtOutputAddrTable.l, a0
+	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtOutputOffsetTable.l, a0
+	clr.l 0(a0, d1.l)
+	lea OpasmEngineStmtOutputByteCountTable.l, a0
+	clr.l 0(a0, d1.l)
 	lea OpasmEngineStmtExprFlagsTable.l, a0
 	clr.w 0(a0, d2.l)
 	lea OpasmEngineStmtExprOperandIndexTable.l, a0
@@ -2114,10 +2223,16 @@ loop
 	beq.s advanceOnly
 	moveq #0, d0
 	move.w d7, d0
+	jsr opasmEngineBeginStatementOutputV1
+	moveq #0, d0
+	move.w d7, d0
 	movea.l OPASM_ENGINE_CTX_EMIT_IMAGE_CB(a5), a0
 	jsr (a0)
 	tst.l d0
 	bne.s return
+	moveq #0, d0
+	move.w d7, d0
+	jsr opasmEngineEndStatementOutputV1
 
 advanceOnly
 	moveq #0, d0
@@ -2181,6 +2296,12 @@ OpasmEngineStmtOperandLenTable
 	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtDirectiveKindTable
 	.res word, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtOutputAddrTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtOutputOffsetTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
+OpasmEngineStmtOutputByteCountTable
+	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtMnemOffTable
 	.res long, NATIVE_STATEMENT_TABLE_CAPACITY
 OpasmEngineStmtLabelNameTable

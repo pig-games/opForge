@@ -396,6 +396,8 @@ finishOptions
 	beq.s selectPrg
 	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d6
 	beq.w selectHex
+	cmpi.w #constants.NATIVE_OUTPUT_FORMAT_LST, d6
+	beq.w selectLst
 	bra.w fail
 
 selectBin
@@ -472,6 +474,31 @@ hexPathReady
 	movem.l (sp)+, d6-d7/a3
 	rts
 
+selectLst
+	tst.b state.NativeCliOutputPathScratch
+	beq.s defaultLstPath
+	lea state.NativeCliOutputPathScratch, a0
+	lea state.NativeCliLstPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+	bra.s lstPathReady
+
+defaultLstPath
+	tst.b state.NativeCliLstPath
+	bne.s lstPathReady
+	tst.b state.NativeCliOutfileBase
+	beq.w fail
+	lea state.NativeCliOutfileBase, a0
+	lea state.NativeCliLstPath, a1
+	jsr token_util.opforgeNativeCliCopyTokenBuffer
+
+lstPathReady
+	move.w #1, state.NativeCliBinRequested
+	move.w #1, state.NativeCliLstRequested
+	move.w #constants.NATIVE_OUTPUT_FORMAT_LST, state.NativeCliOutputFormat
+	moveq #0, d0
+	movem.l (sp)+, d6-d7/a3
+	rts
+
 fail
 	move.l #strings.ParserFailureText, d1
 	jsr dos.putStr
@@ -520,6 +547,8 @@ parseOutputFormatToken	.block
 	beq.s maybeBin
 	cmpi.b #'h', d0
 	beq.s maybeHex
+	cmpi.b #'l', d0
+	beq.s maybeLst
 	cmpi.b #'p', d0
 	beq.s maybePrg
 	bra.s malformed
@@ -543,6 +572,17 @@ maybeHex
 	tst.b (a2)
 	bne.s malformed
 	move.w #constants.NATIVE_OUTPUT_FORMAT_HEX, d6
+	moveq #0, d1
+	rts
+
+maybeLst
+	cmpi.b #'s', (a2)+
+	bne.s malformed
+	cmpi.b #'t', (a2)+
+	bne.s malformed
+	tst.b (a2)
+	bne.s malformed
+	move.w #constants.NATIVE_OUTPUT_FORMAT_LST, d6
 	moveq #0, d1
 	rts
 

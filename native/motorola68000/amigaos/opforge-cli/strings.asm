@@ -17,7 +17,7 @@ VersionText
 	.byte "opForge native AmigaOS CLI 0.1", 10, 0
 HelpText
 	.byte "Usage: opForge [OPTIONS] [INPUT]", 10
-	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path", 10, 0
+	.byte "Native subset: INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, -M/--module-path", 10, 0
 UsageText
 	.byte "OPC-NCLI001: Usage: opForge [OPTIONS] [INPUT]", 10, 0
 QuotedText
@@ -25,7 +25,7 @@ QuotedText
 UnsupportedText
 	.byte "OPC-NCLI003: recognized Rust CLI option is not implemented by native AmigaOS CLI yet: ", 0
 NativeSubsetHelpText
-	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, and -M/--module-path; --hunk is not implemented yet.", 10, 0
+	.byte 10, "Native subset supports INPUT, -i/--infile, --bin [FILE], -l/--list [FILE], --hunk [FILE], -o/--outfile, --cpu, --opasm-package, -I/--include-path, and -M/--module-path; --hunk is not implemented yet.", 10, 0
 UnknownFlagText
 	.byte "OPC-NCLI004: unknown CLI flag: ", 0
 MissingValueText
@@ -33,7 +33,7 @@ MissingValueText
 NoInputText
 	.byte "OPC-NCLI006: No input files specified. Use -i/--infile", 10, 0
 HunkRequiredText
-	.byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin", 10, 0
+	.byte "OPC-NCLI007: No outputs selected. Native AmigaOS CLI currently requires --bin or --list", 10, 0
 MixedInputText
 	.byte "OPC-NCLI011: Do not mix positional input with -i/--infile; use one style", 10, 0
 MultiplePositionalText
@@ -295,7 +295,11 @@ defaultFsUaeArgTail
 .ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM15_OUTPUT_DIRECTIVE
 	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
 .else
+.ifdef OPFORGE_FS_UAE_NATIVE_CLI_ITEM16_LIST_OUTPUT
+	.byte "Work:opforge_6502_native_cli_smoke.asm --cpu m6502 --opasm-package Work:opforge_cli_package.opasm", 0
+.else
 	.byte "Work:opforge_fsuae_smoke_input.asm --bin Work:opforge_native_out.bin --cpu m6502 --opasm-package Work:opforge_cli_package.opasm -M Work:opforge_module_a --module-path Work:opforge_module_b", 0
+.endif
 .endif
 .endif
 .endif
@@ -389,6 +393,8 @@ OutputFormatPrgOptionText
 	.byte "format=prg", 0
 OutputFormatHexOptionText
 	.byte "format=hex", 0
+OutputFormatLstOptionText
+	.byte "format=lst", 0
 
 	.endsection
 

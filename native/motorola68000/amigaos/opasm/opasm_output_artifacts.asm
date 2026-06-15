@@ -7,6 +7,7 @@
 
 OPASM_OUTPUT_PRG_BUFFER_CAPACITY = 4098
 OPASM_OUTPUT_HEX_BUFFER_CAPACITY = 12000
+OPASM_OUTPUT_LISTING_BUFFER_CAPACITY = 24000
 
 	.section code, kind=code
 	.pub
@@ -166,6 +167,158 @@ fail
 	rts
 	.bend  ; opasmOutputBuildHexArtifactV1
 
+; Build a first-run Rust-style `.lst` artifact from opasm statement/image data.
+; Outputs:
+; - D0.L = 0 on success.
+; - A0 = opasm-owned listing artifact buffer pointer.
+; - D1.L = text byte count.
+opasmOutputBuildListingArtifactV1	.block
+	movem.l d2-d7/a2-a6, -(sp)
+	lea OpasmListingArtifactBuffer.l, a2
+	lea OpasmListingTitle.l, a0
+	bsr.w opasmOutputAppendCString
+	lea OpasmListingHeader.l, a0
+	bsr.w opasmOutputAppendCString
+	jsr engine.opasmEngineGetStatementCountV1
+	move.l d0, d6
+	moveq #0, d7
+
+lineLoop
+	cmp.l d6, d7
+	bhs.w footer
+	move.l d7, d0
+	jsr engine.opasmEngineGetStatementOutputByteCountV1
+	move.l d0, d5
+	beq.s noLineBytes
+	move.l d7, d0
+	jsr engine.opasmEngineGetStatementOutputAddrV1
+	bsr.w opasmOutputAppendHexWord
+	moveq #2, d0
+	bsr.w opasmOutputAppendSpaces
+	bra.s locDone
+
+noLineBytes
+	lea OpasmListingNoLocation.l, a0
+	bsr.w opasmOutputAppendCString
+
+locDone
+	moveq #2, d0
+	bsr.w opasmOutputAppendSpaces
+	moveq #0, d4
+	tst.l d5
+	beq.s bytesDone
+	move.l d7, d0
+	jsr engine.opasmEngineGetStatementOutputOffsetV1
+	move.l d0, d3
+	jsr engine.opasmEngineGetImageBufferPtrV1
+	adda.l d3, a0
+	movea.l a0, a3
+	move.l d5, d4
+	add.l d4, d4
+	add.l d5, d4
+	subq.l #1, d4
+	move.l d5, d3
+	subq.l #1, d3
+
+byteLoop
+	moveq #0, d0
+	move.b (a3)+, d0
+	bsr.w opasmOutputEmitHexByte
+	tst.l d3
+	beq.s bytesDone
+	move.b #' ', (a2)+
+	subq.l #1, d3
+	bra.s byteLoop
+
+bytesDone
+	move.l #23, d0
+	cmp.l d0, d4
+	bhs.s byteColumnDone
+	sub.l d4, d0
+	bsr.w opasmOutputAppendSpaces
+
+byteColumnDone
+	moveq #2, d0
+	bsr.w opasmOutputAppendSpaces
+	move.l d7, d0
+	jsr engine.opasmEngineGetStatementLineNumberV1
+	bsr.w opasmOutputAppendRight4Decimal
+	moveq #2, d0
+	bsr.w opasmOutputAppendSpaces
+	move.l d7, d0
+	jsr engine.getStatementSourceLineTextV1
+	tst.l d0
+	beq.s sourceDone
+	move.l d0, d3
+
+sourceLoop
+	move.b (a0)+, (a2)+
+	subq.l #1, d3
+	bne.s sourceLoop
+
+sourceDone
+	move.b #10, (a2)+
+	addq.l #1, d7
+	bra.w lineLoop
+
+footer
+	lea OpasmListingLinesPrefix.l, a0
+	bsr.w opasmOutputAppendCString
+	move.l d6, d0
+	bsr.w opasmOutputAppendU16Decimal
+	lea OpasmListingCountsSuffix.l, a0
+	bsr.w opasmOutputAppendCString
+	lea OpasmListingSymbolNone.l, a0
+	bsr.w opasmOutputAppendCString
+	jsr engine.opasmEngineGetImageByteCountV1
+	move.l d0, d5
+	lea OpasmListingMemoryPrefix.l, a0
+	bsr.w opasmOutputAppendCString
+	move.l d5, d0
+	bsr.w opasmOutputAppendU16Decimal
+	lea OpasmListingMemorySuffix.l, a0
+	bsr.w opasmOutputAppendCString
+	lea OpasmListingGeneratedHeader.l, a0
+	bsr.w opasmOutputAppendCString
+	tst.l d5
+	beq.s generatedNone
+	jsr engine.opasmEngineGetSessionOriginV1
+	bsr.w opasmOutputAppendHexWord
+	moveq #4, d0
+	bsr.w opasmOutputAppendSpaces
+	jsr engine.opasmEngineGetImageBufferPtrV1
+	movea.l a0, a3
+	move.l d5, d3
+	subq.l #1, d3
+
+generatedLoop
+	moveq #0, d0
+	move.b (a3)+, d0
+	bsr.w opasmOutputEmitHexByte
+	tst.l d3
+	beq.s generatedDone
+	move.b #' ', (a2)+
+	subq.l #1, d3
+	bra.s generatedLoop
+
+generatedDone
+	move.b #10, (a2)+
+	bra.s finish
+
+generatedNone
+	lea OpasmListingNoneLine.l, a0
+	bsr.w opasmOutputAppendCString
+
+finish
+	lea OpasmListingArtifactBuffer.l, a0
+	move.l a2, d1
+	move.l a0, d0
+	sub.l d0, d1
+	moveq #0, d0
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
+	.bend  ; opasmOutputBuildListingArtifactV1
+
 ; Append one byte as two uppercase hexadecimal characters.
 ; Inputs: D0.B = byte; A2 = destination cursor.
 ; Outputs: A2 advanced by two bytes.
@@ -182,6 +335,113 @@ opasmOutputEmitHexByte	.block
 	rts
 	.bend  ; opasmOutputEmitHexByte
 
+opasmOutputAppendHexWord	.block
+	movem.l d0/d2, -(sp)
+	move.l d0, d2
+	lsr.w #8, d0
+	bsr.w opasmOutputEmitHexByte
+	move.l d2, d0
+	bsr.w opasmOutputEmitHexByte
+	movem.l (sp)+, d0/d2
+	rts
+	.bend  ; opasmOutputAppendHexWord
+
+opasmOutputAppendCString	.block
+	tst.b (a0)
+	beq.s done
+
+loop
+	move.b (a0)+, (a2)+
+	tst.b (a0)
+	bne.s loop
+
+done
+	rts
+	.bend  ; opasmOutputAppendCString
+
+opasmOutputAppendSpaces	.block
+	tst.l d0
+	beq.s done
+
+loop
+	move.b #' ', (a2)+
+	subq.l #1, d0
+	bne.s loop
+
+done
+	rts
+	.bend  ; opasmOutputAppendSpaces
+
+opasmOutputAppendRight4Decimal	.block
+	movem.l d0/d1, -(sp)
+	move.l d0, d1
+	cmpi.l #10, d1
+	bhs.s maybeHundred
+	moveq #3, d0
+	bsr.w opasmOutputAppendSpaces
+	bra.s number
+
+maybeHundred
+	cmpi.l #100, d1
+	bhs.s maybeThousand
+	moveq #2, d0
+	bsr.w opasmOutputAppendSpaces
+	bra.s number
+
+maybeThousand
+	cmpi.l #1000, d1
+	bhs.s number
+	moveq #1, d0
+	bsr.w opasmOutputAppendSpaces
+
+number
+	move.l d1, d0
+	bsr.w opasmOutputAppendU16Decimal
+	movem.l (sp)+, d0/d1
+	rts
+	.bend  ; opasmOutputAppendRight4Decimal
+
+opasmOutputAppendU16Decimal	.block
+	movem.l d0-d5, -(sp)
+	move.l d0, d1
+	moveq #0, d5
+	move.w #10000, d2
+	bsr.s decimalDigit
+	move.w #1000, d2
+	bsr.s decimalDigit
+	move.w #100, d2
+	bsr.s decimalDigit
+	move.w #10, d2
+	bsr.s decimalDigit
+	move.l d1, d0
+	addi.b #'0', d0
+	move.b d0, (a2)+
+	movem.l (sp)+, d0-d5
+	rts
+
+decimalDigit
+	move.l d1, d0
+	divu.w d2, d0
+	move.l d0, d3
+	andi.l #$0000FFFF, d3
+	swap d0
+	andi.l #$0000FFFF, d0
+	move.l d0, d1
+	tst.l d3
+	bne.s emit
+	tst.l d5
+	beq.s skip
+
+emit
+	moveq #1, d5
+	move.l d3, d4
+	addi.b #'0', d4
+	move.b d4, (a2)+
+
+skip
+	rts
+	.bend  ; opasmOutputAppendU16Decimal
+
 	.endsection
 
 	.section data, kind=data
@@ -190,6 +450,29 @@ OpasmHexDigits
 	.byte "0123456789ABCDEF"
 OpasmHexEofRecord
 	.byte ":00000001FF", 10
+OpasmListingTitle
+	.byte "opForge Assembler native", 10, 0
+OpasmListingHeader
+	.byte "ADDR    BYTES                    LINE  SOURCE", 10
+	.byte "------  -----------------------  ----  ------", 10, 0
+OpasmListingNoLocation
+	.byte "----  ", 0
+OpasmListingLinesPrefix
+	.byte 10, "Lines: ", 0
+OpasmListingCountsSuffix
+	.byte "  Errors: 0  Warnings: 0", 10, 10, "SYMBOL TABLE", 10, 10, 0
+OpasmListingSymbolNone
+	.byte "(none)", 10, 0
+OpasmListingMemoryPrefix
+	.byte 10, "Total memory is ", 0
+OpasmListingMemorySuffix
+	.byte " bytes", 10, 0
+OpasmListingGeneratedHeader
+	.byte 10, "GENERATED OUTPUT", 10, 10
+	.byte "ADDR    BYTES", 10
+	.byte "------  -----------------------", 10, 0
+OpasmListingNoneLine
+	.byte "(none)", 10, 0
 
 	.endsection
 
@@ -200,6 +483,8 @@ OpasmPrgArtifactBuffer
 	.res byte, OPASM_OUTPUT_PRG_BUFFER_CAPACITY
 OpasmHexArtifactBuffer
 	.res byte, OPASM_OUTPUT_HEX_BUFFER_CAPACITY
+OpasmListingArtifactBuffer
+	.res byte, OPASM_OUTPUT_LISTING_BUFFER_CAPACITY
 
 	.endsection
 	.endmodule

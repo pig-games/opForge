@@ -1458,7 +1458,7 @@ The intended native shape mirrors the Rust path:
     ending with `PASS: Rust quality gate complete.`; and `make workflow-gate`
     passed.
 
-- [ ] Item 17: Add FS-UAE first-run artifact parity coverage
+- [x] Item 17: Add FS-UAE first-run artifact parity coverage
   - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,
     `SR-NATIVE-6502-FULL`; expected to make the end-to-end acceptance harness
     complete for the first-run artifacts.
@@ -1476,6 +1476,24 @@ The intended native shape mirrors the Rust path:
     and reference-artifact wiring for the first-run output matrix.
   - Definition of done: FS-UAE can execute and compare the first-run 6502
     output matrix end to end for `.bin`, `.prg`, `.hex`, and `.lst`.
+  - Completion summary, 2026-06-15: added an Item 17 FS-UAE matrix helper and
+    native harness define that run four source-level `.output` variants for the
+    first-run 6502 byte stream and compare the generated native `.bin`, `.prg`,
+    `.hex`, and `.lst` artifacts against Rust-guided expected bytes/text. The
+    `.lst` comparison is exact and covers setup rows, labeled source, emitted
+    bytes, source text, summary, and generated output.
+  - Gate evidence, 2026-06-15: focused `cargo test -p asm item17 --
+    --nocapture` passed; mandatory real FS-UAE
+    `OPFORGE_FS_UAE_SMOKE=1
+    OPFORGE_FS_UAE_BIN='/Applications/FS-UAE.app/Contents/MacOS/fs-uae'
+    OPFORGE_FS_UAE_CONFIG_TEMPLATE='/Users/erik/Documents/FS-UAE/Configurations/opforge-tkpkg-test.fs-uae'
+    OPFORGE_FS_UAE_ARGS='{fsuae_config}' cargo test -p asm
+    external_fs_uae_opforge_native_cli_item17_first_run_artifact_matrix_matches_rust
+    -- --nocapture --test-threads=1` passed; focused `cargo test -p asm
+    examples_match_reference_outputs -- --nocapture` passed;
+    `RUST_TEST_THREADS=1 scripts/workflow/run_rust_quality_gate.sh` passed,
+    ending with `PASS: Rust quality gate complete.`; `make workflow-gate`
+    passed; and `git diff --check` passed.
 
 - [ ] Item 18: Record final first-run parity evidence and workflow-gate pass
   - Source requirement or finding IDs: `SR-FS-UAE-PARITY`,
@@ -1509,7 +1527,7 @@ The intended native shape mirrors the Rust path:
   symbol/configuration directives.
 - [ ] Milestone 5: first-run source graph support lands in three commit-sized
   slices covering include expansion, module structure, and `.use` behavior.
-- [ ] Milestone 6: `.bin`, `.prg`, `.hex`, and `.lst` are implemented through
+- [x] Milestone 6: `.bin`, `.prg`, `.hex`, and `.lst` are implemented through
   native artifact components.
 - [ ] Milestone 7: FS-UAE end-to-end parity coverage and final workflow-gate
   evidence pass for the first-run 6502 matrix.

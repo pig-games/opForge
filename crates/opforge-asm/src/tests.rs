@@ -13352,6 +13352,27 @@ fn motorola68020_item16_native_listing_output_routes_through_artifact_layer() {
 }
 
 #[test]
+fn motorola68020_item17_fs_uae_first_run_artifact_matrix_is_wired() {
+    let repo_root = workspace_root();
+    let fs_uae_source =
+        fs::read_to_string(repo_root.join("crates/opforge-asm/src/fs_uae_smoke.rs"))
+            .expect("read FS-UAE smoke source");
+    let strings_source = opforge_amigaos_source("strings.asm");
+
+    assert!(strings_source.contains("OPFORGE_FS_UAE_NATIVE_CLI_ITEM17_ARTIFACT_MATRIX"));
+    assert!(fs_uae_source.contains("FS_UAE_OPFORGE_NATIVE_CLI_ITEM17_ARTIFACT_MATRIX_DEFINE"));
+    assert!(fs_uae_source.contains("run_opforge_native_cli_item17_artifact_matrix_from_env"));
+    assert!(source_contains_in_order(
+        &fs_uae_source,
+        &[
+            "let mut runs = Vec::with_capacity(sources.len())",
+            "for source in sources",
+            "Ok(FsUaeSmokeOutcome::Completed { runs })",
+        ]
+    ));
+}
+
+#[test]
 fn motorola68020_opforge_native_cli_two_pass_engine_surface_tracks_forward_label_layout() {
     let repo_root = workspace_root();
     let source = opforge_amigaos_source("engine_callbacks.asm");
@@ -34184,6 +34205,148 @@ fn external_fs_uae_opforge_native_cli_item16_listing_artifact_matches_rust_guide
                 native_listing, expected_listing,
                 "focused FS-UAE Item 16 listing text mismatch\nstdout:\n{}\nstderr:\n{}",
                 run.stdout, run.stderr,
+            );
+        }
+    }
+}
+
+#[test]
+fn external_fs_uae_opforge_native_cli_item17_first_run_artifact_matrix_matches_rust() {
+    let _fs_uae_native_cli_guard = fs_uae_native_cli_smoke_lock()
+        .lock()
+        .expect("native CLI FS-UAE smoke lock poisoned");
+
+    let repo_root = workspace_root();
+    let package_bytes = item6_mos_package_bytes();
+    let source_with_output = |output: &str| {
+        [
+            "        .cpu 6502",
+            "OFFSET  .const $02",
+            "VALUE   .var   $10",
+            "start   lda #$42",
+            "        sta $0200 + OFFSET",
+            "        .byte $f0, $05, $d0, $f7",
+            "        ldx #VALUE",
+            "        .byte $e8, $aa, $0c, $08, $03, $08",
+            "        .text \"OK\"",
+            "        .fill byte, 2, $ff",
+            output,
+        ]
+        .join("\n")
+    };
+    let bin_source = source_with_output(
+        "        .output \"Work:opforge_native_out.bin\", format=bin, sections=code",
+    );
+    let prg_source = source_with_output(
+        "        .output \"Work:opforge_native_out.prg\", format=prg, loadaddr=$0800, sections=code",
+    );
+    let hex_source = source_with_output(
+        "        .output \"Work:opforge_native_out.hex\", format=hex, sections=code",
+    );
+    let lst_source = source_with_output(
+        "        .output \"Work:opforge_native_out.lst\", format=lst, sections=code",
+    );
+
+    match crate::fs_uae_smoke::run_opforge_native_cli_item17_artifact_matrix_from_env(
+        &repo_root,
+        [
+            bin_source.as_bytes(),
+            prg_source.as_bytes(),
+            hex_source.as_bytes(),
+            lst_source.as_bytes(),
+        ],
+        package_bytes.as_slice(),
+    )
+    .expect("focused native opForge CLI Item 17 FS-UAE helper should complete or skip cleanly")
+    {
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
+            eprintln!("SKIP: {reason}");
+        }
+        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
+            assert_eq!(runs.len(), 4, "expected first-run artifact matrix runs");
+            for (idx, run) in runs.iter().enumerate() {
+                assert!(
+                    run.success,
+                    "focused native opForge CLI Item 17 matrix run {idx} failed\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout, run.stderr,
+                );
+                assert!(
+                    run.stdout.contains("STATUS output-ok"),
+                    "focused Item 17 matrix run {idx} should report output success\nstdout:\n{}\nstderr:\n{}",
+                    run.stdout,
+                    run.stderr,
+                );
+            }
+
+            let expected_bin = first_run_6502_artifact_contract_expected_bin();
+            let bin_path = runs[0]
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_6502_OUTPUT_FILE);
+            let native_bin = fs::read(&bin_path)
+                .unwrap_or_else(|err| panic!("read Item 17 bin {}: {err}", bin_path.display()));
+            assert_eq!(native_bin, expected_bin, "Item 17 BIN artifact mismatch");
+
+            let prg_path = runs[1]
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_PRG_OUTPUT_FILE);
+            let native_prg = fs::read(&prg_path)
+                .unwrap_or_else(|err| panic!("read Item 17 PRG {}: {err}", prg_path.display()));
+            let mut expected_prg = vec![0x00, 0x08];
+            expected_prg.extend_from_slice(&expected_bin);
+            assert_eq!(native_prg, expected_prg, "Item 17 PRG artifact mismatch");
+
+            let hex_path = runs[2]
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_HEX_OUTPUT_FILE);
+            let native_hex = fs::read_to_string(&hex_path)
+                .unwrap_or_else(|err| panic!("read Item 17 HEX {}: {err}", hex_path.display()));
+            assert_eq!(
+                native_hex, ":15080000A9428D0202F005D0F7A210E8AA0C0803084F4BFFFFB0\n:00000001FF\n",
+                "Item 17 HEX artifact mismatch"
+            );
+
+            let lst_path = runs[3]
+                .artifact_dir
+                .join("Work")
+                .join(crate::fs_uae_smoke::FS_UAE_OPFORGE_NATIVE_CLI_LST_OUTPUT_FILE);
+            let native_listing = fs::read_to_string(&lst_path)
+                .unwrap_or_else(|err| panic!("read Item 17 LST {}: {err}", lst_path.display()));
+            let expected_listing = concat!(
+                "opForge Assembler native\n",
+                "ADDR    BYTES                    LINE  SOURCE\n",
+                "------  -----------------------  ----  ------\n",
+                "----                                1          .cpu 6502\n",
+                "----                                2  OFFSET  .const $02\n",
+                "----                                3  VALUE   .var   $10\n",
+                "0800    A9 42                       4  start   lda #$42\n",
+                "0802    8D 02 02                    5          sta $0200 + OFFSET\n",
+                "0805    F0 05 D0 F7                 6          .byte $f0, $05, $d0, $f7\n",
+                "0809    A2 10                       7          ldx #VALUE\n",
+                "080B    E8 AA 0C 08 03 08           8          .byte $e8, $aa, $0c, $08, $03, $08\n",
+                "0811    4F 4B                       9          .text \"OK\"\n",
+                "0813    FF FF                      10          .fill byte, 2, $ff\n",
+                "\n",
+                "Lines: 10  Errors: 0  Warnings: 0\n",
+                "\n",
+                "SYMBOL TABLE\n",
+                "\n",
+                "(none)\n",
+                "\n",
+                "Total memory is 21 bytes\n",
+                "\n",
+                "GENERATED OUTPUT\n",
+                "\n",
+                "ADDR    BYTES\n",
+                "------  -----------------------\n",
+                "0800    A9 42 8D 02 02 F0 05 D0 F7 A2 10 E8 AA 0C 08 03 08 4F 4B FF FF\n",
+            );
+            assert_eq!(
+                native_listing, expected_listing,
+                "Item 17 LST artifact mismatch\nstdout:\n{}\nstderr:\n{}",
+                runs[3].stdout, runs[3].stderr,
             );
         }
     }
